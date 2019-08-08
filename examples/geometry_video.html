@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d video Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        video {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 999;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container"></div>
+    <!-- <script src="//g.alicdn.com/tmapp/animation-data/4.1.37/jc/tools/vconsole.min.js"></script>  -->
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <video id="video" width="480" height="204" playsinline webkit-playsinline>
+        <source src="./video/sintel.mp4" codecs="avc1.42E01E, mp4a.40.2">
+        <source src="./video/sintel.ogv" codecs="theora, vorbis">
+    </video>
+    <script>
+        document.body.addEventListener('click', function () {
+            video.play();
+        });
+
+        var video = document.getElementById('video');
+        // video.muted = true;
+        var isAdded = false;
+        function addPlane() {
+            if (isAdded) {
+                return;
+            }
+            isAdded = true;
+            var texture = new Hilo3d.Texture({
+                image: video,
+                wrapS: Hilo3d.constants.REPEAT,
+                wrapT: Hilo3d.constants.REPEAT,
+                autoUpdate: true
+            });
+            
+            var loader = new Hilo3d.GLTFLoader();
+            loader.load({
+                src: '//ossgw.alicdn.com/tmall-c3/tmx/4cfe8c124b479ffa9bc67965c6ab4c25.gltf'
+            }).then(function(model){
+                window.xx = model;
+                model.node.setScale(1.5);
+                model.materials[2].diffuse = texture;
+                model.materials[2].specular.fromHEX('#fff');
+                model.materials[2].shininess = 32;
+                stage.addChild(model.node);
+            });
+        }
+        
+        video.addEventListener('canplaythrough', function () {
+            console.log('canplaythrough');
+            addPlane();
+        });
+
+        video.addEventListener('ended', function () {
+            video.play();
+        });
+
+        video.play();
+    </script>
+</body>
+
+</html>

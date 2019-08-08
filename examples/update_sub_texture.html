@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d UpdateSubTextue Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        var geometry = new Hilo3d.PlaneGeometry({
+            width: 50,
+            height: 50,
+            heightSegments: 32,
+            widthSegments: 64
+        })
+
+        camera.z = 90;
+        camera.far = 1000;
+
+        var data = new Float32Array(128);
+        for (var i = 0; i < 128; i++) {
+            data[i] = Math.random() * 2;
+        }
+
+        var bgColor = '#00b894';
+        var frontColor = '#55efc4';
+
+        var canvas = document.createElement("canvas");
+        canvas.width = 512;
+        canvas.height = 512;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, 512, 512);
+
+        var texture = new Hilo3d.Texture({
+            image: canvas,
+            flipY:true,
+            updateSubCanvas(x, y, w, h){
+                var glY = y;
+                if (this.flipY) {
+                    glY = this.height - y - h;
+                }
+                this.updateSubTexture(x, glY, ctx.getImageData(x, y, w, h));
+            }
+        });
+
+        var colorBox = new Hilo3d.Mesh({
+            geometry: geometry,
+            material: new Hilo3d.BasicMaterial({
+                lightType:'NONE',
+                diffuse: texture,
+                side:Hilo3d.constants.FRONT_AND_BACK
+            })
+        });
+        stage.addChild(colorBox);
+
+        var sleep = function(time){
+            return new Promise((resolve) => {
+                setTimeout(resolve, time);
+            });
+        };
+        async function updateTextTexture(){
+            var num = 0;
+            var size = 64;
+            ctx.font = 'bold 32px serif';
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+            for(var y = 0;y < 512; y+=size){
+                for(var x = 0;x < 512; x+=size){
+                    await sleep(50);
+                    ctx.fillStyle = frontColor;
+                    ctx.fillRect(x, y, size, size);
+                    ctx.fillStyle = bgColor;
+                    ctx.fillText(num, x + size * .5 , y + size * .5);
+                    texture.updateSubCanvas(x + 10, y + 10, size - 20, size - 20);
+                    num ++;
+                }
+            }
+            await sleep(500);
+            texture.needUpdate = true;
+
+            await sleep(1000);
+            [bgColor, frontColor] = [frontColor, bgColor];
+            texture.flipY = !texture.flipY;
+            updateTextTexture();
+        }
+
+        updateTextTexture();
+    </script>
+</body>
+</html>

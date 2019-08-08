@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d snow Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        *{
+            background:#ffffff;
+        }
+    </style>
+</head>
+<body>
+<div id="container"></div>
+<script src="../build/Hilo3d.js"></script>
+<script src="./js/stats.js"></script>
+<script src="./js/OrbitControls.js"></script>
+<script>
+
+    function $(id) {
+        return document.getElementById(id);
+    }
+
+    var camera = new Hilo3d.PerspectiveCamera({
+        aspect: innerWidth / innerHeight,
+        far: 20000,
+        near: 0.1,
+        z: 1000
+    });
+    var stage = new Hilo3d.Stage({
+        container: $('container'),
+        camera: camera,
+        clearColor: new Hilo3d.Color(0, 0, 0),
+        width: innerWidth,
+        height: innerHeight,
+        alpha: true
+    });
+
+    var renderer = stage.renderer;
+    var gl;
+
+    var directionLight = new Hilo3d.DirectionalLight({
+        color: new Hilo3d.Color(1, 1, 1),
+        direction: new Hilo3d.Vector3(0, -1, 0)
+    }).addTo(stage);
+
+    var ambientLight = new Hilo3d.AmbientLight({
+        color: new Hilo3d.Color(1, 1, 1),
+        amount: .5
+    }).addTo(stage);
+
+    var ticker = new Hilo3d.Ticker(60);
+    ticker.addTick(stage);
+    ticker.addTick(Hilo3d.Tween);
+    ticker.addTick(Hilo3d.Animation);
+        var stats = new Stats(ticker, stage.renderer.renderInfo);
+    var orbitControls = new OrbitControls(stage, {
+        isLockMove: true
+    });
+
+    setTimeout(function () {
+        ticker.start(true);
+        gl = renderer.gl;
+        gl.enable(gl.BLEND);
+        gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+    }, 10);
+
+
+    function getUniformsFun(name) {
+        return function (mesh, material, programInfo) {
+            if (material[name]) {
+                return material[name];
+            }
+            return this.value;
+        }
+
+    }
+
+    let semantic = Hilo3d.semantic;
+
+
+    function getTexture(mesh, material, programInfo) {
+
+        return semantic.handlerColorOrTexture(material.u_diffuse, programInfo.textureIndex);
+    }
+
+    var uniforms = {
+        modelMatrix: 'MODEL',
+        u_modelViewProjectionMatrix: 'MODELVIEWPROJECTION',
+        u_PointSize: {
+            get: getUniformsFun('u_PointSize')
+        },
+        u_diffuse: {
+            value: null,
+            get: getTexture
+        }
+
+    }
+    var fragmentShader = `
+    precision HILO_MAX_VERTEX_PRECISION float;
+
+
+    uniform sampler2D u_diffuse;
+
+    void main() {
+        gl_FragColor = texture2D(u_diffuse,gl_PointCoord);
+    }`
+
+
+    var vertexShader = `
+    precision highp float;
+    precision highp int;
+
+    attribute vec3 position;
+    uniform mat4 u_modelViewProjectionMatrix;
+    uniform float u_PointSize;
+    void main() {
+        float scale = 400.0;
+        gl_Position = u_modelViewProjectionMatrix * vec4( position, 1.0 );
+        gl_PointSize = u_PointSize * ( scale / abs(gl_Position.z) );
+
+    }`
+
+    var material = new Hilo3d.ShaderMaterial({
+
+        u_diffuse: null,
+        u_PointSize: 50,
+        uniforms: uniforms,
+        attributes: {
+            position: 'POSITION'
+        },
+        blend: true,
+        transparent: true,
+        fs: fragmentShader,
+        vs: vertexShader
+    })
+
+
+    let geometry = new Hilo3d.Geometry({
+        mode: 0
+    });
+    geometry.points = []
+
+    for (let i = 0; i < 10000; i++) {
+
+        var vertex = new Hilo3d.Vector3();
+        vertex.x = Math.random() * 2000 - 1000;
+        vertex.y = Math.random() * 2000 - 1000;
+        vertex.z = Math.random() * 2000 - 1000;
+
+        geometry.addPoints([vertex.x, vertex.y, vertex.z]);
+        geometry.points.push(vertex)
+
+    }
+
+    let parameters = [
+        [40, '//gw.alicdn.com/tfs/TB17oDXbOqAXuNjy1XdXXaYcVXa-32-32.png'],
+        [35, '//gw.alicdn.com/tfs/TB17oDXbOqAXuNjy1XdXXaYcVXa-32-32.png'],
+        [20, '//gw.alicdn.com/tfs/TB18pJ_efDH8KJjy1XcXXcpdXXa-32-32.png'],
+        [10, '//gw.alicdn.com/tfs/TB19VJ_efDH8KJjy1XcXXcpdXXa-32-32.png'],
+        [50, '//gw.alicdn.com/tfs/TB1XChgedzJ8KJjSspkXXbF7VXa-32-32.png']
+    ];
+
+
+    let meshs = []
+    parameters.forEach(function (item) {
+        let nm = material.clone();
+        nm.u_diffuse = new Hilo3d.LazyTexture({
+            crossOrigin: true,
+            src: item[1]
+        })
+        nm.u_PointSize = item[0]
+        let mesh = new Hilo3d.Mesh({
+            geometry: geometry,
+            material: nm
+        })
+        mesh.rotationX = Math.random() * 6 * 100;
+        mesh.rotationY = Math.random() * 6 * 100;
+        mesh.rotationZ = Math.random() * 6 * 100
+
+        stage.addChild(mesh)
+        meshs.push(mesh)
+    })
+
+    ticker.addTick({
+        tick: function () {
+            var time = Date.now() * 0.00005;
+            meshs.forEach(function (mesh,i) {
+                mesh.rotationY = time * ( i < 4 ? i + 1 : -( i + 1 ) ) * 10 ;
+
+            })
+
+        }
+    });
+
+
+
+</script>
+</body>
+</html>

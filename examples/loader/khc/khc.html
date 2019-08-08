@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hilo3d 2d khc in 3d example</title>
+    <link rel="stylesheet" type="text/css" href="../../example.css">
+    <style>
+        #xx {
+            display: none;
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <canvas id="xx" class="canvas" width="375" height="667"></canvas>
+    <script src="../../../build/Hilo3d.js"></script>
+    <script src="../../js/stats.js"></script>
+    <script src="../../js/OrbitControls.js"></script>
+    <script src="../../js/init.js"></script>
+    <script src="./khc.js"></script>
+    <script>
+        var loadQueue = new Hilo3d.LoadQueue([{
+            crossOrigin: 'anonymous',
+            src: '//gw.alicdn.com/tfs/TB15OJpQFXXXXXgXVXXXXXXXXXX-512-512.png'
+        }, {
+            crossOrigin: 'anonymous',
+            src: '//gw.alicdn.com/tfs/TB1gwNqQFXXXXcIXFXXXXXXXXXX-512-512.png'
+        }, {
+            crossOrigin: 'anonymous',
+            src: '//gw.alicdn.com/tfs/TB1pyNcQFXXXXb7XVXXXXXXXXXX-512-512.png'
+        }, {
+            crossOrigin: 'anonymous',
+            src: '//gw.alicdn.com/tfs/TB1FilNQFXXXXcKXXXXXXXXXXXX-512-512.png'
+        }, {
+            crossOrigin: 'anonymous',
+            src: '//gw.alicdn.com/tfs/TB1gIpqQFXXXXcZXFXXXXXXXXXX-512-512.png'
+        }, {
+            crossOrigin: 'anonymous',
+            src: '//gw.alicdn.com/tfs/TB1RFXLQFXXXXXEXpXXXXXXXXXX-512-512.png'
+        }, {
+            src: '//cx.alicdn.com/tmx/2aa87481889ecab77adad40450eb502a.gltf'
+        }]).on('complete', function () {
+            var result = loadQueue.getAllContent();
+            var skyboxMap = new Hilo3d.CubeTexture({
+                image: result.filter(function(r){return r instanceof Image})
+            });
+            var khcTexture = new Hilo3d.Texture({
+                image: document.getElementById('xx'),
+                autoUpdate: true,
+                wrapS: 33071,
+                wrapT: 33071
+            });
+
+            var model = result.filter(function(r){return r.node})[0];
+            model.node.setScale(.002);
+            var screenMaterial = model.meshes[5].material;
+            screenMaterial.diffuse = khcTexture;
+            model.materials.forEach(function(material){
+                if (material === screenMaterial) {
+                    material.lightType = 'NONE';
+                    return;
+                }
+                material.skyboxMap = skyboxMap;
+                material.reflectivity = .1;
+            });
+            stage.addChild(model.node);
+        }).start();
+    </script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d transparent Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        var boxGeometry = new Hilo3d.BoxGeometry();
+        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+
+        var container = new Hilo3d.Node({
+            rotationY:-70
+        }).addTo(stage);
+        var n = totalNum = 8;
+        while(n --){
+            var box = new Hilo3d.Mesh({
+                geometry: boxGeometry,
+                material: new Hilo3d.BasicMaterial({
+                    transparent:true,
+                    transparency:0.5,
+                    diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random())
+                }),
+                x:- totalNum * 0.5 + n + 0.2,
+                rotationX:n * 36,
+                onUpdate: function() {
+                    this.rotationX += .5;
+                }
+            });
+            container.addChild(box);
+        } 
+
+        stage.setScale(0.4);
+    </script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>glTF LightMap example</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        #modelSelect,
+        #cameraSelect {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 99999;
+        }
+        #cameraSelect {
+            top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        ambientLight.amount = 0;
+        directionLight.color.set(1, 1, 1, 1);
+        directionLight.direction.set(1, 1, -1);
+        const loader = new Hilo3d.Loader();
+        loader.load([{
+            ignoreTextureError: true,
+            src: '//ossgw.alicdn.com/tmall-c3/tmx/9578a65ee149dc3a6e71d9844d4e1da9.gltf'
+        }, {
+            type: 'Texture',
+            src: '//ossgw.alicdn.com/tmall-c3/tmx/f15e7f2a8ed6e718396d21349e8940c4.jpg',
+            uv: 1
+        }, {
+            src: '//ossgw.alicdn.com/tmall-c3/tmx/29c92edc7555768b1d74a5e6872d734f.hdr',
+            uv: 1
+        }]).then(function (result) {
+            const model = result[0];
+            const aoMap = result[1];
+            const lightMap = result[2];
+
+            model.node.setScale(3);
+            model.node.rotationX = -60;
+            model.materials.forEach(function (m) {
+                m.occlusionMap = aoMap;
+                m.lightMap = lightMap;
+                m.useHDR = true;
+                m.exposure = .5;
+            });
+            stage.addChild(model.node);
+        });
+    </script>
+</body>
+</html>

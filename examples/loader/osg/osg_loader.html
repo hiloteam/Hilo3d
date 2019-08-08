@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d OSG Loader Demo</title>
+    <link rel="stylesheet" type="text/css" href="../../example.css">
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../../../build/Hilo3d.js"></script>
+    <script src="./OSGLoader.js"></script>
+    <script src="../../js/stats.js"></script>
+    <script src="../../js/OrbitControls.js"></script>
+    <script src="../../js/init.js"></script>
+    <script>
+    var loader = new Hilo3d.OSGLoader();
+    loader.load({
+            src: './housefly/file.osgjs.gz',
+            materials: {
+            "RootNode": {
+                "name": "RootNode",
+                "isPBR": true,
+                "reflection": 0.1,
+                "transparency": {
+                    "internalFormat": "ALPHA",
+                    "magFilter": "LINEAR",
+                    "minFilter": "LINEAR_MIPMAP_LINEAR",
+                    "wrapS": "REPEAT",
+                    "wrapT": "REPEAT",
+                    "texture": {
+                        "uid": "626b10ff182b4a40be1f940891470a89",
+                        "name": "fly_transparency_01.png",
+                        "image": "./housefly/transparency.jpg"
+                    },
+                    "factor": 1
+                },
+                "baseColor": {
+                    "color": [
+                        1,
+                        1,
+                        1,
+                        1
+                    ],
+                    "factor": 1
+                },
+                "emission": {
+                    "color": [
+                        1,
+                        1,
+                        1,
+                        1
+                    ],
+                    "factor": 0
+                },
+                "ao": {
+                    "color": [
+                        1,
+                        1,
+                        1,
+                        1
+                    ],
+                    "factor": 0.23
+                },
+                "diffuse": {
+                    "internalFormat": "RGB",
+                    "magFilter": "LINEAR",
+                    "minFilter": "LINEAR_MIPMAP_LINEAR",
+                    "wrapS": "REPEAT",
+                    "wrapT": "REPEAT",
+                    "texture": {
+                        "uid": "862e78d6010f40afa03464fd65d8baa3",
+                        "name": "fly_diffuse_01.png",
+                        "image": "./housefly/diffuse.jpg"
+                    },
+                    "factor": 0.74
+                },
+                "normalMap": {
+                    "internalFormat": "LUMINANCE",
+                    "magFilter": "LINEAR",
+                    "minFilter": "LINEAR_MIPMAP_LINEAR",
+                    "wrapS": "REPEAT",
+                    "wrapT": "REPEAT",
+                    "texture": {
+                        "uid": "e35862ff713b43aba096eb82b402dc0e",
+                        "name": "fly_bump_01.png",
+                        "image": "./housefly/normal.jpg"
+                    },
+                    "factor": 3.3000000000000003
+                },
+                "metallic": {
+                    "color": [
+                        1,
+                        1,
+                        1,
+                        1
+                    ],
+                    "factor": 0
+                },
+                "specular": {
+                    "internalFormat": "RGB",
+                    "magFilter": "LINEAR",
+                    "minFilter": "LINEAR_MIPMAP_LINEAR",
+                    "wrapS": "REPEAT",
+                    "wrapT": "REPEAT",
+                    "texture": {
+                        "uid": "4ce389fa840b407a9b3f430385f53396",
+                        "name": "fly_specular_01.png",
+                        "image": "./housefly/specular.jpg"
+                    },
+                    "factor": 0.24
+                }
+            }
+        }
+    }).then(function (model) {
+            window.xx = model;
+            model.node.rotationX = 0;
+            model.node.rotationY = -45;
+            model.node.rotationZ = -90;
+            model.node.setScale(0.01);
+            model.node.getChildrenByClassName('Mesh').forEach((m, i) => {
+                    if (i != 10) {
+                            // m.visible = 0;
+                    }
+            })
+            stage.addChild(model.node);
+    });
+</script>
+</body>
+</html>

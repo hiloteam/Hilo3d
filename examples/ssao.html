@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d SSAO Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+<div id="container"></div>
+<script src="../build/Hilo3d.js"></script>
+<script src="./js/stats.js"></script>
+<script src="./js/OrbitControls.js"></script>
+<script src="./js/init.js"></script>
+<script src="./js/postProcess.js"></script>
+<script>
+    var framebufferOption = {
+        type:Hilo3d.constants.FLOAT
+    };
+    renderer.framebufferOption = framebufferOption;
+    renderer.clearColor = new Hilo3d.Color(0, 0, 0, 0);
+    postProcess.init(renderer, framebufferOption);
+    renderer.useFramebuffer = false;
+    renderer.useInstanced = true;
+
+    initScene();
+
+    function initSSAO(meshes){
+        var num = 32;
+        var ssaoKernel = new Float32Array(num * 3);
+        for(var i = 0;i < num;i ++){
+            var index = i * 3;
+            var scale = Math.random() * 0.9 + 0.1;
+            ssaoKernel[index] = (Math.random() * 2 -1) * scale;
+            ssaoKernel[index + 1] = (Math.random() * 2 -1) * scale;
+            ssaoKernel[index + 2] = Math.random() * scale;
+        }
+        var writeOriginData = true;
+        var positionFramebuffer = new Hilo3d.Framebuffer(renderer, {
+            type:Hilo3d.constants.FLOAT
+        });
+        positionFramebuffer.init();
+        var positionMaterial = new Hilo3d.GeometryMaterial({
+            vertexType:Hilo3d.constants.POSITION,
+            writeOriginData:writeOriginData
+        });
+
+        var normalFramebuffer = new Hilo3d.Framebuffer(renderer, {
+            type:Hilo3d.constants.FLOAT
+        });
+        normalFramebuffer.init();
+        var normalMaterial = new Hilo3d.GeometryMaterial({
+            vertexType:Hilo3d.constants.NORMAL,
+            writeOriginData:writeOriginData
+        });
+
+        var depthFramebuffer = new Hilo3d.Framebuffer(renderer, {
+            type:Hilo3d.constants.FLOAT
+        });
+        depthFramebuffer.init();
+        var depthMaterial = new Hilo3d.GeometryMaterial({
+            vertexType:Hilo3d.constants.DEPTH,
+            writeOriginData:false
+        });
+
+        var ssaoFramebuffer = new Hilo3d.Framebuffer(renderer, {
+            type:Hilo3d.constants.FLOAT
+        });
+        ssaoFramebuffer.init();
+
+        var noiseData = new Float32Array(48);
+        for (var i = 0; i < 48; i++) {
+            noiseData[i] = Math.random() * 2 - 1;
+        }
+        var noiseTexture = new Hilo3d.DataTexture({
+            data: noiseData,
+            wrapS:Hilo3d.constants.REPEAT,
+            wrapT:Hilo3d.constants.REPEAT
+        });
+        var textureSize = new Float32Array([renderer.width, renderer.height]);
+        var noiseScale = new Float32Array([renderer.width/4, renderer.height/4]);
+
+        var ssaoPass = postProcess.addPass({
+            frag:`
+            precision HILO_MAX_FRAGMENT_PRECISION float;
+            varying vec2 v_texcoord0;
+            uniform sampler2D u_normal;
+            uniform sampler2D u_position;
+            uniform sampler2D u_depth;
+            uniform sampler2D u_noise;
+            uniform vec3 u_kernel[32];
+            uniform mat4 u_projection;
+            uniform vec2 u_noiseScale;
+            uniform float u_radius;
+            void main(void) {
+                vec4 fragPosAll = texture2D(u_position, v_texcoord0);
+                if(fragPosAll.a < 1.0){
+                    discard;
+                }
+                vec3 fragPos = fragPosAll.xyz;
+                vec3 normal = texture2D(u_normal, v_texcoord0).xyz;
+                vec3 randomVec = texture2D(u_noise, v_texcoord0 * u_noiseScale).xyz;
+                vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
+                vec3 bitangent = cross(normal, tangent);
+                mat3 TBN = mat3(tangent, bitangent, normal);
+                
+                float occlusion = 0.0;
+                for(int i = 0; i < 32; ++i)
+                {
+                    // 获取样本位置
+                    vec3 sample = TBN * u_kernel[i]; // 切线->观察空间
+                    sample = fragPos + sample * u_radius; 
+
+                    vec4 offset = vec4(sample, 1.0);
+                    offset = u_projection * offset; // 观察->裁剪空间
+                    offset.xyz /= offset.w; // 透视划分
+                    offset.xyz = offset.xyz * 0.5 + 0.5; // 变换到0.0 - 1.0的值域
+                    
+                    float sampleDepth = -texture2D(u_depth, offset.xy).x;
+                    float rangeCheck = smoothstep(0.0, 1.0, u_radius / abs(fragPos.z - sampleDepth));
+                    occlusion += (sampleDepth >= sample.z ? 1.0 : 0.0) * rangeCheck;    
+                }
+                occlusion = 1.0 - (occlusion / 32.0);
+                gl_FragColor = vec4(vec3(occlusion), 1.0);
+            }`,
+            uniforms:{
+                u_position:postProcess.uniformTextureGetter(positionFramebuffer.texture),
+                u_normal:postProcess.uniformTextureGetter(normalFramebuffer.texture),
+                u_depth:postProcess.uniformTextureGetter(depthFramebuffer.texture),
+                u_noise:postProcess.uniformTextureGetter(noiseTexture),
+                u_kernel:ssaoKernel,
+                u_radius:.1,
+                u_noiseScale:noiseScale,
+                u_projection:{
+                    get:function(){
+                        return camera.projectionMatrix.elements;
+                    }
+                }
+            }
+        });
+
+        var blurPass = postProcess.addPass({
+            frag:`
+                precision HILO_MAX_FRAGMENT_PRECISION float;
+                varying vec2 v_texcoord0;
+                uniform sampler2D u_ssao;
+                uniform vec2 u_textureSize;
+                void main(void) {
+                    gl_FragColor = texture2D(u_ssao, v_texcoord0);
+                    gl_FragColor = vec4(1.0);
+                    vec2 texelSize = 1.0 / u_textureSize;
+                    float result = 0.0;
+                    for (int x = -2; x < 2; ++x) 
+                    {
+                        for (int y = -2; y < 2; ++y) 
+                        {
+                            vec2 offset = vec2(float(x), float(y)) * texelSize;
+                            result += texture2D(u_ssao, v_texcoord0 + offset).r;
+                        }
+                    }
+                    gl_FragColor = vec4(vec3(result / (4.0 * 4.0)), 1.0);
+                }
+            `,
+            uniforms:{
+                u_ssao:postProcess.uniformTextureGetter(ssaoFramebuffer.texture),
+                u_textureSize:textureSize
+            }
+        });
+
+        renderer.forceMaterial = depthMaterial;
+
+        renderer.on('afterRender', function(){
+            var forceMaterial = renderer.forceMaterial;
+
+            positionFramebuffer.bind();
+            positionFramebuffer.clear();
+            renderer.forceMaterial = positionMaterial;
+            renderer.renderScene();
+
+            normalFramebuffer.bind();
+            normalFramebuffer.clear();
+            renderer.forceMaterial = normalMaterial;
+            renderer.renderScene();
+
+            depthFramebuffer.bind();
+            depthFramebuffer.clear();
+            renderer.forceMaterial = depthMaterial;
+            renderer.renderScene();
+
+            renderer.forceMaterial = forceMaterial;
+
+            ssaoFramebuffer.bind();
+            ssaoFramebuffer.clear();
+            postProcess.draw(null, ssaoPass);
+            
+            renderer.state.bindSystemFramebuffer();
+            postProcess.draw(null, blurPass);
+        });
+    }
+    
+    renderer.on('init', function(){
+        initSSAO();
+    });
+
+    function initScene(){
+        var loader = new Hilo3d.GLTFLoader();
+        loader.load({
+            src: './models/dragon/dragon.gltf'
+        }).then(function(model){
+            model.node.setScale(0.1);
+            stage.addChild(model.node);
+        });
+    }
+</script>
+</body>
+</html>

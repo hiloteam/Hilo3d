@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d video in cube Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        video {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <video id="video" width="480" height="204" playsinline webkit-playsinline>
+        <source src="./video/sintel.mp4" codecs="avc1.42E01E, mp4a.40.2">
+        <source src="./video/sintel.ogv" codecs="theora, vorbis">
+    </video>
+    <!-- <script src="//g.alicdn.com/tmapp/animation-data/4.1.37/jc/tools/vconsole.min.js"></script>  -->
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        orbitControls.isLockZ = true;
+        var video = document.getElementById('video');
+        video.addEventListener('canplaythrough', function () {
+            console.log('canplaythrough');
+            video.play();
+            addPlane();
+        });
+        
+
+        var isAdded = false;
+        function addPlane(){
+            if (isAdded || !window.skyboxMap) {
+                return;
+            }
+            isAdded = true;
+            var texture = new Hilo3d.Texture({
+                image: video,
+                wrapS: Hilo3d.constants.CLAMP_TO_EDGE,
+                wrapT: Hilo3d.constants.CLAMP_TO_EDGE,
+                autoUpdate: true,
+                flipY: true
+            });
+            var mat = new Hilo3d.Matrix4();
+            mat.rotateX(Math.PI);
+            mat.rotateY(-Math.PI/2);
+
+            var tv = new Hilo3d.Mesh({
+                z: -49.8,
+                y: -9.21,
+                x: 6.3,
+                geometry: new Hilo3d.PlaneGeometry({
+                    width: 65,
+                    height: 34.5
+                }),
+                material: new Hilo3d.BasicMaterial({
+                    diffuse: texture,
+                    specularEnvMap: skyboxMap,
+                    specularEnvMatrix: mat,
+                    reflectivity: .1
+                })
+            });
+            window.tv = tv;
+            stage.addChild(tv);
+        }
+
+        var loadQueue = new Hilo3d.LoadQueue([{
+            type: 'CubeTexture',
+            images: [
+                '//ossgw.alicdn.com/tmall-c3/material/1c4c59caf87946dbb0a3139841e73b0c.jpg',
+                '//ossgw.alicdn.com/tmall-c3/material/88716c33144f48a6bcebc63dc8e93bfd.jpg',
+                '//ossgw.alicdn.com/tmall-c3/material/2950c9178161401c92126ac175ab24f0.jpg',
+                '//ossgw.alicdn.com/tmall-c3/material/09e6d1ee230b4e54a98eced4954a3934.jpg',
+                '//ossgw.alicdn.com/tmall-c3/material/06d6f8ba59fb48dfada16185c90f08aa.jpg',
+                '//ossgw.alicdn.com/tmall-c3/material/aa2b0ae15fa94dc3956c382718f368d7.jpg'
+            ]
+        }]).on('complete', function () {
+            var result = loadQueue.getAllContent();
+            var skyboxMap = window.skyboxMap = result[0];
+            skyboxMap.flipY = true;
+            skybox = new Hilo3d.Mesh({
+                geometry: new Hilo3d.BoxGeometry(),
+                material: new Hilo3d.BasicMaterial({
+                    lightType: 'NONE',
+                    side:Hilo3d.constants.BACK,
+                    diffuse: skyboxMap
+                }),
+                rotationX: 180,
+                rotationY: 90
+            });
+            skybox.setScale(100);
+            stage.addChild(skybox);
+
+            addPlane();
+        }).start();
+    </script>
+</body>
+</html>

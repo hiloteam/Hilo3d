@@ -1,0 +1,82 @@
+<?js
+var self = this;
+?>
+<div class="navigation">
+    <h3 class="applicationName"><a href="index.html"><?js= env.conf.templates.applicationName ?></a></h3>
+
+    <div class="search">
+        <input id="search" type="text" class="form-control input-sm" placeholder="Search Documentations">
+    </div>
+    <ul class="list">
+        <li class="item"><span class="title"><a href="index.html">README</a></span></li>
+    <?js
+    this.nav.forEach(function (item) {
+    ?>
+        <li class="item" data-name="<?js= item.folder ?>/<?js= item.longname ?>">
+            <span class="title">
+                <span class="title-name"><?js= item.folder ?>/<?js= self.linkto(item.longname, item.longname) ?></span>
+                <?js if (item.type === 'namespace') { ?>
+                <span class="static">static</span>
+                <?js } ?>
+            </span>
+            <ul class="members itemMembers">
+            <?js
+            if (item.members.length) {
+            ?>
+            <span class="subtitle"><a href="#members" class="subtitle-name">Members</a><a class="toggle-inherited" href="javascript:void(0);" type="member">Show Inherited</a></span>
+            <?js
+                item.members.forEach(function (v) {
+            ?>
+                <li <?js if (v.inherited) { ?>class="inherited-member"<?js } ?> data-name="<?js= v.longname ?>"><?js= self.linkto(v.longname, v.name) ?></li>
+            <?js
+                });
+            }
+            ?>
+            </ul>
+            <ul class="typedefs itemMembers">
+            <?js
+            if (item.typedefs.length) {
+            ?>
+            <span class="subtitle">Typedefs</span>
+            <?js
+                item.typedefs.forEach(function (v) {
+            ?>
+                <li data-name="<?js= v.longname ?>"><?js= self.linkto(v.longname, v.name) ?></li>
+            <?js
+                });
+            }
+            ?>
+            </ul>
+            <ul class="methods itemMembers">
+            <?js
+            if (item.methods.length) {
+            ?>
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            <?js
+
+                item.methods.forEach(function (v) {
+            ?>
+                <li <?js if (v.inherited) { ?>class="inherited-method"<?js } ?> data-name="<?js= v.longname ?>"><?js= self.linkto(v.longname, v.name) ?></li>
+            <?js
+                });
+            }
+            ?>
+            </ul>
+            <ul class="events itemMembers">
+            <?js
+            if (item.events.length) {
+            ?>
+            <span class="subtitle">Events</span>
+            <?js
+                item.events.forEach(function (v) {
+            ?>
+                <li data-name="<?js= v.longname ?>"><?js= self.linkto(v.longname, v.name) ?></li>
+            <?js
+                });
+            }
+            ?>
+            </ul>
+        </li>
+    <?js }); ?>
+    </ul>
+</div>

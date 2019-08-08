@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d Line Geometry Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        var material = new Hilo3d.BasicMaterial({ 
+            diffuse : new Hilo3d.Color(1, 0, 0),
+            lightType:'NONE'
+        });
+        var geometry = new Hilo3d.Geometry({ mode: 1 });
+        geometry.addPoints([0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]);
+        geometry.addIndices(0, 1, 0, 2, 0, 3);
+        
+        var mesh = new Hilo3d.Mesh({
+            geometry: geometry,
+            material: material,
+            rotationX: 30,
+            rotationY: 30
+        });
+        stage.addChild(mesh);
+    </script>
+</body>
+</html>

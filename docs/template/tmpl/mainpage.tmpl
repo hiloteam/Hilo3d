@@ -1,0 +1,16 @@
+<?js
+var data = obj;
+var self = this;
+
+var exampleLinkReg = /https\:\/\/hiloteam\.github\.io\/Hilo3d\/(examples|docs)\//g;
+?>
+
+<?js if (data.kind === 'package') { ?>
+    <h3><?js= data.name ?> <?js= data.version ?></h3>
+<?js } ?>
+
+<?js if (data.readme) { ?>
+    <section>
+        <article class="readme"><?js= data.readme.replace(exampleLinkReg, '../$1/') ?></article>
+    </section>
+<?js } ?>

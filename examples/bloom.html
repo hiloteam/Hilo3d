@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d Bloom</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        #kernelSelect {
+            font-size: 12px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 99999;
+        }
+    </style>
+</head>
+<body>
+<div id="container"></div>
+<select name="kernelSelect" id="kernelSelect"></select>
+<script src="../build/Hilo3d.js"></script>
+<script src="./js/stats.js"></script>
+<script src="./js/OrbitControls.js"></script>
+<script src="./js/init.js"></script>
+<script src="./js/postProcess.js"></script>
+<script>
+    camera.far = 5;
+    stage.rotationX = 25;
+    directionLight.shadow = {};
+    var framebufferOption = {
+        type:Hilo3d.constants.FLOAT
+    };
+    renderer.framebufferOption = framebufferOption;
+    renderer.clearColor = new Hilo3d.Color(0, 0, 0, 0);
+    
+    var plane = new Hilo3d.Mesh({
+        y: -.4,
+        rotationX: -90,
+        geometry: new Hilo3d.PlaneGeometry(),
+        material: new Hilo3d.BasicMaterial({
+            lightType:'LAMBERT',
+            side: Hilo3d.constants.FRONT_AND_BACK,
+            diffuse:new Hilo3d.Color(.612, .612, .612)
+        })
+    });
+    plane.setScale(1.8);
+    stage.addChild(plane);
+
+    var boxGeometry = new Hilo3d.BoxGeometry();
+    boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+
+    var lightValue = 2;
+    var colorBox = new Hilo3d.Mesh({
+        geometry: boxGeometry,
+        material: new Hilo3d.BasicMaterial({
+            lightType:'NONE',
+            diffuse: new Hilo3d.Color(0,lightValue,0)
+        }),
+        x:-0.3,
+        onUpdate: function() {
+            this.rotationX += .5;
+            this.rotationY += .5;
+        }
+    });
+    stage.addChild(colorBox);
+    colorBox.setScale(0.2);
+
+    var colorBox = new Hilo3d.Mesh({
+        geometry: boxGeometry,
+        material: new Hilo3d.BasicMaterial({
+            lightType:'NONE',
+            diffuse: new Hilo3d.Color(lightValue,lightValue,0)
+        }),
+        x:.3,
+        y:-.1,
+        onUpdate: function() {
+            this.rotationX += .5;
+            this.rotationY += .5;
+        }
+    });
+    stage.addChild(colorBox);
+    colorBox.setScale(0.2);
+
+    var colorBox = new Hilo3d.Mesh({
+        geometry: boxGeometry,
+        material: new Hilo3d.BasicMaterial({
+            lightType:'NONE',
+            diffuse: new Hilo3d.Color(lightValue,lightValue,lightValue)
+        }),
+        x:-.5,
+        y:.5,
+        onUpdate: function() {
+            this.rotationX += .5;
+            this.rotationY += .5;
+        }
+    });
+    stage.addChild(colorBox);
+    colorBox.setScale(0.2);
+
+    postProcess.init(renderer, framebufferOption);
+    
+    postProcess.addPass({
+        frag:`\n\
+        precision HILO_MAX_FRAGMENT_PRECISION float;\n\
+        varying vec2 v_texcoord0;\n\
+        uniform sampler2D u_diffuse;\n\
+        void main(void) {\n\
+            vec4 color = texture2D(u_diffuse, v_texcoord0);\n\
+            float brightness = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));\n\
+            if(brightness > 1.0){
+                gl_FragColor = vec4(color.rgb, 1.0);\n\
+            }
+        }`
+    });
+
+    for(var i = 0;i < 10;i ++){
+        var pass = postProcess.addPass({
+            frag:`\n\
+            precision HILO_MAX_FRAGMENT_PRECISION float;\n\
+            uniform sampler2D u_diffuse;
+            varying vec2 v_texcoord0;\n\
+            uniform vec2 u_textureSize;
+            uniform int horizontal;
+
+            float weight[5];
+
+            void main()
+            {         
+                weight[0] = 0.227027;
+                weight[1] = 0.1945946;
+                weight[2] = 0.1216216;
+                weight[3] = 0.054054;
+                weight[4] = 0.016216;
+                vec2 tex_offset =  vec2(1.0/u_textureSize.x, 1.0/u_textureSize.y);
+                vec3 result = texture2D(u_diffuse, v_texcoord0).rgb * weight[0];
+
+                if(horizontal == 0){
+                    for(int i = 1; i < 5; ++i){
+                        result += texture2D(u_diffuse, v_texcoord0 + vec2(vec2(tex_offset.x * float(i), 0.0))).rgb * weight[i];
+                        result += texture2D(u_diffuse, v_texcoord0 - vec2(tex_offset.x * float(i), 0.0)).rgb * weight[i];
+                    } 
+                }
+                else{
+                    for(int i = 1; i < 5; ++i){
+                        result += texture2D(u_diffuse, v_texcoord0 + vec2(vec2(0.0, tex_offset.x * float(i)))).rgb * weight[i];
+                        result += texture2D(u_diffuse, v_texcoord0 - vec2(0.0, tex_offset.x * float(i))).rgb * weight[i];
+                    } 
+                }
+                       
+                gl_FragColor = vec4(result, 1.0);
+            }`,
+            uniforms:{
+                horizontal:{
+                    get:()=>{
+                        return i%2;
+                    }
+                },
+                u_textureSize:{
+                    get:()=> {
+                        return new Float32Array([
+                            renderer.width, renderer.height
+                        ])
+                    }
+                }
+            }
+        }, 'bloom_pass_id');
+    }
+
+    postProcess.addPass({
+        frag:`\n\
+        precision HILO_MAX_FRAGMENT_PRECISION float;\n\
+        uniform sampler2D u_diffuse;
+        uniform sampler2D u_scene;
+        varying vec2 v_texcoord0;\n\
+
+        void main()
+        {       
+            vec3 hdrColor = texture2D(u_scene, v_texcoord0).rgb;      
+            vec3 bloomColor = texture2D(u_diffuse, v_texcoord0).rgb;  
+            hdrColor += bloomColor;
+            vec3 result = vec3(1.0) - exp(-hdrColor * 0.9);
+
+            gl_FragColor = vec4(result, 0);
+        }`,
+        uniforms:{
+            u_scene:{
+                get(mesh, material, programInfo) {
+                    return Hilo3d.semantic.handlerTexture(renderer.framebuffer.texture, programInfo.textureIndex);
+                }
+            }
+        }
+    });
+    
+    renderer.on('afterRender', ()=>{
+        postProcess.render();
+    });
+</script>
+</body>
+</html>

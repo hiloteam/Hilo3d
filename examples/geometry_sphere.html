@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d sphere Geometry Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+<div id="container"></div>
+<script src="../build/Hilo3d.js"></script>
+<script src="./js/stats.js"></script>
+<script src="./js/OrbitControls.js"></script>
+<script src="./js/NormalTangentHelper.js"></script>
+<script src="./js/init.js"></script>
+<script>
+    var container = new Hilo3d.Node();
+    var loader = new Hilo3d.BasicLoader();
+    loader.load({
+        src: '//gw.alicdn.com/tfs/TB1VUmoQFXXXXcjXFXXXXXXXXXX-1500-750.jpg',
+        crossOrigin: 'anonymous'
+    }).then(function(image){
+        return new Hilo3d.Texture({image});
+    }, function(err){
+        return new Hilo3d.Color(.5, .5, .5);
+    }).then(function (diffuse) {
+        var geometry = new Hilo3d.SphereGeometry({
+            radius: 1,
+            heightSegments: 32,
+            widthSegments: 64,
+        })
+        var material = new Hilo3d.BasicMaterial({
+            lightType: 'NONE',
+            diffuse: diffuse,
+            wireframe:false
+        });
+        var mesh = new Hilo3d.Mesh({
+            geometry: geometry,
+            material: material
+        });
+        container.addChild(mesh);
+        stage.addChild(container);
+
+        // container.addChild(NormalTangentHelper.create(mesh, 0.1));
+    })
+</script>
+</body>
+</html>

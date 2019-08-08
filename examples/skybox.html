@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d Skybox Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+<div id="container"></div>
+<script src="../build/Hilo3d.js"></script>
+<script src="./js/stats.js"></script>
+<script src="./js/OrbitControls.js"></script>
+<script src="./js/init.js"></script>
+<script>
+    orbitControls.isLockZ = true;
+
+    var loadQueue = new Hilo3d.LoadQueue([{
+        type: 'CubeTexture',
+        images: [
+            '//gw.alicdn.com/tfs/TB1Ss.ORpXXXXcNXVXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
+            '//gw.alicdn.com/tfs/TB1YhUDRpXXXXcyaXXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
+            '//gw.alicdn.com/tfs/TB1Y1MORpXXXXcpXVXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
+            '//gw.alicdn.com/tfs/TB1ZgAqRpXXXXa0aFXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
+            '//gw.alicdn.com/tfs/TB1IVZNRpXXXXaNXFXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
+            '//gw.alicdn.com/tfs/TB1M3gyRpXXXXb9apXXXXXXXXXX-2048-2048.jpg_960x960.jpg'
+        ]
+    }, {
+        src: '//ossgw.alicdn.com/tmall-c3/tmx/9d958a4e0d7f084d6b8f64e487654fdb.gltf'
+    }]).on('complete', function () {
+        var result = loadQueue.getAllContent();
+        var skyboxMap = result[0];
+        var model = window.model = result[1];
+
+        var skybox = new Hilo3d.Mesh({
+            geometry: new Hilo3d.BoxGeometry(),
+            material: new Hilo3d.BasicMaterial({
+                lightType: 'NONE',
+                side: Hilo3d.constants.BACK,
+                diffuse: skyboxMap
+            })
+        }).addTo(stage);
+        skybox.setScale(20);
+
+        var material = new Hilo3d.BasicMaterial({
+            diffuse: new Hilo3d.Color(0, 0, 0),
+            specularEnvMap: skyboxMap,
+            refractRatio: 1/1.5,
+            refractivity: 0.8,
+            reflectivity: 0.2
+        });
+
+        model.node.setScale(0.001);
+        model.meshes.forEach(function (m) {
+            m.material = material;
+            material.jointCount = model.materials[0].jointCount;
+        }); 
+        stage.addChild(model.node);
+        model.node.onUpdate = function () {
+            material.specularEnvMatrix = new Hilo3d.Matrix4().invert(stage.worldMatrix);
+        }
+    }).start();
+</script>
+</body>
+</html>

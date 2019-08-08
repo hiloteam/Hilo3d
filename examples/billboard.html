@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d Billboard Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+<div id="container"></div>
+<script src="../build/Hilo3d.js"></script>
+<script src="./js/stats.js"></script>
+<script src="./js/OrbitControls.js"></script>
+<script src="./js/init.js"></script>
+<script>
+    var planeGeometry = new Hilo3d.PlaneGeometry();
+
+    var billdboardMaterial = new Hilo3d.ShaderMaterial({
+        diffuse: new Hilo3d.LazyTexture({
+            crossOrigin: true,
+            src: '//gw.alicdn.com/tfs/TB1T1wEizTpK1RjSZKPXXa3UpXa-512-512.png'
+        }),
+        uniforms:{
+            u_diffuse:'DIFFUSE',    
+            'u_modelViewMatrix':'MODELVIEW',
+            'u_projectionMatrix':'PROJECTION',
+            'u_scale':{
+                isDependMesh: true,
+                get:function(mesh){
+                    if (!mesh.__billdboardScale) {
+                        mesh.__billdboardScale = new Hilo3d.Vector3(1, 1, 1);
+                    }
+                    return mesh.worldMatrix.getScaling(mesh.__billdboardScale).elements;
+                }
+            },
+        },
+        attributes:{
+            a_position: 'POSITION',
+            a_texcoord0:'TEXCOORD_0'
+        },
+        fs:`
+            precision HILO_MAX_FRAGMENT_PRECISION float;
+            varying vec2 v_texcoord0;
+            uniform sampler2D u_diffuse;
+                         
+            void main(void) {
+                vec4 diffuse = texture2D(u_diffuse, vec2(v_texcoord0.x, v_texcoord0.y));    
+                gl_FragColor = diffuse;
+            }
+        `,
+        vs:`
+            precision HILO_MAX_VERTEX_PRECISION float;
+            uniform vec3 u_scale;
+            attribute vec3 a_position;
+            attribute vec2 a_texcoord0;
+            varying vec2 v_texcoord0;
+
+            uniform mat4 u_modelViewMatrix;
+            uniform mat4 u_projectionMatrix;
+
+            void main(void) {
+                vec4 center = u_modelViewMatrix * vec4(0, 0, 0, 1);
+                center.xy += a_position.xy * u_scale.xy;
+                gl_Position = u_projectionMatrix * center;
+                v_texcoord0 = a_texcoord0;
+            }
+        `
+    });
+
+    function rand(min, max) {
+        return Math.random() * (max - min) + min;
+    }
+
+    for (var i = 0; i < 100; i++) {
+        var rect = new Hilo3d.Mesh({
+            geometry: planeGeometry,
+            material: billdboardMaterial,
+            x: rand(-1, 1),
+            y: rand(-1, 1),
+            z: rand(-1, 1)
+        });
+        rect.setScale(rand(0.08, 0.2));
+        stage.addChild(rect);
+    }
+
+    var centerRect = new Hilo3d.Mesh({
+        geometry: planeGeometry,
+        material: billdboardMaterial,
+        x: 0,
+        y: 0,
+        z: 0
+    });
+    centerRect.setScale(1);
+    stage.addChild(centerRect);
+</script>
+</body>
+</html>

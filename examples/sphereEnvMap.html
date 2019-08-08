@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d SphereEnvMap Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+<div id="container"></div>
+<script src="../build/Hilo3d.js"></script>
+<script src="./js/stats.js"></script>
+<script src="./js/OrbitControls.js"></script>
+<script src="./js/init.js"></script>
+<script src="./js/postProcess.js"></script>
+<script>
+    initModel();
+
+    function initModel(){
+        var gltfURL = './models/BoomBox/BoomBox.gltf';
+
+        var loadQueue = new Hilo3d.LoadQueue([{
+            type: 'CubeTexture',
+            images: [
+                './image/bakedDiffuse_01.jpg',
+                './image/bakedDiffuse_02.jpg',
+                './image/bakedDiffuse_03.jpg',
+                './image/bakedDiffuse_04.jpg',
+                './image/bakedDiffuse_05.jpg',
+                './image/bakedDiffuse_06.jpg'
+            ]
+        }, {
+            src:'//gw.alicdn.com/tfs/TB1VUmoQFXXXXcjXFXXXXXXXXXX-1500-750.jpg',
+            type:'Texture'
+        },{
+            src: './image/brdfLUT.png',
+            type:'Texture'
+        }]).start().on('complete', function(){
+            var result = loadQueue.getAllContent();
+            var diffuseEnvMap = result[0];
+            var specularEnvMap = result[1];
+            var brdfTexture = result[2];
+
+            var node = new Hilo3d.Node();
+            node.setScale(0.3);
+            stage.addChild(node);
+
+            var geometry = new Hilo3d.SphereGeometry({
+                radius: 0.45,
+                heightSegments: 16,
+                widthSegments: 32
+            });
+
+            var colors = [
+                [0.56, 0.57, 0.58], //铁
+                [0.95, 0.64, 0.54], //铜
+                [1, 0.71, 0.29], //金
+                [0.95, 0.93, 0.88], //银
+            ];
+
+            var num = 3;
+            for(var i = 0;i < num; i ++){
+                for(var j = 0;j < num;j ++){
+                    var x = i - num*.5;
+                    var y = j - num*.5;
+                    var metallic = i/num;
+                    var roughness = j/num;
+                    var len = colors.length;
+                    colors.forEach(function(color, index){
+                        material = new Hilo3d.PBRMaterial({
+                            baseColor: new Hilo3d.Color(color[0], color[1], color[2]),
+                            metallic: metallic,
+                            roughness: roughness,
+                            brdfLUT: brdfTexture,
+                            diffuseEnvMap: diffuseEnvMap,
+                            specularEnvMap: specularEnvMap
+                        });
+
+                        var mesh = new Hilo3d.Mesh({
+                            geometry: geometry,
+                            material: material,
+                            x:x,
+                            y:y,
+                            z:(index - len * .5) * 1
+                        });
+
+                        node.addChild(mesh);
+                    });
+                }
+            }
+
+            var box = new Hilo3d.Mesh({
+                material:new Hilo3d.BasicMaterial({
+                    specularEnvMap:specularEnvMap,
+                    diffuse:new Hilo3d.Color(1, 1, 1),
+                    specular:new Hilo3d.Color(1, 1, 1),
+                    refractRatio: 1/1.5,
+                    reflectivity: 0.8,
+                    useHDR:true
+                }),
+                geometry:new Hilo3d.BoxGeometry(),
+                x:-.6,
+                z:-.2,
+                y:-.15,
+                rotationY:90,
+                onUpdate(){
+                    this.specularEnvMatrix = new Hilo3d.Matrix4().invert(stage.worldMatrix);
+                }
+            }).addTo(stage);
+            box.setScale(1.5, 1.5, .05);
+        });
+    }
+
+</script>
+</body>
+</html>

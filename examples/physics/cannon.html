@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d Cannon Demo</title>
+    <link rel="stylesheet" type="text/css" href="../example.css">
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../../build/Hilo3d.js"></script>
+    <script src="../js/stats.js"></script>
+    <script src="../js/OrbitControls.js"></script>
+    <script src="../js/init.js"></script>
+    <script src="./lib/cannon.js"></script>
+    <script>
+        var world, mass, body, shape, timeStep=1/60,
+         camera, scene, renderer, geometry, material, mesh;
+        initHilo();
+        initCannon();
+
+        function initCannon() {
+            world = new CANNON.World();
+            world.gravity.set(0,0,0);
+            world.broadphase = new CANNON.NaiveBroadphase();
+            world.solver.iterations = 10;
+            shape = new CANNON.Box(new CANNON.Vec3(1,1,1));
+            mass = 1;
+            body = new CANNON.Body({
+                mass: 1
+            });
+            body.addShape(shape);
+            body.angularVelocity.set(0,10,0);
+            body.angularDamping = 0.5;
+            world.addBody(body);
+        }
+
+        function initHilo() {
+            camera.z = 5;
+            geometry = new Hilo3d.BoxGeometry( 2, 2, 2 );
+            material = new Hilo3d.BasicMaterial( { diffuse: new Hilo3d.Color(1, 0, 0), wireframe: true } );
+            mesh = new Hilo3d.Mesh( {
+                geometry:geometry,
+                material:material
+            } );
+            stage.addChild(mesh);
+        }
+     
+        stage.onUpdate = function(dt){
+            world.step(1/60, dt/1000);
+            mesh.setPosition(body.position.x, body.position.y, body.position.z);
+            mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+        };
+    </script>
+</body>
+</html>

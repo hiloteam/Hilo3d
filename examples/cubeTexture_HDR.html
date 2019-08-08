@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d HDR CubeTexture Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        #animSelect {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 99999;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        Promise.all([
+            './image/reflectionprobe-00.hdr',
+            './image/reflectionprobe-01.hdr',
+            './image/reflectionprobe-02.hdr',
+            './image/reflectionprobe-03.hdr',
+            './image/reflectionprobe-04.hdr',
+            './image/reflectionprobe-05.hdr',
+        ].map((src => new Hilo3d.HDRLoader().load({src})))
+        ).then(textures => {
+            var cubeTexture = new Hilo3d.CubeTexture({
+                image: textures.map(texture => texture.image),
+                type:Hilo3d.constants.FLOAT,
+                width: textures[0].width,
+                height: textures[0].height,
+                format: textures[0].format,
+                internalFormat: textures[0].internalFormat,
+                minFilter: textures[0].minFilter,
+                magFilter: textures[0].magFilter,
+            });
+
+           new Hilo3d.Mesh({
+                geometry: new Hilo3d.BoxGeometry(),
+                material: new Hilo3d.BasicMaterial({
+                    lightType: 'NONE',
+                    diffuse: cubeTexture,
+                    side:Hilo3d.constants.BACK,
+                    useHDR: true
+                })
+            }).addTo(stage);
+        })
+    </script>
+</body>
+</html>

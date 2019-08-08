@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>loader progress example</title>
+    <link rel="stylesheet" type="text/css" href="../example.css">
+    <style>
+    #progress {
+        position: absolute;
+        width: 100px;
+        right: 5px;
+        top: 5px;
+        color: white;
+        font-size: 12px;
+        z-index: 999999;
+    }
+    </style>
+</head>
+
+<body>
+    <div id="container"></div>
+    <div id="progress"></div>
+    <script src="../../build/Hilo3d.js"></script>
+    <script src="../js/stats.js"></script>
+    <script src="../js/OrbitControls.js"></script>
+</body>
+<script asyc src="../js/init.js"></script>
+<script>
+window.onload = function() {
+    var $progress = document.getElementById("progress");
+
+    var loader = new Hilo3d.GLTFLoader();
+    loader.load({
+        src: '//ossgw.alicdn.com/tmall-c3/tmx/7540b95910f77cce50758c5008da9829.gltf'
+    }).then(function(model) {
+        model.node.setScale(0.002);
+        stage.addChild(model.node);
+    });
+
+    var protip = "";
+    loader.on("progress", function(evt) {
+        console.log(evt.detail.url + "resource loaded: " + evt.detail.loaded);
+
+        if (evt.detail.total > 0) {
+
+            //glTF文件包含bin文件和glTF原始文件,主要是bin文件.
+            //贴图类文件单独监听.
+            protip = "resource loaded: " + Math.round(evt.detail.loaded / evt.detail.total * 100) + "%";
+            $progress.innerHTML = protip;
+        }
+    });
+
+
+    var mph = new Hilo3d.MeshPicker({
+        renderer: stage.renderer,
+        debug: false
+    });
+
+    stage.container.addEventListener('click', function(evt) {
+        var mesh = mph.getSelection(evt.clientX, evt.clientY)[0];
+        console.log(evt.clientX, evt.clientY, mesh);
+        if (mesh) {
+            if (mesh.material.isSelected) {
+                mesh.material.isSelected = false;
+                mesh.material.transparency /= 0.5;
+            } else {
+                mesh.material.isSelected = true;
+                mesh.material.transparency *= 0.5;
+            }
+        }
+    });
+}
+</script>
+
+</html>

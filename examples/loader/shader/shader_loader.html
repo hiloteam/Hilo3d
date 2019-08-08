@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d ShaderMaterial Loader Demo</title>
+    <link rel="stylesheet" type="text/css" href="../../example.css">
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../../../build/Hilo3d.js"></script>
+    <script src="../../js/stats.js"></script>
+    <script src="../../js/OrbitControls.js"></script>
+    <script src="../../js/init.js"></script>
+    <script>
+        stage.addChild(new Hilo3d.AxisNetHelper({ size: 4 }));
+        stage.addChild(new Hilo3d.AxisHelper());
+        stage.rotationX = 30;
+        window.u_diff = 0;
+        Hilo3d.Tween.to(window, {
+            u_diff: Math.PI * 2
+        }, {
+            duration: 3000,
+            loop: true
+        }).start();
+
+        var loader = new Hilo3d.ShaderMaterialLoader();
+        loader.load({
+            fs: './test.frag',
+            vs: './test.vert',
+            attributes: {
+                a_pos: 'POSITION',
+                a_uv: 'TEXCOORD_0'
+            },
+            uniforms: {
+                u_mat: 'MODELVIEWPROJECTION',
+                u_diffuse: 'DIFFUSE',
+                u_diff: {
+                    get: function () {
+                        return window.u_diff;
+                    }
+                }
+            },
+            // cullFace: true,
+            wireframe: true,
+            diffuse: new Hilo3d.LazyTexture({
+                crossOrigin: true,
+                src: '//img.alicdn.com/tfs/TB1va2xQVXXXXaFapXXXXXXXXXX-1024-710.jpg'
+            })
+        }).then(function(material){
+            var geometry = new Hilo3d.PlaneGeometry({
+                heightSegments: 100,
+                widthSegments: 100
+            });
+            window.x = geometry;
+            var plane = new Hilo3d.Mesh({
+                // rotationX: -90,
+                material: material,
+                geometry: geometry
+            });
+            window.xx = plane;
+            stage.addChild(plane);
+        });
+    </script>
+</body>
+</html>

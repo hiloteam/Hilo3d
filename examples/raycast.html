@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d Raycast Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        #hit{
+            width: 10px;
+            height: 10px;
+            background: #f00;
+            position: absolute;
+            left: -5px;
+            top: -5px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id='hit'></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        var hitStyle = document.getElementById('hit').style;
+        var boxGeometry = new Hilo3d.BoxGeometry();
+        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+
+        var sphereGeometry = new Hilo3d.SphereGeometry();
+        var planeGeometry = new Hilo3d.PlaneGeometry();
+
+        var material = new Hilo3d.BasicMaterial({
+            diffuse:new Hilo3d.LazyTexture({
+                crossOrigin:true,
+                src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
+            })
+        });
+
+        var doubleSidedMaterial = new Hilo3d.BasicMaterial({
+            side:Hilo3d.constants.FRONT_AND_BACK,
+            diffuse:new Hilo3d.LazyTexture({
+                crossOrigin:true,
+                src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
+            })
+        });
+
+        var backSidedMaterial = new Hilo3d.BasicMaterial({
+            side:Hilo3d.constants.BACK,
+            diffuse:new Hilo3d.LazyTexture({
+                crossOrigin:true,
+                src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
+            })
+        });
+
+        var boxMesh = new Hilo3d.Mesh({
+            geometry: boxGeometry,
+            material: material,
+            x: -0.8,
+            onUpdate: function() {
+                this.rotationX += .5;
+                this.rotationY += .5;
+            }
+        });
+        boxMesh.setScale(0.4);
+        stage.addChild(boxMesh);
+
+        var sphereMesh = new Hilo3d.Mesh({
+            geometry:sphereGeometry,
+            material: material,
+            x: 0,
+            onUpdate: function() {
+                this.rotationX += .5;
+                this.rotationZ += .5;
+            }
+        });
+        sphereMesh.setScale(0.3);
+        stage.addChild(sphereMesh);
+
+        var doubleSidedPlaneMesh = new Hilo3d.Mesh({
+            geometry:planeGeometry,
+            material:doubleSidedMaterial,
+            x:0.8,
+            y:-0.5,
+            onUpdate: function() {
+                this.rotationX += .5;
+                this.rotationZ += .5;
+            }
+        });
+        doubleSidedPlaneMesh.setScale(0.4);
+        stage.addChild(doubleSidedPlaneMesh);
+
+        var planeMesh = new Hilo3d.Mesh({
+            geometry:planeGeometry,
+            material:material,
+            x:0.8,
+            onUpdate: function() {
+                this.rotationX += .5;
+                this.rotationZ += .5;
+            }
+        });
+        planeMesh.setScale(0.4);
+        stage.addChild(planeMesh);
+
+        var backSidedPlaneMesh = new Hilo3d.Mesh({
+            geometry:planeGeometry,
+            material:backSidedMaterial,
+            x:0.8,
+            y:0.5,
+            onUpdate: function() {
+                this.rotationX += .5;
+                this.rotationZ += .5;
+            }
+        });
+        backSidedPlaneMesh.setScale(0.4);
+        stage.addChild(backSidedPlaneMesh);
+
+        var ray = new Hilo3d.Ray();
+
+        var mousePos = {x:0, y:0};
+        document.body.onmousemove = document.body.ontouchmove = function(e){
+            e = e.changedTouches?e.changedTouches[0]:e;
+            mousePos.x = e.clientX;
+            mousePos.y = e.clientY;
+            onHit();
+        }
+
+        var onHit = function(){
+            ray.fromCamera(camera, mousePos.x, mousePos.y, stage.width, stage.height);
+            var hitResult = stage.raycast(ray);
+
+            var pos = hitResult?camera.projectVector(hitResult[0].point, stage.width, stage.height):mousePos;
+            hitStyle.webkitTransform = 'translate3d(' + pos.x + 'px,' + pos.y + 'px, 0px)';
+            if(hitResult){
+                hitStyle.opacity = 1;
+            }
+            else{
+                hitStyle.opacity = 0.1;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d hdr image loader Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        #animSelect {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 99999;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        var geometry = new Hilo3d.PlaneGeometry({
+            width:1,
+            height:1.5
+        });
+
+        var hdrLoader = new Hilo3d.HDRLoader();
+        hdrLoader.load({
+            src: '//ossgw.alicdn.com/tmall-c3/tmx/c7273f5a8dff35c6a32e0810e3b241e1.hdr'
+        }).then(diffuse => {
+            const material = new Hilo3d.BasicMaterial({
+                side:Hilo3d.constants.FRONT_AND_BACK,
+                diffuse: diffuse,
+                useHDR:true,
+                exposure:.1,
+                lightType:'NONE'
+            });
+
+            new Hilo3d.Mesh({
+                geometry: geometry,
+                material: material
+            }).addTo(stage);
+
+            Hilo3d.Tween.to(material, {
+                exposure:20
+            }, {
+                duration:2000,
+                reverse:true,
+                loop:true
+            })
+        })
+    </script>
+</body>
+</html>

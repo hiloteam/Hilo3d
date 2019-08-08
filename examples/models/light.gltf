@@ -1,0 +1,87 @@
+{
+    "asset": {
+        "generator": "COLLADA2GLTF with manual modifications for KHR_lights_punctual",
+        "version": "2.0"
+    },
+    "scene": 0,
+    "scenes": [
+        {
+            "nodes": [
+                0,
+                1,
+                2
+            ]
+        }
+    ],
+    "nodes": [
+        {
+            "extensions": {
+                "KHR_lights_punctual": {
+                    "light": 0
+                }
+            },
+            "name": "point light",
+            "matrix": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -0.3, -0.2, 1]
+        },
+        {
+            "extensions": {
+                "KHR_lights_punctual": {
+                    "light": 1
+                }
+            },
+            "name": "directional light",
+            "matrix": [1, 0, 0, 0, 0, 0.7071067690849304, 0.7071067690849304, 0, 0, -0.7071067690849304, 0.7071067690849304, 0, 0, 1, -1.5, 1]
+        },
+        {
+            "extensions": {
+                "KHR_lights_punctual": {
+                    "light": 2
+                }
+            },
+            "matrix": [1, 0, 0, 0, 0, 6.123234262925839e-17, 1, 0, 0, 1, 6.123234262925839e-17, 0, 0, 0.2, 0.4, 1],
+            "name": "spot light"
+        }
+    ],
+    "extensionsUsed": [
+        "KHR_lights_punctual"
+    ],
+    "extensions": {
+        "KHR_lights_punctual": {
+            "lights": [
+                {
+                    "type": "point",
+                    "intensity": 5.0,
+                    "range":10,
+                    "color": [
+                        1.0,
+                        0.0,
+                        0.0
+                    ]
+                },
+                {
+                    "type": "directional",
+                    "intensity": 2.0,
+                    "color": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ]
+                },
+                {
+                    "type": "spot",
+                    "intensity": 5,
+                    "range":200,
+                    "color": [
+                        0.0,
+                        0.0,
+                        1.0
+                    ],
+                    "spot": {
+                        "innerConeAngle":0.2617993877991494,
+                        "outerConeAngle":0.7853981633974483
+                    }
+                }
+            ]
+        }
+    }
+}

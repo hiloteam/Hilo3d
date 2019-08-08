@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d DataTexture Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        var geometry = new Hilo3d.PlaneGeometry({
+            width: 50,
+            height: 50,
+            heightSegments: 32,
+            widthSegments: 64
+        })
+
+        camera.z = 90;
+        camera.far = 1000;
+
+        var data = new Float32Array(128);
+        for (var i = 0; i < 128; i++) {
+            data[i] = Math.random() * 2;
+        }
+
+        var colorBox = new Hilo3d.Mesh({
+            geometry: geometry,
+            material: new Hilo3d.BasicMaterial({
+                diffuse: new Hilo3d.DataTexture({
+                    data: data
+                }),
+                side:Hilo3d.constants.FRONT_AND_BACK
+            }),
+            onUpdate: function() {
+                for (var i = 0; i < 128; i++) {
+                    data[i] = Math.random() * 2;
+                }
+
+                this.material.diffuse.needUpdate = true;
+            }
+        });
+        stage.addChild(colorBox);
+    </script>
+</body>
+</html>

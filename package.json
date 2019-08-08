@@ -1,0 +1,32 @@
+{
+  "name": "hilo3d",
+  "version": "1.13.26",
+  "description": "Hilo3d, a WebGL 3d engine.",
+  "main": "build/Hilo3d.js",
+  "types": "types/index.d.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "contributor": "git-contributor"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hiloteam/Hilo3d.git"
+  },
+  "keywords": [
+    "WebGL",
+    "3D",
+    "hilo"
+  ],
+  "author": "06wj",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/hiloteam/Hilo3d/issues"
+  },
+  "homepage": "https://github.com/hiloteam/Hilo3d#readme",
+  "devDependencies": {
+    "del": "^3.0.0",
+    "git-contributor": "^1.0.7",
+    "gulp": "^3.9.1",
+    "gulp-replace": "^1.0.0"
+  }
+}

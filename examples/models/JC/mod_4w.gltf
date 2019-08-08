@@ -1,0 +1,215 @@
+{
+  "accessors": {
+    "accessor_0": {
+      "bufferView": "bufferView_0",
+      "byteOffset": 0,
+      "byteStride": 0,
+      "componentType": 5126,
+      "count": 27075,
+      "min": [-31.520444869995117, -0.26365992426872253, -35.147918701171875],
+      "max": [
+        60.6963005065918,
+        176.12298583984375,
+        18.349939346313477
+      ],
+      "type": "VEC3"
+    },
+    "accessor_1": {
+      "bufferView": "bufferView_0",
+      "byteOffset": 324900,
+      "byteStride": 0,
+      "componentType": 5126,
+      "count": 27075,
+      "min": [-0.9999857544898987, -0.9998849034309387, -0.9999023675918579],
+      "max": [
+        0.9999935626983643,
+        0.999554455280304,
+        0.9999251961708069
+      ],
+      "type": "VEC3"
+    },
+    "accessor_2": {
+      "bufferView": "bufferView_0",
+      "byteOffset": 649800,
+      "byteStride": 0,
+      "componentType": 5126,
+      "count": 27075,
+      "min": [
+        0.003854000009596348,
+        0.001865983009338379
+      ],
+      "max": [
+        0.9937689900398254,
+        0.9962810277938843
+      ],
+      "type": "VEC2"
+    },
+    "accessor_3": {
+      "bufferView": "bufferView_1",
+      "byteOffset": 0,
+      "byteStride": 0,
+      "componentType": 5123,
+      "count": 120000,
+      "min": [
+        0
+      ],
+      "max": [
+        27074
+      ],
+      "type": "SCALAR"
+    }
+  },
+  "asset": {
+    "generator": "obj2gltf",
+    "profile": {
+      "api": "WebGL",
+      "version": "1.0"
+    },
+    "version": "1.0",
+    "premultipliedAlpha": true
+  },
+  "buffers": {
+    "buffer": {
+      "byteLength": 1106400,
+      "uri": "buffer.bin",
+      "type": "arraybuffer"
+    }
+  },
+  "bufferViews": {
+    "bufferView_0": {
+      "buffer": "buffer",
+      "byteLength": 866400,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    "bufferView_1": {
+      "buffer": "buffer",
+      "byteLength": 240000,
+      "byteOffset": 866400,
+      "target": 34963
+    }
+  },
+  "extensionsUsed": [
+    "KHR_materials_common"
+  ],
+  "images": {
+    "Default_material": {
+      "name": "Default_material",
+      "uri": "texture.jpg",
+      "fileName": "texture.jpg"
+    }
+  },
+  "materials": {
+    "Default_material": {
+      "extensions": {
+        "KHR_materials_common": {
+          "doubleSided": false,
+          "technique": "LAMBERT",
+          "values": {
+            "ambient": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "diffuse": "Default_material",
+            "emission": [
+              0,
+              0,
+              0,
+              1
+            ],
+            "specular": [
+              1,
+              1,
+              1,
+              0
+            ],
+            "shininess": 128,
+            "transparency": 1
+          }
+        }
+      }
+    }
+  },
+  "meshes": {
+    "mesh_0-Mesh": {
+      "name": "mesh_0-Mesh",
+      "primitives": [{
+        "attributes": {
+          "POSITION": "accessor_0",
+          "NORMAL": "accessor_1",
+          "TEXCOORD_0": "accessor_2"
+        },
+        "indices": "accessor_3",
+        "material": "Default_material",
+        "mode": 4
+      }]
+    }
+  },
+  "nodes": {
+    "mesh_0": {
+      "name": "mesh_0",
+      "meshes": [
+        "mesh_0-Mesh"
+      ],
+      "children": [],
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "samplers": {},
+  "scene": "scene",
+  "scenes": {
+    "scene": {
+      "nodes": [
+        "mesh_0"
+      ]
+    }
+  },
+  "textures": {
+    "Default_material": {
+      "sampler": "sampler_Default_material",
+      "format": 6408,
+      "internalFormat": 6408,
+      "name": "Default_material",
+      "source": "Default_material"
+    }
+  },
+  "animations": {},
+  "cameras": {},
+  "skins": {},
+  "extensions": {
+    "KHR_materials_common": {
+      "lights": {
+        "defaultAmbient": {
+          "ambient": {
+            "color": [
+              1,
+              1,
+              1
+            ]
+          },
+          "name": "defaultAmbient",
+          "type": "ambient"
+        }
+      }
+    }
+  }
+}

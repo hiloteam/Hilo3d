@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <title>glTF Viewer - rendered by Hilo3d</title>
+    <link rel='stylesheet' href='./css/index.css'>
+</head>
+<body>
+    <script>window.notInit = true</script>
+    <input type='file' multiple id='input'>
+    <div id='inputContainer'>
+        <div class='title'>It's a glTF Viewer rendered by <a href='https://github.com/hiloteam/Hilo3d'>Hilo3d</a>.</div>
+        <div class='dropArea'>
+            <div class='info'>Drag glTF 2.0 files or folder here</div>
+            <div class='iconfont' id='uploadIcon'>&#xe639;</div>
+        </div>
+        <div class='linkInputArea'>
+            <input id='linkInput' type='text' placeholder='Copy the glTF model url here!'>
+            <button id='showLinkBtn'>show the model</button>
+        </div>
+    </div>
+    <div id='stageContainer'></div>
+    <script src='./lib/simple-dropzone.min.js'></script>
+    <script src='../../build/Hilo3d.js'></script>
+    <script src="../../examples/loader/draco/draco_decoder.js"></script>
+    <script src="../../examples/loader/draco/DracoLoader.js"></script>
+    <script src='../../examples/js/init.js'></script>
+    <script src='../../examples/js/stats.js'></script>
+    <script src='../../examples/js/OrbitControls.js'></script>
+    <script src='./js/index.js'></script>
+</body>
+</html>

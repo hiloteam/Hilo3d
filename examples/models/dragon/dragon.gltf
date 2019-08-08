@@ -1,0 +1,313 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 50000,
+      "max": [
+        7.0467,
+        9.9399,
+        3.1513
+      ],
+      "min": [
+        -7.0467,
+        0,
+        -3.1513
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 0,
+      "componentType": 5123,
+      "count": 300000,
+      "max": [
+        49999
+      ],
+      "min": [
+        0
+      ],
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "generator": "qtek fbx2gltf",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 600000,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 600000,
+      "byteOffset": 600000,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 1200000,
+      "uri": "dragon.bin"
+    }
+  ],
+  "materials": [
+    {
+      "name": "defaultMat",
+      "emissiveFactor": [
+        0,
+        0,
+        0
+      ],
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.8,
+          0.8,
+          0.8,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.6675439927009721
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "default",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0
+          },
+          "indices": 1,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ],
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "name": "dragon_root"
+    },
+    {
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "mesh": 0,
+      "name": "default"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "extras": {
+    "qtekModelViewerConfig": {
+      "preZ": true,
+      "materials": [
+        {
+          "name": "defaultMat",
+          "color": "#cccccc",
+          "emission": "#000000",
+          "alpha": 1,
+          "alphaCutoff": 0,
+          "emissionIntensity": 1,
+          "uvRepeat": {
+            "0": 1,
+            "1": 1
+          },
+          "parallaxOcclusionScale": 0.02,
+          "diffuseMap": "",
+          "normalMap": "",
+          "parallaxOcclusionMap": "",
+          "emissiveMap": "",
+          "metalness": 0,
+          "roughness": 0.6675439927009721,
+          "metalnessMap": "",
+          "roughnessMap": "",
+          "type": "pbrMetallicRoughness",
+          "targetMeshes": [
+            "default"
+          ]
+        }
+      ],
+      "takes": [],
+      "textureFlipY": false,
+      "zUpToYUp": false,
+      "shadow": true,
+      "environment": "auto",
+      "viewControl": {
+        "center": [
+          0,
+          0,
+          0
+        ],
+        "alpha": 22.22521044318694,
+        "beta": 5.947985319014801,
+        "distance": 18
+      },
+      "ground": {
+        "show": true
+      },
+      "mainLight": {
+        "shadow": true,
+        "shadowQuality": "medium",
+        "intensity": 0.8,
+        "color": "#fff",
+        "alpha": 45,
+        "beta": 45,
+        "$padAngle": [
+          0.25,
+          0.5
+        ]
+      },
+      "secondaryLight": {
+        "shadow": false,
+        "shadowQuality": "medium",
+        "intensity": 0,
+        "color": "#fff",
+        "alpha": 60,
+        "beta": -50,
+        "$padAngle": [
+          -0.2777777777777778,
+          0.6666666666666666
+        ]
+      },
+      "tertiaryLight": {
+        "shadow": false,
+        "shadowQuality": "medium",
+        "intensity": 0,
+        "color": "#fff",
+        "alpha": 89,
+        "beta": 0,
+        "$padAngle": [
+          0,
+          0.9888888888888889
+        ]
+      },
+      "ambientLight": {
+        "intensity": 0,
+        "color": "#fff"
+      },
+      "ambientCubemapLight": {
+        "texture": "./asset/texture/pisa.hdr",
+        "$texture": "pisa",
+        "$textureOptions": [
+          "pisa",
+          "Barce_Rooftop_C",
+          "Factory_Catwalk",
+          "Grand_Canyon_C",
+          "Ice_Lake",
+          "Hall",
+          "Old_Industrial_Hall"
+        ],
+        "exposure": 3,
+        "diffuseIntensity": 0.5,
+        "specularIntensity": 0.5,
+        "$intensity": 0.5
+      },
+      "postEffect": {
+        "enable": true,
+        "bloom": {
+          "enable": true,
+          "intensity": 0.1
+        },
+        "depthOfField": {
+          "enable": false,
+          "focalDistance": 4,
+          "focalRange": 1,
+          "blurRadius": 5,
+          "fstop": 10,
+          "quality": "medium",
+          "$qualityOptions": [
+            "low",
+            "medium",
+            "high",
+            "ultra"
+          ]
+        },
+        "screenSpaceAmbientOcclusion": {
+          "enable": false,
+          "radius": 1.5,
+          "quality": "medium",
+          "intensity": 1,
+          "$qualityOptions": [
+            "low",
+            "medium",
+            "high",
+            "ultra"
+          ]
+        },
+        "screenSpaceReflection": {
+          "enable": false,
+          "quality": "medium",
+          "maxRoughness": 0.8,
+          "$qualityOptions": [
+            "low",
+            "medium",
+            "high",
+            "ultra"
+          ]
+        },
+        "colorCorrection": {
+          "enable": true,
+          "exposure": 0,
+          "brightness": 0,
+          "contrast": 1,
+          "saturation": 1,
+          "lookupTexture": ""
+        },
+        "FXAA": {
+          "enable": false
+        }
+      }
+    }
+  },
+  "extensionsUsed": [
+    "KHR_materials_pbrSpecularGlossiness"
+  ]
+}
