@@ -43,6 +43,12 @@ if (!window.notInit) {
         isLockZ: true
     });
 
+    ['init', 'initFailed'].forEach(function(eventName){
+        stage.renderer.on(eventName, function(e){
+            console.log(e.type, e);
+        });
+    });
+
     setTimeout(function() {
         ticker.start(true);
         gl = renderer.gl;

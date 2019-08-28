@@ -6676,6 +6676,8 @@
             
                 <li  data-name="WebGLRenderer#offsetY"><a href="WebGLRenderer.html#offsetY">offsetY</a></li>
             
+                <li  data-name="WebGLRenderer#isInitFailed"><a href="WebGLRenderer.html#isInitFailed">isInitFailed</a></li>
+            
                 <li  data-name="WebGLRenderer#clearColor"><a href="WebGLRenderer.html#clearColor">clearColor</a></li>
             
                 <li  data-name="WebGLRenderer#renderInfo"><a href="WebGLRenderer.html#renderInfo">renderInfo</a></li>
@@ -7508,7 +7510,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
          * @return {Program}
          */
         getBlankProgram(state) {
-            const shader = Shader.getCustomShader('void main(){}', 'void main(){}', '', '__hiloBlankShader');
+            const shader = Shader.getCustomShader('void main(){}', 'precision HILO_MAX_FRAGMENT_PRECISION float;void main(){gl_FragColor = vec4(0.0);}', '', '__hiloBlankShader');
             return this.getProgram(shader, state, true);
         }
     },

@@ -6676,6 +6676,8 @@
             
                 <li  data-name="WebGLRenderer#offsetY"><a href="WebGLRenderer.html#offsetY">offsetY</a></li>
             
+                <li  data-name="WebGLRenderer#isInitFailed"><a href="WebGLRenderer.html#isInitFailed">isInitFailed</a></li>
+            
                 <li  data-name="WebGLRenderer#clearColor"><a href="WebGLRenderer.html#clearColor">clearColor</a></li>
             
                 <li  data-name="WebGLRenderer#renderInfo"><a href="WebGLRenderer.html#renderInfo">renderInfo</a></li>
@@ -7491,6 +7493,7 @@ const {
  * @fires beforeRender 渲染前事件
  * @fires beforeRenderScene 渲染场景前事件
  * @fires afterRender 渲染后事件
+ * @fires initFailed 初始化失败事件
  * @fires webglContextLost webglContextLost 事件
  * @fires webglContextRestored webglContextRestored 事件
  * @mixes EventMixin
@@ -7670,6 +7673,13 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
     offsetY: 0,
 
     /**
+     * 是否初始化失败
+     * @default false
+     * @type {Boolean}
+     */
+    isInitFailed: false,
+
+    /**
      * 是否初始化
      * @type {Boolean}
      * @default false
@@ -7804,7 +7814,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      */
     isInit: {
         get() {
-            return this._isInit;
+            return this._isInit &amp;&amp; !this.isInitFailed;
         }
     },
     /**
@@ -7826,67 +7836,74 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
     initContext() {
         if (!this._isInit) {
             this._isInit = true;
-            const contextAttributes = {
-                alpha: this.alpha,
-                depth: this.depth,
-                stencil: this.stencil,
-                antialias: this.antialias,
-                premultipliedAlpha: this.premultipliedAlpha,
-                failIfMajorPerformanceCaveat: this.failIfMajorPerformanceCaveat
-            };
-
-            // fix ios bug...
-            if (this.preserveDrawingBuffer === true) {
-                contextAttributes.preserveDrawingBuffer = true;
+            try {
+                this._initContext();
+                this.fire('init');
+            } catch (e) {
+                this.isInitFailed = true;
+                this.fire('initFailed', e);
             }
-
-            if (this.gameMode === true) {
-                contextAttributes.gameMode = true;
-            }
-
-            let gl = this.gl = this.domElement.getContext('webgl', contextAttributes);
-
-            // HILO_DEBUG_START
-            gl = this.gl = WebGLDebugUtils.makeDebugContext(gl, (err, funcName) => {
-                throw new Error(`${WebGLDebugUtils.glEnumToString(err)} called by ${funcName}`);
-            });
-            // HILO_DEBUG_END
-
-            gl.viewport(0, 0, this.width, this.height);
-            glType.init(gl);
-            extensions.init(gl);
-            capabilities.init(gl);
-            Shader.init(this);
-            this.state = new WebGLState(gl);
-
-            if (!extensions.instanced) {
-                this.useInstanced = false;
-            }
-
-            this.renderList.useInstanced = this.useInstanced;
-
-            if (!extensions.vao) {
-                this.useVao = false;
-            }
-
-            if (this.useFramebuffer) {
-                this.framebuffer = new Framebuffer(this, Object.assign({
-                    useVao: this.useVao,
-                    width: this.width,
-                    height: this.height
-                }, this.framebufferOption));
-            }
-
-            this.domElement.addEventListener('webglcontextlost', (e) => {
-                this._onContextLost(e);
-            }, false);
-
-            this.domElement.addEventListener('webglcontextrestored', (e) => {
-                this._onContextRestore(e);
-            }, false);
-
-            this.fire('init');
         }
+    },
+    _initContext() {
+        const contextAttributes = {
+            alpha: this.alpha,
+            depth: this.depth,
+            stencil: this.stencil,
+            antialias: this.antialias,
+            premultipliedAlpha: this.premultipliedAlpha,
+            failIfMajorPerformanceCaveat: this.failIfMajorPerformanceCaveat
+        };
+
+        // fix ios bug...
+        if (this.preserveDrawingBuffer === true) {
+            contextAttributes.preserveDrawingBuffer = true;
+        }
+
+        if (this.gameMode === true) {
+            contextAttributes.gameMode = true;
+        }
+
+        let gl = this.gl = this.domElement.getContext('webgl', contextAttributes);
+
+        // HILO_DEBUG_START
+        gl = this.gl = WebGLDebugUtils.makeDebugContext(gl, (err, funcName) => {
+            throw new Error(`${WebGLDebugUtils.glEnumToString(err)} called by ${funcName}`);
+        });
+        // HILO_DEBUG_END
+
+        gl.viewport(0, 0, this.width, this.height);
+        glType.init(gl);
+        extensions.init(gl);
+        capabilities.init(gl);
+        Shader.init(this);
+        this.state = new WebGLState(gl);
+
+        if (!extensions.instanced) {
+            this.useInstanced = false;
+        }
+
+        this.renderList.useInstanced = this.useInstanced;
+
+        if (!extensions.vao) {
+            this.useVao = false;
+        }
+
+        if (this.useFramebuffer) {
+            this.framebuffer = new Framebuffer(this, Object.assign({
+                useVao: this.useVao,
+                width: this.width,
+                height: this.height
+            }, this.framebufferOption));
+        }
+
+        this.domElement.addEventListener('webglcontextlost', (e) => {
+            this._onContextLost(e);
+        }, false);
+
+        this.domElement.addEventListener('webglcontextrestored', (e) => {
+            this._onContextRestore(e);
+        }, false);
     },
     _onContextLost(e) {
         this.fire('webglContextLost');
@@ -8112,8 +8129,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      */
     render(stage, camera, fireEvent = false) {
         this.initContext();
-
-        if (this._isContextLost) {
+        if (this.isInitFailed || this._isContextLost) {
             return;
         }
 
