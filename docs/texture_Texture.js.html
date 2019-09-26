@@ -7816,11 +7816,15 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
         let canvas = this._canvasImage;
         if (!canvas) {
             canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
             this._canvasImage = canvas;
             this._canvasCtx = canvas.getContext('2d');
+        } else {
+            canvas.width = width;
+            canvas.height = height;
+            this._canvasCtx = canvas.getContext('2d');
         }
-        canvas.width = width;
-        canvas.height = height;
         this._canvasCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, width, height);
         log.warnOnce(`Texture.resizeImg(${this.id})`, `image size(${img.width}x${img.height}) is not support. Resized to ${canvas.width}x${canvas.height}`, img.src);
         this._originImage = img;
@@ -7931,7 +7935,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * @param  {WebGLTexture} glTexture
      */
     _uploadSubTextures(state, glTexture) {
-        if (this._subTextureList.length > 0) {
+        if (this._subTextureList &amp;&amp; this._subTextureList.length > 0) {
             const gl = state.gl;
             state.activeTexture(gl.TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
             state.bindTexture(this.target, glTexture);
@@ -7949,7 +7953,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
         }
     },
     _needUpdateSubTexture: false,
-    _subTextureList: [],
+    _subTextureList: null,
     /**
      * 跟新局部贴图
      * @param  {Number} xOffset
@@ -7957,6 +7961,9 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * @param  {Image|Canvas|ImageData} image
      */
     updateSubTexture(xOffset, yOffset, image) {
+        if (!this._subTextureList) {
+            this._subTextureList = [];
+        }
         this._subTextureList.push([xOffset, yOffset, image]);
         this._needUpdateSubTexture = true;
     },

@@ -8610,12 +8610,6 @@ declare namespace hilo3d {
      * @return {Material} this
      */
     destroyTextures(): void;
-
-    /**
-     * 获取材质全部贴图
-     * @return {Texture[]} [description]
-     */
-    getTextures():Texture[];
   }
 
   class GeometryMaterial {
@@ -8892,12 +8886,6 @@ declare namespace hilo3d {
      * @return {Material} this
      */
     destroyTextures(): void;
-
-    /**
-     * 获取材质全部贴图
-     * @return {Texture[]} [description]
-     */
-    getTextures():Texture[];
   }
 
   class Material extends IMaterial {
@@ -8929,12 +8917,6 @@ declare namespace hilo3d {
      * @return {Material} this
      */
     destroyTextures(): void;
-
-    /**
-     * 获取材质全部贴图
-     * @return {Texture[]} [description]
-     */
-    getTextures():Texture[];
   }
 
   class IPBRMaterial extends IMaterial {
@@ -9075,12 +9057,6 @@ declare namespace hilo3d {
      * @return {Material} this
      */
     destroyTextures(): void;
-
-    /**
-     * 获取材质全部贴图
-     * @return {Texture[]} [description]
-     */
-    getTextures():Texture[];
   }
 
   class IShaderMaterial extends IMaterial {
@@ -9318,12 +9294,6 @@ declare namespace hilo3d {
      * @return {Material} this
      */
     destroyTextures(): void;
-
-    /**
-     * 获取材质全部贴图
-     * @return {Texture[]} [description]
-     */
-    getTextures():Texture[];
   }
 
   class State {}
