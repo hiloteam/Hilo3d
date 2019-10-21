@@ -710,9 +710,8 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         let result;
         if (bufferView) {
             if (bufferView.byteStride && bufferView.byteStride > number * TypedArray.BYTES_PER_ELEMENT) {
-                if (!bufferView.array) {
-                    bufferView.array = new TypedArray(bufferView.buffer, bufferView.byteOffset, bufferView.byteLength / TypedArray.BYTES_PER_ELEMENT);
-                }
+                bufferView.array = new TypedArray(bufferView.buffer, bufferView.byteOffset, bufferView.byteLength / TypedArray.BYTES_PER_ELEMENT);
+
                 result = new GeometryData(bufferView.array, number, {
                     offset: accessor.byteOffset || 0,
                     stride: bufferView.byteStride,
