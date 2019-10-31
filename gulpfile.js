@@ -1,36 +1,39 @@
 const gitlabPath = '../Hilo3d';
 
-const gulp = require('gulp');
+const { src, dest, series, parallel } = require('gulp');
 const del = require('del');
 const replace = require('gulp-replace');
 
 const pkg = require('./package.json');
 const gitlabPkg = require(`${gitlabPath}/package.json`);
 
-gulp.task('del', (done) => {
+const delTask = (cb) => {
     del(['build', 'docs', 'examples', 'src', 'test', 'types'], {
         force:true
     }).then(()=>{
-        done();
+        cb();
     });
-});
+};
 
-gulp.task('copy', ['del'], () => {
-    return gulp.src([
+const copyTask =  () => {
+    return src([
             `${gitlabPath}/+(build|examples|docs|types)/**/*`,
             `${gitlabPath}/+(src)/loader/**/*`,
             `${gitlabPath}/README.md`
         ])
-        .pipe(gulp.dest('./'));
-});
+        .pipe(dest('./'));
+};
 
-gulp.task('version', () => {
-    return gulp.src('./package.json')
+const versionTask = () => {
+    return src('./package.json')
         .pipe(replace(/"version"[\s]*:[\s]*"[\d\.]+"/g, `"version": "${gitlabPkg.version}"`))
-        .pipe(gulp.dest('./'))
-});
+        .pipe(dest('./'))
+};
 
-gulp.task('default', ['copy', 'version'], (done) => {
+exports.del = delTask;
+exports.copy = series(delTask, copyTask);
+exports.version = versionTask;
+exports.default = series(parallel(versionTask, series(delTask, copyTask)), function logTask(cb){
+    cb();
     console.log(`Hilo3d update: ${pkg.version} => ${gitlabPkg.version}`);
-    done();
 });

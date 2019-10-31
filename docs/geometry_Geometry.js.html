@@ -4288,6 +4288,8 @@
             
                 <li class="inherited-member" data-name="BasicMaterial#usePhysicsLight"><a href="BasicMaterial.html#usePhysicsLight">usePhysicsLight</a></li>
             
+                <li class="inherited-member" data-name="BasicMaterial#isDiffuesEnvAndAmbientLightWorkTogether"><a href="BasicMaterial.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
+            
                 <li class="inherited-member" data-name="BasicMaterial#renderOrder"><a href="BasicMaterial.html#renderOrder">renderOrder</a></li>
             
                 <li class="inherited-member" data-name="BasicMaterial#premultiplyAlpha"><a href="BasicMaterial.html#premultiplyAlpha">premultiplyAlpha</a></li>
@@ -4443,6 +4445,8 @@
             
                 <li class="inherited-member" data-name="GeometryMaterial#usePhysicsLight"><a href="GeometryMaterial.html#usePhysicsLight">usePhysicsLight</a></li>
             
+                <li class="inherited-member" data-name="GeometryMaterial#isDiffuesEnvAndAmbientLightWorkTogether"><a href="GeometryMaterial.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
+            
                 <li class="inherited-member" data-name="GeometryMaterial#renderOrder"><a href="GeometryMaterial.html#renderOrder">renderOrder</a></li>
             
                 <li class="inherited-member" data-name="GeometryMaterial#premultiplyAlpha"><a href="GeometryMaterial.html#premultiplyAlpha">premultiplyAlpha</a></li>
@@ -4569,6 +4573,8 @@
                 <li  data-name="Material#gammaCorrection"><a href="Material.html#gammaCorrection">gammaCorrection</a></li>
             
                 <li  data-name="Material#usePhysicsLight"><a href="Material.html#usePhysicsLight">usePhysicsLight</a></li>
+            
+                <li  data-name="Material#isDiffuesEnvAndAmbientLightWorkTogether"><a href="Material.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
             
                 <li  data-name="Material#renderOrder"><a href="Material.html#renderOrder">renderOrder</a></li>
             
@@ -4741,6 +4747,8 @@
             
                 <li class="inherited-member" data-name="PBRMaterial#ignoreTranparent"><a href="PBRMaterial.html#ignoreTranparent">ignoreTranparent</a></li>
             
+                <li class="inherited-member" data-name="PBRMaterial#isDiffuesEnvAndAmbientLightWorkTogether"><a href="PBRMaterial.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
+            
                 <li class="inherited-member" data-name="PBRMaterial#renderOrder"><a href="PBRMaterial.html#renderOrder">renderOrder</a></li>
             
                 <li class="inherited-member" data-name="PBRMaterial#premultiplyAlpha"><a href="PBRMaterial.html#premultiplyAlpha">premultiplyAlpha</a></li>
@@ -4877,6 +4885,8 @@
                 <li class="inherited-member" data-name="ShaderMaterial#gammaCorrection"><a href="ShaderMaterial.html#gammaCorrection">gammaCorrection</a></li>
             
                 <li class="inherited-member" data-name="ShaderMaterial#usePhysicsLight"><a href="ShaderMaterial.html#usePhysicsLight">usePhysicsLight</a></li>
+            
+                <li class="inherited-member" data-name="ShaderMaterial#isDiffuesEnvAndAmbientLightWorkTogether"><a href="ShaderMaterial.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
             
                 <li class="inherited-member" data-name="ShaderMaterial#renderOrder"><a href="ShaderMaterial.html#renderOrder">renderOrder</a></li>
             
@@ -8052,19 +8062,18 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
             log.warnOnce('geometry.getBounds', 'geometry has no vertices data, geometry.getBounds will return Infinity bounds.');
             return bounds;
         }
-        const data = vertices.data;
-        for (let i = 0; i &lt; data.length; i += 3) {
-            tempVector31.fromArray(data, i);
+
+        vertices.traverse((vertexData) => {
             if (matrix) {
-                tempVector31.transformMat4(matrix);
+                vertexData.transformMat4(matrix);
             }
-            bounds.xMax = Math.max(bounds.xMax, tempVector31.x);
-            bounds.yMax = Math.max(bounds.yMax, tempVector31.y);
-            bounds.zMax = Math.max(bounds.zMax, tempVector31.z);
-            bounds.xMin = Math.min(bounds.xMin, tempVector31.x);
-            bounds.yMin = Math.min(bounds.yMin, tempVector31.y);
-            bounds.zMin = Math.min(bounds.zMin, tempVector31.z);
-        }
+            bounds.xMax = Math.max(bounds.xMax, vertexData.x);
+            bounds.yMax = Math.max(bounds.yMax, vertexData.y);
+            bounds.zMax = Math.max(bounds.zMax, vertexData.z);
+            bounds.xMin = Math.min(bounds.xMin, vertexData.x);
+            bounds.yMin = Math.min(bounds.yMin, vertexData.y);
+            bounds.zMin = Math.min(bounds.zMin, vertexData.z);
+        });
 
         bounds.width = bounds.xMax - bounds.xMin;
         bounds.height = bounds.yMax - bounds.yMin;
@@ -8114,7 +8123,7 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
             });
             const vertices = this.vertices;
             if (vertices) {
-                sphere.fromPoints(vertices.data);
+                sphere.fromGeometryData(vertices);
             } else {
                 log.warnOnce('geometry.getLocalSphereBounds', 'geometry has no vertices data, geometry.getLocalSphereBounds will return Infinity bounds.');
                 sphere.radius = Infinity;

@@ -4288,6 +4288,8 @@
             
                 <li class="inherited-member" data-name="BasicMaterial#usePhysicsLight"><a href="BasicMaterial.html#usePhysicsLight">usePhysicsLight</a></li>
             
+                <li class="inherited-member" data-name="BasicMaterial#isDiffuesEnvAndAmbientLightWorkTogether"><a href="BasicMaterial.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
+            
                 <li class="inherited-member" data-name="BasicMaterial#renderOrder"><a href="BasicMaterial.html#renderOrder">renderOrder</a></li>
             
                 <li class="inherited-member" data-name="BasicMaterial#premultiplyAlpha"><a href="BasicMaterial.html#premultiplyAlpha">premultiplyAlpha</a></li>
@@ -4443,6 +4445,8 @@
             
                 <li class="inherited-member" data-name="GeometryMaterial#usePhysicsLight"><a href="GeometryMaterial.html#usePhysicsLight">usePhysicsLight</a></li>
             
+                <li class="inherited-member" data-name="GeometryMaterial#isDiffuesEnvAndAmbientLightWorkTogether"><a href="GeometryMaterial.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
+            
                 <li class="inherited-member" data-name="GeometryMaterial#renderOrder"><a href="GeometryMaterial.html#renderOrder">renderOrder</a></li>
             
                 <li class="inherited-member" data-name="GeometryMaterial#premultiplyAlpha"><a href="GeometryMaterial.html#premultiplyAlpha">premultiplyAlpha</a></li>
@@ -4569,6 +4573,8 @@
                 <li  data-name="Material#gammaCorrection"><a href="Material.html#gammaCorrection">gammaCorrection</a></li>
             
                 <li  data-name="Material#usePhysicsLight"><a href="Material.html#usePhysicsLight">usePhysicsLight</a></li>
+            
+                <li  data-name="Material#isDiffuesEnvAndAmbientLightWorkTogether"><a href="Material.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
             
                 <li  data-name="Material#renderOrder"><a href="Material.html#renderOrder">renderOrder</a></li>
             
@@ -4741,6 +4747,8 @@
             
                 <li class="inherited-member" data-name="PBRMaterial#ignoreTranparent"><a href="PBRMaterial.html#ignoreTranparent">ignoreTranparent</a></li>
             
+                <li class="inherited-member" data-name="PBRMaterial#isDiffuesEnvAndAmbientLightWorkTogether"><a href="PBRMaterial.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
+            
                 <li class="inherited-member" data-name="PBRMaterial#renderOrder"><a href="PBRMaterial.html#renderOrder">renderOrder</a></li>
             
                 <li class="inherited-member" data-name="PBRMaterial#premultiplyAlpha"><a href="PBRMaterial.html#premultiplyAlpha">premultiplyAlpha</a></li>
@@ -4877,6 +4885,8 @@
                 <li class="inherited-member" data-name="ShaderMaterial#gammaCorrection"><a href="ShaderMaterial.html#gammaCorrection">gammaCorrection</a></li>
             
                 <li class="inherited-member" data-name="ShaderMaterial#usePhysicsLight"><a href="ShaderMaterial.html#usePhysicsLight">usePhysicsLight</a></li>
+            
+                <li class="inherited-member" data-name="ShaderMaterial#isDiffuesEnvAndAmbientLightWorkTogether"><a href="ShaderMaterial.html#isDiffuesEnvAndAmbientLightWorkTogether">isDiffuesEnvAndAmbientLightWorkTogether</a></li>
             
                 <li class="inherited-member" data-name="ShaderMaterial#renderOrder"><a href="ShaderMaterial.html#renderOrder">renderOrder</a></li>
             
@@ -7514,6 +7524,24 @@ const Sphere = Class.create(/** @lends Sphere.prototype */{
             let z = points[i + 2] - center.z;
             maxSquaredRadius = Math.max(x * x + y * y + z * z, maxSquaredRadius);
         }
+
+        this.radius = Math.sqrt(maxSquaredRadius);
+        return this;
+    },
+    /**
+     * 从点生成
+     * @param  {GeometryData} geometryData
+     * @return {Sphere} this
+     */
+    fromGeometryData(geometryData) {
+        let center = this.center;
+        let maxSquaredRadius = 0;
+        geometryData.traverse((vertexData) => {
+            let x = vertexData.x - center.x;
+            let y = vertexData.y - center.y;
+            let z = vertexData.z - center.z;
+            maxSquaredRadius = Math.max(x * x + y * y + z * z, maxSquaredRadius);
+        });
 
         this.radius = Math.sqrt(maxSquaredRadius);
         return this;

@@ -13780,7 +13780,7 @@ declare namespace hilo3d {
     /**
      * 图片对象
      */
-    image: Image;
+    image: Image | HTMLCanvasElement | ArrayBufferView | ImageData | HTMLVideoElement | ImageBitmap;
 
     /**
      * Texture Target
