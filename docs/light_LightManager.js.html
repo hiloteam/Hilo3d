@@ -7507,21 +7507,16 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         Object.assign(this, params);
     },
     getRenderOption(option = {}) {
-        let hasLight = false;
         each(this.lightInfo, (count, name) => {
             if (name === 'uid' || !count) {
                 return;
             }
             option[name] = count;
-            hasLight = true;
             const shadowMapCount = this.getShadowMapCount(name);
             if (shadowMapCount) {
                 option[name + '_SMC'] = shadowMapCount;
             }
         });
-        if (hasLight) {
-            option.HAS_LIGHT = 1;
-        }
         return option;
     },
     /**

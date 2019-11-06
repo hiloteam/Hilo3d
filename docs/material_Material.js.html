@@ -8040,6 +8040,10 @@ const Material = Class.create(/** @lends Material.prototype */ {
         option[`LIGHT_TYPE_${lightType}`] = 1;
         option.SIDE = this.side;
 
+        if (lightType !== 'NONE') {
+            option.HAS_LIGHT = 1;
+        }
+
         if (this.premultiplyAlpha) {
             option.PREMULTIPLY_ALPHA = 1;
         }
