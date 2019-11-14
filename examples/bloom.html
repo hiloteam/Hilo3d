@@ -13,6 +13,7 @@
     <script src="./js/OrbitControls.js"></script>
     <script src="./js/init.js"></script>
     <script>
+        Hilo3d.extensions.use('WEBGL_color_buffer_float');
         var bloomStrength = 1.0;
         var RenderPass = Hilo3d.Class.create({
             Mixes: Hilo3d.EventMixin,
@@ -186,23 +187,8 @@
         });
 
         renderer.useFramebuffer = true;
-        renderer.framebufferOption = {
-            type:Hilo3d.constants.FLOAT
-        };
-
-        // var copyPass = new ShaderPass(renderer, {
-        //     framebufferOption:{
-        //         type:Hilo3d.constants.FLOAT
-        //     },
-        //     scene:stage,
-        //     camera:camera,
-        //     forceMaterial:null
-        // }).addTo(postProcessRenderer);
 
         var getLigthPass = new ScreenShaderPass(renderer, {
-            framebufferOption:{
-                type:Hilo3d.constants.FLOAT
-            },
             frag:`
                 precision HILO_MAX_FRAGMENT_PRECISION float;\n\
                 varying vec2 v_texcoord0;\n\
@@ -210,7 +196,7 @@
                 void main(void) {\n\
                     vec4 color = texture2D(u_screen, v_texcoord0);\n\
                     float brightness = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));\n\
-                    if(brightness > 1.0){
+                    if(brightness > .4){
                         gl_FragColor = vec4(color.rgb, 1.0);\n\
                     }
                 }
@@ -227,15 +213,13 @@
         const blurPasses = [];
         for(var i = 0;i < 5;i ++){
             (function(){
-                var blurSize = 1024/Math.pow(2, i);
-                var u_textureSize = new Float32Array([blurSize, blurSize]);
+                var blurWidth = Math.ceil(renderer.width/Math.pow(2, i));
+                var blurHeight = Math.ceil(renderer.height/Math.pow(2, i));
+                var u_textureSize = new Float32Array([blurWidth, blurHeight]);
                 var blurIndex = 0;
                 var blurXPass = new ScreenShaderPass(renderer, {
-                    width:blurSize,
-                    height:blurSize,
-                    framebufferOption:{
-                        type:Hilo3d.constants.FLOAT
-                    },
+                    width:blurWidth,
+                    height:blurHeight,
                     frag:`\n\
                     precision HILO_MAX_FRAGMENT_PRECISION float;\n\
                     uniform sampler2D u_lightTexture;
@@ -274,12 +258,11 @@
                         }
                     }
                 });
-                var blurYPass = new ScreenShaderPass(renderer, {
-                    width:blurSize,
-                    height:blurSize,
+                window.blurYPass = new ScreenShaderPass(renderer, {
+                    width:blurWidth,
+                    height:blurHeight,
                     framebufferOption:{
-                        type:Hilo3d.constants.FLOAT,
-                        minFilter:Hilo3d.constants.LINEAR,
+                        minFilter:Hilo3d.constants.NEAREST,
                         magFilter:Hilo3d.constants.LINEAR
                     },
                     frag:`\n\
@@ -321,10 +304,7 @@
             })();
         }
 
-        var HDRPass = new ScreenShaderPass(renderer, {
-            framebufferOption:{
-                type:Hilo3d.constants.FLOAT
-            },
+        var CombinePass = new ScreenShaderPass(renderer, {
             frag:`
                 precision HILO_MAX_FRAGMENT_PRECISION float;\n\
                 uniform sampler2D u_blurTexture0;
@@ -338,15 +318,15 @@
 
                 void main()
                 {       
-                    vec3 hdrColor = vec3(0.0);
-                    hdrColor += texture2D(u_scene, v_texcoord0).rgb;      
-                    hdrColor += texture2D(u_blurTexture0, v_texcoord0).rgb * u_bloomStrength;
-                    hdrColor += texture2D(u_blurTexture1, v_texcoord0).rgb * u_bloomStrength;
-                    hdrColor += texture2D(u_blurTexture2, v_texcoord0).rgb * u_bloomStrength;
-                    hdrColor += texture2D(u_blurTexture3, v_texcoord0).rgb * u_bloomStrength;
-                    hdrColor += texture2D(u_blurTexture4, v_texcoord0).rgb * u_bloomStrength;
-                    vec3 result = hdrColor;
-                    result = vec3(1.0) - exp(-hdrColor * 0.9);
+                    vec3 color = vec3(0.0);
+                    color += texture2D(u_scene, v_texcoord0).rgb;      
+                    color += texture2D(u_blurTexture0, v_texcoord0).rgb * u_bloomStrength;
+                    color += texture2D(u_blurTexture1, v_texcoord0).rgb * u_bloomStrength;
+                    color += texture2D(u_blurTexture2, v_texcoord0).rgb * u_bloomStrength;
+                    color += texture2D(u_blurTexture3, v_texcoord0).rgb * u_bloomStrength;
+                    color += texture2D(u_blurTexture4, v_texcoord0).rgb * u_bloomStrength;
+                    vec3 result = color;
+                    result = vec3(1.0) - exp(-color * 0.8);
 
                     gl_FragColor = vec4(result, 0);
                 }
@@ -401,11 +381,11 @@
             var boxGeometry = new Hilo3d.BoxGeometry();
             boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
             var sphereGeometry = new Hilo3d.SphereGeometry({
-                radius:0.5
+                radius:0.7
             });
 
-            for(var i = 0;i < 80; i ++) {
-                var lightMinValue = 2;
+            for(var i = 0;i < 50; i ++) {
+                var lightMinValue = 0.5;
                 var lightMaxValue = 1;
                 var colorBox = new Hilo3d.Mesh({
                     geometry: random(0, 1)>0.5?boxGeometry:sphereGeometry,
@@ -423,7 +403,7 @@
                     }
                 });
                 stage.addChild(colorBox);
-                colorBox.setScale(random(0.05, 0.1));
+                colorBox.setScale(random(0.05, 0.08));
             }
 
             stage.onUpdate = function(){
@@ -434,7 +414,7 @@
 
         initScene();
 
-        Hilo3d.Tween.to({num:0}, {num:1}, {
+        Hilo3d.Tween.to({num:0}, {num:0.8}, {
             ease:Hilo3d.Tween.Ease.Quad.EaseOut,
             duration:1000,
             loop: true,
