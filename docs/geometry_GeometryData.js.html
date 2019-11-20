@@ -2280,6 +2280,10 @@
             
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
             
+                <li  data-name="GeometryData#setSubData"><a href="GeometryData.html#setSubData">setSubData</a></li>
+            
+                <li  data-name="GeometryData#clearSubData"><a href="GeometryData.html#clearSubData">clearSubData</a></li>
+            
                 <li  data-name="GeometryData#clone"><a href="GeometryData.html#clone">clone</a></li>
             
                 <li  data-name="GeometryData#copy"><a href="GeometryData.html#copy">copy</a></li>
@@ -6375,7 +6379,11 @@
             
                 <li  data-name="Buffer#bind"><a href="Buffer.html#bind">bind</a></li>
             
-                <li  data-name="Buffer#upload"><a href="Buffer.html#upload">upload</a></li>
+                <li  data-name="Buffer#bufferData"><a href="Buffer.html#bufferData">bufferData</a></li>
+            
+                <li  data-name="Buffer#bufferSubData"><a href="Buffer.html#bufferSubData">bufferSubData</a></li>
+            
+                <li  data-name="Buffer#uploadGeometryData"><a href="Buffer.html#uploadGeometryData">uploadGeometryData</a></li>
             
                 <li  data-name="Buffer#destroyIfNoRef"><a href="Buffer.html#destroyIfNoRef">destroyIfNoRef</a></li>
             
@@ -7676,6 +7684,37 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
                 return this._data.length / this.size;
             }
             return this._data.length / this.strideSize;
+        }
+    },
+
+    /**
+     * 更新部分数据
+     * @param {Number} offset 偏移index
+     * @param {TypedArray} data 数据
+     */
+    setSubData(offset, data) {
+        this.isDirty = true;
+        const byteOffset = data.BYTES_PER_ELEMENT * offset;
+        data.forEach((value, index) => {
+            this.data[index + offset] = value;
+        });
+
+        if (!this.subDataList) {
+            this.subDataList = [];
+        }
+
+        this.subDataList.push({
+            byteOffset,
+            data
+        });
+    },
+
+    /**
+     * 清除 subData
+     */
+    clearSubData() {
+        if (this.subDataList) {
+            this.subDataList.length = 0;
         }
     },
 

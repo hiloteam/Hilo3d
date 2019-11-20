@@ -2280,6 +2280,10 @@
             
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
             
+                <li  data-name="GeometryData#setSubData"><a href="GeometryData.html#setSubData">setSubData</a></li>
+            
+                <li  data-name="GeometryData#clearSubData"><a href="GeometryData.html#clearSubData">clearSubData</a></li>
+            
                 <li  data-name="GeometryData#clone"><a href="GeometryData.html#clone">clone</a></li>
             
                 <li  data-name="GeometryData#copy"><a href="GeometryData.html#copy">copy</a></li>
@@ -6375,7 +6379,11 @@
             
                 <li  data-name="Buffer#bind"><a href="Buffer.html#bind">bind</a></li>
             
-                <li  data-name="Buffer#upload"><a href="Buffer.html#upload">upload</a></li>
+                <li  data-name="Buffer#bufferData"><a href="Buffer.html#bufferData">bufferData</a></li>
+            
+                <li  data-name="Buffer#bufferSubData"><a href="Buffer.html#bufferSubData">bufferSubData</a></li>
+            
+                <li  data-name="Buffer#uploadGeometryData"><a href="Buffer.html#uploadGeometryData">uploadGeometryData</a></li>
             
                 <li  data-name="Buffer#destroyIfNoRef"><a href="Buffer.html#destroyIfNoRef">destroyIfNoRef</a></li>
             
@@ -8673,14 +8681,14 @@
 <dl >
     <dt>
         <div class="nameContainer">
-            <h4 class="name" id="upload">
+            <h4 class="name" id="bufferData">
                 
-                upload<span class="signature">(data, <span class="optional">offset</span>)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Buffer.html">Buffer</a>}</span>
+                bufferData<span class="signature">(data)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Buffer.html">Buffer</a>}</span>
             </h4>
         
             
             <div class="tag-source">
-                <a href="renderer_Buffer.js.html">renderer/Buffer.js</a>, <a href="renderer_Buffer.js.html#line135">line 135</a>
+                <a href="renderer_Buffer.js.html">renderer/Buffer.js</a>, <a href="renderer_Buffer.js.html#line134">line 134</a>
             </div>
             
         </div>
@@ -8710,8 +8718,6 @@
 		<th>Type</th>
 		
 		
-		<th>Default</th>
-		
 		
 		<th class="last">Description</th>
 	</tr>
@@ -8735,26 +8741,138 @@
             </td>
             
             
-                <td class="default">
-                
-                </td>
-            
             
             <td class="description last">
-                
-                    
-                    
-                        
-                    
                 
                 </td>
         </tr>
 	
 	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Buffer.html">Buffer</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="bufferSubData">
+                
+                bufferSubData<span class="signature">(byteOffset, data)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Buffer.html">Buffer</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="renderer_Buffer.js.html">renderer/Buffer.js</a>, <a href="renderer_Buffer.js.html#line152">line 152</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>上传部分数据</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
 	
         <tr>
             
-                <td class="name"><code>offset</code></td>
+                <td class="name"><code>byteOffset</code></td>
             
             
             <td class="type">
@@ -8767,23 +8885,173 @@
             </td>
             
             
-                <td class="default">
-                
-                    0
+            
+            <td class="description last">
                 
                 </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>data</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">TypedArray</span>
+
+
+            
+            </td>
+            
             
             
             <td class="description last">
                 
-                    
-                        <span class="optional">optional</span>
-                    
-                    
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Buffer.html">Buffer</a>
                         
                     
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="uploadGeometryData">
                 
-                <p>偏移值</p></td>
+                uploadGeometryData<span class="signature">(geometryData)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Buffer.html">Buffer</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="renderer_Buffer.js.html">renderer/Buffer.js</a>, <a href="renderer_Buffer.js.html#line166">line 166</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>geometryData</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="GeometryData.html">GeometryData</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
         </tr>
 	
 	
@@ -8871,7 +9139,7 @@
         
             
             <div class="tag-source">
-                <a href="renderer_Buffer.js.html">renderer/Buffer.js</a>, <a href="renderer_Buffer.js.html#line156">line 156</a>
+                <a href="renderer_Buffer.js.html">renderer/Buffer.js</a>, <a href="renderer_Buffer.js.html#line184">line 184</a>
             </div>
             
         </div>
@@ -9015,7 +9283,7 @@
         
             
             <div class="tag-source">
-                <a href="renderer_Buffer.js.html">renderer/Buffer.js</a>, <a href="renderer_Buffer.js.html#line165">line 165</a>
+                <a href="renderer_Buffer.js.html">renderer/Buffer.js</a>, <a href="renderer_Buffer.js.html#line193">line 193</a>
             </div>
             
         </div>
