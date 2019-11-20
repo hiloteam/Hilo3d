@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Source: loader/GLTFLoader.js</title>
+    <title>Class: IGLTFExtensionHandler</title>
     
     
     <script src="scripts/prettify/prettify.js"></script>
@@ -7490,97 +7490,991 @@
     </ul>
 </div>
     <div class="main">
-        <h1 class="page-title" data-filename="loader_GLTFLoader.js.html">Source: loader/GLTFLoader.js</h1>
+        <h1 class="page-title" data-filename="IGLTFExtensionHandler.html">Class: IGLTFExtensionHandler</h1>
         
 
 
+
+<section>
+<header>
+    <h2>
+    IGLTFExtensionHandler
+    </h2>
     
-    <section>
-        <article>
-            <pre class="prettyprint source "><code>import Class from '../core/Class';
-import BasicLoader from './BasicLoader';
-import GLTFParser from './GLTFParser';
-import Loader from './Loader';
-import log from '../utils/log';
+</header>  
 
-/**
- * glTF模型加载类
- * @class
- * @extends {BasicLoader}
- * @example
- * var loader = new Hilo3d.GLTFLoader();
- * loader.load({
- *     src: '//ossgw.alicdn.com/tmall-c3/tmx/a9bedc04da498b95c57057d6a5d29fe7.gltf'
- * }).then(function (model) {
- *     stage.addChild(model.node);
- * });
- */
-const GLTFLoader = Class.create(/** @lends GLTFLoader.prototype */{
-    Extends: BasicLoader,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isGLTFLoader: true,
-    /**
-     * @default GLTFLoader
-     * @type {string}
-     */
-    className: 'GLTFLoader',
-    /**
-     * @constructs
-     */
-    constructor() {
-        GLTFLoader.superclass.constructor.call(this);
-    },
-    /**
-     * 加载glTF模型
-     * @param {object} params 加载参数
-     * @param {string} params.src glTF模型地址
-     * @param {number|string} [params.defaultScene] 加载后要展示的场景，默认读模型里的
-     * @param {boolean} [params.isMultiAnim=false] 模型是否多动画，如果是的话会返回 anims 对象保存多个动画对象
-     * @param {boolean} [params.isProgressive=false] 是否渐进式加载，图片加载完前使用占位图片
-     * @param {boolean} [params.isUnQuantizeInShader=true] 是否在shader中进行量化解压数据
-     * @param {boolean} [params.ignoreTextureError=false] 是否忽略图片加载错误
-     * @param {function} [params.preHandlerImageURI=null] 图片URL预处理函数
-     * @param {function} [params.preHandlerBufferURI=null] Buffer URL预处理函数
-     * @param {function} [params.customMaterialCreator=null] 是否使用自定义的Material创建器
-     * @param {function} [params.isLoadAllTextures=false] 是否加载所有的贴图，默认只加载用到的贴图
-     * @async
-     * @return {Promise&lt;Model, Error>} 返回加载完的模型对象
-     */
-    load(params) {
-        return this.loadRes(params.src, 'buffer')
-            .then((buffer) => {
-                let parser = new GLTFParser(buffer, params);
-                return parser.parse(this);
-            }).catch((err) => {
-                log.error('load gltf failed', err.message, err.stack);
-                throw err;
-            });
+<article>
+    <div class="container-overview">
+    
+    
+    
+        
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="IGLTFExtensionHandler">
+                
+                new IGLTFExtensionHandler<span class="signature">()</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="loader_GLTFExtensions.js.html">loader/GLTFExtensions.js</a>, <a href="loader_GLTFExtensions.js.html#line25">line 25</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>GLTFExtension Handler 接口</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+    
+    </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+        <h3 class="subsection-title" id="methods">Methods
+            <a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a>
+        </h3>
+        
+        <dl>
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="parse">
+                
+                parse<span class="signature">(extensionData, parser, element, options)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Object}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="loader_GLTFExtensions.js.html">loader/GLTFExtensions.js</a>, <a href="loader_GLTFExtensions.js.html#line36">line 36</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>解析元素扩展</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>extensionData</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>扩展数据</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>parser</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="GLTFParser.html">GLTFParser</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>parser</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>element</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>parse的元素，e.g. material, mesh, geometry</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>options</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Object
+                        
+                    
+            </td>
+            <td class="description last">一般需要返回原始元素或者替换的新的元素</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="parseOnLoad">
+                
+                parseOnLoad<span class="signature">(extensionData, parser, element, options)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="loader_GLTFExtensions.js.html">loader/GLTFExtensions.js</a>, <a href="loader_GLTFExtensions.js.html#line46">line 46</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>解析全局扩展，在资源加载后执行</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>extensionData</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>扩展数据</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>parser</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="GLTFParser.html">GLTFParser</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>parser</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>element</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>parse的元素，这里为 null</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>options</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="parseOnEnd">
+                
+                parseOnEnd<span class="signature">(extensionData, parser, element, options)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="loader_GLTFExtensions.js.html">loader/GLTFExtensions.js</a>, <a href="loader_GLTFExtensions.js.html#line56">line 56</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>解析全局扩展，在所有元素解析结束后执行</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>extensionData</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>扩展数据</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>parser</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="GLTFParser.html">GLTFParser</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>parser</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>element</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="global.html#Model">Model</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>options</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="init">
+                
+                init<span class="signature">(gltfLoader, parser)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="loader_GLTFExtensions.js.html">loader/GLTFExtensions.js</a>, <a href="loader_GLTFExtensions.js.html#line64">line 64</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>初始化全局扩展，在加载前执行，可进行添加需要加载的资源</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>gltfLoader</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="GLTFLoader.html">GLTFLoader</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>parser</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="GLTFParser.html">GLTFParser</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="getUsedTextureNameMap">
+                
+                getUsedTextureNameMap<span class="signature">(extensionData, map)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="loader_GLTFExtensions.js.html">loader/GLTFExtensions.js</a>, <a href="loader_GLTFExtensions.js.html#line78">line 78</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>获取扩展用到的贴图信息, parser.isLoadAllTextures 为 false 时生效</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>extensionData</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>扩展数据</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>map</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>used texture map</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+            <h5>Example</h5>
+            
+
+    
+    <pre class="prettyprint"><code>getUsedTextureNameMap(extension, map) {
+    if (extension.diffuseTexture) {
+        map[extension.diffuseTexture.index] = true;
     }
-});
+}</code></pre>
+    
 
-Loader.addLoader('gltf', GLTFLoader);
-Loader.addLoader('glb', GLTFLoader);
+        
+    </dd>
+</dl>
+        </dl>
+    
+    
+    
+    
+    
+</article>
 
-export default GLTFLoader;
-
-/**
- * GLTFLoader 模型加载完返回的对象格式
- * @typedef {object} Model
- * @property {Node} node 模型的根节点
- * @property {Mesh[]} meshes 模型的所有Mesh对象数组
- * @property {Animation} anim 模型的动画对象数组，没有动画的话为null
- * @property {Camera[]} cameras 模型中的所有Camera对象数组
- * @property {Light[]} lights 模型中的所有Light对象数组
- * @property {Texture[]} textures 模型中的所有Texture对象数组
- * @property {BasicMaterial[]} materials 模型中的所有Material对象数组
- */
-</code></pre>
-        </article>
-    </section>
-
+</section>  
 
 
 
@@ -7589,7 +8483,7 @@ export default GLTFLoader;
         
 
         <footer>
-            Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a>
+            Documentation generated by <a target="_blank" href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a>
         </footer>
     </div>
 </div>

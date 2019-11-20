@@ -3694,7 +3694,11 @@ declare namespace hilo3d {
     /**
      * 向后缓动函数。包含EaseIn、EaseOut、EaseInOut三个函数。
      */
-    Back: EaseTimeFunctions;
+    Back: EaseTimeFunctions & {
+      o: number;
+      s: number;
+      config(overshoot: number): void;
+    };
 
     /**
      * 弹跳缓动函数。包含EaseIn、EaseOut、EaseInOut三个函数。
@@ -3714,7 +3718,12 @@ declare namespace hilo3d {
     /**
      * 弹性缓动函数。包含EaseIn、EaseOut、EaseInOut三个函数。
      */
-    Elastic: EaseTimeFunctions;
+    Elastic: EaseTimeFunctions & {
+      a: number;
+      p: number;
+      s: number;
+      config(amplitude: number, period: number): void;
+    };
 
     /**
      * 指数缓动函数。包含EaseIn、EaseOut、EaseInOut三个函数。
@@ -3724,7 +3733,9 @@ declare namespace hilo3d {
     /**
      * 线性匀速缓动函数。包含EaseNone函数。
      */
-    Linear: EaseTimeFunctions;
+    Linear: {
+      EaseNone(time: number): number
+    };
 
     /**
      * 二次缓动函数。包含EaseIn、EaseOut、EaseInOut三个函数。
@@ -3946,7 +3957,7 @@ declare namespace hilo3d {
      * @param toProps 缓动目标对象的目标属性。
      * @param params 缓动动画的参数。
      */
-    static fromTo(target: object | any[], fromProps, toProps, params: TweenParams): Tween | any[];
+    static fromTo(target: any, fromProps: any, toProps, params: TweenParams): Tween | any;
 
     /**
      * 创建一个缓动动画，让目标对象从当前属性变换到目标属性。
@@ -3954,7 +3965,7 @@ declare namespace hilo3d {
      * @param toProps 缓动目标对象的目标属性。
      * @param params 缓动动画的参数。
      */
-    static to(target: object | any[], toProps, params: TweenParams): Tween | any[];
+    static to(target: any, toProps: any, params: TweenParams): Tween | any;
 
     /**
      * 创建一个缓动动画，让目标对象从指定的起始属性变换到当前属性。
@@ -3962,7 +3973,7 @@ declare namespace hilo3d {
      * @param toProps 缓动目标对象的目标属性。
      * @param params 缓动动画的参数。
      */
-    static from(target: Object | any[], fromProps, params: TweenParams): Tween | any[];
+    static from(target: any, fromProps: any, params: TweenParams): Tween | any;
 
     /**
      * Ease类包含为Tween类提供各种缓动功能的函数。

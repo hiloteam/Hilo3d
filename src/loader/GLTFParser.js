@@ -102,7 +102,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
      * @type {string}
      */
     className: 'GLTFParser',
-    Statics: {
+    Statics: /** @lends GLTFParser */ {
         MAGIC: 'glTF',
         /**
          * 扩展接口
@@ -112,7 +112,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         /**
          * 注册扩展接口
          * @param  {String} extensionName 接口名称
-         * @param  {Object} handler
+         * @param  {IGLTFExtensionHandler} handler 接口
          */
         registerExtensionHandler(extensionName, handler) {
             this.extensionHandlers[extensionName] = handler;
@@ -166,6 +166,13 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         this.parseExtensionUsed();
 
         return this.loadResources(loader)
+            .then(() => {
+                this.parseExtensions(this.json.extensions, null, {
+                    isGlobal: true,
+                    methodName: 'parseOnLoad'
+                });
+                return Promise.resolve();
+            })
             .then(() => this.parseGeometries())
             .then(() => this.parseScene());
     },
@@ -198,8 +205,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 return;
             }
             const extension = this.getExtensionHandler(name);
-            if (extension && extension.parse) {
-                result = extension.parse(info, this, result, options);
+            const methodName = options.methodName || 'parse';
+            if (extension && extension[methodName]) {
+                result = extension[methodName](info, this, result, options);
             }
         });
 
@@ -988,6 +996,10 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 camera.bottom = camera.top * -1;
             }
 
+            camera = this.parseExtensions(cameraData.extensions, camera, {
+                isCamera: true
+            });
+
             if (camera) {
                 camera.name = cameraData.name || name;
                 this.cameras[name] = camera;
@@ -1162,7 +1174,8 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         });
 
         this.parseExtensions(this.json.extensions, model, {
-            isGlobalExtension: true
+            isGlobal: true,
+            methodName: 'parseOnEnd'
         });
 
         return model;

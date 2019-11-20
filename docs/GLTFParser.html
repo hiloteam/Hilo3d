@@ -4001,11 +4001,19 @@
             
                 <li  data-name="GLTFParser#className"><a href="GLTFParser.html#className">className</a></li>
             
+                <li  data-name="GLTFParser.extensionHandlers"><a href="GLTFParser.html#.extensionHandlers">extensionHandlers</a></li>
+            
             </ul>
             <ul class="typedefs itemMembers">
             
             </ul>
             <ul class="methods itemMembers">
+            
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="GLTFParser.registerExtensionHandler"><a href="GLTFParser.html#.registerExtensionHandler">registerExtensionHandler</a></li>
+            
+                <li  data-name="GLTFParser.unregisterExtensionHandler"><a href="GLTFParser.html#.unregisterExtensionHandler">unregisterExtensionHandler</a></li>
             
             </ul>
             <ul class="events itemMembers">
@@ -4035,6 +4043,37 @@
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
             
                 <li  data-name="HDRLoader#load"><a href="HDRLoader.html#load">load</a></li>
+            
+            </ul>
+            <ul class="events itemMembers">
+            
+            </ul>
+        </li>
+    
+        <li class="item" data-name="loader/IGLTFExtensionHandler">
+            <span class="title">
+                <span class="title-name">loader/<a href="IGLTFExtensionHandler.html">IGLTFExtensionHandler</a></span>
+                
+            </span>
+            <ul class="members itemMembers">
+            
+            </ul>
+            <ul class="typedefs itemMembers">
+            
+            </ul>
+            <ul class="methods itemMembers">
+            
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="IGLTFExtensionHandler#parse"><a href="IGLTFExtensionHandler.html#parse">parse</a></li>
+            
+                <li  data-name="IGLTFExtensionHandler#parseOnLoad"><a href="IGLTFExtensionHandler.html#parseOnLoad">parseOnLoad</a></li>
+            
+                <li  data-name="IGLTFExtensionHandler#parseOnEnd"><a href="IGLTFExtensionHandler.html#parseOnEnd">parseOnEnd</a></li>
+            
+                <li  data-name="IGLTFExtensionHandler#init"><a href="IGLTFExtensionHandler.html#init">init</a></li>
+            
+                <li  data-name="IGLTFExtensionHandler#getUsedTextureNameMap"><a href="IGLTFExtensionHandler.html#getUsedTextureNameMap">getUsedTextureNameMap</a></li>
             
             </ul>
             <ul class="events itemMembers">
@@ -7726,9 +7765,315 @@
 </dd>
         <dl>
             
+                
+<dt>
+    <div class="nameContainer">
+        <h4 class="name" id=".extensionHandlers"><span class="type-signature static">static</span>GLTFParser.extensionHandlers<span class="type-signature type object">Object</span> </h4>
+    </div>
+    
+    
+    <!-- <p class="summary"><p>扩展接口</p>.</p> -->
+    
+</dt>
+<dd>
+    
+    <div class="description">
+        <p>扩展接口</p>
+    </div>
+    
+    
+    
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+    
+    
+</dd>
+
+            
         </dl>
     
     
+    
+        <h3 class="subsection-title" id="methods">Methods
+            <a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a>
+        </h3>
+        
+        <dl>
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".registerExtensionHandler">
+                
+                <span class="type-signature static">static</span>GLTFParser.registerExtensionHandler<span class="signature">(extensionName, handler)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="loader_GLTFParser.js.html">loader/GLTFParser.js</a>, <a href="loader_GLTFParser.js.html#line117">line 117</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>注册扩展接口</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>extensionName</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>接口名称</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>handler</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="IGLTFExtensionHandler.html">IGLTFExtensionHandler</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>接口</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".unregisterExtensionHandler">
+                
+                <span class="type-signature static">static</span>GLTFParser.unregisterExtensionHandler<span class="signature">(extensionName)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="loader_GLTFParser.js.html">loader/GLTFParser.js</a>, <a href="loader_GLTFParser.js.html#line124">line 124</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>取消注册扩展接口</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>extensionName</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Sting</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>接口名称</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        </dl>
     
     
     
