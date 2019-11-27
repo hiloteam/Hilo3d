@@ -7213,6 +7213,8 @@
             
                 <li  data-name="LazyTexture#autoLoad"><a href="LazyTexture.html#autoLoad">autoLoad</a></li>
             
+                <li  data-name="LazyTexture#resType"><a href="LazyTexture.html#resType">resType</a></li>
+            
                 <li  data-name="LazyTexture#src"><a href="LazyTexture.html#src">src</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#isTexture"><a href="LazyTexture.html#isTexture">isTexture</a></li>
@@ -7551,11 +7553,24 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
      */
     type: undefined,
 
+    _isSubDirty: false,
+    _isAllDirty: false,
+
     /**
      * @type {Boolean}
      * @default false
      */
-    isDirty: true,
+    isDirty: {
+        get() {
+            return this._isSubDirty || this._isAllDirty;
+        },
+        set(value) {
+            this._isAllDirty = value;
+            if (value === false) {
+                this._isSubDirty = false;
+            }
+        }
+    },
 
     /**
      * @type {String}
@@ -7643,7 +7658,7 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
                 this.type = getTypedArrayGLType(data);
                 this.stride = this._stride;
                 this.offset = this._offset;
-                this.isDirty = true;
+                this._isAllDirty = true;
             }
         },
         get() {
@@ -7693,16 +7708,14 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
      * @param {TypedArray} data 数据
      */
     setSubData(offset, data) {
-        this.isDirty = true;
-        const byteOffset = data.BYTES_PER_ELEMENT * offset;
-        data.forEach((value, index) => {
-            this.data[index + offset] = value;
-        });
+        this._isSubDirty = true;
+        this.data.set(data, offset);
 
         if (!this.subDataList) {
             this.subDataList = [];
         }
 
+        const byteOffset = data.BYTES_PER_ELEMENT * offset;
         this.subDataList.push({
             byteOffset,
             data
@@ -7798,7 +7811,7 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
         } else {
             data[offset] = value;
         }
-        this.isDirty = true;
+        this._isAllDirty = true;
     },
     /**
      * 按 index 遍历

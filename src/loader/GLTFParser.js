@@ -312,7 +312,11 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         } else if ('bufferView' in imgData) {
             const bufferView = this.bufferViews[imgData.bufferView];
             const data = new Uint8Array(bufferView.buffer, bufferView.byteOffset, bufferView.byteLength);
-            uri = util.getBlobUrl(imgData.mimeType, data);
+            if (imgData.mimeType === 'image/ktx') {
+                uri = data;
+            } else {
+                uri = util.getBlobUrl(imgData.mimeType, data);
+            }
         }
 
         if (this.preHandlerImageURI) {
@@ -320,6 +324,18 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         return uri;
+    },
+    getImageType(imageName) {
+        const imgData = this.json.images[imageName];
+        let type = '';
+        if (imgData && /^image\/(.*)$/.test(imgData.mimeType)) {
+            type = RegExp.$1;
+        }
+        if (!['ktx'].includes(type)) {
+            // clear type if type is not valid
+            type = '';
+        }
+        return type;
     },
     getUsedTextureNameMap() {
         const map = {};
@@ -409,6 +425,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             texture.uv = undefined;
             texture.autoLoad = this.isProgressive;
             texture.crossOrigin = true;
+            texture.resType = this.getImageType(textureData.source);
             texture.src = uri;
             texture.name = textureData.name || textureName;
             if (util.isBlobUrl(uri)) {

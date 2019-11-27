@@ -7213,6 +7213,8 @@
             
                 <li  data-name="LazyTexture#autoLoad"><a href="LazyTexture.html#autoLoad">autoLoad</a></li>
             
+                <li  data-name="LazyTexture#resType"><a href="LazyTexture.html#resType">resType</a></li>
+            
                 <li  data-name="LazyTexture#src"><a href="LazyTexture.html#src">src</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#isTexture"><a href="LazyTexture.html#isTexture">isTexture</a></li>
@@ -7559,6 +7561,7 @@ const Buffer = Class.create(/** @lends Buffer.prototype */ {
             if (buffer) {
                 return buffer;
             }
+            geometryData.isDirty = false;
             buffer = new Buffer(gl, target, geometryData.data, usage);
             cache.add(id, buffer);
             return buffer;
@@ -7673,7 +7676,9 @@ const Buffer = Class.create(/** @lends Buffer.prototype */ {
     uploadGeometryData(geometryData) {
         geometryData.isDirty = false;
         const subDataList = geometryData.subDataList;
-        if (subDataList &amp;&amp; subDataList.length) {
+        if (!this.data || this.data.byteLength &lt; geometryData.data.byteLength || geometryData._isAllDirty === true) {
+            this.bufferData(geometryData.data);
+        } else if (subDataList &amp;&amp; subDataList.length) {
             subDataList.forEach((subData) => {
                 this.bufferSubData(subData.byteOffset, subData.data);
             });
@@ -7681,6 +7686,7 @@ const Buffer = Class.create(/** @lends Buffer.prototype */ {
         } else {
             this.bufferData(geometryData.data);
         }
+        geometryData.isDirty = false;
         return this;
     },
     /**

@@ -7213,6 +7213,8 @@
             
                 <li  data-name="LazyTexture#autoLoad"><a href="LazyTexture.html#autoLoad">autoLoad</a></li>
             
+                <li  data-name="LazyTexture#resType"><a href="LazyTexture.html#resType">resType</a></li>
+            
                 <li  data-name="LazyTexture#src"><a href="LazyTexture.html#src">src</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#isTexture"><a href="LazyTexture.html#isTexture">isTexture</a></li>
@@ -7597,7 +7599,6 @@ const CameraHelper = Class.create(/** @lends CameraHelper.prototype */ {
         geometry.vertices.set(7, camera.unprojectVector(tempVector3.set(width, -height, -depth)));
 
         geometry.vertices.set(8, camera.worldMatrix.getTranslation(tempVector3));
-        geometry.vertices.isDirty = true;
     }
 });
 

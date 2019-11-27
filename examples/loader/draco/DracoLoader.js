@@ -174,10 +174,10 @@
     Hilo3d.Loader.addLoader('drc', DracoLoader);
 
     Hilo3d.GLTFParser.extensionHandlers.KHR_draco_mesh_compression = {
-        parse: function(info, parser, result, primitive) {
+        parse: function(info, parser, result, options) {
             var bufferView = parser.bufferViews[info.bufferView];
             var uintArray = new Uint8Array(bufferView.buffer, bufferView.byteOffset, bufferView.byteLength);
-            var geometry = decode(uintArray, info, primitive);
+            var geometry = decode(uintArray, info, options.primitive);
             return geometry;
         }
     };

@@ -271,7 +271,7 @@ declare namespace hilo3d {
 
   }
 
-  class Camera {
+  class Camera extends ITransformAttributes {
     /**
      * 摄像机
      */
@@ -778,7 +778,7 @@ declare namespace hilo3d {
     near?: number;
     far?: number;
   }
-  class OrthographicCamera {
+  class OrthographicCamera extends IOrthographicCameraParams {
     /**
      * 正交投影摄像机
      */
@@ -1219,7 +1219,7 @@ declare namespace hilo3d {
      */
     aspect?: number;
   }
-  class PerspectiveCamera {
+  class PerspectiveCamera extends IPerspectiveCameraParams {
     /**
      * 透视投影摄像机
      */
@@ -2124,7 +2124,7 @@ declare namespace hilo3d {
 
     visible?: boolean;
   }
-  class Mesh {
+  class Mesh extends ITransformAttributes {
     /**
      * Mesh
      */
@@ -3466,7 +3466,7 @@ declare namespace hilo3d {
      * 移除指定的子元素
      * @param child 需要移除的元素
      */
-    removeChild(child: Node): Node;
+    removeChild(child: Node | Mesh | Light | Camera): Node;
 
     /**
      * 将当前元素添加到某个父元素的子元素中
@@ -6623,7 +6623,7 @@ declare namespace hilo3d {
      */
     name?: string;
   }
-  class Light {
+  class Light extends ILightParams {
     /**
      * 灯光基础类
      */
@@ -8346,6 +8346,10 @@ declare namespace hilo3d {
 
   class IMaterial {
     /**
+     * 渲染顺序。
+     */
+    renderOrder?: number;
+    /**
      * 是否开启网格模式
      */
     wireframe?: boolean;
@@ -8531,10 +8535,6 @@ declare namespace hilo3d {
   }
 
   class IBasicMaterial extends IMaterial {
-    /**
-     * 渲染顺序。
-     */
-    renderOrder?: number;
     /**
      * 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
      */

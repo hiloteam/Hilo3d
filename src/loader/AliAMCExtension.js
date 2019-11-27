@@ -138,6 +138,9 @@ const AliAMCExtension = {
             amcGeometry = AMDecompression.decompressWithJS(data);
         }
         return done(amcGeometry);
+    },
+    freeMemory() {
+        AMDecompression.destory();
     }
 };
 

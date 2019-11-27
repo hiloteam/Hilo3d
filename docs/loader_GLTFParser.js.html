@@ -7213,6 +7213,8 @@
             
                 <li  data-name="LazyTexture#autoLoad"><a href="LazyTexture.html#autoLoad">autoLoad</a></li>
             
+                <li  data-name="LazyTexture#resType"><a href="LazyTexture.html#resType">resType</a></li>
+            
                 <li  data-name="LazyTexture#src"><a href="LazyTexture.html#src">src</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#isTexture"><a href="LazyTexture.html#isTexture">isTexture</a></li>
@@ -7819,7 +7821,11 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         } else if ('bufferView' in imgData) {
             const bufferView = this.bufferViews[imgData.bufferView];
             const data = new Uint8Array(bufferView.buffer, bufferView.byteOffset, bufferView.byteLength);
-            uri = util.getBlobUrl(imgData.mimeType, data);
+            if (imgData.mimeType === 'image/ktx') {
+                uri = data;
+            } else {
+                uri = util.getBlobUrl(imgData.mimeType, data);
+            }
         }
 
         if (this.preHandlerImageURI) {
@@ -7827,6 +7833,18 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         return uri;
+    },
+    getImageType(imageName) {
+        const imgData = this.json.images[imageName];
+        let type = '';
+        if (imgData &amp;&amp; /^image\/(.*)$/.test(imgData.mimeType)) {
+            type = RegExp.$1;
+        }
+        if (!['ktx'].includes(type)) {
+            // clear type if type is not valid
+            type = '';
+        }
+        return type;
     },
     getUsedTextureNameMap() {
         const map = {};
@@ -7916,6 +7934,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             texture.uv = undefined;
             texture.autoLoad = this.isProgressive;
             texture.crossOrigin = true;
+            texture.resType = this.getImageType(textureData.source);
             texture.src = uri;
             texture.name = textureData.name || textureName;
             if (util.isBlobUrl(uri)) {

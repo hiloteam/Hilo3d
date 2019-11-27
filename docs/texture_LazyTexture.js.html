@@ -7213,6 +7213,8 @@
             
                 <li  data-name="LazyTexture#autoLoad"><a href="LazyTexture.html#autoLoad">autoLoad</a></li>
             
+                <li  data-name="LazyTexture#resType"><a href="LazyTexture.html#resType">resType</a></li>
+            
                 <li  data-name="LazyTexture#src"><a href="LazyTexture.html#src">src</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#isTexture"><a href="LazyTexture.html#isTexture">isTexture</a></li>
@@ -7559,6 +7561,11 @@ const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
      * @type {boolean}
      */
     autoLoad: true,
+    /**
+     * 资源类型，用于加载时判断
+     * @type {string}
+     */
+    resType: '',
 
     /**
      * 图片地址
@@ -7610,6 +7617,7 @@ const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
         return LazyTexture.loader.load({
             src: this.src,
             crossOrigin: this.crossOrigin,
+            type: this.resType,
             defaultType: 'img'
         }).then((img) => {
             if (img.isTexture) {

@@ -30,13 +30,14 @@ const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.
      * @param {ArrayBuffer} arrayBuffer- contents of the KTX container file
      * @param {number} facesExpected- should be either 1 or 6, based whether a cube texture or or
      */
-    constructor(arrayBuffer, facesExpected) {
+    constructor(arrayBuffer, facesExpected, baseOffset = 0) {
         this.arrayBuffer = arrayBuffer;
+        this.baseOffset = baseOffset;
 
         // Test that it is a ktx formatted file, based on the first 12 bytes, character representation is:
         // '´', 'K', 'T', 'X', ' ', '1', '1', 'ª', '\r', '\n', '\x1A', '\n'
         // 0xAB, 0x4B, 0x54, 0x58, 0x20, 0x31, 0x31, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A
-        const identifier = new Uint8Array(this.arrayBuffer, 0, 12);
+        const identifier = new Uint8Array(this.arrayBuffer, this.baseOffset, 12);
         if (identifier[0] !== 0xAB
             || identifier[1] !== 0x4B
             || identifier[2] !== 0x54
@@ -55,7 +56,7 @@ const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.
 
         // load the reset of the header in native 32 bit uint
         const dataSize = Uint32Array.BYTES_PER_ELEMENT;
-        const headerDataView = new DataView(this.arrayBuffer, 12, 13 * dataSize);
+        const headerDataView = new DataView(this.arrayBuffer, this.baseOffset + 12, 13 * dataSize);
         const endianness = headerDataView.getUint32(0, true);
         const littleEndian = endianness === 0x04030201;
 
@@ -107,9 +108,9 @@ const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.
         let mipmapCount = loadMipmaps ? this.numberOfMipmapLevels : 1;
 
         for (let level = 0; level < mipmapCount; level++) {
-            let imageSize = new Int32Array(this.arrayBuffer, dataOffset, 1)[0]; // size per face, since not supporting array cubemaps
+            let imageSize = new Int32Array(this.arrayBuffer, this.baseOffset + dataOffset, 1)[0]; // size per face, since not supporting array cubemaps
             for (let face = 0; face < this.numberOfFaces; face++) {
-                let byteArray = new Uint8Array(this.arrayBuffer, dataOffset + 4, imageSize);
+                let byteArray = new Uint8Array(this.arrayBuffer, this.baseOffset + dataOffset + 4, imageSize);
 
                 mipmaps.push({
                     data: byteArray,
@@ -166,30 +167,38 @@ const KTXLoader = Class.create(/** @lends KTXLoader.prototype */{
      * @param  {Object} params
      */
     load(params) {
+        if (params.src instanceof ArrayBuffer) {
+            return Promise.resolve(this.createTexture(params, params.src));
+        }
+        if (ArrayBuffer.isView(params.src)) {
+            return Promise.resolve(this.createTexture(params, params.src.buffer, params.src.byteOffset));
+        }
         return this.loadRes(params.src, 'buffer')
             .then((buffer) => {
-                const ktx = new KhronosTextureContainer(buffer, 1);
-
-                const data = {
-                    compressed: ktx.glType === 0,
-                    type: ktx.glType,
-                    width: ktx.pixelWidth,
-                    height: ktx.pixelHeight,
-                    internalFormat: ktx.glInternalFormat,
-                    format: ktx.glFormat,
-                    isCubemap: ktx.numberOfFaces === 6
-                };
-
-                if (ktx.numberOfMipmapLevels >= Math.floor(Math.log2(Math.max(data.width, data.height)) + 1)) {
-                    data.mipmaps = ktx.mipmaps(true);
-                    data.image = data.mipmaps[0].data;
-                } else {
-                    data.mipmaps = null;
-                    data.image = ktx.mipmaps(false)[0].data;
-                }
-
-                return new Texture(data);
+                return this.createTexture(params, buffer);
             });
+    },
+    createTexture(params, buffer, baseOffset = 0) {
+        const ktx = new KhronosTextureContainer(buffer, 1, baseOffset);
+        const data = {
+            compressed: ktx.glType === 0,
+            type: ktx.glType,
+            width: ktx.pixelWidth,
+            height: ktx.pixelHeight,
+            internalFormat: ktx.glInternalFormat,
+            format: ktx.glFormat,
+            isCubemap: ktx.numberOfFaces === 6
+        };
+
+        if (ktx.numberOfMipmapLevels >= Math.floor(Math.log2(Math.max(data.width, data.height)) + 1)) {
+            data.mipmaps = ktx.mipmaps(true);
+            data.image = data.mipmaps[0].data;
+        } else {
+            data.mipmaps = null;
+            data.image = ktx.mipmaps(false)[0].data;
+        }
+
+        return new Texture(data);
     }
 });
 

@@ -7213,6 +7213,8 @@
             
                 <li  data-name="LazyTexture#autoLoad"><a href="LazyTexture.html#autoLoad">autoLoad</a></li>
             
+                <li  data-name="LazyTexture#resType"><a href="LazyTexture.html#resType">resType</a></li>
+            
                 <li  data-name="LazyTexture#src"><a href="LazyTexture.html#src">src</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#isTexture"><a href="LazyTexture.html#isTexture">isTexture</a></li>
@@ -7724,7 +7726,7 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
                 verticesInFaceCountList[idx]++;
             }
         }
-        normals.isDirty = true;
+        this.isDirty = true;
         this._needUpdateNormals = false;
     },
     /**
@@ -7819,6 +7821,8 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
             tangents.set(indices[i + 1], tempVector41);
             tangents.set(indices[i + 2], tempVector41);
         }
+
+        this.isDirty = true;
     },
     /**
      * 将三角形模式转换为线框模式，即 Material 中的 wireframe
