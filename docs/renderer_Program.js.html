@@ -6497,6 +6497,8 @@
             
                 <li  data-name="Program#state"><a href="Program.html#state">state</a></li>
             
+                <li  data-name="Program#alwaysUse"><a href="Program.html#alwaysUse">alwaysUse</a></li>
+            
                 <li  data-name="Program#id"><a href="Program.html#id">id</a></li>
             
             </ul>
@@ -6943,6 +6945,8 @@
                 <li  data-name="Shader.cache"><a href="Shader.html#.cache">cache</a></li>
             
                 <li  data-name="Shader.headerCache"><a href="Shader.html#.headerCache">headerCache</a></li>
+            
+                <li  data-name="Shader#alwaysUse"><a href="Shader.html#alwaysUse">alwaysUse</a></li>
             
             </ul>
             <ul class="typedefs itemMembers">
@@ -7633,6 +7637,13 @@ const Program = Class.create(/** @lends Program.prototype */ {
      * @default null
      */
     state: null,
+
+    /**
+     * 是否始终使用
+     * @default true
+     * @type {Boolean}
+     */
+    alwaysUse: false,
 
     /**
      * @constructs

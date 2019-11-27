@@ -27,7 +27,6 @@
         geometry: geometry,
         material: new Hilo3d.ShaderMaterial({
             shaderCacheId: "UVAnimation",
-            useHeaderCache:true,
             getCustomRenderOption(option){
                 option.CUSTOM_OPTION = 1;
                 return option;
@@ -109,10 +108,24 @@
             this.time += dt;
         }
     });
+
     container.addChild(mesh);
     stage.addChild(container);
 
+    // stage.renderer.initContext();
+    // var material = mesh.material;
+    
+    // // 编译
+    // var shader = Hilo3d.Shader.getCustomShader(material.vs, material.fs, '', material.shaderCacheId);
+    // shader.alwaysUse = true;
+    // var program = Hilo3d.Program.getProgram(, Hilo3d.Shader.renderer.state);
+    // program.alwaysUse = true;
 
+    // // 删除
+    // var shader = Hilo3d.Shader.cache.get(material.shaderCacheId);
+    // var program = Hilo3d.Program.cache.get(shader.id);
+    // shader.destroy();
+    // program.destroy();
 </script>
 </body>
 </html>
