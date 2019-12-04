@@ -135,6 +135,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
     preHandlerBufferURI: null,
     customMaterialCreator: null,
     ignoreTextureError: false,
+    forceCreateNewBuffer: false,
     src: '',
     /**
      * @constructs
@@ -421,7 +422,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             let textureData = this.json.textures[textureName];
             let uri = this.getImageUri(textureData.source);
 
-            const texture = new LazyTexture(textureData);
+            let texture = new LazyTexture(textureData);
             texture.uv = undefined;
             texture.autoLoad = this.isProgressive;
             texture.crossOrigin = true;
@@ -441,6 +442,11 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             if (this.json.samplers) {
                 Object.assign(texture, this.json.samplers[textureData.sampler]);
             }
+
+            if (textureData.extensions) {
+                texture = this.parseExtensions(textureData.extensions, texture);
+            }
+
             this.textures[textureName] = texture;
 
             if (!this.isProgressive) {
@@ -745,7 +751,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             } else {
                 let offset = (accessor.byteOffset || 0) + bufferView.byteOffset;
                 let array;
-                if (offset % TypedArray.BYTES_PER_ELEMENT) {
+                if (offset % TypedArray.BYTES_PER_ELEMENT || this.forceCreateNewBuffer) {
                     let buffer = bufferView.buffer.slice(offset, offset + count * TypedArray.BYTES_PER_ELEMENT);
                     array = new TypedArray(buffer);
                 } else {

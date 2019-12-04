@@ -8004,6 +8004,11 @@ declare namespace hilo3d {
      */
     request(opt?: request_opt): Promise<any>;
 
+    /**
+     * 释放加载缓存。
+     */
+    clearCache();
+
   }
 
   interface load_params {
@@ -8115,6 +8120,10 @@ declare namespace hilo3d {
      */
     request(opt?: request_opt): Promise<any>;
 
+    /**
+     * 释放加载缓存。
+     */
+    clearCache();
   }
 
   class GLTFParser {
@@ -8305,8 +8314,9 @@ declare namespace hilo3d {
      * @param params.src 纹理图片地址
      * @param params.crossOrigin 是否跨域，不传将自动判断
      * @param params.uv uv
+     * @param params.isImageCanRelease 提交到GPU后是否直接释放内存
      */
-    load(params: {src: string, crossOrigin?: boolean, uv?: number, flipY?: number}): Promise<Texture>;
+    load(params: {src: string, crossOrigin?: boolean, uv?: number, flipY?: number, isImageCanRelease: boolean;}): Promise<Texture>;
 
     isBasicLoader: boolean;
 
@@ -13480,7 +13490,7 @@ declare namespace hilo3d {
     /**
      * 是否需要销毁之前的Texture，Texture参数变更之后需要销毁
      */
-    needDestory: boolean;
+    needDestroy: boolean;
 
     /**
      * 是否每次都更新Texture
@@ -13591,7 +13601,7 @@ declare namespace hilo3d {
     /**
      * 是否需要销毁之前的Texture，Texture参数变更之后需要销毁
      */
-    needDestory: boolean;
+    needDestroy: boolean;
 
     /**
      * 是否每次都更新Texture
@@ -13700,7 +13710,14 @@ declare namespace hilo3d {
 
     height: number;
 
+    anisotropic: number;
+
     readonly border: number;
+
+    /**
+     * 提交到GPU后是否直接释放内存。
+     */
+    isImageCanRelease: boolean;
 
     /**
      * magFilter
@@ -13744,7 +13761,7 @@ declare namespace hilo3d {
     /**
      * 是否需要销毁之前的Texture，Texture参数变更之后需要销毁
      */
-    needDestory: boolean;
+    needDestroy: boolean;
 
     /**
      * 是否每次都更新Texture
@@ -13770,6 +13787,8 @@ declare namespace hilo3d {
      */
     updateSubTexture(xOffset: number, yOffset: number, image: Image | HTMLCanvasElement | ImageData): void;
 
+    on(name: string, func: Function ): void;
+    off(name: string, func: Function): void;
   }
 
   class Texture {
@@ -13857,10 +13876,17 @@ declare namespace hilo3d {
      */
     flipY: boolean;
 
+    anisotropic: number;
+
     /**
      * 是否压缩
      */
     compressed: boolean;
+
+    /**
+     * 提交到GPU后是否直接释放内存。
+     */
+    isImageCanRelease: boolean;
 
     /**
      * 是否需要更新Texture
@@ -13870,7 +13896,7 @@ declare namespace hilo3d {
     /**
      * 是否需要销毁之前的Texture，Texture参数变更之后需要销毁
      */
-    needDestory: boolean;
+    needDestroy: boolean;
 
     /**
      * 是否每次都更新Texture
