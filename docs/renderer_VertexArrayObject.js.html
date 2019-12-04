@@ -7838,7 +7838,6 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
 
         let attributeObject = this[name];
         if (!attributeObject) {
-            geometryData.isDirty = false;
             const buffer = Buffer.createVertexBuffer(gl, geometryData, usage);
             buffer.bind();
             attribute.enable();
@@ -7855,7 +7854,6 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
                 onInit(attributeObject);
             }
         } else if (geometryData.isDirty) {
-            geometryData.isDirty = false;
             attributeObject.buffer.uploadGeometryData(geometryData);
         }
 

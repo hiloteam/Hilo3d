@@ -7698,7 +7698,6 @@ const Buffer = Class.create(/** @lends Buffer.prototype */ {
      * @return {Buffer} this
      */
     uploadGeometryData(geometryData) {
-        geometryData.isDirty = false;
         const subDataList = geometryData.subDataList;
         if (!this.data || this.data.byteLength &lt; geometryData.data.byteLength || geometryData._isAllDirty === true) {
             this.bufferData(geometryData.data);

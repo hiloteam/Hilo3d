@@ -1,6 +1,6 @@
 {
   "name": "hilo3d",
-  "version": "1.13.42",
+  "version": "1.13.44",
   "description": "Hilo3d, a WebGL 3d engine.",
   "main": "build/Hilo3d.js",
   "types": "types/index.d.ts",
