@@ -7591,7 +7591,7 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
         set(value) {
             this._isAllDirty = value;
             if (value === false) {
-                this._isSubDirty = false;
+                this.clearSubData();
             }
         }
     },
@@ -7761,6 +7761,7 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
         if (this.subDataList) {
             this.subDataList.length = 0;
         }
+        this._isSubDirty = false;
     },
 
     /**
