@@ -1,39 +1,38 @@
-const gitlabPath = '../Hilo3d';
-
-const { src, dest, series, parallel } = require('gulp');
-const del = require('del');
+const { src, dest, series, watch } = require('gulp');
+const uitest = require('gulp-uitest');
 const replace = require('gulp-replace');
-
+const concat = require('gulp-concat');
 const pkg = require('./package.json');
-const gitlabPkg = require(`${gitlabPath}/package.json`);
 
-const delTask = (cb) => {
-    del(['build', 'docs', 'examples', 'src', 'test', 'types'], {
-        force:true
-    }).then(()=>{
-        cb();
-    });
+const testBuildTask = () => {
+    return src('test/spec/**/*.js')
+        .pipe(replace(/^/, '(function(){\n'))
+        .pipe(replace(/$/, '\n})();\n'))
+        .pipe(concat('hilo3d.test.js'))
+        .pipe(dest('test/'));
 };
 
-const copyTask =  () => {
-    return src([
-            `${gitlabPath}/+(build|examples|docs|types)/**/*`,
-            `${gitlabPath}/+(src)/loader/**/*`,
-            `${gitlabPath}/README.md`
-        ])
+const testTask = () => {
+    return src('test/index.html')
+        .pipe(uitest({
+            width: 600,
+            height: 480,
+            hidpi: false,
+            useContentSize: true,
+            show: false
+        }));
+};
+
+const readmeTask = () => {
+    return src('./README.md')
+        .pipe(replace(/Hilo3d\/[\d\.]+\/Hilo3d\.js/g, `Hilo3d/${pkg.version}/Hilo3d.js`))
         .pipe(dest('./'));
 };
 
-const versionTask = () => {
-    return src('./package.json')
-        .pipe(replace(/"version"[\s]*:[\s]*"[\d\.]+"/g, `"version": "${gitlabPkg.version}"`))
-        .pipe(dest('./'))
+const watchTask = () => {
+    watch(['test/spec/**/*.js'], series(testBuildTask, testTask));
 };
 
-exports.del = delTask;
-exports.copy = series(delTask, copyTask);
-exports.version = versionTask;
-exports.default = series(parallel(versionTask, series(delTask, copyTask)), function logTask(cb){
-    cb();
-    console.log(`Hilo3d update: ${pkg.version} => ${gitlabPkg.version}`);
-});
+exports.test = series(testBuildTask, testTask);
+exports.watch = series(testBuildTask, testTask, watchTask);
+exports.readme = readmeTask;

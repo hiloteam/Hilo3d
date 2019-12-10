@@ -1,4 +1,11 @@
 node_modules
 npm-debug.log
-*.sw*
-*.un~
+.DS_Store
+.vscode
+.idea
+test/hilo3d.test.js
+test/screenshot
+reports
+logs
+**/*.map
+seinjs-build

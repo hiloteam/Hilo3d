@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>hilo test</title>
+    <meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <link rel='stylesheet' href='../node_modules/mocha/mocha.css' />
+    <script>
+        module = undefined;
+    </script>
+    <script src='../build/Hilo3d.js'></script>
+    <script src='../node_modules/mocha/mocha.js'></script>
+    <script src='../node_modules/uitest/uitest-mocha-shim.js'></script>
+    <script src='../node_modules/sinon/pkg/sinon.js'></script>
+    <script src='../node_modules/should/should.js'></script>
+    <script src='../node_modules/should-sinon/should-sinon.js'></script>
+    <script src='asset/pixelmatch.js'></script>
+    <script src='asset/utils.js'></script>
+    <style>
+        html, body{
+            margin:0px;
+            padding: 0px;
+        }
+        #stage{
+            position: absolute !important;
+            top:0px;
+            left:0px;
+            z-index: -1;
+        }
+        canvas{
+            position: absolute;
+            top:0px;
+            left:0px;
+        }
+    </style>
+  </head>
+  <body>
+    <div id='stage'></div>
+    <div id='mocha'></div>
+    <script>
+    window._IS_WEB = true;
+    window._IS_TRAVIS = false;
+
+    if(typeof process === 'object'){
+        window._IS_WEB = false;
+        if(process.env.TEST_FLAG === 'TRAVIS'){
+            window._IS_TRAVIS = true;
+        }
+    }
+
+    console.log('isWeb:', _IS_WEB);
+    console.log('isTravis:', _IS_TRAVIS);
+
+    _macaca_uitest.setup({
+      ui: 'bdd',
+      timeout: 10000,
+      slow: 5000
+    });
+
+    var testEnv = utils.createHilo3dEnv();
+    </script>
+    <script src='./hilo3d.test.js'></script>
+    <script>
+    _macaca_uitest.run();
+    </script>
+  </body>
+</html>

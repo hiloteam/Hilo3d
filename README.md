@@ -2,8 +2,6 @@
 
 Hilo3d, a WebGL Rendering Engine developed by Alibaba Group.It could help developers build 3D games conveniently in minutes.
 
-> 本站点暂时不公开Hilo3d源码，仅提供压缩版本 （正式开源时间参考 [开源计划](https://github.com/hiloteam/Hilo3d/issues/4)）
-
 ### 静态CDN
 [https://g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js][cdn-url]
 
