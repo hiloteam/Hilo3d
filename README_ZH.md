@@ -1,47 +1,47 @@
-English | [简体中文](./README_ZH.md)
+[English](./README.md) | 简体中文
 
 <p align="center"><img src="https://gw.alicdn.com/tfs/TB1znqbquT2gK0jSZFvXXXnFXXa-569-143.svg" alt="omi" width="500"/></p>
-<h3 align="center">A 3D WebGL Rendering Engine</h3>
+<h3 align="center">一个 3D WebGL 渲染引擎</h3>
 
 ---
-[Installation](#Installation) • [Documentation](#Documentation) • [Development](#Development) • [Examples](#Examples) • [Authors](#Authors) • [License](#License)
+[安装](#安装) • [文档](#文档) • [开发](#开发) • [样例](#样例) • [作者](#作者) • [许可证](#许可证)
 
 [![npm][npm-image]][npm-url] [![size][size-image]][cdn-url] [![gitter.im][gitter-image]][gitter-url]
 
-### Features
+### 特性
 * Compatible for multiple mobile and desktop browsers.
 * Lightweight, only `100kb` after gzip.
 * Physically-based rendering support.
 * Perfect support for glTF models.
 
-### Installation
-* use npm
+### 安装
+* 使用 npm
 
-	```
-	$ npm install hilo3d
-	```
-* use script tag from a [cdn][cdn-url]
+    ```
+    $ npm install hilo3d
+    ```
+* 使用 script 标签加载 [cdn][cdn-url]
 
-	```
-	<script src='//g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js'></script>
-	```
+    ```
+    <script src='//g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js'></script>
+    ```
 
-### Documentation
-* [API documentation](https://hiloteam.github.io/Hilo3d/docs/index.html)
-* [Tutorial](https://github.com/hiloteam/article/issues?q=is%3Aissue+is%3Aopen+label%3AHilo3d)
+### 文档
+* [API 文档](https://hiloteam.github.io/Hilo3d/docs/index.html)
+* [教程](https://github.com/hiloteam/article/issues?q=is%3Aissue+is%3Aopen+label%3AHilo3d)
 
-### Development
-* run `npm run dev` to dev.
-* run `npm run release` release the code.
-* run `npm run doc` to build API documentation.
-* run `npm run test` to run tests.
+### 开发
+* 运行 `npm run dev` 开发。
+* 运行 `npm run release` 发布代码。
+* 运行 `npm run doc` 生成 api 文档。
+* 运行 `npm run test` 运行测试用例。
 
-### Examples
+### 样例
 
   * [Index.html](https://hiloteam.github.io/Hilo3d/docs/index.html)
   * glTF
     * [glTF Feature Test](https://cx20.github.io/gltf-test/?engines=Hilo3d)
-	* [glTF Viewer](https://hiloteam.github.io/Hilo3d/examples/glTFViewer/index.html)
+    * [glTF Viewer](https://hiloteam.github.io/Hilo3d/examples/glTFViewer/index.html)
 
   * loader
     * [gltf_loader](https://hiloteam.github.io/Hilo3d/examples/loader/glTF_loader.html)
@@ -88,17 +88,17 @@ English | [简体中文](./README_ZH.md)
 
 
 
-### Authors
+### 作者
 
  * [06wj](https://github.com/06wj)
  * [steel1990](https://github.com/steel1990)
  * [picacure](https://github.com/picacure)
 
-### Contact us
+### 联系我们
   * [![gitter.im][gitter-image]][gitter-url]
   * QQ Group:372765886
 
-### License
+### 许可证
 
 [MIT License](http://en.wikipedia.org/wiki/MIT_License)
 

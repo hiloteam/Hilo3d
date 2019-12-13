@@ -3,6 +3,20 @@ var data = obj;
 var self = this;
 
 var exampleLinkReg = /https\:\/\/hiloteam\.github\.io\/Hilo3d\/(examples|docs)\//g;
+if (data.readme) {
+    data.readme = data.readme.replace(exampleLinkReg, '../$1/');
+    
+    // rm language link
+    data.readme = data.readme.replace(/<p>[\w\W]+?<\/p>/, '');
+
+    // add hash
+    data.readme = data.readme.replace('<h3>Installation</h3>', '<h3 id="Installation">Installation</h3>');
+    data.readme = data.readme.replace('<h3>Documentation</h3>', '<h3 id="Documentation">Documentation</h3>');
+    data.readme = data.readme.replace('<h3>Development</h3>', '<h3 id="Development">Development</h3>');
+    data.readme = data.readme.replace('<h3>Examples</h3>', '<h3 id="Examples">Examples</h3>');
+    data.readme = data.readme.replace('<h3>Authors</h3>', '<h3 id="Authors">Authors</h3>');
+    data.readme = data.readme.replace('<h3>License</h3>', '<h3 id="License">License</h3>');
+}
 ?>
 
 <?js if (data.kind === 'package') { ?>
@@ -11,6 +25,6 @@ var exampleLinkReg = /https\:\/\/hiloteam\.github\.io\/Hilo3d\/(examples|docs)\/
 
 <?js if (data.readme) { ?>
     <section>
-        <article class="readme"><?js= data.readme.replace(exampleLinkReg, '../$1/') ?></article>
+        <article class="readme"><?js= data.readme ?></article>
     </section>
 <?js } ?>
