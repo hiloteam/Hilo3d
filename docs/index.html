@@ -7546,24 +7546,58 @@
 
 
     <section>
-        <article class="readme"><h1>Hilo3d <a target="_blank" href="https://www.npmjs.com/package/hilo3d"><img src="https://img.shields.io/npm/v/hilo3d.svg?style=flat-square" alt="npm"></a> <a target="_blank" href="https://g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js"><img src="https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&amp;style=flat-square" alt="size"></a> <a target="_blank" href="https://gitter.im/hiloteam/Hilo3d?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square" alt="gitter.im"></a></h1>
-<p>Hilo3d, a WebGL Rendering Engine developed by Alibaba Group.It could help developers build 3D games conveniently in minutes.</p>
-<blockquote>
-<p>本站点暂时不公开Hilo3d源码，仅提供压缩版本 （正式开源时间参考 <a target="_blank" href="https://github.com/hiloteam/Hilo3d/issues/4">开源计划</a>）</p>
-</blockquote>
-<h3>静态CDN</h3>
-<p><a target="_blank" href="https://g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js">https://g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js</a></p>
-<h3>API 文档</h3>
-<p>参见 <a href="../docs/index.html">docs/index.html</a></p>
-<h3>glTF 特性测试</h3>
+        <article class="readme">
+<p align="center"><img src="https://gw.alicdn.com/tfs/TB1znqbquT2gK0jSZFvXXXnFXXa-569-143.svg" alt="omi" width="500"/></p>
+<h3 align="center">A 3D WebGL Rendering Engine</h3>
+<hr>
+<p><a href="#Installation">Installation</a> • <a href="#Documentation">Documentation</a> • <a href="#Development">Development</a> • <a href="#Examples">Examples</a> • <a href="#Authors">Authors</a> • <a href="#License">License</a></p>
+<p><a target="_blank" href="https://www.npmjs.com/package/hilo3d"><img src="https://img.shields.io/npm/v/hilo3d.svg?style=flat-square" alt="npm"></a> <a target="_blank" href="https://g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js"><img src="https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&amp;style=flat-square" alt="size"></a> <a target="_blank" href="https://gitter.im/hiloteam/Hilo3d?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square" alt="gitter.im"></a></p>
+<h3>Features</h3>
+<ul>
+<li>Compatible for multiple mobile and desktop browsers.</li>
+<li>Lightweight, only <code>100kb</code> after gzip.</li>
+<li>Physically-based rendering support.</li>
+<li>Perfect support for glTF models.</li>
+</ul>
+<h3 id="Installation">Installation</h3>
+<ul>
+<li>
+<p>use npm</p>
+<pre class="prettyprint source"><code>$ npm install hilo3d
+</code></pre>
+</li>
+<li>
+<p>use script tag from a <a target="_blank" href="https://g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js">cdn</a></p>
+<pre class="prettyprint source"><code>&lt;script src='//g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js'>&lt;/script>
+</code></pre>
+</li>
+</ul>
+<h3 id="Documentation">Documentation</h3>
+<ul>
+<li><a href="../docs/index.html">API documentation</a></li>
+<li><a target="_blank" href="https://github.com/hiloteam/article/issues?q=is%3Aissue+is%3Aopen+label%3AHilo3d">Tutorial</a></li>
+</ul>
+<h3 id="Development">Development</h3>
+<ul>
+<li>run <code>npm run dev</code> to dev.</li>
+<li>run <code>npm run release</code> release the code.</li>
+<li>run <code>npm run doc</code> to build API documentation.</li>
+<li>run <code>npm run test</code> to run tests.</li>
+</ul>
+<h3 id="Examples">Examples</h3>
+<ul>
+<li>
+<p><a href="../docs/index.html">Index.html</a></p>
+</li>
+<li>
+<p>glTF</p>
 <ul>
 <li><a target="_blank" href="https://cx20.github.io/gltf-test/?engines=Hilo3d">glTF Feature Test</a></li>
 <li><a href="../examples/glTFViewer/index.html">glTF Viewer</a></li>
 </ul>
-<h3>API 样例</h3>
-<ul>
-<li><a href="../docs/index.html">Index.html</a></li>
-<li>loader
+</li>
+<li>
+<p>loader</p>
 <ul>
 <li><a href="../examples/loader/glTF_loader.html">gltf_loader</a></li>
 <li><a href="../examples/loader/glTF_clone.html">gltf_clone</a></li>
@@ -7575,58 +7609,118 @@
 <li><a href="../examples/loader/draco/draco_loader.html">draco</a></li>
 </ul>
 </li>
-<li><a href="../examples/compressed_texture.html">compressed_texture</a></li>
-<li><a href="../examples/fog.html">fog</a></li>
-<li><a href="../examples/mesh_picker.html">mesh_picker</a></li>
-<li><a href="../examples/mouse_event.html">mouse_event</a></li>
-<li><a href="../examples/lifegame.html">lifegame</a></li>
-<li><a href="../examples/normal_map.html">normal_map</a></li>
-<li><a href="../examples/pbr.html">pbr</a></li>
-<li><a href="../examples/pbr2.html">pbr2</a></li>
-<li><a href="../examples/polly.html">polly</a></li>
-<li><a href="../examples/post_process.html">post_process</a></li>
-<li><a href="../examples/raycast.html">raycast</a></li>
-<li><a href="../examples/raycast_node.html">raycast_node</a></li>
-<li><a href="../examples/shader_material.html">shader_material</a></li>
-<li><a href="../examples/shadow.html">shadow</a></li>
-<li><a href="../examples/skybox.html">skybox</a></li>
-<li><a href="../examples/sphereEnvMap.html">sphereEnvMap</a></li>
-<li><a href="../examples/spotLight.html">spotLight</a></li>
-<li><a href="../examples/ssao.html">ssao</a></li>
-<li><a href="../examples/texture_data.html">texture_data</a></li>
-<li><a href="../examples/transparent.html">transparent</a></li>
-<li><a href="../examples/video_in_cube.html">video_in_cube</a></li>
-<li><a href="../examples/webgl_support.html">webgl_support</a></li>
-<li><a href="../examples/wireframe.html">wireframe</a></li>
-<li><a href="../examples/geometry_box.html">geometry_box</a></li>
-<li><a href="../examples/geometry_box2.html">geometry_box2</a></li>
-<li><a href="../examples/geometry_color.html">geometry_color</a></li>
-<li><a href="../examples/geometry_custom.html">geometry_custom</a></li>
-<li><a href="../examples/geometry_dynamic.html">geometry_dynamic</a></li>
-<li><a href="../examples/geometry_dynamic2.html">geometry_dynamic2</a></li>
-<li><a href="../examples/geometry_instanced.html">geometry_instanced</a></li>
-<li><a href="../examples/geometry_line.html">geometry_line</a></li>
-<li><a href="../examples/geometry_merge.html">geometry_merge</a></li>
-<li><a href="../examples/geometry_morph.html">geometry_morph</a></li>
-<li><a href="../examples/geometry_plane.html">geometry_plane</a></li>
-<li><a href="../examples/geometry_sphere.html">geometry_sphere</a></li>
-<li><a href="../examples/geometry_triangles.html">geometry_triangles</a></li>
-<li><a href="../examples/geometry_video.html">geometry_video</a></li>
+<li>
+<p><a href="../examples/compressed_texture.html">compressed_texture</a></p>
+</li>
+<li>
+<p><a href="../examples/fog.html">fog</a></p>
+</li>
+<li>
+<p><a href="../examples/mesh_picker.html">mesh_picker</a></p>
+</li>
+<li>
+<p><a href="../examples/mouse_event.html">mouse_event</a></p>
+</li>
+<li>
+<p><a href="../examples/lifegame.html">lifegame</a></p>
+</li>
+<li>
+<p><a href="../examples/normal_map.html">normal_map</a></p>
+</li>
+<li>
+<p><a href="../examples/pbr.html">pbr</a></p>
+</li>
+<li>
+<p><a href="../examples/pbr2.html">pbr2</a></p>
+</li>
+<li>
+<p><a href="../examples/polly.html">polly</a></p>
+</li>
+<li>
+<p><a href="../examples/post_process.html">post_process</a></p>
+</li>
+<li>
+<p><a href="../examples/raycast.html">raycast</a></p>
+</li>
+<li>
+<p><a href="../examples/raycast_node.html">raycast_node</a></p>
+</li>
+<li>
+<p><a href="../examples/shader_material.html">shader_material</a></p>
+</li>
+<li>
+<p><a href="../examples/shadow.html">shadow</a></p>
+</li>
+<li>
+<p><a href="../examples/skybox.html">skybox</a></p>
+</li>
+<li>
+<p><a href="../examples/sphereEnvMap.html">sphereEnvMap</a></p>
+</li>
+<li>
+<p><a href="../examples/spotLight.html">spotLight</a></p>
+</li>
+<li>
+<p><a href="../examples/ssao.html">ssao</a></p>
+</li>
+<li>
+<p><a href="../examples/texture_data.html">texture_data</a></p>
+</li>
+<li>
+<p><a href="../examples/transparent.html">transparent</a></p>
+</li>
+<li>
+<p><a href="../examples/video_in_cube.html">video_in_cube</a></p>
+</li>
+<li>
+<p><a href="../examples/webgl_support.html">webgl_support</a></p>
+</li>
+<li>
+<p><a href="../examples/wireframe.html">wireframe</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_box.html">geometry_box</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_box2.html">geometry_box2</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_color.html">geometry_color</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_custom.html">geometry_custom</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_dynamic.html">geometry_dynamic</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_dynamic2.html">geometry_dynamic2</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_instanced.html">geometry_instanced</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_merge.html">geometry_merge</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_morph.html">geometry_morph</a></p>
+</li>
+<li>
+<p><a href="../examples/geometry_sphere.html">geometry_sphere</a></p>
+</li>
 </ul>
-<h3>教程</h3>
-<p>教程地址：<a target="_blank" href="https://github.com/hiloteam/article/issues?q=is%3Aissue+is%3Aopen+label%3AHilo3d">https://github.com/hiloteam/article/issues?q=is:issue+is:open+label:Hilo3d</a></p>
-<h3>作者</h3>
+<h3 id="Authors">Authors</h3>
 <ul>
 <li><a target="_blank" href="https://github.com/06wj">06wj</a></li>
 <li><a target="_blank" href="https://github.com/steel1990">steel1990</a></li>
 <li><a target="_blank" href="https://github.com/picacure">picacure</a></li>
 </ul>
-<h3>联系我们</h3>
+<h3>Contact us</h3>
 <ul>
 <li><a target="_blank" href="https://gitter.im/hiloteam/Hilo3d?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square" alt="gitter.im"></a></li>
-<li>QQ群:372765886</li>
+<li>QQ Group:372765886</li>
 </ul>
-<h3>License</h3>
+<h3 id="License">License</h3>
 <p><a target="_blank" href="http://en.wikipedia.org/wiki/MIT_License">MIT License</a></p></article>
     </section>
 
