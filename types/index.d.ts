@@ -1,6 +1,6 @@
 /**
  * @File   : index.d.tsx
- * @Author : 瞬光 (shunguang.dty@antfin.com)
+ * @Author : dtysky (dtysky@outlook.com)
  * @Date   : 2018-7-23 15:21:36
  * @Description:
  */

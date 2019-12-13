@@ -14,7 +14,7 @@
         "doc": "jsdoc -c doc.conf.json",
         "eslint-fix": "eslint --fix ./src",
         "seinjs-dev": "webpack --watch --env.development --seinjs",
-        "seinjs-build": "webpack --seinjs"
+        "seinjs-build": "webpack --env.development --seinjs"
     },
     "repository": {
         "type": "git",

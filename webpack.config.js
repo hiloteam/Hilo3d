@@ -3,7 +3,7 @@ const WrapperPlugin = require('wrapper-webpack-plugin');
 const pkg = require('./package.json');
 
 const header = `
-/**
+/*!
  * Hilo3d ${pkg.version}
  * Copyright (c) 2017-present Alibaba Group Holding Ltd.
  * @license MIT
