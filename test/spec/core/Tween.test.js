@@ -24,7 +24,9 @@ describe('Tween', function(){
                 delay:200,
                 onStart:function(){
                     try{
-                        (Date.now() - startTime).should.be.within(180, 250);
+                        if (!window._IS_CI) {
+                            (Date.now() - startTime).should.be.within(180, 250);
+                        }
                         obj.should.eql({x:50, y:50});
                     }
                     catch(e){
@@ -33,7 +35,9 @@ describe('Tween', function(){
                 },
                 onComplete:function(){
                     try{
-                        (Date.now() - startTime).should.be.within(460, 600);
+                        if (!window._IS_CI) {
+                            (Date.now() - startTime).should.be.within(460, 600);
+                        }
                         obj.should.eql({x:100, y:100});
                         done();
                     }

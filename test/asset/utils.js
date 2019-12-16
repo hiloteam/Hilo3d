@@ -30,6 +30,7 @@ var utils = {
                 utils.loadImage('./expectScreenshot/' + name + '.png', function(specImg) {
                     if (specImg) {
                         var diff = utils.diffImage(screenshotImg, specImg);
+                        console.log('      (imageDiff:' + diff + ')');
                         if (diff < 10) {
                             done();
                         } else {
@@ -52,15 +53,19 @@ var utils = {
      * @param  {String} name 图片名
      * @param  {Function} callback 回调
      */
-    takeScreenshot: function(name, callback) {
+    takeScreenshot: function(name, callback, context) {
         var that = this;
-        setTimeout(function() {
+        setTimeout(function(){
             _macaca_uitest.screenshot(name + '.png', function() {
                 if (callback) {
-                    that.loadImage('./screenshot/' + name + '.png', callback);
+                    if (context) {
+                        _macaca_uitest.appendToContext(context, '../reports/screenshots/' + name + '.png');
+                    }
+                    that.loadImage('../reports/screenshots/' + name + '.png', callback, context);
                 }
             });
-        }, window._IS_TRAVIS ? 1000 : 100);
+
+        }, window._IS_CI ? 1000 : 100);
     },
     /**
      * 加载图片
@@ -96,7 +101,6 @@ var utils = {
                 threshold: 0.1,
                 includeAA: false
             });
-            console.log('      (imageDiff:' + diff + ')');
             return diff;
         }
     },
