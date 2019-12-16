@@ -42,7 +42,9 @@ describe('Ticker', function(){
                 }
                 else{
                     try{
-                        (Date.now() - startTime).should.be.within(11, 21);
+                        if (!window._IS_CI) {
+                            (Date.now() - startTime).should.be.within(11, 21);
+                        }
                         done();
                     }
                     catch(e){

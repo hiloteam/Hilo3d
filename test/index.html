@@ -39,17 +39,17 @@
     <div id='mocha'></div>
     <script>
     window._IS_WEB = true;
-    window._IS_TRAVIS = false;
+    window._IS_CI = false;
 
     if(typeof process === 'object'){
         window._IS_WEB = false;
-        if(process.env.TEST_FLAG === 'TRAVIS'){
-            window._IS_TRAVIS = true;
+        if(process.env.GITHUB_ACTIONS){
+            window._IS_CI = true;
         }
     }
 
     console.log('isWeb:', _IS_WEB);
-    console.log('isTravis:', _IS_TRAVIS);
+    console.log('isCI:', _IS_CI);
 
     _macaca_uitest.setup({
       ui: 'bdd',
