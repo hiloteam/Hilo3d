@@ -6,7 +6,7 @@ English | [简体中文](./README_ZH.md)
 ---
 [Installation](#Installation) • [Documentation](#Documentation) • [Development](#Development) • [Examples](#Examples) • [Authors](#Authors) • [License](#License)
 
-[![npm][npm-image]][npm-url] [![size][size-image]][cdn-url] [![gitter.im][gitter-image]][gitter-url]
+[![npm][npm-image]][npm-url] [![ci][ci-image]][ci-url] [![size][size-image]][cdn-url] [![gitter.im][gitter-image]][gitter-url]
 
 ### Features
 * Compatible for multiple mobile and desktop browsers.
@@ -107,4 +107,6 @@ English | [简体中文](./README_ZH.md)
 [npm-image]: https://img.shields.io/npm/v/hilo3d.svg?style=flat-square
 [npm-url]: https://www.npmjs.com/package/hilo3d
 [size-image]:https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&style=flat-square
+[ci-url]:https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev
+[ci-image]:https://img.shields.io/github/workflow/status/hiloteam/Hilo3d/npm%20test?style=flat-square
 [cdn-url]: https://g.alicdn.com/hilo/Hilo3d/1.13.45/Hilo3d.js
