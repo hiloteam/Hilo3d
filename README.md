@@ -36,7 +36,7 @@ English | [简体中文](./README_ZH.md)
 * run `npm run doc` to build API documentation.
 * run `npm run test` to run tests.
 
-### ShowCase
+### Showcase
 
 * 堆堆乐
   
