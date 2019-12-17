@@ -39,11 +39,11 @@
 ### 案例
 * 堆堆乐
   
-  ![堆堆乐](https://gw.alicdn.com/tfs/TB1UJ7sqQT2gK0jSZFkXXcIQFXa-360-740.gif)
+  ![堆堆乐](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/ddl.gif)
 
 * 天天惠星球
 
- ![天天惠星球](https://gw.alicdn.com/tfs/TB1N6ssqG61gK0jSZFlXXXDKFXa-360-771.gif)
+  ![天天惠星球](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/tthxq.gif)
 
 
 
