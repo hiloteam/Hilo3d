@@ -4,12 +4,12 @@ English | [简体中文](./README_ZH.md)
 <h3 align="center">A 3D WebGL Rendering Engine</h3>
 
 ---
-[Installation](#Installation) • [Documentation](#Documentation) • [Development](#Development) • [Examples](#Examples) • [Authors](#Authors) • [License](#License)
+[Installation](#Installation) • [Documentation](#Documentation) • [Development](#Development) • [Showcase](#Showcase) • [Examples](#Examples) • [Authors](#Authors) • [License](#License)
 
 [![npm][npm-image]][npm-url] [![ci][ci-image]][ci-url] [![size][size-image]][cdn-url] [![gitter.im][gitter-image]][gitter-url]
 
 ### Features
-* Compatible for multiple mobile and desktop browsers.
+* Compatible for multiple mobile and desktop bro wsers.
 * Lightweight, only `100kb` after gzip.
 * Physically-based rendering support.
 * Perfect support for glTF models.
@@ -35,6 +35,16 @@ English | [简体中文](./README_ZH.md)
 * run `npm run release` release the code.
 * run `npm run doc` to build API documentation.
 * run `npm run test` to run tests.
+
+### ShowCase
+
+* 堆堆乐
+
+  ![堆堆乐](https://gw.alicdn.com/tfs/TB1UJ7sqQT2gK0jSZFkXXcIQFXa-360-740.gif)
+
+* 天天惠星球
+  
+  ![天天惠星球](https://gw.alicdn.com/tfs/TB1N6ssqG61gK0jSZFlXXXDKFXa-360-771.gif)
 
 ### Examples
 

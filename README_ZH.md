@@ -4,7 +4,7 @@
 <h3 align="center">一个 3D WebGL 渲染引擎</h3>
 
 ---
-[安装](#安装) • [文档](#文档) • [开发](#开发) • [样例](#样例) • [作者](#作者) • [许可证](#许可证)
+[安装](#安装) • [文档](#文档) • [开发](#开发) • [案例](#案例) • [特性例子](#特性例子) • [作者](#作者) • [许可证](#许可证)
 
 [![npm][npm-image]][npm-url] [![ci][ci-image]][ci-url] [![size][size-image]][cdn-url] [![gitter.im][gitter-image]][gitter-url]
 
@@ -36,7 +36,18 @@
 * 运行 `npm run doc` 生成 api 文档。
 * 运行 `npm run test` 运行测试用例。
 
-### 样例
+### 案例
+* 堆堆乐
+  
+  ![堆堆乐](https://gw.alicdn.com/tfs/TB1UJ7sqQT2gK0jSZFkXXcIQFXa-360-740.gif)
+
+* 天天惠星球
+
+ ![天天惠星球](https://gw.alicdn.com/tfs/TB1N6ssqG61gK0jSZFlXXXDKFXa-360-771.gif)
+
+
+
+### 特性例子
 
   * [Index.html](https://hiloteam.github.io/Hilo3d/docs/index.html)
   * glTF
