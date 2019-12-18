@@ -9,7 +9,7 @@ English | [简体中文](./README_ZH.md)
 [![npm][npm-image]][npm-url] [![ci][ci-image]][ci-url] [![size][size-image]][cdn-url] [![gitter.im][gitter-image]][gitter-url]
 
 ### Features
-* Compatible for multiple mobile and desktop bro wsers.
+* Compatible for multiple mobile and desktop browsers.
 * Lightweight, only `100kb` after gzip.
 * Physically-based rendering support.
 * Perfect support for glTF models.
