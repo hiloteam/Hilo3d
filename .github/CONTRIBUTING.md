@@ -4,22 +4,25 @@ We appreciate you submit code to help perfect Hilo. And there are conventions to
 * Send pull request to the ```dev``` branch
 * Only accepted committing source code(but not build code)
 * Run ```gulp test```, make sure all tests passed
-* Format of the commit message
+* Format of the commit message (Following [the Anguler rules](https://github.com/angular/angular/blob/22b96b9/CONTRIBUTING.md#type))
 
     ```
     <type>: <subject>
     ```
 
-    Seven types are allowed when committing.
-    This describes the kind of change that this commit is providing.
+    ### Type
+    Must be one of the following:
 
-    + feat (feature)
-    + fix (bug fix)
-    + docs (documentation)
-    + style (formatting, missing semi colons, …)
-    + refactor
-    + test (when adding missing tests)
-    + chore (maintain)
+    * **build**: Changes that affect the build system or external dependencies (example scopes: gulp, broccoli, npm)
+    * **ci**: Changes to our CI configuration files and scripts (example scopes: Travis, Circle, BrowserStack, SauceLabs)
+    * **docs**: Documentation only changes
+    * **feat**: A new feature
+    * **fix**: A bug fix
+    * **perf**: A code change that improves performance
+    * **refactor**: A code change that neither fixes a bug nor adds a feature
+    * **style**: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)
+    * **test**: Adding missing tests or correcting existing tests
+
 
     etc:
 
