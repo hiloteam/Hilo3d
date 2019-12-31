@@ -1,4 +1,4 @@
-## 1.13.46 (2019-12-31)
+## [1.13.46](https://github.com/hiloteam/Hilo3d/compare/1.13.45...1.13.46) (2019-12-31)
 
 
 ### Performance Improvements
