@@ -11,7 +11,7 @@
     "debug": "webpack --watch --env.debug",
     "build": " webpack",
     "release": "tnpm update && webpack -p",
-    "doc": "jsdoc -c doc.conf.json",
+    "doc": "gulp readme && jsdoc -c doc.conf.json",
     "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s -r 0",
     "eslint-fix": "eslint --fix ./src",
     "seinjs-dev": "webpack --watch --env.development --seinjs",

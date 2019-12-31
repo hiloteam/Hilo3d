@@ -24,7 +24,7 @@ const testTask = () => {
 };
 
 const readmeTask = () => {
-    return src('./README.md')
+    return src(['./README.md', './README_ZH.md'])
         .pipe(replace(/Hilo3d\/[\d\.]+\/Hilo3d\.js/g, `Hilo3d/${pkg.version}/Hilo3d.js`))
         .pipe(dest('./'));
 };
