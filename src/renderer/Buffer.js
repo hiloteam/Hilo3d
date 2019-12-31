@@ -148,15 +148,18 @@ const Buffer = Class.create(/** @lends Buffer.prototype */ {
      * 上传部分数据
      * @param  {Number} byteOffset
      * @param  {TypedArray} data
+     * @param  {Boolean} [isBinding=false]
      * @return {Buffer} this
      */
-    bufferSubData(byteOffset, data) {
+    bufferSubData(byteOffset, data, isBinding = false) {
         const {
             gl,
             target
         } = this;
 
-        this.bind();
+        if (!isBinding) {
+            this.bind();
+        }
         gl.bufferSubData(target, byteOffset, data);
         return this;
     },
@@ -169,10 +172,10 @@ const Buffer = Class.create(/** @lends Buffer.prototype */ {
         if (!this.data || this.data.byteLength < geometryData.data.byteLength || geometryData._isAllDirty === true) {
             this.bufferData(geometryData.data);
         } else if (subDataList && subDataList.length) {
+            this.bind();
             subDataList.forEach((subData) => {
-                this.bufferSubData(subData.byteOffset, subData.data);
+                this.bufferSubData(subData.byteOffset, subData.data, true);
             });
-            geometryData.clearSubData();
         } else {
             this.bufferData(geometryData.data);
         }
