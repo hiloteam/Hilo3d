@@ -12,7 +12,13 @@
     <script src="./js/stats.js"></script>
     <script src="./js/OrbitControls.js"></script>
     <script src="./js/init.js"></script>
-    <script>        
+    <script>  
+        var material = new Hilo3d.BasicMaterial({ 
+            diffuse:new Hilo3d.LazyTexture({
+                src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
+            })
+        });
+
         var verticesData = new Float32Array([
             0.5,-0.5,0.5,0.5,-0.5,-0.5,0.1,0.5,-0.1,0.1,0.5,0.1,-0.5,-0.5,-0.5,-0.5,-0.5,0.5,-0.1,0.5,0.1,-0.1,0.5,-0.1,-0.1,0.5,0.1,0.1,0.5,0.1,0.1,0.5,-0.1,-0.1,0.5,-0.1,-0.5,-0.5,-0.5,0.5,-0.5,-0.5,0.5,-0.5,0.5,-0.5,-0.5,0.5,-0.5,-0.5,0.5,0.5,-0.5,0.5,0.1,0.5,0.1,-0.1,0.5,0.1,0.5,-0.5,-0.5,-0.5,-0.5,-0.5,-0.1,0.5,-0.1,0.1,0.5,-0.1
         ]);
@@ -29,23 +35,53 @@
             indices:new Hilo3d.GeometryData(indicesData, 2)
         });
 
-        var material = new Hilo3d.BasicMaterial({ 
-            diffuse:new Hilo3d.LazyTexture({
-                src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
-            })
+        //  Interleaved Geometry
+        var interleavedData = new Float32Array(120);
+        for(var i = 0;i < 24;i ++) {
+            interleavedData[i*5] = verticesData[i*3];
+            interleavedData[i*5+1] = verticesData[i*3+1];
+            interleavedData[i*5+2] = verticesData[i*3+2];
+            interleavedData[i*5+3] = uvsData[i*2];
+            interleavedData[i*5+4] = uvsData[i*2+1];
+        }
+
+        var interleavedDataID = Hilo3d.math.generateUUID('bufferViewId');
+        var interleavedGeometry = new Hilo3d.Geometry({
+            vertices:new Hilo3d.GeometryData(interleavedData, 3, {
+                stride: 20,
+                bufferViewId:interleavedDataID
+            }),
+            uvs:new Hilo3d.GeometryData(interleavedData, 2, {
+                stride: 20,
+                offset: 12,
+                bufferViewId:interleavedDataID
+            }),
+            indices:new Hilo3d.GeometryData(indicesData, 2)
         });
 
         var mesh = new Hilo3d.Mesh({
+            x:-0.5,
             geometry: geometry,
             material: material,
-            rotationX:500,
-            rotationY:560,
+            rotationX:-180,
+            rotationY:180,
             onUpdate:function(){
-                this.rotationX += 0.1;
-                this.rotationY += 0.1;
+                this.rotationX += 0.5;
+                this.rotationY += 0.5;
             }
-        });
+        }).setScale(0.8);
         stage.addChild(mesh);
+
+        var interleavedMesh = new Hilo3d.Mesh({
+            x:0.5,
+            geometry: interleavedGeometry,
+            material: material,
+            onUpdate:function(){
+                this.rotationX -= 0.5;
+                this.rotationY -= 0.5;
+            }
+        }).setScale(0.8);
+        stage.addChild(interleavedMesh);
     </script>
 </body>
 </html>
