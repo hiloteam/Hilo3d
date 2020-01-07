@@ -129,6 +129,12 @@ const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
                 log.warn(`LazyTexture Failed ${err}`);
             }
         });
+    },
+    _releaseImage() {
+        if (this._src && typeof this._src !== 'string') {
+            this._src = '';
+        }
+        LazyTexture.superclass._releaseImage.call(this);
     }
 });
 
