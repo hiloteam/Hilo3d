@@ -1,3 +1,7 @@
-docs
-examples
+/docs/
+/examples/
+!/examples/js/
+/logs/
+/reports/
+/test/
 gulpfile.js
