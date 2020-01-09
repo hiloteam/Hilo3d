@@ -332,7 +332,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         if (imgData && /^image\/(.*)$/.test(imgData.mimeType)) {
             type = RegExp.$1;
         }
-        if (!['ktx'].includes(type)) {
+        if (['ktx'].indexOf(type) < 0) {
             // clear type if type is not valid
             type = '';
         }
