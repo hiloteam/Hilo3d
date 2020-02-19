@@ -17,7 +17,7 @@
             diffuse : new Hilo3d.Color(1, 0, 0),
             lightType:'NONE'
         });
-        var geometry = new Hilo3d.Geometry({ mode: 1 });
+        var geometry = new Hilo3d.Geometry({ mode: Hilo3d.constants.LINES });
         geometry.addPoints([0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]);
         geometry.addIndices(0, 1, 0, 2, 0, 3);
         
