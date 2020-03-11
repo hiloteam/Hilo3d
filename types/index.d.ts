@@ -4517,6 +4517,7 @@ declare namespace hilo3d {
      */
     constructor();
 
+    isGeometryData: boolean;
     /**
      * 
      * @param data 数据
@@ -8612,6 +8613,10 @@ declare namespace hilo3d {
      */
     constructor(params: IBasicMaterial);
 
+    /**
+     * 名字。
+     */
+    name: string;
     isBasicMaterial: boolean;
 
     isMaterial: boolean;
@@ -8646,6 +8651,10 @@ declare namespace hilo3d {
     constructor(params: Object);
 
     isGeometryMaterial: boolean;
+    /**
+     * 名字。
+     */
+    name: string;
 
     className: string;
 
@@ -8921,6 +8930,11 @@ declare namespace hilo3d {
      */
     constructor(params: IMaterial);
 
+    /**
+     * 名字。
+     */
+    name: string;
+
     isMaterial: boolean;
 
     className: string;
@@ -9054,6 +9068,11 @@ declare namespace hilo3d {
      */
     constructor(params: IPBRMaterial);
 
+    /**
+     * 名字。
+     */
+    name: string;
+
     isPBRMaterial: boolean;
 
     className: string;
@@ -9121,6 +9140,11 @@ declare namespace hilo3d {
     constructor(params: Object);
 
     isShaderMaterial: boolean;
+
+    /**
+     * 名字。
+     */
+    name: string;
 
     className: string;
 
@@ -9226,6 +9250,11 @@ declare namespace hilo3d {
      * 显示面，可选值 FRONT, BACK, FRONT_AND_BACK
      */
     side: GLenum;
+
+    /**
+     * 渲染顺序
+     */
+    renderOrder: number;
 
     /**
      * 是否开启颜色混合
@@ -9889,7 +9918,7 @@ declare namespace hilo3d {
      * @param y X component
      * @param z Z component
      */
-    set(x: number, y: number, z: number): Euler;
+    set(x: number, y: number, z: number, order?: string): Euler;
 
     /**
      * 从数组赋值
@@ -9934,6 +9963,9 @@ declare namespace hilo3d {
      */
     z: number;
 
+    degX: number;
+    degY: number;
+    degZ: number;
   }
 
   class Frustum {
