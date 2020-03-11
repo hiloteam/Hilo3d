@@ -15,7 +15,9 @@
     "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s -r",
     "eslint-fix": "eslint --fix ./src",
     "seinjs-dev": "webpack --watch --env.development --seinjs",
-    "seinjs-build": "webpack --env.development --seinjs"
+    "seinjs-build": "webpack --env.development --seinjs",
+    "preversion": "npm run build && npm test",
+    "version":"npm run release && npm run doc"
   },
   "repository": {
     "type": "git",

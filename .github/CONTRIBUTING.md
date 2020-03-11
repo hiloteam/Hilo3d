@@ -22,6 +22,7 @@ We appreciate you submit code to help perfect Hilo. And there are conventions to
     * **refactor**: A code change that neither fixes a bug nor adds a feature
     * **style**: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)
     * **test**: Adding missing tests or correcting existing tests
+    * **chore** maintain
 
 
     etc:
