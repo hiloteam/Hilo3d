@@ -17,7 +17,7 @@
     "seinjs-dev": "webpack --watch --env.development --seinjs",
     "seinjs-build": "webpack --env.development --seinjs",
     "preversion": "npm run build && npm test",
-    "version":"npm run release && npm run doc"
+    "version":"npm run release && npm run doc && git add -A"
   },
   "repository": {
     "type": "git",
