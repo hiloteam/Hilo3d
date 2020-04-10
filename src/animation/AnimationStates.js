@@ -6,6 +6,7 @@ import {
     isArrayLike,
     getIndexFromSortedArray
 } from '../utils/util';
+import log from '../utils/log';
 
 const tempQuat1 = new Quaternion();
 const tempQuat2 = new Quaternion();
@@ -124,7 +125,21 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
          */
         getType(name) {
             name = String(name).toUpperCase();
-            return AnimationStates.StateType[name];
+            return AnimationStates.StateType[name] || AnimationStates._extraStateHandlers.type[name];
+        },
+        _extraStateHandlers: {
+            type: {},
+            handler: {}
+        },
+        /**
+         * 注册属性处理器
+         * @memberOf AnimationStates
+         * @param {string} name 属性名
+         * @param {Function} handler 属性处理方法
+         */
+        registerStateHandler(name, handler) {
+            AnimationStates._extraStateHandlers.type[String(name).toUpperCase()] = name;
+            AnimationStates._extraStateHandlers.handler[name] = handler;
         }
     },
     /**
@@ -213,6 +228,10 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
         const time1 = this.keyTime[index1];
         const time2 = this.keyTime[index2];
         let state1 = this.getStateByIndex(index1);
+
+        if (this.interpolationType === 'STEP') {
+            return state1;
+        }
 
         if (index1 === index2) {
             let result = this.interpolation(state1);
@@ -330,7 +349,14 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
         if (!state) {
             return;
         }
-        this[`updateNode${type}`](node, state);
+        const fnName = 'updateNode' + type;
+        if (this[fnName]) {
+            this[fnName](node, state);
+        } else if (AnimationStates._extraStateHandlers.handler[type]) {
+            AnimationStates._extraStateHandlers.handler[type].call(this, node, state);
+        } else {
+            log.warnOnce(fnName, 'updateNodeState failed unknow type(%s)', type);
+        }
     },
     /**
      * clone
