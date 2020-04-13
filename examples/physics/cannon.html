@@ -14,43 +14,136 @@
     <script src="../js/init.js"></script>
     <script src="./lib/cannon.js"></script>
     <script>
-        var world, mass, body, shape, timeStep=1/60,
-         camera, scene, renderer, geometry, material, mesh;
-        initHilo();
-        initCannon();
+        var PhysicWorld = Hilo3d.Class.create({
+            world: null,
+            meshes: [],
+            /**
+             * @constructor
+             * @param  {Vector3} gravity
+             * @param  {Object} options
+             */
+            constructor: function(gravity, options) {
+                gravity = gravity || new Hilo3d.Vector3(0, -9.8, 0);
+                options = options || {};
 
-        function initCannon() {
-            world = new CANNON.World();
-            world.gravity.set(0,0,0);
-            world.broadphase = new CANNON.NaiveBroadphase();
-            world.solver.iterations = 10;
-            shape = new CANNON.Box(new CANNON.Vec3(1,1,1));
-            mass = 1;
-            body = new CANNON.Body({
-                mass: 1
-            });
-            body.addShape(shape);
-            body.angularVelocity.set(0,10,0);
-            body.angularDamping = 0.5;
-            world.addBody(body);
+                var world = this.world = new CANNON.World();
+                world.gravity.set(gravity.x, gravity.y, gravity.z);
+
+                world.solver.iterations = options.iterations || 10;
+                world.broadphase = options.broadphase || new CANNON.NaiveBroadphase();
+            },
+
+            bindMesh: function(mesh, bodyOptions) {
+                bodyOptions = bodyOptions || {};
+                var geometry = mesh.geometry;
+                var shape, body;
+                switch(geometry.className) {
+                    case 'BoxGeometry':
+                        shape = new CANNON.Box(new CANNON.Vec3(geometry.width/2, geometry.height/2, geometry.depth/2));
+                        body = new CANNON.Body({
+                            mass: bodyOptions.mass || 1,
+                            position: new CANNON.Vec3(mesh.x, mesh.y, mesh.z),
+                            quaternion: new CANNON.Quaternion(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w),
+                        });
+                        break;
+                    case 'SphereGeometry':
+                        shape = new CANNON.Sphere(geometry.radius);
+                        body = new CANNON.Body({
+                            mass: bodyOptions.mass || 1,
+                            position: new CANNON.Vec3(mesh.x, mesh.y, mesh.z),
+                            quaternion: new CANNON.Quaternion(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w),
+                        });
+                        break;
+                    default:
+                        console.warn('Not Support Geometry Type', geometry);
+                        return false;
+                }
+
+                body.addShape(shape);
+                this.world.addBody(body);
+
+                mesh._physicBody = body;
+                this.meshes.push(mesh);
+            },
+
+            unbindMesh: function() {
+                var body = mesh._physicBody;
+                if (body) {
+                    this.world.removeBody(body);
+                    mesh._physicBody = null;
+                }
+
+                var index = this.meshes.indexOf(mesh);
+                if (index > -1) {
+                    this.meshes.splice(index, 1);
+                }
+            },
+
+            createGround: function(isShowGround) {
+                groundBody = new CANNON.Body();
+                var groundShape = new CANNON.Plane();
+                groundBody.addShape(groundShape);
+                groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI/2);
+                this.world.addBody(groundBody);
+            },
+
+            tick(dt) {
+                this.world.step(1/60, dt/1000);
+                this.meshes.forEach(function(mesh){
+                    var body = mesh._physicBody;
+                    mesh.position.set(body.position.x, body.position.y, body.position.z);
+                    mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+                });
+            }
+        });
+
+        function random(min, max){
+            return Math.random() * (max - min) + min;
         }
 
-        function initHilo() {
-            camera.z = 5;
-            geometry = new Hilo3d.BoxGeometry( 2, 2, 2 );
-            material = new Hilo3d.BasicMaterial( { diffuse: new Hilo3d.Color(1, 0, 0), wireframe: true } );
-            mesh = new Hilo3d.Mesh( {
-                geometry:geometry,
-                material:material
-            } );
-            stage.addChild(mesh);
+        function initPhysicWorld() {
+            stage.rotation.degX = 20;
+            ambientLight.enabled = false;
+            directionLight.amount = 10;
+            directionLight.direction = new Hilo3d.Vector3(0, -1, -1);
+
+            var world = new PhysicWorld(new Hilo3d.Vector3(0, -5, 0));
+            world.createGround();
+            stage.addChild(new Hilo3d.AxisNetHelper({
+                size: 10
+            }).setScale(10));
+            ticker.addTick(world);
+
+            var num = 50;
+            while(num --) {
+                ticker.timeout(function() {
+                    var geometry = Math.random() > 0.5?
+                        new Hilo3d.BoxGeometry({
+                            width: random(0.1, 0.2),
+                            height: random(0.1, 0.2),
+                            depth: random(0.1, 0.2),
+                        }):
+                        new Hilo3d.SphereGeometry({
+                            radius: random(0.05, 0.1)
+                        });
+
+                    var mesh = new Hilo3d.Mesh({
+                        y: 1,
+                        rotationX: Math.random() * 360,
+                        rotationZ: Math.random() * 360,
+                        geometry: geometry,
+                        material: new Hilo3d.PBRMaterial({
+                            baseColor: new Hilo3d.Color(1, 0, 0)
+                        })
+                    });
+                    stage.addChild(mesh);
+                    world.bindMesh(mesh);
+                }, num * 500);
+            }
         }
-     
-        stage.onUpdate = function(dt){
-            world.step(1/60, dt/1000);
-            mesh.setPosition(body.position.x, body.position.y, body.position.z);
-            mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
-        };
+
+        initPhysicWorld();
+
     </script>
 </body>
 </html>
