@@ -45,6 +45,11 @@ describe('GeometryData', () => {
         testData.set(1, new Hilo3d.Vector3(10, 12, 14));
     });
 
+    it('getCopy', () => {
+        testData.getCopy(1).elements.should.deepEqual(new Float32Array([10, 12, 14]));
+        testData.getCopy(1).should.not.equal(testData.getCopy(1));
+    });
+
     it('getByOffset & setByOffset', () => {
         testData.getByOffset(5).elements.should.deepEqual(new Float32Array([10, 12, 14]));
         testData.setByOffset(3, new Hilo3d.Vector3(55, 66, 77));

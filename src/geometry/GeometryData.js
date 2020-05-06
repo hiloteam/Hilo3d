@@ -266,7 +266,8 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
         return index * strideSize + this.offsetSize;
     },
     /**
-     * 获取值
+     * Get the value by index.
+     * Please note that it will return the same reference for performance reasons. If you want to get a copy, use #getCopy instead.
      * @param  {Number} index
      * @return {Number|Vector2|Vector3|Vector4}
      */
@@ -274,6 +275,17 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
         const offset = this.getOffset(index);
         return this.getByOffset(offset);
     },
+
+    /**
+     * Get the value by index.
+     * It will return a copy of value.
+     * @param  {Number} index
+     * @return {Number|Vector2|Vector3|Vector4}
+     */
+    getCopy(index) {
+        return this.get(index).clone();
+    },
+
     /**
      * 设置值
      * @param {Number} index
