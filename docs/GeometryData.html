@@ -630,6 +630,8 @@
             
                 <li  data-name="AnimationStates.getType"><a href="AnimationStates.html#.getType">getType</a></li>
             
+                <li  data-name="AnimationStates.registerStateHandler"><a href="AnimationStates.html#.registerStateHandler">registerStateHandler</a></li>
+            
                 <li  data-name="AnimationStates#findIndexByTime"><a href="AnimationStates.html#findIndexByTime">findIndexByTime</a></li>
             
                 <li  data-name="AnimationStates#getState"><a href="AnimationStates.html#getState">getState</a></li>
@@ -2297,6 +2299,8 @@
                 <li  data-name="GeometryData#getOffset"><a href="GeometryData.html#getOffset">getOffset</a></li>
             
                 <li  data-name="GeometryData#get"><a href="GeometryData.html#get">get</a></li>
+            
+                <li  data-name="GeometryData#getCopy"><a href="GeometryData.html#getCopy">getCopy</a></li>
             
                 <li  data-name="GeometryData#set"><a href="GeometryData.html#set">set</a></li>
             
@@ -8949,7 +8953,7 @@
         
             
             <div class="tag-source">
-                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line273">line 273</a>
+                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line274">line 274</a>
             </div>
             
         </div>
@@ -8958,7 +8962,162 @@
         
         
         <div class="description">
-            <p>获取值</p>
+            <p>Get the value by index.
+Please note that it will return the same reference for performance reasons. If you want to get a copy, use #getCopy instead.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>index</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Number
+                         | 
+                    
+                        <a href="Vector2.html">Vector2</a>
+                         | 
+                    
+                        <a href="Vector3.html">Vector3</a>
+                         | 
+                    
+                        <a href="Vector4.html">Vector4</a>
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="getCopy">
+                
+                getCopy<span class="signature">(index)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Number|<a href="Vector2.html">Vector2</a>|<a href="Vector3.html">Vector3</a>|<a href="Vector4.html">Vector4</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line285">line 285</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Get the value by index.
+It will return a copy of value.</p>
         </div>
         
 
@@ -9102,7 +9261,7 @@
         
             
             <div class="tag-source">
-                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line282">line 282</a>
+                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line294">line 294</a>
             </div>
             
         </div>
@@ -9249,7 +9408,7 @@
         
             
             <div class="tag-source">
-                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line292">line 292</a>
+                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line304">line 304</a>
             </div>
             
         </div>
@@ -9402,7 +9561,7 @@
         
             
             <div class="tag-source">
-                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line306">line 306</a>
+                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line318">line 318</a>
             </div>
             
         </div>
@@ -9549,7 +9708,7 @@
         
             
             <div class="tag-source">
-                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line321">line 321</a>
+                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line333">line 333</a>
             </div>
             
         </div>
@@ -9693,7 +9852,7 @@
         
             
             <div class="tag-source">
-                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line338">line 338</a>
+                <a href="geometry_GeometryData.js.html">geometry/GeometryData.js</a>, <a href="geometry_GeometryData.js.html#line350">line 350</a>
             </div>
             
         </div>
@@ -9842,7 +10001,7 @@
         
 
         <footer>
-            Documentation generated by <a target="_blank" href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a>
+            Documentation generated by <a target="_blank" href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.4</a>
         </footer>
     </div>
 </div>
