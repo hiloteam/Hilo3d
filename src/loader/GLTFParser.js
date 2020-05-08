@@ -1143,7 +1143,6 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             needCallChildUpdate: false
         });
 
-        this.parseSkins();
         this.parseCameras();
 
         const scene = this.json.scenes[this.getDefaultSceneName()];
@@ -1160,13 +1159,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         const nodes = scene.nodes;
+        this.parseSkins();
         nodes.forEach(node => this.parseNode(node, this.node));
-
-        this.skins.forEach((skeleton) => {
-            skeleton.jointNodeList = skeleton._jointsNodeIndex.map((nodeIndex) => {
-                return this.jointMap[nodeIndex];
-            });
-        });
+        this.node.resetSkinedMeshRootNode();
 
         const model = {
             node: this.node,
@@ -1221,7 +1216,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                     const inverseBindMatrice = new Matrix4().fromArray(inverseBindMatrices[i]);
                     skeleton.inverseBindMatrices.push(inverseBindMatrice);
                 }
-                skeleton._jointsNodeIndex = skin.joints;
+                skeleton.jointNames = skin.joints;
                 return skeleton;
             });
         }

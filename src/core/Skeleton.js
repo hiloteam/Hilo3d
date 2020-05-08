@@ -25,6 +25,11 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
     jointNodeList: [],
     /**
      * @default []
+     * @type {Array}
+     */
+    jointNames: [],
+    /**
+     * @default []
      * @type {Matrix4[]}
      */
     inverseBindMatrices: [],
@@ -44,6 +49,7 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
 
     /**
      * 关节数量
+     * @readOnly
      * @type {Number}
      */
     jointCount: {
@@ -52,11 +58,59 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
         }
     },
 
+    /**
+     * @private
+     * @type {Node}
+     */
+    _rootNode: null,
+    /**
+     * 设置根节点
+     * @type {Node}
+     */
+    rootNode: {
+        get() {
+            return this._rootNode;
+        },
+        set(rootNode) {
+            this._rootNode = rootNode;
+            this._initJointNodeList();
+        }
+    },
+
+    /**
+     * @private
+     */
+    _initJointNodeList() {
+        const map = {};
+        this.rootNode.traverse((node) => {
+            map[node.jointName] = node;
+        });
+
+        this.jointNodeList = this.jointNames.map((name) => {
+            return map[name];
+        });
+    },
+
+    /**
+     * clone
+     * @return {Skeleton}
+     */
     clone() {
         const skeleton = new Skeleton();
-        skeleton.inverseBindMatrices = this.inverseBindMatrices;
-        skeleton.jointNodeList = this.jointNodeList;
+        skeleton.copy(this);
         return skeleton;
+    },
+
+    /**
+     * copy
+     * @param  {Skeleton} skeleton
+     * @return {Skeleton} this
+     */
+    copy(skeleton) {
+        this.inverseBindMatrices = skeleton.inverseBindMatrices;
+        this.jointNames = skeleton.jointNames;
+        this.rootNode = skeleton.rootNode;
+        return this;
     }
 });
 
