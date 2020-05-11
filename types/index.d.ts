@@ -3201,7 +3201,7 @@ declare namespace hilo3d {
      * @type {Number}
      */
     jointCount: number;
-    clone(): Skeleton;
+    clone(rootNode?: Node): Skeleton;
   }
 
   class Stage {

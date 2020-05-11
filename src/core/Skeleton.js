@@ -73,7 +73,9 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
         },
         set(rootNode) {
             this._rootNode = rootNode;
-            this._initJointNodeList();
+            if (rootNode) {
+                this._initJointNodeList();
+            }
         }
     },
 
@@ -93,23 +95,28 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
 
     /**
      * clone
+     * @param {Node} [rootNode]
      * @return {Skeleton}
      */
-    clone() {
+    clone(rootNode) {
         const skeleton = new Skeleton();
-        skeleton.copy(this);
+        skeleton.copy(this, rootNode);
         return skeleton;
     },
 
     /**
      * copy
      * @param  {Skeleton} skeleton
+     * @param {Node} [rootNode]
      * @return {Skeleton} this
      */
-    copy(skeleton) {
+    copy(skeleton, rootNode) {
         this.inverseBindMatrices = skeleton.inverseBindMatrices;
         this.jointNames = skeleton.jointNames;
-        this.rootNode = skeleton.rootNode;
+        if (rootNode === undefined) {
+            rootNode = skeleton.rootNode;
+        }
+        this.rootNode = rootNode;
         return this;
     }
 });
