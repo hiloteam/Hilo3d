@@ -19,21 +19,6 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
      */
     className: 'Skeleton',
     /**
-     * @default []
-     * @type {Node[]}
-     */
-    jointNodeList: [],
-    /**
-     * @default []
-     * @type {Array}
-     */
-    jointNames: [],
-    /**
-     * @default []
-     * @type {Matrix4[]}
-     */
-    inverseBindMatrices: [],
-    /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
@@ -44,6 +29,22 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
          * @type {String}
          */
         this.id = math.generateUUID(this.className);
+
+        /**
+         * @default []
+         * @type {Node[]}
+         */
+        this.jointNodeList = [],
+        /**
+         * @default []
+         * @type {Array}
+         */
+        this.jointNames = [],
+        /**
+         * @default []
+         * @type {Matrix4[]}
+         */
+        this.inverseBindMatrices = [],
         Object.assign(this, params);
     },
 
