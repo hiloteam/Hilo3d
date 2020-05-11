@@ -34,17 +34,17 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
          * @default []
          * @type {Node[]}
          */
-        this.jointNodeList = [],
+        this.jointNodeList = [];
         /**
          * @default []
          * @type {Array}
          */
-        this.jointNames = [],
+        this.jointNames = [];
         /**
          * @default []
          * @type {Matrix4[]}
          */
-        this.inverseBindMatrices = [],
+        this.inverseBindMatrices = [];
         Object.assign(this, params);
     },
 
