@@ -1,5 +1,6 @@
 import Class from '../core/Class';
 import Node from '../core/Node';
+import Skeleton from '../core/Skeleton';
 import BasicMaterial from '../material/BasicMaterial';
 import PBRMaterial from '../material/PBRMaterial';
 import Geometry from '../geometry/Geometry';
@@ -913,24 +914,12 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
         return geometry;
     },
-    handlerSkinedMesh(mesh, skin) {
-        if (!skin) {
+    handlerSkinedMesh(mesh, skeleton) {
+        if (!skeleton) {
             return;
         }
-        const jointCount = (skin.jointNames || skin.joints).length;
-        let bindShapeMatrix;
-        if (skin.bindShapeMatrix) {
-            bindShapeMatrix = new Matrix4().fromArray(skin.bindShapeMatrix);
-        }
-        const inverseBindMatrices = this.getArrayByAccessor(skin.inverseBindMatrices, true);
-        for (let i = 0; i < jointCount; i++) {
-            const inverseBindMatrice = new Matrix4().fromArray(inverseBindMatrices[i]);
-            if (bindShapeMatrix) {
-                inverseBindMatrice.multiply(bindShapeMatrix);
-            }
-            mesh.inverseBindMatrices.push(inverseBindMatrice);
-        }
-        mesh.jointNames = skin.jointNames || skin.joints;
+
+        mesh.skeleton = skeleton;
         if (this.useInstanced) {
             mesh.useInstanced = true;
         }
@@ -970,7 +959,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         let meshData = this.json.meshes[meshName];
         meshData.primitives.forEach((primitive) => {
             let mesh;
-            const skin = this.json.skins && this.json.skins[nodeData.skin];
+            const skin = this.skins && this.skins[nodeData.skin];
             if (primitive.meshNode) {
                 mesh = primitive.meshNode.clone();
             } else {
@@ -1170,8 +1159,8 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         const nodes = scene.nodes;
+        this.parseSkins();
         nodes.forEach(node => this.parseNode(node, this.node));
-
         this.node.resetSkinedMeshRootNode();
 
         const model = {
@@ -1213,6 +1202,24 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         return null;
+    },
+    parseSkins() {
+        this.skins = [];
+        const skins = this.json.skins;
+        if (skins && skins.length) {
+            this.skins = skins.map((skin) => {
+                const skeleton = new Skeleton();
+                const jointCount = skin.joints.length;
+
+                const inverseBindMatrices = this.getArrayByAccessor(skin.inverseBindMatrices, true);
+                for (let i = 0; i < jointCount; i++) {
+                    const inverseBindMatrice = new Matrix4().fromArray(inverseBindMatrices[i]);
+                    skeleton.inverseBindMatrices.push(inverseBindMatrice);
+                }
+                skeleton.jointNames = skin.joints;
+                return skeleton;
+            });
+        }
     }
 });
 

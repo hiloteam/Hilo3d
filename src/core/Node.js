@@ -234,8 +234,8 @@ const Node = Class.create(/** @lends Node.prototype */ {
      */
     resetSkinedMeshRootNode() {
         this.traverse((mesh) => {
-            if (mesh.isSkinedMesh && mesh.jointNames) {
-                mesh.rootNode = this;
+            if (mesh.isSkinedMesh && mesh.skeleton) {
+                mesh.skeleton.rootNode = this;
             }
         }, true);
     },

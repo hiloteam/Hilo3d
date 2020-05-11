@@ -156,7 +156,7 @@ const Shader = Class.create(/** @lends Shader.prototype */ {
         getHeaderKey(mesh, material, lightManager, fog, useLogDepth) {
             let headerKey = 'header_' + material.id + '_' + lightManager.lightInfo.uid;
             if (mesh.isSkinedMesh) {
-                headerKey += '_joint' + mesh.jointNames.length;
+                headerKey += '_joint' + mesh.skeleton.jointCount;
             }
             if (fog) {
                 headerKey += '_fog_' + fog.mode;

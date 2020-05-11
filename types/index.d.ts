@@ -2837,9 +2837,9 @@ declare namespace hilo3d {
     rootNode: Node;
 
     /**
-     * 骨骼节点数组
+     * 对应的骨架。
      */
-    jointNodeList: Node[];
+    skeleton: Skeleton;
 
     /**
      * 是否支持 Instanced
@@ -2850,16 +2850,6 @@ declare namespace hilo3d {
      * 骨骼矩阵DataTexture
      */
     jointMatTexture: DataTexture;
-
-    /**
-     * 当前骨骼Mesh关联的骨骼名字列表
-     */
-    jointNames: string[];
-
-    /**
-     * 当前骨骼Mesh的 inverseBindMatrices
-     */
-    inverseBindMatrices: any;
 
     /**
      * 获取每个骨骼对应的矩阵数组
@@ -3191,6 +3181,27 @@ declare namespace hilo3d {
      */
     getBounds(parent?: Node, currentMatrix?: Matrix4, bounds?: Bounds): Bounds;
 
+  }
+
+  /**
+   * 骨架
+   * @class
+   */
+  class Skeleton {
+    /**
+     * @constructs
+     * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     */
+    constructor(params: any);
+    isSkeleton: boolean;
+    jointNodeList: Node[];
+    inverseBindMatrices: Matrix4[];
+    /**
+     * 关节数量
+     * @type {Number}
+     */
+    jointCount: number;
+    clone(rootNode?: Node): Skeleton;
   }
 
   class Stage {
