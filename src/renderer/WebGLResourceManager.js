@@ -30,7 +30,7 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
      * @param {object} params 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
-        this.reset();
+        this._needDestroyResources = [];
         Object.assign(this, params);
     },
 
