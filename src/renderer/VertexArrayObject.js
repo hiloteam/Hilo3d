@@ -371,7 +371,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
      * @param {Object[]} [resources=[]]
      * @return {Object[]}
      */
-    getResource(resources = []) {
+    getResources(resources = []) {
         this.attributes.forEach((attributeObject) => {
             resources.push(attributeObject.buffer);
         });
