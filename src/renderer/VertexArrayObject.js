@@ -365,22 +365,22 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
             attributeObject.useInstanced = true;
         });
     },
+
     /**
-     * 使用了资源
-     * @param  {WebGLResourceManager} resourceManager
-     * @param  {Mesh} mesh
-     * @return {VertexArrayObject}
+     * 获取资源
+     * @param {Object[]} [resources=[]]
+     * @return {Object[]}
      */
-    useResource(resourceManager, mesh) {
+    getResources(resources = []) {
         this.attributes.forEach((attributeObject) => {
-            resourceManager.useResource(attributeObject.buffer, mesh);
+            resources.push(attributeObject.buffer);
         });
 
         if (this.indexBuffer) {
-            resourceManager.useResource(this.indexBuffer, mesh);
+            resources.push(this.indexBuffer);
         }
 
-        return this;
+        return resources;
     },
     /**
      * 没有被引用时销毁资源
@@ -402,13 +402,17 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
             return this;
         }
 
+        this.instancedExtension = null;
+
         if (this.useVao) {
             this.vaoExtension.deleteVertexArrayOES(this.vao);
+            this.vao = null;
+            this.vaoExtension = null;
         }
         this.gl = null;
         this.indexBuffer = null;
         this.attributes.forEach((attributeObject) => {
-            const attribute = attributeObject;
+            const attribute = attributeObject.attribute || {};
             this[attribute.name] = null;
         });
         this.attributes = null;

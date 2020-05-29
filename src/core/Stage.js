@@ -357,6 +357,7 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
      * @return {Stage} this
      */
     destroy() {
+        Stage.superclass.destroy.call(this, this.renderer);
         this.releaseGLResource();
         this.traverse((child) => {
             child.off();

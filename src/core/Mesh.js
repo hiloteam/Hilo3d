@@ -58,9 +58,6 @@ const Mesh = Class.create(/** @lends Mesh.prototype */ {
      */
     constructor(params) {
         Mesh.superclass.constructor.call(this, params);
-
-        // store webgl resource
-        this._usedResourceDict = {};
     },
     /**
      * clone 当前mesh
@@ -108,9 +105,15 @@ const Mesh = Class.create(/** @lends Mesh.prototype */ {
         this.geometry.getRenderOption(opt);
         return opt;
     },
-    useResource(res) {
-        if (res) {
-            this._usedResourceDict[res.className + ':' + res.id] = res;
+
+    /**
+     * 是否被销毁
+     * @readOnly
+     * @type {Boolean}
+     */
+    isDestroyed: {
+        get() {
+            return this._isDestroyed;
         }
     },
 
@@ -128,18 +131,13 @@ const Mesh = Class.create(/** @lends Mesh.prototype */ {
         this.removeFromParent();
 
         const resourceManager = renderer.resourceManager;
-        const _usedResourceDict = this._usedResourceDict;
-
-        for (let id in _usedResourceDict) {
-            resourceManager.destroyIfNoRef(_usedResourceDict[id]);
-        }
+        resourceManager.destroyMesh(this);
 
         if (this.material && needDestroyTextures) {
             this.material.destroyTextures();
         }
 
         this.off();
-        this._usedResourceDict = null;
         this.geometry = null;
         this.material = null;
         this._isDestroyed = true;
