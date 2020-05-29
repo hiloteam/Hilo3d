@@ -1,10 +1,14 @@
 import Class from '../core/Class';
+import EventMixin from '../core/EventMixin';
 
 /**
  * WebGLResourceManager 资源管理器
+ * @mixes EventMixin
+ * @fires destroyResource 销毁资源
  * @class
  */
 const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.prototype */{
+    Mixes: EventMixin,
     /**
      * 类名
      * @type {String}
@@ -24,6 +28,7 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
      * @default false
      */
     hasNeedDestroyResource: false,
+
 
     /**
      * @constructs
@@ -55,6 +60,8 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
         if (mesh._program) {
             resources.push(mesh._program);
         }
+
+        return resources;
     },
 
     /**
@@ -92,15 +99,16 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
      */
     destroyUnsuedResource(stage) {
         const needDestroyResources = this._needDestroyResources;
-        if (!needDestroyResources.length < 0) {
+        if (needDestroyResources.length === 0) {
             return this;
         }
 
         const usedResources = this.getUsedResources(stage);
 
         needDestroyResources.forEach((resource) => {
-            if (usedResources.indexOf(resource) === 0) {
+            if (usedResources.indexOf(resource) < 0) {
                 if (resource && resource.destroy && !resource.alwaysUse) {
+                    this.fire('destroyResource', resource.id);
                     resource.destroy();
                 }
             }

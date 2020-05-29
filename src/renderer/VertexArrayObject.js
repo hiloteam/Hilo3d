@@ -402,13 +402,17 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
             return this;
         }
 
+        this.instancedExtension = null;
+
         if (this.useVao) {
             this.vaoExtension.deleteVertexArrayOES(this.vao);
+            this.vao = null;
+            this.vaoExtension = null;
         }
         this.gl = null;
         this.indexBuffer = null;
         this.attributes.forEach((attributeObject) => {
-            const attribute = attributeObject;
+            const attribute = attributeObject.attribute || {};
             this[attribute.name] = null;
         });
         this.attributes = null;

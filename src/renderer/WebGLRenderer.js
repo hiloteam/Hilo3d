@@ -696,7 +696,6 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         lightManager.reset();
         renderInfo.reset();
         renderList.reset();
-        resourceManager.reset();
 
         semantic.init(this, state, camera, lightManager, this.fog);
         stage.updateMatrixWorld();
