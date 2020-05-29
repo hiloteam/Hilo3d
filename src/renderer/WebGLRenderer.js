@@ -631,8 +631,8 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         const lightManager = this.lightManager;
         const geometry = mesh.geometry;
         const material = this.forceMaterial || mesh.material;
-        const shader = Shader.getShader(mesh, material, useInstanced, lightManager, this.fog, this.useLogDepth);
-        const program = Program.getProgram(shader, state);
+        const shader = mesh._shader = mesh._shader || Shader.getShader(mesh, material, useInstanced, lightManager, this.fog, this.useLogDepth);
+        const program = mesh._program = mesh._program || Program.getProgram(shader, state);
 
         program.useProgram();
         this.setupMaterial(program, mesh, useInstanced, this._lastProgram !== program);
@@ -643,17 +643,13 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         }
 
         const vaoId = geometry.id + program.id;
-        const vao = VertexArrayObject.getVao(gl, vaoId, {
+        const vao = mesh._vao = mesh._vao || VertexArrayObject.getVao(gl, vaoId, {
             useInstanced,
             useVao: this.useVao,
             mode: geometry.mode
         });
 
         this.setupVao(vao, program, mesh);
-
-        mesh._vao = vao;
-        mesh._shader = shader;
-        mesh._program = program;
 
         return {
             vao,
