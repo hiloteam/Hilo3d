@@ -321,7 +321,11 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
                 onInit(attributeObject);
             }
         } else if (geometryData.isDirty) {
-            attributeObject.buffer.uploadGeometryData(geometryData);
+            const buffer = attributeObject.buffer;
+            buffer.bind();
+            attribute.enable();
+            attribute.pointer(geometryData);
+            buffer.uploadGeometryData(geometryData);
         }
 
         return attributeObject;
