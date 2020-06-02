@@ -325,7 +325,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
             buffer.bind();
             attribute.enable();
             attribute.pointer(geometryData);
-            attributeObject.buffer.uploadGeometryData(geometryData);
+            buffer.uploadGeometryData(geometryData);
         }
 
         return attributeObject;
