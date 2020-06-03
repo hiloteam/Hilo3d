@@ -73,8 +73,9 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
 
                 if (p0.hermite) {
                     p0.hermite(p0, m0.scale(tr), p1, m1.scale(tr), t);
-                } else if (p0.sqlerp) {
-                    p0.sqlerp(p0, m0.scale(tr), p1, m1.scale(tr), t);
+                } else if (p0.isQuaternion) {
+                    p0.fromArray(this._cubicSpline(p0.elements, m0.elements, p1.elements, m1.elements, tr, t), 0, true);
+                    p0.normalize(true);
                 } else {
                     if (!isArrayLike(p0)) {
                         p0 = [p0];
@@ -82,22 +83,28 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
                         p1 = [p1];
                         m1 = [m1];
                     }
-                    const t2 = t * t;
-                    const t3 = t2 * t;
 
-                    const x1 = 2 * t3 - 3 * t2 + 1;
-                    const x2 = t3 - 2 * t2 + t;
-                    const x3 = -2 * t3 + 3 * t2;
-                    const x4 = t3 - t2;
-
-                    tempArr.length = 0;
-                    for (let i = p0.length - 1; i >= 0; i--) {
-                        tempArr[i] = p0[i] * x1 + x2 * m0[i] * tr + p1[i] * x3 + x4 * m1[i] * tr;
-                    }
-                    p0 = tempArr;
+                    p0 = this._cubicSpline(p0, m0, p1, m1, tr, t);
                 }
 
                 return p0;
+            },
+
+            _cubicSpline(p0, m0, p1, m1, tr, t) {
+                const t2 = t * t;
+                const t3 = t2 * t;
+
+                const x1 = 2 * t3 - 3 * t2 + 1;
+                const x2 = t3 - 2 * t2 + t;
+                const x3 = -2 * t3 + 3 * t2;
+                const x4 = t3 - t2;
+
+                tempArr.length = 0;
+                for (let i = p0.length - 1; i >= 0; i--) {
+                    tempArr[i] = p0[i] * x1 + x2 * m0[i] * tr + p1[i] * x3 + x4 * m1[i] * tr;
+                }
+
+                return tempArr;
             }
         },
         /**
