@@ -9,6 +9,7 @@ export { default as Fog } from './core/Fog';
 export { default as Mesh } from './core/Mesh';
 export { default as Node } from './core/Node';
 export { default as SkinedMesh } from './core/SkinedMesh';
+export { default as Skeleton } from './core/Skeleton';
 export { default as Stage } from './core/Stage';
 export { default as Tween } from './core/Tween';
 export { default as version } from './core/version';
