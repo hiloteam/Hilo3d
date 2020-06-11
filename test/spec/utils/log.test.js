@@ -2,7 +2,7 @@ const log = Hilo3d.log;
 
 let logStub, warnStub, errorStub;
 
-describe.only('log', function() {
+describe('log', function() {
     beforeEach('init log', function() {
         logStub = sinon.stub();
         errorStub = sinon.stub();
