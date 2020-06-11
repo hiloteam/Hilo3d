@@ -1,0 +1,20 @@
+{
+    "tags": {
+        "allowUnknownTags": false
+    },
+    "source": {
+        "include":"src",
+        "includePattern": ".+\\.js(doc|x)?$",
+        "excludePattern": "(^|\\/|\\\\)_"
+    },
+
+    "plugins": [ "./node_modules/tsd-jsdoc/dist/plugin" ],
+   
+    "opts":{
+        "template":"./node_modules/tsd-jsdoc/dist",
+        "encoding":"utf8",
+        "destination":"types",
+        "outFile":"index.d.ts",
+        "recurse":true
+    }
+}

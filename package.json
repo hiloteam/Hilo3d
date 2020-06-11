@@ -12,6 +12,7 @@
     "build": " webpack",
     "release": "tnpm update && webpack -p",
     "doc": "gulp readme && jsdoc -c doc.conf.json",
+    "doc-tsd": "jsdoc -c tsd-doc.conf.json",
     "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s -r",
     "eslint-fix": "eslint --fix ./src",
     "seinjs-dev": "webpack --watch --env.development --seinjs",
@@ -61,6 +62,7 @@
     "should-sinon": "^0.0.6",
     "sinon": "^6.3.4",
     "string-replace-loader": "^2.1.1",
+    "tsd-jsdoc": "^2.5.0",
     "webpack": "^4.20.2",
     "webpack-cli": "^3.1.1",
     "wrapper-webpack-plugin": "^2.0.0"
