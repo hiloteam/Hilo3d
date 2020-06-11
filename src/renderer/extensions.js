@@ -25,7 +25,7 @@ const extensions = {
 
     /**
      * WEBGL_lose_context扩展
-     * @typeof {WebGLLoseContext}
+     * @type {WebGLLoseContext}
      */
     loseContext: undefined,
 
