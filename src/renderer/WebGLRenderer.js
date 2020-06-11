@@ -93,7 +93,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
     /**
      * dom元素
-     * @type {Canvas}
+     * @type {HTMLCanvasElement}
      * @default null
      */
     domElement: null,

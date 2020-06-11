@@ -115,7 +115,7 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
      * 生成canvas
      * @private
      * @param  {Object} params
-     * @return {Canvas}
+     * @return {HTMLCanvasElement}
      */
     createCanvas(params) {
         let canvas;

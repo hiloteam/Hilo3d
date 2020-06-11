@@ -38,10 +38,6 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
     height: 1024,
     maxBias: 0.05,
     minBias: 0.005,
-    /**
-     * 阴影摄像机信息
-     * @type {Object}
-     */
     cameraInfo: null,
     debug: false,
     constructor(params) {

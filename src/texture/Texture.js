@@ -36,6 +36,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
     Statics: {
         /**
          * 缓存
+         * @memberOf Texture
          * @readOnly
          * @type {Object}
          */
@@ -46,6 +47,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
         },
         /**
          * 重置
+         * @memberOf Texture
          * @param  {WebGLRenderingContext} gl
          */
         reset(gl) {
