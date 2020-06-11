@@ -1,10 +1,10 @@
-/* eslint prefer-spread: "off", prefer-rest-params:"off", no-console:"off" */
+/* eslint prefer-spread: "off", prefer-rest-params:"off" */
 
 const cache = {};
 const LEVEL_NONE = 0;
-const LEVEL_ERROR = 1;
+const LEVEL_LOG = 1;
 const LEVEL_WARN = 2;
-const LEVEL_LOG = 3;
+const LEVEL_ERROR = 4;
 
 /**
  * log
@@ -14,59 +14,85 @@ const log = {
     _cache: cache,
     /**
      * log级别
-     * @type {Enum}
+     * @example
+     * Hilo3d.log.level = Hilo3d.log.LEVEL_LOG | Hilo3d.log.LEVEL_ERROR
+     * @type {Number}
+     * @default LEVEL_LOG|LEVEL_WARN|LEVEL_ERROR
      */
-    level: LEVEL_LOG,
+    level: LEVEL_LOG | LEVEL_WARN | LEVEL_ERROR,
+
     /**
-     * 显示log, warn, error
-     */
-    LEVEL_LOG,
-    /**
-     * 显示warn, error
-     */
-    LEVEL_WARN,
-    /**
-     * 显示error
-     */
-    LEVEL_ERROR,
-    /**
-     * 不显示log, warn, error
+     * 不显示任何
+     * @readOnly
+     * @type {Number}
+     * @default 0
      */
     LEVEL_NONE,
+
+    /**
+     * 显示 log
+     * @readOnly
+     * @type {Number}
+     * @default 1
+     */
+    LEVEL_LOG,
+
+    /**
+     * 显示 warn
+     * @readOnly
+     * @type {Number}
+     * @default 2
+     */
+    LEVEL_WARN,
+
+    /**
+     * 显示 error
+     * @readOnly
+     * @type {Number}
+     * @default 4
+     */
+    LEVEL_ERROR,
+
     /**
      * log，等同 console.log
-     * @return {Object} this
+     * @return {log} this
      */
     log() {
-        if (this.level >= LEVEL_LOG) {
+        const console = this.console;
+        if (this.level & LEVEL_LOG) {
             console.log.apply(console, arguments);
         }
         return this;
     },
+
     /**
-     * log，等同 console.log
-     * @return {Object} this
+     * warn，等同 console.warn
+     * @return {log} this
      */
     warn() {
-        if (this.level >= LEVEL_WARN) {
+        const console = this.console;
+        if (this.level & LEVEL_WARN) {
             console.warn.apply(console, arguments);
         }
         return this;
     },
+
     /**
-     * error，等同 console.log
-     * @return {Object} this
+     * error，等同 console.error，等同
+     * @return {log} this
      */
     error() {
-        if (this.level >= LEVEL_ERROR) {
+        const console = this.console;
+        if (this.level & LEVEL_ERROR) {
             console.error.apply(console, arguments);
         }
         return this;
     },
+
     /**
      * logOnce 相同 id 只 log 一次
      * @param {String} id
-     * @return {Object} this
+     * @return {log} this
      */
     logOnce(id) {
         if (!cache['log_' + id]) {
@@ -75,10 +101,11 @@ const log = {
         }
         return this;
     },
+
     /**
      * warnOnce  相同 id 只 once 一次
      * @param {String} id
-     * @return {Object} this
+     * @return {log} this
      */
     warnOnce(id) {
         if (!cache['warn_' + id]) {
@@ -87,10 +114,11 @@ const log = {
         }
         return this;
     },
+
     /**
      * errorOnce 相同 id 只 error 一次
      * @param {String} id
-     * @return {Object} this
+     * @return {log} this
      */
     errorOnce(id) {
         if (!cache['error_' + id]) {
@@ -98,6 +126,17 @@ const log = {
             this.error.apply(this, Array.prototype.slice.call(arguments, 1));
         }
         return this;
+    },
+    _console: console,
+    /**
+     * @private
+     * @type {Object}
+     */
+    get console() {
+        return this._console;
+    },
+    set console(value) {
+        this._console = value;
     }
 };
 
