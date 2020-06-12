@@ -130,6 +130,7 @@ const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.
 });
 
 /**
+ * KTX 加载器
  * @class
  */
 const KTXLoader = Class.create(/** @lends KTXLoader.prototype */{

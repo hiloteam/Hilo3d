@@ -5,13 +5,13 @@
     "source": {
         "include":"src",
         "includePattern": ".+\\.js(doc|x)?$",
-        "excludePattern": "(^|\\/|\\\\)_"
+        "excludePattern": "(^|\\/|\\\\)_"    
     },
 
-    "plugins": [ "./node_modules/tsd-jsdoc/dist/plugin" ],
+    "plugins": [ "./node_modules/@hilo/tsd-jsdoc/dist/plugin" ],
    
     "opts":{
-        "template":"./node_modules/tsd-jsdoc/dist",
+        "template":"./node_modules/@hilo/tsd-jsdoc/dist",
         "encoding":"utf8",
         "destination":"types",
         "outFile":"index.d.ts",
