@@ -120,7 +120,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         },
         /**
          * 取消注册扩展接口
-         * @param  {Sting} extensionName 接口名称
+         * @param  {String} extensionName 接口名称
          */
         unregisterExtensionHandler(extensionName) {
             if (this.extensionHandlers[extensionName]) {

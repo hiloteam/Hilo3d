@@ -9,6 +9,8 @@ const LEVEL_ERROR = 4;
 /**
  * 向 Web 控制台输出一条消息，可以通过设置等级过滤输出的消息。
  * @namespace
+ * @type {Object}
+ * @name log
  * @example
  * Hilo3d.log.level = Hilo3d.log.LEVEL_LOG | Hilo3d.log.LEVEL_ERROR;
  * Hilo3d.log.error("ERROR!");

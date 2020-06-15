@@ -101,7 +101,7 @@ const CubeTexture = Class.create(/** @lends CubeTexture.prototype */{
     /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
-     * @param {Image[]} [params.image] 图片列表，共6张
+     * @param {HTMLImageElement[]} [params.image] 图片列表，共6张
      */
     constructor(params) {
         CubeTexture.superclass.constructor.call(this, params);
@@ -125,7 +125,7 @@ const CubeTexture = Class.create(/** @lends CubeTexture.prototype */{
     },
     /**
      * 右侧的图片
-     * @type {Image}
+     * @type {HTMLImageElement}
      */
     right: {
         get() {
@@ -137,7 +137,7 @@ const CubeTexture = Class.create(/** @lends CubeTexture.prototype */{
     },
     /**
      * 左侧的图片
-     * @type {Image}
+     * @type {HTMLImageElement}
      */
     left: {
         get() {
@@ -149,7 +149,7 @@ const CubeTexture = Class.create(/** @lends CubeTexture.prototype */{
     },
     /**
      * 顶部的图片
-     * @type {Image}
+     * @type {HTMLImageElement}
      */
     top: {
         get() {
@@ -161,7 +161,7 @@ const CubeTexture = Class.create(/** @lends CubeTexture.prototype */{
     },
     /**
      * 底部的图片
-     * @type {Image}
+     * @type {HTMLImageElement}
      */
     bottom: {
         get() {
@@ -173,7 +173,7 @@ const CubeTexture = Class.create(/** @lends CubeTexture.prototype */{
     },
     /**
      * 朝前的图片
-     * @type {Image}
+     * @type {HTMLImageElement}
      */
     front: {
         get() {
@@ -185,7 +185,7 @@ const CubeTexture = Class.create(/** @lends CubeTexture.prototype */{
     },
     /**
      * 朝后的图片
-     * @type {Image}
+     * @type {HTMLImageElement}
      */
     back: {
         get() {

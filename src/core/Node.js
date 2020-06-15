@@ -37,19 +37,19 @@ const Node = Class.create(/** @lends Node.prototype */ {
         /**
          * traverse callback 返回值，执行后不暂停 traverse
          * @memberOf Node
-         * @type {Enum}
+         * @type {any}
          */
         TRAVERSE_STOP_NONE,
         /**
          * traverse callback 返回值，执行后暂停子元素 traverse
          * @memberOf Node
-         * @type {Enum}
+         * @type {any}
          */
         TRAVERSE_STOP_CHILDREN,
         /**
          * traverse callback 返回值，执行后暂停所有 traverse
          * @memberOf Node
-         * @type {Enum}
+         * @type {any}
          */
         TRAVERSE_STOP_ALL
     },
@@ -139,7 +139,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
 
     /**
      * @constructs
-     * @param {object} params 初始化参数，所有params都会复制到实例上
+     * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
         /**
@@ -383,7 +383,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
     /**
      * _traverse
      * @private
-     * @param  {Function(Node)} callback
+     * @param  {NodeTraverseCallback} callback
      * @param  {Boolean}  onlyChild
      * @return {Enum}  TRAVERSE_STOP_ALL, TRAVERSE_STOP_CHILDREN, TRAVERSE_STOP_NONE
      */
@@ -407,7 +407,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
     },
     /**
      * 遍历当前元素的子孙元素
-     * @param {Function(Node)} callback 每个元素都会调用这个函数处理
+     * @param {NodeTraverseCallback} callback 每个元素都会调用这个函数处理
      * @param {Boolean} [onlyChild=false] 是否只遍历子元素
      * @return {Node} this
      */
@@ -417,7 +417,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
     },
     /**
      * 遍历当前元素的子孙元素(广度优先)
-     * @param {Function(Node)} callback 每个元素都会调用这个函数处理
+     * @param {NodeTraverseCallback} callback 每个元素都会调用这个函数处理
      * @param {Boolean} [onlyChild=false] 是否只遍历子元素
      * @return {Node} this
      */
@@ -447,7 +447,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
     },
     /**
      * 根据函数来获取一个子孙元素(广度优先)
-     * @param {Function} fn 判读函数
+     * @param {NodeGetChildByCallback} fn 判读函数
      * @return {Node|null} 返回获取到的子孙元素
      */
     getChildByFnBFS(fn) {
@@ -500,7 +500,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
     },
     /**
      * 根据函数来获取一个子孙元素
-     * @param {Function} fn 判读函数
+     * @param {NodeGetChildByCallback} fn 判读函数
      * @return {Node|null} 返回获取到的子孙元素
      */
     getChildByFn(fn) {
@@ -517,7 +517,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
     },
     /**
      * 根据函数来获取匹配的所有子孙元素
-     * @param {Function} fn 判读函数
+     * @param {NodeGetChildByCallback} fn 判读函数
      * @return {Node[]} 返回获取到的子孙元素
      */
     getChildrenByFn(fn) {
@@ -1044,4 +1044,19 @@ export default Node;
  * @typedef {object} raycastInfo
  * @property {Mesh} mesh 碰撞的 mesh
  * @property {Vector3} point 碰撞得点
+ */
+
+
+/**
+ * Node traverse 回调
+ * @callback NodeTraverseCallback
+ * @param {Node} node
+ * @return {any} Node.TRAVERSE_STOP_NONE | Node.TRAVERSE_STOP_CHILDREN | Node.TRAVERSE_STOP_ALL
+ */
+
+/**
+ * Node getChildByCallback 回调
+ * @callback NodeGetChildByCallback
+ * @param {Node} node
+ * @return {boolean}
  */

@@ -23,7 +23,7 @@ const Sphere = Class.create(/** @lends Sphere.prototype */{
     radius: 0,
     /**
      * @constructs
-     * @param {object} params 初始化参数，所有params都会复制到实例上
+     * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
         Object.assign(this, params);

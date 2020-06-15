@@ -327,7 +327,7 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
     },
     /**
      * 按 index 遍历
-     * @param  {Function} callback(attribute, index, offset)
+     * @param  {GeometryDataTraverseCallback} callback
      * @return {Boolean}
      */
     traverse(callback) {
@@ -344,7 +344,7 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
     },
     /**
      * 按 Component 遍历 Component
-     * @param  {Function} callback(data, offset)
+     * @param  {GeometryDataTraverseByComponentCallback} callback
      * @return {Boolean}
      */
     traverseByComponent(callback) {
@@ -394,3 +394,17 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
 });
 
 export default GeometryData;
+
+/**
+ * @callback GeometryDataTraverseCallback
+ * @param {Number|Vector2|Vector3|Vector4} attribute
+ * @param {Number} index
+ * @param {Number} offset
+ */
+
+/**
+ * @callback GeometryDataTraverseByComponentCallback
+ * @param {Number} component
+ * @param {Number} index
+ * @param {Number} offset
+ */

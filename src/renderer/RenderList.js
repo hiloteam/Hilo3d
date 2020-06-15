@@ -91,8 +91,8 @@ const RenderList = Class.create(/** @lends RenderList.prototype */ {
     },
     /**
      * 遍历列表执行回调
-     * @param  {RenderList~traverseCallback} callback callback(mesh)
-     * @param  {RenderList~instancedTraverseCallback} [instancedCallback=null] instancedCallback(instancedMeshes)
+     * @param  {RenderListTraverseCallback} callback callback(mesh)
+     * @param  {RenderListInstancedTraverseCallback} [instancedCallback=null] instancedCallback(instancedMeshes)
      */
     traverse(callback, instancedCallback) {
         this.opaqueList.forEach((mesh) => {
@@ -161,11 +161,11 @@ const RenderList = Class.create(/** @lends RenderList.prototype */ {
 export default RenderList;
 
 /**
- * @callback RenderList~traverseCallback
+ * @callback RenderListTraverseCallback
  * @param {Mesh} mesh
  */
 
 /**
- * @callback RenderList~instancedTraverseCallback
+ * @callback RenderListInstancedTraverseCallback
  * @param {Mesh[]} meshes
  */

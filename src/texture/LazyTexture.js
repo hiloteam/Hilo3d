@@ -78,9 +78,9 @@ const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
 
     /**
      * @constructs
-     * @param {object} params 初始化参数，所有params都会复制到实例上
+     * @param {object} [params] 初始化参数，所有params都会复制到实例上
      * @param {boolean} [params.crossOrigin=false] 是否跨域
-     * @param {Image} [params.placeHolder] 占位图片，默认为1像素的透明图片
+     * @param {HTMLImageElement} [params.placeHolder] 占位图片，默认为1像素的透明图片
      * @param {boolean} [params.autoLoad=true] 是否自动加载
      * @param {string} [params.src] 图片地址
      */
@@ -101,7 +101,7 @@ const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
     /**
      * 加载图片
      * @param {boolean} [throwError=false] 是否 throw error
-     * @return {Promise} 返回加载的Promise
+     * @return {Promise<void>} 返回加载的Promise
      */
     load(throwError) {
         LazyTexture.loader = LazyTexture.loader || new Loader();

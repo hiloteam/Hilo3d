@@ -67,16 +67,16 @@ const math = {
     },
     /**
      * 最近的 2 的指数值
-     * @param  {Uint} value
-     * @return {Uint}
+     * @param  {Number} value
+     * @return {Number}
      */
     nearestPowerOfTwo(value) {
         return 2 ** Math.round(Math.log(value) / Math.LN2);
     },
     /**
      * 下一个的 2 的指数值
-     * @param  {Uint} value
-     * @return {Uint}
+     * @param  {Number} value
+     * @return {Number}
      */
     nextPowerOfTwo(value) {
         value--;

@@ -34,7 +34,7 @@ const HDRLoader = Class.create(/** @lends HDRLoader.prototype */{
     /**
      * load
      * @param  {Object} params
-     * @return {Promise}
+     * @return {Promise<Texture>}
      */
     load(params) {
         return this.loadRes(params.src, 'buffer')

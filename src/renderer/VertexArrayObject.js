@@ -113,7 +113,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
 
     /**
      * 绘图方式
-     * @type {GLEnum}
+     * @type {GLenum}
      * @default gl.TRIANGLES
      */
     mode: TRIANGLES,
@@ -433,3 +433,13 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
 });
 
 export default VertexArrayObject;
+
+
+/**
+ * 顶点对象
+ * @typedef {object} AttributeObject
+ * @property {Object} attribute
+ * @property {WebGLBuffer} buffer
+ * @property {GeometryData} geometryData
+ * @property {Boolean} useInstanced
+ */

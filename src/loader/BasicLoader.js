@@ -78,7 +78,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
      * @param {object} data 参数
      * @param {string} data.src 资源地址
      * @param {string} [data.type] 资源类型(img, json, buffer)，不提供将根据 data.src 来判断类型
-     * @return {Promise.<data, Error>} 返回加载完的资源对象
+     * @return {Promise.<Object, Error>} 返回加载完的资源对象
      */
     load(data) {
         const src = data.src;
@@ -126,7 +126,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
      * 加载图片
      * @param {string} url 图片地址
      * @param {boolean} [crossOrigin=false] 是否跨域
-     * @return {Promise.<Image, Error>} 返回加载完的图片
+     * @return {Promise.<HTMLImageElement, Error>} 返回加载完的图片
      */
     loadImg(url, crossOrigin) {
         let file = cache.get(url);
@@ -166,7 +166,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
      * 使用XHR加载其他资源
      * @param {string} url 资源地址
      * @param {string} [type=text] 资源类型(json, buffer, text)
-     * @return {Promise.<data, Error>} 返回加载完的内容对象(Object, ArrayBuffer, String)
+     * @return {Promise.<Object, Error>} 返回加载完的内容对象(Object, ArrayBuffer, String)
      */
     loadRes(url, type) {
         if (this.isBase64(url)) {
@@ -211,7 +211,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
      * @param {string} [opt.method=GET] 请求类型(GET, POST ..)
      * @param {object} [opt.headers] 请求头参数
      * @param {string} [opt.body] POST请求发送的数据
-     * @return {Promise.<data, Error>} 返回加载完的内容对象(Object, ArrayBuffer, String)
+     * @return {Promise.<Object, Error>} 返回加载完的内容对象(Object, ArrayBuffer, String)
      */
     request(opt) {
         return new Promise((resolve, reject) => {

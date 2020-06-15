@@ -174,7 +174,7 @@ const Ray = Class.create(/** @lends Ray.prototype */ {
     },
     /**
      * intersectsPlane
-     * @param  {Numer[]} normal [x, y, z]
+     * @param  {Number[]} normal [x, y, z]
      * @param  {Number} distance
      * @return {Vector3}  碰撞点，如果没有碰撞返回 null
      */

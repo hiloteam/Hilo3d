@@ -196,7 +196,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
 
     /**
      * @constructs
-     * @param {object} params 初始化参数，所有params都会复制到实例上
+     * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
         this.baseColor = new Color(1, 1, 1);

@@ -92,7 +92,7 @@ const BasicMaterial = Class.create(/** @lends BasicMaterial.prototype */ {
     usedUniformVectors: 11,
     /**
      * @constructs
-     * @param {object} params 初始化参数，所有params都会复制到实例上
+     * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
         this.diffuse = new Color(.5, .5, .5);

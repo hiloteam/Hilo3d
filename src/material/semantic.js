@@ -31,7 +31,7 @@ let renderer;
  */
 const semantic = {
     /**
-     * @type {State}
+     * @type {WebGLState}
      */
     state: null,
 
@@ -64,7 +64,7 @@ const semantic = {
 
     /**
      * 初始化
-     * @param  {State} _state
+     * @param  {WebGLState} _state
      * @param  {Camera} _camera
      * @param  {LightManager} _lightManager
      * @param  {Fog} _fog

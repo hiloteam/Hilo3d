@@ -111,7 +111,7 @@ const Animation = Class.create(/** @lends Animation.prototype */{
     validAnimationIds: null,
     /**
      * @constructs
-     * @param {Object} parmas 创建对象的属性参数。可包含此类的所有属性。
+     * @param {Object} [parmas] 创建对象的属性参数。可包含此类的所有属性。
      */
     constructor(parmas) {
         /**
@@ -138,7 +138,7 @@ const Animation = Class.create(/** @lends Animation.prototype */{
      * @param {string} name 剪辑名字
      * @param {number} start 动画开始时间
      * @param {number} end 动画结束时间
-     * @param {Array.<AnimationState>} animStatesList 动画帧列表
+     * @param {AnimationStates[]} animStatesList 动画帧列表
      */
     addClip(name, start, end, animStatesList) {
         this.clips[name] = {

@@ -43,7 +43,7 @@ const Loader = Class.create(/** @lends Loader.prototype */{
     /**
      * load
      * @param  {Object|Array} data
-     * @return {Promise}
+     * @return {Promise<any>}
      */
     load(data) {
         if (data instanceof Array) {
