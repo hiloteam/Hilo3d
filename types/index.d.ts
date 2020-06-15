@@ -123,6 +123,10 @@ declare type NodeTraverseCallback = (node: Node) => any;
  */
 declare type NodeGetChildByCallback = (node: Node) => boolean;
 
+declare type GeometryDataTraverseCallback = (attribute: number | Vector2 | Vector3 | Vector4, index: number, offset: number) => void;
+
+declare type GeometryDataTraverseByComponentCallback = (component: number, index: number, offset: number) => void;
+
 /**
  * GLTFLoader 模型加载完返回的对象格式
  */
@@ -401,6 +405,16 @@ declare namespace capabilities {
     function getMaxPrecision(a: string, b: string): string;
 }
 
+declare type ANGLEInstancedArrays = any;
+
+declare type OESVertexArrayObject = any;
+
+declare type OESTextureFloat = any;
+
+declare type WebGLLoseContext = any;
+
+declare type EXTTextureFilterAnisotropic = any;
+
 /**
  * WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, WEBGL_lose_context, OES_element_index_uint, EXT_shader_texture_lod
  */
@@ -444,7 +458,7 @@ declare namespace extensions {
      * @param name - 扩展名称
      * @param [alias = name] - 别名，默认和 name 相同
      */
-    function get(name: string, alias?: string): ExtensionObject | null;
+    function get(name: string, alias?: string): any | null;
     /**
      * 禁止扩展
      * @param name - 扩展名称
@@ -1827,7 +1841,7 @@ declare class Framebuffer {
  * 缓冲
  */
 declare class Buffer {
-    constructor(gl: WebGLRenderingContext, target?: GLenum, data: TypedArray, usage?: GLenum);
+    constructor(gl: WebGLRenderingContext, target?: GLenum, data?: TypedArray, usage?: GLenum);
     /**
      * 缓存
      */
@@ -5320,14 +5334,12 @@ declare class GeometryData {
     setByOffset(offset: number, value: number | Vector2 | Vector3 | Vector4): void;
     /**
      * 按 index 遍历
-     * @param callback(attribute, - index, offset)
      */
-    traverse(callback(attribute,: (...params: any[]) => any): boolean;
+    traverse(callback: GeometryDataTraverseCallback): boolean;
     /**
      * 按 Component 遍历 Component
-     * @param callback(data, - offset)
      */
-    traverseByComponent(callback(data,: (...params: any[]) => any): boolean;
+    traverseByComponent(callback: GeometryDataTraverseByComponentCallback): boolean;
 }
 
 /**
@@ -6010,7 +6022,7 @@ declare class Node implements EventMixin {
      * @param fn - 判读函数
      * @returns 返回获取到的子孙元素
      */
-    getChildByFnBFS(fn: nodeGetChildByCallback): Node | null;
+    getChildByFnBFS(fn: NodeGetChildByCallback): Node | null;
     /**
      * 根据 name path 来获取子孙元素
      * @param path - 名字数组, e.g., getChildByNamePath(['a', 'b', 'c'])
@@ -6027,13 +6039,13 @@ declare class Node implements EventMixin {
      * @param fn - 判读函数
      * @returns 返回获取到的子孙元素
      */
-    getChildByFn(fn: nodeGetChildByCallback): Node | null;
+    getChildByFn(fn: NodeGetChildByCallback): Node | null;
     /**
      * 根据函数来获取匹配的所有子孙元素
      * @param fn - 判读函数
      * @returns 返回获取到的子孙元素
      */
-    getChildrenByFn(fn: (...params: any[]) => any): Node[];
+    getChildrenByFn(fn: NodeGetChildByCallback): Node[];
     /**
      * 获取指定name的首个子孙元素
      * @param name - 元素name
@@ -6286,7 +6298,7 @@ declare class PerspectiveCamera extends Camera {
      */
     far: number;
     /**
-     * 相机视野大小，角度
+     * 相机视野大小，角度制
      */
     fov: number;
     /**
