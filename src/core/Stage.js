@@ -61,9 +61,16 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
     offsetY: 0,
 
     /**
+     * canvas
+     * @type {HTMLCanvasElement}
+     * @default null
+     */
+    canvas: null,
+
+    /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性，所有属性会透传给 Renderer。
-     * @param {HTMLElement} container stage的容器
+     * @param {HTMLElement} [params.container] stage的容器
      * @param {Number} [params.pixelRatio=根据设备自动判断] 像素密度。
      * @param {Color} [params.clearColor=new Color(1, 1, 1, 1)] 背景色。
      * @param {Boolean} [params.useFramebuffer=false] 是否使用Framebuffer，有后处理需求时需要。
@@ -352,6 +359,7 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
     },
     /**
      * 销毁
+     * @override
      * @return {Stage} this
      */
     destroy() {

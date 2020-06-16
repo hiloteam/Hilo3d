@@ -1,3 +1,6 @@
+export = hilo3d;
+export as namespace hilo3d;
+declare namespace hilo3d {
 
 type TypedArray =
     | Int8Array
@@ -9,7 +12,6 @@ type TypedArray =
     | Uint32Array
     | Float32Array
     | Float64Array;
-
 
 declare namespace AnimationStates {
     /**
@@ -32,18 +34,49 @@ declare namespace AnimationStates {
  * @example
  * Hilo3d.constants.LINEAR_MIPMAP_NEAREST
  */
-declare namespace constants { }
+declare const constants: any;
+
+/**
+ * 类属性
+ * @property [Statics] - 静态属性
+ * @property [Extends] - 继承
+ * @property [Mixes] - mixes
+ * @property [constructor] - 构造函数
+ */
+declare interface ClassProperty {
+}
 
 /**
  * Class是提供类的创建的辅助工具。
  */
-declare namespace Class { }
+declare namespace Class {
+    /**
+     * @param props
+     */
+    function create(props: ClassProperty | any): void;
+}
 
 /**
- * EventMixin是一个包含事件相关功能的mixin。可以通过 Object.assign(target, EventMixin) 来为target增加事件功能。
+ * 事件对象
+ * @property type - 事件类型
+ * @property [detail = null] - 事件数据
  */
-declare interface EventMixin {
+declare interface EventObject {
 }
+
+/**
+ * @param [e] - 事件对象
+ * @param e.type - 事件类型
+ * @param e.detail - 事件数据
+ * @param e.target - 事件触发对象
+ * @param e.timeStamp - 时间戳
+ */
+declare type EventMixinCallback = (e?: {
+    type: string;
+    detail: any;
+    target: any;
+    timeStamp: Date;
+}) => void;
 
 /**
  * 包围盒信息
@@ -115,16 +148,41 @@ declare type raycastInfo = {
 
 /**
  * Node traverse 回调
+ * @param node
  */
 declare type NodeTraverseCallback = (node: Node) => any;
 
 /**
  * Node getChildByCallback 回调
+ * @param node
  */
 declare type NodeGetChildByCallback = (node: Node) => boolean;
 
+/**
+ * @property duration
+ * @property [delay]
+ * @property [ease]
+ * @property [onStart]
+ * @property [onComplete]
+ * @property [onUpdate]
+ */
+declare interface TweenParams {
+}
+
+declare function {Function} EaseInOut(): void;
+
+/**
+ * @param attribute
+ * @param index
+ * @param offset
+ */
 declare type GeometryDataTraverseCallback = (attribute: number | Vector2 | Vector3 | Vector4, index: number, offset: number) => void;
 
+/**
+ * @param component
+ * @param index
+ * @param offset
+ */
 declare type GeometryDataTraverseByComponentCallback = (component: number, index: number, offset: number) => void;
 
 /**
@@ -176,10 +234,15 @@ declare namespace semantic {
     var renderer: WebGLRenderer;
     /**
      * 初始化
+     * @param _state
+     * @param _camera
+     * @param _lightManager
+     * @param _fog
      */
     function init(_state: WebGLState, _camera: Camera, _lightManager: LightManager, _fog: Fog): void;
     /**
      * 设置相机
+     * @param _camera
      */
     function setCamera(_camera: Camera): void;
     var POSITION: semanticObject;
@@ -333,20 +396,29 @@ declare namespace math {
     function radToDeg(rad: number): number;
     /**
      * 是否是 2 的指数值
+     * @param value
      */
     function isPowerOfTwo(value: number): boolean;
     /**
      * 最近的 2 的指数值
+     * @param value
      */
     function nearestPowerOfTwo(value: number): number;
     /**
      * 下一个的 2 的指数值
+     * @param value
      */
     function nextPowerOfTwo(value: number): number;
 }
 
+/**
+ * @param mesh
+ */
 declare type RenderListTraverseCallback = (mesh: Mesh) => void;
 
+/**
+ * @param meshes
+ */
 declare type RenderListInstancedTraverseCallback = (meshes: Mesh[]) => void;
 
 /**
@@ -393,14 +465,18 @@ declare namespace capabilities {
     var MAX_TEXTURE_MAX_ANISOTROPY: number;
     /**
      * 初始化
+     * @param gl
      */
     function init(gl: WebGLRenderingContext): void;
     /**
      * 获取 WebGL 能力
+     * @param name
      */
     function get(name: string): number | string;
     /**
      * 获取最大支持精度
+     * @param a
+     * @param b
      */
     function getMaxPrecision(a: string, b: string): string;
 }
@@ -441,10 +517,12 @@ declare namespace extensions {
     var textureFilterAnisotropic: EXTTextureFilterAnisotropic;
     /**
      * 初始化
+     * @param gl
      */
     function init(gl: WebGLRenderingContext): void;
     /**
      * 重置扩展
+     * @param gl
      */
     function reset(gl: WebGLRenderingContext): void;
     /**
@@ -511,10 +589,12 @@ declare type glTypeInfo = {
 declare namespace glType {
     /**
      * init
+     * @param gl
      */
     function init(gl: WebGLRenderingContext): void;
     /**
      * 获取信息
+     * @param type
      */
     function get(type: GLenum): glTypeInfo;
 }
@@ -573,16 +653,19 @@ declare namespace log {
     function error(): log;
     /**
      * logOnce 相同 id 只 log 一次
+     * @param id
      * @returns this
      */
     function logOnce(id: string): log;
     /**
      * warnOnce  相同 id 只 once 一次
+     * @param id
      * @returns this
      */
     function warnOnce(id: string): log;
     /**
      * errorOnce 相同 id 只 error 一次
+     * @param id
      * @returns this
      */
     function errorOnce(id: string): log;
@@ -637,23 +720,29 @@ declare class MeshPicker {
 declare class Cache {
     /**
      * 获取对象
+     * @param id
      */
     get(id: string): any;
     /**
      * 获取对象
+     * @param obj
      * @returns [description]
      */
     getObject(obj: any): any;
     /**
      * 增加对象
+     * @param id
+     * @param obj
      */
     add(id: string, obj: any): void;
     /**
      * 移除对象
+     * @param id
      */
     remove(id: string): void;
     /**
      * 移除对象
+     * @param obj
      */
     removeObject(obj: any): void;
     /**
@@ -662,6 +751,7 @@ declare class Cache {
     removeAll(): void;
     /**
      * 遍历所有缓存
+     * @param callback
      */
     each(callback: (...params: any[]) => any): void;
 }
@@ -688,6 +778,7 @@ declare class Texture {
     static readonly cache: any;
     /**
      * 重置
+     * @param gl
      */
     static reset(gl: WebGLRenderingContext): void;
     isTexture: boolean;
@@ -791,36 +882,50 @@ declare class Texture {
     readonly mipmapCount: number;
     /**
      * 是否是 2 的 n 次方
+     * @param img
      */
     isImgPowerOfTwo(img: HTMLImageElement): boolean;
     /**
      * 获取支持的尺寸
+     * @param img
+     * @param [needPowerOfTwo = false]
      * @returns { width, height }
      */
     getSupportSize(img: HTMLImageElement, needPowerOfTwo?: boolean): any;
     /**
      * 更新图片大小成为 2 的 n 次方
+     * @param img
      */
     resizeImgToPowerOfTwo(img: HTMLImageElement): HTMLCanvasElement | HTMLImageElement;
     /**
      * 更新图片大小
+     * @param img
+     * @param width
+     * @param height
      */
     resizeImg(img: HTMLImageElement, width: number, height: number): HTMLCanvasElement | HTMLImageElement;
     /**
      * 更新 Texture
+     * @param state
+     * @param glTexture
      * @returns this
      */
     updateTexture(state: WebGLState, glTexture: WebGLTexture): Texture;
     /**
      * 跟新局部贴图
+     * @param xOffset
+     * @param yOffset
+     * @param image
      */
     updateSubTexture(xOffset: number, yOffset: number, image: HTMLImageElement | HTMLCanvasElement | ImageData): void;
     /**
      * 获取 GLTexture
+     * @param state
      */
     getGLTexture(state: WebGLState): WebGLTexture;
     /**
      * 设置 GLTexture
+     * @param texture
      * @param [needDestroy = false] - 是否销毁之前的 GLTexture
      * @returns this
      */
@@ -1028,6 +1133,7 @@ declare class Shader {
     static shaders: any;
     /**
      * 初始化
+     * @param renderer
      */
     static init(renderer: WebGLRenderer): void;
     /**
@@ -1053,14 +1159,28 @@ declare class Shader {
     static getHeaderKey(mesh: Mesh, material: Material, lightManager: LightManager, fog: Fog, useLogDepth: boolean): string;
     /**
      * 获取header
+     * @param mesh
+     * @param material
+     * @param lightManager
+     * @param fog
      */
     static getHeader(mesh: Mesh, material: Material, lightManager: LightManager, fog: Fog): string;
     /**
      * 获取 shader
+     * @param mesh
+     * @param material
+     * @param isUseInstance
+     * @param lightManager
+     * @param fog
+     * @param useLogDepth
      */
     static getShader(mesh: Mesh, material: Material, isUseInstance: boolean, lightManager: LightManager, fog: Fog, useLogDepth: boolean): Shader;
     /**
      * 获取基础 shader
+     * @param material
+     * @param isUseInstance
+     * @param lightManager
+     * @param fog
      */
     static getBasicShader(material: Material, isUseInstance: boolean, lightManager: LightManager, fog: Fog): Shader;
     /**
@@ -1077,6 +1197,7 @@ declare class Shader {
     alwaysUse: boolean;
     /**
      * 没有被引用时销毁资源
+     * @param renderer
      * @returns this
      */
     destroyIfNoRef(renderer: WebGLRenderer): Shader;
@@ -1089,6 +1210,7 @@ declare class Shader {
 
 /**
  * WebGL 状态管理，减少 api 调用
+ * @param gl
  */
 declare class WebGLState {
     constructor(gl: WebGLRenderingContext);
@@ -1108,14 +1230,18 @@ declare class WebGLState {
     reset(): void;
     /**
      * enable
+     * @param capability
      */
     enable(capability: GLenum): void;
     /**
      * disable
+     * @param capability
      */
     disable(capability: GLenum): void;
     /**
      * bindFramebuffer
+     * @param target
+     * @param framebuffer
      */
     bindFramebuffer(target: GLenum, framebuffer: WebGLFramebuffer): void;
     /**
@@ -1124,70 +1250,104 @@ declare class WebGLState {
     bindSystemFramebuffer(): void;
     /**
      * useProgram
+     * @param program
      */
     useProgram(program: WebGLProgram): void;
     /**
      * depthFunc
+     * @param func
      */
     depthFunc(func: GLenum): void;
     /**
      * depthMask
+     * @param flag
      */
     depthMask(flag: GLenum): void;
     /**
      * clear
+     * @param mask
      */
     clear(mask: number): void;
     /**
      * depthRange
+     * @param zNear
+     * @param zFar
      */
     depthRange(zNear: number, zFar: number): void;
     /**
      * stencilFunc
+     * @param func
+     * @param ref
+     * @param mask
      */
     stencilFunc(func: GLenum, ref: number, mask: number): void;
     /**
      * stencilMask
+     * @param mask
      */
     stencilMask(mask: number): void;
     /**
      * stencilOp
+     * @param fail
+     * @param zfail
+     * @param zpass
      */
     stencilOp(fail: GLenum, zfail: GLenum, zpass: GLenum): void;
     /**
      * colorMask
+     * @param red
+     * @param green
+     * @param blue
+     * @param alpha
      */
     colorMask(red: boolean, green: boolean, blue: boolean, alpha: boolean): void;
     /**
      * cullFace
+     * @param mode
      */
     cullFace(mode: GLenum): void;
     /**
      * frontFace
+     * @param mode
      */
     frontFace(mode: GLenum): void;
     /**
      * blendFuncSeparate
+     * @param srcRGB
+     * @param dstRGB
+     * @param srcAlpha
+     * @param dstAlpha
      */
     blendFuncSeparate(srcRGB: GLenum, dstRGB: GLenum, srcAlpha: GLenum, dstAlpha: GLenum): void;
     /**
      * blendEquationSeparate
+     * @param modeRGB
+     * @param modeAlpha
      */
     blendEquationSeparate(modeRGB: GLenum, modeAlpha: GLenum): void;
     /**
      * pixelStorei
+     * @param pname
+     * @param param
      */
     pixelStorei(pname: GLenum, param: GLenum): void;
     /**
      * viewport
+     * @param x
+     * @param y
+     * @param width
+     * @param height
      */
     viewport(x: number, y: number, width: number, height: number): void;
     /**
      * activeTexture
+     * @param texture
      */
     activeTexture(texture: GLenum): void;
     /**
      * bindTexture
+     * @param target
+     * @param texture
      */
     bindTexture(target: GLenum, texture: WebGLTexture): void;
     /**
@@ -1216,11 +1376,13 @@ declare class WebGLResourceManager implements EventMixin {
     hasNeedDestroyResource: boolean;
     /**
      * 没有引用时销毁资源
+     * @param res
      * @returns this
      */
     destroyIfNoRef(res: any): WebGLResourceManager;
     /**
      * 获取用到的资源
+     * @param stage
      */
     getUsedResources(stage: Stage): object[];
     /**
@@ -1392,35 +1554,48 @@ declare class WebGLRenderer implements EventMixin {
     initContext(): void;
     /**
      * 设置深度检测
+     * @param material
      */
     setupDepthTest(material: Material): void;
     /**
      * 设置alphaToCoverage
+     * @param material
      */
     setupSampleAlphaToCoverage(material: Material): void;
     /**
      * 设置背面剔除
+     * @param material
      */
     setupCullFace(material: Material): void;
     /**
      * 设置混合
+     * @param material
      */
     setupBlend(material: Material): void;
     /**
      * 设置通用的 uniform
+     * @param program
+     * @param mesh
      * @param [force = false] - 是否强制更新
      */
     setupUniforms(program: Program, mesh: Mesh, force?: boolean): void;
     /**
      * 设置vao
+     * @param vao
+     * @param program
+     * @param mesh
      */
     setupVao(vao: VertexArrayObject, program: Program, mesh: Mesh): void;
     /**
      * 设置材质
+     * @param program
+     * @param mesh
      */
     setupMaterial(program: Program, mesh: Mesh): void;
     /**
      * 设置mesh
+     * @param mesh
+     * @param useInstanced
      * @returns res
      * @returns res.vao
      * @returns res.program
@@ -1435,6 +1610,8 @@ declare class WebGLRenderer implements EventMixin {
     addRenderInfo(faceCount: number, drawCount: number): void;
     /**
      * 渲染
+     * @param stage
+     * @param camera
      * @param [fireEvent = false] - 是否发送事件
      */
     render(stage: Stage, camera: Camera, fireEvent?: boolean): void;
@@ -1444,6 +1621,7 @@ declare class WebGLRenderer implements EventMixin {
     renderScene(): void;
     /**
      * 清除背景
+     * @param [clearColor = this.clearColor]
      */
     clear(clearColor?: Color): void;
     /**
@@ -1452,18 +1630,22 @@ declare class WebGLRenderer implements EventMixin {
     clearDepth(): void;
     /**
      * 将framebuffer渲染到屏幕
+     * @param framebuffer
      */
     renderToScreen(framebuffer: Framebuffer): void;
     /**
      * 渲染一个mesh
+     * @param mesh
      */
     renderMesh(mesh: Mesh): void;
     /**
      * 渲染一组 instanced mesh
+     * @param meshes
      */
     renderInstancedMeshes(meshes: Mesh[]): void;
     /**
      * 渲染一组普通mesh
+     * @param meshes
      */
     renderMultipleMeshes(meshes: Mesh[]): void;
     /**
@@ -1474,7 +1656,9 @@ declare class WebGLRenderer implements EventMixin {
 
 /**
  * VAO
+ * @param gl
  * @param id - 缓存id
+ * @param params
  */
 declare class VertexArrayObject {
     constructor(gl: WebGLRenderingContext, id: string, params: any);
@@ -1484,11 +1668,14 @@ declare class VertexArrayObject {
     static readonly cache: any;
     /**
      * 获取 vao
+     * @param gl
      * @param id - 缓存id
+     * @param params
      */
     static getVao(gl: WebGLRenderingContext, id: string, params: any): VertexArrayObject;
     /**
      * 重置所有vao
+     * @param gl
      */
     static reset(gl: WebGLRenderingContext): void;
     /**
@@ -1532,31 +1719,41 @@ declare class VertexArrayObject {
     getVertexCount(): number;
     /**
      * drawInstance
+     * @param [primcount = 1]
      */
     drawInstance(primcount?: number): void;
     /**
      * addIndexBuffer
+     * @param data
      * @param usage - gl.STATIC_DRAW|gl.DYNAMIC_DRAW
      * @returns Buffer
      */
     addIndexBuffer(data: GeometryData, usage: GLenum): Buffer;
     /**
      * addAttribute
+     * @param geometryData
+     * @param attribute
      * @param usage - gl.STATIC_DRAW|gl.DYNAMIC_DRAW
+     * @param onInit
      * @returns attributeObject
      */
     addAttribute(geometryData: GeometryData, attribute: any, usage: GLenum, onInit: (...params: any[]) => any): AttributeObject;
     /**
      * addInstancedAttribute
+     * @param attribute
+     * @param meshes
+     * @param getData
      * @returns attributeObject
      */
     addInstancedAttribute(attribute: any, meshes: any[], getData: (...params: any[]) => any): AttributeObject;
     /**
      * 获取资源
+     * @param [resources = []]
      */
     getResources(resources?: object[]): object[];
     /**
      * 没有被引用时销毁资源
+     * @param renderer
      * @returns this
      */
     destroyIfNoRef(renderer: WebGLRenderer): VertexArrayObject;
@@ -1601,6 +1798,8 @@ declare class RenderList {
     traverse(callback: RenderListTraverseCallback, instancedCallback?: RenderListInstancedTraverseCallback): void;
     /**
      * 增加 mesh
+     * @param mesh
+     * @param camera
      */
     addMesh(mesh: Mesh, camera: Camera): void;
 }
@@ -1613,10 +1812,12 @@ declare class RenderInfo {
     isRenderInfo: boolean;
     /**
      * 增加面数
+     * @param num
      */
     addFaceCount(num: number): void;
     /**
      * 增加绘图数
+     * @param num
      */
     addDrawCount(num: number): void;
     /**
@@ -1651,10 +1852,14 @@ declare class Program {
     static reset(): void;
     /**
      * 获取程序
+     * @param shader
+     * @param state
+     * @param [ignoreError = false]
      */
     static getProgram(shader: Shader, state: WebGLState, ignoreError?: boolean): Program;
     /**
      * 获取空白程序
+     * @param state
      */
     static getBlankProgram(state: WebGLState): Program;
     className: string;
@@ -1705,6 +1910,8 @@ declare class Program {
     useProgram(): void;
     /**
      * 生成 shader
+     * @param shaderType
+     * @param code
      */
     createShader(shaderType: number, code: string): WebGLShader;
     /**
@@ -1717,6 +1924,7 @@ declare class Program {
     initUniforms(): void;
     /**
      * 没有被引用时销毁资源
+     * @param renderer
      * @returns this
      */
     destroyIfNoRef(renderer: WebGLRenderer): Program;
@@ -1729,6 +1937,7 @@ declare class Program {
 
 /**
  * 帧缓冲
+ * @param renderer
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 declare class Framebuffer {
@@ -1739,10 +1948,12 @@ declare class Framebuffer {
     static readonly cache: Cache;
     /**
      * 重置所有framebuffer
+     * @param gl
      */
     static reset(gl: WebGLRenderingContext): void;
     /**
      * 销毁所有 Framebuffer
+     * @param gl
      */
     static destroy(gl: WebGLRenderingContext): void;
     className: string;
@@ -1821,14 +2032,26 @@ declare class Framebuffer {
     unbind(): void;
     /**
      * 渲染当前纹理
+     * @param [x = 0]
+     * @param [y = 0]
+     * @param [width = 1]
+     * @param [height = 1]
+     * @param clearColor
      */
     render(x?: number, y?: number, width?: number, height?: number, clearColor: Color): void;
     /**
      * resize
+     * @param width
+     * @param height
+     * @param [force = true]
      */
     resize(width: number, height: number, force?: boolean): void;
     /**
      * 读取区域像素
+     * @param x
+     * @param y
+     * @param [width = 1]
+     * @param [height = 1]
      */
     readPixels(x: number, y: number, width?: number, height?: number): TypedArray;
     /**
@@ -1839,6 +2062,10 @@ declare class Framebuffer {
 
 /**
  * 缓冲
+ * @param gl
+ * @param [target = ARRAY_BUFFER]
+ * @param [data = null]
+ * @param [usage = STATIC_DRAW]
  */
 declare class Buffer {
     constructor(gl: WebGLRenderingContext, target?: GLenum, data?: TypedArray, usage?: GLenum);
@@ -1852,10 +2079,16 @@ declare class Buffer {
     static reset(): void;
     /**
      * 生成顶点缓冲
+     * @param gl
+     * @param geometryData
+     * @param [usage = STATIC_DRAW]
      */
     static createVertexBuffer(gl: WebGLRenderingContext, geometryData: GeometryData, usage?: GLenum): Buffer;
     /**
      * 生成索引缓冲
+     * @param gl
+     * @param geometryData
+     * @param [usage = STATIC_DRAW]
      */
     static createIndexBuffer(gl: WebGLRenderingContext, geometryData: GeometryData, usage?: GLenum): Buffer;
     className: string;
@@ -1883,20 +2116,26 @@ declare class Buffer {
     bind(): Buffer;
     /**
      * 上传数据
+     * @param data
      * @returns this
      */
     bufferData(data: TypedArray): Buffer;
     /**
      * 上传部分数据
+     * @param byteOffset
+     * @param data
+     * @param [isBinding = false]
      * @returns this
      */
     bufferSubData(byteOffset: number, data: TypedArray, isBinding?: boolean): Buffer;
     /**
+     * @param geometryData
      * @returns this
      */
     uploadGeometryData(geometryData: GeometryData): Buffer;
     /**
      * 没有被引用时销毁资源
+     * @param renderer
      * @returns this
      */
     destroyIfNoRef(renderer: WebGLRenderer): Buffer;
@@ -1960,24 +2199,28 @@ declare class Vector4 {
     set(x: number, y: number, z: number, w: number): Vector4;
     /**
      * Adds two vec4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的和
      * @returns this
      */
     add(a: Vector4, b?: Vector4): Vector4;
     /**
      * Subtracts vector b from vector a
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的差
      * @returns this
      */
     subtract(a: Vector4, b?: Vector4): Vector4;
     /**
      * Multiplies two vec4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的积
      * @returns this
      */
     multiply(a: Vector4, b?: Vector4): Vector4;
     /**
      * Divides two vec4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的商
      * @returns this
      */
@@ -1994,12 +2237,14 @@ declare class Vector4 {
     floor(): Vector4;
     /**
      * Returns the minimum of two vec4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns this
      */
     min(a: Vector4, b?: Vector4): Vector4;
     /**
      * Returns the maximum of two vec4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns this
      */
@@ -2018,18 +2263,21 @@ declare class Vector4 {
     /**
      * Adds two vec4's after scaling the second vector by a scalar value
      * @param scale - the amount to scale the second vector by before adding
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns this
      */
     scaleAndAdd(scale: number, a: Vector4, b?: Vector4): Vector4;
     /**
      * Calculates the euclidian distance between two vec4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns distance between a and b
      */
     distance(a: Vector4, b?: Vector4): number;
     /**
      * Calculates the squared euclidian distance between two vec4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns squared distance between a and b
      */
@@ -2051,6 +2299,7 @@ declare class Vector4 {
     negate(): Vector4;
     /**
      * Returns the inverse of the components of a vec4
+     * @param [a = this]
      * @returns this
      */
     inverse(a?: Vector4): Vector4;
@@ -2061,12 +2310,14 @@ declare class Vector4 {
     normalize(): Vector4;
     /**
      * Calculates the dot product of two vec4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns product of a and b
      */
     dot(a: Vector4, b?: Vector4): number;
     /**
      * Performs a linear interpolation between two vec4's
+     * @param v
      * @param t - interpolation amount between the two vectors
      * @returns this
      */
@@ -2091,12 +2342,14 @@ declare class Vector4 {
     transformQuat(q: Quaternion): Vector4;
     /**
      * Returns whether or not the vectors have exactly the same elements in the same position (when compared with ===)
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns True if the vectors are equal, false otherwise.
      */
     exactEquals(a: Vector4, b?: Vector4): boolean;
     /**
      * Returns whether or not the vectors have approximately the same elements in the same position.
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns True if the vectors are equal, false otherwise.
      */
@@ -2232,24 +2485,28 @@ declare class Vector3 {
     set(x: number, y: number, z: number): Vector3;
     /**
      * Adds two vec3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的和
      * @returns this
      */
     add(a: Vector3, b?: Vector3): Vector3;
     /**
      * Subtracts vector b from vector a
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的差
      * @returns this
      */
     subtract(a: Vector3, b?: Vector3): Vector3;
     /**
      * Multiplies two vec3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的积
      * @returns this
      */
     multiply(a: Vector3, b?: Vector3): Vector3;
     /**
      * Divides two vec3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的商
      * @returns this
      */
@@ -2266,12 +2523,14 @@ declare class Vector3 {
     floor(): Vector3;
     /**
      * Returns the minimum of two vec3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns this
      */
     min(a: Vector3, b?: Vector3): Vector3;
     /**
      * Returns the maximum of two vec3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns this
      */
@@ -2290,18 +2549,21 @@ declare class Vector3 {
     /**
      * Adds two vec3's after scaling the second vector by a scalar value
      * @param scale - the amount to scale the second vector by before adding
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns this
      */
     scaleAndAdd(scale: number, a: Vector3, b?: Vector3): Vector3;
     /**
      * Calculates the euclidian distance between two vec3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns distance between a and b
      */
     distance(a: Vector3, b?: Vector3): number;
     /**
      * Calculates the squared euclidian distance between two vec3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns squared distance between a and b
      */
@@ -2323,6 +2585,7 @@ declare class Vector3 {
     negate(): Vector3;
     /**
      * Returns the inverse of the components of a vec3
+     * @param [a = this]
      * @returns this
      */
     inverse(a?: Vector3): Vector3;
@@ -2333,30 +2596,41 @@ declare class Vector3 {
     normalize(): Vector3;
     /**
      * Calculates the dot product of two vec3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns product of a and b
      */
     dot(a: Vector3, b?: Vector3): number;
     /**
      * Computes the cross product of two vec3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns cross product of a and b
      */
     cross(a: Vector2, b?: Vector2): number;
     /**
      * Performs a linear interpolation between two vec3's
+     * @param v
      * @param t - interpolation amount between the two vectors
      * @returns this
      */
     lerp(v: Vector3, t: number): Vector3;
     /**
      * Performs a hermite interpolation with two control points
+     * @param a
+     * @param b
+     * @param c
+     * @param d
      * @param t - interpolation amount between the two inputs
      * @returns this
      */
     hermite(a: Vector3, b: Vector3, c: Vector3, d: Vector3, t: number): Vector3;
     /**
      * Performs a bezier interpolation with two control points
+     * @param a
+     * @param b
+     * @param c
+     * @param d
      * @param t - interpolation amount between the two inputs
      * @returns this
      */
@@ -2414,12 +2688,14 @@ declare class Vector3 {
     rotateZ(origin: Vector3, rotation: number): Vector3;
     /**
      * Returns whether or not the vectors have exactly the same elements in the same position (when compared with ===)
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns True if the vectors are equal, false otherwise.
      */
     exactEquals(a: Vector3, b?: Vector3): boolean;
     /**
      * Returns whether or not the vectors have approximately the same elements in the same position.
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns True if the vectors are equal, false otherwise.
      */
@@ -2515,24 +2791,28 @@ declare class Vector2 {
     set(x: number, y: number): Vector2;
     /**
      * Adds two vec2's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的和
      * @returns this
      */
     add(a: Vector2, b?: Vector2): Vector2;
     /**
      * Subtracts vector b from vector a
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的差
      * @returns this
      */
     subtract(a: Vector2, b?: Vector2): Vector2;
     /**
      * Multiplies two vec2's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的积
      * @returns this
      */
     multiply(a: Vector2, b?: Vector2): Vector2;
     /**
      * Divides two vec2's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的商
      * @returns this
      */
@@ -2549,12 +2829,14 @@ declare class Vector2 {
     floor(): Vector2;
     /**
      * Returns the minimum of two vec2's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns this
      */
     min(a: Vector2, b?: Vector2): Vector2;
     /**
      * Returns the maximum of two vec2's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns this
      */
@@ -2573,18 +2855,21 @@ declare class Vector2 {
     /**
      * Adds two vec2's after scaling the second vector by a scalar value
      * @param scale - the amount to scale the second vector by before adding
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns this
      */
     scaleAndAdd(scale: number, a: Vector2, b?: Vector2): Vector2;
     /**
      * Calculates the euclidian distance between two vec2's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns distance between a and b
      */
     distance(a: Vector2, b?: Vector2): number;
     /**
      * Calculates the squared euclidian distance between two vec2's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns squared distance between a and b
      */
@@ -2606,6 +2891,7 @@ declare class Vector2 {
     negate(): Vector2;
     /**
      * Returns the inverse of the components of a vec2
+     * @param [a = this]
      * @returns this
      */
     inverse(a?: Vector2): Vector2;
@@ -2616,18 +2902,21 @@ declare class Vector2 {
     normalize(): Vector2;
     /**
      * Calculates the dot product of two vec2's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns product of a and b
      */
     dot(a: Vector2, b?: Vector2): number;
     /**
      * Computes the cross product of two vec2's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns cross product of a and b
      */
     cross(a: Vector2, b?: Vector2): number;
     /**
      * Performs a linear interpolation between two vec2's
+     * @param v
      * @param t - interpolation amount between the two vectors
      * @returns this
      */
@@ -2652,12 +2941,14 @@ declare class Vector2 {
     transformMat4(m: Matrix4): Vector2;
     /**
      * Returns whether or not the vectors have exactly the same elements in the same position (when compared with ===)
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns True if the vectors are equal, false otherwise.
      */
     exactEquals(a: Vector2, b?: Vector2): boolean;
     /**
      * Returns whether or not the vectors have approximately the same elements in the same position.
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的结果
      * @returns True if the vectors are equal, false otherwise.
      */
@@ -2711,11 +3002,13 @@ declare class SphericalHarmonics3 {
     isSphericalHarmonics3: boolean;
     /**
      * scale
+     * @param scale
      * @returns this
      */
     scale(scale: number): SphericalHarmonics3;
     /**
      * fromArray
+     * @param coefficients
      * @returns this
      */
     fromArray(coefficients: Number[][] | Number[]): SphericalHarmonics3;
@@ -2734,6 +3027,7 @@ declare class SphericalHarmonics3 {
     clone(): SphericalHarmonics3;
     /**
      * 复制
+     * @param other
      * @returns this
      */
     copy(other: SphericalHarmonics3): SphericalHarmonics3;
@@ -2759,21 +3053,25 @@ declare class Sphere {
     clone(): Sphere;
     /**
      * 复制
+     * @param sphere
      * @returns this
      */
     copy(sphere: Sphere): Sphere;
     /**
      * 从点生成
+     * @param points
      * @returns this
      */
     fromPoints(points: any[]): Sphere;
     /**
      * 从点生成
+     * @param geometryData
      * @returns this
      */
     fromGeometryData(geometryData: GeometryData): Sphere;
     /**
      * transformMat4
+     * @param mat4
      * @returns this
      */
     transformMat4(mat4: Matrix4): Sphere;
@@ -2784,6 +3082,7 @@ declare class Sphere {
  * @example
  * var ray = new Hilo3d.Ray();
  * ray.fromCamera(camera, 10, 10, stage.width, stage.height);
+ * @param [params]
  * @param [params.origin = new Vector3(0, 0, 0)] - 原点
  * @param [params.direction = new Vector3(0, 0, -1)] - 方向
  */
@@ -2810,11 +3109,14 @@ declare class Ray {
     direction: Vector3;
     /**
      * set
+     * @param origin
+     * @param direction
      * @returns this
      */
     set(origin: Vector3, direction: Vector3): Ray;
     /**
      * copy
+     * @param other
      */
     copy(other: Vector3): Ray;
     /**
@@ -2823,6 +3125,7 @@ declare class Ray {
     clone(): Ray;
     /**
      * 从摄像机设置
+     * @param camera
      * @param x - 屏幕x
      * @param y - 屏幕y
      * @param width - 屏幕宽
@@ -2831,29 +3134,36 @@ declare class Ray {
     fromCamera(camera: Camera, x: number, y: number, width: number, height: number): void;
     /**
      * Transforms the ray with a mat4
+     * @param mat4
      */
     transformMat4(mat4: Matrix4): void;
     /**
      * 排序碰撞点
+     * @param points
+     * @param [pointName = '']
      */
     sortPoints(points: Vector3[] | raycastInfo[], pointName?: string): void;
     /**
      * squaredDistance
+     * @param point
      */
     squaredDistance(point: Vector3): number;
     /**
      * distance
+     * @param point
      */
     distance(point: Vector3): number;
     /**
      * intersectsSphere
      * @param center - [x, y, z]
+     * @param radius
      * @returns 碰撞点，如果没有碰撞返回 null
      */
     intersectsSphere(center: Number[], radius: number): Vector3;
     /**
      * intersectsPlane
      * @param normal - [x, y, z]
+     * @param distance
      * @returns 碰撞点，如果没有碰撞返回 null
      */
     intersectsPlane(normal: Number[], distance: number): Vector3;
@@ -2871,6 +3181,8 @@ declare class Ray {
     intersectsBox(aabb: any[]): Vector3;
     /**
      * intersectsTriangleCell
+     * @param cell
+     * @param positions
      * @returns 碰撞点，如果没有碰撞返回 null
      */
     intersectsTriangleCell(cell: any[], positions: any[]): Vector3;
@@ -2894,6 +3206,7 @@ declare class Quaternion implements EventMixin {
     isQuaternion: boolean;
     /**
      * Copy the values from one quat to this
+     * @param q
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
@@ -2977,18 +3290,21 @@ declare class Quaternion implements EventMixin {
     getAxisAngle(out_axis: Vector3): number;
     /**
      * Adds two quat's
+     * @param q
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
     add(q: Quaternion, dontFireEvent?: boolean): Quaternion;
     /**
      * Multiplies two quat's
+     * @param q
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
     multiply(q: Quaternion, dontFireEvent?: boolean): Quaternion;
     /**
      * premultiply the quat
+     * @param q
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
@@ -3031,11 +3347,13 @@ declare class Quaternion implements EventMixin {
     calculateW(dontFireEvent?: boolean): Quaternion;
     /**
      * Calculates the dot product of two quat's
+     * @param q
      * @returns dot product of two quat's
      */
     dot(q: Quaternion): number;
     /**
      * Performs a linear interpolation between two quat's
+     * @param q
      * @param t - interpolation amount between the two inputs
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
@@ -3043,6 +3361,7 @@ declare class Quaternion implements EventMixin {
     lerp(q: Quaternion, t: number, dontFireEvent?: boolean): Quaternion;
     /**
      * Performs a spherical linear interpolation between two quat
+     * @param q
      * @param t - interpolation amount between the two inputs
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
@@ -3050,6 +3369,10 @@ declare class Quaternion implements EventMixin {
     slerp(q: Quaternion, t: number, dontFireEvent?: boolean): Quaternion;
     /**
      * Performs a spherical linear interpolation with two control points
+     * @param qa
+     * @param qb
+     * @param qc
+     * @param qd
      * @param t - interpolation amount
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
@@ -3106,14 +3429,17 @@ declare class Quaternion implements EventMixin {
     fromMat4(m: Matrix4, dontFireEvent?: boolean): Quaternion;
     /**
      * Returns whether or not the quaternions have exactly the same elements in the same position (when compared with ===)
+     * @param q
      */
     exactEquals(q: Quaternion): boolean;
     /**
      * Returns whether or not the quaternions have approximately the same elements in the same position.
+     * @param q
      */
     equals(q: Quaternion): boolean;
     /**
      * Creates a quaternion from the given euler.
+     * @param euler
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
@@ -3187,10 +3513,12 @@ declare class Plane {
     normalize(): Plane;
     /**
      * 与点的距离
+     * @param point
      */
     distanceToPoint(point: Vector3): number;
     /**
      * 投影点
+     * @param point
      */
     projectPoint(point: Vector3): Vector3;
 }
@@ -3249,6 +3577,22 @@ declare class Matrix4 {
     fromArray(array: any[], offset?: number): Matrix4;
     /**
      * Set the components of a mat3 to the given values
+     * @param m00
+     * @param m01
+     * @param m02
+     * @param m03
+     * @param m10
+     * @param m11
+     * @param m12
+     * @param m13
+     * @param m20
+     * @param m21
+     * @param m22
+     * @param m23
+     * @param m30
+     * @param m31
+     * @param m32
+     * @param m33
      * @returns this
      */
     set(m00: number, m01: number, m02: number, m03: number, m10: number, m11: number, m12: number, m13: number, m20: number, m21: number, m22: number, m23: number, m30: number, m31: number, m32: number, m33: number): Matrix4;
@@ -3264,11 +3608,13 @@ declare class Matrix4 {
     transpose(): Matrix4;
     /**
      * invert a matrix
+     * @param [m = this]
      * @returns this
      */
     invert(m?: Matrix4): Matrix4;
     /**
      * Calculates the adjugate of a mat4
+     * @param [m = this]
      * @returns this
      */
     adjoint(m?: Matrix4): Matrix4;
@@ -3279,12 +3625,14 @@ declare class Matrix4 {
     determinant(): Matrix4;
     /**
      * Multiplies two matrix4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的乘积
      * @returns this
      */
     multiply(a: Matrix4, b?: Matrix4): Matrix4;
     /**
      * 左乘
+     * @param m
      * @returns this
      */
     premultiply(m: Matrix4): Matrix4;
@@ -3482,23 +3830,27 @@ declare class Matrix4 {
     frob(): number;
     /**
      * Adds two mat4's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的和
      * @returns this
      */
     add(a: Matrix4, b?: Matrix4): Matrix4;
     /**
      * Subtracts matrix b from matrix a
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的差
      * @returns this
      */
     subtract(a: Matrix4, b?: Matrix4): Matrix4;
     /**
      * Returns whether or not the matrices have exactly the same elements in the same position (when compared with ===)
+     * @param a
      * @param [b] - 如果不传，比较 this 和 a 是否相等
      */
     exactEquals(a: Matrix4, b?: Matrix4): boolean;
     /**
      * Returns whether or not the matrices have approximately the same elements in the same position.
+     * @param a
      * @param [b] - 如果不传，比较 this 和 a 是否近似相等
      */
     equals(a: Matrix4, b?: Matrix4): boolean;
@@ -3569,6 +3921,15 @@ declare class Matrix3 {
     fromArray(array: any[], offset?: number): Matrix3;
     /**
      * Set the components of a mat3 to the given values
+     * @param m00
+     * @param m01
+     * @param m02
+     * @param m10
+     * @param m11
+     * @param m12
+     * @param m20
+     * @param m21
+     * @param m22
      * @returns this
      */
     set(m00: number, m01: number, m02: number, m10: number, m11: number, m12: number, m20: number, m21: number, m22: number): Matrix3;
@@ -3584,11 +3945,13 @@ declare class Matrix3 {
     transpose(): Matrix3;
     /**
      * invert a matrix
+     * @param [m = this]
      * @returns this
      */
     invert(m?: Matrix3): Matrix3;
     /**
      * Calculates the adjugate of a mat3
+     * @param [m = this]
      * @returns this
      */
     adjoint(m?: Matrix3): Matrix3;
@@ -3598,12 +3961,14 @@ declare class Matrix3 {
     determinant(): number;
     /**
      * Multiplies two matrix3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的乘积
      * @returns this
      */
     multiply(a: Matrix3, b?: Matrix3): Matrix3;
     /**
      * 左乘
+     * @param m
      * @returns this
      */
     premultiply(m: Matrix3): Matrix3;
@@ -3668,29 +4033,37 @@ declare class Matrix3 {
     frob(): number;
     /**
      * Adds two mat3's
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的和
      * @returns this
      */
     add(a: Matrix3, b?: Matrix3): Matrix4;
     /**
      * Subtracts matrix b from matrix a
+     * @param a
      * @param [b] - 如果不传，计算 this 和 a 的差
      * @returns this
      */
     subtract(a: Matrix3, b?: Matrix3): Matrix4;
     /**
      * Returns whether or not the matrices have exactly the same elements in the same position (when compared with ===)
+     * @param a
      * @param [b] - 如果不传，比较 this 和 a 是否相等
      */
     exactEquals(a: Matrix3, b?: Matrix3): boolean;
     /**
      * Returns whether or not the matrices have approximately the same elements in the same position.
+     * @param a
      * @param [b] - 如果不传，比较 this 和 a 是否近似相等
      */
     equals(a: Matrix3, b?: Matrix3): boolean;
     /**
      * fromRotationTranslationScale
      * @param r - rad angle
+     * @param x
+     * @param y
+     * @param scaleX
+     * @param scaleY
      */
     fromRotationTranslationScale(r: number, x: number, y: number, scaleX: number, scaleY: number): Matrix3;
     /**
@@ -3725,11 +4098,13 @@ declare class Frustum {
     clone(): Frustum;
     /**
      * fromMatrix
+     * @param mat
      * @returns this
      */
     fromMatrix(mat: Matrix4): Frustum;
     /**
      * 与球体相交
+     * @param sphere
      * @returns 是否相交
      */
     intersectsSphere(sphere: Sphere): boolean;
@@ -3799,6 +4174,7 @@ declare class Euler {
     clone(): Euler;
     /**
      * 复制
+     * @param euler
      * @returns this
      */
     copy(euler: Euler): Euler;
@@ -3840,6 +4216,7 @@ declare class Euler {
     fromMat4(mat: Matrix4, order?: string): Euler;
     /**
      * Creates a euler from the given quat.
+     * @param quat
      * @param [order = this.order] - 旋转顺序，默认为当前Euler实例的order
      * @returns this
      */
@@ -3872,6 +4249,10 @@ declare class Euler {
 
 /**
  * 颜色类
+ * @param r
+ * @param g
+ * @param b
+ * @param a
  */
 declare class Color extends Vector4 {
     constructor(r: number, g: number, b: number, a: number);
@@ -4457,6 +4838,7 @@ declare class Loader {
     static addLoader(ext: string, LoaderClass: BasicLoader): void;
     /**
      * load
+     * @param data
      */
     load(data: any | any[]): Promise<any>;
 }
@@ -4601,6 +4983,7 @@ declare class KTXLoader {
     className: string;
     /**
      * load
+     * @param params
      */
     load(params: any): void;
 }
@@ -4611,10 +4994,15 @@ declare class HDRLoader {
     className: string;
     /**
      * load
+     * @param params
      */
     load(params: any): Promise<Texture>;
 }
 
+/**
+ * @param content
+ * @param params
+ */
 declare class GLTFParser {
     constructor(content: ArrayBuffer | string, params: any);
     isGLTFParser: boolean;
@@ -4661,6 +5049,7 @@ declare class IGLTFExtensionHandler {
      * @param extensionData - 扩展数据
      * @param parser - parser
      * @param element - parse的元素，e.g. material, mesh, geometry
+     * @param options
      * @returns 一般需要返回原始元素或者替换的新的元素
      */
     parse(extensionData: any, parser: GLTFParser, element: any, options: any): any;
@@ -4669,6 +5058,7 @@ declare class IGLTFExtensionHandler {
      * @param extensionData - 扩展数据
      * @param parser - parser
      * @param element - parse的元素，这里为 null
+     * @param options
      */
     parseOnLoad(extensionData: any, parser: GLTFParser, element: any, options: any): void;
     /**
@@ -4676,10 +5066,13 @@ declare class IGLTFExtensionHandler {
      * @param extensionData - 扩展数据
      * @param parser - parser
      * @param element - parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
+     * @param options
      */
     parseOnEnd(extensionData: any, parser: GLTFParser, element: Model, options: any): void;
     /**
      * 初始化全局扩展，在加载前执行，可进行添加需要加载的资源
+     * @param gltfLoader
+     * @param parser
      */
     init(gltfLoader: GLTFLoader, parser: GLTFParser): void;
     /**
@@ -4796,6 +5189,28 @@ declare class BasicLoader implements EventMixin {
         headers?: any;
         body?: string;
     }): Promise<object>;
+    /**
+     * 增加一个事件监听。
+     * @param type - 要监听的事件类型。
+     * @param listener - 事件监听回调函数。
+     * @param [once] - 是否是一次性监听，即回调函数响应一次后即删除，不再响应。
+     * @returns 对象本身。链式调用支持。
+     */
+    on(type: string, listener: EventMixinCallback, once?: boolean): any;
+    /**
+     * 删除一个事件监听。如果不传入任何参数，则删除所有的事件监听；如果不传入第二个参数，则删除指定类型的所有事件监听。
+     * @param [type] - 要删除监听的事件类型。
+     * @param [listener] - 要删除监听的回调函数。
+     * @returns 对象本身。链式调用支持。
+     */
+    off(type?: string, listener?: EventMixinCallback): any;
+    /**
+     * 发送事件。当第一个参数类型为Object时，则把它作为一个整体事件对象。
+     * @param [type] - 要发送的事件类型或者一个事件对象。
+     * @param [detail] - 要发送的事件的具体信息，即事件随带参数。
+     * @returns 是否成功调度事件。
+     */
+    fire(type?: string | EventObject, detail?: any): boolean;
 }
 
 /**
@@ -4958,6 +5373,8 @@ declare class Light extends Node {
     toInfoArray(out: any[], offset: number): void;
     /**
      * 生成阴影贴图，支持阴影的子类需要重写
+     * @param renderer
+     * @param camera
      */
     createShadowMap(renderer: WebGLRenderer, camera: Camera): void;
     className: string;
@@ -5304,40 +5721,51 @@ declare class GeometryData {
     clone(): GeometryData;
     /**
      * copy
+     * @param geometryData
      */
     copy(geometryData: GeometryData): void;
     /**
      * 获取偏移值
+     * @param index
      */
     getOffset(index: number): number;
     /**
      * Get the value by index.
      * Please note that it will return the same reference for performance reasons. If you want to get a copy, use #getCopy instead.
+     * @param index
      */
     get(index: number): number | Vector2 | Vector3 | Vector4;
     /**
      * Get the value by index.
      * It will return a copy of value.
+     * @param index
      */
     getCopy(index: number): number | Vector2 | Vector3 | Vector4;
     /**
      * 设置值
+     * @param index
+     * @param value
      */
     set(index: number, value: number | Vector2 | Vector3 | Vector4): void;
     /**
      * 根据 offset 获取值
+     * @param offset
      */
     getByOffset(offset: number): number | Vector2 | Vector3 | Vector4;
     /**
      * 根据 offset 设置值
+     * @param offset
+     * @param value
      */
     setByOffset(offset: number, value: number | Vector2 | Vector3 | Vector4): void;
     /**
      * 按 index 遍历
+     * @param callback
      */
     traverse(callback: GeometryDataTraverseCallback): boolean;
     /**
      * 按 Component 遍历 Component
+     * @param callback
      */
     traverseByComponent(callback: GeometryDataTraverseByComponentCallback): boolean;
 }
@@ -5419,11 +5847,17 @@ declare class Geometry {
     convertToLinesMode(): void;
     /**
      * 平移
+     * @param [x = 0]
+     * @param [y = 0]
+     * @param [z = 0]
      * @returns this
      */
     translate(x?: number, y?: number, z?: number): Geometry;
     /**
      * 缩放
+     * @param [x = 1]
+     * @param [y = 1]
+     * @param [z = 1]
      * @returns this
      */
     scale(x?: number, y?: number, z?: number): Geometry;
@@ -5437,11 +5871,13 @@ declare class Geometry {
     rotate(x?: number, y?: number, z?: number): Geometry;
     /**
      * Transforms the geometry with a mat4.
+     * @param mat4
      * @returns this
      */
     transformMat4(mat4: Matrix4): Geometry;
     /**
      * 合并两个 geometry
+     * @param geometry
      * @param [matrix = null] - 合并的矩阵
      * @returns this
      */
@@ -5514,6 +5950,7 @@ declare class Geometry {
     getLocalBounds(force?: boolean): Bounds;
     /**
      * 获取球面包围盒
+     * @param matrix
      */
     getSphereBounds(matrix: Matrix4): Sphere;
     /**
@@ -5533,14 +5970,19 @@ declare class Geometry {
     clone(): Geometry;
     /**
      * 检测 aabb 碰撞
+     * @param ray
      */
     _aabbRaycast(ray: Ray): Vector3[] | null;
     /**
      * _raycast，子类可覆盖实现
+     * @param ray
+     * @param side
      */
     _raycast(ray: Ray, side: GLenum): Vector3[] | null;
     /**
      * raycast
+     * @param ray
+     * @param side
      * @param [sort = true] - 是否按距离排序
      */
     raycast(ray: Ray, side: GLenum, sort?: boolean): Vector3[] | null;
@@ -5650,12 +6092,192 @@ declare class BoxGeometry extends Geometry {
 
 /**
  * Tween类提供缓动功能。
+ * @example
+ * Hilo.Tween.to(node, {
+ *     x:100,
+ *     y:20
+ * }, {
+ *     duration:1000,
+ *     delay:500,
+ *     ease:Hilo3d.Tween.Ease.Quad.EaseIn,
+ *     onComplete:function(){
+ *         console.log('complete');
+ *     }
+ * });
+ * @property target - 缓动目标。只读属性。
+ * @property duration - 缓动总时长。单位毫秒。
+ * @property delay - 缓动延迟时间。单位毫秒。
+ * @property paused - 缓动是否暂停。默认为false。
+ * @property loop - 缓动是否循环。默认为false。
+ * @property reverse - 缓动是否反转播放。默认为false。
+ * @property repeat - 缓动重复的次数。默认为0。
+ * @property repeatDelay - 缓动重复的延迟时长。单位为毫秒。
+ * @property ease - 缓动变化函数。默认为null。
+ * @property time - 缓动已进行的时长。单位毫秒。只读属性。
+ * @property onStart - 缓动开始回调函数。它接受1个参数：tween。默认值为null。
+ * @property onUpdate - 缓动更新回调函数。它接受2个参数：ratio和tween。默认值为null。
+ * @property onComplete - 缓动结束回调函数。它接受1个参数：tween。默认值为null。
+ * @param target - 缓动对象。
+ * @param fromProps - 对象缓动的起始属性集合。
+ * @param toProps - 对象缓动的目标属性集合。
+ * @param params - 缓动参数。可包含Tween类所有可写属性。
  */
 declare class Tween {
+    constructor(target: any, fromProps: any, toProps: any, params: TweenParams);
+    /**
+     * 启动缓动动画的播放。
+     * @returns Tween变换本身。可用于链式调用。
+     */
+    start(): Tween;
+    /**
+     * 停止缓动动画的播放。
+     * @returns Tween变换本身。可用于链式调用。
+     */
+    stop(): Tween;
+    /**
+     * 暂停缓动动画的播放。
+     * @returns Tween变换本身。可用于链式调用。
+     */
+    pause(): Tween;
+    /**
+     * 恢复缓动动画的播放。
+     * @returns Tween变换本身。可用于链式调用。
+     */
+    resume(): Tween;
+    /**
+     * 跳转Tween到指定的时间。
+     * @param time - 指定要跳转的时间。取值范围为：0 - duraion。
+     * @param pause - 是否暂停。
+     * @returns Tween变换本身。可用于链式调用。
+     */
+    seek(time: number, pause: boolean): Tween;
+    /**
+     * 连接下一个Tween变换。其开始时间根据delay值不同而不同。当delay值为字符串且以'+'或'-'开始时，Tween的开始时间从当前变换结束点计算，否则以当前变换起始点计算。
+     * @param tween - 要连接的Tween变换。
+     * @returns 下一个Tween。可用于链式调用。
+     */
+    link(tween: Tween): Tween;
+    /**
+     * 更新所有Tween实例。
+     * @returns Tween
+     */
+    static tick(): any;
+    /**
+     * @returns Tween
+     */
+    static add(): any;
+    /**
+     * @returns Tween
+     */
+    static remove(): any;
+    /**
+     * @returns Tween
+     */
+    static removeAll(): any;
+    /**
+     * 创建一个缓动动画，让目标对象从开始属性变换到目标属性。
+     * @param target - 缓动目标对象或缓动目标数组。
+     * @param fromProps - 缓动目标对象的开始属性。
+     * @param toProps - 缓动目标对象的目标属性。
+     * @param params - 缓动动画的参数。
+     * @returns 一个Tween实例对象或Tween实例数组。
+     */
+    static fromTo(target: any | any[], fromProps: any, toProps: any, params: TweenParams): Tween | any[];
+    /**
+     * 创建一个缓动动画，让目标对象从当前属性变换到目标属性。
+     * @param target - 缓动目标对象或缓动目标数组。
+     * @param toProps - 缓动目标对象的目标属性。
+     * @param params - 缓动动画的参数。
+     * @returns 一个Tween实例对象或Tween实例数组。
+     */
+    static to(target: any | any[], toProps: any, params: TweenParams): Tween | any[];
+    /**
+     * 创建一个缓动动画，让目标对象从指定的起始属性变换到当前属性。
+     * @param target - 缓动目标对象或缓动目标数组。
+     * @param fromProps - 缓动目标对象的初始属性。
+     * @param params - 缓动动画的参数。
+     * @returns 一个Tween实例对象或Tween实例数组。
+     */
+    static from(target: any | any[], fromProps: any, params: TweenParams): Tween | any[];
     /**
      * Ease类包含为Tween类提供各种缓动功能的函数。
+     * @property Back
+     * @property Bounce
+     * @property Circ
+     * @property Cubic
+     * @property Elastic
+     * @property Expo
+     * @property Linear
+     * @property Quad
+     * @property Quart
+     * @property Quint
+     * @property Sine
      */
-    static Ease: any;
+    static Ease: {
+        Back: TweenEaseObject;
+        Bounce: TweenEaseObject;
+        Circ: TweenEaseObject;
+        Cubic: TweenEaseObject;
+        Elastic: TweenEaseObject;
+        Expo: TweenEaseObject;
+        Linear: TweenEaseObject;
+        Quad: TweenEaseObject;
+        Quart: TweenEaseObject;
+        Quint: TweenEaseObject;
+        Sine: TweenEaseObject;
+    };
+    /**
+     * 缓动目标。只读属性。
+    */
+    target: any;
+    /**
+     * 缓动总时长。单位毫秒。
+    */
+    duration: number;
+    /**
+     * 缓动延迟时间。单位毫秒。
+    */
+    delay: number;
+    /**
+     * 缓动是否暂停。默认为false。
+    */
+    paused: boolean;
+    /**
+     * 缓动是否循环。默认为false。
+    */
+    loop: boolean;
+    /**
+     * 缓动是否反转播放。默认为false。
+    */
+    reverse: boolean;
+    /**
+     * 缓动重复的次数。默认为0。
+    */
+    repeat: number;
+    /**
+     * 缓动重复的延迟时长。单位为毫秒。
+    */
+    repeatDelay: number;
+    /**
+     * 缓动变化函数。默认为null。
+    */
+    ease: (...params: any[]) => any;
+    /**
+     * 缓动已进行的时长。单位毫秒。只读属性。
+    */
+    time: number;
+    /**
+     * 缓动开始回调函数。它接受1个参数：tween。默认值为null。
+    */
+    onStart: (...params: any[]) => any;
+    /**
+     * 缓动更新回调函数。它接受2个参数：ratio和tween。默认值为null。
+    */
+    onUpdate: (...params: any[]) => any;
+    /**
+     * 缓动结束回调函数。它接受1个参数：tween。默认值为null。
+    */
+    onComplete: (...params: any[]) => any;
 }
 
 /**
@@ -5667,7 +6289,7 @@ declare class Tween {
  *     height:innerHeight
  * });
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性，所有属性会透传给 Renderer。
- * @param container - stage的容器
+ * @param [params.container] - stage的容器
  * @param [params.pixelRatio = 根据设备自动判断] - 像素密度。
  * @param [params.clearColor = new Color(1, 1, 1, 1)] - 背景色。
  * @param [params.useFramebuffer = false] - 是否使用Framebuffer，有后处理需求时需要。
@@ -5684,6 +6306,7 @@ declare class Tween {
  */
 declare class Stage extends Node {
     constructor(params?: {
+        container?: HTMLElement;
         pixelRatio?: number;
         clearColor?: Color;
         useFramebuffer?: boolean;
@@ -5697,7 +6320,7 @@ declare class Stage extends Node {
         preserveDrawingBuffer?: boolean;
         failIfMajorPerformanceCaveat?: boolean;
         gameMode?: boolean;
-    }, container: HTMLElement);
+    });
     /**
      * 渲染器
      */
@@ -5718,6 +6341,10 @@ declare class Stage extends Node {
      * 偏移值
      */
     offsetY: number;
+    /**
+     * canvas
+     */
+    canvas: HTMLCanvasElement;
     /**
      * 缩放舞台
      * @param width - 舞台宽
@@ -5763,6 +6390,9 @@ declare class Stage extends Node {
     updateDomViewport(): any;
     /**
      * 获取指定点的 mesh
+     * @param x
+     * @param y
+     * @param [eventMode = false]
      */
     getMeshResultAtPoint(x: number, y: number, eventMode?: boolean): Mesh | null;
     /**
@@ -5837,10 +6467,13 @@ declare class Skeleton {
     rootNode: Node;
     /**
      * clone
+     * @param [rootNode]
      */
     clone(rootNode?: Node): Skeleton;
     /**
      * copy
+     * @param skeleton
+     * @param [rootNode]
      * @returns this
      */
     copy(skeleton: Skeleton, rootNode?: Node): Skeleton;
@@ -5884,6 +6517,10 @@ declare class Node implements EventMixin {
      * Node 的名字，可以通过 getChildByName 查找
      */
     name: string;
+    /**
+     * 动画
+     */
+    anim: Animation;
     /**
      * animation 查找 id
      */
@@ -6031,6 +6668,7 @@ declare class Node implements EventMixin {
     getChildByNamePath(path: String[]): Node | null;
     /**
      * 遍历调用子孙元素onUpdate方法
+     * @param dt
      * @returns this
      */
     traverseUpdate(dt: number): Node;
@@ -6116,6 +6754,7 @@ declare class Node implements EventMixin {
     lookAt(node: Node | any | Vector3): Node;
     /**
      * raycast
+     * @param ray
      * @param [sort = false] - 是否按距离排序
      * @param [eventMode = false] - 是否事件模式
      */
@@ -6202,10 +6841,11 @@ declare class Node implements EventMixin {
     getBounds(parent?: Node, currentMatrix?: Matrix4, bounds?: Bounds): Bounds;
     /**
      * 销毁 Node 资源
+     * @param [renderer] - stage时可以不传
      * @param [destroyTextures = false] - 是否销毁材质的贴图，默认不销毁
      * @returns this
      */
-    destroy(renderer: WebGLRenderer, destroyTextures?: boolean): Node;
+    destroy(renderer?: WebGLRenderer, destroyTextures?: boolean): Node;
 }
 
 /**
@@ -6279,6 +6919,34 @@ declare class Fog {
      * @returns res
      */
     getInfo(): any[];
+}
+
+/**
+ * EventMixin是一个包含事件相关功能的mixin。可以通过 Object.assign(target, EventMixin) 来为target增加事件功能。
+ */
+declare class EventMixin {
+    /**
+     * 增加一个事件监听。
+     * @param type - 要监听的事件类型。
+     * @param listener - 事件监听回调函数。
+     * @param [once] - 是否是一次性监听，即回调函数响应一次后即删除，不再响应。
+     * @returns 对象本身。链式调用支持。
+     */
+    on(type: string, listener: EventMixinCallback, once?: boolean): any;
+    /**
+     * 删除一个事件监听。如果不传入任何参数，则删除所有的事件监听；如果不传入第二个参数，则删除指定类型的所有事件监听。
+     * @param [type] - 要删除监听的事件类型。
+     * @param [listener] - 要删除监听的回调函数。
+     * @returns 对象本身。链式调用支持。
+     */
+    off(type?: string, listener?: EventMixinCallback): any;
+    /**
+     * 发送事件。当第一个参数类型为Object时，则把它作为一个整体事件对象。
+     * @param [type] - 要发送的事件类型或者一个事件对象。
+     * @param [detail] - 要发送的事件的具体信息，即事件随带参数。
+     * @returns 是否成功调度事件。
+     */
+    fire(type?: string | EventObject, detail?: any): boolean;
 }
 
 /**
@@ -6394,14 +7062,17 @@ declare class Camera extends Node {
     unprojectVector(vector: Vector3, width?: number, height?: number): Vector3;
     /**
      * point是否摄像机可见
+     * @param point
      */
     isPointVisible(point: Vector3): boolean;
     /**
      * mesh 是否摄像机可见
+     * @param mesh
      */
     isMeshVisible(mesh: Mesh): boolean;
     /**
      * 更新 frustum
+     * @param matrix
      * @returns this
      */
     updateFrustum(matrix: Matrix4): Camera;
@@ -6611,3 +7282,5 @@ declare class Animation implements EventMixin {
 }
 
 
+
+}

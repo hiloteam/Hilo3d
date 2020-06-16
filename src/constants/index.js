@@ -4,7 +4,8 @@ import * as Hilo from './Hilo';
 
 /**
  * WebGL, WebGL extensions 枚举值
- * @namespace
+ * @constant
+ * @type {Object}
  * @example
  * Hilo3d.constants.LINEAR_MIPMAP_NEAREST
  */

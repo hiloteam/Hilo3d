@@ -23,6 +23,35 @@ const testTask = () => {
         }));
 };
 
+const hilo3dTSDHeader = `export = hilo3d;
+export as namespace hilo3d;
+declare namespace hilo3d {
+
+type TypedArray =
+    | Int8Array
+    | Uint8Array
+    | Uint8ClampedArray
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Float32Array
+    | Float64Array;
+
+`;
+
+const hilo3dTSDFooter = `
+
+}
+`;
+
+const addHilo3dTSD = () => {
+    return src('./types/index.d.ts')
+        .pipe(replace(/^/, hilo3dTSDHeader))
+        .pipe(replace(/$/, hilo3dTSDFooter))
+        .pipe(dest('types'));
+};
+
 const readmeTask = () => {
     return src(['./README.md', './README_ZH.md'])
         .pipe(replace(/Hilo3d\/[\d\.]+\/Hilo3d\.js/g, `Hilo3d/${pkg.version}/Hilo3d.js`))
@@ -36,3 +65,4 @@ const watchTask = () => {
 exports.test = series(testBuildTask, testTask);
 exports.watch = series(testBuildTask, testTask, watchTask);
 exports.readme = readmeTask;
+exports.addHilo3dTSD = addHilo3dTSD;

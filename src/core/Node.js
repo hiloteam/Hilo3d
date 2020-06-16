@@ -70,8 +70,15 @@ const Node = Class.create(/** @lends Node.prototype */ {
      */
     name: '',
     /**
+     * 动画
+     * @type {Animation}
+     * @default null
+     */
+    anim: null,
+    /**
      * animation 查找 id
      * @type {String}
+     * @default ''
      */
     animationId: '',
     /**
@@ -976,7 +983,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
     },
     /**
      * 销毁 Node 资源
-     * @param {WebGLRenderer} renderer
+     * @param {WebGLRenderer} [renderer] stage时可以不传
      * @param {Boolean} [destroyTextures=false] 是否销毁材质的贴图，默认不销毁
      * @return {Node} this
      */
