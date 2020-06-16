@@ -225,6 +225,55 @@ declare type GeometryDataTraverseCallback = (attribute: number | Vector2 | Vecto
 declare type GeometryDataTraverseByComponentCallback = (component: number, index: number, offset: number) => void;
 
 /**
+ * GLTFExtension Handler 接口
+ */
+declare interface IGLTFExtensionHandler {
+    /**
+     * 解析元素扩展
+     * @param extensionData - 扩展数据
+     * @param parser - parser
+     * @param element - parse的元素，e.g. material, mesh, geometry
+     * @param options
+     * @returns 一般需要返回原始元素或者替换的新的元素
+     */
+    parse?(extensionData: any, parser: GLTFParser, element: any, options: any): any;
+    /**
+     * 解析全局扩展，在资源加载后执行
+     * @param extensionData - 扩展数据
+     * @param parser - parser
+     * @param element - parse的元素，这里为 null
+     * @param options
+     */
+    parseOnLoad?(extensionData: any, parser: GLTFParser, element: any, options: any): void;
+    /**
+     * 解析全局扩展，在所有元素解析结束后执行
+     * @param extensionData - 扩展数据
+     * @param parser - parser
+     * @param element - parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
+     * @param options
+     */
+    parseOnEnd?(extensionData: any, parser: GLTFParser, element: Model, options: any): void;
+    /**
+     * 初始化全局扩展，在加载前执行，可进行添加需要加载的资源
+     * @param gltfLoader
+     * @param parser
+     */
+    init?(gltfLoader: GLTFLoader, parser: GLTFParser): void;
+    /**
+     * 获取扩展用到的贴图信息, parser.isLoadAllTextures 为 false 时生效
+     * @example
+     * getUsedTextureNameMap(extension, map) {
+     *     if (extension.diffuseTexture) {
+     *         map[extension.diffuseTexture.index] = true;
+     *     }
+     * }
+     * @param extensionData - 扩展数据
+     * @param map - used texture map
+     */
+    getUsedTextureNameMap?(extensionData: any, map: any): void;
+}
+
+/**
  * GLTFLoader 模型加载完返回的对象格式
  */
 declare type Model = {
@@ -5082,56 +5131,6 @@ declare class GLTFLoader extends BasicLoader {
 }
 
 /**
- * GLTFExtension Handler 接口
- */
-declare class IGLTFExtensionHandler {
-    constructor();
-    /**
-     * 解析元素扩展
-     * @param extensionData - 扩展数据
-     * @param parser - parser
-     * @param element - parse的元素，e.g. material, mesh, geometry
-     * @param options
-     * @returns 一般需要返回原始元素或者替换的新的元素
-     */
-    parse(extensionData: any, parser: GLTFParser, element: any, options: any): any;
-    /**
-     * 解析全局扩展，在资源加载后执行
-     * @param extensionData - 扩展数据
-     * @param parser - parser
-     * @param element - parse的元素，这里为 null
-     * @param options
-     */
-    parseOnLoad(extensionData: any, parser: GLTFParser, element: any, options: any): void;
-    /**
-     * 解析全局扩展，在所有元素解析结束后执行
-     * @param extensionData - 扩展数据
-     * @param parser - parser
-     * @param element - parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
-     * @param options
-     */
-    parseOnEnd(extensionData: any, parser: GLTFParser, element: Model, options: any): void;
-    /**
-     * 初始化全局扩展，在加载前执行，可进行添加需要加载的资源
-     * @param gltfLoader
-     * @param parser
-     */
-    init(gltfLoader: GLTFLoader, parser: GLTFParser): void;
-    /**
-     * 获取扩展用到的贴图信息, parser.isLoadAllTextures 为 false 时生效
-     * @example
-     * getUsedTextureNameMap(extension, map) {
-     *     if (extension.diffuseTexture) {
-     *         map[extension.diffuseTexture.index] = true;
-     *     }
-     * }
-     * @param extensionData - 扩展数据
-     * @param map - used texture map
-     */
-    getUsedTextureNameMap(extensionData: any, map: any): void;
-}
-
-/**
  * CubeTexture加载类
  * @example
  * var loader = new Hilo3d.CubeTextureLoader();
@@ -5275,10 +5274,6 @@ declare class SpotLight extends Light {
      * 光方向
      */
     direction: Vector3;
-    /**
-     * shadow 配置
-     */
-    shadow: any;
 }
 
 /**
@@ -5289,10 +5284,6 @@ declare class PointLight extends Light {
     constructor(params?: any);
     isPointLight: boolean;
     className: string;
-    /**
-     * shadow 配置
-     */
-    shadow: any;
 }
 
 /**
@@ -5375,6 +5366,10 @@ declare class Light extends Node {
      */
     quadraticAttenuation: number;
     /**
+     * 光照范围, PointLight 和 SpotLight 时生效, 0 时代表光照范围无限大。
+     */
+    range: number;
+    /**
      * 阴影生成参数，默认不生成阴影
      * @property [debug = false] - 是否显示生成的阴影贴图
      * @property [width = render.width] - 阴影贴图的宽，默认为画布宽
@@ -5414,10 +5409,6 @@ declare class Light extends Node {
         cameraInfo?: any;
     };
     /**
-     * 光照范围, PointLight 和 SpotLight 时生效, 0 时代表光照范围无限大。
-     */
-    range: number;
-    /**
      * 灯光颜色
      */
     color: Color;
@@ -5448,10 +5439,6 @@ declare class DirectionalLight extends Light {
      * 光方向
      */
     direction: Vector3;
-    /**
-     * shadow 配置
-     */
-    shadow: any;
 }
 
 /**
@@ -5502,10 +5489,6 @@ declare class AreaLight extends Light {
      * 是否开启灯光
      */
     enabled: boolean;
-    /**
-     * shadow 配置
-     */
-    shadow: any;
 }
 
 /**
@@ -5516,10 +5499,6 @@ declare class AmbientLight extends Light {
     constructor(params?: any);
     readonly isAmbientLight: boolean;
     readonly className: string;
-    /**
-     * shadow 配置
-     */
-    shadow: any;
 }
 
 /**

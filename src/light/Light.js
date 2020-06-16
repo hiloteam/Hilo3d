@@ -49,11 +49,6 @@ const Light = Class.create(/** @lends Light.prototype */ {
     quadraticAttenuation: 0,
     _range: 0,
     /**
-     * shadow 配置
-     * @type {Object}
-     */
-    shadow: null,
-    /**
      * 光照范围, PointLight 和 SpotLight 时生效, 0 时代表光照范围无限大。
      * @type {Number}
      * @default 0
