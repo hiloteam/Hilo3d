@@ -155,7 +155,7 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
     /**
      * 法向量数据，如果没有的话会自动生成
      * @default null
-     * @type {Float32Array}
+     * @type {GeometryData}
      */
     normals: {
         get() {
@@ -224,7 +224,7 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
     /**
      * 切线向量数据，如果没有的话会自动生成
      * @default null
-     * @type {Float32Array}
+     * @type {GeometryData}
      */
     tangents: {
         get() {
@@ -240,7 +240,7 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
     /**
      * 切线向量数据，如果没有的话会自动生成
      * @default null
-     * @type {Float32Array}
+     * @type {GeometryData}
      */
     tangents1: {
         get() {

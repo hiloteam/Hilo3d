@@ -47,15 +47,15 @@ declare interface ClassProperty {
     /**
      * 静态属性
     */
-    Statics?: Objace;
+    Statics?: any;
     /**
      * 继承
     */
-    Extends?: Objace;
+    Extends?: any;
     /**
      * mixes
     */
-    Mixes?: Objace;
+    Mixes?: any;
     /**
      * 构造函数
     */
@@ -5625,11 +5625,11 @@ declare class SphereGeometry extends Geometry {
     /**
      * 法向量数据，如果没有的话会自动生成
      */
-    normals: Float32Array;
+    normals: GeometryData;
     /**
      * 切线向量数据，如果没有的话会自动生成
      */
-    tangents: Float32Array;
+    tangents: GeometryData;
 }
 
 /**
@@ -5671,7 +5671,7 @@ declare class PlaneGeometry extends Geometry {
     /**
      * 法向量数据，如果没有的话会自动生成
      */
-    normals: Float32Array;
+    normals: GeometryData;
 }
 
 /**
@@ -5883,15 +5883,15 @@ declare class Geometry {
     /**
      * 法向量数据，如果没有的话会自动生成
      */
-    normals: Float32Array;
+    normals: GeometryData;
     /**
      * 切线向量数据，如果没有的话会自动生成
      */
-    tangents: Float32Array;
+    tangents: GeometryData;
     /**
      * 切线向量数据，如果没有的话会自动生成
      */
-    tangents1: Float32Array;
+    tangents1: GeometryData;
     /**
      * 将三角形模式转换为线框模式，即 Material 中的 wireframe
      */
@@ -6138,7 +6138,7 @@ declare class BoxGeometry extends Geometry {
     /**
      * 法向量数据，如果没有的话会自动生成
      */
-    normals: Float32Array;
+    normals: GeometryData;
 }
 
 /**
