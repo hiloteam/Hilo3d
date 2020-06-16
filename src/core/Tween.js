@@ -170,8 +170,8 @@ export default Tween;
 
 
 /**
- * @class TweenEaseObject
- * @function {Function} EaseIn
- * @function {Function} EaseOut
- * @function {Function} EaseInOut
+ * @interface TweenEaseObject
+ * @property {Function} EaseIn
+ * @property {Function} EaseOut
+ * @property {Function} EaseInOut
  */

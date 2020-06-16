@@ -169,7 +169,13 @@ declare type NodeGetChildByCallback = (node: Node) => boolean;
 declare interface TweenParams {
 }
 
-declare function {Function} EaseInOut(): void;
+/**
+ * @property EaseIn
+ * @property EaseOut
+ * @property EaseInOut
+ */
+declare interface TweenEaseObject {
+}
 
 /**
  * @param attribute
@@ -4473,6 +4479,10 @@ declare class Material {
     constructor(params?: any);
     isMaterial: boolean;
     className: string;
+    /**
+     * name
+     */
+    name: string;
     /**
      * shader cache id
      */

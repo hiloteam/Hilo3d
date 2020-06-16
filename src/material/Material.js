@@ -39,6 +39,11 @@ const Material = Class.create(/** @lends Material.prototype */ {
      */
     className: 'Material',
     /**
+     * name
+     * @type {string}
+     */
+    name: null,
+    /**
      * shader cache id
      * @default null
      * @type {String}
