@@ -49,6 +49,11 @@ const Light = Class.create(/** @lends Light.prototype */ {
     quadraticAttenuation: 0,
     _range: 0,
     /**
+     * shadow 配置
+     * @type {Object}
+     */
+    shadow: null,
+    /**
      * 光照范围, PointLight 和 SpotLight 时生效, 0 时代表光照范围无限大。
      * @type {Number}
      * @default 0
@@ -69,6 +74,18 @@ const Light = Class.create(/** @lends Light.prototype */ {
             this._range = value;
         }
     },
+    /**
+     * 阴影生成参数，默认不生成阴影
+     * @default null
+     * @type {object}
+     * @property {boolean} [debug=false] 是否显示生成的阴影贴图
+     * @property {number} [width=render.width] 阴影贴图的宽，默认为画布宽
+     * @property {number} [height=render.height] 阴影贴图的高，默认为画布高
+     * @property {number} [maxBias=0.05] depth最大差值，实际的bias为max(maxBias * (1 - dot(normal, lightDir)), minBias)
+     * @property {number} [minBias=0.005] depth最小差值
+     * @property {Object} [cameraInfo=null] 阴影摄像机信息，没有会根据当前相机自动计算
+     */
+    shadow: null,
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。

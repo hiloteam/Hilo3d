@@ -16,8 +16,8 @@ const Animation = Class.create(/** @lends Animation.prototype */{
         /**
          * tick
          * @memberOf Animation
-         * @static
-         * @param  {Number} dt 一帧时间
+         * @method tick
+         * @param {Number} dt 一帧时间
          */
         tick(dt) {
             this._anims.forEach(anim => anim.tick(dt));
@@ -191,6 +191,10 @@ const Animation = Class.create(/** @lends Animation.prototype */{
             }, false);
         }
     },
+    /**
+     * tick
+     * @param  {Number} dt
+     */
     tick(dt) {
         if (this.paused) {
             return;

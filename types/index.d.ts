@@ -5265,39 +5265,6 @@ declare class SpotLight extends Light {
     isSpotLight: boolean;
     className: string;
     /**
-     * 阴影生成参数，默认不生成阴影
-     * @property [debug = false] - 是否显示生成的阴影贴图
-     * @property [width = render.width] - 阴影贴图的宽，默认为画布宽
-     * @property [height = render.height] - 阴影贴图的高，默认为画布高
-     * @property [bias = 0.005] - depth最小差值，大于才显示阴影
-     * @property [cameraInfo = null] - 阴影摄像机信息, 没有会根据当前相机自动计算
-     */
-    shadow: {
-        /**
-         * 是否显示生成的阴影贴图
-         */
-        debug?: boolean;
-        /**
-         * 阴影贴图的宽，默认为画布宽
-         * @defaultValue render.width
-         */
-        width?: number;
-        /**
-         * 阴影贴图的高，默认为画布高
-         * @defaultValue render.height
-         */
-        height?: number;
-        /**
-         * depth最小差值，大于才显示阴影
-         * @defaultValue 0.005
-         */
-        bias?: number;
-        /**
-         * 阴影摄像机信息, 没有会根据当前相机自动计算
-         */
-        cameraInfo?: any;
-    };
-    /**
      * 切光角(角度)，落在这个角度之内的光亮度为1
      */
     cutoff: number;
@@ -5309,6 +5276,10 @@ declare class SpotLight extends Light {
      * 光方向
      */
     direction: Vector3;
+    /**
+     * shadow 配置
+     */
+    shadow: any;
 }
 
 /**
@@ -5319,6 +5290,10 @@ declare class PointLight extends Light {
     constructor(params?: any);
     isPointLight: boolean;
     className: string;
+    /**
+     * shadow 配置
+     */
+    shadow: any;
 }
 
 /**
@@ -5401,37 +5376,6 @@ declare class Light extends Node {
      */
     quadraticAttenuation: number;
     /**
-     * 光照范围, PointLight 和 SpotLight 时生效, 0 时代表光照范围无限大。
-     */
-    range: number;
-    /**
-     * 灯光颜色
-     */
-    color: Color;
-    /**
-     * 获取光范围信息, PointLight 和 SpotLight 时生效
-     * @param out - 信息接受数组
-     * @param offset - 偏移值
-     */
-    toInfoArray(out: any[], offset: number): void;
-    /**
-     * 生成阴影贴图，支持阴影的子类需要重写
-     * @param renderer
-     * @param camera
-     */
-    createShadowMap(renderer: WebGLRenderer, camera: Camera): void;
-    className: string;
-}
-
-/**
- * 平行光
- * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
- */
-declare class DirectionalLight extends Light {
-    constructor(params?: any);
-    isDirectionalLight: boolean;
-    className: string;
-    /**
      * 阴影生成参数，默认不生成阴影
      * @property [debug = false] - 是否显示生成的阴影贴图
      * @property [width = render.width] - 阴影贴图的宽，默认为画布宽
@@ -5471,9 +5415,44 @@ declare class DirectionalLight extends Light {
         cameraInfo?: any;
     };
     /**
+     * 光照范围, PointLight 和 SpotLight 时生效, 0 时代表光照范围无限大。
+     */
+    range: number;
+    /**
+     * 灯光颜色
+     */
+    color: Color;
+    /**
+     * 获取光范围信息, PointLight 和 SpotLight 时生效
+     * @param out - 信息接受数组
+     * @param offset - 偏移值
+     */
+    toInfoArray(out: any[], offset: number): void;
+    /**
+     * 生成阴影贴图，支持阴影的子类需要重写
+     * @param renderer
+     * @param camera
+     */
+    createShadowMap(renderer: WebGLRenderer, camera: Camera): void;
+    className: string;
+}
+
+/**
+ * 平行光
+ * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ */
+declare class DirectionalLight extends Light {
+    constructor(params?: any);
+    isDirectionalLight: boolean;
+    className: string;
+    /**
      * 光方向
      */
     direction: Vector3;
+    /**
+     * shadow 配置
+     */
+    shadow: any;
 }
 
 /**
@@ -5524,6 +5503,10 @@ declare class AreaLight extends Light {
      * 是否开启灯光
      */
     enabled: boolean;
+    /**
+     * shadow 配置
+     */
+    shadow: any;
 }
 
 /**
@@ -5532,6 +5515,10 @@ declare class AreaLight extends Light {
  */
 declare class AmbientLight extends Light {
     constructor(params?: any);
+    /**
+     * shadow 配置
+     */
+    shadow: any;
 }
 
 /**
@@ -6577,6 +6564,10 @@ declare class Node implements EventMixin {
      */
     animationId: string;
     /**
+     * 骨骼名称
+     */
+    jointName: string;
+    /**
      * 是否自动更新世界矩阵
      */
     autoUpdateWorldMatrix: boolean;
@@ -7301,6 +7292,11 @@ declare class Animation implements EventMixin {
      * @returns result {startTime, endTime} 时间信息
      */
     getAnimStatesListTimeInfo(animStatesList: AnimationStates[]): any;
+    /**
+     * tick
+     * @param dt
+     */
+    tick(dt: number): void;
     /**
      * 更新动画状态
      * @returns this

@@ -82,6 +82,12 @@ const Node = Class.create(/** @lends Node.prototype */ {
      */
     animationId: '',
     /**
+     * 骨骼名称
+     * @type {String}
+     * @default ''
+     */
+    jointName: '',
+    /**
      * 是否自动更新世界矩阵
      * @default true
      * @type {boolean}
