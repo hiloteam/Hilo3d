@@ -2224,9 +2224,8 @@ declare class Vector4 {
      * 从数组赋值
      * @param array - 数组
      * @param [offset = 0] - 数组偏移值
-     * @returns this
      */
-    fromArray(array: any[], offset?: number): Vector4;
+    fromArray(array: any[], offset?: number): this;
     /**
      * Set the components of a vec4 to the given values
      * @param x - X component
@@ -4288,13 +4287,13 @@ declare class Euler {
 
 /**
  * 颜色类
- * @param r
- * @param g
- * @param b
- * @param a
+ * @param [r = 1]
+ * @param [g = 1]
+ * @param [b = 1]
+ * @param [a = 1]
  */
 declare class Color extends Vector4 {
-    constructor(r: number, g: number, b: number, a: number);
+    constructor(r?: number, g?: number, b?: number, a?: number);
     /**
      * 类名
      */
@@ -4481,7 +4480,7 @@ declare class PBRMaterial extends Material {
     /**
      * 环境反射(Specular IBL)贴图
      */
-    specularEnv: CubeTexture | Texture;
+    specularEnvMap: CubeTexture | Texture;
     /**
      * 放射光贴图(sRGB 空间)，或颜色
      */
@@ -5194,7 +5193,7 @@ declare class BasicLoader implements EventMixin {
     load(data: {
         src: string;
         type?: string;
-    }): Promise<object>;
+    }): Promise<any>;
     /**
      * 判断链接是否跨域，无法处理二级域名，及修改 document.domain 的情况
      * @param url - 需要判断的链接
@@ -5515,6 +5514,8 @@ declare class AreaLight extends Light {
  */
 declare class AmbientLight extends Light {
     constructor(params?: any);
+    readonly isAmbientLight: boolean;
+    readonly className: string;
     /**
      * shadow 配置
      */

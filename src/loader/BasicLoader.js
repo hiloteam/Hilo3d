@@ -78,7 +78,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
      * @param {object} data 参数
      * @param {string} data.src 资源地址
      * @param {string} [data.type] 资源类型(img, json, buffer)，不提供将根据 data.src 来判断类型
-     * @return {Promise.<Object, Error>} 返回加载完的资源对象
+     * @return {Promise.<any, Error>} 返回加载完的资源对象
      */
     load(data) {
         const src = data.src;

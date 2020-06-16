@@ -154,7 +154,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
      * @default null
      * @type {CubeTexture|Texture}
      */
-    specularEnv: null,
+    specularEnvMap: null,
 
     /**
      * 放射光贴图(sRGB 空间)，或颜色
