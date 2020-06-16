@@ -30,7 +30,7 @@ export {
  * @param {Object} [extensionData] 扩展数据
  * @param {GLTFParser} [parser] parser
  * @param {Object} [element] parse的元素，e.g. material, mesh, geometry
- * @param {Object} [options] 
+ * @param {Object} [options]
  * @return {Object} [result] 一般需要返回原始元素或者替换的新的元素
  */
 
@@ -41,7 +41,7 @@ export {
  * @param {Object} [extensionData] 扩展数据
  * @param {GLTFParser} [parser] parser
  * @param {Object} [element] parse的元素，这里为 null
- * @param {Object} [options] 
+ * @param {Object} [options]
  */
 
 /**
