@@ -72,10 +72,10 @@ const Color = Class.create(/** @lends Color.prototype */ {
     },
     /**
      * @constructs
-     * @param  {Number} r
-     * @param  {Number} g
-     * @param  {Number} b
-     * @param  {Number} a
+     * @param  {Number} [r=1]
+     * @param  {Number} [g=1]
+     * @param  {Number} [b=1]
+     * @param  {Number} [a=1]
      */
     constructor(r = 1, g = 1, b = 1, a = 1) {
         Color.superclass.constructor.call(this, r, g, b, a);

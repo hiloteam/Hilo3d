@@ -36,6 +36,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
     Statics: {
         /**
          * 缓存
+         * @memberOf Texture
          * @readOnly
          * @type {Object}
          */
@@ -46,6 +47,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
         },
         /**
          * 重置
+         * @memberOf Texture
          * @param  {WebGLRenderingContext} gl
          */
         reset(gl) {
@@ -78,7 +80,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
     _image: null,
     /**
      * 图片对象
-     * @type {Image}
+     * @type {HTMLImageElement}
      * @default null
      */
     image: {
@@ -105,7 +107,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
 
     /**
      * mipmaps
-     * @type {Image[]|TypedArray[]}
+     * @type {HTMLImageElement[]|TypedArray[]}
      * @default null
      */
     mipmaps: null,
@@ -325,7 +327,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
 
     /**
      * @constructs
-     * @param {object} params 初始化参数，所有params都会复制到实例上
+     * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
         this.id = math.generateUUID(this.className);
@@ -333,7 +335,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
     },
     /**
      * 是否是 2 的 n 次方
-     * @param  {Image}  img
+     * @param  {HTMLImageElement}  img
      * @return {Boolean}
      */
     isImgPowerOfTwo(img) {
@@ -341,7 +343,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
     },
     /**
      * 获取支持的尺寸
-     * @param  {Image} img
+     * @param  {HTMLImageElement} img
      * @param  {Boolean} [needPowerOfTwo=false]
      * @return {Object} { width, height }
      */
@@ -372,8 +374,8 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
     },
     /**
      * 更新图片大小成为 2 的 n 次方
-     * @param  {Image} img
-     * @return {Canvas|Image}
+     * @param  {HTMLImageElement} img
+     * @return {HTMLCanvasElement|HTMLImageElement}
      */
     resizeImgToPowerOfTwo(img) {
         const sizeResult = this.getSupportSize(img, true);
@@ -381,10 +383,10 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
     },
     /**
      * 更新图片大小
-     * @param  {Image} img
+     * @param  {HTMLImageElement} img
      * @param {Number} width
      * @param {Number} height
-     * @return {Canvas|Image}
+     * @return {HTMLCanvasElement|HTMLImageElement}
      */
     resizeImg(img, width, height) {
         if (img.width === width && img.height === height) {
@@ -412,9 +414,9 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * GL上传贴图
      * @private
      * @param  {WebGLState} state
-     * @param  {GLEnum} target
-     * @param  {Image|TypedArray} image
-     * @param  {image} [level=0]
+     * @param  {GLenum} target
+     * @param  {HTMLImageElement|TypedArray} image
+     * @param  {HTMLImageElement} [level=0]
      * @param  {Number} [width=this.width]
      * @param  {Number} [height=this.height]
      * @return {Texture}  this
@@ -536,7 +538,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * 跟新局部贴图
      * @param  {Number} xOffset
      * @param  {Number} yOffset
-     * @param  {Image|Canvas|ImageData} image
+     * @param  {HTMLImageElement|HTMLCanvasElement|ImageData} image
      */
     updateSubTexture(xOffset, yOffset, image) {
         if (!this._subTextureList) {

@@ -12,6 +12,7 @@ const AreaLight = Class.create(/** @lends AreaLight.prototype */ {
     Statics: {
         /**
          * ltcTexture1
+         * @memberOf AreaLight
          * @type {DataTexture}
          * @default null
          */
@@ -19,6 +20,7 @@ const AreaLight = Class.create(/** @lends AreaLight.prototype */ {
 
         /**
          * ltcTexture2
+         * @memberOf AreaLight
          * @type {DataTexture}
          * @default null
          */
@@ -26,6 +28,7 @@ const AreaLight = Class.create(/** @lends AreaLight.prototype */ {
 
         /**
          * ltcTexture 是否加载完成
+         * @memberOf AreaLight
          * @type {Boolean}
          * @default false
          */
@@ -33,12 +36,14 @@ const AreaLight = Class.create(/** @lends AreaLight.prototype */ {
 
         /**
          * ltcTexture 地址
+         * @memberOf AreaLight
          * @type {String}
          */
         ltcTextureUrl: '//g.alicdn.com/tmapp/static/4.0.63/ltcTexture.js',
 
         /**
          * 初始化 ltcTexture
+         * @memberOf AreaLight
          */
         loadLtcTexture() {
             if (this.ltcTextureReady) {

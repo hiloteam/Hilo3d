@@ -24,6 +24,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
         /**
          * 缓存
          * @readOnly
+         * @memberOf VertexArrayObject
          * @return {Cache}
          */
         cache: {
@@ -33,6 +34,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
         },
         /**
          * 获取 vao
+         * @memberOf VertexArrayObject
          * @param  {WebGLRenderingContext} gl
          * @param  {String} id  缓存id
          * @param  {Object} params
@@ -52,6 +54,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
         },
         /**
          * 重置所有vao
+         * @memberOf VertexArrayObject
          * @param  {WebGLRenderingContext} gl
          */
         reset(gl) { // eslint-disable-line no-unused-vars
@@ -64,6 +67,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
         },
         /**
          * 绑定系统vao
+         * @memberOf VertexArrayObject
          */
         bindSystemVao() {
             if (extensions.vao) {
@@ -109,7 +113,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
 
     /**
      * 绘图方式
-     * @type {GLEnum}
+     * @type {GLenum}
      * @default gl.TRIANGLES
      */
     mode: TRIANGLES,
@@ -429,3 +433,13 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
 });
 
 export default VertexArrayObject;
+
+
+/**
+ * 顶点对象
+ * @typedef {object} AttributeObject
+ * @property {Object} attribute
+ * @property {WebGLBuffer} buffer
+ * @property {GeometryData} geometryData
+ * @property {Boolean} useInstanced
+ */

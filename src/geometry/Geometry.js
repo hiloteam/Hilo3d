@@ -155,7 +155,7 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
     /**
      * 法向量数据，如果没有的话会自动生成
      * @default null
-     * @type {Float32Array}
+     * @type {GeometryData}
      */
     normals: {
         get() {
@@ -224,7 +224,7 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
     /**
      * 切线向量数据，如果没有的话会自动生成
      * @default null
-     * @type {Float32Array}
+     * @type {GeometryData}
      */
     tangents: {
         get() {
@@ -240,7 +240,7 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
     /**
      * 切线向量数据，如果没有的话会自动生成
      * @default null
-     * @type {Float32Array}
+     * @type {GeometryData}
      */
     tangents1: {
         get() {
@@ -584,11 +584,11 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
     /**
      * 获取指定matrix变化后的包围盒数据
      *
-     * @param {Matrix4} [null] matrix 需要变换的矩阵
-     * @param {Bounds} [bounds] 包围盒数据，传入的话会改变他
+     * @param {Matrix4} [matrix=null] matrix 需要变换的矩阵
+     * @param {Bounds} [bounds=null] 包围盒数据，传入的话会改变他
      * @return {Bounds} 包围盒数据
      */
-    getBounds(matrix = null, bounds) {
+    getBounds(matrix, bounds) {
         if (!bounds) {
             bounds = {
                 xMin: Infinity,

@@ -192,8 +192,8 @@ const WebGLState = Class.create(/** @lends WebGLState.prototype */ {
     },
     /**
      * pixelStorei
-     * @param  {Glenum} pname
-     * @param  {Glenum} param
+     * @param  {GLenum} pname
+     * @param  {GLenum} param
      */
     pixelStorei(pname, param) {
         const currentParam = this._pixelStorei[pname];
@@ -214,7 +214,7 @@ const WebGLState = Class.create(/** @lends WebGLState.prototype */ {
     },
     /**
      * activeTexture
-     * @param  {Number} texture
+     * @param  {GLenum} texture
      */
     activeTexture(texture) {
         if (this.activeTextureIndex !== texture) {
@@ -236,7 +236,7 @@ const WebGLState = Class.create(/** @lends WebGLState.prototype */ {
     },
     /**
      * 获取当前激活的纹理对象
-     * @return {TextureUnit}
+     * @return {GLenum}
      */
     getActiveTextureUnit() {
         let textureUnit = this.textureUnitDict[this.activeTextureIndex];

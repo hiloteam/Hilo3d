@@ -7,17 +7,20 @@ const LEVEL_WARN = 2;
 const LEVEL_ERROR = 4;
 
 /**
- * log
+ * 向 Web 控制台输出一条消息，可以通过设置等级过滤输出的消息。
  * @namespace
+ * @type {Object}
+ * @name log
+ * @example
+ * Hilo3d.log.level = Hilo3d.log.LEVEL_LOG | Hilo3d.log.LEVEL_ERROR;
+ * Hilo3d.log.error("ERROR!");
  */
 const log = {
     _cache: cache,
     /**
      * log级别
-     * @example
-     * Hilo3d.log.level = Hilo3d.log.LEVEL_LOG | Hilo3d.log.LEVEL_ERROR
      * @type {Number}
-     * @default LEVEL_LOG|LEVEL_WARN|LEVEL_ERROR
+     * @default LEVEL_LOG | LEVEL_WARN | LEVEL_ERROR
      */
     level: LEVEL_LOG | LEVEL_WARN | LEVEL_ERROR,
 
@@ -78,7 +81,7 @@ const log = {
     },
 
     /**
-     * error，等同 console.error，等同
+     * error，等同 console.error
      * @return {log} this
      */
     error() {

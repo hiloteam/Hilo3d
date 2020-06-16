@@ -8,7 +8,17 @@ import Light from './Light';
  */
 const AmbientLight = Class.create(/** @lends AmbientLight.prototype */{
     Extends: Light,
+    /**
+     * @type {Boolean}
+     * @readOnly
+     * @default true
+     */
     isAmbientLight: true,
+    /**
+     * @type {String}
+     * @readOnly
+     * @default AmbientLight
+     */
     className: 'AmbientLight',
     autoUpdateWorldMatrix: false,
     /**

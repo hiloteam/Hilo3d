@@ -247,7 +247,7 @@ const Matrix3 = Class.create(/** @lends Matrix3.prototype */ {
      * Adds two mat3's
      * @param {Matrix3} a
      * @param {Matrix3} [b] 如果不传，计算 this 和 a 的和
-     * @return {Marix4} this
+     * @return {Matrix4} this
      */
     add(a, b) {
         if (!b) {
@@ -261,7 +261,7 @@ const Matrix3 = Class.create(/** @lends Matrix3.prototype */ {
      * Subtracts matrix b from matrix a
      * @param {Matrix3} a
      * @param {Matrix3} [b] 如果不传，计算 this 和 a 的差
-     * @return {Marix4} this
+     * @return {Matrix4} this
      */
     subtract(a, b) {
         if (!b) {

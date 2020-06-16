@@ -114,7 +114,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
 
     /**
      * gl
-     * @type {WebGL}
+     * @type {WebGLRenderingContext}
      */
     gl: null,
 
@@ -134,7 +134,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
 
     /**
      * @constructs
-     * @param  {Object} params 初始化参数，所有params都会复制到实例上
+     * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      * @param  {WebGLState} params.state WebGL state
      */
     constructor(params) {

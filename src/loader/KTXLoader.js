@@ -17,7 +17,6 @@ import log from '../utils/log';
 const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.prototype */{
     Statics: {
         HEADER_LEN: 12 + (13 * 4), // identifier + header elements (not including key value meta-data pairs)
-        // load types
         COMPRESSED_2D: 0, // uses a gl.compressedTexImage2D()
         COMPRESSED_3D: 1, // uses a gl.compressedTexImage3D()
         TEX_2D: 2, // uses a gl.texImage2D()
@@ -27,8 +26,9 @@ const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.
     isKhronosTextureContainer: true,
     className: 'KhronosTextureContainer',
     /**
-     * @param {ArrayBuffer} arrayBuffer- contents of the KTX container file
-     * @param {number} facesExpected- should be either 1 or 6, based whether a cube texture or or
+     * @constructs
+     * @param {ArrayBuffer} arrayBuffer contents of the KTX container file
+     * @param {number} facesExpected should be either 1 or 6, based whether a cube texture or or
      */
     constructor(arrayBuffer, facesExpected, baseOffset = 0) {
         this.arrayBuffer = arrayBuffer;
@@ -130,15 +130,51 @@ const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.
 });
 
 /**
+ * KTX 加载器
  * @class
  */
 const KTXLoader = Class.create(/** @lends KTXLoader.prototype */{
     Extends: BasicLoader,
     Statics: {
+        /**
+         * astc
+         * @memberOf KTXLoader
+         * @type {String}
+         * @readOnly
+         * @default WEBGL_compressed_texture_astc
+         */
         astc: 'WEBGL_compressed_texture_astc',
+        /**
+         * etc
+         * @memberOf KTXLoader
+         * @type {String}
+         * @readOnly
+         * @default WEBGL_compressed_texture_etc
+         */
         etc: 'WEBGL_compressed_texture_etc',
+        /**
+         * etc1
+         * @memberOf KTXLoader
+         * @type {String}
+         * @readOnly
+         * @default WEBGL_compressed_texture_etc1
+         */
         etc1: 'WEBGL_compressed_texture_etc1',
+        /**
+         * pvrtc
+         * @memberOf KTXLoader
+         * @type {String}
+         * @readOnly
+         * @default WEBGL_compressed_texture_pvrtc
+         */
         pvrtc: 'WEBGL_compressed_texture_pvrtc',
+        /**
+         * s3tc
+         * @memberOf KTXLoader
+         * @type {String}
+         * @readOnly
+         * @default WEBGL_compressed_texture_s3tc
+         */
         s3tc: 'WEBGL_compressed_texture_s3tc'
     },
     /**

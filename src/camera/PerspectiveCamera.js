@@ -59,7 +59,7 @@ const PerspectiveCamera = Class.create(/** @lends PerspectiveCamera.prototype */
 
     _fov: 50,
     /**
-     * 相机视野大小，角度
+     * 相机视野大小，角度制
      * @default 50
      * @type {number}
      */
@@ -93,7 +93,7 @@ const PerspectiveCamera = Class.create(/** @lends PerspectiveCamera.prototype */
 
     /**
      * @constructs
-     * @param {object} params 创建对象的属性参数。可包含此类的所有属性。
+     * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
     constructor(params) {
         PerspectiveCamera.superclass.constructor.call(this, params);

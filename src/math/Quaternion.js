@@ -9,7 +9,7 @@ const tempMat3 = new Matrix3();
 
 /**
  * @class
- * @mixes {EventMixin}
+ * @mixes EventMixin
  * @fires update 数据更新事件
  */
 const Quaternion = Class.create(/** @lends Quaternion.prototype */ {

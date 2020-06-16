@@ -39,6 +39,11 @@ const Material = Class.create(/** @lends Material.prototype */ {
      */
     className: 'Material',
     /**
+     * name
+     * @type {string}
+     */
+    name: null,
+    /**
      * shader cache id
      * @default null
      * @type {String}
@@ -108,7 +113,7 @@ const Material = Class.create(/** @lends Material.prototype */ {
     /**
      * 法线贴图scale
      * @default 1
-     * @type {float}
+     * @type {Number}
      */
     normalMapScale: 1,
 
@@ -412,7 +417,7 @@ const Material = Class.create(/** @lends Material.prototype */ {
 
     /**
      * @constructs
-     * @param {object} params 初始化参数，所有params都会复制到实例上
+     * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
         /**

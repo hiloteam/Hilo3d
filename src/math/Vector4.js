@@ -67,7 +67,7 @@ const Vector4 = Class.create(/** @lends Vector4.prototype */ {
      * 从数组赋值
      * @param  {Array} array  数组
      * @param  {Number} [offset=0] 数组偏移值
-     * @return {Vector4} this
+     * @return {this}
      */
     fromArray(array, offset = 0) {
         const elements = this.elements;

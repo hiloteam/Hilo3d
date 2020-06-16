@@ -40,7 +40,7 @@ const SphereGeometry = Class.create(/** @lends SphereGeometry.prototype */ {
     widthSegments: 32,
     /**
      * @constructs
-     * @param {object} params 创建对象的属性参数。可包含此类的所有属性。
+     * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
     constructor(params) {
         SphereGeometry.superclass.constructor.call(this, params);

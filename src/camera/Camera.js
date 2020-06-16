@@ -36,7 +36,7 @@ const Camera = Class.create(/** @lends Camera.prototype */ {
 
     /**
      * @constructs
-     * @param {object} params 创建对象的属性参数。可包含此类的所有属性。
+     * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
     constructor(params) {
         /**

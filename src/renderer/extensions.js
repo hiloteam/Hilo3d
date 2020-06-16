@@ -77,7 +77,7 @@ const extensions = {
      * 获取扩展，如果不支持返回 null，必须在 Renderer 初始化完后用
      * @param  {String} name 扩展名称
      * @param {String} [alias=name] 别名，默认和 name 相同
-     * @return {ExtensionObject|null}
+     * @return {Object|null}
      */
     get(name, alias = name) {
         if (this._disabledExtensions[name]) {
@@ -127,3 +127,23 @@ extensions.use('EXT_shader_texture_lod', 'shaderTextureLod');
 extensions.use('EXT_texture_filter_anisotropic', 'textureFilterAnisotropic');
 
 export default extensions;
+
+/**
+ * @typedef {any} ANGLEInstancedArrays
+ */
+
+/**
+ * @typedef {any} OESVertexArrayObject
+ */
+
+/**
+ * @typedef {any} OESTextureFloat
+ */
+
+/**
+ * @typedef {any} WebGLLoseContext
+ */
+
+/**
+ * @typedef {any} EXTTextureFilterAnisotropic
+ */

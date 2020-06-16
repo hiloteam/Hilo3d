@@ -86,10 +86,10 @@ const Buffer = Class.create(/** @lends Buffer.prototype */ {
      * @constructs
      * @param  {WebGLRenderingContext} gl
      * @param  {GLenum} [target = ARRAY_BUFFER]
-     * @param  {TypedArray} data
+     * @param  {TypedArray} [data = null]
      * @param  {GLenum} [usage = STATIC_DRAW]
      */
-    constructor(gl, target = ARRAY_BUFFER, data, usage = STATIC_DRAW) {
+    constructor(gl, target = ARRAY_BUFFER, data = null, usage = STATIC_DRAW) {
         /**
          * id
          * @type {String}

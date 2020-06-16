@@ -40,6 +40,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         /**
          * 缓存
          * @readOnly
+         * @memberOf Framebuffer
          * @type {Cache}
          */
         cache: {
@@ -49,6 +50,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         },
         /**
          * 重置所有framebuffer
+         * @memberOf Framebuffer
          * @param  {WebGLRenderingContext} gl
          */
         reset(gl) { // eslint-disable-line no-unused-vars
@@ -58,6 +60,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         },
         /**
          * 销毁所有 Framebuffer
+         * @memberOf Framebuffer
          * @param  {WebGLRenderingContext} gl
          */
         destroy(gl) { // eslint-disable-line no-unused-vars
@@ -157,7 +160,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
 
     /**
      * renderer
-     * @type {Renderer}
+     * @type {WebGLRenderer}
      * @default null
      */
     renderer: null,
@@ -186,7 +189,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
     /**
      * @constructs
      * @param {WebGLRenderer}  renderer
-     * @param  {Object} params 初始化参数，所有params都会复制到实例上
+     * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(renderer, params) {
         this.id = math.generateUUID(this.className);

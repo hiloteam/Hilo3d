@@ -362,7 +362,7 @@ const Shader = Class.create(/** @lends Shader.prototype */ {
 
     /**
      * @constructs
-     * @param  {Object} params 初始化参数，所有params都会复制到实例上
+     * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
         this.id = math.generateUUID(this.className);

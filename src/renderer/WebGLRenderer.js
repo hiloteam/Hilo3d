@@ -93,7 +93,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
     /**
      * dom元素
-     * @type {Canvas}
+     * @type {HTMLCanvasElement}
      * @default null
      */
     domElement: null,
@@ -247,7 +247,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
     /**
      * @constructs
-     * @param  {Object} params 初始化参数，所有params都会复制到实例上
+     * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
         /**
@@ -418,7 +418,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
         // HILO_DEBUG_START
         gl = this.gl = WebGLDebugUtils.makeDebugContext(gl, (err, funcName) => {
-            throw new Error(`${WebGLDebugUtils.glEnumToString(err)} called by ${funcName}`);
+            throw new Error(`${WebGLDebugUtils.GLenumToString(err)} called by ${funcName}`);
         });
         // HILO_DEBUG_END
 

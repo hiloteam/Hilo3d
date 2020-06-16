@@ -67,7 +67,7 @@ const ShaderMaterial = Class.create(/** @lends ShaderMaterial.prototype */{
     useHeaderCache: false,
     /**
      * @constructs
-     * @param {object} params 初始化参数，所有params都会复制到实例上
+     * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params) {
         ShaderMaterial.superclass.constructor.call(this, params);

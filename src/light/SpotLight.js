@@ -25,17 +25,6 @@ const SpotLight = Class.create(/** @lends SpotLight.prototype */{
      * @type {string}
      */
     className: 'SpotLight',
-    /**
-     * 阴影生成参数，默认不生成阴影
-     * @default null
-     * @type {object}
-     * @property {boolean} [debug=false] 是否显示生成的阴影贴图
-     * @property {number} [width=render.width] 阴影贴图的宽，默认为画布宽
-     * @property {number} [height=render.height] 阴影贴图的高，默认为画布高
-     * @property {number} [bias=0.005] depth最小差值，大于才显示阴影
-     * @property {Object} [cameraInfo=null] 阴影摄像机信息, 没有会根据当前相机自动计算
-     */
-    shadow: null,
     _cutoffCos: 0.9763,
     _cutoff: 12.5,
     /**
