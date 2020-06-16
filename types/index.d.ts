@@ -44,6 +44,22 @@ declare const constants: any;
  * @property [constructor] - 构造函数
  */
 declare interface ClassProperty {
+    /**
+     * 静态属性
+    */
+    Statics?: Objace;
+    /**
+     * 继承
+    */
+    Extends?: Objace;
+    /**
+     * mixes
+    */
+    Mixes?: Objace;
+    /**
+     * 构造函数
+    */
+    constructor?: (...params: any[]) => any;
 }
 
 /**
@@ -62,6 +78,14 @@ declare namespace Class {
  * @property [detail = null] - 事件数据
  */
 declare interface EventObject {
+    /**
+     * 事件类型
+    */
+    type: string;
+    /**
+     * 事件数据
+    */
+    detail?: any;
 }
 
 /**
@@ -167,6 +191,12 @@ declare type NodeGetChildByCallback = (node: Node) => boolean;
  * @property [onUpdate]
  */
 declare interface TweenParams {
+    duration: number;
+    delay?: number | string;
+    ease?: (...params: any[]) => any;
+    onStart?: (...params: any[]) => any;
+    onComplete?: (...params: any[]) => any;
+    onUpdate?: (...params: any[]) => any;
 }
 
 /**
@@ -175,6 +205,9 @@ declare interface TweenParams {
  * @property EaseInOut
  */
 declare interface TweenEaseObject {
+    EaseIn: (...params: any[]) => any;
+    EaseOut: (...params: any[]) => any;
+    EaseInOut: (...params: any[]) => any;
 }
 
 /**
@@ -5676,6 +5709,14 @@ declare class MorphGeometry extends Geometry {
  */
 declare class GeometryData {
     constructor(data: TypedArray, size: number, params?: any);
+    /**
+     * 类名
+     */
+    readonly className: string;
+    /**
+     * isGeometryData
+     */
+    readonly isGeometryData: boolean;
     /**
      * The number of components per vertex attribute.Must be 1, 2, 3, or 4.
      */

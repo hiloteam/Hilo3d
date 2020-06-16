@@ -17,8 +17,8 @@ export default Class;
 /**
  * 类属性
  * @interface ClassProperty
- * @property {Objace} [Statics] 静态属性
- * @property {Objace} [Extends] 继承
- * @property {Objace} [Mixes] mixes
+ * @property {Object} [Statics] 静态属性
+ * @property {Object} [Extends] 继承
+ * @property {Object} [Mixes] mixes
  * @property {Function} [constructor] 构造函数
  */

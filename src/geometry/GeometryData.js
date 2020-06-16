@@ -22,7 +22,19 @@ const sizeVectorMap = {
  * @class
  */
 const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
+    /**
+     * 类名
+     * @type {String}
+     * @readOnly
+     * @default GeometryData
+     */
     className: 'GeometryData',
+    /**
+     * isGeometryData
+     * @type {Boolean}
+     * @readOnly
+     * @default true
+     */
     isGeometryData: true,
 
     /**
