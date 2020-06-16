@@ -5391,15 +5391,15 @@ declare class Light extends Node {
     /**
      * 光常量衰减值, PointLight 和 SpotLight 时生效
      */
-    readonly constantAttenuation: number;
+    constantAttenuation: number;
     /**
      * 光线性衰减值, PointLight 和 SpotLight 时生效
      */
-    readonly linearAttenuation: number;
+    linearAttenuation: number;
     /**
      * 光二次衰减值, PointLight 和 SpotLight 时生效
      */
-    readonly quadraticAttenuation: number;
+    quadraticAttenuation: number;
     /**
      * 光照范围, PointLight 和 SpotLight 时生效, 0 时代表光照范围无限大。
      */

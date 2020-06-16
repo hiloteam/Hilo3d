@@ -30,7 +30,6 @@ const Light = Class.create(/** @lends Light.prototype */ {
     /**
      * 光常量衰减值, PointLight 和 SpotLight 时生效
      * @type {Number}
-     * @readOnly
      * @default 1
      */
     constantAttenuation: 1,
@@ -38,7 +37,6 @@ const Light = Class.create(/** @lends Light.prototype */ {
     /**
      * 光线性衰减值, PointLight 和 SpotLight 时生效
      * @type {Number}
-     * @readOnly
      * @default 0
      */
     linearAttenuation: 0,
@@ -46,7 +44,6 @@ const Light = Class.create(/** @lends Light.prototype */ {
     /**
      * 光二次衰减值, PointLight 和 SpotLight 时生效
      * @type {Number}
-     * @readOnly
      * @default 0
      */
     quadraticAttenuation: 0,
