@@ -230,35 +230,35 @@ declare type GeometryDataTraverseByComponentCallback = (component: number, index
 declare interface IGLTFExtensionHandler {
     /**
      * 解析元素扩展
-     * @param extensionData - 扩展数据
-     * @param parser - parser
-     * @param element - parse的元素，e.g. material, mesh, geometry
-     * @param options
-     * @returns 一般需要返回原始元素或者替换的新的元素
+     * @param [extensionData] - 扩展数据
+     * @param [parser] - parser
+     * @param [element] - parse的元素，e.g. material, mesh, geometry
+     * @param [options]
+     * @returns [result] 一般需要返回原始元素或者替换的新的元素
      */
-    parse?(extensionData: any, parser: GLTFParser, element: any, options: any): any;
+    parse?(extensionData?: any, parser?: GLTFParser, element?: any, options?: any): any;
     /**
      * 解析全局扩展，在资源加载后执行
-     * @param extensionData - 扩展数据
-     * @param parser - parser
-     * @param element - parse的元素，这里为 null
-     * @param options
+     * @param [extensionData] - 扩展数据
+     * @param [parser] - parser
+     * @param [element] - parse的元素，这里为 null
+     * @param [options]
      */
-    parseOnLoad?(extensionData: any, parser: GLTFParser, element: any, options: any): void;
+    parseOnLoad?(extensionData?: any, parser?: GLTFParser, element?: any, options?: any): void;
     /**
      * 解析全局扩展，在所有元素解析结束后执行
-     * @param extensionData - 扩展数据
-     * @param parser - parser
-     * @param element - parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
-     * @param options
+     * @param [extensionData] - 扩展数据
+     * @param [parser] - parser
+     * @param [element] - parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
+     * @param [options]
      */
-    parseOnEnd?(extensionData: any, parser: GLTFParser, element: Model, options: any): void;
+    parseOnEnd?(extensionData?: any, parser?: GLTFParser, element?: any, options?: any): void;
     /**
      * 初始化全局扩展，在加载前执行，可进行添加需要加载的资源
-     * @param gltfLoader
-     * @param parser
+     * @param [gltfLoader]
+     * @param [parser]
      */
-    init?(gltfLoader: GLTFLoader, parser: GLTFParser): void;
+    init?(gltfLoader?: GLTFLoader, parser?: GLTFParser): void;
     /**
      * 获取扩展用到的贴图信息, parser.isLoadAllTextures 为 false 时生效
      * @example
@@ -267,10 +267,10 @@ declare interface IGLTFExtensionHandler {
      *         map[extension.diffuseTexture.index] = true;
      *     }
      * }
-     * @param extensionData - 扩展数据
-     * @param map - used texture map
+     * @param [extensionData] - 扩展数据
+     * @param [map] - used texture map
      */
-    getUsedTextureNameMap?(extensionData: any, map: any): void;
+    getUsedTextureNameMap?(extensionData?: any, map?: any): void;
 }
 
 /**

@@ -27,47 +27,47 @@ export {
  * 解析元素扩展
  * @function
  * @name IGLTFExtensionHandler#[parse]
- * @param  extensionData {Object} 扩展数据
- * @param  parser {GLTFParser} parser
- * @param  element {Object} parse的元素，e.g. material, mesh, geometry
- * @param  options {Object}
- * @return {Object} 一般需要返回原始元素或者替换的新的元素
+ * @param {Object} [extensionData] 扩展数据
+ * @param {GLTFParser} [parser] parser
+ * @param {Object} [element] parse的元素，e.g. material, mesh, geometry
+ * @param {Object} [options] 
+ * @return {Object} [result] 一般需要返回原始元素或者替换的新的元素
  */
 
 /**
  * 解析全局扩展，在资源加载后执行
  * @function
  * @name IGLTFExtensionHandler#[parseOnLoad]
- * @param  extensionData {Object} 扩展数据
- * @param  parser {GLTFParser} parser
- * @param  element {Object} parse的元素，这里为 null
- * @param  options {Object}
+ * @param {Object} [extensionData] 扩展数据
+ * @param {GLTFParser} [parser] parser
+ * @param {Object} [element] parse的元素，这里为 null
+ * @param {Object} [options] 
  */
 
 /**
  * 解析全局扩展，在所有元素解析结束后执行
  * @function
  * @name IGLTFExtensionHandler#[parseOnEnd]
- * @param  extensionData {Object} 扩展数据
- * @param  parser {GLTFParser} parser
- * @param  element {Model} parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
- * @param  options {Object}
+ * @param {Object} [extensionData] 扩展数据
+ * @param {GLTFParser} [parser] parser
+ * @param {Object} [element] parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
+ * @param {Object} [options]
  */
 
 /**
  * 初始化全局扩展，在加载前执行，可进行添加需要加载的资源
  * @function
  * @name IGLTFExtensionHandler#[init]
- * @param {GLTFLoader} gltfLoader
- * @param {GLTFParser} parser
+ * @param {GLTFLoader} [gltfLoader]
+ * @param {GLTFParser} [parser]
  */
 
 /**
  * 获取扩展用到的贴图信息, parser.isLoadAllTextures 为 false 时生效
  * @function
  * @name IGLTFExtensionHandler#[getUsedTextureNameMap]
- * @param  extensionData {Object} 扩展数据
- * @param  map {Object} used texture map
+ * @param {Object} [extensionData] 扩展数据
+ * @param {Object} [map] used texture map
  * @example
  * getUsedTextureNameMap(extension, map) {
  *     if (extension.diffuseTexture) {
