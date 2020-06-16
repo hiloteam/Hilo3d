@@ -49,7 +49,7 @@ const GLTFLoader = Class.create(/** @lends GLTFLoader.prototype */{
      * @param {function} [params.customMaterialCreator=null] 是否使用自定义的Material创建器
      * @param {function} [params.isLoadAllTextures=false] 是否加载所有的贴图，默认只加载用到的贴图
      * @async
-     * @return {Promise<Model, Error>} 返回加载完的模型对象
+     * @return {Promise<GLTFModel, Error>} 返回加载完的模型对象
      */
     load(params) {
         return this.loadRes(params.src, 'buffer')
@@ -70,12 +70,14 @@ export default GLTFLoader;
 
 /**
  * GLTFLoader 模型加载完返回的对象格式
- * @typedef {object} Model
- * @property {Node} node 模型的根节点
- * @property {Mesh[]} meshes 模型的所有Mesh对象数组
- * @property {Animation} anim 模型的动画对象数组，没有动画的话为null
- * @property {Camera[]} cameras 模型中的所有Camera对象数组
- * @property {Light[]} lights 模型中的所有Light对象数组
- * @property {Texture[]} textures 模型中的所有Texture对象数组
- * @property {BasicMaterial[]} materials 模型中的所有Material对象数组
+ * @typedef {object} GLTFModel
+ * @property {Object} json 原始数据
+ * @property {Node} [node] 模型的根节点
+ * @property {Mesh[]} [meshes] 模型的所有Mesh对象数组
+ * @property {Animation} [anim] 模型的动画对象数组，没有动画的话为null
+ * @property {Camera[]} [cameras] 模型中的所有Camera对象数组
+ * @property {Light[]} [lights] 模型中的所有Light对象数组
+ * @property {Texture[]} [textures] 模型中的所有Texture对象数组
+ * @property {BasicMaterial[]} [materials] 模型中的所有Material对象数组
+ * @property {Skeleton[]} [skins] 模型中的所有Skeleton对象数组
  */

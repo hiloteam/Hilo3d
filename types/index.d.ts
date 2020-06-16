@@ -252,7 +252,7 @@ declare interface IGLTFExtensionHandler {
      * @param [element] - parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
      * @param [options]
      */
-    parseOnEnd?(extensionData?: any, parser?: GLTFParser, element?: any, options?: any): void;
+    parseOnEnd?(extensionData?: any, parser?: GLTFParser, element?: GLTFModel, options?: any): void;
     /**
      * 初始化全局扩展，在加载前执行，可进行添加需要加载的资源
      * @param [gltfLoader]
@@ -276,35 +276,43 @@ declare interface IGLTFExtensionHandler {
 /**
  * GLTFLoader 模型加载完返回的对象格式
  */
-declare type Model = {
+declare type GLTFModel = {
+    /**
+     * 原始数据
+     */
+    json: any;
     /**
      * 模型的根节点
      */
-    node: Node;
+    node?: Node;
     /**
      * 模型的所有Mesh对象数组
      */
-    meshes: Mesh[];
+    meshes?: Mesh[];
     /**
      * 模型的动画对象数组，没有动画的话为null
      */
-    anim: Animation;
+    anim?: Animation;
     /**
      * 模型中的所有Camera对象数组
      */
-    cameras: Camera[];
+    cameras?: Camera[];
     /**
      * 模型中的所有Light对象数组
      */
-    lights: Light[];
+    lights?: Light[];
     /**
      * 模型中的所有Texture对象数组
      */
-    textures: Texture[];
+    textures?: Texture[];
     /**
      * 模型中的所有Material对象数组
      */
-    materials: BasicMaterial[];
+    materials?: BasicMaterial[];
+    /**
+     * 模型中的所有Skeleton对象数组
+     */
+    skins?: Skeleton[];
 };
 
 /**

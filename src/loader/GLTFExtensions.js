@@ -50,7 +50,7 @@ export {
  * @name IGLTFExtensionHandler#[parseOnEnd]
  * @param {Object} [extensionData] 扩展数据
  * @param {GLTFParser} [parser] parser
- * @param {Object} [element] parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
+ * @param {GLTFModel} [element] parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
  * @param {Object} [options]
  */
 
