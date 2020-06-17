@@ -324,7 +324,9 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
             if (onInit) {
                 onInit(attributeObject);
             }
-        } else if (geometryData.isDirty) {
+        }
+
+        if (geometryData.isDirty) {
             const buffer = attributeObject.buffer;
             buffer.bind();
             attribute.enable();

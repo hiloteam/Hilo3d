@@ -1,8 +1,10 @@
 import Class from './Class';
 import Mesh from './Mesh';
 import Matrix4 from '../math/Matrix4';
+import Vector4 from '../math/Vector4';
 import DataTexture from '../texture/DataTexture';
 import capabilities from '../renderer/capabilities';
+import log from '../utils/log';
 
 const tempMatrix1 = new Matrix4();
 const tempMatrix2 = new Matrix4();
@@ -65,8 +67,9 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
         }
         const jointNodeList = this.skeleton.jointNodeList;
         const inverseBindMatrices = this.skeleton.inverseBindMatrices;
-        if (!this.jointMat) {
-            this.jointMat = new Float32Array(this.skeleton.jointCount * 16);
+        const jointMatLength = this.skeleton.jointCount * 16;
+        if (!this.jointMat || this.jointMat.length !== jointMatLength) {
+            this.jointMat = new Float32Array(jointMatLength);
         }
 
         if (!this.clonedFrom) {
@@ -82,6 +85,36 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
             tempMatrix1.toArray(this.jointMat, i * 16);
         });
         return this.jointMat;
+    },
+    /**
+     * 用新骨骼重置skinIndices
+     * @param  {Skeleton} skeleton
+     */
+    resetSkinIndices(skeleton) {
+        const currentSkeleton = this.skeleton;
+        if (currentSkeleton) {
+            const geometry = this.geometry;
+            const skinIndices = geometry.skinIndices;
+            if (skinIndices) {
+                this.material.isDirty = true;
+                geometry.isDirty = true;
+                skinIndices.isDirty = true;
+                const tempIndices = new Vector4();
+
+                skinIndices.traverse((attribute, index, offset) => {
+                    attribute.elements.forEach((value, elementIndex) => {
+                        const jointName = currentSkeleton.jointNames[value];
+                        const jointIndex = skeleton.jointNames.indexOf(jointName);
+                        if (jointIndex >= 0) {
+                            tempIndices.elements[elementIndex] = jointIndex;
+                        } else {
+                            log.warnOnce('SkinedMesh.resetSkinIndices', 'SkinedMesh.resetSkinIndices: no jointName found!', jointName);
+                        }
+                    });
+                    skinIndices.setByOffset(offset, tempIndices);
+                });
+            }
+        }
     },
     /**
      * 根据当前骨骼数来生成骨骼矩阵的 jointMatTexture
