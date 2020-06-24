@@ -6502,6 +6502,11 @@ declare class Skeleton {
      */
     rootNode: Node;
     /**
+     * 用新骨骼的 node name 重设 jointNames
+     * @param skeleton - 新骨架
+     */
+    resetJointNamesByNodeName(skeleton: Skeleton): void;
+    /**
      * clone
      * @param [rootNode]
      */

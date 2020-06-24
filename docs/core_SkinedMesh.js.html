@@ -1675,6 +1675,8 @@
             
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
             
+                <li  data-name="Skeleton#resetJointNamesByNodeName"><a href="Skeleton.html#resetJointNamesByNodeName">resetJointNamesByNodeName</a></li>
+            
                 <li  data-name="Skeleton#clone"><a href="Skeleton.html#clone">clone</a></li>
             
                 <li  data-name="Skeleton#copy"><a href="Skeleton.html#copy">copy</a></li>
@@ -7805,14 +7807,7 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
      * @param  {Skeleton} skeleton 新骨架
      */
     resetJointNamesByNodeName(skeleton) {
-        const currentSkeleton = this.skeleton;
-        currentSkeleton.jointNames.forEach((name, index) => {
-            const jointNode = currentSkeleton.jointNodeList[index];
-            const mainJointNode = skeleton.rootNode.getChildByName(jointNode.name);
-            if (mainJointNode) {
-                currentSkeleton.jointNames[index] = mainJointNode.jointName;
-            }
-        });
+        this.skeleton.resetJointNamesByNodeName(skeleton);
     },
 
     /**
