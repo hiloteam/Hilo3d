@@ -95,6 +95,20 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
     },
 
     /**
+     * 用新骨骼的 node name 重设 jointNames
+     * @param  {Skeleton} skeleton 新骨架
+     */
+    resetJointNamesByNodeName(skeleton) {
+        const jointNames = this.jointNames;
+        this.jointNodeList.forEach((jointNode, index) => {
+            const mainJointNode = skeleton.rootNode.getChildByName(jointNode.name);
+            if (mainJointNode) {
+                jointNames[index] = mainJointNode.jointName;
+            }
+        });
+    },
+
+    /**
      * clone
      * @param {Node} [rootNode]
      * @return {Skeleton}

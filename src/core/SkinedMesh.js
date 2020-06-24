@@ -92,14 +92,7 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
      * @param  {Skeleton} skeleton 新骨架
      */
     resetJointNamesByNodeName(skeleton) {
-        const currentSkeleton = this.skeleton;
-        currentSkeleton.jointNames.forEach((name, index) => {
-            const jointNode = currentSkeleton.jointNodeList[index];
-            const mainJointNode = skeleton.rootNode.getChildByName(jointNode.name);
-            if (mainJointNode) {
-                currentSkeleton.jointNames[index] = mainJointNode.jointName;
-            }
-        });
+        this.skeleton.resetJointNamesByNodeName(skeleton);
     },
 
     /**
