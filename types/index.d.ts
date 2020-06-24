@@ -6459,6 +6459,16 @@ declare class SkinedMesh extends Mesh {
      */
     getJointMat(): Float32Array;
     /**
+     * 用新骨骼的 node name 重设 jointNames
+     * @param skeleton - 新骨架
+     */
+    resetJointNamesByNodeName(skeleton: Skeleton): void;
+    /**
+     * 用新骨骼重置skinIndices
+     * @param skeleton
+     */
+    resetSkinIndices(skeleton: Skeleton): void;
+    /**
      * 根据当前骨骼数来生成骨骼矩阵的 jointMatTexture
      */
     initJointMatTexture(): DataTexture;

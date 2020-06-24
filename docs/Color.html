@@ -50,26 +50,9 @@
             </ul>
             <ul class="methods itemMembers">
             
-            </ul>
-            <ul class="events itemMembers">
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
             
-            </ul>
-        </li>
-    
-        <li class="item" data-name="core/EventMixin">
-            <span class="title">
-                <span class="title-name">core/<a href="EventMixin.html">EventMixin</a></span>
-                
-                <span class="static">static</span>
-                
-            </span>
-            <ul class="members itemMembers">
-            
-            </ul>
-            <ul class="typedefs itemMembers">
-            
-            </ul>
-            <ul class="methods itemMembers">
+                <li  data-name="Class.create"><a href="Class.html#.create">create</a></li>
             
             </ul>
             <ul class="events itemMembers">
@@ -484,13 +467,13 @@
             
                 <li  data-name="log.level"><a href="log.html#.level">level</a></li>
             
+                <li  data-name="log.LEVEL_NONE"><a href="log.html#.LEVEL_NONE">LEVEL_NONE</a></li>
+            
                 <li  data-name="log.LEVEL_LOG"><a href="log.html#.LEVEL_LOG">LEVEL_LOG</a></li>
             
                 <li  data-name="log.LEVEL_WARN"><a href="log.html#.LEVEL_WARN">LEVEL_WARN</a></li>
             
                 <li  data-name="log.LEVEL_ERROR"><a href="log.html#.LEVEL_ERROR">LEVEL_ERROR</a></li>
-            
-                <li  data-name="log.LEVEL_NONE"><a href="log.html#.LEVEL_NONE">LEVEL_NONE</a></li>
             
             </ul>
             <ul class="typedefs itemMembers">
@@ -574,6 +557,8 @@
                 <li  data-name="Animation#removeClip"><a href="Animation.html#removeClip">removeClip</a></li>
             
                 <li  data-name="Animation#getAnimStatesListTimeInfo"><a href="Animation.html#getAnimStatesListTimeInfo">getAnimStatesListTimeInfo</a></li>
+            
+                <li  data-name="Animation#tick"><a href="Animation.html#tick">tick</a></li>
             
                 <li  data-name="Animation#updateAnimStates"><a href="Animation.html#updateAnimStates">updateAnimStates</a></li>
             
@@ -675,7 +660,11 @@
             
                 <li class="inherited-member" data-name="Camera#name"><a href="Camera.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="Camera#anim"><a href="Camera.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="Camera#animationId"><a href="Camera.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="Camera#jointName"><a href="Camera.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="Camera#autoUpdateWorldMatrix"><a href="Camera.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -876,7 +865,11 @@
             
                 <li class="inherited-member" data-name="OrthographicCamera#name"><a href="OrthographicCamera.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="OrthographicCamera#anim"><a href="OrthographicCamera.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="OrthographicCamera#animationId"><a href="OrthographicCamera.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="OrthographicCamera#jointName"><a href="OrthographicCamera.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="OrthographicCamera#autoUpdateWorldMatrix"><a href="OrthographicCamera.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -1073,7 +1066,11 @@
             
                 <li class="inherited-member" data-name="PerspectiveCamera#name"><a href="PerspectiveCamera.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="PerspectiveCamera#anim"><a href="PerspectiveCamera.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="PerspectiveCamera#animationId"><a href="PerspectiveCamera.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="PerspectiveCamera#jointName"><a href="PerspectiveCamera.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="PerspectiveCamera#autoUpdateWorldMatrix"><a href="PerspectiveCamera.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -1237,6 +1234,33 @@
             </ul>
         </li>
     
+        <li class="item" data-name="core/EventMixin">
+            <span class="title">
+                <span class="title-name">core/<a href="EventMixin.html">EventMixin</a></span>
+                
+            </span>
+            <ul class="members itemMembers">
+            
+            </ul>
+            <ul class="typedefs itemMembers">
+            
+            </ul>
+            <ul class="methods itemMembers">
+            
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="EventMixin#on"><a href="EventMixin.html#on">on</a></li>
+            
+                <li  data-name="EventMixin#off"><a href="EventMixin.html#off">off</a></li>
+            
+                <li  data-name="EventMixin#fire"><a href="EventMixin.html#fire">fire</a></li>
+            
+            </ul>
+            <ul class="events itemMembers">
+            
+            </ul>
+        </li>
+    
         <li class="item" data-name="core/Fog">
             <span class="title">
                 <span class="title-name">core/<a href="Fog.html">Fog</a></span>
@@ -1299,11 +1323,17 @@
             
                 <li  data-name="Mesh#frustumTest"><a href="Mesh.html#frustumTest">frustumTest</a></li>
             
+                <li  data-name="Mesh#isDestroyed"><a href="Mesh.html#isDestroyed">isDestroyed</a></li>
+            
                 <li class="inherited-member" data-name="Mesh#isNode"><a href="Mesh.html#isNode">isNode</a></li>
             
                 <li class="inherited-member" data-name="Mesh#name"><a href="Mesh.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="Mesh#anim"><a href="Mesh.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="Mesh#animationId"><a href="Mesh.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="Mesh#jointName"><a href="Mesh.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="Mesh#autoUpdateWorldMatrix"><a href="Mesh.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -1466,7 +1496,11 @@
             
                 <li  data-name="Node#name"><a href="Node.html#name">name</a></li>
             
+                <li  data-name="Node#anim"><a href="Node.html#anim">anim</a></li>
+            
                 <li  data-name="Node#animationId"><a href="Node.html#animationId">animationId</a></li>
+            
+                <li  data-name="Node#jointName"><a href="Node.html#jointName">jointName</a></li>
             
                 <li  data-name="Node#autoUpdateWorldMatrix"><a href="Node.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -1608,6 +1642,49 @@
             </ul>
         </li>
     
+        <li class="item" data-name="core/Skeleton">
+            <span class="title">
+                <span class="title-name">core/<a href="Skeleton.html">Skeleton</a></span>
+                
+            </span>
+            <ul class="members itemMembers">
+            
+            <span class="subtitle"><a href="#members" class="subtitle-name">Members</a><a class="toggle-inherited" href="javascript:void(0);" type="member">Show Inherited</a></span>
+            
+                <li  data-name="Skeleton#isSkeleton"><a href="Skeleton.html#isSkeleton">isSkeleton</a></li>
+            
+                <li  data-name="Skeleton#className"><a href="Skeleton.html#className">className</a></li>
+            
+                <li  data-name="Skeleton#id"><a href="Skeleton.html#id">id</a></li>
+            
+                <li  data-name="Skeleton#jointNodeList"><a href="Skeleton.html#jointNodeList">jointNodeList</a></li>
+            
+                <li  data-name="Skeleton#jointNames"><a href="Skeleton.html#jointNames">jointNames</a></li>
+            
+                <li  data-name="Skeleton#inverseBindMatrices"><a href="Skeleton.html#inverseBindMatrices">inverseBindMatrices</a></li>
+            
+                <li  data-name="Skeleton#jointCount"><a href="Skeleton.html#jointCount">jointCount</a></li>
+            
+                <li  data-name="Skeleton#rootNode"><a href="Skeleton.html#rootNode">rootNode</a></li>
+            
+            </ul>
+            <ul class="typedefs itemMembers">
+            
+            </ul>
+            <ul class="methods itemMembers">
+            
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="Skeleton#clone"><a href="Skeleton.html#clone">clone</a></li>
+            
+                <li  data-name="Skeleton#copy"><a href="Skeleton.html#copy">copy</a></li>
+            
+            </ul>
+            <ul class="events itemMembers">
+            
+            </ul>
+        </li>
+    
         <li class="item" data-name="core/SkinedMesh">
             <span class="title">
                 <span class="title-name">core/<a href="SkinedMesh.html">SkinedMesh</a></span>
@@ -1621,19 +1698,13 @@
             
                 <li  data-name="SkinedMesh#className"><a href="SkinedMesh.html#className">className</a></li>
             
-                <li  data-name="SkinedMesh#rootNode"><a href="SkinedMesh.html#rootNode">rootNode</a></li>
-            
-                <li  data-name="SkinedMesh#jointNodeList"><a href="SkinedMesh.html#jointNodeList">jointNodeList</a></li>
-            
                 <li  data-name="SkinedMesh#useInstanced"><a href="SkinedMesh.html#useInstanced">useInstanced</a></li>
             
                 <li  data-name="SkinedMesh#jointMatTexture"><a href="SkinedMesh.html#jointMatTexture">jointMatTexture</a></li>
             
                 <li  data-name="SkinedMesh#frustumTest"><a href="SkinedMesh.html#frustumTest">frustumTest</a></li>
             
-                <li  data-name="SkinedMesh#jointNames"><a href="SkinedMesh.html#jointNames">jointNames</a></li>
-            
-                <li  data-name="SkinedMesh#inverseBindMatrices"><a href="SkinedMesh.html#inverseBindMatrices">inverseBindMatrices</a></li>
+                <li  data-name="SkinedMesh#skeleton"><a href="SkinedMesh.html#skeleton">skeleton</a></li>
             
                 <li class="inherited-member" data-name="SkinedMesh#isMesh"><a href="SkinedMesh.html#isMesh">isMesh</a></li>
             
@@ -1641,11 +1712,17 @@
             
                 <li class="inherited-member" data-name="SkinedMesh#material"><a href="SkinedMesh.html#material">material</a></li>
             
+                <li class="inherited-member" data-name="SkinedMesh#isDestroyed"><a href="SkinedMesh.html#isDestroyed">isDestroyed</a></li>
+            
                 <li class="inherited-member" data-name="SkinedMesh#isNode"><a href="SkinedMesh.html#isNode">isNode</a></li>
             
                 <li class="inherited-member" data-name="SkinedMesh#name"><a href="SkinedMesh.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="SkinedMesh#anim"><a href="SkinedMesh.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="SkinedMesh#animationId"><a href="SkinedMesh.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="SkinedMesh#jointName"><a href="SkinedMesh.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="SkinedMesh#autoUpdateWorldMatrix"><a href="SkinedMesh.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -1716,6 +1793,10 @@
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
             
                 <li  data-name="SkinedMesh#getJointMat"><a href="SkinedMesh.html#getJointMat">getJointMat</a></li>
+            
+                <li  data-name="SkinedMesh#resetJointNamesByNodeName"><a href="SkinedMesh.html#resetJointNamesByNodeName">resetJointNamesByNodeName</a></li>
+            
+                <li  data-name="SkinedMesh#resetSkinIndices"><a href="SkinedMesh.html#resetSkinIndices">resetSkinIndices</a></li>
             
                 <li  data-name="SkinedMesh#initJointMatTexture"><a href="SkinedMesh.html#initJointMatTexture">initJointMatTexture</a></li>
             
@@ -1812,13 +1893,19 @@
             
                 <li  data-name="Stage#offsetY"><a href="Stage.html#offsetY">offsetY</a></li>
             
+                <li  data-name="Stage#canvas"><a href="Stage.html#canvas">canvas</a></li>
+            
                 <li class="inherited-member" data-name="Stage#isNode"><a href="Stage.html#isNode">isNode</a></li>
             
                 <li class="inherited-member" data-name="Stage#className"><a href="Stage.html#className">className</a></li>
             
                 <li class="inherited-member" data-name="Stage#name"><a href="Stage.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="Stage#anim"><a href="Stage.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="Stage#animationId"><a href="Stage.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="Stage#jointName"><a href="Stage.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="Stage#autoUpdateWorldMatrix"><a href="Stage.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -1904,8 +1991,6 @@
             
                 <li  data-name="Stage#releaseGLResource"><a href="Stage.html#releaseGLResource">releaseGLResource</a></li>
             
-                <li  data-name="Stage#destroy"><a href="Stage.html#destroy">destroy</a></li>
-            
                 <li class="inherited-method" data-name="Stage#clone"><a href="Stage.html#clone">clone</a></li>
             
                 <li class="inherited-method" data-name="Stage#setAnim"><a href="Stage.html#setAnim">setAnim</a></li>
@@ -1970,6 +2055,8 @@
             
                 <li class="inherited-method" data-name="Stage#getBounds"><a href="Stage.html#getBounds">getBounds</a></li>
             
+                <li class="inherited-method" data-name="Stage#destroy"><a href="Stage.html#destroy">destroy</a></li>
+            
             </ul>
             <ul class="events itemMembers">
             
@@ -1992,6 +2079,34 @@
             
             </ul>
             <ul class="methods itemMembers">
+            
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="Tween#start"><a href="Tween.html#start">start</a></li>
+            
+                <li  data-name="Tween#stop"><a href="Tween.html#stop">stop</a></li>
+            
+                <li  data-name="Tween#pause"><a href="Tween.html#pause">pause</a></li>
+            
+                <li  data-name="Tween#resume"><a href="Tween.html#resume">resume</a></li>
+            
+                <li  data-name="Tween#seek"><a href="Tween.html#seek">seek</a></li>
+            
+                <li  data-name="Tween#link"><a href="Tween.html#link">link</a></li>
+            
+                <li  data-name="Tween.tick"><a href="Tween.html#.tick">tick</a></li>
+            
+                <li  data-name="Tween.add"><a href="Tween.html#.add">add</a></li>
+            
+                <li  data-name="Tween.remove"><a href="Tween.html#.remove">remove</a></li>
+            
+                <li  data-name="Tween.removeAll"><a href="Tween.html#.removeAll">removeAll</a></li>
+            
+                <li  data-name="Tween.fromTo"><a href="Tween.html#.fromTo">fromTo</a></li>
+            
+                <li  data-name="Tween.to"><a href="Tween.html#.to">to</a></li>
+            
+                <li  data-name="Tween.from"><a href="Tween.html#.from">from</a></li>
             
             </ul>
             <ul class="events itemMembers">
@@ -2249,6 +2364,10 @@
             <ul class="members itemMembers">
             
             <span class="subtitle"><a href="#members" class="subtitle-name">Members</a><a class="toggle-inherited" href="javascript:void(0);" type="member">Show Inherited</a></span>
+            
+                <li  data-name="GeometryData#className"><a href="GeometryData.html#className">className</a></li>
+            
+                <li  data-name="GeometryData#isGeometryData"><a href="GeometryData.html#isGeometryData">isGeometryData</a></li>
             
                 <li  data-name="GeometryData#size"><a href="GeometryData.html#size">size</a></li>
             
@@ -2682,7 +2801,11 @@
             
                 <li class="inherited-member" data-name="AxisHelper#name"><a href="AxisHelper.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="AxisHelper#anim"><a href="AxisHelper.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="AxisHelper#animationId"><a href="AxisHelper.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="AxisHelper#jointName"><a href="AxisHelper.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="AxisHelper#autoUpdateWorldMatrix"><a href="AxisHelper.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -2851,11 +2974,17 @@
             
                 <li class="inherited-member" data-name="AxisNetHelper#frustumTest"><a href="AxisNetHelper.html#frustumTest">frustumTest</a></li>
             
+                <li class="inherited-member" data-name="AxisNetHelper#isDestroyed"><a href="AxisNetHelper.html#isDestroyed">isDestroyed</a></li>
+            
                 <li class="inherited-member" data-name="AxisNetHelper#isNode"><a href="AxisNetHelper.html#isNode">isNode</a></li>
             
                 <li class="inherited-member" data-name="AxisNetHelper#name"><a href="AxisNetHelper.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="AxisNetHelper#anim"><a href="AxisNetHelper.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="AxisNetHelper#animationId"><a href="AxisNetHelper.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="AxisNetHelper#jointName"><a href="AxisNetHelper.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="AxisNetHelper#autoUpdateWorldMatrix"><a href="AxisNetHelper.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -3022,11 +3151,17 @@
             
                 <li class="inherited-member" data-name="CameraHelper#frustumTest"><a href="CameraHelper.html#frustumTest">frustumTest</a></li>
             
+                <li class="inherited-member" data-name="CameraHelper#isDestroyed"><a href="CameraHelper.html#isDestroyed">isDestroyed</a></li>
+            
                 <li class="inherited-member" data-name="CameraHelper#isNode"><a href="CameraHelper.html#isNode">isNode</a></li>
             
                 <li class="inherited-member" data-name="CameraHelper#name"><a href="CameraHelper.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="CameraHelper#anim"><a href="CameraHelper.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="CameraHelper#animationId"><a href="CameraHelper.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="CameraHelper#jointName"><a href="CameraHelper.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="CameraHelper#autoUpdateWorldMatrix"><a href="CameraHelper.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -3177,6 +3312,10 @@
             
             <span class="subtitle"><a href="#members" class="subtitle-name">Members</a><a class="toggle-inherited" href="javascript:void(0);" type="member">Show Inherited</a></span>
             
+                <li  data-name="AmbientLight#isAmbientLight"><a href="AmbientLight.html#isAmbientLight">isAmbientLight</a></li>
+            
+                <li  data-name="AmbientLight#className"><a href="AmbientLight.html#className">className</a></li>
+            
                 <li class="inherited-member" data-name="AmbientLight#amount"><a href="AmbientLight.html#amount">amount</a></li>
             
                 <li class="inherited-member" data-name="AmbientLight#enabled"><a href="AmbientLight.html#enabled">enabled</a></li>
@@ -3188,6 +3327,8 @@
                 <li class="inherited-member" data-name="AmbientLight#quadraticAttenuation"><a href="AmbientLight.html#quadraticAttenuation">quadraticAttenuation</a></li>
             
                 <li class="inherited-member" data-name="AmbientLight#range"><a href="AmbientLight.html#range">range</a></li>
+            
+                <li class="inherited-member" data-name="AmbientLight#shadow"><a href="AmbientLight.html#shadow">shadow</a></li>
             
                 <li class="inherited-member" data-name="AmbientLight#color"><a href="AmbientLight.html#color">color</a></li>
             
@@ -3218,6 +3359,14 @@
             
             <span class="subtitle"><a href="#members" class="subtitle-name">Members</a><a class="toggle-inherited" href="javascript:void(0);" type="member">Show Inherited</a></span>
             
+                <li  data-name="AreaLight.ltcTexture1"><a href="AreaLight.html#.ltcTexture1">ltcTexture1</a></li>
+            
+                <li  data-name="AreaLight.ltcTexture2"><a href="AreaLight.html#.ltcTexture2">ltcTexture2</a></li>
+            
+                <li  data-name="AreaLight.ltcTextureReady"><a href="AreaLight.html#.ltcTextureReady">ltcTextureReady</a></li>
+            
+                <li  data-name="AreaLight.ltcTextureUrl"><a href="AreaLight.html#.ltcTextureUrl">ltcTextureUrl</a></li>
+            
                 <li  data-name="AreaLight#isAreaLight"><a href="AreaLight.html#isAreaLight">isAreaLight</a></li>
             
                 <li  data-name="AreaLight#className"><a href="AreaLight.html#className">className</a></li>
@@ -3242,6 +3391,8 @@
             
                 <li class="inherited-member" data-name="AreaLight#range"><a href="AreaLight.html#range">range</a></li>
             
+                <li class="inherited-member" data-name="AreaLight#shadow"><a href="AreaLight.html#shadow">shadow</a></li>
+            
                 <li class="inherited-member" data-name="AreaLight#color"><a href="AreaLight.html#color">color</a></li>
             
             </ul>
@@ -3251,6 +3402,8 @@
             <ul class="methods itemMembers">
             
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="AreaLight.loadLtcTexture"><a href="AreaLight.html#.loadLtcTexture">loadLtcTexture</a></li>
             
                 <li class="inherited-method" data-name="AreaLight#toInfoArray"><a href="AreaLight.html#toInfoArray">toInfoArray</a></li>
             
@@ -3275,8 +3428,6 @@
             
                 <li  data-name="DirectionalLight#className"><a href="DirectionalLight.html#className">className</a></li>
             
-                <li  data-name="DirectionalLight#shadow"><a href="DirectionalLight.html#shadow">shadow</a></li>
-            
                 <li  data-name="DirectionalLight#direction"><a href="DirectionalLight.html#direction">direction</a></li>
             
                 <li class="inherited-member" data-name="DirectionalLight#amount"><a href="DirectionalLight.html#amount">amount</a></li>
@@ -3290,6 +3441,8 @@
                 <li class="inherited-member" data-name="DirectionalLight#quadraticAttenuation"><a href="DirectionalLight.html#quadraticAttenuation">quadraticAttenuation</a></li>
             
                 <li class="inherited-member" data-name="DirectionalLight#range"><a href="DirectionalLight.html#range">range</a></li>
+            
+                <li class="inherited-member" data-name="DirectionalLight#shadow"><a href="DirectionalLight.html#shadow">shadow</a></li>
             
                 <li class="inherited-member" data-name="DirectionalLight#color"><a href="DirectionalLight.html#color">color</a></li>
             
@@ -3332,6 +3485,8 @@
             
                 <li  data-name="Light#range"><a href="Light.html#range">range</a></li>
             
+                <li  data-name="Light#shadow"><a href="Light.html#shadow">shadow</a></li>
+            
                 <li  data-name="Light#color"><a href="Light.html#color">color</a></li>
             
                 <li class="inherited-member" data-name="Light#isNode"><a href="Light.html#isNode">isNode</a></li>
@@ -3340,7 +3495,11 @@
             
                 <li class="inherited-member" data-name="Light#name"><a href="Light.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="Light#anim"><a href="Light.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="Light#animationId"><a href="Light.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="Light#jointName"><a href="Light.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="Light#autoUpdateWorldMatrix"><a href="Light.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -3556,13 +3715,19 @@
             
                 <li class="inherited-member" data-name="PointLight#range"><a href="PointLight.html#range">range</a></li>
             
+                <li class="inherited-member" data-name="PointLight#shadow"><a href="PointLight.html#shadow">shadow</a></li>
+            
                 <li class="inherited-member" data-name="PointLight#color"><a href="PointLight.html#color">color</a></li>
             
                 <li class="inherited-member" data-name="PointLight#isNode"><a href="PointLight.html#isNode">isNode</a></li>
             
                 <li class="inherited-member" data-name="PointLight#name"><a href="PointLight.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="PointLight#anim"><a href="PointLight.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="PointLight#animationId"><a href="PointLight.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="PointLight#jointName"><a href="PointLight.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="PointLight#autoUpdateWorldMatrix"><a href="PointLight.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -3721,8 +3886,6 @@
             
                 <li  data-name="SpotLight#className"><a href="SpotLight.html#className">className</a></li>
             
-                <li  data-name="SpotLight#shadow"><a href="SpotLight.html#shadow">shadow</a></li>
-            
                 <li  data-name="SpotLight#cutoff"><a href="SpotLight.html#cutoff">cutoff</a></li>
             
                 <li  data-name="SpotLight#outerCutoff"><a href="SpotLight.html#outerCutoff">outerCutoff</a></li>
@@ -3741,13 +3904,19 @@
             
                 <li class="inherited-member" data-name="SpotLight#range"><a href="SpotLight.html#range">range</a></li>
             
+                <li class="inherited-member" data-name="SpotLight#shadow"><a href="SpotLight.html#shadow">shadow</a></li>
+            
                 <li class="inherited-member" data-name="SpotLight#color"><a href="SpotLight.html#color">color</a></li>
             
                 <li class="inherited-member" data-name="SpotLight#isNode"><a href="SpotLight.html#isNode">isNode</a></li>
             
                 <li class="inherited-member" data-name="SpotLight#name"><a href="SpotLight.html#name">name</a></li>
             
+                <li class="inherited-member" data-name="SpotLight#anim"><a href="SpotLight.html#anim">anim</a></li>
+            
                 <li class="inherited-member" data-name="SpotLight#animationId"><a href="SpotLight.html#animationId">animationId</a></li>
+            
+                <li class="inherited-member" data-name="SpotLight#jointName"><a href="SpotLight.html#jointName">jointName</a></li>
             
                 <li class="inherited-member" data-name="SpotLight#autoUpdateWorldMatrix"><a href="SpotLight.html#autoUpdateWorldMatrix">autoUpdateWorldMatrix</a></li>
             
@@ -3924,6 +4093,12 @@
             
                 <li  data-name="BasicLoader#request"><a href="BasicLoader.html#request">request</a></li>
             
+                <li  data-name="BasicLoader#on"><a href="BasicLoader.html#on">on</a></li>
+            
+                <li  data-name="BasicLoader#off"><a href="BasicLoader.html#off">off</a></li>
+            
+                <li  data-name="BasicLoader#fire"><a href="BasicLoader.html#fire">fire</a></li>
+            
             </ul>
             <ul class="events itemMembers">
             
@@ -4070,37 +4245,6 @@
             </ul>
         </li>
     
-        <li class="item" data-name="loader/IGLTFExtensionHandler">
-            <span class="title">
-                <span class="title-name">loader/<a href="IGLTFExtensionHandler.html">IGLTFExtensionHandler</a></span>
-                
-            </span>
-            <ul class="members itemMembers">
-            
-            </ul>
-            <ul class="typedefs itemMembers">
-            
-            </ul>
-            <ul class="methods itemMembers">
-            
-            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
-            
-                <li  data-name="IGLTFExtensionHandler#parse"><a href="IGLTFExtensionHandler.html#parse">parse</a></li>
-            
-                <li  data-name="IGLTFExtensionHandler#parseOnLoad"><a href="IGLTFExtensionHandler.html#parseOnLoad">parseOnLoad</a></li>
-            
-                <li  data-name="IGLTFExtensionHandler#parseOnEnd"><a href="IGLTFExtensionHandler.html#parseOnEnd">parseOnEnd</a></li>
-            
-                <li  data-name="IGLTFExtensionHandler#init"><a href="IGLTFExtensionHandler.html#init">init</a></li>
-            
-                <li  data-name="IGLTFExtensionHandler#getUsedTextureNameMap"><a href="IGLTFExtensionHandler.html#getUsedTextureNameMap">getUsedTextureNameMap</a></li>
-            
-            </ul>
-            <ul class="events itemMembers">
-            
-            </ul>
-        </li>
-    
         <li class="item" data-name="loader/KTXLoader">
             <span class="title">
                 <span class="title-name">loader/<a href="KTXLoader.html">KTXLoader</a></span>
@@ -4109,6 +4253,16 @@
             <ul class="members itemMembers">
             
             <span class="subtitle"><a href="#members" class="subtitle-name">Members</a><a class="toggle-inherited" href="javascript:void(0);" type="member">Show Inherited</a></span>
+            
+                <li  data-name="KTXLoader.astc"><a href="KTXLoader.html#.astc">astc</a></li>
+            
+                <li  data-name="KTXLoader.etc"><a href="KTXLoader.html#.etc">etc</a></li>
+            
+                <li  data-name="KTXLoader.etc1"><a href="KTXLoader.html#.etc1">etc1</a></li>
+            
+                <li  data-name="KTXLoader.pvrtc"><a href="KTXLoader.html#.pvrtc">pvrtc</a></li>
+            
+                <li  data-name="KTXLoader.s3tc"><a href="KTXLoader.html#.s3tc">s3tc</a></li>
             
                 <li  data-name="KTXLoader#isKTXLoader"><a href="KTXLoader.html#isKTXLoader">isKTXLoader</a></li>
             
@@ -4321,6 +4475,8 @@
             
                 <li class="inherited-member" data-name="BasicMaterial#isMaterial"><a href="BasicMaterial.html#isMaterial">isMaterial</a></li>
             
+                <li class="inherited-member" data-name="BasicMaterial#name"><a href="BasicMaterial.html#name">name</a></li>
+            
                 <li class="inherited-member" data-name="BasicMaterial#shaderCacheId"><a href="BasicMaterial.html#shaderCacheId">shaderCacheId</a></li>
             
                 <li class="inherited-member" data-name="BasicMaterial#wireframe"><a href="BasicMaterial.html#wireframe">wireframe</a></li>
@@ -4478,6 +4634,8 @@
             
                 <li class="inherited-member" data-name="GeometryMaterial#isMaterial"><a href="GeometryMaterial.html#isMaterial">isMaterial</a></li>
             
+                <li class="inherited-member" data-name="GeometryMaterial#name"><a href="GeometryMaterial.html#name">name</a></li>
+            
                 <li class="inherited-member" data-name="GeometryMaterial#shaderCacheId"><a href="GeometryMaterial.html#shaderCacheId">shaderCacheId</a></li>
             
                 <li class="inherited-member" data-name="GeometryMaterial#wireframe"><a href="GeometryMaterial.html#wireframe">wireframe</a></li>
@@ -4604,6 +4762,8 @@
                 <li  data-name="Material#isMaterial"><a href="Material.html#isMaterial">isMaterial</a></li>
             
                 <li  data-name="Material#className"><a href="Material.html#className">className</a></li>
+            
+                <li  data-name="Material#name"><a href="Material.html#name">name</a></li>
             
                 <li  data-name="Material#shaderCacheId"><a href="Material.html#shaderCacheId">shaderCacheId</a></li>
             
@@ -4770,7 +4930,7 @@
             
                 <li  data-name="PBRMaterial#specularEnvIntensity"><a href="PBRMaterial.html#specularEnvIntensity">specularEnvIntensity</a></li>
             
-                <li  data-name="PBRMaterial#specularEnv"><a href="PBRMaterial.html#specularEnv">specularEnv</a></li>
+                <li  data-name="PBRMaterial#specularEnvMap"><a href="PBRMaterial.html#specularEnvMap">specularEnvMap</a></li>
             
                 <li  data-name="PBRMaterial#emission"><a href="PBRMaterial.html#emission">emission</a></li>
             
@@ -4783,6 +4943,8 @@
                 <li  data-name="PBRMaterial#specularGlossinessMap"><a href="PBRMaterial.html#specularGlossinessMap">specularGlossinessMap</a></li>
             
                 <li class="inherited-member" data-name="PBRMaterial#isMaterial"><a href="PBRMaterial.html#isMaterial">isMaterial</a></li>
+            
+                <li class="inherited-member" data-name="PBRMaterial#name"><a href="PBRMaterial.html#name">name</a></li>
             
                 <li class="inherited-member" data-name="PBRMaterial#shaderCacheId"><a href="PBRMaterial.html#shaderCacheId">shaderCacheId</a></li>
             
@@ -4916,6 +5078,8 @@
                 <li  data-name="ShaderMaterial#getCustomRenderOption"><a href="ShaderMaterial.html#getCustomRenderOption">getCustomRenderOption</a></li>
             
                 <li class="inherited-member" data-name="ShaderMaterial#isMaterial"><a href="ShaderMaterial.html#isMaterial">isMaterial</a></li>
+            
+                <li class="inherited-member" data-name="ShaderMaterial#name"><a href="ShaderMaterial.html#name">name</a></li>
             
                 <li class="inherited-member" data-name="ShaderMaterial#shaderCacheId"><a href="ShaderMaterial.html#shaderCacheId">shaderCacheId</a></li>
             
@@ -6420,6 +6584,8 @@
             
             <span class="subtitle"><a href="#members" class="subtitle-name">Members</a><a class="toggle-inherited" href="javascript:void(0);" type="member">Show Inherited</a></span>
             
+                <li  data-name="Framebuffer.cache"><a href="Framebuffer.html#.cache">cache</a></li>
+            
                 <li  data-name="Framebuffer#className"><a href="Framebuffer.html#className">className</a></li>
             
                 <li  data-name="Framebuffer#isFramebuffer"><a href="Framebuffer.html#isFramebuffer">isFramebuffer</a></li>
@@ -6463,6 +6629,10 @@
             <ul class="methods itemMembers">
             
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="Framebuffer.reset"><a href="Framebuffer.html#.reset">reset</a></li>
+            
+                <li  data-name="Framebuffer.destroy"><a href="Framebuffer.html#.destroy">destroy</a></li>
             
                 <li  data-name="Framebuffer#isComplete"><a href="Framebuffer.html#isComplete">isComplete</a></li>
             
@@ -6612,12 +6782,6 @@
             </ul>
             <ul class="typedefs itemMembers">
             
-            <span class="subtitle">Typedefs</span>
-            
-                <li data-name="RenderList~traverseCallback"><a href="RenderList.html#~traverseCallback">traverseCallback</a></li>
-            
-                <li data-name="RenderList~instancedTraverseCallback"><a href="RenderList.html#~instancedTraverseCallback">instancedTraverseCallback</a></li>
-            
             </ul>
             <ul class="methods itemMembers">
             
@@ -6644,6 +6808,8 @@
             
             <span class="subtitle"><a href="#members" class="subtitle-name">Members</a><a class="toggle-inherited" href="javascript:void(0);" type="member">Show Inherited</a></span>
             
+                <li  data-name="VertexArrayObject.cache"><a href="VertexArrayObject.html#.cache">cache</a></li>
+            
                 <li  data-name="VertexArrayObject#className"><a href="VertexArrayObject.html#className">className</a></li>
             
                 <li  data-name="VertexArrayObject#isVertexArrayObject"><a href="VertexArrayObject.html#isVertexArrayObject">isVertexArrayObject</a></li>
@@ -6664,6 +6830,12 @@
             
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
             
+                <li  data-name="VertexArrayObject.getVao"><a href="VertexArrayObject.html#.getVao">getVao</a></li>
+            
+                <li  data-name="VertexArrayObject.reset"><a href="VertexArrayObject.html#.reset">reset</a></li>
+            
+                <li  data-name="VertexArrayObject.bindSystemVao"><a href="VertexArrayObject.html#.bindSystemVao">bindSystemVao</a></li>
+            
                 <li  data-name="VertexArrayObject#bind"><a href="VertexArrayObject.html#bind">bind</a></li>
             
                 <li  data-name="VertexArrayObject#unbind"><a href="VertexArrayObject.html#unbind">unbind</a></li>
@@ -6680,7 +6852,7 @@
             
                 <li  data-name="VertexArrayObject#addInstancedAttribute"><a href="VertexArrayObject.html#addInstancedAttribute">addInstancedAttribute</a></li>
             
-                <li  data-name="VertexArrayObject#useResource"><a href="VertexArrayObject.html#useResource">useResource</a></li>
+                <li  data-name="VertexArrayObject#getResources"><a href="VertexArrayObject.html#getResources">getResources</a></li>
             
                 <li  data-name="VertexArrayObject#destroyIfNoRef"><a href="VertexArrayObject.html#destroyIfNoRef">destroyIfNoRef</a></li>
             
@@ -6848,9 +7020,9 @@
             
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
             
-                <li  data-name="WebGLResourceManager#useResource"><a href="WebGLResourceManager.html#useResource">useResource</a></li>
-            
                 <li  data-name="WebGLResourceManager#destroyIfNoRef"><a href="WebGLResourceManager.html#destroyIfNoRef">destroyIfNoRef</a></li>
+            
+                <li  data-name="WebGLResourceManager#getUsedResources"><a href="WebGLResourceManager.html#getUsedResources">getUsedResources</a></li>
             
                 <li  data-name="WebGLResourceManager#destroyUnsuedResource"><a href="WebGLResourceManager.html#destroyUnsuedResource">destroyUnsuedResource</a></li>
             
@@ -7344,6 +7516,8 @@
             
             <span class="subtitle"><a href="#members" class="subtitle-name">Members</a><a class="toggle-inherited" href="javascript:void(0);" type="member">Show Inherited</a></span>
             
+                <li  data-name="Texture.cache"><a href="Texture.html#.cache">cache</a></li>
+            
                 <li  data-name="Texture#isTexture"><a href="Texture.html#isTexture">isTexture</a></li>
             
                 <li  data-name="Texture#className"><a href="Texture.html#className">className</a></li>
@@ -7411,6 +7585,8 @@
             <ul class="methods itemMembers">
             
             <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="Texture.reset"><a href="Texture.html#.reset">reset</a></li>
             
                 <li  data-name="Texture#isImgPowerOfTwo"><a href="Texture.html#isImgPowerOfTwo">isImgPowerOfTwo</a></li>
             
@@ -7552,7 +7728,7 @@
         <div class="nameContainer">
             <h4 class="name" id="Color">
                 
-                new Color<span class="signature">(r, g, b, a)</span>
+                new Color<span class="signature">(<span class="optional">r</span>, <span class="optional">g</span>, <span class="optional">b</span>, <span class="optional">a</span>)</span>
             </h4>
         
             
@@ -7587,6 +7763,8 @@
 		<th>Type</th>
 		
 		
+		<th>Default</th>
+		
 		
 		<th class="last">Description</th>
 	</tr>
@@ -7610,8 +7788,21 @@
             </td>
             
             
+                <td class="default">
+                
+                    1
+                
+                </td>
+            
             
             <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
                 
                 </td>
         </tr>
@@ -7633,8 +7824,21 @@
             </td>
             
             
+                <td class="default">
+                
+                    1
+                
+                </td>
+            
             
             <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
                 
                 </td>
         </tr>
@@ -7656,8 +7860,21 @@
             </td>
             
             
+                <td class="default">
+                
+                    1
+                
+                </td>
+            
             
             <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
                 
                 </td>
         </tr>
@@ -7679,8 +7896,21 @@
             </td>
             
             
+                <td class="default">
+                
+                    1
+                
+                </td>
+            
             
             <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
                 
                 </td>
         </tr>
@@ -9313,7 +9543,7 @@
                 
                     <span class="inherited"><a href="Vector4.html#fromArray">inherited</a></span>
                 
-                fromArray<span class="signature">(array, <span class="optional">offset</span>)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Vector4.html">Vector4</a>}</span>
+                fromArray<span class="signature">(array, <span class="optional">offset</span>)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{this}</span>
             </h4>
         
             
@@ -9482,11 +9712,11 @@
             
             <td class="type">
             
-                        <a href="Vector4.html">Vector4</a>
+                        this
                         
                     
             </td>
-            <td class="description last">this</td>
+            <td class="description last"></td>
         </tr>
     
     </tbody>
