@@ -86,6 +86,22 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
         });
         return this.jointMat;
     },
+
+    /**
+     * 用新骨骼的 node name 重设 jointNames
+     * @param  {Skeleton} skeleton 新骨架
+     */
+    resetJointNamesByNodeName(skeleton) {
+        const currentSkeleton = this.skeleton;
+        currentSkeleton.jointNames.forEach((name, index) => {
+            const jointNode = currentSkeleton.jointNodeList[index];
+            const mainJointNode = skeleton.rootNode.getChildByName(jointNode.name);
+            if (mainJointNode) {
+                currentSkeleton.jointNames[index] = mainJointNode.jointName;
+            }
+        });
+    },
+
     /**
      * 用新骨骼重置skinIndices
      * @param  {Skeleton} skeleton
