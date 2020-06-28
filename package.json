@@ -18,7 +18,7 @@
     "seinjs-dev": "webpack --watch --env.development --seinjs",
     "seinjs-build": "webpack --env.development --seinjs",
     "preversion": "npm run build && npm test",
-    "version": "npm run release && npm run doc && npm run doc-tsd && git add -A",
+    "version": "npm run release && npm run doc && npm run doc-tsd && npm run changelog && git add -A",
     "major": "npm version major -m 'publish %s'",
     "minor": "npm version minor -m 'publish %s'",
     "patch": "npm version patch -m 'publish %s'"
