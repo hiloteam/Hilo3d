@@ -1477,15 +1477,16 @@ declare class WebGLResourceManager implements EventMixin {
      */
     destroyIfNoRef(res: any): WebGLResourceManager;
     /**
-     * 获取用到的资源
-     * @param stage
+     * 获取 rootNode 用到的资源
+     * @param [rootNode] - 根节点，不传返回空数组
      */
-    getUsedResources(stage: Stage): object[];
+    getUsedResources(rootNode?: Node): object[];
     /**
-     * 销毁没被使用的资源
+     * 销毁没被 rootNode 使用的资源，通常传 stage。
+     * @param [rootNode] - 根节点，不传代表所有资源都没被使用过。
      * @returns this
      */
-    destroyUnsuedResource(): WebGLResourceManager;
+    destroyUnsuedResource(rootNode?: Node): WebGLResourceManager;
     /**
      * 重置
      * @returns this

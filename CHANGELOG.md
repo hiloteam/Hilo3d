@@ -1,3 +1,12 @@
+## [1.15.2](https://github.com/hiloteam/Hilo3d/compare/1.15.1...1.15.2) (2020-06-30)
+
+
+### Bug Fixes
+
+* ResourceManager.destroyUnsuedResource parameter become optional ([3e15fbe](https://github.com/hiloteam/Hilo3d/commit/3e15fbe9d6c141e580e85bfe97bd11cb253c4d0d))
+
+
+
 ## [1.15.1](https://github.com/hiloteam/Hilo3d/compare/1.15.0...1.15.1) (2020-06-24)
 
 

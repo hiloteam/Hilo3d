@@ -7793,32 +7793,35 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
     },
 
     /**
-     * 获取用到的资源
-     * @param  {Stage} stage
+     * 获取 rootNode 用到的资源
+     * @param  {Node} [rootNode] 根节点，不传返回空数组
      * @return {Object[]}
      */
-    getUsedResources(stage) {
+    getUsedResources(rootNode) {
         const resources = [];
-        stage.traverse((node) => {
-            if (node.isMesh &amp;&amp; !node.isDestroyed) {
-                this.getMeshResources(node, resources);
-            }
-        });
+        if (rootNode) {
+            rootNode.traverse((node) => {
+                if (node.isMesh &amp;&amp; !node.isDestroyed) {
+                    this.getMeshResources(node, resources);
+                }
+            });
+        }
 
         return resources;
     },
 
     /**
-     * 销毁没被使用的资源
+     * 销毁没被 rootNode 使用的资源，通常传 stage。
+     * @param {Node} [rootNode] 根节点，不传代表所有资源都没被使用过。
      * @return {WebGLResourceManager} this
      */
-    destroyUnsuedResource(stage) {
+    destroyUnsuedResource(rootNode) {
         const needDestroyResources = this._needDestroyResources;
         if (needDestroyResources.length === 0) {
             return this;
         }
 
-        const usedResources = this.getUsedResources(stage);
+        const usedResources = this.getUsedResources(rootNode);
 
         needDestroyResources.forEach((resource) => {
             if (usedResources.indexOf(resource) &lt; 0) {

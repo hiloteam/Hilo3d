@@ -8173,7 +8173,7 @@
         <div class="nameContainer">
             <h4 class="name" id="getUsedResources">
                 
-                getUsedResources<span class="signature">(stage)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Array.&lt;Object>}</span>
+                getUsedResources<span class="signature">(<span class="optional">rootNode</span>)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Array.&lt;Object>}</span>
             </h4>
         
             
@@ -8187,7 +8187,7 @@
         
         
         <div class="description">
-            <p>获取用到的资源</p>
+            <p>获取 rootNode 用到的资源</p>
         </div>
         
 
@@ -8218,13 +8218,13 @@
 	
         <tr>
             
-                <td class="name"><code>stage</code></td>
+                <td class="name"><code>rootNode</code></td>
             
             
             <td class="type">
             
                 
-<span class="param-type"><a href="Stage.html">Stage</a></span>
+<span class="param-type"><a href="Node.html">Node</a></span>
 
 
             
@@ -8234,7 +8234,14 @@
             
             <td class="description last">
                 
-                </td>
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>根节点，不传返回空数组</p></td>
         </tr>
 	
 	
@@ -8317,12 +8324,12 @@
         <div class="nameContainer">
             <h4 class="name" id="destroyUnsuedResource">
                 
-                destroyUnsuedResource<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="WebGLResourceManager.html">WebGLResourceManager</a>}</span>
+                destroyUnsuedResource<span class="signature">(<span class="optional">rootNode</span>)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="WebGLResourceManager.html">WebGLResourceManager</a>}</span>
             </h4>
         
             
             <div class="tag-source">
-                <a href="renderer_WebGLResourceManager.js.html">renderer/WebGLResourceManager.js</a>, <a href="renderer_WebGLResourceManager.js.html#line100">line 100</a>
+                <a href="renderer_WebGLResourceManager.js.html">renderer/WebGLResourceManager.js</a>, <a href="renderer_WebGLResourceManager.js.html#line103">line 103</a>
             </div>
             
         </div>
@@ -8331,7 +8338,7 @@
         
         
         <div class="description">
-            <p>销毁没被使用的资源</p>
+            <p>销毁没被 rootNode 使用的资源，通常传 stage。</p>
         </div>
         
 
@@ -8339,6 +8346,58 @@
         
         
         
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>rootNode</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Node.html">Node</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>根节点，不传代表所有资源都没被使用过。</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
         
         
         
@@ -8421,7 +8480,7 @@
         
             
             <div class="tag-source">
-                <a href="renderer_WebGLResourceManager.js.html">renderer/WebGLResourceManager.js</a>, <a href="renderer_WebGLResourceManager.js.html#line125">line 125</a>
+                <a href="renderer_WebGLResourceManager.js.html">renderer/WebGLResourceManager.js</a>, <a href="renderer_WebGLResourceManager.js.html#line128">line 128</a>
             </div>
             
         </div>
