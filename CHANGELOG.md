@@ -1,3 +1,12 @@
+## [1.15.3](https://github.com/hiloteam/Hilo3d/compare/1.15.2...1.15.3) (2020-07-03)
+
+
+### Bug Fixes
+
+* skinnedMesh bone position is wrong under special circumstances ([cccd91e](https://github.com/hiloteam/Hilo3d/commit/cccd91e0dc2c552922c0083293532530ee56428d))
+
+
+
 ## [1.15.2](https://github.com/hiloteam/Hilo3d/compare/1.15.1...1.15.2) (2020-06-30)
 
 

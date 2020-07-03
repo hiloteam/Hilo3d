@@ -6500,7 +6500,7 @@ declare class Skeleton {
      */
     id: string;
     jointNodeList: Node[];
-    jointNames: any[];
+    jointNames: String[];
     inverseBindMatrices: Matrix4[];
     /**
      * 关节数量
