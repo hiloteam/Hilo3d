@@ -427,19 +427,28 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         extensions.init(gl);
         capabilities.init(gl);
         Shader.init(this);
+
+        /**
+         * state，初始化后生成。
+         * @type {WebGLState}
+         * @default null
+         */
         this.state = new WebGLState(gl);
 
         if (!extensions.instanced) {
             this.useInstanced = false;
         }
 
-        this.renderList.useInstanced = this.useInstanced;
-
         if (!extensions.vao) {
             this.useVao = false;
         }
 
         if (this.useFramebuffer) {
+            /**
+             * framebuffer，只在 useFramebuffer 为 true 时初始化后生成
+             * @type {Framebuffer}
+             * @default null
+             */
             this.framebuffer = new Framebuffer(this, Object.assign({
                 useVao: this.useVao,
                 width: this.width,
