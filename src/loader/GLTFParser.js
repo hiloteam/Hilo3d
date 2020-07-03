@@ -1161,7 +1161,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         const nodes = scene.nodes;
         this.parseSkins();
         nodes.forEach(node => this.parseNode(node, this.node));
-        this.node.resetSkinedMeshRootNode();
+        this.resetSkinInfo(this.node);
 
         const model = {
             node: this.node,
@@ -1220,6 +1220,25 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 return skeleton;
             });
         }
+    },
+    /**
+     * 重设 jointName，使其保持唯一性。
+     * @private
+     * @param  {Node} rootNode
+     */
+    resetSkinInfo(rootNode) {
+        const jointNameMap = {};
+        rootNode.traverse((node) => {
+            const newJointName = `${node.id}_${node.name}`;
+            jointNameMap[node.jointName] = newJointName;
+            node.jointName = newJointName;
+        });
+
+        this.skins.forEach((skin) => {
+            skin.jointNames = skin.jointNames.map(jointName => jointNameMap[jointName]);
+        });
+
+        rootNode.resetSkinedMeshRootNode();
     }
 });
 
