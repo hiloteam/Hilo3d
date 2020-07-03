@@ -1650,6 +1650,14 @@ declare class WebGLRenderer implements EventMixin {
      */
     initContext(): void;
     /**
+     * state，初始化后生成。
+     */
+    state: WebGLState;
+    /**
+     * framebuffer，只在 useFramebuffer 为 true 时初始化后生成
+     */
+    framebuffer: Framebuffer;
+    /**
      * 设置深度检测
      * @param material
      */
