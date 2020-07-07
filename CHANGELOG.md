@@ -1,3 +1,12 @@
+## [1.15.4](https://github.com/hiloteam/Hilo3d/compare/1.15.3...1.15.4) (2020-07-07)
+
+
+### Bug Fixes
+
+* skeleton.clone should also clone jointNames ([8168c64](https://github.com/hiloteam/Hilo3d/commit/8168c6457fb51f5d5df1119dde202956b0a5ac8e))
+
+
+
 ## [1.15.3](https://github.com/hiloteam/Hilo3d/compare/1.15.2...1.15.3) (2020-07-03)
 
 
