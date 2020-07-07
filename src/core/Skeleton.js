@@ -127,7 +127,7 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
      */
     copy(skeleton, rootNode) {
         this.inverseBindMatrices = skeleton.inverseBindMatrices;
-        this.jointNames = skeleton.jointNames;
+        this.jointNames = skeleton.jointNames.slice();
         if (rootNode === undefined) {
             rootNode = skeleton.rootNode;
         }
