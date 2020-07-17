@@ -51,9 +51,7 @@ uniform vec4 u_baseColor;
         #endif
         uniform float u_specularEnvIntensity;
 
-        #ifdef HILO_USE_SHADER_TEXTURE_LOD
-            uniform float u_specularEnvMapMipCount;
-        #endif
+        uniform float u_specularEnvMapMipCount;
     #endif
 
     #ifdef HILO_EMISSION_MAP
