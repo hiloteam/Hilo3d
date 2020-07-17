@@ -51,9 +51,7 @@ uniform vec4 u_baseColor;
         #endif
         uniform float u_specularEnvIntensity;
 
-        #ifdef HILO_USE_SHADER_TEXTURE_LOD
-            uniform float u_specularEnvMapMipCount;
-        #endif
+        uniform float u_specularEnvMapMipCount;
     #endif
 
     #ifdef HILO_EMISSION_MAP
@@ -148,7 +146,10 @@ uniform vec4 u_baseColor;
         #ifdef HILO_SPECULAR_ENV_MAP
             vec3 R = -normalize(reflect(V, N));
             vec3 brdf = texture2D(u_brdfLUT, vec2(NdotV, 1.0 - perceptualRoughness)).rgb;
-            #ifdef HILO_USE_SHADER_TEXTURE_LOD
+            #ifdef HILO_IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS
+                float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
+                vec4 specularEnvMap = textureEnvMapIncludeMipmapsLod(u_specularEnvMap, R, lod);
+            #elif HILO_USE_SHADER_TEXTURE_LOD
                 float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
                 vec4 specularEnvMap = textureEnvMapLod(u_specularEnvMap, R, lod);
             #else

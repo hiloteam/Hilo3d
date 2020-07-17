@@ -4548,6 +4548,10 @@ declare class PBRMaterial extends Material {
      */
     specularEnvMap: CubeTexture | Texture;
     /**
+     * 环境反射是否包含 mipmaps
+     */
+    isSpecularEnvMapIncludeMipmaps: boolean;
+    /**
      * 放射光贴图(sRGB 空间)，或颜色
      */
     emission: Texture | Color;

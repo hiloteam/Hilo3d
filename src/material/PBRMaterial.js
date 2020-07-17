@@ -157,6 +157,13 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
     specularEnvMap: null,
 
     /**
+     * 环境反射是否包含 mipmaps
+     * @default false
+     * @type {boolean}
+     */
+    isSpecularEnvMapIncludeMipmaps: false,
+
+    /**
      * 放射光贴图(sRGB 空间)，或颜色
      * @default Color(0, 0, 0)
      * @type {Texture|Color}
@@ -270,6 +277,10 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
 
         if (this.specularEnvMap || this.diffuseEnvSphereHarmonics3 || this.specularEnvMap) {
             option.NEED_WORLD_NORMAL = 1;
+        }
+
+        if (this.specularEnvMap && this.isSpecularEnvMapIncludeMipmaps) {
+            option.IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS = 1;
         }
 
         textureOption.update();
