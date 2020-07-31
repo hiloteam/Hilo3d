@@ -23,7 +23,7 @@
 * 使用 script 标签加载 [cdn][cdn-url]
 
     ```
-    <script src='//g.alicdn.com/hilo/Hilo3d/1.15.4/Hilo3d.js'></script>
+    <script src='//g.alicdn.com/hilo/Hilo3d/1.15.5/Hilo3d.js'></script>
     ```
 
 ### 文档
@@ -120,4 +120,4 @@
 [size-image]:https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&style=flat-square
 [ci-url]:https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev
 [ci-image]:https://img.shields.io/github/workflow/status/hiloteam/Hilo3d/npm%20test?style=flat-square
-[cdn-url]: https://g.alicdn.com/hilo/Hilo3d/1.15.4/Hilo3d.js
+[cdn-url]: https://g.alicdn.com/hilo/Hilo3d/1.15.5/Hilo3d.js

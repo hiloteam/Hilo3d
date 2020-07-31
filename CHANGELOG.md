@@ -1,3 +1,17 @@
+## [1.15.5](https://github.com/hiloteam/Hilo3d/compare/1.15.4...1.15.5) (2020-07-31)
+
+
+### Bug Fixes
+
+* vao.getResources miss checking whether the attribute is empty ([40ea681](https://github.com/hiloteam/Hilo3d/commit/40ea681bc8189081a784600522977d17e48a8486))
+
+
+### Features
+
+* add pbrMaterial.isSpecularEnvMapIncludeMipmaps ([#23](https://github.com/hiloteam/Hilo3d/issues/23)) ([fea3cdf](https://github.com/hiloteam/Hilo3d/commit/fea3cdfaded3c34452ba7bcf2273e74fd5fa76cb))
+
+
+
 ## [1.15.4](https://github.com/hiloteam/Hilo3d/compare/1.15.3...1.15.4) (2020-07-07)
 
 
