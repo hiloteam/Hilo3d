@@ -382,9 +382,11 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
      * @return {Object[]}
      */
     getResources(resources = []) {
-        this.attributes.forEach((attributeObject) => {
-            resources.push(attributeObject.buffer);
-        });
+        if (this.attributes) {
+            this.attributes.forEach((attributeObject) => {
+                resources.push(attributeObject.buffer);
+            });
+        }
 
         if (this.indexBuffer) {
             resources.push(this.indexBuffer);
