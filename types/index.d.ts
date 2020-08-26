@@ -6328,7 +6328,8 @@ declare class Tween {
  *     height:innerHeight
  * });
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性，所有属性会透传给 Renderer。
- * @param [params.container] - stage的容器
+ * @param [params.container] - stage的容器, 如果有，会把canvas加进container里。
+ * @param [params.canvas] - stage的canvas，不传会自动创建。
  * @param [params.pixelRatio = 根据设备自动判断] - 像素密度。
  * @param [params.clearColor = new Color(1, 1, 1, 1)] - 背景色。
  * @param [params.useFramebuffer = false] - 是否使用Framebuffer，有后处理需求时需要。
@@ -6346,6 +6347,7 @@ declare class Tween {
 declare class Stage extends Node {
     constructor(params?: {
         container?: HTMLElement;
+        canvas?: HTMLCanvasElement;
         pixelRatio?: number;
         clearColor?: Color;
         useFramebuffer?: boolean;

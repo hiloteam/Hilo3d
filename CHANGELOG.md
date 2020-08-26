@@ -1,3 +1,7 @@
+## [1.15.6](https://github.com/hiloteam/Hilo3d/compare/1.15.5...1.15.6) (2020-08-26)
+* update doc & .d.ts 
+
+
 ## [1.15.5](https://github.com/hiloteam/Hilo3d/compare/1.15.4...1.15.5) (2020-07-31)
 
 
