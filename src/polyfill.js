@@ -18,3 +18,21 @@ if (!Object.values) {
 if (typeof Promise === 'undefined') {
     window.Promise = pinkiePromise;
 }
+
+// iOS 9 doesn't support TypedArray slice
+[
+    Int8Array,
+    Uint8Array,
+    Int16Array,
+    Uint16Array,
+    Uint32Array,
+    Float32Array
+].forEach((TypedArray) => {
+    if (!TypedArray.prototype.slice) {
+        Object.defineProperty(TypedArray.prototype, 'slice', {
+            value(begin, end) {
+                return new TypedArray(Array.prototype.slice.call(this, begin, end));
+            }
+        });
+    }
+});
