@@ -1,3 +1,12 @@
+## [1.15.7](https://github.com/hiloteam/Hilo3d/compare/1.15.6...1.15.7) (2020-08-31)
+
+
+### Bug Fixes
+
+* iOS 9 doesn't support TypedArray slice, add polyfill ([7ad428a](https://github.com/hiloteam/Hilo3d/commit/7ad428ac71cd8a72ed8f601dd8e43097de7075ee))
+
+
+
 ## [1.15.6](https://github.com/hiloteam/Hilo3d/compare/1.15.5...1.15.6) (2020-08-26)
 * update doc & .d.ts 
 
