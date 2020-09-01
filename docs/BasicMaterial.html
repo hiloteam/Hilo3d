@@ -7703,6 +7703,28 @@
             </ul>
             <ul class="methods itemMembers">
             
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="Ticker#addTick"><a href="Ticker.html#addTick">addTick</a></li>
+            
+                <li  data-name="Ticker#removeTick"><a href="Ticker.html#removeTick">removeTick</a></li>
+            
+                <li  data-name="Ticker#start"><a href="Ticker.html#start">start</a></li>
+            
+                <li  data-name="Ticker#stop"><a href="Ticker.html#stop">stop</a></li>
+            
+                <li  data-name="Ticker#pause"><a href="Ticker.html#pause">pause</a></li>
+            
+                <li  data-name="Ticker#resume"><a href="Ticker.html#resume">resume</a></li>
+            
+                <li  data-name="Ticker#timeout"><a href="Ticker.html#timeout">timeout</a></li>
+            
+                <li  data-name="Ticker#interval"><a href="Ticker.html#interval">interval</a></li>
+            
+                <li  data-name="Ticker#nextTick"><a href="Ticker.html#nextTick">nextTick</a></li>
+            
+                <li  data-name="Ticker#getMeasuredFPS"><a href="Ticker.html#getMeasuredFPS">getMeasuredFPS</a></li>
+            
             </ul>
             <ul class="events itemMembers">
             
@@ -7787,7 +7809,7 @@
             <td class="type">
             
                 
-<span class="param-type">object</span>
+<span class="param-type">Object</span>
 
 
             
@@ -7804,7 +7826,467 @@
                         
                     
                 
-                <p>初始化参数，所有params都会复制到实例上</p></td>
+                <p>初始化参数，所有params都会复制到实例上</p>
+                
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		<th>Default</th>
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>lightType</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    BLINN-PHONG
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>diffuse</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Texture.html">Texture</a></span>
+|
+
+<span class="param-type"><a href="Color.html">Color</a></span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    new Color(.5, .5, .5)
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>漫反射贴图，或颜色</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>ambient</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Texture.html">Texture</a></span>
+|
+
+<span class="param-type"><a href="Color.html">Color</a></span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>环境光贴图，或颜色</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>specular</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Texture.html">Texture</a></span>
+|
+
+<span class="param-type"><a href="Color.html">Color</a></span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    new Color(1, 1, 1)
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>镜面贴图，或颜色</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>emission</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Texture.html">Texture</a></span>
+|
+
+<span class="param-type"><a href="Color.html">Color</a></span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    new Color(0, 0, 0)
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>放射光贴图，或颜色</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>specularEnvMap</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Texture.html">Texture</a></span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>环境贴图</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>specularEnvMatrix</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Matrix4.html">Matrix4</a></span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>环境贴图变化矩阵，如旋转等</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>reflectivity</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    0
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>反射率</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>refractRatio</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    0
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>折射比率</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>refractivity</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    0
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>折射率</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>shininess</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    32
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>高光发光值</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>[value:string]</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">any</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>其它属性</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+            </td>
         </tr>
 	
 	

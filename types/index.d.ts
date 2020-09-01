@@ -37,39 +37,24 @@ declare namespace AnimationStates {
 declare const constants: any;
 
 /**
- * 类属性
- * @property [Statics] - 静态属性
- * @property [Extends] - 继承
- * @property [Mixes] - mixes
- * @property [constructor] - 构造函数
- */
-declare interface ClassProperty {
-    /**
-     * 静态属性
-    */
-    Statics?: any;
-    /**
-     * 继承
-    */
-    Extends?: any;
-    /**
-     * mixes
-    */
-    Mixes?: any;
-    /**
-     * 构造函数
-    */
-    constructor?: (...params: any[]) => any;
-}
-
-/**
  * Class是提供类的创建的辅助工具。
  */
 declare namespace Class {
     /**
-     * @param props
+     * @param params - 类属性
+     * @param [params.Statics] - 静态属性
+     * @param [params.Extends] - 继承
+     * @param [params.Mixes] - mixes
+     * @param [params.constructor] - 构造函数
+     * @param params.[value:string] - 其它属性
      */
-    function create(props: ClassProperty | any): void;
+    function create(params: {
+        Statics?: any;
+        Extends?: any;
+        Mixes?: any;
+        constructor?: (...params: any[]) => any;
+        [value:string]: any;
+    }): void;
 }
 
 /**
@@ -771,6 +756,56 @@ declare namespace log {
  * Ticker是一个定时器类。它可以按指定帧率重复运行，从而按计划执行代码。
  */
 declare class Ticker {
+    /**
+     * 添加定时器对象。定时器对象必须实现 tick 方法。
+     * @param tickObject
+     */
+    addTick(tickObject: any): void;
+    /**
+     * 删除定时器对象。
+     * @param tickObject
+     */
+    removeTick(tickObject: any): void;
+    /**
+     * 开始计时器
+     */
+    start(): void;
+    /**
+     * 停止计时器
+     */
+    stop(): void;
+    /**
+     * 暂停计时器
+     */
+    pause(): void;
+    /**
+     * 恢复计时器
+     */
+    resume(): void;
+    /**
+     * 延迟指定的时间后调用回调, 类似setTimeout
+     * @param callback
+     * @param duration - 时间周期，单位毫秒
+     * @returns tickObject 定时器对象
+     */
+    timeout(callback: (...params: any[]) => any, duration: number): any;
+    /**
+     * 指定的时间周期来调用函数, 类似setInterval
+     * @param callback
+     * @param duration - 时间周期，单位毫秒
+     * @returns tickObject 定时器对象
+     */
+    interval(callback: (...params: any[]) => any, duration: number): any;
+    /**
+     * 下次tick时回调
+     * @param callback
+     * @returns tickObject 定时器对象
+     */
+    nextTick(callback: (...params: any[]) => any): any;
+    /**
+     * 获得测定的运行时帧率。
+     */
+    getMeasuredFPS(): number;
 }
 
 /**
@@ -4466,13 +4501,48 @@ declare class ShaderMaterial extends Material {
  * @example
  * const material = new Hilo3d.PBRMaterial();
  * @param [params] - 初始化参数，所有params都会复制到实例上
+ * @param [params.lightType = PBR] - 光照类型，只能为 PBR 或 NONE
+ * @param [params.baseColor = new Color(1, 1, 1)] - 基础颜色
+ * @param [params.baseColorMap] - 基础颜色贴图(sRGB空间)
+ * @param [params.metallic = 1] - 金属度
+ * @param [params.metallicMap] - 金属度贴图
+ * @param [params.roughness = 1] - 粗糙度
+ * @param [params.roughnessMap] - 粗糙度贴图
+ * @param [params.occlusionMap] - 环境光遮蔽贴图
+ * @param [params.occlusionStrength = 1] - 环境光遮蔽强度
+ * @param [params.emission] - 放射光贴图(sRGB 空间)，或颜色
+ * @param [params.diffuseEnvMap] - 漫反射辐照(Diffuse IBL)贴图
+ * @param [params.diffuseEnvSphereHarmonics3] - 漫反射 SphericalHarmonics3
+ * @param [params.diffuseEnvIntensity = 1] - 漫反射强度
+ * @param [params.specularEnvMap] - 环境反射(Specular IBL)贴图
+ * @param [params.brdfLUT] - BRDF贴图，跟环境反射贴图一起使用
+ * @param [params.specularEnvIntensity = 1] - 环境反射(Specular IBL)贴图强度
+ * @param params.[value:string] - 其它属性
  */
 declare class PBRMaterial extends Material {
-    constructor(params?: any);
+    constructor(params?: {
+        lightType?: string;
+        baseColor?: Color;
+        baseColorMap?: Texture;
+        metallic?: number;
+        metallicMap?: Texture;
+        roughness?: number;
+        roughnessMap?: Texture;
+        occlusionMap?: Texture;
+        occlusionStrength?: number;
+        emission?: Texture | Color;
+        diffuseEnvMap?: Texture;
+        diffuseEnvSphereHarmonics3?: SphericalHarmonics3;
+        diffuseEnvIntensity?: number;
+        specularEnvMap?: Texture;
+        brdfLUT?: Texture;
+        specularEnvIntensity?: number;
+        [value:string]: any;
+    });
     isPBRMaterial: boolean;
     className: string;
     /**
-     * 光照类型，只能为 PBR
+     * 光照类型，只能为 PBR 或 NONE
      */
     readonly lightType: string;
     /**
@@ -4540,7 +4610,7 @@ declare class PBRMaterial extends Material {
      */
     brdfLUT: Texture;
     /**
-     * 环境反射(Specular IBL)贴图
+     * 环境反射(Specular IBL)贴图强度
      */
     specularEnvIntensity: number;
     /**
@@ -4826,9 +4896,34 @@ declare class GeometryMaterial extends BasicMaterial {
  *     diffuse: new Hilo3d.Color(1, 0, 0, 1)
  * });
  * @param [params] - 初始化参数，所有params都会复制到实例上
+ * @param [params.lightType = BLINN-PHONG] - 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
+ * @param [params.diffuse = new Color(.5, .5, .5)] - 漫反射贴图，或颜色
+ * @param [params.ambient] - 环境光贴图，或颜色
+ * @param [params.specular = new Color(1, 1, 1)] - 镜面贴图，或颜色
+ * @param [params.emission = new Color(0, 0, 0)] - 放射光贴图，或颜色
+ * @param [params.specularEnvMap] - 环境贴图
+ * @param [params.specularEnvMatrix] - 环境贴图变化矩阵，如旋转等
+ * @param [params.reflectivity = 0] - 反射率
+ * @param [params.refractRatio = 0] - 折射比率
+ * @param [params.refractivity = 0] - 折射率
+ * @param [params.shininess = 32] - 高光发光值
+ * @param params.[value:string] - 其它属性
  */
 declare class BasicMaterial extends Material {
-    constructor(params?: any);
+    constructor(params?: {
+        lightType?: string;
+        diffuse?: Texture | Color;
+        ambient?: Texture | Color;
+        specular?: Texture | Color;
+        emission?: Texture | Color;
+        specularEnvMap?: Texture;
+        specularEnvMatrix?: Matrix4;
+        reflectivity?: number;
+        refractRatio?: number;
+        refractivity?: number;
+        shininess?: number;
+        [value:string]: any;
+    });
     isBasicMaterial: boolean;
     className: string;
     /**
@@ -5278,9 +5373,24 @@ declare class BasicLoader implements EventMixin {
 /**
  * 聚光灯
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [params.color = new Color(1, 1, 1)] - 光颜色
+ * @param [params.amount = 1] - 光强度
+ * @param [params.range = 0] - 光照范围, 0 时代表光照范围无限大。
+ * @param [params.direction = new Vector3(0, 0, 1)] - 光方向
+ * @param [params.cutoff = 12.5] - 切光角(角度)，落在这个角度之内的光亮度为1
+ * @param [params.outerCutoff = 17.5] - 外切光角(角度)，在切光角合外切光角之间的光亮度渐变到0
+ * @param params.[value:string] - 其它属性
  */
 declare class SpotLight extends Light {
-    constructor(params?: any);
+    constructor(params?: {
+        color?: Color;
+        amount?: number;
+        range?: number;
+        direction?: Vector3;
+        cutoff?: number;
+        outerCutoff?: number;
+        [value:string]: any;
+    });
     isSpotLight: boolean;
     className: string;
     /**
@@ -5300,9 +5410,18 @@ declare class SpotLight extends Light {
 /**
  * 点光源
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [params.color = new Color(1, 1, 1)] - 光颜色
+ * @param [params.amount = 1] - 光强度
+ * @param [params.range = 0] - 光照范围, 0 时代表光照范围无限大。
+ * @param params.[value:string] - 其它属性
  */
 declare class PointLight extends Light {
-    constructor(params?: any);
+    constructor(params?: {
+        color?: Color;
+        amount?: number;
+        range?: number;
+        [value:string]: any;
+    });
     isPointLight: boolean;
     className: string;
 }
@@ -5451,9 +5570,18 @@ declare class Light extends Node {
 /**
  * 平行光
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [params.color = new Color(1, 1, 1)] - 光颜色
+ * @param [params.amount = 1] - 光强度
+ * @param [params.direction = new Vector3(0, 0, 1)] - 光方向
+ * @param params.[value:string] - 其它属性
  */
 declare class DirectionalLight extends Light {
-    constructor(params?: any);
+    constructor(params?: {
+        color?: Color;
+        amount?: number;
+        direction?: Vector3;
+        [value:string]: any;
+    });
     isDirectionalLight: boolean;
     className: string;
     /**
@@ -5515,9 +5643,16 @@ declare class AreaLight extends Light {
 /**
  * 环境光
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [params.color = new Color(1, 1, 1)] - 光颜色
+ * @param [params.amount = 1] - 光强度
+ * @param params.[value:string] - 其它属性
  */
 declare class AmbientLight extends Light {
-    constructor(params?: any);
+    constructor(params?: {
+        color?: Color;
+        amount?: number;
+        [value:string]: any;
+    });
     readonly isAmbientLight: boolean;
     readonly className: string;
 }
@@ -5581,9 +5716,18 @@ declare class AxisHelper extends Node {
 /**
  * 球形几何体
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [params.radius = 1] - 半径
+ * @param [params.heightSegments = 16] - 垂直分割面的数量
+ * @param [params.widthSegments = 32] - 水平分割面的数量
+ * @param params.[value:string] - 其它属性
  */
 declare class SphereGeometry extends Geometry {
-    constructor(params?: any);
+    constructor(params?: {
+        radius?: number;
+        heightSegments?: number;
+        widthSegments?: number;
+        [value:string]: any;
+    });
     isSphereGeometry: boolean;
     className: string;
     /**
@@ -5623,9 +5767,20 @@ declare class SphereGeometry extends Geometry {
 /**
  * 平面几何体
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [params.width = 1] - 宽度
+ * @param [params.height = 1] - 高度
+ * @param [params.widthSegments = 1] - 水平分割面的数量
+ * @param [params.heightSegments = 1] - 垂直分割面的数量
+ * @param params.[value:string] - 其它属性
  */
 declare class PlaneGeometry extends Geometry {
-    constructor(params?: any);
+    constructor(params?: {
+        width?: number;
+        height?: number;
+        widthSegments?: number;
+        heightSegments?: number;
+        [value:string]: any;
+    });
     isPlaneGeometry: boolean;
     className: string;
     /**
@@ -6039,9 +6194,24 @@ declare class Geometry {
 /**
  * 长方体几何体
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [params.width = 1] - box的宽度
+ * @param [params.height = 1] - box的高度
+ * @param [params.depth = 1] - box的深度
+ * @param [params.widthSegments = 1] - 水平分割面的数量
+ * @param [params.heightSegments = 1] - 垂直分割面的数量
+ * @param [params.depthSegments = 1] - 深度分割面的数量
+ * @param params.[value:string] - 其它属性
  */
 declare class BoxGeometry extends Geometry {
-    constructor(params?: any);
+    constructor(params?: {
+        width?: number;
+        height?: number;
+        depth?: number;
+        widthSegments?: number;
+        heightSegments?: number;
+        depthSegments?: number;
+        [value:string]: any;
+    });
     isBoxGeometry: boolean;
     className: string;
     /**
@@ -6330,6 +6500,9 @@ declare class Tween {
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性，所有属性会透传给 Renderer。
  * @param [params.container] - stage的容器, 如果有，会把canvas加进container里。
  * @param [params.canvas] - stage的canvas，不传会自动创建。
+ * @param [params.camera] - stage的摄像机。
+ * @param [params.width = innerWidth] - stage的宽，默认网页宽度
+ * @param [params.height = innerHeight] - stage的高，默认网页高度
  * @param [params.pixelRatio = 根据设备自动判断] - 像素密度。
  * @param [params.clearColor = new Color(1, 1, 1, 1)] - 背景色。
  * @param [params.useFramebuffer = false] - 是否使用Framebuffer，有后处理需求时需要。
@@ -6343,11 +6516,15 @@ declare class Tween {
  * @param [params.preserveDrawingBuffer = false] - 是否需要 preserveDrawingBuffer。
  * @param [params.failIfMajorPerformanceCaveat = false] - 是否需要 failIfMajorPerformanceCaveat。
  * @param [params.gameMode = false] - 是否开启游戏模式，UC 浏览器专用
+ * @param params.[value:string] - 其它属性
  */
 declare class Stage extends Node {
     constructor(params?: {
         container?: HTMLElement;
         canvas?: HTMLCanvasElement;
+        camera?: Camera;
+        width?: number;
+        height?: number;
         pixelRatio?: number;
         clearColor?: Color;
         useFramebuffer?: boolean;
@@ -6361,6 +6538,7 @@ declare class Stage extends Node {
         preserveDrawingBuffer?: boolean;
         failIfMajorPerformanceCaveat?: boolean;
         gameMode?: boolean;
+        [value:string]: any;
     });
     /**
      * 渲染器
@@ -6921,9 +7099,16 @@ declare class Node implements EventMixin {
  * });
  * stage.addChild(mesh);
  * @param [params] - 初始化参数，所有params都会复制到实例上
+ * @param [params.geometry] - 几何体
+ * @param [params.material] - 材质
+ * @param params.[value:string] - 其它属性
  */
 declare class Mesh extends Node {
-    constructor(params?: any);
+    constructor(params?: {
+        geometry?: Geometry;
+        material?: Material;
+        [value:string]: any;
+    });
     isMesh: boolean;
     className: string;
     geometry: Geometry;
@@ -7012,9 +7197,20 @@ declare class EventMixin {
 /**
  * 透视投影摄像机
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [params.fov = 50] - 相机视野大小，角度制
+ * @param [params.near = 0.1] - 相机视锥体近平面z
+ * @param [params.far = null] - 相机视锥体远平面z，null 时为无限远
+ * @param [params.aspect = 1] - 宽高比
+ * @param params.[value:string] - 其它属性
  */
 declare class PerspectiveCamera extends Camera {
-    constructor(params?: any);
+    constructor(params?: {
+        fov?: number;
+        near?: number;
+        far?: number;
+        aspect?: number;
+        [value:string]: any;
+    });
     isPerspectiveCamera: boolean;
     className: string;
     /**
@@ -7038,9 +7234,24 @@ declare class PerspectiveCamera extends Camera {
 /**
  * 正交投影摄像机
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [params.left = 1]
+ * @param [params.right = 1]
+ * @param [params.top = 1]
+ * @param [params.bottom = 1]
+ * @param [params.near = 0.1]
+ * @param [params.far = 1]
+ * @param params.[value:string] - 其它属性
  */
 declare class OrthographicCamera extends Camera {
-    constructor(params?: any);
+    constructor(params?: {
+        left?: number;
+        right?: number;
+        top?: number;
+        bottom?: number;
+        near?: number;
+        far?: number;
+        [value:string]: any;
+    });
     isOrthographicCamera: boolean;
     className: string;
     left: number;

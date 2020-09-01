@@ -7703,6 +7703,28 @@
             </ul>
             <ul class="methods itemMembers">
             
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="Ticker#addTick"><a href="Ticker.html#addTick">addTick</a></li>
+            
+                <li  data-name="Ticker#removeTick"><a href="Ticker.html#removeTick">removeTick</a></li>
+            
+                <li  data-name="Ticker#start"><a href="Ticker.html#start">start</a></li>
+            
+                <li  data-name="Ticker#stop"><a href="Ticker.html#stop">stop</a></li>
+            
+                <li  data-name="Ticker#pause"><a href="Ticker.html#pause">pause</a></li>
+            
+                <li  data-name="Ticker#resume"><a href="Ticker.html#resume">resume</a></li>
+            
+                <li  data-name="Ticker#timeout"><a href="Ticker.html#timeout">timeout</a></li>
+            
+                <li  data-name="Ticker#interval"><a href="Ticker.html#interval">interval</a></li>
+            
+                <li  data-name="Ticker#nextTick"><a href="Ticker.html#nextTick">nextTick</a></li>
+            
+                <li  data-name="Ticker#getMeasuredFPS"><a href="Ticker.html#getMeasuredFPS">getMeasuredFPS</a></li>
+            
             </ul>
             <ul class="events itemMembers">
             
@@ -7748,6 +7770,10 @@ const DirectionalLight = Class.create(/** @lends DirectionalLight.prototype */ {
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param {Color} [params.color=new Color(1, 1, 1)] 光颜色
+     * @param {number} [params.amount=1] 光强度
+     * @param {Vector3} [params.direction=new Vector3(0, 0, 1)] 光方向
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         /**

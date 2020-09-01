@@ -7703,6 +7703,28 @@
             </ul>
             <ul class="methods itemMembers">
             
+            <span class="subtitle"><a href="#methods" class="subtitle-name">Methods</a><a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a></span>
+            
+                <li  data-name="Ticker#addTick"><a href="Ticker.html#addTick">addTick</a></li>
+            
+                <li  data-name="Ticker#removeTick"><a href="Ticker.html#removeTick">removeTick</a></li>
+            
+                <li  data-name="Ticker#start"><a href="Ticker.html#start">start</a></li>
+            
+                <li  data-name="Ticker#stop"><a href="Ticker.html#stop">stop</a></li>
+            
+                <li  data-name="Ticker#pause"><a href="Ticker.html#pause">pause</a></li>
+            
+                <li  data-name="Ticker#resume"><a href="Ticker.html#resume">resume</a></li>
+            
+                <li  data-name="Ticker#timeout"><a href="Ticker.html#timeout">timeout</a></li>
+            
+                <li  data-name="Ticker#interval"><a href="Ticker.html#interval">interval</a></li>
+            
+                <li  data-name="Ticker#nextTick"><a href="Ticker.html#nextTick">nextTick</a></li>
+            
+                <li  data-name="Ticker#getMeasuredFPS"><a href="Ticker.html#getMeasuredFPS">getMeasuredFPS</a></li>
+            
             </ul>
             <ul class="events itemMembers">
             
@@ -7725,6 +7747,78 @@
  * @see  {@link http://hiloteam.github.io/Hilo/docs/api-zh/symbols/Ticker.html}
  */
 import Ticker from 'hilojs/util/Ticker';
+
+/**
+ * 添加定时器对象。定时器对象必须实现 tick 方法。
+ * @memberOf Ticker.prototype
+ * @method addTick
+ * @param {Object} tickObject
+ */
+
+/**
+ * 删除定时器对象。
+ * @memberOf Ticker.prototype
+ * @method removeTick
+ * @param {Object} tickObject
+ */
+
+/**
+ * 开始计时器
+ * @memberOf Ticker.prototype
+ * @method start
+ */
+
+/**
+ * 停止计时器
+ * @memberOf Ticker.prototype
+ * @method stop
+ */
+
+/**
+ * 暂停计时器
+ * @memberOf Ticker.prototype
+ * @method pause
+ */
+
+/**
+ * 恢复计时器
+ * @memberOf Ticker.prototype
+ * @method resume
+ */
+
+/**
+ * 延迟指定的时间后调用回调, 类似setTimeout
+ * @memberOf Ticker.prototype
+ * @method timeout
+ * @param {Function} callback
+ * @param {number} duration 时间周期，单位毫秒
+ * @returns {Object} tickObject 定时器对象
+ */
+
+/**
+ * 指定的时间周期来调用函数, 类似setInterval
+ * @memberOf Ticker.prototype
+ * @method interval
+ * @param {Function} callback
+ * @param {number} duration 时间周期，单位毫秒
+ * @returns {Object} tickObject 定时器对象
+ */
+
+/**
+ * 下次tick时回调
+ * @memberOf Ticker.prototype
+ * @method nextTick
+ * @param {Function} callback
+ * @returns {Object} tickObject 定时器对象
+ */
+
+/**
+ * 获得测定的运行时帧率。
+ * @memberOf Ticker.prototype
+ * @method getMeasuredFPS
+ * @returns {number}
+ */
+
 
 export default Ticker;
 </code></pre>
