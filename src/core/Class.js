@@ -11,14 +11,10 @@ export default Class;
 /**
  * @memberOf Class
  * @method create
- * @param {ClassProperty | Object} props
- */
-
-/**
- * 类属性
- * @interface ClassProperty
- * @property {Object} [Statics] 静态属性
- * @property {Object} [Extends] 继承
- * @property {Object} [Mixes] mixes
- * @property {Function} [constructor] 构造函数
+ * @param {Object} params 类属性
+ * @param {Object} [params.Statics] 静态属性
+ * @param {Object} [params.Extends] 继承
+ * @param {Object} [params.Mixes] mixes
+ * @param {Function} [params.constructor] 构造函数
+ * @param {any} [params.[value:string]] 其它属性
  */

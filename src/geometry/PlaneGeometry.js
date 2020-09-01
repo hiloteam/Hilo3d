@@ -54,6 +54,11 @@ const PlaneGeometry = Class.create(/** @lends PlaneGeometry.prototype */ {
     /**
      * @constructs
      * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param {number} [params.width=1] 宽度
+     * @param {number} [params.height=1] 高度
+     * @param {number} [params.widthSegments=1] 水平分割面的数量
+     * @param {number} [params.heightSegments=1] 垂直分割面的数量
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         PlaneGeometry.superclass.constructor.call(this, params);

@@ -92,7 +92,19 @@ const BasicMaterial = Class.create(/** @lends BasicMaterial.prototype */ {
     usedUniformVectors: 11,
     /**
      * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
+     * @param {Object} [params] 初始化参数，所有params都会复制到实例上
+     * @param {string} [params.lightType=BLINN-PHONG] 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
+     * @param {Texture|Color} [params.diffuse=new Color(.5, .5, .5)] 漫反射贴图，或颜色
+     * @param {Texture|Color} [params.ambient] 环境光贴图，或颜色
+     * @param {Texture|Color} [params.specular=new Color(1, 1, 1)] 镜面贴图，或颜色
+     * @param {Texture|Color} [params.emission=new Color(0, 0, 0)] 放射光贴图，或颜色
+     * @param {Texture} [params.specularEnvMap] 环境贴图
+     * @param {Matrix4} [params.specularEnvMatrix] 环境贴图变化矩阵，如旋转等
+     * @param {number} [params.reflectivity=0] 反射率
+     * @param {number} [params.refractRatio=0] 折射比率
+     * @param {number} [params.refractivity=0] 折射率
+     * @param {number} [params.shininess=32] 高光发光值
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         this.diffuse = new Color(.5, .5, .5);

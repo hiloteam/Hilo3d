@@ -121,6 +121,13 @@ const OrthographicCamera = Class.create(/** @lends OrthographicCamera.prototype 
     /**
      * @constructs
      * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param {number} [params.left=1]
+     * @param {number} [params.right=1]
+     * @param {number} [params.top=1]
+     * @param {number} [params.bottom=1]
+     * @param {number} [params.near=0.1]
+     * @param {number} [params.far=1]
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         OrthographicCamera.superclass.constructor.call(this, params);

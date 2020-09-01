@@ -63,7 +63,14 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
     depthSegments: 1,
     /**
      * @constructs
-     * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param {number} [params.width=1] box的宽度
+     * @param {number} [params.height=1] box的高度
+     * @param {number} [params.depth=1] box的深度
+     * @param {number} [params.widthSegments=1] 水平分割面的数量
+     * @param {number} [params.heightSegments=1] 垂直分割面的数量
+     * @param {number} [params.depthSegments=1] 深度分割面的数量
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         BoxGeometry.superclass.constructor.call(this, params);

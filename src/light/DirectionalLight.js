@@ -27,6 +27,10 @@ const DirectionalLight = Class.create(/** @lends DirectionalLight.prototype */ {
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param {Color} [params.color=new Color(1, 1, 1)] 光颜色
+     * @param {number} [params.amount=1] 光强度
+     * @param {Vector3} [params.direction=new Vector3(0, 0, 1)] 光方向
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         /**

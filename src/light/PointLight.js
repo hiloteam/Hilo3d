@@ -22,6 +22,10 @@ const PointLight = Class.create(/** @lends PointLight.prototype */ {
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param {Color} [params.color=new Color(1, 1, 1)] 光颜色
+     * @param {number} [params.amount=1] 光强度
+     * @param {number} [params.range=0] 光照范围, 0 时代表光照范围无限大。
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         PointLight.superclass.constructor.call(this, params);

@@ -61,6 +61,13 @@ const SpotLight = Class.create(/** @lends SpotLight.prototype */{
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param {Color} [params.color=new Color(1, 1, 1)] 光颜色
+     * @param {number} [params.amount=1] 光强度
+     * @param {number} [params.range=0] 光照范围, 0 时代表光照范围无限大。
+     * @param {Vector3} [params.direction=new Vector3(0, 0, 1)] 光方向
+     * @param {number} [params.cutoff=12.5] 切光角(角度)，落在这个角度之内的光亮度为1
+     * @param {number} [params.outerCutoff=17.5] 外切光角(角度)，在切光角合外切光角之间的光亮度渐变到0
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         /**

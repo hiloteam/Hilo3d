@@ -72,19 +72,23 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性，所有属性会透传给 Renderer。
      * @param {HTMLElement} [params.container] stage的容器, 如果有，会把canvas加进container里。
      * @param {HTMLCanvasElement} [params.canvas] stage的canvas，不传会自动创建。
-     * @param {Number} [params.pixelRatio=根据设备自动判断] 像素密度。
+     * @param {Camera} [params.camera] stage的摄像机。
+     * @param {number} [params.width=innerWidth] stage的宽，默认网页宽度
+     * @param {number} [params.height=innerHeight] stage的高，默认网页高度
+     * @param {number} [params.pixelRatio=根据设备自动判断] 像素密度。
      * @param {Color} [params.clearColor=new Color(1, 1, 1, 1)] 背景色。
-     * @param {Boolean} [params.useFramebuffer=false] 是否使用Framebuffer，有后处理需求时需要。
+     * @param {boolean} [params.useFramebuffer=false] 是否使用Framebuffer，有后处理需求时需要。
      * @param {Object} [params.framebufferOption={}] framebufferOption Framebuffer的配置，useFramebuffer为true时生效。
-     * @param {Boolean} [params.useLogDepth=false] 是否使用对数深度，处理深度冲突。
-     * @param {Boolean} [params.alpha=false] 是否背景透明。
-     * @param {Boolean} [params.depth=true] 是否需要深度缓冲区。
-     * @param {Boolean} [params.stencil=false] 是否需要模版缓冲区。
-     * @param {Boolean} [params.antialias=true] 是否抗锯齿。
-     * @param {Boolean} [params.premultipliedAlpha=true] 是否需要 premultipliedAlpha。
-     * @param {Boolean} [params.preserveDrawingBuffer=false] 是否需要 preserveDrawingBuffer。
-     * @param {Boolean} [params.failIfMajorPerformanceCaveat=false] 是否需要 failIfMajorPerformanceCaveat。
-     * @param {Boolean} [params.gameMode=false] 是否开启游戏模式，UC 浏览器专用
+     * @param {boolean} [params.useLogDepth=false] 是否使用对数深度，处理深度冲突。
+     * @param {boolean} [params.alpha=false] 是否背景透明。
+     * @param {boolean} [params.depth=true] 是否需要深度缓冲区。
+     * @param {boolean} [params.stencil=false] 是否需要模版缓冲区。
+     * @param {boolean} [params.antialias=true] 是否抗锯齿。
+     * @param {boolean} [params.premultipliedAlpha=true] 是否需要 premultipliedAlpha。
+     * @param {boolean} [params.preserveDrawingBuffer=false] 是否需要 preserveDrawingBuffer。
+     * @param {boolean} [params.failIfMajorPerformanceCaveat=false] 是否需要 failIfMajorPerformanceCaveat。
+     * @param {boolean} [params.gameMode=false] 是否开启游戏模式，UC 浏览器专用
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         if (!params.width) {

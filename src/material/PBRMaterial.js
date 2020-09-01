@@ -26,7 +26,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
     className: 'PBRMaterial',
 
     /**
-     * 光照类型，只能为 PBR
+     * 光照类型，只能为 PBR 或 NONE
      * @default PBR
      * @readOnly
      * @type {string}
@@ -143,7 +143,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
     brdfLUT: null,
 
     /**
-     * 环境反射(Specular IBL)贴图
+     * 环境反射(Specular IBL)贴图强度
      * @default 1
      * @type {Number}
      */
@@ -165,7 +165,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
 
     /**
      * 放射光贴图(sRGB 空间)，或颜色
-     * @default Color(0, 0, 0)
+     * @default null
      * @type {Texture|Color}
      */
     emission: null,
@@ -203,7 +203,24 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
 
     /**
      * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
+     * @param {Object} [params] 初始化参数，所有params都会复制到实例上
+     * @param {string} [params.lightType=PBR] 光照类型，只能为 PBR 或 NONE
+     * @param {Color} [params.baseColor=new Color(1, 1, 1)] 基础颜色
+     * @param {Texture} [params.baseColorMap] 基础颜色贴图(sRGB空间)
+     * @param {number} [params.metallic=1] 金属度
+     * @param {Texture} [params.metallicMap] 金属度贴图
+     * @param {number} [params.roughness=1] 粗糙度
+     * @param {Texture} [params.roughnessMap] 粗糙度贴图
+     * @param {Texture} [params.occlusionMap] 环境光遮蔽贴图
+     * @param {number} [params.occlusionStrength=1] 环境光遮蔽强度
+     * @param {Texture|Color} [params.emission] 放射光贴图(sRGB 空间)，或颜色
+     * @param {Texture} [params.diffuseEnvMap] 漫反射辐照(Diffuse IBL)贴图
+     * @param {SphericalHarmonics3} [params.diffuseEnvSphereHarmonics3] 漫反射 SphericalHarmonics3
+     * @param {number} [params.diffuseEnvIntensity=1] 漫反射强度
+     * @param {Texture} [params.specularEnvMap] 环境反射(Specular IBL)贴图
+     * @param {Texture} [params.brdfLUT] BRDF贴图，跟环境反射贴图一起使用
+     * @param {number} [params.specularEnvIntensity=1] 环境反射(Specular IBL)贴图强度
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         this.baseColor = new Color(1, 1, 1);

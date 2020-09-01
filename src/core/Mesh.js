@@ -54,7 +54,10 @@ const Mesh = Class.create(/** @lends Mesh.prototype */ {
     frustumTest: true,
     /**
      * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
+     * @param {Object} [params] 初始化参数，所有params都会复制到实例上
+     * @param {Geometry} [params.geometry] 几何体
+     * @param {Material} [params.material] 材质
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         Mesh.superclass.constructor.call(this, params);
