@@ -49,6 +49,61 @@ const capabilities = {
     MAX_TEXTURE_MAX_ANISOTROPY: 1,
 
     /**
+     * @type {number}
+     */
+    MAX_RENDERBUFFER_SIZE: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_COMBINED_TEXTURE_IMAGE_UNITS: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_CUBE_MAP_TEXTURE_SIZE: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_FRAGMENT_UNIFORM_VECTORS: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_TEXTURE_IMAGE_UNITS: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_TEXTURE_SIZE: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_VARYING_VECTORS: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_VERTEX_ATTRIBS: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_VERTEX_TEXTURE_IMAGE_UNITS: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_VERTEX_UNIFORM_VECTORS: undefined,
+
+    /**
+     * @type {number}
+     */
+    MAX_COMBINED_TEXTURE_IMAGE_UNITS: undefined,
+
+    /**
      * 初始化
      * @param {WebGLRenderingContext} gl
      */

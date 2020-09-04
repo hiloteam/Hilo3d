@@ -1,6 +1,10 @@
 import log from './log';
 import constants from '../constants';
 
+/**
+ * @namespace util
+ */
+
 const {
     BYTE,
     UNSIGNED_BYTE,
@@ -10,6 +14,12 @@ const {
     FLOAT
 } = constants;
 
+/**
+ * @memberOf util
+ * @param  {string} basePath
+ * @param  {string} path
+ * @return {string}   
+ */
 function getRelativePath(basePath, path) {
     if (/^(?:http|blob|data:|\/)/.test(path)) {
         return path;
@@ -30,6 +40,12 @@ function getRelativePath(basePath, path) {
 
 let utf8Decoder;
 
+/**
+ * @memberOf util
+ * @param  {Uint8Array|number[]} array
+ * @param  {boolean} isUTF8
+ * @return {string}   
+ */
 function convertUint8ArrayToString(array, isUTF8) {
     if (window.TextDecoder) {
         if (!utf8Decoder) {
@@ -56,6 +72,11 @@ function convertUint8ArrayToString(array, isUTF8) {
     return str;
 }
 
+/**
+ * @memberOf util
+ * @param  {string} url
+ * @return {string}
+ */
 function getExtension(url) {
     const extRegExp = /\/?[^/]+\.(\w+)(\?\S+)?$/i;
     const match = String(url).match(extRegExp);
@@ -63,6 +84,11 @@ function getExtension(url) {
     return match && match[1].toLowerCase() || null;
 }
 
+/**
+ * @memberOf util
+ * @param  {object}   obj
+ * @param  {Function} fn 
+ */
 function each(obj, fn) {
     if (!obj) {
         return;
@@ -77,6 +103,13 @@ function each(obj, fn) {
     }
 }
 
+/**
+ * @memberOf util
+ * @param  {any[]} array
+ * @param  {any} value
+ * @param  {Function} compareFn
+ * @return {number[]}
+ */
 function getIndexFromSortedArray(array, value, compareFn) {
     if (!array || !array.length) {
         return [0, 0];
@@ -103,11 +136,24 @@ function getIndexFromSortedArray(array, value, compareFn) {
     return [low, high];
 }
 
+/**
+ * @memberOf util
+ * @param  {any[]} array
+ * @param  {any} item
+ * @param  {Function} compareFn
+ */
 function insertToSortedArray(array, item, compareFn) {
     const indices = getIndexFromSortedArray(array, item, compareFn);
     array.splice(indices[1], 0, item);
 }
 
+/**
+ * @memberOf util
+ * @param  {string} str
+ * @param  {number} len
+ * @param  {string} char
+ * @return {string}
+ */
 function padLeft(str, len, char) {
     if (len <= str.length) {
         return str;
@@ -116,6 +162,11 @@ function padLeft(str, len, char) {
     return new Array(len - str.length + 1).join(char || '0') + str;
 }
 
+/**
+ * @memberOf util
+ * @param  {TypedArray} array
+ * @return {GLenum}
+ */
 function getTypedArrayGLType(array) {
     if (array instanceof Float32Array) {
         return FLOAT;
@@ -144,6 +195,12 @@ function getTypedArrayGLType(array) {
     return FLOAT;
 }
 
+/**
+ * @memberOf util
+ * @method getTypedArrayClass
+ * @param  {GLenum} type
+ * @return {any}
+ */
 const getTypedArrayClass = (function() {
     const TypedArrayClassMap = {
         [BYTE]: Int8Array,
@@ -158,6 +215,14 @@ const getTypedArrayClass = (function() {
     };
 }());
 
+/**
+ * @memberOf util
+ * @param  {any[]} destArr
+ * @param  {any[]} srcArr
+ * @param  {number} destIdx
+ * @param  {number} srcIdx
+ * @param  {number} count 
+ */
 function copyArrayData(destArr, srcArr, destIdx, srcIdx, count) {
     if (!destArr || !srcArr) {
         return;
@@ -170,20 +235,40 @@ function copyArrayData(destArr, srcArr, destIdx, srcIdx, count) {
     }
 }
 
+/**
+ * @memberOf util
+ * @param  {any}  d
+ * @return {boolean}
+ */
 function isStrOrNumber(d) {
     return typeof d === 'string' || typeof d === 'number';
 }
 
+/**
+ * @memberOf util
+ * @param  {string}  url
+ * @return {boolean}
+ */
 function isBlobUrl(url) {
     return /^blob:/.test(url);
 }
 
+/**
+ * @memberOf util
+ * @param  {string} blobUrl
+ */
 function revokeBlobUrl(blobUrl) {
     if (window.URL) {
         URL.revokeObjectURL(blobUrl);
     }
 }
 
+/**
+ * @memberOf util
+ * @param  {string} mimeType
+ * @param  {ArrayBuffer|TypedArray} data
+ * @return {string}    
+ */
 function getBlobUrl(mimeType, data) {
     if (data instanceof ArrayBuffer) {
         data = new Uint8Array(data);
@@ -204,10 +289,20 @@ function getBlobUrl(mimeType, data) {
     return `data:${mimeType};base64,${btoa(convertUint8ArrayToString(data))}`;
 }
 
+/**
+ * @memberOf util
+ * @param  {any}  obj
+ * @return {boolean}
+ */
 function isArrayLike(obj) {
     return Array.isArray(obj) || obj.BYTES_PER_ELEMENT || obj.length;
 }
 
+/**
+ * @memberOf util
+ * @param  {Element} elem
+ * @return {any}
+ */
 function getElementRect(elem) {
     const docElem = document.documentElement;
     let bounds;
@@ -246,7 +341,12 @@ function getElementRect(elem) {
     };
 }
 
-
+/**
+ * @memberOf util
+ * @param  {any}   data
+ * @param  {Function} fn
+ * @return {Promise<any>}
+ */
 function serialRun(data = {}, fn) {
     if (!Array.isArray(data)) {
         data = Object.values(data);
@@ -258,6 +358,12 @@ function serialRun(data = {}, fn) {
     }, Promise.resolve());
 }
 
+/**
+ * @memberOf util
+ * @param  {any}  obj
+ * @param  {string}  name
+ * @return {boolean}
+ */
 function hasOwnProperty(obj, name) {
     return Object.prototype.hasOwnProperty.call(obj, name);
 }
