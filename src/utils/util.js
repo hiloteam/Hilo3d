@@ -18,7 +18,7 @@ const {
  * @memberOf util
  * @param  {string} basePath
  * @param  {string} path
- * @return {string}   
+ * @return {string}
  */
 function getRelativePath(basePath, path) {
     if (/^(?:http|blob|data:|\/)/.test(path)) {
@@ -44,7 +44,7 @@ let utf8Decoder;
  * @memberOf util
  * @param  {Uint8Array|number[]} array
  * @param  {boolean} isUTF8
- * @return {string}   
+ * @return {string}
  */
 function convertUint8ArrayToString(array, isUTF8) {
     if (window.TextDecoder) {
@@ -87,7 +87,7 @@ function getExtension(url) {
 /**
  * @memberOf util
  * @param  {object}   obj
- * @param  {Function} fn 
+ * @param  {Function} fn
  */
 function each(obj, fn) {
     if (!obj) {
@@ -221,7 +221,7 @@ const getTypedArrayClass = (function() {
  * @param  {any[]} srcArr
  * @param  {number} destIdx
  * @param  {number} srcIdx
- * @param  {number} count 
+ * @param  {number} count
  */
 function copyArrayData(destArr, srcArr, destIdx, srcIdx, count) {
     if (!destArr || !srcArr) {
@@ -267,7 +267,7 @@ function revokeBlobUrl(blobUrl) {
  * @memberOf util
  * @param  {string} mimeType
  * @param  {ArrayBuffer|TypedArray} data
- * @return {string}    
+ * @return {string}
  */
 function getBlobUrl(mimeType, data) {
     if (data instanceof ArrayBuffer) {
