@@ -99,11 +99,6 @@ const capabilities = {
     MAX_VERTEX_UNIFORM_VECTORS: undefined,
 
     /**
-     * @type {number}
-     */
-    MAX_COMBINED_TEXTURE_IMAGE_UNITS: undefined,
-
-    /**
      * 初始化
      * @param {WebGLRenderingContext} gl
      */
@@ -120,7 +115,6 @@ const capabilities = {
             'MAX_VERTEX_ATTRIBS',
             'MAX_VERTEX_TEXTURE_IMAGE_UNITS',
             'MAX_VERTEX_UNIFORM_VECTORS',
-            'MAX_COMBINED_TEXTURE_IMAGE_UNITS'
         ];
 
         arr.forEach((name) => {
