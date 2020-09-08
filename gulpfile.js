@@ -54,7 +54,8 @@ const addHilo3dTSD = () => {
 
 const readmeTask = () => {
     return src(['./README.md', './README_ZH.md'])
-        .pipe(replace(/Hilo3d\/[\d\.]+\/Hilo3d\.js/g, `Hilo3d/${pkg.version}/Hilo3d.js`))
+        // //cdn.jsdelivr.net/npm/hilo3d@1.15.9-alpha.3/build/Hilo3d.js
+        .pipe(replace(/\/hilo3d@[\d\.\w\-]+\/build\/Hilo3d\.js/g, `/hilo3d@${pkg.version}/build/Hilo3d.js`))
         .pipe(dest('./'));
 };
 
