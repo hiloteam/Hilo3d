@@ -6,7 +6,6 @@ import EventMixin from '../core/EventMixin';
  * @class
  * @mixes EventMixin
  * @fires update 更新事件
- * @ignore
  */
 const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
     Mixes: EventMixin,
@@ -21,10 +20,36 @@ const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
      */
     className: 'LoadCache',
     Statics: {
+        /**
+         * PENDING
+         * @memberOf LoadCache
+         * @readOnly
+         * @default 1
+         * @type {Number}
+         */
         PENDING: 1,
+        /**
+         * PENDING
+         * @memberOf LoadCache
+         * @readOnly
+         * @default 2
+         * @type {Number}
+         */
         LOADED: 2,
+        /**
+         * FAILED
+         * @memberOf LoadCache
+         * @readOnly
+         * @default 3
+         * @type {Number}
+         */
         FAILED: 3
     },
+    /**
+     * enabled
+     * @default true
+     * @type {Boolean}
+     */
     enabled: true,
     /**
      * @constructs
@@ -32,6 +57,12 @@ const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
     constructor() {
         this._files = {};
     },
+    /**
+     * update
+     * @param  {string} key
+     * @param  {number} state 可选值为：LoadCache.LOADED LoadCache.PENDING LoadCache.FAILED
+     * @param  {any} data
+     */
     update(key, state, data) {
         if (!this.enabled) {
             return;
@@ -45,18 +76,35 @@ const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
         this.fire('update', file);
         this.fire(`update:${file.key}`, file);
     },
+    /**
+     * get
+     * @param  {string} key
+     * @return {any}
+     */
     get(key) {
         if (!this.enabled) {
             return null;
         }
         return this._files[key];
     },
+    /**
+     * remove
+     * @param  {string} key
+     */
     remove(key) {
         delete this._files[key];
     },
+    /**
+     * clear
+     */
     clear() {
         this._files = {};
     },
+    /**
+     * wait
+     * @param  {any} file
+     * @return {Promise<any>}
+     */
     wait(file) {
         if (!file) {
             return Promise.reject();

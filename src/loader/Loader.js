@@ -27,7 +27,7 @@ const Loader = Class.create(/** @lends Loader.prototype */{
          * @memberOf Loader
          * @static
          * @param {string} ext 资源扩展，如gltf, png 等
-         * @param {BasicLoader} LoaderClass 用于加载的类，需要继承BasicLoader
+         * @param {any} LoaderClass 用于加载的类，需要继承BasicLoader
          */
         addLoader(ext, LoaderClass) {
             Loader._loaderClassMap[ext] = LoaderClass;
