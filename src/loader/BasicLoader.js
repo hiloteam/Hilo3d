@@ -52,18 +52,41 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
     className: 'BasicLoader',
     Statics: {
         _cache: cache,
+        /**
+         * enalbeCache
+         * @memberOf BasicLoader
+         */
         enalbeCache() {
             cache.enabled = true;
         },
+        /**
+         * disableCache
+         * @memberOf BasicLoader
+         */
         disableCache() {
             cache.enabled = false;
         },
+        /**
+         * deleteCache
+         * @memberOf BasicLoader
+         * @param  {string} key
+         */
         deleteCache(key) {
             cache.remove(key);
         },
+        /**
+         * clearCache
+         * @memberOf BasicLoader
+         */
         clearCache() {
             cache.clear();
         },
+        /**
+         * cache
+         * @memberOf BasicLoader
+         * @readOnly
+         * @type {LoadCache}
+         */
         cache: {
             get() {
                 return cache;
