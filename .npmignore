@@ -1,9 +1,0 @@
-/.github/
-/docs/
-examples/**/*.*
-!examples/**/*.js
-/logs/
-/reports/
-/src/
-/test/
-gulpfile.js
