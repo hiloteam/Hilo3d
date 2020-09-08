@@ -58,6 +58,8 @@ const log = {
 
     /**
      * log，等同 console.log
+     * @example Hilo3d.log.log('a', {a:1});
+     * @param {...any} params
      * @return {log} this
      */
     log() {
@@ -70,6 +72,8 @@ const log = {
 
     /**
      * warn，等同 console.warn
+     * @example Hilo3d.log.warn('a', {a:1});
+     * @param {...any} params
      * @return {log} this
      */
     warn() {
@@ -82,6 +86,8 @@ const log = {
 
     /**
      * error，等同 console.error
+     * @example Hilo3d.log.error('a', {a:1});
+     * @param {...any} params
      * @return {log} this
      */
     error() {
@@ -94,7 +100,9 @@ const log = {
 
     /**
      * logOnce 相同 id 只 log 一次
-     * @param {String} id
+     * @example Hilo3d.log.logOnce('uniqueId0', 'a', {a:1});
+     * @param {string} id
+     * @param {...any} params
      * @return {log} this
      */
     logOnce(id) {
@@ -107,7 +115,9 @@ const log = {
 
     /**
      * warnOnce  相同 id 只 once 一次
-     * @param {String} id
+     * @example Hilo3d.log.warnOnce('uniqueId0', 'a', {a:1});
+     * @param {string} id
+     * @param {...any} params
      * @return {log} this
      */
     warnOnce(id) {
@@ -120,7 +130,9 @@ const log = {
 
     /**
      * errorOnce 相同 id 只 error 一次
-     * @param {String} id
+     * @example Hilo3d.log.errorOnce('uniqueId0', 'a', {a:1});
+     * @param {string} id
+     * @param {...any} params
      * @return {log} this
      */
     errorOnce(id) {
