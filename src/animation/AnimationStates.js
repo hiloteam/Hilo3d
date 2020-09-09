@@ -177,7 +177,7 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
     interpolationType: 'LINEAR',
     /**
      * @constructs
-     * @param {Object} parmas 创建对象的属性参数。可包含此类的所有属性。
+     * @param {Object} [parmas] 创建对象的属性参数。可包含此类的所有属性。
      */
     constructor(parmas) {
         /**
