@@ -52,7 +52,11 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
     skeleton: null,
     /**
      * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
+     * @param {Object} [params] 初始化参数，所有params都会复制到实例上
+     * @param {Geometry} [params.geometry] 几何体
+     * @param {Material} [params.material] 材质
+     * @param {Skeleton} [params.skeleton] 骨骼
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         SkinedMesh.superclass.constructor.call(this, params);
