@@ -1,4 +1,4 @@
-## [1.15.9](https://github.com/hiloteam/Hilo3d/compare/v1.15.8...v1.15.9) (2020-09-10)
+## [1.15.9](https://github.com/hiloteam/Hilo3d/compare/1.15.8...1.15.9) (2020-09-10)
 
 
 ### Bug Fixes
