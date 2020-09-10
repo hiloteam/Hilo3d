@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Source: math/Quaternion.js</title>
+    <title>Source: utils/util.js</title>
     
     
     <script src="scripts/prettify/prettify.js"></script>
@@ -7916,596 +7916,404 @@
     </ul>
 </div>
     <div class="main">
-        <h1 class="page-title" data-filename="math_Quaternion.js.html">Source: math/Quaternion.js</h1>
+        <h1 class="page-title" data-filename="utils_util.js.html">Source: utils/util.js</h1>
         
 
 
     
     <section>
         <article>
-            <pre class="prettyprint source "><code>import {
-    quat
-} from 'gl-matrix';
-import Matrix3 from './Matrix3';
-import Class from '../core/Class';
-import EventMixin from '../core/EventMixin';
-
-const tempMat3 = new Matrix3();
+            <pre class="prettyprint source "><code>import log from './log';
+import constants from '../constants';
 
 /**
- * @class
- * @mixes EventMixin
- * @fires update 数据更新事件
+ * @namespace util
  */
-const Quaternion = Class.create(/** @lends Quaternion.prototype */ {
-    Mixes: EventMixin,
-    /**
-     * 类名
-     * @type {String}
-     * @default Quaternion
-     */
-    className: 'Quaternion',
-    /**
-     * @type {Boolean}
-     * @default true
-     */
-    isQuaternion: true,
-    /**
-     * Creates a new identity quat
-     * @constructs
-     * @param  {Number} [x=0] X component
-     * @param  {Number} [y=0] Y component
-     * @param  {Number} [z=0] Z component
-     * @param  {Number} [w=1] W component
-     */
-    constructor(x = 0, y = 0, z = 0, w = 1) {
-        this.elements = quat.fromValues(x, y, z, w);
-    },
 
-    /**
-     * Copy the values from one quat to this
-     * @param  {Quaternion} q
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    copy(q, dontFireEvent) {
-        quat.copy(this.elements, q.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Creates a new quat initialized with values from an existing quaternion
-     * @return {Quaternion} a new quaternion
-     */
-    clone() {
-        const el = this.elements;
-        return new this.constructor(el[0], el[1], el[2], el[3]);
-    },
+const {
+    BYTE,
+    UNSIGNED_BYTE,
+    SHORT,
+    UNSIGNED_SHORT,
+    UNSIGNED_INT,
+    FLOAT
+} = constants;
 
-    /**
-     * 转换到数组
-     * @param  {Array}  [array=[]] 数组
-     * @param  {Number} [offset=0] 数组偏移值
-     * @return {Array}
-     */
-    toArray(array = [], offset = 0) {
-        const el = this.elements;
-
-        array[offset] = el[0];
-        array[offset + 1] = el[1];
-        array[offset + 2] = el[2];
-        array[offset + 3] = el[3];
-
-        return array;
-    },
-    /**
-     * 从数组赋值
-     * @param  {Array} array  数组
-     * @param  {Number} [offset=0] 数组偏移值
-     * @param {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    fromArray(array, offset = 0, dontFireEvent) {
-        const el = this.elements;
-
-        el[0] = array[offset];
-        el[1] = array[offset + 1];
-        el[2] = array[offset + 2];
-        el[3] = array[offset + 3];
-
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-
-        return this;
-    },
-
-    /**
-     * Set the components of a quat to the given values
-     * @param {Number} x  X component
-     * @param {Number} y  Y component
-     * @param {Number} z  Z component
-     * @param {Number} w  W component
-     * @param {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    set(x, y, z, w, dontFireEvent) {
-        quat.set(this.elements, x, y, z, w);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-
-    /**
-     * Set this to the identity quaternion
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    identity(dontFireEvent) {
-        quat.identity(this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Sets a quaternion to represent the shortest rotation from one
-     * vector to another.
-     * @param  {Vector3} a the initial vector
-     * @param  {Vector3} b the destination vector
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    rotationTo(a, b, dontFireEvent) {
-        quat.rotationTo(this.elements, a.elements, b.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Sets the specified quaternion with values corresponding to the given
-     * axes. Each axis is a vec3 and is expected to be unit length and
-     * perpendicular to all other specified axes.
-     *
-     * @param {Vector3} view  the vector representing the viewing direction
-     * @param {Vector3} right the vector representing the local "right" direction
-     * @param {Vector3} up    the vector representing the local "up" direction
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    setAxes(view, right, up, dontFireEvent) {
-        quat.setAxes(this.elements, view.elements, right.elements, up.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Sets a quat from the given angle and rotation axis,
-     * then returns it.
-     * @param {Vector3} axis the axis around which to rotate
-     * @param {Number} rad the angle in radians
-     * @param {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    setAxisAngle(axis, rad, dontFireEvent) {
-        quat.setAxisAngle(this.elements, axis.elements, rad);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Gets the rotation axis and angle for a given
-     *  quaternion. If a quaternion is created with
-     *  setAxisAngle, this method will return the same
-     *  values as providied in the original parameter list
-     *  OR functionally equivalent values.
-     * Example: The quaternion formed by axis [0, 0, 1] and
-     *  angle -90 is the same as the quaternion formed by
-     *  [0, 0, 1] and 270. This method favors the latter.
-     * @param  {Vector3} out_axis  Vector receiving the axis of rotation
-     * @return {Number} Angle, in radians, of the rotation
-     */
-    getAxisAngle(axis) {
-        return quat.getAxisAngle(axis.elements, this.elements);
-    },
-    /**
-     * Adds two quat's
-     * @param {Quaternion} q
-     * @param {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    add(q, dontFireEvent) {
-        quat.add(this.elements, this.elements, q.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Multiplies two quat's
-     * @param  {Quaternion} q
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    multiply(q, dontFireEvent) {
-        quat.multiply(this.elements, this.elements, q.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * premultiply the quat
-     * @param  {Quaternion} q
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    premultiply(q, dontFireEvent) {
-        quat.multiply(this.elements, q.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Scales a quat by a scalar number
-     * @param  {Vector3} scale the vector to scale
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    scale(scale, dontFireEvent) {
-        quat.scale(this.elements, this.elements, scale);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Rotates a quaternion by the given angle about the X axis
-     * @param  {Number} rad angle (in radians) to rotate
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    rotateX(rad, dontFireEvent) {
-        quat.rotateX(this.elements, this.elements, rad);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Rotates a quaternion by the given angle about the Y axis
-     * @param  {Number} rad angle (in radians) to rotate
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    rotateY(rad, dontFireEvent) {
-        quat.rotateY(this.elements, this.elements, rad);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Rotates a quaternion by the given angle about the Z axis
-     * @param  {Number} rad angle (in radians) to rotate
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    rotateZ(rad, dontFireEvent) {
-        quat.rotateZ(this.elements, this.elements, rad);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the W component of a quat from the X, Y, and Z components.
-     * Assumes that quaternion is 1 unit in length.
-     * Any existing W component will be ignored.
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @returns {Quaternion} this
-     */
-    calculateW(dontFireEvent) {
-        quat.calculateW(this.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the dot product of two quat's
-     * @param  {Quaternion} q
-     * @return {Number} dot product of two quat's
-     */
-    dot(q) {
-        return quat.dot(this.elements, q.elements);
-    },
-    /**
-     * Performs a linear interpolation between two quat's
-     * @param  {Quaternion} q
-     * @param  {Number} t interpolation amount between the two inputs
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    lerp(q, t, dontFireEvent) {
-        quat.lerp(this.elements, this.elements, q.elements, t);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Performs a spherical linear interpolation between two quat
-     * @param  {Quaternion} q
-     * @param  {Number} t interpolation amount between the two inputs
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    slerp(q, t, dontFireEvent) {
-        quat.slerp(this.elements, this.elements, q.elements, t);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Performs a spherical linear interpolation with two control points
-     * @param  {Quaternion} qa
-     * @param  {Quaternion} qb
-     * @param  {Quaternion} qc
-     * @param  {Quaternion} qd
-     * @param  {Number} t interpolation amount
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    sqlerp(qa, qb, qc, qd, t, dontFireEvent) {
-        quat.sqlerp(this.elements, qa.elements, qb.elements, qc.elements, qd.elements, t);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the inverse of a quat
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    invert(dontFireEvent) {
-        quat.invert(this.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the conjugate of a quat
-     * If the quaternion is normalized, this function is faster than quat.inverse and produces the same result.
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    conjugate(dontFireEvent) {
-        quat.conjugate(this.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the length of a quat
-     * @return {Number} length of this
-     */
-    length() {
-        return quat.length(this.elements);
-    },
-    /**
-     * Calculates the squared length of a quat
-     * @return {Number} squared length of this
-     */
-    squaredLength() {
-        return quat.squaredLength(this.elements);
-    },
-    /**
-     * Normalize this
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    normalize(dontFireEvent) {
-        quat.normalize(this.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Creates a quaternion from the given 3x3 rotation matrix.
-     *
-     * NOTE: The resultant quaternion is not normalized, so you should be sure
-     * to renormalize the quaternion yourself where necessary.
-     *
-     * @param {Matrix3} m rotation matrix
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    fromMat3(mat, dontFireEvent) {
-        quat.fromMat3(this.elements, mat.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Creates a quaternion from the given 3x3 rotation matrix.
-     *
-     * NOTE: The resultant quaternion is not normalized, so you should be sure
-     * to renormalize the quaternion yourself where necessary.
-     *
-     * @param {Matrix4} m rotation matrix
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    fromMat4(mat, dontFireEvent) {
-        tempMat3.fromMat4(mat);
-        this.fromMat3(tempMat3, dontFireEvent);
-        return this;
-    },
-    /**
-     * Returns whether or not the quaternions have exactly the same elements in the same position (when compared with ===)
-     * @param  {Quaternion} q
-     * @return {Boolean}
-     */
-    exactEquals(q) {
-        return quat.exactEquals(this.elements, q.elements);
-    },
-    /**
-     * Returns whether or not the quaternions have approximately the same elements in the same position.
-     * @param  {Quaternion} q
-     * @return {Boolean}
-     */
-    equals(q) {
-        return quat.equals(this.elements, q.elements);
-    },
-    /**
-     * Creates a quaternion from the given euler.
-     * @param  {Euler} euler
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    fromEuler(euler, dontFireEvent) {
-        // Based on https://github.com/mrdoob/three.js/blob/dev/src/math/Quaternion.js#L200
-
-        // quat.fromEuler(this.elements, euler.x, euler.y, euler.z);
-        const x = euler.x * .5;
-        const y = euler.y * .5;
-        const z = euler.z * .5;
-        const order = euler.order || 'ZYX';
-
-        let sx = Math.sin(x);
-        let cx = Math.cos(x);
-        let sy = Math.sin(y);
-        let cy = Math.cos(y);
-        let sz = Math.sin(z);
-        let cz = Math.cos(z);
-
-        const out = this.elements;
-
-        if (order === 'XYZ') {
-            out[0] = sx * cy * cz + cx * sy * sz;
-            out[1] = cx * sy * cz - sx * cy * sz;
-            out[2] = cx * cy * sz + sx * sy * cz;
-            out[3] = cx * cy * cz - sx * sy * sz;
-        } else if (order === 'YXZ') {
-            out[0] = sx * cy * cz + cx * sy * sz;
-            out[1] = cx * sy * cz - sx * cy * sz;
-            out[2] = cx * cy * sz - sx * sy * cz;
-            out[3] = cx * cy * cz + sx * sy * sz;
-        } else if (order === 'ZXY') {
-            out[0] = sx * cy * cz - cx * sy * sz;
-            out[1] = cx * sy * cz + sx * cy * sz;
-            out[2] = cx * cy * sz + sx * sy * cz;
-            out[3] = cx * cy * cz - sx * sy * sz;
-        } else if (order === 'ZYX') {
-            out[0] = sx * cy * cz - cx * sy * sz;
-            out[1] = cx * sy * cz + sx * cy * sz;
-            out[2] = cx * cy * sz - sx * sy * cz;
-            out[3] = cx * cy * cz + sx * sy * sz;
-        } else if (order === 'YZX') {
-            out[0] = sx * cy * cz + cx * sy * sz;
-            out[1] = cx * sy * cz + sx * cy * sz;
-            out[2] = cx * cy * sz - sx * sy * cz;
-            out[3] = cx * cy * cz - sx * sy * sz;
-        } else if (order === 'XZY') {
-            out[0] = sx * cy * cz - cx * sy * sz;
-            out[1] = cx * sy * cz - sx * cy * sz;
-            out[2] = cx * cy * sz + sx * sy * cz;
-            out[3] = cx * cy * cz + sx * sy * sz;
-        }
-
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-
-        return this;
-    },
-    /**
-     * X component
-     * @type {Number}
-     */
-    x: {
-        get() {
-            return this.elements[0];
-        },
-        set(value) {
-            this.elements[0] = value;
-            this.fire('update');
-        }
-    },
-    /**
-     * Y component
-     * @type {Number}
-     */
-    y: {
-        get() {
-            return this.elements[1];
-        },
-        set(value) {
-            this.elements[1] = value;
-            this.fire('update');
-        }
-    },
-    /**
-     * Z component
-     * @type {Number}
-     */
-    z: {
-        get() {
-            return this.elements[2];
-        },
-        set(value) {
-            this.elements[2] = value;
-            this.fire('update');
-        }
-    },
-    /**
-     * W component
-     * @type {Number}
-     */
-    w: {
-        get() {
-            return this.elements[3];
-        },
-        set(value) {
-            this.elements[3] = value;
-            this.fire('update');
+/**
+ * @memberOf util
+ * @param  {string} basePath
+ * @param  {string} path
+ * @return {string}
+ */
+function getRelativePath(basePath, path) {
+    if (/^(?:http|blob|data:|\/)/.test(path)) {
+        return path;
+    }
+    basePath = basePath.replace(/\/[^/]*?$/, '').split('/');
+    path = path.split('/');
+    let i;
+    for (i = 0; i &lt; path.length; i++) {
+        let p = path[i];
+        if (p === '..') {
+            basePath.pop();
+        } else if (p !== '.') {
+            break;
         }
     }
-});
+    return basePath.join('/') + '/' + path.slice(i).join('/');
+}
+
+let utf8Decoder;
 
 /**
- * Alias for {@link Quaternion#multiply}
- * @function
+ * @memberOf util
+ * @param  {Uint8Array|number[]} array
+ * @param  {boolean} isUTF8
+ * @return {string}
  */
-Quaternion.prototype.mul = Quaternion.prototype.multiply;
+function convertUint8ArrayToString(array, isUTF8) {
+    if (window.TextDecoder) {
+        if (!utf8Decoder) {
+            utf8Decoder = new TextDecoder('utf-8');
+        }
+
+        if (!(array instanceof Uint8Array)) {
+            array = new Uint8Array(array);
+        }
+        return utf8Decoder.decode(array);
+    }
+
+    let str = '';
+
+    for (let i = 0; i &lt; array.length; i++) {
+        str += String.fromCharCode(array[i]);
+    }
+
+    if (isUTF8) {
+        // utf8 str fix
+        // https://developer.mozilla.org/zh-CN/docs/Web/API/WindowBase64/btoa
+        str = decodeURIComponent(escape(str));
+    }
+    return str;
+}
 
 /**
- * Alias for {@link Quaternion#length}
- * @function
+ * @memberOf util
+ * @param  {string} url
+ * @return {string}
  */
-Quaternion.prototype.len = Quaternion.prototype.length;
+function getExtension(url) {
+    const extRegExp = /\/?[^/]+\.(\w+)(\?\S+)?$/i;
+    const match = String(url).match(extRegExp);
+
+    return match &amp;&amp; match[1].toLowerCase() || null;
+}
 
 /**
- * Alias for {@link Quaternion#squaredLength}
- * @function
+ * @memberOf util
+ * @param  {object}   obj
+ * @param  {Function} fn
  */
-Quaternion.prototype.sqrLen = Quaternion.prototype.squaredLength;
+function each(obj, fn) {
+    if (!obj) {
+        return;
+    }
 
-export default Quaternion;
+    if (Array.isArray(obj)) {
+        obj.forEach(fn);
+    } else {
+        Object.keys(obj).forEach((key) => {
+            fn(obj[key], key);
+        });
+    }
+}
+
+/**
+ * @memberOf util
+ * @param  {any[]} array
+ * @param  {any} value
+ * @param  {Function} compareFn
+ * @return {number[]}
+ */
+function getIndexFromSortedArray(array, value, compareFn) {
+    if (!array || !array.length) {
+        return [0, 0];
+    }
+    const len = array.length;
+    let low = 0;
+    let high = len - 1;
+
+    while (low &lt;= high) {
+        let mid = (low + high) >> 1;
+        let diff = compareFn(array[mid], value);
+        if (diff === 0) {
+            return [mid, mid];
+        }
+        if (diff &lt; 0) {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    if (low > high) {
+        return [high, low];
+    }
+    return [low, high];
+}
+
+/**
+ * @memberOf util
+ * @param  {any[]} array
+ * @param  {any} item
+ * @param  {Function} compareFn
+ */
+function insertToSortedArray(array, item, compareFn) {
+    const indices = getIndexFromSortedArray(array, item, compareFn);
+    array.splice(indices[1], 0, item);
+}
+
+/**
+ * @memberOf util
+ * @param  {string} str
+ * @param  {number} len
+ * @param  {string} char
+ * @return {string}
+ */
+function padLeft(str, len, char) {
+    if (len &lt;= str.length) {
+        return str;
+    }
+
+    return new Array(len - str.length + 1).join(char || '0') + str;
+}
+
+/**
+ * @memberOf util
+ * @param  {TypedArray} array
+ * @return {GLenum}
+ */
+function getTypedArrayGLType(array) {
+    if (array instanceof Float32Array) {
+        return FLOAT;
+    }
+
+    if (array instanceof Int8Array) {
+        return BYTE;
+    }
+
+    if (array instanceof Uint8Array) {
+        return UNSIGNED_BYTE;
+    }
+
+    if (array instanceof Int16Array) {
+        return SHORT;
+    }
+
+    if (array instanceof Uint16Array) {
+        return UNSIGNED_SHORT;
+    }
+
+    if (array instanceof Uint32Array) {
+        return UNSIGNED_INT;
+    }
+
+    return FLOAT;
+}
+
+/**
+ * @memberOf util
+ * @method getTypedArrayClass
+ * @param  {GLenum} type
+ * @return {any}
+ */
+const getTypedArrayClass = (function() {
+    const TypedArrayClassMap = {
+        [BYTE]: Int8Array,
+        [UNSIGNED_BYTE]: Uint8Array,
+        [SHORT]: Int16Array,
+        [UNSIGNED_SHORT]: Uint16Array,
+        [UNSIGNED_INT]: Uint32Array,
+        [FLOAT]: Float32Array
+    };
+    return function(type) {
+        return TypedArrayClassMap[type] || Float32Array;
+    };
+}());
+
+/**
+ * @memberOf util
+ * @param  {any[]} destArr
+ * @param  {any[]} srcArr
+ * @param  {number} destIdx
+ * @param  {number} srcIdx
+ * @param  {number} count
+ */
+function copyArrayData(destArr, srcArr, destIdx, srcIdx, count) {
+    if (!destArr || !srcArr) {
+        return;
+    }
+    if (srcArr.isGeometryData) {
+        srcArr = srcArr.data;
+    }
+    for (let i = 0; i &lt; count; i++) {
+        destArr[destIdx + i] = srcArr[srcIdx + i];
+    }
+}
+
+/**
+ * @memberOf util
+ * @param  {any}  d
+ * @return {boolean}
+ */
+function isStrOrNumber(d) {
+    return typeof d === 'string' || typeof d === 'number';
+}
+
+/**
+ * @memberOf util
+ * @param  {string}  url
+ * @return {boolean}
+ */
+function isBlobUrl(url) {
+    return /^blob:/.test(url);
+}
+
+/**
+ * @memberOf util
+ * @param  {string} blobUrl
+ */
+function revokeBlobUrl(blobUrl) {
+    if (window.URL) {
+        URL.revokeObjectURL(blobUrl);
+    }
+}
+
+/**
+ * @memberOf util
+ * @param  {string} mimeType
+ * @param  {ArrayBuffer|TypedArray} data
+ * @return {string}
+ */
+function getBlobUrl(mimeType, data) {
+    if (data instanceof ArrayBuffer) {
+        data = new Uint8Array(data);
+    }
+    if (window.Blob &amp;&amp; window.URL) {
+        try {
+            const blob = new Blob([data], {
+                type: mimeType
+            });
+
+            const blobUrl = window.URL.createObjectURL(blob);
+            return blobUrl;
+        } catch (err) {
+            log.warn('new Blob error', mimeType);
+        }
+    }
+
+    return `data:${mimeType};base64,${btoa(convertUint8ArrayToString(data))}`;
+}
+
+/**
+ * @memberOf util
+ * @param  {any}  obj
+ * @return {boolean}
+ */
+function isArrayLike(obj) {
+    return Array.isArray(obj) || obj.BYTES_PER_ELEMENT || obj.length;
+}
+
+/**
+ * @memberOf util
+ * @param  {Element} elem
+ * @return {any}
+ */
+function getElementRect(elem) {
+    const docElem = document.documentElement;
+    let bounds;
+    try {
+        // this fails if it's a disconnected DOM node
+        bounds = elem.getBoundingClientRect();
+    } catch (e) {
+        bounds = {
+            top: elem.offsetTop,
+            left: elem.offsetLeft,
+            right: elem.offsetLeft + elem.offsetWidth,
+            bottom: elem.offsetTop + elem.offsetHeight
+        };
+    }
+
+    const offsetX = ((window.pageXOffset || docElem.scrollLeft) - (docElem.clientLeft || 0)) || 0;
+    const offsetY = ((window.pageYOffset || docElem.scrollTop) - (docElem.clientTop || 0)) || 0;
+    const styles = window.getComputedStyle ? getComputedStyle(elem) : elem.currentStyle;
+    const parseIntFn = parseInt;
+
+    const padLeft = (parseIntFn(styles.paddingLeft) + parseIntFn(styles.borderLeftWidth)) || 0;
+    const padTop = (parseIntFn(styles.paddingTop) + parseIntFn(styles.borderTopWidth)) || 0;
+    const padRight = (parseIntFn(styles.paddingRight) + parseIntFn(styles.borderRightWidth)) || 0;
+    const padBottom = (parseIntFn(styles.paddingBottom) + parseIntFn(styles.borderBottomWidth)) || 0;
+
+    const top = bounds.top || 0;
+    const left = bounds.left || 0;
+    const right = bounds.right || 0;
+    const bottom = bounds.bottom || 0;
+
+    return {
+        left: left + offsetX + padLeft,
+        top: top + offsetY + padTop,
+        width: right - padRight - left - padLeft,
+        height: bottom - padBottom - top - padTop
+    };
+}
+
+/**
+ * @memberOf util
+ * @param  {any}   data
+ * @param  {Function} fn
+ * @return {Promise&lt;any>}
+ */
+function serialRun(data = {}, fn) {
+    if (!Array.isArray(data)) {
+        data = Object.values(data);
+    }
+    return data.reduce((seq, d, i) => {
+        return seq.then(() => {
+            return fn(d, i);
+        });
+    }, Promise.resolve());
+}
+
+/**
+ * @memberOf util
+ * @param  {any}  obj
+ * @param  {string}  name
+ * @return {boolean}
+ */
+function hasOwnProperty(obj, name) {
+    return Object.prototype.hasOwnProperty.call(obj, name);
+}
+
+
+export {
+    each,
+    getRelativePath,
+    convertUint8ArrayToString,
+    getExtension,
+    getIndexFromSortedArray,
+    insertToSortedArray,
+    padLeft,
+    getTypedArrayClass,
+    copyArrayData,
+    isStrOrNumber,
+    getTypedArrayGLType,
+    getBlobUrl,
+    isBlobUrl,
+    revokeBlobUrl,
+    isArrayLike,
+    getElementRect,
+    serialRun,
+    hasOwnProperty
+};
 </code></pre>
         </article>
     </section>

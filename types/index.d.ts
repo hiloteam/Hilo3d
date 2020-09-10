@@ -544,6 +544,16 @@ declare namespace capabilities {
      * MAX_TEXTURE_MAX_ANISOTROPY
      */
     var MAX_TEXTURE_MAX_ANISOTROPY: number;
+    var MAX_RENDERBUFFER_SIZE: number;
+    var MAX_COMBINED_TEXTURE_IMAGE_UNITS: number;
+    var MAX_CUBE_MAP_TEXTURE_SIZE: number;
+    var MAX_FRAGMENT_UNIFORM_VECTORS: number;
+    var MAX_TEXTURE_IMAGE_UNITS: number;
+    var MAX_TEXTURE_SIZE: number;
+    var MAX_VARYING_VECTORS: number;
+    var MAX_VERTEX_ATTRIBS: number;
+    var MAX_VERTEX_TEXTURE_IMAGE_UNITS: number;
+    var MAX_VERTEX_UNIFORM_VECTORS: number;
     /**
      * 初始化
      * @param gl
@@ -719,37 +729,146 @@ declare namespace log {
     const LEVEL_ERROR = "4";
     /**
      * log，等同 console.log
+     * @example
+     * Hilo3d.log.log('a', {a:1});
+     * @param params
      * @returns this
      */
-    function log(): log;
+    function log(...params: any[]): log;
     /**
      * warn，等同 console.warn
+     * @example
+     * Hilo3d.log.warn('a', {a:1});
+     * @param params
      * @returns this
      */
-    function warn(): log;
+    function warn(...params: any[]): log;
     /**
      * error，等同 console.error
+     * @example
+     * Hilo3d.log.error('a', {a:1});
+     * @param params
      * @returns this
      */
-    function error(): log;
+    function error(...params: any[]): log;
     /**
      * logOnce 相同 id 只 log 一次
+     * @example
+     * Hilo3d.log.logOnce('uniqueId0', 'a', {a:1});
      * @param id
+     * @param params
      * @returns this
      */
-    function logOnce(id: string): log;
+    function logOnce(id: string, ...params: any[]): log;
     /**
      * warnOnce  相同 id 只 once 一次
+     * @example
+     * Hilo3d.log.warnOnce('uniqueId0', 'a', {a:1});
      * @param id
+     * @param params
      * @returns this
      */
-    function warnOnce(id: string): log;
+    function warnOnce(id: string, ...params: any[]): log;
     /**
      * errorOnce 相同 id 只 error 一次
+     * @example
+     * Hilo3d.log.errorOnce('uniqueId0', 'a', {a:1});
      * @param id
+     * @param params
      * @returns this
      */
-    function errorOnce(id: string): log;
+    function errorOnce(id: string, ...params: any[]): log;
+}
+
+declare namespace util {
+    /**
+     * @param basePath
+     * @param path
+     */
+    function getRelativePath(basePath: string, path: string): string;
+    /**
+     * @param array
+     * @param isUTF8
+     */
+    function convertUint8ArrayToString(array: Uint8Array | number[], isUTF8: boolean): string;
+    /**
+     * @param url
+     */
+    function getExtension(url: string): string;
+    /**
+     * @param obj
+     * @param fn
+     */
+    function each(obj: any, fn: (...params: any[]) => any): void;
+    /**
+     * @param array
+     * @param value
+     * @param compareFn
+     */
+    function getIndexFromSortedArray(array: any[], value: any, compareFn: (...params: any[]) => any): number[];
+    /**
+     * @param array
+     * @param item
+     * @param compareFn
+     */
+    function insertToSortedArray(array: any[], item: any, compareFn: (...params: any[]) => any): void;
+    /**
+     * @param str
+     * @param len
+     * @param char
+     */
+    function padLeft(str: string, len: number, char: string): string;
+    /**
+     * @param array
+     */
+    function getTypedArrayGLType(array: TypedArray): GLenum;
+    /**
+     * @param type
+     */
+    function getTypedArrayClass(type: GLenum): any;
+    /**
+     * @param destArr
+     * @param srcArr
+     * @param destIdx
+     * @param srcIdx
+     * @param count
+     */
+    function copyArrayData(destArr: any[], srcArr: any[], destIdx: number, srcIdx: number, count: number): void;
+    /**
+     * @param d
+     */
+    function isStrOrNumber(d: any): boolean;
+    /**
+     * @param url
+     */
+    function isBlobUrl(url: string): boolean;
+    /**
+     * @param blobUrl
+     */
+    function revokeBlobUrl(blobUrl: string): void;
+    /**
+     * @param mimeType
+     * @param data
+     */
+    function getBlobUrl(mimeType: string, data: ArrayBuffer | TypedArray): string;
+    /**
+     * @param obj
+     */
+    function isArrayLike(obj: any): boolean;
+    /**
+     * @param elem
+     */
+    function getElementRect(elem: Element): any;
+    /**
+     * @param data
+     * @param fn
+     */
+    function serialRun(data: any, fn: (...params: any[]) => any): Promise<any>;
+    /**
+     * @param obj
+     * @param name
+     */
+    function hasOwnProperty(obj: any, name: string): boolean;
 }
 
 /**
@@ -4716,6 +4835,10 @@ declare class Material {
      */
     isDiffuesEnvAndAmbientLightWorkTogether: boolean;
     /**
+     * 用户数据
+     */
+    userData: any;
+    /**
      * 渲染顺序数字小的先渲染（透明物体和不透明在不同的队列）
      */
     renderOrder: number;
@@ -5042,7 +5165,7 @@ declare class Loader {
      * @param ext - 资源扩展，如gltf, png 等
      * @param LoaderClass - 用于加载的类，需要继承BasicLoader
      */
-    static addLoader(ext: string, LoaderClass: BasicLoader): void;
+    static addLoader(ext: string, LoaderClass: any): void;
     /**
      * load
      * @param data
@@ -5156,6 +5279,56 @@ declare class LoadQueue implements EventMixin {
 }
 
 declare interface LoadCache extends EventMixin {
+}
+
+/**
+ * 加载缓存类
+ */
+declare class LoadCache implements EventMixin {
+    isLoadCache: boolean;
+    className: string;
+    /**
+     * PENDING
+     */
+    static readonly PENDING: number;
+    /**
+     * PENDING
+     */
+    static readonly LOADED: number;
+    /**
+     * FAILED
+     */
+    static readonly FAILED: number;
+    /**
+     * enabled
+     */
+    enabled: boolean;
+    /**
+     * update
+     * @param key
+     * @param state - 可选值为：LoadCache.LOADED LoadCache.PENDING LoadCache.FAILED
+     * @param data
+     */
+    update(key: string, state: number, data: any): void;
+    /**
+     * get
+     * @param key
+     */
+    get(key: string): any;
+    /**
+     * remove
+     * @param key
+     */
+    remove(key: string): void;
+    /**
+     * clear
+     */
+    clear(): void;
+    /**
+     * wait
+     * @param file
+     */
+    wait(file: any): Promise<any>;
 }
 
 /**
@@ -5298,6 +5471,27 @@ declare class BasicLoader implements EventMixin {
     constructor();
     isBasicLoader: boolean;
     className: string;
+    /**
+     * enalbeCache
+     */
+    static enalbeCache(): void;
+    /**
+     * disableCache
+     */
+    static disableCache(): void;
+    /**
+     * deleteCache
+     * @param key
+     */
+    static deleteCache(key: string): void;
+    /**
+     * clearCache
+     */
+    static clearCache(): void;
+    /**
+     * cache
+     */
+    static readonly cache: LoadCache;
     /**
      * 加载资源，这里会自动调用 loadImg 或者 loadRes
      * @param data - 参数
@@ -6020,6 +6214,10 @@ declare class Geometry {
      */
     useAABBRaycast: boolean;
     /**
+     * 用户数据
+     */
+    userData: any;
+    /**
      * id
      */
     id: string;
@@ -6625,9 +6823,18 @@ declare class Stage extends Node {
 /**
  * 蒙皮Mesh
  * @param [params] - 初始化参数，所有params都会复制到实例上
+ * @param [params.geometry] - 几何体
+ * @param [params.material] - 材质
+ * @param [params.skeleton] - 骨骼
+ * @param params.[value:string] - 其它属性
  */
 declare class SkinedMesh extends Mesh {
-    constructor(params?: any);
+    constructor(params?: {
+        geometry?: Geometry;
+        material?: Material;
+        skeleton?: Skeleton;
+        [value:string]: any;
+    });
     isSkinedMesh: boolean;
     className: string;
     /**
@@ -6679,6 +6886,10 @@ declare class Skeleton {
     constructor(params?: any);
     isSkeleton: boolean;
     className: string;
+    /**
+     * 用户数据
+     */
+    userData: any;
     /**
      * id
      */
@@ -6795,6 +7006,10 @@ declare class Node implements EventMixin {
      * 是否用鼠标指针
      */
     useHandCursor: boolean;
+    /**
+     * 用户数据
+     */
+    userData: any;
     id: string;
     /**
      * 元素的up向量
@@ -7351,10 +7566,10 @@ declare class Camera extends Node {
 
 /**
  * 元素动画状态序列处理
- * @param parmas - 创建对象的属性参数。可包含此类的所有属性。
+ * @param [parmas] - 创建对象的属性参数。可包含此类的所有属性。
  */
 declare class AnimationStates {
-    constructor(parmas: any);
+    constructor(parmas?: any);
     /**
      * 根据名字获取状态类型
      * @param name - 名字，忽略大小写，如 translate => StateType.TRANSLATE

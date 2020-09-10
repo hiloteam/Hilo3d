@@ -1,3 +1,17 @@
+## [1.15.9](https://github.com/hiloteam/Hilo3d/compare/v1.15.8...v1.15.9) (2020-09-10)
+
+
+### Bug Fixes
+
+* capabilities remove duplicate MAX_COMBINED_TEXTURE_IMAGE_UNITS ([f601071](https://github.com/hiloteam/Hilo3d/commit/f6010717e78dcf3e96e482797016bf71143e8d32))
+
+
+### Features
+
+* add userData property to Node,Geometry,Material and Skeleton ([40db285](https://github.com/hiloteam/Hilo3d/commit/40db285bfd5e3299b8e94931bed453b2a583d964))
+
+
+
 ## [1.15.8](https://github.com/hiloteam/Hilo3d/compare/1.15.7...1.15.8) (2020-09-01)
 
 

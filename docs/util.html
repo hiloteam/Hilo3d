@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Source: math/Quaternion.js</title>
+    <title>Namespace: util</title>
     
     
     <script src="scripts/prettify/prettify.js"></script>
@@ -7916,600 +7916,2860 @@
     </ul>
 </div>
     <div class="main">
-        <h1 class="page-title" data-filename="math_Quaternion.js.html">Source: math/Quaternion.js</h1>
+        <h1 class="page-title" data-filename="util.html">Namespace: util</h1>
         
 
 
+
+<section>
+<header>
+    <h2>
+    util
+    </h2>
     
-    <section>
-        <article>
-            <pre class="prettyprint source "><code>import {
-    quat
-} from 'gl-matrix';
-import Matrix3 from './Matrix3';
-import Class from '../core/Class';
-import EventMixin from '../core/EventMixin';
+</header>  
 
-const tempMat3 = new Matrix3();
+<article>
+    <div class="container-overview">
+    
+    
+    
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
 
-/**
- * @class
- * @mixes EventMixin
- * @fires update 数据更新事件
- */
-const Quaternion = Class.create(/** @lends Quaternion.prototype */ {
-    Mixes: EventMixin,
-    /**
-     * 类名
-     * @type {String}
-     * @default Quaternion
-     */
-    className: 'Quaternion',
-    /**
-     * @type {Boolean}
-     * @default true
-     */
-    isQuaternion: true,
-    /**
-     * Creates a new identity quat
-     * @constructs
-     * @param  {Number} [x=0] X component
-     * @param  {Number} [y=0] Y component
-     * @param  {Number} [z=0] Z component
-     * @param  {Number} [w=1] W component
-     */
-    constructor(x = 0, y = 0, z = 0, w = 1) {
-        this.elements = quat.fromValues(x, y, z, w);
-    },
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
 
-    /**
-     * Copy the values from one quat to this
-     * @param  {Quaternion} q
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    copy(q, dontFireEvent) {
-        quat.copy(this.elements, q.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Creates a new quat initialized with values from an existing quaternion
-     * @return {Quaternion} a new quaternion
-     */
-    clone() {
-        const el = this.elements;
-        return new this.constructor(el[0], el[1], el[2], el[3]);
-    },
+        
+        
+    
+    </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+        <h3 class="subsection-title" id="methods">Methods
+            <a class="toggle-inherited" href="javascript:void(0);" type="method">Show Inherited</a>
+        </h3>
+        
+        <dl>
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".getRelativePath">
+                
+                <span class="type-signature static">static</span>util.getRelativePath<span class="signature">(basePath, path)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{string}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line23">line 23</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
 
-    /**
-     * 转换到数组
-     * @param  {Array}  [array=[]] 数组
-     * @param  {Number} [offset=0] 数组偏移值
-     * @return {Array}
-     */
-    toArray(array = [], offset = 0) {
-        const el = this.elements;
+        
+        
+        
+        
+        
+            
 
-        array[offset] = el[0];
-        array[offset + 1] = el[1];
-        array[offset + 2] = el[2];
-        array[offset + 3] = el[3];
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>basePath</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
 
-        return array;
-    },
-    /**
-     * 从数组赋值
-     * @param  {Array} array  数组
-     * @param  {Number} [offset=0] 数组偏移值
-     * @param {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    fromArray(array, offset = 0, dontFireEvent) {
-        const el = this.elements;
 
-        el[0] = array[offset];
-        el[1] = array[offset + 1];
-        el[2] = array[offset + 2];
-        el[3] = array[offset + 3];
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>path</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
 
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
 
-        return this;
-    },
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
 
-    /**
-     * Set the components of a quat to the given values
-     * @param {Number} x  X component
-     * @param {Number} y  Y component
-     * @param {Number} z  Z component
-     * @param {Number} w  W component
-     * @param {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    set(x, y, z, w, dontFireEvent) {
-        quat.set(this.elements, x, y, z, w);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
 
-    /**
-     * Set this to the identity quaternion
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    identity(dontFireEvent) {
-        quat.identity(this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Sets a quaternion to represent the shortest rotation from one
-     * vector to another.
-     * @param  {Vector3} a the initial vector
-     * @param  {Vector3} b the destination vector
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    rotationTo(a, b, dontFireEvent) {
-        quat.rotationTo(this.elements, a.elements, b.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Sets the specified quaternion with values corresponding to the given
-     * axes. Each axis is a vec3 and is expected to be unit length and
-     * perpendicular to all other specified axes.
-     *
-     * @param {Vector3} view  the vector representing the viewing direction
-     * @param {Vector3} right the vector representing the local "right" direction
-     * @param {Vector3} up    the vector representing the local "up" direction
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    setAxes(view, right, up, dontFireEvent) {
-        quat.setAxes(this.elements, view.elements, right.elements, up.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Sets a quat from the given angle and rotation axis,
-     * then returns it.
-     * @param {Vector3} axis the axis around which to rotate
-     * @param {Number} rad the angle in radians
-     * @param {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    setAxisAngle(axis, rad, dontFireEvent) {
-        quat.setAxisAngle(this.elements, axis.elements, rad);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Gets the rotation axis and angle for a given
-     *  quaternion. If a quaternion is created with
-     *  setAxisAngle, this method will return the same
-     *  values as providied in the original parameter list
-     *  OR functionally equivalent values.
-     * Example: The quaternion formed by axis [0, 0, 1] and
-     *  angle -90 is the same as the quaternion formed by
-     *  [0, 0, 1] and 270. This method favors the latter.
-     * @param  {Vector3} out_axis  Vector receiving the axis of rotation
-     * @return {Number} Angle, in radians, of the rotation
-     */
-    getAxisAngle(axis) {
-        return quat.getAxisAngle(axis.elements, this.elements);
-    },
-    /**
-     * Adds two quat's
-     * @param {Quaternion} q
-     * @param {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    add(q, dontFireEvent) {
-        quat.add(this.elements, this.elements, q.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Multiplies two quat's
-     * @param  {Quaternion} q
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    multiply(q, dontFireEvent) {
-        quat.multiply(this.elements, this.elements, q.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * premultiply the quat
-     * @param  {Quaternion} q
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    premultiply(q, dontFireEvent) {
-        quat.multiply(this.elements, q.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Scales a quat by a scalar number
-     * @param  {Vector3} scale the vector to scale
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    scale(scale, dontFireEvent) {
-        quat.scale(this.elements, this.elements, scale);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Rotates a quaternion by the given angle about the X axis
-     * @param  {Number} rad angle (in radians) to rotate
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    rotateX(rad, dontFireEvent) {
-        quat.rotateX(this.elements, this.elements, rad);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Rotates a quaternion by the given angle about the Y axis
-     * @param  {Number} rad angle (in radians) to rotate
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    rotateY(rad, dontFireEvent) {
-        quat.rotateY(this.elements, this.elements, rad);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Rotates a quaternion by the given angle about the Z axis
-     * @param  {Number} rad angle (in radians) to rotate
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    rotateZ(rad, dontFireEvent) {
-        quat.rotateZ(this.elements, this.elements, rad);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the W component of a quat from the X, Y, and Z components.
-     * Assumes that quaternion is 1 unit in length.
-     * Any existing W component will be ignored.
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @returns {Quaternion} this
-     */
-    calculateW(dontFireEvent) {
-        quat.calculateW(this.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the dot product of two quat's
-     * @param  {Quaternion} q
-     * @return {Number} dot product of two quat's
-     */
-    dot(q) {
-        return quat.dot(this.elements, q.elements);
-    },
-    /**
-     * Performs a linear interpolation between two quat's
-     * @param  {Quaternion} q
-     * @param  {Number} t interpolation amount between the two inputs
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    lerp(q, t, dontFireEvent) {
-        quat.lerp(this.elements, this.elements, q.elements, t);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Performs a spherical linear interpolation between two quat
-     * @param  {Quaternion} q
-     * @param  {Number} t interpolation amount between the two inputs
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    slerp(q, t, dontFireEvent) {
-        quat.slerp(this.elements, this.elements, q.elements, t);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Performs a spherical linear interpolation with two control points
-     * @param  {Quaternion} qa
-     * @param  {Quaternion} qb
-     * @param  {Quaternion} qc
-     * @param  {Quaternion} qd
-     * @param  {Number} t interpolation amount
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    sqlerp(qa, qb, qc, qd, t, dontFireEvent) {
-        quat.sqlerp(this.elements, qa.elements, qb.elements, qc.elements, qd.elements, t);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the inverse of a quat
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    invert(dontFireEvent) {
-        quat.invert(this.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the conjugate of a quat
-     * If the quaternion is normalized, this function is faster than quat.inverse and produces the same result.
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    conjugate(dontFireEvent) {
-        quat.conjugate(this.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Calculates the length of a quat
-     * @return {Number} length of this
-     */
-    length() {
-        return quat.length(this.elements);
-    },
-    /**
-     * Calculates the squared length of a quat
-     * @return {Number} squared length of this
-     */
-    squaredLength() {
-        return quat.squaredLength(this.elements);
-    },
-    /**
-     * Normalize this
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    normalize(dontFireEvent) {
-        quat.normalize(this.elements, this.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Creates a quaternion from the given 3x3 rotation matrix.
-     *
-     * NOTE: The resultant quaternion is not normalized, so you should be sure
-     * to renormalize the quaternion yourself where necessary.
-     *
-     * @param {Matrix3} m rotation matrix
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    fromMat3(mat, dontFireEvent) {
-        quat.fromMat3(this.elements, mat.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
-        return this;
-    },
-    /**
-     * Creates a quaternion from the given 3x3 rotation matrix.
-     *
-     * NOTE: The resultant quaternion is not normalized, so you should be sure
-     * to renormalize the quaternion yourself where necessary.
-     *
-     * @param {Matrix4} m rotation matrix
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    fromMat4(mat, dontFireEvent) {
-        tempMat3.fromMat4(mat);
-        this.fromMat3(tempMat3, dontFireEvent);
-        return this;
-    },
-    /**
-     * Returns whether or not the quaternions have exactly the same elements in the same position (when compared with ===)
-     * @param  {Quaternion} q
-     * @return {Boolean}
-     */
-    exactEquals(q) {
-        return quat.exactEquals(this.elements, q.elements);
-    },
-    /**
-     * Returns whether or not the quaternions have approximately the same elements in the same position.
-     * @param  {Quaternion} q
-     * @return {Boolean}
-     */
-    equals(q) {
-        return quat.equals(this.elements, q.elements);
-    },
-    /**
-     * Creates a quaternion from the given euler.
-     * @param  {Euler} euler
-     * @param  {Boolean} [dontFireEvent=false] wether or not don`t fire change event.
-     * @return {Quaternion} this
-     */
-    fromEuler(euler, dontFireEvent) {
-        // Based on https://github.com/mrdoob/three.js/blob/dev/src/math/Quaternion.js#L200
+        
+        
 
-        // quat.fromEuler(this.elements, euler.x, euler.y, euler.z);
-        const x = euler.x * .5;
-        const y = euler.y * .5;
-        const z = euler.z * .5;
-        const order = euler.order || 'ZYX';
+        
 
-        let sx = Math.sin(x);
-        let cx = Math.cos(x);
-        let sy = Math.sin(y);
-        let cy = Math.cos(y);
-        let sz = Math.sin(z);
-        let cz = Math.cos(z);
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
 
-        const out = this.elements;
 
-        if (order === 'XYZ') {
-            out[0] = sx * cy * cz + cx * sy * sz;
-            out[1] = cx * sy * cz - sx * cy * sz;
-            out[2] = cx * cy * sz + sx * sy * cz;
-            out[3] = cx * cy * cz - sx * sy * sz;
-        } else if (order === 'YXZ') {
-            out[0] = sx * cy * cz + cx * sy * sz;
-            out[1] = cx * sy * cz - sx * cy * sz;
-            out[2] = cx * cy * sz - sx * sy * cz;
-            out[3] = cx * cy * cz + sx * sy * sz;
-        } else if (order === 'ZXY') {
-            out[0] = sx * cy * cz - cx * sy * sz;
-            out[1] = cx * sy * cz + sx * cy * sz;
-            out[2] = cx * cy * sz + sx * sy * cz;
-            out[3] = cx * cy * cz - sx * sy * sz;
-        } else if (order === 'ZYX') {
-            out[0] = sx * cy * cz - cx * sy * sz;
-            out[1] = cx * sy * cz + sx * cy * sz;
-            out[2] = cx * cy * sz - sx * sy * cz;
-            out[3] = cx * cy * cz + sx * sy * sz;
-        } else if (order === 'YZX') {
-            out[0] = sx * cy * cz + cx * sy * sz;
-            out[1] = cx * sy * cz + sx * cy * sz;
-            out[2] = cx * cy * sz - sx * sy * cz;
-            out[3] = cx * cy * cz - sx * sy * sz;
-        } else if (order === 'XZY') {
-            out[0] = sx * cy * cz - cx * sy * sz;
-            out[1] = cx * sy * cz - sx * cy * sz;
-            out[2] = cx * cy * sz + sx * sy * cz;
-            out[3] = cx * cy * cz + sx * sy * sz;
-        }
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        string
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
 
-        if (!dontFireEvent) {
-            this.fire('update');
-        }
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".convertUint8ArrayToString">
+                
+                <span class="type-signature static">static</span>util.convertUint8ArrayToString<span class="signature">(array, isUTF8)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{string}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line49">line 49</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
 
-        return this;
-    },
-    /**
-     * X component
-     * @type {Number}
-     */
-    x: {
-        get() {
-            return this.elements[0];
-        },
-        set(value) {
-            this.elements[0] = value;
-            this.fire('update');
-        }
-    },
-    /**
-     * Y component
-     * @type {Number}
-     */
-    y: {
-        get() {
-            return this.elements[1];
-        },
-        set(value) {
-            this.elements[1] = value;
-            this.fire('update');
-        }
-    },
-    /**
-     * Z component
-     * @type {Number}
-     */
-    z: {
-        get() {
-            return this.elements[2];
-        },
-        set(value) {
-            this.elements[2] = value;
-            this.fire('update');
-        }
-    },
-    /**
-     * W component
-     * @type {Number}
-     */
-    w: {
-        get() {
-            return this.elements[3];
-        },
-        set(value) {
-            this.elements[3] = value;
-            this.fire('update');
-        }
-    }
-});
+        
+        
+        
+        
+        
+            
 
-/**
- * Alias for {@link Quaternion#multiply}
- * @function
- */
-Quaternion.prototype.mul = Quaternion.prototype.multiply;
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>array</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Uint8Array</span>
+|
 
-/**
- * Alias for {@link Quaternion#length}
- * @function
- */
-Quaternion.prototype.len = Quaternion.prototype.length;
+<span class="param-type">Array.&lt;number></span>
 
-/**
- * Alias for {@link Quaternion#squaredLength}
- * @function
- */
-Quaternion.prototype.sqrLen = Quaternion.prototype.squaredLength;
 
-export default Quaternion;
-</code></pre>
-        </article>
-    </section>
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>isUTF8</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">boolean</span>
 
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        string
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".getExtension">
+                
+                <span class="type-signature static">static</span>util.getExtension<span class="signature">(url)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{string}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line80">line 80</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>url</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        string
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".each">
+                
+                <span class="type-signature static">static</span>util.each<span class="signature">(obj, fn)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line92">line 92</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>obj</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">object</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>fn</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".getIndexFromSortedArray">
+                
+                <span class="type-signature static">static</span>util.getIndexFromSortedArray<span class="signature">(array, value, compareFn)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Array.&lt;number>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line113">line 113</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>array</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Array.&lt;any></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>value</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">any</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>compareFn</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Array.&lt;number>
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".insertToSortedArray">
+                
+                <span class="type-signature static">static</span>util.insertToSortedArray<span class="signature">(array, item, compareFn)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line145">line 145</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>array</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Array.&lt;any></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>item</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">any</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>compareFn</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".padLeft">
+                
+                <span class="type-signature static">static</span>util.padLeft<span class="signature">(str, len, char)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{string}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line157">line 157</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>str</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>len</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>char</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        string
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".getTypedArrayGLType">
+                
+                <span class="type-signature static">static</span>util.getTypedArrayGLType<span class="signature">(array)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{GLenum}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line170">line 170</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>array</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">TypedArray</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        GLenum
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".getTypedArrayClass">
+                
+                <span class="type-signature static">static</span>util.getTypedArrayClass<span class="signature">(type)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{any}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line198">line 198</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>type</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">GLenum</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        any
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".copyArrayData">
+                
+                <span class="type-signature static">static</span>util.copyArrayData<span class="signature">(destArr, srcArr, destIdx, srcIdx, count)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line226">line 226</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>destArr</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Array.&lt;any></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>srcArr</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Array.&lt;any></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>destIdx</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>srcIdx</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>count</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".isStrOrNumber">
+                
+                <span class="type-signature static">static</span>util.isStrOrNumber<span class="signature">(d)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{boolean}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line243">line 243</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>d</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">any</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        boolean
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".isBlobUrl">
+                
+                <span class="type-signature static">static</span>util.isBlobUrl<span class="signature">(url)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{boolean}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line252">line 252</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>url</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        boolean
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".revokeBlobUrl">
+                
+                <span class="type-signature static">static</span>util.revokeBlobUrl<span class="signature">(blobUrl)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line260">line 260</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>blobUrl</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".getBlobUrl">
+                
+                <span class="type-signature static">static</span>util.getBlobUrl<span class="signature">(mimeType, data)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{string}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line272">line 272</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>mimeType</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>data</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">ArrayBuffer</span>
+|
+
+<span class="param-type">TypedArray</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        string
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".isArrayLike">
+                
+                <span class="type-signature static">static</span>util.isArrayLike<span class="signature">(obj)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{boolean}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line297">line 297</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>obj</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">any</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        boolean
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".getElementRect">
+                
+                <span class="type-signature static">static</span>util.getElementRect<span class="signature">(elem)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{any}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line306">line 306</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>elem</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Element</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        any
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".serialRun">
+                
+                <span class="type-signature static">static</span>util.serialRun<span class="signature">(data, fn)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Promise.&lt;any>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line350">line 350</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>data</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">any</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>fn</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Promise.&lt;any>
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id=".hasOwnProperty">
+                
+                <span class="type-signature static">static</span>util.hasOwnProperty<span class="signature">(obj, name)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{boolean}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="utils_util.js.html">utils/util.js</a>, <a href="utils_util.js.html#line367">line 367</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>obj</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">any</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>name</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        boolean
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        </dl>
+    
+    
+    
+    
+    
+</article>
+
+</section>  
 
 
 
@@ -8518,7 +10778,7 @@ export default Quaternion;
         
 
         <footer>
-            Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.5</a>
+            Documentation generated by <a target="_blank" href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.5</a>
         </footer>
     </div>
 </div>
