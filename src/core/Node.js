@@ -144,6 +144,13 @@ const Node = Class.create(/** @lends Node.prototype */ {
     useHandCursor: false,
 
     /**
+     * 用户数据
+     * @default null
+     * @type {any}
+     */
+    userData: null,
+
+    /**
      * 是否强制使用父元素 worldMatrix，供高级开发者使用
      * @private
      * @type {Boolean}

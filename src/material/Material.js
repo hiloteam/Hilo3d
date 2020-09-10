@@ -146,6 +146,13 @@ const Material = Class.create(/** @lends Material.prototype */ {
     isDiffuesEnvAndAmbientLightWorkTogether: false,
 
     /**
+     * 用户数据
+     * @default null
+     * @type {any}
+     */
+    userData: null,
+
+    /**
      * 渲染顺序数字小的先渲染（透明物体和不透明在不同的队列）
      * @default 0
      * @type {Number}

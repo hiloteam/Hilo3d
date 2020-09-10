@@ -18,6 +18,14 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
      * @type {String}
      */
     className: 'Skeleton',
+
+    /**
+     * 用户数据
+     * @default null
+     * @type {any}
+     */
+    userData: null,
+
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。

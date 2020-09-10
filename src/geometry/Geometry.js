@@ -136,6 +136,13 @@ const Geometry = Class.create(/** @lends Geometry.prototype */ {
     useAABBRaycast: false,
 
     /**
+     * 用户数据
+     * @default null
+     * @type {any}
+     */
+    userData: null,
+
+    /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
