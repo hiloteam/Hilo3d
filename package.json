@@ -71,8 +71,6 @@
   },
   "dependencies": {
     "amc": "^1.0.6",
-    "gl-constants": "^1.0.0",
-    "gl-extensions-constants": "^1.0.0",
     "gl-matrix": "^2.4.0",
     "glsl-transpose": "^1.0.0",
     "hilojs": "^2.0.0",

@@ -1,11 +1,10 @@
-import webgl from './webgl';
-import webglExtensions from './webglExtensions';
+import * as webgl from './webgl';
+import * as webglExtensions from './webglExtensions';
 import * as Hilo from './Hilo';
 
 /**
  * WebGL, WebGL extensions 枚举值
- * @constant
- * @type {Object}
+ * @namespace
  * @example
  * Hilo3d.constants.LINEAR_MIPMAP_NEAREST
  */
