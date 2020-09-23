@@ -50,6 +50,14 @@ const Class = (function() {
         }
     }
 
+    /**
+     * 混入属性或方法。
+     * @memberOf Class
+     * @method mix
+     * @param {any} target 混入目标对象。
+     * @param {...any} source 要混入的属性和方法来源。可支持多个来源参数。
+     * @returns {any} 混入目标对象。
+     */
     const mix = function(target) {
         for (let i = 1, len = arguments.length; i < len; i++) {
             const source = arguments[i];
