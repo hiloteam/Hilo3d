@@ -2,7 +2,8 @@ import Class from '../core/Class';
 
 /**
  * Ticker是一个定时器类。它可以按指定帧率重复运行，从而按计划执行代码。
- * @param {Number} fps 指定定时器的运行帧率。默认60。
+ * @class Ticker
+ * @param {Number} [fps] 指定定时器的运行帧率。默认60。
  */
 const Ticker = Class.create(/** @lends Ticker.prototype */ {
     constructor(fps) {
@@ -23,7 +24,7 @@ const Ticker = Class.create(/** @lends Ticker.prototype */ {
 
     /**
      * 启动定时器。
-     * @param {Boolean} userRAF 是否使用requestAnimationFrame，默认为true。
+     * @param {boolean} [userRAF=true] 是否使用requestAnimationFrame，默认为true。
      */
     start(useRAF) {
         if (useRAF === undefined) {
@@ -111,6 +112,7 @@ const Ticker = Class.create(/** @lends Ticker.prototype */ {
 
     /**
      * 获得测定的运行时帧率。
+     * @return {number}
      */
     getMeasuredFPS() {
         return Math.min(this._measuredFPS, this._targetFPS);
@@ -118,8 +120,7 @@ const Ticker = Class.create(/** @lends Ticker.prototype */ {
 
     /**
      * 添加定时器对象。定时器对象必须实现 tick 方法。
-     * @param {Object} [tickObject] ticker对象
-     * @param {Function} tickObject.tick tick 方法
+     * @param {Object}  ticker 对象
      */
     addTick(tickObject) {
         if (!tickObject || typeof tickObject.tick !== 'function') {
@@ -144,7 +145,7 @@ const Ticker = Class.create(/** @lends Ticker.prototype */ {
     /**
      * 下次tick时回调
      * @param  {Function} callback
-     * @return {tickObj}
+     * @return {Object} tickObject 定时器对象
      */
     nextTick(callback) {
         const that = this;
@@ -162,7 +163,7 @@ const Ticker = Class.create(/** @lends Ticker.prototype */ {
      * 延迟指定的时间后调用回调, 类似setTimeout
      * @param  {Function} callback
      * @param  {Number}   duration 延迟的毫秒数
-     * @return {tickObj}
+     * @return {Object} tickObject 定时器对象
      */
     timeout(callback, duration) {
         const that = this;
@@ -184,7 +185,7 @@ const Ticker = Class.create(/** @lends Ticker.prototype */ {
      * 指定的时间周期来调用函数, 类似setInterval
      * @param  {Function} callback
      * @param  {Number}   duration 时间周期，单位毫秒
-     * @return {tickObj}
+     * @return {Object} tickObject 定时器对象
      */
     interval(callback, duration) {
         const that = this;
