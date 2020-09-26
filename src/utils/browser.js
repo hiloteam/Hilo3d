@@ -1,8 +1,206 @@
 /**
- * 浏览器特性集合
- * @namespace
- * @see  {@link http://hiloteam.github.io/Hilo/docs/api-zh/symbols/browser.html}
+ * Hilo
+ * Copyright 2015 alibaba.com
+ * Licensed under the MIT License
  */
-import browser from 'hilojs/util/browser';
 
+import log from './log';
+
+/**
+ * @language=en
+ * @class Browser feature set
+ * @static
+ */
+const browser = (function() {
+    let ua = navigator.userAgent;
+    let doc = document;
+    let win = window;
+    let docElem = doc.documentElement;
+
+    let data = /** @lends browser */ {
+    /**
+     * 是否是iphone
+     * @type {Boolean}
+     */
+        iphone: /iphone/i.test(ua),
+
+        /**
+     * 是否是ipad
+     * @type {Boolean}
+     */
+        ipad: /ipad/i.test(ua),
+
+        /**
+     * 是否是ipod
+     * @type {Boolean}
+     */
+        ipod: /ipod/i.test(ua),
+
+        /**
+     * 是否是ios
+     * @type {Boolean}
+     */
+        ios: /iphone|ipad|ipod/i.test(ua),
+
+        /**
+     * 是否是android
+     * @type {Boolean}
+     */
+        android: /android/i.test(ua),
+
+        /**
+     * 是否是webkit
+     * @type {Boolean}
+     */
+        webkit: /webkit/i.test(ua),
+
+        /**
+     * 是否是chrome
+     * @type {Boolean}
+     */
+        chrome: /chrome/i.test(ua),
+
+        /**
+     * 是否是safari
+     * @type {Boolean}
+     */
+        safari: /safari/i.test(ua),
+
+        /**
+     * 是否是firefox
+     * @type {Boolean}
+     */
+        firefox: /firefox/i.test(ua),
+
+        /**
+     * 是否是ie
+     * @type {Boolean}
+     */
+        ie: /msie/i.test(ua),
+
+        /**
+     * 是否是opera
+     * @type {Boolean}
+     */
+        opera: /opera/i.test(ua),
+        /**
+     * 是否支持触碰事件。
+     * @type {String}
+     */
+        supportTouch: 'ontouchstart' in win,
+
+        /**
+     * 是否支持canvas元素。
+     * @type {Boolean}
+     */
+        supportCanvas: !!doc.createElement('canvas').getContext,
+        /**
+     * 是否支持本地存储localStorage。
+     * @type {Boolean}
+     */
+        supportStorage: false,
+
+        /**
+     * 是否支持检测设备方向orientation。
+     * @type {Boolean}
+     */
+        supportOrientation: 'orientation' in win || 'orientation' in win.screen,
+
+        /**
+     * 是否支持检测加速度devicemotion。
+     * @type {Boolean}
+     */
+        supportDeviceMotion: 'ondevicemotion' in win,
+    };
+
+    // `localStorage` is null or `localStorage.setItem` throws error in some cases (e.g. localStorage is disabled)
+    try {
+        let value = 'hilo';
+        localStorage.setItem(value, value);
+        localStorage.removeItem(value);
+        data.supportStorage = true;
+    } catch (e) {
+        log.warn('LocalStorage disabled');
+    }
+
+    /**
+   * 浏览器厂商CSS前缀的js值。比如：webkit。
+   * @type {String}
+   */
+
+    let jsVendor;
+
+    if (data.webkit) {
+        jsVendor = 'webkit';
+    } else if (data.firefox) {
+        jsVendor = 'webkit';
+    } else if (data.opera) {
+        jsVendor = 'o';
+    } else if (data.ie) {
+        jsVendor = 'ms';
+    } else {
+        jsVendor = '';
+    }
+
+    data.jsVendor = jsVendor;
+    /**
+   * 浏览器厂商CSS前缀的css值。比如：-webkit-。
+   * @type {String}
+   */
+    let cssVendor = (data.cssVendor = '-' + jsVendor + '-');
+
+    // css transform/3d feature dectection
+    let testElem = doc.createElement('div');
+    let style = testElem.style;
+    /**
+   * 是否支持CSS Transform变换。
+   * @type {Boolean}
+   */
+    let supportTransform = style[jsVendor + 'Transform'] !== undefined;
+
+    /**
+   * 是否支持CSS Transform 3D变换。
+   * @type {Boolean}
+   */
+    let supportTransform3D = style[jsVendor + 'Perspective'] !== undefined;
+    if (supportTransform3D) {
+        testElem.id = 'test3d';
+        style = doc.createElement('style');
+        style.textContent = '@media (' + cssVendor + 'transform-3d){#test3d{height:3px}}';
+        doc.head.appendChild(style);
+
+        docElem.appendChild(testElem);
+        supportTransform3D = testElem.offsetHeight === 3;
+        doc.head.removeChild(style);
+        docElem.removeChild(testElem);
+    }
+    data.supportTransform = supportTransform;
+    data.supportTransform3D = supportTransform3D;
+
+    let supportTouch = data.supportTouch;
+
+    /**
+   * 鼠标或触碰开始事件。对应touchstart或mousedown。
+   * @type {String}
+   */
+    let POINTER_START = supportTouch ? 'touchstart' : 'mousedown';
+
+    /**
+   * 鼠标或触碰移动事件。对应touchmove或mousemove。
+   * @type {String}
+   */
+    let POINTER_MOVE = supportTouch ? 'touchmove' : 'mousemove';
+
+    /**
+   * 鼠标或触碰结束事件。对应touchend或mouseup。
+   * @type {String}
+   */
+    let POINTER_END = supportTouch ? 'touchend' : 'mouseup';
+
+    data.POINTER_START = POINTER_START;
+    data.POINTER_MOVE = POINTER_MOVE;
+    data.POINTER_END = POINTER_END;
+
+    return data;
+}());
 export default browser;
