@@ -13,7 +13,8 @@ const {
     FUNC_ADD,
     ONE,
     SRC_ALPHA,
-    ONE_MINUS_SRC_ALPHA
+    ONE_MINUS_SRC_ALPHA,
+    CCW,
 } = constants;
 
 const blankInfo = {
@@ -62,6 +63,13 @@ const Material = Class.create(/** @lends Material.prototype */ {
      * @type {boolean}
      */
     wireframe: false,
+
+    /**
+     * front face winding orientation
+     * @default CCW
+     * @type {GLenum}
+     */
+    frontFace: CCW,
 
     /**
      * 是否开启深度测试
