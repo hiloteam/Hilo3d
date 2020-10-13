@@ -120,9 +120,10 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
             this.camera.addTo(this.light);
         }
 
-        if (this._cameraMatrixVersion !== currentCamera.matrixVersion) {
+        if (this.light.isDirty || this._cameraMatrixVersion !== currentCamera.matrixVersion) {
             this.updateLightCamera(currentCamera);
             this._cameraMatrixVersion = currentCamera.matrixVersion;
+            this.light.isDirty = false;
         }
     },
     createShadowMap(currentCamera) {

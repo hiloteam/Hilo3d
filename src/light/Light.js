@@ -82,6 +82,12 @@ const Light = Class.create(/** @lends Light.prototype */ {
      */
     shadow: null,
     /**
+     * 是否光照信息变化
+     * @type {Boolean}
+     * @default false
+     */
+    isDirty: false,
+    /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
