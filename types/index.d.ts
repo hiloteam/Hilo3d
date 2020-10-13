@@ -34,19 +34,435 @@ declare namespace AnimationStates {
  * @example
  * Hilo3d.constants.LINEAR_MIPMAP_NEAREST
  */
-declare const constants: any;
+declare namespace constants {
+    const POSITION: string;
+    const NORMAL: string;
+    const DEPTH: string;
+    const DISTANCE: string;
+    const ACTIVE_ATTRIBUTES: GLenum;
+    const ACTIVE_ATTRIBUTE_MAX_LENGTH: GLenum;
+    const ACTIVE_TEXTURE: GLenum;
+    const ACTIVE_UNIFORMS: GLenum;
+    const ACTIVE_UNIFORM_MAX_LENGTH: GLenum;
+    const ALIASED_LINE_WIDTH_RANGE: GLenum;
+    const ALIASED_POINT_SIZE_RANGE: GLenum;
+    const ALPHA: GLenum;
+    const ALPHA_BITS: GLenum;
+    const ALWAYS: GLenum;
+    const ARRAY_BUFFER: GLenum;
+    const ARRAY_BUFFER_BINDING: GLenum;
+    const ATTACHED_SHADERS: GLenum;
+    const BACK: GLenum;
+    const BLEND: GLenum;
+    const BLEND_COLOR: GLenum;
+    const BLEND_DST_ALPHA: GLenum;
+    const BLEND_DST_RGB: GLenum;
+    const BLEND_EQUATION: GLenum;
+    const BLEND_EQUATION_ALPHA: GLenum;
+    const BLEND_EQUATION_RGB: GLenum;
+    const BLEND_SRC_ALPHA: GLenum;
+    const BLEND_SRC_RGB: GLenum;
+    const BLUE_BITS: GLenum;
+    const BOOL: GLenum;
+    const BOOL_VEC2: GLenum;
+    const BOOL_VEC3: GLenum;
+    const BOOL_VEC4: GLenum;
+    const BROWSER_DEFAULT_WEBGL: GLenum;
+    const BUFFER_SIZE: GLenum;
+    const BUFFER_USAGE: GLenum;
+    const BYTE: GLenum;
+    const CCW: GLenum;
+    const CLAMP_TO_EDGE: GLenum;
+    const COLOR_ATTACHMENT0: GLenum;
+    const COLOR_BUFFER_BIT: GLenum;
+    const COLOR_CLEAR_VALUE: GLenum;
+    const COLOR_WRITEMASK: GLenum;
+    const COMPILE_STATUS: GLenum;
+    const COMPRESSED_TEXTURE_FORMATS: GLenum;
+    const CONSTANT_ALPHA: GLenum;
+    const CONSTANT_COLOR: GLenum;
+    const CONTEXT_LOST_WEBGL: GLenum;
+    const CULL_FACE: GLenum;
+    const CULL_FACE_MODE: GLenum;
+    const CURRENT_PROGRAM: GLenum;
+    const CURRENT_VERTEX_ATTRIB: GLenum;
+    const CW: GLenum;
+    const DECR: GLenum;
+    const DECR_WRAP: GLenum;
+    const DELETE_STATUS: GLenum;
+    const DEPTH_ATTACHMENT: GLenum;
+    const DEPTH_BITS: GLenum;
+    const DEPTH_BUFFER_BIT: GLenum;
+    const DEPTH_CLEAR_VALUE: GLenum;
+    const DEPTH_COMPONENT: GLenum;
+    const DEPTH_COMPONENT16: GLenum;
+    const DEPTH_FUNC: GLenum;
+    const DEPTH_RANGE: GLenum;
+    const DEPTH_STENCIL: GLenum;
+    const DEPTH_STENCIL_ATTACHMENT: GLenum;
+    const DEPTH_TEST: GLenum;
+    const DEPTH_WRITEMASK: GLenum;
+    const DITHER: GLenum;
+    const DONT_CARE: GLenum;
+    const DST_ALPHA: GLenum;
+    const DST_COLOR: GLenum;
+    const DYNAMIC_DRAW: GLenum;
+    const ELEMENT_ARRAY_BUFFER: GLenum;
+    const ELEMENT_ARRAY_BUFFER_BINDING: GLenum;
+    const EQUAL: GLenum;
+    const FASTEST: GLenum;
+    const FLOAT: GLenum;
+    const FLOAT_MAT2: GLenum;
+    const FLOAT_MAT3: GLenum;
+    const FLOAT_MAT4: GLenum;
+    const FLOAT_VEC2: GLenum;
+    const FLOAT_VEC3: GLenum;
+    const FLOAT_VEC4: GLenum;
+    const FRAGMENT_SHADER: GLenum;
+    const FRAMEBUFFER: GLenum;
+    const FRAMEBUFFER_ATTACHMENT_OBJECT_NAME: GLenum;
+    const FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE: GLenum;
+    const FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE: GLenum;
+    const FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL: GLenum;
+    const FRAMEBUFFER_BINDING: GLenum;
+    const FRAMEBUFFER_COMPLETE: GLenum;
+    const FRAMEBUFFER_INCOMPLETE_ATTACHMENT: GLenum;
+    const FRAMEBUFFER_INCOMPLETE_DIMENSIONS: GLenum;
+    const FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT: GLenum;
+    const FRAMEBUFFER_UNSUPPORTED: GLenum;
+    const FRONT: GLenum;
+    const FRONT_AND_BACK: GLenum;
+    const FRONT_FACE: GLenum;
+    const FUNC_ADD: GLenum;
+    const FUNC_REVERSE_SUBTRACT: GLenum;
+    const FUNC_SUBTRACT: GLenum;
+    const GENERATE_MIPMAP_HINT: GLenum;
+    const GEQUAL: GLenum;
+    const GREATER: GLenum;
+    const GREEN_BITS: GLenum;
+    const HIGH_FLOAT: GLenum;
+    const HIGH_INT: GLenum;
+    const INCR: GLenum;
+    const INCR_WRAP: GLenum;
+    const INFO_LOG_LENGTH: GLenum;
+    const INT: GLenum;
+    const INT_VEC2: GLenum;
+    const INT_VEC3: GLenum;
+    const INT_VEC4: GLenum;
+    const INVALID_ENUM: GLenum;
+    const INVALID_FRAMEBUFFER_OPERATION: GLenum;
+    const INVALID_OPERATION: GLenum;
+    const INVALID_VALUE: GLenum;
+    const INVERT: GLenum;
+    const KEEP: GLenum;
+    const LEQUAL: GLenum;
+    const LESS: GLenum;
+    const LINEAR: GLenum;
+    const LINEAR_MIPMAP_LINEAR: GLenum;
+    const LINEAR_MIPMAP_NEAREST: GLenum;
+    const LINES: GLenum;
+    const LINE_LOOP: GLenum;
+    const LINE_STRIP: GLenum;
+    const LINE_WIDTH: GLenum;
+    const LINK_STATUS: GLenum;
+    const LOW_FLOAT: GLenum;
+    const LOW_INT: GLenum;
+    const LUMINANCE: GLenum;
+    const LUMINANCE_ALPHA: GLenum;
+    const MAX_COMBINED_TEXTURE_IMAGE_UNITS: GLenum;
+    const MAX_CUBE_MAP_TEXTURE_SIZE: GLenum;
+    const MAX_FRAGMENT_UNIFORM_VECTORS: GLenum;
+    const MAX_RENDERBUFFER_SIZE: GLenum;
+    const MAX_TEXTURE_IMAGE_UNITS: GLenum;
+    const MAX_TEXTURE_SIZE: GLenum;
+    const MAX_VARYING_VECTORS: GLenum;
+    const MAX_VERTEX_ATTRIBS: GLenum;
+    const MAX_VERTEX_TEXTURE_IMAGE_UNITS: GLenum;
+    const MAX_VERTEX_UNIFORM_VECTORS: GLenum;
+    const MAX_VIEWPORT_DIMS: GLenum;
+    const MEDIUM_FLOAT: GLenum;
+    const MEDIUM_INT: GLenum;
+    const MIRRORED_REPEAT: GLenum;
+    const NEAREST: GLenum;
+    const NEAREST_MIPMAP_LINEAR: GLenum;
+    const NEAREST_MIPMAP_NEAREST: GLenum;
+    const NEVER: GLenum;
+    const NICEST: GLenum;
+    const NONE: GLenum;
+    const NOTEQUAL: GLenum;
+    const NO_ERROR: GLenum;
+    const NUM_COMPRESSED_TEXTURE_FORMATS: GLenum;
+    const ONE: GLenum;
+    const ONE_MINUS_CONSTANT_ALPHA: GLenum;
+    const ONE_MINUS_CONSTANT_COLOR: GLenum;
+    const ONE_MINUS_DST_ALPHA: GLenum;
+    const ONE_MINUS_DST_COLOR: GLenum;
+    const ONE_MINUS_SRC_ALPHA: GLenum;
+    const ONE_MINUS_SRC_COLOR: GLenum;
+    const OUT_OF_MEMORY: GLenum;
+    const PACK_ALIGNMENT: GLenum;
+    const POINTS: GLenum;
+    const POLYGON_OFFSET_FACTOR: GLenum;
+    const POLYGON_OFFSET_FILL: GLenum;
+    const POLYGON_OFFSET_UNITS: GLenum;
+    const RED_BITS: GLenum;
+    const RENDERBUFFER: GLenum;
+    const RENDERBUFFER_ALPHA_SIZE: GLenum;
+    const RENDERBUFFER_BINDING: GLenum;
+    const RENDERBUFFER_BLUE_SIZE: GLenum;
+    const RENDERBUFFER_DEPTH_SIZE: GLenum;
+    const RENDERBUFFER_GREEN_SIZE: GLenum;
+    const RENDERBUFFER_HEIGHT: GLenum;
+    const RENDERBUFFER_INTERNAL_FORMAT: GLenum;
+    const RENDERBUFFER_RED_SIZE: GLenum;
+    const RENDERBUFFER_STENCIL_SIZE: GLenum;
+    const RENDERBUFFER_WIDTH: GLenum;
+    const RENDERER: GLenum;
+    const REPEAT: GLenum;
+    const REPLACE: GLenum;
+    const RGB: GLenum;
+    const RGB5_A1: GLenum;
+    const RGB565: GLenum;
+    const RGBA: GLenum;
+    const RGBA4: GLenum;
+    const SAMPLER_2D: GLenum;
+    const SAMPLER_CUBE: GLenum;
+    const SAMPLES: GLenum;
+    const SAMPLE_ALPHA_TO_COVERAGE: GLenum;
+    const SAMPLE_BUFFERS: GLenum;
+    const SAMPLE_COVERAGE: GLenum;
+    const SAMPLE_COVERAGE_INVERT: GLenum;
+    const SAMPLE_COVERAGE_VALUE: GLenum;
+    const SCISSOR_BOX: GLenum;
+    const SCISSOR_TEST: GLenum;
+    const SHADER_COMPILER: GLenum;
+    const SHADER_SOURCE_LENGTH: GLenum;
+    const SHADER_TYPE: GLenum;
+    const SHADING_LANGUAGE_VERSION: GLenum;
+    const SHORT: GLenum;
+    const SRC_ALPHA: GLenum;
+    const SRC_ALPHA_SATURATE: GLenum;
+    const SRC_COLOR: GLenum;
+    const STATIC_DRAW: GLenum;
+    const STENCIL_ATTACHMENT: GLenum;
+    const STENCIL_BACK_FAIL: GLenum;
+    const STENCIL_BACK_FUNC: GLenum;
+    const STENCIL_BACK_PASS_DEPTH_FAIL: GLenum;
+    const STENCIL_BACK_PASS_DEPTH_PASS: GLenum;
+    const STENCIL_BACK_REF: GLenum;
+    const STENCIL_BACK_VALUE_MASK: GLenum;
+    const STENCIL_BACK_WRITEMASK: GLenum;
+    const STENCIL_BITS: GLenum;
+    const STENCIL_BUFFER_BIT: GLenum;
+    const STENCIL_CLEAR_VALUE: GLenum;
+    const STENCIL_FAIL: GLenum;
+    const STENCIL_FUNC: GLenum;
+    const STENCIL_INDEX: GLenum;
+    const STENCIL_INDEX8: GLenum;
+    const STENCIL_PASS_DEPTH_FAIL: GLenum;
+    const STENCIL_PASS_DEPTH_PASS: GLenum;
+    const STENCIL_REF: GLenum;
+    const STENCIL_TEST: GLenum;
+    const STENCIL_VALUE_MASK: GLenum;
+    const STENCIL_WRITEMASK: GLenum;
+    const STREAM_DRAW: GLenum;
+    const SUBPIXEL_BITS: GLenum;
+    const TEXTURE: GLenum;
+    const TEXTURE0: GLenum;
+    const TEXTURE1: GLenum;
+    const TEXTURE2: GLenum;
+    const TEXTURE3: GLenum;
+    const TEXTURE4: GLenum;
+    const TEXTURE5: GLenum;
+    const TEXTURE6: GLenum;
+    const TEXTURE7: GLenum;
+    const TEXTURE8: GLenum;
+    const TEXTURE9: GLenum;
+    const TEXTURE10: GLenum;
+    const TEXTURE11: GLenum;
+    const TEXTURE12: GLenum;
+    const TEXTURE13: GLenum;
+    const TEXTURE14: GLenum;
+    const TEXTURE15: GLenum;
+    const TEXTURE16: GLenum;
+    const TEXTURE17: GLenum;
+    const TEXTURE18: GLenum;
+    const TEXTURE19: GLenum;
+    const TEXTURE20: GLenum;
+    const TEXTURE21: GLenum;
+    const TEXTURE22: GLenum;
+    const TEXTURE23: GLenum;
+    const TEXTURE24: GLenum;
+    const TEXTURE25: GLenum;
+    const TEXTURE26: GLenum;
+    const TEXTURE27: GLenum;
+    const TEXTURE28: GLenum;
+    const TEXTURE29: GLenum;
+    const TEXTURE30: GLenum;
+    const TEXTURE31: GLenum;
+    const TEXTURE_2D: GLenum;
+    const TEXTURE_BINDING_2D: GLenum;
+    const TEXTURE_BINDING_CUBE_MAP: GLenum;
+    const TEXTURE_CUBE_MAP: GLenum;
+    const TEXTURE_CUBE_MAP_NEGATIVE_X: GLenum;
+    const TEXTURE_CUBE_MAP_NEGATIVE_Y: GLenum;
+    const TEXTURE_CUBE_MAP_NEGATIVE_Z: GLenum;
+    const TEXTURE_CUBE_MAP_POSITIVE_X: GLenum;
+    const TEXTURE_CUBE_MAP_POSITIVE_Y: GLenum;
+    const TEXTURE_CUBE_MAP_POSITIVE_Z: GLenum;
+    const TEXTURE_MAG_FILTER: GLenum;
+    const TEXTURE_MIN_FILTER: GLenum;
+    const TEXTURE_WRAP_S: GLenum;
+    const TEXTURE_WRAP_T: GLenum;
+    const TRIANGLES: GLenum;
+    const TRIANGLE_FAN: GLenum;
+    const TRIANGLE_STRIP: GLenum;
+    const UNPACK_ALIGNMENT: GLenum;
+    const UNPACK_COLORSPACE_CONVERSION_WEBGL: GLenum;
+    const UNPACK_FLIP_Y_WEBGL: GLenum;
+    const UNPACK_PREMULTIPLY_ALPHA_WEBGL: GLenum;
+    const UNSIGNED_BYTE: GLenum;
+    const UNSIGNED_INT: GLenum;
+    const UNSIGNED_SHORT: GLenum;
+    const UNSIGNED_SHORT_4_4_4_4: GLenum;
+    const UNSIGNED_SHORT_5_5_5_1: GLenum;
+    const UNSIGNED_SHORT_5_6_5: GLenum;
+    const VALIDATE_STATUS: GLenum;
+    const VENDOR: GLenum;
+    const VERSION: GLenum;
+    const VERTEX_ATTRIB_ARRAY_BUFFER_BINDING: GLenum;
+    const VERTEX_ATTRIB_ARRAY_ENABLED: GLenum;
+    const VERTEX_ATTRIB_ARRAY_NORMALIZED: GLenum;
+    const VERTEX_ATTRIB_ARRAY_POINTER: GLenum;
+    const VERTEX_ATTRIB_ARRAY_SIZE: GLenum;
+    const VERTEX_ATTRIB_ARRAY_STRIDE: GLenum;
+    const VERTEX_ATTRIB_ARRAY_TYPE: GLenum;
+    const VERTEX_SHADER: GLenum;
+    const VIEWPORT: GLenum;
+    const ZERO: GLenum;
+    const VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE: GLenum;
+    const UNMASKED_VENDOR_WEBGL: GLenum;
+    const UNMASKED_RENDERER_WEBGL: GLenum;
+    const MAX_TEXTURE_MAX_ANISOTROPY_EXT: GLenum;
+    const TEXTURE_MAX_ANISOTROPY_EXT: GLenum;
+    const COMPRESSED_RGB_S3TC_DXT1_EXT: GLenum;
+    const COMPRESSED_RGBA_S3TC_DXT1_EXT: GLenum;
+    const COMPRESSED_RGBA_S3TC_DXT3_EXT: GLenum;
+    const COMPRESSED_RGBA_S3TC_DXT5_EXT: GLenum;
+    const COMPRESSED_R11_EAC: GLenum;
+    const COMPRESSED_SIGNED_R11_EAC: GLenum;
+    const COMPRESSED_RG11_EAC: GLenum;
+    const COMPRESSED_SIGNED_RG11_EAC: GLenum;
+    const COMPRESSED_RGB8_ETC2: GLenum;
+    const COMPRESSED_RGBA8_ETC2_EAC: GLenum;
+    const COMPRESSED_SRGB8_ETC2: GLenum;
+    const COMPRESSED_SRGB8_ALPHA8_ETC2_EAC: GLenum;
+    const COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2: GLenum;
+    const COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2: GLenum;
+    const COMPRESSED_RGB_PVRTC_4BPPV1_IMG: GLenum;
+    const COMPRESSED_RGBA_PVRTC_4BPPV1_IMG: GLenum;
+    const COMPRESSED_RGB_PVRTC_2BPPV1_IMG: GLenum;
+    const COMPRESSED_RGBA_PVRTC_2BPPV1_IMG: GLenum;
+    const COMPRESSED_RGB_ETC1_WEBGL: GLenum;
+    const COMPRESSED_RGB_ATC_WEBGL: GLenum;
+    const COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL: GLenum;
+    const COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL: GLenum;
+    const UNSIGNED_INT_24_8_WEBGL: GLenum;
+    const HALF_FLOAT_OES: GLenum;
+    const RGBA32F_EXT: GLenum;
+    const RGB32F_EXT: GLenum;
+    const FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT: GLenum;
+    const UNSIGNED_NORMALIZED_EXT: GLenum;
+    const MIN_EXT: GLenum;
+    const MAX_EXT: GLenum;
+    const SRGB_EXT: GLenum;
+    const SRGB_ALPHA_EXT: GLenum;
+    const SRGB8_ALPHA8_EXT: GLenum;
+    const FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT: GLenum;
+    const FRAGMENT_SHADER_DERIVATIVE_HINT_OES: GLenum;
+    const COLOR_ATTACHMENT0_WEBGL: GLenum;
+    const COLOR_ATTACHMENT1_WEBGL: GLenum;
+    const COLOR_ATTACHMENT2_WEBGL: GLenum;
+    const COLOR_ATTACHMENT3_WEBGL: GLenum;
+    const COLOR_ATTACHMENT4_WEBGL: GLenum;
+    const COLOR_ATTACHMENT5_WEBGL: GLenum;
+    const COLOR_ATTACHMENT6_WEBGL: GLenum;
+    const COLOR_ATTACHMENT7_WEBGL: GLenum;
+    const COLOR_ATTACHMENT8_WEBGL: GLenum;
+    const COLOR_ATTACHMENT9_WEBGL: GLenum;
+    const COLOR_ATTACHMENT10_WEBGL: GLenum;
+    const COLOR_ATTACHMENT11_WEBGL: GLenum;
+    const COLOR_ATTACHMENT12_WEBGL: GLenum;
+    const COLOR_ATTACHMENT13_WEBGL: GLenum;
+    const COLOR_ATTACHMENT14_WEBGL: GLenum;
+    const COLOR_ATTACHMENT15_WEBGL: GLenum;
+    const DRAW_BUFFER0_WEBGL: GLenum;
+    const DRAW_BUFFER1_WEBGL: GLenum;
+    const DRAW_BUFFER2_WEBGL: GLenum;
+    const DRAW_BUFFER3_WEBGL: GLenum;
+    const DRAW_BUFFER4_WEBGL: GLenum;
+    const DRAW_BUFFER5_WEBGL: GLenum;
+    const DRAW_BUFFER6_WEBGL: GLenum;
+    const DRAW_BUFFER7_WEBGL: GLenum;
+    const DRAW_BUFFER8_WEBGL: GLenum;
+    const DRAW_BUFFER9_WEBGL: GLenum;
+    const DRAW_BUFFER10_WEBGL: GLenum;
+    const DRAW_BUFFER11_WEBGL: GLenum;
+    const DRAW_BUFFER12_WEBGL: GLenum;
+    const DRAW_BUFFER13_WEBGL: GLenum;
+    const DRAW_BUFFER14_WEBGL: GLenum;
+    const DRAW_BUFFER15_WEBGL: GLenum;
+    const MAX_COLOR_ATTACHMENTS_WEBGL: GLenum;
+    const MAX_DRAW_BUFFERS_WEBGL: GLenum;
+    const VERTEX_ARRAY_BINDING_OES: GLenum;
+    const QUERY_COUNTER_BITS_EXT: GLenum;
+    const CURRENT_QUERY_EXT: GLenum;
+    const QUERY_RESULT_EXT: GLenum;
+    const QUERY_RESULT_AVAILABLE_EXT: GLenum;
+    const TIME_ELAPSED_EXT: GLenum;
+    const TIMESTAMP_EXT: GLenum;
+    const GPU_DISJOINT_EXT: GLenum;
+}
 
 /**
  * Class是提供类的创建的辅助工具。
+ * @example
+ * const Bird = Hilo3d.Class.create({
+ *     Extends: Animal,
+ *     Mixes: EventMixin,
+ *     constructor: function(name){
+ *         this.name = name;
+ *     },
+ *     fly: function(){
+ *         console.log('I am flying');
+ *     },
+ *     Statics: {
+ *         isBird: function(bird){
+ *             return bird instanceof Bird;
+ *         }
+ *     }
+ * });
+ *
+ * const swallow = new Bird('swallow');
+ * swallow.fly();
+ * Bird.isBird(swallow);
  */
 declare namespace Class {
     /**
-     * @param params - 类属性
-     * @param [params.Statics] - 静态属性
-     * @param [params.Extends] - 继承
-     * @param [params.Mixes] - mixes
+     * 混入属性或方法。
+     * @param target - 混入目标对象。
+     * @param source - 要混入的属性和方法来源。可支持多个来源参数。
+     * @returns 混入目标对象。
+     */
+    function mix(target: any, ...source: any[]): any;
+    /**
+     * 根据参数指定的属性和方法创建类。
+     * @param params - 要创建的类的相关属性和方法。
+     * @param [params.Statics] - 指定类的静态属性或方法。
+     * @param [params.Extends] - 指定要继承的父类。
+     * @param [params.Mixes] - 指定要混入的成员集合对象
      * @param [params.constructor] - 构造函数
-     * @param params.[value:string] - 其它属性
+     * @param params.[value:string] - 其他创建类的成员属性或方法。
      */
     function create(params: {
         Statics?: any;
@@ -701,6 +1117,104 @@ declare namespace WebGLSupport {
 }
 
 /**
+ * 浏览器特性集合
+ */
+declare namespace browser {
+    /**
+     * 是否是iphone
+     */
+    const iphone: boolean;
+    /**
+     * 是否是ipad
+     */
+    const ipad: boolean;
+    /**
+     * 是否是ipod
+     */
+    const ipod: boolean;
+    /**
+     * 是否是ios
+     */
+    const ios: boolean;
+    /**
+     * 是否是android
+     */
+    const android: boolean;
+    /**
+     * 是否是webkit
+     */
+    const webkit: boolean;
+    /**
+     * 是否是chrome
+     */
+    const chrome: boolean;
+    /**
+     * 是否是safari
+     */
+    const safari: boolean;
+    /**
+     * 是否是firefox
+     */
+    const firefox: boolean;
+    /**
+     * 是否是ie
+     */
+    const ie: boolean;
+    /**
+     * 是否是opera
+     */
+    const opera: boolean;
+    /**
+     * 是否支持触碰事件。
+     */
+    const supportTouch: boolean;
+    /**
+     * 是否支持canvas元素。
+     */
+    const supportCanvas: boolean;
+    /**
+     * 是否支持本地存储localStorage。
+     */
+    const supportStorage: boolean;
+    /**
+     * 是否支持检测设备方向orientation。
+     */
+    const supportOrientation: boolean;
+    /**
+     * 是否支持检测加速度devicemotion。
+     */
+    const supportDeviceMotion: boolean;
+    /**
+     * 浏览器厂商CSS前缀的js值。比如：webkit。
+     */
+    const jsVendor: string;
+    /**
+     * 浏览器厂商CSS前缀的css值。比如：-webkit-。
+     */
+    const cssVendor: string;
+    /**
+     * 是否支持CSS Transform变换。
+     */
+    const supportTransform: boolean;
+    /**
+     * 是否支持CSS Transform 3D变换。
+     */
+    const supportTransform3D: boolean;
+    /**
+     * 鼠标或触碰开始事件。对应touchstart或mousedown。
+     */
+    const POINTER_START: string;
+    /**
+     * 鼠标或触碰移动事件。对应touchmove或mousemove。
+     */
+    const POINTER_MOVE: string;
+    /**
+     * 鼠标或触碰结束事件。对应touchend或mouseup。
+     */
+    const POINTER_END: string;
+}
+
+/**
  * 向 Web 控制台输出一条消息，可以通过设置等级过滤输出的消息。
  * @example
  * Hilo3d.log.level = Hilo3d.log.LEVEL_LOG | Hilo3d.log.LEVEL_ERROR;
@@ -873,38 +1387,51 @@ declare namespace util {
 
 /**
  * Ticker是一个定时器类。它可以按指定帧率重复运行，从而按计划执行代码。
+ * @param [fps] - 指定定时器的运行帧率。默认60。
  */
 declare class Ticker {
+    constructor(fps?: number);
     /**
-     * 添加定时器对象。定时器对象必须实现 tick 方法。
-     * @param tickObject
+     * 启动定时器。
+     * @param [userRAF = true] - 是否使用requestAnimationFrame，默认为true。
      */
-    addTick(tickObject: any): void;
+    start(userRAF?: boolean): void;
     /**
-     * 删除定时器对象。
-     * @param tickObject
-     */
-    removeTick(tickObject: any): void;
-    /**
-     * 开始计时器
-     */
-    start(): void;
-    /**
-     * 停止计时器
+     * 停止定时器。
      */
     stop(): void;
     /**
-     * 暂停计时器
+     * 暂停定时器。
      */
     pause(): void;
     /**
-     * 恢复计时器
+     * 恢复定时器。
      */
     resume(): void;
     /**
+     * 获得测定的运行时帧率。
+     */
+    getMeasuredFPS(): number;
+    /**
+     * 添加定时器对象。定时器对象必须实现 tick 方法。
+     * @param ticker - 对象
+     */
+    addTick(ticker: any): void;
+    /**
+     * 删除定时器对象。
+     * @param tickObject - 要删除的定时器对象。
+     */
+    removeTick(tickObject: any): void;
+    /**
+     * 下次tick时回调
+     * @param callback
+     * @returns tickObject 定时器对象
+     */
+    nextTick(callback: (...params: any[]) => any): any;
+    /**
      * 延迟指定的时间后调用回调, 类似setTimeout
      * @param callback
-     * @param duration - 时间周期，单位毫秒
+     * @param duration - 延迟的毫秒数
      * @returns tickObject 定时器对象
      */
     timeout(callback: (...params: any[]) => any, duration: number): any;
@@ -915,16 +1442,6 @@ declare class Ticker {
      * @returns tickObject 定时器对象
      */
     interval(callback: (...params: any[]) => any, duration: number): any;
-    /**
-     * 下次tick时回调
-     * @param callback
-     * @returns tickObject 定时器对象
-     */
-    nextTick(callback: (...params: any[]) => any): any;
-    /**
-     * 获得测定的运行时帧率。
-     */
-    getMeasuredFPS(): number;
 }
 
 /**
@@ -4787,6 +5304,10 @@ declare class Material {
      */
     wireframe: boolean;
     /**
+     * front face winding orientation
+     */
+    frontFace: GLenum;
+    /**
      * 是否开启深度测试
      */
     depthTest: boolean;
@@ -5742,6 +6263,10 @@ declare class Light extends Node {
          */
         cameraInfo?: any;
     };
+    /**
+     * 是否光照信息变化
+     */
+    isDirty: boolean;
     /**
      * 灯光颜色
      */

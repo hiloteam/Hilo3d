@@ -1,3 +1,17 @@
+## [1.15.10](https://github.com/hiloteam/Hilo3d/compare/1.15.9...1.15.10) (2020-10-13)
+
+
+### Bug Fixes
+
+* Add light.isDirty and fix the bug that directionalLight lignt shadow does not update ([d808a89](https://github.com/hiloteam/Hilo3d/commit/d808a8992366c9d7537a26836f472bfd4ae1d051))
+
+
+### Features
+
+* add material.frontFace ([ef85b56](https://github.com/hiloteam/Hilo3d/commit/ef85b56f2eb1170ac2763deee2d059d514c08297))
+
+
+
 ## [1.15.9](https://github.com/hiloteam/Hilo3d/compare/1.15.8...1.15.9) (2020-09-10)
 
 
