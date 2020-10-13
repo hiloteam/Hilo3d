@@ -102,6 +102,10 @@
                 // },
                 debug: true
             },
+            onUpdate: function() {
+                this.direction.rotateY(new Hilo3d.Vector3(0, 0, 0), Math.PI/180);
+                this.isDirty = true;
+            }
         }).addTo(stage);
 
         var box = new Hilo3d.Mesh({
