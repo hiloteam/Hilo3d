@@ -241,9 +241,10 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 type = gl.FLOAT,
                 normalized = false,
                 stride = 0,
-                offset = 0
+                offset = 0,
+                size = glTypeInfo.size,
             }) => {
-                gl.vertexAttribPointer(location, glTypeInfo.size, type, normalized, stride, offset);
+                gl.vertexAttribPointer(location, size, type, normalized, stride, offset);
             };
             let enable = () => {
                 gl.enableVertexAttribArray(location);
