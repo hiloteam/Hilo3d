@@ -189,7 +189,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
      * 使用XHR加载其他资源
      * @param {string} url 资源地址
      * @param {string} [type=text] 资源类型(json, buffer, text)
-     * @return {Promise.<Object, Error>} 返回加载完的内容对象(Object, ArrayBuffer, String)
+     * @return {Promise.<any, Error>} 返回加载完的内容对象(Object, ArrayBuffer, String)
      */
     loadRes(url, type) {
         if (this.isBase64(url)) {
@@ -234,7 +234,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
      * @param {string} [opt.method=GET] 请求类型(GET, POST ..)
      * @param {object} [opt.headers] 请求头参数
      * @param {string} [opt.body] POST请求发送的数据
-     * @return {Promise.<Object, Error>} 返回加载完的内容对象(Object, ArrayBuffer, String)
+     * @return {Promise.<any, Error>} 返回加载完的内容对象(Object, ArrayBuffer, String)
      */
     request(opt) {
         return new Promise((resolve, reject) => {

@@ -86,6 +86,11 @@ const semantic = {
         camera = this.camera = _camera;
     },
 
+    /**
+     * @param  {Texture|Color} value
+     * @param  {number} textureIndex programInfo.textureIndex
+     * @return {Float32Array|number}
+     */
     handlerColorOrTexture(value, textureIndex) {
         if (value && value.isTexture) {
             return this.handlerTexture(value, textureIndex);
@@ -100,6 +105,11 @@ const semantic = {
         return tempFloat32Array4;
     },
 
+    /**
+     * @param  {Texture} value
+     * @param  {number} textureIndex programInfo.textureIndex
+     * @return {number}
+     */
     handlerTexture(value, textureIndex) {
         if (value && value.isTexture) {
             return this.handlerGLTexture(value.target, value.getGLTexture(state), textureIndex);
@@ -108,6 +118,12 @@ const semantic = {
         return undefined;
     },
 
+    /**
+     * @param  {GLenum} target
+     * @param  {WebGLTexture} texture
+     * @param  {number} textureIndex programInfo.textureIndex
+     * @return {number}
+     */
     handlerGLTexture(target, texture, textureIndex) {
         if (texture) {
             state.activeTexture(gl.TEXTURE0 + textureIndex);
@@ -118,6 +134,10 @@ const semantic = {
         return undefined;
     },
 
+    /**
+     * @param  {Texture} texture
+     * @return {number} uv
+     */
     handlerUV(texture) {
         if (texture && texture.isTexture) {
             return texture.uv || 0;
