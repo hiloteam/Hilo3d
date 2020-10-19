@@ -1,3 +1,12 @@
+## [1.15.11](https://github.com/hiloteam/Hilo3d/compare/1.15.10...1.15.11) (2020-10-19)
+
+
+### Bug Fixes
+
+* attribute pointer should use GeometryData.size ([bdab767](https://github.com/hiloteam/Hilo3d/commit/bdab767f621b17cb5fdd00ce633c1571383f91b0))
+
+
+
 ## [1.15.10](https://github.com/hiloteam/Hilo3d/compare/1.15.9...1.15.10) (2020-10-13)
 
 

@@ -742,6 +742,27 @@ declare namespace semantic {
      * @param _camera
      */
     function setCamera(_camera: Camera): void;
+    /**
+     * @param value
+     * @param textureIndex - programInfo.textureIndex
+     */
+    function handlerColorOrTexture(value: Texture | Color, textureIndex: number): Float32Array | number;
+    /**
+     * @param value
+     * @param textureIndex - programInfo.textureIndex
+     */
+    function handlerTexture(value: Texture, textureIndex: number): number;
+    /**
+     * @param target
+     * @param texture
+     * @param textureIndex - programInfo.textureIndex
+     */
+    function handlerGLTexture(target: GLenum, texture: WebGLTexture, textureIndex: number): number;
+    /**
+     * @param texture
+     * @returns uv
+     */
+    function handlerUV(texture: Texture): number;
     var POSITION: semanticObject;
     var NORMAL: semanticObject;
     var TANGENT: semanticObject;
@@ -6043,7 +6064,7 @@ declare class BasicLoader implements EventMixin {
      * @param [type = text] - 资源类型(json, buffer, text)
      * @returns 返回加载完的内容对象(Object, ArrayBuffer, String)
      */
-    loadRes(url: string, type?: string): Promise<object>;
+    loadRes(url: string, type?: string): Promise<any>;
     /**
      * XHR资源请求
      * @param opt - 请求参数
@@ -6060,7 +6081,7 @@ declare class BasicLoader implements EventMixin {
         method?: string;
         headers?: any;
         body?: string;
-    }): Promise<object>;
+    }): Promise<any>;
     /**
      * 增加一个事件监听。
      * @param type - 要监听的事件类型。

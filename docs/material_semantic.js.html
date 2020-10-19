@@ -1060,6 +1060,14 @@
             
                 <li  data-name="semantic.setCamera"><a href="semantic.html#.setCamera">setCamera</a></li>
             
+                <li  data-name="semantic.handlerColorOrTexture"><a href="semantic.html#.handlerColorOrTexture">handlerColorOrTexture</a></li>
+            
+                <li  data-name="semantic.handlerTexture"><a href="semantic.html#.handlerTexture">handlerTexture</a></li>
+            
+                <li  data-name="semantic.handlerGLTexture"><a href="semantic.html#.handlerGLTexture">handlerGLTexture</a></li>
+            
+                <li  data-name="semantic.handlerUV"><a href="semantic.html#.handlerUV">handlerUV</a></li>
+            
             </ul>
             <ul class="events itemMembers">
             
@@ -8901,6 +8909,11 @@ const semantic = {
         camera = this.camera = _camera;
     },
 
+    /**
+     * @param  {Texture|Color} value
+     * @param  {number} textureIndex programInfo.textureIndex
+     * @return {Float32Array|number}
+     */
     handlerColorOrTexture(value, textureIndex) {
         if (value &amp;&amp; value.isTexture) {
             return this.handlerTexture(value, textureIndex);
@@ -8915,6 +8928,11 @@ const semantic = {
         return tempFloat32Array4;
     },
 
+    /**
+     * @param  {Texture} value
+     * @param  {number} textureIndex programInfo.textureIndex
+     * @return {number}
+     */
     handlerTexture(value, textureIndex) {
         if (value &amp;&amp; value.isTexture) {
             return this.handlerGLTexture(value.target, value.getGLTexture(state), textureIndex);
@@ -8923,6 +8941,12 @@ const semantic = {
         return undefined;
     },
 
+    /**
+     * @param  {GLenum} target
+     * @param  {WebGLTexture} texture
+     * @param  {number} textureIndex programInfo.textureIndex
+     * @return {number}
+     */
     handlerGLTexture(target, texture, textureIndex) {
         if (texture) {
             state.activeTexture(gl.TEXTURE0 + textureIndex);
@@ -8933,6 +8957,10 @@ const semantic = {
         return undefined;
     },
 
+    /**
+     * @param  {Texture} texture
+     * @return {number} uv
+     */
     handlerUV(texture) {
         if (texture &amp;&amp; texture.isTexture) {
             return texture.uv || 0;
