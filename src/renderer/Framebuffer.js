@@ -289,7 +289,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
      * @param  {Number} [y=0]
      * @param  {Number} [width=1]
      * @param  {Number} [height=1]
-     * @param  {Color} clearColor
+     * @param  {Color} [clearColor=null]
      */
     render(x = 0, y = 0, width = 1, height = 1, clearColor) {
         if (this._isInit) {

@@ -47,6 +47,9 @@ const hilo3dTSDFooter = `
 
 const addHilo3dTSD = () => {
     return src('./types/index.d.ts')
+        .pipe(replace(/declare\s/g, ''))
+        // Fix Hilo3d.log.func return namespace bug
+        .pipe(replace(/:\slog;/g, ': typeof log;'))
         .pipe(replace(/^/, hilo3dTSDHeader))
         .pipe(replace(/$/, hilo3dTSDFooter))
         .pipe(dest('types'));
