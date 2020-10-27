@@ -171,7 +171,7 @@ const semantic = {
      */
     TANGENT: {
         get(mesh, material, programInfo) {
-            const normalMap = material.normalMap;
+            const normalMap = material.normalMap || material.clearcoatNormalMap;
             if (normalMap && normalMap.isTexture) {
                 if (Number(normalMap.uv) === 1) {
                     return mesh.geometry.tangents1;
@@ -1063,6 +1063,22 @@ const semantic = {
             }
             return geometry.weights;
         }
+    },
+
+    CLEARCOATFACTOR: {
+        isDependMesh: false,
+        notSupportInstanced: false,
+        get(mesh, material, programInfo) {
+            return material.clearcoatFactor;
+        }
+    },
+
+    CLEARCOATROUGHNESSFACTOR: {
+        isDependMesh: false,
+        notSupportInstanced: false,
+        get(mesh, material, programInfo) {
+            return material.clearcoatRoughnessFactor;
+        }
     }
 };
 
@@ -1131,7 +1147,10 @@ const semantic = {
     ['METALLICROUGHNESSMAP', 'metallicRoughnessMap'],
     ['OCCLUSIONMAP', 'occlusionMap'],
     ['SPECULARGLOSSINESSMAP', 'specularGlossinessMap'],
-    ['LIGHTMAP', 'lightMap']
+    ['LIGHTMAP', 'lightMap'],
+    ['CLEARCOATMAP', 'clearcoatMap'],
+    ['CLEARCOATROUGHNESSMAP', 'clearcoatRoughnessMap'],
+    ['CLEARCOATNORMALMAP', 'clearcoatNormalMap'],
 ].forEach((info) => {
     const [
         semanticName,

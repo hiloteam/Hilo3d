@@ -70,6 +70,18 @@ uniform vec4 u_baseColor;
         uniform HILO_SAMPLER_2D u_lightMap;
     #endif
 
+    #ifdef HILO_HAS_CLEARCOAT
+        uniform float u_clearcoatFactor;
+        #ifdef HILO_CLEARCOAT_MAP
+            uniform HILO_SAMPLER_2D u_clearcoatMap;
+        #endif
+
+        uniform float u_clearcoatRoughnessFactor;
+        #ifdef HILO_CLEARCOAT_ROUGHNESS_MAP
+            uniform HILO_SAMPLER_2D u_clearcoatRoughnessMap;
+        #endif
+    #endif
+
 
     // PBR Based on https://github.com/KhronosGroup/glTF-WebGL-PBR
 
@@ -122,6 +134,31 @@ uniform vec4 u_baseColor;
     // https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Vendor/EXT_lights_image_based/README.md#rgbd
     vec3 decodeRGBD(in vec4 color){
         return color.rgb / color.a;
+    }
+
+    vec3 getIBLClearCoatContribution(in vec3 N, in vec3 V, vec3 diffuseColor, vec3 specularColor, float ao, float NdotV, float perceptualRoughness) {
+        vec3 color = vec3(.0, .0, .0);
+        #ifdef HILO_SPECULAR_ENV_MAP
+            vec3 R = -normalize(reflect(V, N));
+            vec3 brdf = texture2D(u_brdfLUT, vec2(NdotV, 1.0 - perceptualRoughness)).rgb;
+            #ifdef HILO_IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS
+                float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
+                vec4 specularEnvMap = textureEnvMapIncludeMipmapsLod(u_specularEnvMap, R, lod);
+            #elif HILO_USE_SHADER_TEXTURE_LOD
+                float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
+                vec4 specularEnvMap = textureEnvMapLod(u_specularEnvMap, R, lod);
+            #else
+                vec4 specularEnvMap = textureEnvMap(u_specularEnvMap, R);
+            #endif
+
+            vec3 specularLight = decodeRGBD(specularEnvMap);
+
+            #ifdef HILO_GAMMA_CORRECTION
+                specularLight = sRGBToLinear(specularLight);
+            #endif
+            color.rgb += specularLight * (specularColor * brdf.x + brdf.y) * u_specularEnvIntensity;
+        #endif
+        return color;
     }
 
     vec3 getIBLContribution(in vec3 N, in vec3 V, vec3 diffuseColor, vec3 specularColor, float ao, float NdotV, float perceptualRoughness) {
@@ -188,4 +225,20 @@ uniform vec4 u_baseColor;
         // Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)
         return NdotL * (diffuseContrib + specContrib);
     }
+
+    #ifdef HILO_HAS_CLEARCOAT
+        float calculateClearcoatBRDF(vec3 N, vec3 V, vec3 L, float clearcoatAlphaRoughness, float NdotV) {
+            vec3 H = normalize(L + V);
+            float NdotL = clamp(dot(N, L), 0.001, 1.0);
+            float NdotH = clamp(dot(N, H), 0.0, 1.0);
+            float VdotH = clamp(dot(V, H), 0.0, 1.0);
+
+            float G = geometricOcclusion(NdotL, NdotV, clearcoatAlphaRoughness);
+            float D = microfacetDistribution(clearcoatAlphaRoughness, NdotH);
+
+            float clearcoatLayer = G * D / (4.0 * NdotV);
+
+            return clearcoatLayer;
+        }
+    #endif
 #endif

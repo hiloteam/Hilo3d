@@ -25,7 +25,7 @@ void main(void) {
         vec3 normal = a_normal;
     #endif
 
-    #ifdef HILO_NORMAL_MAP
+    #if defined(HILO_NORMAL_MAP) || defined(HILO_CLEARCOAT_NORMAL_MAP)
         vec4 tangent = a_tangent;
     #endif
 

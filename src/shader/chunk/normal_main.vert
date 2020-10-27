@@ -1,5 +1,5 @@
 #ifdef HILO_HAS_NORMAL
-    #ifdef HILO_NORMAL_MAP
+    #if defined(HILO_NORMAL_MAP) || defined(HILO_CLEARCOAT_NORMAL_MAP)
         vec3 T = normalize(u_normalMatrix * tangent.xyz);
         vec3 N = normalize(u_normalMatrix * normal);
         T = normalize(T - dot(T, N) * N);

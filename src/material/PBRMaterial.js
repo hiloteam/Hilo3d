@@ -198,6 +198,40 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
      */
     specularGlossinessMap: null,
 
+    /**
+     * The clearcoat layer intensity.
+     * @default 0
+     * @type {number}
+     */
+    clearcoatFactor: 0,
+
+    /**
+     * The clearcoat layer intensity texture.
+     * @default null
+     * @type {Texture}
+     */
+    clearcoatMap: null,
+
+    /**
+     * The clearcoat layer roughness.
+     * @default 0
+     * @type {number}
+     */
+    clearcoatRoughnessFactor: 0,
+
+    /**
+     * The clearcoat layer roughness texture.
+     * @default null
+     * @type {Texture}
+     */
+    clearcoatRoughnessMap: null,
+
+    /**
+     * The clearcoat normal map texture.
+     * @default null
+     * @type {Texture}
+     */
+    clearcoatNormalMap: null,
 
     usedUniformVectors: 11,
 
@@ -241,7 +275,9 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
             u_specularEnvMap: 'SPECULARENVMAP',
             u_specularEnvIntensity: 'SPECULARENVINTENSITY',
             u_specularEnvMapMipCount: 'SPECULARENVMAPMIPCOUNT',
-            u_diffuseEnvSphereHarmonics3: 'DIFFUSEENVSPHEREHARMONICS3'
+            u_diffuseEnvSphereHarmonics3: 'DIFFUSEENVSPHEREHARMONICS3',
+            u_clearcoatFactor: 'CLEARCOATFACTOR',
+            u_clearcoatRoughnessFactor: 'CLEARCOATROUGHNESSFACTOR',
         });
 
         this.addTextureUniforms({
@@ -251,7 +287,10 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
             u_metallicRoughnessMap: 'METALLICROUGHNESSMAP',
             u_occlusionMap: 'OCCLUSIONMAP',
             u_specularGlossinessMap: 'SPECULARGLOSSINESSMAP',
-            u_lightMap: 'LIGHTMAP'
+            u_lightMap: 'LIGHTMAP',
+            u_clearcoatMap: 'CLEARCOATMAP',
+            u_clearcoatRoughnessMap: 'CLEARCOATROUGHNESSMAP',
+            u_clearcoatNormalMap: 'CLEARCOATNORMALMAP',
         });
     },
     getRenderOption(option = {}) {
@@ -298,6 +337,23 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
 
         if (this.specularEnvMap && this.isSpecularEnvMapIncludeMipmaps) {
             option.IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS = 1;
+        }
+
+        if (this.clearcoatFactor > 0) {
+            option.HAS_CLEARCOAT = 1;
+            option.HAS_NORMAL = 1;
+
+            if (this.clearcoatMap) {
+                textureOption.add(this.clearcoatMap, 'CLEARCOAT_MAP');
+            }
+
+            if (this.clearcoatNormalMap) {
+                textureOption.add(this.clearcoatNormalMap, 'CLEARCOAT_NORMAL_MAP');
+            }
+
+            if (this.clearcoatRoughnessMap) {
+                textureOption.add(this.clearcoatRoughnessMap, 'CLEARCOAT_ROUGHNESS_MAP');
+            }
         }
 
         textureOption.update();

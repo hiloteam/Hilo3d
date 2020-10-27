@@ -78,6 +78,23 @@ color.a = baseColor.a;
     float NdotV = clamp(abs(dot(N, V)), 0.001, 1.0);
     float alphaRoughness = roughness * roughness;
 
+    #ifdef HILO_HAS_CLEARCOAT
+        float clearcoatFactor = u_clearcoatFactor;
+        #ifdef HILO_CLEARCOAT_MAP
+            clearcoatFactor *= HILO_TEXTURE_2D(u_clearcoatMap).r;
+        #endif
+        float clearcoatRoughnessFactor = u_clearcoatRoughnessFactor;
+        #ifdef HILO_CLEARCOAT_ROUGHNESS_MAP
+            clearcoatRoughnessFactor *= HILO_TEXTURE_2D(u_clearcoatRoughnessMap).g;
+        #endif
+
+        float clearcoatAlphaRoughnessFactor = clearcoatRoughnessFactor * clearcoatRoughnessFactor;
+        vec3 NC = clearcoatNormal;
+        float NCdotV = clamp(abs(dot(NC, V)), 0.001, 1.0);
+        float clearCoatFresnel = 0.04 + (1.0 - 0.04) * pow((1.0 - abs(NCdotV)),5.0);
+        vec3 clearCoatLayer = vec3(0.0);
+    #endif
+
     #ifdef HILO_DIRECTIONAL_LIGHTS
         for(int i = 0;i < HILO_DIRECTIONAL_LIGHTS;i++){
             vec3 lightDir = normalize(-u_directionalLightsInfo[i]);
@@ -88,6 +105,9 @@ color.a = baseColor.a;
                     float bias = HILO_MAX(u_directionalLightsShadowBias[i][1] * (1.0 - dot(N, lightDir)), u_directionalLightsShadowBias[i][0]);
                     shadow = getShadow(u_directionalLightsShadowMap[i], u_directionalLightsShadowMapSize[i], bias, v_fragPos, u_directionalLightSpaceMatrix[i]);
                 }
+            #endif
+            #ifdef HILO_HAS_CLEARCOAT
+                clearCoatLayer += shadow * radiance * calculateClearcoatBRDF(NC, V, lightDir, clearcoatAlphaRoughnessFactor, NCdotV);
             #endif
             color.rgb += shadow * radiance * calculateLo(N, V, lightDir, specularEnvironmentR0, specularEnvironmentR90, alphaRoughness, diffuseColor, NdotV);
         }
@@ -111,6 +131,9 @@ color.a = baseColor.a;
                     shadow = getShadow(u_spotLightsShadowMap[i], u_spotLightsShadowMapSize[i], bias, v_fragPos, u_spotLightSpaceMatrix[i]);
                 }
             #endif
+            #ifdef HILO_HAS_CLEARCOAT
+                clearCoatLayer += shadow * radiance * calculateClearcoatBRDF(NC, V, lightDir, clearcoatAlphaRoughnessFactor, NCdotV);
+            #endif
             color.rgb += shadow * radiance * calculateLo(N, V, lightDir, specularEnvironmentR0, specularEnvironmentR90, alphaRoughness, diffuseColor, NdotV);
         }
     #endif
@@ -131,6 +154,9 @@ color.a = baseColor.a;
             float attenuation = getLightAttenuation(distanceVec, u_pointLightsInfo[i], u_pointLightsRange[i]);
             vec3 radiance = attenuation * u_pointLightsColor[i];
 
+            #ifdef HILO_HAS_CLEARCOAT
+                clearCoatLayer += shadow * radiance * calculateClearcoatBRDF(NC, V, lightDir, clearcoatAlphaRoughnessFactor, NCdotV);
+            #endif
             color.rgb += shadow * radiance * calculateLo(N, V, lightDir, specularEnvironmentR0, specularEnvironmentR90, alphaRoughness, diffuseColor, NdotV);
         }
     #endif
@@ -148,6 +174,9 @@ color.a = baseColor.a;
     #endif
 
     // IBL
+    #ifdef HILO_HAS_CLEARCOAT
+        clearCoatLayer += getIBLClearCoatContribution(NC, V, diffuseColor, vec3(.04), ao, NCdotV, clearcoatRoughnessFactor)/clearCoatFresnel;
+    #endif
     color.rgb += getIBLContribution(N, V, diffuseColor, specularColor, ao, NdotV, roughness);
 
     #if defined(HILO_AMBIENT_LIGHTS) && (defined(HILO_IS_DIFFUESENV_AND_AMBIENTLIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
@@ -160,6 +189,11 @@ color.a = baseColor.a;
         #else
             color.rgb += HILO_TEXTURE_2D(u_emission).rgb;
         #endif
+    #endif
+
+    #ifdef HILO_HAS_CLEARCOAT
+        float t = clearcoatFactor * clearCoatFresnel;
+        color.rgb = color.rgb * (1.0 - t) + clearCoatLayer * t;
     #endif
 #else
     color = baseColor;
