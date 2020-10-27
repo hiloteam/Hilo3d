@@ -177,6 +177,43 @@ export const KHR_materials_pbrSpecularGlossiness = {
     }
 };
 
+export const KHR_materials_clearcoat = {
+    getUsedTextureNameMap(extension, map) {
+        if (extension.clearcoatTexture) {
+            map[extension.clearcoatTexture.index] = true;
+        }
+        if (extension.clearcoatRoughnessTexture) {
+            map[extension.clearcoatRoughnessTexture.index] = true;
+        }
+        if (extension.clearcoatNormalTexture) {
+            map[extension.clearcoatNormalTexture.index] = true;
+        }
+    },
+    parse(info, parser, material) {
+        if (info.clearcoatFactor) {
+            material.clearcoatFactor = info.clearcoatFactor;
+        }
+
+        if (info.clearcoatTexture) {
+            material.clearcoatMap = parser.getTexture(info.clearcoatTexture);
+        }
+
+        if (info.clearcoatRoughnessFactor) {
+            material.clearcoatRoughnessFactor = info.clearcoatRoughnessFactor;
+        }
+
+        if (info.clearcoatRoughnessTexture) {
+            material.clearcoatRoughnessMap = parser.getTexture(info.clearcoatRoughnessTexture);
+        }
+
+        if (info.clearcoatNormalTexture) {
+            material.clearcoatNormalMap = parser.getTexture(info.clearcoatNormalTexture);
+        }
+
+        return material;
+    }
+};
+
 export const KHR_lights_punctual = {
     parse(info, parser, node) {
         if (!parser.isUseExtension(parser.json, 'KHR_lights_punctual') || !parser.json.extensions.KHR_lights_punctual.lights) {

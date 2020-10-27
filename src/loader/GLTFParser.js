@@ -362,15 +362,17 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 if (values.transparencyTexture) {
                     map[values.transparencyTexture.index] = true;
                 }
-                if (this.isUseExtension(values, 'KHR_materials_pbrSpecularGlossiness')) {
-                    const subValues = values.extensions.KHR_materials_pbrSpecularGlossiness;
-                    const extensionHandler = this.getExtensionHandler('KHR_materials_pbrSpecularGlossiness');
-                    extensionHandler.getUsedTextureNameMap(subValues, map, this);
-                } else if (this.isUseExtension(values, 'KHR_techniques_webgl')) {
-                    const subValues = values.extensions.KHR_techniques_webgl;
-                    const extensionHandler = this.getExtensionHandler('KHR_techniques_webgl');
-                    extensionHandler.getUsedTextureNameMap(subValues, map, this);
-                } else if (values.pbrMetallicRoughness) {
+
+                if (values.extensions) {
+                    util.each(values.extensions, (extensionValue, extensionName) => {
+                        const extensionHandler = this.getExtensionHandler(extensionName);
+                        if (extensionHandler && extensionHandler.getUsedTextureNameMap) {
+                            extensionHandler.getUsedTextureNameMap(extensionValue, map, this);
+                        }
+                    });
+                }
+
+                if (!this.isUseExtension(values, 'KHR_materials_pbrSpecularGlossiness') && values.pbrMetallicRoughness) {
                     const subValues = values.pbrMetallicRoughness;
                     if (subValues.baseColorTexture) {
                         map[subValues.baseColorTexture.index] = true;
