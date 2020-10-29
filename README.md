@@ -46,7 +46,9 @@ English | [简体中文](./README_ZH.md)
 
   ![天天惠星球](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/tthxq.gif)
  
-* More cases can be found here: [production](https://seinjs.com/cn/production)
+* More cases can be found here: 
+  [![](https://gw.alicdn.com/tfs/TB1rngb0pT7gK0jSZFpXXaTkpXa-2048-1009.jpg)](https://seinjs.com/cn/production)
+
 ### Examples
 
   * [Index.html](https://hilo3d.js.org/docs/index.html)
