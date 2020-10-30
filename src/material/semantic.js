@@ -176,10 +176,8 @@ const semantic = {
                 if (Number(normalMap.uv) === 1) {
                     return mesh.geometry.tangents1;
                 }
-                return mesh.geometry.tangents;
             }
-
-            return undefined;
+            return mesh.geometry.tangents;
         }
     },
 
