@@ -15,6 +15,8 @@ const {
     SRC_ALPHA,
     ONE_MINUS_SRC_ALPHA,
     CCW,
+    ALWAYS,
+    KEEP,
 } = constants;
 
 const blankInfo = {
@@ -344,6 +346,62 @@ const Material = Class.create(/** @lends Material.prototype */ {
      * @type {GLenum}
      */
     blendDstAlpha: ZERO,
+
+    /**
+     * stencilTest
+     * @type {boolean}
+     * @default 1
+     */
+    stencilTest: false,
+
+    /**
+     * stencilMask
+     * @type {number}
+     * @default 0xff
+     */
+    stencilMask: 0xff,
+
+    /**
+     * stencilFunc func
+     * @type {GLenum}
+     * @default ALWAYS
+     */
+    stencilFunc: ALWAYS,
+
+    /**
+     * stencilFunc ref
+     * @type {number}
+     * @default 1
+     */
+    stencilFuncRef: 1,
+
+    /**
+     * stencilFunc mask
+     * @type {number}
+     * @default 0xff
+     */
+    stencilFuncMask: 0xff,
+
+    /**
+     * stencilOp fail
+     * @type {GLenum}
+     * @default KEEP
+     */
+    stencilOpFail: KEEP,
+
+    /**
+     * stencilOp zfail
+     * @type {GLenum}
+     * @default KEEP
+     */
+    stencilOpZFail: KEEP,
+
+    /**
+     * stencilOp zpass
+     * @type {GLenum}
+     * @default KEEP
+     */
+    stencilOpZPass: KEEP,
 
     /**
      * 当前是否需要强制更新

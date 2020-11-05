@@ -26,6 +26,7 @@ import constants from '../constants';
 
 const {
     DEPTH_TEST,
+    STENCIL_TEST,
     SAMPLE_ALPHA_TO_COVERAGE,
     CULL_FACE,
     FRONT_AND_BACK,
@@ -551,6 +552,27 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             state.disable(BLEND);
         }
     },
+
+    /**
+     * 设置模板
+     * @param  {Material} material
+     */
+    setupStencil(material) {
+        if (!this.stencil) {
+            return;
+        }
+
+        const state = this.state;
+        if (material.stencilTest) {
+            state.enable(STENCIL_TEST);
+            state.stencilMask(material.stencilMask);
+            state.stencilFunc(material.stencilFunc, material.stencilFuncRef, material.stencilFuncMask);
+            state.stencilOp(material.stencilOpFail, material.stencilOpZFail, material.stencilOpZPass);
+        } else {
+            state.disable(STENCIL_TEST);
+        }
+    },
+
     /**
      * 设置通用的 uniform
      * @param  {Program} program
@@ -619,6 +641,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             this.setupSampleAlphaToCoverage(material);
             this.setupCullFace(material);
             this.setupBlend(material);
+            this.setupStencil(material);
             needForceUpdateUniforms = true;
         }
 
@@ -785,11 +808,17 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
         clearColor = clearColor || this.clearColor;
 
-        state.depthMask(true);
         this._lastMaterial = null;
         this._lastProgram = null;
         gl.clearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        state.depthMask(true);
+        let clearMask = gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT;
+        if (this.stencil) {
+            state.stencilMask(true);
+            clearMask |= gl.STENCIL_BUFFER_BIT;
+        }
+        gl.clear(clearMask);
     },
     /**
      * 清除深度
@@ -801,6 +830,17 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         } = this;
         state.depthMask(true);
         gl.clear(gl.DEPTH_BUFFER_BIT);
+    },
+    /**
+     * 清除模板
+     */
+    clearStencil() {
+        const {
+            gl,
+            state
+        } = this;
+        state.stencilMask(true);
+        gl.clear(gl.STENCIL_BUFFER_BIT);
     },
     /**
      * 将framebuffer渲染到屏幕
