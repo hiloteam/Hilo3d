@@ -1,3 +1,19 @@
+## [1.15.12](https://github.com/hiloteam/Hilo3d/compare/1.15.11...1.15.12) (2020-11-05)
+
+
+### Bug Fixes
+
+* Semantic Tangent data should also be returned when there is no normal map ([c7b261b](https://github.com/hiloteam/Hilo3d/commit/c7b261b08803b6c4a0b185a9bac26e8725cf3e5d))
+
+
+### Features
+
+* Add GLTFLoader KHR_materials_clearcoat extension support ([0cfa90c](https://github.com/hiloteam/Hilo3d/commit/0cfa90c5109f8cd06aaa0478cc93fae1e4aeed00))
+* Add material stencil support, close [#30](https://github.com/hiloteam/Hilo3d/issues/30) ([6dbb2c1](https://github.com/hiloteam/Hilo3d/commit/6dbb2c1530e47ba8a5ab5e148cdc4565a921cded))
+* Add PBRMaterial Clearcoat support, close [#15](https://github.com/hiloteam/Hilo3d/issues/15) ([b83cbe6](https://github.com/hiloteam/Hilo3d/commit/b83cbe62dd243e1987573ab85871c5f64aaef68e))
+
+
+
 ## [1.15.11](https://github.com/hiloteam/Hilo3d/compare/1.15.10...1.15.11) (2020-10-19)
 
 

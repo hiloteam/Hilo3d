@@ -13,7 +13,7 @@ type TypedArray =
     | Float32Array
     | Float64Array;
 
-declare namespace AnimationStates {
+namespace AnimationStates {
     /**
      * 状态类型
      */
@@ -34,7 +34,7 @@ declare namespace AnimationStates {
  * @example
  * Hilo3d.constants.LINEAR_MIPMAP_NEAREST
  */
-declare namespace constants {
+namespace constants {
     const POSITION: string;
     const NORMAL: string;
     const DEPTH: string;
@@ -447,7 +447,7 @@ declare namespace constants {
  * swallow.fly();
  * Bird.isBird(swallow);
  */
-declare namespace Class {
+namespace Class {
     /**
      * 混入属性或方法。
      * @param target - 混入目标对象。
@@ -478,7 +478,7 @@ declare namespace Class {
  * @property type - 事件类型
  * @property [detail = null] - 事件数据
  */
-declare interface EventObject {
+interface EventObject {
     /**
      * 事件类型
     */
@@ -496,7 +496,7 @@ declare interface EventObject {
  * @param e.target - 事件触发对象
  * @param e.timeStamp - 时间戳
  */
-declare type EventMixinCallback = (e?: {
+type EventMixinCallback = (e?: {
     type: string;
     detail: any;
     target: any;
@@ -506,7 +506,7 @@ declare type EventMixinCallback = (e?: {
 /**
  * 包围盒信息
  */
-declare type Bounds = {
+type Bounds = {
     /**
      * 包围盒中心的X坐标
      */
@@ -560,7 +560,7 @@ declare type Bounds = {
 /**
  * 碰撞信息
  */
-declare type raycastInfo = {
+type raycastInfo = {
     /**
      * 碰撞的 mesh
      */
@@ -575,13 +575,13 @@ declare type raycastInfo = {
  * Node traverse 回调
  * @param node
  */
-declare type NodeTraverseCallback = (node: Node) => any;
+type NodeTraverseCallback = (node: Node) => any;
 
 /**
  * Node getChildByCallback 回调
  * @param node
  */
-declare type NodeGetChildByCallback = (node: Node) => boolean;
+type NodeGetChildByCallback = (node: Node) => boolean;
 
 /**
  * @property duration
@@ -591,7 +591,7 @@ declare type NodeGetChildByCallback = (node: Node) => boolean;
  * @property [onComplete]
  * @property [onUpdate]
  */
-declare interface TweenParams {
+interface TweenParams {
     duration: number;
     delay?: number | string;
     ease?: (...params: any[]) => any;
@@ -605,7 +605,7 @@ declare interface TweenParams {
  * @property EaseOut
  * @property EaseInOut
  */
-declare interface TweenEaseObject {
+interface TweenEaseObject {
     EaseIn: (...params: any[]) => any;
     EaseOut: (...params: any[]) => any;
     EaseInOut: (...params: any[]) => any;
@@ -616,19 +616,19 @@ declare interface TweenEaseObject {
  * @param index
  * @param offset
  */
-declare type GeometryDataTraverseCallback = (attribute: number | Vector2 | Vector3 | Vector4, index: number, offset: number) => void;
+type GeometryDataTraverseCallback = (attribute: number | Vector2 | Vector3 | Vector4, index: number, offset: number) => void;
 
 /**
  * @param component
  * @param index
  * @param offset
  */
-declare type GeometryDataTraverseByComponentCallback = (component: number, index: number, offset: number) => void;
+type GeometryDataTraverseByComponentCallback = (component: number, index: number, offset: number) => void;
 
 /**
  * GLTFExtension Handler 接口
  */
-declare interface IGLTFExtensionHandler {
+interface IGLTFExtensionHandler {
     /**
      * 解析元素扩展
      * @param [extensionData] - 扩展数据
@@ -677,7 +677,7 @@ declare interface IGLTFExtensionHandler {
 /**
  * GLTFLoader 模型加载完返回的对象格式
  */
-declare type GLTFModel = {
+type GLTFModel = {
     /**
      * 原始数据
      */
@@ -719,7 +719,7 @@ declare type GLTFModel = {
 /**
  * 语义
  */
-declare namespace semantic {
+namespace semantic {
     var state: WebGLState;
     var camera: Camera;
     var lightManager: LightManager;
@@ -854,7 +854,7 @@ declare namespace semantic {
 /**
  * semantic 对象
  */
-declare type semanticObject = {
+type semanticObject = {
     /**
      * 是否依赖 mesh
      */
@@ -872,13 +872,13 @@ declare type semanticObject = {
 /**
  * 含x, y, z属性的对象
  */
-declare type XYZObject = {
+type XYZObject = {
     x: number;
     y: number;
     z: number;
 };
 
-declare namespace math {
+namespace math {
     /**
      * 角度值转弧度值
      */
@@ -932,17 +932,17 @@ declare namespace math {
 /**
  * @param mesh
  */
-declare type RenderListTraverseCallback = (mesh: Mesh) => void;
+type RenderListTraverseCallback = (mesh: Mesh) => void;
 
 /**
  * @param meshes
  */
-declare type RenderListInstancedTraverseCallback = (meshes: Mesh[]) => void;
+type RenderListInstancedTraverseCallback = (meshes: Mesh[]) => void;
 
 /**
  * 顶点对象
  */
-declare type AttributeObject = {
+type AttributeObject = {
     attribute: any;
     buffer: WebGLBuffer;
     geometryData: GeometryData;
@@ -952,7 +952,7 @@ declare type AttributeObject = {
 /**
  * WebGL 能力
  */
-declare namespace capabilities {
+namespace capabilities {
     /**
      * 最大纹理数量
      */
@@ -1009,20 +1009,20 @@ declare namespace capabilities {
     function getMaxPrecision(a: string, b: string): string;
 }
 
-declare type ANGLEInstancedArrays = any;
+type ANGLEInstancedArrays = any;
 
-declare type OESVertexArrayObject = any;
+type OESVertexArrayObject = any;
 
-declare type OESTextureFloat = any;
+type OESTextureFloat = any;
 
-declare type WebGLLoseContext = any;
+type WebGLLoseContext = any;
 
-declare type EXTTextureFilterAnisotropic = any;
+type EXTTextureFilterAnisotropic = any;
 
 /**
  * WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, WEBGL_lose_context, OES_element_index_uint, EXT_shader_texture_lod
  */
-declare namespace extensions {
+namespace extensions {
     /**
      * ANGLE_instanced_arrays扩展
      */
@@ -1079,7 +1079,7 @@ declare namespace extensions {
 
 /**
  */
-declare type glTypeInfo = {
+type glTypeInfo = {
     /**
      * 名字，e.g. FLOAT_VEC2
      */
@@ -1114,7 +1114,7 @@ declare type glTypeInfo = {
     uniformArray: (...params: any[]) => any;
 };
 
-declare namespace glType {
+namespace glType {
     /**
      * init
      * @param gl
@@ -1130,7 +1130,7 @@ declare namespace glType {
 /**
  * WebGL支持检测
  */
-declare namespace WebGLSupport {
+namespace WebGLSupport {
     /**
      * 是否支持 WebGL
      */
@@ -1140,7 +1140,7 @@ declare namespace WebGLSupport {
 /**
  * 浏览器特性集合
  */
-declare namespace browser {
+namespace browser {
     /**
      * 是否是iphone
      */
@@ -1241,7 +1241,7 @@ declare namespace browser {
  * Hilo3d.log.level = Hilo3d.log.LEVEL_LOG | Hilo3d.log.LEVEL_ERROR;
  * Hilo3d.log.error("ERROR!");
  */
-declare namespace log {
+namespace log {
     /**
      * log级别
      */
@@ -1269,7 +1269,7 @@ declare namespace log {
      * @param params
      * @returns this
      */
-    function log(...params: any[]): log;
+    function log(...params: any[]): typeof log;
     /**
      * warn，等同 console.warn
      * @example
@@ -1277,7 +1277,7 @@ declare namespace log {
      * @param params
      * @returns this
      */
-    function warn(...params: any[]): log;
+    function warn(...params: any[]): typeof log;
     /**
      * error，等同 console.error
      * @example
@@ -1285,7 +1285,7 @@ declare namespace log {
      * @param params
      * @returns this
      */
-    function error(...params: any[]): log;
+    function error(...params: any[]): typeof log;
     /**
      * logOnce 相同 id 只 log 一次
      * @example
@@ -1294,7 +1294,7 @@ declare namespace log {
      * @param params
      * @returns this
      */
-    function logOnce(id: string, ...params: any[]): log;
+    function logOnce(id: string, ...params: any[]): typeof log;
     /**
      * warnOnce  相同 id 只 once 一次
      * @example
@@ -1303,7 +1303,7 @@ declare namespace log {
      * @param params
      * @returns this
      */
-    function warnOnce(id: string, ...params: any[]): log;
+    function warnOnce(id: string, ...params: any[]): typeof log;
     /**
      * errorOnce 相同 id 只 error 一次
      * @example
@@ -1312,10 +1312,10 @@ declare namespace log {
      * @param params
      * @returns this
      */
-    function errorOnce(id: string, ...params: any[]): log;
+    function errorOnce(id: string, ...params: any[]): typeof log;
 }
 
-declare namespace util {
+namespace util {
     /**
      * @param basePath
      * @param path
@@ -1410,7 +1410,7 @@ declare namespace util {
  * Ticker是一个定时器类。它可以按指定帧率重复运行，从而按计划执行代码。
  * @param [fps] - 指定定时器的运行帧率。默认60。
  */
-declare class Ticker {
+class Ticker {
     constructor(fps?: number);
     /**
      * 启动定时器。
@@ -1474,7 +1474,7 @@ declare class Ticker {
  * picker.getSelection(20, 20, 1, 1);
  * @param [params] - 创建对象的属性参数，可包含此类的所有属性。
  */
-declare class MeshPicker {
+class MeshPicker {
     constructor(params?: any);
     isMeshPicker: boolean;
     className: string;
@@ -1505,7 +1505,7 @@ declare class MeshPicker {
  * cache.get('id1');
  * cache.remove('id1');
  */
-declare class Cache {
+class Cache {
     /**
      * 获取对象
      * @param id
@@ -1558,7 +1558,7 @@ declare class Cache {
  * });
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class Texture {
+class Texture {
     constructor(params?: any);
     /**
      * 缓存
@@ -1744,7 +1744,7 @@ declare class Texture {
  * @param [params.autoLoad = true] - 是否自动加载
  * @param [params.src] - 图片地址
  */
-declare class LazyTexture extends Texture {
+class LazyTexture extends Texture {
     constructor(params?: {
         crossOrigin?: boolean;
         placeHolder?: HTMLImageElement;
@@ -1794,7 +1794,7 @@ declare class LazyTexture extends Texture {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  * @param [params.data] - 数据
  */
-declare class DataTexture extends Texture {
+class DataTexture extends Texture {
     constructor(params?: {
         data?: any[] | Float32Array;
     });
@@ -1854,7 +1854,7 @@ declare class DataTexture extends Texture {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  * @param [params.image] - 图片列表，共6张
  */
-declare class CubeTexture extends Texture {
+class CubeTexture extends Texture {
     constructor(params?: {
         image?: HTMLImageElement[];
     });
@@ -1903,7 +1903,7 @@ declare class CubeTexture extends Texture {
  * Shader类
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class Shader {
+class Shader {
     constructor(params?: any);
     isShader: boolean;
     className: string;
@@ -2000,7 +2000,7 @@ declare class Shader {
  * WebGL 状态管理，减少 api 调用
  * @param gl
  */
-declare class WebGLState {
+class WebGLState {
     constructor(gl: WebGLRenderingContext);
     className: string;
     isWebGLState: boolean;
@@ -2144,14 +2144,14 @@ declare class WebGLState {
     getActiveTextureUnit(): GLenum;
 }
 
-declare interface WebGLResourceManager extends EventMixin {
+interface WebGLResourceManager extends EventMixin {
 }
 
 /**
  * WebGLResourceManager 资源管理器
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class WebGLResourceManager implements EventMixin {
+class WebGLResourceManager implements EventMixin {
     constructor(params?: any);
     /**
      * 类名
@@ -2186,14 +2186,14 @@ declare class WebGLResourceManager implements EventMixin {
     reset(): WebGLResourceManager;
 }
 
-declare interface WebGLRenderer extends EventMixin {
+interface WebGLRenderer extends EventMixin {
 }
 
 /**
  * WebGL渲染器
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class WebGLRenderer implements EventMixin {
+class WebGLRenderer implements EventMixin {
     constructor(params?: any);
     className: string;
     isWebGLRenderer: boolean;
@@ -2370,6 +2370,11 @@ declare class WebGLRenderer implements EventMixin {
      */
     setupBlend(material: Material): void;
     /**
+     * 设置模板
+     * @param material
+     */
+    setupStencil(material: Material): void;
+    /**
      * 设置通用的 uniform
      * @param program
      * @param mesh
@@ -2426,6 +2431,10 @@ declare class WebGLRenderer implements EventMixin {
      */
     clearDepth(): void;
     /**
+     * 清除模板
+     */
+    clearStencil(): void;
+    /**
      * 将framebuffer渲染到屏幕
      * @param framebuffer
      */
@@ -2457,7 +2466,7 @@ declare class WebGLRenderer implements EventMixin {
  * @param id - 缓存id
  * @param params
  */
-declare class VertexArrayObject {
+class VertexArrayObject {
     constructor(gl: WebGLRenderingContext, id: string, params: any);
     /**
      * 缓存
@@ -2564,7 +2573,7 @@ declare class VertexArrayObject {
 /**
  * 渲染列表
  */
-declare class RenderList {
+class RenderList {
     className: string;
     isRenderList: boolean;
     /**
@@ -2604,7 +2613,7 @@ declare class RenderList {
 /**
  * 渲染信息
  */
-declare class RenderInfo {
+class RenderInfo {
     className: string;
     isRenderInfo: boolean;
     /**
@@ -2635,7 +2644,7 @@ declare class RenderInfo {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  * @param params.state - WebGL state
  */
-declare class Program {
+class Program {
     constructor(params?: {
         state: WebGLState;
     });
@@ -2737,7 +2746,7 @@ declare class Program {
  * @param renderer
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class Framebuffer {
+class Framebuffer {
     constructor(renderer: WebGLRenderer, params?: any);
     /**
      * 缓存
@@ -2833,9 +2842,9 @@ declare class Framebuffer {
      * @param [y = 0]
      * @param [width = 1]
      * @param [height = 1]
-     * @param clearColor
+     * @param [clearColor = null]
      */
-    render(x?: number, y?: number, width?: number, height?: number, clearColor: Color): void;
+    render(x?: number, y?: number, width?: number, height?: number, clearColor?: Color): void;
     /**
      * resize
      * @param width
@@ -2864,7 +2873,7 @@ declare class Framebuffer {
  * @param [data = null]
  * @param [usage = STATIC_DRAW]
  */
-declare class Buffer {
+class Buffer {
     constructor(gl: WebGLRenderingContext, target?: GLenum, data?: TypedArray, usage?: GLenum);
     /**
      * 缓存
@@ -2950,7 +2959,7 @@ declare class Buffer {
  * @param [z = 0] - Z component
  * @param [w = 0] - W component
  */
-declare class Vector4 {
+class Vector4 {
     constructor(x?: number, y?: number, z?: number, w?: number);
     /**
      * 类名
@@ -3196,7 +3205,7 @@ declare class Vector4 {
     sqrLen(): void;
 }
 
-declare interface Vector3Notifier extends EventMixin {
+interface Vector3Notifier extends EventMixin {
 }
 
 /**
@@ -3205,7 +3214,7 @@ declare interface Vector3Notifier extends EventMixin {
  * @param [y = 0] - Y component
  * @param [z = 0] - Z component
  */
-declare class Vector3Notifier extends Vector3 implements EventMixin {
+class Vector3Notifier extends Vector3 implements EventMixin {
     constructor(x?: number, y?: number, z?: number);
     /**
      * 类名  notify
@@ -3236,7 +3245,7 @@ declare class Vector3Notifier extends Vector3 implements EventMixin {
  * @param [y = 0] - Y component
  * @param [z = 0] - Z component
  */
-declare class Vector3 {
+class Vector3 {
     constructor(x?: number, y?: number, z?: number);
     /**
      * 类名
@@ -3543,7 +3552,7 @@ declare class Vector3 {
  * @param [x = 0] - X component
  * @param [y = 0] - Y component
  */
-declare class Vector2 {
+class Vector2 {
     constructor(x?: number, y?: number);
     /**
      * 类名
@@ -3790,7 +3799,7 @@ declare class Vector2 {
 /**
  * SphericalHarmonics3
  */
-declare class SphericalHarmonics3 {
+class SphericalHarmonics3 {
     /**
      * 类名
      */
@@ -3832,7 +3841,7 @@ declare class SphericalHarmonics3 {
 /**
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class Sphere {
+class Sphere {
     constructor(params?: any);
     /**
      * 类名
@@ -3882,7 +3891,7 @@ declare class Sphere {
  * @param [params.origin = new Vector3(0, 0, 0)] - 原点
  * @param [params.direction = new Vector3(0, 0, -1)] - 方向
  */
-declare class Ray {
+class Ray {
     constructor(params?: {
         origin?: Vector3;
         direction?: Vector3;
@@ -3984,7 +3993,7 @@ declare class Ray {
     intersectsTriangleCell(cell: any[], positions: any[]): Vector3;
 }
 
-declare interface Quaternion extends EventMixin {
+interface Quaternion extends EventMixin {
 }
 
 /**
@@ -3993,7 +4002,7 @@ declare interface Quaternion extends EventMixin {
  * @param [z = 0] - Z component
  * @param [w = 1] - W component
  */
-declare class Quaternion implements EventMixin {
+class Quaternion implements EventMixin {
     constructor(x?: number, y?: number, z?: number, w?: number);
     /**
      * 类名
@@ -4275,7 +4284,7 @@ declare class Quaternion implements EventMixin {
  * @param [normal = new Vector3] - 法线
  * @param [distance = 0] - 距离
  */
-declare class Plane {
+class Plane {
     constructor(normal?: Vector3, distance?: number);
     /**
      * 类名
@@ -4322,7 +4331,7 @@ declare class Plane {
 /**
  * 4x4 矩阵, 数据改变会发送事件
  */
-declare class Matrix4Notifier extends Matrix4 {
+class Matrix4Notifier extends Matrix4 {
     /**
      * 类名
      */
@@ -4337,7 +4346,7 @@ declare class Matrix4Notifier extends Matrix4 {
 /**
  * 4x4 矩阵
  */
-declare class Matrix4 {
+class Matrix4 {
     /**
      * 类名
      */
@@ -4681,7 +4690,7 @@ declare class Matrix4 {
 /**
  * 3x3 矩阵
  */
-declare class Matrix3 {
+class Matrix3 {
     /**
      * 类名
      */
@@ -4875,7 +4884,7 @@ declare class Matrix3 {
 /**
  * 平截头体
  */
-declare class Frustum {
+class Frustum {
     /**
      * 类名
      */
@@ -4906,7 +4915,7 @@ declare class Frustum {
     intersectsSphere(sphere: Sphere): boolean;
 }
 
-declare interface EulerNotifier extends EventMixin {
+interface EulerNotifier extends EventMixin {
 }
 
 /**
@@ -4915,7 +4924,7 @@ declare interface EulerNotifier extends EventMixin {
  * @param [y = 0] - 角度 Y, 弧度制
  * @param [z = 0] - 角度 Z, 弧度制
  */
-declare class EulerNotifier extends Euler implements EventMixin {
+class EulerNotifier extends Euler implements EventMixin {
     constructor(x?: number, y?: number, z?: number);
     /**
      * 类名
@@ -4953,7 +4962,7 @@ declare class EulerNotifier extends Euler implements EventMixin {
  * @param [y = 0] - 角度 Y, 弧度制
  * @param [z = 0] - 角度 Z, 弧度制
  */
-declare class Euler {
+class Euler {
     constructor(x?: number, y?: number, z?: number);
     /**
      * 类名
@@ -5050,7 +5059,7 @@ declare class Euler {
  * @param [b = 1]
  * @param [a = 1]
  */
-declare class Color extends Vector4 {
+class Color extends Vector4 {
     constructor(r?: number, g?: number, b?: number, a?: number);
     /**
      * 类名
@@ -5131,7 +5140,7 @@ declare class Color extends Vector4 {
  * });
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class ShaderMaterial extends Material {
+class ShaderMaterial extends Material {
     constructor(params?: any);
     isShaderMaterial: boolean;
     className: string;
@@ -5176,7 +5185,7 @@ declare class ShaderMaterial extends Material {
  * @param [params.specularEnvIntensity = 1] - 环境反射(Specular IBL)贴图强度
  * @param params.[value:string] - 其它属性
  */
-declare class PBRMaterial extends Material {
+class PBRMaterial extends Material {
     constructor(params?: {
         lightType?: string;
         baseColor?: Color;
@@ -5298,13 +5307,33 @@ declare class PBRMaterial extends Material {
      * 镜面反射即光泽度贴图，RGB 通道为镜面反射率，A 通道为光泽度
      */
     specularGlossinessMap: Texture;
+    /**
+     * The clearcoat layer intensity.
+     */
+    clearcoatFactor: number;
+    /**
+     * The clearcoat layer intensity texture.
+     */
+    clearcoatMap: Texture;
+    /**
+     * The clearcoat layer roughness.
+     */
+    clearcoatRoughnessFactor: number;
+    /**
+     * The clearcoat layer roughness texture.
+     */
+    clearcoatRoughnessMap: Texture;
+    /**
+     * The clearcoat normal map texture.
+     */
+    clearcoatNormalMap: Texture;
 }
 
 /**
  * 材质基类，一般不直接使用
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class Material {
+class Material {
     constructor(params?: any);
     isMaterial: boolean;
     className: string;
@@ -5453,6 +5482,38 @@ declare class Material {
      */
     blendDstAlpha: GLenum;
     /**
+     * stencilTest
+     */
+    stencilTest: boolean;
+    /**
+     * stencilMask
+     */
+    stencilMask: number;
+    /**
+     * stencilFunc func
+     */
+    stencilFunc: GLenum;
+    /**
+     * stencilFunc ref
+     */
+    stencilFuncRef: number;
+    /**
+     * stencilFunc mask
+     */
+    stencilFuncMask: number;
+    /**
+     * stencilOp fail
+     */
+    stencilOpFail: GLenum;
+    /**
+     * stencilOp zfail
+     */
+    stencilOpZFail: GLenum;
+    /**
+     * stencilOp zpass
+     */
+    stencilOpZPass: GLenum;
+    /**
      * 当前是否需要强制更新
      */
     isDirty: boolean;
@@ -5536,7 +5597,7 @@ declare class Material {
  * });
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class GeometryMaterial extends BasicMaterial {
+class GeometryMaterial extends BasicMaterial {
     constructor(params?: any);
     isGeometryMaterial: boolean;
     className: string;
@@ -5574,7 +5635,7 @@ declare class GeometryMaterial extends BasicMaterial {
  * @param [params.shininess = 32] - 高光发光值
  * @param params.[value:string] - 其它属性
  */
-declare class BasicMaterial extends Material {
+class BasicMaterial extends Material {
     constructor(params?: {
         lightType?: string;
         diffuse?: Texture | Color;
@@ -5651,7 +5712,7 @@ declare class BasicMaterial extends Material {
  *     ...
  * });
  */
-declare class TextureLoader extends BasicLoader {
+class TextureLoader extends BasicLoader {
     isTextureLoader: boolean;
     className: string;
 }
@@ -5692,13 +5753,13 @@ declare class TextureLoader extends BasicLoader {
  *     stage.addChild(plane);
  * });
  */
-declare class ShaderMaterialLoader extends BasicLoader {
+class ShaderMaterialLoader extends BasicLoader {
     constructor();
     isShaderMaterialLoader: boolean;
     className: string;
 }
 
-declare class Loader {
+class Loader {
     constructor();
     isLoader: boolean;
     className: string;
@@ -5715,7 +5776,7 @@ declare class Loader {
     load(data: any | any[]): Promise<any>;
 }
 
-declare interface LoadQueue extends EventMixin {
+interface LoadQueue extends EventMixin {
 }
 
 /**
@@ -5760,7 +5821,7 @@ declare interface LoadQueue extends EventMixin {
  * }).start();
  * @param [source] - 需要加载的资源列表
  */
-declare class LoadQueue implements EventMixin {
+class LoadQueue implements EventMixin {
     constructor(source?: any[]);
     isLoadQueue: boolean;
     className: string;
@@ -5820,13 +5881,13 @@ declare class LoadQueue implements EventMixin {
     getAllContent(): any[];
 }
 
-declare interface LoadCache extends EventMixin {
+interface LoadCache extends EventMixin {
 }
 
 /**
  * 加载缓存类
  */
-declare class LoadCache implements EventMixin {
+class LoadCache implements EventMixin {
     isLoadCache: boolean;
     className: string;
     /**
@@ -5876,7 +5937,7 @@ declare class LoadCache implements EventMixin {
 /**
  * KTX 加载器
  */
-declare class KTXLoader {
+class KTXLoader {
     constructor();
     /**
      * astc
@@ -5910,7 +5971,7 @@ declare class KTXLoader {
     load(params: any): void;
 }
 
-declare class HDRLoader {
+class HDRLoader {
     constructor();
     isHDRLoader: boolean;
     className: string;
@@ -5925,7 +5986,7 @@ declare class HDRLoader {
  * @param content
  * @param params
  */
-declare class GLTFParser {
+class GLTFParser {
     constructor(content: ArrayBuffer | string, params: any);
     isGLTFParser: boolean;
     className: string;
@@ -5956,7 +6017,7 @@ declare class GLTFParser {
  *     stage.addChild(model.node);
  * });
  */
-declare class GLTFLoader extends BasicLoader {
+class GLTFLoader extends BasicLoader {
     isGLTFLoader: boolean;
     className: string;
 }
@@ -5982,12 +6043,12 @@ declare class GLTFLoader extends BasicLoader {
  *     ...
  * });
  */
-declare class CubeTextureLoader extends BasicLoader {
+class CubeTextureLoader extends BasicLoader {
     isCubeTextureLoader: boolean;
     className: string;
 }
 
-declare interface BasicLoader extends EventMixin {
+interface BasicLoader extends EventMixin {
 }
 
 /**
@@ -6009,7 +6070,7 @@ declare interface BasicLoader extends EventMixin {
  *     });
  * });
  */
-declare class BasicLoader implements EventMixin {
+class BasicLoader implements EventMixin {
     constructor();
     isBasicLoader: boolean;
     className: string;
@@ -6117,7 +6178,7 @@ declare class BasicLoader implements EventMixin {
  * @param [params.outerCutoff = 17.5] - 外切光角(角度)，在切光角合外切光角之间的光亮度渐变到0
  * @param params.[value:string] - 其它属性
  */
-declare class SpotLight extends Light {
+class SpotLight extends Light {
     constructor(params?: {
         color?: Color;
         amount?: number;
@@ -6151,7 +6212,7 @@ declare class SpotLight extends Light {
  * @param [params.range = 0] - 光照范围, 0 时代表光照范围无限大。
  * @param params.[value:string] - 其它属性
  */
-declare class PointLight extends Light {
+class PointLight extends Light {
     constructor(params?: {
         color?: Color;
         amount?: number;
@@ -6166,7 +6227,7 @@ declare class PointLight extends Light {
  * 光管理类
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
-declare class LightManager {
+class LightManager {
     constructor(params?: any);
     isLightManager: boolean;
     className: string;
@@ -6219,7 +6280,7 @@ declare class LightManager {
  * 灯光基础类
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
-declare class Light extends Node {
+class Light extends Node {
     constructor(params?: any);
     /**
      * 光强度
@@ -6315,7 +6376,7 @@ declare class Light extends Node {
  * @param [params.direction = new Vector3(0, 0, 1)] - 光方向
  * @param params.[value:string] - 其它属性
  */
-declare class DirectionalLight extends Light {
+class DirectionalLight extends Light {
     constructor(params?: {
         color?: Color;
         amount?: number;
@@ -6334,7 +6395,7 @@ declare class DirectionalLight extends Light {
  * 面光源
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
-declare class AreaLight extends Light {
+class AreaLight extends Light {
     constructor(params?: any);
     /**
      * ltcTexture1
@@ -6387,7 +6448,7 @@ declare class AreaLight extends Light {
  * @param [params.amount = 1] - 光强度
  * @param params.[value:string] - 其它属性
  */
-declare class AmbientLight extends Light {
+class AmbientLight extends Light {
     constructor(params?: {
         color?: Color;
         amount?: number;
@@ -6403,7 +6464,7 @@ declare class AmbientLight extends Light {
  * stage.addChild(new Hilo3d.CameraHelper());
  * @param [params] - 初始化参数
  */
-declare class CameraHelper extends Mesh {
+class CameraHelper extends Mesh {
     constructor(params?: any);
     isCameraHelper: boolean;
     className: string;
@@ -6421,7 +6482,7 @@ declare class CameraHelper extends Mesh {
  * stage.addChild(new Hilo3d.AxisNetHelper({ size: 5 }));
  * @param [params] - 初始化参数
  */
-declare class AxisNetHelper extends Mesh {
+class AxisNetHelper extends Mesh {
     constructor(params?: any);
     isAxisNetHelper: boolean;
     className: string;
@@ -6443,7 +6504,7 @@ declare class AxisNetHelper extends Mesh {
  * stage.addChild(new Hilo3d.AxisHelper());
  * @param [params] - 初始化参数
  */
-declare class AxisHelper extends Node {
+class AxisHelper extends Node {
     constructor(params?: any);
     isAxisHelper: boolean;
     className: string;
@@ -6461,7 +6522,7 @@ declare class AxisHelper extends Node {
  * @param [params.widthSegments = 32] - 水平分割面的数量
  * @param params.[value:string] - 其它属性
  */
-declare class SphereGeometry extends Geometry {
+class SphereGeometry extends Geometry {
     constructor(params?: {
         radius?: number;
         heightSegments?: number;
@@ -6513,7 +6574,7 @@ declare class SphereGeometry extends Geometry {
  * @param [params.heightSegments = 1] - 垂直分割面的数量
  * @param params.[value:string] - 其它属性
  */
-declare class PlaneGeometry extends Geometry {
+class PlaneGeometry extends Geometry {
     constructor(params?: {
         width?: number;
         height?: number;
@@ -6561,7 +6622,7 @@ declare class PlaneGeometry extends Geometry {
  * Morph几何体
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
-declare class MorphGeometry extends Geometry {
+class MorphGeometry extends Geometry {
     constructor(params?: any);
     isMorphGeometry: boolean;
     className: string;
@@ -6590,7 +6651,7 @@ declare class MorphGeometry extends Geometry {
  * @param size - The number of components per vertex attribute.Must be 1, 2, 3, or 4.
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class GeometryData {
+class GeometryData {
     constructor(data: TypedArray, size: number, params?: any);
     /**
      * 类名
@@ -6711,7 +6772,7 @@ declare class GeometryData {
  * geometry.addFace([-0.5, -0.289, 0], [0.5, -0.289, 0], [0, 0.577, 0]);
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class Geometry {
+class Geometry {
     constructor(params?: any);
     isGeometry: boolean;
     className: string;
@@ -6946,7 +7007,7 @@ declare class Geometry {
  * @param [params.depthSegments = 1] - 深度分割面的数量
  * @param params.[value:string] - 其它属性
  */
-declare class BoxGeometry extends Geometry {
+class BoxGeometry extends Geometry {
     constructor(params?: {
         width?: number;
         height?: number;
@@ -7075,7 +7136,7 @@ declare class BoxGeometry extends Geometry {
  * @param toProps - 对象缓动的目标属性集合。
  * @param params - 缓动参数。可包含Tween类所有可写属性。
  */
-declare class Tween {
+class Tween {
     constructor(target: any, fromProps: any, toProps: any, params: TweenParams);
     /**
      * 启动缓动动画的播放。
@@ -7262,7 +7323,7 @@ declare class Tween {
  * @param [params.gameMode = false] - 是否开启游戏模式，UC 浏览器专用
  * @param params.[value:string] - 其它属性
  */
-declare class Stage extends Node {
+class Stage extends Node {
     constructor(params?: {
         container?: HTMLElement;
         canvas?: HTMLCanvasElement;
@@ -7374,7 +7435,7 @@ declare class Stage extends Node {
  * @param [params.skeleton] - 骨骼
  * @param params.[value:string] - 其它属性
  */
-declare class SkinedMesh extends Mesh {
+class SkinedMesh extends Mesh {
     constructor(params?: {
         geometry?: Geometry;
         material?: Material;
@@ -7428,7 +7489,7 @@ declare class SkinedMesh extends Mesh {
  * 骨架
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
-declare class Skeleton {
+class Skeleton {
     constructor(params?: any);
     isSkeleton: boolean;
     className: string;
@@ -7470,7 +7531,7 @@ declare class Skeleton {
     copy(skeleton: Skeleton, rootNode?: Node): Skeleton;
 }
 
-declare interface Node extends EventMixin {
+interface Node extends EventMixin {
 }
 
 /**
@@ -7488,7 +7549,7 @@ declare interface Node extends EventMixin {
  * stage.addChild(node);
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
-declare class Node implements EventMixin {
+class Node implements EventMixin {
     constructor(params?: any);
     /**
      * traverse callback 返回值，执行后不暂停 traverse
@@ -7864,7 +7925,7 @@ declare class Node implements EventMixin {
  * @param [params.material] - 材质
  * @param params.[value:string] - 其它属性
  */
-declare class Mesh extends Node {
+class Mesh extends Node {
     constructor(params?: {
         geometry?: Geometry;
         material?: Material;
@@ -7892,7 +7953,7 @@ declare class Mesh extends Node {
  * 雾
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
-declare class Fog {
+class Fog {
     constructor(params?: any);
     isFog: boolean;
     className: string;
@@ -7930,7 +7991,7 @@ declare class Fog {
 /**
  * EventMixin是一个包含事件相关功能的mixin。可以通过 Object.assign(target, EventMixin) 来为target增加事件功能。
  */
-declare class EventMixin {
+class EventMixin {
     /**
      * 增加一个事件监听。
      * @param type - 要监听的事件类型。
@@ -7964,7 +8025,7 @@ declare class EventMixin {
  * @param [params.aspect = 1] - 宽高比
  * @param params.[value:string] - 其它属性
  */
-declare class PerspectiveCamera extends Camera {
+class PerspectiveCamera extends Camera {
     constructor(params?: {
         fov?: number;
         near?: number;
@@ -8003,7 +8064,7 @@ declare class PerspectiveCamera extends Camera {
  * @param [params.far = 1]
  * @param params.[value:string] - 其它属性
  */
-declare class OrthographicCamera extends Camera {
+class OrthographicCamera extends Camera {
     constructor(params?: {
         left?: number;
         right?: number;
@@ -8027,7 +8088,7 @@ declare class OrthographicCamera extends Camera {
  * 摄像机
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
-declare class Camera extends Node {
+class Camera extends Node {
     constructor(params?: any);
     isCamera: boolean;
     className: string;
@@ -8114,7 +8175,7 @@ declare class Camera extends Node {
  * 元素动画状态序列处理
  * @param [parmas] - 创建对象的属性参数。可包含此类的所有属性。
  */
-declare class AnimationStates {
+class AnimationStates {
     constructor(parmas?: any);
     /**
      * 根据名字获取状态类型
@@ -8194,14 +8255,14 @@ declare class AnimationStates {
     clone(): AnimationStates;
 }
 
-declare interface Animation extends EventMixin {
+interface Animation extends EventMixin {
 }
 
 /**
  * 动画类
  * @param [parmas] - 创建对象的属性参数。可包含此类的所有属性。
  */
-declare class Animation implements EventMixin {
+class Animation implements EventMixin {
     constructor(parmas?: any);
     /**
      * tick
