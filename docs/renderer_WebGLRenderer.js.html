@@ -9357,6 +9357,8 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             this.useInstanced = false;
         }
 
+        this.renderList.useInstanced = this.useInstanced;
+
         if (!extensions.vao) {
             this.useVao = false;
         }

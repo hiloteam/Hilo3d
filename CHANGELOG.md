@@ -1,3 +1,12 @@
+## [1.15.13](https://github.com/hiloteam/Hilo3d/compare/1.15.12...1.15.13) (2020-11-18)
+
+
+### Bug Fixes
+
+* RenderList.useInstanced should update after renderer init ([d91293e](https://github.com/hiloteam/Hilo3d/commit/d91293ec2cefb7041ceb727aa07db7b37f229ba4))
+
+
+
 ## [1.15.12](https://github.com/hiloteam/Hilo3d/compare/1.15.11...1.15.12) (2020-11-05)
 
 
