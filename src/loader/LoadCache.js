@@ -79,13 +79,26 @@ const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
     /**
      * get
      * @param  {string} key
-     * @return {any}
+     * @return {ILoadCacheFile}
      */
     get(key) {
         if (!this.enabled) {
             return null;
         }
         return this._files[key];
+    },
+    /**
+     * 获取下载完成的资源，没下载完或下载失败返回 null
+     * @param  {string} key
+     * @return {any}
+     */
+    getLoaded(key) {
+        const file = this.get(key);
+        if (file && file.state === LoadCache.LOADED) {
+            return file.data;
+        }
+
+        return null;
     },
     /**
      * remove
@@ -102,7 +115,7 @@ const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
     },
     /**
      * wait
-     * @param  {any} file
+     * @param  {ILoadCacheFile} file
      * @return {Promise<any>}
      */
     wait(file) {
@@ -132,3 +145,10 @@ const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
 });
 
 export default LoadCache;
+
+/**
+ * @interface ILoadCacheFile
+ * @property {string} key
+ * @property {number} state 可选值为：LoadCache.LOADED LoadCache.PENDING LoadCache.FAILED
+ * @property {any} data
+ */
