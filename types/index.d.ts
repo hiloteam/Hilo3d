@@ -717,6 +717,20 @@ type GLTFModel = {
 };
 
 /**
+ * @property key
+ * @property state - 可选值为：LoadCache.LOADED LoadCache.PENDING LoadCache.FAILED
+ * @property data
+ */
+interface ILoadCacheFile {
+    key: string;
+    /**
+     * 可选值为：LoadCache.LOADED LoadCache.PENDING LoadCache.FAILED
+    */
+    state: number;
+    data: any;
+}
+
+/**
  * 语义
  */
 namespace semantic {
@@ -5770,6 +5784,10 @@ class Loader {
      */
     static addLoader(ext: string, LoaderClass: any): void;
     /**
+     * url 预处理函数
+     */
+    preHandlerUrl: (...params: any[]) => any;
+    /**
      * load
      * @param data
      */
@@ -5917,7 +5935,12 @@ class LoadCache implements EventMixin {
      * get
      * @param key
      */
-    get(key: string): any;
+    get(key: string): ILoadCacheFile;
+    /**
+     * 获取下载完成的资源，没下载完或下载失败返回 null
+     * @param key
+     */
+    getLoaded(key: string): any;
     /**
      * remove
      * @param key
@@ -5931,7 +5954,7 @@ class LoadCache implements EventMixin {
      * wait
      * @param file
      */
-    wait(file: any): Promise<any>;
+    wait(file: ILoadCacheFile): Promise<any>;
 }
 
 /**

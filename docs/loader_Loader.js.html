@@ -5334,6 +5334,8 @@
             
                 <li  data-name="LoadCache#get"><a href="LoadCache.html#get">get</a></li>
             
+                <li  data-name="LoadCache#getLoaded"><a href="LoadCache.html#getLoaded">getLoaded</a></li>
+            
                 <li  data-name="LoadCache#remove"><a href="LoadCache.html#remove">remove</a></li>
             
                 <li  data-name="LoadCache#clear"><a href="LoadCache.html#clear">clear</a></li>
@@ -5403,6 +5405,8 @@
                 <li  data-name="Loader#isLoader"><a href="Loader.html#isLoader">isLoader</a></li>
             
                 <li  data-name="Loader#className"><a href="Loader.html#className">className</a></li>
+            
+                <li  data-name="Loader#preHandlerUrl"><a href="Loader.html#preHandlerUrl">preHandlerUrl</a></li>
             
             </ul>
             <ul class="typedefs itemMembers">
@@ -8958,6 +8962,11 @@ const Loader = Class.create(/** @lends Loader.prototype */{
         }
     },
     /**
+     * url 预处理函数
+     * @type {Function}
+     */
+    preHandlerUrl: null,
+    /**
      * load
      * @param  {Object|Array} data
      * @return {Promise&lt;any>}
@@ -8968,7 +8977,12 @@ const Loader = Class.create(/** @lends Loader.prototype */{
         }
         const type = data.type || getExtension(data.src);
         const loader = Loader.getLoader(type);
-        return loader.load(data);
+        let loadData = data;
+        if (this.preHandlerUrl) {
+            loadData = Object.assign({}, data);
+            loadData.src = this.preHandlerUrl(data.src);
+        }
+        return loader.load(loadData);
     }
 });
 

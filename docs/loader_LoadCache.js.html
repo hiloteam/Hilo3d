@@ -5334,6 +5334,8 @@
             
                 <li  data-name="LoadCache#get"><a href="LoadCache.html#get">get</a></li>
             
+                <li  data-name="LoadCache#getLoaded"><a href="LoadCache.html#getLoaded">getLoaded</a></li>
+            
                 <li  data-name="LoadCache#remove"><a href="LoadCache.html#remove">remove</a></li>
             
                 <li  data-name="LoadCache#clear"><a href="LoadCache.html#clear">clear</a></li>
@@ -5403,6 +5405,8 @@
                 <li  data-name="Loader#isLoader"><a href="Loader.html#isLoader">isLoader</a></li>
             
                 <li  data-name="Loader#className"><a href="Loader.html#className">className</a></li>
+            
+                <li  data-name="Loader#preHandlerUrl"><a href="Loader.html#preHandlerUrl">preHandlerUrl</a></li>
             
             </ul>
             <ul class="typedefs itemMembers">
@@ -8996,13 +9000,26 @@ const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
     /**
      * get
      * @param  {string} key
-     * @return {any}
+     * @return {ILoadCacheFile}
      */
     get(key) {
         if (!this.enabled) {
             return null;
         }
         return this._files[key];
+    },
+    /**
+     * 获取下载完成的资源，没下载完或下载失败返回 null
+     * @param  {string} key
+     * @return {any}
+     */
+    getLoaded(key) {
+        const file = this.get(key);
+        if (file &amp;&amp; file.state === LoadCache.LOADED) {
+            return file.data;
+        }
+
+        return null;
     },
     /**
      * remove
@@ -9019,7 +9036,7 @@ const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
     },
     /**
      * wait
-     * @param  {any} file
+     * @param  {ILoadCacheFile} file
      * @return {Promise&lt;any>}
      */
     wait(file) {
@@ -9049,6 +9066,13 @@ const LoadCache = Class.create(/** @lends LoadCache.prototype */ {
 });
 
 export default LoadCache;
+
+/**
+ * @interface ILoadCacheFile
+ * @property {string} key
+ * @property {number} state 可选值为：LoadCache.LOADED LoadCache.PENDING LoadCache.FAILED
+ * @property {any} data
+ */
 </code></pre>
         </article>
     </section>

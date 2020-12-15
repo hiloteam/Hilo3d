@@ -1,3 +1,13 @@
+## [1.15.14](https://github.com/hiloteam/Hilo3d/compare/1.15.13...1.15.14) (2020-12-15)
+
+
+### Features
+
+* add LoadCache.getLoaded ([302c690](https://github.com/hiloteam/Hilo3d/commit/302c690b341c30537510f8b1b56cccc491a217b8))
+* add Loader.preHandlerUrl ([ed7ff87](https://github.com/hiloteam/Hilo3d/commit/ed7ff8715701bbd5d81278985d88b76597297171))
+
+
+
 ## [1.15.13](https://github.com/hiloteam/Hilo3d/compare/1.15.12...1.15.13) (2020-11-18)
 
 
