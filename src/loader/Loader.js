@@ -41,6 +41,11 @@ const Loader = Class.create(/** @lends Loader.prototype */{
         }
     },
     /**
+     * url 预处理函数
+     * @type {Function}
+     */
+    preHandlerUrl: null,
+    /**
      * load
      * @param  {Object|Array} data
      * @return {Promise<any>}
@@ -51,7 +56,12 @@ const Loader = Class.create(/** @lends Loader.prototype */{
         }
         const type = data.type || getExtension(data.src);
         const loader = Loader.getLoader(type);
-        return loader.load(data);
+        let loadData = data;
+        if (this.preHandlerUrl) {
+            loadData = Object.assign({}, data);
+            loadData.src = this.preHandlerUrl(data.src);
+        }
+        return loader.load(loadData);
     }
 });
 
