@@ -101,7 +101,22 @@ const Animation = Class.create(/** @lends Animation.prototype */{
         },
         set(value) {
             this._rootNode = value;
-            this.initNodeNameMap();
+            this._initNodeNameMap();
+        }
+    },
+    _animStatesList: null,
+    /**
+     * 动画状态列表
+     * @default []
+     * @type {AnimationStates[]}
+     */
+    animStatesList: {
+        get() {
+            return this._animStatesList;
+        },
+        set(value) {
+            this._animStatesList = value;
+            this._initClipTime();
         }
     },
     /**
@@ -119,19 +134,13 @@ const Animation = Class.create(/** @lends Animation.prototype */{
          */
         this.id = math.generateUUID(this.className);
         /**
-         * 动画状态列表
-         * @default []
-         * @type {AnimationStates[]}
-         */
-        this.animStatesList = [];
-        /**
          * 动画剪辑列表，{ name: { start: 0, end: 1} }，play的时候可以通过name来播放某段剪辑
          * @default {}
          * @type {Object}
          */
         this.clips = {};
+        this._animStatesList = [];
         Object.assign(this, parmas);
-        this.initClipTime();
     },
     /**
      * 添加动画剪辑
@@ -172,12 +181,19 @@ const Animation = Class.create(/** @lends Animation.prototype */{
             endTime
         };
     },
-    initClipTime() {
+    /**
+     * 初始化 clip time
+     * @private
+     */
+    _initClipTime() {
         const timeInfo = this.getAnimStatesListTimeInfo(this.animStatesList);
         this.clipStartTime = timeInfo.startTime;
         this.clipEndTime = timeInfo.endTime;
     },
-    initNodeNameMap() {
+    /**
+     * 初始化 node name map
+     */
+    _initNodeNameMap() {
         if (this._rootNode) {
             const map = this.nodeNameMap = {};
             this._rootNode.traverse((child) => {
@@ -246,7 +262,7 @@ const Animation = Class.create(/** @lends Animation.prototype */{
                 end = clip.end;
                 if (clip.animStatesList) {
                     this.animStatesList = clip.animStatesList;
-                    this.initClipTime();
+                    this._initClipTime();
                 }
             } else {
                 log.warn('no this animation clip name:' + startOrClipName);
