@@ -1489,11 +1489,11 @@
             
                 <li  data-name="Animation#rootNode"><a href="Animation.html#rootNode">rootNode</a></li>
             
+                <li  data-name="Animation#animStatesList"><a href="Animation.html#animStatesList">animStatesList</a></li>
+            
                 <li  data-name="Animation#validAnimationIds"><a href="Animation.html#validAnimationIds">validAnimationIds</a></li>
             
                 <li  data-name="Animation#id"><a href="Animation.html#id">id</a></li>
-            
-                <li  data-name="Animation#animStatesList"><a href="Animation.html#animStatesList">animStatesList</a></li>
             
                 <li  data-name="Animation#clips"><a href="Animation.html#clips">clips</a></li>
             
@@ -1512,6 +1512,8 @@
                 <li  data-name="Animation#removeClip"><a href="Animation.html#removeClip">removeClip</a></li>
             
                 <li  data-name="Animation#getAnimStatesListTimeInfo"><a href="Animation.html#getAnimStatesListTimeInfo">getAnimStatesListTimeInfo</a></li>
+            
+                <li  data-name="Animation#_initNodeNameMap"><a href="Animation.html#_initNodeNameMap">_initNodeNameMap</a></li>
             
                 <li  data-name="Animation#tick"><a href="Animation.html#tick">tick</a></li>
             
@@ -5083,6 +5085,14 @@
                 <li  data-name="BasicLoader#className"><a href="BasicLoader.html#className">className</a></li>
             
                 <li  data-name="BasicLoader.cache"><a href="BasicLoader.html#.cache">cache</a></li>
+            
+                <li  data-name="BasicLoader.TYPE_IMAGE"><a href="BasicLoader.html#.TYPE_IMAGE">TYPE_IMAGE</a></li>
+            
+                <li  data-name="BasicLoader.TYPE_JSON"><a href="BasicLoader.html#.TYPE_JSON">TYPE_JSON</a></li>
+            
+                <li  data-name="BasicLoader.TYPE_BUFFER"><a href="BasicLoader.html#.TYPE_BUFFER">TYPE_BUFFER</a></li>
+            
+                <li  data-name="BasicLoader.TYPE_TEXT"><a href="BasicLoader.html#.TYPE_TEXT">TYPE_TEXT</a></li>
             
             </ul>
             <ul class="typedefs itemMembers">
@@ -9553,6 +9563,43 @@
         <tr >
             
                 <td class="name">
+                    <a name="animStatesList"></a>
+                    <code>animStatesList</code>
+                </td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Array.&lt;<a href="AnimationStates.html">AnimationStates</a>></span>
+
+
+            
+            </td>
+            
+            
+            
+            
+                <td class="default">
+                
+                    []
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                <p>动画状态列表</p>
+                
+    
+                
+            </td>
+        </tr>
+	
+	
+        <tr >
+            
+                <td class="name">
                     <a name="validAnimationIds"></a>
                     <code>validAnimationIds</code>
                 </td>
@@ -9613,43 +9660,6 @@
             <td class="description last">
                 
                 
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr >
-            
-                <td class="name">
-                    <a name="animStatesList"></a>
-                    <code>animStatesList</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Array.&lt;<a href="AnimationStates.html">AnimationStates</a>></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    []
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                <p>动画状态列表</p>
                 
     
                 
@@ -9834,7 +9844,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line143">line 143</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line152">line 152</a>
             </div>
             
         </div>
@@ -10018,7 +10028,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line154">line 154</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line163">line 163</a>
             </div>
             
         </div>
@@ -10133,7 +10143,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line162">line 162</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line171">line 171</a>
             </div>
             
         </div>
@@ -10270,6 +10280,76 @@
 <dl >
     <dt>
         <div class="nameContainer">
+            <h4 class="name" id="_initNodeNameMap">
+                
+                _initNodeNameMap<span class="signature">()</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line196">line 196</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>初始化 node name map</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
             <h4 class="name" id="tick">
                 
                 tick<span class="signature">(dt)</span>
@@ -10277,7 +10357,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line198">line 198</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line214">line 214</a>
             </div>
             
         </div>
@@ -10392,7 +10472,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line228">line 228</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line244">line 244</a>
             </div>
             
         </div>
@@ -10491,7 +10571,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line240">line 240</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line256">line 256</a>
             </div>
             
         </div>
@@ -10660,7 +10740,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line278">line 278</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line294">line 294</a>
             </div>
             
         </div>
@@ -10730,7 +10810,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line289">line 289</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line305">line 305</a>
             </div>
             
         </div>
@@ -10800,7 +10880,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line295">line 295</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line311">line 311</a>
             </div>
             
         </div>
@@ -10870,7 +10950,7 @@
         
             
             <div class="tag-source">
-                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line303">line 303</a>
+                <a href="animation_Animation.js.html">animation/Animation.js</a>, <a href="animation_Animation.js.html#line319">line 319</a>
             </div>
             
         </div>

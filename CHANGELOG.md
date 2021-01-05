@@ -1,3 +1,12 @@
+## [1.15.15](https://github.com/hiloteam/Hilo3d/compare/1.15.14...1.15.15) (2021-01-05)
+
+
+### Bug Fixes
+
+* Animation.clipTime should be updated while updating the animStatesList ([447ae1e](https://github.com/hiloteam/Hilo3d/commit/447ae1e75a2213865a9ed42ac08a048ecf0ac9a5))
+
+
+
 ## [1.15.14](https://github.com/hiloteam/Hilo3d/compare/1.15.13...1.15.14) (2020-12-15)
 
 

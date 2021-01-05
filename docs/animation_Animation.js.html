@@ -1489,11 +1489,11 @@
             
                 <li  data-name="Animation#rootNode"><a href="Animation.html#rootNode">rootNode</a></li>
             
+                <li  data-name="Animation#animStatesList"><a href="Animation.html#animStatesList">animStatesList</a></li>
+            
                 <li  data-name="Animation#validAnimationIds"><a href="Animation.html#validAnimationIds">validAnimationIds</a></li>
             
                 <li  data-name="Animation#id"><a href="Animation.html#id">id</a></li>
-            
-                <li  data-name="Animation#animStatesList"><a href="Animation.html#animStatesList">animStatesList</a></li>
             
                 <li  data-name="Animation#clips"><a href="Animation.html#clips">clips</a></li>
             
@@ -1512,6 +1512,8 @@
                 <li  data-name="Animation#removeClip"><a href="Animation.html#removeClip">removeClip</a></li>
             
                 <li  data-name="Animation#getAnimStatesListTimeInfo"><a href="Animation.html#getAnimStatesListTimeInfo">getAnimStatesListTimeInfo</a></li>
+            
+                <li  data-name="Animation#_initNodeNameMap"><a href="Animation.html#_initNodeNameMap">_initNodeNameMap</a></li>
             
                 <li  data-name="Animation#tick"><a href="Animation.html#tick">tick</a></li>
             
@@ -5083,6 +5085,14 @@
                 <li  data-name="BasicLoader#className"><a href="BasicLoader.html#className">className</a></li>
             
                 <li  data-name="BasicLoader.cache"><a href="BasicLoader.html#.cache">cache</a></li>
+            
+                <li  data-name="BasicLoader.TYPE_IMAGE"><a href="BasicLoader.html#.TYPE_IMAGE">TYPE_IMAGE</a></li>
+            
+                <li  data-name="BasicLoader.TYPE_JSON"><a href="BasicLoader.html#.TYPE_JSON">TYPE_JSON</a></li>
+            
+                <li  data-name="BasicLoader.TYPE_BUFFER"><a href="BasicLoader.html#.TYPE_BUFFER">TYPE_BUFFER</a></li>
+            
+                <li  data-name="BasicLoader.TYPE_TEXT"><a href="BasicLoader.html#.TYPE_TEXT">TYPE_TEXT</a></li>
             
             </ul>
             <ul class="typedefs itemMembers">
@@ -9022,7 +9032,22 @@ const Animation = Class.create(/** @lends Animation.prototype */{
         },
         set(value) {
             this._rootNode = value;
-            this.initNodeNameMap();
+            this._initNodeNameMap();
+        }
+    },
+    _animStatesList: null,
+    /**
+     * 动画状态列表
+     * @default []
+     * @type {AnimationStates[]}
+     */
+    animStatesList: {
+        get() {
+            return this._animStatesList;
+        },
+        set(value) {
+            this._animStatesList = value;
+            this._initClipTime();
         }
     },
     /**
@@ -9040,19 +9065,13 @@ const Animation = Class.create(/** @lends Animation.prototype */{
          */
         this.id = math.generateUUID(this.className);
         /**
-         * 动画状态列表
-         * @default []
-         * @type {AnimationStates[]}
-         */
-        this.animStatesList = [];
-        /**
          * 动画剪辑列表，{ name: { start: 0, end: 1} }，play的时候可以通过name来播放某段剪辑
          * @default {}
          * @type {Object}
          */
         this.clips = {};
+        this._animStatesList = [];
         Object.assign(this, parmas);
-        this.initClipTime();
     },
     /**
      * 添加动画剪辑
@@ -9093,12 +9112,19 @@ const Animation = Class.create(/** @lends Animation.prototype */{
             endTime
         };
     },
-    initClipTime() {
+    /**
+     * 初始化 clip time
+     * @private
+     */
+    _initClipTime() {
         const timeInfo = this.getAnimStatesListTimeInfo(this.animStatesList);
         this.clipStartTime = timeInfo.startTime;
         this.clipEndTime = timeInfo.endTime;
     },
-    initNodeNameMap() {
+    /**
+     * 初始化 node name map
+     */
+    _initNodeNameMap() {
         if (this._rootNode) {
             const map = this.nodeNameMap = {};
             this._rootNode.traverse((child) => {
@@ -9167,7 +9193,7 @@ const Animation = Class.create(/** @lends Animation.prototype */{
                 end = clip.end;
                 if (clip.animStatesList) {
                     this.animStatesList = clip.animStatesList;
-                    this.initClipTime();
+                    this._initClipTime();
                 }
             } else {
                 log.warn('no this animation clip name:' + startOrClipName);

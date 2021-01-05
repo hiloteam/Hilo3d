@@ -6119,6 +6119,22 @@ class BasicLoader implements EventMixin {
      */
     static readonly cache: LoadCache;
     /**
+     * TYPE_IMAGE
+     */
+    static readonly TYPE_IMAGE: string;
+    /**
+     * TYPE_JSON
+     */
+    static readonly TYPE_JSON: string;
+    /**
+     * TYPE_BUFFER
+     */
+    static readonly TYPE_BUFFER: string;
+    /**
+     * TYPE_TEXT
+     */
+    static readonly TYPE_TEXT: string;
+    /**
      * 加载资源，这里会自动调用 loadImg 或者 loadRes
      * @param data - 参数
      * @param data.src - 资源地址
@@ -8335,14 +8351,14 @@ class Animation implements EventMixin {
      */
     rootNode: Node;
     /**
+     * 动画状态列表
+     */
+    animStatesList: AnimationStates[];
+    /**
      * AnimationId集合
      */
     validAnimationIds: any;
     id: string;
-    /**
-     * 动画状态列表
-     */
-    animStatesList: AnimationStates[];
     /**
      * 动画剪辑列表，{ name: { start: 0, end: 1} }，play的时候可以通过name来播放某段剪辑
      */
@@ -8366,6 +8382,10 @@ class Animation implements EventMixin {
      * @returns result {startTime, endTime} 时间信息
      */
     getAnimStatesListTimeInfo(animStatesList: AnimationStates[]): any;
+    /**
+     * 初始化 node name map
+     */
+    _initNodeNameMap(): void;
     /**
      * tick
      * @param dt
