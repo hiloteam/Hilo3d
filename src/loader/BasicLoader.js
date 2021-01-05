@@ -94,7 +94,39 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
             set() {
                 log.warn('BasicLoader.cache is readonly!');
             }
-        }
+        },
+        /**
+         * TYPE_IMAGE
+         * @memberOf BasicLoader
+         * @readOnly
+         * @default 'img'
+         * @type {string}
+         */
+        TYPE_IMAGE: 'img',
+        /**
+         * TYPE_JSON
+         * @memberOf BasicLoader
+         * @readOnly
+         * @default 'json'
+         * @type {string}
+         */
+        TYPE_JSON: 'json',
+        /**
+         * TYPE_BUFFER
+         * @memberOf BasicLoader
+         * @readOnly
+         * @default 'buffer'
+         * @type {string}
+         */
+        TYPE_BUFFER: 'buffer',
+        /**
+         * TYPE_TEXT
+         * @memberOf BasicLoader
+         * @readOnly
+         * @default 'text'
+         * @type {string}
+         */
+        TYPE_TEXT: 'text',
     },
     /**
      * 加载资源，这里会自动调用 loadImg 或者 loadRes
@@ -115,7 +147,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
                 type = data.defaultType;
             }
         }
-        if (type === 'img') {
+        if (type === BasicLoader.TYPE_IMAGE) {
             return this.loadImg(src, data.crossOrigin);
         }
         return this.loadRes(src, type);
@@ -196,9 +228,9 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
             const mime = RegExp.$1;
             const base64Str = url.slice(13 + mime.length);
             let result = atob(base64Str);
-            if (type === 'json') {
+            if (type === BasicLoader.TYPE_JSON) {
                 result = JSON.parse(result);
-            } else if (type === 'buffer') {
+            } else if (type === BasicLoader.TYPE_BUFFER) {
                 result = this.Uint8ArrayFrom(result, c => c.charCodeAt(0)).buffer;
             }
             return Promise.resolve(result);
@@ -245,7 +277,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
                     return;
                 }
                 let result = 'response' in xhr ? xhr.response : xhr.responseText;
-                if (opt.type === 'json') {
+                if (opt.type === BasicLoader.TYPE_JSON) {
                     try {
                         result = JSON.parse(result);
                     } catch (err) {
@@ -272,7 +304,7 @@ const BasicLoader = Class.create(/** @lends BasicLoader.prototype */ {
             if (opt.credentials === 'include') {
                 xhr.withCredentials = true;
             }
-            if (opt.type === 'buffer') {
+            if (opt.type === BasicLoader.TYPE_BUFFER) {
                 xhr.responseType = 'arraybuffer';
             }
             each(opt.headers, (value, name) => {

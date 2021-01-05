@@ -18,6 +18,7 @@ import Animation from '../animation/Animation';
 import PerspectiveCamera from '../camera/PerspectiveCamera';
 import OrthographicCamera from '../camera/OrthographicCamera';
 import log from '../utils/log';
+import BasicLoader from './BasicLoader';
 import * as util from '../utils/util';
 import * as extensionHandlers from './GLTFExtensions';
 
@@ -293,7 +294,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
 
         return Promise.all(Object.keys(this.json.buffers || []).map((bufferName) => {
             const uri = this.getBufferUri(bufferName);
-            return loader.loadRes(uri, 'buffer')
+            return loader.loadRes(uri, BasicLoader.TYPE_BUFFER)
                 .then((buffer) => {
                     this.buffers[bufferName] = buffer;
                 });
