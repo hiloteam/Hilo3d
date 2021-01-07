@@ -709,7 +709,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
     /**
      * 渲染
-     * @param  {Stage} stage
+     * @param  {Stage|Node} stage
      * @param  {Camera} camera
      * @param  {Boolean} [fireEvent=false] 是否发送事件
      */

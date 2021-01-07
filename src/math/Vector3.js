@@ -53,7 +53,7 @@ const Vector3 = Class.create(/** @lends Vector3.prototype */ {
     },
     /**
      * 转换到数组
-     * @param  {Array}  [array=[]] 数组
+     * @param  {number[]|TypedArray}  [array=[]] 数组
      * @param  {Number} [offset=0] 数组偏移值
      * @return {Array}
      */
@@ -66,7 +66,7 @@ const Vector3 = Class.create(/** @lends Vector3.prototype */ {
     },
     /**
      * 从数组赋值
-     * @param  {Array} array  数组
+     * @param  {number[]|TypedArray} array  数组
      * @param  {Number} [offset=0] 数组偏移值
      * @return {Vector3} this
      */

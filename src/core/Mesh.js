@@ -104,6 +104,11 @@ const Mesh = Class.create(/** @lends Mesh.prototype */ {
         }
         return null;
     },
+    /**
+     * 获取渲染选项值
+     * @param  {Object} [option={}] 渲染选项值
+     * @return {Object} 渲染选项值
+     */
     getRenderOption(opt = {}) {
         this.geometry.getRenderOption(opt);
         return opt;

@@ -56,7 +56,7 @@ const Matrix4 = Class.create(/** @lends Matrix4.prototype */ {
     },
     /**
      * 转换到数组
-     * @param  {Array}  [array=[]] 数组
+     * @param  {number[]|TypedArray}  [array=[]] 数组
      * @param  {Number} [offset=0] 数组偏移值
      * @return {Array}
      */
@@ -69,7 +69,7 @@ const Matrix4 = Class.create(/** @lends Matrix4.prototype */ {
     },
     /**
      * 从数组赋值
-     * @param  {Array} array  数组
+     * @param  {number[]|TypedArray} array  数组
      * @param  {Number} [offset=0] 数组偏移值
      * @return {Matrix4} this
      */

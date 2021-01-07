@@ -208,7 +208,6 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
     },
     /**
      * init
-     * @private
      */
     init() {
         if (!this._isInit && this.renderer.isInit) {

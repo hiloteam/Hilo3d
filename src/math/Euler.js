@@ -90,7 +90,7 @@ const Euler = Class.create(/** @lends Euler.prototype */ {
     },
     /**
      * 从数组赋值
-     * @param  {Array} array  数组
+     * @param  {number[]|TypedArray} array  数组
      * @param  {Number} [offset=0] 数组偏移值
      * @return {Euler} this
      */
@@ -103,7 +103,7 @@ const Euler = Class.create(/** @lends Euler.prototype */ {
     },
     /**
      * 转换到数组
-     * @param  {Array}  [array=[]] 数组
+     * @param  {number[]|TypedArray}  [array=[]] 数组
      * @param  {Number} [offset=0] 数组偏移值
      * @return {Array}
      */

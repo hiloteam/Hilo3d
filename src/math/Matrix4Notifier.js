@@ -53,7 +53,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
     },
     /**
      * 从数组赋值
-     * @param  {Array} array  数组
+     * @param  {number[]|TypedArray} array  数组
      * @param  {Number} [offset=0] 数组偏移值
      * @return {Matrix4Notifier} this
      */
