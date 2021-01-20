@@ -2372,6 +2372,8 @@
             
                 <li  data-name="Mesh#raycast"><a href="Mesh.html#raycast">raycast</a></li>
             
+                <li  data-name="Mesh#getRenderOption"><a href="Mesh.html#getRenderOption">getRenderOption</a></li>
+            
                 <li  data-name="Mesh#destroy"><a href="Mesh.html#destroy">destroy</a></li>
             
                 <li class="inherited-method" data-name="Mesh#setAnim"><a href="Mesh.html#setAnim">setAnim</a></li>
@@ -2778,6 +2780,8 @@
                 <li class="inherited-method" data-name="SkinedMesh#clone"><a href="SkinedMesh.html#clone">clone</a></li>
             
                 <li class="inherited-method" data-name="SkinedMesh#raycast"><a href="SkinedMesh.html#raycast">raycast</a></li>
+            
+                <li class="inherited-method" data-name="SkinedMesh#getRenderOption"><a href="SkinedMesh.html#getRenderOption">getRenderOption</a></li>
             
                 <li class="inherited-method" data-name="SkinedMesh#destroy"><a href="SkinedMesh.html#destroy">destroy</a></li>
             
@@ -4047,6 +4051,8 @@
             
                 <li class="inherited-method" data-name="AxisNetHelper#raycast"><a href="AxisNetHelper.html#raycast">raycast</a></li>
             
+                <li class="inherited-method" data-name="AxisNetHelper#getRenderOption"><a href="AxisNetHelper.html#getRenderOption">getRenderOption</a></li>
+            
                 <li class="inherited-method" data-name="AxisNetHelper#destroy"><a href="AxisNetHelper.html#destroy">destroy</a></li>
             
                 <li class="inherited-method" data-name="AxisNetHelper#setAnim"><a href="AxisNetHelper.html#setAnim">setAnim</a></li>
@@ -4225,6 +4231,8 @@
                 <li class="inherited-method" data-name="CameraHelper#clone"><a href="CameraHelper.html#clone">clone</a></li>
             
                 <li class="inherited-method" data-name="CameraHelper#raycast"><a href="CameraHelper.html#raycast">raycast</a></li>
+            
+                <li class="inherited-method" data-name="CameraHelper#getRenderOption"><a href="CameraHelper.html#getRenderOption">getRenderOption</a></li>
             
                 <li class="inherited-method" data-name="CameraHelper#destroy"><a href="CameraHelper.html#destroy">destroy</a></li>
             
@@ -7822,6 +7830,8 @@
             
                 <li  data-name="Framebuffer.destroy"><a href="Framebuffer.html#.destroy">destroy</a></li>
             
+                <li  data-name="Framebuffer#init"><a href="Framebuffer.html#init">init</a></li>
+            
                 <li  data-name="Framebuffer#isComplete"><a href="Framebuffer.html#isComplete">isComplete</a></li>
             
                 <li  data-name="Framebuffer#bind"><a href="Framebuffer.html#bind">bind</a></li>
@@ -7833,6 +7843,8 @@
                 <li  data-name="Framebuffer#resize"><a href="Framebuffer.html#resize">resize</a></li>
             
                 <li  data-name="Framebuffer#readPixels"><a href="Framebuffer.html#readPixels">readPixels</a></li>
+            
+                <li  data-name="Framebuffer#destroy"><a href="Framebuffer.html#destroy">destroy</a></li>
             
                 <li  data-name="Framebuffer#destroyResource"><a href="Framebuffer.html#destroyResource">destroyResource</a></li>
             
@@ -8949,7 +8961,7 @@
 <h3 align="center">A 3D WebGL Rendering Engine</h3>
 <hr>
 <p><a href="#Installation">Installation</a> • <a href="#Documentation">Documentation</a> • <a href="#Development">Development</a> • <a href="#Showcase">Showcase</a> • <a href="#Examples">Examples</a> • <a href="#Authors">Authors</a> • <a href="#License">License</a></p>
-<p><a target="_blank" href="https://www.npmjs.com/package/hilo3d"><img src="https://img.shields.io/npm/v/hilo3d.svg?style=flat-square" alt="npm"></a> <a target="_blank" href="https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev"><img src="https://img.shields.io/github/workflow/status/hiloteam/Hilo3d/npm%20test?style=flat-square" alt="ci"></a> <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.15.15/build/Hilo3d.js"><img src="https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&amp;style=flat-square" alt="size"></a> <a target="_blank" href="https://gitter.im/hiloteam/Hilo3d?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square" alt="gitter.im"></a></p>
+<p><a target="_blank" href="https://www.npmjs.com/package/hilo3d"><img src="https://img.shields.io/npm/v/hilo3d.svg?style=flat-square" alt="npm"></a> <a target="_blank" href="https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev"><img src="https://img.shields.io/github/workflow/status/hiloteam/Hilo3d/npm%20test?style=flat-square" alt="ci"></a> <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.15.16/build/Hilo3d.js"><img src="https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&amp;style=flat-square" alt="size"></a> <a target="_blank" href="https://gitter.im/hiloteam/Hilo3d?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square" alt="gitter.im"></a></p>
 <h3>Features</h3>
 <ul>
 <li>Compatible for multiple mobile and desktop browsers.</li>
@@ -8965,8 +8977,8 @@
 </code></pre>
 </li>
 <li>
-<p>use script tag from a <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.15.15/build/Hilo3d.js">cdn</a></p>
-<pre class="prettyprint source"><code>&lt;script src='//cdn.jsdelivr.net/npm/hilo3d@1.15.15/build/Hilo3d.js'>&lt;/script>
+<p>use script tag from a <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.15.16/build/Hilo3d.js">cdn</a></p>
+<pre class="prettyprint source"><code>&lt;script src='//cdn.jsdelivr.net/npm/hilo3d@1.15.16/build/Hilo3d.js'>&lt;/script>
 </code></pre>
 </li>
 </ul>

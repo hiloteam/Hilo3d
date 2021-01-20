@@ -1142,6 +1142,12 @@ namespace glType {
 }
 
 /**
+ * 打印所有 gl 资源
+ * @returns gl资源数量字符串
+ */
+function logGLResource(): string;
+
+/**
  * WebGL支持检测
  */
 namespace WebGLSupport {
@@ -1757,6 +1763,7 @@ class Texture {
  * @param [params.placeHolder] - 占位图片，默认为1像素的透明图片
  * @param [params.autoLoad = true] - 是否自动加载
  * @param [params.src] - 图片地址
+ * @param params.[value:string] - 其它属性
  */
 class LazyTexture extends Texture {
     constructor(params?: {
@@ -1764,6 +1771,7 @@ class LazyTexture extends Texture {
         placeHolder?: HTMLImageElement;
         autoLoad?: boolean;
         src?: string;
+        [value:string]: any;
     });
     isLazyTexture: boolean;
     className: string;
@@ -2430,7 +2438,7 @@ class WebGLRenderer implements EventMixin {
      * @param camera
      * @param [fireEvent = false] - 是否发送事件
      */
-    render(stage: Stage, camera: Camera, fireEvent?: boolean): void;
+    render(stage: Stage | Node, camera: Camera, fireEvent?: boolean): void;
     /**
      * 渲染场景
      */
@@ -2839,6 +2847,10 @@ class Framebuffer {
      */
     framebuffer: WebGLFramebuffer;
     /**
+     * init
+     */
+    init(): void;
+    /**
      * framebuffer 是否完成
      */
     isComplete(): boolean;
@@ -2876,8 +2888,14 @@ class Framebuffer {
     readPixels(x: number, y: number, width?: number, height?: number): TypedArray;
     /**
      * 销毁资源
+     * @returns this
      */
-    destroyResource(): void;
+    destroy(): Framebuffer;
+    /**
+     * 只销毁 gl 资源
+     * @returns this
+     */
+    destroyResource(): Framebuffer;
 }
 
 /**
@@ -3000,13 +3018,13 @@ class Vector4 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: any[], offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): any[];
     /**
      * 从数组赋值
      * @param array - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    fromArray(array: any[], offset?: number): this;
+    fromArray(array: number[] | TypedArray, offset?: number): this;
     /**
      * Set the components of a vec4 to the given values
      * @param x - X component
@@ -3286,14 +3304,14 @@ class Vector3 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: any[], offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): any[];
     /**
      * 从数组赋值
      * @param array - 数组
      * @param [offset = 0] - 数组偏移值
      * @returns this
      */
-    fromArray(array: any[], offset?: number): Vector3;
+    fromArray(array: number[] | TypedArray, offset?: number): Vector3;
     /**
      * Set the components of a vec3 to the given values
      * @param x - X component
@@ -3593,14 +3611,14 @@ class Vector2 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: any[], offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): any[];
     /**
      * 从数组赋值
      * @param array - 数组
      * @param [offset = 0] - 数组偏移值
      * @returns this
      */
-    fromArray(array: any[], offset?: number): Vector2;
+    fromArray(array: number[] | TypedArray, offset?: number): Vector2;
     /**
      * Set the components of a vec4 to the given values
      * @param x - X component
@@ -4040,7 +4058,7 @@ class Quaternion implements EventMixin {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: any[], offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): any[];
     /**
      * 从数组赋值
      * @param array - 数组
@@ -4048,7 +4066,7 @@ class Quaternion implements EventMixin {
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    fromArray(array: any[], offset?: number, dontFireEvent?: boolean): Quaternion;
+    fromArray(array: number[] | TypedArray, offset?: number, dontFireEvent?: boolean): Quaternion;
     /**
      * Set the components of a quat to the given values
      * @param x - X component
@@ -4386,14 +4404,14 @@ class Matrix4 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: any[], offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): any[];
     /**
      * 从数组赋值
      * @param array - 数组
      * @param [offset = 0] - 数组偏移值
      * @returns this
      */
-    fromArray(array: any[], offset?: number): Matrix4;
+    fromArray(array: number[] | TypedArray, offset?: number): Matrix4;
     /**
      * Set the components of a mat3 to the given values
      * @param m00
@@ -4730,14 +4748,14 @@ class Matrix3 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: any[], offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): any[];
     /**
      * 从数组赋值
      * @param array - 数组
      * @param [offset = 0] - 数组偏移值
      * @returns this
      */
-    fromArray(array: any[], offset?: number): Matrix3;
+    fromArray(array: number[] | TypedArray, offset?: number): Matrix3;
     /**
      * Set the components of a mat3 to the given values
      * @param m00
@@ -5019,13 +5037,13 @@ class Euler {
      * @param [offset = 0] - 数组偏移值
      * @returns this
      */
-    fromArray(array: any[], offset?: number): Euler;
+    fromArray(array: number[] | TypedArray, offset?: number): Euler;
     /**
      * 转换到数组
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: any[], offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): any[];
     /**
      * Creates a euler from the given 4x4 rotation matrix.
      * @param mat - rotation matrix
@@ -7982,6 +8000,12 @@ class Mesh extends Node {
      * 是否开启视锥体裁剪
      */
     frustumTest: boolean;
+    /**
+     * 获取渲染选项值
+     * @param [option = {}] - 渲染选项值
+     * @returns 渲染选项值
+     */
+    getRenderOption(option?: any): any;
     /**
      * 是否被销毁
      */
