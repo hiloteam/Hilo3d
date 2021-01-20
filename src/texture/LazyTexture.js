@@ -83,6 +83,7 @@ const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
      * @param {HTMLImageElement} [params.placeHolder] 占位图片，默认为1像素的透明图片
      * @param {boolean} [params.autoLoad=true] 是否自动加载
      * @param {string} [params.src] 图片地址
+     * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {
         if (params) {
