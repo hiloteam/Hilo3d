@@ -1,6 +1,7 @@
 ## [1.15.16](https://github.com/hiloteam/Hilo3d/compare/1.15.15...1.15.16) (2021-01-20)
 
-
+* update doc & .d.ts 
+* refactor: optimize multiple destroy framebuffer ([c68599e](https://github.com/hiloteam/Hilo3d/commit/c68599e131c2f1b258d5675884cdcc06fcdda279))
 
 ## [1.15.15](https://github.com/hiloteam/Hilo3d/compare/1.15.14...1.15.15) (2021-01-05)
 
