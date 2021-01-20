@@ -413,13 +413,24 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
 
         return pixels;
     },
+    /**
+     * 销毁资源
+     * @return {Framebuffer} this
+     */
     destroy() {
+        if (this._isDestroyed) {
+            return this;
+        }
         this.destroyResource();
         this.gl = null;
         cache.removeObject(this);
+
+        this._isDestroyed = true;
+        return this;
     },
     /**
-     * 销毁资源
+     * 只销毁 gl 资源
+     * @return {Framebuffer} this
      */
     destroyResource() {
         const gl = this.gl;
