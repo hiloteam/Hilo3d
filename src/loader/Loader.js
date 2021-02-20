@@ -32,6 +32,13 @@ const Loader = Class.create(/** @lends Loader.prototype */{
         addLoader(ext, LoaderClass) {
             Loader._loaderClassMap[ext] = LoaderClass;
         },
+        /**
+         * 获取对应类型的 loader
+         * @memberOf Loader
+         * @static
+         * @param  {string} ext
+         * @return {any} loader
+         */
         getLoader(ext) {
             if (!Loader._loaders[ext]) {
                 const LoaderClass = Loader._loaderClassMap[ext] ? Loader._loaderClassMap[ext] : BasicLoader;
