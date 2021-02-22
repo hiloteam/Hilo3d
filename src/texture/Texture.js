@@ -14,7 +14,12 @@ const {
     NEAREST,
     REPEAT,
     CLAMP_TO_EDGE,
-    UNSIGNED_BYTE
+    UNSIGNED_BYTE,
+    UNPACK_PREMULTIPLY_ALPHA_WEBGL,
+    UNPACK_FLIP_Y_WEBGL,
+    UNPACK_COLORSPACE_CONVERSION_WEBGL,
+    BROWSER_DEFAULT_WEBGL,
+    NONE,
 } = constants;
 
 const cache = new Cache();
@@ -204,6 +209,13 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * @type {boolean}
      */
     flipY: false,
+
+    /**
+     * 是否转换到图片默认的颜色空间
+     * @default true
+     * @type {boolean}
+     */
+    colorSpaceConversion: true,
 
     /**
      * 是否压缩
@@ -450,6 +462,14 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
 
         return this;
     },
+
+    _updatePixelStorei() {
+        const state = this.state;
+        state.pixelStorei(UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.premultiplyAlpha);
+        state.pixelStorei(UNPACK_FLIP_Y_WEBGL, !!this.flipY);
+        state.pixelStorei(UNPACK_COLORSPACE_CONVERSION_WEBGL, this.colorSpaceConversion ? BROWSER_DEFAULT_WEBGL : NONE);
+    },
+
     /**
      * 更新 Texture
      * @param  {WebGLState} state
@@ -475,14 +495,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
 
             state.activeTexture(gl.TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
             state.bindTexture(this.target, glTexture);
-            state.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.premultiplyAlpha);
-            state.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, !!this.flipY);
-
-            const textureFilterAnisotropic = extensions.textureFilterAnisotropic;
-            if (textureFilterAnisotropic && this.anisotropic > 1) {
-                gl.texParameterf(this.target, textureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(this.anisotropic, capabilities.MAX_TEXTURE_MAX_ANISOTROPY));
-            }
-
+            this._updatePixelStorei();
             this._uploadTexture(state);
             if (useMipmap) {
                 if (!this.compressed) {
@@ -497,6 +510,11 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
             gl.texParameterf(this.target, gl.TEXTURE_MIN_FILTER, this.minFilter);
             gl.texParameterf(this.target, gl.TEXTURE_WRAP_S, this.wrapS);
             gl.texParameterf(this.target, gl.TEXTURE_WRAP_T, this.wrapT);
+
+            const textureFilterAnisotropic = extensions.textureFilterAnisotropic;
+            if (textureFilterAnisotropic && this.anisotropic > 1) {
+                gl.texParameterf(this.target, textureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(this.anisotropic, capabilities.MAX_TEXTURE_MAX_ANISOTROPY));
+            }
 
             this.needUpdate = false;
         }
@@ -519,8 +537,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
             const gl = state.gl;
             state.activeTexture(gl.TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
             state.bindTexture(this.target, glTexture);
-            state.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.premultiplyAlpha);
-            state.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, !!this.flipY);
+            this._updatePixelStorei();
 
             this._subTextureList.forEach((subInfo) => {
                 const xOffset = subInfo[0];
