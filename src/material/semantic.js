@@ -953,6 +953,17 @@ const semantic = {
     },
 
     /**
+     * EMISSION FACTOR
+     * @type {Object}
+     */
+    EMISSIONFACTOR: {
+        get(mesh, material, programInfo) {
+            return material.emissionFactor.elements;
+        }
+    },
+
+
+    /**
      * @type {semanticObject}
      */
     METALLIC: {
@@ -969,7 +980,6 @@ const semantic = {
             return material.roughness;
         }
     },
-
 
     /**
      * @type {semanticObject}

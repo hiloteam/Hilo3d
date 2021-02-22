@@ -164,11 +164,18 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
     isSpecularEnvMapIncludeMipmaps: false,
 
     /**
-     * 放射光贴图(sRGB 空间)，或颜色
+     * 放射光贴图(sRGB 空间)
      * @default null
-     * @type {Texture|Color}
+     * @type {Texture}
      */
     emission: null,
+
+    /**
+     * The emissive color of the material.
+     * @default new Color(0, 0, 0)
+     * @type {Color}
+     */
+    emissionFactor: null,
 
     /**
      * 是否基于反射光泽度的 PBR，具体见 [KHR_materials_pbrSpecularGlossiness]{@link https://github.com/KhronosGroup/glTF/tree/master/extensions/Khronos/KHR_materials_pbrSpecularGlossiness}
@@ -259,6 +266,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
     constructor(params) {
         this.baseColor = new Color(1, 1, 1);
         this.specular = new Color(1, 1, 1);
+        this.emissionFactor = new Color(0, 0, 0);
 
         PBRMaterial.superclass.constructor.call(this, params);
 
@@ -267,6 +275,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
             u_metallic: 'METALLIC',
             u_roughness: 'ROUGHNESS',
             u_specular: 'SPECULAR',
+            u_emissionFactor: 'EMISSIONFACTOR',
             u_glossiness: 'GLOSSINESS',
             u_brdfLUT: 'BRDFLUT',
             u_diffuseEnvMap: 'DIFFUSEENVMAP',

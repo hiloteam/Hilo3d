@@ -571,6 +571,12 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             if (emissiveTexture) {
                 material.emission = this.getTexture(emissiveTexture);
             }
+
+            const emissiveFactor = values.emissiveFactor;
+            if (emissiveFactor) {
+                material.emissionFactor.fromArray(emissiveFactor);
+                material.emissionFactor.a = 1;
+            }
         } else {
             material.lightType = 'NONE';
         }

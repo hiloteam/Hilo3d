@@ -3,6 +3,8 @@
 #pragma glslify: import('./fixMathCrash.glsl');
 
 uniform vec4 u_baseColor;
+uniform vec4 u_emissionFactor;
+
 #ifdef HILO_BASE_COLOR_MAP
     uniform HILO_SAMPLER_2D u_baseColorMap;
 #endif

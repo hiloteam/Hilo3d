@@ -1,4 +1,5 @@
 vec4 baseColor = u_baseColor;
+vec3 emissionColor = u_emissionFactor.rgb;
 
 #ifdef HILO_BASE_COLOR_MAP
     #ifdef HILO_GAMMA_CORRECTION
@@ -185,11 +186,13 @@ color.a = baseColor.a;
 
     #ifdef HILO_EMISSION_MAP
         #ifdef HILO_GAMMA_CORRECTION
-            color.rgb += sRGBToLinear(HILO_TEXTURE_2D(u_emission)).rgb;
+            emissionColor *= sRGBToLinear(HILO_TEXTURE_2D(u_emission)).rgb;
         #else
-            color.rgb += HILO_TEXTURE_2D(u_emission).rgb;
+            emissionColor *= HILO_TEXTURE_2D(u_emission).rgb;
         #endif
     #endif
+
+    color.rgb += emissionColor;
 
     #ifdef HILO_HAS_CLEARCOAT
         float t = clearcoatFactor * clearCoatFresnel;
@@ -197,4 +200,5 @@ color.a = baseColor.a;
     #endif
 #else
     color = baseColor;
+    color.rgb += emissionColor;
 #endif
