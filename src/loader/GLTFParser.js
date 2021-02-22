@@ -433,6 +433,10 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             texture.resType = this.getImageType(textureData.source);
             texture.src = uri;
             texture.name = textureData.name || textureName;
+
+            // In glTF spec: Any colorspace information (such as ICC profiles, intents, etc) from PNG or JPEG containers must be ignored.
+            texture.colorSpaceConversion = false;
+
             if (util.isBlobUrl(uri)) {
                 const onTextureLoad = () => {
                     util.revokeBlobUrl(uri);
