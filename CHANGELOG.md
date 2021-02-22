@@ -1,3 +1,18 @@
+## [1.15.17](https://github.com/hiloteam/Hilo3d/compare/1.15.16...1.15.17) (2021-02-22)
+
+
+### Bug Fixes
+
+* glTF texture should ignore texture colorspace conversion, fix [#32](https://github.com/hiloteam/Hilo3d/issues/32) ([08f1252](https://github.com/hiloteam/Hilo3d/commit/08f1252e4658131f425419f25c21313859645aea))
+
+
+### Features
+
+* add colorSpaceConversion property of the texture ([ddd170b](https://github.com/hiloteam/Hilo3d/commit/ddd170be451b7f76103f54d31ab934398254da2b))
+* add PBRMaterial emissionFactor support ([de7cf25](https://github.com/hiloteam/Hilo3d/commit/de7cf25fd36cbc845fa829f7270f95e8f7aaa795))
+
+
+
 ## [1.15.16](https://github.com/hiloteam/Hilo3d/compare/1.15.15...1.15.16) (2021-01-20)
 
 * update doc & .d.ts 

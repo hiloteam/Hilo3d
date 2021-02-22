@@ -1036,6 +1036,8 @@
             
                 <li  data-name="semantic.BASECOLOR"><a href="semantic.html#.BASECOLOR">BASECOLOR</a></li>
             
+                <li  data-name="semantic.EMISSIONFACTOR"><a href="semantic.html#.EMISSIONFACTOR">EMISSIONFACTOR</a></li>
+            
                 <li  data-name="semantic.METALLIC"><a href="semantic.html#.METALLIC">METALLIC</a></li>
             
                 <li  data-name="semantic.ROUGHNESS"><a href="semantic.html#.ROUGHNESS">ROUGHNESS</a></li>
@@ -5436,6 +5438,8 @@
             
                 <li  data-name="Loader.addLoader"><a href="Loader.html#.addLoader">addLoader</a></li>
             
+                <li  data-name="Loader.getLoader"><a href="Loader.html#.getLoader">getLoader</a></li>
+            
                 <li  data-name="Loader#load"><a href="Loader.html#load">load</a></li>
             
             </ul>
@@ -6079,6 +6083,8 @@
                 <li  data-name="PBRMaterial#isSpecularEnvMapIncludeMipmaps"><a href="PBRMaterial.html#isSpecularEnvMapIncludeMipmaps">isSpecularEnvMapIncludeMipmaps</a></li>
             
                 <li  data-name="PBRMaterial#emission"><a href="PBRMaterial.html#emission">emission</a></li>
+            
+                <li  data-name="PBRMaterial#emissionFactor"><a href="PBRMaterial.html#emissionFactor">emissionFactor</a></li>
             
                 <li  data-name="PBRMaterial#isSpecularGlossiness"><a href="PBRMaterial.html#isSpecularGlossiness">isSpecularGlossiness</a></li>
             
@@ -8437,6 +8443,8 @@
             
                 <li class="inherited-member" data-name="CubeTexture#flipY"><a href="CubeTexture.html#flipY">flipY</a></li>
             
+                <li class="inherited-member" data-name="CubeTexture#colorSpaceConversion"><a href="CubeTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
+            
                 <li class="inherited-member" data-name="CubeTexture#compressed"><a href="CubeTexture.html#compressed">compressed</a></li>
             
                 <li class="inherited-member" data-name="CubeTexture#needUpdate"><a href="CubeTexture.html#needUpdate">needUpdate</a></li>
@@ -8543,6 +8551,8 @@
                 <li class="inherited-member" data-name="DataTexture#premultiplyAlpha"><a href="DataTexture.html#premultiplyAlpha">premultiplyAlpha</a></li>
             
                 <li class="inherited-member" data-name="DataTexture#flipY"><a href="DataTexture.html#flipY">flipY</a></li>
+            
+                <li class="inherited-member" data-name="DataTexture#colorSpaceConversion"><a href="DataTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
             
                 <li class="inherited-member" data-name="DataTexture#compressed"><a href="DataTexture.html#compressed">compressed</a></li>
             
@@ -8657,6 +8667,8 @@
             
                 <li class="inherited-member" data-name="LazyTexture#flipY"><a href="LazyTexture.html#flipY">flipY</a></li>
             
+                <li class="inherited-member" data-name="LazyTexture#colorSpaceConversion"><a href="LazyTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
+            
                 <li class="inherited-member" data-name="LazyTexture#compressed"><a href="LazyTexture.html#compressed">compressed</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#needUpdate"><a href="LazyTexture.html#needUpdate">needUpdate</a></li>
@@ -8763,6 +8775,8 @@
                 <li  data-name="Texture#premultiplyAlpha"><a href="Texture.html#premultiplyAlpha">premultiplyAlpha</a></li>
             
                 <li  data-name="Texture#flipY"><a href="Texture.html#flipY">flipY</a></li>
+            
+                <li  data-name="Texture#colorSpaceConversion"><a href="Texture.html#colorSpaceConversion">colorSpaceConversion</a></li>
             
                 <li  data-name="Texture#compressed"><a href="Texture.html#compressed">compressed</a></li>
             
@@ -9107,11 +9121,18 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
     isSpecularEnvMapIncludeMipmaps: false,
 
     /**
-     * 放射光贴图(sRGB 空间)，或颜色
+     * 放射光贴图(sRGB 空间)
      * @default null
-     * @type {Texture|Color}
+     * @type {Texture}
      */
     emission: null,
+
+    /**
+     * The emissive color of the material.
+     * @default new Color(0, 0, 0)
+     * @type {Color}
+     */
+    emissionFactor: null,
 
     /**
      * 是否基于反射光泽度的 PBR，具体见 [KHR_materials_pbrSpecularGlossiness]{@link https://github.com/KhronosGroup/glTF/tree/master/extensions/Khronos/KHR_materials_pbrSpecularGlossiness}
@@ -9202,6 +9223,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
     constructor(params) {
         this.baseColor = new Color(1, 1, 1);
         this.specular = new Color(1, 1, 1);
+        this.emissionFactor = new Color(0, 0, 0);
 
         PBRMaterial.superclass.constructor.call(this, params);
 
@@ -9210,6 +9232,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
             u_metallic: 'METALLIC',
             u_roughness: 'ROUGHNESS',
             u_specular: 'SPECULAR',
+            u_emissionFactor: 'EMISSIONFACTOR',
             u_glossiness: 'GLOSSINESS',
             u_brdfLUT: 'BRDFLUT',
             u_diffuseEnvMap: 'DIFFUSEENVMAP',

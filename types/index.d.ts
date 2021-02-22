@@ -857,6 +857,10 @@ namespace semantic {
     var NORMALDECODEMAT: semanticObject;
     var UVDECODEMAT: semanticObject;
     var BASECOLOR: semanticObject;
+    /**
+     * EMISSION FACTOR
+     */
+    var EMISSIONFACTOR: any;
     var METALLIC: semanticObject;
     var ROUGHNESS: semanticObject;
     var DIFFUSEENVMAP: semanticObject;
@@ -1644,6 +1648,10 @@ class Texture {
      * 是否翻转Texture的Y轴
      */
     flipY: boolean;
+    /**
+     * 是否转换到图片默认的颜色空间
+     */
+    colorSpaceConversion: boolean;
     /**
      * 是否压缩
      */
@@ -5320,9 +5328,13 @@ class PBRMaterial extends Material {
      */
     isSpecularEnvMapIncludeMipmaps: boolean;
     /**
-     * 放射光贴图(sRGB 空间)，或颜色
+     * 放射光贴图(sRGB 空间)
      */
-    emission: Texture | Color;
+    emission: Texture;
+    /**
+     * The emissive color of the material.
+     */
+    emissionFactor: Color;
     /**
      * 是否基于反射光泽度的 PBR，具体见 [KHR_materials_pbrSpecularGlossiness]{@link https://github.com/KhronosGroup/glTF/tree/master/extensions/Khronos/KHR_materials_pbrSpecularGlossiness}
      */
@@ -5801,6 +5813,12 @@ class Loader {
      * @param LoaderClass - 用于加载的类，需要继承BasicLoader
      */
     static addLoader(ext: string, LoaderClass: any): void;
+    /**
+     * 获取对应类型的 loader
+     * @param ext
+     * @returns loader
+     */
+    static getLoader(ext: string): any;
     /**
      * url 预处理函数
      */

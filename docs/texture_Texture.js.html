@@ -1036,6 +1036,8 @@
             
                 <li  data-name="semantic.BASECOLOR"><a href="semantic.html#.BASECOLOR">BASECOLOR</a></li>
             
+                <li  data-name="semantic.EMISSIONFACTOR"><a href="semantic.html#.EMISSIONFACTOR">EMISSIONFACTOR</a></li>
+            
                 <li  data-name="semantic.METALLIC"><a href="semantic.html#.METALLIC">METALLIC</a></li>
             
                 <li  data-name="semantic.ROUGHNESS"><a href="semantic.html#.ROUGHNESS">ROUGHNESS</a></li>
@@ -5436,6 +5438,8 @@
             
                 <li  data-name="Loader.addLoader"><a href="Loader.html#.addLoader">addLoader</a></li>
             
+                <li  data-name="Loader.getLoader"><a href="Loader.html#.getLoader">getLoader</a></li>
+            
                 <li  data-name="Loader#load"><a href="Loader.html#load">load</a></li>
             
             </ul>
@@ -6079,6 +6083,8 @@
                 <li  data-name="PBRMaterial#isSpecularEnvMapIncludeMipmaps"><a href="PBRMaterial.html#isSpecularEnvMapIncludeMipmaps">isSpecularEnvMapIncludeMipmaps</a></li>
             
                 <li  data-name="PBRMaterial#emission"><a href="PBRMaterial.html#emission">emission</a></li>
+            
+                <li  data-name="PBRMaterial#emissionFactor"><a href="PBRMaterial.html#emissionFactor">emissionFactor</a></li>
             
                 <li  data-name="PBRMaterial#isSpecularGlossiness"><a href="PBRMaterial.html#isSpecularGlossiness">isSpecularGlossiness</a></li>
             
@@ -8437,6 +8443,8 @@
             
                 <li class="inherited-member" data-name="CubeTexture#flipY"><a href="CubeTexture.html#flipY">flipY</a></li>
             
+                <li class="inherited-member" data-name="CubeTexture#colorSpaceConversion"><a href="CubeTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
+            
                 <li class="inherited-member" data-name="CubeTexture#compressed"><a href="CubeTexture.html#compressed">compressed</a></li>
             
                 <li class="inherited-member" data-name="CubeTexture#needUpdate"><a href="CubeTexture.html#needUpdate">needUpdate</a></li>
@@ -8543,6 +8551,8 @@
                 <li class="inherited-member" data-name="DataTexture#premultiplyAlpha"><a href="DataTexture.html#premultiplyAlpha">premultiplyAlpha</a></li>
             
                 <li class="inherited-member" data-name="DataTexture#flipY"><a href="DataTexture.html#flipY">flipY</a></li>
+            
+                <li class="inherited-member" data-name="DataTexture#colorSpaceConversion"><a href="DataTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
             
                 <li class="inherited-member" data-name="DataTexture#compressed"><a href="DataTexture.html#compressed">compressed</a></li>
             
@@ -8657,6 +8667,8 @@
             
                 <li class="inherited-member" data-name="LazyTexture#flipY"><a href="LazyTexture.html#flipY">flipY</a></li>
             
+                <li class="inherited-member" data-name="LazyTexture#colorSpaceConversion"><a href="LazyTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
+            
                 <li class="inherited-member" data-name="LazyTexture#compressed"><a href="LazyTexture.html#compressed">compressed</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#needUpdate"><a href="LazyTexture.html#needUpdate">needUpdate</a></li>
@@ -8763,6 +8775,8 @@
                 <li  data-name="Texture#premultiplyAlpha"><a href="Texture.html#premultiplyAlpha">premultiplyAlpha</a></li>
             
                 <li  data-name="Texture#flipY"><a href="Texture.html#flipY">flipY</a></li>
+            
+                <li  data-name="Texture#colorSpaceConversion"><a href="Texture.html#colorSpaceConversion">colorSpaceConversion</a></li>
             
                 <li  data-name="Texture#compressed"><a href="Texture.html#compressed">compressed</a></li>
             
@@ -8957,7 +8971,12 @@ const {
     NEAREST,
     REPEAT,
     CLAMP_TO_EDGE,
-    UNSIGNED_BYTE
+    UNSIGNED_BYTE,
+    UNPACK_PREMULTIPLY_ALPHA_WEBGL,
+    UNPACK_FLIP_Y_WEBGL,
+    UNPACK_COLORSPACE_CONVERSION_WEBGL,
+    BROWSER_DEFAULT_WEBGL,
+    NONE,
 } = constants;
 
 const cache = new Cache();
@@ -9147,6 +9166,13 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * @type {boolean}
      */
     flipY: false,
+
+    /**
+     * 是否转换到图片默认的颜色空间
+     * @default true
+     * @type {boolean}
+     */
+    colorSpaceConversion: true,
 
     /**
      * 是否压缩
@@ -9393,6 +9419,14 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
 
         return this;
     },
+
+    _updatePixelStorei() {
+        const state = this.state;
+        state.pixelStorei(UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.premultiplyAlpha);
+        state.pixelStorei(UNPACK_FLIP_Y_WEBGL, !!this.flipY);
+        state.pixelStorei(UNPACK_COLORSPACE_CONVERSION_WEBGL, this.colorSpaceConversion ? BROWSER_DEFAULT_WEBGL : NONE);
+    },
+
     /**
      * 更新 Texture
      * @param  {WebGLState} state
@@ -9418,14 +9452,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
 
             state.activeTexture(gl.TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
             state.bindTexture(this.target, glTexture);
-            state.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.premultiplyAlpha);
-            state.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, !!this.flipY);
-
-            const textureFilterAnisotropic = extensions.textureFilterAnisotropic;
-            if (textureFilterAnisotropic &amp;&amp; this.anisotropic > 1) {
-                gl.texParameterf(this.target, textureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(this.anisotropic, capabilities.MAX_TEXTURE_MAX_ANISOTROPY));
-            }
-
+            this._updatePixelStorei();
             this._uploadTexture(state);
             if (useMipmap) {
                 if (!this.compressed) {
@@ -9440,6 +9467,11 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
             gl.texParameterf(this.target, gl.TEXTURE_MIN_FILTER, this.minFilter);
             gl.texParameterf(this.target, gl.TEXTURE_WRAP_S, this.wrapS);
             gl.texParameterf(this.target, gl.TEXTURE_WRAP_T, this.wrapT);
+
+            const textureFilterAnisotropic = extensions.textureFilterAnisotropic;
+            if (textureFilterAnisotropic &amp;&amp; this.anisotropic > 1) {
+                gl.texParameterf(this.target, textureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(this.anisotropic, capabilities.MAX_TEXTURE_MAX_ANISOTROPY));
+            }
 
             this.needUpdate = false;
         }
@@ -9462,8 +9494,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
             const gl = state.gl;
             state.activeTexture(gl.TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
             state.bindTexture(this.target, glTexture);
-            state.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.premultiplyAlpha);
-            state.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, !!this.flipY);
+            this._updatePixelStorei();
 
             this._subTextureList.forEach((subInfo) => {
                 const xOffset = subInfo[0];

@@ -1036,6 +1036,8 @@
             
                 <li  data-name="semantic.BASECOLOR"><a href="semantic.html#.BASECOLOR">BASECOLOR</a></li>
             
+                <li  data-name="semantic.EMISSIONFACTOR"><a href="semantic.html#.EMISSIONFACTOR">EMISSIONFACTOR</a></li>
+            
                 <li  data-name="semantic.METALLIC"><a href="semantic.html#.METALLIC">METALLIC</a></li>
             
                 <li  data-name="semantic.ROUGHNESS"><a href="semantic.html#.ROUGHNESS">ROUGHNESS</a></li>
@@ -5436,6 +5438,8 @@
             
                 <li  data-name="Loader.addLoader"><a href="Loader.html#.addLoader">addLoader</a></li>
             
+                <li  data-name="Loader.getLoader"><a href="Loader.html#.getLoader">getLoader</a></li>
+            
                 <li  data-name="Loader#load"><a href="Loader.html#load">load</a></li>
             
             </ul>
@@ -6079,6 +6083,8 @@
                 <li  data-name="PBRMaterial#isSpecularEnvMapIncludeMipmaps"><a href="PBRMaterial.html#isSpecularEnvMapIncludeMipmaps">isSpecularEnvMapIncludeMipmaps</a></li>
             
                 <li  data-name="PBRMaterial#emission"><a href="PBRMaterial.html#emission">emission</a></li>
+            
+                <li  data-name="PBRMaterial#emissionFactor"><a href="PBRMaterial.html#emissionFactor">emissionFactor</a></li>
             
                 <li  data-name="PBRMaterial#isSpecularGlossiness"><a href="PBRMaterial.html#isSpecularGlossiness">isSpecularGlossiness</a></li>
             
@@ -8437,6 +8443,8 @@
             
                 <li class="inherited-member" data-name="CubeTexture#flipY"><a href="CubeTexture.html#flipY">flipY</a></li>
             
+                <li class="inherited-member" data-name="CubeTexture#colorSpaceConversion"><a href="CubeTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
+            
                 <li class="inherited-member" data-name="CubeTexture#compressed"><a href="CubeTexture.html#compressed">compressed</a></li>
             
                 <li class="inherited-member" data-name="CubeTexture#needUpdate"><a href="CubeTexture.html#needUpdate">needUpdate</a></li>
@@ -8543,6 +8551,8 @@
                 <li class="inherited-member" data-name="DataTexture#premultiplyAlpha"><a href="DataTexture.html#premultiplyAlpha">premultiplyAlpha</a></li>
             
                 <li class="inherited-member" data-name="DataTexture#flipY"><a href="DataTexture.html#flipY">flipY</a></li>
+            
+                <li class="inherited-member" data-name="DataTexture#colorSpaceConversion"><a href="DataTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
             
                 <li class="inherited-member" data-name="DataTexture#compressed"><a href="DataTexture.html#compressed">compressed</a></li>
             
@@ -8657,6 +8667,8 @@
             
                 <li class="inherited-member" data-name="LazyTexture#flipY"><a href="LazyTexture.html#flipY">flipY</a></li>
             
+                <li class="inherited-member" data-name="LazyTexture#colorSpaceConversion"><a href="LazyTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
+            
                 <li class="inherited-member" data-name="LazyTexture#compressed"><a href="LazyTexture.html#compressed">compressed</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#needUpdate"><a href="LazyTexture.html#needUpdate">needUpdate</a></li>
@@ -8763,6 +8775,8 @@
                 <li  data-name="Texture#premultiplyAlpha"><a href="Texture.html#premultiplyAlpha">premultiplyAlpha</a></li>
             
                 <li  data-name="Texture#flipY"><a href="Texture.html#flipY">flipY</a></li>
+            
+                <li  data-name="Texture#colorSpaceConversion"><a href="Texture.html#colorSpaceConversion">colorSpaceConversion</a></li>
             
                 <li  data-name="Texture#compressed"><a href="Texture.html#compressed">compressed</a></li>
             
@@ -8961,7 +8975,7 @@
 <h3 align="center">A 3D WebGL Rendering Engine</h3>
 <hr>
 <p><a href="#Installation">Installation</a> • <a href="#Documentation">Documentation</a> • <a href="#Development">Development</a> • <a href="#Showcase">Showcase</a> • <a href="#Examples">Examples</a> • <a href="#Authors">Authors</a> • <a href="#License">License</a></p>
-<p><a target="_blank" href="https://www.npmjs.com/package/hilo3d"><img src="https://img.shields.io/npm/v/hilo3d.svg?style=flat-square" alt="npm"></a> <a target="_blank" href="https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev"><img src="https://img.shields.io/github/workflow/status/hiloteam/Hilo3d/npm%20test?style=flat-square" alt="ci"></a> <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.15.16/build/Hilo3d.js"><img src="https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&amp;style=flat-square" alt="size"></a> <a target="_blank" href="https://gitter.im/hiloteam/Hilo3d?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square" alt="gitter.im"></a></p>
+<p><a target="_blank" href="https://www.npmjs.com/package/hilo3d"><img src="https://img.shields.io/npm/v/hilo3d.svg?style=flat-square" alt="npm"></a> <a target="_blank" href="https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev"><img src="https://img.shields.io/github/workflow/status/hiloteam/Hilo3d/npm%20test?style=flat-square" alt="ci"></a> <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.15.17/build/Hilo3d.js"><img src="https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&amp;style=flat-square" alt="size"></a> <a target="_blank" href="https://gitter.im/hiloteam/Hilo3d?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square" alt="gitter.im"></a></p>
 <h3>Features</h3>
 <ul>
 <li>Compatible for multiple mobile and desktop browsers.</li>
@@ -8977,8 +8991,8 @@
 </code></pre>
 </li>
 <li>
-<p>use script tag from a <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.15.16/build/Hilo3d.js">cdn</a></p>
-<pre class="prettyprint source"><code>&lt;script src='//cdn.jsdelivr.net/npm/hilo3d@1.15.16/build/Hilo3d.js'>&lt;/script>
+<p>use script tag from a <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.15.17/build/Hilo3d.js">cdn</a></p>
+<pre class="prettyprint source"><code>&lt;script src='//cdn.jsdelivr.net/npm/hilo3d@1.15.17/build/Hilo3d.js'>&lt;/script>
 </code></pre>
 </li>
 </ul>

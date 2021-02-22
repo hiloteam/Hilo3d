@@ -1036,6 +1036,8 @@
             
                 <li  data-name="semantic.BASECOLOR"><a href="semantic.html#.BASECOLOR">BASECOLOR</a></li>
             
+                <li  data-name="semantic.EMISSIONFACTOR"><a href="semantic.html#.EMISSIONFACTOR">EMISSIONFACTOR</a></li>
+            
                 <li  data-name="semantic.METALLIC"><a href="semantic.html#.METALLIC">METALLIC</a></li>
             
                 <li  data-name="semantic.ROUGHNESS"><a href="semantic.html#.ROUGHNESS">ROUGHNESS</a></li>
@@ -5436,6 +5438,8 @@
             
                 <li  data-name="Loader.addLoader"><a href="Loader.html#.addLoader">addLoader</a></li>
             
+                <li  data-name="Loader.getLoader"><a href="Loader.html#.getLoader">getLoader</a></li>
+            
                 <li  data-name="Loader#load"><a href="Loader.html#load">load</a></li>
             
             </ul>
@@ -6079,6 +6083,8 @@
                 <li  data-name="PBRMaterial#isSpecularEnvMapIncludeMipmaps"><a href="PBRMaterial.html#isSpecularEnvMapIncludeMipmaps">isSpecularEnvMapIncludeMipmaps</a></li>
             
                 <li  data-name="PBRMaterial#emission"><a href="PBRMaterial.html#emission">emission</a></li>
+            
+                <li  data-name="PBRMaterial#emissionFactor"><a href="PBRMaterial.html#emissionFactor">emissionFactor</a></li>
             
                 <li  data-name="PBRMaterial#isSpecularGlossiness"><a href="PBRMaterial.html#isSpecularGlossiness">isSpecularGlossiness</a></li>
             
@@ -8437,6 +8443,8 @@
             
                 <li class="inherited-member" data-name="CubeTexture#flipY"><a href="CubeTexture.html#flipY">flipY</a></li>
             
+                <li class="inherited-member" data-name="CubeTexture#colorSpaceConversion"><a href="CubeTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
+            
                 <li class="inherited-member" data-name="CubeTexture#compressed"><a href="CubeTexture.html#compressed">compressed</a></li>
             
                 <li class="inherited-member" data-name="CubeTexture#needUpdate"><a href="CubeTexture.html#needUpdate">needUpdate</a></li>
@@ -8543,6 +8551,8 @@
                 <li class="inherited-member" data-name="DataTexture#premultiplyAlpha"><a href="DataTexture.html#premultiplyAlpha">premultiplyAlpha</a></li>
             
                 <li class="inherited-member" data-name="DataTexture#flipY"><a href="DataTexture.html#flipY">flipY</a></li>
+            
+                <li class="inherited-member" data-name="DataTexture#colorSpaceConversion"><a href="DataTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
             
                 <li class="inherited-member" data-name="DataTexture#compressed"><a href="DataTexture.html#compressed">compressed</a></li>
             
@@ -8657,6 +8667,8 @@
             
                 <li class="inherited-member" data-name="LazyTexture#flipY"><a href="LazyTexture.html#flipY">flipY</a></li>
             
+                <li class="inherited-member" data-name="LazyTexture#colorSpaceConversion"><a href="LazyTexture.html#colorSpaceConversion">colorSpaceConversion</a></li>
+            
                 <li class="inherited-member" data-name="LazyTexture#compressed"><a href="LazyTexture.html#compressed">compressed</a></li>
             
                 <li class="inherited-member" data-name="LazyTexture#needUpdate"><a href="LazyTexture.html#needUpdate">needUpdate</a></li>
@@ -8763,6 +8775,8 @@
                 <li  data-name="Texture#premultiplyAlpha"><a href="Texture.html#premultiplyAlpha">premultiplyAlpha</a></li>
             
                 <li  data-name="Texture#flipY"><a href="Texture.html#flipY">flipY</a></li>
+            
+                <li  data-name="Texture#colorSpaceConversion"><a href="Texture.html#colorSpaceConversion">colorSpaceConversion</a></li>
             
                 <li  data-name="Texture#compressed"><a href="Texture.html#compressed">compressed</a></li>
             
@@ -10263,6 +10277,45 @@
         <tr class="inherited-member">
             
                 <td class="name">
+                    <a name="colorSpaceConversion"></a>
+                    <code>colorSpaceConversion</code>
+                </td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">boolean</span>
+
+
+            
+            </td>
+            
+            
+            
+            
+                <td class="default">
+                
+                    true
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    <span class="inherited optional"><a href="Texture.html#colorSpaceConversion">inherited</a></span>
+                
+                <p>是否转换到图片默认的颜色空间</p>
+                
+    
+                
+            </td>
+        </tr>
+	
+	
+        <tr class="inherited-member">
+            
+                <td class="name">
                     <a name="compressed"></a>
                     <code>compressed</code>
                 </td>
@@ -10869,7 +10922,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line341">line 341</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line353">line 353</a>
             </div>
             
         </div>
@@ -11015,7 +11068,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line350">line 350</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line362">line 362</a>
             </div>
             
         </div>
@@ -11208,7 +11261,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line380">line 380</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line392">line 392</a>
             </div>
             
         </div>
@@ -11357,7 +11410,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line391">line 391</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line403">line 403</a>
             </div>
             
         </div>
@@ -11552,7 +11605,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line459">line 459</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line479">line 479</a>
             </div>
             
         </div>
@@ -11721,7 +11774,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line543">line 543</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line560">line 560</a>
             </div>
             
         </div>
@@ -11890,7 +11943,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line555">line 555</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line572">line 572</a>
             </div>
             
         </div>
@@ -12036,7 +12089,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line587">line 587</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line604">line 604</a>
             </div>
             
         </div>
@@ -12229,7 +12282,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line599">line 599</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line616">line 616</a>
             </div>
             
         </div>
@@ -12330,7 +12383,7 @@
         
             
             <div class="tag-source">
-                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line612">line 612</a>
+                <a href="texture_Texture.js.html">texture/Texture.js</a>, <a href="texture_Texture.js.html#line629">line 629</a>
             </div>
             
         </div>
