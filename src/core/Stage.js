@@ -61,6 +61,20 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
     offsetY: 0,
 
     /**
+     * 舞台宽度
+     * @type {Number}
+     * @default 0
+     */
+    width: 0,
+
+    /**
+     * 舞台高度
+     * @type {Number}
+     * @default 0
+     */
+    height: 0,
+
+    /**
      * canvas
      * @type {HTMLCanvasElement}
      * @default null

@@ -590,10 +590,10 @@ const Node = Class.create(/** @lends Node.prototype */ {
         return this.getChildrenByFn(child => child['is' + className]);
     },
     /**
-     * 设置元素的缩放比例
+     * 设置元素的缩放比例，如果只有一个参数三个轴等比缩放
      * @param {number} x X缩放比例
-     * @param {number} y Y缩放比例
-     * @param {number} z Z缩放比例
+     * @param {number} [y] Y缩放比例
+     * @param {number} [z] Z缩放比例
      * @return {Node} this
      */
     setScale(x, y = x, z = y) {
@@ -940,6 +940,12 @@ const Node = Class.create(/** @lends Node.prototype */ {
         }
     },
 
+    /**
+     * 矩阵 version，每次改变会加一
+     * @readonly
+     * @type {Number}
+     * @default 0
+     */
     matrixVersion: 0,
     /**
      * 获取元素的包围盒信息
