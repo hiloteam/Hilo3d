@@ -590,6 +590,9 @@ type NodeGetChildByCallback = (node: Node) => boolean;
  * @property [onStart]
  * @property [onComplete]
  * @property [onUpdate]
+ * @property [loop = false]
+ * @property [reverse = false]
+ * @property [repeat = 0]
  */
 interface TweenParams {
     duration: number;
@@ -598,6 +601,9 @@ interface TweenParams {
     onStart?: (...params: any[]) => any;
     onComplete?: (...params: any[]) => any;
     onUpdate?: (...params: any[]) => any;
+    loop?: boolean;
+    reverse?: boolean;
+    repeat?: number;
 }
 
 /**
@@ -6549,6 +6555,10 @@ class CameraHelper extends Mesh {
     color: Color;
     geometry: Geometry;
     material: Material;
+    /**
+     * update 回调
+     */
+    onUpdate: (...params: any[]) => any;
 }
 
 /**
@@ -7441,6 +7451,14 @@ class Stage extends Node {
      */
     offsetY: number;
     /**
+     * 舞台宽度
+     */
+    width: number;
+    /**
+     * 舞台高度
+     */
+    height: number;
+    /**
      * canvas
      */
     canvas: HTMLCanvasElement;
@@ -7692,6 +7710,10 @@ class Node implements EventMixin {
      * 用户数据
      */
     userData: any;
+    /**
+     * update 回调
+     */
+    onUpdate: (...params: any[]) => any;
     id: string;
     /**
      * 元素的up向量
@@ -7850,13 +7872,13 @@ class Node implements EventMixin {
      */
     getChildrenByBaseClassName(className: string): Node[];
     /**
-     * 设置元素的缩放比例
+     * 设置元素的缩放比例，如果只有一个参数三个轴等比缩放
      * @param x - X缩放比例
-     * @param y - Y缩放比例
-     * @param z - Z缩放比例
+     * @param [y] - Y缩放比例
+     * @param [z] - Z缩放比例
      * @returns this
      */
-    setScale(x: number, y: number, z: number): Node;
+    setScale(x: number, y?: number, z?: number): Node;
     /**
      * 设置元素的位置
      * @param x - X方向位置
@@ -7966,6 +7988,10 @@ class Node implements EventMixin {
      * 四元数角度
      */
     quaternion: Quaternion;
+    /**
+     * 矩阵 version，每次改变会加一
+     */
+    readonly matrixVersion: number;
     /**
      * 获取元素的包围盒信息
      * @param [parent] - 元素相对于哪个祖先元素的包围盒，不传表示世界
