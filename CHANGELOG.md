@@ -1,5 +1,5 @@
 ## [1.15.18](https://github.com/hiloteam/Hilo3d/compare/1.15.17...1.15.18) (2021-05-14)
-
+* update doc & .d.ts 
 
 
 ## [1.15.17](https://github.com/hiloteam/Hilo3d/compare/1.15.16...1.15.17) (2021-02-22)
