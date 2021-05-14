@@ -6,15 +6,15 @@
  * @param {Object} toProps 对象缓动的目标属性集合。
  * @param {TweenParams} params 缓动参数。可包含Tween类所有可写属性。
  * @property {Object} target 缓动目标。只读属性。
- * @property {Number} duration 缓动总时长。单位毫秒。
- * @property {Number} delay 缓动延迟时间。单位毫秒。
- * @property {Boolean} paused 缓动是否暂停。默认为false。
- * @property {Boolean} loop 缓动是否循环。默认为false。
- * @property {Boolean} reverse 缓动是否反转播放。默认为false。
- * @property {Number} repeat 缓动重复的次数。默认为0。
- * @property {Number} repeatDelay 缓动重复的延迟时长。单位为毫秒。
+ * @property {number} duration 缓动总时长。单位毫秒。
+ * @property {number} delay 缓动延迟时间。单位毫秒。
+ * @property {boolean} paused 缓动是否暂停。默认为false。
+ * @property {boolean} loop 缓动是否循环。默认为false。
+ * @property {boolean} reverse 缓动是否反转播放。默认为false。
+ * @property {number} repeat 缓动重复的次数。默认为0。
+ * @property {number} repeatDelay 缓动重复的延迟时长。单位为毫秒。
  * @property {Function} ease 缓动变化函数。默认为null。
- * @property {Number} time 缓动已进行的时长。单位毫秒。只读属性。
+ * @property {number} time 缓动已进行的时长。单位毫秒。只读属性。
  * @property {Function} onStart 缓动开始回调函数。它接受1个参数：tween。默认值为null。
  * @property {Function} onUpdate 缓动更新回调函数。它接受2个参数：ratio和tween。默认值为null。
  * @property {Function} onComplete 缓动结束回调函数。它接受1个参数：tween。默认值为null。
@@ -87,8 +87,8 @@ export default Tween;
  * 跳转Tween到指定的时间。
  * @memberOf Tween.prototype
  * @method seek
- * @param {Number} time 指定要跳转的时间。取值范围为：0 - duraion。
- * @param {Boolean} pause 是否暂停。
+ * @param {number} time 指定要跳转的时间。取值范围为：0 - duraion。
+ * @param {boolean} pause 是否暂停。
  * @returns {Tween} Tween变换本身。可用于链式调用。
  */
 
@@ -160,12 +160,15 @@ export default Tween;
 
 /**
  * @interface TweenParams
- * @property {Number} duration
- * @property {Number|String} [delay]
+ * @property {number} duration
+ * @property {number|String} [delay]
  * @property {Function} [ease]
  * @property {Function} [onStart]
  * @property {Function} [onComplete]
  * @property {Function} [onUpdate]
+ * @property {boolean} [loop=false]
+ * @property {boolean} [reverse=false]
+ * @property {number} [repeat=0]
  */
 
 
