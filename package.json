@@ -50,7 +50,7 @@
     "eslint": "^5.6.0",
     "eslint-config-airbnb-base": "^13.1.0",
     "eslint-loader": "^2.1.1",
-    "eslint-plugin-import": "^2.9.0",
+    "eslint-plugin-import": "~2.22.0",
     "glslify": "^6.0.1",
     "glslify-import-loader": "^0.1.2",
     "glslify-loader": "^1.0.2",
