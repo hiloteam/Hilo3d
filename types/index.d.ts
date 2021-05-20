@@ -2829,6 +2829,14 @@ class Framebuffer {
      */
     magFilter: GLenum;
     /**
+     * texture wrapS
+     */
+    wrapS: GLenum;
+    /**
+     * texture wrapS
+     */
+    wrapT: GLenum;
+    /**
      * texture data
      */
     data: TypedArray;

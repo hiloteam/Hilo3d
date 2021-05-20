@@ -1,3 +1,12 @@
+## [1.15.19](https://github.com/hiloteam/Hilo3d/compare/1.15.18...1.15.19) (2021-05-20)
+
+
+### Features
+
+* add wrapS & wrapT property of the framebuffer ([eaae512](https://github.com/hiloteam/Hilo3d/commit/eaae5129fc4324ece40d652bf7b76c625ef36d9b))
+
+
+
 ## [1.15.18](https://github.com/hiloteam/Hilo3d/compare/1.15.17...1.15.18) (2021-05-14)
 * update doc & .d.ts 
 
