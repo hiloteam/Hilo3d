@@ -131,6 +131,20 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
     magFilter: NEAREST,
 
     /**
+     * texture wrapS
+     * @type {GLenum}
+     * @default gl.CLAMP_TO_EDGE
+     */
+    wrapS: CLAMP_TO_EDGE,
+
+    /**
+     * texture wrapS
+     * @type {GLenum}
+     * @default gl.CLAMP_TO_EDGE
+     */
+    wrapT: CLAMP_TO_EDGE,
+
+    /**
      * texture data
      * @type {TypedArray}
      * @default null
@@ -364,8 +378,8 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             width: this.width,
             height: this.height,
             image: this.data,
-            wrapS: CLAMP_TO_EDGE,
-            wrapT: CLAMP_TO_EDGE
+            wrapS: this.wrapS,
+            wrapT: this.wrapT
         });
 
         const glTexture = texture.getGLTexture(state);
