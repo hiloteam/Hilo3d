@@ -468,7 +468,6 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         }, false);
     },
     _onContextLost(e) {
-        this.fire('webglContextLost');
         const gl = this.gl;
         this._isContextLost = true;
 
@@ -483,13 +482,16 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
         this._lastMaterial = null;
         this._lastProgram = null;
+
+        this.fire('webglContextLost');
     },
     _onContextRestore(e) { // eslint-disable-line no-unused-vars
-        this.fire('webglContextRestored');
         const gl = this.gl;
         this._isContextLost = false;
         extensions.reset(gl);
         Framebuffer.reset(gl);
+
+        this.fire('webglContextRestored');
     },
     /**
      * 设置深度检测
