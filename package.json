@@ -73,7 +73,6 @@
     "amc": "^1.0.6",
     "gl-matrix": "^2.4.0",
     "glsl-transpose": "^1.0.0",
-    "hilojs": "^2.0.0",
     "object-assign": "^4.1.1",
     "object-values": "^2.0.0",
     "object.keys": "^0.1.0",
