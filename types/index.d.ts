@@ -618,6 +618,13 @@ interface TweenEaseObject {
 }
 
 /**
+ * @property EaseNone
+ */
+interface TweenEaseNoneObject {
+    EaseNone: (...params: any[]) => any;
+}
+
+/**
  * @param attribute
  * @param index
  * @param offset
@@ -7268,19 +7275,24 @@ class Tween {
      * 更新所有Tween实例。
      * @returns Tween
      */
-    static tick(): any;
+    static tick(): Tween;
     /**
-     * @returns Tween
+     * 添加Tween实例。
+     * @param tween - 要添加的Tween对象。
+     * @returns Tween。
      */
-    static add(): any;
+    static add(tween: Tween): Tween;
     /**
-     * @returns Tween
+     * 删除Tween实例。
+     * @param tweenOrTarget - 要删除的Tween对象或target对象或要删除的一组对象。
+     * @returns Tween。
      */
-    static remove(): any;
+    static remove(tweenOrTarget: Tween | any | any[]): Tween;
     /**
-     * @returns Tween
+     * 删除所有Tween实例。
+     * @returns Tween。
      */
-    static removeAll(): any;
+    static removeAll(): Tween;
     /**
      * 创建一个缓动动画，让目标对象从开始属性变换到目标属性。
      * @param target - 缓动目标对象或缓动目标数组。
@@ -7308,30 +7320,63 @@ class Tween {
     static from(target: any | any[], fromProps: any, params: TweenParams): Tween | any[];
     /**
      * Ease类包含为Tween类提供各种缓动功能的函数。
-     * @property Back
-     * @property Bounce
-     * @property Circ
-     * @property Cubic
-     * @property Elastic
-     * @property Expo
-     * @property Linear
-     * @property Quad
-     * @property Quart
-     * @property Quint
-     * @property Sine
+     * @property Linear - 线性匀速缓动函数
+     * @property Quad - 二次缓动函数
+     * @property Cubic - 三次缓动函数。
+     * @property Quart - 四次缓动函数。
+     * @property Quint - 五次缓动函数。
+     * @property Sine - 正弦缓动函数。
+     * @property Expo - 指数缓动函数。
+     * @property Circ - 圆形缓动函数。
+     * @property Elastic - 弹性缓动函数。
+     * @property Back - 向后缓动函数。
+     * @property Bounce - 弹跳缓动函数。
      */
     static Ease: {
-        Back: TweenEaseObject;
-        Bounce: TweenEaseObject;
-        Circ: TweenEaseObject;
-        Cubic: TweenEaseObject;
-        Elastic: TweenEaseObject;
-        Expo: TweenEaseObject;
-        Linear: TweenEaseObject;
+        /**
+         * 线性匀速缓动函数
+         */
+        Linear: TweenEaseNoneObject;
+        /**
+         * 二次缓动函数
+         */
         Quad: TweenEaseObject;
+        /**
+         * 三次缓动函数。
+         */
+        Cubic: TweenEaseObject;
+        /**
+         * 四次缓动函数。
+         */
         Quart: TweenEaseObject;
+        /**
+         * 五次缓动函数。
+         */
         Quint: TweenEaseObject;
+        /**
+         * 正弦缓动函数。
+         */
         Sine: TweenEaseObject;
+        /**
+         * 指数缓动函数。
+         */
+        Expo: TweenEaseObject;
+        /**
+         * 圆形缓动函数。
+         */
+        Circ: TweenEaseObject;
+        /**
+         * 弹性缓动函数。
+         */
+        Elastic: TweenEaseObject;
+        /**
+         * 向后缓动函数。
+         */
+        Back: TweenEaseObject;
+        /**
+         * 弹跳缓动函数。
+         */
+        Bounce: TweenEaseObject;
     };
     /**
      * 缓动目标。只读属性。

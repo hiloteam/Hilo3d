@@ -1,3 +1,12 @@
+## [1.15.20](https://github.com/hiloteam/Hilo3d/compare/1.15.19...1.15.20) (2021-07-19)
+
+
+### Bug Fixes
+
+* the webglContextLost & webglContextRestored event should be triggered last ([87c9d2d](https://github.com/hiloteam/Hilo3d/commit/87c9d2d8ed9b2005f990db6acdab2e1e107058d9))
+
+
+
 ## [1.15.19](https://github.com/hiloteam/Hilo3d/compare/1.15.18...1.15.19) (2021-05-20)
 
 
