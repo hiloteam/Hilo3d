@@ -339,7 +339,7 @@ export const KHR_techniques_webgl = {
                 }
 
                 if (imageIndex !== undefined) {
-                    map[textureInfos[name].index] = true;
+                    map[imageIndex] = true;
                 }
             }
         }
