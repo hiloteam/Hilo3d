@@ -23,7 +23,7 @@
 * 使用 script 标签加载 [cdn][cdn-url]
 
     ```
-    <script src='<script src='//cdn.jsdelivr.net/npm/hilo3d@1.15.20/build/Hilo3d.js'></script>'></script>
+   <script src='//cdn.jsdelivr.net/npm/hilo3d@1.15.20/build/Hilo3d.js'></script>
     ```
 
 ### 文档
