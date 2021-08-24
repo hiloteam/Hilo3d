@@ -162,5 +162,5 @@ color.a = baseColor.a;
         #endif
     #endif
 #else
-    color = baseColor;
+    color.rgb = baseColor.rgb;
 #endif
