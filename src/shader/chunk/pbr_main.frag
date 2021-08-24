@@ -199,6 +199,6 @@ color.a = baseColor.a;
         color.rgb = color.rgb * (1.0 - t) + clearCoatLayer * t;
     #endif
 #else
-    color = baseColor;
+    color.rgb = baseColor.rgb;
     color.rgb += emissionColor;
 #endif

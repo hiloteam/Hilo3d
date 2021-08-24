@@ -133,5 +133,5 @@
 
     color.rgb += emission.rgb;
 #else
-    color = diffuse;
+    color.rgb = diffuse.rgb;
 #endif
