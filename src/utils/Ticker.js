@@ -7,8 +7,7 @@ import Class from '../core/Class';
  */
 const Ticker = Class.create(/** @lends Ticker.prototype */ {
     constructor(fps) {
-        this._targetFPS = fps || 60;
-        this._interval = 1000 / this._targetFPS;
+        this.targetFPS = fps || 60;
         this._tickers = [];
     },
 
@@ -23,52 +22,38 @@ const Ticker = Class.create(/** @lends Ticker.prototype */ {
     _measuredFPS: 0,
 
     /**
-     * 启动定时器。
-     * @param {boolean} [userRAF=true] 是否使用requestAnimationFrame，默认为true。
+     * 定时器的目标帧率
+     * @type {number}
      */
-    start(useRAF) {
-        if (useRAF === undefined) {
-            useRAF = true;
+    targetFPS: {
+        set(value) {
+            this._targetFPS = value;
+            this._interval = 1000 / this._targetFPS;
+            if (this._intervalId) {
+                this._cancelRunLoop();
+                this._startRunLoop();
+            }
+        },
+        get() {
+            return this._targetFPS;
         }
+    },
 
-        if (this._intervalId) return;
-        this._lastTime = +new Date();
-
-        const self = this;
-        const interval = this._interval;
-        const raf = window.requestAnimationFrame;
-
-        let runLoop;
-        if (useRAF && raf && interval < 17) {
-            this._useRAF = true;
-            runLoop = function() {
-                self._intervalId = raf(runLoop);
-                self._tick();
-            };
-        } else {
-            runLoop = function() {
-                self._intervalId = setTimeout(runLoop, interval);
-                self._tick();
-            };
-        }
-
+    /**
+     * 启动定时器。
+     */
+    start() {
         this._paused = false;
-        runLoop();
+        this._startRunLoop();
     },
 
     /**
      * 停止定时器。
      */
     stop() {
-        if (this._useRAF) {
-            const cancelRAF = window.cancelAnimationFrame;
-            cancelRAF(this._intervalId);
-        } else {
-            clearTimeout(this._intervalId);
-        }
-        this._intervalId = null;
-        this._lastTime = 0;
         this._paused = true;
+        this._cancelRunLoop();
+        this._lastTime = 0;
     },
 
     /**
@@ -83,6 +68,51 @@ const Ticker = Class.create(/** @lends Ticker.prototype */ {
      */
     resume() {
         this._paused = false;
+    },
+
+    /**
+     * @private
+     */
+    _startRunLoop() {
+        if (this._intervalId) {
+            return;
+        }
+
+        this._lastTime = +new Date();
+
+        const self = this;
+        const interval = this._interval;
+        const raf = window.requestAnimationFrame;
+
+        let runLoop;
+        if (raf && interval < 17) {
+            this._useRAF = true;
+            runLoop = function() {
+                self._intervalId = raf(runLoop);
+                self._tick();
+            };
+        } else {
+            this._useRAF = false;
+            runLoop = function() {
+                self._intervalId = setTimeout(runLoop, interval);
+                self._tick();
+            };
+        }
+
+        runLoop();
+    },
+
+    /**
+     * @private
+     */
+    _cancelRunLoop() {
+        if (this._useRAF) {
+            const cancelRAF = window.cancelAnimationFrame;
+            cancelRAF(this._intervalId);
+        } else {
+            clearTimeout(this._intervalId);
+        }
+        this._intervalId = null;
     },
 
     /**
