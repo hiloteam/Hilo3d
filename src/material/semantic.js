@@ -296,6 +296,24 @@ const semantic = {
     /**
      * @type {semanticObject}
      */
+    JOINT: {
+        get(mesh, material, programInfo) {
+            return mesh.geometry.skinIndices;
+        }
+    },
+
+    /**
+     * @type {semanticObject}
+     */
+    WEIGHT: {
+        get(mesh, material, programInfo) {
+            return mesh.geometry.skinWeights;
+        }
+    },
+
+    /**
+     * @type {semanticObject}
+     */
     SKINWEIGHTS: {
         get(mesh, material, programInfo) {
             return mesh.geometry.skinWeights;
