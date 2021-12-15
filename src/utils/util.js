@@ -43,7 +43,7 @@ let utf8Decoder;
 /**
  * @memberOf util
  * @param  {Uint8Array|number[]} array
- * @param  {boolean} isUTF8
+ * @param  {boolean} [isUTF8=false]
  * @return {string}
  */
 function convertUint8ArrayToString(array, isUTF8) {

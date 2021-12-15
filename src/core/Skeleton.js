@@ -45,7 +45,7 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
         this.jointNodeList = [];
         /**
          * @default []
-         * @type {String[]}
+         * @type {string[]}
          */
         this.jointNames = [];
         /**

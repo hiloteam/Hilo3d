@@ -26,7 +26,7 @@ const BasicMaterial = Class.create(/** @lends BasicMaterial.prototype */ {
     /**
      * 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
      * @default BLINN-PHONG
-     * @type {string}
+     * @type {'NONE'|'PHONG'|'BLINN-PHONG'|'LAMBERT'}
      */
     lightType: 'BLINN-PHONG',
     /**

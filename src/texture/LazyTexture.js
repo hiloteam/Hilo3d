@@ -11,6 +11,7 @@ placeHolder.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAA
  * 懒加载纹理
  * @class
  * @extends Texture
+ * @mixes EventMixin
  * @fires load 加载成功事件
  * @fires error 加载失败事件
  * @example

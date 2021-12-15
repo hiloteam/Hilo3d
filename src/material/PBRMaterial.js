@@ -28,8 +28,7 @@ const PBRMaterial = Class.create(/** @lends PBRMaterial.prototype */ {
     /**
      * 光照类型，只能为 PBR 或 NONE
      * @default PBR
-     * @readOnly
-     * @type {string}
+     * @type {'PBR'|'NONE'}
      */
     lightType: 'PBR',
 
