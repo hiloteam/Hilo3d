@@ -146,7 +146,7 @@ uniform vec4 u_emissionFactor;
             #ifdef HILO_IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS
                 float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
                 vec4 specularEnvMap = textureEnvMapIncludeMipmapsLod(u_specularEnvMap, R, lod);
-            #elif HILO_USE_SHADER_TEXTURE_LOD
+            #elif defined(HILO_USE_SHADER_TEXTURE_LOD)
                 float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
                 vec4 specularEnvMap = textureEnvMapLod(u_specularEnvMap, R, lod);
             #else
@@ -188,7 +188,7 @@ uniform vec4 u_emissionFactor;
             #ifdef HILO_IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS
                 float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
                 vec4 specularEnvMap = textureEnvMapIncludeMipmapsLod(u_specularEnvMap, R, lod);
-            #elif HILO_USE_SHADER_TEXTURE_LOD
+            #elif defined(HILO_USE_SHADER_TEXTURE_LOD)
                 float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
                 vec4 specularEnvMap = textureEnvMapLod(u_specularEnvMap, R, lod);
             #else
