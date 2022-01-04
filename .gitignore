@@ -9,3 +9,4 @@ reports
 logs
 **/*.map
 seinjs-build
+examples/models/test
