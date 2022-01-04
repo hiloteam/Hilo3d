@@ -802,6 +802,8 @@ namespace semantic {
     var CAMERATYPE: semanticObject;
     var COLOR_0: semanticObject;
     var SKININDICES: semanticObject;
+    var JOINT: semanticObject;
+    var WEIGHT: semanticObject;
     var SKINWEIGHTS: semanticObject;
     var RENDERERSIZE: semanticObject;
     var LOCAL: semanticObject;
@@ -1360,9 +1362,9 @@ namespace util {
     function getRelativePath(basePath: string, path: string): string;
     /**
      * @param array
-     * @param isUTF8
+     * @param [isUTF8 = false]
      */
-    function convertUint8ArrayToString(array: Uint8Array | number[], isUTF8: boolean): string;
+    function convertUint8ArrayToString(array: Uint8Array | number[], isUTF8?: boolean): string;
     /**
      * @param url
      */
@@ -1450,10 +1452,13 @@ namespace util {
 class Ticker {
     constructor(fps?: number);
     /**
-     * 启动定时器。
-     * @param [userRAF = true] - 是否使用requestAnimationFrame，默认为true。
+     * 定时器的目标帧率
      */
-    start(userRAF?: boolean): void;
+    targetFPS: number;
+    /**
+     * 启动定时器。
+     */
+    start(): void;
     /**
      * 停止定时器。
      */
@@ -1770,6 +1775,9 @@ class Texture {
     clone(): Texture;
 }
 
+interface LazyTexture extends EventMixin {
+}
+
 /**
  * 懒加载纹理
  * @example
@@ -1786,7 +1794,7 @@ class Texture {
  * @param [params.src] - 图片地址
  * @param params.[value:string] - 其它属性
  */
-class LazyTexture extends Texture {
+class LazyTexture extends Texture implements EventMixin {
     constructor(params?: {
         crossOrigin?: boolean;
         placeHolder?: HTMLImageElement;
@@ -5271,7 +5279,7 @@ class PBRMaterial extends Material {
     /**
      * 光照类型，只能为 PBR 或 NONE
      */
-    readonly lightType: string;
+    lightType: 'PBR' | 'NONE';
     /**
      * gammaCorrection
      */
@@ -5677,7 +5685,7 @@ class GeometryMaterial extends BasicMaterial {
     /**
      * 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
      */
-    lightType: string;
+    lightType: 'NONE' | 'PHONG' | 'BLINN-PHONG' | 'LAMBERT';
 }
 
 /**
@@ -5720,7 +5728,7 @@ class BasicMaterial extends Material {
     /**
      * 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
      */
-    lightType: string;
+    lightType: 'NONE' | 'PHONG' | 'BLINN-PHONG' | 'LAMBERT';
     /**
      * 漫反射贴图，或颜色
      */
@@ -7648,7 +7656,7 @@ class Skeleton {
      */
     id: string;
     jointNodeList: Node[];
-    jointNames: String[];
+    jointNames: string[];
     inverseBindMatrices: Matrix4[];
     /**
      * 关节数量

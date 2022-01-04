@@ -1,3 +1,21 @@
+# [1.16.0](https://github.com/hiloteam/Hilo3d/compare/1.15.20...1.16.0) (2022-01-04)
+
+
+### Bug Fixes
+
+* KHR_techniques_webgl parse texture bug ([f45879e](https://github.com/hiloteam/Hilo3d/commit/f45879ed7b826eb6049e14069120f0c2e3192f6b))
+* pbr shader texture lod bug ([8256991](https://github.com/hiloteam/Hilo3d/commit/825699140ccc44bf7b9bbc83769526a5fac9584c))
+* the nextTick callback of ticker should pass in the dt parameter ([db267cb](https://github.com/hiloteam/Hilo3d/commit/db267cb06d40bdb8ad63a3db7d14ca3ed1a43f71))
+* unlit material transparency bug ([1006c60](https://github.com/hiloteam/Hilo3d/commit/1006c60340c511a908fd90d5ef8f331b1749d468))
+
+
+### Features
+
+* add JOINT & WEIGHT semantic ([2a9da6a](https://github.com/hiloteam/Hilo3d/commit/2a9da6aa59113c8e5f0d7cd4df46a938cd2e7d15))
+* Add the function of dynamically modifying the targetFPS of the ticker ([e41f6cf](https://github.com/hiloteam/Hilo3d/commit/e41f6cf521040b0ffa0bf32b980eca1de0c15f84))
+
+
+
 ## [1.15.20](https://github.com/hiloteam/Hilo3d/compare/1.15.19...1.15.20) (2021-07-19)
 
 
