@@ -180,9 +180,9 @@ const Ticker = Class.create(/** @lends Ticker.prototype */ {
     nextTick(callback) {
         const that = this;
         const tickObj = {
-            tick() {
+            tick(dt) {
                 that.removeTick(tickObj);
-                callback();
+                callback(dt);
             },
         };
 
