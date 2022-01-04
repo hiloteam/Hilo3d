@@ -34,25 +34,70 @@ describe('Ticker', function(){
     });
 
     it('tick time', function(done){
-        let startTime;
-        ticker.addTick({
-            tick:function(){
-                if(!startTime){
-                    startTime = Date.now();
-                }
-                else{
-                    try{
-                        if (!window._IS_CI) {
-                            (Date.now() - startTime).should.be.within(11, 21);
-                        }
+        if (window._IS_CI) {
+            done();
+            return;
+        }
+        ticker.start();
+        setTimeout(() => {
+            let startTime;
+            ticker.addTick({
+                tick:(dt) => {
+                    if (!startTime) {
+                        startTime = Date.now();
+                    } else {
+                        (Date.now() - startTime).should.be.within(13, 20);
                         done();
                     }
-                    catch(e){
-                        done(e);
-                    }
                 }
-            }
-        });
-        ticker.start(false);
+            });
+        }, 300);
+    });
+
+    it('pause & resume', function(done){
+        if (window._IS_CI) {
+            done();
+            return;
+        }
+        ticker.addTick(tickObj);
+        ticker.start();
+        let tickNum;
+        setTimeout(() => {
+            tickObj.tickNum.should.above(1);
+            tickNum = tickObj.tickNum;
+            ticker.pause();
+            setTimeout(() => {
+                tickObj.tickNum.should.equal(tickNum);
+                ticker.resume();
+                setTimeout(() => {
+                    tickObj.tickNum.should.above(tickNum + 1);
+                    done();
+                }, 300);
+            }, 300);
+        }, 300);
+    });
+
+    it('targetFPS', function(done) {
+        if (window._IS_CI) {
+            done();
+            return;
+        }
+        ticker.start();
+
+        ticker.targetFPS = 30;
+        ticker._useRAF.should.be.false();
+        setTimeout(() => {
+            ticker.nextTick((dt) => {
+                dt.should.be.within(30, 37);
+                ticker.targetFPS = 60;
+                ticker._useRAF.should.be.true();
+                setTimeout(() => {
+                   ticker.nextTick((dt) => {
+                       dt.should.be.within(13, 20);
+                       done();
+                   });
+               }, 300);
+            });
+        }, 300);
     });
 });
