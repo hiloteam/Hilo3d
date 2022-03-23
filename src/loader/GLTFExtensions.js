@@ -5,7 +5,6 @@ import SpotLight from '../light/SpotLight';
 import Color from '../math/Color';
 import math from '../math/math';
 import * as util from '../utils/util';
-import log from '../utils/log';
 import ShaderMaterial from '../material/ShaderMaterial';
 import semantic from '../material/semantic';
 import constants from '../constants';
@@ -406,9 +405,6 @@ export const KHR_techniques_webgl = {
                 } else {
                     uniformObject = uniformDef.semantic;
                 }
-            } else {
-                log.warn(`KHR_techniques_webgl: no ${uniformName} value found!`);
-                uniformObject = semantic.blankInfo;
             }
             uniforms[uniformName] = uniformObject;
         }
@@ -423,11 +419,27 @@ export const KHR_techniques_webgl = {
         const shaderMaterial = new ShaderMaterial({
             needBasicUnifroms: false,
             needBasicAttributes: false,
+            useHeaderCache: true,
             vs: vertexText,
             fs: fragmentText,
             attributes,
             uniforms
         });
+
+        if (info.premultiplyAlpha !== undefined) {
+            shaderMaterial.premultiplyAlpha = info.premultiplyAlpha;
+        }
+
+        if (info.defines) {
+            shaderMaterial.getCustomRenderOption = function() {
+                return info.defines;
+            };
+        }
+
+        if (programInfo.name !== undefined) {
+            shaderMaterial.shaderName = programInfo.name;
+            shaderMaterial.shaderCacheId = `KHR_techniques_webgl_${programInfo.name}`;
+        }
 
         return shaderMaterial;
     }
