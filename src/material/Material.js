@@ -49,9 +49,15 @@ const Material = Class.create(/** @lends Material.prototype */ {
     /**
      * shader cache id
      * @default null
-     * @type {String}
+     * @type {string}
      */
     shaderCacheId: null,
+    /**
+     * shader name，会在 shader 中加个 SHADER_NAME 宏，不填用 className 代替。
+     * @default null
+     * @type {string}
+     */
+    shaderName: null,
     /**
      * 光照类型
      * @default NONE

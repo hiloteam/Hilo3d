@@ -212,7 +212,7 @@ const Shader = Class.create(/** @lends Shader.prototype */ {
                     delete headers.POINT_LIGHTS_SMC;
                 }
 
-                header = `#define SHADER_NAME ${material.className}\n`;
+                header = `#define SHADER_NAME ${material.shaderName || material.className}\n`;
                 header += Object.keys(headers).map((name) => {
                     if (name.indexOf(CUSTUM_OPTION_PREFIX) > -1) {
                         return `#define ${name.replace(CUSTUM_OPTION_PREFIX, '')} ${headers[name]}`;
