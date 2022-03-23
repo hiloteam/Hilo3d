@@ -1105,9 +1105,19 @@ const semantic = {
         get(mesh, material, programInfo) {
             return material.clearcoatRoughnessFactor;
         }
-    }
+    },
 };
 
+semantic._TIME = (function() {
+    const startTime = new Date().getTime();
+    return {
+        isDependMesh: false,
+        notSupportInstanced: false,
+        get(mesh, material, programInfo) {
+            return (new Date().getTime() - startTime) * 0.001;
+        }
+    };
+}());
 
 // Morph Animation Attributes
 [

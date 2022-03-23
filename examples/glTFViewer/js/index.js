@@ -206,10 +206,3 @@ dropCtrl.on('drop', function(e){
         showInput('Not found gltf file....');
     }
 });
-
-Hilo3d.semantic['_TIME'] = {
-  _startTime: new Date().getTime(),
-  get() {
-    return (new Date().getTime() - this._startTime) * 0.001;
-  },
-};
