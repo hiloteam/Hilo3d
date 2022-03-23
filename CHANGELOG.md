@@ -1,3 +1,14 @@
+## [1.16.1](https://github.com/hiloteam/Hilo3d/compare/1.16.0...1.16.1) (2022-03-23)
+
+
+### Features
+
+* add _Time semantic ([4a9a43d](https://github.com/hiloteam/Hilo3d/commit/4a9a43de486e295a50863d3c064e6687098a44f1))
+* add material.shaderName ([25b1880](https://github.com/hiloteam/Hilo3d/commit/25b1880aaf56c6e0b172e19c984741cc7a17a0b0))
+* imporve parsing of glTF KHR_techniques_webgl extension ([ca69682](https://github.com/hiloteam/Hilo3d/commit/ca6968209eada71714591122a3ee64d74a482c71))
+
+
+
 # [1.16.0](https://github.com/hiloteam/Hilo3d/compare/1.15.20...1.16.0) (2022-01-04)
 
 

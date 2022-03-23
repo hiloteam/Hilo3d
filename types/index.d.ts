@@ -5419,6 +5419,10 @@ class Material {
      */
     shaderCacheId: string;
     /**
+     * shader name，会在 shader 中加个 SHADER_NAME 宏，不填用 className 代替。
+     */
+    shaderName: string;
+    /**
      * 光照类型
      */
     lightType: string;
