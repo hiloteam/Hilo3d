@@ -1,3 +1,12 @@
+## [1.16.2](https://github.com/hiloteam/Hilo3d/compare/1.16.1...1.16.2) (2022-03-24)
+
+
+### Bug Fixes
+
+* in KHR_techniques_webgl, premultiplyAlpha of material default value should be false ([bdf4100](https://github.com/hiloteam/Hilo3d/commit/bdf41003b803c50fad7e43ec9992c6fc33a14111))
+
+
+
 ## [1.16.1](https://github.com/hiloteam/Hilo3d/compare/1.16.0...1.16.1) (2022-03-23)
 
 
