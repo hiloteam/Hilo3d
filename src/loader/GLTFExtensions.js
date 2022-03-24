@@ -420,10 +420,11 @@ export const KHR_techniques_webgl = {
             needBasicUnifroms: false,
             needBasicAttributes: false,
             useHeaderCache: true,
+            premultiplyAlpha: false,
             vs: vertexText,
             fs: fragmentText,
             attributes,
-            uniforms
+            uniforms,
         });
 
         if (info.premultiplyAlpha !== undefined) {
