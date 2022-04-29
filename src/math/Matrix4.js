@@ -318,7 +318,7 @@ const Matrix4 = Class.create(/** @lends Matrix4.prototype */ {
      *  of a transformation matrix. If a matrix is built with
      *  fromRotationTranslation, the returned quaternion will be the
      *  same as the quaternion originally supplied.
-     * @param {Quaternion} out Quaternion to receive the rotation component
+     * @param {Quaternion} [out=new Quaternion] Quaternion to receive the rotation component
      * @return {Quaternion} out
      */
     getRotation(out = new Quaternion()) {

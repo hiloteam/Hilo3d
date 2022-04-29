@@ -34,6 +34,10 @@ const Quaternion = Class.create(/** @lends Quaternion.prototype */ {
      * @param  {Number} [w=1] W component
      */
     constructor(x = 0, y = 0, z = 0, w = 1) {
+        /**
+         * 数据
+         * @type {Float32Array}
+         */
         this.elements = quat.fromValues(x, y, z, w);
     },
 

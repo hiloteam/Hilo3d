@@ -35,6 +35,10 @@ const Euler = Class.create(/** @lends Euler.prototype */ {
      * @param  {Number} [z=0]  角度 Z, 弧度制
      */
     constructor(x = 0, y = 0, z = 0) {
+        /**
+         * 数据
+         * @type {Float32Array}
+         */
         this.elements = new Float32Array([x, y, z]);
         this.updateDegrees();
     },
