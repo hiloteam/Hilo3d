@@ -5,14 +5,6 @@
     <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
     <title>Hilo3d TGA image loader Demo</title>
     <link rel="stylesheet" type="text/css" href="../../example.css">
-    <style>
-        #animSelect {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 99999;
-        }
-    </style>
 </head>
 <body>
     <div id="container"></div>
@@ -22,15 +14,14 @@
     <script src="../../js/OrbitControls.js"></script>
     <script src="../../js/init.js"></script>
     <script>
-        var boxGeometry = new Hilo3d.BoxGeometry();
+        const boxGeometry = new Hilo3d.BoxGeometry();
         boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
 
-        var tgaLoader = new Hilo3d.TGALoader();
+        const tgaLoader = new Hilo3d.TGALoader();
         tgaLoader.load({
-            // src: '/dl/test.tga'
-            src: '//ossgw.alicdn.com/tmall-c3/tmx/c0bb5ea9b98a13a2231236e44340038c.tga'
+            src: '//g.alicdn.com/eva-assets/137b7a9ebee547ea998694edc62a0b68/0.0.1/tga_sample/tga_sample.tga'
         }).then(diffuse => {
-            var box = new Hilo3d.Mesh({
+            const box = new Hilo3d.Mesh({
                 geometry: boxGeometry,
                 material: new Hilo3d.BasicMaterial({
                     diffuse: diffuse

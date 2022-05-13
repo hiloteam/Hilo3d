@@ -14,17 +14,16 @@
     <script src="../js/init.js"></script>
     <script>
         renderer.useInstanced = true;
-        var loader = new Hilo3d.GLTFLoader();
+        const loader = new Hilo3d.GLTFLoader();
         loader.load({
-            name: 'JPN',
             useInstanced: true,
-            src: '//ossgw.alicdn.com/tmall-c3/tmx/9d958a4e0d7f084d6b8f64e487654fdb.gltf'
+            src: '../models/Tmall/Tmall.gltf'
         }).then(function (model) {
-            var node = model.node;
+            const node = model.node;
             node.setScale(0.002);
             stage.addChild(node);
-            for (var i = 0; i < 100; i++) {
-                var cloneNode = node.clone();
+            for (let i = 0; i < 100; i++) {
+                const cloneNode = node.clone();
                 cloneNode.anim.timeScale = Math.random();
                 cloneNode.setScale(0.0005);
                 cloneNode.x = Math.random() * 2 - 1;

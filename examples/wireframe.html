@@ -6,44 +6,23 @@
     <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
     <title>Hilo3d Wireframe Demo</title>
     <link rel="stylesheet" type="text/css" href="./example.css">
-    <style>
-        video {
-            display: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 999;
-        }
-    </style>
 </head>
 
 <body>
     <div id="container"></div>
-    <!-- <script src="//g.alicdn.com/tmapp/animation-data/4.1.37/jc/tools/vconsole.min.js"></script>  -->
     <script src="../build/Hilo3d.js"></script>
     <script src="./js/stats.js"></script>
     <script src="./js/OrbitControls.js"></script>
     <script src="./js/init.js"></script>
     <script>
-        var loader = new Hilo3d.GLTFLoader();
+        const loader = new Hilo3d.GLTFLoader();
         loader.load({
-            src: '//ossgw.alicdn.com/tmall-c3/tmx/f3159fe279655ea93a4447448cdcd1fd.gltf',
-            isMultiAnim:false
+            src: './models/Tmall/Tmall.gltf',
         }).then(function(model) {
-            window.xx = model;
-            model.node.setScale(0.003);
-            var x = model.node.clone(true);
-            x.traverse(function(mesh) {
-                if (!mesh.isMesh) {
-                    return;
-                }
-                mesh.material = mesh.material.clone();
-                mesh.material.diffuse = new Hilo3d.Color(0, 1, 0);
-                mesh.material.wireframe = true;
-                mesh.geometry = mesh.geometry.clone();
+            model.node.setScale(0.001);
+            model.materials.forEach(material => {
+                material.wireframe = true;
             });
-
-            stage.addChild(x);
             stage.addChild(model.node);
         });
     </script>

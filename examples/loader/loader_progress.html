@@ -29,17 +29,17 @@
 <script asyc src="../js/init.js"></script>
 <script>
 window.onload = function() {
-    var $progress = document.getElementById("progress");
+    const $progress = document.getElementById("progress");
 
-    var loader = new Hilo3d.GLTFLoader();
+    const loader = new Hilo3d.GLTFLoader();
     loader.load({
-        src: '//ossgw.alicdn.com/tmall-c3/tmx/7540b95910f77cce50758c5008da9829.gltf'
+        src: '//g.alicdn.com/eva-assets/9659b325fb564d5dad7a83e86a203ae6/0.0.1/Tmall/Tmall.gltf',
     }).then(function(model) {
         model.node.setScale(0.002);
         stage.addChild(model.node);
     });
 
-    var protip = "";
+    let protip = "";
     loader.on("progress", function(evt) {
         console.log(evt.detail.url + "resource loaded: " + evt.detail.loaded);
 
@@ -48,18 +48,18 @@ window.onload = function() {
             //glTF文件包含bin文件和glTF原始文件,主要是bin文件.
             //贴图类文件单独监听.
             protip = "resource loaded: " + Math.round(evt.detail.loaded / evt.detail.total * 100) + "%";
-            $progress.innerHTML = protip;
+            $progress.innerHTML = protip; 
         }
     });
 
 
-    var mph = new Hilo3d.MeshPicker({
+    const mph = new Hilo3d.MeshPicker({
         renderer: stage.renderer,
         debug: false
     });
 
     stage.container.addEventListener('click', function(evt) {
-        var mesh = mph.getSelection(evt.clientX, evt.clientY)[0];
+        const mesh = mph.getSelection(evt.clientX, evt.clientY)[0];
         console.log(evt.clientX, evt.clientY, mesh);
         if (mesh) {
             if (mesh.material.isSelected) {

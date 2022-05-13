@@ -24,56 +24,47 @@
             node.material.uvMatrix.set(state[2] || 1, 0, 0, 0, state[3] || 1, 0, state[0], state[1], 1);
         });
 
-        // var geometry = new Hilo3d.PlaneGeometry();
-        // var mat = new Hilo3d.BasicMaterial({
-        //     lightType:'NONE',
-        //     side:Hilo3d.constants.FRONT_AND_BACK,
-        //     diffuse:new Hilo3d.LazyTexture({
-        //         flipY: true,
-        //         src: '//img.alicdn.com/tps/TB12IsqKVXXXXalXpXXXXXXXXXX-174-1512.png',
-        //     }),
-        //     uvMatrix: new Hilo3d.Matrix3(),
-        //     transparent: true
-        // });
-
-        // var rect = new Hilo3d.Mesh({
-        //     name: 'haha',
-        //     geometry: geometry,
-        //     material: mat,
-        // });
-        // stage.addChild(rect);
-
-
-        // var keyTime = [];
-        // var states = [];
-        // var w = 1;
-        // var h = 12;
-        // for (var i = 0; i < h; i++) {
-        //     for (var j = 0; j < w; j++) {
-        //         keyTime.push(0.16 * (i + 1) * (j + 1));
-        //         states.push([j / w, 1 - 1 / h - i / h, 1 / w, 1 / h]);
-        //     }
-        // }
-
-        // var anim = new Hilo3d.Animation({
-        //     animStatesList: [new Hilo3d.AnimationStates({
-        //         interpolationType: 'STEP',
-        //         nodeName: rect.name,
-        //         keyTime,
-        //         states: states,
-        //         type: Hilo3d.AnimationStates.getType('UV_Translate')
-        //     })]
-        // });
-        // rect.setAnim(anim);
-        // anim.play();
-
-        const loader = new Hilo3d.Loader();
-        loader.load({
-            src: 'https://ossgw.alicdn.com/tmall-c3/tmx/fa38c422dfc780e62e9eaa39c202d2c4.gltf'
-        }).then(model => {
-            window.model = model;
-            stage.addChild(model.node);
+        const geometry = new Hilo3d.PlaneGeometry();
+        const mat = new Hilo3d.BasicMaterial({
+            lightType:'NONE',
+            side:Hilo3d.constants.FRONT_AND_BACK,
+            diffuse:new Hilo3d.LazyTexture({
+                flipY: true,
+                src: '//img.alicdn.com/tps/TB12IsqKVXXXXalXpXXXXXXXXXX-174-1512.png',
+            }),
+            uvMatrix: new Hilo3d.Matrix3(),
+            transparent: true
         });
+
+        const rect = new Hilo3d.Mesh({
+            geometry: geometry,
+            material: mat,
+        });
+        stage.addChild(rect);
+
+
+        const keyTime = [];
+        const states = [];
+        const w = 1;
+        const h = 12;
+        for (let i = 0; i < h; i++) {
+            for (let j = 0; j < w; j++) {
+                keyTime.push(0.16 * (i + 1) * (j + 1));
+                states.push([j / w, 1 - 1 / h - i / h, 1 / w, 1 / h]);
+            }
+        }
+
+        const anim = new Hilo3d.Animation({
+            animStatesList: [new Hilo3d.AnimationStates({
+                interpolationType: 'STEP',
+                nodeName: rect.name,
+                keyTime,
+                states: states,
+                type: Hilo3d.AnimationStates.getType('UV_Translate')
+            })]
+        });
+        rect.setAnim(anim);
+        anim.play();
     </script>
 </body>
 </html>

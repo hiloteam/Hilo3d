@@ -35,87 +35,67 @@
             size: 1
         }));
 
-        var ossBasePath = '//ossgw.alicdn.com/tmall-c3/tmx/';
-        var glTFModels = {
-            Rambler: {
-                name: 'Rambler',
-                scale: 0.001,
-                src: '5fa1065271a4fe66c3ff550274c3494d.gltf',
-                ambient:0.8
-            },
-            Duck: {
-                name: 'Duck',
-                scale: 0.001,
-                src: '346a684820fc28bafa6200ac463b71dd.gltf',
-                ambient:0.8
-            },
+        const glTFModels = {
             Tmall: {
                 name: 'Tmall',
                 scale: 0.001,
                 src: '../models/Tmall/Tmall.gltf',
-                notOSS: true,
                 ambient:0.8
             },
             VC: {
                 name: 'VC',
                 scale: 0.01,
                 src: '../models/VC/VC.gltf',
-                notOSS: true,
                 isMultiAnim: false,
+                camera:6,
                 ambient:0.8
             },
             DamagedHelmet: {
                 name: 'DamagedHelmet',
                 src: '../models/DamagedHelmet/DamagedHelmet.glb',
                 scale: 0.5,
-                notOSS: true,
                 ambient:0.8
             },
             MultiUVTest: {
                 name: 'MultiUVTest',
                 scale: 0.5,
                 src: '../models/MultiUVTest/MultiUVTest.gltf',
-                notOSS:true,
                 ambient:0.8
             },
             Suzanne: {
                 name: 'Suzanne',
                 scale: 0.5,
                 src: '../models/Suzanne/Suzanne.gltf',
-                notOSS:true,
                 ambient:0.8
             },
             AlphaBlendModeTest: {
                 name: 'AlphaBlendModeTest',
                 scale: 0.3,
                 src: '../models/AlphaBlendModeTest/AlphaBlendModeTest.gltf',
-                notOSS:true,
                 ambient:0.8
             },
             SampleTechniques: {
                 name: 'SampleTechniques',
                 scale: 0.5,
                 src: '../models/SampleTechniques/SampleTechniques.gltf',
-                notOSS: true,
                 isProgressive: true,
             },
             test: {
                 name: 'test',
                 scale: 0.001,
                 src: '/model-viewer/models/test/test.gltf',
-                notOSS: true,
                 isProgressive: true,
             }
         };
 
-        var modelSelect = document.getElementById('modelSelect');
-        var cameraSelect = document.getElementById('cameraSelect');
-        var currentModel = null;
+        const modelSelect = document.getElementById('modelSelect');
+        const cameraSelect = document.getElementById('cameraSelect');
+        let currentModel = null;
 
         initModels();
 
         function showModel(modelInfo) {
-            var loader = new Hilo3d.GLTFLoader();
+            const loader = new Hilo3d.GLTFLoader();
             loader.load(modelInfo).then(function(model) {
                 // add model to stage
                 currentModel = model;
@@ -131,7 +111,7 @@
                         material.isDirty = true;
                     });
 
-                    var skyBox = new Hilo3d.Mesh({
+                    const skyBox = new Hilo3d.Mesh({
                         geometry: new Hilo3d.BoxGeometry(),
                         material: new Hilo3d.BasicMaterial({
                             lightType: 'NONE',
@@ -149,18 +129,23 @@
 
                 // set cameraSelect
                 if (model.cameras.length) {
-                    for (var i = 0; i < model.cameras.length; i++) {
-                        var opt = document.createElement('option');
+                    for (let i = 0; i < model.cameras.length; i++) {
+                        const opt = document.createElement('option');
                         opt.innerText = model.cameras[i].name;
                         opt.setAttribute('value', i);
                         cameraSelect.appendChild(opt);
+                    }
+
+                    if (modelInfo.camera) {
+                        stage.camera = model.cameras[modelInfo.camera];
+                        cameraSelect.value = modelInfo.camera;
                     }
                 }
 
                 // show debug sphere
                 if (utils.keys.showSphere) {
                     model.meshes.forEach((mesh) => {
-                        var sphere = mesh.geometry.getLocalSphereBounds();
+                        const sphere = mesh.geometry.getLocalSphereBounds();
                         new Hilo3d.Mesh({
                             material: new Hilo3d.BasicMaterial({
                                 lightType: 'NONE',
@@ -177,26 +162,15 @@
         }
 
         function initModels() {
-            var modelInfo = glTFModels.Tmall;
-            var modelName = utils.keys.model;
-            if (modelName) {
-                if (glTFModels[modelName]) {
-                    modelInfo = glTFModels[modelName];
-                } else {
-                    modelInfo = glTFModels.oss = {
-                        name: 'oss',
-                        scale: 0.001,
-                        src: modelName + '.gltf',
-                        isProgressive: true,
-                        ambient:0.8
-                    };
-                }
+            let modelInfo = glTFModels.Tmall;
+            const modelName = utils.keys.model;
+            if (modelName && glTFModels[modelName]) {
+                modelInfo = glTFModels[modelName];
             } else if (utils.keys.url) {
                 modelInfo = glTFModels.url = {
                     name: 'url',
                     scale: 1,
                     src: utils.keys.url,
-                    notOSS: true,
                     ambient:0.5
                 };
             }
@@ -215,11 +189,8 @@
                 }
             }
 
-            for (var name in glTFModels) {
-                if (!glTFModels[name].notOSS) {
-                    glTFModels[name].src = ossBasePath + glTFModels[name].src;
-                }
-                var opt = document.createElement('option');
+            for (let name in glTFModels) {
+                const opt = document.createElement('option');
                 opt.innerText = name;
                 opt.setAttribute('value', name);
                 modelSelect.appendChild(opt);
@@ -236,7 +207,7 @@
             });
 
             cameraSelect.addEventListener('change', function() {
-                var value = Number(cameraSelect.value);
+                const value = Number(cameraSelect.value);
                 if (!currentModel.cameras[value]) {
                     stage.camera = camera;
                 } else {

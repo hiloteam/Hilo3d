@@ -16,7 +16,7 @@
 <script>
     orbitControls.isLockZ = true;
 
-    var loadQueue = new Hilo3d.LoadQueue([{
+    const loadQueue = new Hilo3d.LoadQueue([{
         type: 'CubeTexture',
         images: [
             '//gw.alicdn.com/tfs/TB1Ss.ORpXXXXcNXVXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
@@ -27,13 +27,13 @@
             '//gw.alicdn.com/tfs/TB1M3gyRpXXXXb9apXXXXXXXXXX-2048-2048.jpg_960x960.jpg'
         ]
     }, {
-        src: '//ossgw.alicdn.com/tmall-c3/tmx/9d958a4e0d7f084d6b8f64e487654fdb.gltf'
+        src: './models/Tmall/Tmall.gltf'
     }]).on('complete', function () {
-        var result = loadQueue.getAllContent();
-        var skyboxMap = result[0];
-        var model = window.model = result[1];
+        const result = loadQueue.getAllContent();
+        const skyboxMap = result[0];
+        const model = result[1];
 
-        var skybox = new Hilo3d.Mesh({
+        const skybox = new Hilo3d.Mesh({
             geometry: new Hilo3d.BoxGeometry(),
             material: new Hilo3d.BasicMaterial({
                 lightType: 'NONE',
@@ -43,7 +43,7 @@
         }).addTo(stage);
         skybox.setScale(20);
 
-        var material = new Hilo3d.BasicMaterial({
+        const material = new Hilo3d.BasicMaterial({
             diffuse: new Hilo3d.Color(0, 0, 0),
             specularEnvMap: skyboxMap,
             refractRatio: 1/1.5,
