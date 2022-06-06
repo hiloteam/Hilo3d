@@ -526,10 +526,10 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      */
     setupCullFace(material) {
         const state = this.state;
+        state.frontFace(material.frontFace);
         if (material.cullFace && material.cullFaceType !== FRONT_AND_BACK) {
             state.enable(CULL_FACE);
             state.cullFace(material.cullFaceType);
-            state.frontFace(material.frontFace);
         } else {
             state.disable(CULL_FACE);
         }
