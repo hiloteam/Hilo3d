@@ -21,7 +21,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
      */
     isLightManager: true,
     /**
-     * @default DirectionalLight
+     * @default LightManager
      * @type {string}
      */
     className: 'LightManager',
@@ -30,11 +30,31 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
     constructor(params) {
+        /**
+         * @type {AmbientLight[]}
+         */
         this.ambientLights = [];
+
+        /**
+         * @type {DirectionalLight[]}
+         */
         this.directionalLights = [];
+
+        /**
+         * @type {PointLight[]}
+         */
         this.pointLights = [];
+
+        /**
+         * @type {SpotLight[]}
+         */
         this.spotLights = [];
+
+        /**
+         * @type {AreaLight[]}
+         */
         this.areaLights = [];
+
         this.lightInfo = {
             AMBIENT_LIGHTS: 0,
             POINT_LIGHTS: 0,
@@ -352,7 +372,16 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         this.spotInfo = this.getSpotInfo(camera);
         this.areaInfo = this.getAreaInfo(camera);
         this.ambientInfo = this.getAmbientInfo();
+        if (this.updateCustomInfo) {
+            this.updateCustomInfo(this, camera);
+        }
     },
+    /**
+     * 更新自定义灯光信息
+     * @type updateCustomInfoCallback
+     * @default null
+     */
+    updateCustomInfo: null,
     /**
      * 获取光源信息
      * @return {Object}
@@ -405,3 +434,10 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
 });
 
 export default LightManager;
+
+/**
+ * 更新自定义灯光回调
+ * @callback updateCustomInfoCallback
+ * @param { LightManager } lightManager
+ * @param { Camera } camera
+ */
