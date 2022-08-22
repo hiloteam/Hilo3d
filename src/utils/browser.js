@@ -168,38 +168,43 @@ const browser = (function() {
      */
     let cssVendor = (data.cssVendor = '-' + jsVendor + '-');
 
-    // css transform/3d feature dectection
-    const testElem = doc.createElement('div');
-    let style = testElem.style;
-    /**
-     * 是否支持CSS Transform变换。
-     * @memberOf browser
-     * @readOnly
-     * @type {boolean}
-     */
-    const supportTransform = style[jsVendor + 'Transform'] !== undefined;
+    try {
+        // css transform/3d feature dectection
+        const testElem = doc.createElement('div');
+        let style = testElem.style;
+        /**
+         * 是否支持CSS Transform变换。
+         * @memberOf browser
+         * @readOnly
+         * @type {boolean}
+         */
+        const supportTransform = style[jsVendor + 'Transform'] !== undefined;
 
-    /**
-     * 是否支持CSS Transform 3D变换。
-     * @memberOf browser
-     * @readOnly
-     * @type {boolean}
-     */
-    let supportTransform3D = style[jsVendor + 'Perspective'] !== undefined;
-    if (supportTransform3D) {
-        testElem.id = 'test3d';
-        style = doc.createElement('style');
-        style.textContent = '@media (' + cssVendor + 'transform-3d){#test3d{height:3px}}';
-        doc.head.appendChild(style);
+        /**
+         * 是否支持CSS Transform 3D变换。
+         * @memberOf browser
+         * @readOnly
+         * @type {boolean}
+         */
+        let supportTransform3D = style[jsVendor + 'Perspective'] !== undefined;
+        if (supportTransform3D) {
+            testElem.id = 'test3d';
+            style = doc.createElement('style');
+            style.textContent = '@media (' + cssVendor + 'transform-3d){#test3d{height:3px}}';
+            doc.head.appendChild(style);
 
-        docElem.appendChild(testElem);
-        supportTransform3D = testElem.offsetHeight === 3;
-        doc.head.removeChild(style);
-        docElem.removeChild(testElem);
+            docElem.appendChild(testElem);
+            supportTransform3D = testElem.offsetHeight === 3;
+            doc.head.removeChild(style);
+            docElem.removeChild(testElem);
+        }
+
+        data.supportTransform = supportTransform;
+        data.supportTransform3D = supportTransform3D;
+    } catch (e) {
+        data.supportTransform = false;
+        data.supportTransform3D = false;
     }
-
-    data.supportTransform = supportTransform;
-    data.supportTransform3D = supportTransform3D;
 
     const supportTouch = data.supportTouch;
 
