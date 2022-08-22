@@ -12,9 +12,9 @@ import log from '../utils/log';
 const defaultUp = new Vector3(0, 1, 0);
 const tempMatrix4 = new Matrix4();
 
-const TRAVERSE_STOP_NONE = false;
+const TRAVERSE_STOP_NONE = 0;
 const TRAVERSE_STOP_CHILDREN = 1;
-const TRAVERSE_STOP_ALL = true;
+const TRAVERSE_STOP_ALL = 2;
 
 /**
  * 节点，3D场景中的元素，是大部分类的基类
@@ -37,19 +37,19 @@ const Node = Class.create(/** @lends Node.prototype */ {
         /**
          * traverse callback 返回值，执行后不暂停 traverse
          * @memberOf Node
-         * @type {any}
+         * @type {number}
          */
         TRAVERSE_STOP_NONE,
         /**
          * traverse callback 返回值，执行后暂停子元素 traverse
          * @memberOf Node
-         * @type {any}
+         * @type {number}
          */
         TRAVERSE_STOP_CHILDREN,
         /**
          * traverse callback 返回值，执行后暂停所有 traverse
          * @memberOf Node
-         * @type {any}
+         * @type {number}
          */
         TRAVERSE_STOP_ALL
     },
@@ -417,7 +417,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
     _traverse(callback, onlyChild) {
         if (!onlyChild) {
             const res = callback(this);
-            if (res) {
+            if (res === TRAVERSE_STOP_ALL || res === TRAVERSE_STOP_CHILDREN) {
                 return res;
             }
         }
@@ -463,10 +463,12 @@ const Node = Class.create(/** @lends Node.prototype */ {
             for (let i = 0, l = currentQueue.length; i < l; i++) {
                 const child = currentQueue[i];
                 const res = callback(child);
-                if (!res) {
-                    nextQueue = nextQueue.concat(child.children);
-                } else if (res === TRAVERSE_STOP_ALL) {
+                if (res === TRAVERSE_STOP_ALL) {
                     return this;
+                }
+
+                if (res !== TRAVERSE_STOP_CHILDREN) {
+                    nextQueue = nextQueue.concat(child.children);
                 }
             }
         }
@@ -683,11 +685,11 @@ const Node = Class.create(/** @lends Node.prototype */ {
                 }
             }
 
-            if (eventMode && !this.pointerChildren) {
+            if (eventMode && !child.pointerChildren) {
                 return TRAVERSE_STOP_CHILDREN;
             }
 
-            return false;
+            return TRAVERSE_STOP_NONE;
         });
 
         if (resArray.length) {
