@@ -265,25 +265,44 @@ describe('Node', function() {
 
         const b3 = new Node({
             name: 'b3',
-            id: 'hhh'
+        });
+
+        const c1 = new Node({
+            name: 'c1',
         });
 
         node.addChild(b1);
         node.addChild(b2);
         node.addChild(b3);
-        b3.addChild(new Node());
+        b1.addChild(c1);
+
+        /**
+         *     a1
+         *   b1  b2  b3
+         * c1
+         */
 
         const callback = sinon.stub();
         node.traverse(callback);
         callback.should.have.callCount(5);
 
         callback.reset();
-        callback.onCall(0).returns(true);
+        callback.onCall(0).returns(Hilo3d.Node.TRAVERSE_STOP_ALL);
         node.traverse(callback);
         callback.should.have.callCount(1);
 
         callback.reset();
-        callback.onCall(3).returns(true);
+        callback.onCall(0).returns(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
+        node.traverse(callback);
+        callback.should.have.callCount(1);
+
+        callback.reset();
+        callback.onCall(1).returns(Hilo3d.Node.TRAVERSE_STOP_ALL);
+        node.traverse(callback);
+        callback.should.have.callCount(2);
+
+        callback.reset();
+        callback.onCall(1).returns(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
         node.traverse(callback);
         callback.should.have.callCount(4);
     });
@@ -303,27 +322,31 @@ describe('Node', function() {
 
         const b3 = new Node({
             name: 'b3',
-            id: 'hhh'
         });
 
         node.addChild(b1);
         node.addChild(b2);
         node.addChild(b3);
-        b3.addChild(new Node());
+        b2.addChild(new Node());
 
         const callback = sinon.stub();
         node.traverseBFS(callback);
         callback.should.have.callCount(5);
 
         callback.reset();
-        callback.onCall(0).returns(true);
+        callback.onCall(0).returns(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
         node.traverseBFS(callback);
         callback.should.have.callCount(1);
 
         callback.reset();
-        callback.onCall(3).returns(true);
+        callback.onCall(2).returns(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
         node.traverseBFS(callback);
         callback.should.have.callCount(4);
+
+        callback.reset();
+        callback.onCall(2).returns(Hilo3d.Node.TRAVERSE_STOP_ALL);
+        node.traverseBFS(callback);
+        callback.should.have.callCount(3);
     });
 
     it('traverseUpdate', () => {
@@ -358,5 +381,98 @@ describe('Node', function() {
         node.needCallChildUpdate = false;
         node.traverseUpdate();
         onUpdate.should.have.callCount(1);
+    });
+
+    it('raycast', () => {
+        const node = new Node({
+            name: 'r'
+        });
+
+        const a = new Node({
+            name: 'a'
+        });
+
+        const b = new Node({
+            name: 'b'
+        });
+
+        const c = new Node({
+            name: 'c'
+        });
+
+        const a0 = new Node({
+            name: 'a0'
+        });
+
+        const b0 = new Node({
+            name: 'b0'
+        });
+
+        const c0 = new Node({
+            name: 'c0'
+        });
+
+        const a1 = new Node({
+            name: 'a1'
+        });
+
+        const b1 = new Node({
+            name: 'b1'
+        });
+
+        const b2 = new Node({
+            name: 'b2'
+        });
+
+        const c1 = new Node({
+            name: 'c1'
+        });
+
+        node.addChild(a);
+        node.addChild(b);
+        node.addChild(c);
+        a.addChild(a0);
+        b.addChild(b0);
+        c.addChild(c0);
+        a0.addChild(a1);
+        b0.addChild(b1);
+        b0.addChild(b2);
+        c0.addChild(c1);
+
+        /**
+        *         r
+        *       / | \
+        *      a  b  c
+        *     /   |   \
+        *   a0    b0   c0
+        *   /    /  \   \
+        *  a1   b1  b2   c1
+        */
+
+        const pathList = [];
+        node.traverse((node) => {
+            node.raycast = () => {
+                pathList.push(node.name);
+            };
+            node.isMesh = true;
+        }, true);
+        const ray = new Hilo3d.Ray();
+
+        pathList.length = 0;
+        node.raycast(ray, false, true);
+        pathList.join('-').should.equal('a-a0-a1-b-b0-b1-b2-c-c0-c1');
+
+        pathList.length = 0;
+        node.pointerChildren = false;
+        node.raycast(ray, false, true);
+        pathList.join('-').should.equal('');
+
+        node.pointerChildren = true;
+        a.pointerEnabled = false;
+        b.pointerChildren = false;
+        c0.pointerChildren = false;
+        pathList.length = 0;
+        node.raycast(ray, false, true);
+        pathList.join('-').should.equal('b-c-c0');
     });
 });
