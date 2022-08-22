@@ -23,7 +23,15 @@ const Plane = Class.create(/** @lends Plane.prototype */ {
      * @param  {Number}  [distance=0] 距离
      */
     constructor(normal = new Vector3(), distance = 0) {
+        /**
+         * 法线向量
+         * @type Vector3
+         */
         this.normal = normal;
+        /**
+         * 距离
+         * @type number
+         */
         this.distance = distance;
     },
     /**

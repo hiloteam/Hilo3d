@@ -137,10 +137,15 @@ const EventMixin = /** @lends EventMixin# */ {
 /**
  * @callback EventMixinCallback
  * @param {Object} [e] 事件对象
- * @param {String} e.type 事件类型
- * @param {Object} e.detail 事件数据
- * @param {Object} e.target 事件触发对象
- * @param {Date} e.timeStamp 时间戳
+ * @param {string} e.type 事件类型
+ * @param {any} e.detail 事件数据
+ * @param {any} e.target 事件触发对象
+ * @param {number} e.timeStamp 时间戳
+ * @param {number} e.stageX 鼠标相对 stage 的 x 偏移 ( 仅鼠标事件有效 )
+ * @param {number} e.stageY 鼠标相对 stage 的 y 偏移 ( 仅鼠标事件有效 )
+ * @param {Node} e.eventTarget 触发鼠标事件的对象 ( 仅鼠标事件有效 )
+ * @param {Node} e.eventCurrentTarget 监听鼠标事件的对象 ( 仅鼠标事件有效 )
+ * @param {Vector3} e.hitPoint 鼠标碰撞点 ( 仅鼠标事件有效 )
  */
 
 export default EventMixin;
