@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d Animation Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        camera.z = 4.5;
+        var boxGeometry = new Hilo3d.BoxGeometry();
+        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+
+        var textureBox = new Hilo3d.Mesh({
+            name: 'textureBox',
+            geometry:boxGeometry,
+            material: new Hilo3d.BasicMaterial({
+                diffuse:new Hilo3d.LazyTexture({
+                    src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
+                })
+            }),
+        });
+        stage.addChild(textureBox);
+
+        const anim = new Hilo3d.Animation({
+          animStatesList: [
+            new Hilo3d.AnimationStates({
+              interpolationType: 'LINEAR',
+              nodeName: 'textureBox',
+              keyTime: [1, 1.5, 2, 2.5, 3.5],
+              states: [[1, 1, 0], [.4, -.5, .3], [-.4, -.5, .3], [-1, 1, 0], [1, 1, 0]],
+              type: 'Translation',
+            }),
+            new Hilo3d.AnimationStates({
+              interpolationType: 'LINEAR',
+              nodeName: 'textureBox',
+              keyTime: [1, 1.5, 2, 2.5],
+              states: [[.5, 1, 1], [1, .5, 1], [.5, 1, 1], [1, .5, 1]],
+              type: 'Scale',
+            }),
+          ]
+        });
+        anim.rootNode = textureBox;
+        anim.play();        
+    </script>
+</body>
+</html>
