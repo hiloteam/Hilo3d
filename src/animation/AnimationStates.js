@@ -206,12 +206,12 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
      */
     findIndexByTime(time) {
         const indexArr = getIndexFromSortedArray(this.keyTime, time, ascCompare);
-        // if (indexArr[0] < 0) {
-        //     indexArr[0] = 0;
-        // }
-        // if (indexArr[1] >= this.keyTime.length) {
-        //     indexArr[1] = this.keyTime.length - 1;
-        // }
+        if (indexArr[0] < 0) {
+            indexArr[0] = 0;
+        }
+        if (indexArr[1] >= this.keyTime.length) {
+            indexArr[1] = this.keyTime.length - 1;
+        }
         return indexArr;
     },
     getStateByIndex(index) {
@@ -228,10 +228,6 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
      */
     getState(time) {
         const [index1, index2] = this.findIndexByTime(time);
-        if (index1 < 0 || index2 >= this.keyTime.length) {
-            // do nothing if time is out of range
-            return null;
-        }
         const time1 = this.keyTime[index1];
         const time2 = this.keyTime[index2];
         let state1 = this.getStateByIndex(index1);

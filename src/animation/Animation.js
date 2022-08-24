@@ -187,7 +187,7 @@ const Animation = Class.create(/** @lends Animation.prototype */{
      */
     _initClipTime() {
         const timeInfo = this.getAnimStatesListTimeInfo(this.animStatesList);
-        this.clipStartTime = timeInfo.startTime;
+        this.clipStartTime = 0;
         this.clipEndTime = timeInfo.endTime;
     },
     /**
