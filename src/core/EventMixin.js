@@ -136,7 +136,7 @@ const EventMixin = /** @lends EventMixin# */ {
 
 /**
  * @callback EventMixinCallback
- * @param {Object} [e] 事件对象
+ * @param {Object} e 事件对象
  * @param {string} e.type 事件类型
  * @param {any} e.detail 事件数据
  * @param {any} e.target 事件触发对象
