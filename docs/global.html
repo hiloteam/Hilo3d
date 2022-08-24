@@ -4721,6 +4721,18 @@
             
                 <li  data-name="LightManager#className"><a href="LightManager.html#className">className</a></li>
             
+                <li  data-name="LightManager#ambientLights"><a href="LightManager.html#ambientLights">ambientLights</a></li>
+            
+                <li  data-name="LightManager#directionalLights"><a href="LightManager.html#directionalLights">directionalLights</a></li>
+            
+                <li  data-name="LightManager#pointLights"><a href="LightManager.html#pointLights">pointLights</a></li>
+            
+                <li  data-name="LightManager#spotLights"><a href="LightManager.html#spotLights">spotLights</a></li>
+            
+                <li  data-name="LightManager#areaLights"><a href="LightManager.html#areaLights">areaLights</a></li>
+            
+                <li  data-name="LightManager#updateCustomInfo"><a href="LightManager.html#updateCustomInfo">updateCustomInfo</a></li>
+            
             </ul>
             <ul class="typedefs itemMembers">
             
@@ -6613,6 +6625,8 @@
             
                 <li  data-name="Euler#order"><a href="Euler.html#order">order</a></li>
             
+                <li  data-name="Euler#elements"><a href="Euler.html#elements">elements</a></li>
+            
                 <li  data-name="Euler#degX"><a href="Euler.html#degX">degX</a></li>
             
                 <li  data-name="Euler#degY"><a href="Euler.html#degY">degY</a></li>
@@ -6683,6 +6697,8 @@
                 <li class="inherited-member" data-name="EulerNotifier#isEuler"><a href="EulerNotifier.html#isEuler">isEuler</a></li>
             
                 <li class="inherited-member" data-name="EulerNotifier#order"><a href="EulerNotifier.html#order">order</a></li>
+            
+                <li class="inherited-member" data-name="EulerNotifier#elements"><a href="EulerNotifier.html#elements">elements</a></li>
             
             </ul>
             <ul class="typedefs itemMembers">
@@ -7093,6 +7109,10 @@
             
                 <li  data-name="Plane#isPlane"><a href="Plane.html#isPlane">isPlane</a></li>
             
+                <li  data-name="Plane#normal"><a href="Plane.html#normal">normal</a></li>
+            
+                <li  data-name="Plane#distance"><a href="Plane.html#distance">distance</a></li>
+            
             </ul>
             <ul class="typedefs itemMembers">
             
@@ -7131,6 +7151,8 @@
                 <li  data-name="Quaternion#className"><a href="Quaternion.html#className">className</a></li>
             
                 <li  data-name="Quaternion#isQuaternion"><a href="Quaternion.html#isQuaternion">isQuaternion</a></li>
+            
+                <li  data-name="Quaternion#elements"><a href="Quaternion.html#elements">elements</a></li>
             
                 <li  data-name="Quaternion#x"><a href="Quaternion.html#x">x</a></li>
             
@@ -9205,7 +9227,7 @@
         <div class="nameContainer">
             <h4 class="name" id="EventMixinCallback">
                 
-                EventMixinCallback<span class="signature">(<span class="optional">e</span>)</span>
+                EventMixinCallback<span class="signature">(e)</span>
             </h4>
         
             
@@ -9262,13 +9284,6 @@
             
             <td class="description last">
                 
-                    
-                        <span class="optional">optional</span>
-                    
-                    
-                        
-                    
-                
                 <p>事件对象</p>
                 
 
@@ -9298,7 +9313,7 @@
             <td class="type">
             
                 
-<span class="param-type">String</span>
+<span class="param-type">string</span>
 
 
             
@@ -9321,7 +9336,7 @@
             <td class="type">
             
                 
-<span class="param-type">Object</span>
+<span class="param-type">any</span>
 
 
             
@@ -9344,7 +9359,7 @@
             <td class="type">
             
                 
-<span class="param-type">Object</span>
+<span class="param-type">any</span>
 
 
             
@@ -9367,7 +9382,7 @@
             <td class="type">
             
                 
-<span class="param-type">Date</span>
+<span class="param-type">number</span>
 
 
             
@@ -9378,6 +9393,121 @@
             <td class="description last">
                 
                 <p>时间戳</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>stageX</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>鼠标相对 stage 的 x 偏移 ( 仅鼠标事件有效 )</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>stageY</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>鼠标相对 stage 的 y 偏移 ( 仅鼠标事件有效 )</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>eventTarget</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Node.html">Node</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>触发鼠标事件的对象 ( 仅鼠标事件有效 )</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>eventCurrentTarget</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Node.html">Node</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>监听鼠标事件的对象 ( 仅鼠标事件有效 )</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>hitPoint</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Vector3.html">Vector3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>鼠标碰撞点 ( 仅鼠标事件有效 )</p></td>
         </tr>
 	
 	
@@ -10030,7 +10160,7 @@
         
             
             <div class="tag-source">
-                <a href="core_Node.js.html">core/Node.js</a>, <a href="core_Node.js.html#line1083">line 1083</a>
+                <a href="core_Node.js.html">core/Node.js</a>, <a href="core_Node.js.html#line1085">line 1085</a>
             </div>
             
         </div>
@@ -10174,7 +10304,7 @@
         
             
             <div class="tag-source">
-                <a href="core_Node.js.html">core/Node.js</a>, <a href="core_Node.js.html#line1090">line 1090</a>
+                <a href="core_Node.js.html">core/Node.js</a>, <a href="core_Node.js.html#line1092">line 1092</a>
             </div>
             
         </div>
@@ -10573,6 +10703,144 @@
             
                 
 <span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+            
+                
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="updateCustomInfoCallback">
+                
+                updateCustomInfoCallback<span class="signature">(lightManager, camera)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="light_LightManager.js.html">light/LightManager.js</a>, <a href="light_LightManager.js.html#line438">line 438</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>更新自定义灯光回调</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>lightManager</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="LightManager.html">LightManager</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>camera</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Camera.html">Camera</a></span>
 
 
             
@@ -12359,7 +12627,7 @@
         
 
         <footer>
-            Documentation generated by <a target="_blank" href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.10</a>
+            Documentation generated by <a target="_blank" href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.11</a>
         </footer>
     </div>
 </div>

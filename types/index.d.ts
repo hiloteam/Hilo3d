@@ -490,17 +490,27 @@ interface EventObject {
 }
 
 /**
- * @param [e] - 事件对象
+ * @param e - 事件对象
  * @param e.type - 事件类型
  * @param e.detail - 事件数据
  * @param e.target - 事件触发对象
  * @param e.timeStamp - 时间戳
+ * @param e.stageX - 鼠标相对 stage 的 x 偏移 ( 仅鼠标事件有效 )
+ * @param e.stageY - 鼠标相对 stage 的 y 偏移 ( 仅鼠标事件有效 )
+ * @param e.eventTarget - 触发鼠标事件的对象 ( 仅鼠标事件有效 )
+ * @param e.eventCurrentTarget - 监听鼠标事件的对象 ( 仅鼠标事件有效 )
+ * @param e.hitPoint - 鼠标碰撞点 ( 仅鼠标事件有效 )
  */
-type EventMixinCallback = (e?: {
+type EventMixinCallback = (e: {
     type: string;
     detail: any;
     target: any;
-    timeStamp: Date;
+    timeStamp: number;
+    stageX: number;
+    stageY: number;
+    eventTarget: Node;
+    eventCurrentTarget: Node;
+    hitPoint: Vector3;
 }) => void;
 
 /**
@@ -637,6 +647,13 @@ type GeometryDataTraverseCallback = (attribute: number | Vector2 | Vector3 | Vec
  * @param offset
  */
 type GeometryDataTraverseByComponentCallback = (component: number, index: number, offset: number) => void;
+
+/**
+ * 更新自定义灯光回调
+ * @param lightManager
+ * @param camera
+ */
+type updateCustomInfoCallback = (lightManager: LightManager, camera: Camera) => void;
 
 /**
  * GLTFExtension Handler 接口
@@ -4079,6 +4096,10 @@ class Quaternion implements EventMixin {
     className: string;
     isQuaternion: boolean;
     /**
+     * 数据
+     */
+    elements: Float32Array;
+    /**
      * Copy the values from one quat to this
      * @param q
      * @param [dontFireEvent = false] - wether or not don`t fire change event.
@@ -4361,6 +4382,14 @@ class Plane {
     className: string;
     isPlane: boolean;
     /**
+     * 法线向量
+     */
+    normal: Vector3;
+    /**
+     * 距离
+     */
+    distance: number;
+    /**
      * Copy the values from one plane to this
      * @param m - the source plane
      * @returns this
@@ -4615,10 +4644,10 @@ class Matrix4 {
      *  of a transformation matrix. If a matrix is built with
      *  fromRotationTranslation, the returned quaternion will be the
      *  same as the quaternion originally supplied.
-     * @param out - Quaternion to receive the rotation component
+     * @param [out = new Quaternion] - Quaternion to receive the rotation component
      * @returns out
      */
-    getRotation(out: Quaternion): Quaternion;
+    getRotation(out?: Quaternion): Quaternion;
     /**
      * Creates a matrix from a quaternion rotation, vector translation and vector scale
      * @param q - Rotation quaternion
@@ -5042,6 +5071,10 @@ class Euler {
      * 旋转顺序，默认为 ZYX
      */
     order: string;
+    /**
+     * 数据
+     */
+    elements: Float32Array;
     /**
      * 克隆
      */
@@ -6339,6 +6372,11 @@ class LightManager {
     constructor(params?: any);
     isLightManager: boolean;
     className: string;
+    ambientLights: AmbientLight[];
+    directionalLights: DirectionalLight[];
+    pointLights: PointLight[];
+    spotLights: SpotLight[];
+    areaLights: AreaLight[];
     /**
      * 增加光
      * @param light - 光源
@@ -6374,6 +6412,10 @@ class LightManager {
      * @param camera - 摄像机
      */
     updateInfo(camera: Camera): void;
+    /**
+     * 更新自定义灯光信息
+     */
+    updateCustomInfo: updateCustomInfoCallback;
     /**
      * 获取光源信息
      */
@@ -7712,15 +7754,15 @@ class Node implements EventMixin {
     /**
      * traverse callback 返回值，执行后不暂停 traverse
      */
-    static TRAVERSE_STOP_NONE: any;
+    static TRAVERSE_STOP_NONE: number;
     /**
      * traverse callback 返回值，执行后暂停子元素 traverse
      */
-    static TRAVERSE_STOP_CHILDREN: any;
+    static TRAVERSE_STOP_CHILDREN: number;
     /**
      * traverse callback 返回值，执行后暂停所有 traverse
      */
-    static TRAVERSE_STOP_ALL: any;
+    static TRAVERSE_STOP_ALL: number;
     isNode: boolean;
     className: string;
     /**

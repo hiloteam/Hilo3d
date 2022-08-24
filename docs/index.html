@@ -4721,6 +4721,18 @@
             
                 <li  data-name="LightManager#className"><a href="LightManager.html#className">className</a></li>
             
+                <li  data-name="LightManager#ambientLights"><a href="LightManager.html#ambientLights">ambientLights</a></li>
+            
+                <li  data-name="LightManager#directionalLights"><a href="LightManager.html#directionalLights">directionalLights</a></li>
+            
+                <li  data-name="LightManager#pointLights"><a href="LightManager.html#pointLights">pointLights</a></li>
+            
+                <li  data-name="LightManager#spotLights"><a href="LightManager.html#spotLights">spotLights</a></li>
+            
+                <li  data-name="LightManager#areaLights"><a href="LightManager.html#areaLights">areaLights</a></li>
+            
+                <li  data-name="LightManager#updateCustomInfo"><a href="LightManager.html#updateCustomInfo">updateCustomInfo</a></li>
+            
             </ul>
             <ul class="typedefs itemMembers">
             
@@ -6613,6 +6625,8 @@
             
                 <li  data-name="Euler#order"><a href="Euler.html#order">order</a></li>
             
+                <li  data-name="Euler#elements"><a href="Euler.html#elements">elements</a></li>
+            
                 <li  data-name="Euler#degX"><a href="Euler.html#degX">degX</a></li>
             
                 <li  data-name="Euler#degY"><a href="Euler.html#degY">degY</a></li>
@@ -6683,6 +6697,8 @@
                 <li class="inherited-member" data-name="EulerNotifier#isEuler"><a href="EulerNotifier.html#isEuler">isEuler</a></li>
             
                 <li class="inherited-member" data-name="EulerNotifier#order"><a href="EulerNotifier.html#order">order</a></li>
+            
+                <li class="inherited-member" data-name="EulerNotifier#elements"><a href="EulerNotifier.html#elements">elements</a></li>
             
             </ul>
             <ul class="typedefs itemMembers">
@@ -7093,6 +7109,10 @@
             
                 <li  data-name="Plane#isPlane"><a href="Plane.html#isPlane">isPlane</a></li>
             
+                <li  data-name="Plane#normal"><a href="Plane.html#normal">normal</a></li>
+            
+                <li  data-name="Plane#distance"><a href="Plane.html#distance">distance</a></li>
+            
             </ul>
             <ul class="typedefs itemMembers">
             
@@ -7131,6 +7151,8 @@
                 <li  data-name="Quaternion#className"><a href="Quaternion.html#className">className</a></li>
             
                 <li  data-name="Quaternion#isQuaternion"><a href="Quaternion.html#isQuaternion">isQuaternion</a></li>
+            
+                <li  data-name="Quaternion#elements"><a href="Quaternion.html#elements">elements</a></li>
             
                 <li  data-name="Quaternion#x"><a href="Quaternion.html#x">x</a></li>
             
@@ -9053,7 +9075,7 @@
 <h3 align="center">A 3D WebGL Rendering Engine</h3>
 <hr>
 <p><a href="#Installation">Installation</a> • <a href="#Documentation">Documentation</a> • <a href="#Development">Development</a> • <a href="#Showcase">Showcase</a> • <a href="#Examples">Examples</a> • <a href="#Authors">Authors</a> • <a href="#License">License</a></p>
-<p><a target="_blank" href="https://www.npmjs.com/package/hilo3d"><img src="https://img.shields.io/npm/v/hilo3d.svg?style=flat-square" alt="npm"></a> <a target="_blank" href="https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev"><img src="https://img.shields.io/github/workflow/status/hiloteam/Hilo3d/npm%20test?style=flat-square" alt="ci"></a> <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.16.2/build/Hilo3d.js"><img src="https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&amp;style=flat-square" alt="size"></a> <a target="_blank" href="https://gitter.im/hiloteam/Hilo3d?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square" alt="gitter.im"></a></p>
+<p><a target="_blank" href="https://www.npmjs.com/package/hilo3d"><img src="https://img.shields.io/npm/v/hilo3d.svg?style=flat-square" alt="npm"></a> <a target="_blank" href="https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev"><img src="https://img.shields.io/github/workflow/status/hiloteam/Hilo3d/npm%20test?style=flat-square" alt="ci"></a> <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.16.3/build/Hilo3d.js"><img src="https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&amp;style=flat-square" alt="size"></a> <a target="_blank" href="https://gitter.im/hiloteam/Hilo3d?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square" alt="gitter.im"></a></p>
 <h3>Features</h3>
 <ul>
 <li>Compatible for multiple mobile and desktop browsers.</li>
@@ -9069,8 +9091,8 @@
 </code></pre>
 </li>
 <li>
-<p>use script tag from a <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.16.2/build/Hilo3d.js">cdn</a></p>
-<pre class="prettyprint source"><code>&lt;script src='//cdn.jsdelivr.net/npm/hilo3d@1.16.2/build/Hilo3d.js'>&lt;/script>
+<p>use script tag from a <a target="_blank" href="https://cdn.jsdelivr.net/npm/hilo3d@1.16.3/build/Hilo3d.js">cdn</a></p>
+<pre class="prettyprint source"><code>&lt;script src='//cdn.jsdelivr.net/npm/hilo3d@1.16.3/build/Hilo3d.js'>&lt;/script>
 </code></pre>
 </li>
 </ul>
@@ -9139,6 +9161,12 @@
 <p><a target="_blank" href="https://hilo3d.js.org/examples/mouse_event.html">mouse_event</a></p>
 </li>
 <li>
+<p><a target="_blank" href="https://hilo3d.js.org/examples/video.html">video</a></p>
+</li>
+<li>
+<p><a target="_blank" href="https://hilo3d.js.org/examples/hdr.html">hdr</a></p>
+</li>
+<li>
 <p><a target="_blank" href="https://hilo3d.js.org/examples/lifegame.html">lifegame</a></p>
 </li>
 <li>
@@ -9187,9 +9215,6 @@
 <p><a target="_blank" href="https://hilo3d.js.org/examples/transparent.html">transparent</a></p>
 </li>
 <li>
-<p><a target="_blank" href="https://hilo3d.js.org/examples/video_in_cube.html">video_in_cube</a></p>
-</li>
-<li>
 <p><a target="_blank" href="https://hilo3d.js.org/examples/webgl_support.html">webgl_support</a></p>
 </li>
 <li>
@@ -9197,9 +9222,6 @@
 </li>
 <li>
 <p><a target="_blank" href="https://hilo3d.js.org/examples/geometry_box.html">geometry_box</a></p>
-</li>
-<li>
-<p><a target="_blank" href="https://hilo3d.js.org/examples/geometry_box2.html">geometry_box2</a></p>
 </li>
 <li>
 <p><a target="_blank" href="https://hilo3d.js.org/examples/geometry_color.html">geometry_color</a></p>
@@ -9249,7 +9271,7 @@
         
 
         <footer>
-            Documentation generated by <a target="_blank" href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.10</a>
+            Documentation generated by <a target="_blank" href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.11</a>
         </footer>
     </div>
 </div>
