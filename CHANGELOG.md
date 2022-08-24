@@ -1,13 +1,12 @@
-## [1.16.3](https://github.com/hiloteam/Hilo3d/compare/1.16.1...1.16.3) (2022-08-24)
+## [1.16.3](https://github.com/hiloteam/Hilo3d/compare/1.16.2...1.16.3) (2022-08-24)
 
 
 ### Bug Fixes
 
 * Fix animation normalization bug ([35b5d19](https://github.com/hiloteam/Hilo3d/commit/35b5d194777e8d7fc3b5b3c1adc853a372e50d68))
 * Fix pointerChildren value judgment error during node raycast ([4eee579](https://github.com/hiloteam/Hilo3d/commit/4eee5798cc5eefe7451af8d8317ecc1fe3d6e333))
-* frontface should be set in all cases ([6ccc39d](https://github.com/hiloteam/Hilo3d/commit/6ccc39de8ad048acd2602e5005c942422ac320fe))
-* in KHR_techniques_webgl, premultiplyAlpha of material default value should be false ([bdf4100](https://github.com/hiloteam/Hilo3d/commit/bdf41003b803c50fad7e43ec9992c6fc33a14111))
-* in some cases, detecting the supportTransform property will report an error ([9215ba6](https://github.com/hiloteam/Hilo3d/commit/9215ba663bb44a4838cfe71ddf300be0dd8ef2b4))
+* Fix frontface should be set in all cases ([6ccc39d](https://github.com/hiloteam/Hilo3d/commit/6ccc39de8ad048acd2602e5005c942422ac320fe))
+* Fix in some cases, detecting the supportTransform property will report an error ([9215ba6](https://github.com/hiloteam/Hilo3d/commit/9215ba663bb44a4838cfe71ddf300be0dd8ef2b4))
 
 
 ### Features
