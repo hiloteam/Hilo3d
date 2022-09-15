@@ -224,6 +224,13 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
     offsetY: 0,
 
     /**
+     * 强制渲染时使用的材质
+     * @type {Material}
+     * @default null
+     */
+    forceMaterial: null,
+
+    /**
      * 是否初始化失败
      * @default false
      * @type {Boolean}
