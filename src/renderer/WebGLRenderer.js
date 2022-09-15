@@ -666,6 +666,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         const gl = this.gl;
         const state = this.state;
         const lightManager = this.lightManager;
+        const resourceManager = this.resourceManager;
         const geometry = mesh.geometry;
         const material = this.forceMaterial || mesh.material;
         const shader = Shader.getShader(mesh, material, useInstanced, lightManager, this.fog, this.useLogDepth);
@@ -688,9 +689,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
         this.setupVao(vao, program, mesh);
 
-        mesh._vao = vao;
-        mesh._shader = shader;
-        mesh._program = program;
+        resourceManager.addMeshResources(mesh, [vao, shader, program]);
 
         return {
             vao,

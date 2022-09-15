@@ -36,6 +36,7 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
      */
     constructor(params) {
         this._needDestroyResources = [];
+        this._meshDict = {};
         Object.assign(this, params);
     },
 
@@ -44,24 +45,34 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
         resources.forEach((resource) => {
             this.destroyIfNoRef(resource);
         });
-        mesh._vao = mesh._program = mesh._shader = null;
+        delete this._meshDict[mesh.id];
     },
 
     getMeshResources(mesh, resources = []) {
-        if (mesh._shader) {
-            resources.push(mesh._shader);
+        const meshResources = this._meshDict[mesh.id];
+        if (meshResources) {
+            meshResources.forEach((meshResource) => {
+                resources.push(meshResource);
+                if (meshResource.getResources) {
+                    meshResource.getResources(resources);
+                }
+            });
         }
-
-        if (mesh._vao) {
-            resources.push(mesh._vao);
-            mesh._vao.getResources(resources);
-        }
-
-        if (mesh._program) {
-            resources.push(mesh._program);
-        }
-
         return resources;
+    },
+
+    addMeshResources(mesh, resources) {
+        const meshId = mesh.id;
+        const meshDict = this._meshDict;
+        if (!meshDict[meshId]) {
+            meshDict[meshId] = [];
+        }
+        const meshResources = meshDict[meshId];
+        resources.forEach((resource) => {
+            if (meshResources.indexOf(resource) === -1) {
+                meshResources.push(resource);
+            }
+        });
     },
 
     /**
