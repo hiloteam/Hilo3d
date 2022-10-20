@@ -96,7 +96,7 @@ const Mesh = Class.create(/** @lends Mesh.prototype */ {
             const res = geometry.raycast(tempRay, material.side, sort);
             if (res) {
                 res.forEach((point) => {
-                    point.transformMat4(worldMatrix);
+                    point.transformMat4(this.matrix);
                 });
 
                 return res;
