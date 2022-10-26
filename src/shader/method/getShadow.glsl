@@ -18,9 +18,7 @@ float getShadow(sampler2D shadowMap, vec2 shadowMapSize, float bias, vec3 fragPo
     for (int x = -1; x <= 1; ++x) {
         for (int y = -1; y <= 1; ++y) {
             vec2 pos = projCoords.xy + vec2(x, y) * texelSize;
-            if (isOutOfRange(pos)) {
-                shadow += 1.0;
-            } else {
+            if (!isOutOfRange(pos)) {
                 float pcfDepth = texture2D(shadowMap, pos).r;
                 shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
             }
