@@ -19,7 +19,7 @@ if (typeof Promise === 'undefined') {
     window.Promise = pinkiePromise;
 }
 
-// iOS 9 doesn't support TypedArray slice
+// iOS 9 doesn't support TypedArray slice, forEach
 [
     Int8Array,
     Uint8Array,
@@ -32,6 +32,18 @@ if (typeof Promise === 'undefined') {
         Object.defineProperty(TypedArray.prototype, 'slice', {
             value(begin, end) {
                 return new TypedArray(Array.prototype.slice.call(this, begin, end));
+            }
+        });
+    }
+
+    if (!TypedArray.prototype.forEach) {
+        Object.defineProperty(TypedArray.prototype, 'forEach', {
+            value(callback, thisArg) {
+                const array = this;
+                thisArg = thisArg || this;
+                for (let i = 0, l = array.length; i !== l; ++i) {
+                    callback.call(thisArg, array[i], i, array);
+                }
             }
         });
     }
