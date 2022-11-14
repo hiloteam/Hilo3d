@@ -1,3 +1,14 @@
+## [1.16.4](https://github.com/hiloteam/Hilo3d/compare/1.16.3...1.16.4) (2022-11-14)
+
+
+### Bug Fixes
+
+* add TypedArray forEach polyfill to fix iOS9 bug ([59bf238](https://github.com/hiloteam/Hilo3d/commit/59bf238e12a63fc58e937f083ed77f2204e0bbce))
+* Fix the bug of destroying mesh when using multiple materials ([e9e0175](https://github.com/hiloteam/Hilo3d/commit/e9e0175036631ec7649aaf16bac06b4a5e9599a9))
+* wrong value in get shadow pcf while pos out of range ([#39](https://github.com/hiloteam/Hilo3d/issues/39)) ([f8a425a](https://github.com/hiloteam/Hilo3d/commit/f8a425a0aaf4ad7cc8f177af9ead230f90902e0e))
+
+
+
 ## [1.16.3](https://github.com/hiloteam/Hilo3d/compare/1.16.2...1.16.3) (2022-08-24)
 
 

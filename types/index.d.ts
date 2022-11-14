@@ -2352,6 +2352,10 @@ class WebGLRenderer implements EventMixin {
      */
     offsetY: number;
     /**
+     * 强制渲染时使用的材质
+     */
+    forceMaterial: Material;
+    /**
      * 是否初始化失败
      */
     isInitFailed: boolean;
