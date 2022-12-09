@@ -12,7 +12,8 @@ if (!window.notInit) {
         camera: camera,
         clearColor: new Hilo3d.Color(0.4, 0.4, 0.4),
         width: innerWidth,
-        height: innerHeight
+        height: innerHeight,
+        preferWebGL2: location.search.indexOf('webgl2') > -1,
     });
 
     window.onresize = function(){
@@ -46,6 +47,7 @@ if (!window.notInit) {
     ['init', 'initFailed'].forEach(function(eventName){
         stage.renderer.on(eventName, function(e){
             console.log(e.type, e);
+            console.log('Stage use ' + (renderer.isWebGL2 ? 'WebGL2' : 'WebGL1'));
         });
     });
 

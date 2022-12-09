@@ -71,7 +71,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
          */
         bindSystemVao() {
             if (extensions.vao) {
-                extensions.vao.bindVertexArrayOES(null);
+                extensions.vao.bindVertexArray(null);
             }
 
             currentVao = null;
@@ -134,8 +134,9 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
     constructor(gl, id, params) {
         this.gl = gl;
         this.id = id;
-        this.vaoExtension = extensions.vao;
+
         this.instancedExtension = extensions.instanced;
+        this.vaoExtension = extensions.vao;
 
         Object.assign(this, params);
 
@@ -148,7 +149,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
         }
 
         if (this.useVao) {
-            this.vao = this.vaoExtension.createVertexArrayOES();
+            this.vao = this.vaoExtension.createVertexArray();
         }
 
         this.attributes = [];
@@ -161,7 +162,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
     bind() {
         if (currentVao !== this) {
             if (this.useVao) {
-                this.vaoExtension.bindVertexArrayOES(this.vao);
+                this.vaoExtension.bindVertexArray(this.vao);
             } else {
                 this.bindSystemVao();
             }
@@ -218,7 +219,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
      */
     unbind() {
         if (this.useVao) {
-            this.vaoExtension.bindVertexArrayOES(null);
+            this.vaoExtension.bindVertexArray(null);
         }
         currentVao = null;
     },
@@ -265,9 +266,9 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
         } = this;
         if (this.useInstanced) {
             if (this.indexBuffer) {
-                this.instancedExtension.drawElementsInstancedANGLE(mode, this.vertexCount, gl.UNSIGNED_SHORT, 0, primcount);
+                this.instancedExtension.drawElementsInstanced(mode, this.vertexCount, gl.UNSIGNED_SHORT, 0, primcount);
             } else {
-                this.instancedExtension.drawArraysInstancedANGLE(mode, 0, this.getVertexCount(), primcount);
+                this.instancedExtension.drawArraysInstanced(mode, 0, this.getVertexCount(), primcount);
             }
         }
     },
@@ -417,7 +418,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
         this.instancedExtension = null;
 
         if (this.useVao) {
-            this.vaoExtension.deleteVertexArrayOES(this.vao);
+            this.vaoExtension.deleteVertexArray(this.vao);
             this.vao = null;
             this.vaoExtension = null;
         }

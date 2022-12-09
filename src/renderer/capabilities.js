@@ -1,4 +1,7 @@
 import extensions from './extensions';
+import {
+    isWebGL2
+} from '../utils/util';
 
 /**
  * WebGL 能力
@@ -6,6 +9,10 @@ import extensions from './extensions';
  * @type {Object}
  */
 const capabilities = {
+    /**
+     * 是否是 WebGL2
+     */
+    isWebGL2: false,
     /**
      * 最大纹理数量
      * @type {Number}
@@ -104,6 +111,7 @@ const capabilities = {
      */
     init(gl) {
         this.gl = gl;
+        this.isWebGL2 = isWebGL2(gl);
         const arr = [
             'MAX_RENDERBUFFER_SIZE',
             'MAX_COMBINED_TEXTURE_IMAGE_UNITS',
@@ -128,7 +136,7 @@ const capabilities = {
 
         this.VERTEX_TEXTURE_FLOAT = !!extensions.texFloat && this.MAX_VERTEX_TEXTURE_IMAGE_UNITS > 0;
         this.FRAGMENT_TEXTURE_FLOAT = !!extensions.texFloat;
-        this.EXT_FRAG_DEPTH = extensions.get('EXT_frag_depth');
+        this.EXT_FRAG_DEPTH = !!extensions.fragDepth;
 
         this.SHADER_TEXTURE_LOD = !!extensions.shaderTextureLod;
 

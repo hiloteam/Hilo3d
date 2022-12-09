@@ -368,6 +368,16 @@ function hasOwnProperty(obj, name) {
     return Object.prototype.hasOwnProperty.call(obj, name);
 }
 
+/**
+ * 是否是 WebGL2
+ * @memberOf util
+ * @param  {any}  gl
+ * @return {boolean}
+ */
+function isWebGL2(gl) {
+    return typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+}
+
 
 export {
     each,
@@ -387,5 +397,6 @@ export {
     isArrayLike,
     getElementRect,
     serialRun,
-    hasOwnProperty
+    hasOwnProperty,
+    isWebGL2,
 };

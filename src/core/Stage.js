@@ -91,6 +91,7 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
      * @param {number} [params.height=innerHeight] stage的高，默认网页高度
      * @param {number} [params.pixelRatio=根据设备自动判断] 像素密度。
      * @param {Color} [params.clearColor=new Color(1, 1, 1, 1)] 背景色。
+     * @param {boolean} [params.preferWebGL2=false] 是否优先使用 WebGL2
      * @param {boolean} [params.useFramebuffer=false] 是否使用Framebuffer，有后处理需求时需要。
      * @param {Object} [params.framebufferOption={}] framebufferOption Framebuffer的配置，useFramebuffer为true时生效。
      * @param {boolean} [params.useLogDepth=false] 是否使用对数深度，处理深度冲突。

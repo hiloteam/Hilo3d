@@ -254,6 +254,20 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
     _isContextLost: false,
 
     /**
+     * 是否是 WebGL2
+     * @type {Boolean}
+     * @default false
+     */
+    isWebGL2: false,
+
+    /**
+     * 是否优先使用 WebGL2
+     * @type {Boolean}
+     * @default false
+     */
+    preferWebGL2: false,
+
+    /**
      * @constructs
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
@@ -422,7 +436,22 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             contextAttributes.gameMode = true;
         }
 
-        let gl = this.gl = this.domElement.getContext('webgl', contextAttributes);
+        if (this.preferWebGL2) {
+            try {
+                this.gl = this.domElement.getContext('webgl2', contextAttributes);
+                this.isWebGL2 = true;
+            } catch (e) {
+                this.isWebGL2 = false;
+                this.gl = null;
+            }
+        }
+
+        if (!this.gl) {
+            this.gl = this.domElement.getContext('webgl', contextAttributes);
+            this.isWebGL2 = false;
+        }
+
+        let gl = this.gl;
 
         // HILO_DEBUG_START
         gl = this.gl = WebGLDebugUtils.makeDebugContext(gl, (err, funcName) => {
@@ -448,10 +477,6 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         }
 
         this.renderList.useInstanced = this.useInstanced;
-
-        if (!extensions.vao) {
-            this.useVao = false;
-        }
 
         if (this.useFramebuffer) {
             /**

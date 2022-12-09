@@ -1,8 +1,48 @@
+import {
+    WebGL1VertexArrayObjectExtension, WebGL2VertexArrayObjectExtension,
+} from './extensions/VertexArrayObjectExtension';
+
+import {
+    WebGL1InstancedArraysExtension, WebGL2InstancedArraysExtension,
+} from './extensions/InstancedArraysExtension';
+
+import {
+    isWebGL2
+} from '../utils/util';
+
+const WebGL2DefaultSupportExtensions = {
+    OES_texture_float: {
+        name: 'OES_texture_float',
+        isWebGL2: true,
+    },
+    EXT_FRAG_DEPTH: {
+        name: 'EXT_frag_depth',
+    },
+    OES_element_index_uint: {
+        name: 'OES_element_index_uint',
+    },
+    EXT_shader_texture_lod: {
+        name: 'EXT_shader_texture_lod',
+    },
+};
+
+const WebGLPolyfillExtensions = {
+    OES_vertex_array_object: {
+        WebGL1: WebGL1VertexArrayObjectExtension,
+        WebGL2: WebGL2VertexArrayObjectExtension,
+    },
+
+    ANGLE_instanced_arrays: {
+        WebGL1: WebGL1InstancedArraysExtension,
+        WebGL2: WebGL2InstancedArraysExtension,
+    }
+};
+
 /**
  * WebGL 扩展
  * @namespace extensions
  * @type {Object}
- * @description WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, WEBGL_lose_context, OES_element_index_uint, EXT_shader_texture_lod
+ * @description WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, OES_element_index_uint, EXT_shader_texture_lod, EXT_texture_filter_anisotropic, WEBGL_lose_context
  */
 const extensions = {
     /**
@@ -52,6 +92,8 @@ const extensions = {
      */
     reset(gl) {
         this.gl = gl;
+        this.isWebGL2 = isWebGL2(gl);
+
         const usedExtensions = this._usedExtensions;
         for (let name in usedExtensions) {
             const alias = usedExtensions[name];
@@ -66,10 +108,9 @@ const extensions = {
      * @param {String} [alias=name] 别名，默认和 name 相同
      */
     use(name, alias = name) {
+        this._usedExtensions[name] = alias;
         if (this.gl) {
             this.get(name, alias);
-        } else {
-            this._usedExtensions[name] = alias;
         }
     },
 
@@ -110,10 +151,35 @@ const extensions = {
 
     _getExtension(name) {
         const gl = this.gl;
+        const isWebGL2 = this.isWebGL2;
 
+        if (isWebGL2 && WebGL2DefaultSupportExtensions[name]) {
+            return WebGL2DefaultSupportExtensions[name];
+        }
+
+        const WebGLPolyfillExtension = WebGLPolyfillExtensions[name];
+        if (WebGLPolyfillExtension) {
+            if (this.isWebGL2) {
+                return new WebGLPolyfillExtension.WebGL2(gl);
+            }
+            const originExtension = this._getOriginExtension(name);
+            if (originExtension) {
+                return new WebGLPolyfillExtension.WebGL1(originExtension);
+            }
+
+            return null;
+        }
+
+        const originExtension = this._getOriginExtension(name);
+        return originExtension;
+    },
+
+    _getOriginExtension(name) {
+        const gl = this.gl;
         if (gl && gl.getExtension) {
             return gl.getExtension(name) || gl.getExtension('WEBKIT_' + name) || gl.getExtension('MOZ_' + name) || null;
         }
+
         return null;
     }
 };
@@ -121,10 +187,11 @@ const extensions = {
 extensions.use('ANGLE_instanced_arrays', 'instanced');
 extensions.use('OES_vertex_array_object', 'vao');
 extensions.use('OES_texture_float', 'texFloat');
-extensions.use('WEBGL_lose_context', 'loseContext');
 extensions.use('OES_element_index_uint', 'uintIndices');
 extensions.use('EXT_shader_texture_lod', 'shaderTextureLod');
+extensions.use('EXT_frag_depth', 'fragDepth');
 extensions.use('EXT_texture_filter_anisotropic', 'textureFilterAnisotropic');
+extensions.use('WEBGL_lose_context', 'loseContext');
 
 export default extensions;
 
