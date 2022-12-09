@@ -1,3 +1,5 @@
+import Class from '../core/Class';
+
 const DATA_TYPES = [{
     name: 'FLOAT',
     byteSize: 4,
@@ -102,19 +104,31 @@ const DATA_TYPES = [{
     size: 1
 }];
 
-const DATA_DICT = {};
-
 /**
- * @namespace glType
- * @type {Object}
+ * @class
  */
-const glType = {
-    dict: DATA_DICT,
+const WebGLType = Class.create(/** @lends Program.prototype */ {
     /**
-     * init
+     * @type {string}
+     * @default GLType
+     */
+    className: 'WebGLType',
+
+    /**
+     * @type {Boolean}
+     * @default true
+     */
+    isWebGLType: true,
+
+    _dataDict: null,
+
+    /**
+     * @constructs
      * @param  {WebGLRenderingContext} gl
      */
-    init(gl) {
+    constructor(gl) {
+        const dataDict = this._dataDict = {};
+
         DATA_TYPES.forEach((dataType) => {
             const name = dataType.name;
 
@@ -142,24 +156,25 @@ const glType = {
                 };
             }
 
-            DATA_DICT[gl[name]] = Object.assign(dataType, {
+            dataDict[gl[name]] = Object.assign({}, dataType, {
                 glValue: gl[name],
                 uniform,
                 uniformArray
             });
         });
     },
+
     /**
      * 获取信息
      * @param  {GLenum} type
      * @return {glTypeInfo}
      */
     get(type) {
-        return DATA_DICT[type];
+        return this._dataDict[type];
     }
-};
+});
 
-export default glType;
+export default WebGLType;
 
 /**
  * @typedef {Object} glTypeInfo
