@@ -5,6 +5,14 @@ import log from '../utils/log';
 import glType from './glType';
 import extensions from './extensions';
 import Shader from '../shader/Shader';
+import constants from '../constants';
+
+const GLSL300VertDefineCode = require('../shader/chunk/GLSL300Define.vert');
+const GLSL300FragDefineCode = require('../shader/chunk/GLSL300Define.frag');
+
+const {
+    VERTEX_SHADER,
+} = constants;
 
 const cache = new Cache();
 
@@ -133,6 +141,13 @@ const Program = Class.create(/** @lends Program.prototype */ {
     alwaysUse: false,
 
     /**
+     * 是否是 WebGL2
+     * @default false
+     * @type {Boolean}
+     */
+    isWebGL2: false,
+
+    /**
      * @constructs
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      * @param  {WebGLState} params.state WebGL state
@@ -150,6 +165,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
         this.attributes = {};
         this.uniforms = {};
         this.gl = this.state.gl;
+        this.isWebGL2 = this.state.isWebGL2;
         this.program = this.createProgram();
 
         if (this.program) {
@@ -207,6 +223,9 @@ const Program = Class.create(/** @lends Program.prototype */ {
      * @return {WebGLShader}
      */
     createShader(shaderType, code) {
+        if (this.isWebGL2) {
+            code = this._convertToGLSL300(shaderType, code);
+        }
         const gl = this.gl;
         const shader = gl.createShader(shaderType);
         gl.shaderSource(shader, code);
@@ -219,6 +238,17 @@ const Program = Class.create(/** @lends Program.prototype */ {
         }
 
         return shader;
+    },
+    _convertToGLSL300(shaderType, code) {
+        let finalCode = code;
+        if (shaderType === VERTEX_SHADER) {
+            finalCode = GLSL300VertDefineCode + code;
+        } else {
+            finalCode = GLSL300FragDefineCode + code;
+            finalCode = finalCode.replace('gl_FragData[0]', 'fragColor');
+        }
+
+        return finalCode;
     },
     /**
      * 初始化 attribute 信息

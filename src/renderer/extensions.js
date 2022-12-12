@@ -13,9 +13,8 @@ import {
 const WebGL2DefaultSupportExtensions = {
     OES_texture_float: {
         name: 'OES_texture_float',
-        isWebGL2: true,
     },
-    EXT_FRAG_DEPTH: {
+    EXT_frag_depth: {
         name: 'EXT_frag_depth',
     },
     OES_element_index_uint: {
@@ -62,6 +61,12 @@ const extensions = {
      * @type {OESTextureFloat}
      */
     texFloat: undefined,
+
+    /**
+     * EXT_frag_depth扩展
+     * @type {EXTFragDepth}
+     */
+    fragDepth: undefined,
 
     /**
      * WEBGL_lose_context扩展
@@ -205,6 +210,10 @@ export default extensions;
 
 /**
  * @typedef {any} OESTextureFloat
+ */
+
+/**
+ * @typedef {any} EXTFragDepth
  */
 
 /**

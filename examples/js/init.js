@@ -14,6 +14,9 @@ if (!window.notInit) {
         width: innerWidth,
         height: innerHeight,
         preferWebGL2: location.search.indexOf('webgl2') > -1,
+        antialias: false,
+        alpha: false,
+        useLogDepth: false,
     });
 
     window.onresize = function(){
