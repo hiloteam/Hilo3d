@@ -286,7 +286,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
 
             if (instancedExtension) {
                 divisor = (d = 1) => {
-                    instancedExtension.vertexAttribDivisorANGLE(location, d);
+                    instancedExtension.vertexAttribDivisor(location, d);
                 };
             }
 
