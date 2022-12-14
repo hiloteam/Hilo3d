@@ -9,7 +9,11 @@ import constants from '../constants';
 
 const {
     TEXTURE_2D,
+    FLOAT,
+    RGB,
     RGBA,
+    RGB32F,
+    RGBA32F,
     LINEAR,
     NEAREST,
     REPEAT,
@@ -435,15 +439,37 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      */
     _glUploadTexture(state, target, image, level = 0, width = this.width, height = this.height) {
         const gl = state.gl;
+        const type = this.type;
+        const format = this.format;
+        const internalFormat = this._fixInternalFormat(state, type, format);
+
         if (this.compressed) {
-            gl.compressedTexImage2D(target, level, this.internalFormat, width, height, this.border, image);
+            gl.compressedTexImage2D(target, level, internalFormat, width, height, this.border, image);
         } else if (image && image.width !== undefined) {
-            gl.texImage2D(target, level, this.internalFormat, this.format, this.type, image);
+            gl.texImage2D(target, level, internalFormat, format, this.type, image);
         } else {
-            gl.texImage2D(target, level, this.internalFormat, width, height, this.border, this.format, this.type, image);
+            gl.texImage2D(target, level, internalFormat, width, height, this.border, format, this.type, image);
         }
 
         return this;
+    },
+    /**
+     * 修复 WebGL & WebGL2 internalFormat
+     * @param {WebGLState} state 
+     * @returns {number} internalFormat
+     */
+    _fixInternalFormat(state, type, format) {
+        let internalFormat = this.internalFormat;
+        if (state.isWebGL2 && type === FLOAT) {
+            if (format === RGBA) {
+                internalFormat = RGBA32F;
+            } else if (format === RGB) {
+                internalFormat = RGB32F;
+            }
+        } else if (format !== internalFormat) {
+            internalFormat = this.format;
+        }
+        return internalFormat;
     },
     /**
      * 上传贴图，子类可重写
