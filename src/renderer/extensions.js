@@ -197,6 +197,7 @@ extensions.use('EXT_shader_texture_lod', 'shaderTextureLod');
 extensions.use('EXT_frag_depth', 'fragDepth');
 extensions.use('EXT_texture_filter_anisotropic', 'textureFilterAnisotropic');
 extensions.use('WEBGL_lose_context', 'loseContext');
+extensions.use('EXT_color_buffer_float', 'colorBufferFloat');
 
 export default extensions;
 
