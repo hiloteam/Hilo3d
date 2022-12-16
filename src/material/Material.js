@@ -3,6 +3,7 @@ import math from '../math/math';
 import semantic from './semantic';
 import log from '../utils/log';
 import constants from '../constants';
+import capabilities from '../renderer/capabilities';
 
 const {
     LEQUAL,
@@ -482,6 +483,13 @@ const Material = Class.create(/** @lends Material.prototype */ {
     exposure: 1,
 
     /**
+     * 是否开启 texture lod
+     * @default false
+     * @type {Boolean}
+     */
+    enableTextureLod: false,
+
+    /**
      * 是否需要加基础 uniforms
      * @type {Boolean}
      * @default true
@@ -670,6 +678,10 @@ const Material = Class.create(/** @lends Material.prototype */ {
 
         if (this.premultiplyAlpha) {
             option.PREMULTIPLY_ALPHA = 1;
+        }
+
+        if (capabilities.SHADER_TEXTURE_LOD && this.enableTextureLod) {
+            option.USE_SHADER_TEXTURE_LOD = 1;
         }
 
         const textureOption = this._textureOption.reset(option);
