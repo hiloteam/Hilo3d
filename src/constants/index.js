@@ -1,4 +1,5 @@
 import * as webgl from './webgl';
+import * as webgl2 from './webgl2';
 import * as webglExtensions from './webglExtensions';
 import * as Hilo from './Hilo';
 
@@ -11,8 +12,9 @@ import * as Hilo from './Hilo';
 const constants = {
     webgl,
     webglExtensions,
+    webgl2,
     Hilo
 };
-Object.assign(constants, webgl, webglExtensions, Hilo);
+Object.assign(constants, webgl, webglExtensions, webgl2, Hilo);
 
 export default constants;

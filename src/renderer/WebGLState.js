@@ -1,4 +1,5 @@
 import Class from '../core/Class';
+import { isWebGL2 } from '../utils/util';
 
 /**
  * WebGL 状态管理，减少 api 调用
@@ -25,6 +26,13 @@ const WebGLState = Class.create(/** @lends WebGLState.prototype */ {
     systemFramebuffer: null,
 
     /**
+    * 是否是 WebGL2
+    * @default false
+    * @type {Boolean}
+    */
+    isWebGL2: false,
+
+    /**
      * @constructs
      * @param  {WebGLRenderingContext} gl
      */
@@ -34,6 +42,7 @@ const WebGLState = Class.create(/** @lends WebGLState.prototype */ {
          * @type {WebGLRenderingContext}
          */
         this.gl = gl;
+        this.isWebGL2 = isWebGL2(gl);
         this.reset();
     },
     /**

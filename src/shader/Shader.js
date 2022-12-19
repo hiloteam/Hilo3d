@@ -197,8 +197,8 @@ const Shader = Class.create(/** @lends Shader.prototype */ {
 
                 if (useLogDepth) {
                     headers.USE_LOG_DEPTH = 1;
-                    if (capabilities.EXT_FRAG_DEPTH) {
-                        headers.USE_EXT_FRAG_DEPTH = 1;
+                    if (capabilities.FRAG_DEPTH) {
+                        headers.USE_FRAG_DEPTH = 1;
                     }
                 }
 
