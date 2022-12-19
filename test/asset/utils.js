@@ -31,7 +31,7 @@ var utils = {
                     if (specImg) {
                         var diff = utils.diffImage(screenshotImg, specImg);
                         console.log('      (imageDiff:' + diff + ')');
-                        if (diff < 10) {
+                        if (diff < 16) {
                             done();
                         } else {
                             done(new Error('diff image error:' + name + ', diff:' + diff));
