@@ -23,6 +23,9 @@ const WebGL2DefaultSupportExtensions = {
     EXT_shader_texture_lod: {
         name: 'EXT_shader_texture_lod',
     },
+    EXT_sRGB: {
+        name: 'EXT_sRGB',
+    },
 };
 
 const WebGLPolyfillExtensions = {
@@ -79,6 +82,12 @@ const extensions = {
      * @type {EXTTextureFilterAnisotropic}
      */
     textureFilterAnisotropic: undefined,
+
+    /**
+     * EXT_sRGB
+     * @type {EXT_sRGB}
+     */
+    sRGB: undefined,
 
     _usedExtensions: {},
     _disabledExtensions: {},
@@ -198,6 +207,7 @@ extensions.use('EXT_frag_depth', 'fragDepth');
 extensions.use('EXT_texture_filter_anisotropic', 'textureFilterAnisotropic');
 extensions.use('WEBGL_lose_context', 'loseContext');
 extensions.use('EXT_color_buffer_float', 'colorBufferFloat');
+extensions.use('EXT_sRGB', 'sRGB');
 
 export default extensions;
 
@@ -223,4 +233,8 @@ export default extensions;
 
 /**
  * @typedef {any} EXTTextureFilterAnisotropic
+ */
+
+/**
+ * @typedef {any} EXT_sRGB
  */
