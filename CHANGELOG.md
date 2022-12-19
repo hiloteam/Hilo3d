@@ -1,3 +1,12 @@
+# [1.17.0-alpha.0](https://github.com/hiloteam/Hilo3d/compare/1.16.4...1.17.0-alpha.0) (2022-12-19)
+
+
+### Features
+
+* Add WebGL2 support ([#40](https://github.com/hiloteam/Hilo3d/issues/40)) ([3dc82ec](https://github.com/hiloteam/Hilo3d/commit/3dc82ec8f0ce8880413e6e756a57108baa81b77e))
+
+
+
 ## [1.16.4](https://github.com/hiloteam/Hilo3d/compare/1.16.3...1.16.4) (2022-11-14)
 
 

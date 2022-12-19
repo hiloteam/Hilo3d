@@ -37,7 +37,7 @@ namespace AnimationStates {
 namespace constants {
     const POSITION: string;
     const NORMAL: string;
-    const DEPTH: string;
+    const DEPTH: glEnum;
     const DISTANCE: string;
     const ACTIVE_ATTRIBUTES: GLenum;
     const ACTIVE_ATTRIBUTE_MAX_LENGTH: GLenum;
@@ -98,8 +98,8 @@ namespace constants {
     const DEPTH_COMPONENT16: GLenum;
     const DEPTH_FUNC: GLenum;
     const DEPTH_RANGE: GLenum;
-    const DEPTH_STENCIL: GLenum;
-    const DEPTH_STENCIL_ATTACHMENT: GLenum;
+    const DEPTH_STENCIL: glEnum;
+    const DEPTH_STENCIL_ATTACHMENT: glEnum;
     const DEPTH_TEST: GLenum;
     const DEPTH_WRITEMASK: GLenum;
     const DITHER: GLenum;
@@ -340,87 +340,592 @@ namespace constants {
     const VERTEX_SHADER: GLenum;
     const VIEWPORT: GLenum;
     const ZERO: GLenum;
+    const READ_BUFFER: glEnum;
+    const UNPACK_ROW_LENGTH: glEnum;
+    const UNPACK_SKIP_ROWS: glEnum;
+    const UNPACK_SKIP_PIXELS: glEnum;
+    const PACK_ROW_LENGTH: glEnum;
+    const PACK_SKIP_ROWS: glEnum;
+    const PACK_SKIP_PIXELS: glEnum;
+    const TEXTURE_BINDING_3D: glEnum;
+    const UNPACK_SKIP_IMAGES: glEnum;
+    const UNPACK_IMAGE_HEIGHT: glEnum;
+    const MAX_3D_TEXTURE_SIZE: glEnum;
+    const MAX_ELEMENTS_VERTICES: glEnum;
+    const MAX_ELEMENTS_INDICES: glEnum;
+    const MAX_TEXTURE_LOD_BIAS: glEnum;
+    const MAX_FRAGMENT_UNIFORM_COMPONENTS: glEnum;
+    const MAX_VERTEX_UNIFORM_COMPONENTS: glEnum;
+    const MAX_ARRAY_TEXTURE_LAYERS: glEnum;
+    const MIN_PROGRAM_TEXEL_OFFSET: glEnum;
+    const MAX_PROGRAM_TEXEL_OFFSET: glEnum;
+    const MAX_VARYING_COMPONENTS: glEnum;
+    const FRAGMENT_SHADER_DERIVATIVE_HINT: glEnum;
+    const RASTERIZER_DISCARD: glEnum;
+    const VERTEX_ARRAY_BINDING: glEnum;
+    const MAX_VERTEX_OUTPUT_COMPONENTS: glEnum;
+    const MAX_FRAGMENT_INPUT_COMPONENTS: glEnum;
+    const MAX_SERVER_WAIT_TIMEOUT: glEnum;
+    const MAX_ELEMENT_INDEX: glEnum;
+    const RED: glEnum;
+    const RGB8: glEnum;
+    const RGBA8: glEnum;
+    const RGB10_A2: glEnum;
+    const TEXTURE_3D: glEnum;
+    const TEXTURE_WRAP_R: glEnum;
+    const TEXTURE_MIN_LOD: glEnum;
+    const TEXTURE_MAX_LOD: glEnum;
+    const TEXTURE_BASE_LEVEL: glEnum;
+    const TEXTURE_MAX_LEVEL: glEnum;
+    const TEXTURE_COMPARE_MODE: glEnum;
+    const TEXTURE_COMPARE_FUNC: glEnum;
+    const SRGB: glEnum;
+    const SRGB8: glEnum;
+    const SRGB8_ALPHA8: glEnum;
+    const COMPARE_REF_TO_TEXTURE: glEnum;
+    const RGBA32F: glEnum;
+    const RGB32F: glEnum;
+    const RGBA16F: glEnum;
+    const RGB16F: glEnum;
+    const TEXTURE_2D_ARRAY: glEnum;
+    const TEXTURE_BINDING_2D_ARRAY: glEnum;
+    const R11F_G11F_B10F: glEnum;
+    const RGB9_E5: glEnum;
+    const RGBA32UI: glEnum;
+    const RGB32UI: glEnum;
+    const RGBA16UI: glEnum;
+    const RGB16UI: glEnum;
+    const RGBA8UI: glEnum;
+    const RGB8UI: glEnum;
+    const RGBA32I: glEnum;
+    const RGB32I: glEnum;
+    const RGBA16I: glEnum;
+    const RGB16I: glEnum;
+    const RGBA8I: glEnum;
+    const RGB8I: glEnum;
+    const RED_INTEGER: glEnum;
+    const RGB_INTEGER: glEnum;
+    const RGBA_INTEGER: glEnum;
+    const R8: glEnum;
+    const RG8: glEnum;
+    const R16F: glEnum;
+    const R32F: glEnum;
+    const RG16F: glEnum;
+    const RG32F: glEnum;
+    const R8I: glEnum;
+    const R8UI: glEnum;
+    const R16I: glEnum;
+    const R16UI: glEnum;
+    const R32I: glEnum;
+    const R32UI: glEnum;
+    const RG8I: glEnum;
+    const RG8UI: glEnum;
+    const RG16I: glEnum;
+    const RG16UI: glEnum;
+    const RG32I: glEnum;
+    const RG32UI: glEnum;
+    const R8_SNORM: glEnum;
+    const RG8_SNORM: glEnum;
+    const RGB8_SNORM: glEnum;
+    const RGBA8_SNORM: glEnum;
+    const RGB10_A2UI: glEnum;
+    const TEXTURE_IMMUTABLE_FORMAT: glEnum;
+    const TEXTURE_IMMUTABLE_LEVELS: glEnum;
+    const UNSIGNED_INT_2_10_10_10_REV: glEnum;
+    const UNSIGNED_INT_10F_11F_11F_REV: glEnum;
+    const UNSIGNED_INT_5_9_9_9_REV: glEnum;
+    const FLOAT_32_UNSIGNED_INT_24_8_REV: glEnum;
+    const UNSIGNED_INT_24_8: glEnum;
+    const HALF_FLOAT: glEnum;
+    const RG: glEnum;
+    const RG_INTEGER: glEnum;
+    const INT_2_10_10_10_REV: glEnum;
+    const URRENT_QUERY: glEnum;
+    const QUERY_RESULT: glEnum;
+    const QUERY_RESULT_AVAILABLE: glEnum;
+    const ANY_SAMPLES_PASSED: glEnum;
+    const ANY_SAMPLES_PASSED_CONSERVATIVE: glEnum;
+    const MAX_DRAW_BUFFERS: glEnum;
+    const DRAW_BUFFER0: glEnum;
+    const DRAW_BUFFER1: glEnum;
+    const DRAW_BUFFER2: glEnum;
+    const DRAW_BUFFER3: glEnum;
+    const DRAW_BUFFER4: glEnum;
+    const DRAW_BUFFER5: glEnum;
+    const DRAW_BUFFER6: glEnum;
+    const DRAW_BUFFER7: glEnum;
+    const DRAW_BUFFER8: glEnum;
+    const DRAW_BUFFER9: glEnum;
+    const DRAW_BUFFER10: glEnum;
+    const DRAW_BUFFER11: glEnum;
+    const DRAW_BUFFER12: glEnum;
+    const DRAW_BUFFER13: glEnum;
+    const DRAW_BUFFER14: glEnum;
+    const DRAW_BUFFER15: glEnum;
+    const MAX_COLOR_ATTACHMENTS: glEnum;
+    const COLOR_ATTACHMENT1: glEnum;
+    const COLOR_ATTACHMENT2: glEnum;
+    const COLOR_ATTACHMENT3: glEnum;
+    const COLOR_ATTACHMENT4: glEnum;
+    const COLOR_ATTACHMENT5: glEnum;
+    const COLOR_ATTACHMENT6: glEnum;
+    const COLOR_ATTACHMENT7: glEnum;
+    const COLOR_ATTACHMENT8: glEnum;
+    const COLOR_ATTACHMENT9: glEnum;
+    const COLOR_ATTACHMENT10: glEnum;
+    const COLOR_ATTACHMENT11: glEnum;
+    const COLOR_ATTACHMENT12: glEnum;
+    const COLOR_ATTACHMENT13: glEnum;
+    const COLOR_ATTACHMENT14: glEnum;
+    const COLOR_ATTACHMENT15: glEnum;
+    const SAMPLER_3D: glEnum;
+    const SAMPLER_2D_SHADOW: glEnum;
+    const SAMPLER_2D_ARRAY: glEnum;
+    const SAMPLER_2D_ARRAY_SHADOW: glEnum;
+    const SAMPLER_CUBE_SHADOW: glEnum;
+    const INT_SAMPLER_2D: glEnum;
+    const INT_SAMPLER_3D: glEnum;
+    const INT_SAMPLER_CUBE: glEnum;
+    const INT_SAMPLER_2D_ARRAY: glEnum;
+    const UNSIGNED_INT_SAMPLER_2D: glEnum;
+    const UNSIGNED_INT_SAMPLER_3D: glEnum;
+    const UNSIGNED_INT_SAMPLER_CUBE: glEnum;
+    const UNSIGNED_INT_SAMPLER_2D_ARRAY: glEnum;
+    const MAX_SAMPLES: glEnum;
+    const SAMPLER_BINDING: glEnum;
+    const PIXEL_PACK_BUFFER: glEnum;
+    const PIXEL_UNPACK_BUFFER: glEnum;
+    const PIXEL_PACK_BUFFER_BINDING: glEnum;
+    const PIXEL_UNPACK_BUFFER_BINDING: glEnum;
+    const COPY_READ_BUFFER: glEnum;
+    const COPY_WRITE_BUFFER: glEnum;
+    const COPY_READ_BUFFER_BINDING: glEnum;
+    const COPY_WRITE_BUFFER_BINDING: glEnum;
+    const FLOAT_MAT2x3: glEnum;
+    const FLOAT_MAT2x4: glEnum;
+    const FLOAT_MAT3x2: glEnum;
+    const FLOAT_MAT3x4: glEnum;
+    const FLOAT_MAT4x2: glEnum;
+    const FLOAT_MAT4x3: glEnum;
+    const UNSIGNED_INT_VEC2: glEnum;
+    const UNSIGNED_INT_VEC3: glEnum;
+    const UNSIGNED_INT_VEC4: glEnum;
+    const UNSIGNED_NORMALIZED: glEnum;
+    const SIGNED_NORMALIZED: glEnum;
+    const VERTEX_ATTRIB_ARRAY_INTEGER: glEnum;
+    const VERTEX_ATTRIB_ARRAY_DIVISOR: glEnum;
+    const TRANSFORM_FEEDBACK_BUFFER_MODE: glEnum;
+    const MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS: glEnum;
+    const TRANSFORM_FEEDBACK_VARYINGS: glEnum;
+    const TRANSFORM_FEEDBACK_BUFFER_START: glEnum;
+    const TRANSFORM_FEEDBACK_BUFFER_SIZE: glEnum;
+    const TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN: glEnum;
+    const MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS: glEnum;
+    const MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: glEnum;
+    const INTERLEAVED_ATTRIBS: glEnum;
+    const SEPARATE_ATTRIBS: glEnum;
+    const TRANSFORM_FEEDBACK_BUFFER: glEnum;
+    const TRANSFORM_FEEDBACK_BUFFER_BINDING: glEnum;
+    const TRANSFORM_FEEDBACK: glEnum;
+    const TRANSFORM_FEEDBACK_PAUSED: glEnum;
+    const TRANSFORM_FEEDBACK_ACTIVE: glEnum;
+    const TRANSFORM_FEEDBACK_BINDING: glEnum;
+    const FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING: glEnum;
+    const FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE: glEnum;
+    const FRAMEBUFFER_ATTACHMENT_RED_SIZE: glEnum;
+    const FRAMEBUFFER_ATTACHMENT_GREEN_SIZE: glEnum;
+    const FRAMEBUFFER_ATTACHMENT_BLUE_SIZE: glEnum;
+    const FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE: glEnum;
+    const FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE: glEnum;
+    const FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE: glEnum;
+    const FRAMEBUFFER_DEFAULT: glEnum;
+    const DEPTH24_STENCIL8: glEnum;
+    const DRAW_FRAMEBUFFER_BINDING: glEnum;
+    const READ_FRAMEBUFFER: glEnum;
+    const DRAW_FRAMEBUFFER: glEnum;
+    const READ_FRAMEBUFFER_BINDING: glEnum;
+    const RENDERBUFFER_SAMPLES: glEnum;
+    const FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER: glEnum;
+    const FRAMEBUFFER_INCOMPLETE_MULTISAMPLE: glEnum;
+    const UNIFORM_BUFFER: glEnum;
+    const UNIFORM_BUFFER_BINDING: glEnum;
+    const UNIFORM_BUFFER_START: glEnum;
+    const UNIFORM_BUFFER_SIZE: glEnum;
+    const MAX_VERTEX_UNIFORM_BLOCKS: glEnum;
+    const MAX_FRAGMENT_UNIFORM_BLOCKS: glEnum;
+    const MAX_COMBINED_UNIFORM_BLOCKS: glEnum;
+    const MAX_UNIFORM_BUFFER_BINDINGS: glEnum;
+    const MAX_UNIFORM_BLOCK_SIZE: glEnum;
+    const MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS: glEnum;
+    const MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS: glEnum;
+    const UNIFORM_BUFFER_OFFSET_ALIGNMENT: glEnum;
+    const ACTIVE_UNIFORM_BLOCKS: glEnum;
+    const UNIFORM_TYPE: glEnum;
+    const UNIFORM_SIZE: glEnum;
+    const UNIFORM_BLOCK_INDEX: glEnum;
+    const UNIFORM_OFFSET: glEnum;
+    const UNIFORM_ARRAY_STRIDE: glEnum;
+    const UNIFORM_MATRIX_STRIDE: glEnum;
+    const UNIFORM_IS_ROW_MAJOR: glEnum;
+    const UNIFORM_BLOCK_BINDING: glEnum;
+    const UNIFORM_BLOCK_DATA_SIZE: glEnum;
+    const UNIFORM_BLOCK_ACTIVE_UNIFORMS: glEnum;
+    const UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES: glEnum;
+    const UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER: glEnum;
+    const UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER: glEnum;
+    const OBJECT_TYPE: glEnum;
+    const SYNC_CONDITION: glEnum;
+    const SYNC_STATUS: glEnum;
+    const SYNC_FLAGS: glEnum;
+    const SYNC_FENCE: glEnum;
+    const SYNC_GPU_COMMANDS_COMPLETE: glEnum;
+    const UNSIGNALED: glEnum;
+    const SIGNALED: glEnum;
+    const ALREADY_SIGNALED: glEnum;
+    const TIMEOUT_EXPIRED: glEnum;
+    const CONDITION_SATISFIED: glEnum;
+    const WAIT_FAILED: glEnum;
+    const SYNC_FLUSH_COMMANDS_BIT: glEnum;
+    const COLOR: glEnum;
+    const STENCIL: glEnum;
+    const MIN: glEnum;
+    const MAX: glEnum;
+    const DEPTH_COMPONENT24: glEnum;
+    const STREAM_READ: glEnum;
+    const STREAM_COPY: glEnum;
+    const STATIC_READ: glEnum;
+    const STATIC_COPY: glEnum;
+    const DYNAMIC_READ: glEnum;
+    const DYNAMIC_COPY: glEnum;
+    const DEPTH_COMPONENT32F: glEnum;
+    const DEPTH32F_STENCIL8: glEnum;
+    const INVALID_INDEX: glEnum;
+    const TIMEOUT_IGNO: glEnum;
+    const MAX_CLIENT_WAIT_TIMEOUT_WEBGL: glEnum;
+    /**
+     * Describes the frequency divisor used for instanced rendering.
+     */
     const VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE: GLenum;
+    /**
+     * Passed to getParameter to get the vendor string of the graphics driver.
+     */
     const UNMASKED_VENDOR_WEBGL: GLenum;
+    /**
+     * Passed to getParameter to get the renderer string of the graphics driver.
+     */
     const UNMASKED_RENDERER_WEBGL: GLenum;
+    /**
+     * Returns the maximum available anisotropy.
+     */
     const MAX_TEXTURE_MAX_ANISOTROPY_EXT: GLenum;
+    /**
+     * Passed to texParameter to set the desired maximum anisotropy for a texture.
+     */
     const TEXTURE_MAX_ANISOTROPY_EXT: GLenum;
+    /**
+     * A DXT1-compressed image in an RGB image format.
+     */
     const COMPRESSED_RGB_S3TC_DXT1_EXT: GLenum;
+    /**
+     * A DXT1-compressed image in an RGB image format with a simple on/off alpha value.
+     */
     const COMPRESSED_RGBA_S3TC_DXT1_EXT: GLenum;
+    /**
+     * A DXT3-compressed image in an RGBA image format. Compared to a 32-bit RGBA texture, it offers 4:1 compression.
+     */
     const COMPRESSED_RGBA_S3TC_DXT3_EXT: GLenum;
+    /**
+     * A DXT5-compressed image in an RGBA image format. It also provides a 4:1 compression, but differs to the DXT3 compression in how the alpha compression is done.
+     */
     const COMPRESSED_RGBA_S3TC_DXT5_EXT: GLenum;
+    /**
+     * One-channel (red) unsigned format compression.
+     */
     const COMPRESSED_R11_EAC: GLenum;
+    /**
+     * One-channel (red) signed format compression.
+     */
     const COMPRESSED_SIGNED_R11_EAC: GLenum;
+    /**
+     * Two-channel (red and green) unsigned format compression.
+     */
     const COMPRESSED_RG11_EAC: GLenum;
+    /**
+     * Two-channel (red and green) signed format compression.
+     */
     const COMPRESSED_SIGNED_RG11_EAC: GLenum;
+    /**
+     * Compresses RBG8 data with no alpha channel.
+     */
     const COMPRESSED_RGB8_ETC2: GLenum;
+    /**
+     * Compresses RGBA8 data. The RGB part is encoded the same as RGB_ETC2, but the alpha part is encoded separately.
+     */
     const COMPRESSED_RGBA8_ETC2_EAC: GLenum;
+    /**
+     * Compresses sRBG8 data with no alpha channel.
+     */
     const COMPRESSED_SRGB8_ETC2: GLenum;
+    /**
+     * Compresses sRGBA8 data. The sRGB part is encoded the same as SRGB_ETC2, but the alpha part is encoded separately.
+     */
     const COMPRESSED_SRGB8_ALPHA8_ETC2_EAC: GLenum;
+    /**
+     * Similar to RGB8_ETC, but with ability to punch through the alpha channel, which means to make it completely opaque or transparent.
+     */
     const COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2: GLenum;
+    /**
+     * Similar to SRGB8_ETC, but with ability to punch through the alpha channel, which means to make it completely opaque or transparent.
+     */
     const COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2: GLenum;
+    /**
+     * RGB compression in 4-bit mode. One block for each 4×4 pixels.
+     */
     const COMPRESSED_RGB_PVRTC_4BPPV1_IMG: GLenum;
+    /**
+     * RGBA compression in 4-bit mode. One block for each 4×4 pixels.
+     */
     const COMPRESSED_RGBA_PVRTC_4BPPV1_IMG: GLenum;
+    /**
+     * RGB compression in 2-bit mode. One block for each 8×4 pixels.
+     */
     const COMPRESSED_RGB_PVRTC_2BPPV1_IMG: GLenum;
+    /**
+     * RGBA compression in 2-bit mode. One block for each 8×4 pixe
+     */
     const COMPRESSED_RGBA_PVRTC_2BPPV1_IMG: GLenum;
+    /**
+     * Compresses 24-bit RGB data with no alpha channel.
+     */
     const COMPRESSED_RGB_ETC1_WEBGL: GLenum;
-    const COMPRESSED_RGB_ATC_WEBGL: GLenum;
+    const _WEBGL = 35986;
+    /**
+     * Compresses RGBA textures using explicit alpha encoding (useful when alpha transitions are sharp).
+     */
     const COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL: GLenum;
+    /**
+     * Compresses RGBA textures using interpolated alpha encoding (useful when alpha transitions are gradient).
+     */
     const COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL: GLenum;
+    /**
+     * Unsigned integer type for 24-bit depth texture data.
+     */
     const UNSIGNED_INT_24_8_WEBGL: GLenum;
+    /**
+     * Half floating-point type (16-bit).
+     */
     const HALF_FLOAT_OES: GLenum;
+    /**
+     * RGBA 32-bit floating-point color-renderable format.
+     */
     const RGBA32F_EXT: GLenum;
+    /**
+     * RGB 32-bit floating-point color-renderable format.
+     */
     const RGB32F_EXT: GLenum;
+    /**
+     * Returns the type of the color-renderable format of the attachment.
+     */
     const FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT: GLenum;
+    /**
+     * Unsigned normalized integer type.
+     */
     const UNSIGNED_NORMALIZED_EXT: GLenum;
+    /**
+     * Produces the minimum color components of the source and destination colors.
+     */
     const MIN_EXT: GLenum;
+    /**
+     * Produces the maximum color components of the source and destination colors.
+     */
     const MAX_EXT: GLenum;
+    /**
+     * Unsized sRGB format that leaves the precision up to the driver.
+     */
     const SRGB_EXT: GLenum;
+    /**
+     * Unsized sRGB format with unsized alpha component.
+     */
     const SRGB_ALPHA_EXT: GLenum;
+    /**
+     * Sized (8-bit) sRGB and alpha formats.
+     */
     const SRGB8_ALPHA8_EXT: GLenum;
+    /**
+     * Returns the framebuffer color encoding.
+     */
     const FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT: GLenum;
+    /**
+     * Indicates the accuracy of the derivative calculation for the GLSL built-in functions: dFdx, dFdy, and fwidth.
+     */
     const FRAGMENT_SHADER_DERIVATIVE_HINT_OES: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT0_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT1_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT2_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT3_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT4_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT5_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT6_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT7_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT8_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT9_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT10_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT11_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT12_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT13_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT14_WEBGL: GLenum;
+    /**
+     * Framebuffer color attachment point
+     */
     const COLOR_ATTACHMENT15_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER0_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER1_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER2_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER3_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER4_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER5_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER6_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER7_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER8_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER9_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER10_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER11_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER12_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER13_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER14_WEBGL: GLenum;
+    /**
+     * Draw buffer
+     */
     const DRAW_BUFFER15_WEBGL: GLenum;
+    /**
+     * Maximum number of framebuffer color attachment points
+     */
     const MAX_COLOR_ATTACHMENTS_WEBGL: GLenum;
+    /**
+     * Maximum number of draw buffers
+     */
     const MAX_DRAW_BUFFERS_WEBGL: GLenum;
+    /**
+     * The bound vertex array object (VAO).
+     */
     const VERTEX_ARRAY_BINDING_OES: GLenum;
+    /**
+     * The number of bits used to hold the query result for the given target.
+     */
     const QUERY_COUNTER_BITS_EXT: GLenum;
+    /**
+     * The currently active query.
+     */
     const CURRENT_QUERY_EXT: GLenum;
+    /**
+     * The query result.
+     */
     const QUERY_RESULT_EXT: GLenum;
+    /**
+     * A Boolean indicating whether or not a query result is available.
+     */
     const QUERY_RESULT_AVAILABLE_EXT: GLenum;
+    /**
+     * Elapsed time (in nanoseconds).
+     */
     const TIME_ELAPSED_EXT: GLenum;
+    /**
+     * The current time.
+     */
     const TIMESTAMP_EXT: GLenum;
+    /**
+     * A Boolean indicating whether or not the GPU performed any disjoint operation.
+     */
     const GPU_DISJOINT_EXT: GLenum;
 }
 
@@ -1004,6 +1509,10 @@ type AttributeObject = {
  */
 namespace capabilities {
     /**
+     * 是否是 WebGL2
+     */
+    var isWebGL2: any;
+    /**
      * 最大纹理数量
      */
     var MAX_TEXTURE_INDEX: number;
@@ -1065,12 +1574,16 @@ type OESVertexArrayObject = any;
 
 type OESTextureFloat = any;
 
+type EXTFragDepth = any;
+
 type WebGLLoseContext = any;
 
 type EXTTextureFilterAnisotropic = any;
 
+type EXT_sRGB = any;
+
 /**
- * WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, WEBGL_lose_context, OES_element_index_uint, EXT_shader_texture_lod
+ * WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, OES_element_index_uint, EXT_shader_texture_lod, EXT_texture_filter_anisotropic, WEBGL_lose_context
  */
 namespace extensions {
     /**
@@ -1086,6 +1599,10 @@ namespace extensions {
      */
     var texFloat: OESTextureFloat;
     /**
+     * EXT_frag_depth扩展
+     */
+    var fragDepth: EXTFragDepth;
+    /**
      * WEBGL_lose_context扩展
      */
     var loseContext: WebGLLoseContext;
@@ -1093,6 +1610,10 @@ namespace extensions {
      * EXT_texture_filter_anisotropic
      */
     var textureFilterAnisotropic: EXTTextureFilterAnisotropic;
+    /**
+     * EXT_sRGB
+     */
+    var sRGB: EXT_sRGB;
     /**
      * 初始化
      * @param gl
@@ -1460,6 +1981,11 @@ namespace util {
      * @param name
      */
     function hasOwnProperty(obj: any, name: string): boolean;
+    /**
+     * 是否是 WebGL2
+     * @param gl
+     */
+    function isWebGL2(gl: any): boolean;
 }
 
 /**
@@ -1755,6 +2281,12 @@ class Texture {
      * @param height
      */
     resizeImg(img: HTMLImageElement, width: number, height: number): HTMLCanvasElement | HTMLImageElement;
+    /**
+     * 修复 WebGL & WebGL2 internalFormat
+     * @param state
+     * @returns internalFormat
+     */
+    _fixInternalFormat(state: WebGLState): number;
     /**
      * 更新 Texture
      * @param state
@@ -2077,6 +2609,10 @@ class WebGLState {
      */
     systemFramebuffer: null;
     /**
+     * 是否是 WebGL2
+     */
+    isWebGL2: boolean;
+    /**
      * gl
      */
     gl: WebGLRenderingContext;
@@ -2359,6 +2895,14 @@ class WebGLRenderer implements EventMixin {
      * 是否初始化失败
      */
     isInitFailed: boolean;
+    /**
+     * 是否是 WebGL2
+     */
+    isWebGL2: boolean;
+    /**
+     * 是否优先使用 WebGL2
+     */
+    preferWebGL2: boolean;
     /**
      * 背景色
      */
@@ -2774,6 +3318,10 @@ class Program {
      * 是否始终使用
      */
     alwaysUse: boolean;
+    /**
+     * 是否是 WebGL2
+     */
+    isWebGL2: boolean;
     /**
      * id
      */
@@ -5652,6 +6200,10 @@ class Material {
      */
     exposure: number;
     /**
+     * 是否开启 texture lod
+     */
+    enableTextureLod: boolean;
+    /**
      * 是否需要加基础 uniforms
      */
     needBasicUnifroms: boolean;
@@ -7506,6 +8058,7 @@ class Tween {
  * @param [params.height = innerHeight] - stage的高，默认网页高度
  * @param [params.pixelRatio = 根据设备自动判断] - 像素密度。
  * @param [params.clearColor = new Color(1, 1, 1, 1)] - 背景色。
+ * @param [params.preferWebGL2 = false] - 是否优先使用 WebGL2
  * @param [params.useFramebuffer = false] - 是否使用Framebuffer，有后处理需求时需要。
  * @param [params.framebufferOption = {}] - framebufferOption Framebuffer的配置，useFramebuffer为true时生效。
  * @param [params.useLogDepth = false] - 是否使用对数深度，处理深度冲突。
@@ -7528,6 +8081,7 @@ class Stage extends Node {
         height?: number;
         pixelRatio?: number;
         clearColor?: Color;
+        preferWebGL2?: boolean;
         useFramebuffer?: boolean;
         framebufferOption?: any;
         useLogDepth?: boolean;
