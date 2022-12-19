@@ -4,8 +4,8 @@ describe('extensions', () => {
     it('init', () => {
         extensions.init(testEnv.gl);
 
-        extensions.instanced.should.equal(testEnv.gl.getExtension('ANGLE_instanced_arrays'));
-        extensions.vao.should.equal(testEnv.gl.getExtension('OES_vertex_array_object'));
+        extensions.instanced._ext.should.equal(testEnv.gl.getExtension('ANGLE_instanced_arrays'));
+        extensions.vao._ext.should.equal(testEnv.gl.getExtension('OES_vertex_array_object'));
         extensions.texFloat.should.equal(testEnv.gl.getExtension('OES_texture_float'));
         extensions.loseContext.should.equal(testEnv.gl.getExtension('WEBGL_lose_context'));
         extensions.uintIndices.should.equal(testEnv.gl.getExtension('OES_element_index_uint'));

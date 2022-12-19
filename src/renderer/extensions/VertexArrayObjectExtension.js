@@ -1,22 +1,22 @@
 export class WebGL1VertexArrayObjectExtension {
     constructor(vaoExtension) {
-        this._vaoExtension = vaoExtension;
+        this._ext = vaoExtension;
     }
 
     createVertexArray(vertexArray) {
-        return this._vaoExtension.createVertexArrayOES(vertexArray);
+        return this._ext.createVertexArrayOES(vertexArray);
     }
 
     deleteVertexArray(vertexArray) {
-        this._vaoExtension.deleteVertexArrayOES(vertexArray);
+        this._ext.deleteVertexArrayOES(vertexArray);
     }
 
     isVertexArray(vertexArray) {
-        return this._vaoExtension.isVertexArrayOES(vertexArray);
+        return this._ext.isVertexArrayOES(vertexArray);
     }
 
     bindVertexArray(vertexArray) {
-        this._vaoExtension.bindVertexArrayOES(vertexArray);
+        this._ext.bindVertexArrayOES(vertexArray);
     }
 }
 

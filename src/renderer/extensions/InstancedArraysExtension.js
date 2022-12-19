@@ -1,18 +1,18 @@
 export class WebGL1InstancedArraysExtension {
     constructor(instancedArraysExtension) {
-        this._instancedArraysExtension = instancedArraysExtension;
+        this._ext = instancedArraysExtension;
     }
 
     drawArraysInstanced(mode, first, count, instanceCount) {
-        this._instancedArraysExtension.drawArraysInstancedANGLE(mode, first, count, instanceCount);
+        this._ext.drawArraysInstancedANGLE(mode, first, count, instanceCount);
     }
 
     drawElementsInstanced(mode, count, type, offset, instanceCount) {
-        this._instancedArraysExtension.drawElementsInstancedANGLE(mode, count, type, offset, instanceCount);
+        this._ext.drawElementsInstancedANGLE(mode, count, type, offset, instanceCount);
     }
 
     vertexAttribDivisor(index, divisor) {
-        this._instancedArraysExtension.vertexAttribDivisorANGLE(index, divisor);
+        this._ext.vertexAttribDivisorANGLE(index, divisor);
     }
 }
 
