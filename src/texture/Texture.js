@@ -458,7 +458,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
     },
     /**
      * 修复 WebGL & WebGL2 internalFormat
-     * @param {WebGLState} state 
+     * @param {WebGLState} state
      * @returns {number} internalFormat
      */
     _fixInternalFormat(state, type, format, internalFormat) {
