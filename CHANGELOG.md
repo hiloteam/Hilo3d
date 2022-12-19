@@ -1,8 +1,4 @@
-# [1.17.0-alpha.1](https://github.com/hiloteam/Hilo3d/compare/1.17.0-alpha.0...1.17.0-alpha.1) (2022-12-19)
-
-
-
-# [1.17.0-alpha.0](https://github.com/hiloteam/Hilo3d/compare/1.16.4...1.17.0-alpha.0) (2022-12-19)
+# [1.17.0](https://github.com/hiloteam/Hilo3d/compare/1.16.4...1.17.0) (2022-12-19)
 
 
 ### Features
