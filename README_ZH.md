@@ -37,6 +37,10 @@
 * 运行 `npm run test` 运行测试用例。
 
 ### 案例
+* 淘宝人生
+  
+  ![淘宝人生](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/tbrs.png)
+
 * 堆堆乐
   
   ![堆堆乐](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/ddl.gif)
