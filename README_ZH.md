@@ -39,7 +39,7 @@
 ### 案例
 * 淘宝人生
   
-  ![淘宝人生](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/tbrs.png)
+  ![淘宝人生](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/tbrs.gif)
 
 * 堆堆乐
   
