@@ -124,5 +124,5 @@ English | [简体中文](./README_ZH.md)
 [npm-url]: https://www.npmjs.com/package/hilo3d
 [size-image]:https://img.badgesize.io/hiloteam/hilo3d/master/build/Hilo3d.js.svg?compression=gzip&style=flat-square
 [ci-url]:https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev
-[ci-image]:https://img.shields.io/github/workflow/status/hiloteam/Hilo3d/npm%20test?style=flat-square
+[ci-image]:https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?branch=dev
 [cdn-url]: https://cdn.jsdelivr.net/npm/hilo3d@1.17.0/build/Hilo3d.js
