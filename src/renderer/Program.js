@@ -245,7 +245,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
             finalCode = GLSL300VertDefineCode + code;
         } else {
             finalCode = GLSL300FragDefineCode + code;
-            finalCode = finalCode.replace('gl_FragData[0]', 'fragColor');
+            finalCode = finalCode.replace(/gl_FragData\[(\d)\]/g, 'hilo_FragData$1');
         }
 
         return finalCode;
