@@ -462,11 +462,13 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * @returns {number} internalFormat
      */
     _fixInternalFormat(state, type, format, internalFormat) {
-        if (state.isWebGL2 && type === FLOAT) {
-            if (format === RGBA) {
-                internalFormat = RGBA32F;
-            } else if (format === RGB) {
-                internalFormat = RGB32F;
+        if (state.isWebGL2) {
+            if (type === FLOAT) {
+                if (format === RGBA) {
+                    internalFormat = RGBA32F;
+                } else if (format === RGB) {
+                    internalFormat = RGB32F;
+                }
             }
         } else if (format !== internalFormat) {
             internalFormat = this.format;
