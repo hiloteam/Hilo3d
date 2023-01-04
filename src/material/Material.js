@@ -490,6 +490,13 @@ const Material = Class.create(/** @lends Material.prototype */ {
     enableTextureLod: false,
 
     /**
+    * 是否开启 drawBuffers
+    * @default false
+    * @type {Boolean}
+    */
+    enableDrawBuffers: false,
+
+    /**
      * 是否需要加基础 uniforms
      * @type {Boolean}
      * @default true
@@ -682,6 +689,10 @@ const Material = Class.create(/** @lends Material.prototype */ {
 
         if (capabilities.SHADER_TEXTURE_LOD && this.enableTextureLod) {
             option.USE_SHADER_TEXTURE_LOD = 1;
+        }
+
+        if (capabilities.DRAW_BUFFERS && this.enableDrawBuffers) {
+            option.USE_DRAW_BUFFERS = 1;
         }
 
         const textureOption = this._textureOption.reset(option);

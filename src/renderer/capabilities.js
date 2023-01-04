@@ -139,6 +139,7 @@ const capabilities = {
         this.FRAG_DEPTH = !!extensions.fragDepth;
 
         this.SHADER_TEXTURE_LOD = !!extensions.shaderTextureLod;
+        this.DRAW_BUFFERS = !!extensions.drawBuffers;
 
         if (extensions.textureFilterAnisotropic) {
             this.MAX_TEXTURE_MAX_ANISOTROPY = gl.getParameter(extensions.textureFilterAnisotropic.MAX_TEXTURE_MAX_ANISOTROPY_EXT);

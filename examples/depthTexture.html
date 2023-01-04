@@ -51,15 +51,18 @@
         }
 
         var framebuffer = new Hilo3d.Framebuffer(renderer, {
-          attachment: Hilo3d.constants.DEPTH_ATTACHMENT,
-          format: Hilo3d.constants.DEPTH_COMPONENT,
-          internalFormat: Hilo3d.constants.DEPTH_COMPONENT16,
-          type: Hilo3d.constants.UNSIGNED_SHORT,
-          needRenderbuffer: false,
+          colorAttachmentInfos: [],
+          depthStencilAttachmentInfo: {
+            attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+            attachment: Hilo3d.constants.DEPTH_ATTACHMENT,
+            format: Hilo3d.constants.DEPTH_COMPONENT,
+            internalFormat: Hilo3d.constants.DEPTH_COMPONENT16,
+            type: Hilo3d.constants.UNSIGNED_SHORT,
+          }
         });
 
         renderer.on('afterRender', () => {
-          framebuffer.render();
+          framebuffer.render(0, 0, 1, 1, null, framebuffer.depthStencilAttachmentInfo.texture);
         })
         
     </script>

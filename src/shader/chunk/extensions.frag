@@ -6,4 +6,8 @@
     #ifdef HILO_USE_FRAG_DEPTH
         #extension GL_EXT_frag_depth: enable
     #endif
+
+    #ifdef HILO_USE_DRAW_BUFFERS
+        #extension GL_EXT_draw_buffers: enable
+    #endif
 #endif

@@ -7,6 +7,10 @@ import {
 } from './extensions/InstancedArraysExtension';
 
 import {
+    WebGL1DrawBuffersExtension, WebGL2DrawBuffersExtension,
+} from './extensions/drawBuffersExtension';
+
+import {
     isWebGL2
 } from '../utils/util';
 
@@ -37,14 +41,18 @@ const WebGLPolyfillExtensions = {
     ANGLE_instanced_arrays: {
         WebGL1: WebGL1InstancedArraysExtension,
         WebGL2: WebGL2InstancedArraysExtension,
-    }
+    },
+    WEBGL_draw_buffers: {
+        WebGL1: WebGL1DrawBuffersExtension,
+        WebGL2: WebGL2DrawBuffersExtension,
+    },
 };
 
 /**
  * WebGL 扩展
  * @namespace extensions
  * @type {Object}
- * @description WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, OES_element_index_uint, EXT_shader_texture_lod, EXT_texture_filter_anisotropic, WEBGL_lose_context
+ * @description WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, OES_element_index_uint, EXT_shader_texture_lod, EXT_texture_filter_anisotropic, WEBGL_lose_context, WEBGL_draw_buffers
  */
 const extensions = {
     /**
@@ -58,6 +66,12 @@ const extensions = {
      * @type {OESVertexArrayObject}
      */
     vao: undefined,
+
+    /**
+     * WEBGL_draw_buffers扩展
+     * @type {WEBGLDrawBuffers}
+     */
+    drawBuffers: undefined,
 
     /**
      * OES_texture_float扩展
@@ -208,6 +222,7 @@ extensions.use('EXT_texture_filter_anisotropic', 'textureFilterAnisotropic');
 extensions.use('WEBGL_lose_context', 'loseContext');
 extensions.use('EXT_color_buffer_float', 'colorBufferFloat');
 extensions.use('EXT_sRGB', 'sRGB');
+extensions.use('WEBGL_draw_buffers', 'drawBuffers');
 
 export default extensions;
 
@@ -237,4 +252,8 @@ export default extensions;
 
 /**
  * @typedef {any} EXT_sRGB
+ */
+
+/**
+ * @typedef {any} WEBGLDrawBuffers
  */
