@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d Draw Buffers Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+</head>
+<body>
+    <div id="container"></div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+        var boxGeometry = new Hilo3d.BoxGeometry();
+        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+        var material = new Hilo3d.ShaderMaterial({
+          shaderCacheId: 'HiloDrawBuffers',
+          shaderName: 'HiloDrawBuffers',
+          lightType: 'PBR',
+          vs: Hilo3d.Shader.shaders['basic.vert'],
+          fs: `
+            ${Hilo3d.Shader.shaders['chunk/extensions.frag']}
+            ${Hilo3d.Shader.shaders['chunk/precision.frag']}
+            #ifdef HILO_IS_WEBGL2
+              layout(location = 1) out highp vec4 hilo_FragData1;
+              layout(location = 2) out highp vec4 hilo_FragData2;
+              layout(location = 3) out highp vec4 hilo_FragData3;
+            #endif
+
+            uniform sampler2D u_diffuse;
+
+            varying vec2 v_texcoord0;
+            varying vec3 v_normal;
+            varying vec3 v_fragPos;
+
+            void main() {
+              vec3 diffuse = texture2D(u_diffuse, v_texcoord0).rgb;
+              gl_FragData[0] = vec4(diffuse, 1.0);
+              gl_FragData[1] = vec4(v_normal, 1.0);
+              gl_FragData[2] = vec4(v_fragPos, 1.0);
+              gl_FragData[3] = vec4(dot(v_normal, vec3(0.0, 0.0, 1.0)), 0.0, 0.0, 1.0);
+            }
+          `,
+          uniforms: {
+            u_diffuse: 'DIFFUSE'
+          },
+          diffuse: new Hilo3d.LazyTexture({
+            src: '//gw.alicdn.com/imgextra/i3/O1CN01sTOdgW1CgslZ8CrFJ_!!6000000000111-2-tps-512-512.png'
+          }),
+          getCustomRenderOption:function() {
+            return {
+              HILO_HAS_TEXCOORD0: 1,
+            }
+          },
+          enableDrawBuffers: true,
+        });
+
+        var sceneNode = new Hilo3d.Node({
+          onUpdate: function() {
+            this.rotationY += 0.5;
+            this.rotationX += 0.5;
+          }
+        });
+        for(let i = 0;i < 20;i ++) {
+          sceneNode.addChild(new Hilo3d.Mesh({
+            material: material,
+            geometry: boxGeometry,
+            x: (Math.random() * 2 - 1) * 5,
+            y: (Math.random() * 2 - 1) * 5,
+            z: (Math.random() * 2 - 1) * 5,
+            rotationX: Math.random() * 360,
+            rotationY: Math.random() * 360,
+            rotationZ: Math.random() * 360,
+            onUpdate: function() {
+              this.rotationY -= 1;
+              this.rotationZ += 1;
+            }
+          })).setScale(.2);
+        };
+
+        stage.onUpdate = function() {
+          framebuffer.bind();
+          sceneNode.traverseUpdate();
+          stage.renderer.render(sceneNode, camera);
+          framebuffer.unbind();
+        }
+
+        var framebuffer = new Hilo3d.Framebuffer(renderer, {
+          colorAttachmentInfos: [{
+            attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+          }, {
+            attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+          }, {
+            attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+          }, {
+            attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+          }]
+        });
+
+        renderer.on('afterRender', () => {
+          framebuffer.render(0, 0, 0.5, 0.5, null, framebuffer.colorAttachmentInfos[0].texture);
+          framebuffer.render(0.5, 0, 0.5, 0.5, null, framebuffer.colorAttachmentInfos[1].texture);
+          framebuffer.render(0, 0.5, 0.5, 0.5, null, framebuffer.colorAttachmentInfos[2].texture);
+          framebuffer.render(0.5, 0.5, 0.5, 0.5, null, framebuffer.colorAttachmentInfos[3].texture);
+        });        
+    </script>
+</body>
+</html>

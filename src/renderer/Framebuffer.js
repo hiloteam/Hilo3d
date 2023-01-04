@@ -15,12 +15,16 @@ import {
 } from '../utils/util';
 
 import constants from '../constants';
+import extensions from './extensions';
+import capabilities from './capabilities';
 
 const {
+    FRAMEBUFFER,
     TEXTURE_2D,
     RGBA,
     UNSIGNED_BYTE,
     COLOR_ATTACHMENT0,
+    DEPTH_STENCIL_ATTACHMENT,
     DEPTH_STENCIL,
     DEPTH_TEST,
     CULL_FACE,
@@ -31,12 +35,27 @@ const {
 
 const cache = new Cache();
 
+const defaultAttachmentOptions = {
+    framebufferTarget: FRAMEBUFFER,
+    attachment: COLOR_ATTACHMENT0,
+    target: TEXTURE_2D,
+    format: RGBA,
+    internalFormat: RGBA,
+    type: UNSIGNED_BYTE,
+    minFilter: NEAREST,
+    magFilter: NEAREST,
+    wrapS: CLAMP_TO_EDGE,
+    wrapT: CLAMP_TO_EDGE,
+};
+
 /**
  * 帧缓冲
  * @class
  */
 const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
     Statics: {
+        ATTACHMENT_TYPE_TEXTURE: 'TEXTURE',
+        ATTACHMENT_TYPE_RENDERBUFFER: 'RENDERBUFFER',
         /**
          * 缓存
          * @readOnly
@@ -67,7 +86,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             cache.each((framebuffer) => {
                 framebuffer.destroy();
             });
-        }
+        },
     },
 
     /**
@@ -90,59 +109,66 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
     bufferInternalFormat: DEPTH_STENCIL,
 
     /**
+     * framebufferTarget
+     * @type {GLenum}
+     * @default gl.FRAMEBUFFER
+     */
+    framebufferTarget: defaultAttachmentOptions.framebufferTarget,
+
+    /**
      * texture target
      * @type {GLenum}
      * @default gl.TEXTURE_2D
      */
-    target: TEXTURE_2D,
+    target: defaultAttachmentOptions.target,
 
     /**
      * texture format
      * @type {GLenum}
      * @default gl.RGBA
      */
-    format: RGBA,
+    format: defaultAttachmentOptions.format,
 
     /**
      * texture internalFormat
      * @type {GLenum}
      * @default gl.RGBA
      */
-    internalFormat: RGBA,
+    internalFormat: defaultAttachmentOptions.internalFormat,
 
     /**
      * texture type
      * @type {GLenum}
      * @default gl.UNSIGNED_BYTE
      */
-    type: UNSIGNED_BYTE,
+    type: defaultAttachmentOptions.type,
     /**
      * texture minFilter
      * @type {GLenum}
      * @default gl.NEAREST
      */
-    minFilter: NEAREST,
+    minFilter: defaultAttachmentOptions.minFilter,
 
     /**
      * texture magFilter
      * @type {GLenum}
      * @default gl.NEAREST
      */
-    magFilter: NEAREST,
+    magFilter: defaultAttachmentOptions.magFilter,
 
     /**
      * texture wrapS
      * @type {GLenum}
      * @default gl.CLAMP_TO_EDGE
      */
-    wrapS: CLAMP_TO_EDGE,
+    wrapS: defaultAttachmentOptions.wrapS,
 
     /**
      * texture wrapS
      * @type {GLenum}
      * @default gl.CLAMP_TO_EDGE
      */
-    wrapT: CLAMP_TO_EDGE,
+    wrapT: defaultAttachmentOptions.wrapT,
 
     /**
      * texture data
@@ -156,7 +182,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
      * @type {GLenum}
      * @default gl.COLOR_ATTACHMENT0
      */
-    attachment: COLOR_ATTACHMENT0,
+    attachment: defaultAttachmentOptions.attachment,
 
     /**
      * 是否需要renderbuffer
@@ -199,6 +225,18 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
 
     _isInit: false,
 
+    /**
+     * colorAttachmentInfos
+     * @type {AttachmentInfo[]}
+     */
+    colorAttachmentInfos: undefined,
+
+    /**
+     * depthStencilAttachmentInfo
+     * @type {AttachmentInfo}
+     */
+    depthStencilAttachmentInfo: undefined,
+
 
     /**
      * @constructs
@@ -216,6 +254,35 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
 
         if (!this.height) {
             this.height = renderer.height;
+        }
+
+        if (this.colorAttachmentInfos === undefined) {
+            this.colorAttachmentInfos = [{
+                attachmentType: Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+                framebufferTarget: this.framebufferTarget,
+                target: this.target,
+                format: this.format,
+                internalFormat: this.internalFormat,
+                type: this.type,
+                minFilter: this.minFilter,
+                magFilter: this.magFilter,
+                wrapS: this.wrapS,
+                wrapT: this.wrapT,
+                data: this.data,
+                width: this.width,
+                height: this.height,
+            }];
+        }
+
+        if (this.depthStencilAttachmentInfo === undefined && this.needRenderbuffer) {
+            this.depthStencilAttachmentInfo = {
+                attachmentType: Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
+                framebufferTarget: this.framebufferTarget,
+                attachment: DEPTH_STENCIL_ATTACHMENT,
+                internalFormat: DEPTH_STENCIL,
+                width: this.width,
+                height: this.height,
+            };
         }
 
         cache.add(this.id, this);
@@ -245,17 +312,92 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
          */
         this.framebuffer = gl.createFramebuffer();
         this.bind();
-        if (this.needRenderbuffer) {
-            this.renderbuffer = this.createRenderbuffer();
-        }
 
-        this.texture = this.createTexture();
+        this._createAttachments();
 
         if (!this.isComplete()) {
             log.warn('Framebuffer is not complete => ' + gl.checkFramebufferStatus(gl.FRAMEBUFFER));
         }
 
         this.unbind();
+    },
+    _createAttachments() {
+        const { colorAttachmentInfos, depthStencilAttachmentInfo } = this;
+        const drawBuffers = [];
+        if (colorAttachmentInfos) {
+            colorAttachmentInfos.forEach((attachmentInfo, index) => {
+                const attachment = COLOR_ATTACHMENT0 + index;
+                switch (attachmentInfo.attachmentType) {
+                    case Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER:
+                        this._createFramebufferAttachment(attachmentInfo, attachment);
+                        break;
+                    case Framebuffer.ATTACHMENT_TYPE_TEXTURE:
+                    default:
+                        this._createTextureAttachment(attachmentInfo, attachment);
+                        break;
+                }
+
+                drawBuffers.push(attachment);
+            });
+        }
+
+        if (depthStencilAttachmentInfo) {
+            const attachment = depthStencilAttachmentInfo.attachment;
+            switch (depthStencilAttachmentInfo.attachmentType) {
+                case Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER:
+                    this._createRenderbufferAttachment(depthStencilAttachmentInfo, attachment);
+                    break;
+                case Framebuffer.ATTACHMENT_TYPE_TEXTURE:
+                default:
+                    this._createTextureAttachment(depthStencilAttachmentInfo, attachment);
+                    break;
+            }
+        }
+
+        if (drawBuffers.length > 1 && capabilities.DRAW_BUFFERS) {
+            extensions.drawBuffers.drawBuffers(drawBuffers);
+        }
+    },
+    _createTextureAttachment(attachmentInfo, attachment) {
+        const state = this.state;
+        const gl = state.gl;
+
+        const textureOptions = Object.assign({}, defaultAttachmentOptions, attachmentInfo);
+        const texture = new Texture({
+            minFilter: textureOptions.minFilter,
+            magFilter: textureOptions.magFilter,
+            internalFormat: textureOptions.internalFormat,
+            format: textureOptions.format,
+            type: textureOptions.type,
+            width: textureOptions.width || this.width,
+            height: textureOptions.height || this.height,
+            image: textureOptions.data,
+            wrapS: textureOptions.wrapS,
+            wrapT: textureOptions.wrapT
+        });
+
+        const glTexture = texture.getGLTexture(state);
+        gl.framebufferTexture2D(textureOptions.framebufferTarget, attachment, textureOptions.target, glTexture, 0);
+        attachmentInfo.texture = texture;
+
+        if (attachment === COLOR_ATTACHMENT0) {
+            this.texture = texture;
+        }
+        return texture;
+    },
+    _createRenderbufferAttachment(attachmentInfo, attachment) {
+        const {
+            gl,
+            width,
+            height
+        } = this;
+        const renderbuffer = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer);
+        gl.renderbufferStorage(gl.RENDERBUFFER, attachmentInfo.internalFormat, width, height);
+        gl.framebufferRenderbuffer(attachmentInfo.framebufferTarget, attachment, gl.RENDERBUFFER, renderbuffer);
+        attachmentInfo.renderbuffer = renderbuffer;
+
+        return renderbuffer;
     },
     /**
      * framebuffer 是否完成
@@ -304,12 +446,22 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
      * @param  {Number} [height=1]
      * @param  {Color} [clearColor=null]
      */
-    render(x = 0, y = 0, width = 1, height = 1, clearColor) {
+    render(x = 0, y = 0, width = 1, height = 1, clearColor = null, texture = null) {
         if (this._isInit) {
             const {
                 gl,
-                state
+                state,
+                colorAttachmentInfos,
             } = this;
+
+            if (!texture) {
+                if (colorAttachmentInfos[0]) {
+                    texture = colorAttachmentInfos[0].texture;
+                } else {
+                    return;
+                }
+            }
+
             state.disable(DEPTH_TEST);
             state.disable(CULL_FACE);
 
@@ -340,52 +492,9 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             }
 
             state.activeTexture(gl.TEXTURE0);
-            state.bindTexture(gl.TEXTURE_2D, this.texture.getGLTexture(state));
+            state.bindTexture(gl.TEXTURE_2D, texture.getGLTexture(state));
             vao.draw();
         }
-    },
-    /**
-     * 生成 Renderbuffer
-     * @private
-     * @return {WebGLRenderbuffer}
-     */
-    createRenderbuffer() {
-        const {
-            gl,
-            width,
-            height
-        } = this;
-        const renderbuffer = gl.createRenderbuffer();
-        gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer);
-        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_STENCIL, width, height);
-        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, renderbuffer);
-        return renderbuffer;
-    },
-    /**
-     * 生成纹理
-     * @private
-     * @return {Texture}
-     */
-    createTexture() {
-        const state = this.state;
-        const gl = state.gl;
-        const texture = new Texture({
-            minFilter: this.minFilter,
-            magFilter: this.magFilter,
-            internalFormat: this.internalFormat,
-            format: this.format,
-            type: this.type,
-            width: this.width,
-            height: this.height,
-            image: this.data,
-            wrapS: this.wrapS,
-            wrapT: this.wrapT
-        });
-
-        const glTexture = texture.getGLTexture(state);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, this.attachment, this.target, glTexture, 0);
-
-        return texture;
     },
     /**
      * resize
@@ -454,17 +563,47 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
                 this.framebuffer = null;
             }
 
-            if (this.renderbuffer) {
-                gl.deleteRenderbuffer(this.renderbuffer);
-                this.renderbuffer = null;
+            if (this.colorAttachmentInfos) {
+                this.colorAttachmentInfos.forEach((attachmentInfo) => {
+                    const { texture, renderbuffer } = attachmentInfo;
+                    if (texture) {
+                        texture.destroy();
+                    } else if (renderbuffer) {
+                        gl.deleteRenderbuffer(this.renderbuffer);
+                    }
+                });
             }
 
-            if (this.texture) {
-                this.texture.destroy();
-                this.texture = null;
+            if (this.depthStencilAttachmentInfo) {
+                const { texture, renderbuffer } = this.depthStencilAttachmentInfo;
+                if (texture) {
+                    texture.destroy();
+                } else if (renderbuffer) {
+                    gl.deleteRenderbuffer();
+                }
             }
         }
     }
 });
 
 export default Framebuffer;
+
+/**
+ * @typedef {object} AttachmentInfo
+ * @property {'TEXTURE'|'RENDERBUFFER'} attachmentType
+ * @property {GLenum} framebufferTarget
+ * @property {GLenum} attachment
+ * @property {GLenum} target
+ * @property {GLenum} internalFormat
+ * @property {GLenum} format
+ * @property {GLenum} type
+ * @property {GLenum} minFilter
+ * @property {GLenum} magFilter
+ * @property {GLenum} wrapS
+ * @property {GLenum} wrapT
+ * @property {Number} width
+ * @property {Number} height
+ * @property {TypedArray} data
+ * @property {Texture} texture
+ * @property {WebGLRenderbuffer} renderbuffer
+ */
