@@ -30,7 +30,10 @@ const {
     CULL_FACE,
     TRIANGLE_STRIP,
     NEAREST,
-    CLAMP_TO_EDGE
+    CLAMP_TO_EDGE,
+    COLOR_BUFFER_BIT,
+    READ_FRAMEBUFFER,
+    DRAW_FRAMEBUFFER,
 } = constants;
 
 const cache = new Cache();
@@ -329,7 +332,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
                 const attachment = COLOR_ATTACHMENT0 + index;
                 switch (attachmentInfo.attachmentType) {
                     case Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER:
-                        this._createFramebufferAttachment(attachmentInfo, attachment);
+                        this._createRenderbufferAttachment(attachmentInfo, attachment);
                         break;
                     case Framebuffer.ATTACHMENT_TYPE_TEXTURE:
                     default:
@@ -393,8 +396,12 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         } = this;
         const renderbuffer = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer);
-        gl.renderbufferStorage(gl.RENDERBUFFER, attachmentInfo.internalFormat, width, height);
-        gl.framebufferRenderbuffer(attachmentInfo.framebufferTarget, attachment, gl.RENDERBUFFER, renderbuffer);
+        if (attachmentInfo.samples > 0) {
+            gl.renderbufferStorageMultisample(gl.RENDERBUFFER, attachmentInfo.samples, attachmentInfo.internalFormat, width, height);
+        } else {
+            gl.renderbufferStorage(gl.RENDERBUFFER, attachmentInfo.internalFormat, width, height);
+        }
+        gl.framebufferRenderbuffer(attachmentInfo.framebufferTarget || defaultAttachmentOptions.framebufferTarget, attachment, gl.RENDERBUFFER, renderbuffer);
         attachmentInfo.renderbuffer = renderbuffer;
 
         return renderbuffer;
@@ -537,6 +544,47 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         return pixels;
     },
     /**
+     * copy framebuffer
+     */
+    copyFramebuffer(srcFramebuffer, config = {}) {
+        this.init();
+        if (this._isInit) {
+            const gl = this.gl;
+            let {
+                mask,
+                filter,
+                srcSize,
+                dstSize
+            } = config;
+
+            if (!mask) {
+                mask = COLOR_BUFFER_BIT;
+            }
+
+            if (!filter) {
+                filter = NEAREST;
+            }
+
+            if (!srcSize) {
+                srcSize = [0, 0, srcFramebuffer.width, srcFramebuffer.height];
+            }
+
+            if (!dstSize) {
+                dstSize = [0, 0, this.width, this.height];
+            }
+
+            gl.bindFramebuffer(READ_FRAMEBUFFER, srcFramebuffer.framebuffer);
+            gl.bindFramebuffer(DRAW_FRAMEBUFFER, this.framebuffer);
+            gl.blitFramebuffer(
+                srcSize[0], srcSize[1], srcSize[2], srcSize[3],
+                dstSize[0], dstSize[1], dstSize[2], dstSize[3],
+                mask, filter,
+            );
+            gl.bindFramebuffer(READ_FRAMEBUFFER, null);
+            gl.bindFramebuffer(DRAW_FRAMEBUFFER, null);
+        }
+    },
+    /**
      * 销毁资源
      * @return {Framebuffer} this
      */
@@ -593,6 +641,7 @@ export default Framebuffer;
  * @property {'TEXTURE'|'RENDERBUFFER'} attachmentType
  * @property {GLenum} framebufferTarget
  * @property {GLenum} attachment
+ * @property {number} samples
  * @property {GLenum} target
  * @property {GLenum} internalFormat
  * @property {GLenum} format
