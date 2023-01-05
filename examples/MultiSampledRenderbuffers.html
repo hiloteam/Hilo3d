@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+    />
+    <title>Hilo3d MultiSampled Renderbuffers Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css" />
+    <style>
+      #info0 {
+        position: absolute;
+        left: 5%;
+        top: 10%;
+        color: #fff;
+      }
+
+      #info1 {
+        position: absolute;
+        left: 55%;
+        top: 10%;
+        color: #fff;
+      }
+
+      #info2 {
+        position: absolute;
+        left: 5%;
+        top: 60%;
+        color: #fff;
+      }
+
+      #info3 {
+        position: absolute;
+        left: 55%;
+        top: 60%;
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container"></div>
+    <div id="info0">no samples</div>
+    <div id="info1">0 samples</div>
+    <div id="info2">2 samples</div>
+    <div id="info3">4 samples</div>
+    <script src="../build/Hilo3d.js"></script>
+    <script src="./js/stats.js"></script>
+    <script src="./js/OrbitControls.js"></script>
+    <script src="./js/init.js"></script>
+    <script>
+      renderer.preferWebGL2 = true;
+      ticker.targetFPS = 1;
+      renderer.clearColor = new Hilo3d.Color(.9, .6, .3);
+
+      var sphereGeometry = new Hilo3d.PlaneGeometry();
+      var material = new Hilo3d.BasicMaterial({
+        lightType: "NONE",
+        diffuse: new Hilo3d.Color(1, 1, 1),
+        wireframe: true,
+      });
+
+      camera.lookAt(new Hilo3d.Vector3(0, 0, 0));
+
+      var sceneNode = new Hilo3d.Node();
+      const mesh = new Hilo3d.Mesh({
+        material: material,
+        geometry: sphereGeometry,
+        x: 0,
+        y: 0,
+        z: 0,
+        rotationZ: 30,
+        onUpdate: function () {
+          this.rotationZ += 6.7;
+        },
+      }).setScale(1.4);
+      sceneNode.addChild(mesh);
+
+      var framebufferWidth = renderer.width / 32;
+      var framebufferHeight = renderer.height / 32;
+
+      var framebuffers = [0, 2, 4].map(samples => {
+        var multiSampledFramebuffer = new Hilo3d.Framebuffer(renderer, {
+          width: framebufferWidth,
+          height: framebufferHeight,
+          colorAttachmentInfos: [
+            {
+              attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
+              internalFormat: Hilo3d.constants.RGBA8,
+              samples,
+            },
+          ],
+          depthStencilAttachmentInfo: {
+            attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
+            internalFormat: Hilo3d.constants.DEPTH_COMPONENT24,
+            attachment: Hilo3d.constants.DEPTH_ATTACHMENT,
+            samples,
+          },
+        });
+
+        var copyFramebuffer = new Hilo3d.Framebuffer(renderer, {
+          width: framebufferWidth,
+          height: framebufferHeight,
+          colorAttachmentInfos: [
+            {
+              attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+            },
+          ],
+        });
+
+        return {
+          multiSampledFramebuffer,
+          copyFramebuffer,
+        };
+      });
+
+      var singleFramebuffer = new Hilo3d.Framebuffer(renderer, {
+        width: framebufferWidth,
+        height: framebufferHeight,
+        colorAttachmentInfos:[{
+          attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+        }]
+      });
+
+      stage.onUpdate = function () {
+        const preWidth = renderer.width;
+        const preHeight = renderer.height;
+
+        sceneNode.traverseUpdate();
+        renderer.width = framebufferWidth;
+        renderer.height = framebufferHeight;
+        renderer.viewport(0, 0, framebufferWidth, framebufferHeight);
+
+        framebuffers.forEach(framebuffer => {
+          const {
+            multiSampledFramebuffer,
+            copyFramebuffer,
+          } = framebuffer;
+
+          multiSampledFramebuffer.bind();
+          stage.renderer.render(sceneNode, camera);
+
+          copyFramebuffer.copyFramebuffer(multiSampledFramebuffer);
+        });
+
+        singleFramebuffer.bind();
+        stage.renderer.render(sceneNode, camera);
+
+        renderer.state.bindSystemFramebuffer();
+        renderer.width = preWidth;
+        renderer.height = preHeight;
+        renderer.viewport();
+      };
+
+      renderer.on("afterRender", () => {
+        singleFramebuffer.render(.025, .025, .45, .45);
+        framebuffers[0].copyFramebuffer.render(.525, .025, .45, .45);
+        framebuffers[1].copyFramebuffer.render(.025, .525, .45, .45);
+        framebuffers[2].copyFramebuffer.render(.525, .525, .45, .45);
+      });
+    </script>
+  </body>
+</html>
