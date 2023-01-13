@@ -272,8 +272,6 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
                 wrapS: this.wrapS,
                 wrapT: this.wrapT,
                 data: this.data,
-                width: this.width,
-                height: this.height,
             }];
         }
 
@@ -283,8 +281,6 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
                 framebufferTarget: this.framebufferTarget,
                 attachment: DEPTH_STENCIL_ATTACHMENT,
                 internalFormat: DEPTH_STENCIL,
-                width: this.width,
-                height: this.height,
             };
         }
 
@@ -372,8 +368,8 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             internalFormat: textureOptions.internalFormat,
             format: textureOptions.format,
             type: textureOptions.type,
-            width: textureOptions.width || this.width,
-            height: textureOptions.height || this.height,
+            width: this.width,
+            height: this.height,
             image: textureOptions.data,
             wrapS: textureOptions.wrapS,
             wrapT: textureOptions.wrapT
@@ -614,20 +610,24 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             if (this.colorAttachmentInfos) {
                 this.colorAttachmentInfos.forEach((attachmentInfo) => {
                     const { texture, renderbuffer } = attachmentInfo;
+                    attachmentInfo.texture = null;
+                    attachmentInfo.renderbuffer = null;
                     if (texture) {
                         texture.destroy();
                     } else if (renderbuffer) {
-                        gl.deleteRenderbuffer(this.renderbuffer);
+                        gl.deleteRenderbuffer(renderbuffer);
                     }
                 });
             }
 
             if (this.depthStencilAttachmentInfo) {
                 const { texture, renderbuffer } = this.depthStencilAttachmentInfo;
+                this.depthStencilAttachmentInfo.texture = null;
+                this.depthStencilAttachmentInfo.renderbuffer = null;
                 if (texture) {
                     texture.destroy();
                 } else if (renderbuffer) {
-                    gl.deleteRenderbuffer();
+                    gl.deleteRenderbuffer(renderbuffer);
                 }
             }
         }
@@ -650,8 +650,6 @@ export default Framebuffer;
  * @property {GLenum} magFilter
  * @property {GLenum} wrapS
  * @property {GLenum} wrapT
- * @property {Number} width
- * @property {Number} height
  * @property {TypedArray} data
  * @property {Texture} texture
  * @property {WebGLRenderbuffer} renderbuffer
