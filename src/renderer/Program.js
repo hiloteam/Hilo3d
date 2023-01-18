@@ -114,6 +114,13 @@ const Program = Class.create(/** @lends Program.prototype */ {
     uniforms: null,
 
     /**
+     * uniformBlock 集合
+     * @type {Object}
+     * @default null
+     */
+    uniformBlocks: null,
+
+    /**
      * program
      * @type {WebGLProgram}
      * @default null
@@ -164,6 +171,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
 
         this.attributes = {};
         this.uniforms = {};
+        this.uniformBlocks = {};
         this.gl = this.state.gl;
         this.isWebGL2 = this.state.isWebGL2;
         this.program = this.createProgram();
@@ -357,8 +365,34 @@ const Program = Class.create(/** @lends Program.prototype */ {
     initUniforms() {
         const gl = this.gl;
         const program = this.program;
+        const uniforms = this.uniforms;
+        const uniformBlocks = this.uniformBlocks;
 
         const num = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        let uniformBlockIndices;
+        if (this.isWebGL2) {
+            const blockNum = gl.getProgramParameter(program, gl.ACTIVE_UNIFORM_BLOCKS);
+            for (let i = 0; i < blockNum; i++) {
+                const blockName = gl.getActiveUniformBlockName(program, i);
+                const blockIndex = gl.getUniformBlockIndex(program, blockName);
+                gl.uniformBlockBinding(program, blockIndex, i);
+                uniformBlocks[blockName] = {
+                    blockIndex,
+                };
+                Object.defineProperty(this, blockName, {
+                    set: (uniformBuffer) => {
+                        gl.bindBufferBase(gl.UNIFORM_BUFFER, i, uniformBuffer.getBuffer(gl).buffer);
+                    }
+                });
+            }
+
+            let uniformIndices = [];
+            for (let i = 0; i < num; i++) {
+                uniformIndices.push(i);
+            }
+            uniformBlockIndices = gl.getActiveUniforms(program, uniformIndices, gl.UNIFORM_BLOCK_INDEX);
+        }
+
         let textureIndex = 0;
         for (let i = 0; i < num; i++) {
             let {
@@ -366,6 +400,11 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 size,
                 type
             } = gl.getActiveUniform(program, i);
+
+            // uniform block index -1 说明不是 uniform block
+            if (uniformBlockIndices && uniformBlockIndices[i] !== -1) {
+                continue;
+            }
 
             name = name.replace(/\[0\]$/, '');
             const location = gl.getUniformLocation(program, name);
@@ -375,7 +414,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 uniform
             } = glTypeInfo;
 
-            this.uniforms[name] = {
+            uniforms[name] = {
                 name,
                 location,
                 type,
@@ -384,7 +423,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
             };
 
             if (type === gl.SAMPLER_2D || type === gl.SAMPLER_CUBE) {
-                this.uniforms[name].textureIndex = textureIndex;
+                uniforms[name].textureIndex = textureIndex;
                 textureIndex += size;
             }
 
@@ -422,6 +461,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
 
         this.gl.deleteProgram(this.program);
         this.uniforms = null;
+        this.uniformBlocks = null;
         this.attributes = null;
         this.program = null;
         this.gl = null;

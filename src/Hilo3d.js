@@ -23,6 +23,7 @@ export { default as Camera } from './camera/Camera';
 export { default as PerspectiveCamera } from './camera/PerspectiveCamera';
 export { default as OrthographicCamera } from './camera/OrthographicCamera';
 export { default as Buffer } from './renderer/Buffer';
+export { default as UniformBuffer } from './renderer/UniformBuffer';
 export { default as capabilities } from './renderer/capabilities';
 export { default as extensions } from './renderer/extensions';
 export { default as Framebuffer } from './renderer/Framebuffer';

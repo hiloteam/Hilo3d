@@ -617,6 +617,17 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      */
     setupUniforms(program, mesh, useInstanced, force) {
         const material = this.forceMaterial || mesh.material;
+
+        if (this.isWebGL2) {
+            const uniformBlocks = material.uniformBlocks;
+            for (let name in program.uniformBlocks) {
+                const uniformBlock = uniformBlocks[name];
+                if (uniformBlock) {
+                    program[name] = uniformBlock;
+                }
+            }
+        }
+
         for (let name in program.uniforms) {
             const uniformInfo = material.getUniformInfo(name);
             const programUniformInfo = program.uniforms[name];
