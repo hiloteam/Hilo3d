@@ -30,6 +30,7 @@
         "prefer-rest-params": 0,
         "prefer-spread": 0,
         "space-before-function-paren": ["error", "never"],
-        "prefer-destructuring": 0
+        "prefer-destructuring": 0,
+        "no-buffer-constructor": 0
     }
 }
