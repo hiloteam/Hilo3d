@@ -1,3 +1,19 @@
+# [1.18.0](https://github.com/hiloteam/Hilo3d/compare/1.17.0...1.18.0) (2023-01-29)
+
+
+### Bug Fixes
+
+* Fix Texture reset internalFormat bug ([2b3f534](https://github.com/hiloteam/Hilo3d/commit/2b3f534a4af77e3c3ee717879776b5feab5b591e))
+* framebuffer resize should resize all attachments ([2b8aa0b](https://github.com/hiloteam/Hilo3d/commit/2b8aa0b38df7b0ec745d40c3861733cea6e7595a))
+
+
+### Features
+
+* add framebuffer drawBuffers ([2f68dc1](https://github.com/hiloteam/Hilo3d/commit/2f68dc101b9848d3252e4112fbea9eb441870f10))
+* add uniform buffer object support ([03d2fa3](https://github.com/hiloteam/Hilo3d/commit/03d2fa3630664c04b79a163c969e443e95594070))
+
+
+
 # [1.17.0](https://github.com/hiloteam/Hilo3d/compare/1.16.4...1.17.0) (2022-12-19)
 
 

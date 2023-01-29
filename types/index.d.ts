@@ -1485,6 +1485,26 @@ namespace math {
 }
 
 /**
+ */
+type AttachmentInfo = {
+    attachmentType: 'TEXTURE' | 'RENDERBUFFER';
+    framebufferTarget: GLenum;
+    attachment: GLenum;
+    samples: number;
+    target: GLenum;
+    internalFormat: GLenum;
+    format: GLenum;
+    type: GLenum;
+    minFilter: GLenum;
+    magFilter: GLenum;
+    wrapS: GLenum;
+    wrapT: GLenum;
+    data: TypedArray;
+    texture: Texture;
+    renderbuffer: WebGLRenderbuffer;
+};
+
+/**
  * @param mesh
  */
 type RenderListTraverseCallback = (mesh: Mesh) => void;
@@ -1582,8 +1602,10 @@ type EXTTextureFilterAnisotropic = any;
 
 type EXT_sRGB = any;
 
+type WEBGLDrawBuffers = any;
+
 /**
- * WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, OES_element_index_uint, EXT_shader_texture_lod, EXT_texture_filter_anisotropic, WEBGL_lose_context
+ * WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, OES_element_index_uint, EXT_shader_texture_lod, EXT_texture_filter_anisotropic, WEBGL_lose_context, WEBGL_draw_buffers
  */
 namespace extensions {
     /**
@@ -1594,6 +1616,10 @@ namespace extensions {
      * OES_vertex_array_object扩展
      */
     var vao: OESVertexArrayObject;
+    /**
+     * WEBGL_draw_buffers扩展
+     */
+    var drawBuffers: WEBGLDrawBuffers;
     /**
      * OES_texture_float扩展
      */
@@ -3187,6 +3213,22 @@ class VertexArrayObject {
 }
 
 /**
+ * Uniform Buffer Object
+ */
+class UniformBuffer {
+    className: string;
+    isUniformBuffer: boolean;
+    /**
+     * is dirty
+     */
+    isDirty: boolean;
+    /**
+     * data
+     */
+    data: TypedArray | ArrayBuffer;
+}
+
+/**
  * 渲染列表
  */
 class RenderList {
@@ -3303,6 +3345,10 @@ class Program {
      */
     uniforms: any;
     /**
+     * uniformBlock 集合
+     */
+    uniformBlocks: any;
+    /**
      * program
      */
     program: WebGLProgram;
@@ -3389,6 +3435,10 @@ class Framebuffer {
      */
     bufferInternalFormat: GLenum;
     /**
+     * framebufferTarget
+     */
+    framebufferTarget: GLenum;
+    /**
      * texture target
      */
     target: GLenum;
@@ -3453,6 +3503,14 @@ class Framebuffer {
      */
     framebuffer: WebGLFramebuffer;
     /**
+     * colorAttachmentInfos
+     */
+    colorAttachmentInfos: AttachmentInfo[];
+    /**
+     * depthStencilAttachmentInfo
+     */
+    depthStencilAttachmentInfo: AttachmentInfo;
+    /**
      * init
      */
     init(): void;
@@ -3492,6 +3550,10 @@ class Framebuffer {
      * @param [height = 1]
      */
     readPixels(x: number, y: number, width?: number, height?: number): TypedArray;
+    /**
+     * copy framebuffer
+     */
+    copyFramebuffer(): void;
     /**
      * 销毁资源
      * @returns this
@@ -6203,6 +6265,10 @@ class Material {
      * 是否开启 texture lod
      */
     enableTextureLod: boolean;
+    /**
+     * 是否开启 drawBuffers
+     */
+    enableDrawBuffers: boolean;
     /**
      * 是否需要加基础 uniforms
      */
