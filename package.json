@@ -57,7 +57,7 @@
     "gulp": "^4.0.2",
     "gulp-concat": "^2.6.1",
     "gulp-replace": "^1.0.0",
-    "gulp-uitest": "^1.0.0",
+    "gulp-uitest": "^13.0.0",
     "jsdoc": "^3.6.4",
     "mocha": "^5.2.0",
     "raw-loader": "^0.5.1",

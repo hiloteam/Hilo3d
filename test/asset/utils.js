@@ -98,7 +98,7 @@ var utils = {
             var imgData0 = this.getImageData(img0);
             var imgData1 = this.getImageData(img1);
             var diff = pixelmatch(imgData0, imgData1, null, img0.width, img0.height, {
-                threshold: 0.1,
+                threshold: 0.05,
                 includeAA: false
             });
             return diff;
