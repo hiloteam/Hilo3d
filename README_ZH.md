@@ -10,7 +10,7 @@
 
 ### 特性
 * Compatible for multiple mobile and desktop browsers.
-* Lightweight, only `100kb` after gzip.
+* Lightweight, only `110kb` after gzip.
 * Physically-based rendering support.
 * Perfect support for glTF models.
 
