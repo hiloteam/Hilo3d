@@ -46,7 +46,7 @@ describe('Ticker', function(){
                     if (!startTime) {
                         startTime = Date.now();
                     } else {
-                        (Date.now() - startTime).should.be.within(13, 20);
+                        (Date.now() - startTime).should.be.below(17);
                         done();
                     }
                 }
@@ -93,7 +93,7 @@ describe('Ticker', function(){
                 ticker._useRAF.should.be.true();
                 setTimeout(() => {
                    ticker.nextTick((dt) => {
-                       dt.should.be.within(13, 20);
+                       dt.should.be.below(17);
                        done();
                    });
                }, 300);
