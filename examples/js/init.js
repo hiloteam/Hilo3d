@@ -10,7 +10,7 @@ if (!window.notInit) {
     stage = new Hilo3d.Stage({
         container: document.getElementById('container'),
         camera: camera,
-        clearColor: new Hilo3d.Color(0.4, 0.4, 0.4),
+        clearColor: new Hilo3d.Color(0.3, 0.35, 0.35),
         width: innerWidth,
         height: innerHeight,
         preferWebGL2: location.search.indexOf('webgl2') > -1,
