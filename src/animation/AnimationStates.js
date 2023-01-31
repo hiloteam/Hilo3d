@@ -74,8 +74,8 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
                 if (p0.hermite) {
                     p0.hermite(p0, m0.scale(tr), p1, m1.scale(tr), t);
                 } else if (p0.isQuaternion) {
-                    p0.fromArray(this._cubicSpline(p0.elements, m0.elements, p1.elements, m1.elements, tr, t), 0, true);
-                    p0.normalize(true);
+                    p0.fromArray(this._cubicSpline(p0.elements, m0.elements, p1.elements, m1.elements, tr, t), 0);
+                    p0.normalize();
                 } else {
                     if (!isArrayLike(p0)) {
                         p0 = [p0];

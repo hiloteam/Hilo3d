@@ -1,5 +1,4 @@
 import Class from '../core/Class';
-import EventMixin from '../core/EventMixin';
 import math from './math';
 import Euler from './Euler';
 
@@ -9,12 +8,9 @@ const RAD2DEG = math.RAD2DEG;
 /**
  * 欧拉角, 数据改变会发送事件
  * @class
- * @mixes EventMixin
  * @extends Euler
- * @fires update 数据更新事件
  */
 const EulerNotifier = Class.create(/** @lends EulerNotifier.prototype */ {
-    Mixes: EventMixin,
     Extends: Euler,
     /**
      * 类名
@@ -37,15 +33,22 @@ const EulerNotifier = Class.create(/** @lends EulerNotifier.prototype */ {
         Euler.call(this, x, y, z);
     },
 
+    /**
+     * 更新的回调
+     */
+    onUpdate() {
+
+    },
+
     updateDegrees() {
         EulerNotifier.superclass.updateDegrees.call(this);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
 
     updateRadians() {
         EulerNotifier.superclass.updateRadians.call(this);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
 
@@ -60,7 +63,7 @@ const EulerNotifier = Class.create(/** @lends EulerNotifier.prototype */ {
         set(value) {
             this._degX = value;
             this.elements[0] = value * DEG2RAD;
-            this.fire('update');
+            this.onUpdate();
         }
     },
 
@@ -75,7 +78,7 @@ const EulerNotifier = Class.create(/** @lends EulerNotifier.prototype */ {
         set(value) {
             this._degY = value;
             this.elements[1] = value * DEG2RAD;
-            this.fire('update');
+            this.onUpdate();
         }
     },
 
@@ -90,7 +93,7 @@ const EulerNotifier = Class.create(/** @lends EulerNotifier.prototype */ {
         set(value) {
             this._degZ = value;
             this.elements[2] = value * DEG2RAD;
-            this.fire('update');
+            this.onUpdate();
         }
     },
 
@@ -105,7 +108,7 @@ const EulerNotifier = Class.create(/** @lends EulerNotifier.prototype */ {
         set(value) {
             this.elements[0] = value;
             this._degX = value * RAD2DEG;
-            this.fire('update');
+            this.onUpdate();
         }
     },
     /**
@@ -119,7 +122,7 @@ const EulerNotifier = Class.create(/** @lends EulerNotifier.prototype */ {
         set(value) {
             this.elements[1] = value;
             this._degY = value * RAD2DEG;
-            this.fire('update');
+            this.onUpdate();
         }
     },
     /**
@@ -133,7 +136,7 @@ const EulerNotifier = Class.create(/** @lends EulerNotifier.prototype */ {
         set(value) {
             this.elements[2] = value;
             this._degZ = value * RAD2DEG;
-            this.fire('update');
+            this.onUpdate();
         }
     }
 });

@@ -2,18 +2,14 @@ import {
     vec3
 } from 'gl-matrix';
 import Class from '../core/Class';
-import EventMixin from '../core/EventMixin';
 import Vector3 from './Vector3';
 
 /**
  * 三维向量, 数据改变会发送事件
  * @class
- * @mixes EventMixin
  * @extends Vector3
- * @fires update 数据更新事件
  */
 const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
-    Mixes: EventMixin,
     Extends: Vector3,
     /**
      * 类名  notify
@@ -41,13 +37,19 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
         this.elements = vec3.fromValues(x, y, z);
     },
     /**
+     * 更新的回调
+     */
+    onUpdate() {
+
+    },
+    /**
      * Copy the values from one vec3 to this
      * @param  {Vector3} m the source vector
      * @return {Vector3} this
      */
     copy(v) {
         vec3.copy(this.elements, v.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -82,7 +84,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
         elements[0] = array[offset + 0];
         elements[1] = array[offset + 1];
         elements[2] = array[offset + 2];
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -94,7 +96,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     set(x, y, z) {
         vec3.set(this.elements, x, y, z);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -109,7 +111,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
             a = this;
         }
         vec3.add(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -124,7 +126,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
             a = this;
         }
         vec3.subtract(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -139,7 +141,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
             a = this;
         }
         vec3.multiply(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -154,7 +156,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
             a = this;
         }
         vec3.divide(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -163,7 +165,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     ceil() {
         vec3.ceil(this.elements, this.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -172,7 +174,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     floor() {
         vec3.floor(this.elements, this.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -187,7 +189,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
             a = this;
         }
         vec3.min(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -202,7 +204,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
             a = this;
         }
         vec3.max(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -211,7 +213,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     round() {
         vec3.round(this.elements, this.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -221,7 +223,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     scale(scale) {
         vec3.scale(this.elements, this.elements, scale);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -237,7 +239,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
             a = this;
         }
         vec3.scaleAndAdd(this.elements, a.elements, b.elements, scale);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -286,7 +288,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     negate() {
         vec3.negate(this.elements, this.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -299,7 +301,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
             a = this;
         }
         vec3.inverse(this.elements, a.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -308,7 +310,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     normalize() {
         vec3.normalize(this.elements, this.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -336,7 +338,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
             a = this;
         }
         vec3.cross(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -347,7 +349,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     lerp(v, t) {
         vec3.lerp(this.elements, this.elements, v.elements, t);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -361,7 +363,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     hermite(a, b, c, d, t) {
         vec3.hermite(this.elements, a.elements, b.elements, c.elements, d.elements, t);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -375,7 +377,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     bezier(a, b, c, d, t) {
         vec3.bezier(this.elements, a.elements, b.elements, c.elements, d.elements, t);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -385,7 +387,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     random(scale) {
         vec3.random(this.elements, scale);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -395,7 +397,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     transformMat3(m) {
         vec3.transformMat3(this.elements, this.elements, m.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -405,7 +407,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     transformMat4(m) {
         vec3.transformMat4(this.elements, this.elements, m.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -424,7 +426,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
         elements[1] = x * mElements[1] + y * mElements[5] + z * mElements[9];
         elements[2] = x * mElements[2] + y * mElements[6] + z * mElements[10];
 
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -434,7 +436,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     transformQuat(q) {
         vec3.transformQuat(this.elements, this.elements, q.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -445,7 +447,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     rotateX(origin, rotation) {
         vec3.rotateX(this.elements, this.elements, origin.elements, rotation);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -456,7 +458,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     rotateY(origin, rotation) {
         vec3.rotateY(this.elements, this.elements, origin.elements, rotation);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -467,7 +469,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
      */
     rotateZ(origin, rotation) {
         vec3.rotateZ(this.elements, this.elements, origin.elements, rotation);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -506,7 +508,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
         },
         set(value) {
             this.elements[0] = value;
-            this.fire('update');
+            this.onUpdate();
         }
     },
     /**
@@ -519,7 +521,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
         },
         set(value) {
             this.elements[1] = value;
-            this.fire('update');
+            this.onUpdate();
         }
     },
     /**
@@ -532,7 +534,7 @@ const Vector3Notifier = Class.create(/** @lends Vector3Notifier.prototype */ {
         },
         set(value) {
             this.elements[2] = value;
-            this.fire('update');
+            this.onUpdate();
         }
     }
 });

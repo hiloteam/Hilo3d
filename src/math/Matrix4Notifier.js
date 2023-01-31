@@ -2,7 +2,6 @@ import {
     mat4
 } from 'gl-matrix';
 import Class from '../core/Class';
-import EventMixin from '../core/EventMixin';
 import Vector3 from './Vector3';
 import Matrix4 from './Matrix4';
 import Quaternion from './Quaternion';
@@ -17,7 +16,6 @@ const tempVector32 = new Vector3();
  * @extends {Matrix4}
  */
 const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
-    Mixes: EventMixin,
     Extends: Matrix4,
     /**
      * 类名
@@ -42,13 +40,19 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
         this.elements = mat4.create();
     },
     /**
+     * 更新的回调
+     */
+    onUpdate() {
+
+    },
+    /**
      * Copy the values from one mat4 to this
      * @param  {Matrix4} m the source matrix
      * @return {Matrix4Notifier} this
      */
     copy(m) {
         mat4.copy(this.elements, m.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -62,7 +66,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
         for (let i = 0; i < 16; i++) {
             elements[i] = array[offset + i];
         }
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -87,7 +91,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     set(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33) {
         mat4.set(this.elements, m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -96,7 +100,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     identity() {
         mat4.identity(this.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -105,7 +109,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     transpose() {
         mat4.transpose(this.elements, this.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -115,7 +119,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     invert(m = this) {
         mat4.invert(this.elements, m.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -125,7 +129,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     adjoint(m = this) {
         mat4.adjoint(this.elements, m.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -147,7 +151,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
             a = this;
         }
         mat4.multiply(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -157,7 +161,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     premultiply(m) {
         this.multiply(m, this);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -167,7 +171,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     translate(v) {
         mat4.translate(this.elements, this.elements, v.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -177,7 +181,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     scale(v) {
         mat4.scale(this.elements, this.elements, v.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -188,7 +192,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     rotate(rad, axis) {
         mat4.rotate(this.elements, this.elements, rad, axis.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -198,7 +202,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     rotateX(rad) {
         mat4.rotateX(this.elements, this.elements, rad);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -208,7 +212,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     rotateY(rad) {
         mat4.rotateY(this.elements, this.elements, rad);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -218,7 +222,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     rotateZ(rad) {
         mat4.rotateZ(this.elements, this.elements, rad);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -228,7 +232,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     fromTranslation(v) {
         mat4.fromTranslation(this.elements, v.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -238,7 +242,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     fromScaling(v) {
         mat4.fromScaling(this.elements, v.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -249,7 +253,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     fromRotation(rad, axis) {
         mat4.fromRotation(this.elements, rad, axis.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -259,7 +263,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     fromXRotation(rad) {
         mat4.fromXRotation(this.elements, rad);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -269,7 +273,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     fromYRotation(rad) {
         mat4.fromYRotation(this.elements, rad);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -279,7 +283,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     fromZRotation(rad) {
         mat4.fromZRotation(this.elements, rad);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -290,7 +294,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     fromRotationTranslation(q, v) {
         mat4.fromRotationTranslation(this.elements, q.elements, v.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -339,7 +343,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     fromRotationTranslationScale(q, v, s) {
         mat4.fromRotationTranslationScale(this.elements, q.elements, v.elements, s.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -348,13 +352,13 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Vector3} v Translation vector
      * @param  {Vector3} s Scaling vector
      * @param  {Vector3} o The origin vector around which to scale and rotate
-     * @param  {Boolean} [dontFireEvent=false] dontFireEvent
+     * @param  {Boolean} [notCallUpdate=false] notCallUpdate
      * @return {Matrix4Notifier} this
      */
-    fromRotationTranslationScaleOrigin(q, v, s, o, dontFireEvent) {
+    fromRotationTranslationScaleOrigin(q, v, s, o, notCallUpdate) {
         mat4.fromRotationTranslationScaleOrigin(this.elements, q.elements, v.elements, s.elements, o.elements);
-        if (!dontFireEvent) {
-            this.fire('update');
+        if (!notCallUpdate) {
+            this.onUpdate();
         }
         return this;
     },
@@ -365,7 +369,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     fromQuat(q) {
         mat4.fromQuat(this.elements, q.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -380,7 +384,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     frustum(left, right, bottom, top, near, far) {
         mat4.frustum(this.elements, left, right, bottom, top, near, far);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -393,7 +397,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     perspective(fovy, aspect, near, far) {
         mat4.perspective(this.elements, fovy, aspect, near, far);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -405,7 +409,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     perspectiveFromFieldOfView(fov, near, far) {
         mat4.perspectiveFromFieldOfView(this.elements, fov, near, far);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -420,7 +424,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      */
     ortho(left, right, bottom, top, near, far) {
         mat4.ortho(this.elements, left, right, bottom, top, near, far);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -440,7 +444,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
 
         mat4.lookAt(this.elements, eye.elements, center.elements, up.elements);
 
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -524,7 +528,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
         out[13] = eyey;
         out[14] = eyez;
         out[15] = 1;
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -546,7 +550,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
             a = this;
         }
         mat4.add(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**
@@ -561,7 +565,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
             a = this;
         }
         mat4.subtract(this.elements, a.elements, b.elements);
-        this.fire('update');
+        this.onUpdate();
         return this;
     },
     /**

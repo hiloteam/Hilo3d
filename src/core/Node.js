@@ -5,7 +5,7 @@ import Matrix4Notifier from '../math/Matrix4Notifier';
 import Vector3 from '../math/Vector3';
 import Vector3Notifier from '../math/Vector3Notifier';
 import EulerNotifier from '../math/EulerNotifier';
-import Quaternion from '../math/Quaternion';
+import QuaternionNotifier from '../math/QuaternionNotifier';
 import math from '../math/math';
 import log from '../utils/log';
 
@@ -194,31 +194,14 @@ const Node = Class.create(/** @lends Node.prototype */ {
         this._scale = new Vector3Notifier(1, 1, 1);
         this._pivot = new Vector3Notifier(0, 0, 0);
         this._rotation = new EulerNotifier();
-        this._quaternion = new Quaternion();
+        this._quaternion = new QuaternionNotifier();
 
-        this._matrix.on('update', () => {
-            this._onMatrixUpdate();
-        });
-
-        this._position.on('update', () => {
-            this._onPositionUpdate();
-        });
-
-        this._scale.on('update', () => {
-            this._onScaleUpdate();
-        });
-
-        this._pivot.on('update', () => {
-            this._onPivotUpdate();
-        });
-
-        this._rotation.on('update', () => {
-            this._onRotationUpdate();
-        });
-
-        this._quaternion.on('update', () => {
-            this._onQuaternionUpdate();
-        });
+        this._matrix.onUpdate = this._onMatrixUpdate.bind(this);
+        this._position.onUpdate = this._onPositionUpdate.bind(this);
+        this._scale.onUpdate = this._onScaleUpdate.bind(this);
+        this._pivot.onUpdate = this._onPivotUpdate.bind(this);
+        this._rotation.onUpdate = this._onRotationUpdate.bind(this);
+        this._quaternion.onUpdate = this._onQuaternionUpdate.bind(this);
 
         Object.assign(this, params);
     },
