@@ -11,13 +11,11 @@ const EventObject = Class.create({
         this.type = type;
         this.target = target;
         this.detail = detail;
-        this.timeStamp = +new Date();
     },
 
     type: null,
     target: null,
     detail: null,
-    timeStamp: 0,
 
     stopImmediatePropagation() {
         this._stopped = true;
@@ -140,7 +138,6 @@ const EventMixin = /** @lends EventMixin# */ {
  * @param {string} e.type 事件类型
  * @param {any} e.detail 事件数据
  * @param {any} e.target 事件触发对象
- * @param {number} e.timeStamp 时间戳
  * @param {number} e.stageX 鼠标相对 stage 的 x 偏移 ( 仅鼠标事件有效 )
  * @param {number} e.stageY 鼠标相对 stage 的 y 偏移 ( 仅鼠标事件有效 )
  * @param {Node} e.eventTarget 触发鼠标事件的对象 ( 仅鼠标事件有效 )
