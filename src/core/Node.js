@@ -165,6 +165,13 @@ const Node = Class.create(/** @lends Node.prototype */ {
     __forceUseParentWorldMatrix: false,
 
     /**
+     * 只同步四元数，不同步欧拉角
+     * @type {Boolean}
+     * @default false
+     */
+    onlySyncQuaternion: false,
+
+    /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
@@ -1032,8 +1039,11 @@ const Node = Class.create(/** @lends Node.prototype */ {
         this._matrixDirty = true;
     },
     _onQuaternionUpdate() {
-        this._rotation.fromQuat(this._quaternion);
+        if (!this.onlySyncQuaternion) {
+            this._rotation.fromQuat(this._quaternion);
+        }
         this._quatDirty = false;
+        this._matrixDirty = true;
     }
 });
 
