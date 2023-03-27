@@ -374,6 +374,7 @@ const Node = Class.create(/** @lends Node.prototype */ {
                 } else {
                     node.worldMatrix.copy(node.matrix);
                 }
+                node.worldMatrixVersion++;
             }
 
             if (!node.autoUpdateChildWorldMatrix && !force) {
@@ -946,6 +947,12 @@ const Node = Class.create(/** @lends Node.prototype */ {
      * @default 0
      */
     matrixVersion: 0,
+    /**
+     * 世界矩阵 version，每次改变会加一
+     * @type {Number}
+     * @default 0
+     */
+    worldMatrixVersion: 0,
     /**
      * 获取元素的包围盒信息
      *

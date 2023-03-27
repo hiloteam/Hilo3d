@@ -576,7 +576,7 @@ const Matrix4 = Class.create(/** @lends Matrix4.prototype */ {
      * @param  {Quaternion} q quaternion
      * @param  {Vector3} v position
      * @param  {Vector3} s scale
-     * @param  {Vector3} p [pivot]
+     * @param  {Vector3} [p] pivot
      * @return {Matrix4}  this
      */
     compose(q, v, s, p) {

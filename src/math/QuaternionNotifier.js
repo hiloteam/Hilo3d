@@ -9,7 +9,7 @@ const tempMat3 = new Matrix3();
 /**
  * @class
  */
-const QuaternionNotifier = Class.create(/** @lends Quaternion.prototype */ {
+const QuaternionNotifier = Class.create(/** @lends QuaternionNotifier.prototype */ {
     /**
    * 类名
    * @type {String}
@@ -21,6 +21,11 @@ const QuaternionNotifier = Class.create(/** @lends Quaternion.prototype */ {
    * @default true
    */
     isQuaternionNotifier: true,
+    /**
+  * @type {Boolean}
+  * @default true
+  */
+    isQuaternion: true,
     /**
    * Creates a new identity quat
    * @constructs
