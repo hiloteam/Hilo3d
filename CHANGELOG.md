@@ -1,3 +1,22 @@
+## [1.18.1-bone.0](https://github.com/hiloteam/Hilo3d/compare/1.18.0...1.18.1-bone.0) (2023-03-27)
+
+
+### Bug Fixes
+
+* Implement the transpose function only in webgl1 ([012a4f7](https://github.com/hiloteam/Hilo3d/commit/012a4f7cda33b76a03932c17525b5fafc40c0efc))
+
+
+### Features
+
+* Add the onlySyncQuaternion attribute of Node to optimize performance ([0739e6a](https://github.com/hiloteam/Hilo3d/commit/0739e6ad9198cd6b91e6cd381986a8686b936a76))
+
+
+### Performance Improvements
+
+* Optimize the performance of node transform changes ([5a263cf](https://github.com/hiloteam/Hilo3d/commit/5a263cfdb4366295c9b749a1d205fb56495a4c98))
+
+
+
 # [1.18.0](https://github.com/hiloteam/Hilo3d/compare/1.17.0...1.18.0) (2023-01-29)
 
 
