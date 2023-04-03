@@ -7,6 +7,7 @@ export { default as Matrix3 } from './Matrix3';
 export { default as Matrix4 } from './Matrix4';
 export { default as Matrix4Notifier } from './Matrix4Notifier';
 export { default as Plane } from './Plane';
+export { default as QuaternionNotifier } from './QuaternionNotifier';
 export { default as Quaternion } from './Quaternion';
 export { default as Ray } from './Ray';
 export { default as Sphere } from './Sphere';

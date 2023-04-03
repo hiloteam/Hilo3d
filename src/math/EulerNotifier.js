@@ -6,7 +6,7 @@ const DEG2RAD = math.DEG2RAD;
 const RAD2DEG = math.RAD2DEG;
 
 /**
- * 欧拉角, 数据改变会发送事件
+ * 欧拉角，具有 onUpdate 回调
  * @class
  * @extends Euler
  */

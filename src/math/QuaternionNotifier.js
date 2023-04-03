@@ -7,28 +7,34 @@ import Class from '../core/Class';
 const tempMat3 = new Matrix3();
 
 /**
+ * 四元数，具有 onUpdate 回调
  * @class
  */
-const QuaternionNotifier = Class.create(/** @lends Quaternion.prototype */ {
+const QuaternionNotifier = Class.create(/** @lends QuaternionNotifier.prototype */ {
     /**
-   * 类名
-   * @type {String}
-  * @default QuaternionNotifier
-   */
+     * 类名
+     * @type {String}
+     * @default QuaternionNotifier
+     */
     className: 'QuaternionNotifier',
     /**
-   * @type {Boolean}
-   * @default true
-   */
+     * @type {Boolean}
+     * @default true
+     */
     isQuaternionNotifier: true,
     /**
-   * Creates a new identity quat
-   * @constructs
-   * @param  {Number} [x=0] X component
-   * @param  {Number} [y=0] Y component
-   * @param  {Number} [z=0] Z component
-   * @param  {Number} [w=1] W component
-   */
+     * @type {Boolean}
+     * @default true
+     */
+    isQuaternion: true,
+    /**
+     * Creates a new identity quat
+     * @constructs
+     * @param  {Number} [x=0] X component
+     * @param  {Number} [y=0] Y component
+     * @param  {Number} [z=0] Z component
+     * @param  {Number} [w=1] W component
+    */
     constructor(x = 0, y = 0, z = 0, w = 1) {
     /**
      * 数据

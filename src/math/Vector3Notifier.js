@@ -5,7 +5,7 @@ import Class from '../core/Class';
 import Vector3 from './Vector3';
 
 /**
- * 三维向量, 数据改变会发送事件
+ * 三维向量，具有 onUpdate 回调
  * @class
  * @extends Vector3
  */

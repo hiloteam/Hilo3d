@@ -11,7 +11,7 @@ const tempVector3 = new Vector3();
 const tempVector32 = new Vector3();
 
 /**
- * 4x4 矩阵, 数据改变会发送事件
+ * 4x4 矩阵，具有 onUpdate 回调
  * @class
  * @extends {Matrix4}
  */
