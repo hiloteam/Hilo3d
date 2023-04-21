@@ -7,6 +7,8 @@
 #elif defined(HILO_VERTEX_TYPE_NORMAL)
     varying vec3 v_normal;
 #elif defined(HILO_VERTEX_TYPE_DEPTH)
+    #pragma glslify: import('./method/packFloat.glsl');
+
     uniform float u_cameraFar;
     uniform float u_cameraNear;
     uniform float u_cameraType;
@@ -34,21 +36,11 @@ void main(void) {
     #elif defined(HILO_VERTEX_TYPE_NORMAL)
         gl_FragColor = transformDataToColor(v_normal);
     #elif defined(HILO_VERTEX_TYPE_DEPTH)
-        float z;
         #ifdef HILO_WRITE_ORIGIN_DATA
-            z = gl_FragCoord.z;
+            gl_FragColor = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);
         #else
-            // OrthographicCamera
-            if(u_cameraType < 1.0){
-                z = gl_FragCoord.z;
-            }
-            // PerspectiveCamera
-            else{
-                z = gl_FragCoord.z * 2.0 - 1.0;
-                z = (2.0 * u_cameraNear * u_cameraFar) / (u_cameraFar + u_cameraNear - z * (u_cameraFar - u_cameraNear));
-            }
+            gl_FragColor = packFloat(gl_FragCoord.z);
         #endif
-        gl_FragColor = vec4(z, z, z, 1.0);
     #elif defined(HILO_VERTEX_TYPE_DISTANCE)
         float distance = length(v_fragPos);
         #ifdef HILO_WRITE_ORIGIN_DATA

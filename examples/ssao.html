@@ -55,9 +55,7 @@
             writeOriginData:writeOriginData
         });
 
-        var depthFramebuffer = new Hilo3d.Framebuffer(renderer, {
-            type:Hilo3d.constants.FLOAT
-        });
+        var depthFramebuffer = new Hilo3d.Framebuffer(renderer);
         depthFramebuffer.init();
         var depthMaterial = new Hilo3d.GeometryMaterial({
             vertexType:Hilo3d.constants.DEPTH,
@@ -93,6 +91,15 @@
             uniform mat4 u_projection;
             uniform vec2 u_noiseScale;
             uniform float u_radius;
+            uniform float u_cameraFar;
+            uniform float u_cameraNear;
+
+            float unpackFloat(vec4 rgbaDepth) {
+                const vec4 bitShift = vec4(1.0 / (256.0 * 256.0 * 256.0), 1.0 / (256.0 * 256.0), 1.0 / 256.0, 1.0);
+                float depth = dot(rgbaDepth, bitShift);
+                return depth;
+            }
+
             void main(void) {
                 vec4 fragPosAll = texture2D(u_position, v_texcoord0);
                 if(fragPosAll.a < 1.0){
@@ -117,7 +124,9 @@
                     offset.xyz /= offset.w; // 透视划分
                     offset.xyz = offset.xyz * 0.5 + 0.5; // 变换到0.0 - 1.0的值域
                     
-                    float sampleDepth = -texture2D(u_depth, offset.xy).x;
+                    float sampleDepth = unpackFloat(texture2D(u_depth, offset.xy));
+                    sampleDepth = sampleDepth * 2.0 - 1.0;
+                    sampleDepth = (-2.0 * u_cameraNear * u_cameraFar) / (u_cameraFar + u_cameraNear - sampleDepth * (u_cameraFar - u_cameraNear));
                     float rangeCheck = smoothstep(0.0, 1.0, u_radius / abs(fragPos.z - sampleDepth));
                     occlusion += (sampleDepth >= samplePos.z ? 1.0 : 0.0) * rangeCheck;    
                 }
@@ -135,6 +144,16 @@
                 u_projection:{
                     get:function(){
                         return camera.projectionMatrix.elements;
+                    }
+                },
+                u_cameraFar:{
+                    get:function(){
+                        return camera.far;
+                    }
+                },
+                u_cameraNear:{
+                    get:function(){
+                        return camera.near;
                     }
                 }
             }
