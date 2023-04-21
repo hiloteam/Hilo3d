@@ -23,6 +23,7 @@ import EventMixin from '../core/EventMixin';
 import Texture from '../texture/Texture';
 
 import constants from '../constants';
+import ForwardRenderPass from './ForwardRenderPass';
 
 const {
     DEPTH_TEST,
@@ -308,6 +309,22 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
          * @default new WebGLResourceManager
          */
         this.resourceManager = new WebGLResourceManager();
+        /**
+         * 渲染队列
+         * @type {RenderPass[]}
+         * @default []
+         */
+        this.renderPasses = [];
+
+        this.addRenderPass(new ForwardRenderPass());
+    },
+    /**
+     * @param {RenderPass} renderPass
+     */
+    addRenderPass(renderPass) {
+        if (this.renderPasses.indexOf(renderPass) === -1) {
+            this.renderPasses.push(renderPass);
+        }
     },
     /**
      * 改变大小
