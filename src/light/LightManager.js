@@ -25,6 +25,13 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
      * @type {string}
      */
     className: 'LightManager',
+
+    /**
+     * 是否开启阴影
+     * @type {boolean}
+     * @default true
+     */
+    enableShadow: true,
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
@@ -399,7 +406,17 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         this.spotLights.length = 0;
         this.areaLights.length = 0;
     },
+
+    /**
+     * 获取阴影贴图数量
+     * @param {string} type
+     * @returns {number}
+     */
     getShadowMapCount(type) {
+        if (!this.enableShadow) {
+            return 0;
+        }
+
         let lights = [];
         if (type === 'POINT_LIGHTS') {
             lights = this.pointLights;
@@ -417,7 +434,18 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         });
         return count;
     },
+
+    /**
+     * 生成阴影贴图
+     * @param {WebGLRenderer} renderer
+     * @param {Camera} camera
+     * @returns
+     */
     createShadowMap(renderer, camera) {
+        if (!this.enableShadow) {
+            return;
+        }
+
         this.directionalLights.forEach((light) => {
             light.createShadowMap(renderer, camera);
         });
