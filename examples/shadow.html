@@ -50,6 +50,7 @@
             rotationX: -90,
             geometry: new Hilo3d.PlaneGeometry(),
             material: new Hilo3d.PBRMaterial({
+                castShadows: false,
                 baseColorMap: new Hilo3d.LazyTexture({
                     src: '//img.alicdn.com/tfs/TB1aNxtQpXXXXX1XVXXXXXXXXXX-1024-1024.jpg'
                 })
@@ -72,45 +73,19 @@
 
         box.setScale(0.1);
 
-        var spotLight = new Hilo3d.SpotLight({
-            y: 1,
-            x:0,
-            cutoff: 8,
-            outerCutoff: 9,
-            range: 3,
-            color:new Hilo3d.Color(1, 1, 1),
-            direction:new Hilo3d.Vector3(0.1, -1, 0),
-            amount: 5,
-            shadow: {
-                debug: false,
-                cameraInfo:{
-                    // fov:180,
-                    // aspect:1,
-                    // near:0.1,
-                    // far:2
-                },
-                minBias: 0.0001
-            },
-            onUpdate: function() {
-                this.direction.rotateY(new Hilo3d.Vector3(0, 0, 0), Math.PI/180);
-                this.isDirty = true;
-            }
-        });
-        stage.addChild(spotLight);
-
         var directionalLight = new Hilo3d.DirectionalLight({
-            color:new Hilo3d.Color(1, 0, 0),
-            direction:new Hilo3d.Vector3(-1, -1, 0),
-            amount: 3.5,
+            color:new Hilo3d.Color(1, 1, 1),
+            direction:new Hilo3d.Vector3(-.8, -1, 0),
+            amount: 3,
             shadow: {
-                // cameraInfo:{
-                //     left:-2,
-                //     right:2,
-                //     near:-2,
-                //     far:2,
-                //     top:-2,
-                //     bottom:2
-                // },
+                cameraInfo:{
+                    left:-.5,
+                    right:.5,
+                    near:-.5,
+                    far:.5,
+                    top:-.5,
+                    bottom:.5
+                },
                 debug: true
             },
             onUpdate: function() {
@@ -119,6 +94,27 @@
             }
         })
         stage.addChild(directionalLight);
+
+        var spotLight = new Hilo3d.SpotLight({
+            y: 1,
+            x:0,
+            cutoff: 8,
+            outerCutoff: 9,
+            range: 3,
+            color:new Hilo3d.Color(1, 0, 0),
+            direction:new Hilo3d.Vector3(0.2, -1, 0),
+            amount: 5,
+            shadow: {
+                debug: true,
+                minBias: 0.0001
+            },
+            onUpdate: function() {
+                this.direction.rotateY(new Hilo3d.Vector3(0, 0, 0), Math.PI/180*0.5);
+                this.isDirty = true;
+            }
+        });
+        stage.addChild(spotLight);
+
 
         new Hilo3d.AmbientLight({
             color:new Hilo3d.Color(1, 1, 1),

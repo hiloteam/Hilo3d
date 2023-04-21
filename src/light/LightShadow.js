@@ -150,7 +150,7 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
             shadowMaterial = new GeometryMaterial({
                 vertexType: DEPTH,
                 side: BACK,
-                writeOriginData: true
+                writeOriginData: false
             });
         }
 
