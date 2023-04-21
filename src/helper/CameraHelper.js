@@ -7,12 +7,14 @@ import Vector3 from '../math/Vector3';
 import Color from '../math/Color';
 
 import constants from '../constants';
+import Matrix4 from '../math/Matrix4';
 
 const {
     LINES
 } = constants;
 
 const tempVector3 = new Vector3();
+const tempMatrix4 = new Matrix4();
 /**
  * 摄像机帮助类
  * @class
@@ -52,7 +54,8 @@ const CameraHelper = Class.create(/** @lends CameraHelper.prototype */ {
 
         this.material = new BasicMaterial({
             lightType: 'NONE',
-            diffuse: this.color || new Color(0.5, 0.5, 0.5, 1)
+            diffuse: this.color || new Color(0.5, 0.5, 0.5, 1),
+            castShadows: false
         });
 
         this.geometry = new Geometry({
@@ -80,16 +83,17 @@ const CameraHelper = Class.create(/** @lends CameraHelper.prototype */ {
         const height = 1;
         const depth = 1;
 
-        geometry.vertices.set(0, camera.unprojectVector(tempVector3.set(-width, -height, depth)));
-        geometry.vertices.set(1, camera.unprojectVector(tempVector3.set(-width, height, depth)));
-        geometry.vertices.set(2, camera.unprojectVector(tempVector3.set(width, height, depth)));
-        geometry.vertices.set(3, camera.unprojectVector(tempVector3.set(width, -height, depth)));
-        geometry.vertices.set(4, camera.unprojectVector(tempVector3.set(-width, -height, -depth)));
-        geometry.vertices.set(5, camera.unprojectVector(tempVector3.set(-width, height, -depth)));
-        geometry.vertices.set(6, camera.unprojectVector(tempVector3.set(width, height, -depth)));
-        geometry.vertices.set(7, camera.unprojectVector(tempVector3.set(width, -height, -depth)));
-
-        geometry.vertices.set(8, camera.worldMatrix.getTranslation(tempVector3));
+        tempMatrix4.multiply(camera.viewProjectionMatrix, this.worldMatrix);
+        tempMatrix4.invert();
+        geometry.vertices.set(0, tempVector3.set(-width, -height, depth).transformMat4(tempMatrix4));
+        geometry.vertices.set(1, tempVector3.set(-width, height, depth).transformMat4(tempMatrix4));
+        geometry.vertices.set(2, tempVector3.set(width, height, depth).transformMat4(tempMatrix4));
+        geometry.vertices.set(3, tempVector3.set(width, -height, depth).transformMat4(tempMatrix4));
+        geometry.vertices.set(4, tempVector3.set(-width, -height, -depth).transformMat4(tempMatrix4));
+        geometry.vertices.set(5, tempVector3.set(-width, height, -depth).transformMat4(tempMatrix4));
+        geometry.vertices.set(6, tempVector3.set(width, height, -depth).transformMat4(tempMatrix4));
+        geometry.vertices.set(7, tempVector3.set(width, -height, -depth).transformMat4(tempMatrix4));
+        geometry.vertices.set(8, tempVector3.set(0, 0, -depth).transformMat4(tempMatrix4));
     }
 });
 

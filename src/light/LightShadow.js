@@ -8,6 +8,7 @@ import GeometryMaterial from '../material/GeometryMaterial';
 import Color from '../math/Color';
 import Matrix4 from '../math/Matrix4';
 import constants from '../constants';
+import CameraHelper from '../helper/CameraHelper';
 
 const {
     DEPTH,
@@ -71,7 +72,7 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
         this.camera.lookAt(light.direction);
 
         if (this.cameraInfo) {
-            this.updateCustumCamera(this.cameraInfo);
+            this.updateCustomCamera(this.cameraInfo, currentCamera);
         } else {
             const geometry = currentCamera.getGeometry();
             if (geometry) {
@@ -90,9 +91,17 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
 
         this.camera.updateViewMatrix();
     },
-    updateCustumCamera(cameraInfo) {
+    updateCustomCamera(cameraInfo, currentCamera) {
         for (let name in cameraInfo) {
             this.camera[name] = cameraInfo[name];
+        }
+
+        if (!cameraInfo.far) {
+            this.camera.far = currentCamera.far;
+        }
+
+        if (!cameraInfo.near) {
+            this.camera.near = currentCamera.near;
         }
     },
     updateSpotLightCamera(currentCamera) {
@@ -100,7 +109,7 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
         this.camera.lookAt(light.direction);
 
         if (this.cameraInfo) {
-            this.updateCustumCamera(this.cameraInfo);
+            this.updateCustomCamera(this.cameraInfo, currentCamera);
         } else {
             this.camera.fov = light.outerCutoff * 2;
             this.camera.near = 0.01;
@@ -118,6 +127,7 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
                 this.camera = new PerspectiveCamera();
             }
             this.camera.addTo(this.light);
+            this._createCameraHelper();
         }
 
         if (this.light.isDirty || this._cameraMatrixVersion !== currentCamera.matrixVersion) {
@@ -170,6 +180,25 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
         this.renderer.on('afterRender', () => {
             this.framebuffer.render(0, 0.7, 0.3, 0.3);
         });
+    },
+    _createCameraHelper() {
+        if (!this.debug) {
+            return;
+        }
+
+        const {
+            light,
+            camera,
+        } = this;
+
+        if (!this._cameraHelper) {
+            this._cameraHelper = new CameraHelper({
+                camera,
+                color: new Color(0, 1, 0),
+            });
+
+            light.addChild(this._cameraHelper);
+        }
     }
 });
 
