@@ -297,7 +297,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
         /**
          * 灯光管理器
-         * @type {LightManager}
+         * @type {ILightManager}
          * @default new LightManager
          */
         this.lightManager = new LightManager();
@@ -780,6 +780,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         stage.updateMatrixWorld();
         camera.updateViewProjectionMatrix();
 
+        const lights = [];
         stage.traverse((node) => {
             if (!node.visible) {
                 return Node.TRAVERSE_STOP_CHILDREN;
@@ -788,15 +789,14 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             if (node.isMesh) {
                 renderList.addMesh(node, camera);
             } else if (node.isLight) {
-                lightManager.addLight(node);
+                lights.push(node);
             }
 
             return Node.TRAVERSE_STOP_NONE;
         });
 
         renderList.sort();
-        lightManager.createShadowMap(this, camera);
-        lightManager.updateInfo(camera);
+        lightManager.update(this, camera, lights);
 
         if (fireEvent) {
             this.fire('beforeRender');
