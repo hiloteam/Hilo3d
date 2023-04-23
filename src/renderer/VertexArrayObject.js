@@ -23,6 +23,7 @@ const VertexArrayObject = Class.create(/** @lends VertexArrayObject.prototype */
     Statics: {
         /**
          * 缓存
+         * @type {Cache}
          * @readOnly
          * @memberOf VertexArrayObject
          * @return {Cache}

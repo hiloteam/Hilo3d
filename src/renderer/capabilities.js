@@ -11,6 +11,7 @@ import {
 const capabilities = {
     /**
      * 是否是 WebGL2
+     * @type {boolean}
      */
     isWebGL2: false,
     /**

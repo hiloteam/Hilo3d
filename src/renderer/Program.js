@@ -23,6 +23,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
     Statics: /** @lends Program */ {
         /**
          * 缓存
+         * @type {Cache}
          * @readOnly
          * @return {Cache}
          */
