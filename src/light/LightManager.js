@@ -436,10 +436,24 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
     },
 
     /**
+     * 更新光源信息
+     * @param {WebGLRenderer} renderer
+     * @param {Light[]} lights
+     * @param {Camera} camera
+     */
+    update(renderer, camera, lights) {
+        lights.forEach((light) => {
+            this.addLight(light);
+        });
+
+        this.createShadowMap(renderer, camera);
+        this.updateInfo(camera);
+    },
+
+    /**
      * 生成阴影贴图
      * @param {WebGLRenderer} renderer
      * @param {Camera} camera
-     * @returns
      */
     createShadowMap(renderer, camera) {
         if (!this.enableShadow) {
@@ -468,4 +482,40 @@ export default LightManager;
  * @callback updateCustomInfoCallback
  * @param { LightManager } lightManager
  * @param { Camera } camera
+ */
+
+
+/**
+ * 灯光信息接口
+ * @interface ILightInfo
+ * @property {string} uid
+ */
+
+/**
+ * 灯光管理器接口
+ * @interface ILightManager
+ * @property {boolean} enableShadow
+ * @property {ILightInfo} lightInfo
+ */
+
+/**
+ * 重置所有光源信息
+ * @function
+ * @name ILightManager#reset
+ */
+
+/**
+ * 更新光源信息
+ * @function
+ * @param {WebGLRenderer} renderer
+ * @param {Camera} camera
+ * @param {Light[]} lights
+ * @name ILightManager#update
+ */
+
+/**
+ * 获取渲染配置
+ * @function
+ * @param {object} [option]
+ * @name ILightManager#getRenderOption
  */
