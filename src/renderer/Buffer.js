@@ -20,6 +20,7 @@ const Buffer = Class.create(/** @lends Buffer.prototype */ {
     Statics: /** @lends Buffer */ {
         /**
          * 缓存
+         * @type {Cache}
          * @readOnly
          * @return {Cache}
          */

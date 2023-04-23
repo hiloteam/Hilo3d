@@ -112,6 +112,10 @@ const Light = Class.create(/** @lends Light.prototype */ {
         out[offset + 2] = this.quadraticAttenuation;
         return this;
     },
+    /**
+     * 获取真正的颜色，光强度乘以颜色
+     * @returns {Color} 光强度乘以颜色后的颜色
+     */
     getRealColor() {
         return tempColor.copy(this.color).scale(this.amount);
     },

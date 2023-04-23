@@ -25,6 +25,12 @@ const DirectionalLight = Class.create(/** @lends DirectionalLight.prototype */ {
      */
     className: 'DirectionalLight',
     /**
+     * 光源阴影
+     * @type {LightShadow}
+     * @default null
+     */
+    lightShadow: null,
+    /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
      * @param {Color} [params.color=new Color(1, 1, 1)] 光颜色
@@ -63,10 +69,19 @@ const DirectionalLight = Class.create(/** @lends DirectionalLight.prototype */ {
         }
         this.lightShadow.createShadowMap(camera);
     },
+    /**
+    * 获取世界空间方向
+    * @returns {Vector3}
+    */
     getWorldDirection() {
         tempVector3.copy(this.direction).transformDirection(this.worldMatrix).normalize();
         return tempVector3;
     },
+    /**
+     * 获取相机空间方向
+     * @param {Camera} camera
+     * @returns {Vector3}
+     */
     getViewDirection(camera) {
         const modelViewMatrix = camera.getModelViewMatrix(this, tempMatrix4);
         tempVector3.copy(this.direction).transformDirection(modelViewMatrix).normalize();

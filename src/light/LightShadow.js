@@ -25,22 +25,71 @@ const isNeedRenderMesh = function(mesh) {
 
 /**
  * @class
- * @private
  */
 const LightShadow = Class.create(/** @lends LightShadow.prototype */{
+    /**
+     * @type {boolean}
+     * @default true
+     */
     isLightShadow: true,
+    /**
+     * @type {string}
+     * @default LightShadow
+     */
     className: 'LightShadow',
 
+    /**
+     * @type {Light}
+     * @default null
+     */
     light: null,
+    /**
+     * @type {WebGLRenderer}
+     * @default null
+     */
     renderer: null,
+    /**
+     * @type {Framebuffer}
+     * @default null
+     */
     framebuffer: null,
+    /**
+     * @type {Camera}
+     * @default null
+     */
     camera: null,
+    /**
+     * @type {number}
+     * @default 1024
+     */
     width: 1024,
+    /**
+     * @type {number}
+     * @default 1024
+     */
     height: 1024,
+    /**
+     * @type {number}
+     * @default 0.05
+     */
     maxBias: 0.05,
+    /**
+     * @type {number}
+     * @default 0.005
+     */
     minBias: 0.005,
     cameraInfo: null,
     debug: false,
+    /**
+     * @param {object} params
+     * @param {Light} params.light
+     * @param {WebGLRenderer} params.renderer
+     * @param {WebGLRenderer} params.renderer
+     * @param {object} [params.cameraInfo]
+     * @param {number} params.width
+     * @param {number} params.height
+     * @param {boolean} [params.debug]
+     */
     constructor(params) {
         this.id = math.generateUUID(this.className);
         Object.assign(this, params);
