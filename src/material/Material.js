@@ -901,7 +901,25 @@ const Material = Class.create(/** @lends Material.prototype */ {
                 origin[key] = data[key];
             }
         }
-    }
+    },
+
+    /**
+     * 获取阴影材质，子类可重写
+     * @param {Material} shadowMaterial 通用阴影材质
+     * @return {Material}
+     */
+    getShadowMaterial(shadowMaterial) {
+        if (shadowMaterial.side !== this.side) {
+            shadowMaterial.side = this.side;
+            shadowMaterial.isDirty = true;
+        }
+
+        if (shadowMaterial.frontFace !== this.frontFace) {
+            shadowMaterial.frontFace = this.frontFace;
+            shadowMaterial.isDirty = true;
+        }
+        return shadowMaterial;
+    },
 });
 
 export default Material;

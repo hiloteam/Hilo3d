@@ -208,22 +208,28 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
         renderer.clear(clearColor);
         camera.updateViewProjectionMatrix();
         semantic.setCamera(camera);
-        renderer.forceMaterial = shadowMaterial;
-        this.renderShadowScene(renderer);
-        delete renderer.forceMaterial;
+        this.renderShadowScene(renderer, shadowMaterial);
         framebuffer.unbind();
         semantic.setCamera(currentCamera);
         renderer.viewport();
     },
-    renderShadowScene(renderer) {
+    renderShadowScene(renderer, shadowMaterial) {
+        const preForceMaterial = renderer.forceMaterial;
+
         const renderList = renderer.renderList;
         renderList.traverse((mesh) => {
             if (isNeedRenderMesh(mesh)) {
+                renderer.forceMaterial = mesh.material.getShadowMaterial(shadowMaterial);
                 renderer.renderMesh(mesh);
             }
         }, (instancedMeshes) => {
-            renderer.renderInstancedMeshes(instancedMeshes.filter(mesh => isNeedRenderMesh(mesh)));
+            if (instancedMeshes.length) {
+                renderer.forceMaterial = instancedMeshes[0].material.getShadowMaterial(shadowMaterial);
+                renderer.renderInstancedMeshes(instancedMeshes.filter(mesh => isNeedRenderMesh(mesh)));
+            }
         });
+
+        renderer.forceMaterial = preForceMaterial;
     },
     showShadowMap() {
         this.renderer.on('afterRender', () => {
