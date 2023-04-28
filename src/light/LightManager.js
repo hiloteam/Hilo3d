@@ -31,7 +31,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
      * @type {boolean}
      * @default true
      */
-    enableShadow: true,
+    shadowEnabled: true,
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
@@ -413,7 +413,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
      * @returns {number}
      */
     getShadowMapCount(type) {
-        if (!this.enableShadow) {
+        if (!this.shadowEnabled) {
             return 0;
         }
 
@@ -456,7 +456,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
      * @param {Camera} camera
      */
     createShadowMap(renderer, camera) {
-        if (!this.enableShadow) {
+        if (!this.shadowEnabled) {
             return;
         }
 
@@ -494,7 +494,7 @@ export default LightManager;
 /**
  * 灯光管理器接口
  * @interface ILightManager
- * @property {boolean} enableShadow
+ * @property {boolean} shadowEnabled
  * @property {ILightInfo} lightInfo
  */
 
