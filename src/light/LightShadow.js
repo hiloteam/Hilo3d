@@ -81,9 +81,9 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
     cameraInfo: null,
     debug: false,
     /**
+     * @constructs
      * @param {object} params
      * @param {Light} params.light
-     * @param {WebGLRenderer} params.renderer
      * @param {WebGLRenderer} params.renderer
      * @param {object} [params.cameraInfo]
      * @param {number} params.width
