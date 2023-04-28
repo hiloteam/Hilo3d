@@ -419,6 +419,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
     bind() {
         this.init();
         if (this._isInit) {
+            this._preFramebuffer = this.state.currentFramebuffer;
             this.state.bindFramebuffer(this.gl.FRAMEBUFFER, this.framebuffer);
         }
     },
@@ -429,7 +430,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         this.init();
         if (this._isInit) {
             const state = this.state;
-            state.bindFramebuffer(this.gl.FRAMEBUFFER, state.preFramebuffer);
+            state.bindFramebuffer(this.gl.FRAMEBUFFER, this._preFramebuffer);
         }
     },
     clear(clearColor = new Color(0, 0, 0, 0)) {
