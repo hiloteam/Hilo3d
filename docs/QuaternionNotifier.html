@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Class: GeometryMaterial</title>
+    <title>Class: QuaternionNotifier</title>
     
     
     <script src="scripts/prettify/prettify.js"></script>
@@ -9915,7 +9915,7 @@
     </ul>
 </div>
     <div class="main">
-        <h1 class="page-title" data-filename="GeometryMaterial.html">Class: GeometryMaterial</h1>
+        <h1 class="page-title" data-filename="QuaternionNotifier.html">Class: QuaternionNotifier</h1>
         
 
 
@@ -9923,7 +9923,7 @@
 <section>
 <header>
     <h2>
-    GeometryMaterial
+    QuaternionNotifier
     </h2>
     
 </header>  
@@ -9937,14 +9937,14 @@
 <dl >
     <dt>
         <div class="nameContainer">
-            <h4 class="name" id="GeometryMaterial">
+            <h4 class="name" id="QuaternionNotifier">
                 
-                new GeometryMaterial<span class="signature">(<span class="optional">params</span>)</span>
+                new QuaternionNotifier<span class="signature">(<span class="optional">x</span>, <span class="optional">y</span>, <span class="optional">z</span>, <span class="optional">w</span>)</span>
             </h4>
         
             
             <div class="tag-source">
-                <a href="material_GeometryMaterial.js.html">material/GeometryMaterial.js</a>, <a href="material_GeometryMaterial.js.html#line22">line 22</a>
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line13">line 13</a>
             </div>
             
         </div>
@@ -9953,7 +9953,7 @@
         
         
         <div class="description">
-            <p>几何材质，支持 POSITION, NORMAL, DEPTH, DISTANCE 顶点类型</p>
+            <p>四元数，具有 onUpdate 回调</p>
         </div>
         
 
@@ -9974,6 +9974,8 @@
 		<th>Type</th>
 		
 		
+		<th>Default</th>
+		
 		
 		<th class="last">Description</th>
 	</tr>
@@ -9984,18 +9986,24 @@
 	
         <tr>
             
-                <td class="name"><code>params</code></td>
+                <td class="name"><code>x</code></td>
             
             
             <td class="type">
             
                 
-<span class="param-type">object</span>
+<span class="param-type">Number</span>
 
 
             
             </td>
             
+            
+                <td class="default">
+                
+                    0
+                
+                </td>
             
             
             <td class="description last">
@@ -10007,7 +10015,115 @@
                         
                     
                 
-                <p>初始化参数，所有params都会复制到实例上</p></td>
+                <p>X component</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>y</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    0
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>Y component</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>z</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    0
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>Z component</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>w</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    1
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>W component</p></td>
         </tr>
 	
 	
@@ -10052,27 +10168,11 @@
         
         
         
-            <h5>Example</h5>
-            
-
-    
-    <pre class="prettyprint"><code>const material = new Hilo3d.GeometryMaterial({
-    diffuse: new Hilo3d.Color(1, 0, 0, 1)
-});</code></pre>
-    
-
-        
     </dd>
 </dl>
     
     </div>
     
-    
-        <h3 class="subsection-title">Extends</h3>
-        
-        <ul>
-            <li><a href="BasicMaterial.html">BasicMaterial</a></li>
-        </ul>
     
     
     
@@ -10115,82 +10215,8 @@
         <tr >
             
                 <td class="name">
-                    <a name="isGeometryMaterial"></a>
-                    <code>isGeometryMaterial</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    true
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr >
-            
-                <td class="name">
                     <a name="className"></a>
                     <code>className</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">string</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    GeometryMaterial
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr >
-            
-                <td class="name">
-                    <a name="vertexType"></a>
-                    <code>vertexType</code>
                 </td>
             
             
@@ -10208,12 +10234,14 @@
             
                 <td class="default">
                 
+                    QuaternionNotifier
+                
                 </td>
             
             
             <td class="description last">
                 
-                <p>顶点类型 POSITION, NORMAL, DEPTH, DISTANCE</p>
+                <p>类名</p>
                 
     
                 
@@ -10224,8 +10252,8 @@
         <tr >
             
                 <td class="name">
-                    <a name="writeOriginData"></a>
-                    <code>writeOriginData</code>
+                    <a name="isQuaternionNotifier"></a>
+                    <code>isQuaternionNotifier</code>
                 </td>
             
             
@@ -10243,41 +10271,6 @@
             
                 <td class="default">
                 
-                </td>
-            
-            
-            <td class="description last">
-                
-                <p>是否直接存储</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="isBasicMaterial"></a>
-                    <code>isBasicMaterial</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
                     true
                 
                 </td>
@@ -10285,8 +10278,6 @@
             
             <td class="description last">
                 
-                    <span class="inherited optional"><a href="BasicMaterial.html#isBasicMaterial">inherited</a></span>
-                
                 
                 
     
@@ -10295,735 +10286,11 @@
         </tr>
 	
 	
-        <tr class="inherited-member">
+        <tr >
             
                 <td class="name">
-                    <a name="lightType"></a>
-                    <code>lightType</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">'NONE'</span>
-|
-
-<span class="param-type">'PHONG'</span>
-|
-
-<span class="param-type">'BLINN-PHONG'</span>
-|
-
-<span class="param-type">'LAMBERT'</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    BLINN-PHONG
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#lightType">inherited</a></span>
-                
-                <p>光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="diffuse"></a>
-                    <code>diffuse</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="Texture.html">Texture</a></span>
-|
-
-<span class="param-type"><a href="Color.html">Color</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    Color(.5, .5, .5)
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#diffuse">inherited</a></span>
-                
-                <p>漫反射贴图，或颜色</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="ambient"></a>
-                    <code>ambient</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="Texture.html">Texture</a></span>
-|
-
-<span class="param-type"><a href="Color.html">Color</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    null
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#ambient">inherited</a></span>
-                
-                <p>环境光贴图，或颜色</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="specular"></a>
-                    <code>specular</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="Texture.html">Texture</a></span>
-|
-
-<span class="param-type"><a href="Color.html">Color</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    Color(1, 1, 1)
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#specular">inherited</a></span>
-                
-                <p>镜面贴图，或颜色</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="emission"></a>
-                    <code>emission</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="Texture.html">Texture</a></span>
-|
-
-<span class="param-type"><a href="Color.html">Color</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    Color(0, 0, 0)
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#emission">inherited</a></span>
-                
-                <p>放射光贴图，或颜色</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="specularEnvMap"></a>
-                    <code>specularEnvMap</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="CubeTexture.html">CubeTexture</a></span>
-|
-
-<span class="param-type"><a href="Texture.html">Texture</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    null
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#specularEnvMap">inherited</a></span>
-                
-                <p>环境贴图</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="specularEnvMatrix"></a>
-                    <code>specularEnvMatrix</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="Matrix4.html">Matrix4</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    null
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#specularEnvMatrix">inherited</a></span>
-                
-                <p>环境贴图变化矩阵，如旋转等</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="reflectivity"></a>
-                    <code>reflectivity</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">number</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    0
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#reflectivity">inherited</a></span>
-                
-                <p>反射率</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="refractRatio"></a>
-                    <code>refractRatio</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">number</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    0
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#refractRatio">inherited</a></span>
-                
-                <p>折射比率</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="refractivity"></a>
-                    <code>refractivity</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">number</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    0
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#refractivity">inherited</a></span>
-                
-                <p>折射率</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="shininess"></a>
-                    <code>shininess</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">number</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    32
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="BasicMaterial.html#shininess">inherited</a></span>
-                
-                <p>高光发光值</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="isMaterial"></a>
-                    <code>isMaterial</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    true
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#isMaterial">inherited</a></span>
-                
-                
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="name"></a>
-                    <code>name</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">string</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#name">inherited</a></span>
-                
-                <p>name</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="shaderCacheId"></a>
-                    <code>shaderCacheId</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">string</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    null
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#shaderCacheId">inherited</a></span>
-                
-                <p>shader cache id</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="shaderName"></a>
-                    <code>shaderName</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">string</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    null
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#shaderName">inherited</a></span>
-                
-                <p>shader name，会在 shader 中加个 SHADER_NAME 宏，不填用 className 代替。</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="wireframe"></a>
-                    <code>wireframe</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#wireframe">inherited</a></span>
-                
-                <p>是否开启网格模式</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="frontFace"></a>
-                    <code>frontFace</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    CCW
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#frontFace">inherited</a></span>
-                
-                <p>front face winding orientation</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="depthTest"></a>
-                    <code>depthTest</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    true
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#depthTest">inherited</a></span>
-                
-                <p>是否开启深度测试</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="sampleAlphaToCoverage"></a>
-                    <code>sampleAlphaToCoverage</code>
+                    <a name="isQuaternion"></a>
+                    <code>isQuaternion</code>
                 </td>
             
             
@@ -11041,45 +10308,6 @@
             
                 <td class="default">
                 
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#sampleAlphaToCoverage">inherited</a></span>
-                
-                <p>SAMPLE_ALPHA_TO_COVERAGE</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="depthMask"></a>
-                    <code>depthMask</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
                     true
                 
                 </td>
@@ -11087,9 +10315,7 @@
             
             <td class="description last">
                 
-                    <span class="inherited optional"><a href="Material.html#depthMask">inherited</a></span>
                 
-                <p>是否开启depthMask</p>
                 
     
                 
@@ -11097,18 +10323,18 @@
         </tr>
 	
 	
-        <tr class="inherited-member">
+        <tr >
             
                 <td class="name">
-                    <a name="depthRange"></a>
-                    <code>depthRange</code>
+                    <a name="elements"></a>
+                    <code>elements</code>
                 </td>
             
             
             <td class="type">
             
                 
-<span class="param-type">Array</span>
+<span class="param-type">Float32Array</span>
 
 
             
@@ -11119,16 +10345,12 @@
             
                 <td class="default">
                 
-                    [0, 1]
-                
                 </td>
             
             
             <td class="description last">
                 
-                    <span class="inherited optional"><a href="Material.html#depthRange">inherited</a></span>
-                
-                <p>深度测试Range</p>
+                <p>数据</p>
                 
     
                 
@@ -11136,128 +10358,11 @@
         </tr>
 	
 	
-        <tr class="inherited-member">
+        <tr >
             
                 <td class="name">
-                    <a name="depthFunc"></a>
-                    <code>depthFunc</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    LESS
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#depthFunc">inherited</a></span>
-                
-                <p>深度测试方法</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="normalMap"></a>
-                    <code>normalMap</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="Texture.html">Texture</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    null
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#normalMap">inherited</a></span>
-                
-                <p>法线贴图</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="parallaxMap"></a>
-                    <code>parallaxMap</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="Texture.html">Texture</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    null
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#parallaxMap">inherited</a></span>
-                
-                <p>视差贴图</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="normalMapScale"></a>
-                    <code>normalMapScale</code>
+                    <a name="x"></a>
+                    <code>x</code>
                 </td>
             
             
@@ -11275,16 +10380,12 @@
             
                 <td class="default">
                 
-                    1
-                
                 </td>
             
             
             <td class="description last">
                 
-                    <span class="inherited optional"><a href="Material.html#normalMapScale">inherited</a></span>
-                
-                <p>法线贴图scale</p>
+                <p>X component</p>
                 
     
                 
@@ -11292,206 +10393,11 @@
         </tr>
 	
 	
-        <tr class="inherited-member">
+        <tr >
             
                 <td class="name">
-                    <a name="ignoreTranparent"></a>
-                    <code>ignoreTranparent</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#ignoreTranparent">inherited</a></span>
-                
-                <p>是否忽略透明度</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="gammaCorrection"></a>
-                    <code>gammaCorrection</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#gammaCorrection">inherited</a></span>
-                
-                <p>是否开启 gamma 矫正</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="usePhysicsLight"></a>
-                    <code>usePhysicsLight</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#usePhysicsLight">inherited</a></span>
-                
-                <p>是否使用物理灯光</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="isDiffuesEnvAndAmbientLightWorkTogether"></a>
-                    <code>isDiffuesEnvAndAmbientLightWorkTogether</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#isDiffuesEnvAndAmbientLightWorkTogether">inherited</a></span>
-                
-                <p>是否环境贴图和环境光同时生效</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="userData"></a>
-                    <code>userData</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">any</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    null
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#userData">inherited</a></span>
-                
-                <p>用户数据</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="renderOrder"></a>
-                    <code>renderOrder</code>
+                    <a name="y"></a>
+                    <code>y</code>
                 </td>
             
             
@@ -11509,16 +10415,12 @@
             
                 <td class="default">
                 
-                    0
-                
                 </td>
             
             
             <td class="description last">
                 
-                    <span class="inherited optional"><a href="Material.html#renderOrder">inherited</a></span>
-                
-                <p>渲染顺序数字小的先渲染（透明物体和不透明在不同的队列）</p>
+                <p>Y component</p>
                 
     
                 
@@ -11526,89 +10428,11 @@
         </tr>
 	
 	
-        <tr class="inherited-member">
+        <tr >
             
                 <td class="name">
-                    <a name="premultiplyAlpha"></a>
-                    <code>premultiplyAlpha</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    true
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#premultiplyAlpha">inherited</a></span>
-                
-                <p>是否预乘 alpha</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="gammaOutput"></a>
-                    <code>gammaOutput</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#gammaOutput">inherited</a></span>
-                
-                <p>gammaOutput</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="gammaFactor"></a>
-                    <code>gammaFactor</code>
+                    <a name="z"></a>
+                    <code>z</code>
                 </td>
             
             
@@ -11626,16 +10450,12 @@
             
                 <td class="default">
                 
-                    2.2
-                
                 </td>
             
             
             <td class="description last">
                 
-                    <span class="inherited optional"><a href="Material.html#gammaFactor">inherited</a></span>
-                
-                <p>gamma值</p>
+                <p>Z component</p>
                 
     
                 
@@ -11643,1060 +10463,11 @@
         </tr>
 	
 	
-        <tr class="inherited-member">
+        <tr >
             
                 <td class="name">
-                    <a name="castShadows"></a>
-                    <code>castShadows</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    true
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#castShadows">inherited</a></span>
-                
-                <p>是否投射阴影</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="receiveShadows"></a>
-                    <code>receiveShadows</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    true
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#receiveShadows">inherited</a></span>
-                
-                <p>是否接受阴影</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="uvMatrix"></a>
-                    <code>uvMatrix</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="Matrix3.html">Matrix3</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#uvMatrix">inherited</a></span>
-                
-                <p>uv transform eg:new Matrix3().fromRotationTranslationScale(Math.PI/2, 0, 0, 2, 2)</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="uvMatrix1"></a>
-                    <code>uvMatrix1</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type"><a href="Matrix3.html">Matrix3</a></span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#uvMatrix1">inherited</a></span>
-                
-                <p>uv1 transform eg:new Matrix3().fromRotationTranslationScale(Math.PI/2, 0, 0, 2, 2)</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="cullFace"></a>
-                    <code>cullFace</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    true
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#cullFace">inherited</a></span>
-                
-                <p>是否开启 CullFace</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="cullFaceType"></a>
-                    <code>cullFaceType</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    BACK
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#cullFaceType">inherited</a></span>
-                
-                <p>CullFace 类型</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="side"></a>
-                    <code>side</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    FRONT
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#side">inherited</a></span>
-                
-                <p>显示面，可选值 FRONT, BACK, FRONT_AND_BACK</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="blend"></a>
-                    <code>blend</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#blend">inherited</a></span>
-                
-                <p>是否开启颜色混合</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="blendEquation"></a>
-                    <code>blendEquation</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    FUNC_ADD
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#blendEquation">inherited</a></span>
-                
-                <p>颜色混合方式</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="blendEquationAlpha"></a>
-                    <code>blendEquationAlpha</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    FUNC_ADD
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#blendEquationAlpha">inherited</a></span>
-                
-                <p>透明度混合方式</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="blendSrc"></a>
-                    <code>blendSrc</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    ONE
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#blendSrc">inherited</a></span>
-                
-                <p>颜色混合来源比例</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="blendDst"></a>
-                    <code>blendDst</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    ZERO
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#blendDst">inherited</a></span>
-                
-                <p>颜色混合目标比例</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="blendSrcAlpha"></a>
-                    <code>blendSrcAlpha</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    ONE
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#blendSrcAlpha">inherited</a></span>
-                
-                <p>透明度混合来源比例</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="blendDstAlpha"></a>
-                    <code>blendDstAlpha</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    ONE
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#blendDstAlpha">inherited</a></span>
-                
-                <p>透明度混合目标比例</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="stencilTest"></a>
-                    <code>stencilTest</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    1
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#stencilTest">inherited</a></span>
-                
-                <p>stencilTest</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="stencilMask"></a>
-                    <code>stencilMask</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">number</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    0xff
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#stencilMask">inherited</a></span>
-                
-                <p>stencilMask</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="stencilFunc"></a>
-                    <code>stencilFunc</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    ALWAYS
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#stencilFunc">inherited</a></span>
-                
-                <p>stencilFunc func</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="stencilFuncRef"></a>
-                    <code>stencilFuncRef</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">number</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    1
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#stencilFuncRef">inherited</a></span>
-                
-                <p>stencilFunc ref</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="stencilFuncMask"></a>
-                    <code>stencilFuncMask</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">number</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    0xff
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#stencilFuncMask">inherited</a></span>
-                
-                <p>stencilFunc mask</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="stencilOpFail"></a>
-                    <code>stencilOpFail</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    KEEP
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#stencilOpFail">inherited</a></span>
-                
-                <p>stencilOp fail</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="stencilOpZFail"></a>
-                    <code>stencilOpZFail</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    KEEP
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#stencilOpZFail">inherited</a></span>
-                
-                <p>stencilOp zfail</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="stencilOpZPass"></a>
-                    <code>stencilOpZPass</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">GLenum</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    KEEP
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#stencilOpZPass">inherited</a></span>
-                
-                <p>stencilOp zpass</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="isDirty"></a>
-                    <code>isDirty</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#isDirty">inherited</a></span>
-                
-                <p>当前是否需要强制更新</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="transparency"></a>
-                    <code>transparency</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">number</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    1
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#transparency">inherited</a></span>
-                
-                <p>透明度 0~1</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="transparent"></a>
-                    <code>transparent</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#transparent">inherited</a></span>
-                
-                <p>是否需要透明</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="alphaCutoff"></a>
-                    <code>alphaCutoff</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">number</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    0
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#alphaCutoff">inherited</a></span>
-                
-                <p>透明度剪裁，如果渲染的颜色透明度大于等于这个值的话渲染为完全不透明，否则渲染为完全透明</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="useHDR"></a>
-                    <code>useHDR</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#useHDR">inherited</a></span>
-                
-                <p>是否使用HDR</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="exposure"></a>
-                    <code>exposure</code>
+                    <a name="w"></a>
+                    <code>w</code>
                 </td>
             
             
@@ -12714,287 +10485,12 @@
             
                 <td class="default">
                 
-                    1
-                
                 </td>
             
             
             <td class="description last">
                 
-                    <span class="inherited optional"><a href="Material.html#exposure">inherited</a></span>
-                
-                <p>曝光度，仅在 useHDR 为 true 时生效</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="enableTextureLod"></a>
-                    <code>enableTextureLod</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#enableTextureLod">inherited</a></span>
-                
-                <p>是否开启 texture lod</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="enableDrawBuffers"></a>
-                    <code>enableDrawBuffers</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    false
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#enableDrawBuffers">inherited</a></span>
-                
-                <p>是否开启 drawBuffers</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="needBasicUnifroms"></a>
-                    <code>needBasicUnifroms</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    true
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#needBasicUnifroms">inherited</a></span>
-                
-                <p>是否需要加基础 uniforms</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="needBasicAttributes"></a>
-                    <code>needBasicAttributes</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">Boolean</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    true
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#needBasicAttributes">inherited</a></span>
-                
-                <p>是否需要加基础 attributes</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="id"></a>
-                    <code>id</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">string</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#id">inherited</a></span>
-                
-                
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="uniforms"></a>
-                    <code>uniforms</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">object</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    {}
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#uniforms">inherited</a></span>
-                
-                <p>可以通过指定，semantic来指定值的获取方式，或者自定义get方法</p>
-                
-    
-                
-            </td>
-        </tr>
-	
-	
-        <tr class="inherited-member">
-            
-                <td class="name">
-                    <a name="attributes"></a>
-                    <code>attributes</code>
-                </td>
-            
-            
-            <td class="type">
-            
-                
-<span class="param-type">object</span>
-
-
-            
-            </td>
-            
-            
-            
-            
-                <td class="default">
-                
-                    {}
-                
-                </td>
-            
-            
-            <td class="description last">
-                
-                    <span class="inherited optional"><a href="Material.html#attributes">inherited</a></span>
-                
-                <p>可以通过指定，semantic来指定值的获取方式，或者自定义get方法</p>
+                <p>W component</p>
                 
     
                 
@@ -13017,19 +10513,17 @@
         
         <dl>
             
-<dl class="inherited-method">
+<dl >
     <dt>
-        <div class="nameContainer inherited">
-            <h4 class="name" id="addBasicAttributes">
+        <div class="nameContainer">
+            <h4 class="name" id="onUpdate">
                 
-                    <span class="inherited"><a href="Material.html#addBasicAttributes">inherited</a></span>
-                
-                addBasicAttributes<span class="signature">()</span>
+                onUpdate<span class="signature">()</span>
             </h4>
         
             
             <div class="tag-source">
-                <a href="material_Material.js.html">material/Material.js</a>, <a href="material_Material.js.html#line548">line 548</a>
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line49">line 49</a>
             </div>
             
         </div>
@@ -13038,7 +10532,7 @@
         
         
         <div class="description">
-            <p>增加基础 attributes</p>
+            <p>更新的回调</p>
         </div>
         
 
@@ -13089,19 +10583,17 @@
 </dl>
         
             
-<dl class="inherited-method">
+<dl >
     <dt>
-        <div class="nameContainer inherited">
-            <h4 class="name" id="addBasicUniforms">
+        <div class="nameContainer">
+            <h4 class="name" id="copy">
                 
-                    <span class="inherited"><a href="Material.html#addBasicUniforms">inherited</a></span>
-                
-                addBasicUniforms<span class="signature">()</span>
+                copy<span class="signature">(q)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
             </h4>
         
             
             <div class="tag-source">
-                <a href="material_Material.js.html">material/Material.js</a>, <a href="material_Material.js.html#line574">line 574</a>
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line58">line 58</a>
             </div>
             
         </div>
@@ -13110,79 +10602,7 @@
         
         
         <div class="description">
-            <p>增加基础 uniforms</p>
-        </div>
-        
-
-        
-        
-        
-        
-        
-        
-        
-<dl class="details">
-    
-        
-    
-    
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-</dl>
-
-        
-        
-
-        
-
-        
-        
-        
-        
-        
-        
-        
-    </dd>
-</dl>
-        
-            
-<dl class="inherited-method">
-    <dt>
-        <div class="nameContainer inherited">
-            <h4 class="name" id="addTextureUniforms">
-                
-                    <span class="inherited"><a href="Material.html#addTextureUniforms">inherited</a></span>
-                
-                addTextureUniforms<span class="signature">(textureUniforms)</span>
-            </h4>
-        
-            
-            <div class="tag-source">
-                <a href="material_Material.js.html">material/Material.js</a>, <a href="material_Material.js.html#line661">line 661</a>
-            </div>
-            
-        </div>
-    </dt>
-    <dd>
-        
-        
-        <div class="description">
-            <p>增加贴图 uniforms</p>
+            <p>Copy the values from one quat to this</p>
         </div>
         
 
@@ -13213,13 +10633,13 @@
 	
         <tr>
             
-                <td class="name"><code>textureUniforms</code></td>
+                <td class="name"><code>q</code></td>
             
             
             <td class="type">
             
                 
-<span class="param-type">Object</span>
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
 
 
             
@@ -13229,7 +10649,7 @@
             
             <td class="description last">
                 
-                <p>textureName:semanticName 键值对</p></td>
+                </td>
         </tr>
 	
 	
@@ -13272,25 +10692,52 @@
         
         
         
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
         
         
     </dd>
 </dl>
         
             
-<dl class="inherited-method">
+<dl >
     <dt>
-        <div class="nameContainer inherited">
-            <h4 class="name" id="getRenderOption">
+        <div class="nameContainer">
+            <h4 class="name" id="clone">
                 
-                    <span class="inherited"><a href="Material.html#getRenderOption">inherited</a></span>
-                
-                getRenderOption<span class="signature">(<span class="optional">option</span>)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Object}</span>
+                clone<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
             </h4>
         
             
             <div class="tag-source">
-                <a href="material_Material.js.html">material/Material.js</a>, <a href="material_Material.js.html#line677">line 677</a>
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line67">line 67</a>
             </div>
             
         </div>
@@ -13299,7 +10746,106 @@
         
         
         <div class="description">
-            <p>获取渲染选项值</p>
+            <p>Creates a new quat initialized with values from an existing quaternion</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">a new quaternion</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="toArray">
+                
+                toArray<span class="signature">(<span class="optional">array</span>, <span class="optional">offset</span>)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Array}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line78">line 78</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>转换到数组</p>
         </div>
         
 
@@ -13332,13 +10878,16 @@
 	
         <tr>
             
-                <td class="name"><code>option</code></td>
+                <td class="name"><code>array</code></td>
             
             
             <td class="type">
             
                 
-<span class="param-type">Object</span>
+<span class="param-type">Array.&lt;number></span>
+|
+
+<span class="param-type">TypedArray</span>
 
 
             
@@ -13347,7 +10896,7 @@
             
                 <td class="default">
                 
-                    {}
+                    []
                 
                 </td>
             
@@ -13361,7 +10910,43 @@
                         
                     
                 
-                <p>渲染选项值</p></td>
+                <p>数组</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>offset</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    0
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>数组偏移值</p></td>
         </tr>
 	
 	
@@ -13422,310 +11007,7 @@
             
             <td class="type">
             
-                        Object
-                        
-                    
-            </td>
-            <td class="description last">渲染选项值</td>
-        </tr>
-    
-    </tbody>
-</table>
-
-        
-        
-        
-    </dd>
-</dl>
-        
-            
-<dl class="inherited-method">
-    <dt>
-        <div class="nameContainer inherited">
-            <h4 class="name" id="clone">
-                
-                    <span class="inherited"><a href="Material.html#clone">inherited</a></span>
-                
-                clone<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Material.html">Material</a>}</span>
-            </h4>
-        
-            
-            <div class="tag-source">
-                <a href="material_Material.js.html">material/Material.js</a>, <a href="material_Material.js.html#line859">line 859</a>
-            </div>
-            
-        </div>
-    </dt>
-    <dd>
-        
-        
-        <div class="description">
-            <p>clone 当前Material</p>
-        </div>
-        
-
-        
-        
-        
-        
-        
-        
-        
-<dl class="details">
-    
-        
-    
-    
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-</dl>
-
-        
-        
-
-        
-
-        
-        
-        
-        
-        
-        <h5>Returns:</h5>
-        
-
-
-<table class="params">
-    <thead>
-    <tr>
-        
-        <th>Type</th>
-        <th class="last">Description</th>
-    </tr>
-    </thead>
-    <tbody>
-    
-        <tr>
-            
-            <td class="type">
-            
-                        <a href="Material.html">Material</a>
-                        
-                    
-            </td>
-            <td class="description last">返回clone的Material</td>
-        </tr>
-    
-    </tbody>
-</table>
-
-        
-        
-        
-    </dd>
-</dl>
-        
-            
-<dl class="inherited-method">
-    <dt>
-        <div class="nameContainer inherited">
-            <h4 class="name" id="destroyTextures">
-                
-                    <span class="inherited"><a href="Material.html#destroyTextures">inherited</a></span>
-                
-                destroyTextures<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Material.html">Material</a>}</span>
-            </h4>
-        
-            
-            <div class="tag-source">
-                <a href="material_Material.js.html">material/Material.js</a>, <a href="material_Material.js.html#line872">line 872</a>
-            </div>
-            
-        </div>
-    </dt>
-    <dd>
-        
-        
-        <div class="description">
-            <p>销毁贴图</p>
-        </div>
-        
-
-        
-        
-        
-        
-        
-        
-        
-<dl class="details">
-    
-        
-    
-    
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-</dl>
-
-        
-        
-
-        
-
-        
-        
-        
-        
-        
-        <h5>Returns:</h5>
-        
-
-
-<table class="params">
-    <thead>
-    <tr>
-        
-        <th>Type</th>
-        <th class="last">Description</th>
-    </tr>
-    </thead>
-    <tbody>
-    
-        <tr>
-            
-            <td class="type">
-            
-                        <a href="Material.html">Material</a>
-                        
-                    
-            </td>
-            <td class="description last">this</td>
-        </tr>
-    
-    </tbody>
-</table>
-
-        
-        
-        
-    </dd>
-</dl>
-        
-            
-<dl class="inherited-method">
-    <dt>
-        <div class="nameContainer inherited">
-            <h4 class="name" id="getTextures">
-                
-                    <span class="inherited"><a href="Material.html#getTextures">inherited</a></span>
-                
-                getTextures<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Array.&lt;<a href="Texture.html">Texture</a>>}</span>
-            </h4>
-        
-            
-            <div class="tag-source">
-                <a href="material_Material.js.html">material/Material.js</a>, <a href="material_Material.js.html#line881">line 881</a>
-            </div>
-            
-        </div>
-    </dt>
-    <dd>
-        
-        
-        <div class="description">
-            <p>获取材质全部贴图</p>
-        </div>
-        
-
-        
-        
-        
-        
-        
-        
-        
-<dl class="details">
-    
-        
-    
-    
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-</dl>
-
-        
-        
-
-        
-
-        
-        
-        
-        
-        
-        <h5>Returns:</h5>
-        
-
-
-<table class="params">
-    <thead>
-    <tr>
-        
-        <th>Type</th>
-        <th class="last">Description</th>
-    </tr>
-    </thead>
-    <tbody>
-    
-        <tr>
-            
-            <td class="type">
-            
-                        Array.&lt;<a href="Texture.html">Texture</a>>
+                        Array
                         
                     
             </td>
@@ -13742,19 +11024,17 @@
 </dl>
         
             
-<dl class="inherited-method">
+<dl >
     <dt>
-        <div class="nameContainer inherited">
-            <h4 class="name" id="getShadowMaterial">
+        <div class="nameContainer">
+            <h4 class="name" id="fromArray">
                 
-                    <span class="inherited"><a href="Material.html#getShadowMaterial">inherited</a></span>
-                
-                getShadowMaterial<span class="signature">(shadowMaterial)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Material.html">Material</a>}</span>
+                fromArray<span class="signature">(array, <span class="optional">offset</span>)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
             </h4>
         
             
             <div class="tag-source">
-                <a href="material_Material.js.html">material/Material.js</a>, <a href="material_Material.js.html#line911">line 911</a>
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line94">line 94</a>
             </div>
             
         </div>
@@ -13763,7 +11043,201 @@
         
         
         <div class="description">
-            <p>获取阴影材质，子类可重写</p>
+            <p>从数组赋值</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		<th>Default</th>
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>array</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Array.&lt;number></span>
+|
+
+<span class="param-type">TypedArray</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                    
+                        
+                    
+                
+                <p>数组</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>offset</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    0
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>数组偏移值</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="set">
+                
+                set<span class="signature">(x, y, z, w)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line115">line 115</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Set the components of a quat to the given values</p>
         </div>
         
 
@@ -13794,13 +11268,13 @@
 	
         <tr>
             
-                <td class="name"><code>shadowMaterial</code></td>
+                <td class="name"><code>x</code></td>
             
             
             <td class="type">
             
                 
-<span class="param-type"><a href="Material.html">Material</a></span>
+<span class="param-type">Number</span>
 
 
             
@@ -13810,7 +11284,76 @@
             
             <td class="description last">
                 
-                <p>通用阴影材质</p></td>
+                <p>X component</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>y</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>Y component</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>z</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>Z component</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>w</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>W component</p></td>
         </tr>
 	
 	
@@ -13871,7 +11414,3540 @@
             
             <td class="type">
             
-                        <a href="Material.html">Material</a>
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="identity">
+                
+                identity<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line125">line 125</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Set this to the identity quaternion</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="rotationTo">
+                
+                rotationTo<span class="signature">(a, b)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line137">line 137</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Sets a quaternion to represent the shortest rotation from one
+vector to another.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>a</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Vector3.html">Vector3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>the initial vector</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>b</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Vector3.html">Vector3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>the destination vector</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="setAxes">
+                
+                setAxes<span class="signature">(view, right, up)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line152">line 152</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Sets the specified quaternion with values corresponding to the given
+axes. Each axis is a vec3 and is expected to be unit length and
+perpendicular to all other specified axes.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>view</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Vector3.html">Vector3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>the vector representing the viewing direction</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>right</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Vector3.html">Vector3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>the vector representing the local &quot;right&quot; direction</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>up</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Vector3.html">Vector3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>the vector representing the local &quot;up&quot; direction</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="setAxisAngle">
+                
+                setAxisAngle<span class="signature">(axis, rad)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line164">line 164</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Sets a quat from the given angle and rotation axis,
+then returns it.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>axis</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Vector3.html">Vector3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>the axis around which to rotate</p></td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>rad</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>the angle in radians</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="getAxisAngle">
+                
+                getAxisAngle<span class="signature">(out_axis)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Number}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line181">line 181</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Gets the rotation axis and angle for a given
+quaternion. If a quaternion is created with
+setAxisAngle, this method will return the same
+values as providied in the original parameter list
+OR functionally equivalent values.
+Example: The quaternion formed by axis [0, 0, 1] and
+angle -90 is the same as the quaternion formed by
+[0, 0, 1] and 270. This method favors the latter.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>out_axis</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Vector3.html">Vector3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>Vector receiving the axis of rotation</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Number
+                        
+                    
+            </td>
+            <td class="description last">Angle, in radians, of the rotation</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="add">
+                
+                add<span class="signature">(q)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line189">line 189</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Adds two quat's</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>q</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="multiply">
+                
+                multiply<span class="signature">(q)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line199">line 199</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Multiplies two quat's</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>q</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="premultiply">
+                
+                premultiply<span class="signature">(q)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line209">line 209</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>premultiply the quat</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>q</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="scale">
+                
+                scale<span class="signature">(scale)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line219">line 219</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Scales a quat by a scalar number</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>scale</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Vector3.html">Vector3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>the vector to scale</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="rotateX">
+                
+                rotateX<span class="signature">(rad)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line229">line 229</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Rotates a quaternion by the given angle about the X axis</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>rad</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>angle (in radians) to rotate</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="rotateY">
+                
+                rotateY<span class="signature">(rad)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line239">line 239</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Rotates a quaternion by the given angle about the Y axis</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>rad</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>angle (in radians) to rotate</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="rotateZ">
+                
+                rotateZ<span class="signature">(rad)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line249">line 249</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Rotates a quaternion by the given angle about the Z axis</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>rad</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>angle (in radians) to rotate</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="calculateW">
+                
+                calculateW<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line260">line 260</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Calculates the W component of a quat from the X, Y, and Z components.
+Assumes that quaternion is 1 unit in length.
+Any existing W component will be ignored.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="dot">
+                
+                dot<span class="signature">(q)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Number}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line270">line 270</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Calculates the dot product of two quat's</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>q</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Number
+                        
+                    
+            </td>
+            <td class="description last">dot product of two quat's</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="lerp">
+                
+                lerp<span class="signature">(q, t)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line279">line 279</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Performs a linear interpolation between two quat's</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>q</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>t</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>interpolation amount between the two inputs</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="slerp">
+                
+                slerp<span class="signature">(q, t)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line290">line 290</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Performs a spherical linear interpolation between two quat</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>q</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>t</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>interpolation amount between the two inputs</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="sqlerp">
+                
+                sqlerp<span class="signature">(qa, qb, qc, qd, t)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line304">line 304</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Performs a spherical linear interpolation with two control points</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>qa</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>qb</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>qc</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>qd</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>t</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>interpolation amount</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="invert">
+                
+                invert<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line313">line 313</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Calculates the inverse of a quat</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="conjugate">
+                
+                conjugate<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line323">line 323</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Calculates the conjugate of a quat
+If the quaternion is normalized, this function is faster than quat.inverse and produces the same result.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="length">
+                
+                length<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Number}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line332">line 332</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Calculates the length of a quat</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Number
+                        
+                    
+            </td>
+            <td class="description last">length of this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="squaredLength">
+                
+                squaredLength<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Number}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line339">line 339</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Calculates the squared length of a quat</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Number
+                        
+                    
+            </td>
+            <td class="description last">squared length of this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="normalize">
+                
+                normalize<span class="signature">()</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line346">line 346</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Normalize this</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="fromMat3">
+                
+                fromMat3<span class="signature">(m)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line360">line 360</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Creates a quaternion from the given 3x3 rotation matrix.</p>
+<p>NOTE: The resultant quaternion is not normalized, so you should be sure
+to renormalize the quaternion yourself where necessary.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>m</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Matrix3.html">Matrix3</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>rotation matrix</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="fromMat4">
+                
+                fromMat4<span class="signature">(m)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line374">line 374</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Creates a quaternion from the given 3x3 rotation matrix.</p>
+<p>NOTE: The resultant quaternion is not normalized, so you should be sure
+to renormalize the quaternion yourself where necessary.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>m</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Matrix4.html">Matrix4</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                <p>rotation matrix</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="exactEquals">
+                
+                exactEquals<span class="signature">(q)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Boolean}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line384">line 384</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Returns whether or not the quaternions have exactly the same elements in the same position (when compared with ===)</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>q</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Boolean
                         
                     
             </td>
@@ -13881,6 +14957,596 @@
     </tbody>
 </table>
 
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="equals">
+                
+                equals<span class="signature">(q)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{Boolean}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line392">line 392</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Returns whether or not the quaternions have approximately the same elements in the same position.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>q</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Quaternion.html">Quaternion</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        Boolean
+                        
+                    
+            </td>
+            <td class="description last"></td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="fromEuler">
+                
+                fromEuler<span class="signature">(euler, <span class="optional">notCallUpdate</span>)</span><span class="glyphicon glyphicon-circle-arrow-right"></span><span class="type-signature returnType">{<a href="Quaternion.html">Quaternion</a>}</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line401">line 401</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Creates a quaternion from the given euler.</p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		<th>Default</th>
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>euler</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="Euler.html">Euler</a></span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                    
+                        
+                    
+                
+                </td>
+        </tr>
+	
+	
+	
+        <tr>
+            
+                <td class="name"><code>notCallUpdate</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type">Boolean</span>
+
+
+            
+            </td>
+            
+            
+                <td class="default">
+                
+                    false
+                
+                </td>
+            
+            
+            <td class="description last">
+                
+                    
+                        <span class="optional">optional</span>
+                    
+                    
+                        
+                    
+                
+                <p>是否需要调用onUpdate</p></td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        <h5>Returns:</h5>
+        
+
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Type</th>
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    
+        <tr>
+            
+            <td class="type">
+            
+                        <a href="Quaternion.html">Quaternion</a>
+                        
+                    
+            </td>
+            <td class="description last">this</td>
+        </tr>
+    
+    </tbody>
+</table>
+
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="mul">
+                
+                mul<span class="signature">(q)</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line516">line 516</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Alias for <a href="QuaternionNotifier.html#multiply"><code>QuaternionNotifier#multiply</code></a></p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+            
+
+<table class="params">
+    <thead>
+	<tr>
+		
+		<th>Name</th>
+		
+		
+		<th>Type</th>
+		
+		
+		
+		<th class="last">Description</th>
+	</tr>
+	</thead>
+	
+	<tbody>
+	
+	
+        <tr>
+            
+                <td class="name"><code>q</code></td>
+            
+            
+            <td class="type">
+            
+                
+<span class="param-type"><a href="QuaternionNotifier.html">QuaternionNotifier</a></span>
+
+
+            
+            </td>
+            
+            
+            
+            <td class="description last">
+                
+                </td>
+        </tr>
+	
+	
+	</tbody>
+</table>
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="len">
+                
+                len<span class="signature">()</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line522">line 522</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Alias for <a href="QuaternionNotifier.html#length"><code>QuaternionNotifier#length</code></a></p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
+        
+        
+        
+    </dd>
+</dl>
+        
+            
+<dl >
+    <dt>
+        <div class="nameContainer">
+            <h4 class="name" id="sqrLen">
+                
+                sqrLen<span class="signature">()</span>
+            </h4>
+        
+            
+            <div class="tag-source">
+                <a href="math_QuaternionNotifier.js.html">math/QuaternionNotifier.js</a>, <a href="math_QuaternionNotifier.js.html#line528">line 528</a>
+            </div>
+            
+        </div>
+    </dt>
+    <dd>
+        
+        
+        <div class="description">
+            <p>Alias for <a href="QuaternionNotifier.html#squaredLength"><code>QuaternionNotifier#squaredLength</code></a></p>
+        </div>
+        
+
+        
+        
+        
+        
+        
+        
+        
+<dl class="details">
+    
+        
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</dl>
+
+        
+        
+
+        
+
+        
+        
+        
+        
         
         
         

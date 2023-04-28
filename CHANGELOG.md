@@ -1,3 +1,29 @@
+## [1.18.1-shadow.2](https://github.com/hiloteam/Hilo3d/compare/1.18.0...1.18.1-shadow.2) (2023-04-28)
+
+
+### Bug Fixes
+
+* Fix Framebuffer unbind bug ([1e6c88f](https://github.com/hiloteam/Hilo3d/commit/1e6c88f9647a6a6d8442a9950c20573d5e58ba8f))
+* Implement the transpose function only in webgl1 ([012a4f7](https://github.com/hiloteam/Hilo3d/commit/012a4f7cda33b76a03932c17525b5fafc40c0efc))
+
+
+### Features
+
+* Add material.getShadowMaterial to allow users to customize shadow material ([3171978](https://github.com/hiloteam/Hilo3d/commit/3171978f0e201c5c69eed9b103347c41f438302b))
+* Add the ability to visualize shadow camera for debug ([c49a701](https://github.com/hiloteam/Hilo3d/commit/c49a701000ebb379967bf722448251d63bd963bf))
+* Add the enableShadow property to lightManager to control whether to generate shadow map ([b448944](https://github.com/hiloteam/Hilo3d/commit/b448944b448ba2ac91f929b9d170dfcc280bc654))
+* Add the ILightManager interface, which allows users to implement their own lighting controls ([c39d3de](https://github.com/hiloteam/Hilo3d/commit/c39d3dec339237c076affee96acb4871a74d24c8))
+* Add the onlySyncQuaternion attribute of Node to optimize performance ([0739e6a](https://github.com/hiloteam/Hilo3d/commit/0739e6ad9198cd6b91e6cd381986a8686b936a76))
+* Add worldMatrixVersion attribute to node for performance optimization ([6f8d76b](https://github.com/hiloteam/Hilo3d/commit/6f8d76b70ae563c69c5d1d89549e7f638dd663d6))
+* Store shadow map Z in four channels to optimize precision ([481f260](https://github.com/hiloteam/Hilo3d/commit/481f26015e0f14f16279eb1fd7e156446bd59d52))
+
+
+### Performance Improvements
+
+* Optimize the performance of node transform changes ([5a263cf](https://github.com/hiloteam/Hilo3d/commit/5a263cfdb4366295c9b749a1d205fb56495a4c98))
+
+
+
 # [1.18.0](https://github.com/hiloteam/Hilo3d/compare/1.17.0...1.18.0) (2023-01-29)
 
 
