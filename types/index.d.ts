@@ -999,7 +999,6 @@ interface EventObject {
  * @param e.type - 事件类型
  * @param e.detail - 事件数据
  * @param e.target - 事件触发对象
- * @param e.timeStamp - 时间戳
  * @param e.stageX - 鼠标相对 stage 的 x 偏移 ( 仅鼠标事件有效 )
  * @param e.stageY - 鼠标相对 stage 的 y 偏移 ( 仅鼠标事件有效 )
  * @param e.eventTarget - 触发鼠标事件的对象 ( 仅鼠标事件有效 )
@@ -1010,7 +1009,6 @@ type EventMixinCallback = (e: {
     type: string;
     detail: any;
     target: any;
-    timeStamp: number;
     stageX: number;
     stageY: number;
     eventTarget: Node;
@@ -1159,6 +1157,40 @@ type GeometryDataTraverseByComponentCallback = (component: number, index: number
  * @param camera
  */
 type updateCustomInfoCallback = (lightManager: LightManager, camera: Camera) => void;
+
+/**
+ * 灯光信息接口
+ * @property uid
+ */
+interface ILightInfo {
+    uid: string;
+}
+
+/**
+ * 灯光管理器接口
+ * @property shadowEnabled
+ * @property lightInfo
+ */
+interface ILightManager {
+    /**
+     * 重置所有光源信息
+     */
+    reset(): void;
+    /**
+     * 更新光源信息
+     * @param renderer
+     * @param camera
+     * @param lights
+     */
+    update(renderer: WebGLRenderer, camera: Camera, lights: Light[]): void;
+    /**
+     * 获取渲染配置
+     * @param [option]
+     */
+    getRenderOption(option?: any): void;
+    shadowEnabled: boolean;
+    lightInfo: ILightInfo;
+}
 
 /**
  * GLTFExtension Handler 接口
@@ -1531,7 +1563,7 @@ namespace capabilities {
     /**
      * 是否是 WebGL2
      */
-    var isWebGL2: any;
+    var isWebGL2: boolean;
     /**
      * 最大纹理数量
      */
@@ -2944,7 +2976,7 @@ class WebGLRenderer implements EventMixin {
     /**
      * 灯光管理器
      */
-    lightManager: LightManager;
+    lightManager: ILightManager;
     /**
      * 资源管理器
      */
@@ -3113,7 +3145,7 @@ class VertexArrayObject {
     /**
      * 缓存
      */
-    static readonly cache: any;
+    static readonly cache: Cache;
     /**
      * 获取 vao
      * @param gl
@@ -3309,7 +3341,7 @@ class Program {
     /**
      * 缓存
      */
-    static readonly cache: any;
+    static readonly cache: Cache;
     /**
      * 重置缓存
      */
@@ -3578,7 +3610,7 @@ class Buffer {
     /**
      * 缓存
      */
-    static readonly cache: any;
+    static readonly cache: Cache;
     /**
      * 重置缓存
      */
@@ -3905,16 +3937,13 @@ class Vector4 {
     sqrLen(): void;
 }
 
-interface Vector3Notifier extends EventMixin {
-}
-
 /**
- * 三维向量, 数据改变会发送事件
+ * 三维向量，具有 onUpdate 回调
  * @param [x = 0] - X component
  * @param [y = 0] - Y component
  * @param [z = 0] - Z component
  */
-class Vector3Notifier extends Vector3 implements EventMixin {
+class Vector3Notifier extends Vector3 {
     constructor(x?: number, y?: number, z?: number);
     /**
      * 类名  notify
@@ -3925,6 +3954,10 @@ class Vector3Notifier extends Vector3 implements EventMixin {
      * 数据
      */
     elements: Float32Array;
+    /**
+     * 更新的回调
+     */
+    onUpdate(): void;
     /**
      * X component
      */
@@ -4693,33 +4726,35 @@ class Ray {
     intersectsTriangleCell(cell: any[], positions: any[]): Vector3;
 }
 
-interface Quaternion extends EventMixin {
-}
-
 /**
+ * 四元数，具有 onUpdate 回调
  * @param [x = 0] - X component
  * @param [y = 0] - Y component
  * @param [z = 0] - Z component
  * @param [w = 1] - W component
  */
-class Quaternion implements EventMixin {
+class QuaternionNotifier {
     constructor(x?: number, y?: number, z?: number, w?: number);
     /**
      * 类名
      */
     className: string;
+    isQuaternionNotifier: boolean;
     isQuaternion: boolean;
     /**
      * 数据
      */
     elements: Float32Array;
     /**
+     * 更新的回调
+     */
+    onUpdate(): void;
+    /**
      * Copy the values from one quat to this
      * @param q
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    copy(q: Quaternion, dontFireEvent?: boolean): Quaternion;
+    copy(q: Quaternion): Quaternion;
     /**
      * Creates a new quat initialized with values from an existing quaternion
      * @returns a new quaternion
@@ -4735,35 +4770,31 @@ class Quaternion implements EventMixin {
      * 从数组赋值
      * @param array - 数组
      * @param [offset = 0] - 数组偏移值
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    fromArray(array: number[] | TypedArray, offset?: number, dontFireEvent?: boolean): Quaternion;
+    fromArray(array: number[] | TypedArray, offset?: number): Quaternion;
     /**
      * Set the components of a quat to the given values
      * @param x - X component
      * @param y - Y component
      * @param z - Z component
      * @param w - W component
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    set(x: number, y: number, z: number, w: number, dontFireEvent?: boolean): Quaternion;
+    set(x: number, y: number, z: number, w: number): Quaternion;
     /**
      * Set this to the identity quaternion
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    identity(dontFireEvent?: boolean): Quaternion;
+    identity(): Quaternion;
     /**
      * Sets a quaternion to represent the shortest rotation from one
      * vector to another.
      * @param a - the initial vector
      * @param b - the destination vector
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    rotationTo(a: Vector3, b: Vector3, dontFireEvent?: boolean): Quaternion;
+    rotationTo(a: Vector3, b: Vector3): Quaternion;
     /**
      * Sets the specified quaternion with values corresponding to the given
      * axes. Each axis is a vec3 and is expected to be unit length and
@@ -4771,19 +4802,17 @@ class Quaternion implements EventMixin {
      * @param view - the vector representing the viewing direction
      * @param right - the vector representing the local "right" direction
      * @param up - the vector representing the local "up" direction
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    setAxes(view: Vector3, right: Vector3, up: Vector3, dontFireEvent?: boolean): Quaternion;
+    setAxes(view: Vector3, right: Vector3, up: Vector3): Quaternion;
     /**
      * Sets a quat from the given angle and rotation axis,
      * then returns it.
      * @param axis - the axis around which to rotate
      * @param rad - the angle in radians
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    setAxisAngle(axis: Vector3, rad: number, dontFireEvent?: boolean): Quaternion;
+    setAxisAngle(axis: Vector3, rad: number): Quaternion;
     /**
      * Gets the rotation axis and angle for a given
      *  quaternion. If a quaternion is created with
@@ -4800,60 +4829,52 @@ class Quaternion implements EventMixin {
     /**
      * Adds two quat's
      * @param q
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    add(q: Quaternion, dontFireEvent?: boolean): Quaternion;
+    add(q: Quaternion): Quaternion;
     /**
      * Multiplies two quat's
      * @param q
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    multiply(q: Quaternion, dontFireEvent?: boolean): Quaternion;
+    multiply(q: Quaternion): Quaternion;
     /**
      * premultiply the quat
      * @param q
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    premultiply(q: Quaternion, dontFireEvent?: boolean): Quaternion;
+    premultiply(q: Quaternion): Quaternion;
     /**
      * Scales a quat by a scalar number
      * @param scale - the vector to scale
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    scale(scale: Vector3, dontFireEvent?: boolean): Quaternion;
+    scale(scale: Vector3): Quaternion;
     /**
      * Rotates a quaternion by the given angle about the X axis
      * @param rad - angle (in radians) to rotate
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    rotateX(rad: number, dontFireEvent?: boolean): Quaternion;
+    rotateX(rad: number): Quaternion;
     /**
      * Rotates a quaternion by the given angle about the Y axis
      * @param rad - angle (in radians) to rotate
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    rotateY(rad: number, dontFireEvent?: boolean): Quaternion;
+    rotateY(rad: number): Quaternion;
     /**
      * Rotates a quaternion by the given angle about the Z axis
      * @param rad - angle (in radians) to rotate
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    rotateZ(rad: number, dontFireEvent?: boolean): Quaternion;
+    rotateZ(rad: number): Quaternion;
     /**
      * Calculates the W component of a quat from the X, Y, and Z components.
      * Assumes that quaternion is 1 unit in length.
      * Any existing W component will be ignored.
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    calculateW(dontFireEvent?: boolean): Quaternion;
+    calculateW(): Quaternion;
     /**
      * Calculates the dot product of two quat's
      * @param q
@@ -4864,18 +4885,16 @@ class Quaternion implements EventMixin {
      * Performs a linear interpolation between two quat's
      * @param q
      * @param t - interpolation amount between the two inputs
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    lerp(q: Quaternion, t: number, dontFireEvent?: boolean): Quaternion;
+    lerp(q: Quaternion, t: number): Quaternion;
     /**
      * Performs a spherical linear interpolation between two quat
      * @param q
      * @param t - interpolation amount between the two inputs
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    slerp(q: Quaternion, t: number, dontFireEvent?: boolean): Quaternion;
+    slerp(q: Quaternion, t: number): Quaternion;
     /**
      * Performs a spherical linear interpolation with two control points
      * @param qa
@@ -4883,23 +4902,20 @@ class Quaternion implements EventMixin {
      * @param qc
      * @param qd
      * @param t - interpolation amount
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    sqlerp(qa: Quaternion, qb: Quaternion, qc: Quaternion, qd: Quaternion, t: number, dontFireEvent?: boolean): Quaternion;
+    sqlerp(qa: Quaternion, qb: Quaternion, qc: Quaternion, qd: Quaternion, t: number): Quaternion;
     /**
      * Calculates the inverse of a quat
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    invert(dontFireEvent?: boolean): Quaternion;
+    invert(): Quaternion;
     /**
      * Calculates the conjugate of a quat
      * If the quaternion is normalized, this function is faster than quat.inverse and produces the same result.
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    conjugate(dontFireEvent?: boolean): Quaternion;
+    conjugate(): Quaternion;
     /**
      * Calculates the length of a quat
      * @returns length of this
@@ -4912,30 +4928,27 @@ class Quaternion implements EventMixin {
     squaredLength(): number;
     /**
      * Normalize this
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    normalize(dontFireEvent?: boolean): Quaternion;
+    normalize(): Quaternion;
     /**
      * Creates a quaternion from the given 3x3 rotation matrix.
      *
      * NOTE: The resultant quaternion is not normalized, so you should be sure
      * to renormalize the quaternion yourself where necessary.
      * @param m - rotation matrix
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    fromMat3(m: Matrix3, dontFireEvent?: boolean): Quaternion;
+    fromMat3(m: Matrix3): Quaternion;
     /**
      * Creates a quaternion from the given 3x3 rotation matrix.
      *
      * NOTE: The resultant quaternion is not normalized, so you should be sure
      * to renormalize the quaternion yourself where necessary.
      * @param m - rotation matrix
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
      * @returns this
      */
-    fromMat4(m: Matrix4, dontFireEvent?: boolean): Quaternion;
+    fromMat4(m: Matrix4): Quaternion;
     /**
      * Returns whether or not the quaternions have exactly the same elements in the same position (when compared with ===)
      * @param q
@@ -4949,10 +4962,274 @@ class Quaternion implements EventMixin {
     /**
      * Creates a quaternion from the given euler.
      * @param euler
-     * @param [dontFireEvent = false] - wether or not don`t fire change event.
+     * @param [notCallUpdate = false] - 是否需要调用onUpdate
      * @returns this
      */
-    fromEuler(euler: Euler, dontFireEvent?: boolean): Quaternion;
+    fromEuler(euler: Euler, notCallUpdate?: boolean): Quaternion;
+    /**
+     * X component
+     */
+    x: number;
+    /**
+     * Y component
+     */
+    y: number;
+    /**
+     * Z component
+     */
+    z: number;
+    /**
+     * W component
+     */
+    w: number;
+    /**
+     * Alias for {@link QuaternionNotifier#multiply}
+     * @param q
+     */
+    mul(q: QuaternionNotifier): void;
+    /**
+     * Alias for {@link QuaternionNotifier#length}
+     */
+    len(): void;
+    /**
+     * Alias for {@link QuaternionNotifier#squaredLength}
+     */
+    sqrLen(): void;
+}
+
+/**
+ * @param [x = 0] - X component
+ * @param [y = 0] - Y component
+ * @param [z = 0] - Z component
+ * @param [w = 1] - W component
+ */
+class Quaternion {
+    constructor(x?: number, y?: number, z?: number, w?: number);
+    /**
+     * 类名
+     */
+    className: string;
+    isQuaternion: boolean;
+    /**
+     * 数据
+     */
+    elements: Float32Array;
+    /**
+     * Copy the values from one quat to this
+     * @param q
+     * @returns this
+     */
+    copy(q: Quaternion): Quaternion;
+    /**
+     * Creates a new quat initialized with values from an existing quaternion
+     * @returns a new quaternion
+     */
+    clone(): Quaternion;
+    /**
+     * 转换到数组
+     * @param [array = []] - 数组
+     * @param [offset = 0] - 数组偏移值
+     */
+    toArray(array?: number[] | TypedArray, offset?: number): any[];
+    /**
+     * 从数组赋值
+     * @param array - 数组
+     * @param [offset = 0] - 数组偏移值
+     * @returns this
+     */
+    fromArray(array: number[] | TypedArray, offset?: number): Quaternion;
+    /**
+     * Set the components of a quat to the given values
+     * @param x - X component
+     * @param y - Y component
+     * @param z - Z component
+     * @param w - W component
+     * @returns this
+     */
+    set(x: number, y: number, z: number, w: number): Quaternion;
+    /**
+     * Set this to the identity quaternion
+     * @returns this
+     */
+    identity(): Quaternion;
+    /**
+     * Sets a quaternion to represent the shortest rotation from one
+     * vector to another.
+     * @param a - the initial vector
+     * @param b - the destination vector
+     * @returns this
+     */
+    rotationTo(a: Vector3, b: Vector3): Quaternion;
+    /**
+     * Sets the specified quaternion with values corresponding to the given
+     * axes. Each axis is a vec3 and is expected to be unit length and
+     * perpendicular to all other specified axes.
+     * @param view - the vector representing the viewing direction
+     * @param right - the vector representing the local "right" direction
+     * @param up - the vector representing the local "up" direction
+     * @returns this
+     */
+    setAxes(view: Vector3, right: Vector3, up: Vector3): Quaternion;
+    /**
+     * Sets a quat from the given angle and rotation axis,
+     * then returns it.
+     * @param axis - the axis around which to rotate
+     * @param rad - the angle in radians
+     * @returns this
+     */
+    setAxisAngle(axis: Vector3, rad: number): Quaternion;
+    /**
+     * Gets the rotation axis and angle for a given
+     *  quaternion. If a quaternion is created with
+     *  setAxisAngle, this method will return the same
+     *  values as providied in the original parameter list
+     *  OR functionally equivalent values.
+     * Example: The quaternion formed by axis [0, 0, 1] and
+     *  angle -90 is the same as the quaternion formed by
+     *  [0, 0, 1] and 270. This method favors the latter.
+     * @param out_axis - Vector receiving the axis of rotation
+     * @returns Angle, in radians, of the rotation
+     */
+    getAxisAngle(out_axis: Vector3): number;
+    /**
+     * Adds two quat's
+     * @param q
+     * @returns this
+     */
+    add(q: Quaternion): Quaternion;
+    /**
+     * Multiplies two quat's
+     * @param q
+     * @returns this
+     */
+    multiply(q: Quaternion): Quaternion;
+    /**
+     * premultiply the quat
+     * @param q
+     * @returns this
+     */
+    premultiply(q: Quaternion): Quaternion;
+    /**
+     * Scales a quat by a scalar number
+     * @param scale - the vector to scale
+     * @returns this
+     */
+    scale(scale: Vector3): Quaternion;
+    /**
+     * Rotates a quaternion by the given angle about the X axis
+     * @param rad - angle (in radians) to rotate
+     * @returns this
+     */
+    rotateX(rad: number): Quaternion;
+    /**
+     * Rotates a quaternion by the given angle about the Y axis
+     * @param rad - angle (in radians) to rotate
+     * @returns this
+     */
+    rotateY(rad: number): Quaternion;
+    /**
+     * Rotates a quaternion by the given angle about the Z axis
+     * @param rad - angle (in radians) to rotate
+     * @returns this
+     */
+    rotateZ(rad: number): Quaternion;
+    /**
+     * Calculates the W component of a quat from the X, Y, and Z components.
+     * Assumes that quaternion is 1 unit in length.
+     * Any existing W component will be ignored.
+     * @returns this
+     */
+    calculateW(): Quaternion;
+    /**
+     * Calculates the dot product of two quat's
+     * @param q
+     * @returns dot product of two quat's
+     */
+    dot(q: Quaternion): number;
+    /**
+     * Performs a linear interpolation between two quat's
+     * @param q
+     * @param t - interpolation amount between the two inputs
+     * @returns this
+     */
+    lerp(q: Quaternion, t: number): Quaternion;
+    /**
+     * Performs a spherical linear interpolation between two quat
+     * @param q
+     * @param t - interpolation amount between the two inputs
+     * @returns this
+     */
+    slerp(q: Quaternion, t: number): Quaternion;
+    /**
+     * Performs a spherical linear interpolation with two control points
+     * @param qa
+     * @param qb
+     * @param qc
+     * @param qd
+     * @param t - interpolation amount
+     * @returns this
+     */
+    sqlerp(qa: Quaternion, qb: Quaternion, qc: Quaternion, qd: Quaternion, t: number): Quaternion;
+    /**
+     * Calculates the inverse of a quat
+     * @returns this
+     */
+    invert(): Quaternion;
+    /**
+     * Calculates the conjugate of a quat
+     * If the quaternion is normalized, this function is faster than quat.inverse and produces the same result.
+     * @returns this
+     */
+    conjugate(): Quaternion;
+    /**
+     * Calculates the length of a quat
+     * @returns length of this
+     */
+    length(): number;
+    /**
+     * Calculates the squared length of a quat
+     * @returns squared length of this
+     */
+    squaredLength(): number;
+    /**
+     * Normalize this
+     * @returns this
+     */
+    normalize(): Quaternion;
+    /**
+     * Creates a quaternion from the given 3x3 rotation matrix.
+     *
+     * NOTE: The resultant quaternion is not normalized, so you should be sure
+     * to renormalize the quaternion yourself where necessary.
+     * @param m - rotation matrix
+     * @returns this
+     */
+    fromMat3(m: Matrix3): Quaternion;
+    /**
+     * Creates a quaternion from the given 3x3 rotation matrix.
+     *
+     * NOTE: The resultant quaternion is not normalized, so you should be sure
+     * to renormalize the quaternion yourself where necessary.
+     * @param m - rotation matrix
+     * @returns this
+     */
+    fromMat4(m: Matrix4): Quaternion;
+    /**
+     * Returns whether or not the quaternions have exactly the same elements in the same position (when compared with ===)
+     * @param q
+     */
+    exactEquals(q: Quaternion): boolean;
+    /**
+     * Returns whether or not the quaternions have approximately the same elements in the same position.
+     * @param q
+     */
+    equals(q: Quaternion): boolean;
+    /**
+     * Creates a quaternion from the given euler.
+     * @param euler
+     * @returns this
+     */
+    fromEuler(euler: Euler): Quaternion;
     /**
      * X component
      */
@@ -4971,8 +5248,9 @@ class Quaternion implements EventMixin {
     w: number;
     /**
      * Alias for {@link Quaternion#multiply}
+     * @param q
      */
-    mul(): void;
+    mul(q: Quaternion): void;
     /**
      * Alias for {@link Quaternion#length}
      */
@@ -5041,7 +5319,7 @@ class Plane {
 }
 
 /**
- * 4x4 矩阵, 数据改变会发送事件
+ * 4x4 矩阵，具有 onUpdate 回调
  */
 class Matrix4Notifier extends Matrix4 {
     /**
@@ -5053,6 +5331,10 @@ class Matrix4Notifier extends Matrix4 {
      * 数据
      */
     elements: Float32Array;
+    /**
+     * 更新的回调
+     */
+    onUpdate(): void;
 }
 
 /**
@@ -5376,10 +5658,10 @@ class Matrix4 {
      * @param q - quaternion
      * @param v - position
      * @param s - scale
-     * @param p - [pivot]
+     * @param [p] - pivot
      * @returns this
      */
-    compose(q: Quaternion, v: Vector3, s: Vector3, p: Vector3): Matrix4;
+    compose(q: Quaternion, v: Vector3, s: Vector3, p?: Vector3): Matrix4;
     /**
      * decompose
      * @param q - quaternion
@@ -5627,22 +5909,23 @@ class Frustum {
     intersectsSphere(sphere: Sphere): boolean;
 }
 
-interface EulerNotifier extends EventMixin {
-}
-
 /**
- * 欧拉角, 数据改变会发送事件
+ * 欧拉角，具有 onUpdate 回调
  * @param [x = 0] - 角度 X, 弧度制
  * @param [y = 0] - 角度 Y, 弧度制
  * @param [z = 0] - 角度 Z, 弧度制
  */
-class EulerNotifier extends Euler implements EventMixin {
+class EulerNotifier extends Euler {
     constructor(x?: number, y?: number, z?: number);
     /**
      * 类名
      */
     className: string;
     isEulerNotifier: boolean;
+    /**
+     * 更新的回调
+     */
+    onUpdate(): void;
     /**
      * 角度 X, 角度制
      */
@@ -6319,6 +6602,11 @@ class Material {
      * 获取材质全部贴图
      */
     getTextures(): Texture[];
+    /**
+     * 获取阴影材质，子类可重写
+     * @param shadowMaterial - 通用阴影材质
+     */
+    getShadowMaterial(shadowMaterial: Material): Material;
 }
 
 /**
@@ -6987,6 +7275,36 @@ class PointLight extends Light {
 }
 
 /**
+ * @param params
+ * @param params.light
+ * @param params.renderer
+ * @param [params.cameraInfo]
+ * @param params.width
+ * @param params.height
+ * @param [params.debug]
+ */
+class LightShadow {
+    constructor(params: {
+        light: Light;
+        renderer: WebGLRenderer;
+        cameraInfo?: any;
+        width: number;
+        height: number;
+        debug?: boolean;
+    });
+    isLightShadow: boolean;
+    className: string;
+    light: Light;
+    renderer: WebGLRenderer;
+    framebuffer: Framebuffer;
+    camera: Camera;
+    width: number;
+    height: number;
+    maxBias: number;
+    minBias: number;
+}
+
+/**
  * 光管理类
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
@@ -6994,6 +7312,10 @@ class LightManager {
     constructor(params?: any);
     isLightManager: boolean;
     className: string;
+    /**
+     * 是否开启阴影
+     */
+    shadowEnabled: boolean;
     ambientLights: AmbientLight[];
     directionalLights: DirectionalLight[];
     pointLights: PointLight[];
@@ -7046,6 +7368,24 @@ class LightManager {
      * 重置所有光源
      */
     reset(): void;
+    /**
+     * 获取阴影贴图数量
+     * @param type
+     */
+    getShadowMapCount(type: string): number;
+    /**
+     * 更新光源信息
+     * @param renderer
+     * @param lights
+     * @param camera
+     */
+    update(renderer: WebGLRenderer, lights: Light[], camera: Camera): void;
+    /**
+     * 生成阴影贴图
+     * @param renderer
+     * @param camera
+     */
+    createShadowMap(renderer: WebGLRenderer, camera: Camera): void;
 }
 
 /**
@@ -7132,6 +7472,11 @@ class Light extends Node {
      */
     toInfoArray(out: any[], offset: number): void;
     /**
+     * 获取真正的颜色，光强度乘以颜色
+     * @returns 光强度乘以颜色后的颜色
+     */
+    getRealColor(): Color;
+    /**
      * 生成阴影贴图，支持阴影的子类需要重写
      * @param renderer
      * @param camera
@@ -7158,9 +7503,22 @@ class DirectionalLight extends Light {
     isDirectionalLight: boolean;
     className: string;
     /**
+     * 光源阴影
+     */
+    lightShadow: LightShadow;
+    /**
      * 光方向
      */
     direction: Vector3;
+    /**
+     * 获取世界空间方向
+     */
+    getWorldDirection(): Vector3;
+    /**
+     * 获取相机空间方向
+     * @param camera
+     */
+    getViewDirection(camera: Camera): Vector3;
 }
 
 /**
@@ -8445,6 +8803,10 @@ class Node implements EventMixin {
      * update 回调
      */
     onUpdate: (...params: any[]) => any;
+    /**
+     * 只同步四元数，不同步欧拉角
+     */
+    onlySyncQuaternion: boolean;
     id: string;
     /**
      * 元素的up向量
@@ -8723,6 +9085,10 @@ class Node implements EventMixin {
      * 矩阵 version，每次改变会加一
      */
     readonly matrixVersion: number;
+    /**
+     * 世界矩阵 version，每次改变会加一
+     */
+    worldMatrixVersion: number;
     /**
      * 获取元素的包围盒信息
      * @param [parent] - 元素相对于哪个祖先元素的包围盒，不传表示世界
