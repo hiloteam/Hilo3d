@@ -1,3 +1,12 @@
+## [1.19.1-alpha.0](https://github.com/hiloteam/Hilo3d/compare/1.19.0...1.19.1-alpha.0) (2023-06-02)
+
+
+### Bug Fixes
+
+* The stencilMask method should be passed a numeric parameter ([a3cb62c](https://github.com/hiloteam/Hilo3d/commit/a3cb62ce06513a5430d3281867c7f07e10fbad7e))
+
+
+
 # [1.19.0](https://github.com/hiloteam/Hilo3d/compare/1.18.0...1.19.0) (2023-05-05)
 
 
