@@ -861,7 +861,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         state.depthMask(true);
         let clearMask = gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT;
         if (this.stencil) {
-            state.stencilMask(true);
+            state.stencilMask(0xff);
             clearMask |= gl.STENCIL_BUFFER_BIT;
         }
         gl.clear(clearMask);
