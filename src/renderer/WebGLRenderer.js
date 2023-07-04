@@ -467,19 +467,6 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
         this.renderList.useInstanced = this.useInstanced;
 
-        if (this.useFramebuffer) {
-            /**
-             * framebuffer，只在 useFramebuffer 为 true 时初始化后生成
-             * @type {Framebuffer}
-             * @default null
-             */
-            this.framebuffer = new Framebuffer(this, Object.assign({
-                useVao: this.useVao,
-                width: this.width,
-                height: this.height
-            }, this.framebufferOption));
-        }
-
         this.domElement.addEventListener('webglcontextlost', (e) => {
             this._onContextLost(e);
         }, false);
@@ -741,22 +728,20 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
     },
 
     /**
-     * 渲染
+     * 设置渲染
      * @param  {Stage|Node} stage
      * @param  {Camera} camera
-     * @param  {Boolean} [fireEvent=false] 是否发送事件
+     * @returns 是否成功设置渲染信息
      */
-    render(stage, camera, fireEvent = false) {
+    setupRender(stage, camera) {
         this.initContext();
         if (this.isInitFailed || this._isContextLost) {
-            return;
+            return false;
         }
-
         const {
             renderList,
             renderInfo,
             lightManager,
-            resourceManager,
             state
         } = this;
 
@@ -787,11 +772,27 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         renderList.sort();
         lightManager.update(this, camera, lights);
 
+        return true;
+    },
+
+    /**
+     * 渲染
+     * @param  {Stage|Node} stage
+     * @param  {Camera} camera
+     * @param  {Boolean} [fireEvent=false] 是否发送事件
+     */
+    render(stage, camera, fireEvent = false) {
+        const setupSuccess = this.setupRender(stage, camera);
+        if (!setupSuccess) {
+            return;
+        }
+
         if (fireEvent) {
             this.fire('beforeRender');
         }
 
         if (this.useFramebuffer) {
+            this.setupFramebuffer();
             this.framebuffer.bind();
         }
 
@@ -849,6 +850,19 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         gl.clear(clearMask);
     },
     /**
+     * 清除背景
+     * @param  {Color} [clearColor=this.clearColor]
+     */
+    clearColor(clearColor) {
+        const {
+            gl,
+            state
+        } = this;
+        clearColor = clearColor || this.clearColor;
+        gl.clearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    },
+    /**
      * 清除深度
      */
     clearDepth() {
@@ -869,6 +883,20 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         } = this;
         state.stencilMask(0xff);
         gl.clear(gl.STENCIL_BUFFER_BIT);
+    },
+    setupFramebuffer() {
+        if (!this.framebuffer) {
+            /**
+            * framebuffer，只在 useFramebuffer 为 true 时初始化后生成
+            * @type {Framebuffer}
+            * @default null
+            */
+            this.framebuffer = new Framebuffer(this, Object.assign({
+                useVao: this.useVao,
+                width: this.width,
+                height: this.height
+            }, this.framebufferOption));
+        }
     },
     /**
      * 将framebuffer渲染到屏幕
