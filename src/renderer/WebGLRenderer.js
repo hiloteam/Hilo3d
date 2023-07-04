@@ -787,6 +787,10 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             return;
         }
 
+        const {
+            resourceManager,
+        } = this;
+
         if (fireEvent) {
             this.fire('beforeRender');
         }
@@ -886,6 +890,10 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
     },
     setupFramebuffer() {
         if (!this.framebuffer) {
+            const framebufferWidth = this.width;
+            const framebufferHeight = this.height;
+            const samples = 4;
+
             /**
             * framebuffer，只在 useFramebuffer 为 true 时初始化后生成
             * @type {Framebuffer}
@@ -893,9 +901,35 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             */
             this.framebuffer = new Framebuffer(this, Object.assign({
                 useVao: this.useVao,
-                width: this.width,
-                height: this.height
-            }, this.framebufferOption));
+                width: framebufferWidth,
+                height: framebufferHeight
+            }, {
+                colorAttachmentInfos: [
+                    {
+                        attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
+                        internalFormat: Hilo3d.constants.RGBA8,
+                        samples,
+                    },
+                ],
+                depthStencilAttachmentInfo: {
+                    attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
+                    internalFormat: Hilo3d.constants.DEPTH_COMPONENT24,
+                    attachment: Hilo3d.constants.DEPTH_ATTACHMENT,
+                    samples,
+                },
+            }));
+            this.framebuffer.init();
+
+            this.copyFramebuffer = new Hilo3d.Framebuffer(this, {
+                width: framebufferWidth,
+                height: framebufferHeight,
+                colorAttachmentInfos: [
+                    {
+                        attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+                    },
+                ],
+            });
+            this.copyFramebuffer.init();
         }
     },
     /**
@@ -904,7 +938,8 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      */
     renderToScreen(framebuffer) {
         this.state.bindSystemFramebuffer();
-        framebuffer.render(0, 0, 1, 1, this.clearColor);
+        this.copyFramebuffer.copyFramebuffer(framebuffer);
+        this.copyFramebuffer.render(0, 0, 1, 1, this.clearColor);
     },
     /**
      * 渲染一个mesh
