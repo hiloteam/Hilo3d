@@ -102,7 +102,6 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
      * @param {boolean} [params.premultipliedAlpha=true] 是否需要 premultipliedAlpha。
      * @param {boolean} [params.preserveDrawingBuffer=false] 是否需要 preserveDrawingBuffer。
      * @param {boolean} [params.failIfMajorPerformanceCaveat=false] 是否需要 failIfMajorPerformanceCaveat。
-     * @param {boolean} [params.gameMode=false] 是否开启游戏模式，UC 浏览器专用
      * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params) {

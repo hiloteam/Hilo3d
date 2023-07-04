@@ -161,13 +161,6 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
     failIfMajorPerformanceCaveat: false,
 
     /**
-     * 游戏模式, UC浏览器专用
-     * @default false
-     * @type {Boolean}
-     */
-    gameMode: false,
-
-    /**
      * 是否使用framebuffer
      * @type {Boolean}
      * @default false
@@ -430,10 +423,6 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         // fix ios bug...
         if (this.preserveDrawingBuffer === true) {
             contextAttributes.preserveDrawingBuffer = true;
-        }
-
-        if (this.gameMode === true) {
-            contextAttributes.gameMode = true;
         }
 
         if (this.preferWebGL2) {
@@ -834,13 +823,6 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         }, (instancedMeshes) => {
             this.renderInstancedMeshes(instancedMeshes);
         });
-        this._gameModeSumbit();
-    },
-    _gameModeSumbit() {
-        const gl = this.gl;
-        if (this.gameMode && gl && gl.submit) {
-            gl.submit();
-        }
     },
     /**
      * 清除背景
