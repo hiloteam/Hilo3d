@@ -822,7 +822,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             this.fire('afterRender');
         }
 
-        resourceManager.destroyUnsuedResource(stage);
+        resourceManager.destroyUnusedResource(stage);
     },
     /**
      * 渲染场景

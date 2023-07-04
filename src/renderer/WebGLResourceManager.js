@@ -111,7 +111,7 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
      * @param {Node} [rootNode] 根节点，不传代表所有资源都没被使用过。
      * @return {WebGLResourceManager} this
      */
-    destroyUnsuedResource(rootNode) {
+    destroyUnusedResource(rootNode) {
         const needDestroyResources = this._needDestroyResources;
         if (needDestroyResources.length === 0) {
             return this;
