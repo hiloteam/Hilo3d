@@ -107,13 +107,19 @@ const capabilities = {
     MAX_VERTEX_UNIFORM_VECTORS: undefined,
 
     /**
+     * @type {number}
+     * @readonly
+     */
+    MAX_SAMPLES: undefined,
+
+    /**
      * 初始化
      * @param {WebGLRenderingContext} gl
      */
     init(gl) {
         this.gl = gl;
         this.isWebGL2 = isWebGL2(gl);
-        const arr = [
+        let capabilitiesNames = [
             'MAX_RENDERBUFFER_SIZE',
             'MAX_COMBINED_TEXTURE_IMAGE_UNITS',
             'MAX_CUBE_MAP_TEXTURE_SIZE',
@@ -126,7 +132,15 @@ const capabilities = {
             'MAX_VERTEX_UNIFORM_VECTORS',
         ];
 
-        arr.forEach((name) => {
+        if (this.isWebGL2) {
+            capabilitiesNames = capabilitiesNames.concat([
+                'MAX_SAMPLES',
+            ]);
+        } else {
+            this.MAX_SAMPLES = 0;
+        }
+
+        capabilitiesNames.forEach((name) => {
             this.get(name);
         });
 

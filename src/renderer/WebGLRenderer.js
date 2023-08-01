@@ -160,19 +160,66 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      */
     failIfMajorPerformanceCaveat: false,
 
+
     /**
-     * 是否使用framebuffer
+     * 是否使用screen framebuffer
      * @type {Boolean}
      * @default false
      */
-    useFramebuffer: false,
+    useScreenFramebuffer: false,
 
     /**
-     * framebuffer配置
-     * @type {Object}
-     * @default {}
+     * readFramebuffer, useFramebuffer 为 true 时生效
+     * @type {Framebuffer}
+     * @default null
      */
-    framebufferOption: {},
+    screenReadFramebuffer: null,
+
+    /**
+     * writeFramebuffer, useFramebuffer 为 true 时生效
+     * @type {Framebuffer}
+     * @default null
+     */
+    screenWriteFramebuffer: null,
+
+    /**
+     * screen framebuffer 配置
+     * @type {Object}
+     * @default null
+     */
+    screenFramebufferOption: null,
+
+    /**
+     * framebuffer
+     * @deprecated Use {@link WebGLRenderer#readFramebuffer} instead.
+     */
+    get framebuffer() {
+        return this.readScreenFramebuffer;
+    },
+    /**
+     * 是否使用 screen framebuffer
+     * @deprecated Use {@link WebGLRenderer#useScreenFramebuffer} instead.
+     * @type {Boolean}
+     * @default false
+     */
+    get useFramebuffer() {
+        return this.useScreenFramebuffer;
+    },
+    set useFramebuffer(value) {
+        this.useScreenFramebuffer = value;
+    },
+    /**
+     * screen framebuffer 配置
+     * @deprecated Use {@link WebGLRenderer#screenFramebufferOption} instead.
+     * @type {Object}
+     * @default null
+     */
+    get framebufferOption() {
+        return this.screenFramebufferOption;
+    },
+    set framebufferOption(value) {
+        this.screenFramebufferOption = value;
+    },
 
     /**
      * 是否使用对数深度
@@ -316,9 +363,14 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             canvas.width = width;
             canvas.height = height;
 
-            if (this.framebuffer) {
-                this.framebuffer.resize(this.width, this.height, force);
+            if (this.screenReadFramebuffer) {
+                this.screenReadFramebuffer.resize(this.width, this.height, force);
             }
+
+            if (this.screenWriteFramebuffer !== this.screenReadFramebuffer) {
+                this.screenWriteFramebuffer.resize(this.width, this.height, force);
+            }
+
             this.viewport();
         }
     },
@@ -797,7 +849,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
         if (this.useFramebuffer) {
             this.setupFramebuffer();
-            this.framebuffer.bind();
+            this.screenWriteFramebuffer.bind();
         }
 
         this.clear();
@@ -809,7 +861,10 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         this.renderScene();
 
         if (this.useFramebuffer) {
-            this.renderToScreen(this.framebuffer);
+            if (this.screenReadFramebuffer !== this.screenWriteFramebuffer) {
+                this.screenReadFramebuffer.copyFramebuffer(this.screenWriteFramebuffer);
+            }
+            this.renderToScreen(this.screenReadFramebuffer);
         }
 
         if (fireEvent) {
@@ -860,7 +915,6 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
     clearColor(clearColor) {
         const {
             gl,
-            state
         } = this;
         clearColor = clearColor || this.clearColor;
         gl.clearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
@@ -888,48 +942,15 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         state.stencilMask(0xff);
         gl.clear(gl.STENCIL_BUFFER_BIT);
     },
+    /**
+     * 设置 readFramebuffer 和 writeFramebuffer，默认情况下二者相同
+     * 可重写此方法实现自定义的 framebuffer
+     */
     setupFramebuffer() {
-        if (!this.framebuffer) {
-            const framebufferWidth = this.width;
-            const framebufferHeight = this.height;
-            const samples = 4;
-
-            /**
-            * framebuffer，只在 useFramebuffer 为 true 时初始化后生成
-            * @type {Framebuffer}
-            * @default null
-            */
-            this.framebuffer = new Framebuffer(this, Object.assign({
-                useVao: this.useVao,
-                width: framebufferWidth,
-                height: framebufferHeight
-            }, {
-                colorAttachmentInfos: [
-                    {
-                        attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
-                        internalFormat: Hilo3d.constants.RGBA8,
-                        samples,
-                    },
-                ],
-                depthStencilAttachmentInfo: {
-                    attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
-                    internalFormat: Hilo3d.constants.DEPTH_COMPONENT24,
-                    attachment: Hilo3d.constants.DEPTH_ATTACHMENT,
-                    samples,
-                },
-            }));
-            this.framebuffer.init();
-
-            this.copyFramebuffer = new Hilo3d.Framebuffer(this, {
-                width: framebufferWidth,
-                height: framebufferHeight,
-                colorAttachmentInfos: [
-                    {
-                        attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
-                    },
-                ],
-            });
-            this.copyFramebuffer.init();
+        if (!this.screenReadFramebuffer) {
+            this.screenReadFramebuffer = new Framebuffer(this, this.framebufferOption || {});
+            this.screenReadFramebuffer.init();
+            this.screenWriteFramebuffer = this.screenReadFramebuffer;
         }
     },
     /**
@@ -938,8 +959,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      */
     renderToScreen(framebuffer) {
         this.state.bindSystemFramebuffer();
-        this.copyFramebuffer.copyFramebuffer(framebuffer);
-        this.copyFramebuffer.render(0, 0, 1, 1, this.clearColor);
+        framebuffer.render(0, 0, 1, 1, this.clearColor);
     },
     /**
      * 渲染一个mesh
