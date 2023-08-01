@@ -115,7 +115,8 @@ const semantic = {
             return this.handlerGLTexture(value.target, value.getGLTexture(state), textureIndex);
         }
 
-        return undefined;
+        const blankTexture = this.getBlankTexture();
+        return this.handlerGLTexture(blankTexture.target, blankTexture.getGLTexture(state), textureIndex);
     },
 
     /**
@@ -144,6 +145,20 @@ const semantic = {
         }
 
         return 0;
+    },
+
+    _blankTexture: null,
+    getBlankTexture() {
+        if (!this._blankTexture) {
+            this._blankTexture = new DataTexture({
+                width: 2,
+                height: 2,
+                type: constants.UNSIGNED_BYTE,
+                image: new Uint8Array([128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128]),
+            });
+        }
+    
+        return this._blankTexture;
     },
 
     // attributes
