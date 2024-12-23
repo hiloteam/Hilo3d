@@ -882,19 +882,29 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      * 渲染一个mesh
      * @param  {Mesh} mesh
      */
-    renderMesh(mesh) {
+    renderMesh(mesh, silent = false) {
+        if (!silent) {
+            mesh.fire('beforeRender', mesh);
+        }
         const vao = this.setupMesh(mesh, false).vao;
         vao.draw();
         this.addRenderInfo(vao.vertexCount / 3, 1);
+        if (!silent) {
+            mesh.fire('afterRender', mesh);
+        }
     },
     /**
+     *
      * 渲染一组 instanced mesh
      * @param  {Mesh[]} meshes
      */
-    renderInstancedMeshes(meshes) {
+    renderInstancedMeshes(meshes, silent = false) {
         const mesh = meshes[0];
         if (!mesh) {
             return;
+        }
+        if (!silent) {
+            meshes.forEach(m => m.fire('beforeRender', mesh));
         }
         const material = this.forceMaterial || mesh.material;
         const {
@@ -915,6 +925,9 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         });
         vao.drawInstance(meshes.length);
         this.addRenderInfo(vao.vertexCount / 3 * meshes.length, 1);
+        if (!silent) {
+            meshes.forEach(m => m.fire('afterRender', mesh));
+        }
     },
     /**
      * 渲染一组普通mesh

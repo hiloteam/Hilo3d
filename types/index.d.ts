@@ -3117,12 +3117,12 @@ class WebGLRenderer implements EventMixin {
      * 渲染一个mesh
      * @param mesh
      */
-    renderMesh(mesh: Mesh): void;
+    renderMesh(mesh: Mesh, silent = false): void;
     /**
      * 渲染一组 instanced mesh
      * @param meshes
      */
-    renderInstancedMeshes(meshes: Mesh[]): void;
+    renderInstancedMeshes(meshes: Mesh[], silent = false): void;
     /**
      * 渲染一组普通mesh
      * @param meshes
