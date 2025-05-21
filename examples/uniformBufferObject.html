@@ -62,7 +62,7 @@
             fs:`
                 precision HILO_MAX_FRAGMENT_PRECISION float;
 
-                varying vec2 v_texcoord0;
+                in vec2 v_texcoord0;
 
                 uniform sampler2D u_diffuse;
                 uniform sampler2D u_mixTexture;
@@ -83,14 +83,14 @@
             vs:`
                 precision HILO_MAX_VERTEX_PRECISION float;
 
-                attribute vec3 a_position;
-                attribute vec2 a_texcoord0;
+                layout(location = 0) in vec3 a_position;
+                layout(location = 1) in vec2 a_texcoord0;
 
                 layout(std140) uniform ModelBlock {
                   uniform mat4 u_modelViewProjectionMatrix;
                 };
 
-                varying vec2 v_texcoord0;
+                out vec2 v_texcoord0;
 
                 void main(void) {
                     vec4 pos = vec4(a_position, 1.0);
