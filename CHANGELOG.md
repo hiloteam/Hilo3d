@@ -1,3 +1,22 @@
+## [1.19.1](https://github.com/hiloteam/Hilo3d/compare/1.19.0...1.19.1) (2025-10-15)
+
+
+### Bug Fixes
+
+* Fix WebGLResourceManager.destroyUnusedResource typo ([c8c9075](https://github.com/hiloteam/Hilo3d/commit/c8c9075fd0ece73c5c65adb28e997d2229e35b5c))
+* github workflows node not found ([c1d1eea](https://github.com/hiloteam/Hilo3d/commit/c1d1eea617bd7b873beb0bd7618072849fd95bff))
+* remove uc browser game mode support ([58401a5](https://github.com/hiloteam/Hilo3d/commit/58401a54f596f8c60c595a50c25bb8dd823e8a2f))
+* return a white texture when the texture is missing in semantic.handlerTexture ([f38bd14](https://github.com/hiloteam/Hilo3d/commit/f38bd1456e7d258c73b5022930401fa38f29b72c))
+* The stencilMask method should be passed a numeric parameter ([33f71d9](https://github.com/hiloteam/Hilo3d/commit/33f71d9482dab23eea107a4669475c71c4aa425a))
+
+
+### Features
+
+* add webxr demo ([7610e68](https://github.com/hiloteam/Hilo3d/commit/7610e682299690da1d2bd5d18770fd2974bc52da))
+* fire event while render mesh ([85923a7](https://github.com/hiloteam/Hilo3d/commit/85923a727c798e0904e881d51c3e4a50a4869eed))
+
+
+
 # [1.19.0](https://github.com/hiloteam/Hilo3d/compare/1.18.0...1.19.0) (2023-05-05)
 
 
