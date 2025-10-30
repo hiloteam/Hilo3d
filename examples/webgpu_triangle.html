@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d WebGPU Triangle Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 9;
+            font-size: 14px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="info">WebGPU Triangle Example<br/>Loading...</div>
+    <script src="../build/Hilo3d.js"></script>
+    <script>
+        (async function() {
+            const infoDiv = document.getElementById('info');
+            
+            // Check WebGPU support
+            const isWebGPUAvailable = Hilo3d.WebGPUSupport.isAvailable();
+            if (!isWebGPUAvailable) {
+                infoDiv.innerHTML = 'WebGPU Triangle Example<br/>✗ WebGPU not available<br/>Please use Chrome 113+ or other WebGPU-enabled browser';
+                return;
+            }
+
+            const isWebGPUSupport = await Hilo3d.WebGPUSupport.get();
+            if (!isWebGPUSupport) {
+                infoDiv.innerHTML = 'WebGPU Triangle Example<br/>✗ WebGPU not supported<br/>Failed to get adapter/device';
+                return;
+            }
+
+            try {
+                // Create canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                document.getElementById('container').appendChild(canvas);
+
+                // Create WebGPU renderer
+                const renderer = new Hilo3d.WebGPURenderer({
+                    domElement: canvas,
+                    width: canvas.width,
+                    height: canvas.height,
+                    clearColor: new Hilo3d.Color(0.1, 0.1, 0.15, 1)
+                });
+
+                // Initialize renderer
+                await renderer.initContext();
+
+                infoDiv.innerHTML = `WebGPU Triangle Example<br/>✓ Renderer initialized<br/>Device: ${renderer.device ? 'Ready' : 'Failed'}`;
+
+                // Define triangle vertices (position + color)
+                // Each vertex: [x, y, r, g, b]
+                const vertices = new Float32Array([
+                    // Top vertex (red)
+                     0.0,  0.6,  1.0, 0.0, 0.0,
+                    // Bottom left vertex (green)
+                    -0.6, -0.6,  0.0, 1.0, 0.0,
+                    // Bottom right vertex (blue)
+                     0.6, -0.6,  0.0, 0.0, 1.0,
+                ]);
+
+                // Create vertex buffer
+                const vertexBuffer = renderer.device.createBuffer({
+                    size: vertices.byteLength,
+                    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+                });
+                renderer.device.queue.writeBuffer(vertexBuffer, 0, vertices);
+
+                // Define shader code (WGSL)
+                const shaderCode = `
+                    struct VertexInput {
+                        @location(0) position: vec2<f32>,
+                        @location(1) color: vec3<f32>,
+                    }
+
+                    struct VertexOutput {
+                        @builtin(position) position: vec4<f32>,
+                        @location(0) color: vec3<f32>,
+                    }
+
+                    @vertex
+                    fn vertexMain(input: VertexInput) -> VertexOutput {
+                        var output: VertexOutput;
+                        output.position = vec4<f32>(input.position, 0.0, 1.0);
+                        output.color = input.color;
+                        return output;
+                    }
+
+                    @fragment
+                    fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
+                        return vec4<f32>(input.color, 1.0);
+                    }
+                `;
+
+                // Create shader module
+                const shaderModule = renderer.device.createShaderModule({
+                    code: shaderCode,
+                });
+
+                // Create render pipeline
+                const pipeline = renderer.device.createRenderPipeline({
+                    layout: 'auto',
+                    vertex: {
+                        module: shaderModule,
+                        entryPoint: 'vertexMain',
+                        buffers: [{
+                            arrayStride: 5 * 4, // 5 floats per vertex (x, y, r, g, b)
+                            attributes: [
+                                {
+                                    // position
+                                    shaderLocation: 0,
+                                    offset: 0,
+                                    format: 'float32x2',
+                                },
+                                {
+                                    // color
+                                    shaderLocation: 1,
+                                    offset: 2 * 4,
+                                    format: 'float32x3',
+                                },
+                            ],
+                        }],
+                    },
+                    fragment: {
+                        module: shaderModule,
+                        entryPoint: 'fragmentMain',
+                        targets: [{
+                            format: renderer.format,
+                        }],
+                    },
+                    primitive: {
+                        topology: 'triangle-list',
+                    },
+                });
+
+                // Animation variables
+                let rotation = 0;
+
+                // Render loop
+                function render() {
+                    const commandEncoder = renderer.device.createCommandEncoder();
+                    const textureView = renderer.context.getCurrentTexture().createView();
+
+                    const renderPassDescriptor = {
+                        colorAttachments: [{
+                            view: textureView,
+                            clearValue: {
+                                r: renderer.clearColor.r,
+                                g: renderer.clearColor.g,
+                                b: renderer.clearColor.b,
+                                a: renderer.clearColor.a
+                            },
+                            loadOp: 'clear',
+                            storeOp: 'store',
+                        }],
+                    };
+
+                    const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
+                    passEncoder.setPipeline(pipeline);
+                    passEncoder.setVertexBuffer(0, vertexBuffer);
+                    passEncoder.draw(3, 1, 0, 0);
+                    passEncoder.end();
+
+                    renderer.device.queue.submit([commandEncoder.finish()]);
+
+                    // Update rotation for animation
+                    rotation += 0.01;
+
+                    requestAnimationFrame(render);
+                }
+
+                // Start rendering
+                render();
+
+                infoDiv.innerHTML = `WebGPU Triangle Example<br/>✓ Rendering active<br/>Format: ${renderer.format}`;
+
+            } catch (e) {
+                infoDiv.innerHTML = `WebGPU Triangle Example<br/>✗ Error: ${e.message}`;
+                console.error('WebGPU Triangle Example Error:', e);
+            }
+        })();
+    </script>
+</body>
+</html>

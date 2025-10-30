@@ -94,6 +94,7 @@
   * [transparent](https://hilo3d.js.org/examples/transparent.html)
   * [webgl_support](https://hilo3d.js.org/examples/webgl_support.html)
   * [webgpu_support](https://hilo3d.js.org/examples/webgpu_support.html)
+  * [webgpu_triangle](https://hilo3d.js.org/examples/webgpu_triangle.html)
   * [wireframe](https://hilo3d.js.org/examples/wireframe.html)
   * [geometry_box](https://hilo3d.js.org/examples/geometry_box.html)
   * [geometry_color](https://hilo3d.js.org/examples/geometry_color.html)
