@@ -84,7 +84,7 @@
                         lightType: 'NONE'
                     }),
                     x: -3,
-                    y: 0,
+                    y: -1,
                 });
                 stage.addChild(redBox);
 
@@ -98,7 +98,7 @@
                         lightType: 'NONE'
                     }),
                     x: 0,
-                    y: 0,
+                    y: -1,
                 });
                 stage.addChild(greenBox);
 
@@ -111,9 +111,24 @@
                         lightType: 'NONE'
                     }),
                     x: 3,
-                    y: 0,
+                    y: -1,
                 });
                 stage.addChild(blueBox);
+
+                // Textured box
+                const texturedBox = new Hilo3d.Mesh({
+                    geometry: boxGeometry,
+                    material: new Hilo3d.BasicMaterial({
+                        diffuse: new Hilo3d.LazyTexture({
+                            crossOrigin: true,
+                            src: 'https://gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
+                        }),
+                        lightType: 'NONE'
+                    }),
+                    x: -1.5,
+                    y: 1.5,
+                });
+                stage.addChild(texturedBox);
 
                 // Sphere with different color
                 const sphereGeometry = new Hilo3d.SphereGeometry({
@@ -129,7 +144,7 @@
                 });
                 stage.addChild(sphere);
 
-                infoDiv.innerHTML = `WebGPU Materials Example<br/>✓ Renderer initialized<br/>Using BasicMaterial with:<br/>- Diffuse colors<br/>- Specular highlights<br/>- Emission<br/>- Simple lighting`;
+                infoDiv.innerHTML = `WebGPU Materials Example<br/>✓ Renderer initialized<br/>Using BasicMaterial with:<br/>- Diffuse colors<br/>- Specular highlights<br/>- Emission<br/>- Textures<br/>- Simple lighting`;
 
                 // Animation variables
                 let rotation = 0;
@@ -147,6 +162,9 @@
 
                     blueBox.rotationX = rotation * 57.2958;
                     blueBox.rotationY = rotation * 57.2958 * 1.2;
+
+                    texturedBox.rotationX = rotation * 57.2958 * 0.6;
+                    texturedBox.rotationY = rotation * 57.2958 * 0.9;
 
                     sphere.rotationY = rotation * 57.2958 * 0.5;
 
