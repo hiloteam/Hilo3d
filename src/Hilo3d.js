@@ -39,6 +39,8 @@ export { default as WebGLState } from './renderer/WebGLState';
 export { default as WebGPURenderer } from './renderer/WebGPURenderer';
 export { default as WebGPUResourceManager } from './renderer/WebGPUResourceManager';
 export { default as WebGPUShaderManager } from './renderer/WebGPUShaderManager';
+export { default as WebGPUGeometryHelper } from './renderer/WebGPUGeometryHelper';
+export { default as WebGPUTextureHelper } from './renderer/WebGPUTextureHelper';
 export { default as WebGPUState } from './renderer/WebGPUState';
 export { default as BasicLoader } from './loader/BasicLoader';
 export { default as CubeTextureLoader } from './loader/CubeTextureLoader';
