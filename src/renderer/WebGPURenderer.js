@@ -601,8 +601,12 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
 
         // 检查材质是否有纹理
         const diffuse = material.diffuse;
-        const hasTexture = diffuse && diffuse.isTexture;
-        const hasUV = hasTexture && geometry.uvs && geometry.uvs.data;
+        const hasTextureObject = diffuse && diffuse.isTexture;
+        const hasUV = hasTextureObject && geometry.uvs && geometry.uvs.data;
+        const textureReady = hasTextureObject && diffuse.image && diffuse.image.complete;
+
+        // 只有在纹理加载完成时才使用纹理渲染
+        const useTexture = hasUV && textureReady;
 
         // 获取或创建顶点缓冲区
         const vertexBufferKey = `vb_${geometry.id}`;
@@ -628,9 +632,9 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
             this.resourceManager.setBuffer(normalBufferKey, normalBuffer);
         }
 
-        // 获取或创建UV缓冲区（如果有纹理）
+        // 获取或创建UV缓冲区（如果使用纹理）
         let uvBuffer = null;
-        if (hasUV) {
+        if (useTexture) {
             const uvBufferKey = `uv_${geometry.id}`;
             uvBuffer = this.resourceManager.getBuffer(uvBufferKey);
             if (!uvBuffer) {
@@ -662,11 +666,6 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
         }
 
         if (!vertexBuffer || !normalBuffer || !indexBuffer || indexCount === 0) {
-            return;
-        }
-
-        // 如果有纹理但没有UV，退出
-        if (hasTexture && !hasUV) {
             return;
         }
 
@@ -706,7 +705,7 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
 
         // 提取材质属性
         let diffuseColor;
-        if (hasTexture) {
+        if (useTexture) {
             diffuseColor = new Color(1, 1, 1); // 白色，让纹理颜色通过
         } else {
             diffuseColor = diffuse || new Color(0.5, 0.5, 0.5);
@@ -744,11 +743,11 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
         let gpuTexture = null;
         let sampler = null;
 
-        if (hasTexture) {
+        if (useTexture) {
             const textureKey = `tex_${diffuse.id}`;
             gpuTexture = this.resourceManager.getTexture(textureKey);
 
-            if (!gpuTexture && diffuse.image && diffuse.image.complete) {
+            if (!gpuTexture) {
                 // 创建纹理
                 const textureSize = [diffuse.image.width, diffuse.image.height, 1];
                 gpuTexture = this.device.createTexture({
@@ -796,7 +795,7 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
             }
         ];
 
-        if (hasTexture && gpuTexture) {
+        if (useTexture && gpuTexture) {
             bindGroupLayoutEntries.push(
                 {
                     binding: 2,
@@ -827,7 +826,7 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
             }
         ];
 
-        if (hasTexture && gpuTexture) {
+        if (useTexture && gpuTexture) {
             bindGroupEntries.push(
                 {
                     binding: 2,
@@ -846,14 +845,14 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
         });
 
         // 获取渲染管线
-        const pipeline = this._getPipeline(geometry, material, bindGroupLayout, hasTexture && gpuTexture !== null);
+        const pipeline = this._getPipeline(geometry, material, bindGroupLayout, useTexture && gpuTexture !== null);
 
         // 渲染
         passEncoder.setPipeline(pipeline);
         passEncoder.setBindGroup(0, bindGroup);
         passEncoder.setVertexBuffer(0, vertexBuffer);
         passEncoder.setVertexBuffer(1, normalBuffer);
-        if (hasTexture && uvBuffer) {
+        if (useTexture && uvBuffer) {
             passEncoder.setVertexBuffer(2, uvBuffer);
         }
         passEncoder.setIndexBuffer(indexBuffer, 'uint16');
