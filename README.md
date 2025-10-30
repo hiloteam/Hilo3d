@@ -1,7 +1,7 @@
 English | [简体中文](./README_ZH.md)
 
 <p align="center"><img src="https://gw.alicdn.com/tfs/TB1znqbquT2gK0jSZFvXXXnFXXa-569-143.svg" alt="omi" width="500"/></p>
-<h3 align="center">A 3D WebGL Rendering Engine</h3>
+<h3 align="center">A 3D WebGL/WebGPU Rendering Engine</h3>
 
 ---
 [Installation](#Installation) • [Documentation](#Documentation) • [Development](#Development) • [Showcase](#Showcase) • [Examples](#Examples) • [Authors](#Authors) • [License](#License)
@@ -13,6 +13,7 @@ English | [简体中文](./README_ZH.md)
 * Lightweight, only `110kb` after gzip.
 * Physically-based rendering support.
 * Perfect support for glTF models.
+* WebGPU support for modern browsers (experimental).
 
 ### Installation
 * use npm
@@ -91,6 +92,7 @@ English | [简体中文](./README_ZH.md)
   * [texture_data](https://hilo3d.js.org/examples/texture_data.html)
   * [transparent](https://hilo3d.js.org/examples/transparent.html)
   * [webgl_support](https://hilo3d.js.org/examples/webgl_support.html)
+  * [webgpu_support](https://hilo3d.js.org/examples/webgpu_support.html)
   * [wireframe](https://hilo3d.js.org/examples/wireframe.html)
   * [geometry_box](https://hilo3d.js.org/examples/geometry_box.html)
   * [geometry_color](https://hilo3d.js.org/examples/geometry_color.html)
