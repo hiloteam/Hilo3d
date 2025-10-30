@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGPU Shadow Mapping Example - Hilo3d</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        #container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #4CAF50;
+            margin-bottom: 10px;
+        }
+        #info {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        #canvas {
+            display: block;
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            background: #000;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .error {
+            background: #d32f2f;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .controls {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .controls label {
+            display: inline-block;
+            width: 150px;
+            margin-right: 10px;
+        }
+        .controls input[type="range"] {
+            width: 200px;
+        }
+        .controls input[type="number"] {
+            width: 80px;
+            padding: 5px;
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 4px;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>WebGPU Shadow Mapping Example</h1>
+        <div id="info">
+            <strong>Features:</strong>
+            <ul>
+                <li>Shadow mapping with PCF (Percentage-Closer Filtering)</li>
+                <li>Directional light shadows with configurable direction</li>
+                <li>2048x2048 shadow map resolution</li>
+                <li>Multiple objects casting and receiving shadows</li>
+                <li>Rotating light source for dynamic shadows</li>
+            </ul>
+            <strong>Controls:</strong> Adjust shadow bias and light direction below
+        </div>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <div class="control-group">
+                <label>Light X:</label>
+                <input type="range" id="lightX" min="-2" max="2" step="0.1" value="-0.5">
+                <input type="number" id="lightXNum" min="-2" max="2" step="0.1" value="-0.5">
+            </div>
+            <div class="control-group">
+                <label>Light Y:</label>
+                <input type="range" id="lightY" min="-2" max="0" step="0.1" value="-1">
+                <input type="number" id="lightYNum" min="-2" max="0" step="0.1" value="-1">
+            </div>
+            <div class="control-group">
+                <label>Light Z:</label>
+                <input type="range" id="lightZ" min="-2" max="2" step="0.1" value="-0.5">
+                <input type="number" id="lightZNum" min="-2" max="2" step="0.1" value="-0.5">
+            </div>
+            <div class="control-group">
+                <label>Shadow Bias:</label>
+                <input type="range" id="shadowBias" min="0" max="0.01" step="0.0001" value="0.005">
+                <input type="number" id="shadowBiasNum" min="0" max="0.01" step="0.0001" value="0.005">
+            </div>
+            <div class="control-group">
+                <label>Auto Rotate:</label>
+                <input type="checkbox" id="autoRotate" checked>
+            </div>
+        </div>
+        <div id="error" style="display: none;" class="error"></div>
+    </div>
+
+    <script src="../build/Hilo3d.js"></script>
+    <script>
+        async function init() {
+            const canvas = document.getElementById('canvas');
+            const errorDiv = document.getElementById('error');
+
+            try {
+                // Check WebGPU support
+                const supported = await Hilo3d.WebGPUSupport.get();
+                if (!supported) {
+                    throw new Error('WebGPU is not supported in this browser. Please use Chrome 113+ or Edge 113+ with WebGPU enabled.');
+                }
+
+                // Initialize renderer with shadow support
+                const renderer = new Hilo3d.WebGPURenderer({
+                    domElement: canvas,
+                    width: 800,
+                    height: 600,
+                    clearColor: new Hilo3d.Color(0.1, 0.1, 0.15, 1),
+                    enableShadows: true
+                });
+
+                await renderer.initContext();
+
+                // Create camera
+                const camera = new Hilo3d.PerspectiveCamera({
+                    aspect: 800 / 600,
+                    fov: 60,
+                    near: 0.1,
+                    far: 100
+                });
+                camera.z = 8;
+                camera.y = 5;
+                camera.lookAt(new Hilo3d.Vector3(0, 0, 0));
+
+                // Create stage (scene root)
+                const stage = new Hilo3d.Node();
+
+                // Create ground plane (receives shadows)
+                const groundGeometry = new Hilo3d.PlaneGeometry({
+                    width: 20,
+                    height: 20
+                });
+                groundGeometry.setAllRectUV([[0, 10], [10, 10], [10, 0], [0, 0]]);
+                
+                const groundMaterial = new Hilo3d.BasicMaterial({
+                    diffuse: new Hilo3d.Color(0.3, 0.3, 0.3)
+                });
+                
+                const ground = new Hilo3d.Mesh({
+                    geometry: groundGeometry,
+                    material: groundMaterial
+                });
+                ground.rotationX = -90;
+                ground.y = -1;
+                stage.addChild(ground);
+
+                // Create boxes that cast shadows
+                const box1Geometry = new Hilo3d.BoxGeometry({
+                    width: 1,
+                    height: 2,
+                    depth: 1
+                });
+                
+                const box1Material = new Hilo3d.BasicMaterial({
+                    diffuse: new Hilo3d.Color(1, 0.3, 0.3)
+                });
+                
+                const box1 = new Hilo3d.Mesh({
+                    geometry: box1Geometry,
+                    material: box1Material
+                });
+                box1.x = -2;
+                box1.y = 0;
+                stage.addChild(box1);
+
+                // Second box
+                const box2Geometry = new Hilo3d.BoxGeometry({
+                    width: 1.5,
+                    height: 1.5,
+                    depth: 1.5
+                });
+                
+                const box2Material = new Hilo3d.BasicMaterial({
+                    diffuse: new Hilo3d.Color(0.3, 1, 0.3)
+                });
+                
+                const box2 = new Hilo3d.Mesh({
+                    geometry: box2Geometry,
+                    material: box2Material
+                });
+                box2.x = 2;
+                box2.y = 0.25;
+                stage.addChild(box2);
+
+                // Create sphere
+                const sphereGeometry = new Hilo3d.SphereGeometry({
+                    radius: 0.8,
+                    widthSegments: 32,
+                    heightSegments: 32
+                });
+                
+                const sphereMaterial = new Hilo3d.BasicMaterial({
+                    diffuse: new Hilo3d.Color(0.3, 0.3, 1)
+                });
+                
+                const sphere = new Hilo3d.Mesh({
+                    geometry: sphereGeometry,
+                    material: sphereMaterial
+                });
+                sphere.x = 0;
+                sphere.y = 0.8;
+                stage.addChild(sphere);
+
+                // Light direction control
+                let lightDirection = new Hilo3d.Vector3(-0.5, -1, -0.5);
+                let shadowBias = 0.005;
+                let autoRotate = true;
+                let rotationAngle = 0;
+
+                // Setup controls
+                const lightXSlider = document.getElementById('lightX');
+                const lightXNum = document.getElementById('lightXNum');
+                const lightYSlider = document.getElementById('lightY');
+                const lightYNum = document.getElementById('lightYNum');
+                const lightZSlider = document.getElementById('lightZ');
+                const lightZNum = document.getElementById('lightZNum');
+                const shadowBiasSlider = document.getElementById('shadowBias');
+                const shadowBiasNum = document.getElementById('shadowBiasNum');
+                const autoRotateCheckbox = document.getElementById('autoRotate');
+
+                function syncSlider(slider, num) {
+                    slider.addEventListener('input', () => {
+                        num.value = slider.value;
+                        updateLight();
+                    });
+                    num.addEventListener('input', () => {
+                        slider.value = num.value;
+                        updateLight();
+                    });
+                }
+
+                syncSlider(lightXSlider, lightXNum);
+                syncSlider(lightYSlider, lightYNum);
+                syncSlider(lightZSlider, lightZNum);
+                syncSlider(shadowBiasSlider, shadowBiasNum);
+
+                autoRotateCheckbox.addEventListener('change', () => {
+                    autoRotate = autoRotateCheckbox.checked;
+                });
+
+                function updateLight() {
+                    lightDirection.x = parseFloat(lightXSlider.value);
+                    lightDirection.y = parseFloat(lightYSlider.value);
+                    lightDirection.z = parseFloat(lightZSlider.value);
+                    shadowBias = parseFloat(shadowBiasSlider.value);
+                    
+                    if (renderer.setLightDirection) {
+                        renderer.setLightDirection(lightDirection);
+                    }
+                    if (renderer.setShadowBias) {
+                        renderer.setShadowBias(shadowBias);
+                    }
+                }
+
+                updateLight();
+
+                // Animation loop
+                const ticker = new Hilo3d.Ticker(60);
+                ticker.addTick({
+                    tick: (dt) => {
+                        // Rotate objects
+                        box1.rotationY += 1;
+                        box2.rotationY -= 0.5;
+                        sphere.y = 0.8 + Math.sin(Date.now() * 0.001) * 0.3;
+
+                        // Auto-rotate light
+                        if (autoRotate) {
+                            rotationAngle += 0.3;
+                            const radius = 1.5;
+                            lightDirection.x = Math.cos(rotationAngle * Math.PI / 180) * radius;
+                            lightDirection.z = Math.sin(rotationAngle * Math.PI / 180) * radius;
+                            
+                            // Update UI
+                            lightXSlider.value = lightDirection.x;
+                            lightXNum.value = lightDirection.x.toFixed(2);
+                            lightZSlider.value = lightDirection.z;
+                            lightZNum.value = lightDirection.z.toFixed(2);
+                            
+                            if (renderer.setLightDirection) {
+                                renderer.setLightDirection(lightDirection);
+                            }
+                        }
+
+                        // Render scene
+                        renderer.render(stage, camera);
+                    }
+                });
+                ticker.start();
+
+                console.log('WebGPU Shadow Mapping Example initialized successfully!');
+                console.log('- Shadow map resolution: 2048x2048');
+                console.log('- PCF filtering enabled for soft shadows');
+                console.log('- Use controls to adjust light direction and shadow bias');
+
+            } catch (error) {
+                errorDiv.textContent = `Error: ${error.message}`;
+                errorDiv.style.display = 'block';
+                console.error('WebGPU Shadow Mapping Example Error:', error);
+            }
+        }
+
+        // Initialize when page loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>
