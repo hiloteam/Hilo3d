@@ -9,6 +9,7 @@ import RenderInfo from './RenderInfo';
 import RenderList from './RenderList';
 import WebGPUState from './WebGPUState';
 import WebGPUResourceManager from './WebGPUResourceManager';
+import WebGPUShaderManager from './WebGPUShaderManager';
 import LightManager from '../light/LightManager';
 import semantic from '../material/semantic';
 
@@ -292,6 +293,13 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
          */
         this.state = new WebGPUState(this.device);
 
+        /**
+         * shader管理器，初始化后生成。
+         * @type {WebGPUShaderManager}
+         * @default null
+         */
+        this.shaderManager = new WebGPUShaderManager(this.device);
+
         // 监听设备丢失
         this.device.lost.then((info) => {
             this._onContextLost(info);
@@ -335,150 +343,6 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
     },
 
     /**
-     * 获取或创建简单的WebGPU shader
-     * @private
-     * @param {Boolean} hasTexture 是否有纹理
-     * @return {GPUShaderModule}
-     */
-    _getSimpleShader(hasTexture = false) {
-        const cacheKey = hasTexture ? 'shader_with_texture' : 'simple_shader';
-        let shader = this.resourceManager.getPipeline(cacheKey);
-
-        if (shader) {
-            return shader;
-        }
-
-        // 简化的WGSL shader，支持基本材质和纹理
-        const shaderCode = hasTexture ? `
-            struct Uniforms {
-                mvpMatrix: mat4x4<f32>,
-                modelMatrix: mat4x4<f32>,
-                normalMatrix: mat4x4<f32>,
-            }
-            
-            struct MaterialUniforms {
-                diffuseColor: vec4<f32>,
-                specularColor: vec4<f32>,
-                emissionColor: vec4<f32>,
-                shininess: f32,
-                opacity: f32,
-                _padding1: f32,
-                _padding2: f32,
-            }
-            
-            @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-            @binding(1) @group(0) var<uniform> material: MaterialUniforms;
-            @binding(2) @group(0) var diffuseTexture: texture_2d<f32>;
-            @binding(3) @group(0) var diffuseSampler: sampler;
-
-            struct VertexInput {
-                @location(0) position: vec3<f32>,
-                @location(1) normal: vec3<f32>,
-                @location(2) uv: vec2<f32>,
-            }
-
-            struct VertexOutput {
-                @builtin(position) position: vec4<f32>,
-                @location(0) worldPos: vec3<f32>,
-                @location(1) normal: vec3<f32>,
-                @location(2) uv: vec2<f32>,
-            }
-
-            @vertex
-            fn vertexMain(input: VertexInput) -> VertexOutput {
-                var output: VertexOutput;
-                output.position = uniforms.mvpMatrix * vec4<f32>(input.position, 1.0);
-                output.worldPos = (uniforms.modelMatrix * vec4<f32>(input.position, 1.0)).xyz;
-                output.normal = normalize((uniforms.normalMatrix * vec4<f32>(input.normal, 0.0)).xyz);
-                output.uv = input.uv;
-                return output;
-            }
-
-            @fragment
-            fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-                // 采样纹理
-                let texColor = textureSample(diffuseTexture, diffuseSampler, input.uv);
-                
-                // 简单的光照计算
-                let lightDir = normalize(vec3<f32>(1.0, 1.0, 1.0));
-                let normal = normalize(input.normal);
-                let diffuse = max(dot(normal, lightDir), 0.0);
-                
-                let ambient = 0.3;
-                let lighting = ambient + diffuse * 0.7;
-                
-                var color = texColor.rgb * material.diffuseColor.rgb * lighting;
-                
-                // 添加自发光
-                color = color + material.emissionColor.rgb;
-                
-                return vec4<f32>(color, texColor.a * material.diffuseColor.a * material.opacity);
-            }
-        ` : `
-            struct Uniforms {
-                mvpMatrix: mat4x4<f32>,
-                modelMatrix: mat4x4<f32>,
-                normalMatrix: mat4x4<f32>,
-            }
-            
-            struct MaterialUniforms {
-                diffuseColor: vec4<f32>,
-                specularColor: vec4<f32>,
-                emissionColor: vec4<f32>,
-                shininess: f32,
-                opacity: f32,
-                _padding1: f32,
-                _padding2: f32,
-            }
-            
-            @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-            @binding(1) @group(0) var<uniform> material: MaterialUniforms;
-
-            struct VertexInput {
-                @location(0) position: vec3<f32>,
-                @location(1) normal: vec3<f32>,
-            }
-
-            struct VertexOutput {
-                @builtin(position) position: vec4<f32>,
-                @location(0) worldPos: vec3<f32>,
-                @location(1) normal: vec3<f32>,
-            }
-
-            @vertex
-            fn vertexMain(input: VertexInput) -> VertexOutput {
-                var output: VertexOutput;
-                output.position = uniforms.mvpMatrix * vec4<f32>(input.position, 1.0);
-                output.worldPos = (uniforms.modelMatrix * vec4<f32>(input.position, 1.0)).xyz;
-                output.normal = normalize((uniforms.normalMatrix * vec4<f32>(input.normal, 0.0)).xyz);
-                return output;
-            }
-
-            @fragment
-            fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-                // 简单的光照计算
-                let lightDir = normalize(vec3<f32>(1.0, 1.0, 1.0));
-                let normal = normalize(input.normal);
-                let diffuse = max(dot(normal, lightDir), 0.0);
-                
-                let ambient = 0.3;
-                let lighting = ambient + diffuse * 0.7;
-                
-                var color = material.diffuseColor.rgb * lighting;
-                
-                // 添加自发光
-                color = color + material.emissionColor.rgb;
-                
-                return vec4<f32>(color, material.diffuseColor.a * material.opacity);
-            }
-        `;
-
-        shader = this.device.createShaderModule({ code: shaderCode });
-        this.resourceManager.setPipeline(cacheKey, shader);
-        return shader;
-    },
-
-    /**
      * 获取或创建渲染管线
      * @private
      * @param {Geometry} geometry
@@ -492,7 +356,7 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
         let pipeline = this.resourceManager.getPipeline(pipelineKey);
 
         if (!pipeline) {
-            const shader = this._getSimpleShader(hasTexture);
+            const shader = this.shaderManager.getShaderModule(hasTexture);
 
             // 创建深度纹理格式
             const depthFormat = 'depth24plus';
