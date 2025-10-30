@@ -75,8 +75,9 @@
 
                 // Create multiple boxes with different materials
                 const boxGeometry = new Hilo3d.BoxGeometry();
-                // Set UV coordinates for all faces (required for texture mapping)
-                boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+                // Set UV coordinates for all 6 faces (required for texture mapping)
+                const uvCoords = [[0, 1], [1, 1], [1, 0], [0, 0]];
+                boxGeometry.setAllRectUV([uvCoords, uvCoords, uvCoords, uvCoords, uvCoords, uvCoords]);
 
                 // Red diffuse box
                 const redBox = new Hilo3d.Mesh({
