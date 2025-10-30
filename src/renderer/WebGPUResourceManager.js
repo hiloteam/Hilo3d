@@ -36,10 +36,10 @@ const WebGPUResourceManager = Class.create(/** @lends WebGPUResourceManager.prot
     constructor(params) {
         this._needDestroyResources = [];
         this._meshDict = {};
-        this._buffers = new WeakMap();
-        this._textures = new WeakMap();
-        this._pipelines = new WeakMap();
-        this._bindGroups = new WeakMap();
+        this._buffers = new Map();
+        this._textures = new Map();
+        this._pipelines = new Map();
+        this._bindGroups = new Map();
         Object.assign(this, params);
     },
 
