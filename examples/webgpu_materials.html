@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d WebGPU with Materials Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 9;
+            font-size: 14px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="info">WebGPU Materials Example<br/>Loading...</div>
+    <script src="../build/Hilo3d.js"></script>
+    <script>
+        (async function() {
+            const infoDiv = document.getElementById('info');
+            
+            // Check WebGPU support
+            const isWebGPUAvailable = Hilo3d.WebGPUSupport.isAvailable();
+            if (!isWebGPUAvailable) {
+                infoDiv.innerHTML = 'WebGPU Materials Example<br/>✗ WebGPU not available<br/>Please use Chrome 113+ or other WebGPU-enabled browser';
+                return;
+            }
+
+            const isWebGPUSupport = await Hilo3d.WebGPUSupport.get();
+            if (!isWebGPUSupport) {
+                infoDiv.innerHTML = 'WebGPU Materials Example<br/>✗ WebGPU not supported<br/>Failed to get adapter/device';
+                return;
+            }
+
+            try {
+                // Create canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                document.getElementById('container').appendChild(canvas);
+
+                // Create WebGPU renderer
+                const renderer = new Hilo3d.WebGPURenderer({
+                    domElement: canvas,
+                    width: canvas.width,
+                    height: canvas.height,
+                    clearColor: new Hilo3d.Color(0.1, 0.1, 0.15, 1)
+                });
+
+                // Initialize renderer
+                await renderer.initContext();
+
+                // Create camera
+                const camera = new Hilo3d.PerspectiveCamera({
+                    aspect: canvas.width / canvas.height,
+                    far: 100,
+                    near: 0.1,
+                    z: 8
+                });
+
+                // Create stage (scene graph root)
+                const stage = new Hilo3d.Node();
+
+                // Create multiple boxes with different materials
+                const boxGeometry = new Hilo3d.BoxGeometry();
+
+                // Red diffuse box
+                const redBox = new Hilo3d.Mesh({
+                    geometry: boxGeometry,
+                    material: new Hilo3d.BasicMaterial({
+                        diffuse: new Hilo3d.Color(1.0, 0.2, 0.2),
+                        lightType: 'NONE'
+                    }),
+                    x: -3,
+                    y: 0,
+                });
+                stage.addChild(redBox);
+
+                // Green specular box
+                const greenBox = new Hilo3d.Mesh({
+                    geometry: boxGeometry,
+                    material: new Hilo3d.BasicMaterial({
+                        diffuse: new Hilo3d.Color(0.2, 1.0, 0.2),
+                        specular: new Hilo3d.Color(1.0, 1.0, 1.0),
+                        shininess: 64,
+                        lightType: 'NONE'
+                    }),
+                    x: 0,
+                    y: 0,
+                });
+                stage.addChild(greenBox);
+
+                // Blue emissive box
+                const blueBox = new Hilo3d.Mesh({
+                    geometry: boxGeometry,
+                    material: new Hilo3d.BasicMaterial({
+                        diffuse: new Hilo3d.Color(0.2, 0.2, 1.0),
+                        emission: new Hilo3d.Color(0.1, 0.1, 0.3),
+                        lightType: 'NONE'
+                    }),
+                    x: 3,
+                    y: 0,
+                });
+                stage.addChild(blueBox);
+
+                // Sphere with different color
+                const sphereGeometry = new Hilo3d.SphereGeometry({
+                    radius: 0.8
+                });
+                const sphere = new Hilo3d.Mesh({
+                    geometry: sphereGeometry,
+                    material: new Hilo3d.BasicMaterial({
+                        diffuse: new Hilo3d.Color(1.0, 0.8, 0.2),
+                        lightType: 'NONE'
+                    }),
+                    y: 2,
+                });
+                stage.addChild(sphere);
+
+                infoDiv.innerHTML = `WebGPU Materials Example<br/>✓ Renderer initialized<br/>Using BasicMaterial with:<br/>- Diffuse colors<br/>- Specular highlights<br/>- Emission<br/>- Simple lighting`;
+
+                // Animation variables
+                let rotation = 0;
+
+                // Render loop
+                function render() {
+                    rotation += 0.01;
+
+                    // Rotate boxes
+                    redBox.rotationX = rotation * 57.2958;
+                    redBox.rotationY = rotation * 57.2958 * 0.7;
+
+                    greenBox.rotationX = rotation * 57.2958 * 0.8;
+                    greenBox.rotationY = rotation * 57.2958;
+
+                    blueBox.rotationX = rotation * 57.2958;
+                    blueBox.rotationY = rotation * 57.2958 * 1.2;
+
+                    sphere.rotationY = rotation * 57.2958 * 0.5;
+
+                    // Render using WebGPU renderer with full pipeline
+                    renderer.render(stage, camera);
+
+                    requestAnimationFrame(render);
+                }
+
+                // Handle resize
+                window.addEventListener('resize', () => {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                    camera.aspect = canvas.width / canvas.height;
+                    renderer.resize(canvas.width, canvas.height);
+                });
+
+                // Start rendering
+                render();
+
+            } catch (e) {
+                infoDiv.innerHTML = `WebGPU Materials Example<br/>✗ Error: ${e.message}`;
+                console.error('WebGPU Materials Example Error:', e);
+            }
+        })();
+    </script>
+</body>
+</html>
