@@ -74,7 +74,12 @@
                 const stage = new Hilo3d.Node();
 
                 // Create multiple boxes with different materials
-                const boxGeometry = new Hilo3d.BoxGeometry();
+                // Use segments to generate UV coordinates for texturing
+                const boxGeometry = new Hilo3d.BoxGeometry({
+                    widthSegments: 1,
+                    heightSegments: 1,
+                    depthSegments: 1
+                });
 
                 // Red diffuse box
                 const redBox = new Hilo3d.Mesh({
