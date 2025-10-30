@@ -44,6 +44,7 @@ export { default as WebGPUTextureHelper } from './renderer/webgpu/WebGPUTextureH
 export { default as WebGPUBufferHelper } from './renderer/webgpu/WebGPUBufferHelper';
 export { default as WebGPUMaterialHelper } from './renderer/webgpu/WebGPUMaterialHelper';
 export { default as WebGPUUniformHelper } from './renderer/webgpu/WebGPUUniformHelper';
+export { default as WebGPUShadowHelper } from './renderer/webgpu/WebGPUShadowHelper';
 export { default as WebGPUState } from './renderer/webgpu/WebGPUState';
 export { default as BasicLoader } from './loader/BasicLoader';
 export { default as CubeTextureLoader } from './loader/CubeTextureLoader';
