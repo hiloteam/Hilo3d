@@ -1,17 +1,19 @@
 /* global GPUBufferUsage, GPUShaderStage, GPUTextureUsage */
 
-import Class from '../core/Class';
-import Node from '../core/Node';
-import Color from '../math/Color';
-import Matrix4 from '../math/Matrix4';
-import EventMixin from '../core/EventMixin';
-import RenderInfo from './RenderInfo';
-import RenderList from './RenderList';
+import Class from '../../core/Class';
+import Node from '../../core/Node';
+import Color from '../../math/Color';
+import EventMixin from '../../core/EventMixin';
+import RenderInfo from '../RenderInfo';
+import RenderList from '../RenderList';
 import WebGPUState from './WebGPUState';
 import WebGPUResourceManager from './WebGPUResourceManager';
 import WebGPUShaderManager from './WebGPUShaderManager';
-import LightManager from '../light/LightManager';
-import semantic from '../material/semantic';
+import WebGPUBufferHelper from './WebGPUBufferHelper';
+import WebGPUMaterialHelper from './WebGPUMaterialHelper';
+import WebGPUUniformHelper from './WebGPUUniformHelper';
+import LightManager from '../../light/LightManager';
+import semantic from '../../material/semantic';
 
 /**
  * WebGPU渲染器
@@ -300,6 +302,27 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
          */
         this.shaderManager = new WebGPUShaderManager(this.device);
 
+        /**
+         * buffer管理器，初始化后生成。
+         * @type {WebGPUBufferHelper}
+         * @default null
+         */
+        this.bufferHelper = new WebGPUBufferHelper(this.device, this.resourceManager);
+
+        /**
+         * material管理器，初始化后生成。
+         * @type {WebGPUMaterialHelper}
+         * @default null
+         */
+        this.materialHelper = new WebGPUMaterialHelper(this.device);
+
+        /**
+         * uniform管理器，初始化后生成。
+         * @type {WebGPUUniformHelper}
+         * @default null
+         */
+        this.uniformHelper = new WebGPUUniformHelper(this.device);
+
         // 监听设备丢失
         this.device.lost.then((info) => {
             this._onContextLost(info);
@@ -406,28 +429,12 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
                     entryPoint: 'fragmentMain',
                     targets: [{
                         format: this.format,
-                        blend: material.transparent ? {
-                            color: {
-                                srcFactor: 'src-alpha',
-                                dstFactor: 'one-minus-src-alpha',
-                                operation: 'add',
-                            },
-                            alpha: {
-                                srcFactor: 'one',
-                                dstFactor: 'one-minus-src-alpha',
-                                operation: 'add',
-                            },
-                        } : undefined,
+                        blend: this.materialHelper.getBlendMode(material),
                     }],
                 },
                 primitive: {
                     topology: 'triangle-list',
-                    cullMode: (() => {
-                        // FRONT_AND_BACK = 1032, BACK = 1029, FRONT = 1028
-                        if (material.side === 1032) return 'none'; // FRONT_AND_BACK
-                        if (material.side === 1029) return 'front'; // BACK - cull front faces
-                        return 'back'; // FRONT (1028) or default - cull back faces
-                    })(),
+                    cullMode: this.materialHelper.getCullMode(material),
                 },
                 depthStencil: {
                     depthWriteEnabled: material.depthMask,
@@ -463,156 +470,42 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
             return;
         }
 
-        // 检查材质是否有纹理
-        const diffuse = material.diffuse;
-        const hasTextureObject = diffuse && diffuse.isTexture;
+        // 检查材质和纹理
+        const hasTextureObject = this.materialHelper.hasTexture(material);
         const hasUV = hasTextureObject && geometry.uvs && geometry.uvs.data;
-
-        // 检查纹理是否准备好
-        // LazyTexture在加载完成前会使用占位图，image.complete为true但src是data URL
-        // needUpdate标记图片已加载完成且需要更新到GPU
-        const textureReady = hasTextureObject && diffuse.image && diffuse.image.complete
-                            && (!diffuse.isLazyTexture || (diffuse.image.src && !diffuse.image.src.startsWith('data:')));
-
-        // 只有在纹理加载完成时才使用纹理渲染
+        const textureReady = this.materialHelper.isTextureReady(material);
         const useTexture = hasUV && textureReady;
 
-        // 获取或创建顶点缓冲区
-        const vertexBufferKey = `vb_${geometry.id}`;
-        let vertexBuffer = this.resourceManager.getBuffer(vertexBufferKey);
-        if (!vertexBuffer) {
-            vertexBuffer = this.device.createBuffer({
-                size: geometry.vertices.data.byteLength,
-                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-            });
-            this.device.queue.writeBuffer(vertexBuffer, 0, geometry.vertices.data);
-            this.resourceManager.setBuffer(vertexBufferKey, vertexBuffer);
-        }
-
-        // 获取或创建法线缓冲区
-        const normalBufferKey = `nb_${geometry.id}`;
-        let normalBuffer = this.resourceManager.getBuffer(normalBufferKey);
-        if (!normalBuffer) {
-            normalBuffer = this.device.createBuffer({
-                size: geometry.normals.data.byteLength,
-                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-            });
-            this.device.queue.writeBuffer(normalBuffer, 0, geometry.normals.data);
-            this.resourceManager.setBuffer(normalBufferKey, normalBuffer);
-        }
-
-        // 获取或创建UV缓冲区（如果使用纹理）
-        let uvBuffer = null;
-        if (useTexture) {
-            const uvBufferKey = `uv_${geometry.id}`;
-            uvBuffer = this.resourceManager.getBuffer(uvBufferKey);
-            if (!uvBuffer) {
-                uvBuffer = this.device.createBuffer({
-                    size: geometry.uvs.data.byteLength,
-                    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-                });
-                this.device.queue.writeBuffer(uvBuffer, 0, geometry.uvs.data);
-                this.resourceManager.setBuffer(uvBufferKey, uvBuffer);
-            }
-        }
-
-        // 获取或创建索引缓冲区
-        const indexBufferKey = `ib_${geometry.id}`;
-        let indexBuffer = this.resourceManager.getBuffer(indexBufferKey);
-        let indexCount = 0;
-
-        if (geometry.indices && geometry.indices.data) {
-            indexCount = geometry.indices.data.length;
-
-            if (!indexBuffer) {
-                indexBuffer = this.device.createBuffer({
-                    size: geometry.indices.data.byteLength,
-                    usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-                });
-                this.device.queue.writeBuffer(indexBuffer, 0, geometry.indices.data);
-                this.resourceManager.setBuffer(indexBufferKey, indexBuffer);
-            }
-        }
+        // 使用buffer helper获取或创建缓冲区
+        const vertexBuffer = this.bufferHelper.getOrCreateVertexBuffer(geometry);
+        const normalBuffer = this.bufferHelper.getOrCreateNormalBuffer(geometry);
+        const uvBuffer = useTexture ? this.bufferHelper.getOrCreateUVBuffer(geometry) : null;
+        const { buffer: indexBuffer, count: indexCount } = this.bufferHelper.getOrCreateIndexBuffer(geometry);
 
         if (!vertexBuffer || !normalBuffer || !indexBuffer || indexCount === 0) {
             return;
         }
 
-        // 创建uniform缓冲区
-        const uniformBufferSize = 192; // 3 * mat4x4 (64 bytes each)
-        const uniformBuffer = this.device.createBuffer({
-            size: uniformBufferSize,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
+        // 使用uniform helper创建uniform数据
+        const mvpUniformData = this.uniformHelper.createMVPUniformData(mesh, camera);
+        const uniformBuffer = this.bufferHelper.createUniformBuffer(
+            this.uniformHelper.getMVPUniformSize(),
+            mvpUniformData
+        );
 
-        // 计算MVP矩阵
-        mesh.updateMatrixWorld();
-        camera.updateViewProjectionMatrix();
-
-        // 使用Matrix4进行正确的矩阵乘法
-        const mvpMatrix = new Matrix4();
-        mvpMatrix.multiply(camera.viewProjectionMatrix, mesh.worldMatrix);
-
-        // 计算法线矩阵（模型矩阵的逆转置）
-        const normalMatrix = new Matrix4();
-        normalMatrix.copy(mesh.worldMatrix);
-        // TODO: 对于非均匀缩放，应该使用逆转置矩阵
-
-        // 上传矩阵uniform
-        const uniformData = new Float32Array(48); // 3 matrices * 16 floats
-        uniformData.set(mvpMatrix.elements, 0);
-        uniformData.set(mesh.worldMatrix.elements, 16);
-        uniformData.set(normalMatrix.elements, 32);
-        this.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
-
-        // 创建材质uniform缓冲区
-        const materialBufferSize = 64; // vec4 * 4 = 64 bytes
-        const materialBuffer = this.device.createBuffer({
-            size: materialBufferSize,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
-
-        // 提取材质属性
-        let diffuseColor;
-        if (useTexture) {
-            diffuseColor = new Color(1, 1, 1); // 白色，让纹理颜色通过
-        } else {
-            diffuseColor = diffuse || new Color(0.5, 0.5, 0.5);
-        }
-        const specular = material.specular || new Color(1, 1, 1);
-        const emission = material.emission || new Color(0, 0, 0);
-        const shininess = material.shininess || 32;
-        const opacity = material.transparency !== undefined ? material.transparency : 1;
-
-        const materialData = new Float32Array(16);
-        // diffuseColor (vec4)
-        materialData[0] = diffuseColor.r || diffuseColor._r || 0.5;
-        materialData[1] = diffuseColor.g || diffuseColor._g || 0.5;
-        materialData[2] = diffuseColor.b || diffuseColor._b || 0.5;
-        materialData[3] = diffuseColor.a || diffuseColor._a || 1;
-        // specularColor (vec4)
-        materialData[4] = specular.r || specular._r || 1;
-        materialData[5] = specular.g || specular._g || 1;
-        materialData[6] = specular.b || specular._b || 1;
-        materialData[7] = 1;
-        // emissionColor (vec4)
-        materialData[8] = emission.r || emission._r || 0;
-        materialData[9] = emission.g || emission._g || 0;
-        materialData[10] = emission.b || emission._b || 0;
-        materialData[11] = 1;
-        // shininess, opacity, padding
-        materialData[12] = shininess;
-        materialData[13] = opacity;
-        materialData[14] = 0;
-        materialData[15] = 0;
-
-        this.device.queue.writeBuffer(materialBuffer, 0, materialData);
+        // 使用material helper创建材质uniform数据
+        const materialData = this.materialHelper.createMaterialUniformData(material, useTexture);
+        const materialBuffer = this.bufferHelper.createUniformBuffer(
+            this.uniformHelper.getMaterialUniformSize(),
+            materialData
+        );
 
         // 创建纹理和采样器（如果需要）
         let gpuTexture = null;
         let sampler = null;
 
         if (useTexture) {
+            const diffuse = material.diffuse;
             const textureKey = `tex_${diffuse.id}`;
             gpuTexture = this.resourceManager.getTexture(textureKey);
 
