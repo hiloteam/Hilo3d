@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d WebGPU Box Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 9;
+            font-size: 14px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="info">WebGPU Box Example (Using Hilo3d Pipeline)<br/>Loading...</div>
+    <script src="../build/Hilo3d.js"></script>
+    <script>
+        (async function() {
+            const infoDiv = document.getElementById('info');
+            
+            // Check WebGPU support
+            const isWebGPUAvailable = Hilo3d.WebGPUSupport.isAvailable();
+            if (!isWebGPUAvailable) {
+                infoDiv.innerHTML = 'WebGPU Box Example<br/>✗ WebGPU not available<br/>Please use Chrome 113+ or other WebGPU-enabled browser';
+                return;
+            }
+
+            const isWebGPUSupport = await Hilo3d.WebGPUSupport.get();
+            if (!isWebGPUSupport) {
+                infoDiv.innerHTML = 'WebGPU Box Example<br/>✗ WebGPU not supported<br/>Failed to get adapter/device';
+                return;
+            }
+
+            try {
+                // Create canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                document.getElementById('container').appendChild(canvas);
+
+                // Create WebGPU renderer
+                const renderer = new Hilo3d.WebGPURenderer({
+                    domElement: canvas,
+                    width: canvas.width,
+                    height: canvas.height,
+                    clearColor: new Hilo3d.Color(0.1, 0.1, 0.15, 1)
+                });
+
+                // Initialize renderer
+                await renderer.initContext();
+
+                // Create camera
+                const camera = new Hilo3d.PerspectiveCamera({
+                    aspect: canvas.width / canvas.height,
+                    far: 100,
+                    near: 0.1,
+                    z: 5
+                });
+
+                // Create box geometry using Hilo3d's BoxGeometry
+                const boxGeometry = new Hilo3d.BoxGeometry();
+                
+                // Create material using Hilo3d's BasicMaterial
+                const material = new Hilo3d.BasicMaterial({
+                    diffuse: new Hilo3d.Color(0.8, 0.3, 0.2)
+                });
+
+                // Create mesh using Hilo3d's Mesh
+                const boxMesh = new Hilo3d.Mesh({
+                    geometry: boxGeometry,
+                    material: material
+                });
+
+                infoDiv.innerHTML = `WebGPU Box Example<br/>✓ Renderer initialized<br/>Using Hilo3d Pipeline:<br/>- BoxGeometry<br/>- BasicMaterial<br/>- Mesh<br/><br/>Note: Full pipeline integration pending`;
+
+                // Get box vertices and indices from Hilo3d geometry
+                const vertices = boxGeometry.vertices.data;
+                const indices = boxGeometry.indices.data;
+                
+                // Create vertex buffer (positions only for now)
+                const positions = new Float32Array(vertices.length);
+                for (let i = 0; i < vertices.length; i += 3) {
+                    positions[i] = vertices[i];
+                    positions[i + 1] = vertices[i + 1];
+                    positions[i + 2] = vertices[i + 2];
+                }
+
+                const vertexBuffer = renderer.device.createBuffer({
+                    size: positions.byteLength,
+                    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+                });
+                renderer.device.queue.writeBuffer(vertexBuffer, 0, positions);
+
+                // Create index buffer
+                const indexBuffer = renderer.device.createBuffer({
+                    size: indices.byteLength,
+                    usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+                });
+                renderer.device.queue.writeBuffer(indexBuffer, 0, indices);
+
+                // WGSL shader with MVP transform
+                const shaderCode = `
+                    struct Uniforms {
+                        mvpMatrix: mat4x4<f32>,
+                    }
+                    @binding(0) @group(0) var<uniform> uniforms: Uniforms;
+
+                    struct VertexInput {
+                        @location(0) position: vec3<f32>,
+                    }
+
+                    struct VertexOutput {
+                        @builtin(position) position: vec4<f32>,
+                        @location(0) worldPos: vec3<f32>,
+                    }
+
+                    @vertex
+                    fn vertexMain(input: VertexInput) -> VertexOutput {
+                        var output: VertexOutput;
+                        output.position = uniforms.mvpMatrix * vec4<f32>(input.position, 1.0);
+                        output.worldPos = input.position;
+                        return output;
+                    }
+
+                    @fragment
+                    fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
+                        // Use material color (red-orange from Hilo3d.Color(0.8, 0.3, 0.2))
+                        let baseColor = vec3<f32>(0.8, 0.3, 0.2);
+                        // Add simple lighting based on position
+                        let lighting = normalize(input.worldPos) * 0.3 + 0.7;
+                        return vec4<f32>(baseColor * lighting, 1.0);
+                    }
+                `;
+
+                // Create shader module
+                const shaderModule = renderer.device.createShaderModule({
+                    code: shaderCode,
+                });
+
+                // Create uniform buffer for MVP matrix
+                const uniformBufferSize = 64; // 4x4 matrix = 16 floats = 64 bytes
+                const uniformBuffer = renderer.device.createBuffer({
+                    size: uniformBufferSize,
+                    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                });
+
+                // Create bind group layout
+                const bindGroupLayout = renderer.device.createBindGroupLayout({
+                    entries: [{
+                        binding: 0,
+                        visibility: GPUShaderStage.VERTEX,
+                        buffer: { type: 'uniform' }
+                    }]
+                });
+
+                // Create bind group
+                const bindGroup = renderer.device.createBindGroup({
+                    layout: bindGroupLayout,
+                    entries: [{
+                        binding: 0,
+                        resource: { buffer: uniformBuffer }
+                    }]
+                });
+
+                // Create render pipeline
+                const pipeline = renderer.device.createRenderPipeline({
+                    layout: renderer.device.createPipelineLayout({
+                        bindGroupLayouts: [bindGroupLayout]
+                    }),
+                    vertex: {
+                        module: shaderModule,
+                        entryPoint: 'vertexMain',
+                        buffers: [{
+                            arrayStride: 3 * 4, // 3 floats per vertex
+                            attributes: [{
+                                shaderLocation: 0,
+                                offset: 0,
+                                format: 'float32x3',
+                            }],
+                        }],
+                    },
+                    fragment: {
+                        module: shaderModule,
+                        entryPoint: 'fragmentMain',
+                        targets: [{
+                            format: renderer.format,
+                        }],
+                    },
+                    primitive: {
+                        topology: 'triangle-list',
+                        cullMode: 'back',
+                    },
+                    depthStencil: {
+                        depthWriteEnabled: true,
+                        depthCompare: 'less',
+                        format: 'depth24plus',
+                    },
+                });
+
+                // Create depth texture
+                let depthTexture = renderer.device.createTexture({
+                    size: [canvas.width, canvas.height],
+                    format: 'depth24plus',
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+                });
+
+                // Animation variables
+                let rotation = 0;
+
+                // Render loop
+                function render() {
+                    rotation += 0.01;
+
+                    // Update mesh rotation using Hilo3d's transform system
+                    boxMesh.rotationX = rotation * 57.2958; // Convert to degrees
+                    boxMesh.rotationY = rotation * 57.2958 * 0.7;
+                    
+                    // Update matrices using Hilo3d
+                    boxMesh.updateMatrixWorld();
+                    camera.updateViewProjectionMatrix();
+                    
+                    // Calculate MVP matrix: Projection * View * Model
+                    const mvpMatrix = new Float32Array(16);
+                    const modelMatrix = boxMesh.worldMatrix.elements;
+                    const viewProjectionMatrix = camera.viewProjectionMatrix.elements;
+                    
+                    // Multiply: MVP = VP * M
+                    for (let i = 0; i < 4; i++) {
+                        for (let j = 0; j < 4; j++) {
+                            mvpMatrix[i * 4 + j] = 0;
+                            for (let k = 0; k < 4; k++) {
+                                mvpMatrix[i * 4 + j] += viewProjectionMatrix[i * 4 + k] * modelMatrix[k * 4 + j];
+                            }
+                        }
+                    }
+                    
+                    // Upload MVP matrix to GPU
+                    renderer.device.queue.writeBuffer(uniformBuffer, 0, mvpMatrix);
+
+                    // Render
+                    const commandEncoder = renderer.device.createCommandEncoder();
+                    const textureView = renderer.context.getCurrentTexture().createView();
+
+                    const renderPassDescriptor = {
+                        colorAttachments: [{
+                            view: textureView,
+                            clearValue: {
+                                r: renderer.clearColor.r,
+                                g: renderer.clearColor.g,
+                                b: renderer.clearColor.b,
+                                a: renderer.clearColor.a
+                            },
+                            loadOp: 'clear',
+                            storeOp: 'store',
+                        }],
+                        depthStencilAttachment: {
+                            view: depthTexture.createView(),
+                            depthClearValue: 1.0,
+                            depthLoadOp: 'clear',
+                            depthStoreOp: 'store',
+                        }
+                    };
+
+                    const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
+                    passEncoder.setPipeline(pipeline);
+                    passEncoder.setBindGroup(0, bindGroup);
+                    passEncoder.setVertexBuffer(0, vertexBuffer);
+                    passEncoder.setIndexBuffer(indexBuffer, 'uint16');
+                    passEncoder.drawIndexed(indices.length, 1, 0, 0, 0);
+                    passEncoder.end();
+
+                    renderer.device.queue.submit([commandEncoder.finish()]);
+
+                    requestAnimationFrame(render);
+                }
+
+                // Handle resize
+                window.addEventListener('resize', () => {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                    camera.aspect = canvas.width / canvas.height;
+                    renderer.resize(canvas.width, canvas.height);
+                    
+                    // Recreate depth texture with new size
+                    depthTexture.destroy();
+                    depthTexture = renderer.device.createTexture({
+                        size: [canvas.width, canvas.height],
+                        format: 'depth24plus',
+                        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+                    });
+                });
+
+                // Start rendering
+                render();
+
+            } catch (e) {
+                infoDiv.innerHTML = `WebGPU Box Example<br/>✗ Error: ${e.message}`;
+                console.error('WebGPU Box Example Error:', e);
+            }
+        })();
+    </script>
+</body>
+</html>
