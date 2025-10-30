@@ -1,7 +1,7 @@
 [English](./README.md) | 简体中文
 
 <p align="center"><img src="https://gw.alicdn.com/tfs/TB1znqbquT2gK0jSZFvXXXnFXXa-569-143.svg" alt="omi" width="500"/></p>
-<h3 align="center">一个 3D WebGL 渲染引擎</h3>
+<h3 align="center">一个 3D WebGL/WebGPU 渲染引擎</h3>
 
 ---
 [安装](#安装) • [文档](#文档) • [开发](#开发) • [案例](#案例) • [特性例子](#特性例子) • [作者](#作者) • [许可证](#许可证)
@@ -13,6 +13,7 @@
 * Lightweight, only `110kb` after gzip.
 * Physically-based rendering support.
 * Perfect support for glTF models.
+* WebGPU支持（实验性功能）。
 
 ### 安装
 * 使用 npm
@@ -92,6 +93,7 @@
   * [texture_data](https://hilo3d.js.org/examples/texture_data.html)
   * [transparent](https://hilo3d.js.org/examples/transparent.html)
   * [webgl_support](https://hilo3d.js.org/examples/webgl_support.html)
+  * [webgpu_support](https://hilo3d.js.org/examples/webgpu_support.html)
   * [wireframe](https://hilo3d.js.org/examples/wireframe.html)
   * [geometry_box](https://hilo3d.js.org/examples/geometry_box.html)
   * [geometry_color](https://hilo3d.js.org/examples/geometry_color.html)
