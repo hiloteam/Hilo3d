@@ -475,9 +475,10 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
                 primitive: {
                     topology: 'triangle-list',
                     cullMode: (() => {
-                        if (material.side === 2) return 'none';
-                        if (material.side === 0) return 'back';
-                        return 'front';
+                        // FRONT_AND_BACK = 1032, BACK = 1029, FRONT = 1028
+                        if (material.side === 1032) return 'none'; // FRONT_AND_BACK
+                        if (material.side === 1029) return 'front'; // BACK - cull front faces
+                        return 'back'; // FRONT (1028) or default - cull back faces
                     })(),
                 },
                 depthStencil: {
