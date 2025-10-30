@@ -3,6 +3,7 @@
 import Class from '../core/Class';
 import Node from '../core/Node';
 import Color from '../math/Color';
+import Matrix4 from '../math/Matrix4';
 import EventMixin from '../core/EventMixin';
 import RenderInfo from './RenderInfo';
 import RenderList from './RenderList';
@@ -570,33 +571,20 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
         mesh.updateMatrixWorld();
         camera.updateViewProjectionMatrix();
 
-        const mvpMatrix = new Float32Array(16);
-        const modelMatrix = mesh.worldMatrix.elements;
-        const viewProjectionMatrix = camera.viewProjectionMatrix.elements;
-
-        // MVP = VP * M
-        for (let i = 0; i < 4; i++) {
-            for (let j = 0; j < 4; j++) {
-                mvpMatrix[i * 4 + j] = 0;
-                for (let k = 0; k < 4; k++) {
-                    mvpMatrix[i * 4 + j] += viewProjectionMatrix[i * 4 + k] * modelMatrix[k * 4 + j];
-                }
-            }
-        }
+        // 使用Matrix4进行正确的矩阵乘法
+        const mvpMatrix = new Matrix4();
+        mvpMatrix.multiply(camera.viewProjectionMatrix, mesh.worldMatrix);
 
         // 计算法线矩阵（模型矩阵的逆转置）
-        const normalMatrix = new Float32Array(16);
-        const modelMat = mesh.worldMatrix.elements;
-        // 简化：直接使用模型矩阵（对于均匀缩放有效）
-        for (let i = 0; i < 16; i++) {
-            normalMatrix[i] = modelMat[i];
-        }
+        const normalMatrix = new Matrix4();
+        normalMatrix.copy(mesh.worldMatrix);
+        // TODO: 对于非均匀缩放，应该使用逆转置矩阵
 
         // 上传矩阵uniform
         const uniformData = new Float32Array(48); // 3 matrices * 16 floats
-        uniformData.set(mvpMatrix, 0);
-        uniformData.set(modelMatrix, 16);
-        uniformData.set(normalMatrix, 32);
+        uniformData.set(mvpMatrix.elements, 0);
+        uniformData.set(mesh.worldMatrix.elements, 16);
+        uniformData.set(normalMatrix.elements, 32);
         this.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
         // 创建材质uniform缓冲区
