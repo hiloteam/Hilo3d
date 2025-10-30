@@ -85,29 +85,32 @@ describe('WebGPURenderer', () => {
         it('should fail gracefully when WebGPU is not supported', async () => {
             // Mock navigator.gpu to return null
             const originalGpu = navigator.gpu;
-            Object.defineProperty(navigator, 'gpu', {
-                value: undefined,
-                configurable: true
-            });
-
-            const renderer = new WebGPURenderer({
-                domElement: document.createElement('canvas')
-            });
-
+            
             try {
-                await renderer.initContext();
-                // Should not reach here
-                false.should.be.true();
-            } catch (e) {
-                renderer.isInitFailed.should.be.true();
-                e.message.should.containEql('WebGPU');
-            }
+                Object.defineProperty(navigator, 'gpu', {
+                    value: undefined,
+                    configurable: true
+                });
 
-            // Restore
-            Object.defineProperty(navigator, 'gpu', {
-                value: originalGpu,
-                configurable: true
-            });
+                const renderer = new WebGPURenderer({
+                    domElement: document.createElement('canvas')
+                });
+
+                try {
+                    await renderer.initContext();
+                    // Should not reach here
+                    throw new Error('Expected initContext to throw an error');
+                } catch (e) {
+                    renderer.isInitFailed.should.be.true();
+                    e.message.should.containEql('WebGPU');
+                }
+            } finally {
+                // Restore
+                Object.defineProperty(navigator, 'gpu', {
+                    value: originalGpu,
+                    configurable: true
+                });
+            }
         });
     } else {
         it('should fail when WebGPU is not available', async () => {
@@ -115,13 +118,17 @@ describe('WebGPURenderer', () => {
                 domElement: document.createElement('canvas')
             });
 
+            let errorThrown = false;
             try {
                 await renderer.initContext();
-                // Should not reach here
-                false.should.be.true();
             } catch (e) {
+                errorThrown = true;
                 renderer.isInitFailed.should.be.true();
                 e.message.should.containEql('WebGPU');
+            }
+            
+            if (!errorThrown) {
+                throw new Error('Expected initContext to throw an error');
             }
         });
     }
