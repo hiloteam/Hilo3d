@@ -603,7 +603,12 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
         const diffuse = material.diffuse;
         const hasTextureObject = diffuse && diffuse.isTexture;
         const hasUV = hasTextureObject && geometry.uvs && geometry.uvs.data;
-        const textureReady = hasTextureObject && diffuse.image && diffuse.image.complete;
+
+        // 检查纹理是否准备好
+        // LazyTexture在加载完成前会使用占位图，image.complete为true但src是data URL
+        // needUpdate标记图片已加载完成且需要更新到GPU
+        const textureReady = hasTextureObject && diffuse.image && diffuse.image.complete
+                            && (!diffuse.isLazyTexture || (diffuse.image.src && !diffuse.image.src.startsWith('data:')));
 
         // 只有在纹理加载完成时才使用纹理渲染
         const useTexture = hasUV && textureReady;
