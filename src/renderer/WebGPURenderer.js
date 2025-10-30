@@ -506,10 +506,17 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
             return;
         }
 
+        // 验证几何体数据
+        if (!geometry.vertices || !geometry.vertices.data
+            || !geometry.normals || !geometry.normals.data
+            || !geometry.indices || !geometry.indices.data) {
+            return;
+        }
+
         // 获取或创建顶点缓冲区
         const vertexBufferKey = `vb_${geometry.id}`;
         let vertexBuffer = this.resourceManager.getBuffer(vertexBufferKey);
-        if (!vertexBuffer && geometry.vertices && geometry.vertices.data) {
+        if (!vertexBuffer) {
             vertexBuffer = this.device.createBuffer({
                 size: geometry.vertices.data.byteLength,
                 usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -521,7 +528,7 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
         // 获取或创建法线缓冲区
         const normalBufferKey = `nb_${geometry.id}`;
         let normalBuffer = this.resourceManager.getBuffer(normalBufferKey);
-        if (!normalBuffer && geometry.normals && geometry.normals.data) {
+        if (!normalBuffer) {
             normalBuffer = this.device.createBuffer({
                 size: geometry.normals.data.byteLength,
                 usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -534,17 +541,21 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
         const indexBufferKey = `ib_${geometry.id}`;
         let indexBuffer = this.resourceManager.getBuffer(indexBufferKey);
         let indexCount = 0;
-        if (!indexBuffer && geometry.indices && geometry.indices.data) {
-            indexBuffer = this.device.createBuffer({
-                size: geometry.indices.data.byteLength,
-                usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-            });
-            this.device.queue.writeBuffer(indexBuffer, 0, geometry.indices.data);
-            this.resourceManager.setBuffer(indexBufferKey, indexBuffer);
+
+        if (geometry.indices && geometry.indices.data) {
             indexCount = geometry.indices.data.length;
+
+            if (!indexBuffer) {
+                indexBuffer = this.device.createBuffer({
+                    size: geometry.indices.data.byteLength,
+                    usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+                });
+                this.device.queue.writeBuffer(indexBuffer, 0, geometry.indices.data);
+                this.resourceManager.setBuffer(indexBufferKey, indexBuffer);
+            }
         }
 
-        if (!vertexBuffer || !normalBuffer || !indexBuffer) {
+        if (!vertexBuffer || !normalBuffer || !indexBuffer || indexCount === 0) {
             return;
         }
 
