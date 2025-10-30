@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <title>Hilo3d WebGPU Support Demo</title>
+    <link rel="stylesheet" type="text/css" href="./example.css">
+    <style>
+        #info{
+            position: absolute;
+            right:5px;
+            bottom:2px;
+            z-index: 9;
+            font-size:12px;
+        }
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="info">检测WebGPU支持中...</div>
+    <script src="../build/Hilo3d.js"></script>
+    <script>
+        (async function() {
+            var isWebGPUAvailable = Hilo3d.WebGPUSupport.isAvailable();
+            var isWebGPUSupport = false;
+            var infoText = '';
+            
+            infoText += 'WebGPU API Available: ' + isWebGPUAvailable + '<br/>';
+            
+            if (isWebGPUAvailable) {
+                isWebGPUSupport = await Hilo3d.WebGPUSupport.get();
+                infoText += 'WebGPU Support: ' + isWebGPUSupport + '<br/>';
+                
+                if (isWebGPUSupport) {
+                    try {
+                        // 创建canvas
+                        var canvas = document.createElement('canvas');
+                        canvas.width = window.innerWidth;
+                        canvas.height = window.innerHeight;
+                        document.getElementById('container').appendChild(canvas);
+                        
+                        // 创建WebGPU渲染器
+                        var renderer = new Hilo3d.WebGPURenderer({
+                            domElement: canvas,
+                            width: canvas.width,
+                            height: canvas.height,
+                            clearColor: new Hilo3d.Color(0.2, 0.2, 0.3, 1)
+                        });
+                        
+                        // 初始化渲染器
+                        await renderer.initContext();
+                        
+                        infoText += 'WebGPU Renderer initialized successfully!<br/>';
+                        infoText += 'Device: ' + (renderer.device ? 'Created' : 'Failed') + '<br/>';
+                        infoText += 'Format: ' + renderer.format + '<br/>';
+                        
+                        // 清空画布以验证渲染器工作正常
+                        renderer.clear();
+                        
+                        infoText += '<br/>✓ WebGPU渲染器创建成功并正常工作！<br/>';
+                        infoText += '背景色已设置为深蓝色。';
+                    } catch (e) {
+                        infoText += '<br/>✗ WebGPU初始化失败: ' + e.message;
+                    }
+                } else {
+                    infoText += '<br/>✗ 您的浏览器不支持WebGPU。';
+                    infoText += '<br/>请使用Chrome 113+或其他支持WebGPU的浏览器。';
+                }
+            } else {
+                infoText += '<br/>✗ WebGPU API不可用。';
+                infoText += '<br/>请使用Chrome 113+或其他支持WebGPU的浏览器。';
+            }
+            
+            // WebGL支持信息作为对比
+            var isWebGLSupport = Hilo3d.WebGLSupport.get();
+            infoText += '<br/><br/>WebGL Support: ' + isWebGLSupport;
+            
+            document.getElementById('info').innerHTML = infoText;
+        })();
+    </script>
+</body>
+</html>

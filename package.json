@@ -1,7 +1,7 @@
 {
   "name": "hilo3d",
   "version": "1.19.1",
-  "description": "Hilo3d, a WebGL 3d engine.",
+  "description": "Hilo3d, a WebGL/WebGPU 3d engine.",
   "main": "build/Hilo3d.js",
   "types": "types/index.d.ts",
   "scripts": {
@@ -32,7 +32,8 @@
   "keywords": [
     "hilo",
     "3d",
-    "WebGL"
+    "WebGL",
+    "WebGPU"
   ],
   "author": "06wj",
   "license": "MIT",
