@@ -19,6 +19,7 @@ class WebGPUUniformHelper {
      * @param {Camera} camera
      * @return {Float32Array} 包含MVP、Model、Normal矩阵的数据
      */
+    // eslint-disable-next-line class-methods-use-this
     createMVPUniformData(mesh, camera) {
         // 更新矩阵
         mesh.updateMatrixWorld();
@@ -46,6 +47,7 @@ class WebGPUUniformHelper {
      * 获取MVP uniform缓冲区大小
      * @return {Number} 字节数
      */
+    // eslint-disable-next-line class-methods-use-this
     getMVPUniformSize() {
         return 192; // 3 * mat4x4 (64 bytes each)
     }
@@ -54,6 +56,7 @@ class WebGPUUniformHelper {
      * 获取材质uniform缓冲区大小
      * @return {Number} 字节数
      */
+    // eslint-disable-next-line class-methods-use-this
     getMaterialUniformSize() {
         return 64; // vec4 * 4 = 64 bytes
     }

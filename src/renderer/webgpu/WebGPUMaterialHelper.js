@@ -18,6 +18,7 @@ class WebGPUMaterialHelper {
      * @param {Material} material
      * @return {Boolean}
      */
+    // eslint-disable-next-line class-methods-use-this
     hasTexture(material) {
         const diffuse = material.diffuse;
         return diffuse && diffuse.isTexture;
@@ -28,17 +29,18 @@ class WebGPUMaterialHelper {
      * @param {Material} material
      * @return {Boolean}
      */
+    // eslint-disable-next-line class-methods-use-this
     isTextureReady(material) {
         const diffuse = material.diffuse;
         if (!diffuse || !diffuse.isTexture) {
             return false;
         }
-        
+
         // LazyTexture在加载完成前会使用占位图（data URL）
         const imageComplete = diffuse.image && diffuse.image.complete;
-        const notPlaceholder = !diffuse.isLazyTexture || 
-            (diffuse.image.src && !diffuse.image.src.startsWith('data:'));
-        
+        const notPlaceholder = !diffuse.isLazyTexture
+            || (diffuse.image.src && !diffuse.image.src.startsWith('data:'));
+
         return imageComplete && notPlaceholder;
     }
 
@@ -48,17 +50,18 @@ class WebGPUMaterialHelper {
      * @param {Boolean} useTexture 是否使用纹理
      * @return {Color}
      */
+    // eslint-disable-next-line class-methods-use-this
     getDiffuseColor(material, useTexture) {
         if (useTexture) {
             // 使用纹理时返回白色，让纹理颜色通过
             return new Color(1, 1, 1);
         }
-        
+
         const diffuse = material.diffuse;
         if (diffuse && diffuse.r !== undefined) {
             return diffuse;
         }
-        
+
         return new Color(0.5, 0.5, 0.5);
     }
 
@@ -76,25 +79,25 @@ class WebGPUMaterialHelper {
         const opacity = material.transparency !== undefined ? material.transparency : 1;
 
         const materialData = new Float32Array(16);
-        
+
         // diffuseColor (vec4)
         materialData[0] = diffuseColor.r || diffuseColor._r || 0.5;
         materialData[1] = diffuseColor.g || diffuseColor._g || 0.5;
         materialData[2] = diffuseColor.b || diffuseColor._b || 0.5;
         materialData[3] = diffuseColor.a || diffuseColor._a || 1;
-        
+
         // specularColor (vec4)
         materialData[4] = specular.r || specular._r || 1;
         materialData[5] = specular.g || specular._g || 1;
         materialData[6] = specular.b || specular._b || 1;
         materialData[7] = 1;
-        
+
         // emissionColor (vec4)
         materialData[8] = emission.r || emission._r || 0;
         materialData[9] = emission.g || emission._g || 0;
         materialData[10] = emission.b || emission._b || 0;
         materialData[11] = 1;
-        
+
         // shininess, opacity, padding
         materialData[12] = shininess;
         materialData[13] = opacity;
@@ -109,11 +112,12 @@ class WebGPUMaterialHelper {
      * @param {Material} material
      * @return {Object|undefined}
      */
+    // eslint-disable-next-line class-methods-use-this
     getBlendMode(material) {
         if (!material.transparent) {
             return undefined;
         }
-        
+
         return {
             color: {
                 srcFactor: 'src-alpha',
@@ -133,6 +137,7 @@ class WebGPUMaterialHelper {
      * @param {Material} material
      * @return {String}
      */
+    // eslint-disable-next-line class-methods-use-this
     getCullMode(material) {
         // FRONT_AND_BACK = 1032, BACK = 1029, FRONT = 1028
         if (material.side === 1032) return 'none'; // FRONT_AND_BACK

@@ -1,8 +1,9 @@
-/* global GPUBufferUsage, GPUShaderStage, GPUTextureUsage */
+/* global GPUShaderStage, GPUTextureUsage */
 
 import Class from '../../core/Class';
 import Node from '../../core/Node';
 import Color from '../../math/Color';
+import Vector3 from '../../math/Vector3';
 import EventMixin from '../../core/EventMixin';
 import RenderInfo from '../RenderInfo';
 import RenderList from '../RenderList';
@@ -12,6 +13,7 @@ import WebGPUShaderManager from './WebGPUShaderManager';
 import WebGPUBufferHelper from './WebGPUBufferHelper';
 import WebGPUMaterialHelper from './WebGPUMaterialHelper';
 import WebGPUUniformHelper from './WebGPUUniformHelper';
+import WebGPUShadowHelper from './WebGPUShadowHelper';
 import LightManager from '../../light/LightManager';
 import semantic from '../../material/semantic';
 
@@ -121,6 +123,20 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
     _isInit: false,
 
     /**
+     * 是否启用阴影
+     * @type {Boolean}
+     * @default false
+     */
+    enableShadows: false,
+
+    /**
+     * 阴影贴图大小
+     * @type {Number}
+     * @default 2048
+     */
+    shadowMapSize: 2048,
+
+    /**
      * @constructs
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
@@ -131,6 +147,13 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
          * @default new Color(1, 1, 1, 1)
          */
         this.clearColor = new Color(1, 1, 1);
+
+        /**
+         * 光源方向
+         * @type {Vector3}
+         * @default new Vector3(-0.5, -1, -0.5)
+         */
+        this.lightDirection = new Vector3(-0.5, -1, -0.5);
 
         Object.assign(this, params);
 
@@ -323,9 +346,70 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
          */
         this.uniformHelper = new WebGPUUniformHelper(this.device);
 
+        // 初始化阴影helper（如果启用）
+        if (this.enableShadows) {
+            /**
+             * 阴影helper，初始化后生成。
+             * @type {WebGPUShadowHelper}
+             * @default null
+             */
+            this.shadowHelper = new WebGPUShadowHelper(this.device, this.shadowMapSize);
+            this.shadowHelper.createShadowMap();
+            this._initShadowPipeline();
+        }
+
         // 监听设备丢失
         this.device.lost.then((info) => {
             this._onContextLost(info);
+        });
+    },
+
+    /**
+     * 初始化阴影渲染管线
+     * @private
+     */
+    _initShadowPipeline() {
+        const shadowShader = this.shaderManager.getShadowDepthShaderModule();
+
+        // 创建阴影深度渲染的bind group layout
+        this.shadowBindGroupLayout = this.device.createBindGroupLayout({
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: { type: 'uniform' }
+                }
+            ]
+        });
+
+        // 创建阴影深度渲染管线
+        this.shadowPipeline = this.device.createRenderPipeline({
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [this.shadowBindGroupLayout]
+            }),
+            vertex: {
+                module: shadowShader,
+                entryPoint: 'vertexMain',
+                buffers: [
+                    {
+                        arrayStride: 12, // 3 floats for position
+                        attributes: [{
+                            shaderLocation: 0,
+                            offset: 0,
+                            format: 'float32x3',
+                        }],
+                    }
+                ],
+            },
+            primitive: {
+                topology: 'triangle-list',
+                cullMode: 'back',
+            },
+            depthStencil: {
+                depthWriteEnabled: true,
+                depthCompare: 'less',
+                format: 'depth24plus',
+            },
         });
     },
 
@@ -333,6 +417,21 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
         // eslint-disable-next-line no-console
         console.error('WebGPU device lost:', info.message);
         this.fire('contextLost', info);
+    },
+
+    /**
+     * 设置光源方向
+     * @param {Vector3} direction 光源方向向量
+     */
+    setLightDirection(direction) {
+        this.lightDirection.copy(direction);
+        if (this.shadowHelper) {
+            this.shadowHelper.setLightDirection({
+                x: direction.x,
+                y: direction.y,
+                z: direction.z
+            });
+        }
     },
 
     /**
@@ -677,6 +776,12 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
 
         // 开始渲染
         const commandEncoder = this.device.createCommandEncoder();
+
+        // 如果启用阴影，先渲染阴影pass
+        if (this.enableShadows && this.shadowHelper) {
+            this._renderShadowPass(commandEncoder, meshes);
+        }
+
         const textureView = this.context.getCurrentTexture().createView();
 
         const renderPassDescriptor = {
@@ -703,7 +808,11 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
 
         // 渲染所有mesh
         for (const mesh of meshes) {
-            this.renderMesh(mesh, camera, passEncoder);
+            if (this.enableShadows && this.shadowHelper) {
+                this._renderMeshWithShadow(mesh, camera, passEncoder);
+            } else {
+                this.renderMesh(mesh, camera, passEncoder);
+            }
         }
 
         passEncoder.end();
@@ -717,9 +826,387 @@ const WebGPURenderer = Class.create(/** @lends WebGPURenderer.prototype */ {
     },
 
     /**
+     * 渲染阴影pass
+     * @private
+     * @param {GPUCommandEncoder} commandEncoder
+     * @param {Array<Mesh>} meshes
+     */
+    _renderShadowPass(commandEncoder, meshes) {
+        const shadowMapView = this.shadowHelper.getShadowMapView();
+        const lightSpaceMatrix = this.shadowHelper.calculateLightSpaceMatrix();
+
+        const shadowPassDescriptor = {
+            colorAttachments: [],
+            depthStencilAttachment: {
+                view: shadowMapView,
+                depthClearValue: 1.0,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+            }
+        };
+
+        const shadowPass = commandEncoder.beginRenderPass(shadowPassDescriptor);
+
+        for (const mesh of meshes) {
+            this._renderMeshShadowDepth(mesh, lightSpaceMatrix, shadowPass);
+        }
+
+        shadowPass.end();
+    },
+
+    /**
+     * 渲染mesh到阴影深度贴图
+     * @private
+     * @param {Mesh} mesh
+     * @param {Float32Array} lightSpaceMatrix
+     * @param {GPURenderPassEncoder} passEncoder
+     */
+    _renderMeshShadowDepth(mesh, lightSpaceMatrix, passEncoder) {
+        const geometry = mesh.geometry;
+
+        if (!geometry || !geometry.vertices || !geometry.vertices.data
+            || !geometry.indices || !geometry.indices.data) {
+            return;
+        }
+
+        const vertexBuffer = this.bufferHelper.getOrCreateVertexBuffer(geometry);
+        const { buffer: indexBuffer, count: indexCount } = this.bufferHelper.getOrCreateIndexBuffer(geometry);
+
+        if (!vertexBuffer || !indexBuffer || indexCount === 0) {
+            return;
+        }
+
+        // 创建阴影uniform数据：lightSpaceMatrix + modelMatrix
+        const uniformData = new Float32Array(32);
+        uniformData.set(lightSpaceMatrix, 0);
+        uniformData.set(mesh.worldMatrix.elements, 16);
+
+        const uniformBuffer = this.bufferHelper.createUniformBuffer(128, uniformData);
+
+        const bindGroup = this.device.createBindGroup({
+            layout: this.shadowBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: { buffer: uniformBuffer }
+                }
+            ]
+        });
+
+        passEncoder.setPipeline(this.shadowPipeline);
+        passEncoder.setBindGroup(0, bindGroup);
+        passEncoder.setVertexBuffer(0, vertexBuffer);
+        passEncoder.setIndexBuffer(indexBuffer, 'uint16');
+        passEncoder.drawIndexed(indexCount, 1, 0, 0, 0);
+    },
+
+    /**
+     * 渲染带阴影的mesh
+     * @private
+     * @param {Mesh} mesh
+     * @param {Camera} camera
+     * @param {GPURenderPassEncoder} passEncoder
+     */
+    _renderMeshWithShadow(mesh, camera, passEncoder) {
+        const geometry = mesh.geometry;
+        const material = mesh.material;
+
+        if (!geometry || !material) {
+            return;
+        }
+
+        if (!geometry.vertices || !geometry.vertices.data
+            || !geometry.normals || !geometry.normals.data
+            || !geometry.indices || !geometry.indices.data) {
+            return;
+        }
+
+        const hasTextureObject = this.materialHelper.hasTexture(material);
+        const hasUV = hasTextureObject && geometry.uvs && geometry.uvs.data;
+        const textureReady = this.materialHelper.isTextureReady(material);
+        const useTexture = hasUV && textureReady;
+
+        const vertexBuffer = this.bufferHelper.getOrCreateVertexBuffer(geometry);
+        const normalBuffer = this.bufferHelper.getOrCreateNormalBuffer(geometry);
+        const uvBuffer = useTexture ? this.bufferHelper.getOrCreateUVBuffer(geometry) : null;
+        const { buffer: indexBuffer, count: indexCount } = this.bufferHelper.getOrCreateIndexBuffer(geometry);
+
+        if (!vertexBuffer || !normalBuffer || !indexBuffer || indexCount === 0) {
+            return;
+        }
+
+        // MVP uniform
+        const mvpUniformData = this.uniformHelper.createMVPUniformData(mesh, camera);
+        const uniformBuffer = this.bufferHelper.createUniformBuffer(
+            this.uniformHelper.getMVPUniformSize(),
+            mvpUniformData
+        );
+
+        // Material uniform
+        const materialData = this.materialHelper.createMaterialUniformData(material, useTexture);
+        const materialBuffer = this.bufferHelper.createUniformBuffer(
+            this.uniformHelper.getMaterialUniformSize(),
+            materialData
+        );
+
+        // Shadow uniform
+        const lightSpaceMatrix = this.shadowHelper.calculateLightSpaceMatrix();
+        const shadowData = new Float32Array(24);
+        shadowData.set(lightSpaceMatrix, 0);
+        shadowData[16] = this.lightDirection.x;
+        shadowData[17] = this.lightDirection.y;
+        shadowData[18] = this.lightDirection.z;
+        shadowData[19] = 0;
+        shadowData[20] = this.shadowHelper.getShadowBias();
+        shadowData[21] = this.shadowMapSize;
+        shadowData[22] = 0;
+        shadowData[23] = 0;
+        const shadowBuffer = this.bufferHelper.createUniformBuffer(96, shadowData);
+
+        // 创建纹理和采样器（如果需要）
+        let gpuTexture = null;
+        let textureSampler = null;
+
+        if (useTexture) {
+            const diffuse = material.diffuse;
+            const textureKey = `tex_${diffuse.id}`;
+            gpuTexture = this.resourceManager.getTexture(textureKey);
+
+            if (!gpuTexture) {
+                const textureSize = [diffuse.image.width, diffuse.image.height, 1];
+                gpuTexture = this.device.createTexture({
+                    size: textureSize,
+                    format: 'rgba8unorm',
+                    usage: GPUTextureUsage.TEXTURE_BINDING
+                        | GPUTextureUsage.COPY_DST
+                        | GPUTextureUsage.RENDER_ATTACHMENT,
+                });
+
+                this.device.queue.copyExternalImageToTexture(
+                    { source: diffuse.image },
+                    { texture: gpuTexture },
+                    textureSize
+                );
+
+                this.resourceManager.setTexture(textureKey, gpuTexture);
+            }
+
+            const samplerKey = 'default_sampler';
+            textureSampler = this.resourceManager.getTexture(samplerKey);
+            if (!textureSampler) {
+                textureSampler = this.device.createSampler({
+                    magFilter: 'linear',
+                    minFilter: 'linear',
+                    mipmapFilter: 'linear',
+                    addressModeU: 'repeat',
+                    addressModeV: 'repeat',
+                });
+                this.resourceManager.setTexture(samplerKey, textureSampler);
+            }
+        }
+
+        // 创建bind group layout for shadow shader
+        const bindGroupLayoutEntries = [
+            {
+                binding: 0,
+                visibility: GPUShaderStage.VERTEX,
+                buffer: { type: 'uniform' }
+            },
+            {
+                binding: 1,
+                visibility: GPUShaderStage.FRAGMENT,
+                buffer: { type: 'uniform' }
+            },
+            {
+                binding: 2,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: { type: 'uniform' }
+            },
+            {
+                binding: 3,
+                visibility: GPUShaderStage.FRAGMENT,
+                texture: { sampleType: 'depth' }
+            },
+            {
+                binding: 4,
+                visibility: GPUShaderStage.FRAGMENT,
+                sampler: { type: 'comparison' }
+            }
+        ];
+
+        if (useTexture && gpuTexture) {
+            bindGroupLayoutEntries.push(
+                {
+                    binding: 5,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: {}
+                },
+                {
+                    binding: 6,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    sampler: {}
+                }
+            );
+        }
+
+        const bindGroupLayout = this.device.createBindGroupLayout({
+            entries: bindGroupLayoutEntries
+        });
+
+        // 创建bind group entries
+        const bindGroupEntries = [
+            {
+                binding: 0,
+                resource: { buffer: uniformBuffer }
+            },
+            {
+                binding: 1,
+                resource: { buffer: materialBuffer }
+            },
+            {
+                binding: 2,
+                resource: { buffer: shadowBuffer }
+            },
+            {
+                binding: 3,
+                resource: this.shadowHelper.getShadowMapView()
+            },
+            {
+                binding: 4,
+                resource: this.shadowHelper.getShadowSampler()
+            }
+        ];
+
+        if (useTexture && gpuTexture) {
+            bindGroupEntries.push(
+                {
+                    binding: 5,
+                    resource: gpuTexture.createView()
+                },
+                {
+                    binding: 6,
+                    resource: textureSampler
+                }
+            );
+        }
+
+        const bindGroup = this.device.createBindGroup({
+            layout: bindGroupLayout,
+            entries: bindGroupEntries
+        });
+
+        // 获取带阴影的渲染管线
+        const pipeline = this._getShadowPipeline(
+            geometry,
+            material,
+            bindGroupLayout,
+            useTexture && gpuTexture !== null
+        );
+
+        passEncoder.setPipeline(pipeline);
+        passEncoder.setBindGroup(0, bindGroup);
+        passEncoder.setVertexBuffer(0, vertexBuffer);
+        passEncoder.setVertexBuffer(1, normalBuffer);
+        if (useTexture && uvBuffer) {
+            passEncoder.setVertexBuffer(2, uvBuffer);
+        }
+        passEncoder.setIndexBuffer(indexBuffer, 'uint16');
+        passEncoder.drawIndexed(indexCount, 1, 0, 0, 0);
+
+        this.renderInfo.addFaceCount(indexCount / 3);
+        this.renderInfo.addDrawCount(1);
+    },
+
+    /**
+     * 获取或创建带阴影的渲染管线
+     * @private
+     * @param {Geometry} geometry
+     * @param {Material} material
+     * @param {GPUBindGroupLayout} bindGroupLayout
+     * @param {Boolean} hasTexture
+     * @return {GPURenderPipeline}
+     */
+    _getShadowPipeline(geometry, material, bindGroupLayout, hasTexture = false) {
+        const pipelineKey = `shadow_pipeline_${geometry.id}_${material.id}_${hasTexture ? 'tex' : 'notex'}`;
+        let pipeline = this.resourceManager.getPipeline(pipelineKey);
+
+        if (!pipeline) {
+            const shader = this.shaderManager.getShaderModule(hasTexture, true);
+
+            const depthFormat = 'depth24plus';
+
+            const vertexBuffers = [
+                {
+                    arrayStride: 12,
+                    attributes: [{
+                        shaderLocation: 0,
+                        offset: 0,
+                        format: 'float32x3',
+                    }],
+                },
+                {
+                    arrayStride: 12,
+                    attributes: [{
+                        shaderLocation: 1,
+                        offset: 0,
+                        format: 'float32x3',
+                    }],
+                }
+            ];
+
+            if (hasTexture) {
+                vertexBuffers.push({
+                    arrayStride: 8,
+                    attributes: [{
+                        shaderLocation: 2,
+                        offset: 0,
+                        format: 'float32x2',
+                    }],
+                });
+            }
+
+            pipeline = this.device.createRenderPipeline({
+                layout: this.device.createPipelineLayout({
+                    bindGroupLayouts: [bindGroupLayout]
+                }),
+                vertex: {
+                    module: shader,
+                    entryPoint: 'vertexMain',
+                    buffers: vertexBuffers,
+                },
+                fragment: {
+                    module: shader,
+                    entryPoint: 'fragmentMain',
+                    targets: [{
+                        format: this.format,
+                        blend: this.materialHelper.getBlendMode(material),
+                    }],
+                },
+                primitive: {
+                    topology: 'triangle-list',
+                    cullMode: this.materialHelper.getCullMode(material),
+                },
+                depthStencil: {
+                    depthWriteEnabled: material.depthMask,
+                    depthCompare: material.depthTest ? 'less' : 'always',
+                    format: depthFormat,
+                },
+            });
+
+            this.resourceManager.setPipeline(pipelineKey, pipeline);
+        }
+
+        return pipeline;
+    },
+
+    /**
      * 销毁
      */
     destroy() {
+        if (this.shadowHelper) {
+            this.shadowHelper.destroy();
+            this.shadowHelper = null;
+        }
         if (this.device) {
             this.device.destroy();
             this.device = null;

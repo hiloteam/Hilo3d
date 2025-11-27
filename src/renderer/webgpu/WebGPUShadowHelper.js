@@ -1,3 +1,4 @@
+/* global GPUTextureUsage */
 /**
  * WebGPU Shadow Mapping Helper
  * Manages shadow map creation, light space matrices, and shadow rendering
@@ -61,9 +62,9 @@ class WebGPUShadowHelper {
     calculateLightSpaceMatrix(sceneBounds = { min: [-10, -10, -10], max: [10, 10, 10] }) {
         // Normalize light direction
         const len = Math.sqrt(
-            this.lightDirection.x * this.lightDirection.x +
-            this.lightDirection.y * this.lightDirection.y +
-            this.lightDirection.z * this.lightDirection.z
+            this.lightDirection.x * this.lightDirection.x
+            + this.lightDirection.y * this.lightDirection.y
+            + this.lightDirection.z * this.lightDirection.z
         );
         const lightDir = {
             x: this.lightDirection.x / len,
@@ -86,22 +87,23 @@ class WebGPUShadowHelper {
         ];
 
         // Create light view matrix (lookAt)
-        const viewMatrix = this._createLookAtMatrix(lightPos, sceneCenter, [0, 1, 0]);
+        const viewMatrix = WebGPUShadowHelper._createLookAtMatrix(lightPos, sceneCenter, [0, 1, 0]);
 
         // Create orthographic projection for directional light
         const size = 15;
-        const projectionMatrix = this._createOrthographicMatrix(-size, size, -size, size, 0.1, 50);
+        const projectionMatrix = WebGPUShadowHelper._createOrthographicMatrix(-size, size, -size, size, 0.1, 50);
 
         // Multiply projection * view
-        const lightSpaceMatrix = this._multiplyMatrices(projectionMatrix, viewMatrix);
+        const lightSpaceMatrix = WebGPUShadowHelper._multiplyMatrices(projectionMatrix, viewMatrix);
 
         return lightSpaceMatrix;
     }
 
     /**
      * Create lookAt view matrix
+     * @static
      */
-    _createLookAtMatrix(eye, center, up) {
+    static _createLookAtMatrix(eye, center, up) {
         const matrix = new Float32Array(16);
 
         // Calculate z axis (eye - center, normalized)
@@ -153,8 +155,9 @@ class WebGPUShadowHelper {
 
     /**
      * Create orthographic projection matrix
+     * @static
      */
-    _createOrthographicMatrix(left, right, bottom, top, near, far) {
+    static _createOrthographicMatrix(left, right, bottom, top, near, far) {
         const matrix = new Float32Array(16);
 
         matrix[0] = 2 / (right - left);
@@ -182,17 +185,17 @@ class WebGPUShadowHelper {
 
     /**
      * Multiply two 4x4 matrices
+     * @static
      */
-    _multiplyMatrices(a, b) {
+    static _multiplyMatrices(a, b) {
         const result = new Float32Array(16);
 
         for (let i = 0; i < 4; i++) {
             for (let j = 0; j < 4; j++) {
-                result[i * 4 + j] =
-                    a[i * 4 + 0] * b[0 * 4 + j] +
-                    a[i * 4 + 1] * b[1 * 4 + j] +
-                    a[i * 4 + 2] * b[2 * 4 + j] +
-                    a[i * 4 + 3] * b[3 * 4 + j];
+                result[i * 4 + j] = a[i * 4 + 0] * b[0 * 4 + j]
+                    + a[i * 4 + 1] * b[1 * 4 + j]
+                    + a[i * 4 + 2] * b[2 * 4 + j]
+                    + a[i * 4 + 3] * b[3 * 4 + j];
             }
         }
 

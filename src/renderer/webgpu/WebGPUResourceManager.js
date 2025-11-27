@@ -1,5 +1,5 @@
-import Class from '../core/Class';
-import EventMixin from '../core/EventMixin';
+import Class from '../../core/Class';
+import EventMixin from '../../core/EventMixin';
 
 /**
  * WebGPUResourceManager 资源管理器

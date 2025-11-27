@@ -1,4 +1,4 @@
-import Class from '../core/Class';
+import Class from '../../core/Class';
 
 /**
  * WebGPU 状态管理

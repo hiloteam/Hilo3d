@@ -23,7 +23,7 @@ class WebGPUBufferHelper {
     getOrCreateVertexBuffer(geometry) {
         const key = `vb_${geometry.id}`;
         let buffer = this.resourceManager.getBuffer(key);
-        
+
         if (!buffer && geometry.vertices && geometry.vertices.data) {
             buffer = this.device.createBuffer({
                 size: geometry.vertices.data.byteLength,
@@ -32,7 +32,7 @@ class WebGPUBufferHelper {
             this.device.queue.writeBuffer(buffer, 0, geometry.vertices.data);
             this.resourceManager.setBuffer(key, buffer);
         }
-        
+
         return buffer;
     }
 
@@ -44,7 +44,7 @@ class WebGPUBufferHelper {
     getOrCreateNormalBuffer(geometry) {
         const key = `nb_${geometry.id}`;
         let buffer = this.resourceManager.getBuffer(key);
-        
+
         if (!buffer && geometry.normals && geometry.normals.data) {
             buffer = this.device.createBuffer({
                 size: geometry.normals.data.byteLength,
@@ -53,7 +53,7 @@ class WebGPUBufferHelper {
             this.device.queue.writeBuffer(buffer, 0, geometry.normals.data);
             this.resourceManager.setBuffer(key, buffer);
         }
-        
+
         return buffer;
     }
 
@@ -66,10 +66,10 @@ class WebGPUBufferHelper {
         if (!geometry.uvs || !geometry.uvs.data) {
             return null;
         }
-        
+
         const key = `uv_${geometry.id}`;
         let buffer = this.resourceManager.getBuffer(key);
-        
+
         if (!buffer) {
             buffer = this.device.createBuffer({
                 size: geometry.uvs.data.byteLength,
@@ -78,7 +78,7 @@ class WebGPUBufferHelper {
             this.device.queue.writeBuffer(buffer, 0, geometry.uvs.data);
             this.resourceManager.setBuffer(key, buffer);
         }
-        
+
         return buffer;
     }
 
@@ -91,11 +91,11 @@ class WebGPUBufferHelper {
         if (!geometry.indices || !geometry.indices.data) {
             return { buffer: null, count: 0 };
         }
-        
+
         const key = `ib_${geometry.id}`;
         let buffer = this.resourceManager.getBuffer(key);
         const count = geometry.indices.data.length;
-        
+
         if (!buffer) {
             buffer = this.device.createBuffer({
                 size: geometry.indices.data.byteLength,
@@ -104,7 +104,7 @@ class WebGPUBufferHelper {
             this.device.queue.writeBuffer(buffer, 0, geometry.indices.data);
             this.resourceManager.setBuffer(key, buffer);
         }
-        
+
         return { buffer, count };
     }
 
@@ -119,11 +119,11 @@ class WebGPUBufferHelper {
             size,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
-        
+
         if (data) {
             this.device.queue.writeBuffer(buffer, 0, data);
         }
-        
+
         return buffer;
     }
 
