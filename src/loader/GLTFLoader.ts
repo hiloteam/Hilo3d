@@ -1,8 +1,44 @@
-import Class from '../core/Class';
 import BasicLoader from './BasicLoader';
 import GLTFParser from './GLTFParser';
 import Loader from './Loader';
 import log from '../utils/log';
+import Node from '../core/Node';
+import Mesh from '../core/Mesh';
+import Animation from '../animation/Animation';
+import Camera from '../camera/Camera';
+import Light from '../light/Light';
+import Texture from '../texture/Texture';
+import BasicMaterial from '../material/BasicMaterial';
+import Skeleton from '../core/Skeleton';
+
+/**
+ * GLTFLoader 模型加载完返回的对象格式
+ */
+interface GLTFModel {
+    json: any;
+    node?: Node;
+    meshes?: Mesh[];
+    anim?: Animation | null;
+    cameras?: Camera[];
+    lights?: Light[];
+    textures?: Texture[];
+    materials?: BasicMaterial[];
+    skins?: Skeleton[];
+}
+
+interface GLTFLoadParams {
+    src: string;
+    defaultScene?: number | string;
+    isMultiAnim?: boolean;
+    isProgressive?: boolean;
+    isUnQuantizeInShader?: boolean;
+    ignoreTextureError?: boolean;
+    forceCreateNewBuffer?: boolean;
+    preHandlerImageURI?: ((uri: string) => string) | null;
+    preHandlerBufferURI?: ((uri: string) => string) | null;
+    customMaterialCreator?: any;
+    isLoadAllTextures?: boolean;
+}
 
 /**
  * glTF模型加载类
@@ -16,24 +52,26 @@ import log from '../utils/log';
  *     stage.addChild(model.node);
  * });
  */
-const GLTFLoader = Class.create(/** @lends GLTFLoader.prototype */{
-    Extends: BasicLoader,
+class GLTFLoader extends BasicLoader {
     /**
      * @default true
      * @type {boolean}
      */
-    isGLTFLoader: true,
+    isGLTFLoader: boolean = true;
+
     /**
      * @default GLTFLoader
      * @type {string}
      */
-    className: 'GLTFLoader',
+    className: string = 'GLTFLoader';
+
     /**
      * @constructs
      */
     constructor() {
-        GLTFLoader.superclass.constructor.call(this);
-    },
+        super();
+    }
+
     /**
      * 加载glTF模型
      * @param {object} params 加载参数
@@ -51,33 +89,20 @@ const GLTFLoader = Class.create(/** @lends GLTFLoader.prototype */{
      * @async
      * @return {Promise<GLTFModel, Error>} 返回加载完的模型对象
      */
-    load(params) {
+    load(params: GLTFLoadParams): Promise<GLTFModel> {
         return this.loadRes(params.src, 'buffer')
-            .then((buffer) => {
+            .then((buffer: ArrayBuffer) => {
                 let parser = new GLTFParser(buffer, params);
                 return parser.parse(this);
-            }).catch((err) => {
+            }).catch((err: Error) => {
                 log.error('load gltf failed', err.message, err.stack);
                 throw err;
             });
     }
-});
+}
 
 Loader.addLoader('gltf', GLTFLoader);
 Loader.addLoader('glb', GLTFLoader);
 
 export default GLTFLoader;
-
-/**
- * GLTFLoader 模型加载完返回的对象格式
- * @typedef {object} GLTFModel
- * @property {Object} json 原始数据
- * @property {Node} [node] 模型的根节点
- * @property {Mesh[]} [meshes] 模型的所有Mesh对象数组
- * @property {Animation} [anim] 模型的动画对象数组，没有动画的话为null
- * @property {Camera[]} [cameras] 模型中的所有Camera对象数组
- * @property {Light[]} [lights] 模型中的所有Light对象数组
- * @property {Texture[]} [textures] 模型中的所有Texture对象数组
- * @property {BasicMaterial[]} [materials] 模型中的所有Material对象数组
- * @property {Skeleton[]} [skins] 模型中的所有Skeleton对象数组
- */
+export { GLTFModel, GLTFLoadParams };

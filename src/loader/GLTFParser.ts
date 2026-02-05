@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Node from '../core/Node';
 import Skeleton from '../core/Skeleton';
 import BasicMaterial from '../material/BasicMaterial';
@@ -33,7 +32,9 @@ const {
     FRONT_AND_BACK
 } = constants;
 
-const ComponentTypeMap = {
+type TypedArrayConstructor = Int8ArrayConstructor | Uint8ArrayConstructor | Int16ArrayConstructor | Uint16ArrayConstructor | Uint32ArrayConstructor | Float32ArrayConstructor;
+
+const ComponentTypeMap: Record<number, [number, TypedArrayConstructor]> = {
     5120: [1, Int8Array],
     5121: [1, Uint8Array],
     5122: [2, Int16Array],
@@ -42,7 +43,7 @@ const ComponentTypeMap = {
     5126: [4, Float32Array]
 };
 
-const ComponentNumberMap = {
+const ComponentNumberMap: Record<string, number> = {
     SCALAR: 1,
     VEC2: 2,
     VEC3: 3,
@@ -52,7 +53,12 @@ const ComponentNumberMap = {
     MAT4: 16
 };
 
-const glTFAttrToGeometry = {
+interface GLTFAttrInfo {
+    name: string;
+    decodeMatName?: string;
+}
+
+const glTFAttrToGeometry: Record<string, GLTFAttrInfo> = {
     POSITION: {
         name: 'vertices',
         decodeMatName: 'positionDecodeMat'
@@ -89,66 +95,122 @@ const glTFAttrToGeometry = {
     }
 };
 
-
 /**
  * @class
  */
-const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
+class GLTFParser {
     /**
      * @default true
      * @type {boolean}
      */
-    isGLTFParser: true,
+    isGLTFParser: boolean = true;
+
     /**
      * @default GLTFParser
      * @type {string}
      */
-    className: 'GLTFParser',
-    Statics: /** @lends GLTFParser */ {
-        MAGIC: 'glTF',
-        /**
-         * 扩展接口
-         * @type {Object}
-         */
-        extensionHandlers,
-        /**
-         * 注册扩展接口
-         * @param  {String} extensionName 接口名称
-         * @param  {IGLTFExtensionHandler} handler 接口
-         */
-        registerExtensionHandler(extensionName, handler) {
-            this.extensionHandlers[extensionName] = handler;
-        },
-        /**
-         * 取消注册扩展接口
-         * @param  {String} extensionName 接口名称
-         */
-        unregisterExtensionHandler(extensionName) {
-            if (this.extensionHandlers[extensionName]) {
-                delete this.extensionHandlers[extensionName];
-            }
+    className: string = 'GLTFParser';
+
+    static readonly MAGIC: string = 'glTF';
+
+    /**
+     * 扩展接口
+     * @type {Object}
+     */
+    static extensionHandlers: any = extensionHandlers;
+
+    /**
+     * 注册扩展接口
+     * @param  {String} extensionName 接口名称
+     * @param  {any} handler 接口
+     */
+    static registerExtensionHandler(extensionName: string, handler: any): void {
+        this.extensionHandlers[extensionName] = handler;
+    }
+
+    /**
+     * 取消注册扩展接口
+     * @param  {String} extensionName 接口名称
+     */
+    static unregisterExtensionHandler(extensionName: string): void {
+        if (this.extensionHandlers[extensionName]) {
+            delete this.extensionHandlers[extensionName];
         }
-    },
-    isMultiAnim: true,
-    isProgressive: false,
-    isUnQuantizeInShader: true,
-    isLoadAllTextures: false,
-    preHandlerImageURI: null,
-    preHandlerBufferURI: null,
-    customMaterialCreator: null,
-    ignoreTextureError: false,
-    forceCreateNewBuffer: false,
-    src: '',
+    }
+
+    isMultiAnim: boolean = true;
+
+    isProgressive: boolean = false;
+
+    isUnQuantizeInShader: boolean = true;
+
+    isLoadAllTextures: boolean = false;
+
+    preHandlerImageURI: ((uri: any, imgData: any) => any) | null = null;
+
+    preHandlerBufferURI: ((uri: string, bufferData: any) => string) | null = null;
+
+    customMaterialCreator: any = null;
+
+    ignoreTextureError: boolean = false;
+
+    forceCreateNewBuffer: boolean = false;
+
+    src: string = '';
+
+    content: ArrayBuffer | string;
+
+    json: any;
+
+    glTFVersion: number = 0;
+
+    isGLTF2: boolean = false;
+
+    extensionsUsed: Record<string, boolean> = {};
+
+    isBinary: boolean = false;
+
+    binaryBody?: ArrayBuffer;
+
+    buffers: Record<string, ArrayBuffer> = {};
+
+    bufferViews: Record<string, any> = {};
+
+    textures: Record<string, LazyTexture> = {};
+
+    materials: Record<string, BasicMaterial | PBRMaterial> = {};
+
+    cameras: Record<string, PerspectiveCamera | OrthographicCamera> = {};
+
+    jointMap: Record<string, Node> = {};
+
+    meshes: Mesh[] = [];
+
+    lights: any[] = [];
+
+    node?: Node;
+
+    skins: Skeleton[] = [];
+
+    useInstanced?: boolean;
+
+    defaultScene?: number | string;
+
+    extensionHandlers?: any;
+
     /**
      * @constructs
      * @param  {ArrayBuffer|String} content
      * @param  {Object} params
      */
-    constructor(content, params) {
-        Object.assign(this, params);
+    constructor(content: ArrayBuffer | string, params?: any) {
         this.content = content;
-    },
-    parse(loader) {
+        if (params) {
+            Object.assign(this, params);
+        }
+    }
+
+    parse(loader: BasicLoader): Promise<any> {
         if (this.content instanceof ArrayBuffer) {
             let buffer = this.content;
             let magic = util.convertUint8ArrayToString(new Uint8Array(buffer, 0, 4));
@@ -178,10 +240,11 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             })
             .then(() => this.parseGeometries())
             .then(() => this.parseScene());
-    },
-    parseExtensionUsed() {
+    }
+
+    parseExtensionUsed(): void {
         this.extensionsUsed = {};
-        util.each(this.json.extensionsUsed, (name) => {
+        util.each(this.json.extensionsUsed, (name: string) => {
             this.extensionsUsed[name] = true;
         });
 
@@ -189,11 +252,13 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             // this glTF model havn't use quantize!
             this.isUnQuantizeInShader = false;
         }
-    },
-    getExtensionHandler(name) {
+    }
+
+    getExtensionHandler(name: string): any {
         return this.extensionHandlers && this.extensionHandlers[name] || GLTFParser.extensionHandlers[name];
-    },
-    parseExtension(extensions, name, result, options = {}) {
+    }
+
+    parseExtension(extensions: any, name: string, result: any, options: any = {}): any {
         const info = extensions[name];
         const extension = this.getExtensionHandler(name);
         if (extension && extension.parse) {
@@ -201,9 +266,10 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         return result;
-    },
-    parseExtensions(extensions, result, options = {}) {
-        util.each(extensions, (info, name) => {
+    }
+
+    parseExtensions(extensions: any, result: any, options: any = {}): any {
+        util.each(extensions, (info: any, name: string) => {
             if (options.ignoreExtensions && options.ignoreExtensions[name]) {
                 return;
             }
@@ -215,11 +281,14 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         });
 
         return result;
-    },
-    isUseExtension(data, extensionName) {
+    }
+
+    // eslint-disable-next-line class-methods-use-this
+    isUseExtension(data: any, extensionName: string): boolean {
         return !!(data && data.extensions && data.extensions[extensionName]);
-    },
-    parseBinary(buffer) {
+    }
+
+    parseBinary(buffer: ArrayBuffer): void {
         this.isBinary = true;
         const infoDataView = new DataView(buffer);
         const version = infoDataView.getUint32(4, true);
@@ -250,9 +319,10 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         } else {
             throw new Error(`Dont support glTF version ${version}`);
         }
-    },
-    loadResources(loader) {
-        const actions = [];
+    }
+
+    loadResources(loader: BasicLoader): Promise<any> {
+        const actions: Promise<any>[] = [];
 
         for (let extensionName in this.extensionsUsed) {
             const extension = this.getExtensionHandler(extensionName);
@@ -271,22 +341,24 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         return Promise.all(actions);
-    },
-    getBufferUri(bufferName) {
+    }
+
+    getBufferUri(bufferName: string): string {
         let uri = util.getRelativePath(this.src, this.json.buffers[bufferName].uri);
         if (this.preHandlerBufferURI) {
             uri = this.preHandlerBufferURI(uri, this.json.buffers[bufferName]);
         }
         return uri;
-    },
-    loadBuffers(loader) {
+    }
+
+    loadBuffers(loader: BasicLoader): Promise<void> {
         this.buffers = {};
 
         if (this.isBinary) {
             if (this.isGLTF2) {
-                this.buffers[0] = this.binaryBody;
+                this.buffers[0] = this.binaryBody!;
             } else {
-                this.buffers.binary_glTF = this.binaryBody;
+                this.buffers.binary_glTF = this.binaryBody!;
             }
             this.parseBufferViews();
             return Promise.resolve();
@@ -295,14 +367,15 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         return Promise.all(Object.keys(this.json.buffers || []).map((bufferName) => {
             const uri = this.getBufferUri(bufferName);
             return loader.loadRes(uri, BasicLoader.TYPE_BUFFER)
-                .then((buffer) => {
+                .then((buffer: ArrayBuffer) => {
                     this.buffers[bufferName] = buffer;
                 });
         })).then(() => {
             this.parseBufferViews();
         });
-    },
-    getImageUri(imageName) {
+    }
+
+    getImageUri(imageName: string): any {
         const imgData = this.json.images[imageName];
         let uri = imgData.uri;
         if (this.isUseExtension(imgData, 'KHR_binary_glTF')) {
@@ -327,8 +400,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         return uri;
-    },
-    getImageType(imageName) {
+    }
+
+    getImageType(imageName: string): string {
         const imgData = this.json.images[imageName];
         let type = '';
         if (imgData && /^image\/(.*)$/.test(imgData.mimeType)) {
@@ -339,8 +413,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             type = '';
         }
         return type;
-    },
-    getUsedTextureNameMap() {
+    }
+
+    getUsedTextureNameMap(): Record<string, boolean> {
         const map = {};
         util.each(this.json.materials, (material) => {
             let values = material;
@@ -357,15 +432,12 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 if (values.occlusionTexture) {
                     map[values.occlusionTexture.index] = true;
                 }
-                if (values.emissiveTexture) {
-                    map[values.emissiveTexture.index] = true;
-                }
                 if (values.transparencyTexture) {
                     map[values.transparencyTexture.index] = true;
                 }
 
                 if (values.extensions) {
-                    util.each(values.extensions, (extensionValue, extensionName) => {
+                    util.each(values.extensions, (extensionValue: any, extensionName: string) => {
                         const extensionHandler = this.getExtensionHandler(extensionName);
                         if (extensionHandler && extensionHandler.getUsedTextureNameMap) {
                             extensionHandler.getUsedTextureNameMap(extensionValue, map, this);
@@ -406,8 +478,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             }
         });
         return map;
-    },
-    loadTextures() {
+    }
+
+    loadTextures(_loader?: BasicLoader): Promise<void> {
         this.textures = {};
 
         if (!this.json.textures) {
@@ -426,7 +499,7 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             let textureData = this.json.textures[textureName];
             let uri = this.getImageUri(textureData.source);
 
-            let texture = new LazyTexture(textureData);
+            let texture: any = new LazyTexture(textureData);
             texture.uv = undefined;
             texture.autoLoad = this.isProgressive;
             texture.crossOrigin = true;
@@ -462,10 +535,11 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             }
             return Promise.resolve();
         }));
-    },
-    parseBufferViews() {
+    }
+
+    parseBufferViews(): void {
         this.bufferViews = {};
-        util.each(this.json.bufferViews, (data, name) => {
+        util.each(this.json.bufferViews, (data: any, name: string) => {
             const buffer = this.buffers[data.buffer];
             const byteOffset = data.byteOffset || 0;
             const byteLength = data.byteLength;
@@ -481,9 +555,10 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         if (!this.isBinary) {
             delete this.buffers;
         }
-    },
+    }
+
     // get Texture for glTF 2.0
-    getTexture(textureInfo) {
+    getTexture(textureInfo: any): LazyTexture | null {
         let texture = this.textures[textureInfo.index];
         if (!texture) {
             return null;
@@ -498,11 +573,12 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             this.textures[key] = texture;
         }
         texture.uv = texCoord;
-        texture.__gltfTextureInfo = textureInfo;
+        (texture as any).__gltfTextureInfo = textureInfo;
 
         return texture;
-    },
-    getColorOrTexture(value) {
+    }
+
+    getColorOrTexture(value: any): Color | LazyTexture | null {
         if (Array.isArray(value)) {
             return new Color(value[0], value[1], value[2]);
         }
@@ -511,8 +587,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             value = value.index;
         }
         return this.textures[value];
-    },
-    parseMaterialCommonProps(material, materialData) {
+    }
+
+    parseMaterialCommonProps(material: any, materialData: any): void {
         switch (materialData.alphaMode) {
             case 'BLEND':
                 material.transparent = true;
@@ -539,8 +616,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         if (materialData.transparencyTexture) {
             material.transparency = this.getTexture(materialData.transparencyTexture);
         }
-    },
-    createPBRMaterial(materialData) {
+    }
+
+    createPBRMaterial(materialData: any): any {
         const material = new PBRMaterial();
         let values = materialData;
 
@@ -613,8 +691,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             this._parseTextureTransform(material, material.baseColorMap);
         }
         return material;
-    },
-    _parseTextureTransform(material, texture) {
+    }
+
+    private _parseTextureTransform(material: any, texture: any): void {
         const textureInfo = texture.__gltfTextureInfo;
         if (this.isUseExtension(textureInfo, 'KHR_texture_transform')) {
             const transformInfo = textureInfo.extensions.KHR_texture_transform;
@@ -635,8 +714,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 }
             }
         }
-    },
-    createKMCMaterial(materialData, kmc) {
+    }
+
+    createKMCMaterial(materialData: any, kmc: any): any {
         const material = new BasicMaterial();
         let values;
         if (kmc) {
@@ -675,8 +755,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
 
         this._parseTextureTransform(material, material.diffuse);
         return material;
-    },
-    parseMaterials() {
+    }
+
+    parseMaterials(): void {
         this.materials = {};
         util.each(this.json.materials, (materialData, name) => {
             if (this.customMaterialCreator) {
@@ -719,8 +800,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
 
             this.parseTechnique(materialData, material);
         });
-    },
-    sparseAccessorHandler(data, sparse) {
+    }
+
+    sparseAccessorHandler(data: any, sparse: any): any {
         if (!sparse) {
             return data;
         }
@@ -742,8 +824,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             util.copyArrayData(newArray, values, indices[i] * data.size, i * data.size, data.size);
         }
         return data;
-    },
-    getAccessorData(name, isDecode) {
+    }
+
+    getAccessorData(name: any, isDecode?: boolean): any {
         let accessor = this.json.accessors[name];
         if (accessor.data) {
             return accessor.data;
@@ -792,8 +875,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             result.normalized = true;
         }
         return result;
-    },
-    getArrayByAccessor(name, isDecode) {
+    }
+
+    getArrayByAccessor(name: any, isDecode?: boolean): any {
         let accessor = this.json.accessors[name];
         if (accessor.array) {
             return accessor.array;
@@ -809,8 +893,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         });
         accessor.array = result;
         return result;
-    },
-    parseTechnique(materialData, material) {
+    }
+
+    parseTechnique(materialData: any, material: any): void {
         let technique = null;
         if (this.json.techniques) {
             technique = this.json.techniques[materialData.technique];
@@ -867,8 +952,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         } else {
             material.side = FRONT_AND_BACK;
         }
-    },
-    createMorphGeometry(primitive, weights) {
+    }
+
+    createMorphGeometry(primitive: any, weights: any): any {
         // MorphGeometry
         const geometry = new MorphGeometry();
         const targets = geometry.targets = {};
@@ -888,8 +974,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             geometry.weights = new Float32Array(primitive.targets.length);
         }
         return geometry;
-    },
-    handlerGeometry(geometry, primitive) {
+    }
+
+    handlerGeometry(geometry: any, primitive: any): any {
         const mode = primitive.mode === undefined ? 4 : primitive.mode;
         if (primitive.extensions) {
             const extensionGeometry = this.parseExtensions(primitive.extensions, null, {
@@ -926,8 +1013,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             }
         }
         return geometry;
-    },
-    handlerSkinedMesh(mesh, skeleton) {
+    }
+
+    handlerSkinedMesh(mesh: any, skeleton: any): void {
         if (!skeleton) {
             return;
         }
@@ -936,8 +1024,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         if (this.useInstanced) {
             mesh.useInstanced = true;
         }
-    },
-    fixProgressiveGeometry(primitive, geometry) {
+    }
+
+    fixProgressiveGeometry(primitive: any, geometry: any): void {
         primitive._geometry = geometry;
         if (this.isProgressive && primitive._meshes) {
             primitive._meshes.forEach((mesh) => {
@@ -945,8 +1034,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 mesh.geometry = geometry;
             });
         }
-    },
-    parseGeometries() {
+    }
+
+    parseGeometries(): any {
         const promise = util.serialRun(this.json.meshes, (meshData) => {
             return util.serialRun(meshData.primitives, (primitive) => {
                 let geometry;
@@ -967,8 +1057,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             });
         });
         return this.isProgressive ? null : promise;
-    },
-    parseMesh(meshName, node, nodeData) {
+    }
+
+    parseMesh(meshName: any, node: any, nodeData: any): void {
         let meshData = this.json.meshes[meshName];
         meshData.primitives.forEach((primitive) => {
             let mesh;
@@ -995,8 +1086,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
             node.addChild(mesh);
             this.meshes.push(mesh);
         });
-    },
-    parseCameras() {
+    }
+
+    parseCameras(): void {
         this.cameras = {};
         const defaultAspect = window.innerWidth / window.innerHeight;
         util.each(this.json.cameras, (cameraData, name) => {
@@ -1030,8 +1122,10 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 this.cameras[name] = camera;
             }
         });
-    },
-    handlerNodeTransform(node, data) {
+    }
+
+    // eslint-disable-next-line class-methods-use-this
+    handlerNodeTransform(node: any, data: any): void {
         if (data.matrix) {
             node.matrix.fromArray(data.matrix);
         } else {
@@ -1047,8 +1141,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 node.z = data.translation[2];
             }
         }
-    },
-    parseNode(nodeName, parentNode) {
+    }
+
+    parseNode(nodeName: any, parentNode: any): void {
         let node;
         let data = this.json.nodes[nodeName];
 
@@ -1089,8 +1184,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         parentNode.addChild(node);
-    },
-    parseAnimations() {
+    }
+
+    parseAnimations(): any {
         if (!this.json.animations) {
             return null;
         }
@@ -1145,8 +1241,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         return null;
-    },
-    parseScene() {
+    }
+
+    parseScene(): any {
         this.parseMaterials();
         this.jointMap = {};
         this.meshes = [];
@@ -1204,8 +1301,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         });
 
         return model;
-    },
-    getDefaultSceneName() {
+    }
+
+    getDefaultSceneName(): any {
         if (this.defaultScene !== undefined) {
             return this.defaultScene;
         }
@@ -1215,8 +1313,9 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
         }
 
         return null;
-    },
-    parseSkins() {
+    }
+
+    parseSkins(): void {
         this.skins = [];
         const skins = this.json.skins;
         if (skins && skins.length) {
@@ -1233,13 +1332,14 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
                 return skeleton;
             });
         }
-    },
+    }
+
     /**
      * 重设 jointName，使其保持唯一性。
      * @private
      * @param  {Node} rootNode
      */
-    resetSkinInfo(rootNode) {
+    resetSkinInfo(rootNode: any): void {
         const jointNameMap = {};
         rootNode.traverse((node) => {
             const newJointName = `${node.id}_${node.name}`;
@@ -1253,6 +1353,6 @@ const GLTFParser = Class.create(/** @lends GLTFParser.prototype */{
 
         rootNode.resetSkinedMeshRootNode();
     }
-});
+}
 
 export default GLTFParser;
