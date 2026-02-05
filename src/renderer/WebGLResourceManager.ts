@@ -1,54 +1,74 @@
-import Class from '../core/Class';
 import EventMixin from '../core/EventMixin';
+
+interface Resource {
+    id?: string;
+    destroy?: () => void;
+    alwaysUse?: boolean;
+    getResources?: (resources: any[]) => void;
+}
+
+interface Mesh {
+    id: string;
+    isMesh?: boolean;
+    isDestroyed?: boolean;
+}
+
+interface Node {
+    isMesh?: boolean;
+    isDestroyed?: boolean;
+    traverse?: (callback: (node: any) => void) => void;
+}
 
 /**
  * WebGLResourceManager 资源管理器
- * @mixes EventMixin
  * @fires destroyResource 销毁资源
  * @class
  */
-const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.prototype */{
-    Mixes: EventMixin,
+class WebGLResourceManager extends EventMixin {
     /**
      * 类名
      * @type {String}
      * @default WebGLResourceManager
      */
-    className: 'WebGLResourceManager',
+    className: string = 'WebGLResourceManager';
 
     /**
      * @type {Boolean}
      * @default true
      */
-    isWebGLResourceManager: true,
+    isWebGLResourceManager: boolean = true;
 
     /**
      * 是否有需要销毁的资源
      * @type {Boolean}
      * @default false
      */
-    hasNeedDestroyResource: false,
+    hasNeedDestroyResource: boolean = false;
 
+    private _needDestroyResources: Resource[] = [];
+
+    private _meshDict: Record<string, Resource[]> = {};
 
     /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params) {
+    constructor(params?: any) {
+        super();
         this._needDestroyResources = [];
         this._meshDict = {};
         Object.assign(this, params);
-    },
+    }
 
-    destroyMesh(mesh) {
+    destroyMesh(mesh: Mesh): void {
         const resources = this.getMeshResources(mesh);
         resources.forEach((resource) => {
             this.destroyIfNoRef(resource);
         });
         delete this._meshDict[mesh.id];
-    },
+    }
 
-    getMeshResources(mesh, resources = []) {
+    getMeshResources(mesh: Mesh, resources: Resource[] = []): Resource[] {
         const meshResources = this._meshDict[mesh.id];
         if (meshResources) {
             meshResources.forEach((meshResource) => {
@@ -59,9 +79,9 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
             });
         }
         return resources;
-    },
+    }
 
-    addMeshResources(mesh, resources) {
+    addMeshResources(mesh: Mesh, resources: Resource[]): void {
         const meshId = mesh.id;
         const meshDict = this._meshDict;
         if (!meshDict[meshId]) {
@@ -73,29 +93,29 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
                 meshResources.push(resource);
             }
         });
-    },
+    }
 
     /**
      * 没有引用时销毁资源
      * @param  {Object} res
      * @return {WebGLResourceManager} this
      */
-    destroyIfNoRef(res) {
+    destroyIfNoRef(res: Resource): WebGLResourceManager {
         const _needDestroyResources = this._needDestroyResources;
         if (res && _needDestroyResources.indexOf(res) < 0) {
             _needDestroyResources.push(res);
         }
         return this;
-    },
+    }
 
     /**
      * 获取 rootNode 用到的资源
      * @param  {Node} [rootNode] 根节点，不传返回空数组
      * @return {Object[]}
      */
-    getUsedResources(rootNode) {
-        const resources = [];
-        if (rootNode) {
+    getUsedResources(rootNode?: Node): Resource[] {
+        const resources: Resource[] = [];
+        if (rootNode && rootNode.traverse) {
             rootNode.traverse((node) => {
                 if (node.isMesh && !node.isDestroyed) {
                     this.getMeshResources(node, resources);
@@ -104,14 +124,14 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
         }
 
         return resources;
-    },
+    }
 
     /**
      * 销毁没被 rootNode 使用的资源，通常传 stage。
      * @param {Node} [rootNode] 根节点，不传代表所有资源都没被使用过。
      * @return {WebGLResourceManager} this
      */
-    destroyUnusedResource(rootNode) {
+    destroyUnusedResource(rootNode?: Node): WebGLResourceManager {
         const needDestroyResources = this._needDestroyResources;
         if (needDestroyResources.length === 0) {
             return this;
@@ -130,16 +150,16 @@ const WebGLResourceManager = Class.create(/** @lends WebGLResourceManager.protot
 
         this.reset();
         return this;
-    },
+    }
 
     /**
      * 重置
      * @return {WebGLResourceManager} this
      */
-    reset() {
+    reset(): WebGLResourceManager {
         this._needDestroyResources.length = 0;
         return this;
     }
-});
+}
 
 export default WebGLResourceManager;
