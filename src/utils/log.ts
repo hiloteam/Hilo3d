@@ -147,10 +147,10 @@ const log = {
      * @private
      * @type {Object}
      */
-    get console(): Console {
+    get console(): any {
         return this._console;
     },
-    set console(value: Console) {
+    set console(value: any) {
         this._console = value;
     }
 };

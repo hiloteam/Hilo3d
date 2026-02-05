@@ -9,14 +9,23 @@ interface TickObject {
  */
 class Ticker {
     private _paused: boolean = false;
+
     private _targetFPS: number = 0;
+
     private _interval: number = 0;
+
     private _intervalId: number | null = null;
+
     private _tickers: TickObject[] = [];
+
     private _lastTime: number = 0;
+
     private _tickCount: number = 0;
+
     private _tickTime: number = 0;
+
     private _measuredFPS: number = 0;
+
     private _useRAF: boolean = false;
 
     constructor(fps?: number) {
@@ -177,12 +186,14 @@ class Ticker {
      * @param callback 回调函数
      * @return tickObject 定时器对象
      */
-    nextTick(callback: (deltaTime: number) => void): TickObject {
+    // eslint-disable-next-line no-unused-vars
+    nextTick(callback: (dt: number) => void): TickObject {
         const that = this;
         const tickObj: TickObject = {
-            tick(dt: number) {
+            // eslint-disable-next-line no-unused-vars
+            tick(_dt: number) {
                 that.removeTick(tickObj);
-                callback(dt);
+                callback(_dt);
             },
         };
 
@@ -200,7 +211,8 @@ class Ticker {
         const that = this;
         const targetTime = new Date().getTime() + duration;
         const tickObj: TickObject = {
-            tick() {
+            // eslint-disable-next-line no-unused-vars
+            tick(_dt: number) {
                 const nowTime = new Date().getTime();
                 const dt = nowTime - targetTime;
                 if (dt >= 0) {
@@ -223,7 +235,8 @@ class Ticker {
         const that = this;
         let targetTime = new Date().getTime() + duration;
         const tickObj: TickObject = {
-            tick() {
+            // eslint-disable-next-line no-unused-vars
+            tick(_dt: number) {
                 let nowTime = new Date().getTime();
                 const dt = nowTime - targetTime;
                 if (dt >= 0) {
