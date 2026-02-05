@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import math from '../math/math';
 import Camera from './Camera';
 import Geometry from '../geometry/Geometry';
@@ -8,88 +7,86 @@ import Geometry from '../geometry/Geometry';
  * @class
  * @extends Camera
  */
-const PerspectiveCamera = Class.create(/** @lends PerspectiveCamera.prototype */ {
-    Extends: Camera,
-
+class PerspectiveCamera extends Camera {
     /**
      * @default true
      * @type {boolean}
      */
-    isPerspectiveCamera: true,
+    isPerspectiveCamera: boolean = true;
 
     /**
      * @default PerspectiveCamera
      * @type {string}
      */
-    className: 'PerspectiveCamera',
+    className: string = 'PerspectiveCamera';
 
-    _near: 0.1,
+    private _near: number = 0.1;
+
+    private _far: number | null = null;
+
+    private _fov: number = 50;
+
+    private _aspect: number = 1;
+
     /**
      * 相机视锥体近平面z
      * @default 0.1
      * @type {number}
      */
-    near: {
-        get() {
-            return this._near;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._near = value;
-        }
-    },
+    get near(): number {
+        return this._near;
+    }
 
-    _far: null,
+    set near(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._near = value;
+    }
+
     /**
      * 相机视锥体远平面z，null 时为无限远
      * @default null
      * @type {number}
      */
-    far: {
-        get() {
-            return this._far;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._far = value;
-        }
-    },
+    get far(): number | null {
+        return this._far;
+    }
 
-    _fov: 50,
+    set far(value: number | null) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._far = value;
+    }
+
     /**
      * 相机视野大小，角度制
      * @default 50
      * @type {number}
      */
-    fov: {
-        get() {
-            return this._fov;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._fov = value;
-        }
-    },
+    get fov(): number {
+        return this._fov;
+    }
 
-    _aspect: 1,
+    set fov(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._fov = value;
+    }
+
     /**
      * 宽高比
      * @default 1
      * @type {number}
      */
-    aspect: {
-        get() {
-            return this._aspect;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._aspect = value;
-        }
-    },
+    get aspect(): number {
+        return this._aspect;
+    }
+
+    set aspect(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._aspect = value;
+    }
 
     /**
      * @constructs
@@ -100,15 +97,15 @@ const PerspectiveCamera = Class.create(/** @lends PerspectiveCamera.prototype */
      * @param {number} [params.aspect=1] 宽高比
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
-        PerspectiveCamera.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
         this.updateProjectionMatrix();
-    },
+    }
 
     /**
      * 更新投影矩阵
      */
-    updateProjectionMatrix() {
+    updateProjectionMatrix(): void {
         // this.projectionMatrix.perspective(math.degToRad(this.fov), this.aspect, this.near, this.far);
 
         const elements = this.projectionMatrix.elements;
@@ -133,9 +130,9 @@ const PerspectiveCamera = Class.create(/** @lends PerspectiveCamera.prototype */
             elements[10] = -1;
             elements[14] = -2 * near;
         }
-    },
+    }
 
-    getGeometry(forceUpdate) {
+    getGeometry(forceUpdate?: boolean): Geometry | undefined {
         if (forceUpdate || !this._geometry || this._isGeometryDirty) {
             this._isGeometryDirty = false;
 
@@ -143,6 +140,11 @@ const PerspectiveCamera = Class.create(/** @lends PerspectiveCamera.prototype */
             const tan = Math.tan(this.fov / 2 * Math.PI / 180);
             const near = this.near;
             const far = this.far;
+
+            if (!far) {
+                return undefined;
+            }
+
             const vNear = near * tan;
             const vFar = far * tan;
             const hNear = this.aspect * vNear;
@@ -170,6 +172,6 @@ const PerspectiveCamera = Class.create(/** @lends PerspectiveCamera.prototype */
 
         return this._geometry;
     }
-});
+}
 
 export default PerspectiveCamera;
