@@ -81,6 +81,7 @@ class BoxGeometry extends Geometry {
             this.build();
         }
     }
+
     buildWithSegments(): void {
         const {
             width,

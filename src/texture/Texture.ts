@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import math from '../math/math';
 import extensions from '../renderer/extensions';
 import capabilities from '../renderer/capabilities';
@@ -27,6 +26,13 @@ const {
 } = constants;
 
 const cache = new Cache();
+
+interface MipmapData {
+    data: any;
+    width: number;
+    height: number;
+}
+
 /**
  * 纹理
  * @class
@@ -41,329 +47,345 @@ const cache = new Cache();
  *     });
  * });
  */
-const Texture = Class.create(/** @lends Texture.prototype */ {
-    Statics: {
-        /**
-         * 缓存
-         * @memberOf Texture
-         * @readOnly
-         * @type {Object}
-         */
-        cache: {
-            get() {
-                return cache;
-            }
-        },
-        /**
-         * 重置
-         * @memberOf Texture
-         * @param  {WebGLRenderingContext} gl
-         */
-        reset(gl) {
-            cache.each((glTexture, id) => {
-                gl.deleteTexture(glTexture);
-                cache.remove(id);
-            });
-        }
-    },
+class Texture {
+    /**
+     * 缓存
+     * @memberOf Texture
+     * @readOnly
+     * @type {Object}
+     */
+    static get cache(): Cache {
+        return cache;
+    }
+
+    /**
+     * 重置
+     * @memberOf Texture
+     * @param  {WebGLRenderingContext} gl
+     */
+    static reset(gl: WebGLRenderingContext): void {
+        cache.each((glTexture: WebGLTexture, id: string) => {
+            gl.deleteTexture(glTexture);
+            cache.remove(id);
+        });
+    }
 
     /**
      * @default true
      * @type {boolean}
      */
-    isTexture: true,
+    isTexture: boolean = true;
 
     /**
      * @default Texture
      * @type {string}
      */
-    className: 'Texture',
+    className: string = 'Texture';
 
     /**
      * 图片资源是否可以释放，可以的话，上传到GPU后将释放图片引用
      * @type {boolean}
      * @default false
      */
-    isImageCanRelease: false,
-    _isImageReleased: false,
-    _image: null,
+    isImageCanRelease: boolean = false;
+
+    private _isImageReleased: boolean = false;
+
+    private _image: any = null;
+
     /**
      * 图片对象
      * @type {HTMLImageElement}
      * @default null
      */
-    image: {
-        get() {
-            if (this._isImageReleased) {
-                log.errorOnce(`Read Texture.image(${this.id})`, 'Read Texture.image after image released!');
-            }
-            return this._image;
-        },
-        set(_img) {
-            this._image = _img;
-            this._isImageReleased = false;
+    get image(): any {
+        if (this._isImageReleased) {
+            log.errorOnce(`Read Texture.image(${this.id})`, 'Read Texture.image after image released!');
         }
-    },
+        return this._image;
+    }
 
-    _releaseImage() {
+    set image(_img: any) {
+        this._image = _img;
+        this._isImageReleased = false;
+    }
+
+    private _canvasImage: HTMLCanvasElement | null = null;
+
+    private _canvasCtx: CanvasRenderingContext2D | null = null;
+
+    private _originImage: any = null;
+
+    private _releaseImage(): void {
         this._canvasImage = null;
         this._canvasCtx = null;
         this._originImage = null;
         this._image = null;
         this.mipmaps = null;
         this._isImageReleased = true;
-    },
+    }
 
     /**
      * mipmaps
      * @type {HTMLImageElement[]|TypedArray[]}
      * @default null
      */
-    mipmaps: null,
+    mipmaps: MipmapData[] | null = null;
 
     /**
      * Texture Target
      * @default gl.TEXTURE_2D
      * @type {GLenum}
      */
-    target: TEXTURE_2D,
+    target: number = TEXTURE_2D;
 
     /**
      * Texture Internal Format
      * @default gl.RGBA
      * @type {GLenum}
      */
-    internalFormat: RGBA,
+    internalFormat: number = RGBA;
 
     /**
      * 图片 Format
      * @default gl.RGBA
      * @type {GLenum}
      */
-    format: RGBA,
+    format: number = RGBA;
 
     /**
      * 类型
      * @default gl.UNSIGNED_BYTE
      * @type {GLenum}
      */
-    type: UNSIGNED_BYTE,
+    type: number = UNSIGNED_BYTE;
 
     /**
      * @default 0
      * @type {number}
      */
-    width: 0,
+    width: number = 0;
 
     /**
      * @default 0
      * @type {number}
      */
-    height: 0,
+    height: number = 0;
 
     /**
      * @default 0
      * @readOnly
      * @type {Number}
      */
-    border: 0,
+    border: number = 0;
 
     /**
      * magFilter
      * @default gl.LINEAR
      * @type {GLenum}
      */
-    magFilter: LINEAR,
+    magFilter: number = LINEAR;
 
     /**
      * minFilter
      * @default gl.LINEAR
      * @type {GLenum}
      */
-    minFilter: LINEAR,
+    minFilter: number = LINEAR;
 
     /**
      * wrapS
      * @default gl.REPEAT
      * @type {GLenum}
      */
-    wrapS: REPEAT,
+    wrapS: number = REPEAT;
 
     /**
      * wrapT
      * @default gl.REPEAT
      * @type {GLenum}
      */
-    wrapT: REPEAT,
+    wrapT: number = REPEAT;
 
     /**
      * @type {string}
      */
-    name: '',
+    name: string = '';
 
     /**
      * @default false
      * @type {boolean}
      */
-    premultiplyAlpha: false,
+    premultiplyAlpha: boolean = false;
 
     /**
      * 是否翻转Texture的Y轴
      * @default false
      * @type {boolean}
      */
-    flipY: false,
+    flipY: boolean = false;
 
     /**
      * 是否转换到图片默认的颜色空间
      * @default true
      * @type {boolean}
      */
-    colorSpaceConversion: true,
+    colorSpaceConversion: boolean = true;
 
     /**
      * 是否压缩
      * @default false
      * @type {Boolean}
      */
-    compressed: false,
+    compressed: boolean = false;
 
     /**
      * 是否需要更新Texture
      * @default true
      * @type {boolean}
      */
-    needUpdate: true,
+    needUpdate: boolean = true;
+
     /**
      * 是否需要销毁之前的Texture，Texture参数变更之后需要销毁
      * @default false
      * @type {boolean}
      */
-    needDestroy: false,
+    needDestroy: boolean = false;
 
     /**
      * 是否每次都更新Texture
      * @default false
      * @type {boolean}
      */
-    autoUpdate: false,
+    autoUpdate: boolean = false;
+
     /**
      * uv
      * @default 0
      * @type {Number}
      */
-    uv: 0,
+    uv: number = 0;
 
     /**
      * anisotropic
      * @default 1
      * @type {Number}
      */
-    anisotropic: 1,
+    anisotropic: number = 1;
+
+    id: string;
+
+    state: any;
+
+    gl: WebGLRenderingContext | null = null;
 
     /**
      * 获取原始图像宽度。
      * @default 0
      * @type {Number}
      */
-    origWidth: {
-        get() {
-            if (this._originImage) {
-                return this._originImage.width || this.width;
-            }
-
-            if (this.image) {
-                return this.image.width || this.width;
-            }
-
-            return this.width;
+    get origWidth(): number {
+        if (this._originImage) {
+            return this._originImage.width || this.width;
         }
-    },
+
+        if (this.image) {
+            return this.image.width || this.width;
+        }
+
+        return this.width;
+    }
 
     /**
      * 获取原始图像高度。
      * @default 0
      * @type {Number}
      */
-    origHeight: {
-        get() {
-            if (this.originImage) {
-                return this._originImage.height || this.height;
-            }
-
-            if (this.image) {
-                return this.image.height || this.height;
-            }
-
-            return this.height;
+    get origHeight(): number {
+        if (this._originImage) {
+            return this._originImage.height || this.height;
         }
-    },
+
+        if (this.image) {
+            return this.image.height || this.height;
+        }
+
+        return this.height;
+    }
 
     /**
      * 是否使用 mipmap
      * @readOnly
      * @type {Boolean}
      */
-    useMipmap: {
-        get() {
-            return this.minFilter !== LINEAR && this.minFilter !== NEAREST;
-        },
-        set() {
-            log.warn('texture.useMipmap is readOnly!');
-        }
-    },
+    get useMipmap(): boolean {
+        return this.minFilter !== LINEAR && this.minFilter !== NEAREST;
+    }
+
+    // eslint-disable-next-line class-methods-use-this
+    set useMipmap(value: boolean) {
+        log.warn('texture.useMipmap is readOnly!');
+    }
 
     /**
      * 是否使用 repeat
      * @readOnly
      * @type {Boolean}
      */
-    useRepeat: {
-        get() {
-            return this.wrapS !== CLAMP_TO_EDGE || this.wrapT !== CLAMP_TO_EDGE;
-        },
-        set() {
-            log.warn('texture.useRepeat is readOnly!');
-        }
-    },
+    get useRepeat(): boolean {
+        return this.wrapS !== CLAMP_TO_EDGE || this.wrapT !== CLAMP_TO_EDGE;
+    }
+
+    // eslint-disable-next-line class-methods-use-this
+    set useRepeat(value: boolean) {
+        log.warn('texture.useRepeat is readOnly!');
+    }
 
     /**
      * mipmapCount
      * @readOnly
      * @type {Number}
      */
-    mipmapCount: {
-        get() {
-            return Math.floor(Math.log2(Math.max(this.width, this.height)) + 1);
-        },
-        set() {
-            log.warn('texture.mipmapCount is readOnly!');
-        }
-    },
+    get mipmapCount(): number {
+        return Math.floor(Math.log2(Math.max(this.width, this.height)) + 1);
+    }
+
+    // eslint-disable-next-line class-methods-use-this
+    set mipmapCount(value: number) {
+        log.warn('texture.mipmapCount is readOnly!');
+    }
+
+    private _needUpdateSubTexture: boolean = false;
+
+    private _subTextureList: Array<[number, number, any]> | null = null;
 
     /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params) {
+    constructor(params?: any) {
         this.id = math.generateUUID(this.className);
         Object.assign(this, params);
-    },
+    }
+
     /**
      * 是否是 2 的 n 次方
      * @param  {HTMLImageElement}  img
      * @return {Boolean}
      */
-    isImgPowerOfTwo(img) {
+    // eslint-disable-next-line class-methods-use-this
+    isImgPowerOfTwo(img: any): boolean {
         return math.isPowerOfTwo(img.width) && math.isPowerOfTwo(img.height);
-    },
+    }
+
     /**
      * 获取支持的尺寸
      * @param  {HTMLImageElement} img
      * @param  {Boolean} [needPowerOfTwo=false]
      * @return {Object} { width, height }
      */
-    getSupportSize(img, needPowerOfTwo = false) {
+    getSupportSize(img: any, needPowerOfTwo: boolean = false): { width: number; height: number } {
         let width = img.width;
         let height = img.height;
 
@@ -387,16 +409,18 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
             width,
             height
         };
-    },
+    }
+
     /**
      * 更新图片大小成为 2 的 n 次方
      * @param  {HTMLImageElement} img
      * @return {HTMLCanvasElement|HTMLImageElement}
      */
-    resizeImgToPowerOfTwo(img) {
+    resizeImgToPowerOfTwo(img: any): any {
         const sizeResult = this.getSupportSize(img, true);
         return this.resizeImg(img, sizeResult.width, sizeResult.height);
-    },
+    }
+
     /**
      * 更新图片大小
      * @param  {HTMLImageElement} img
@@ -404,7 +428,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * @param {Number} height
      * @return {HTMLCanvasElement|HTMLImageElement}
      */
-    resizeImg(img, width, height) {
+    resizeImg(img: any, width: number, height: number): any {
         if (img.width === width && img.height === height) {
             return img;
         }
@@ -421,11 +445,12 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
             canvas.height = height;
             this._canvasCtx = canvas.getContext('2d');
         }
-        this._canvasCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, width, height);
+        this._canvasCtx!.drawImage(img, 0, 0, img.width, img.height, 0, 0, width, height);
         log.warnOnce(`Texture.resizeImg(${this.id})`, `image size(${img.width}x${img.height}) is not support. Resized to ${canvas.width}x${canvas.height}`, img.src);
         this._originImage = img;
         return canvas;
-    },
+    }
+
     /**
      * GL上传贴图
      * @private
@@ -437,7 +462,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * @param  {Number} [height=this.height]
      * @return {Texture}  this
      */
-    _glUploadTexture(state, target, image, level = 0, width = this.width, height = this.height) {
+    private _glUploadTexture(state: any, target: number, image: any, level: number = 0, width: number = this.width, height: number = this.height): this {
         const gl = state.gl;
         const type = this.type;
         const format = this.format;
@@ -455,13 +480,14 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
         }
 
         return this;
-    },
+    }
+
     /**
      * 修复 WebGL & WebGL2 internalFormat
      * @param {WebGLState} state
      * @returns {number} internalFormat
      */
-    _fixInternalFormat(state, type, format, internalFormat) {
+    private _fixInternalFormat(state: any, type: number, format: number, internalFormat: number): number {
         if (state.isWebGL2) {
             if (type === FLOAT) {
                 if (format === RGBA) {
@@ -474,14 +500,15 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
             internalFormat = this.format;
         }
         return internalFormat;
-    },
+    }
+
     /**
      * 上传贴图，子类可重写
      * @private
      * @param  {WebGLState} state
      * @return {Texture} this
      */
-    _uploadTexture(state) {
+    protected _uploadTexture(state: any): this {
         if (this.useMipmap && this.mipmaps) {
             this.mipmaps.forEach((mipmap, index) => {
                 this._glUploadTexture(state, this.target, mipmap.data, index, mipmap.width, mipmap.height);
@@ -491,14 +518,14 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
         }
 
         return this;
-    },
+    }
 
-    _updatePixelStorei() {
+    private _updatePixelStorei(): void {
         const state = this.state;
         state.pixelStorei(UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.premultiplyAlpha);
         state.pixelStorei(UNPACK_FLIP_Y_WEBGL, !!this.flipY);
         state.pixelStorei(UNPACK_COLORSPACE_CONVERSION_WEBGL, this.colorSpaceConversion ? BROWSER_DEFAULT_WEBGL : NONE);
-    },
+    }
 
     /**
      * 更新 Texture
@@ -506,7 +533,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
      * @param  {WebGLTexture} glTexture
      * @return {Texture} this
      */
-    updateTexture(state, glTexture) {
+    updateTexture(state: any, glTexture: WebGLTexture): this {
         const gl = state.gl;
         if (this.needUpdate || this.autoUpdate) {
             if (this._originImage && this.image === this._canvasImage) {
@@ -533,7 +560,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
                 if (!this.compressed) {
                     gl.generateMipmap(this.target);
                 } else if (!this.mipmaps) {
-                    log.warn(`Compressed texture has no mipmips, changed the minFilter from ${this.minFilter} to Linear!`, this);
+                    log.warn(`Compressed texture has no mipmaps, changed the minFilter from ${this.minFilter} to Linear!`, this);
                     this.minFilter = LINEAR;
                 }
             }
@@ -557,14 +584,15 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
         }
 
         return this;
-    },
+    }
+
     /**
      * 跟新所有的局部贴图
      * @private
      * @param  {WebGLState} state
      * @param  {WebGLTexture} glTexture
      */
-    _uploadSubTextures(state, glTexture) {
+    private _uploadSubTextures(state: any, glTexture: WebGLTexture): void {
         if (this._subTextureList && this._subTextureList.length > 0) {
             const gl = state.gl;
             state.activeTexture(gl.TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
@@ -580,28 +608,28 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
             });
             this._subTextureList.length = 0;
         }
-    },
-    _needUpdateSubTexture: false,
-    _subTextureList: null,
+    }
+
     /**
      * 跟新局部贴图
      * @param  {Number} xOffset
      * @param  {Number} yOffset
      * @param  {HTMLImageElement|HTMLCanvasElement|ImageData} image
      */
-    updateSubTexture(xOffset, yOffset, image) {
+    updateSubTexture(xOffset: number, yOffset: number, image: any): void {
         if (!this._subTextureList) {
             this._subTextureList = [];
         }
         this._subTextureList.push([xOffset, yOffset, image]);
         this._needUpdateSubTexture = true;
-    },
+    }
+
     /**
      * 获取 GLTexture
      * @param  {WebGLState} state
      * @return {WebGLTexture}
      */
-    getGLTexture(state) {
+    getGLTexture(state: any): WebGLTexture {
         this.state = state;
         const gl = this.gl = state.gl;
         const id = this.id;
@@ -615,7 +643,7 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
         if (glTexture) {
             this.updateTexture(state, glTexture);
         } else {
-            glTexture = gl.createTexture();
+            glTexture = gl.createTexture()!;
             cache.add(id, glTexture);
             this.needUpdate = true;
             this.updateTexture(state, glTexture);
@@ -626,26 +654,28 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
         }
 
         return glTexture;
-    },
+    }
+
     /**
      * 设置 GLTexture
      * @param {WebGLTexture}  texture
      * @param {Boolean} [needDestroy=false] 是否销毁之前的 GLTexture
      * @return {Texture} this
      */
-    setGLTexture(texture, needDestroy = false) {
+    setGLTexture(texture: WebGLTexture, needDestroy: boolean = false): this {
         if (needDestroy) {
             this.destroy();
         }
         cache.add(this.id, texture);
 
         return this;
-    },
+    }
+
     /**
      * 销毁当前Texture
      * @return {Texture} this
      */
-    destroy() {
+    destroy(): this {
         const id = this.id;
         const glTexture = cache.get(id);
         if (glTexture && this.gl) {
@@ -653,17 +683,18 @@ const Texture = Class.create(/** @lends Texture.prototype */ {
             cache.remove(id);
         }
         return this;
-    },
+    }
+
     /**
      * clone
      * @return {Texture}
      */
-    clone() {
+    clone(): Texture {
         const option = Object.assign({}, this);
-        delete option.id;
-        const texture = new this.constructor(option);
+        delete (option as any).id;
+        const texture = new (this.constructor as any)(option);
         return texture;
     }
-});
+}
 
 export default Texture;

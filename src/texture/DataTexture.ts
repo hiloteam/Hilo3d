@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import math from '../math/math';
 import Texture from './Texture';
 import {
@@ -15,68 +14,97 @@ const {
     FLOAT
 } = constants;
 
+type TypedArrayConstructor =
+    | Int8ArrayConstructor
+    | Uint8ArrayConstructor
+    | Int16ArrayConstructor
+    | Uint16ArrayConstructor
+    | Int32ArrayConstructor
+    | Uint32ArrayConstructor
+    | Float32ArrayConstructor
+    | Float64ArrayConstructor;
+
+type TypedArray =
+    | Int8Array
+    | Uint8Array
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Float32Array
+    | Float64Array;
+
 /**
  * 数据纹理
  * @class
  * @extends Texture
  */
-const DataTexture = Class.create(/** @lends DataTexture.prototype */ {
-    Extends: Texture,
+class DataTexture extends Texture {
     /**
      * @default true
      * @type {boolean}
      */
-    isDataTexture: true,
+    isDataTexture: boolean = true;
+
     /**
      * @default DataTexture
      * @type {string}
      */
-    className: 'DataTexture',
+    className: string = 'DataTexture';
 
     /**
      * @default TEXTURE_2D
      * @type {number}
      */
-    target: TEXTURE_2D,
+    target: number = TEXTURE_2D;
+
     /**
      * @default RGBA
      * @type {number}
      */
-    internalFormat: RGBA,
+    internalFormat: number = RGBA;
+
     /**
      * @default RGBA
      * @type {number}
      */
-    format: RGBA,
+    format: number = RGBA;
+
     /**
      * @default FLOAT
      * @type {number}
      */
-    type: FLOAT,
+    type: number = FLOAT;
 
     /**
      * @default NEAREST
      * @type {number}
      */
-    magFilter: NEAREST,
+    magFilter: number = NEAREST;
+
     /**
      * @default NEAREST
      * @type {number}
      */
-    minFilter: NEAREST,
-    /**
-     * @default CLAMP_TO_EDGE
-     * @type {number}
-     */
-    wrapS: CLAMP_TO_EDGE,
-    /**
-     * @default CLAMP_TO_EDGE
-     * @type {number}
-     */
-    wrapT: CLAMP_TO_EDGE,
-    dataLength: 0,
+    minFilter: number = NEAREST;
 
-    resetSize(dataLen) {
+    /**
+     * @default CLAMP_TO_EDGE
+     * @type {number}
+     */
+    wrapS: number = CLAMP_TO_EDGE;
+
+    /**
+     * @default CLAMP_TO_EDGE
+     * @type {number}
+     */
+    wrapT: number = CLAMP_TO_EDGE;
+
+    dataLength: number = 0;
+
+    DataClass: TypedArrayConstructor | undefined;
+
+    resetSize(dataLen: number): void {
         if (dataLen === this.dataLength) {
             return;
         }
@@ -88,41 +116,33 @@ const DataTexture = Class.create(/** @lends DataTexture.prototype */ {
         this.width = 2 ** w;
         this.height = 2 ** h;
         this.DataClass = getTypedArrayClass(this.type);
-    },
+    }
 
     /**
      * 数据，改变数据的时候会自动更新Texture
      * @type {Float32Array}
      */
-    data: {
-        get() {
-            return this.image;
-        },
-        set(_data) {
-            if (this.image !== _data) {
-                this.resetSize(_data.length);
-                const len = this.width * this.height * 4;
-                if (len === _data.length && _data instanceof this.DataClass) {
-                    this.image = _data;
-                } else {
-                    if (!this.image || this.image.length !== len) {
+    get data(): TypedArray {
+        return this.image;
+    }
+
+    set data(_data: TypedArray) {
+        if (this.image !== _data) {
+            this.resetSize(_data.length);
+            const len = this.width * this.height * 4;
+            if (len === _data.length && this.DataClass && _data instanceof this.DataClass) {
+                this.image = _data;
+            } else {
+                if (!this.image || this.image.length !== len) {
+                    if (this.DataClass) {
                         this.image = new this.DataClass(len);
                     }
-                    this.image.set(_data, 0);
                 }
-                this.needUpdate = true;
+                this.image.set(_data, 0);
             }
+            this.needUpdate = true;
         }
-    },
-
-    /**
-     * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
-     * @param {Array|Float32Array} [params.data] 数据
-     */
-    constructor(params) {
-        DataTexture.superclass.constructor.call(this, params);
     }
-});
+}
 
 export default DataTexture;

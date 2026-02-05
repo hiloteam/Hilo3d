@@ -36,28 +36,33 @@ class Material {
      * @type {boolean}
      */
     isMaterial: boolean = true;
+
     /**
      * @default Material
      * @type {string}
      */
     className: string = 'Material';
+
     /**
      * name
      * @type {string}
      */
     name: string | null = null;
+
     /**
      * shader cache id
      * @default null
      * @type {string}
      */
     shaderCacheId: string | null = null;
+
     /**
      * shader name，会在 shader 中加个 SHADER_NAME 宏，不填用 className 代替。
      * @default null
      * @type {string}
      */
     shaderName: string | null = null;
+
     /**
      * 光照类型
      * @default NONE
@@ -85,24 +90,28 @@ class Material {
      * @type {boolean}
      */
     depthTest: boolean = true;
+
     /**
      * SAMPLE_ALPHA_TO_COVERAGE
      * @default false
      * @type {Boolean}
      */
     sampleAlphaToCoverage: boolean = false;
+
     /**
      * 是否开启depthMask
      * @default true
      * @type {boolean}
      */
     depthMask: boolean = true;
+
     /**
      * 深度测试Range
      * @default [0, 1]
      * @type {Array}
      */
     depthRange: number[] = [0, 1];
+
     /**
      * 深度测试方法
      * @default LESS
@@ -174,7 +183,9 @@ class Material {
      * @type {Number}
      */
     renderOrder: number = 0;
+
     private _premultiplyAlpha: boolean = true;
+
     /**
      * 是否预乘 alpha
      * @type {Boolean}
@@ -183,6 +194,7 @@ class Material {
     get premultiplyAlpha(): boolean {
         return this._premultiplyAlpha;
     }
+
     set premultiplyAlpha(value: boolean) {
         this._premultiplyAlpha = value;
         if (this.transparent) {
@@ -200,6 +212,7 @@ class Material {
         log.warnOnce('Matrial.gammaOutput', 'material.gammaOutput has deprecated. Use material.gammaCorrection instead.');
         return this.gammaCorrection;
     }
+
     set gammaOutput(value: boolean) {
         log.warnOnce('Matrial.gammaOutput', 'material.gammaOutput has deprecated. Use material.gammaCorrection instead.');
         this.gammaCorrection = value;
@@ -246,6 +259,7 @@ class Material {
     get cullFace(): boolean {
         return this._cullFace;
     }
+
     set cullFace(value: boolean) {
         this._cullFace = value;
         if (value) {
@@ -256,6 +270,7 @@ class Material {
     }
 
     private _cullFaceType: GLenum = BACK;
+
     /**
      * CullFace 类型
      * @default BACK
@@ -264,6 +279,7 @@ class Material {
     get cullFaceType(): GLenum {
         return this._cullFaceType;
     }
+
     set cullFaceType(value: GLenum) {
         this._cullFaceType = value;
         if (this._cullFace) {
@@ -276,6 +292,7 @@ class Material {
     }
 
     private _side: GLenum = FRONT;
+
     /**
      * 显示面，可选值 FRONT, BACK, FRONT_AND_BACK
      * @type {GLenum}
@@ -284,6 +301,7 @@ class Material {
     get side(): GLenum {
         return this._side;
     }
+
     set side(value: GLenum) {
         if (this._side !== value) {
             this._side = value;
@@ -306,36 +324,42 @@ class Material {
      * @type {boolean}
      */
     blend: boolean = false;
+
     /**
      * 颜色混合方式
      * @default FUNC_ADD
      * @type {GLenum}
      */
     blendEquation: GLenum = FUNC_ADD;
+
     /**
      * 透明度混合方式
      * @default FUNC_ADD
      * @type {GLenum}
      */
     blendEquationAlpha: GLenum = FUNC_ADD;
+
     /**
      * 颜色混合来源比例
      * @default ONE
      * @type {GLenum}
      */
     blendSrc: GLenum = ONE;
+
     /**
      * 颜色混合目标比例
      * @default ZERO
      * @type {GLenum}
      */
     blendDst: GLenum = ZERO;
+
     /**
      * 透明度混合来源比例
      * @default ONE
      * @type {GLenum}
      */
     blendSrcAlpha: GLenum = ONE;
+
     /**
      * 透明度混合目标比例
      * @default ONE
@@ -414,6 +438,7 @@ class Material {
     transparency: number = 1;
 
     private _transparent: boolean = false;
+
     /**
      * 是否需要透明
      * @default false
@@ -422,6 +447,7 @@ class Material {
     get transparent(): boolean {
         return this._transparent;
     }
+
     set transparent(value: boolean) {
         if (this._transparent !== value) {
             this._transparent = value;
@@ -433,6 +459,7 @@ class Material {
             }
         }
     }
+
     setDefaultTransparentBlend() {
         this.blend = true;
         this.depthMask = false;
@@ -448,6 +475,7 @@ class Material {
             this.blendDstAlpha = ONE_MINUS_SRC_ALPHA;
         }
     }
+
     /**
      * 透明度剪裁，如果渲染的颜色透明度大于等于这个值的话渲染为完全不透明，否则渲染为完全透明
      * @default 0
@@ -489,6 +517,7 @@ class Material {
      * @default true
      */
     needBasicUnifroms: boolean = true;
+
     /**
      * 是否需要加基础 attributes
      * @type {Boolean}
@@ -500,19 +529,21 @@ class Material {
      * @type {string}
      */
     id: string;
+
     /**
      * 可以通过指定，semantic来指定值的获取方式，或者自定义get方法
      * @default {}
      * @type {object}
      */
     uniforms: any;
+
     /**
      * 可以通过指定，semantic来指定值的获取方式，或者自定义get方法
      * @default {}
      * @type {object}
      */
     attributes: any;
-    
+
     private _instancedUniforms: any = null;
 
     /**
@@ -534,6 +565,7 @@ class Material {
             this.addBasicUniforms();
         }
     }
+
     /**
      * 增加基础 attributes
      */
@@ -560,6 +592,7 @@ class Material {
             }
         });
     }
+
     /**
      * 增加基础 uniforms
      */
@@ -646,6 +679,7 @@ class Material {
             u_transparency: 'TRANSPARENCY'
         });
     }
+
     /**
      * 增加贴图 uniforms
      * @param {Object} textureUniforms textureName:semanticName 键值对
@@ -661,6 +695,7 @@ class Material {
         }
         this._copyProps(this.uniforms, uniforms);
     }
+
     /**
      * 获取渲染选项值
      * @param  {Object} [option={}] 渲染选项值
@@ -745,6 +780,7 @@ class Material {
         textureOption.update();
         return option;
     }
+
     private _textureOption = {
         uvTypes: null as any,
         option: null as any,
@@ -818,18 +854,23 @@ class Material {
 
         return instancedUniforms;
     }
+
     getUniformData(name: string, mesh: any, programInfo: any) {
         return this.getUniformInfo(name).get(mesh, this, programInfo);
     }
+
     getAttributeData(name: string, mesh: any, programInfo: any) {
         return this.getAttributeInfo(name).get(mesh, this, programInfo);
     }
+
     getUniformInfo(name: string) {
         return this.getInfo('uniforms', name);
     }
+
     getAttributeInfo(name: string) {
         return this.getInfo('attributes', name);
     }
+
     getInfo(dataType: string, name: string) {
         const dataDict = this[dataType];
         let info = dataDict[name];
@@ -844,6 +885,7 @@ class Material {
 
         return info;
     }
+
     /**
      * clone 当前Material
      * @return {Material} 返回clone的Material
@@ -857,6 +899,7 @@ class Material {
         }
         return newMaterial;
     }
+
     /**
      * 销毁贴图
      * @return {Material} this
@@ -866,6 +909,7 @@ class Material {
             texture.destroy();
         });
     }
+
     /**
      * 获取材质全部贴图
      * @return {Texture[]}
@@ -881,6 +925,7 @@ class Material {
 
         return textures;
     }
+
     /**
      * 复制属性，只有没属性时才会覆盖
      * @private

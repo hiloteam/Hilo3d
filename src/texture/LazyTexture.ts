@@ -1,6 +1,5 @@
-import Class from '../core/Class';
-import EventMixin from '../core/EventMixin';
 import Texture from './Texture';
+import EventMixin, { EventMixinCallback, EventObject } from '../core/EventMixin';
 import Loader from '../loader/Loader';
 import log from '../utils/log';
 
@@ -11,7 +10,6 @@ placeHolder.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAA
  * 懒加载纹理
  * @class
  * @extends Texture
- * @mixes EventMixin
  * @fires load 加载成功事件
  * @fires error 加载失败事件
  * @example
@@ -22,60 +20,63 @@ placeHolder.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAA
  *     });
  * });
  */
-const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
-    Extends: Texture,
-    Mixes: EventMixin,
+class LazyTexture extends Texture {
+    static loader: Loader;
 
     /**
      * @default true
      * @type {boolean}
      */
-    isLazyTexture: true,
+    isLazyTexture: boolean = true;
 
     /**
      * @default LazyTexture
      * @type {string}
      */
-    className: 'LazyTexture',
+    className: string = 'LazyTexture';
 
-    _src: '',
+    private _src: string = '';
 
     /**
      * 图片是否跨域
      * @default false
      * @type {boolean}
      */
-    crossOrigin: false,
+    crossOrigin: boolean = false;
 
     /**
      * 是否在设置src后立即加载图片
      * @default true
      * @type {boolean}
      */
-    autoLoad: true,
+    autoLoad: boolean = true;
+
     /**
      * 资源类型，用于加载时判断
      * @type {string}
      */
-    resType: '',
+    resType: string = '';
+
+    placeHolder?: HTMLImageElement;
+
+    _listeners: Record<string, any[]> | null = null;
 
     /**
      * 图片地址
      * @type {string}
      */
-    src: {
-        get() {
-            return this._src;
-        },
-        set(src) {
-            if (this._src !== src) {
-                this._src = src;
-                if (this.autoLoad) {
-                    this.load();
-                }
+    get src(): string {
+        return this._src;
+    }
+
+    set src(src: string) {
+        if (this._src !== src) {
+            this._src = src;
+            if (this.autoLoad) {
+                this.load();
             }
         }
-    },
+    }
 
     /**
      * @constructs
@@ -86,33 +87,32 @@ const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
      * @param {string} [params.src] 图片地址
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
+    constructor(params?: any) {
         if (params) {
-            // 必须在src设置前赋值
             if ('crossOrigin' in params) {
-                this.crossOrigin = params.crossOrigin;
+                (LazyTexture.prototype as any).crossOrigin = params.crossOrigin;
             }
             if ('autoLoad' in params) {
-                this.autoLoad = params.autoLoad;
+                (LazyTexture.prototype as any).autoLoad = params.autoLoad;
             }
         }
-        LazyTexture.superclass.constructor.call(this, params);
+        super(params);
         this.image = this.placeHolder || placeHolder;
-    },
+    }
 
     /**
      * 加载图片
      * @param {boolean} [throwError=false] 是否 throw error
      * @return {Promise<void>} 返回加载的Promise
      */
-    load(throwError) {
+    load(throwError?: boolean): Promise<void> {
         LazyTexture.loader = LazyTexture.loader || new Loader();
         return LazyTexture.loader.load({
             src: this.src,
             crossOrigin: this.crossOrigin,
             type: this.resType,
             defaultType: 'img'
-        }).then((img) => {
+        }).then((img: any) => {
             if (img.isTexture) {
                 Object.assign(this, img);
                 this.needUpdate = true;
@@ -123,7 +123,7 @@ const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
                 this.needUpdate = true;
                 this.fire('load');
             }
-        }, (err) => {
+        }, (err: any) => {
             this.fire('error');
             if (throwError) {
                 throw new Error(`LazyTexture Failed ${err}`);
@@ -131,13 +131,22 @@ const LazyTexture = Class.create(/** @lends LazyTexture.prototype */ {
                 log.warn(`LazyTexture Failed ${err}`);
             }
         });
-    },
-    _releaseImage() {
+    }
+
+    protected _releaseImage(): void {
         if (this._src && typeof this._src !== 'string') {
             this._src = '';
         }
-        LazyTexture.superclass._releaseImage.call(this);
+        super._releaseImage();
     }
-});
+
+    on!: (type: string, listener: EventMixinCallback, once?: boolean) => this;
+
+    off!: (type?: string, listener?: EventMixinCallback) => this;
+
+    fire!: (type: string | EventObject, detail?: any) => boolean;
+}
+
+Object.assign(LazyTexture.prototype, EventMixin);
 
 export default LazyTexture;

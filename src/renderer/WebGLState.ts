@@ -38,11 +38,15 @@ class WebGLState {
     gl: WebGLRenderingContext | WebGL2RenderingContext;
 
     activeTextureIndex: number | null = null;
+
     textureUnitDict: Record<number, Record<number, WebGLTexture | null>> = {};
+
     currentFramebuffer: WebGLFramebuffer | null = null;
+
     preFramebuffer: WebGLFramebuffer | null = null;
 
     private _dict: Record<string | number, any> = {};
+
     private _pixelStorei: Record<number, number> = {};
 
     /**

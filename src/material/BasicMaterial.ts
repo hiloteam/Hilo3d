@@ -16,78 +16,92 @@ class BasicMaterial extends Material {
      * @type {boolean}
      */
     isBasicMaterial: boolean = true;
+
     /**
      * @default BasicMaterial
      * @type {string}
      */
     className: string = 'BasicMaterial';
+
     /**
      * 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
      * @default BLINN-PHONG
      * @type {'NONE'|'PHONG'|'BLINN-PHONG'|'LAMBERT'}
      */
     lightType: 'NONE'|'PHONG'|'BLINN-PHONG'|'LAMBERT' = 'BLINN-PHONG';
+
     /**
      * 漫反射贴图，或颜色
      * @default Color(.5, .5, .5)
      * @type {Texture|Color}
      */
     diffuse: any = new Color(.5, .5, .5);
+
     /**
      * 环境光贴图，或颜色
      * @default null
      * @type {Texture|Color}
      */
     ambient: any = null;
+
     /**
      * 镜面贴图，或颜色
      * @default Color(1, 1, 1)
      * @type {Texture|Color}
      */
     specular: any = new Color(1, 1, 1);
+
     /**
      * 放射光贴图，或颜色
      * @default Color(0, 0, 0)
      * @type {Texture|Color}
      */
     emission: any = new Color(0, 0, 0);
+
     /**
      * 环境贴图
      * @default null
      * @type {CubeTexture|Texture}
      */
     specularEnvMap: any = null;
+
     /**
      * 环境贴图变化矩阵，如旋转等
      * @default null
      * @type {Matrix4}
      */
     specularEnvMatrix: any = null;
+
     /**
      * 反射率
      * @default 0
      * @type {number}
      */
     reflectivity: number = 0;
+
     /**
      * 折射比率
      * @default 0
      * @type {number}
      */
     refractRatio: number = 0;
+
     /**
      * 折射率
      * @default 0
      * @type {number}
      */
     refractivity: number = 0;
+
     /**
      * 高光发光值
      * @default 32
      * @type {number}
      */
     shininess: number = 32;
+
     usedUniformVectors: number = 11;
+
     /**
      * @constructs
      * @param {Object} [params] 初始化参数，所有params都会复制到实例上
@@ -125,6 +139,7 @@ class BasicMaterial extends Material {
             u_ambient: 'AMBIENT'
         });
     }
+
     getRenderOption(option: any = {}): any {
         super.getRenderOption(option);
 

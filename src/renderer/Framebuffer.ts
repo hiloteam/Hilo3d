@@ -76,6 +76,7 @@ interface FramebufferParams {
  */
 class Framebuffer {
     static readonly ATTACHMENT_TYPE_TEXTURE = 'TEXTURE';
+
     static readonly ATTACHMENT_TYPE_RENDERBUFFER = 'RENDERBUFFER';
 
     /**
@@ -285,7 +286,9 @@ class Framebuffer {
     depthStencilAttachmentInfo: AttachmentInfo | undefined;
 
     private _isInit: boolean = false;
+
     private _isDestroyed: boolean = false;
+
     private _preFramebuffer: WebGLFramebuffer | null = null;
 
     /**
