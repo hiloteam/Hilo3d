@@ -1,10 +1,24 @@
-import Class from '../core/Class';
 import Vector3 from '../math/Vector3';
 import log from '../utils/log';
 
 const tempVector3 = new Vector3();
 
-const opaqueSort = function(meshA, meshB) {
+interface Mesh {
+    material: any;
+    geometry: any;
+    frustumTest: boolean;
+    useInstanced: boolean;
+    worldMatrix: any;
+    _sortRenderZ: number;
+    id: string;
+}
+
+interface Camera {
+    viewProjectionMatrix: any;
+    isMeshVisible(mesh: Mesh): boolean;
+}
+
+const opaqueSort = function(meshA: Mesh, meshB: Mesh): number {
     // sort by material renderOrder
     const renderOrderA = meshA.material.renderOrder;
     const renderOrderB = meshB.material.renderOrder;
@@ -23,7 +37,7 @@ const opaqueSort = function(meshA, meshB) {
     return meshA._sortRenderZ - meshB._sortRenderZ;
 };
 
-const transparentSort = function(meshA, meshB) {
+const transparentSort = function(meshA: Mesh, meshB: Mesh): number {
     // sort by material renderOrder
     const renderOrderA = meshA.material.renderOrder;
     const renderOrderB = meshB.material.renderOrder;
@@ -36,71 +50,89 @@ const transparentSort = function(meshA, meshB) {
 };
 
 /**
+ * @callback RenderListTraverseCallback
+ * @param mesh
+ */
+type RenderListTraverseCallback = (mesh: Mesh) => void;
+
+/**
+ * @callback RenderListInstancedTraverseCallback
+ * @param meshes
+ */
+type RenderListInstancedTraverseCallback = (meshes: Mesh[]) => void;
+
+/**
  * 渲染列表
  * @class
  */
-const RenderList = Class.create(/** @lends RenderList.prototype */ {
+class RenderList {
     /**
      * @default RenderList
      * @type {String}
      */
-    className: 'RenderList',
+    className: string = 'RenderList';
 
     /**
      * @default true
      * @type {Boolean}
      */
-    isRenderList: true,
+    isRenderList: boolean = true;
 
     /**
      * 使用 instanced
      * @type {Boolean}
      * @default false
      */
-    useInstanced: false,
+    useInstanced: boolean = false;
+
+    /**
+     * 不透明物体列表
+     * @type {Array}
+     */
+    opaqueList: Mesh[] = [];
+
+    /**
+     * 透明物体列表
+     * @type {Array}
+     */
+    transparentList: Mesh[] = [];
+
+    /**
+     * instanced物体字典
+     * @type {Object}
+     */
+    instancedDict: Record<string, Mesh[]> = {};
 
     /**
      * @constructs
      */
     constructor() {
-        /**
-         * 不透明物体列表
-         * @type {Array}
-         */
         this.opaqueList = [];
-
-        /**
-         * 透明物体列表
-         * @type {Array}
-         */
         this.transparentList = [];
-
-        /**
-         * instanced物体字典
-         * @type {Object}
-         */
         this.instancedDict = {};
-    },
+    }
+
     /**
      * 重置列表
      */
-    reset() {
+    reset(): void {
         this.opaqueList.length = 0;
         this.transparentList.length = 0;
         this.instancedDict = {};
-    },
+    }
+
     /**
      * 遍历列表执行回调
-     * @param  {RenderListTraverseCallback} callback callback(mesh)
-     * @param  {RenderListInstancedTraverseCallback} [instancedCallback=null] instancedCallback(instancedMeshes)
+     * @param callback callback(mesh)
+     * @param instancedCallback instancedCallback(instancedMeshes)
      */
-    traverse(callback, instancedCallback) {
+    traverse(callback: RenderListTraverseCallback, instancedCallback?: RenderListInstancedTraverseCallback | null): void {
         this.opaqueList.forEach((mesh) => {
             callback(mesh);
         });
 
         const instancedDict = this.instancedDict;
-        for (let instancedId in instancedDict) {
+        for (const instancedId in instancedDict) {
             const instancedList = instancedDict[instancedId];
             if (instancedList.length > 2 && instancedCallback) {
                 instancedCallback(instancedList);
@@ -114,17 +146,19 @@ const RenderList = Class.create(/** @lends RenderList.prototype */ {
         this.transparentList.forEach((mesh) => {
             callback(mesh);
         });
-    },
-    sort() {
+    }
+
+    sort(): void {
         this.transparentList.sort(transparentSort);
         this.opaqueList.sort(opaqueSort);
-    },
+    }
+
     /**
      * 增加 mesh
-     * @param {Mesh} mesh
-     * @param {Camera} camera
+     * @param mesh
+     * @param camera
      */
-    addMesh(mesh, camera) {
+    addMesh(mesh: Mesh, camera: Camera): void {
         const material = mesh.material;
         const geometry = mesh.geometry;
 
@@ -156,16 +190,6 @@ const RenderList = Class.create(/** @lends RenderList.prototype */ {
             log.warnOnce(`RenderList.addMesh(${mesh.id})`, 'Mesh must have material and geometry', mesh);
         }
     }
-});
+}
 
 export default RenderList;
-
-/**
- * @callback RenderListTraverseCallback
- * @param {Mesh} mesh
- */
-
-/**
- * @callback RenderListInstancedTraverseCallback
- * @param {Mesh[]} meshes
- */

@@ -1,74 +1,80 @@
-import Class from '../core/Class';
-
 /**
  * 渲染信息
  * @class
  */
-const RenderInfo = Class.create(/** @lends RenderInfo.prototype */ {
+class RenderInfo {
     /**
      * @default RenderInfo
      * @type {String}
      */
-    className: 'RenderInfo',
+    className: string = 'RenderInfo';
 
     /**
      * @default true
      * @type {Boolean}
      */
-    isRenderInfo: true,
+    isRenderInfo: boolean = true;
+
+    /**
+     * 面数
+     * @type {Number}
+     * @readOnly
+     */
+    faceCount: number = 0;
+
+    /**
+     * 绘图数
+     * @type {Number}
+     * @readOnly
+     */
+    drawCount: number = 0;
+
+    /**
+     * 当前面数
+     * @type {Number}
+     * @private
+     */
+    private _currentFaceCount: number = 0;
+
+    /**
+     * 当前绘图数
+     * @private
+     * @type {Number}
+     */
+    private _currentDrawCount: number = 0;
 
     /**
      * @constructs
      */
     constructor() {
         this.reset();
-    },
+    }
+
     /**
      * 增加面数
-     * @param {Number} num
+     * @param num 面数
      */
-    addFaceCount(num) {
+    addFaceCount(num: number): void {
         this._currentFaceCount += num;
-    },
+    }
+
     /**
      * 增加绘图数
-     * @param {Number} num
+     * @param num 绘图数
      */
-    addDrawCount(num) {
+    addDrawCount(num: number): void {
         this._currentDrawCount += num;
-    },
+    }
+
     /**
      * 重置信息
      */
-    reset() {
-        /**
-         * 面数
-         * @type {Number}
-         * @readOnly
-         */
+    reset(): void {
         this.faceCount = Math.floor(this._currentFaceCount);
-
-        /**
-         * 绘图数
-         * @type {Number}
-         * @readOnly
-         */
         this.drawCount = Math.floor(this._currentDrawCount);
-
-        /**
-         * 当前面数
-         * @type {Number}
-         * @private
-         */
         this._currentFaceCount = 0;
-
-        /**
-         * 当前绘图数
-         * @private
-         * @type {Number}
-         */
         this._currentDrawCount = 0;
     }
-});
+}
 
 export default RenderInfo;
