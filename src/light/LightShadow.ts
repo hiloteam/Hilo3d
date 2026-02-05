@@ -109,6 +109,7 @@ class LightShadow {
     debug: boolean = false;
 
     private _cameraMatrixVersion?: number;
+
     private _cameraHelper?: CameraHelper;
 
     /**
@@ -254,6 +255,7 @@ class LightShadow {
         renderer.viewport();
     }
 
+    // eslint-disable-next-line class-methods-use-this
     renderShadowScene(renderer: any, shadowMaterial: GeometryMaterial): void {
         const preForceMaterial = renderer.forceMaterial;
 

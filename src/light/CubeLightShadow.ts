@@ -55,16 +55,25 @@ interface CubeLightShadowParams {
  */
 class CubeLightShadow extends LightShadow {
     readonly isLightShadow: boolean = true;
+
     readonly className: string = 'CubeLightShadow';
 
     light: any = null;
+
     renderer: any = null;
+
     framebuffer: Framebuffer | null = null;
+
     camera: PerspectiveCamera | null = null;
+
     width: number = 1024;
+
     height: number = 1024;
+
     maxBias: number = 0.05;
+
     minBias: number = 0.005;
+
     debug: boolean = false;
 
     constructor(params: CubeLightShadowParams) {
