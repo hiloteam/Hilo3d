@@ -66,13 +66,6 @@ class GLTFLoader extends BasicLoader {
     className: string = 'GLTFLoader';
 
     /**
-     * @constructs
-     */
-    constructor() {
-        super();
-    }
-
-    /**
      * 加载glTF模型
      * @param {object} params 加载参数
      * @param {string} params.src glTF模型地址

@@ -85,10 +85,15 @@ class LoadQueue {
     maxConnections: number = 2;
 
     private _listeners: Record<string, EventListener[]> | null = null;
+
     private _source: LoadQueueSource[] = [];
+
     private _loaded: number = 0;
+
     private _connections: number = 0;
+
     private _currentIndex: number = -1;
+
     private _loader?: Loader;
 
     /**
