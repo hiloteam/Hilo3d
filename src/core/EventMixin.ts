@@ -6,8 +6,11 @@
  */
 class EventObject {
     type: string;
+
     target: any;
+
     detail: any;
+
     _stopped?: boolean;
 
     constructor(type: string, target: any, detail?: any) {

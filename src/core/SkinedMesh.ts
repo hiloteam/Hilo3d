@@ -4,7 +4,6 @@ import Vector4 from '../math/Vector4';
 import DataTexture from '../texture/DataTexture';
 import capabilities from '../renderer/capabilities';
 import log from '../utils/log';
-import type Skeleton from './Skeleton';
 
 const tempMatrix1 = new Matrix4();
 const tempMatrix2 = new Matrix4();
@@ -56,6 +55,7 @@ class SkinedMesh extends Mesh {
     skeleton: any = null;
 
     jointMat?: Float32Array;
+
     clonedFrom?: SkinedMesh;
 
     /**
@@ -66,6 +66,7 @@ class SkinedMesh extends Mesh {
      * @param {Skeleton} [params.skeleton] 骨骼
      * @param {any} [params.[value:string]] 其它属性
      */
+    // eslint-disable-next-line no-useless-constructor
     constructor(params?: any) {
         super(params);
     }

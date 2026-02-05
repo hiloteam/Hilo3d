@@ -22,6 +22,7 @@ import {
  */
 class Stage extends Node {
     isStage: boolean = true;
+
     className: string = 'Stage';
 
     /**
@@ -79,12 +80,17 @@ class Stage extends Node {
     canvas!: HTMLCanvasElement;
 
     rendererWidth: number = 0;
+
     rendererHeight: number = 0;
+
     domViewport: any = null;
-    
+
     private _eventTarget: any = null;
+
     private _domListener?: (e: Event) => void;
+
     private _ray?: Ray;
+
     private _stageResultAtPoint?: { mesh: Stage; point: Vector3 };
 
     /**
@@ -151,6 +157,7 @@ class Stage extends Node {
      * @param  {Object} params
      * @return {HTMLCanvasElement}
      */
+    // eslint-disable-next-line class-methods-use-this
     private createCanvas(params: any): HTMLCanvasElement {
         let canvas: HTMLCanvasElement;
         if (params.canvas) {
