@@ -52,13 +52,6 @@ class CubeTextureLoader extends BasicLoader {
     className: string = 'CubeTextureLoader';
 
     /**
-     * @constructs
-     */
-    constructor() {
-        super();
-    }
-
-    /**
      * 加载CubeTexture
      * @param {object} params 加载参数
      * @param {boolean} params.crossOrigin 是否跨域，不传将自动判断

@@ -34,10 +34,6 @@ class HDRLoader extends BasicLoader {
      */
     className: string = 'HDRLoader';
 
-    constructor() {
-        super();
-    }
-
     /**
      * load
      * @param  {Object} params
