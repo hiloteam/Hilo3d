@@ -3,12 +3,12 @@ import { EventObject, EventMixinCallback } from '../core/EventMixin';
 /**
  * @interface ILoadCacheFile
  * @property {string} key
- * @property {number} state 可选值为：LoadCache.LOADED LoadCache.PENDING LoadCache.FAILED
+ * @property {number} state 可选值为：LoadCache.PENDING LoadCache.LOADED LoadCache.FAILED
  * @property {any} data
  */
 interface ILoadCacheFile {
     key: string;
-    state: number;
+    state: number; // LoadCache.PENDING | LoadCache.LOADED | LoadCache.FAILED
     data: any;
 }
 
@@ -68,14 +68,7 @@ class LoadCache {
 
     private _files: Record<string, ILoadCacheFile> = {};
 
-    private _listeners: Record<string, EventListener[]> | null = null;
-
-    /**
-     * @constructs
-     */
-    constructor() {
-        this._files = {};
-    }
+    private _listeners: Record<string, EventListener[]> = {};
 
     /**
      * 增加一个事件监听。
@@ -85,7 +78,7 @@ class LoadCache {
      * @return {LoadCache} 对象本身。链式调用支持。
      */
     on(type: string, listener: EventMixinCallback, once?: boolean): this {
-        let listeners = (this._listeners = this._listeners || {});
+        let listeners = this._listeners;
         let eventListeners = (listeners[type] = listeners[type] || []);
         for (let i = 0, len = eventListeners.length; i < len; i++) {
             let el = eventListeners[i];
@@ -109,15 +102,15 @@ class LoadCache {
     off(type?: string, listener?: EventMixinCallback): this {
         // remove all event listeners
         if (arguments.length === 0) {
-            this._listeners = null;
+            this._listeners = {};
             return this;
         }
 
-        let eventListeners = this._listeners && this._listeners[type!];
+        let eventListeners = this._listeners[type!];
         if (eventListeners && eventListeners.length > 0) {
             // remove event listeners by specified type
             if (arguments.length === 1) {
-                delete this._listeners![type!];
+                delete this._listeners[type!];
                 return this;
             }
 
@@ -149,8 +142,6 @@ class LoadCache {
         }
 
         let listeners = this._listeners;
-        if (!listeners) return false;
-
         let eventListeners = listeners[eventType];
         if (eventListeners && eventListeners.length > 0) {
             let eventListenersCopy = eventListeners.slice(0);
