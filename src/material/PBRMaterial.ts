@@ -45,7 +45,7 @@ class PBRMaterial extends Material {
 
     /**
      * 基础颜色
-     * @default null
+     * @default new Color(1, 1, 1)
      * @type {Color}
      */
     baseColor: any = new Color(1, 1, 1);
@@ -184,7 +184,7 @@ class PBRMaterial extends Material {
 
     /**
      * 镜面反射率，针对 isSpecularGlossiness 渲染
-     * @default Color(1, 1, 1)
+     * @default new Color(1, 1, 1)
      * @type {Color}
      */
     specular: any = new Color(1, 1, 1);
