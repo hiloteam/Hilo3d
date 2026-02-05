@@ -202,7 +202,7 @@ class Program {
      */
     ignoreError?: boolean;
 
-    private _dict: Record<string, any> | null = {};
+    private _dict: Record<string, any> = {};
 
     private _isDestroyed: boolean = false;
 
@@ -531,7 +531,7 @@ class Program {
         this.program = null;
         this.gl = null;
         this.state = null;
-        this._dict = null;
+        this._dict = null as any;
         cache.removeObject(this);
 
         this._isDestroyed = true;
