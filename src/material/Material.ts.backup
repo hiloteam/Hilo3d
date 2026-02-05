@@ -180,15 +180,17 @@ class Material {
      * @type {Boolean}
      * @default true
      */
-    get premultiplyAlpha(): boolean {
-        return this._premultiplyAlpha;
-    }
-    set premultiplyAlpha(value: boolean) {
-        this._premultiplyAlpha = value;
-        if (this.transparent) {
-            this.setDefaultTransparentBlend();
+    premultiplyAlpha: {
+        get() {
+            return this._premultiplyAlpha;
+        },
+        set(value) {
+            this._premultiplyAlpha = value;
+            if (this.transparent) {
+                this.setDefaultTransparentBlend();
+            }
         }
-    }
+    },
 
     /**
      * gammaOutput
@@ -196,243 +198,253 @@ class Material {
      * @deprecated
      * @default false
      */
-    get gammaOutput(): boolean {
-        log.warnOnce('Matrial.gammaOutput', 'material.gammaOutput has deprecated. Use material.gammaCorrection instead.');
-        return this.gammaCorrection;
-    }
-    set gammaOutput(value: boolean) {
-        log.warnOnce('Matrial.gammaOutput', 'material.gammaOutput has deprecated. Use material.gammaCorrection instead.');
-        this.gammaCorrection = value;
-    }
+    gammaOutput: {
+        get() {
+            log.warnOnce('Matrial.gammaOutput', 'material.gammaOutput has deprecated. Use material.gammaCorrection instead.');
+            return this.gammaCorrection;
+        },
+        set(value) {
+            log.warnOnce('Matrial.gammaOutput', 'material.gammaOutput has deprecated. Use material.gammaCorrection instead.');
+            this.gammaCorrection = value;
+        }
+    },
 
     /**
      * gamma值
      * @type {Number}
      * @default 2.2
      */
-    gammaFactor: number = 2.2;
+    gammaFactor: 2.2,
 
     /**
      * 是否投射阴影
      * @type {Boolean}
      * @default true
      */
-    castShadows: boolean = true;
+    castShadows: true,
 
     /**
      * 是否接受阴影
      * @type {Boolean}
      * @default true
      */
-    receiveShadows: boolean = true;
+    receiveShadows: true,
 
     /**
      * uv transform eg:new Matrix3().fromRotationTranslationScale(Math.PI/2, 0, 0, 2, 2)
      * @type {Matrix3}
      */
-    uvMatrix: any = null;
+    uvMatrix: null,
 
     /**
      * uv1 transform eg:new Matrix3().fromRotationTranslationScale(Math.PI/2, 0, 0, 2, 2)
      * @type {Matrix3}
      */
-    uvMatrix1: any = null;
+    uvMatrix1: null,
 
     /**
      * 是否开启 CullFace
      * @default true
      * @type {boolean}
      */
-    get cullFace(): boolean {
-        return this._cullFace;
-    }
-    set cullFace(value: boolean) {
-        this._cullFace = value;
-        if (value) {
-            this.cullFaceType = this._cullFaceType;
-        } else {
-            this._side = FRONT_AND_BACK;
+    cullFace: {
+        get() {
+            return this._cullFace;
+        },
+        set(value) {
+            this._cullFace = value;
+            if (value) {
+                this.cullFaceType = this._cullFaceType;
+            } else {
+                this._side = FRONT_AND_BACK;
+            }
         }
-    }
+    },
 
-    private _cullFaceType: GLenum = BACK;
+    _cullFaceType: BACK,
     /**
      * CullFace 类型
      * @default BACK
      * @type {GLenum}
      */
-    get cullFaceType(): GLenum {
-        return this._cullFaceType;
-    }
-    set cullFaceType(value: GLenum) {
-        this._cullFaceType = value;
-        if (this._cullFace) {
-            if (value === BACK) {
-                this._side = FRONT;
-            } else if (value === FRONT) {
-                this._side = BACK;
+    cullFaceType: {
+        get() {
+            return this._cullFaceType;
+        },
+        set(value) {
+            this._cullFaceType = value;
+            if (this._cullFace) {
+                if (value === BACK) {
+                    this._side = FRONT;
+                } else if (value === FRONT) {
+                    this._side = BACK;
+                }
             }
         }
-    }
+    },
 
-    private _side: GLenum = FRONT;
+    _side: FRONT,
     /**
      * 显示面，可选值 FRONT, BACK, FRONT_AND_BACK
      * @type {GLenum}
      * @default FRONT
      */
-    get side(): GLenum {
-        return this._side;
-    }
-    set side(value: GLenum) {
-        if (this._side !== value) {
-            this._side = value;
-            if (value === FRONT_AND_BACK) {
-                this._cullFace = false;
-            } else {
-                this._cullFace = true;
-                if (value === FRONT) {
-                    this._cullFaceType = BACK;
-                } else if (value === BACK) {
-                    this._cullFaceType = FRONT;
+    side: {
+        get() {
+            return this._side;
+        },
+        set(value) {
+            if (this._side !== value) {
+                this._side = value;
+                if (value === FRONT_AND_BACK) {
+                    this._cullFace = false;
+                } else {
+                    this._cullFace = true;
+                    if (value === FRONT) {
+                        this._cullFaceType = BACK;
+                    } else if (value === BACK) {
+                        this._cullFaceType = FRONT;
+                    }
                 }
             }
         }
-    }
+    },
 
     /**
      * 是否开启颜色混合
      * @default false
      * @type {boolean}
      */
-    blend: boolean = false;
+    blend: false,
     /**
      * 颜色混合方式
      * @default FUNC_ADD
      * @type {GLenum}
      */
-    blendEquation: GLenum = FUNC_ADD;
+    blendEquation: FUNC_ADD,
     /**
      * 透明度混合方式
      * @default FUNC_ADD
      * @type {GLenum}
      */
-    blendEquationAlpha: GLenum = FUNC_ADD;
+    blendEquationAlpha: FUNC_ADD,
     /**
      * 颜色混合来源比例
      * @default ONE
      * @type {GLenum}
      */
-    blendSrc: GLenum = ONE;
+    blendSrc: ONE,
     /**
      * 颜色混合目标比例
      * @default ZERO
      * @type {GLenum}
      */
-    blendDst: GLenum = ZERO;
+    blendDst: ZERO,
     /**
      * 透明度混合来源比例
      * @default ONE
      * @type {GLenum}
      */
-    blendSrcAlpha: GLenum = ONE;
+    blendSrcAlpha: ONE,
     /**
      * 透明度混合目标比例
      * @default ONE
      * @type {GLenum}
      */
-    blendDstAlpha: GLenum = ZERO;
+    blendDstAlpha: ZERO,
 
     /**
      * stencilTest
      * @type {boolean}
      * @default 1
      */
-    stencilTest: boolean = false;
+    stencilTest: false,
 
     /**
      * stencilMask
      * @type {number}
      * @default 0xff
      */
-    stencilMask: number = 0xff;
+    stencilMask: 0xff,
 
     /**
      * stencilFunc func
      * @type {GLenum}
      * @default ALWAYS
      */
-    stencilFunc: GLenum = ALWAYS;
+    stencilFunc: ALWAYS,
 
     /**
      * stencilFunc ref
      * @type {number}
      * @default 1
      */
-    stencilFuncRef: number = 1;
+    stencilFuncRef: 1,
 
     /**
      * stencilFunc mask
      * @type {number}
      * @default 0xff
      */
-    stencilFuncMask: number = 0xff;
+    stencilFuncMask: 0xff,
 
     /**
      * stencilOp fail
      * @type {GLenum}
      * @default KEEP
      */
-    stencilOpFail: GLenum = KEEP;
+    stencilOpFail: KEEP,
 
     /**
      * stencilOp zfail
      * @type {GLenum}
      * @default KEEP
      */
-    stencilOpZFail: GLenum = KEEP;
+    stencilOpZFail: KEEP,
 
     /**
      * stencilOp zpass
      * @type {GLenum}
      * @default KEEP
      */
-    stencilOpZPass: GLenum = KEEP;
+    stencilOpZPass: KEEP,
 
     /**
      * 当前是否需要强制更新
      * @default false
      * @type {boolean}
      */
-    isDirty: boolean = false;
+    isDirty: false,
 
     /**
      * 透明度 0~1
      * @default 1
      * @type {number}
      */
-    transparency: number = 1;
+    transparency: 1,
 
-    private _transparent: boolean = false;
+    _transparent: false,
     /**
      * 是否需要透明
      * @default false
      * @type {boolean}
      */
-    get transparent(): boolean {
-        return this._transparent;
-    }
-    set transparent(value: boolean) {
-        if (this._transparent !== value) {
-            this._transparent = value;
-            if (!value) {
-                this.blend = false;
-                this.depthMask = true;
-            } else {
-                this.setDefaultTransparentBlend();
+    transparent: {
+        get() {
+            return this._transparent;
+        },
+        set(value) {
+            if (this._transparent !== value) {
+                this._transparent = value;
+                if (!value) {
+                    this.blend = false;
+                    this.depthMask = true;
+                } else {
+                    this.setDefaultTransparentBlend();
+                }
             }
         }
-    }
+    },
     setDefaultTransparentBlend() {
         this.blend = true;
         this.depthMask = false;
@@ -447,65 +459,60 @@ class Material {
             this.blendSrcAlpha = SRC_ALPHA;
             this.blendDstAlpha = ONE_MINUS_SRC_ALPHA;
         }
-    }
+    },
     /**
      * 透明度剪裁，如果渲染的颜色透明度大于等于这个值的话渲染为完全不透明，否则渲染为完全透明
      * @default 0
      * @type {number}
      */
-    alphaCutoff: number = 0;
+    alphaCutoff: 0,
 
     /**
      * 是否使用HDR
      * @default false
      * @type {Boolean}
      */
-    useHDR: boolean = false;
+    useHDR: false,
 
     /**
      * 曝光度，仅在 useHDR 为 true 时生效
      * @default 1
      * @type {Number}
      */
-    exposure: number = 1;
+    exposure: 1,
 
     /**
      * 是否开启 texture lod
      * @default false
      * @type {Boolean}
      */
-    enableTextureLod: boolean = false;
+    enableTextureLod: false,
 
     /**
     * 是否开启 drawBuffers
     * @default false
     * @type {Boolean}
     */
-    enableDrawBuffers: boolean = false;
+    enableDrawBuffers: false,
 
     /**
      * 是否需要加基础 uniforms
      * @type {Boolean}
      * @default true
      */
-    needBasicUnifroms: boolean = true;
+    needBasicUnifroms: true,
     /**
      * 是否需要加基础 attributes
      * @type {Boolean}
      * @default true
      */
-    needBasicAttributes: boolean = true;
-
-    id: string;
-    uniforms: any;
-    attributes: any;
-    private _instancedUniforms: any;
+    needBasicAttributes: true,
 
     /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params?: any) {
+    constructor(params) {
         /**
          * @type {string}
          */
@@ -533,7 +540,7 @@ class Material {
         if (this.needBasicUnifroms) {
             this.addBasicUniforms();
         }
-    }
+    },
     /**
      * 增加基础 attributes
      */
@@ -559,7 +566,7 @@ class Material {
                 }
             }
         });
-    }
+    },
     /**
      * 增加基础 uniforms
      */
@@ -645,12 +652,12 @@ class Material {
             u_emission: 'EMISSION',
             u_transparency: 'TRANSPARENCY'
         });
-    }
+    },
     /**
      * 增加贴图 uniforms
      * @param {Object} textureUniforms textureName:semanticName 键值对
      */
-    addTextureUniforms(textureUniforms: any) {
+    addTextureUniforms(textureUniforms) {
         const uniforms = {};
 
         for (const uniformName in textureUniforms) {
@@ -660,13 +667,13 @@ class Material {
             uniforms[`${uniformName}.uv`] = `${semanticName}UV`;
         }
         this._copyProps(this.uniforms, uniforms);
-    }
+    },
     /**
      * 获取渲染选项值
      * @param  {Object} [option={}] 渲染选项值
      * @return {Object} 渲染选项值
      */
-    getRenderOption(option: any = {}) {
+    getRenderOption(option = {}) {
         const lightType = this.lightType;
         option[`LIGHT_TYPE_${lightType}`] = 1;
         option.SIDE = this.side;
@@ -744,16 +751,16 @@ class Material {
 
         textureOption.update();
         return option;
-    }
-    private _textureOption = {
-        uvTypes: null as any,
-        option: null as any,
-        reset(option: any) {
+    },
+    _textureOption: {
+        uvTypes: null,
+        option: null,
+        reset(option) {
             this.option = option;
             this.uvTypes = {};
             return this;
         },
-        add(texture: any, optionName: string, callback?: any) {
+        add(texture, optionName, callback) {
             if (texture && texture.isTexture) {
                 const {
                     uvTypes,
@@ -793,7 +800,7 @@ class Material {
 
             return this;
         }
-    };
+    },
 
     /**
      * 获取 instanced uniforms
@@ -817,20 +824,20 @@ class Material {
         }
 
         return instancedUniforms;
-    }
-    getUniformData(name: string, mesh: any, programInfo: any) {
+    },
+    getUniformData(name, mesh, programInfo) {
         return this.getUniformInfo(name).get(mesh, this, programInfo);
-    }
-    getAttributeData(name: string, mesh: any, programInfo: any) {
+    },
+    getAttributeData(name, mesh, programInfo) {
         return this.getAttributeInfo(name).get(mesh, this, programInfo);
-    }
-    getUniformInfo(name: string) {
+    },
+    getUniformInfo(name) {
         return this.getInfo('uniforms', name);
-    }
-    getAttributeInfo(name: string) {
+    },
+    getAttributeInfo(name) {
         return this.getInfo('attributes', name);
-    }
-    getInfo(dataType: string, name: string) {
+    },
+    getInfo(dataType, name) {
         const dataDict = this[dataType];
         let info = dataDict[name];
         if (typeof info === 'string') {
@@ -843,7 +850,7 @@ class Material {
         }
 
         return info;
-    }
+    },
     /**
      * clone 当前Material
      * @return {Material} 返回clone的Material
@@ -856,7 +863,7 @@ class Material {
             }
         }
         return newMaterial;
-    }
+    },
     /**
      * 销毁贴图
      * @return {Material} this
@@ -865,7 +872,7 @@ class Material {
         this.getTextures().forEach((texture) => {
             texture.destroy();
         });
-    }
+    },
     /**
      * 获取材质全部贴图
      * @return {Texture[]}
@@ -880,27 +887,27 @@ class Material {
         }
 
         return textures;
-    }
+    },
     /**
      * 复制属性，只有没属性时才会覆盖
      * @private
      * @param  {Object} origin
      * @param  {Object} data
      */
-    private _copyProps(origin: any, data: any) {
+    _copyProps(origin, data) {
         for (const key in data) {
             if (origin[key] === undefined) {
                 origin[key] = data[key];
             }
         }
-    }
+    },
 
     /**
      * 获取阴影材质，子类可重写
      * @param {Material} shadowMaterial 通用阴影材质
      * @return {Material}
      */
-    getShadowMaterial(shadowMaterial: any) {
+    getShadowMaterial(shadowMaterial) {
         if (shadowMaterial.side !== this.side) {
             shadowMaterial.side = this.side;
             shadowMaterial.isDirty = true;
@@ -911,7 +918,7 @@ class Material {
             shadowMaterial.isDirty = true;
         }
         return shadowMaterial;
-    }
-}
+    },
+});
 
 export default Material;
