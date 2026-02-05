@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Geometry from './Geometry';
 import GeometryData from './GeometryData';
 
@@ -9,48 +8,54 @@ const {
     BACK
 } = constants;
 
-const normalData = [0, 0, 1];
+const normalData: number[] = [0, 0, 1];
+
 /**
  * 平面几何体
  * @class
  * @extends Geometry
  */
-const PlaneGeometry = Class.create(/** @lends PlaneGeometry.prototype */ {
-    Extends: Geometry,
+class PlaneGeometry extends Geometry {
     /**
      * @default true
      * @type {boolean}
      */
-    isPlaneGeometry: true,
+    readonly isPlaneGeometry: boolean = true;
+
     /**
      * @default PlaneGeometry
      * @type {string}
      */
-    className: 'PlaneGeometry',
+    readonly className: string = 'PlaneGeometry';
+
     /**
      * 宽度
      * @default 1
      * @type {number}
      */
-    width: 1,
+    width: number = 1;
+
     /**
      * 高度
      * @default 1
      * @type {number}
      */
-    height: 1,
+    height: number = 1;
+
     /**
      * 水平分割面的数量
      * @default 1
      * @type {number}
      */
-    widthSegments: 1,
+    widthSegments: number = 1;
+
     /**
      * 垂直分割面的数量
      * @default 1
      * @type {number}
      */
-    heightSegments: 1,
+    heightSegments: number = 1;
+
     /**
      * @constructs
      * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
@@ -60,11 +65,12 @@ const PlaneGeometry = Class.create(/** @lends PlaneGeometry.prototype */ {
      * @param {number} [params.heightSegments=1] 垂直分割面的数量
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
-        PlaneGeometry.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
         this.build();
-    },
-    build() {
+    }
+
+    build(): void {
         const {
             widthSegments,
             heightSegments
@@ -107,8 +113,9 @@ const PlaneGeometry = Class.create(/** @lends PlaneGeometry.prototype */ {
         this.indices = new GeometryData(indices, 1);
         this.normals = new GeometryData(normals, 3);
         this.uvs = new GeometryData(uvs, 2);
-    },
-    _raycast(ray, side) {
+    }
+
+    _raycast(ray: any, side: number): any {
         const originZ = ray.origin.z;
         const directionZ = ray.direction.z;
 
@@ -132,6 +139,6 @@ const PlaneGeometry = Class.create(/** @lends PlaneGeometry.prototype */ {
         }
         return null;
     }
-});
+}
 
 export default PlaneGeometry;

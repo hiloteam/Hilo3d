@@ -35,7 +35,7 @@ class GeometryData {
      * @default GeometryData
      */
     readonly className: string = 'GeometryData';
-    
+
     /**
      * isGeometryData
      * @type {Boolean}
@@ -84,13 +84,15 @@ class GeometryData {
     glBuffer: any = null;
 
     private _stride: number = 0;
+
     strideSize: number = 0;
 
     private _offset: number = 0;
+
     offsetSize: number = 0;
 
     private _data!: TypedArray;
-    
+
     subDataList?: SubDataItem[];
 
     /**
