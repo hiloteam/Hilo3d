@@ -3,34 +3,54 @@
  * for file layout see https://www.khronos.org/opengles/sdk/tools/KTX/file_format_spec/
  * ported from https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/js/loaders/KTXLoader.js
  */
-import Class from '../core/Class';
 import BasicLoader from './BasicLoader';
 import Loader from './Loader';
 import Texture from '../texture/Texture';
 import extensions from '../renderer/extensions';
 import log from '../utils/log';
 
+interface MipmapData {
+    data: Uint8Array;
+    width: number;
+    height: number;
+}
+
 /**
  * @class
  * @private
  */
-const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.prototype */{
-    Statics: {
-        HEADER_LEN: 12 + (13 * 4), // identifier + header elements (not including key value meta-data pairs)
-        COMPRESSED_2D: 0, // uses a gl.compressedTexImage2D()
-        COMPRESSED_3D: 1, // uses a gl.compressedTexImage3D()
-        TEX_2D: 2, // uses a gl.texImage2D()
-        TEX_3D: 3, // uses a gl.texImage3D()
+class KhronosTextureContainer {
+    static readonly HEADER_LEN: number = 12 + (13 * 4); // identifier + header elements (not including key value meta-data pairs)
+    static readonly COMPRESSED_2D: number = 0; // uses a gl.compressedTexImage2D()
+    static readonly COMPRESSED_3D: number = 1; // uses a gl.compressedTexImage3D()
+    static readonly TEX_2D: number = 2; // uses a gl.texImage2D()
+    static readonly TEX_3D: number = 3; // uses a gl.texImage3D()
 
-    },
-    isKhronosTextureContainer: true,
-    className: 'KhronosTextureContainer',
+    isKhronosTextureContainer: boolean = true;
+    className: string = 'KhronosTextureContainer';
+
+    arrayBuffer: ArrayBuffer;
+    baseOffset: number;
+    glType: number = 0;
+    glTypeSize: number = 0;
+    glFormat: number = 0;
+    glInternalFormat: number = 0;
+    glBaseInternalFormat: number = 0;
+    pixelWidth: number = 0;
+    pixelHeight: number = 0;
+    pixelDepth: number = 0;
+    numberOfArrayElements: number = 0;
+    numberOfFaces: number = 0;
+    numberOfMipmapLevels: number = 0;
+    bytesOfKeyValueData: number = 0;
+    loadType?: number;
+
     /**
      * @constructs
      * @param {ArrayBuffer} arrayBuffer contents of the KTX container file
      * @param {number} facesExpected should be either 1 or 6, based whether a cube texture or or
      */
-    constructor(arrayBuffer, facesExpected, baseOffset = 0) {
+    constructor(arrayBuffer: ArrayBuffer, facesExpected: number, baseOffset: number = 0) {
         this.arrayBuffer = arrayBuffer;
         this.baseOffset = baseOffset;
 
@@ -95,22 +115,22 @@ const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.
         } else {
             this.loadType = KhronosTextureContainer.TEX_2D;
         }
-    },
+    }
 
     // return mipmaps
-    mipmaps(loadMipmaps) {
-        let mipmaps = [];
+    mipmaps(loadMipmaps: boolean): MipmapData[] {
+        const mipmaps: MipmapData[] = [];
 
         // initialize width & height for level 1
         let dataOffset = KhronosTextureContainer.HEADER_LEN + this.bytesOfKeyValueData;
         let width = this.pixelWidth;
         let height = this.pixelHeight;
-        let mipmapCount = loadMipmaps ? this.numberOfMipmapLevels : 1;
+        const mipmapCount = loadMipmaps ? this.numberOfMipmapLevels : 1;
 
         for (let level = 0; level < mipmapCount; level++) {
-            let imageSize = new Int32Array(this.arrayBuffer, this.baseOffset + dataOffset, 1)[0]; // size per face, since not supporting array cubemaps
+            const imageSize = new Int32Array(this.arrayBuffer, this.baseOffset + dataOffset, 1)[0]; // size per face, since not supporting array cubemaps
             for (let face = 0; face < this.numberOfFaces; face++) {
-                let byteArray = new Uint8Array(this.arrayBuffer, this.baseOffset + dataOffset + 4, imageSize);
+                const byteArray = new Uint8Array(this.arrayBuffer, this.baseOffset + dataOffset + 4, imageSize);
 
                 mipmaps.push({
                     data: byteArray,
@@ -127,96 +147,107 @@ const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.
 
         return mipmaps;
     }
-});
+}
+
+interface KTXLoaderParams {
+    src: string | ArrayBuffer | ArrayBufferView;
+    [key: string]: any;
+}
 
 /**
  * KTX 加载器
  * @class
  */
-const KTXLoader = Class.create(/** @lends KTXLoader.prototype */{
-    Extends: BasicLoader,
-    Statics: {
-        /**
-         * astc
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_astc
-         */
-        astc: 'WEBGL_compressed_texture_astc',
-        /**
-         * etc
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_etc
-         */
-        etc: 'WEBGL_compressed_texture_etc',
-        /**
-         * etc1
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_etc1
-         */
-        etc1: 'WEBGL_compressed_texture_etc1',
-        /**
-         * pvrtc
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_pvrtc
-         */
-        pvrtc: 'WEBGL_compressed_texture_pvrtc',
-        /**
-         * s3tc
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_s3tc
-         */
-        s3tc: 'WEBGL_compressed_texture_s3tc'
-    },
+class KTXLoader extends BasicLoader {
+    /**
+     * astc
+     * @memberOf KTXLoader
+     * @type {String}
+     * @readOnly
+     * @default WEBGL_compressed_texture_astc
+     */
+    static readonly astc: string = 'WEBGL_compressed_texture_astc';
+
+    /**
+     * etc
+     * @memberOf KTXLoader
+     * @type {String}
+     * @readOnly
+     * @default WEBGL_compressed_texture_etc
+     */
+    static readonly etc: string = 'WEBGL_compressed_texture_etc';
+
+    /**
+     * etc1
+     * @memberOf KTXLoader
+     * @type {String}
+     * @readOnly
+     * @default WEBGL_compressed_texture_etc1
+     */
+    static readonly etc1: string = 'WEBGL_compressed_texture_etc1';
+
+    /**
+     * pvrtc
+     * @memberOf KTXLoader
+     * @type {String}
+     * @readOnly
+     * @default WEBGL_compressed_texture_pvrtc
+     */
+    static readonly pvrtc: string = 'WEBGL_compressed_texture_pvrtc';
+
+    /**
+     * s3tc
+     * @memberOf KTXLoader
+     * @type {String}
+     * @readOnly
+     * @default WEBGL_compressed_texture_s3tc
+     */
+    static readonly s3tc: string = 'WEBGL_compressed_texture_s3tc';
+
     /**
      * @type {boolean}
      * @default true
      */
-    isKTXLoader: true,
+    isKTXLoader: boolean = true;
+
     /**
      * 类名
      * @type {string}
      * @default KTXLoader
      */
-    className: 'KTXLoader',
+    className: string = 'KTXLoader';
+
     constructor() {
+        super();
         extensions.use(KTXLoader.astc);
-        extensions.use(KTXLoader.atc);
+        extensions.use((KTXLoader as any).atc);
         extensions.use(KTXLoader.etc);
         extensions.use(KTXLoader.etc1);
         extensions.use(KTXLoader.pvrtc);
         extensions.use(KTXLoader.s3tc);
-        extensions.use(KTXLoader.s3tc_srgb);
-        KTXLoader.superclass.constructor.call(this);
-    },
+        extensions.use((KTXLoader as any).s3tc_srgb);
+    }
+
     /**
      * load
      * @param  {Object} params
      */
-    load(params) {
+    load(params: KTXLoaderParams): Promise<Texture> {
         if (params.src instanceof ArrayBuffer) {
             return Promise.resolve(this.createTexture(params, params.src));
         }
         if (ArrayBuffer.isView(params.src)) {
             return Promise.resolve(this.createTexture(params, params.src.buffer, params.src.byteOffset));
         }
-        return this.loadRes(params.src, 'buffer')
-            .then((buffer) => {
+        return this.loadRes(params.src as string, 'buffer')
+            .then((buffer: ArrayBuffer) => {
                 return this.createTexture(params, buffer);
             });
-    },
-    createTexture(params, buffer, baseOffset = 0) {
+    }
+
+    createTexture(params: KTXLoaderParams, buffer: ArrayBuffer, baseOffset: number = 0): Texture {
         const ktx = new KhronosTextureContainer(buffer, 1, baseOffset);
-        const data = {
+        const data: any = {
             compressed: ktx.glType === 0,
             type: ktx.glType,
             width: ktx.pixelWidth,
@@ -236,7 +267,7 @@ const KTXLoader = Class.create(/** @lends KTXLoader.prototype */{
 
         return new Texture(data);
     }
-});
+}
 
 Loader.addLoader('ktx', KTXLoader);
 
