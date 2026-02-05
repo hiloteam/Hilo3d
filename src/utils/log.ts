@@ -1,6 +1,6 @@
-/* eslint prefer-spread: "off", prefer-rest-params:"off" */
+type LogCache = Record<string, boolean>;
 
-const cache = {};
+const cache: LogCache = {};
 const LEVEL_NONE = 0;
 const LEVEL_LOG = 1;
 const LEVEL_WARN = 2;
@@ -59,13 +59,13 @@ const log = {
     /**
      * log，等同 console.log
      * @example Hilo3d.log.log('a', {a:1});
-     * @param {...any} params
+     * @param params 输出参数
      * @return {log} this
      */
-    log() {
+    log(...params: any[]): typeof log {
         const console = this.console;
         if (this.level & LEVEL_LOG) {
-            console.log.apply(console, arguments);
+            console.log(...params);
         }
         return this;
     },
@@ -73,13 +73,13 @@ const log = {
     /**
      * warn，等同 console.warn
      * @example Hilo3d.log.warn('a', {a:1});
-     * @param {...any} params
+     * @param params 输出参数
      * @return {log} this
      */
-    warn() {
+    warn(...params: any[]): typeof log {
         const console = this.console;
         if (this.level & LEVEL_WARN) {
-            console.warn.apply(console, arguments);
+            console.warn(...params);
         }
         return this;
     },
@@ -87,13 +87,13 @@ const log = {
     /**
      * error，等同 console.error
      * @example Hilo3d.log.error('a', {a:1});
-     * @param {...any} params
+     * @param params 输出参数
      * @return {log} this
      */
-    error() {
+    error(...params: any[]): typeof log {
         const console = this.console;
         if (this.level & LEVEL_ERROR) {
-            console.error.apply(console, arguments);
+            console.error(...params);
         }
         return this;
     },
@@ -101,14 +101,14 @@ const log = {
     /**
      * logOnce 相同 id 只 log 一次
      * @example Hilo3d.log.logOnce('uniqueId0', 'a', {a:1});
-     * @param {string} id
-     * @param {...any} params
+     * @param id 唯一ID
+     * @param params 输出参数
      * @return {log} this
      */
-    logOnce(id) {
+    logOnce(id: string, ...params: any[]): typeof log {
         if (!cache['log_' + id]) {
             cache['log_' + id] = true;
-            this.log.apply(this, Array.prototype.slice.call(arguments, 1));
+            this.log(...params);
         }
         return this;
     },
@@ -116,14 +116,14 @@ const log = {
     /**
      * warnOnce  相同 id 只 once 一次
      * @example Hilo3d.log.warnOnce('uniqueId0', 'a', {a:1});
-     * @param {string} id
-     * @param {...any} params
+     * @param id 唯一ID
+     * @param params 输出参数
      * @return {log} this
      */
-    warnOnce(id) {
+    warnOnce(id: string, ...params: any[]): typeof log {
         if (!cache['warn_' + id]) {
             cache['warn_' + id] = true;
-            this.warn.apply(this, Array.prototype.slice.call(arguments, 1));
+            this.warn(...params);
         }
         return this;
     },
@@ -131,14 +131,14 @@ const log = {
     /**
      * errorOnce 相同 id 只 error 一次
      * @example Hilo3d.log.errorOnce('uniqueId0', 'a', {a:1});
-     * @param {string} id
-     * @param {...any} params
+     * @param id 唯一ID
+     * @param params 输出参数
      * @return {log} this
      */
-    errorOnce(id) {
+    errorOnce(id: string, ...params: any[]): typeof log {
         if (!cache['error_' + id]) {
             cache['error_' + id] = true;
-            this.error.apply(this, Array.prototype.slice.call(arguments, 1));
+            this.error(...params);
         }
         return this;
     },
@@ -147,10 +147,10 @@ const log = {
      * @private
      * @type {Object}
      */
-    get console() {
+    get console(): Console {
         return this._console;
     },
-    set console(value) {
+    set console(value: Console) {
         this._console = value;
     }
 };
