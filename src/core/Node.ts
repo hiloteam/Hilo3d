@@ -682,10 +682,8 @@ class Node {
      * @param {number} [z] Z缩放比例
      * @return {Node} this
      */
-    setScale(x: number, y?: number, z?: number): Node {
-        const yVal = y !== undefined ? y : x;
-        const zVal = z !== undefined ? z : yVal;
-        this._scale.set(x, yVal, zVal);
+    setScale(x: number, y: number = x, z: number = y): Node {
+        this._scale.set(x, y, z);
         return this;
     }
 
