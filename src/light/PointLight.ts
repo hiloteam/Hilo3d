@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Light from './Light';
 import CubeLightShadow from './CubeLightShadow';
 
@@ -7,18 +6,21 @@ import CubeLightShadow from './CubeLightShadow';
  * @class
  * @extends Light
  */
-const PointLight = Class.create(/** @lends PointLight.prototype */ {
-    Extends: Light,
+class PointLight extends Light {
     /**
      * @default true
      * @type {boolean}
      */
-    isPointLight: true,
+    readonly isPointLight: boolean = true;
+
     /**
      * @default PointLight
      * @type {string}
      */
-    className: 'PointLight',
+    readonly className: string = 'PointLight';
+
+    lightShadow: CubeLightShadow | null = null;
+
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
@@ -27,10 +29,11 @@ const PointLight = Class.create(/** @lends PointLight.prototype */ {
      * @param {number} [params.range=0] 光照范围, 0 时代表光照范围无限大。
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
-        PointLight.superclass.constructor.call(this, params);
-    },
-    createShadowMap(renderer, camera) {
+    constructor(params?: any) {
+        super(params);
+    }
+
+    createShadowMap(renderer: any, camera: any): void {
         if (!this.shadow) {
             return;
         }
@@ -48,6 +51,6 @@ const PointLight = Class.create(/** @lends PointLight.prototype */ {
         }
         this.lightShadow.createShadowMap(camera);
     }
-});
+}
 
 export default PointLight;

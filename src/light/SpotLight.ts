@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Light from './Light';
 import LightShadow from './LightShadow';
 import math from '../math/math';
@@ -13,50 +12,61 @@ const tempVector3 = new Vector3();
  * @class
  * @extends Light
  */
-const SpotLight = Class.create(/** @lends SpotLight.prototype */{
-    Extends: Light,
+class SpotLight extends Light {
     /**
      * @default true
      * @type {boolean}
      */
-    isSpotLight: true,
+    readonly isSpotLight: boolean = true;
+
     /**
      * @default SpotLight
      * @type {string}
      */
-    className: 'SpotLight',
-    _cutoffCos: 0.9763,
-    _cutoff: 12.5,
+    readonly className: string = 'SpotLight';
+
+    lightShadow: LightShadow | null = null;
+
+    private _cutoffCos: number = 0.9763;
+    private _cutoff: number = 12.5;
+
     /**
      * 切光角(角度)，落在这个角度之内的光亮度为1
      * @default 12.5
      * @type {number}
      */
-    cutoff: {
-        get() {
-            return this._cutoff;
-        },
-        set(value) {
-            this._cutoff = value;
-            this._cutoffCos = Math.cos(math.degToRad(value));
-        }
-    },
-    _outerCutoffCos: 0.9537,
-    _outerCutoff: 17.5,
+    get cutoff(): number {
+        return this._cutoff;
+    }
+
+    set cutoff(value: number) {
+        this._cutoff = value;
+        this._cutoffCos = Math.cos(math.degToRad(value));
+    }
+
+    private _outerCutoffCos: number = 0.9537;
+    private _outerCutoff: number = 17.5;
+
     /**
      * 外切光角(角度)，在切光角合外切光角之间的光亮度渐变到0
      * @default 17.5
      * @type {number}
      */
-    outerCutoff: {
-        get() {
-            return this._outerCutoff;
-        },
-        set(value) {
-            this._outerCutoff = value;
-            this._outerCutoffCos = Math.cos(math.degToRad(value));
-        }
-    },
+    get outerCutoff(): number {
+        return this._outerCutoff;
+    }
+
+    set outerCutoff(value: number) {
+        this._outerCutoff = value;
+        this._outerCutoffCos = Math.cos(math.degToRad(value));
+    }
+
+    /**
+     * 光方向
+     * @type {Vector3}
+     * @default new Vector3(0, 0, 1)
+     */
+    direction: Vector3;
 
     /**
      * @constructs
@@ -69,16 +79,12 @@ const SpotLight = Class.create(/** @lends SpotLight.prototype */{
      * @param {number} [params.outerCutoff=17.5] 外切光角(角度)，在切光角合外切光角之间的光亮度渐变到0
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
-        /**
-         * 光方向
-         * @type {Vector3}
-         * @default new Vector3(0, 0, 1)
-         */
+    constructor(params?: any) {
+        super(params);
         this.direction = new Vector3(0, 0, 1);
-        SpotLight.superclass.constructor.call(this, params);
-    },
-    createShadowMap(renderer, camera) {
+    }
+
+    createShadowMap(renderer: any, camera: any): void {
         if (!this.shadow) {
             return;
         }
@@ -99,16 +105,18 @@ const SpotLight = Class.create(/** @lends SpotLight.prototype */{
             }
         }
         this.lightShadow.createShadowMap(camera);
-    },
-    getWorldDirection() {
+    }
+
+    getWorldDirection(): Vector3 {
         tempVector3.copy(this.direction).transformDirection(this.worldMatrix).normalize();
         return tempVector3;
-    },
-    getViewDirection(camera) {
+    }
+
+    getViewDirection(camera: any): Vector3 {
         const modelViewMatrix = camera.getModelViewMatrix(this, tempMatrix4);
         tempVector3.copy(this.direction).transformDirection(modelViewMatrix).normalize();
         return tempVector3;
     }
-});
+}
 
 export default SpotLight;

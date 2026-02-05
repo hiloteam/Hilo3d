@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Matrix4 from '../math/Matrix4';
 import Vector3 from '../math/Vector3';
 import log from '../utils/log';
@@ -10,58 +9,129 @@ const tempMatrix4 = new Matrix4();
 const tempVector3 = new Vector3();
 const tempFloat32Array = new Float32Array([0, 0, 0]);
 
+interface LightInfo {
+    AMBIENT_LIGHTS: number;
+    POINT_LIGHTS: number;
+    DIRECTIONAL_LIGHTS: number;
+    SPOT_LIGHTS: number;
+    AREA_LIGHTS: number;
+    SHADOW_POINT_LIGHTS?: number;
+    SHADOW_SPOT_LIGHTS?: number;
+    SHADOW_DIRECTIONAL_LIGHTS?: number;
+    uid: string | number;
+}
+
+interface DirectionalInfo {
+    colors: Float32Array;
+    infos: Float32Array;
+    shadowMap?: any[];
+    shadowMapSize?: Float32Array;
+    shadowBias?: Float32Array;
+    lightSpaceMatrix?: Float32Array;
+}
+
+interface SpotInfo {
+    colors: Float32Array;
+    infos: Float32Array;
+    poses: Float32Array;
+    dirs: Float32Array;
+    cutoffs: Float32Array;
+    ranges: Float32Array;
+    shadowMap?: any[];
+    shadowMapSize?: Float32Array;
+    shadowBias?: Float32Array;
+    lightSpaceMatrix?: Float32Array;
+}
+
+interface PointInfo {
+    colors: Float32Array;
+    infos: Float32Array;
+    poses: Float32Array;
+    ranges: Float32Array;
+    shadowMap?: any[];
+    shadowBias?: Float32Array;
+    lightSpaceMatrix?: Float32Array;
+    cameras?: Float32Array;
+}
+
+interface AreaInfo {
+    colors: Float32Array;
+    poses: Float32Array;
+    width: Float32Array;
+    height: Float32Array;
+    ltcTexture1: any;
+    ltcTexture2: any;
+}
+
 /**
  * 光管理类
  * @class
  */
-const LightManager = Class.create(/** @lends LightManager.prototype */{
+class LightManager {
     /**
      * @default true
      * @type {boolean}
      */
-    isLightManager: true,
+    readonly isLightManager: boolean = true;
+
     /**
      * @default LightManager
      * @type {string}
      */
-    className: 'LightManager',
+    readonly className: string = 'LightManager';
 
     /**
      * 是否开启阴影
      * @type {boolean}
      * @default true
      */
-    shadowEnabled: true,
+    shadowEnabled: boolean = true;
+
+    /**
+     * @type {AmbientLight[]}
+     */
+    ambientLights: any[] = [];
+
+    /**
+     * @type {DirectionalLight[]}
+     */
+    directionalLights: any[] = [];
+
+    /**
+     * @type {PointLight[]}
+     */
+    pointLights: any[] = [];
+
+    /**
+     * @type {SpotLight[]}
+     */
+    spotLights: any[] = [];
+
+    /**
+     * @type {AreaLight[]}
+     */
+    areaLights: any[] = [];
+
+    lightInfo: LightInfo;
+
+    directionalInfo?: DirectionalInfo;
+    pointInfo?: PointInfo;
+    spotInfo?: SpotInfo;
+    areaInfo?: AreaInfo;
+    ambientInfo?: Float32Array;
+
+    /**
+     * 更新自定义灯光信息
+     * @type updateCustomInfoCallback
+     * @default null
+     */
+    updateCustomInfo: ((lightManager: LightManager, camera: any) => void) | null = null;
+
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
-    constructor(params) {
-        /**
-         * @type {AmbientLight[]}
-         */
-        this.ambientLights = [];
-
-        /**
-         * @type {DirectionalLight[]}
-         */
-        this.directionalLights = [];
-
-        /**
-         * @type {PointLight[]}
-         */
-        this.pointLights = [];
-
-        /**
-         * @type {SpotLight[]}
-         */
-        this.spotLights = [];
-
-        /**
-         * @type {AreaLight[]}
-         */
-        this.areaLights = [];
-
+    constructor(params?: any) {
         this.lightInfo = {
             AMBIENT_LIGHTS: 0,
             POINT_LIGHTS: 0,
@@ -72,9 +142,10 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         };
 
         Object.assign(this, params);
-    },
-    getRenderOption(option = {}) {
-        each(this.lightInfo, (count, name) => {
+    }
+
+    getRenderOption(option: any = {}): any {
+        each(this.lightInfo, (count: number, name: string) => {
             if (name === 'uid' || !count) {
                 return;
             }
@@ -85,14 +156,15 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
             }
         });
         return option;
-    },
+    }
+
     /**
      * 增加光
      * @param {Light} light 光源
      * @return {LightManager} this
      */
-    addLight(light) {
-        let lights = null;
+    addLight(light: any): this {
+        let lights: any[] | null = null;
 
         if (!light.enabled) {
             return this;
@@ -121,19 +193,20 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         }
 
         return this;
-    },
+    }
+
     /**
      * 获取方向光信息
      * @param  {Camera} camera 摄像机
      * @return {Object}
      */
-    getDirectionalInfo(camera) {
-        const colors = [];
-        const infos = [];
-        const shadowMap = [];
-        const shadowMapSize = [];
-        const lightSpaceMatrix = [];
-        const shadowBias = [];
+    getDirectionalInfo(camera: any): DirectionalInfo {
+        const colors: number[] = [];
+        const infos: number[] = [];
+        const shadowMap: any[] = [];
+        const shadowMapSize: number[] = [];
+        const lightSpaceMatrix: number[] = [];
+        const shadowBias: number[] = [];
 
         this.directionalLights.forEach((light, index) => {
             const offset = index * 3;
@@ -153,7 +226,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
             }
         });
 
-        const result = {
+        const result: DirectionalInfo = {
             colors: new Float32Array(colors),
             infos: new Float32Array(infos)
         };
@@ -166,23 +239,25 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         }
 
         return result;
-    },
+    }
+
     /**
      * 获取聚光灯信息
      * @param {Camera} camera 摄像机
      * @return {Object}
      */
-    getSpotInfo(camera) {
-        const colors = [];
-        const infos = [];
-        const poses = [];
-        const dirs = [];
-        const cutoffs = [];
-        const shadowMap = [];
-        const shadowMapSize = [];
-        const lightSpaceMatrix = [];
-        const shadowBias = [];
-        const ranges = [];
+    getSpotInfo(camera: any): SpotInfo {
+        const colors: number[] = [];
+        const infos: number[] = [];
+        const poses: number[] = [];
+        const dirs: number[] = [];
+        const cutoffs: number[] = [];
+        const shadowMap: any[] = [];
+        const shadowMapSize: number[] = [];
+        const lightSpaceMatrix: number[] = [];
+        const shadowBias: number[] = [];
+        const ranges: number[] = [];
+
         this.spotLights.forEach((light, index) => {
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
@@ -206,7 +281,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
             }
         });
 
-        const result = {
+        const result: SpotInfo = {
             colors: new Float32Array(colors),
             infos: new Float32Array(infos),
             poses: new Float32Array(poses),
@@ -223,21 +298,23 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         }
 
         return result;
-    },
+    }
+
     /**
      * 获取点光源信息
      * @param  {Camera} camera 摄像机
      * @return {Object}
      */
-    getPointInfo(camera) {
-        const colors = [];
-        const infos = [];
-        const poses = [];
-        const shadowMap = [];
-        const lightSpaceMatrix = [];
-        const shadowBias = [];
-        const cameras = [];
-        const ranges = [];
+    getPointInfo(camera: any): PointInfo {
+        const colors: number[] = [];
+        const infos: number[] = [];
+        const poses: number[] = [];
+        const shadowMap: any[] = [];
+        const lightSpaceMatrix: number[] = [];
+        const shadowBias: number[] = [];
+        const cameras: number[] = [];
+        const ranges: number[] = [];
+
         this.pointLights.forEach((light, index) => {
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
@@ -257,7 +334,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
             }
         });
 
-        const result = {
+        const result: PointInfo = {
             colors: new Float32Array(colors),
             infos: new Float32Array(infos),
             poses: new Float32Array(poses),
@@ -272,20 +349,21 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         }
 
         return result;
-    },
+    }
+
     /**
      * 获取面光源信息
      * @param  {Camera} camera 摄像机
      * @return {Object}
      */
-    getAreaInfo(camera) {
-        const colors = [];
-        const poses = [];
-        const width = [];
-        const height = [];
+    getAreaInfo(camera: any): AreaInfo {
+        const colors: number[] = [];
+        const poses: number[] = [];
+        const width: number[] = [];
+        const height: number[] = [];
 
-        let ltcTexture1;
-        let ltcTexture2;
+        let ltcTexture1: any;
+        let ltcTexture2: any;
 
         this.areaLights.forEach((light, index) => {
             const offset = index * 3;
@@ -309,7 +387,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
             ltcTexture2 = light.ltcTexture2;
         });
 
-        const result = {
+        const result: AreaInfo = {
             colors: new Float32Array(colors),
             poses: new Float32Array(poses),
             width: new Float32Array(width),
@@ -319,12 +397,13 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         };
 
         return result;
-    },
+    }
+
     /**
      * 获取环境光信息
      * @return {Object}
      */
-    getAmbientInfo() {
+    getAmbientInfo(): Float32Array {
         tempFloat32Array[0] = tempFloat32Array[1] = tempFloat32Array[2] = 0;
         this.ambientLights.forEach((light) => {
             const realColor = light.getRealColor();
@@ -337,12 +416,13 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         tempFloat32Array[1] = Math.min(1, tempFloat32Array[1]);
         tempFloat32Array[2] = Math.min(1, tempFloat32Array[2]);
         return tempFloat32Array;
-    },
+    }
+
     /**
      * 更新所有光源信息
      * @param  {Camera} camera 摄像机
      */
-    updateInfo(camera) {
+    updateInfo(camera: any): void {
         const {
             lightInfo,
             ambientLights,
@@ -358,7 +438,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         lightInfo.SPOT_LIGHTS = spotLights.length;
         lightInfo.AREA_LIGHTS = areaLights.length;
 
-        const shadowFilter = light => !!light.shadow;
+        const shadowFilter = (light: any) => !!light.shadow;
         lightInfo.SHADOW_POINT_LIGHTS = pointLights.filter(shadowFilter).length;
         lightInfo.SHADOW_SPOT_LIGHTS = spotLights.filter(shadowFilter).length;
         lightInfo.SHADOW_DIRECTIONAL_LIGHTS = directionalLights.filter(shadowFilter).length;
@@ -382,42 +462,38 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
         if (this.updateCustomInfo) {
             this.updateCustomInfo(this, camera);
         }
-    },
-    /**
-     * 更新自定义灯光信息
-     * @type updateCustomInfoCallback
-     * @default null
-     */
-    updateCustomInfo: null,
+    }
+
     /**
      * 获取光源信息
      * @return {Object}
      */
-    getInfo() {
+    getInfo(): LightInfo {
         return this.lightInfo;
-    },
+    }
+
     /**
      * 重置所有光源
      */
-    reset() {
+    reset(): void {
         this.ambientLights.length = 0;
         this.directionalLights.length = 0;
         this.pointLights.length = 0;
         this.spotLights.length = 0;
         this.areaLights.length = 0;
-    },
+    }
 
     /**
      * 获取阴影贴图数量
      * @param {string} type
      * @returns {number}
      */
-    getShadowMapCount(type) {
+    getShadowMapCount(type: string): number {
         if (!this.shadowEnabled) {
             return 0;
         }
 
-        let lights = [];
+        let lights: any[] = [];
         if (type === 'POINT_LIGHTS') {
             lights = this.pointLights;
         } else if (type === 'DIRECTIONAL_LIGHTS') {
@@ -433,7 +509,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
             count += light.shadow ? 1 : 0;
         });
         return count;
-    },
+    }
 
     /**
      * 更新光源信息
@@ -441,21 +517,21 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
      * @param {Light[]} lights
      * @param {Camera} camera
      */
-    update(renderer, camera, lights) {
+    update(renderer: any, camera: any, lights: any[]): void {
         lights.forEach((light) => {
             this.addLight(light);
         });
 
         this.createShadowMap(renderer, camera);
         this.updateInfo(camera);
-    },
+    }
 
     /**
      * 生成阴影贴图
      * @param {WebGLRenderer} renderer
      * @param {Camera} camera
      */
-    createShadowMap(renderer, camera) {
+    createShadowMap(renderer: any, camera: any): void {
         if (!this.shadowEnabled) {
             return;
         }
@@ -473,7 +549,7 @@ const LightManager = Class.create(/** @lends LightManager.prototype */{
             light.createShadowMap(renderer, camera);
         });
     }
-});
+}
 
 export default LightManager;
 

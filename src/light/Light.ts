@@ -1,74 +1,87 @@
-import Class from '../core/Class';
 import Node from '../core/Node';
 import Color from '../math/Color';
 
 const tempColor = new Color();
 
 /**
+ * 阴影配置接口
+ */
+export interface ShadowConfig {
+    debug?: boolean;
+    width?: number;
+    height?: number;
+    maxBias?: number;
+    minBias?: number;
+    cameraInfo?: any;
+}
+
+/**
  * 灯光基础类
  * @class
  * @extends Node
  */
-const Light = Class.create(/** @lends Light.prototype */ {
-    Extends: Node,
-    isLight: true,
-    className: 'Light',
+class Light extends Node {
+    readonly isLight: boolean = true;
+    readonly className: string = 'Light';
+
     /**
      * 光强度
      * @type {Number}
      * @default 1
      */
-    amount: 1,
+    amount: number = 1;
 
     /**
      * 是否开启灯光
      * @type {Boolean}
      * @default true
      */
-    enabled: true,
+    enabled: boolean = true;
 
     /**
      * 光常量衰减值, PointLight 和 SpotLight 时生效
      * @type {Number}
      * @default 1
      */
-    constantAttenuation: 1,
+    constantAttenuation: number = 1;
 
     /**
      * 光线性衰减值, PointLight 和 SpotLight 时生效
      * @type {Number}
      * @default 0
      */
-    linearAttenuation: 0,
+    linearAttenuation: number = 0;
 
     /**
      * 光二次衰减值, PointLight 和 SpotLight 时生效
      * @type {Number}
      * @default 0
      */
-    quadraticAttenuation: 0,
-    _range: 0,
+    quadraticAttenuation: number = 0;
+
+    private _range: number = 0;
+
     /**
      * 光照范围, PointLight 和 SpotLight 时生效, 0 时代表光照范围无限大。
      * @type {Number}
      * @default 0
      */
-    range: {
-        get() {
-            return this._range;
-        },
-        set(value) {
-            this.constantAttenuation = 1;
-            if (value <= 0) {
-                this.linearAttenuation = 0;
-                this.quadraticAttenuation = 0;
-            } else {
-                this.linearAttenuation = 4.5 / value;
-                this.quadraticAttenuation = 75 / (value * value);
-            }
-            this._range = value;
+    get range(): number {
+        return this._range;
+    }
+
+    set range(value: number) {
+        this.constantAttenuation = 1;
+        if (value <= 0) {
+            this.linearAttenuation = 0;
+            this.quadraticAttenuation = 0;
+        } else {
+            this.linearAttenuation = 4.5 / value;
+            this.quadraticAttenuation = 75 / (value * value);
         }
-    },
+        this._range = value;
+    }
+
     /**
      * 阴影生成参数，默认不生成阴影
      * @default null
@@ -80,53 +93,59 @@ const Light = Class.create(/** @lends Light.prototype */ {
      * @property {number} [minBias=0.005] depth最小差值
      * @property {Object} [cameraInfo=null] 阴影摄像机信息，没有会根据当前相机自动计算
      */
-    shadow: null,
+    shadow: ShadowConfig | null = null;
+
     /**
      * 是否光照信息变化
      * @type {Boolean}
      * @default false
      */
-    isDirty: false,
+    isDirty: boolean = false;
+
+    /**
+     * 灯光颜色
+     * @default new Color(1, 1, 1)
+     * @type {Color}
+     */
+    color: Color;
+
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
-    constructor(params) {
-        /**
-         * 灯光颜色
-         * @default new Color(1, 1, 1)
-         * @type {Color}
-         */
+    constructor(params?: any) {
+        super(params);
         this.color = new Color(1, 1, 1);
-        Light.superclass.constructor.call(this, params);
-    },
+    }
 
     /**
      * 获取光范围信息, PointLight 和 SpotLight 时生效
      * @param  {Array} out  信息接受数组
      * @param  {Number} offset 偏移值
      */
-    toInfoArray(out, offset) {
+    toInfoArray(out: number[], offset: number): this {
         out[offset + 0] = this.constantAttenuation;
         out[offset + 1] = this.linearAttenuation;
         out[offset + 2] = this.quadraticAttenuation;
         return this;
-    },
+    }
+
     /**
      * 获取真正的颜色，光强度乘以颜色
      * @returns {Color} 光强度乘以颜色后的颜色
      */
-    getRealColor() {
+    getRealColor(): Color {
         return tempColor.copy(this.color).scale(this.amount);
-    },
+    }
+
     /**
      * 生成阴影贴图，支持阴影的子类需要重写
      * @param  {WebGLRenderer} renderer
      * @param  {Camera} camera
      */
-    createShadowMap(renderer, camera) { // eslint-disable-line no-unused-vars
+    createShadowMap(renderer: any, camera: any): void { // eslint-disable-line no-unused-vars
 
     }
-});
+}
 
 export default Light;

@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Light from './Light';
 import LightShadow from './LightShadow';
 import Matrix4 from '../math/Matrix4';
@@ -12,24 +11,33 @@ const tempVector3 = new Vector3();
  * @class
  * @extends Light
  */
-const DirectionalLight = Class.create(/** @lends DirectionalLight.prototype */ {
-    Extends: Light,
+class DirectionalLight extends Light {
     /**
      * @default true
      * @type {boolean}
      */
-    isDirectionalLight: true,
+    readonly isDirectionalLight: boolean = true;
+
     /**
      * @default DirectionalLight
      * @type {string}
      */
-    className: 'DirectionalLight',
+    readonly className: string = 'DirectionalLight';
+
     /**
      * 光源阴影
      * @type {LightShadow}
      * @default null
      */
-    lightShadow: null,
+    lightShadow: LightShadow | null = null;
+
+    /**
+     * 光方向
+     * @type {Vector3}
+     * @default new Vector3(0, 0, 1)
+     */
+    direction: Vector3;
+
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
@@ -38,16 +46,12 @@ const DirectionalLight = Class.create(/** @lends DirectionalLight.prototype */ {
      * @param {Vector3} [params.direction=new Vector3(0, 0, 1)] 光方向
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
-        /**
-         * 光方向
-         * @type {Vector3}
-         * @default new Vector3(0, 0, 1)
-         */
+    constructor(params?: any) {
+        super(params);
         this.direction = new Vector3(0, 0, 1);
-        DirectionalLight.superclass.constructor.call(this, params);
-    },
-    createShadowMap(renderer, camera) {
+    }
+
+    createShadowMap(renderer: any, camera: any): void {
         if (!this.shadow) {
             return;
         }
@@ -68,25 +72,27 @@ const DirectionalLight = Class.create(/** @lends DirectionalLight.prototype */ {
             }
         }
         this.lightShadow.createShadowMap(camera);
-    },
+    }
+
     /**
     * 获取世界空间方向
     * @returns {Vector3}
     */
-    getWorldDirection() {
+    getWorldDirection(): Vector3 {
         tempVector3.copy(this.direction).transformDirection(this.worldMatrix).normalize();
         return tempVector3;
-    },
+    }
+
     /**
      * 获取相机空间方向
      * @param {Camera} camera
      * @returns {Vector3}
      */
-    getViewDirection(camera) {
+    getViewDirection(camera: any): Vector3 {
         const modelViewMatrix = camera.getModelViewMatrix(this, tempMatrix4);
         tempVector3.copy(this.direction).transformDirection(modelViewMatrix).normalize();
         return tempVector3;
     }
-});
+}
 
 export default DirectionalLight;
