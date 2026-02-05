@@ -496,9 +496,23 @@ class Material {
      */
     needBasicAttributes: boolean = true;
 
+    /**
+     * @type {string}
+     */
     id: string;
+    /**
+     * 可以通过指定，semantic来指定值的获取方式，或者自定义get方法
+     * @default {}
+     * @type {object}
+     */
     uniforms: any;
+    /**
+     * 可以通过指定，semantic来指定值的获取方式，或者自定义get方法
+     * @default {}
+     * @type {object}
+     */
     attributes: any;
+    
     private _instancedUniforms: any;
 
     /**
@@ -506,22 +520,8 @@ class Material {
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
     constructor(params?: any) {
-        /**
-         * @type {string}
-         */
         this.id = math.generateUUID(this.className);
-        /**
-         * 可以通过指定，semantic来指定值的获取方式，或者自定义get方法
-         * @default {}
-         * @type {object}
-         */
         this.uniforms = {};
-
-        /**
-         * 可以通过指定，semantic来指定值的获取方式，或者自定义get方法
-         * @default {}
-         * @type {object}
-         */
         this.attributes = {};
 
         Object.assign(this, params);
