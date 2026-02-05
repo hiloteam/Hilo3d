@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Mesh from '../core/Mesh';
 import Geometry from '../geometry/Geometry';
 import BasicMaterial from '../material/BasicMaterial';
@@ -17,35 +16,37 @@ const {
  * @example
  * stage.addChild(new Hilo3d.AxisNetHelper({ size: 5 }));
  */
-const AxisNetHelper = Class.create(/** @lends AxisNetHelper.prototype */{
-    Extends: Mesh,
+class AxisNetHelper extends Mesh {
     /**
      * @default true
      * @type {boolean}
      */
-    isAxisNetHelper: true,
+    isAxisNetHelper: boolean = true;
     /**
      * @default AxisNetHelper
      * @type {string}
      */
-    className: 'AxisNetHelper',
+    className: string = 'AxisNetHelper';
     /**
      * 网格线数量的一半(类似圆的半径)
      * @default 5
      * @type {number}
      */
-    size: 5,
+    size: number = 5;
+    /**
+     * 颜色
+     * @default new Color(.5, .5, .5)
+     * @type {Color}
+     */
+    color?: Color;
+
     /**
      * @constructs
      * @param {object} [params] 初始化参数
      */
-    constructor(params) {
-        AxisNetHelper.superclass.constructor.call(this, params);
-        /**
-         * 颜色
-         * @default new Color(.5, .5, .5)
-         * @type {Color}
-         */
+    constructor(params?: any) {
+        super(params);
+        
         this.color = this.color || new Color(.5, .5, .5);
 
         const geometry = new Geometry({
@@ -64,6 +65,6 @@ const AxisNetHelper = Class.create(/** @lends AxisNetHelper.prototype */{
             lightType: 'NONE'
         });
     }
-});
+}
 
 export default AxisNetHelper;
