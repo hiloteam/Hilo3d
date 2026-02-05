@@ -1,8 +1,14 @@
-import Class from '../core/Class';
 import BasicLoader from './BasicLoader';
 import Texture from '../texture/Texture';
 import Loader from './Loader';
 import log from '../utils/log';
+
+interface TextureLoaderParams {
+    src: string;
+    crossOrigin?: boolean;
+    type?: string;
+    [key: string]: any;
+}
 
 /**
  * Texture加载类
@@ -20,24 +26,19 @@ import log from '../utils/log';
  *     ...
  * });
  */
-const TextureLoader = Class.create(/** @lends TextureLoader.prototype */{
-    Extends: BasicLoader,
+class TextureLoader extends BasicLoader {
     /**
      * @default true
      * @type {boolean}
      */
-    isTextureLoader: true,
+    isTextureLoader: boolean = true;
+
     /**
      * @default TextureLoader
      * @type {string}
      */
-    className: 'TextureLoader',
-    /**
-     * @constructs
-     */
-    constructor() {
-        TextureLoader.superclass.constructor.call(this);
-    },
+    className: string = 'TextureLoader';
+
     /**
      * 加载Texture
      * @param {object} params 加载参数
@@ -46,9 +47,9 @@ const TextureLoader = Class.create(/** @lends TextureLoader.prototype */{
      * @async
      * @return {Promise<Texture, Error>} 返回加载完的Texture对象
      */
-    load(params) {
+    load(params: TextureLoaderParams): Promise<Texture> {
         return this.loadImg(params.src, params.crossOrigin).then((img) => {
-            const args = Object.assign({}, params);
+            const args: any = Object.assign({}, params);
             args.image = img;
             delete args.type;
             return new Texture(args);
@@ -57,7 +58,7 @@ const TextureLoader = Class.create(/** @lends TextureLoader.prototype */{
             throw err;
         });
     }
-});
+}
 
 Loader.addLoader('Texture', TextureLoader);
 
