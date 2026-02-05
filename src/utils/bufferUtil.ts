@@ -1,4 +1,4 @@
-type TypedArrayConstructor = 
+type TypedArrayConstructor =
     | Int8ArrayConstructor
     | Uint8ArrayConstructor
     | Uint8ClampedArrayConstructor
