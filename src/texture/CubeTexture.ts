@@ -126,7 +126,7 @@ class CubeTexture extends Texture {
         }
 
         images.forEach((img: any, i: number) => {
-            (this as any)._glUploadTexture(state, TEXTURE_CUBE_MAP_POSITIVE_X + i, img, 0);
+            this._glUploadTexture(state, TEXTURE_CUBE_MAP_POSITIVE_X + i, img, 0);
         });
 
         return this;
