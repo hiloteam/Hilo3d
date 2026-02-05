@@ -1,4 +1,15 @@
-const DATA_TYPES = [{
+interface GLTypeInfo {
+    name: string;
+    byteSize: number;
+    uniformFuncName: string;
+    type: 'Scalar' | 'Vector' | 'Matrix';
+    size: number;
+    glValue?: GLenum;
+    uniform?: (location: WebGLUniformLocation, value: any) => void;
+    uniformArray?: (location: WebGLUniformLocation, value: any) => void;
+}
+
+const DATA_TYPES: GLTypeInfo[] = [{
     name: 'FLOAT',
     byteSize: 4,
     uniformFuncName: 'uniform1f',
@@ -102,7 +113,7 @@ const DATA_TYPES = [{
     size: 1
 }];
 
-const DATA_DICT = {};
+const DATA_DICT: Record<number, GLTypeInfo> = {};
 
 /**
  * @namespace glType
@@ -112,38 +123,38 @@ const glType = {
     dict: DATA_DICT,
     /**
      * init
-     * @param  {WebGLRenderingContext} gl
+     * @param gl WebGL context
      */
-    init(gl) {
+    init(gl: WebGLRenderingContext | WebGL2RenderingContext): void {
         DATA_TYPES.forEach((dataType) => {
             const name = dataType.name;
 
-            let uniform;
-            let uniformArray;
-            let uniformFuncName = dataType.uniformFuncName;
-            let uniformArrayFuncName = uniformFuncName + 'v';
+            let uniform: (location: WebGLUniformLocation, value: any) => void;
+            let uniformArray: (location: WebGLUniformLocation, value: any) => void;
+            const uniformFuncName = dataType.uniformFuncName;
+            const uniformArrayFuncName = uniformFuncName + 'v';
 
             if (dataType.type === 'Matrix') {
                 uniform = uniformArray = (location, value) => {
                     if (value === undefined) {
                         return;
                     }
-                    gl[uniformFuncName](location, false, value);
+                    (gl as any)[uniformFuncName](location, false, value);
                 };
             } else {
                 uniform = (location, value) => {
                     if (value === undefined) {
                         return;
                     }
-                    gl[uniformFuncName](location, value);
+                    (gl as any)[uniformFuncName](location, value);
                 };
                 uniformArray = (location, value) => {
-                    gl[uniformArrayFuncName](location, value);
+                    (gl as any)[uniformArrayFuncName](location, value);
                 };
             }
 
-            DATA_DICT[gl[name]] = Object.assign(dataType, {
-                glValue: gl[name],
+            DATA_DICT[(gl as any)[name]] = Object.assign(dataType, {
+                glValue: (gl as any)[name],
                 uniform,
                 uniformArray
             });
@@ -151,24 +162,13 @@ const glType = {
     },
     /**
      * 获取信息
-     * @param  {GLenum} type
-     * @return {glTypeInfo}
+     * @param type GL enum type
+     * @return glTypeInfo
      */
-    get(type) {
+    get(type: GLenum): GLTypeInfo | undefined {
         return DATA_DICT[type];
     }
 };
 
 export default glType;
-
-/**
- * @typedef {Object} glTypeInfo
- * @property {String} name 名字，e.g. FLOAT_VEC2
- * @property {Number} byteSize 字节大小
- * @property {String} uniformFuncName uniform方法名字，e.g. uniform3f
- * @property {String} type 类型，可以是 Scalar, Vector, Matrix
- * @property {Number} size 数量
- * @property {GLenum} glValue gl enum值
- * @property {function} uniform uniform单个值方法
- * @property {function} uniformArray uniform多个值方法
- */
+export type { GLTypeInfo };

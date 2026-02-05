@@ -6,13 +6,22 @@ import VertexArrayObject from './VertexArrayObject';
 import Program from './Program';
 import Framebuffer from './Framebuffer';
 
-const resourceList = [Shader, Program, Buffer, VertexArrayObject, Texture, Framebuffer];
+interface GLResource {
+    prototype: {
+        className: string;
+    };
+    cache: {
+        _cache: Record<string, any>;
+    };
+}
+
+const resourceList: GLResource[] = [Shader, Program, Buffer, VertexArrayObject, Texture, Framebuffer] as any[];
 
 /**
  * 打印所有 gl 资源
- * @return {string} gl资源数量字符串
+ * @return gl资源数量字符串
  */
-const logGLResource = function() {
+const logGLResource = function(): string {
     let msg = '';
     resourceList.forEach((ResourceClass) => {
         msg += `${ResourceClass.prototype.className}:${Object.keys(ResourceClass.cache._cache).length} `;
