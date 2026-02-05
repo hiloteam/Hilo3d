@@ -513,7 +513,7 @@ class Material {
      */
     attributes: any;
     
-    private _instancedUniforms: any;
+    private _instancedUniforms: any = null;
 
     /**
      * @constructs
