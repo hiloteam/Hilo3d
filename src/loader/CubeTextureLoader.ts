@@ -68,9 +68,16 @@ class CubeTextureLoader extends BasicLoader {
     load(params: CubeTextureParams): Promise<CubeTexture> {
         let images: string[];
         if (params.images && Array.isArray(params.images)) {
+            if (params.images.length !== 6) {
+                return Promise.reject(new Error('CubeTexture images array must contain exactly 6 images'));
+            }
             images = params.images;
         } else {
-            images = [params.right!, params.left!, params.top!, params.bottom!, params.front!, params.back!];
+            // Validate that all six face images are provided
+            if (!params.right || !params.left || !params.top || !params.bottom || !params.front || !params.back) {
+                return Promise.reject(new Error('CubeTexture requires all six face images (right, left, top, bottom, front, back)'));
+            }
+            images = [params.right, params.left, params.top, params.bottom, params.front, params.back];
         }
         return Promise.all(images.map((img: string) => {
             return this.loadImg(img, params.crossOrigin);
