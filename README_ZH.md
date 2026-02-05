@@ -9,10 +9,11 @@
 [![npm][npm-image]][npm-url] [![ci][ci-image]][ci-url] [![size][size-image]][cdn-url] [![gitter.im][gitter-image]][gitter-url]
 
 ### 特性
-* Compatible for multiple mobile and desktop browsers.
-* Lightweight, only `110kb` after gzip.
-* Physically-based rendering support.
-* Perfect support for glTF models.
+* 兼容多种移动端和桌面端浏览器。
+* 轻量化，gzip 压缩后仅 `110kb`。
+* 支持基于物理的渲染（PBR）。
+* 完美支持 glTF 模型。
+* 使用 TypeScript 编写，提供更好的类型安全和 IDE 支持。
 
 ### 安装
 * 使用 npm
@@ -32,9 +33,12 @@
 
 ### 开发
 * 运行 `npm run dev` 开发。
+* 运行 `npm run build` 构建项目。
 * 运行 `npm run release` 发布代码。
 * 运行 `npm run doc` 生成 api 文档。
 * 运行 `npm run test` 运行测试用例。
+
+项目现在使用 TypeScript 编写。源文件位于 `src/` 目录，使用 `.ts` 扩展名。构建过程使用 webpack 和 ts-loader 将 TypeScript 编译为 JavaScript。
 
 ### 案例
 * 淘宝人生

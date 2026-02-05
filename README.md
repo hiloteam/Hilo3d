@@ -13,6 +13,7 @@ English | [简体中文](./README_ZH.md)
 * Lightweight, only `110kb` after gzip.
 * Physically-based rendering support.
 * Perfect support for glTF models.
+* Written in TypeScript for better type safety and IDE support.
 
 ### Installation
 * use npm
@@ -32,9 +33,12 @@ English | [简体中文](./README_ZH.md)
 
 ### Development
 * run `npm run dev` to dev.
+* run `npm run build` to build the project.
 * run `npm run release` release the code.
 * run `npm run doc` to build API documentation.
 * run `npm run test` to run tests.
+
+The project is now written in TypeScript. Source files are in the `src/` directory with `.ts` extensions. The build process uses webpack and ts-loader to compile TypeScript to JavaScript.
 
 ### Showcase
 * 淘宝人生
