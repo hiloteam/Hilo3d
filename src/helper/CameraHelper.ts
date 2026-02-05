@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Mesh from '../core/Mesh';
 import Geometry from '../geometry/Geometry';
 import GeometryData from '../geometry/GeometryData';
@@ -15,6 +14,7 @@ const {
 
 const tempVector3 = new Vector3();
 const tempMatrix4 = new Matrix4();
+
 /**
  * 摄像机帮助类
  * @class
@@ -22,31 +22,31 @@ const tempMatrix4 = new Matrix4();
  * @example
  * stage.addChild(new Hilo3d.CameraHelper());
  */
-const CameraHelper = Class.create(/** @lends CameraHelper.prototype */ {
-    Extends: Mesh,
+class CameraHelper extends Mesh {
     /**
      * @default true
      * @type {boolean}
      */
-    isCameraHelper: true,
+    isCameraHelper: boolean = true;
     /**
      * @default CameraHelper
      * @type {string}
      */
-    className: 'CameraHelper',
-    camera: null,
+    className: string = 'CameraHelper';
+    camera: any = null;
     /**
      * 颜色
      * @default new Color(0.3, 0.9, 0.6)
      * @type {Color}
      */
-    color: null,
+    color?: Color;
+
     /**
      * @constructs
      * @param {object} [params] 初始化参数
      */
-    constructor(params) {
-        CameraHelper.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
 
         if (!this.color) {
             this.color = new Color(0.3, 0.9, 0.6);
@@ -69,14 +69,16 @@ const CameraHelper = Class.create(/** @lends CameraHelper.prototype */ {
                 8, 4, 8, 5, 8, 6, 8, 7,
             ]), 1)
         });
-    },
-    onUpdate() {
+    }
+
+    onUpdate(): void {
         if (this.camera) {
             this.camera.updateViewProjectionMatrix();
             this._buildGeometry();
         }
-    },
-    _buildGeometry() {
+    }
+
+    private _buildGeometry(): void {
         const camera = this.camera;
         const geometry = this.geometry;
         const width = 1;
@@ -95,6 +97,6 @@ const CameraHelper = Class.create(/** @lends CameraHelper.prototype */ {
         geometry.vertices.set(7, tempVector3.set(width, -height, -depth).transformMat4(tempMatrix4));
         geometry.vertices.set(8, tempVector3.set(0, 0, -depth).transformMat4(tempMatrix4));
     }
-});
+}
 
 export default CameraHelper;

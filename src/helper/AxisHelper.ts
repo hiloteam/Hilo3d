@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Node from '../core/Node';
 import Mesh from '../core/Mesh';
 import Geometry from '../geometry/Geometry';
@@ -12,7 +11,7 @@ const {
     LINES
 } = constants;
 
-const axisMap = {
+const axisMap: Record<string, number[]> = {
     x: [0, 0, 0, 1, 0, 0],
     y: [0, 0, 0, 0, 1, 0],
     z: [0, 0, 0, 0, 0, 1]
@@ -25,33 +24,33 @@ const axisMap = {
  * @example
  * stage.addChild(new Hilo3d.AxisHelper());
  */
-const AxisHelper = Class.create(/** @lends AxisHelper.prototype */{
-    Extends: Node,
+class AxisHelper extends Node {
     /**
      * @default true
      * @type {boolean}
      */
-    isAxisHelper: true,
+    isAxisHelper: boolean = true;
     /**
      * @default AxisHelper
      * @type {string}
      */
-    className: 'AxisHelper',
+    className: string = 'AxisHelper';
     /**
      * 坐标轴的长度，不可变更，需要变可以通过设置 scale
      * @default 1
      * @type {number}
      */
-    size: 1,
+    size: number = 1;
     /**
      * @constructs
      * @param {object} [params] 初始化参数
      */
-    constructor(params) {
-        AxisHelper.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
         this.init();
-    },
-    addAxis(direction) {
+    }
+
+    private addAxis(direction: string): void {
         const mesh = new Mesh({
             name: 'AxisHelper_' + direction,
             geometry: new Geometry({
@@ -65,13 +64,14 @@ const AxisHelper = Class.create(/** @lends AxisHelper.prototype */{
             })
         });
         this.addChild(mesh);
-    },
-    init() {
+    }
+
+    private init(): void {
         this.setScale(this.size);
         this.addAxis('x');
         this.addAxis('y');
         this.addAxis('z');
     }
-});
+}
 
 export default AxisHelper;
