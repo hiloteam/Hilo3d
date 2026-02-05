@@ -1,33 +1,41 @@
-import Class from '../core/Class';
 import Geometry from './Geometry';
 import {
     each
 } from '../utils/util';
+
+interface MorphTargets {
+    vertices?: any[];
+    normals?: any[];
+    tangents?: any[];
+    [key: string]: any[] | undefined;
+}
 
 /**
  * Morph几何体
  * @class
  * @extends Geometry
  */
-const MorphGeometry = Class.create(/** @lends MorphGeometry.prototype */ {
-    Extends: Geometry,
+class MorphGeometry extends Geometry {
     /**
      * @default true
      * @type {boolean}
      */
-    isMorphGeometry: true,
+    readonly isMorphGeometry: boolean = true;
+
     /**
      * @default MorphGeometry
      * @type {string}
      */
-    className: 'MorphGeometry',
-    isStatic: false,
+    readonly className: string = 'MorphGeometry';
+
+    isStatic: boolean = false;
 
     /**
      * morph animation weights
      * @type {Array.<number>}
      */
-    weights: [],
+    weights: number[] = [];
+
     /**
      * like:
      * {
@@ -38,34 +46,42 @@ const MorphGeometry = Class.create(/** @lends MorphGeometry.prototype */ {
      * @default null
      * @type {Object}
      */
-    targets: null,
+    targets: MorphTargets | null = null;
+
+    private _maxMorphTargetCount?: number;
+
+    private _originalMorphIndices?: any;
+
     /**
      * @constructs
      * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
-    constructor(params) {
-        MorphGeometry.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
         this.weights = this.weights || [];
-    },
-    update(weights, originalWeightIndices) {
+    }
+
+    update(weights: number[], originalWeightIndices?: any): void {
         this.weights = weights;
         this._originalMorphIndices = originalWeightIndices;
-    },
-    clone() {
-        return Geometry.prototype.clone.call(this, {
-            targets: this.targets,
-            weights: this.weights
-        });
-    },
-    getRenderOption(opt = {}) {
-        MorphGeometry.superclass.getRenderOption.call(this, opt);
+    }
+
+    clone(): MorphGeometry {
+        const geometry = super.clone() as MorphGeometry;
+        geometry.targets = this.targets;
+        geometry.weights = this.weights;
+        return geometry;
+    }
+
+    getRenderOption(opt: any = {}): any {
+        super.getRenderOption(opt);
 
         if (this.targets) {
             if (!this._maxMorphTargetCount) {
                 this._maxMorphTargetCount = Math.floor(8 / Object.keys(this.targets).length);
             }
-            each(this.targets, (list, name) => {
-                opt.MORPH_TARGET_COUNT = Math.min(list.length, this._maxMorphTargetCount);
+            each(this.targets, (list: any[], name: string) => {
+                opt.MORPH_TARGET_COUNT = Math.min(list.length, this._maxMorphTargetCount!);
                 if (name === 'vertices') {
                     opt.MORPH_HAS_POSITION = 1;
                 } else if (name === 'normals') {
@@ -77,6 +93,6 @@ const MorphGeometry = Class.create(/** @lends MorphGeometry.prototype */ {
         }
         return opt;
     }
-});
+}
 
 export default MorphGeometry;

@@ -1,43 +1,45 @@
-import Class from '../core/Class';
 import Geometry from './Geometry';
 import GeometryData from './GeometryData';
 
-const centerData = [0, 0, 0]; // eslint-disable-line no-unused-vars
 /**
  * 球形几何体
  * @class
  * @extends Geometry
  */
-const SphereGeometry = Class.create(/** @lends SphereGeometry.prototype */ {
-    Extends: Geometry,
+class SphereGeometry extends Geometry {
     /**
      * @default true
      * @type {boolean}
      */
-    isSphereGeometry: true,
+    readonly isSphereGeometry: boolean = true;
+
     /**
      * @default SphereGeometry
      * @type {string}
      */
-    className: 'SphereGeometry',
+    readonly className: string = 'SphereGeometry';
+
     /**
      * 半径
      * @default 1
      * @type {number}
      */
-    radius: 1,
+    radius: number = 1;
+
     /**
      * 垂直分割面的数量
      * @default 16
      * @type {number}
      */
-    heightSegments: 16,
+    heightSegments: number = 16;
+
     /**
      * 水平分割面的数量
      * @default 32
      * @type {number}
      */
-    widthSegments: 32,
+    widthSegments: number = 32;
+
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
@@ -46,11 +48,12 @@ const SphereGeometry = Class.create(/** @lends SphereGeometry.prototype */ {
      * @param {number} [params.widthSegments=32] 水平分割面的数量
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
-        SphereGeometry.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
         this.build();
-    },
-    build() {
+    }
+
+    build(): void {
         const radius = this.radius;
         const heightSegments = this.heightSegments;
         const widthSegments = this.widthSegments;
@@ -121,11 +124,12 @@ const SphereGeometry = Class.create(/** @lends SphereGeometry.prototype */ {
         this.uvs = new GeometryData(uvs, 2);
         this.tangents = new GeometryData(tangents, 4);
         this.normals = new GeometryData(new Float32Array(vertices), 3);
-    },
-    _raycast(ray, side) {
-        // TODO:optimize
-        return SphereGeometry.superclass._raycast.call(this, ray, side);
     }
-});
+
+    _raycast(ray: any, side: number): any {
+        // TODO:optimize
+        return super._raycast(ray, side);
+    }
+}
 
 export default SphereGeometry;

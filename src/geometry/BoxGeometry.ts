@@ -1,66 +1,67 @@
-import Class from '../core/Class';
 import Geometry from './Geometry';
 import GeometryData from './GeometryData';
 import log from '../utils/log';
-
-const aabbData = [ // eslint-disable-line no-unused-vars
-    [0, 0, 0],
-    [0, 0, 0]
-];
 
 /**
  * 长方体几何体
  * @class
  * @extends Geometry
  */
-const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
-    Extends: Geometry,
+class BoxGeometry extends Geometry {
     /**
      * @default true
      * @type {boolean}
      */
-    isBoxGeometry: true,
+    readonly isBoxGeometry: boolean = true;
+
     /**
      * @default BoxGeometry
      * @type {string}
      */
-    className: 'BoxGeometry',
+    readonly className: string = 'BoxGeometry';
+
     /**
      * box的宽度
      * @default 1
      * @type {number}
      */
-    width: 1,
+    width: number = 1;
+
     /**
      * box的高度
      * @default 1
      * @type {number}
      */
-    height: 1,
+    height: number = 1;
+
     /**
      * box的深度
      * @default 1
      * @type {number}
      */
-    depth: 1,
+    depth: number = 1;
+
     /**
      * 水平分割面的数量
      * @default 1
      * @type {number}
      */
-    widthSegments: 1,
+    widthSegments: number = 1;
+
     /**
      * 垂直分割面的数量
      * @default 1
      * @type {number}
      */
-    heightSegments: 1,
+    heightSegments: number = 1;
+
     /**
      * 深度分割面的数量
      * @default 1
      * @type {number}
      */
-    depthSegments: 1,
+    depthSegments: number = 1;
+
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
@@ -72,15 +73,15 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
      * @param {number} [params.depthSegments=1] 深度分割面的数量
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
-        BoxGeometry.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
         if (this.isSegments()) {
             this.buildWithSegments();
         } else {
             this.build();
         }
-    },
-    buildWithSegments() {
+    }
+    buildWithSegments(): void {
         const {
             width,
             height,
@@ -108,7 +109,7 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
         this.uvs = new GeometryData(uvs, 2);
         this.indices = new GeometryData(indices, 1);
 
-        let idxInfo = [0, 0];
+        let idxInfo: number[] = [0, 0];
         // x right
         this.buildPlane(idxInfo, 2, 1, 0, -1, 1, depth, height, width / 2, depthSegments, heightSegments);
         // -x left
@@ -121,8 +122,9 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
         this.buildPlane(idxInfo, 0, 1, 2, 1, 1, width, height, depth / 2, widthSegments, heightSegments);
         // -z back
         this.buildPlane(idxInfo, 0, 1, 2, -1, 1, width, height, -depth / 2, widthSegments, heightSegments);
-    },
-    buildPlane(idxInfo, u, v, w, uDir, vDir, uLength, vLength, wValue, uSegments, vSegments) {
+    }
+
+    buildPlane(idxInfo: number[], u: number, v: number, w: number, uDir: number, vDir: number, uLength: number, vLength: number, wValue: number, uSegments: number, vSegments: number): void {
         const uDiff = uLength / uSegments;
         const vDiff = vLength / vSegments;
         const uHalf = uLength / 2;
@@ -131,10 +133,10 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
         let idx = idxInfo[0];
         let currentIndicesIdx = idxInfo[1];
 
-        const vertices = this.vertices.data;
-        const normals = this.normals.data;
-        const uvs = this.uvs.data;
-        const indices = this.indices.data;
+        const vertices = this.vertices!.data as Float32Array;
+        const normals = this.normals!.data as Float32Array;
+        const uvs = this.uvs!.data as Float32Array;
+        const indices = this.indices!.data as Uint16Array;
 
         for (let vi = 0; vi <= vSegments; vi++) {
             let vValue = (vi * vDiff - vHalf) * vDir;
@@ -164,8 +166,9 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
 
         idxInfo[0] = idx;
         idxInfo[1] = currentIndicesIdx;
-    },
-    build() {
+    }
+
+    build(): void {
         const vertices = new Float32Array(72);
         const indices = new Uint16Array(36);
 
@@ -176,14 +179,14 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
         const halfHeight = this.height / 2;
         const halfDepth = this.depth / 2;
 
-        const p1 = [-halfWidth, -halfHeight, -halfDepth];
-        const p2 = [halfWidth, -halfHeight, -halfDepth];
-        const p3 = [halfWidth, halfHeight, -halfDepth];
-        const p4 = [-halfWidth, halfHeight, -halfDepth];
-        const p5 = [-halfWidth, -halfHeight, halfDepth];
-        const p6 = [halfWidth, -halfHeight, halfDepth];
-        const p7 = [halfWidth, halfHeight, halfDepth];
-        const p8 = [-halfWidth, halfHeight, halfDepth];
+        const p1: number[] = [-halfWidth, -halfHeight, -halfDepth];
+        const p2: number[] = [halfWidth, -halfHeight, -halfDepth];
+        const p3: number[] = [halfWidth, halfHeight, -halfDepth];
+        const p4: number[] = [-halfWidth, halfHeight, -halfDepth];
+        const p5: number[] = [-halfWidth, -halfHeight, halfDepth];
+        const p6: number[] = [halfWidth, -halfHeight, halfDepth];
+        const p7: number[] = [halfWidth, halfHeight, halfDepth];
+        const p8: number[] = [-halfWidth, halfHeight, halfDepth];
 
         this.addRect(p6, p2, p3, p7); // right
         this.addRect(p1, p5, p8, p4); // left
@@ -191,76 +194,84 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
         this.addRect(p1, p2, p6, p5); // bottom
         this.addRect(p5, p6, p7, p8); // front
         this.addRect(p2, p1, p4, p3); // back
-    },
-    isSegments() {
+    }
+
+    isSegments(): boolean {
         return this.widthSegments > 1 || this.heightSegments > 1 || this.depthSegments > 1;
-    },
+    }
+
     /**
      * 设置朝前面的uv，不支持设置带有 widthSegments heightSegments depthSegments 的实例
      * @param {number[][]} uv uv数据，如 [[0, 1], [1, 1], [1, 0], [0, 0]]
      */
-    setFrontUV(uv) {
+    setFrontUV(uv: number[][]): void {
         if (this.isSegments()) {
             log.warn('segmented BoxGeometry dont support setFrontUV!');
             return;
         }
         this.setVertexUV(32, uv);
-    },
+    }
+
     /**
      * 设置右侧面的uv，不支持设置带有 widthSegments heightSegments depthSegments 的实例
      * @param {number[][]} uv uv数据，如 [[0, 1], [1, 1], [1, 0], [0, 0]]
      */
-    setRightUV(uv) {
+    setRightUV(uv: number[][]): void {
         if (this.isSegments()) {
             log.warn('segmented BoxGeometry dont support setRightUV!');
             return;
         }
         this.setVertexUV(0, uv);
-    },
+    }
+
     /**
      * 设置朝后面的uv，不支持设置带有 widthSegments heightSegments depthSegments 的实例
      * @param {number[][]} uv uv数据，如 [[0, 1], [1, 1], [1, 0], [0, 0]]
      */
-    setBackUV(uv) {
+    setBackUV(uv: number[][]): void {
         if (this.isSegments()) {
             log.warn('segmented BoxGeometry dont support setBackUV!');
             return;
         }
         this.setVertexUV(40, uv);
-    },
+    }
+
     /**
      * 设置左侧面的uv，不支持设置带有 widthSegments heightSegments depthSegments 的实例
      * @param {number[][]} uv uv数据，如 [[0, 1], [1, 1], [1, 0], [0, 0]]
      */
-    setLeftUV(uv) {
+    setLeftUV(uv: number[][]): void {
         if (this.isSegments()) {
             log.warn('segmented BoxGeometry dont support setLeftUV!');
             return;
         }
         this.setVertexUV(8, uv);
-    },
+    }
+
     /**
      * 设置顶部面的uv，不支持设置带有 widthSegments heightSegments depthSegments 的实例
      * @param {number[][]} uv uv数据，如 [[0, 1], [1, 1], [1, 0], [0, 0]]
      */
-    setTopUV(uv) {
+    setTopUV(uv: number[][]): void {
         if (this.isSegments()) {
             log.warn('segmented BoxGeometry dont support setTopUV!');
             return;
         }
         this.setVertexUV(16, uv);
-    },
+    }
+
     /**
      * 设置底部面的uv，不支持设置带有 widthSegments heightSegments depthSegments 的实例
      * @param {number[][]} uv uv数据，如 [[0, 1], [1, 1], [1, 0], [0, 0]]
      */
-    setBottomUV(uv) {
+    setBottomUV(uv: number[][]): void {
         if (this.isSegments()) {
             log.warn('segmented BoxGeometry dont support setBottomUV!');
             return;
         }
         this.setVertexUV(24, uv);
-    },
+    }
+
     /**
      * 设置所有面的uv，不支持设置带有 widthSegments heightSegments depthSegments 的实例
      * @param {number[][][]} uv uv数据，如
@@ -273,7 +284,7 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
      *     [[0, 1], [1, 1], [1, 0], [0, 0]]<br>
      * ]
      */
-    setAllRectUV(uv) {
+    setAllRectUV(uv: number[][][]): this | null {
         if (this.isSegments()) {
             log.warn('segmented BoxGeometry dont support setAllRectUV!');
             return null;
@@ -283,11 +294,12 @@ const BoxGeometry = Class.create(/** @lends BoxGeometry.prototype */ {
         }
 
         return this;
-    },
-    _raycast(ray, side) {
-        // TODO:optimize
-        return BoxGeometry.superclass._raycast.call(this, ray, side);
     }
-});
+
+    _raycast(ray: any, side: number): any {
+        // TODO:optimize
+        return super._raycast(ray, side);
+    }
+}
 
 export default BoxGeometry;
