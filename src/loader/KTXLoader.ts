@@ -239,11 +239,11 @@ class KTXLoader extends BasicLoader {
     constructor() {
         super();
         // Enable compressed texture extensions for KTX format support
-        extensions.use(KTXLoader.astc);  // ASTC texture compression
-        extensions.use(KTXLoader.etc);   // ETC2/EAC texture compression
-        extensions.use(KTXLoader.etc1);  // ETC1 texture compression
+        extensions.use(KTXLoader.astc); // ASTC texture compression
+        extensions.use(KTXLoader.etc); // ETC2/EAC texture compression
+        extensions.use(KTXLoader.etc1); // ETC1 texture compression
         extensions.use(KTXLoader.pvrtc); // PowerVR texture compression
-        extensions.use(KTXLoader.s3tc);  // S3TC/DXT texture compression
+        extensions.use(KTXLoader.s3tc); // S3TC/DXT texture compression
     }
 
     /**
