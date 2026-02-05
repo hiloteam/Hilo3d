@@ -1,43 +1,47 @@
 export class WebGL1VertexArrayObjectExtension {
-    constructor(vaoExtension) {
+    private _ext: any;
+
+    constructor(vaoExtension: any) {
         this._ext = vaoExtension;
     }
 
-    createVertexArray(vertexArray) {
-        return this._ext.createVertexArrayOES(vertexArray);
+    createVertexArray(): WebGLVertexArrayObject | null {
+        return this._ext.createVertexArrayOES();
     }
 
-    deleteVertexArray(vertexArray) {
+    deleteVertexArray(vertexArray: WebGLVertexArrayObject | null): void {
         this._ext.deleteVertexArrayOES(vertexArray);
     }
 
-    isVertexArray(vertexArray) {
+    isVertexArray(vertexArray: WebGLVertexArrayObject | null): GLboolean {
         return this._ext.isVertexArrayOES(vertexArray);
     }
 
-    bindVertexArray(vertexArray) {
+    bindVertexArray(vertexArray: WebGLVertexArrayObject | null): void {
         this._ext.bindVertexArrayOES(vertexArray);
     }
 }
 
 export class WebGL2VertexArrayObjectExtension {
-    constructor(gl) {
+    private _gl: WebGL2RenderingContext;
+
+    constructor(gl: WebGL2RenderingContext) {
         this._gl = gl;
     }
 
-    createVertexArray(vertexArray) {
-        return this._gl.createVertexArray(vertexArray);
+    createVertexArray(): WebGLVertexArrayObject | null {
+        return this._gl.createVertexArray();
     }
 
-    deleteVertexArray(vertexArray) {
+    deleteVertexArray(vertexArray: WebGLVertexArrayObject | null): void {
         this._gl.deleteVertexArray(vertexArray);
     }
 
-    isVertexArray(vertexArray) {
+    isVertexArray(vertexArray: WebGLVertexArrayObject | null): GLboolean {
         return this._gl.isVertexArray(vertexArray);
     }
 
-    bindVertexArray(vertexArray) {
+    bindVertexArray(vertexArray: WebGLVertexArrayObject | null): void {
         this._gl.bindVertexArray(vertexArray);
     }
 }
