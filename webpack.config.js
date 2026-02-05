@@ -26,7 +26,7 @@ module.exports = function(env, argv) {
         module: {
             rules: [{
                 enforce: 'pre',
-                test: /\.js$/,
+                test: /\.(js|ts)$/,
                 loader: 'string-replace-loader',
                 options: {
                     multiple: [{
@@ -37,11 +37,13 @@ module.exports = function(env, argv) {
                     }]
                 }
             }, {
-                enforce: 'pre',
-                test: /\.js$/,
+                test: /\.ts$/,
                 exclude: /(node_modules|bower_components)/,
                 use: {
-                    loader: 'eslint-loader'
+                    loader: 'ts-loader',
+                    options: {
+                        transpileOnly: true
+                    }
                 }
             }, {
                 test: /\.(glsl|frag|vert)$/,
@@ -68,12 +70,12 @@ module.exports = function(env, argv) {
             }]
         },
         entry: isDev ? {
-            Hilo3d: ['./src/polyfill.js', './src/Hilo3d.js']
+            Hilo3d: ['./src/polyfill.ts', './src/Hilo3d.ts']
         } : {
-            polyfill: ['./src/polyfill.js'],
-            'Hilo3d.single': './src/Hilo3d.js',
-            'math.single': './src/math.js',
-            Hilo3d: ['./src/polyfill.js', './src/Hilo3d.js']
+            polyfill: ['./src/polyfill.ts'],
+            'Hilo3d.single': './src/Hilo3d.ts',
+            'math.single': './src/math.ts',
+            Hilo3d: ['./src/polyfill.ts', './src/Hilo3d.ts']
         },
         output: {
             path: __dirname + (argv && argv.seinjs ? '/seinjs-build' : '/build'),
@@ -96,6 +98,7 @@ module.exports = function(env, argv) {
             }),
         ],
         resolve: {
+            extensions: ['.ts', '.js'],
             alias: {
                 "gl-matrix": "gl-matrix/dist/gl-matrix-min.js"
             }

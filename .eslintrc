@@ -1,10 +1,19 @@
 {
     "extends": "airbnb-base",
+    "parser": "@typescript-eslint/parser",
+    "plugins": ["@typescript-eslint"],
     "env": {
         "browser": true,
         "node": true,
         "mocha": true,
         "es6": true
+    },
+    "settings": {
+        "import/resolver": {
+            "node": {
+                "extensions": [".js", ".ts"]
+            }
+        }
     },
     "rules": {
         "prefer-const": 0,
@@ -31,6 +40,12 @@
         "prefer-spread": 0,
         "space-before-function-paren": ["error", "never"],
         "prefer-destructuring": 0,
-        "no-buffer-constructor": 0
+        "no-buffer-constructor": 0,
+        "import/extensions": ["error", "ignorePackages", {
+            "js": "never",
+            "ts": "never"
+        }],
+        "no-use-before-define": "off",
+        "@typescript-eslint/no-use-before-define": ["error"]
     }
 }
