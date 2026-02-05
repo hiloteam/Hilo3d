@@ -57,7 +57,7 @@ class AnimationStates {
             }
             return a + t * (b - a);
         },
-        STEP(a: any, b: any, t: number): any {
+        STEP(a: any, _b: any, _t: number): any {
             return a;
         },
         CUBICSPLINE(a: any, b: any, t: number, tr: number): any {
@@ -227,6 +227,7 @@ class AnimationStates {
 
         Object.assign(this, parmas);
     }
+
     /**
      * 查找指定时间在 keyTime 数组中的位置
      * @param {number} time 指定的时间
