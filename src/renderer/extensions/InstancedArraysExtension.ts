@@ -1,35 +1,39 @@
 export class WebGL1InstancedArraysExtension {
-    constructor(instancedArraysExtension) {
+    private _ext: any;
+
+    constructor(instancedArraysExtension: any) {
         this._ext = instancedArraysExtension;
     }
 
-    drawArraysInstanced(mode, first, count, instanceCount) {
+    drawArraysInstanced(mode: GLenum, first: GLint, count: GLsizei, instanceCount: GLsizei): void {
         this._ext.drawArraysInstancedANGLE(mode, first, count, instanceCount);
     }
 
-    drawElementsInstanced(mode, count, type, offset, instanceCount) {
+    drawElementsInstanced(mode: GLenum, count: GLsizei, type: GLenum, offset: GLintptr, instanceCount: GLsizei): void {
         this._ext.drawElementsInstancedANGLE(mode, count, type, offset, instanceCount);
     }
 
-    vertexAttribDivisor(index, divisor) {
+    vertexAttribDivisor(index: GLuint, divisor: GLuint): void {
         this._ext.vertexAttribDivisorANGLE(index, divisor);
     }
 }
 
 export class WebGL2InstancedArraysExtension {
-    constructor(gl) {
+    private _gl: WebGL2RenderingContext;
+
+    constructor(gl: WebGL2RenderingContext) {
         this._gl = gl;
     }
 
-    drawArraysInstanced(mode, first, count, instanceCount) {
+    drawArraysInstanced(mode: GLenum, first: GLint, count: GLsizei, instanceCount: GLsizei): void {
         this._gl.drawArraysInstanced(mode, first, count, instanceCount);
     }
 
-    drawElementsInstanced(mode, count, type, offset, instanceCount) {
+    drawElementsInstanced(mode: GLenum, count: GLsizei, type: GLenum, offset: GLintptr, instanceCount: GLsizei): void {
         this._gl.drawElementsInstanced(mode, count, type, offset, instanceCount);
     }
 
-    vertexAttribDivisor(index, divisor) {
+    vertexAttribDivisor(index: GLuint, divisor: GLuint): void {
         this._gl.vertexAttribDivisor(index, divisor);
     }
 }
