@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import math from '../math/math';
 import Vector2 from '../math/Vector2';
 import Vector3 from '../math/Vector3';
@@ -10,81 +9,89 @@ import {
     getTypedArrayClass
 } from '../utils/util';
 
-const sizeVectorMap = {
+type TypedArray = Int8Array | Uint8Array | Int16Array | Uint16Array | Int32Array | Uint32Array | Float32Array | Float64Array;
+
+const sizeVectorMap: Record<number, Vector2 | Vector3 | Vector4 | Matrix4> = {
     2: new Vector2(),
     3: new Vector3(),
     4: new Vector4(),
     16: new Matrix4()
 };
 
+interface SubDataItem {
+    byteOffset: number;
+    data: TypedArray;
+}
+
 /**
  * geometry vertex data
  * @class
  */
-const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
+class GeometryData {
     /**
      * 类名
      * @type {String}
      * @readOnly
      * @default GeometryData
      */
-    className: 'GeometryData',
+    readonly className: string = 'GeometryData';
+    
     /**
      * isGeometryData
      * @type {Boolean}
      * @readOnly
      * @default true
      */
-    isGeometryData: true,
+    readonly isGeometryData: boolean = true;
+
+    /**
+     * id
+     * @type {string}
+     */
+    id: string;
 
     /**
      * The number of components per vertex attribute.Must be 1, 2, 3, or 4.
      * @type {Number}
      */
-    size: undefined,
+    size: number;
 
     /**
      * Whether integer data values should be normalized when being casted to a float.
      * @type {Boolean}
      * @default false
      */
-    normalized: false,
+    normalized: boolean = false;
 
     /**
      * The data type of each component in the array.
      * @type {GLenum}
      */
-    type: undefined,
+    type?: number;
 
-    _isSubDirty: false,
-    _isAllDirty: false,
-
-    /**
-     * @type {Boolean}
-     * @default false
-     */
-    isDirty: {
-        get() {
-            return this._isSubDirty || this._isAllDirty;
-        },
-        set(value) {
-            this._isAllDirty = value;
-            if (value === false) {
-                this.clearSubData();
-            }
-        }
-    },
+    private _isSubDirty: boolean = false;
+    private _isAllDirty: boolean = false;
 
     /**
      * @type {String}
      */
-    bufferViewId: undefined,
+    bufferViewId?: string;
 
     /**
      * glBuffer
      * @type {Buffer}
      */
-    glBuffer: null,
+    glBuffer: any = null;
+
+    private _stride: number = 0;
+    strideSize: number = 0;
+
+    private _offset: number = 0;
+    offsetSize: number = 0;
+
+    private _data!: TypedArray;
+    
+    subDataList?: SubDataItem[];
 
     /**
      * @constructs
@@ -92,18 +99,13 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
      * @param  {Number} size The number of components per vertex attribute.Must be 1, 2, 3, or 4.
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(data, size, params) {
-        /**
-         * id
-         * @type {string}
-         */
+    constructor(data: TypedArray | null, size: number, params?: any) {
         this.id = math.generateUUID(this.className);
-
-        /**
-         * @type {TypedArray}
-         */
-        this.data = data;
         this.size = size;
+
+        if (data) {
+            this.data = data;
+        }
 
         Object.assign(this, params);
         if (!this.bufferViewId) {
@@ -113,114 +115,114 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
         if (!this.size) {
             log.warn('GeometryData.constructor: geometryData must set size!', this);
         }
-    },
+    }
 
-    _stride: 0,
+    /**
+     * @type {Boolean}
+     * @default false
+     */
+    get isDirty(): boolean {
+        return this._isSubDirty || this._isAllDirty;
+    }
+
+    set isDirty(value: boolean) {
+        this._isAllDirty = value;
+        if (value === false) {
+            this.clearSubData();
+        }
+    }
+
     /**
      * The offset in bytes between the beginning of consecutive vertex attributes.
      * @type {Number}
      * @default this.size
      */
-    stride: {
-        get() {
-            return this._stride;
-        },
-        set(value) {
-            this._stride = value;
-            this.strideSize = value === 0 ? 0 : value / this.data.BYTES_PER_ELEMENT;
-        }
-    },
+    get stride(): number {
+        return this._stride;
+    }
 
-    strideSize: 0,
+    set stride(value: number) {
+        this._stride = value;
+        this.strideSize = value === 0 ? 0 : value / this._data.BYTES_PER_ELEMENT;
+    }
 
-    _offset: 0,
     /**
      * An offset in bytes of the first component in the vertex attribute array. Must be a multiple of type.
      * @type {Number}
      * @default 0
      */
-    offset: {
-        get() {
-            return this._offset;
-        },
-        set(value) {
-            this._offset = value;
-            this.offsetSize = value / this.data.BYTES_PER_ELEMENT;
-        }
-    },
+    get offset(): number {
+        return this._offset;
+    }
 
-    offsetSize: 0,
+    set offset(value: number) {
+        this._offset = value;
+        this.offsetSize = value / this._data.BYTES_PER_ELEMENT;
+    }
 
     /**
      * @type {TypedArray}
      */
-    data: {
-        set(data) {
-            if (data) {
-                this._data = data;
-                this.type = getTypedArrayGLType(data);
-                this.stride = this._stride;
-                this.offset = this._offset;
-                this._isAllDirty = true;
-            }
-        },
-        get() {
-            return this._data;
+    get data(): TypedArray {
+        return this._data;
+    }
+
+    set data(data: TypedArray) {
+        if (data) {
+            this._data = data;
+            this.type = getTypedArrayGLType(data);
+            this.stride = this._stride;
+            this.offset = this._offset;
+            this._isAllDirty = true;
         }
-    },
+    }
 
     /**
      * @type {Number}
      * @readOnly
      */
-    length: {
-        get() {
+    get length(): number {
+        return this._data.length;
+    }
+
+    /**
+     * @type {Number}
+     * @readOnly
+     */
+    get realLength(): number {
+        if (this.strideSize === 0) {
             return this._data.length;
         }
-    },
+        return this._data.length / this.strideSize * this.size;
+    }
 
     /**
      * @type {Number}
      * @readOnly
      */
-    realLength: {
-        get() {
-            if (this.strideSize === 0) {
-                return this._data.length;
-            }
-            return this._data.length / this.strideSize * this.size;
+    get count(): number {
+        if (this.strideSize === 0) {
+            return this._data.length / this.size;
         }
-    },
+        return this._data.length / this.strideSize;
+    }
 
     /**
      * 获取数据大小，单位为字节
      * @return {number} 数据大小
      */
-    getByteLength() {
+    getByteLength(): number {
         return this._data.BYTES_PER_ELEMENT * this.realLength;
-    },
-
-    /**
-     * @type {Number}
-     * @readOnly
-     */
-    count: {
-        get() {
-            if (this.strideSize === 0) {
-                return this._data.length / this.size;
-            }
-            return this._data.length / this.strideSize;
-        }
-    },
+    }
 
     /**
      * 更新部分数据
      * @param {Number} offset 偏移index
      * @param {TypedArray} data 数据
      */
-    setSubData(offset, data) {
+    setSubData(offset: number, data: TypedArray): void {
         this._isSubDirty = true;
-        this.data.set(data, offset);
+        this._data.set(data, offset);
 
         if (!this.subDataList) {
             this.subDataList = [];
@@ -231,62 +233,65 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
             byteOffset,
             data
         });
-    },
+    }
 
     /**
      * 清除 subData
      */
-    clearSubData() {
+    clearSubData(): void {
         if (this.subDataList) {
             this.subDataList.length = 0;
         }
         this._isSubDirty = false;
-    },
+    }
 
     /**
      * clone
      * @return {GeometryData}
      */
-    clone() {
+    clone(): GeometryData {
         const res = new GeometryData(null, 1);
         res.copy(this);
         return res;
-    },
+    }
+
     /**
      * copy
      * @param  {GeometryData} geometryData
      */
-    copy(geometryData) {
+    copy(geometryData: GeometryData): void {
         const data = geometryData.data;
-        this.data = new data.constructor(data);
+        this.data = new (data.constructor as any)(data);
         this.size = geometryData.size;
         this.stride = geometryData.stride;
         this.normalized = geometryData.normalized;
         this.type = geometryData.type;
         this.offset = geometryData.offset;
-    },
+    }
+
     /**
      * 获取偏移值
      * @param  {Number} index
      * @return {Number}
      */
-    getOffset(index) {
+    getOffset(index: number): number {
         const strideSize = this.strideSize;
         if (strideSize === 0) {
             return index * this.size;
         }
         return index * strideSize + this.offsetSize;
-    },
+    }
+
     /**
      * Get the value by index.
      * Please note that it will return the same reference for performance reasons. If you want to get a copy, use #getCopy instead.
      * @param  {Number} index
      * @return {Number|Vector2|Vector3|Vector4}
      */
-    get(index) {
+    get(index: number): number | Vector2 | Vector3 | Vector4 {
         const offset = this.getOffset(index);
         return this.getByOffset(offset);
-    },
+    }
 
     /**
      * Get the value by index.
@@ -294,55 +299,59 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
      * @param  {Number} index
      * @return {Number|Vector2|Vector3|Vector4}
      */
-    getCopy(index) {
-        return this.get(index).clone();
-    },
+    getCopy(index: number): number | Vector2 | Vector3 | Vector4 {
+        const result = this.get(index);
+        return typeof result === 'number' ? result : result.clone();
+    }
 
     /**
      * 设置值
      * @param {Number} index
      * @param {Number|Vector2|Vector3|Vector4} value
      */
-    set(index, value) {
+    set(index: number, value: number | Vector2 | Vector3 | Vector4): number {
         const offset = this.getOffset(index);
         this.setByOffset(offset, value);
         return offset;
-    },
+    }
+
     /**
      * 根据 offset 获取值
      * @param  {Number} offset
      * @return {Number|Vector2|Vector3|Vector4}
      */
-    getByOffset(offset) {
+    getByOffset(offset: number): number | Vector2 | Vector3 | Vector4 {
         const size = this.size;
         if (size > 1) {
             const tempVector = sizeVectorMap[size];
-            return tempVector.fromArray(this._data, offset);
+            return (tempVector as any).fromArray(this._data, offset);
         }
 
         return this._data[offset];
-    },
+    }
+
     /**
      * 根据 offset 设置值
      * @param {Number} offset
      * @param {Number|Vector2|Vector3|Vector4} value
      */
-    setByOffset(offset, value) {
+    setByOffset(offset: number, value: number | Vector2 | Vector3 | Vector4): void {
         const size = this.size;
         const data = this._data;
         if (size > 1) {
-            value.toArray(data, offset);
+            (value as Vector2 | Vector3 | Vector4).toArray(data, offset);
         } else {
-            data[offset] = value;
+            data[offset] = value as number;
         }
         this._isAllDirty = true;
-    },
+    }
+
     /**
      * 按 index 遍历
      * @param  {GeometryDataTraverseCallback} callback
      * @return {Boolean}
      */
-    traverse(callback) {
+    traverse(callback: (attribute: number | Vector2 | Vector3 | Vector4, index: number, offset: number) => boolean | void): boolean {
         const count = this.count;
         for (let index = 0; index < count; index++) {
             const offset = this.getOffset(index);
@@ -353,13 +362,14 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
         }
 
         return false;
-    },
+    }
+
     /**
      * 按 Component 遍历 Component
      * @param  {GeometryDataTraverseByComponentCallback} callback
      * @return {Boolean}
      */
-    traverseByComponent(callback) {
+    traverseByComponent(callback: (component: number, index: number, offset: number) => boolean | void): boolean {
         const count = this.count;
         const size = this.size;
         const data = this._data;
@@ -375,14 +385,15 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
         }
 
         return false;
-    },
-    merge(geometryData, transform) {
+    }
+
+    merge(geometryData: GeometryData, transform?: (data: number, index: number) => number): this {
         if (geometryData.type !== this.type || geometryData.size !== this.size) {
             log.warn('geometryData type or size not same, cannot merge!', this, geometryData);
             return this;
         }
 
-        const DataClass = getTypedArrayClass(this.type);
+        const DataClass = getTypedArrayClass(this.type!) as any;
         const length0 = this.realLength;
         const length1 = geometryData.realLength;
 
@@ -403,20 +414,6 @@ const GeometryData = Class.create(/** @lends GeometryData.prototype */ {
 
         return this;
     }
-});
+}
 
 export default GeometryData;
-
-/**
- * @callback GeometryDataTraverseCallback
- * @param {Number|Vector2|Vector3|Vector4} attribute
- * @param {Number} index
- * @param {Number} offset
- */
-
-/**
- * @callback GeometryDataTraverseByComponentCallback
- * @param {Number} component
- * @param {Number} index
- * @param {Number} offset
- */
