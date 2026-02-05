@@ -202,7 +202,7 @@ class Program {
      */
     ignoreError?: boolean;
 
-    private _dict: Record<string, any> = {};
+    private _dict: Record<string, any> | null = {};
 
     private _isDestroyed: boolean = false;
 
@@ -281,7 +281,7 @@ class Program {
      */
     createShader(shaderType: number, code: string): WebGLShader | null {
         if (this.isWebGL2) {
-            code = this._convertToGLSL300(shaderType, code);
+            code = Program._convertToGLSL300(shaderType, code);
         }
         const gl = this.gl!;
         const shader = gl.createShader(shaderType)!;
@@ -297,8 +297,7 @@ class Program {
         return shader;
     }
 
-    // eslint-disable-next-line class-methods-use-this
-    private _convertToGLSL300(shaderType: number, code: string): string {
+    private static _convertToGLSL300(shaderType: number, code: string): string {
         let finalCode = code;
         if (shaderType === VERTEX_SHADER) {
             finalCode = GLSL300VertDefineCode + code;
@@ -532,7 +531,7 @@ class Program {
         this.program = null;
         this.gl = null;
         this.state = null;
-        this._dict = null!;
+        this._dict = null;
         cache.removeObject(this);
 
         this._isDestroyed = true;
