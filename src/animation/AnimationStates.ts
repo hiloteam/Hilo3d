@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import math from '../math/math';
 import Quaternion from '../math/Quaternion';
 import Euler from '../math/Euler';
@@ -15,196 +14,225 @@ const tempQuat4 = new Quaternion();
 const tempQuat5 = new Quaternion();
 const tempQuat6 = new Quaternion();
 const tempEuler = new Euler();
-const tempArr = [];
+const tempArr: any[] = [];
 
-function ascCompare(a, b) {
+function ascCompare(a: number, b: number): number {
     return a - b;
 }
+
+interface AnimationStatesParams {
+    keyTime?: number[];
+    states?: any[];
+    type?: string;
+    nodeName?: string;
+    interpolationType?: string;
+}
+
+type StateHandler = (node: any, state: any) => void;
 
 /**
  * 元素动画状态序列处理
  * @class
  */
-const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
-    Statics: {
-        interpolation: {
-            LINEAR(a, b, t) {
-                if (b === undefined) {
-                    return a;
-                }
-                if (a.slerp) {
-                    return a.slerp(b, t);
-                }
-
-                if (a.lerp) {
-                    return a.lerp(b, t);
-                }
-
-                if (isArrayLike(a)) {
-                    tempArr.length = 0;
-                    for (let i = a.length - 1; i >= 0; i--) {
-                        tempArr[i] = a[i] + t * (b[i] - a[i]);
-                    }
-                    return tempArr;
-                }
-                return a + t * (b - a);
-            },
-            STEP(a, b, t) { // eslint-disable-line no-unused-vars
+class AnimationStates {
+    static interpolation = {
+        LINEAR(a: any, b: any, t: number): any {
+            if (b === undefined) {
                 return a;
-            },
-            CUBICSPLINE(a, b, t, tr) { // eslint-disable-line no-unused-vars
-                const itemLen = a.length / 3;
-                if (b === undefined) {
-                    if (itemLen === 1) {
-                        return a[1];
-                    }
-                    return a.slice(itemLen, -itemLen);
-                }
-                let p0 = a[1];
-                let m0 = a[2];
-                let p1 = b[1];
-                let m1 = b[0];
-                if (itemLen > 1) {
-                    p0 = a.slice(itemLen, -itemLen);
-                    m0 = a.slice(-itemLen);
-                    p1 = b.slice(itemLen, -itemLen);
-                    m1 = b.slice(0, itemLen);
-                }
+            }
+            if (a.slerp) {
+                return a.slerp(b, t);
+            }
 
-                if (p0.hermite) {
-                    p0.hermite(p0, m0.scale(tr), p1, m1.scale(tr), t);
-                } else if (p0.isQuaternion) {
-                    p0.fromArray(this._cubicSpline(p0.elements, m0.elements, p1.elements, m1.elements, tr, t), 0);
-                    p0.normalize();
-                } else {
-                    if (!isArrayLike(p0)) {
-                        p0 = [p0];
-                        m0 = [m0];
-                        p1 = [p1];
-                        m1 = [m1];
-                    }
+            if (a.lerp) {
+                return a.lerp(b, t);
+            }
 
-                    p0 = this._cubicSpline(p0, m0, p1, m1, tr, t);
-                }
-
-                return p0;
-            },
-
-            _cubicSpline(p0, m0, p1, m1, tr, t) {
-                const t2 = t * t;
-                const t3 = t2 * t;
-
-                const x1 = 2 * t3 - 3 * t2 + 1;
-                const x2 = t3 - 2 * t2 + t;
-                const x3 = -2 * t3 + 3 * t2;
-                const x4 = t3 - t2;
-
+            if (isArrayLike(a)) {
                 tempArr.length = 0;
-                for (let i = p0.length - 1; i >= 0; i--) {
-                    tempArr[i] = p0[i] * x1 + x2 * m0[i] * tr + p1[i] * x3 + x4 * m1[i] * tr;
+                for (let i = a.length - 1; i >= 0; i--) {
+                    tempArr[i] = a[i] + t * (b[i] - a[i]);
                 }
-
                 return tempArr;
             }
+            return a + t * (b - a);
         },
-        /**
-         * 状态类型
-         * @memberOf AnimationStates
-         * @static
-         * @enum {string}
-         */
-        StateType: {
-            TRANSLATE: 'Translation',
-            POSITION: 'Translation',
-            TRANSLATION: 'Translation',
-            SCALE: 'Scale',
-            ROTATE: 'Rotation',
-            ROTATION: 'Rotation',
-            QUATERNION: 'Quaternion',
-            WEIGHTS: 'Weights'
+        STEP(a: any, b: any, t: number): any {
+            return a;
         },
-        /**
-         * 根据名字获取状态类型
-         * @memberOf AnimationStates
-         * @static
-         * @param {string} name 名字，忽略大小写，如 translate => StateType.TRANSLATE
-         * @return {AnimationStates.StateType} 返回获取的状态名
-         */
-        getType(name) {
-            name = String(name).toUpperCase();
-            return AnimationStates.StateType[name] || AnimationStates._extraStateHandlers.type[name];
+        CUBICSPLINE(a: any, b: any, t: number, tr: number): any {
+            const itemLen = a.length / 3;
+            if (b === undefined) {
+                if (itemLen === 1) {
+                    return a[1];
+                }
+                return a.slice(itemLen, -itemLen);
+            }
+            let p0 = a[1];
+            let m0 = a[2];
+            let p1 = b[1];
+            let m1 = b[0];
+            if (itemLen > 1) {
+                p0 = a.slice(itemLen, -itemLen);
+                m0 = a.slice(-itemLen);
+                p1 = b.slice(itemLen, -itemLen);
+                m1 = b.slice(0, itemLen);
+            }
+
+            if (p0.hermite) {
+                p0.hermite(p0, m0.scale(tr), p1, m1.scale(tr), t);
+            } else if (p0.isQuaternion) {
+                p0.fromArray(AnimationStates.interpolation._cubicSpline(p0.elements, m0.elements, p1.elements, m1.elements, tr, t), 0);
+                p0.normalize();
+            } else {
+                if (!isArrayLike(p0)) {
+                    p0 = [p0];
+                    m0 = [m0];
+                    p1 = [p1];
+                    m1 = [m1];
+                }
+
+                p0 = AnimationStates.interpolation._cubicSpline(p0, m0, p1, m1, tr, t);
+            }
+
+            return p0;
         },
-        _extraStateHandlers: {
-            type: {},
-            handler: {}
-        },
-        /**
-         * 注册属性处理器
-         * @memberOf AnimationStates
-         * @param {string} name 属性名
-         * @param {Function} handler 属性处理方法
-         */
-        registerStateHandler(name, handler) {
-            AnimationStates._extraStateHandlers.type[String(name).toUpperCase()] = name;
-            AnimationStates._extraStateHandlers.handler[name] = handler;
+
+        _cubicSpline(p0: any[], m0: any[], p1: any[], m1: any[], tr: number, t: number): any[] {
+            const t2 = t * t;
+            const t3 = t2 * t;
+
+            const x1 = 2 * t3 - 3 * t2 + 1;
+            const x2 = t3 - 2 * t2 + t;
+            const x3 = -2 * t3 + 3 * t2;
+            const x4 = t3 - t2;
+
+            tempArr.length = 0;
+            for (let i = p0.length - 1; i >= 0; i--) {
+                tempArr[i] = p0[i] * x1 + x2 * m0[i] * tr + p1[i] * x3 + x4 * m1[i] * tr;
+            }
+
+            return tempArr;
         }
-    },
+    };
+
+    /**
+     * 状态类型
+     * @memberOf AnimationStates
+     * @static
+     * @enum {string}
+     */
+    static StateType: Record<string, string> = {
+        TRANSLATE: 'Translation',
+        POSITION: 'Translation',
+        TRANSLATION: 'Translation',
+        SCALE: 'Scale',
+        ROTATE: 'Rotation',
+        ROTATION: 'Rotation',
+        QUATERNION: 'Quaternion',
+        WEIGHTS: 'Weights'
+    };
+
+    private static _extraStateHandlers: {
+        type: Record<string, string>;
+        handler: Record<string, StateHandler>;
+    } = {
+        type: {},
+        handler: {}
+    };
+
+    /**
+     * 根据名字获取状态类型
+     * @memberOf AnimationStates
+     * @static
+     * @param {string} name 名字，忽略大小写，如 translate => StateType.TRANSLATE
+     * @return {string} 返回获取的状态名
+     */
+    static getType(name: string): string {
+        const upperName = String(name).toUpperCase();
+        return AnimationStates.StateType[upperName] || AnimationStates._extraStateHandlers.type[upperName];
+    }
+
+    /**
+     * 注册属性处理器
+     * @memberOf AnimationStates
+     * @param {string} name 属性名
+     * @param {Function} handler 属性处理方法
+     */
+    static registerStateHandler(name: string, handler: StateHandler): void {
+        AnimationStates._extraStateHandlers.type[String(name).toUpperCase()] = name;
+        AnimationStates._extraStateHandlers.handler[name] = handler;
+    }
+
     /**
      * @default true
      * @type {boolean}
      */
-    isAnimationStates: true,
+    isAnimationStates: boolean = true;
+
     /**
      * @default AnimationStates
      * @type {string}
      */
-    className: 'AnimationStates',
+    className: string = 'AnimationStates';
+
     /**
      * 对应的node名字(动画是根据名字关联的)
      * @type {string}
      */
-    nodeName: '',
+    nodeName: string = '';
+
     /**
      * 状态类型
-     * @type {AnimationStates.StateType}
+     * @type {string}
      */
-    type: '',
+    type: string = '';
+
     /**
      * 插值算法
      * @default LINEAR
      * @type {string}
      */
-    interpolationType: 'LINEAR',
+    interpolationType: string = 'LINEAR';
+
+    /**
+     * @type {string}
+     */
+    id: string | number;
+
+    /**
+     * 时间序列
+     * @default []
+     * @type {number[]}
+     */
+    keyTime: number[] = [];
+
+    /**
+     * 对应时间上的状态，数组长度应该跟keyTime一致，即每一帧上的状态信息
+     * @default []
+     * @type {Array.<Array>}
+     */
+    states: any[] = [];
+
+    private _originalWeightIndices?: number[];
+
     /**
      * @constructs
      * @param {Object} [parmas] 创建对象的属性参数。可包含此类的所有属性。
      */
-    constructor(parmas) {
-        /**
-         * @type {string}
-         */
+    constructor(parmas?: AnimationStatesParams) {
         this.id = math.generateUUID(this.className);
-        /**
-         * 时间序列
-         * @default []
-         * @type {number[]}
-         */
         this.keyTime = [];
-        /**
-         * 对应时间上的状态，数组长度应该跟keyTime一致，即每一帧上的状态信息
-         * @default []
-         * @type {Array.<Array>}
-         */
         this.states = [];
 
         Object.assign(this, parmas);
-    },
+    }
     /**
      * 查找指定时间在 keyTime 数组中的位置
      * @param {number} time 指定的时间
      * @return {number[]} 返回找到的位置，如: [low, high]
      */
-    findIndexByTime(time) {
+    findIndexByTime(time: number): number[] {
         const indexArr = getIndexFromSortedArray(this.keyTime, time, ascCompare);
         if (indexArr[0] < 0) {
             indexArr[0] = 0;
@@ -213,20 +241,22 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
             indexArr[1] = this.keyTime.length - 1;
         }
         return indexArr;
-    },
-    getStateByIndex(index) {
+    }
+
+    getStateByIndex(index: number): any {
         const len = this.states.length / this.keyTime.length;
         if (len === 1) {
             return this.states[index];
         }
         return this.states.slice(index * len, index * len + len);
-    },
+    }
+
     /**
      * 获取指定时间上对应的状态，这里会进行插值计算
      * @param {number} time 指定的时间
-     * @return {number[]} 返回插值后的状态数据
+     * @return {any} 返回插值后的状态数据
      */
-    getState(time) {
+    getState(time: number): any {
         const [index1, index2] = this.findIndexByTime(time);
         const time1 = this.keyTime[index1];
         const time2 = this.keyTime[index2];
@@ -277,39 +307,44 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
 
         const result = this.interpolation(state1, state2, ratio, timeRange);
         return result.elements || result;
-    },
-    interpolation(a, b, t, tr) {
+    }
+
+    interpolation(a: any, b?: any, t?: number, tr?: number): any {
         return AnimationStates.interpolation[this.interpolationType](a, b, t, tr);
-    },
+    }
+
     /**
      * 更新指定元素的位置
      * @param {Node} node 需要更新的元素
      * @param {number[]} value 位置信息，[x, y, z]
      */
-    updateNodeTranslation(node, value) {
+    updateNodeTranslation(node: any, value: number[]): void {
         node.x = value[0];
         node.y = value[1];
         node.z = value[2];
-    },
+    }
+
     /**
      * 更新指定元素的缩放
      * @param {Node} node 需要更新的元素
      * @param {number[]} value 缩放信息，[scaleX, scaleY, scaleZ]
      */
-    updateNodeScale(node, value) {
+    updateNodeScale(node: any, value: number[]): void {
         node.scaleX = value[0];
         node.scaleY = value[1];
         node.scaleZ = value[2];
-    },
+    }
+
     /**
      * 更新指定元素的旋转(四元数)
      * @param {Node} node 需要更新的元素
      * @param {number[]} value 四元数的旋转信息，[x, y, z, w]
      */
-    updateNodeQuaternion(node, value) {
+    updateNodeQuaternion(node: any, value: number[]): void {
         node.quaternion.fromArray(value);
-    },
-    updateNodeWeights(node, weights) {
+    }
+
+    updateNodeWeights(node: any, weights: number[]): void {
         const originalWeightIndices = this._originalWeightIndices = this._originalWeightIndices || [];
         const len = weights.length;
         weights = weights.slice();
@@ -322,25 +357,26 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
                     let t = weights[i];
                     weights[i] = weights[j];
                     weights[j] = t;
-                    t = originalWeightIndices[i];
+                    const temp = originalWeightIndices[i];
                     originalWeightIndices[i] = originalWeightIndices[j];
-                    originalWeightIndices[j] = t;
+                    originalWeightIndices[j] = temp;
                 }
             }
         }
 
-        node.traverse((mesh) => {
+        node.traverse((mesh: any) => {
             if (mesh.isMesh && mesh.geometry && mesh.geometry.isMorphGeometry) {
                 mesh.geometry.update(weights, originalWeightIndices);
             }
         });
-    },
+    }
+
     /**
      * 更新指定元素的状态
      * @param {number} time 时间，从keyTime中查找到状态然后更新
      * @param {Node} node 需要更新的元素
      */
-    updateNodeState(time, node) {
+    updateNodeState(time: number, node: any): void {
         if (!node) {
             return;
         }
@@ -353,26 +389,27 @@ const AnimationStates = Class.create(/** @lends AnimationStates.prototype */ {
             return;
         }
         const fnName = 'updateNode' + type;
-        if (this[fnName]) {
-            this[fnName](node, state);
+        if ((this as any)[fnName]) {
+            (this as any)[fnName](node, state);
         } else if (AnimationStates._extraStateHandlers.handler[type]) {
             AnimationStates._extraStateHandlers.handler[type].call(this, node, state);
         } else {
             log.warnOnce(fnName, 'updateNodeState failed unknow type(%s)', type);
         }
-    },
+    }
+
     /**
      * clone
      * @return {AnimationStates} 返回clone的实例
      */
-    clone() {
-        return new this.constructor({
+    clone(): AnimationStates {
+        return new AnimationStates({
             keyTime: this.keyTime,
             states: this.states,
             type: this.type,
             nodeName: this.nodeName
         });
     }
-});
+}
 
 export default AnimationStates;
