@@ -1,7 +1,12 @@
-import Class from '../core/Class';
 import BasicLoader from './BasicLoader';
 import ShaderMaterial from '../material/ShaderMaterial';
 import log from '../utils/log';
+
+interface ShaderMaterialParams {
+    fs: string;
+    vs: string;
+    [key: string]: any;
+}
 
 /**
  * ShaderMaterial加载类
@@ -41,21 +46,23 @@ import log from '../utils/log';
  *     stage.addChild(plane);
  * });
  */
-const ShaderMaterialLoader = Class.create(/** @lends  ShaderMaterialLoader.prototype */{
-    Extends: BasicLoader,
+class ShaderMaterialLoader extends BasicLoader {
     /**
      * @default true
      * @type {boolean}
      */
-    isShaderMaterialLoader: true,
+    isShaderMaterialLoader: boolean = true;
+
     /**
      * @default ShaderMaterialLoader
      * @type {string}
      */
-    className: 'ShaderMaterialLoader',
+    className: string = 'ShaderMaterialLoader';
+
     constructor() {
-        ShaderMaterialLoader.superclass.constructor.call(this);
-    },
+        super();
+    }
+
     /**
      * 加载ShaderMaterial
      *
@@ -67,21 +74,22 @@ const ShaderMaterialLoader = Class.create(/** @lends  ShaderMaterialLoader.proto
      * @param {string} params.vs vertex shader 文件的地址
      * @return {Promise.<ShaderMaterial, Error>} 返回加载完的ShaderMaterial实例
      */
-    load(params) {
+    load(params: ShaderMaterialParams): Promise<ShaderMaterial | undefined> {
         const list = [
             this.loadRes(params.fs),
             this.loadRes(params.vs)
         ];
 
-        const args = Object.assign({}, params);
-        return Promise.all(list).then((result) => {
+        const args: any = Object.assign({}, params);
+        return Promise.all(list).then((result: string[]) => {
             args.fs = result[0];
             args.vs = result[1];
             return new ShaderMaterial(args);
-        }, (err) => {
+        }, (err: Error) => {
             log.warn(`ShaderMaterial Loader Failed for ${err}`);
+            return undefined;
         });
     }
-});
+}
 
 export default ShaderMaterialLoader;

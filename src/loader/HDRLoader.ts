@@ -1,5 +1,4 @@
 import parseHDR from 'parse-hdr';
-import Class from '../core/Class';
 import BasicLoader from './BasicLoader';
 import Texture from '../texture/Texture';
 import Loader from './Loader';
@@ -13,32 +12,40 @@ const {
     FLOAT
 } = constants;
 
+interface HDRLoaderParams {
+    src: string;
+    flipY?: boolean;
+    [key: string]: any;
+}
+
 /**
  * @class
  */
-const HDRLoader = Class.create(/** @lends HDRLoader.prototype */{
-    Extends: BasicLoader,
+class HDRLoader extends BasicLoader {
     /**
      * @default true
      * @type {boolean}
      */
-    isHDRLoader: true,
+    isHDRLoader: boolean = true;
+
     /**
      * @default HDRLoader
      * @type {string}
      */
-    className: 'HDRLoader',
+    className: string = 'HDRLoader';
+
     constructor() {
-        HDRLoader.superclass.constructor.call(this);
-    },
+        super();
+    }
+
     /**
      * load
      * @param  {Object} params
      * @return {Promise<Texture>}
      */
-    load(params) {
+    load(params: HDRLoaderParams): Promise<Texture | null> {
         return this.loadRes(params.src, 'buffer')
-            .then((buffer) => {
+            .then((buffer: ArrayBuffer) => {
                 try {
                     const img = parseHDR(buffer);
                     const shape = img.shape;
@@ -67,7 +74,7 @@ const HDRLoader = Class.create(/** @lends HDRLoader.prototype */{
                 return null;
             });
     }
-});
+}
 
 Loader.addLoader('hdr', HDRLoader);
 

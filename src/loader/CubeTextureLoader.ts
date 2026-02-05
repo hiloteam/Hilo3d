@@ -1,8 +1,19 @@
-import Class from '../core/Class';
 import BasicLoader from './BasicLoader';
 import CubeTexture from '../texture/CubeTexture';
 import Loader from './Loader';
 import log from '../utils/log';
+
+interface CubeTextureParams {
+    crossOrigin?: boolean;
+    images?: string[];
+    right?: string;
+    left?: string;
+    top?: string;
+    bottom?: string;
+    front?: string;
+    back?: string;
+    [key: string]: any;
+}
 
 /**
  * CubeTexture加载类
@@ -27,24 +38,26 @@ import log from '../utils/log';
  *     ...
  * });
  */
-const CubeTextureLoader = Class.create(/** @lends CubeTextureLoader.prototype */{
-    Extends: BasicLoader,
+class CubeTextureLoader extends BasicLoader {
     /**
      * @default true
      * @type {boolean}
      */
-    isCubeTextureLoader: true,
+    isCubeTextureLoader: boolean = true;
+
     /**
      * @default CubeTextureLoader
      * @type {string}
      */
-    className: 'CubeTextureLoader',
+    className: string = 'CubeTextureLoader';
+
     /**
      * @constructs
      */
     constructor() {
-        CubeTextureLoader.superclass.constructor.call(this);
-    },
+        super();
+    }
+
     /**
      * 加载CubeTexture
      * @param {object} params 加载参数
@@ -59,17 +72,17 @@ const CubeTextureLoader = Class.create(/** @lends CubeTextureLoader.prototype */
      * @async
      * @return {Promise<CubeTexture, Error>} 返回加载完的CubeTexture对象
      */
-    load(params) {
-        let images;
+    load(params: CubeTextureParams): Promise<CubeTexture> {
+        let images: string[];
         if (params.images && Array.isArray(params.images)) {
             images = params.images;
         } else {
-            images = [params.right, params.left, params.top, params.bottom, params.front, params.back];
+            images = [params.right!, params.left!, params.top!, params.bottom!, params.front!, params.back!];
         }
-        return Promise.all(images.map((img) => {
+        return Promise.all(images.map((img: string) => {
             return this.loadImg(img, params.crossOrigin);
-        })).then((images) => {
-            const args = Object.assign({}, params);
+        })).then((images: HTMLImageElement[]) => {
+            const args: any = Object.assign({}, params);
             delete args.images;
             delete args.type;
             delete args.right;
@@ -80,12 +93,12 @@ const CubeTextureLoader = Class.create(/** @lends CubeTextureLoader.prototype */
             delete args.back;
             args.image = images;
             return new CubeTexture(args);
-        }).catch((err) => {
+        }).catch((err: Error) => {
             log.error('load CubeTexture failed', err.message, err.stack);
             throw err;
         });
     }
-});
+}
 
 Loader.addLoader('CubeTexture', CubeTextureLoader);
 
