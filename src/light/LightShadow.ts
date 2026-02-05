@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import math from '../math/math';
 import OrthographicCamera from '../camera/OrthographicCamera';
 import PerspectiveCamera from '../camera/PerspectiveCamera';
@@ -15,75 +14,103 @@ const {
     BACK
 } = constants;
 
-let shadowMaterial = null;
+let shadowMaterial: GeometryMaterial | null = null;
 const clearColor = new Color(1, 1, 1);
 const tempMatrix4 = new Matrix4();
 
-const isNeedRenderMesh = function(mesh) {
+const isNeedRenderMesh = function(mesh: any): boolean {
     return mesh.material.castShadows;
 };
+
+interface LightShadowParams {
+    light: any;
+    renderer: any;
+    cameraInfo?: any;
+    width: number;
+    height: number;
+    debug?: boolean;
+}
 
 /**
  * @class
  */
-const LightShadow = Class.create(/** @lends LightShadow.prototype */{
+class LightShadow {
     /**
      * @type {boolean}
      * @default true
      */
-    isLightShadow: true,
+    readonly isLightShadow: boolean = true;
+
     /**
      * @type {string}
      * @default LightShadow
      */
-    className: 'LightShadow',
+    readonly className: string = 'LightShadow';
+
+    /**
+     * @type {string}
+     */
+    id: string;
 
     /**
      * @type {Light}
      * @default null
      */
-    light: null,
+    light: any = null;
+
     /**
      * @type {WebGLRenderer}
      * @default null
      */
-    renderer: null,
+    renderer: any = null;
+
     /**
      * @type {Framebuffer}
      * @default null
      */
-    framebuffer: null,
+    framebuffer: Framebuffer | null = null;
+
     /**
      * @type {Camera}
      * @default null
      */
-    camera: null,
+    camera: OrthographicCamera | PerspectiveCamera | null = null;
+
     /**
      * @type {number}
      * @default 1024
      */
-    width: 1024,
+    width: number = 1024;
+
     /**
      * @type {number}
      * @default 1024
      */
-    height: 1024,
+    height: number = 1024;
+
     /**
      * @type {number}
      * @default 0.05
      */
-    maxBias: 0.05,
+    maxBias: number = 0.05;
+
     /**
      * @type {number}
      * @default 0.005
      */
-    minBias: 0.005,
+    minBias: number = 0.005;
+
     /**
      * @type {any}
      * @default null
      */
-    cameraInfo: null,
-    debug: false,
+    cameraInfo: any = null;
+
+    debug: boolean = false;
+
+    private _cameraMatrixVersion?: number;
+    private _cameraHelper?: CameraHelper;
+
     /**
      * @constructs
      * @param {object} params
@@ -94,11 +121,12 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
      * @param {number} params.height
      * @param {boolean} [params.debug]
      */
-    constructor(params) {
+    constructor(params: LightShadowParams) {
         this.id = math.generateUUID(this.className);
         Object.assign(this, params);
-    },
-    createFramebuffer() {
+    }
+
+    createFramebuffer(): void {
         if (this.framebuffer) {
             return;
         }
@@ -111,75 +139,82 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
         if (this.debug) {
             this.showShadowMap();
         }
-    },
-    updateLightCamera(currentCamera) {
+    }
+
+    updateLightCamera(currentCamera: any): void {
         if (this.light.isDirectionalLight) {
             this.updateDirectionalLightCamera(currentCamera);
         } else if (this.light.isSpotLight) {
             this.updateSpotLightCamera(currentCamera);
         }
-    },
-    updateDirectionalLightCamera(currentCamera) {
+    }
+
+    updateDirectionalLightCamera(currentCamera: any): void {
         const light = this.light;
 
-        this.camera.lookAt(light.direction);
+        (this.camera as OrthographicCamera).lookAt(light.direction);
 
         if (this.cameraInfo) {
             this.updateCustomCamera(this.cameraInfo, currentCamera);
         } else {
             const geometry = currentCamera.getGeometry();
             if (geometry) {
-                this.camera.updateViewMatrix();
-                tempMatrix4.multiply(this.camera.viewMatrix, currentCamera.worldMatrix);
+                this.camera!.updateViewMatrix();
+                tempMatrix4.multiply(this.camera!.viewMatrix, currentCamera.worldMatrix);
                 const bounds = geometry.getBounds(tempMatrix4);
 
-                this.camera.near = -bounds.zMax;
-                this.camera.far = -bounds.zMin;
-                this.camera.left = bounds.xMin;
-                this.camera.right = bounds.xMax;
-                this.camera.bottom = bounds.yMin;
-                this.camera.top = bounds.yMax;
+                const orthoCamera = this.camera as OrthographicCamera;
+                orthoCamera.near = -bounds.zMax;
+                orthoCamera.far = -bounds.zMin;
+                orthoCamera.left = bounds.xMin;
+                orthoCamera.right = bounds.xMax;
+                orthoCamera.bottom = bounds.yMin;
+                orthoCamera.top = bounds.yMax;
             }
         }
 
-        this.camera.updateViewMatrix();
-    },
-    updateCustomCamera(cameraInfo, currentCamera) {
+        this.camera!.updateViewMatrix();
+    }
+
+    updateCustomCamera(cameraInfo: any, currentCamera: any): void {
         for (let name in cameraInfo) {
-            this.camera[name] = cameraInfo[name];
+            (this.camera as any)[name] = cameraInfo[name];
         }
 
         if (!cameraInfo.far) {
-            this.camera.far = currentCamera.far;
+            (this.camera as any).far = currentCamera.far;
         }
 
         if (!cameraInfo.near) {
-            this.camera.near = currentCamera.near;
+            (this.camera as any).near = currentCamera.near;
         }
-    },
-    updateSpotLightCamera(currentCamera) {
+    }
+
+    updateSpotLightCamera(currentCamera: any): void {
         const light = this.light;
-        this.camera.lookAt(light.direction);
+        (this.camera as PerspectiveCamera).lookAt(light.direction);
 
         if (this.cameraInfo) {
             this.updateCustomCamera(this.cameraInfo, currentCamera);
         } else {
-            this.camera.fov = light.outerCutoff * 2;
-            this.camera.near = 0.01;
-            this.camera.far = currentCamera.far;
-            this.camera.aspect = 1;
+            const perspCamera = this.camera as PerspectiveCamera;
+            perspCamera.fov = light.outerCutoff * 2;
+            perspCamera.near = 0.01;
+            perspCamera.far = currentCamera.far;
+            perspCamera.aspect = 1;
         }
 
-        this.camera.updateViewMatrix();
-    },
-    createCamera(currentCamera) {
+        this.camera!.updateViewMatrix();
+    }
+
+    createCamera(currentCamera: any): void {
         if (!this.camera) {
             if (this.light.isDirectionalLight) {
                 this.camera = new OrthographicCamera();
             } else if (this.light.isSpotLight) {
                 this.camera = new PerspectiveCamera();
             }
-            this.camera.addTo(this.light);
+            this.camera!.addTo(this.light);
             this._createCameraHelper();
         }
 
@@ -188,8 +223,9 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
             this._cameraMatrixVersion = currentCamera.matrixVersion;
             this.light.isDirty = false;
         }
-    },
-    createShadowMap(currentCamera) {
+    }
+
+    createShadowMap(currentCamera: any): void {
         this.createFramebuffer();
         this.createCamera(currentCamera);
 
@@ -207,26 +243,27 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
             });
         }
 
-        framebuffer.bind();
+        framebuffer!.bind();
         renderer.state.viewport(0, 0, this.width, this.height);
         renderer.clear(clearColor);
-        camera.updateViewProjectionMatrix();
+        camera!.updateViewProjectionMatrix();
         semantic.setCamera(camera);
         this.renderShadowScene(renderer, shadowMaterial);
-        framebuffer.unbind();
+        framebuffer!.unbind();
         semantic.setCamera(currentCamera);
         renderer.viewport();
-    },
-    renderShadowScene(renderer, shadowMaterial) {
+    }
+
+    renderShadowScene(renderer: any, shadowMaterial: GeometryMaterial): void {
         const preForceMaterial = renderer.forceMaterial;
 
         const renderList = renderer.renderList;
-        renderList.traverse((mesh) => {
+        renderList.traverse((mesh: any) => {
             if (isNeedRenderMesh(mesh)) {
                 renderer.forceMaterial = mesh.material.getShadowMaterial(shadowMaterial);
                 renderer.renderMesh(mesh);
             }
-        }, (instancedMeshes) => {
+        }, (instancedMeshes: any[]) => {
             if (instancedMeshes.length) {
                 renderer.forceMaterial = instancedMeshes[0].material.getShadowMaterial(shadowMaterial);
                 renderer.renderInstancedMeshes(instancedMeshes.filter(mesh => isNeedRenderMesh(mesh)));
@@ -234,13 +271,15 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
         });
 
         renderer.forceMaterial = preForceMaterial;
-    },
-    showShadowMap() {
+    }
+
+    showShadowMap(): void {
         this.renderer.on('afterRender', () => {
-            this.framebuffer.render(0, 0.7, 0.3, 0.3);
+            this.framebuffer!.render(0, 0.7, 0.3, 0.3);
         });
-    },
-    _createCameraHelper() {
+    }
+
+    private _createCameraHelper(): void {
         if (!this.debug) {
             return;
         }
@@ -259,6 +298,6 @@ const LightShadow = Class.create(/** @lends LightShadow.prototype */{
             light.addChild(this._cameraHelper);
         }
     }
-});
+}
 
 export default LightShadow;

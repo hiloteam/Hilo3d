@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import PerspectiveCamera from '../camera/PerspectiveCamera';
 import Framebuffer from '../renderer/Framebuffer';
 import CubeTexture from '../texture/CubeTexture';
@@ -22,16 +21,16 @@ const {
     FRAMEBUFFER_COMPLETE,
 } = constants;
 
-let shadowMaterial = null;
+let shadowMaterial: GeometryMaterial | null = null;
 const clearColor = new Color(0, 0, 0, 0);
 const tempVector3 = new Vector3();
 
-const LookAtMap = [
+const LookAtMap: number[][] = [
     [1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1],
     [0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1, 0, -1, 0, 0, -1, 0]
 ];
 
-const isNeedRenderMesh = function(mesh, camera) {
+const isNeedRenderMesh = function(mesh: any, camera: any): boolean {
     if (mesh.material.castShadows) {
         if (!mesh.frustumTest) {
             return true;
@@ -45,28 +44,38 @@ const isNeedRenderMesh = function(mesh, camera) {
     return false;
 };
 
+interface CubeLightShadowParams {
+    light: any;
+    renderer: any;
+}
+
 /**
  * @class
  * @private
  */
-const CubeLightShadow = Class.create(/** @lends CubeLightShadow.prototype */ {
-    isLightShadow: true,
-    className: 'CubeLightShadow',
-    Extends: LightShadow,
+class CubeLightShadow extends LightShadow {
+    readonly isLightShadow: boolean = true;
+    readonly className: string = 'CubeLightShadow';
 
-    light: null,
-    renderer: null,
-    framebuffer: null,
-    camera: null,
-    width: 1024,
-    height: 1024,
-    maxBias: 0.05,
-    minBias: 0.005,
-    debug: false,
-    constructor(params) {
-        CubeLightShadow.superclass.constructor.call(this, params);
-    },
-    createFramebuffer() {
+    light: any = null;
+    renderer: any = null;
+    framebuffer: Framebuffer | null = null;
+    camera: PerspectiveCamera | null = null;
+    width: number = 1024;
+    height: number = 1024;
+    maxBias: number = 0.05;
+    minBias: number = 0.005;
+    debug: boolean = false;
+
+    constructor(params: CubeLightShadowParams) {
+        super({
+            ...params,
+            width: 1024,
+            height: 1024
+        });
+    }
+
+    createFramebuffer(): void {
         if (this.framebuffer) {
             return;
         }
@@ -76,7 +85,7 @@ const CubeLightShadow = Class.create(/** @lends CubeLightShadow.prototype */ {
             target: TEXTURE_CUBE_MAP,
             width: size,
             height: size,
-            createTexture() {
+            createTexture(this: any) {
                 const state = this.state;
                 const gl = state.gl;
                 const texture = new CubeTexture({
@@ -95,7 +104,7 @@ const CubeLightShadow = Class.create(/** @lends CubeLightShadow.prototype */ {
                 }
                 return texture;
             },
-            bindTexture(index) {
+            bindTexture(this: any, index?: number) {
                 index = index || 0;
                 const state = this.state;
                 const gl = state.gl;
@@ -105,22 +114,25 @@ const CubeLightShadow = Class.create(/** @lends CubeLightShadow.prototype */ {
                 gl.framebufferTexture2D(FRAMEBUFFER, this.attachment, TEXTURE_CUBE_MAP_POSITIVE_X + index, glTexture, 0);
             }
         });
-    },
-    updateLightCamera(currentCamera) {
-        this.camera.fov = 90;
-        this.camera.near = currentCamera.near;
-        this.camera.far = currentCamera.far;
-        this.camera.aspect = 1;
-        this.camera.updateViewMatrix();
-    },
-    createCamera(currentCamera) {
+    }
+
+    updateLightCamera(currentCamera: any): void {
+        this.camera!.fov = 90;
+        this.camera!.near = currentCamera.near;
+        this.camera!.far = currentCamera.far;
+        this.camera!.aspect = 1;
+        this.camera!.updateViewMatrix();
+    }
+
+    createCamera(currentCamera: any): void {
         if (this.camera) {
             return;
         }
         this.camera = new PerspectiveCamera();
         this.updateLightCamera(currentCamera);
-    },
-    createShadowMap(currentCamera) {
+    }
+
+    createShadowMap(currentCamera: any): void {
         this.createFramebuffer();
         this.createCamera(currentCamera);
 
@@ -138,41 +150,42 @@ const CubeLightShadow = Class.create(/** @lends CubeLightShadow.prototype */ {
             });
         }
 
-        framebuffer.bind();
-        renderer.state.viewport(0, 0, framebuffer.width, framebuffer.height);
+        framebuffer!.bind();
+        renderer.state.viewport(0, 0, framebuffer!.width, framebuffer!.height);
 
-        this.light.worldMatrix.getTranslation(camera.position);
+        this.light.worldMatrix.getTranslation(camera!.position);
         for (let i = 0; i < 6; i++) {
-            framebuffer.bindTexture(i);
-            tempVector3.fromArray(LookAtMap[0], i * 3).add(camera.position);
-            camera.up.fromArray(LookAtMap[1], i * 3);
-            camera.lookAt(tempVector3);
-            camera.updateViewProjectionMatrix();
+            (framebuffer as any).bindTexture(i);
+            tempVector3.fromArray(LookAtMap[0], i * 3).add(camera!.position);
+            camera!.up.fromArray(LookAtMap[1], i * 3);
+            camera!.lookAt(tempVector3);
+            camera!.updateViewProjectionMatrix();
 
             renderer.clear(clearColor);
             semantic.setCamera(camera);
             renderer.forceMaterial = shadowMaterial;
             this.renderShadowScene(renderer);
         }
-        camera.matrix.identity();
-        camera.updateViewProjectionMatrix();
+        camera!.matrix.identity();
+        camera!.updateViewProjectionMatrix();
         delete renderer.forceMaterial;
-        framebuffer.unbind();
+        framebuffer!.unbind();
         semantic.setCamera(currentCamera);
         renderer.viewport();
-    },
-    renderShadowScene(renderer) {
+    }
+
+    renderShadowScene(renderer: any): void {
         const renderList = renderer.renderList;
         const camera = this.camera;
-        renderList.traverse((mesh) => {
+        renderList.traverse((mesh: any) => {
             if (isNeedRenderMesh(mesh, camera)) {
                 renderer.renderMesh(mesh);
             }
-        }, (instancedMeshes) => {
+        }, (instancedMeshes: any[]) => {
             const needRenderMeshes = instancedMeshes.filter(mesh => isNeedRenderMesh(mesh, camera));
             renderer.renderInstancedMeshes(needRenderMeshes);
         });
     }
-});
+}
 
 export default CubeLightShadow;
