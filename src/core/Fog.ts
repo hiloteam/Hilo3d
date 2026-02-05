@@ -65,18 +65,7 @@ class Fog {
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
     constructor(params?: any) {
-        /**
-         * id
-         * @default math.generateUUID('Fog')
-         * @type {String}
-         */
         this.id = math.generateUUID(this.className);
-
-        /**
-         * 雾颜色
-         * @type {Color}
-         * @default  new Color(1, 1, 1, 1)
-         */
         this.color = new Color(1, 1, 1, 1);
 
         Object.assign(this, params);
