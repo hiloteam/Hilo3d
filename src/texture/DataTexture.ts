@@ -134,11 +134,14 @@ class DataTexture extends Texture {
                 this.image = _data;
             } else {
                 if (!this.image || this.image.length !== len) {
-                    if (this.DataClass) {
-                        this.image = new this.DataClass(len);
+                    if (!this.DataClass) {
+                        this.DataClass = getTypedArrayClass(this.type);
                     }
+                    this.image = new this.DataClass(len);
                 }
-                this.image.set(_data, 0);
+                if (this.image && this.image.set) {
+                    this.image.set(_data, 0);
+                }
             }
             this.needUpdate = true;
         }
