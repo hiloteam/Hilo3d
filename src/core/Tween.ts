@@ -449,8 +449,7 @@ class Tween {
         for (i = 0; i < target.length; i++) {
             tween = new Tween(target[i], fromProps, toProps, params);
             if (stagger) {
-                const baseDelay = typeof params.delay === 'number' ? params.delay : 0;
-                tween.delay = baseDelay + (i * stagger || 0);
+                tween.delay = (typeof tween.delay === 'number' ? tween.delay : 0) + (i * stagger || 0);
             }
             tween.start();
             tweens.push(tween);
@@ -629,13 +628,11 @@ const Quint: TweenEaseObject = createEase(null,
         return ((k *= 2) < 1) ? 0.5 * k * k * k * k * k : 0.5 * ((k -= 2) * k * k * k * k + 2);
     });
 
-const math = Math;
-const PI = math.PI;
+const PI = Math.PI;
 const HALF_PI = PI * 0.5;
-const sin = math.sin;
-const cos = math.cos;
-const pow = math.pow;
-const sqrt = math.sqrt;
+const sin = Math.sin;
+const cos = Math.cos;
+const sqrt = Math.sqrt;
 
 const Sine: TweenEaseObject = createEase(null,
     (k: number) => {
@@ -652,17 +649,17 @@ const Sine: TweenEaseObject = createEase(null,
 
 const Expo: TweenEaseObject = createEase(null,
     (k: number) => {
-        return k === 0 ? 0 : pow(2, 10 * (k - 1));
+        return k === 0 ? 0 : 2 ** (10 * (k - 1));
     },
 
     (k: number) => {
-        return k === 1 ? 1 : -pow(2, -10 * k) + 1;
+        return k === 1 ? 1 : -(2 ** (-10 * k)) + 1;
     },
 
     (k: number) => {
         if (k === 0 || k === 1) return k;
-        if ((k *= 2) < 1) return 0.5 * pow(2, 10 * (k - 1));
-        return 0.5 * (-pow(2, -10 * (k - 1)) + 2);
+        if ((k *= 2) < 1) return 0.5 * (2 ** (10 * (k - 1)));
+        return 0.5 * (-(2 ** (-10 * (k - 1))) + 2);
     });
 
 const Circ: TweenEaseObject = createEase(null,
@@ -693,16 +690,16 @@ const Elastic: TweenEaseElasticObject = createEase(
     },
 
     (k: number) => {
-        return -(Elastic.a * pow(2, 10 * (k -= 1)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p));
+        return -(Elastic.a * (2 ** (10 * (k -= 1))) * sin((k - Elastic.s) * (2 * PI) / Elastic.p));
     },
 
     (k: number) => {
-        return (Elastic.a * pow(2, -10 * k) * sin((k - Elastic.s) * (2 * PI) / Elastic.p) + 1);
+        return (Elastic.a * (2 ** (-10 * k)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p) + 1);
     },
 
     (k: number) => {
-        return ((k *= 2) < 1) ? -0.5 * (Elastic.a * pow(2, 10 * (k -= 1)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p))
-            : Elastic.a * pow(2, -10 * (k -= 1)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p) * 0.5 + 1;
+        return ((k *= 2) < 1) ? -0.5 * (Elastic.a * (2 ** (10 * (k -= 1))) * sin((k - Elastic.s) * (2 * PI) / Elastic.p))
+            : Elastic.a * (2 ** (-10 * (k -= 1))) * sin((k - Elastic.s) * (2 * PI) / Elastic.p) * 0.5 + 1;
     }
 );
 
