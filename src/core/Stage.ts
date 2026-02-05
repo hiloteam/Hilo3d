@@ -1,4 +1,3 @@
-import Class from './Class';
 import Node from './Node';
 import version from './version';
 import WebGLRenderer from '../renderer/WebGLRenderer';
@@ -21,65 +20,72 @@ import {
  *     height:innerHeight
  * });
  */
-const Stage = Class.create(/** @lends Stage.prototype */ {
-    Extends: Node,
-
-    isStage: true,
-    className: 'Stage',
+class Stage extends Node {
+    isStage: boolean = true;
+    className: string = 'Stage';
 
     /**
      * 渲染器
      * @type {WebGLRenderer}
      */
-    renderer: null,
+    renderer!: WebGLRenderer;
 
     /**
      * 摄像机
      * @type {Camera}
      */
-    camera: null,
+    camera: any = null;
 
     /**
      * 像素密度
      * @type {Number}
      * @default 根据设备自动判断
      */
-    pixelRatio: null,
+    pixelRatio: number = 1;
 
     /**
      * 偏移值
      * @type {Number}
      * @default 0
      */
-    offsetX: 0,
+    offsetX: number = 0;
 
     /**
      * 偏移值
      * @type {Number}
      * @default 0
      */
-    offsetY: 0,
+    offsetY: number = 0;
 
     /**
      * 舞台宽度
      * @type {Number}
      * @default 0
      */
-    width: 0,
+    width: number = 0;
 
     /**
      * 舞台高度
      * @type {Number}
      * @default 0
      */
-    height: 0,
+    height: number = 0;
 
     /**
      * canvas
      * @type {HTMLCanvasElement}
      * @default null
      */
-    canvas: null,
+    canvas!: HTMLCanvasElement;
+
+    rendererWidth: number = 0;
+    rendererHeight: number = 0;
+    domViewport: any = null;
+    
+    private _eventTarget: any = null;
+    private _domListener?: (e: Event) => void;
+    private _ray?: Ray;
+    private _stageResultAtPoint?: { mesh: Stage; point: Vector3 };
 
     /**
      * @constructs
@@ -104,7 +110,7 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
      * @param {boolean} [params.failIfMajorPerformanceCaveat=false] 是否需要 failIfMajorPerformanceCaveat。
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
+    constructor(params: any = {}) {
         if (!params.width) {
             params.width = window.innerWidth;
         }
@@ -120,31 +126,33 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
             params.pixelRatio = pixelRatio;
         }
 
-        Stage.superclass.constructor.call(this, params);
+        super(params);
         this.initRenderer(params);
 
         log.log(`Hilo3d version: ${version}`);
-    },
+    }
+
     /**
      * 初始化渲染器
      * @private
      * @param  {Object} params
      */
-    initRenderer(params) {
+    private initRenderer(params: any): void {
         const canvas = this.canvas = this.createCanvas(params);
         this.renderer = new WebGLRenderer(Object.assign(params, {
             domElement: canvas
         }));
         this.resize(this.width, this.height, this.pixelRatio, true);
-    },
+    }
+
     /**
      * 生成canvas
      * @private
      * @param  {Object} params
      * @return {HTMLCanvasElement}
      */
-    createCanvas(params) {
-        let canvas;
+    private createCanvas(params: any): HTMLCanvasElement {
+        let canvas: HTMLCanvasElement;
         if (params.canvas) {
             canvas = params.canvas;
         } else {
@@ -156,7 +164,8 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
         }
 
         return canvas;
-    },
+    }
+
     /**
      * 缩放舞台
      * @param  {Number} width 舞台宽
@@ -165,7 +174,7 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
      * @param  {Boolean} [force=false] 是否强制刷新
      * @return {Stage} 舞台本身。链式调用支持。
      */
-    resize(width, height, pixelRatio, force) {
+    resize(width: number, height: number, pixelRatio?: number, force?: boolean): Stage {
         if (pixelRatio === undefined) {
             pixelRatio = this.pixelRatio;
         }
@@ -186,14 +195,15 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
             this.updateDomViewport();
         }
         return this;
-    },
+    }
+
     /**
      * 设置舞台偏移值
      * @param {Number} x x
      * @param {Number} y y
      * @return {Stage} 舞台本身。链式调用支持。
      */
-    setOffset(x, y) {
+    setOffset(x: number, y: number): Stage {
         if (this.offsetX !== x || this.offsetY !== y) {
             this.offsetX = x;
             this.offsetY = y;
@@ -202,7 +212,8 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
             this.renderer.setOffset(x * pixelRatio, y * pixelRatio);
         }
         return this;
-    },
+    }
+
     /**
      * 改viewport
      * @param  {Number} x      x
@@ -211,37 +222,39 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
      * @param  {Number} height height
      * @return {Stage} 舞台本身。链式调用支持。
      */
-    viewport(x, y, width, height) {
+    viewport(x: number, y: number, width: number, height: number): Stage {
         this.resize(width, height, this.pixelRatio, true);
         this.setOffset(x, y);
         return this;
-    },
+    }
+
     /**
      * 渲染一帧
      * @param  {Number} dt 间隔时间
      * @return {Stage} 舞台本身。链式调用支持。
      */
-    tick(dt) {
+    tick(dt: number): Stage {
         this.traverseUpdate(dt);
         if (this.camera) {
             this.renderer.render(this, this.camera, true);
         }
         return this;
-    },
+    }
+
     /**
      * 开启/关闭舞台的DOM事件响应。要让舞台上的可视对象响应用户交互，必须先使用此方法开启舞台的相应事件的响应。
      * @param {String|Array} type 要开启/关闭的事件名称或数组。
      * @param {Boolean} enabled 指定开启还是关闭。如果不传此参数，则默认为开启。
      * @return {Stage} 舞台本身。链式调用支持。
      */
-    enableDOMEvent(types, enabled = true) {
+    enableDOMEvent(types: string | string[], enabled: boolean = true): Stage {
         const canvas = this.canvas;
-        const handler = this._domListener || (this._domListener = (e) => {
+        const handler = this._domListener || (this._domListener = (e: Event) => {
             this._onDOMEvent(e);
         });
-        types = typeof types === 'string' ? [types] : types;
+        const typeArray = typeof types === 'string' ? [types] : types;
 
-        types.forEach((type) => {
+        typeArray.forEach((type: string) => {
             if (enabled) {
                 canvas.addEventListener(type, handler, false);
             } else {
@@ -249,12 +262,13 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
             }
         });
         return this;
-    },
+    }
+
     /**
      * DOM事件处理函数。此方法会把事件调度到事件的坐标点所对应的可视对象。
      * @private
      */
-    _onDOMEvent(event) {
+    private _onDOMEvent(event: any): void {
         const canvas = this.canvas;
         const target = this._eventTarget;
 
@@ -280,7 +294,7 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
         event.stageY = y;
 
         // 鼠标事件需要阻止冒泡方法 Prevent bubbling on mouse events.
-        event.stopPropagation = function() {
+        event.stopPropagation = function(this: any) {
             this._stopPropagationed = true;
         };
 
@@ -292,7 +306,7 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
         const leave = type === 'mouseout';
         // 当obj和target不同 且obj不是target的子元素时才触发out事件 fire out event when obj and target isn't the same as well as obj is not a child element to target.
         if (target && (target !== obj && (!target.contains || !target.contains(obj)) || leave)) {
-            let out = false;
+            let out: string | boolean = false;
             if (type === 'touchmove') {
                 out = 'touchout';
             } else if (type === 'mousemove' || leave || !obj) {
@@ -325,19 +339,21 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
         if (browser.android && type === 'touchmove') {
             event.preventDefault();
         }
-    },
+    }
+
     /**
      * 更新 DOM viewport
      * @return {Object} DOM viewport, {left, top, right, bottom}
      */
-    updateDomViewport() {
+    updateDomViewport(): any {
         const canvas = this.canvas;
         let domViewport = null;
         if (canvas.parentNode) {
             domViewport = this.domViewport = getElementRect(canvas);
         }
         return domViewport;
-    },
+    }
+
     /**
      * 获取指定点的 mesh
      * @param  {Number}  x
@@ -345,7 +361,7 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
      * @param  {Boolean} [eventMode=false]
      * @return {Mesh|null}
      */
-    getMeshResultAtPoint(x, y, eventMode = false) {
+    getMeshResultAtPoint(x: number, y: number, eventMode: boolean = false): any {
         const camera = this.camera;
         let ray = this._ray;
         if (!ray) {
@@ -367,24 +383,26 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
         const point = this._stageResultAtPoint.point;
         point.copy(camera.unprojectVector(point.set(x, y, 0), this.width, this.height));
         return this._stageResultAtPoint;
-    },
+    }
+
     /**
      * 释放 WebGL 资源
      * @return {Stage} this
      */
-    releaseGLResource() {
+    releaseGLResource(): Stage {
         this.renderer.releaseGLResource();
         return this;
-    },
+    }
+
     /**
      * 销毁
      * @override
      * @return {Stage} this
      */
-    destroy() {
-        Stage.superclass.destroy.call(this, this.renderer);
+    destroy(): Stage {
+        super.destroy(this.renderer as any);
         this.releaseGLResource();
-        this.traverse((child) => {
+        this.traverse((child: any) => {
             child.off();
             child.parent = null;
         });
@@ -393,6 +411,6 @@ const Stage = Class.create(/** @lends Stage.prototype */ {
 
         return this;
     }
-});
+}
 
 export default Stage;

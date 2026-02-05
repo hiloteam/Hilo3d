@@ -1,10 +1,10 @@
-import Class from './Class';
 import Mesh from './Mesh';
 import Matrix4 from '../math/Matrix4';
 import Vector4 from '../math/Vector4';
 import DataTexture from '../texture/DataTexture';
 import capabilities from '../renderer/capabilities';
 import log from '../utils/log';
+import type Skeleton from './Skeleton';
 
 const tempMatrix1 = new Matrix4();
 const tempMatrix2 = new Matrix4();
@@ -14,42 +14,50 @@ const tempMatrix2 = new Matrix4();
  * @class
  * @extends Mesh
  */
-const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
-    Extends: Mesh,
+class SkinedMesh extends Mesh {
     /**
      * @default true
      * @type {boolean}
      */
-    isSkinedMesh: true,
+    isSkinedMesh: boolean = true;
+
     /**
      * @default SkinedMesh
      * @type {string}
      */
-    className: 'SkinedMesh',
+    className: string = 'SkinedMesh';
+
     /**
      * 是否支持 Instanced
      * @default false
      * @type {boolean}
      */
-    useInstanced: false,
+    useInstanced: boolean = false;
+
     /**
      * 骨骼矩阵DataTexture
      * @default null
      * @type {DataTexture}
      */
-    jointMatTexture: null,
+    jointMatTexture: DataTexture | null = null;
+
     /**
      * 是否开启视锥体裁剪
      * @default false
      * @type {Boolean}
      */
-    frustumTest: false,
+    frustumTest: boolean = false;
+
     /**
      * 骨架
      * @default null
      * @type {Skeleton}
      */
-    skeleton: null,
+    skeleton: any = null;
+
+    jointMat?: Float32Array;
+    clonedFrom?: SkinedMesh;
+
     /**
      * @constructs
      * @param {Object} [params] 初始化参数，所有params都会复制到实例上
@@ -58,14 +66,15 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
      * @param {Skeleton} [params.skeleton] 骨骼
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
-        SkinedMesh.superclass.constructor.call(this, params);
-    },
+    constructor(params?: any) {
+        super(params);
+    }
+
     /**
      * 获取每个骨骼对应的矩阵数组
      * @return {Float32Array} 返回矩阵数组
      */
-    getJointMat() {
+    getJointMat(): Float32Array | undefined {
         if (!this.skeleton || this.skeleton.jointCount <= 0) {
             return undefined;
         }
@@ -82,28 +91,28 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
             tempMatrix2.invert(this.clonedFrom.worldMatrix);
         }
 
-        jointNodeList.forEach((node, i) => {
+        jointNodeList.forEach((node: any, i: number) => {
             tempMatrix1.copy(tempMatrix2);
             tempMatrix1.multiply(node.worldMatrix);
             tempMatrix1.multiply(inverseBindMatrices[i]);
-            tempMatrix1.toArray(this.jointMat, i * 16);
+            tempMatrix1.toArray(this.jointMat!, i * 16);
         });
         return this.jointMat;
-    },
+    }
 
     /**
      * 用新骨骼的 node name 重设 jointNames
      * @param  {Skeleton} skeleton 新骨架
      */
-    resetJointNamesByNodeName(skeleton) {
+    resetJointNamesByNodeName(skeleton: any): void {
         this.skeleton.resetJointNamesByNodeName(skeleton);
-    },
+    }
 
     /**
      * 用新骨骼重置skinIndices
      * @param  {Skeleton} skeleton
      */
-    resetSkinIndices(skeleton) {
+    resetSkinIndices(skeleton: any): void {
         const currentSkeleton = this.skeleton;
         if (currentSkeleton) {
             const geometry = this.geometry;
@@ -114,8 +123,8 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
                 skinIndices.isDirty = true;
                 const tempIndices = new Vector4();
 
-                skinIndices.traverse((attribute, index, offset) => {
-                    attribute.elements.forEach((value, elementIndex) => {
+                skinIndices.traverse((attribute: any, index: number, offset: number) => {
+                    attribute.elements.forEach((value: number, elementIndex: number) => {
                         const jointName = currentSkeleton.jointNames[value];
                         const jointIndex = skeleton.jointNames.indexOf(jointName);
                         if (jointIndex >= 0) {
@@ -128,12 +137,13 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
                 });
             }
         }
-    },
+    }
+
     /**
      * 根据当前骨骼数来生成骨骼矩阵的 jointMatTexture
      * @return {DataTexture}
      */
-    initJointMatTexture() {
+    initJointMatTexture(): DataTexture {
         if (!this.jointMatTexture) {
             const jointMat = this.getJointMat();
             this.jointMatTexture = new DataTexture({
@@ -141,30 +151,33 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
             });
         }
         return this.jointMatTexture;
-    },
+    }
+
     /**
      * 将 getJointMat 获取的骨骼矩阵数组更新到 jointMatTexture 中
      */
-    updateJointMatTexture() {
+    updateJointMatTexture(): void {
         if (!this.jointMatTexture) {
             this.initJointMatTexture();
         } else {
             const jointMat = this.getJointMat();
-            this.jointMatTexture.data.set(jointMat, 0);
+            this.jointMatTexture.data.set(jointMat!, 0);
             this.jointMatTexture.needUpdate = true;
         }
-    },
-    clone(isChild) {
-        const mesh = Mesh.prototype.clone.call(this, isChild);
+    }
+
+    clone(isChild?: boolean): SkinedMesh {
+        const mesh = super.clone(isChild) as SkinedMesh;
         Object.assign(mesh, {
             useInstanced: this.useInstanced,
             skeleton: this.skeleton.clone()
         });
         mesh.clonedFrom = this;
         return mesh;
-    },
-    getRenderOption(opt = {}) {
-        SkinedMesh.superclass.getRenderOption.call(this, opt);
+    }
+
+    getRenderOption(opt: any = {}): any {
+        super.getRenderOption(opt);
         const jointCount = this.skeleton.jointCount;
         if (jointCount) {
             opt.JOINT_COUNT = jointCount;
@@ -177,6 +190,6 @@ const SkinedMesh = Class.create(/** @lends SkinedMesh.prototype */{
         }
         return opt;
     }
-});
+}
 
 export default SkinedMesh;
