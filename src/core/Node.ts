@@ -64,7 +64,7 @@ class Node {
     /**
      * @type {string}
      */
-    id: string;
+    id!: string;
 
     /**
      * Node 的名字，可以通过 getChildByName 查找
