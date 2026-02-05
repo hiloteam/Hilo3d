@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import math from '../math/math';
 import Cache from '../utils/Cache';
 import log from '../utils/log';
@@ -16,159 +15,206 @@ const {
 
 const cache = new Cache();
 
+interface AttributeInfo {
+    name: string;
+    location: number;
+    type: number;
+    size: number;
+    glTypeInfo: any;
+    pointer: (params: {
+        type?: number;
+        normalized?: boolean;
+        stride?: number;
+        offset?: number;
+        size?: number;
+    }) => void;
+    enable: () => void;
+    divisor: (d?: number) => void;
+    addTo: (array: any, data: any) => void;
+}
+
+interface UniformInfo {
+    name: string;
+    location: WebGLUniformLocation | null;
+    type: number;
+    size: number;
+    glTypeInfo: any;
+    textureIndex?: number;
+}
+
+interface UniformBlockInfo {
+    blockIndex: number;
+}
+
+interface ProgramParams {
+    state: any;
+    vertexShader?: string;
+    fragShader?: string;
+    ignoreError?: boolean;
+}
+
 /**
  * @class
  */
-const Program = Class.create(/** @lends Program.prototype */ {
-    Statics: /** @lends Program */ {
-        /**
-         * 缓存
-         * @type {Cache}
-         * @readOnly
-         * @return {Cache}
-         */
-        cache: {
-            get() {
-                return cache;
-            }
-        },
-        /**
-         * 重置缓存
-         */
-        reset(gl) { // eslint-disable-line no-unused-vars
-            cache.each((program) => {
-                program.destroy();
+class Program {
+    /**
+     * 缓存
+     * @type {Cache}
+     * @readOnly
+     * @return {Cache}
+     */
+    static get cache(): Cache {
+        return cache;
+    }
+
+    /**
+     * 重置缓存
+     */
+    static reset(_gl: WebGLRenderingContext | WebGL2RenderingContext): void {
+        cache.each((program: Program) => {
+            program.destroy();
+        });
+    }
+
+    /**
+     * 获取程序
+     * @param  {Shader} shader
+     * @param  {WebGLState} state
+     * @param  {Boolean} [ignoreError=false]
+     * @return {Program}
+     */
+    static getProgram(shader: Shader, state: any, ignoreError: boolean = false): Program {
+        const id = shader.id;
+        let program = cache.get(id) as Program;
+        if (!program) {
+            program = new Program({
+                state,
+                vertexShader: shader.vs,
+                fragShader: shader.fs,
+                ignoreError
             });
-        },
-        /**
-         * 获取程序
-         * @param  {Shader} shader
-         * @param  {WebGLState} state
-         * @param  {Boolean} [ignoreError=false]
-         * @return {Program}
-         */
-        getProgram(shader, state, ignoreError = false) {
-            const id = shader.id;
-            let program = cache.get(id);
-            if (!program) {
-                program = new Program({
-                    state,
-                    vertexShader: shader.vs,
-                    fragShader: shader.fs,
-                    ignoreError
-                });
-                cache.add(id, program);
-            }
-
-            return program;
-        },
-
-        /**
-         * 获取空白程序
-         * @param  {WebGLState} state
-         * @return {Program}
-         */
-        getBlankProgram(state) {
-            const shader = Shader.getCustomShader('void main(){}', 'precision HILO_MAX_FRAGMENT_PRECISION float;void main(){gl_FragColor = vec4(0.0);}', '', '__hiloBlankShader');
-            return this.getProgram(shader, state, true);
+            cache.add(id, program);
         }
-    },
+
+        return program;
+    }
+
+    /**
+     * 获取空白程序
+     * @param  {WebGLState} state
+     * @return {Program}
+     */
+    static getBlankProgram(state: any): Program {
+        const shader = Shader.getCustomShader('void main(){}', 'precision HILO_MAX_FRAGMENT_PRECISION float;void main(){gl_FragColor = vec4(0.0);}', '', '__hiloBlankShader');
+        return this.getProgram(shader, state, true);
+    }
 
     /**
      * @default Program
      * @type {String}
      */
-    className: 'Program',
+    className: string = 'Program';
 
     /**
      * @default true
      * @type {Boolean}
      */
-    isProgram: true,
+    isProgram: boolean = true;
+
+    /**
+     * id
+     * @type {String}
+     */
+    id: string;
 
     /**
      * 片段代码
      * @type {String}
      * @default ''
      */
-    fragShader: '',
+    fragShader: string = '';
 
     /**
      * 顶点代码
      * @type {String}
      * @default ''
      */
-    vertexShader: '',
+    vertexShader: string = '';
 
     /**
      * attribute 集合
      * @type {Object}
      * @default null
      */
-    attributes: null,
+    attributes: Record<string, AttributeInfo> | null = null;
 
     /**
      * uniform 集合
      * @type {Object}
      * @default null
      */
-    uniforms: null,
+    uniforms: Record<string, UniformInfo> | null = null;
 
     /**
      * uniformBlock 集合
      * @type {Object}
      * @default null
      */
-    uniformBlocks: null,
+    uniformBlocks: Record<string, UniformBlockInfo> | null = null;
 
     /**
      * program
      * @type {WebGLProgram}
      * @default null
      */
-    program: null,
+    program: WebGLProgram | null = null;
 
     /**
      * gl
      * @type {WebGLRenderingContext}
      */
-    gl: null,
+    gl: WebGLRenderingContext | WebGL2RenderingContext | null = null;
 
     /**
      * webglState
      * @type {WebGLState}
      * @default null
      */
-    state: null,
+    state: any = null;
 
     /**
      * 是否始终使用
      * @default true
      * @type {Boolean}
      */
-    alwaysUse: false,
+    alwaysUse: boolean = false;
 
     /**
      * 是否是 WebGL2
      * @default false
      * @type {Boolean}
      */
-    isWebGL2: false,
+    isWebGL2: boolean = false;
+
+    /**
+     * 是否忽略错误
+     * @type {Boolean}
+     */
+    ignoreError?: boolean;
+
+    private _dict: Record<string, any> = {};
+
+    private _isDestroyed: boolean = false;
 
     /**
      * @constructs
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      * @param  {WebGLState} params.state WebGL state
      */
-    constructor(params) {
-        /**
-         * id
-         * @type {String}
-         */
+    constructor(params: ProgramParams) {
         this.id = math.generateUUID(this.className);
         Object.assign(this, params);
         this._dict = {};
-
 
         this.attributes = {};
         this.uniforms = {};
@@ -188,15 +234,15 @@ const Program = Class.create(/** @lends Program.prototype */ {
         }
 
         return Program.getBlankProgram(params.state);
-    },
+    }
 
     /**
      * 生成 program
      * @return {WebGLProgram}
      */
-    createProgram() {
-        const gl = this.gl;
-        const program = gl.createProgram();
+    createProgram(): WebGLProgram | null {
+        const gl = this.gl!;
+        const program = gl.createProgram()!;
         const vertexShader = this.createShader(gl.VERTEX_SHADER, this.vertexShader);
         const fragShader = this.createShader(gl.FRAGMENT_SHADER, this.fragShader);
 
@@ -218,25 +264,27 @@ const Program = Class.create(/** @lends Program.prototype */ {
         }
 
         return null;
-    },
+    }
+
     /**
      * 使用 program
      */
-    useProgram() {
+    useProgram(): void {
         this.state.useProgram(this.program);
-    },
+    }
+
     /**
      * 生成 shader
      * @param  {Number} shaderType
      * @param  {String} code
      * @return {WebGLShader}
      */
-    createShader(shaderType, code) {
+    createShader(shaderType: number, code: string): WebGLShader | null {
         if (this.isWebGL2) {
             code = this._convertToGLSL300(shaderType, code);
         }
-        const gl = this.gl;
-        const shader = gl.createShader(shaderType);
+        const gl = this.gl!;
+        const shader = gl.createShader(shaderType)!;
         gl.shaderSource(shader, code);
         gl.compileShader(shader);
 
@@ -247,8 +295,10 @@ const Program = Class.create(/** @lends Program.prototype */ {
         }
 
         return shader;
-    },
-    _convertToGLSL300(shaderType, code) {
+    }
+
+    // eslint-disable-next-line class-methods-use-this
+    private _convertToGLSL300(shaderType: number, code: string): string {
         let finalCode = code;
         if (shaderType === VERTEX_SHADER) {
             finalCode = GLSL300VertDefineCode + code;
@@ -258,13 +308,14 @@ const Program = Class.create(/** @lends Program.prototype */ {
         }
 
         return finalCode;
-    },
+    }
+
     /**
      * 初始化 attribute 信息
      */
-    initAttributes() {
-        const gl = this.gl;
-        const program = this.program;
+    initAttributes(): void {
+        const gl = this.gl!;
+        const program = this.program!;
 
         const num = gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES);
         const instancedExtension = extensions.instanced;
@@ -273,7 +324,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 name,
                 type,
                 size
-            } = gl.getActiveAttrib(program, i);
+            } = gl.getActiveAttrib(program, i)!;
             const location = gl.getAttribLocation(program, name);
             const glTypeInfo = glType.get(type);
             let pointer = ({
@@ -282,19 +333,25 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 stride = 0,
                 offset = 0,
                 size = glTypeInfo.size,
+            }: {
+                type?: number;
+                normalized?: boolean;
+                stride?: number;
+                offset?: number;
+                size?: number;
             }) => {
                 gl.vertexAttribPointer(location, size, type, normalized, stride, offset);
             };
             let enable = () => {
                 gl.enableVertexAttribArray(location);
             };
-            let divisor = () => {};
-            let addTo = (array, data) => {
+            let divisor = (_d?: number) => {};
+            let addTo = (array: any, data: any) => {
                 array[location] = data;
             };
 
             if (instancedExtension) {
-                divisor = (d = 1) => {
+                divisor = (d: number = 1) => {
                     instancedExtension.vertexAttribDivisor(location, d);
                 };
             }
@@ -305,7 +362,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 const matSize = Math.sqrt(size);
                 const vectorByteSize = matSize * 4;
 
-                const each = (callback) => {
+                const each = (callback: (location: number, i: number) => void) => {
                     for (let i = 0; i < matSize; i++) {
                         callback(location + i, i);
                     }
@@ -315,6 +372,11 @@ const Program = Class.create(/** @lends Program.prototype */ {
                     normalized = false,
                     stride = 0,
                     offset = 0
+                }: {
+                    type?: number;
+                    normalized?: boolean;
+                    stride?: number;
+                    offset?: number;
                 }) => {
                     let realStride;
                     if (stride === 0) {
@@ -340,14 +402,14 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 };
 
                 if (instancedExtension) {
-                    divisor = (d = 1) => {
+                    divisor = (d: number = 1) => {
                         each((location) => {
                             instancedExtension.vertexAttribDivisor(location, d);
                         });
                     };
                 }
             }
-            this.attributes[name] = {
+            this.attributes![name] = {
                 name,
                 location,
                 type,
@@ -359,35 +421,36 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 addTo
             };
         }
-    },
+    }
+
     /**
      * 初始化 uniform 信息
      */
-    initUniforms() {
-        const gl = this.gl;
-        const program = this.program;
-        const uniforms = this.uniforms;
-        const uniformBlocks = this.uniformBlocks;
+    initUniforms(): void {
+        const gl = this.gl! as WebGL2RenderingContext;
+        const program = this.program!;
+        const uniforms = this.uniforms!;
+        const uniformBlocks = this.uniformBlocks!;
 
         const num = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-        let uniformBlockIndices;
+        let uniformBlockIndices: number[] | undefined;
         if (this.isWebGL2) {
             const blockNum = gl.getProgramParameter(program, gl.ACTIVE_UNIFORM_BLOCKS);
             for (let i = 0; i < blockNum; i++) {
-                const blockName = gl.getActiveUniformBlockName(program, i);
+                const blockName = gl.getActiveUniformBlockName(program, i)!;
                 const blockIndex = gl.getUniformBlockIndex(program, blockName);
                 gl.uniformBlockBinding(program, blockIndex, i);
                 uniformBlocks[blockName] = {
                     blockIndex,
                 };
                 Object.defineProperty(this, blockName, {
-                    set: (uniformBuffer) => {
+                    set: (uniformBuffer: any) => {
                         gl.bindBufferBase(gl.UNIFORM_BUFFER, i, uniformBuffer.getBuffer(gl).buffer);
                     }
                 });
             }
 
-            let uniformIndices = [];
+            let uniformIndices: number[] = [];
             for (let i = 0; i < num; i++) {
                 uniformIndices.push(i);
             }
@@ -400,7 +463,7 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 name,
                 size,
                 type
-            } = gl.getActiveUniform(program, i);
+            } = gl.getActiveUniform(program, i)!;
 
             // uniform block index -1 说明不是 uniform block
             if (uniformBlockIndices && uniformBlockIndices[i] !== -1) {
@@ -429,9 +492,9 @@ const Program = Class.create(/** @lends Program.prototype */ {
             }
 
             Object.defineProperty(this, name, {
-                set: glTypeInfo.size > 1 || size > 1 ? (value) => {
+                set: glTypeInfo.size > 1 || size > 1 ? (value: any) => {
                     uniformArray(location, value);
-                } : (value) => {
+                } : (value: any) => {
                     if (this._dict[name] !== value) {
                         this._dict[name] = value;
                         uniform(location, value);
@@ -439,40 +502,42 @@ const Program = Class.create(/** @lends Program.prototype */ {
                 }
             });
         }
-    },
+    }
+
     /**
      * 没有被引用时销毁资源
      * @param  {WebGLRenderer} renderer
      * @return {Program} this
      */
-    destroyIfNoRef(renderer) {
+    destroyIfNoRef(renderer: any): Program {
         const resourceManager = renderer.resourceManager;
         resourceManager.destroyIfNoRef(this);
 
         return this;
-    },
+    }
+
     /**
      * 销毁资源
      * @return {Program} this
      */
-    destroy() {
+    destroy(): Program {
         if (this._isDestroyed) {
             return this;
         }
 
-        this.gl.deleteProgram(this.program);
+        this.gl!.deleteProgram(this.program);
         this.uniforms = null;
         this.uniformBlocks = null;
         this.attributes = null;
         this.program = null;
         this.gl = null;
         this.state = null;
-        this._dict = null;
+        this._dict = null!;
         cache.removeObject(this);
 
         this._isDestroyed = true;
         return this;
     }
-});
+}
 
 export default Program;
