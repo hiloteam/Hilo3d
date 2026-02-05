@@ -1,131 +1,132 @@
-import Class from './Class';
 import math from '../math/math';
-
+import type Node from './Node';
+import type Matrix4 from '../math/Matrix4';
 
 /**
  * 骨架
  * @class
  */
-const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
+class Skeleton {
     /**
      * @default true
      * @type {Boolean}
      */
-    isSkeleton: true,
+    isSkeleton: boolean = true;
 
     /**
      * @default Skeleton
      * @type {String}
      */
-    className: 'Skeleton',
+    className: string = 'Skeleton';
 
     /**
      * 用户数据
      * @default null
      * @type {any}
      */
-    userData: null,
+    userData: any = null;
+
+    /**
+     * id
+     * @type {String}
+     */
+    id: string;
+
+    /**
+     * @type {Node[]}
+     */
+    jointNodeList: Node[];
+
+    /**
+     * @type {string[]}
+     */
+    jointNames: string[];
+
+    /**
+     * @type {Matrix4[]}
+     */
+    inverseBindMatrices!: Matrix4[];
+
+    /**
+     * @private
+     * @type {Node}
+     */
+    private _rootNode: Node | null = null;
 
     /**
      * @constructs
      * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
-    constructor(params) {
-        /**
-         * id
-         * @default math.generateUUID('Skeleton')
-         * @type {String}
-         */
+    constructor(params?: any) {
         this.id = math.generateUUID(this.className);
-
-        /**
-         * @default []
-         * @type {Node[]}
-         */
         this.jointNodeList = [];
-        /**
-         * @default []
-         * @type {string[]}
-         */
         this.jointNames = [];
-        /**
-         * @default []
-         * @type {Matrix4[]}
-         */
         this.inverseBindMatrices = [];
         Object.assign(this, params);
-    },
+    }
 
     /**
      * 关节数量
      * @readOnly
      * @type {Number}
      */
-    jointCount: {
-        get() {
-            return this.jointNodeList.length;
-        }
-    },
+    get jointCount(): number {
+        return this.jointNodeList.length;
+    }
 
-    /**
-     * @private
-     * @type {Node}
-     */
-    _rootNode: null,
     /**
      * 设置根节点
      * @type {Node}
      */
-    rootNode: {
-        get() {
-            return this._rootNode;
-        },
-        set(rootNode) {
-            this._rootNode = rootNode;
-            if (rootNode) {
-                this._initJointNodeList();
-            }
+    get rootNode(): Node | null {
+        return this._rootNode;
+    }
+
+    set rootNode(rootNode: Node | null) {
+        this._rootNode = rootNode;
+        if (rootNode) {
+            this._initJointNodeList();
         }
-    },
+    }
 
     /**
      * @private
      */
-    _initJointNodeList() {
-        const map = {};
-        this.rootNode.traverse((node) => {
+    private _initJointNodeList(): void {
+        const map: Record<string, Node> = {};
+        this.rootNode!.traverse((node: Node) => {
             map[node.jointName] = node;
         });
 
         this.jointNodeList = this.jointNames.map((name) => {
             return map[name];
         });
-    },
+    }
 
     /**
      * 用新骨骼的 node name 重设 jointNames
      * @param  {Skeleton} skeleton 新骨架
      */
-    resetJointNamesByNodeName(skeleton) {
+    resetJointNamesByNodeName(skeleton: Skeleton): void {
         const jointNames = this.jointNames;
         this.jointNodeList.forEach((jointNode, index) => {
-            const mainJointNode = skeleton.rootNode.getChildByName(jointNode.name);
+            const mainJointNode = skeleton.rootNode!.getChildByName(jointNode.name);
             if (mainJointNode) {
                 jointNames[index] = mainJointNode.jointName;
             }
         });
-    },
+    }
 
     /**
      * clone
      * @param {Node} [rootNode]
      * @return {Skeleton}
      */
-    clone(rootNode) {
+    clone(rootNode?: Node): Skeleton {
         const skeleton = new Skeleton();
         skeleton.copy(this, rootNode);
         return skeleton;
-    },
+    }
 
     /**
      * copy
@@ -133,15 +134,15 @@ const Skeleton = Class.create(/** @lends Skeleton.prototype */ {
      * @param {Node} [rootNode]
      * @return {Skeleton} this
      */
-    copy(skeleton, rootNode) {
+    copy(skeleton: Skeleton, rootNode?: Node): Skeleton {
         this.inverseBindMatrices = skeleton.inverseBindMatrices;
         this.jointNames = skeleton.jointNames.slice();
         if (rootNode === undefined) {
-            rootNode = skeleton.rootNode;
+            rootNode = skeleton.rootNode!;
         }
         this.rootNode = rootNode;
         return this;
     }
-});
+}
 
 export default Skeleton;

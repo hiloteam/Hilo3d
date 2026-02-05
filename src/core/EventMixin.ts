@@ -1,33 +1,37 @@
-import Class from './Class';
-
 /**
  * 事件对象
- * @interface EventObject
+ * @class EventObject
  * @property {String} type 事件类型
  * @property {any} [detail=null] 事件数据
  */
-const EventObject = Class.create({
-    constructor(type, target, detail) {
+class EventObject {
+    type: string;
+    target: any;
+    detail: any;
+    _stopped?: boolean;
+
+    constructor(type: string, target: any, detail?: any) {
         this.type = type;
         this.target = target;
         this.detail = detail;
-    },
+    }
 
-    type: null,
-    target: null,
-    detail: null,
-
-    stopImmediatePropagation() {
+    stopImmediatePropagation(): void {
         this._stopped = true;
     }
-});
+}
+
+interface EventListener {
+    listener: EventMixinCallback;
+    once?: boolean;
+}
 
 /**
  * EventMixin是一个包含事件相关功能的mixin。可以通过 Object.assign(target, EventMixin) 来为target增加事件功能。
  * @class EventMixin
  */
 const EventMixin = /** @lends EventMixin# */ {
-    _listeners: null,
+    _listeners: null as Record<string, EventListener[]> | null,
 
     /**
      * 增加一个事件监听。
@@ -38,7 +42,7 @@ const EventMixin = /** @lends EventMixin# */ {
      * @param {Boolean} [once] 是否是一次性监听，即回调函数响应一次后即删除，不再响应。
      * @return {any} 对象本身。链式调用支持。
      */
-    on(type, listener, once) {
+    on(this: any, type: string, listener: EventMixinCallback, once?: boolean): any {
         let listeners = (this._listeners = this._listeners || {});
         let eventListeners = (listeners[type] = listeners[type] || []);
         for (let i = 0, len = eventListeners.length; i < len; i++) {
@@ -62,18 +66,18 @@ const EventMixin = /** @lends EventMixin# */ {
      * @param {EventMixinCallback} [listener] 要删除监听的回调函数。
      * @returns {any} 对象本身。链式调用支持。
      */
-    off(type, listener) {
+    off(this: any, type?: string, listener?: EventMixinCallback): any {
         // remove all event listeners
         if (arguments.length === 0) {
             this._listeners = null;
             return this;
         }
 
-        let eventListeners = this._listeners && this._listeners[type];
+        let eventListeners = this._listeners && this._listeners[type!];
         if (eventListeners && eventListeners.length > 0) {
             // remove event listeners by specified type
             if (arguments.length === 1) {
-                delete this._listeners[type];
+                delete this._listeners[type!];
                 return this;
             }
 
@@ -96,9 +100,9 @@ const EventMixin = /** @lends EventMixin# */ {
      * @param {Object} [detail] 要发送的事件的具体信息，即事件随带参数。
      * @returns {Boolean} 是否成功调度事件。
      */
-    fire(type, detail) {
-        let event; let
-            eventType;
+    fire(this: any, type: string | EventObject, detail?: any): boolean {
+        let event: EventObject | undefined;
+        let eventType: string;
         if (typeof type === 'string') {
             eventType = type;
         } else {
@@ -144,5 +148,7 @@ const EventMixin = /** @lends EventMixin# */ {
  * @param {Node} e.eventCurrentTarget 监听鼠标事件的对象 ( 仅鼠标事件有效 )
  * @param {Vector3} e.hitPoint 鼠标碰撞点 ( 仅鼠标事件有效 )
  */
+type EventMixinCallback = (e: EventObject) => void;
 
 export default EventMixin;
+export { EventObject, EventMixinCallback };
