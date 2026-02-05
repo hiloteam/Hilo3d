@@ -21,28 +21,47 @@ interface MipmapData {
  */
 class KhronosTextureContainer {
     static readonly HEADER_LEN: number = 12 + (13 * 4); // identifier + header elements (not including key value meta-data pairs)
+
     static readonly COMPRESSED_2D: number = 0; // uses a gl.compressedTexImage2D()
+
     static readonly COMPRESSED_3D: number = 1; // uses a gl.compressedTexImage3D()
+
     static readonly TEX_2D: number = 2; // uses a gl.texImage2D()
+
     static readonly TEX_3D: number = 3; // uses a gl.texImage3D()
 
     isKhronosTextureContainer: boolean = true;
+
     className: string = 'KhronosTextureContainer';
 
     arrayBuffer: ArrayBuffer;
+
     baseOffset: number;
+
     glType: number = 0;
+
     glTypeSize: number = 0;
+
     glFormat: number = 0;
+
     glInternalFormat: number = 0;
+
     glBaseInternalFormat: number = 0;
+
     pixelWidth: number = 0;
+
     pixelHeight: number = 0;
+
     pixelDepth: number = 0;
+
     numberOfArrayElements: number = 0;
+
     numberOfFaces: number = 0;
+
     numberOfMipmapLevels: number = 0;
+
     bytesOfKeyValueData: number = 0;
+
     loadType?: number;
 
     /**
@@ -245,6 +264,7 @@ class KTXLoader extends BasicLoader {
             });
     }
 
+    // eslint-disable-next-line class-methods-use-this
     createTexture(params: KTXLoaderParams, buffer: ArrayBuffer, baseOffset: number = 0): Texture {
         const ktx = new KhronosTextureContainer(buffer, 1, baseOffset);
         const data: any = {

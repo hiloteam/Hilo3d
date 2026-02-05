@@ -59,10 +59,6 @@ class ShaderMaterialLoader extends BasicLoader {
      */
     className: string = 'ShaderMaterialLoader';
 
-    constructor() {
-        super();
-    }
-
     /**
      * 加载ShaderMaterial
      *
