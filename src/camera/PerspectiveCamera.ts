@@ -132,6 +132,11 @@ class PerspectiveCamera extends Camera {
         }
     }
 
+    /**
+     * 获取几何体
+     * @param {Boolean} forceUpdate 是否强制更新
+     * @return {Geometry} 摄像机视锥体几何体，如果far为null则返回undefined
+     */
     getGeometry(forceUpdate?: boolean): Geometry | undefined {
         if (forceUpdate || !this._geometry || this._isGeometryDirty) {
             this._isGeometryDirty = false;
