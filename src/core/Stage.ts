@@ -157,7 +157,6 @@ class Stage extends Node {
      * @param  {Object} params
      * @return {HTMLCanvasElement}
      */
-    // eslint-disable-next-line class-methods-use-this
     private createCanvas(params: any): HTMLCanvasElement {
         let canvas: HTMLCanvasElement;
         if (params.canvas) {

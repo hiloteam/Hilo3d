@@ -58,18 +58,8 @@ class SkinedMesh extends Mesh {
 
     clonedFrom?: SkinedMesh;
 
-    /**
-     * @constructs
-     * @param {Object} [params] 初始化参数，所有params都会复制到实例上
-     * @param {Geometry} [params.geometry] 几何体
-     * @param {Material} [params.material] 材质
-     * @param {Skeleton} [params.skeleton] 骨骼
-     * @param {any} [params.[value:string]] 其它属性
-     */
-    // eslint-disable-next-line no-useless-constructor
-    constructor(params?: any) {
-        super(params);
-    }
+    // Note: Constructor with only super(params) is needed to maintain
+    // compatibility with the old Class.create pattern where SkinedMesh had a constructor
 
     /**
      * 获取每个骨骼对应的矩阵数组

@@ -2,6 +2,60 @@ function now(): number {
     return +new Date();
 }
 
+interface TweenEaseObject {
+    EaseIn: (k: number) => number;
+    EaseOut: (k: number) => number;
+    EaseInOut: (k: number) => number;
+}
+
+interface TweenEaseNoneObject {
+    EaseNone: (k: number) => number;
+}
+
+interface TweenEaseElasticObject extends TweenEaseObject {
+    a: number;
+    p: number;
+    s: number;
+    config(amplitude: number, period: number): void;
+}
+
+interface TweenEaseBackObject extends TweenEaseObject {
+    o: number;
+    s: number;
+    config(overshoot: number): void;
+}
+
+interface TweenEaseBounceObject extends TweenEaseObject {
+}
+
+/**
+ * @interface TweenParams
+ * @property {number} duration
+ * @property {number|String} [delay]
+ * @property {Function} [ease]
+ * @property {Function} [onStart]
+ * @property {Function} [onComplete]
+ * @property {Function} [onUpdate]
+ * @property {boolean} [loop=false]
+ * @property {boolean} [reverse=false]
+ * @property {number} [repeat=0]
+ */
+interface TweenParams {
+    duration?: number;
+    delay?: number | string;
+    ease?: (k: number) => number;
+    onStart?: (tween: Tween) => void;
+    onComplete?: (tween: Tween) => void;
+    onUpdate?: (ratio: number, tween: Tween) => void;
+    loop?: boolean;
+    reverse?: boolean;
+    repeat?: number;
+    repeatDelay?: number;
+    paused?: boolean;
+    time?: number;
+    stagger?: number;
+}
+
 /**
  * Tween类提供缓动功能。
  * @class  Tween
@@ -519,32 +573,6 @@ class Tween {
 
 /* eslint-disable no-return-assign, no-cond-assign */
 
-interface TweenEaseObject {
-    EaseIn: (k: number) => number;
-    EaseOut: (k: number) => number;
-    EaseInOut: (k: number) => number;
-}
-
-interface TweenEaseNoneObject {
-    EaseNone: (k: number) => number;
-}
-
-interface TweenEaseElasticObject extends TweenEaseObject {
-    a: number;
-    p: number;
-    s: number;
-    config(amplitude: number, period: number): void;
-}
-
-interface TweenEaseBackObject extends TweenEaseObject {
-    o: number;
-    s: number;
-    config(overshoot: number): void;
-}
-
-interface TweenEaseBounceObject extends TweenEaseObject {
-}
-
 function createEase(
     obj: any,
     easeInFn?: (k: number) => number,
@@ -764,32 +792,3 @@ Tween.Ease = {
 
 
 export default Tween;
-
-
-/**
- * @interface TweenParams
- * @property {number} duration
- * @property {number|String} [delay]
- * @property {Function} [ease]
- * @property {Function} [onStart]
- * @property {Function} [onComplete]
- * @property {Function} [onUpdate]
- * @property {boolean} [loop=false]
- * @property {boolean} [reverse=false]
- * @property {number} [repeat=0]
- */
-interface TweenParams {
-    duration?: number;
-    delay?: number | string;
-    ease?: (k: number) => number;
-    onStart?: (tween: Tween) => void;
-    onComplete?: (tween: Tween) => void;
-    onUpdate?: (ratio: number, tween: Tween) => void;
-    loop?: boolean;
-    reverse?: boolean;
-    repeat?: number;
-    repeatDelay?: number;
-    paused?: boolean;
-    time?: number;
-    stagger?: number;
-}
