@@ -88,15 +88,8 @@ class LazyTexture extends Texture {
      * @param {any} [params.[value:string]] 其它属性
      */
     constructor(params?: any) {
-        if (params) {
-            if ('crossOrigin' in params) {
-                (LazyTexture.prototype as any).crossOrigin = params.crossOrigin;
-            }
-            if ('autoLoad' in params) {
-                (LazyTexture.prototype as any).autoLoad = params.autoLoad;
-            }
-        }
-        super(params);
+        const tempParams = params ? { ...params } : undefined;
+        super(tempParams);
         this.image = this.placeHolder || placeHolder;
     }
 

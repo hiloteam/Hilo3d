@@ -462,7 +462,7 @@ class Texture {
      * @param  {Number} [height=this.height]
      * @return {Texture}  this
      */
-    private _glUploadTexture(state: any, target: number, image: any, level: number = 0, width: number = this.width, height: number = this.height): this {
+    protected _glUploadTexture(state: any, target: number, image: any, level: number = 0, width: number = this.width, height: number = this.height): this {
         const gl = state.gl;
         const type = this.type;
         const format = this.format;
