@@ -432,6 +432,9 @@ class GLTFParser {
                 if (values.occlusionTexture) {
                     map[values.occlusionTexture.index] = true;
                 }
+                if (values.emissiveTexture) {
+                    map[values.emissiveTexture.index] = true;
+                }
                 if (values.transparencyTexture) {
                     map[values.transparencyTexture.index] = true;
                 }
