@@ -1,7 +1,8 @@
-import Class from '../core/Class';
 import Color from '../math/Color';
 import Framebuffer from '../renderer/Framebuffer';
 import BasicMaterial from '../material/BasicMaterial';
+import WebGLRenderer from '../renderer/WebGLRenderer';
+import Mesh from '../core/Mesh';
 import {
     padLeft
 } from './util';
@@ -12,6 +13,11 @@ const meshPickerMaterial = new BasicMaterial({
 const clearColor = new Color(1, 1, 1);
 const tempColor = new Color();
 
+interface MeshPickerParams {
+    renderer?: WebGLRenderer;
+    debug?: boolean;
+}
+
 /**
  * Mesh 选择工具，可以获取画布中某个区域内的Mesh
  * @class
@@ -21,40 +27,50 @@ const tempColor = new Color();
  * });
  * picker.getSelection(20, 20, 1, 1);
  */
-const MeshPicker = Class.create(/** @lends MeshPicker.prototype */{
+class MeshPicker {
     /**
      * @default true
      * @type {boolean}
      */
-    isMeshPicker: true,
+    isMeshPicker: boolean = true;
+
     /**
      * @default MeshPicker
      * @type {string}
      */
-    className: 'MeshPicker',
+    className: string = 'MeshPicker';
+
     /**
      * 是否开启debug，开启后会将mesh以不同的颜色绘制在左下角
      * @default false
      * @type {boolean}
      */
-    debug: false,
+    debug: boolean = false;
+
     /**
      * WebGLRenderer 的实例
      * @default null
      * @type {WebGLRenderer}
      */
-    renderer: null,
-    colorMeshMap: null,
+    renderer!: WebGLRenderer;
+
+    private colorMeshMap: Record<string, Mesh> = {};
+
+    private framebuffer!: Framebuffer;
+
     /**
      * @constructs
      * @param {object} [params] 创建对象的属性参数，可包含此类的所有属性。
      */
-    constructor(params) {
-        Object.assign(this, params);
+    constructor(params?: MeshPickerParams) {
+        if (params) {
+            Object.assign(this, params);
+        }
         this.colorMeshMap = {};
         this.init();
-    },
-    createFramebuffer() {
+    }
+
+    private createFramebuffer(): void {
         if (this.framebuffer) {
             return;
         }
@@ -66,21 +82,21 @@ const MeshPicker = Class.create(/** @lends MeshPicker.prototype */{
             width: renderer.width,
             height: renderer.height
         });
-    },
+    }
 
-    renderDebug() {
+    private renderDebug(): void {
         this.framebuffer.render(0, 0.7, 0.3, 0.3);
-    },
+    }
 
-    createMeshNumberId(mesh) {
+    private createMeshNumberId(mesh: any): void {
         if (!('numberId' in mesh)) {
             mesh.numberId = Number(mesh.id.replace(/^.*_(\d+)$/, '$1')) * 10;
             mesh.color = padLeft(mesh.numberId.toString(16), 6);
             this.colorMeshMap[mesh.color] = mesh;
         }
-    },
+    }
 
-    renderColoredMeshes() {
+    private renderColoredMeshes(): void {
         const {
             renderer,
             framebuffer
@@ -90,7 +106,7 @@ const MeshPicker = Class.create(/** @lends MeshPicker.prototype */{
         renderer.clear(clearColor);
         const currentForceMaterial = renderer.forceMaterial;
         renderer.forceMaterial = meshPickerMaterial;
-        renderer.renderList.traverse((mesh) => {
+        renderer.renderList.traverse((mesh: any) => {
             this.createMeshNumberId(mesh);
             meshPickerMaterial.diffuse.fromHEX(mesh.color);
             meshPickerMaterial.isDirty = true;
@@ -98,7 +114,7 @@ const MeshPicker = Class.create(/** @lends MeshPicker.prototype */{
         });
         renderer.forceMaterial = currentForceMaterial;
         framebuffer.unbind();
-    },
+    }
 
     /**
      * 获取指定区域内的Mesh，注意无法获取被遮挡的Mesh
@@ -108,9 +124,9 @@ const MeshPicker = Class.create(/** @lends MeshPicker.prototype */{
      * @param {number} [height=1] 区域的高
      * @return {Mesh[]} 返回获取的Mesh数组
      */
-    getSelection(x, y, width = 1, height = 1) {
+    getSelection(x: number, y: number, width: number = 1, height: number = 1): Mesh[] {
         const pixelRatio = this.renderer.pixelRatio;
-        const meshes = [];
+        const meshes: Mesh[] = [];
         const pixels = this.framebuffer.readPixels(x * pixelRatio, y * pixelRatio, width * pixelRatio, height * pixelRatio);
         for (let i = 0; i < pixels.length; i += 4) {
             let color = tempColor.fromUintArray(pixels, i).toHEX();
@@ -119,9 +135,9 @@ const MeshPicker = Class.create(/** @lends MeshPicker.prototype */{
             }
         }
         return meshes;
-    },
+    }
 
-    init() {
+    private init(): void {
         this.createFramebuffer();
         this.renderer.on('afterRender', () => {
             this.renderColoredMeshes();
@@ -130,6 +146,6 @@ const MeshPicker = Class.create(/** @lends MeshPicker.prototype */{
             }
         });
     }
-});
+}
 
 export default MeshPicker;
