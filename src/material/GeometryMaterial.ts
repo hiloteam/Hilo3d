@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import BasicMaterial from './BasicMaterial';
 import constants from '../constants';
 
@@ -19,43 +18,42 @@ const {
  *     diffuse: new Hilo3d.Color(1, 0, 0, 1)
  * });
  */
-const GeometryMaterial = Class.create(/** @lends GeometryMaterial.prototype */ {
-    Extends: BasicMaterial,
+class GeometryMaterial extends BasicMaterial {
     /**
      * @default true
      * @type {boolean}
      */
-    isGeometryMaterial: true,
+    isGeometryMaterial: boolean = true;
     /**
      * @default GeometryMaterial
      * @type {string}
      */
-    className: 'GeometryMaterial',
+    className: string = 'GeometryMaterial';
     /**
      * 顶点类型 POSITION, NORMAL, DEPTH, DISTANCE
      * @type {String}
      */
-    vertexType: POSITION,
-    lightType: NONE,
+    vertexType: string = POSITION;
+    lightType: string = NONE;
     /**
      * 是否直接存储
      * @type {Boolean}
      */
-    writeOriginData: false,
+    writeOriginData: boolean = false;
     /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params) {
-        GeometryMaterial.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
         Object.assign(this.uniforms, {
             u_cameraFar: 'CAMERAFAR',
             u_cameraNear: 'CAMERANEAR',
             u_cameraType: 'CAMERATYPE'
         });
-    },
-    getRenderOption(option = {}) {
-        GeometryMaterial.superclass.getRenderOption.call(this, option);
+    }
+    getRenderOption(option: any = {}): any {
+        super.getRenderOption(option);
         option[`VERTEX_TYPE_${this.vertexType}`] = 1;
 
         switch (this.vertexType) {
@@ -80,6 +78,6 @@ const GeometryMaterial = Class.create(/** @lends GeometryMaterial.prototype */ {
 
         return option;
     }
-});
+}
 
 export default GeometryMaterial;
