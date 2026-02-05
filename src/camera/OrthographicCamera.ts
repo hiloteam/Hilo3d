@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Camera from './Camera';
 import Geometry from '../geometry/Geometry';
 
@@ -7,116 +6,114 @@ import Geometry from '../geometry/Geometry';
  * @class
  * @extends Camera
  */
-const OrthographicCamera = Class.create(/** @lends OrthographicCamera.prototype */ {
-    Extends: Camera,
-
+class OrthographicCamera extends Camera {
     /**
      * @default true
      * @type {boolean}
      */
-    isOrthographicCamera: true,
+    isOrthographicCamera: boolean = true;
 
     /**
      * @default OrthographicCamera
      * @type {string}
      */
-    className: 'OrthographicCamera',
+    className: string = 'OrthographicCamera';
 
-    _left: -1,
+    private _left: number = -1;
+
+    private _right: number = 1;
+
+    private _bottom: number = -1;
+
+    private _top: number = 1;
+
+    private _near: number = 0.1;
+
+    private _far: number = 1;
+
     /**
      * @default -1
      * @type {number}
      */
-    left: {
-        get() {
-            return this._left;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._left = value;
-        }
-    },
+    get left(): number {
+        return this._left;
+    }
 
-    _right: 1,
+    set left(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._left = value;
+    }
+
     /**
      * @default 1
      * @type {number}
      */
-    right: {
-        get() {
-            return this._right;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._right = value;
-        }
-    },
+    get right(): number {
+        return this._right;
+    }
 
-    _bottom: -1,
+    set right(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._right = value;
+    }
+
     /**
      * @default -1
      * @type {number}
      */
-    bottom: {
-        get() {
-            return this._bottom;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._bottom = value;
-        }
-    },
+    get bottom(): number {
+        return this._bottom;
+    }
 
-    _top: 1,
+    set bottom(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._bottom = value;
+    }
+
     /**
      * @default 1
      * @type {number}
      */
-    top: {
-        get() {
-            return this._top;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._top = value;
-        }
-    },
+    get top(): number {
+        return this._top;
+    }
 
-    _near: 0.1,
+    set top(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._top = value;
+    }
+
     /**
      * @default 0.1
      * @type {number}
      */
-    near: {
-        get() {
-            return this._near;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._near = value;
-        }
-    },
+    get near(): number {
+        return this._near;
+    }
 
-    _far: 1,
+    set near(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._near = value;
+    }
+
     /**
      * @default 1
      * @type {number}
      */
-    far: {
-        get() {
-            return this._far;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._far = value;
-        }
-    },
+    get far(): number {
+        return this._far;
+    }
+
+    set far(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._far = value;
+    }
 
     /**
      * @constructs
@@ -129,19 +126,19 @@ const OrthographicCamera = Class.create(/** @lends OrthographicCamera.prototype 
      * @param {number} [params.far=1]
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
-        OrthographicCamera.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
         this.updateProjectionMatrix();
-    },
+    }
 
     /**
      * 更新投影矩阵
      */
-    updateProjectionMatrix() {
+    updateProjectionMatrix(): void {
         this.projectionMatrix.ortho(this.left, this.right, this.bottom, this.top, this.near, this.far);
-    },
+    }
 
-    getGeometry(forceUpdate) {
+    getGeometry(forceUpdate?: boolean): Geometry {
         if (forceUpdate || !this._geometry || this._isGeometryDirty) {
             this._isGeometryDirty = false;
 
@@ -168,6 +165,6 @@ const OrthographicCamera = Class.create(/** @lends OrthographicCamera.prototype 
 
         return this._geometry;
     }
-});
+}
 
 export default OrthographicCamera;
