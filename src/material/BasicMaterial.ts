@@ -32,7 +32,7 @@ class BasicMaterial extends Material {
      * @default Color(.5, .5, .5)
      * @type {Texture|Color}
      */
-    diffuse: any = null;
+    diffuse: any = new Color(.5, .5, .5);
     /**
      * 环境光贴图，或颜色
      * @default null
@@ -44,13 +44,13 @@ class BasicMaterial extends Material {
      * @default Color(1, 1, 1)
      * @type {Texture|Color}
      */
-    specular: any = null;
+    specular: any = new Color(1, 1, 1);
     /**
      * 放射光贴图，或颜色
      * @default Color(0, 0, 0)
      * @type {Texture|Color}
      */
-    emission: any = null;
+    emission: any = new Color(0, 0, 0);
     /**
      * 环境贴图
      * @default null
@@ -106,9 +106,6 @@ class BasicMaterial extends Material {
      */
     constructor(params?: any) {
         super(params);
-        this.diffuse = new Color(.5, .5, .5);
-        this.specular = new Color(1, 1, 1);
-        this.emission = new Color(0, 0, 0);
 
         Object.assign(this.uniforms, {
             u_diffuse: 'DIFFUSE',
