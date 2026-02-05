@@ -70,6 +70,7 @@ class GeometryData {
     type?: number;
 
     private _isSubDirty: boolean = false;
+
     private _isAllDirty: boolean = false;
 
     /**

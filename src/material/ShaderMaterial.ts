@@ -42,27 +42,32 @@ class ShaderMaterial extends Material {
      * @type {boolean}
      */
     isShaderMaterial: boolean = true;
+
     /**
      * @default ShaderMaterial
      * @type {string}
      */
     className: string = 'ShaderMaterial';
+
     /**
      * vertex shader 代码
      * @type {string}
      */
     vs: string = '';
+
     /**
      * fragment shader 代码
      * @type {string}
      */
     fs: string = '';
+
     /**
      * 是否使用 header cache shader
      * @default true
      * @type {Boolean}
      */
     useHeaderCache: boolean = false;
+
     /**
      * 获取定制的渲染参数
      * @default null

@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Texture from './Texture';
 import log from '../utils/log';
 import constants from '../constants';
@@ -49,69 +48,76 @@ const {
  *     stage.addChild(skybox);
  * });
  */
-const CubeTexture = Class.create(/** @lends CubeTexture.prototype */{
-    Extends: Texture,
+class CubeTexture extends Texture {
     /**
      * @default true
      * @type {boolean}
      */
-    isCubeTexture: true,
+    isCubeTexture: boolean = true;
+
     /**
      * @default CubeTexture
      * @type {string}
      */
-    className: 'CubeTexture',
+    className: string = 'CubeTexture';
 
     /**
      * @default TEXTURE_CUBE_MAP
      * @type {number}
      */
-    target: TEXTURE_CUBE_MAP,
+    target: number = TEXTURE_CUBE_MAP;
+
     /**
      * @default RGB
      * @type {number}
      */
-    internalFormat: RGB,
+    internalFormat: number = RGB;
+
     /**
      * @default RGB
      * @type {number}
      */
-    format: RGB,
+    format: number = RGB;
 
     /**
      * @default LINEAR
      * @type {number}
      */
-    magFilter: LINEAR,
+    magFilter: number = LINEAR;
+
     /**
      * @default LINEAR
      * @type {number}
      */
-    minFilter: LINEAR,
+    minFilter: number = LINEAR;
+
     /**
      * @default CLAMP_TO_EDGE
      * @type {number}
      */
-    wrapS: CLAMP_TO_EDGE,
+    wrapS: number = CLAMP_TO_EDGE;
+
     /**
      * @default CLAMP_TO_EDGE
      * @type {number}
      */
-    wrapT: CLAMP_TO_EDGE,
+    wrapT: number = CLAMP_TO_EDGE;
+
     /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      * @param {HTMLImageElement[]} [params.image] 图片列表，共6张
      */
-    constructor(params) {
-        CubeTexture.superclass.constructor.call(this, params);
+    constructor(params?: any) {
+        super(params);
         this.image = this.image || [];
-    },
-    _uploadTexture(state) {
+    }
+
+    protected _uploadTexture(state: any): this {
         const images = this.image;
         if (!Array.isArray(images) || images.length !== 6) {
             log.error('CubeTexture image must be an Array of length 6', images);
-            return;
+            return this;
         }
 
         if (images[0] && images[0].width) {
@@ -119,82 +125,84 @@ const CubeTexture = Class.create(/** @lends CubeTexture.prototype */{
             this.height = images[0].height;
         }
 
-        images.forEach((img, i) => {
-            this._glUploadTexture(state, TEXTURE_CUBE_MAP_POSITIVE_X + i, img, 0);
+        images.forEach((img: any, i: number) => {
+            (this as any)._glUploadTexture(state, TEXTURE_CUBE_MAP_POSITIVE_X + i, img, 0);
         });
-    },
+
+        return this;
+    }
+
     /**
      * 右侧的图片
      * @type {HTMLImageElement}
      */
-    right: {
-        get() {
-            return this.image[0];
-        },
-        set(img) {
-            this.image[0] = img;
-        }
-    },
+    get right(): any {
+        return this.image[0];
+    }
+
+    set right(img: any) {
+        this.image[0] = img;
+    }
+
     /**
      * 左侧的图片
      * @type {HTMLImageElement}
      */
-    left: {
-        get() {
-            return this.image[1];
-        },
-        set(img) {
-            this.image[1] = img;
-        }
-    },
+    get left(): any {
+        return this.image[1];
+    }
+
+    set left(img: any) {
+        this.image[1] = img;
+    }
+
     /**
      * 顶部的图片
      * @type {HTMLImageElement}
      */
-    top: {
-        get() {
-            return this.image[2];
-        },
-        set(img) {
-            this.image[2] = img;
-        }
-    },
+    get top(): any {
+        return this.image[2];
+    }
+
+    set top(img: any) {
+        this.image[2] = img;
+    }
+
     /**
      * 底部的图片
      * @type {HTMLImageElement}
      */
-    bottom: {
-        get() {
-            return this.image[3];
-        },
-        set(img) {
-            this.image[3] = img;
-        }
-    },
+    get bottom(): any {
+        return this.image[3];
+    }
+
+    set bottom(img: any) {
+        this.image[3] = img;
+    }
+
     /**
      * 朝前的图片
      * @type {HTMLImageElement}
      */
-    front: {
-        get() {
-            return this.image[4];
-        },
-        set(img) {
-            this.image[4] = img;
-        }
-    },
+    get front(): any {
+        return this.image[4];
+    }
+
+    set front(img: any) {
+        this.image[4] = img;
+    }
+
     /**
      * 朝后的图片
      * @type {HTMLImageElement}
      */
-    back: {
-        get() {
-            return this.image[5];
-        },
-        set(img) {
-            this.image[5] = img;
-        }
+    get back(): any {
+        return this.image[5];
     }
-});
+
+    set back(img: any) {
+        this.image[5] = img;
+    }
+}
 
 export default CubeTexture;

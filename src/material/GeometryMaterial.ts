@@ -24,22 +24,27 @@ class GeometryMaterial extends BasicMaterial {
      * @type {boolean}
      */
     isGeometryMaterial: boolean = true;
+
     /**
      * @default GeometryMaterial
      * @type {string}
      */
     className: string = 'GeometryMaterial';
+
     /**
      * 顶点类型 POSITION, NORMAL, DEPTH, DISTANCE
      * @type {String}
      */
     vertexType: string = POSITION;
+
     lightType: string = NONE;
+
     /**
      * 是否直接存储
      * @type {Boolean}
      */
     writeOriginData: boolean = false;
+
     /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
@@ -52,6 +57,7 @@ class GeometryMaterial extends BasicMaterial {
             u_cameraType: 'CAMERATYPE'
         });
     }
+
     getRenderOption(option: any = {}): any {
         super.getRenderOption(option);
         option[`VERTEX_TYPE_${this.vertexType}`] = 1;
