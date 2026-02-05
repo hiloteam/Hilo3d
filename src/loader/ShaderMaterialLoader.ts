@@ -70,7 +70,7 @@ class ShaderMaterialLoader extends BasicLoader {
      * @param {string} params.vs vertex shader 文件的地址
      * @return {Promise.<ShaderMaterial, Error>} 返回加载完的ShaderMaterial实例
      */
-    load(params: ShaderMaterialParams): Promise<ShaderMaterial | undefined> {
+    load(params: ShaderMaterialParams): Promise<ShaderMaterial> {
         const list = [
             this.loadRes(params.fs),
             this.loadRes(params.vs)
@@ -81,9 +81,9 @@ class ShaderMaterialLoader extends BasicLoader {
             args.fs = result[0];
             args.vs = result[1];
             return new ShaderMaterial(args);
-        }, (err: Error) => {
+        }).catch((err: Error) => {
             log.warn(`ShaderMaterial Loader Failed for ${err}`);
-            return undefined;
+            throw err;
         });
     }
 }
