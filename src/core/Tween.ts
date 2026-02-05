@@ -449,7 +449,7 @@ class Tween {
         for (i = 0; i < target.length; i++) {
             tween = new Tween(target[i], fromProps, toProps, params);
             if (stagger) {
-                tween.delay = (typeof tween.delay === 'number' ? tween.delay : 0) + (i * stagger || 0);
+                tween.delay = (tween.delay as number) + (i * stagger || 0);
             }
             tween.start();
             tweens.push(tween);
