@@ -2,7 +2,6 @@
 import WebGLDebugUtils from 'webgl-debug';
 // HILO_DEBUG_END
 
-import Class from '../core/Class';
 import Node from '../core/Node';
 import semantic from '../material/semantic';
 import Color from '../math/Color';
@@ -49,186 +48,184 @@ const {
  * @fires webglContextRestored webglContextRestored 事件
  * @mixes EventMixin
  */
-const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
-    Mixes: EventMixin,
-
+class WebGLRenderer extends EventMixin {
     /**
      * @default WebGLRenderer
      * @type {String}
      */
-    className: 'WebGLRenderer',
+    className: string = 'WebGLRenderer';
 
     /**
      * @default true
      * @type {Boolean}
      */
-    isWebGLRenderer: true,
+    isWebGLRenderer: boolean = true;
 
     /**
      * gl
      * @default null
      * @type {WebGLRenderingContext}
      */
-    gl: null,
+    gl: WebGLRenderingContext | WebGL2RenderingContext | null = null;
 
     /**
      * 宽
      * @type {Number}
      * @default 0
      */
-    width: 0,
+    width: number = 0;
 
     /**
      * 高
      * @type {Number}
      * @default 0
      */
-    height: 0,
+    height: number = 0;
 
     /**
      * 像素密度
      * @type {Number}
      * @default 1
      */
-    pixelRatio: 1,
+    pixelRatio: number = 1;
 
     /**
      * dom元素
      * @type {HTMLCanvasElement}
      * @default null
      */
-    domElement: null,
+    domElement: HTMLCanvasElement | null = null;
 
     /**
      * 是否使用instanced
      * @type {Boolean}
      * @default false
      */
-    useInstanced: false,
+    useInstanced: boolean = false;
 
     /**
      * 是否使用VAO
      * @type {Boolean}
      * @default true
      */
-    useVao: true,
+    useVao: boolean = true;
 
     /**
      * 是否开启透明背景
      * @type {Boolean}
      * @default false
      */
-    alpha: false,
+    alpha: boolean = false;
 
     /**
      * @type {Boolean}
      * @default true
      */
-    depth: true,
+    depth: boolean = true;
 
     /**
      * @type {Boolean}
      * @default false
      */
-    stencil: false,
+    stencil: boolean = false;
 
     /**
      * 是否开启抗锯齿
      * @type {Boolean}
      * @default true
      */
-    antialias: true,
+    antialias: boolean = true;
 
     /**
      * Boolean that indicates that the page compositor will assume the drawing buffer contains colors with pre-multiplied alpha.
      * @type {Boolean}
      * @default true
      */
-    premultipliedAlpha: true,
+    premultipliedAlpha: boolean = true;
 
     /**
      * If the value is true the buffers will not be cleared and will preserve their values until cleared or overwritten by the author.
      * @type {Boolean}
      * @default false
      */
-    preserveDrawingBuffer: false,
+    preserveDrawingBuffer: boolean = false;
 
     /**
      * Boolean that indicates if a context will be created if the system performance is low.
      * @type {Boolean}
      * @default false
      */
-    failIfMajorPerformanceCaveat: false,
+    failIfMajorPerformanceCaveat: boolean = false;
 
     /**
      * 是否使用framebuffer
      * @type {Boolean}
      * @default false
      */
-    useFramebuffer: false,
+    useFramebuffer: boolean = false;
 
     /**
      * framebuffer配置
      * @type {Object}
      * @default {}
      */
-    framebufferOption: {},
+    framebufferOption: any = {};
 
     /**
      * 是否使用对数深度
      * @type {Boolean}
      * @default false
      */
-    useLogDepth: false,
+    useLogDepth: boolean = false;
 
     /**
      * 顶点着色器精度, 可以是以下值：highp, mediump, lowp
      * @type {String}
      * @default highp
      */
-    vertexPrecision: 'highp',
+    vertexPrecision: string = 'highp';
 
     /**
      * 片段着色器精度, 可以是以下值：highp, mediump, lowp
      * @type {String}
      * @default mediump
      */
-    fragmentPrecision: 'highp',
+    fragmentPrecision: string = 'highp';
 
     /**
      * 雾
      * @type {Fog}
      * @default null
      */
-    fog: null,
+    fog: any = null;
 
     /**
      * 偏移值
      * @type {Number}
      * @default 0
      */
-    offsetX: 0,
+    offsetX: number = 0;
 
     /**
      * 偏移值
      * @type {Number}
      * @default 0
      */
-    offsetY: 0,
+    offsetY: number = 0;
 
     /**
      * 强制渲染时使用的材质
      * @type {Material}
      * @default null
      */
-    forceMaterial: null,
+    forceMaterial: any = null;
 
     /**
      * 是否初始化失败
      * @default false
      * @type {Boolean}
      */
-    isInitFailed: false,
+    isInitFailed: boolean = false;
 
     /**
      * 是否初始化
@@ -236,7 +233,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      * @default false
      * @private
      */
-    _isInit: false,
+    private _isInit: boolean = false;
 
     /**
      * 是否lost context
@@ -244,71 +241,102 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      * @default false
      * @private
      */
-    _isContextLost: false,
+    private _isContextLost: boolean = false;
 
     /**
      * 是否是 WebGL2
      * @type {Boolean}
      * @default false
      */
-    isWebGL2: false,
+    isWebGL2: boolean = false;
 
     /**
      * 是否优先使用 WebGL2
      * @type {Boolean}
      * @default false
      */
-    preferWebGL2: false,
+    preferWebGL2: boolean = false;
+
+    /**
+     * 背景色
+     * @type {Color}
+     * @default new Color(1, 1, 1, 1)
+     */
+    clearColor: Color;
+
+    /**
+     * 渲染信息
+     * @type {RenderInfo}
+     * @default new RenderInfo
+     */
+    renderInfo: RenderInfo;
+
+    /**
+     * 渲染列表
+     * @type {RenderList}
+     * @default new RenderList
+     */
+    renderList: RenderList;
+
+    /**
+     * 灯光管理器
+     * @type {ILightManager}
+     * @default new LightManager
+     */
+    lightManager: LightManager;
+
+    /**
+     * 资源管理器
+     * @type {WebGLResourceManager}
+     * @default new WebGLResourceManager
+     */
+    resourceManager: WebGLResourceManager;
+
+    /**
+     * state，初始化后生成。
+     * @type {WebGLState}
+     * @default null
+     */
+    state: WebGLState | null = null;
+
+    /**
+     * framebuffer，只在 useFramebuffer 为 true 时初始化后生成
+     * @type {Framebuffer}
+     * @default null
+     */
+    framebuffer: Framebuffer | null = null;
+
+    private _lastMaterial: any = null;
+
+    private _lastProgram: any = null;
 
     /**
      * @constructs
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params) {
-        /**
-         * 背景色
-         * @type {Color}
-         * @default new Color(1, 1, 1, 1)
-         */
+    constructor(params?: any) {
+        super();
+
         this.clearColor = new Color(1, 1, 1);
 
         Object.assign(this, params);
 
-        /**
-         * 渲染信息
-         * @type {RenderInfo}
-         * @default new RenderInfo
-         */
         this.renderInfo = new RenderInfo();
 
-        /**
-         * 渲染列表
-         * @type {RenderList}
-         * @default new RenderList
-         */
         this.renderList = new RenderList();
 
-        /**
-         * 灯光管理器
-         * @type {ILightManager}
-         * @default new LightManager
-         */
         this.lightManager = new LightManager();
 
-        /**
-         * 资源管理器
-         * @type {WebGLResourceManager}
-         * @default new WebGLResourceManager
-         */
         this.resourceManager = new WebGLResourceManager();
-    },
+    }
+
     /**
      * 改变大小
      * @param  {Number} width  宽
      * @param  {Number} height  高
      * @param  {Boolean} [force=false] 是否强制刷新
      */
-    resize(width, height, force) {
+    resize(width: number, height: number, force: boolean = false): void {
         if (force || this.width !== width || this.height !== height) {
             const canvas = this.domElement;
             this.width = width;
@@ -321,19 +349,21 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             }
             this.viewport();
         }
-    },
+    }
+
     /**
      * 设置viewport偏移值
      * @param {Number} x x
      * @param {Number} y y
      */
-    setOffset(x, y) {
+    setOffset(x: number, y: number): void {
         if (this.offsetX !== x || this.offsetY !== y) {
             this.offsetX = x;
             this.offsetY = y;
             this.viewport();
         }
-    },
+    }
+
     /**
      * 设置viewport
      * @param  {Number} [x=this.offsetX]  x
@@ -341,7 +371,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      * @param  {Number} [width=this.gl.drawingBufferWidth]  width
      * @param  {Number} [height=this.gl.drawingBufferHeight]  height
      */
-    viewport(x, y, width, height) {
+    viewport(x?: number, y?: number, width?: number, height?: number): void {
         const {
             state,
             gl
@@ -370,23 +400,23 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
 
             state.viewport(x, y, width, height);
         }
-    },
+    }
+
     /**
      * 是否初始化
      * @type {Boolean}
      * @default false
      * @readOnly
      */
-    isInit: {
-        get() {
-            return this._isInit && !this.isInitFailed;
-        }
-    },
+    get isInit(): boolean {
+        return this._isInit && !this.isInitFailed;
+    }
+
     /**
      * 初始化回调
      * @return {WebGLRenderer} this
      */
-    onInit(callback) {
+    onInit(callback: (renderer: WebGLRenderer) => void): void {
         if (this._isInit) {
             callback(this);
         } else {
@@ -394,11 +424,12 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
                 callback(this);
             }, true);
         }
-    },
+    }
+
     /**
      * 初始化 context
      */
-    initContext() {
+    initContext(): void {
         if (!this._isInit) {
             this._isInit = true;
             try {
@@ -409,8 +440,9 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
                 this.fire('initFailed', e);
             }
         }
-    },
-    _initContext() {
+    }
+
+    private _initContext(): void {
         const contextAttributes = {
             alpha: this.alpha,
             depth: this.depth,
@@ -487,8 +519,9 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         this.domElement.addEventListener('webglcontextrestored', (e) => {
             this._onContextRestore(e);
         }, false);
-    },
-    _onContextLost(e) {
+    }
+
+    private _onContextLost(e: Event): void {
         const gl = this.gl;
         this._isContextLost = true;
 
@@ -505,20 +538,22 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         this._lastProgram = null;
 
         this.fire('webglContextLost');
-    },
-    _onContextRestore(e) { // eslint-disable-line no-unused-vars
+    }
+
+    private _onContextRestore(_e: Event): void {
         const gl = this.gl;
         this._isContextLost = false;
         extensions.reset(gl);
         Framebuffer.reset(gl);
 
         this.fire('webglContextRestored');
-    },
+    }
+
     /**
      * 设置深度检测
      * @param  {Material} material
      */
-    setupDepthTest(material) {
+    setupDepthTest(material: any): void {
         const state = this.state;
         if (material.depthTest) {
             state.enable(DEPTH_TEST);
@@ -528,24 +563,26 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         } else {
             state.disable(DEPTH_TEST);
         }
-    },
+    }
+
     /**
      * 设置alphaToCoverage
      * @param  {Material} material
      */
-    setupSampleAlphaToCoverage(material) {
+    setupSampleAlphaToCoverage(material: any): void {
         const state = this.state;
         if (material.sampleAlphaToCoverage) {
             state.enable(SAMPLE_ALPHA_TO_COVERAGE);
         } else {
             state.disable(SAMPLE_ALPHA_TO_COVERAGE);
         }
-    },
+    }
+
     /**
      * 设置背面剔除
      * @param  {Material} material
      */
-    setupCullFace(material) {
+    setupCullFace(material: any): void {
         const state = this.state;
         state.frontFace(material.frontFace);
         if (material.cullFace && material.cullFaceType !== FRONT_AND_BACK) {
@@ -554,12 +591,13 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         } else {
             state.disable(CULL_FACE);
         }
-    },
+    }
+
     /**
      * 设置混合
      * @param  {Material} material
      */
-    setupBlend(material) {
+    setupBlend(material: any): void {
         const state = this.state;
         if (material.blend) {
             state.enable(BLEND);
@@ -576,13 +614,13 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         } else {
             state.disable(BLEND);
         }
-    },
+    }
 
     /**
      * 设置模板
      * @param  {Material} material
      */
-    setupStencil(material) {
+    setupStencil(material: any): void {
         if (!this.stencil) {
             return;
         }
@@ -596,7 +634,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         } else {
             state.disable(STENCIL_TEST);
         }
-    },
+    }
 
     /**
      * 设置通用的 uniform
@@ -604,7 +642,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      * @param  {Mesh} mesh
      * @param  {Boolean} [force=false] 是否强制更新
      */
-    setupUniforms(program, mesh, useInstanced, force) {
+    setupUniforms(program: any, mesh: any, useInstanced: boolean, force: boolean = false): void {
         const material = this.forceMaterial || mesh.material;
 
         if (this.isWebGL2) {
@@ -629,14 +667,15 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
                 }
             }
         }
-    },
+    }
+
     /**
      * 设置vao
      * @param  {VertexArrayObject} vao
      * @param  {Program} program
      * @param  {Mesh} mesh
      */
-    setupVao(vao, program, mesh) {
+    setupVao(vao: any, program: any, mesh: any): void {
         const geometry = mesh.geometry;
         const isStatic = geometry.isStatic;
 
@@ -664,13 +703,14 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         if (geometry.vertexCount) {
             vao.vertexCount = geometry.vertexCount;
         }
-    },
+    }
+
     /**
      * 设置材质
      * @param  {Program} program
      * @param  {Mesh} mesh
      */
-    setupMaterial(program, mesh, useInstanced, needForceUpdateUniforms = false) {
+    setupMaterial(program: any, mesh: any, useInstanced: boolean, needForceUpdateUniforms: boolean = false): void {
         const material = this.forceMaterial || mesh.material;
         if (material.isDirty || this._lastMaterial !== material) {
             this.setupDepthTest(material);
@@ -684,7 +724,8 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         this.setupUniforms(program, mesh, useInstanced, needForceUpdateUniforms);
         material.isDirty = false;
         this._lastMaterial = material;
-    },
+    }
+
     /**
      * 设置mesh
      * @param  {Mesh} mesh
@@ -694,7 +735,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      * @return {Program} res.program
      * @return {Geometry} res.geometry
      */
-    setupMesh(mesh, useInstanced) {
+    setupMesh(mesh: any, useInstanced: boolean): { vao: any; program: any; geometry: any } {
         const gl = this.gl;
         const state = this.state;
         const lightManager = this.lightManager;
@@ -728,17 +769,18 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             program,
             geometry
         };
-    },
+    }
+
     /**
      * 增加渲染信息
      * @param {Number} faceCount 面数量
      * @param {Number} drawCount 绘图数量
      */
-    addRenderInfo(faceCount, drawCount) {
+    addRenderInfo(faceCount: number, drawCount: number): void {
         const renderInfo = this.renderInfo;
         renderInfo.addFaceCount(faceCount);
         renderInfo.addDrawCount(drawCount);
-    },
+    }
 
     /**
      * 渲染
@@ -746,7 +788,7 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
      * @param  {Camera} camera
      * @param  {Boolean} [fireEvent=false] 是否发送事件
      */
-    render(stage, camera, fireEvent = false) {
+    render(stage: any, camera: any, fireEvent: boolean = false): void {
         this.initContext();
         if (this.isInitFailed || this._isContextLost) {
             return;
@@ -812,23 +854,25 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         }
 
         resourceManager.destroyUnusedResource(stage);
-    },
+    }
+
     /**
      * 渲染场景
      */
-    renderScene() {
+    renderScene(): void {
         const renderList = this.renderList;
         renderList.traverse((mesh) => {
             this.renderMesh(mesh);
         }, (instancedMeshes) => {
             this.renderInstancedMeshes(instancedMeshes);
         });
-    },
+    }
+
     /**
      * 清除背景
      * @param  {Color} [clearColor=this.clearColor]
      */
-    clear(clearColor) {
+    clear(clearColor?: Color): void {
         const {
             gl,
             state
@@ -847,42 +891,46 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             clearMask |= gl.STENCIL_BUFFER_BIT;
         }
         gl.clear(clearMask);
-    },
+    }
+
     /**
      * 清除深度
      */
-    clearDepth() {
+    clearDepth(): void {
         const {
             gl,
             state
         } = this;
         state.depthMask(true);
         gl.clear(gl.DEPTH_BUFFER_BIT);
-    },
+    }
+
     /**
      * 清除模板
      */
-    clearStencil() {
+    clearStencil(): void {
         const {
             gl,
             state
         } = this;
         state.stencilMask(0xff);
         gl.clear(gl.STENCIL_BUFFER_BIT);
-    },
+    }
+
     /**
      * 将framebuffer渲染到屏幕
      * @param  {Framebuffer} framebuffer
      */
-    renderToScreen(framebuffer) {
+    renderToScreen(framebuffer: Framebuffer): void {
         this.state.bindSystemFramebuffer();
         framebuffer.render(0, 0, 1, 1, this.clearColor);
-    },
+    }
+
     /**
      * 渲染一个mesh
      * @param  {Mesh} mesh
      */
-    renderMesh(mesh, silent = false) {
+    renderMesh(mesh: any, silent: boolean = false): void {
         if (!silent) {
             mesh.fire('beforeRender', mesh);
         }
@@ -892,13 +940,14 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         if (!silent) {
             mesh.fire('afterRender', mesh);
         }
-    },
+    }
+
     /**
      *
      * 渲染一组 instanced mesh
      * @param  {Mesh[]} meshes
      */
-    renderInstancedMeshes(meshes, silent = false) {
+    renderInstancedMeshes(meshes: any[], silent: boolean = false): void {
         const mesh = meshes[0];
         if (!mesh) {
             return;
@@ -928,20 +977,22 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
         if (!silent) {
             meshes.forEach(m => m.fire('afterRender', mesh));
         }
-    },
+    }
+
     /**
      * 渲染一组普通mesh
      * @param  {Mesh[]} meshes
      */
-    renderMultipleMeshes(meshes) {
+    renderMultipleMeshes(meshes: any[]): void {
         meshes.forEach((mesh) => {
             this.renderMesh(mesh);
         });
-    },
+    }
+
     /**
      * 销毁 WebGL 资源
      */
-    releaseGLResource() {
+    releaseGLResource(): void {
         const gl = this.gl;
         if (gl) {
             Program.reset(gl);
@@ -953,6 +1004,6 @@ const WebGLRenderer = Class.create(/** @lends WebGLRenderer.prototype */ {
             Framebuffer.destroy(gl);
         }
     }
-});
+}
 
 export default WebGLRenderer;
