@@ -22,17 +22,20 @@ class AxisNetHelper extends Mesh {
      * @type {boolean}
      */
     isAxisNetHelper: boolean = true;
+
     /**
      * @default AxisNetHelper
      * @type {string}
      */
     className: string = 'AxisNetHelper';
+
     /**
      * 网格线数量的一半(类似圆的半径)
      * @default 5
      * @type {number}
      */
     size: number = 5;
+
     /**
      * 颜色
      * @default new Color(.5, .5, .5)
@@ -46,7 +49,7 @@ class AxisNetHelper extends Mesh {
      */
     constructor(params?: any) {
         super(params);
-        
+
         this.color = this.color || new Color(.5, .5, .5);
 
         const geometry = new Geometry({

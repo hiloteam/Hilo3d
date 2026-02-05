@@ -28,12 +28,15 @@ class CameraHelper extends Mesh {
      * @type {boolean}
      */
     isCameraHelper: boolean = true;
+
     /**
      * @default CameraHelper
      * @type {string}
      */
     className: string = 'CameraHelper';
+
     camera: any = null;
+
     /**
      * 颜色
      * @default new Color(0.3, 0.9, 0.6)

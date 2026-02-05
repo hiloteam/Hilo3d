@@ -30,17 +30,20 @@ class AxisHelper extends Node {
      * @type {boolean}
      */
     isAxisHelper: boolean = true;
+
     /**
      * @default AxisHelper
      * @type {string}
      */
     className: string = 'AxisHelper';
+
     /**
      * 坐标轴的长度，不可变更，需要变可以通过设置 scale
      * @default 1
      * @type {number}
      */
     size: number = 1;
+
     /**
      * @constructs
      * @param {object} [params] 初始化参数
