@@ -30,7 +30,7 @@ class Skeleton {
      * id
      * @type {String}
      */
-    id: string;
+    id!: string;
 
     /**
      * @type {Node[]}

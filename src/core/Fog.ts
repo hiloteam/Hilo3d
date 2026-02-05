@@ -52,7 +52,7 @@ class Fog {
      * id
      * @type {String}
      */
-    id: string;
+    id!: string;
 
     /**
      * 雾颜色
