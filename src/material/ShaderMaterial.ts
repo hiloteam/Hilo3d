@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Material from './Material';
 
 /**
@@ -37,43 +36,50 @@ import Material from './Material';
  *     `
  * });
  */
-const ShaderMaterial = Class.create(/** @lends ShaderMaterial.prototype */{
-    Extends: Material,
+class ShaderMaterial extends Material {
     /**
      * @default true
      * @type {boolean}
      */
-    isShaderMaterial: true,
+    isShaderMaterial: boolean = true;
     /**
      * @default ShaderMaterial
      * @type {string}
      */
-    className: 'ShaderMaterial',
+    className: string = 'ShaderMaterial';
     /**
      * vertex shader 代码
      * @type {string}
      */
-    vs: '',
+    vs: string = '';
     /**
      * fragment shader 代码
      * @type {string}
      */
-    fs: '',
+    fs: string = '';
     /**
      * 是否使用 header cache shader
      * @default true
      * @type {Boolean}
      */
-    useHeaderCache: false,
+    useHeaderCache: boolean = false;
+    /**
+     * 获取定制的渲染参数
+     * @default null
+     * @type {Function}
+     */
+    getCustomRenderOption: ((option: any) => any) | null = null;
+
     /**
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params) {
-        ShaderMaterial.superclass.constructor.call(this, params);
-    },
-    getRenderOption(option = {}) {
-        ShaderMaterial.superclass.getRenderOption.call(this, option);
+    constructor(params?: any) {
+        super(params);
+    }
+
+    getRenderOption(option: any = {}): any {
+        super.getRenderOption(option);
         if (this.getCustomRenderOption) {
             const custumOption = this.getCustomRenderOption({});
             for (let name in custumOption) {
@@ -81,13 +87,7 @@ const ShaderMaterial = Class.create(/** @lends ShaderMaterial.prototype */{
             }
         }
         return option;
-    },
-    /**
-     * 获取定制的渲染参数
-     * @default null
-     * @type {Function}
-     */
-    getCustomRenderOption: null
-});
+    }
+}
 
 export default ShaderMaterial;
