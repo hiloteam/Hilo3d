@@ -1,44 +1,40 @@
-import Class from '../core/Class';
 import Buffer from './Buffer';
+
+// TypedArray type definition
+type TypedArray =
+    | Int8Array
+    | Uint8Array
+    | Uint8ClampedArray
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Float32Array
+    | Float64Array;
 
 /**
  * Uniform Buffer Object
  * @class
  */
-const UniformBuffer = Class.create(/** @lends UniformBuffer.prototype */ {
+class UniformBuffer {
     /**
      * @default Buffer
      * @type {String}
      */
-    className: 'UniformBuffer',
+    className: string = 'UniformBuffer';
 
     /**
      * @default true
      * @type {Boolean}
      */
-    isUniformBuffer: true,
+    isUniformBuffer: boolean = true;
 
     /**
      * is dirty
      * @type {Boolean}
      * @default false
     */
-    isDirty: false,
-
-    /**
-     * data
-     * @type {TypedArray|ArrayBuffer}
-     * @default null
-     */
-    data: {
-        get() {
-            return this._data;
-        },
-        set(data) {
-            this._data = data;
-            this.isDirty = true;
-        }
-    },
+    isDirty: boolean = false;
 
     /**
      * data
@@ -46,23 +42,42 @@ const UniformBuffer = Class.create(/** @lends UniformBuffer.prototype */ {
      * @default null
      * @private
      */
-    _data: null,
+    private _data: TypedArray | ArrayBuffer | null = null;
 
     /**
      * @type {Buffer}
      * @default null
      * @private
      */
-    _buffer: null,
+    private _buffer: Buffer | null = null;
 
     /**
      * @constructs
      */
-    constructor(data) {
-        this.data = data;
-    },
+    constructor(data?: TypedArray | ArrayBuffer) {
+        if (data) {
+            this.data = data;
+        }
+    }
 
-    getBuffer(gl) {
+    /**
+     * data getter
+     * @type {TypedArray|ArrayBuffer}
+     */
+    get data(): TypedArray | ArrayBuffer | null {
+        return this._data;
+    }
+
+    /**
+     * data setter
+     * @type {TypedArray|ArrayBuffer}
+     */
+    set data(data: TypedArray | ArrayBuffer | null) {
+        this._data = data;
+        this.isDirty = true;
+    }
+
+    getBuffer(gl: WebGLRenderingContext | WebGL2RenderingContext): Buffer {
         if (!this._buffer) {
             this._buffer = new Buffer(gl, gl.UNIFORM_BUFFER, null, gl.DYNAMIC_DRAW);
         }
@@ -72,15 +87,15 @@ const UniformBuffer = Class.create(/** @lends UniformBuffer.prototype */ {
             this.isDirty = false;
         }
         return this._buffer;
-    },
+    }
 
-    destroy() {
+    destroy(): void {
         if (this._buffer) {
             this._buffer.destroy();
             this._buffer = null;
         }
         this.isDirty = true;
-    },
-});
+    }
+}
 
 export default UniformBuffer;
