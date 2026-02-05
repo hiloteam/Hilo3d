@@ -2,9 +2,6 @@ import Node from './Node';
 import Ray from '../math/Ray';
 import Matrix4 from '../math/Matrix4';
 import type Vector3 from '../math/Vector3';
-import type { Geometry } from '../geometry/Geometry';
-import type { Material } from '../material/Material';
-import type WebGLRenderer from '../renderer/WebGLRenderer';
 
 const tempRay = new Ray();
 const tempMatrix4 = new Matrix4();
@@ -70,6 +67,7 @@ class Mesh extends Node {
      * @param {Material} [params.material] 材质
      * @param {any} [params.[value:string]] 其它属性
      */
+    // eslint-disable-next-line no-useless-constructor
     constructor(params?: any) {
         super(params);
     }
