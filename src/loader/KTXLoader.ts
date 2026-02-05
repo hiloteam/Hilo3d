@@ -239,12 +239,10 @@ class KTXLoader extends BasicLoader {
     constructor() {
         super();
         extensions.use(KTXLoader.astc);
-        extensions.use((KTXLoader as any).atc);
         extensions.use(KTXLoader.etc);
         extensions.use(KTXLoader.etc1);
         extensions.use(KTXLoader.pvrtc);
         extensions.use(KTXLoader.s3tc);
-        extensions.use((KTXLoader as any).s3tc_srgb);
     }
 
     /**
@@ -253,19 +251,18 @@ class KTXLoader extends BasicLoader {
      */
     load(params: KTXLoaderParams): Promise<Texture> {
         if (params.src instanceof ArrayBuffer) {
-            return Promise.resolve(this.createTexture(params, params.src));
+            return Promise.resolve(KTXLoader.createTexture(params, params.src));
         }
         if (ArrayBuffer.isView(params.src)) {
-            return Promise.resolve(this.createTexture(params, params.src.buffer, params.src.byteOffset));
+            return Promise.resolve(KTXLoader.createTexture(params, params.src.buffer, params.src.byteOffset));
         }
         return this.loadRes(params.src as string, 'buffer')
             .then((buffer: ArrayBuffer) => {
-                return this.createTexture(params, buffer);
+                return KTXLoader.createTexture(params, buffer);
             });
     }
 
-    // eslint-disable-next-line class-methods-use-this
-    createTexture(params: KTXLoaderParams, buffer: ArrayBuffer, baseOffset: number = 0): Texture {
+    static createTexture(params: KTXLoaderParams, buffer: ArrayBuffer, baseOffset: number = 0): Texture {
         const ktx = new KhronosTextureContainer(buffer, 1, baseOffset);
         const data: any = {
             compressed: ktx.glType === 0,
