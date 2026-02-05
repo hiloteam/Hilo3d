@@ -106,11 +106,15 @@ class LoadCache {
             return this;
         }
 
-        let eventListeners = this._listeners[type!];
+        if (!type) {
+            return this;
+        }
+
+        let eventListeners = this._listeners[type];
         if (eventListeners && eventListeners.length > 0) {
             // remove event listeners by specified type
             if (arguments.length === 1) {
-                delete this._listeners[type!];
+                delete this._listeners[type];
                 return this;
             }
 
