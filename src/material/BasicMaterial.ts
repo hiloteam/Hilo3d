@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Material from './Material';
 import Color from '../math/Color';
 
@@ -11,85 +10,84 @@ import Color from '../math/Color';
  *     diffuse: new Hilo3d.Color(1, 0, 0, 1)
  * });
  */
-const BasicMaterial = Class.create(/** @lends BasicMaterial.prototype */ {
-    Extends: Material,
+class BasicMaterial extends Material {
     /**
      * @default true
      * @type {boolean}
      */
-    isBasicMaterial: true,
+    isBasicMaterial: boolean = true;
     /**
      * @default BasicMaterial
      * @type {string}
      */
-    className: 'BasicMaterial',
+    className: string = 'BasicMaterial';
     /**
      * 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
      * @default BLINN-PHONG
      * @type {'NONE'|'PHONG'|'BLINN-PHONG'|'LAMBERT'}
      */
-    lightType: 'BLINN-PHONG',
+    lightType: 'NONE'|'PHONG'|'BLINN-PHONG'|'LAMBERT' = 'BLINN-PHONG';
     /**
      * 漫反射贴图，或颜色
      * @default Color(.5, .5, .5)
      * @type {Texture|Color}
      */
-    diffuse: null,
+    diffuse: any = null;
     /**
      * 环境光贴图，或颜色
      * @default null
      * @type {Texture|Color}
      */
-    ambient: null,
+    ambient: any = null;
     /**
      * 镜面贴图，或颜色
      * @default Color(1, 1, 1)
      * @type {Texture|Color}
      */
-    specular: null,
+    specular: any = null;
     /**
      * 放射光贴图，或颜色
      * @default Color(0, 0, 0)
      * @type {Texture|Color}
      */
-    emission: null,
+    emission: any = null;
     /**
      * 环境贴图
      * @default null
      * @type {CubeTexture|Texture}
      */
-    specularEnvMap: null,
+    specularEnvMap: any = null;
     /**
      * 环境贴图变化矩阵，如旋转等
      * @default null
      * @type {Matrix4}
      */
-    specularEnvMatrix: null,
+    specularEnvMatrix: any = null;
     /**
      * 反射率
      * @default 0
      * @type {number}
      */
-    reflectivity: 0,
+    reflectivity: number = 0;
     /**
      * 折射比率
      * @default 0
      * @type {number}
      */
-    refractRatio: 0,
+    refractRatio: number = 0;
     /**
      * 折射率
      * @default 0
      * @type {number}
      */
-    refractivity: 0,
+    refractivity: number = 0;
     /**
      * 高光发光值
      * @default 32
      * @type {number}
      */
-    shininess: 32,
-    usedUniformVectors: 11,
+    shininess: number = 32;
+    usedUniformVectors: number = 11;
     /**
      * @constructs
      * @param {Object} [params] 初始化参数，所有params都会复制到实例上
@@ -106,11 +104,11 @@ const BasicMaterial = Class.create(/** @lends BasicMaterial.prototype */ {
      * @param {number} [params.shininess=32] 高光发光值
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params) {
+    constructor(params?: any) {
+        super(params);
         this.diffuse = new Color(.5, .5, .5);
         this.specular = new Color(1, 1, 1);
         this.emission = new Color(0, 0, 0);
-        BasicMaterial.superclass.constructor.call(this, params);
 
         Object.assign(this.uniforms, {
             u_diffuse: 'DIFFUSE',
@@ -129,9 +127,9 @@ const BasicMaterial = Class.create(/** @lends BasicMaterial.prototype */ {
             u_specular: 'SPECULAR',
             u_ambient: 'AMBIENT'
         });
-    },
-    getRenderOption(option = {}) {
-        BasicMaterial.superclass.getRenderOption.call(this, option);
+    }
+    getRenderOption(option: any = {}): any {
+        super.getRenderOption(option);
 
         const textureOption = this._textureOption.reset(option);
 
@@ -160,6 +158,6 @@ const BasicMaterial = Class.create(/** @lends BasicMaterial.prototype */ {
 
         return option;
     }
-});
+}
 
 export default BasicMaterial;
