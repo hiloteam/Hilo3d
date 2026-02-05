@@ -1,4 +1,3 @@
-import Class from '../core/Class';
 import Shader from '../shader/Shader';
 import screenVert from '../shader/screen.vert';
 import screenFrag from '../shader/screen.frag';
@@ -17,6 +16,7 @@ import {
 import constants from '../constants';
 import extensions from './extensions';
 import capabilities from './capabilities';
+import WebGLState from './WebGLState';
 
 const {
     FRAMEBUFFER,
@@ -36,7 +36,7 @@ const {
     DRAW_FRAMEBUFFER,
 } = constants;
 
-const cache = new Cache();
+const cache = new Cache<Framebuffer>();
 
 const defaultAttachmentOptions = {
     framebufferTarget: FRAMEBUFFER,
@@ -51,202 +51,249 @@ const defaultAttachmentOptions = {
     wrapT: CLAMP_TO_EDGE,
 };
 
+interface FramebufferParams {
+    width?: number;
+    height?: number;
+    framebufferTarget?: number;
+    target?: number;
+    format?: number;
+    internalFormat?: number;
+    type?: number;
+    minFilter?: number;
+    magFilter?: number;
+    wrapS?: number;
+    wrapT?: number;
+    data?: any;
+    needRenderbuffer?: boolean;
+    useVao?: boolean;
+    colorAttachmentInfos?: AttachmentInfo[];
+    depthStencilAttachmentInfo?: AttachmentInfo;
+}
+
 /**
  * 帧缓冲
  * @class
  */
-const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
-    Statics: {
-        ATTACHMENT_TYPE_TEXTURE: 'TEXTURE',
-        ATTACHMENT_TYPE_RENDERBUFFER: 'RENDERBUFFER',
-        /**
-         * 缓存
-         * @readOnly
-         * @memberOf Framebuffer
-         * @type {Cache}
-         */
-        cache: {
-            get() {
-                return cache;
-            }
-        },
-        /**
-         * 重置所有framebuffer
-         * @memberOf Framebuffer
-         * @param  {WebGLRenderingContext} gl
-         */
-        reset(gl) { // eslint-disable-line no-unused-vars
-            cache.each((framebuffer) => {
-                framebuffer.reset();
-            });
-        },
-        /**
-         * 销毁所有 Framebuffer
-         * @memberOf Framebuffer
-         * @param  {WebGLRenderingContext} gl
-         */
-        destroy(gl) { // eslint-disable-line no-unused-vars
-            cache.each((framebuffer) => {
-                framebuffer.destroy();
-            });
-        },
-    },
+class Framebuffer {
+    static readonly ATTACHMENT_TYPE_TEXTURE = 'TEXTURE';
+    static readonly ATTACHMENT_TYPE_RENDERBUFFER = 'RENDERBUFFER';
+
+    /**
+     * 缓存
+     * @readOnly
+     * @type {Cache}
+     */
+    static get cache(): Cache<Framebuffer> {
+        return cache;
+    }
+
+    /**
+     * 重置所有framebuffer
+     * @param  {WebGLRenderingContext} gl
+     */
+    static reset(gl: WebGLRenderingContext | WebGL2RenderingContext): void {
+        cache.each((framebuffer) => {
+            framebuffer.reset();
+        });
+    }
+
+    /**
+     * 销毁所有 Framebuffer
+     * @param  {WebGLRenderingContext} gl
+     */
+    static destroy(gl: WebGLRenderingContext | WebGL2RenderingContext): void {
+        cache.each((framebuffer) => {
+            framebuffer.destroy();
+        });
+    }
 
     /**
      * @default Framebuffer
      * @type {String}
      */
-    className: 'Framebuffer',
+    className: string = 'Framebuffer';
 
     /**
      * @default true
      * @type {Boolean}
      */
-    isFramebuffer: true,
+    isFramebuffer: boolean = true;
+
+    /**
+     * id
+     * @type {string}
+     */
+    id: string;
 
     /**
      * bufferInternalFormat
      * @type {GLenum}
      * @default gl.DEPTH_STENCIL
      */
-    bufferInternalFormat: DEPTH_STENCIL,
+    bufferInternalFormat: number = DEPTH_STENCIL;
 
     /**
      * framebufferTarget
      * @type {GLenum}
      * @default gl.FRAMEBUFFER
      */
-    framebufferTarget: defaultAttachmentOptions.framebufferTarget,
+    framebufferTarget: number = defaultAttachmentOptions.framebufferTarget;
 
     /**
      * texture target
      * @type {GLenum}
      * @default gl.TEXTURE_2D
      */
-    target: defaultAttachmentOptions.target,
+    target: number = defaultAttachmentOptions.target;
 
     /**
      * texture format
      * @type {GLenum}
      * @default gl.RGBA
      */
-    format: defaultAttachmentOptions.format,
+    format: number = defaultAttachmentOptions.format;
 
     /**
      * texture internalFormat
      * @type {GLenum}
      * @default gl.RGBA
      */
-    internalFormat: defaultAttachmentOptions.internalFormat,
+    internalFormat: number = defaultAttachmentOptions.internalFormat;
 
     /**
      * texture type
      * @type {GLenum}
      * @default gl.UNSIGNED_BYTE
      */
-    type: defaultAttachmentOptions.type,
+    type: number = defaultAttachmentOptions.type;
+
     /**
      * texture minFilter
      * @type {GLenum}
      * @default gl.NEAREST
      */
-    minFilter: defaultAttachmentOptions.minFilter,
+    minFilter: number = defaultAttachmentOptions.minFilter;
 
     /**
      * texture magFilter
      * @type {GLenum}
      * @default gl.NEAREST
      */
-    magFilter: defaultAttachmentOptions.magFilter,
+    magFilter: number = defaultAttachmentOptions.magFilter;
 
     /**
      * texture wrapS
      * @type {GLenum}
      * @default gl.CLAMP_TO_EDGE
      */
-    wrapS: defaultAttachmentOptions.wrapS,
+    wrapS: number = defaultAttachmentOptions.wrapS;
 
     /**
      * texture wrapS
      * @type {GLenum}
      * @default gl.CLAMP_TO_EDGE
      */
-    wrapT: defaultAttachmentOptions.wrapT,
+    wrapT: number = defaultAttachmentOptions.wrapT;
 
     /**
      * texture data
      * @type {TypedArray}
      * @default null
      */
-    data: null,
+    data: any = null;
 
     /**
      * attachment
      * @type {GLenum}
      * @default gl.COLOR_ATTACHMENT0
      */
-    attachment: defaultAttachmentOptions.attachment,
+    attachment: number = defaultAttachmentOptions.attachment;
 
     /**
      * 是否需要renderbuffer
      * @type {Boolean}
      * @default true
      */
-    needRenderbuffer: true,
+    needRenderbuffer: boolean = true;
 
     /**
      * 是否使用VAO
      * @type {Boolean}
      * @default true
      */
-    useVao: true,
+    useVao: boolean = true;
+
+    /**
+     * width
+     * @type {number}
+     */
+    width: number;
+
+    /**
+     * height
+     * @type {number}
+     */
+    height: number;
 
     /**
      * renderer
      * @type {WebGLRenderer}
      * @default null
      */
-    renderer: null,
+    renderer: any;
+
+    /**
+     * gl
+     * @type {WebGLRenderingContext}
+     */
+    gl: WebGLRenderingContext | WebGL2RenderingContext;
+
+    /**
+     * state
+     * @type {WebGLState}
+     */
+    state: WebGLState;
 
     /**
      * texture
      * @type {Texture}
      */
-    texture: null,
+    texture: Texture | null = null;
 
     /**
      * renderbuffer
      * @type {WebGLRenderbuffer}
      */
-    renderbuffer: null,
+    renderbuffer: WebGLRenderbuffer | null = null;
 
     /**
      * framebuffer
      * @type {WebGLFramebuffer}
      */
-    framebuffer: null,
-
-    _isInit: false,
+    framebuffer: WebGLFramebuffer | null = null;
 
     /**
      * colorAttachmentInfos
      * @type {AttachmentInfo[]}
      */
-    colorAttachmentInfos: undefined,
+    colorAttachmentInfos: AttachmentInfo[];
 
     /**
      * depthStencilAttachmentInfo
      * @type {AttachmentInfo}
      */
-    depthStencilAttachmentInfo: undefined,
+    depthStencilAttachmentInfo: AttachmentInfo | undefined;
 
+    private _isInit: boolean = false;
+    private _isDestroyed: boolean = false;
+    private _preFramebuffer: WebGLFramebuffer | null = null;
 
     /**
      * @constructs
      * @param {WebGLRenderer}  renderer
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(renderer, params) {
+    constructor(renderer: any, params?: FramebufferParams) {
         this.id = math.generateUUID(this.className);
         this.renderer = renderer;
         Object.assign(this, params);
@@ -285,11 +332,12 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         }
 
         cache.add(this.id, this);
-    },
+    }
+
     /**
      * init
      */
-    init() {
+    init(): void {
         if (!this._isInit && this.renderer.isInit) {
             this._isInit = true;
             const renderer = this.renderer;
@@ -297,12 +345,13 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             this.state = renderer.state;
             this.reset();
         }
-    },
+    }
+
     /**
      * reset
      * @private
      */
-    reset() {
+    reset(): void {
         this.destroyResource();
         const gl = this.gl;
         /**
@@ -319,10 +368,11 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         }
 
         this.unbind();
-    },
-    _createAttachments() {
+    }
+
+    private _createAttachments(): void {
         const { colorAttachmentInfos, depthStencilAttachmentInfo } = this;
-        const drawBuffers = [];
+        const drawBuffers: number[] = [];
         if (colorAttachmentInfos) {
             colorAttachmentInfos.forEach((attachmentInfo, index) => {
                 const attachment = COLOR_ATTACHMENT0 + index;
@@ -341,7 +391,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         }
 
         if (depthStencilAttachmentInfo) {
-            const attachment = depthStencilAttachmentInfo.attachment;
+            const attachment = depthStencilAttachmentInfo.attachment!;
             switch (depthStencilAttachmentInfo.attachmentType) {
                 case Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER:
                     this._createRenderbufferAttachment(depthStencilAttachmentInfo, attachment);
@@ -356,8 +406,9 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         if (drawBuffers.length > 1 && capabilities.DRAW_BUFFERS) {
             extensions.drawBuffers.drawBuffers(drawBuffers);
         }
-    },
-    _createTextureAttachment(attachmentInfo, attachment) {
+    }
+
+    private _createTextureAttachment(attachmentInfo: AttachmentInfo, attachment: number): Texture {
         const state = this.state;
         const gl = state.gl;
 
@@ -383,57 +434,62 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             this.texture = texture;
         }
         return texture;
-    },
-    _createRenderbufferAttachment(attachmentInfo, attachment) {
+    }
+
+    private _createRenderbufferAttachment(attachmentInfo: AttachmentInfo, attachment: number): WebGLRenderbuffer {
         const {
             gl,
             width,
             height
         } = this;
-        const renderbuffer = gl.createRenderbuffer();
+        const renderbuffer = gl.createRenderbuffer()!;
         gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer);
-        if (attachmentInfo.samples > 0) {
-            gl.renderbufferStorageMultisample(gl.RENDERBUFFER, attachmentInfo.samples, attachmentInfo.internalFormat, width, height);
+        if (attachmentInfo.samples && attachmentInfo.samples > 0) {
+            (gl as WebGL2RenderingContext).renderbufferStorageMultisample(gl.RENDERBUFFER, attachmentInfo.samples, attachmentInfo.internalFormat!, width, height);
         } else {
-            gl.renderbufferStorage(gl.RENDERBUFFER, attachmentInfo.internalFormat, width, height);
+            gl.renderbufferStorage(gl.RENDERBUFFER, attachmentInfo.internalFormat!, width, height);
         }
         gl.framebufferRenderbuffer(attachmentInfo.framebufferTarget || defaultAttachmentOptions.framebufferTarget, attachment, gl.RENDERBUFFER, renderbuffer);
         attachmentInfo.renderbuffer = renderbuffer;
 
         return renderbuffer;
-    },
+    }
+
     /**
      * framebuffer 是否完成
      * @return {Boolean}
      */
-    isComplete() {
+    isComplete(): boolean {
         const gl = this.gl;
         if (gl && gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
             return true;
         }
         return false;
-    },
+    }
+
     /**
      * 绑定
      */
-    bind() {
+    bind(): void {
         this.init();
         if (this._isInit) {
             this._preFramebuffer = this.state.currentFramebuffer;
             this.state.bindFramebuffer(this.gl.FRAMEBUFFER, this.framebuffer);
         }
-    },
+    }
+
     /**
      * 解绑
      */
-    unbind() {
+    unbind(): void {
         this.init();
         if (this._isInit) {
             const state = this.state;
             state.bindFramebuffer(this.gl.FRAMEBUFFER, this._preFramebuffer);
         }
-    },
-    clear(clearColor = new Color(0, 0, 0, 0)) {
+    }
+
+    clear(clearColor: Color = new Color(0, 0, 0, 0)): void {
         if (this._isInit) {
             const {
                 gl
@@ -441,7 +497,8 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             gl.clearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         }
-    },
+    }
+
     /**
      * 渲染当前纹理
      * @param  {Number} [x=0]
@@ -450,7 +507,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
      * @param  {Number} [height=1]
      * @param  {Color} [clearColor=null]
      */
-    render(x = 0, y = 0, width = 1, height = 1, clearColor = null, texture = null) {
+    render(x: number = 0, y: number = 0, width: number = 1, height: number = 1, clearColor: Color | null = null, texture: Texture | null = null): void {
         if (this._isInit) {
             const {
                 gl,
@@ -460,7 +517,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
 
             if (!texture) {
                 if (colorAttachmentInfos[0]) {
-                    texture = colorAttachmentInfos[0].texture;
+                    texture = colorAttachmentInfos[0].texture!;
                 } else {
                     return;
                 }
@@ -499,14 +556,15 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             state.bindTexture(gl.TEXTURE_2D, texture.getGLTexture(state));
             vao.draw();
         }
-    },
+    }
+
     /**
      * resize
      * @param  {Number} width
      * @param  {Number} height
      * @param  {Boolean} [force=true]
      */
-    resize(width, height, force) {
+    resize(width: number, height: number, force?: boolean): void {
         if (force || this.width !== width || this.height !== height) {
             this.width = width;
             this.height = height;
@@ -515,7 +573,8 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
                 this.reset();
             }
         }
-    },
+    }
+
     /**
      * 读取区域像素
      * @param  {Number} x
@@ -524,7 +583,7 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
      * @param  {Number} [height=1]
      * @return {TypedArray}
      */
-    readPixels(x, y, width = 1, height = 1) {
+    readPixels(x: number, y: number, width: number = 1, height: number = 1): ArrayBufferView {
         const TypedArray = getTypedArrayClass(this.type);
         const pixels = new TypedArray(width * height * 4);
 
@@ -539,14 +598,15 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
         }
 
         return pixels;
-    },
+    }
+
     /**
      * copy framebuffer
      */
-    copyFramebuffer(srcFramebuffer, config = {}) {
+    copyFramebuffer(srcFramebuffer: Framebuffer, config: CopyFramebufferConfig = {}): void {
         this.init();
         if (this._isInit) {
-            const gl = this.gl;
+            const gl = this.gl as WebGL2RenderingContext;
             let {
                 mask,
                 filter,
@@ -580,27 +640,29 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             gl.bindFramebuffer(READ_FRAMEBUFFER, null);
             gl.bindFramebuffer(DRAW_FRAMEBUFFER, null);
         }
-    },
+    }
+
     /**
      * 销毁资源
      * @return {Framebuffer} this
      */
-    destroy() {
+    destroy(): this {
         if (this._isDestroyed) {
             return this;
         }
         this.destroyResource();
-        this.gl = null;
+        this.gl = null!;
         cache.removeObject(this);
 
         this._isDestroyed = true;
         return this;
-    },
+    }
+
     /**
      * 只销毁 gl 资源
      * @return {Framebuffer} this
      */
-    destroyResource() {
+    destroyResource(): this {
         const gl = this.gl;
         if (gl) {
             if (this.framebuffer) {
@@ -611,8 +673,8 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
             if (this.colorAttachmentInfos) {
                 this.colorAttachmentInfos.forEach((attachmentInfo) => {
                     const { texture, renderbuffer } = attachmentInfo;
-                    attachmentInfo.texture = null;
-                    attachmentInfo.renderbuffer = null;
+                    attachmentInfo.texture = undefined;
+                    attachmentInfo.renderbuffer = undefined;
                     if (texture) {
                         texture.destroy();
                     } else if (renderbuffer) {
@@ -623,8 +685,8 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
 
             if (this.depthStencilAttachmentInfo) {
                 const { texture, renderbuffer } = this.depthStencilAttachmentInfo;
-                this.depthStencilAttachmentInfo.texture = null;
-                this.depthStencilAttachmentInfo.renderbuffer = null;
+                this.depthStencilAttachmentInfo.texture = undefined;
+                this.depthStencilAttachmentInfo.renderbuffer = undefined;
                 if (texture) {
                     texture.destroy();
                 } else if (renderbuffer) {
@@ -632,10 +694,18 @@ const Framebuffer = Class.create(/** @lends Framebuffer.prototype */ {
                 }
             }
         }
+        return this;
     }
-});
+}
 
 export default Framebuffer;
+
+interface CopyFramebufferConfig {
+    mask?: number;
+    filter?: number;
+    srcSize?: number[];
+    dstSize?: number[];
+}
 
 /**
  * @typedef {object} AttachmentInfo
@@ -655,3 +725,20 @@ export default Framebuffer;
  * @property {Texture} texture
  * @property {WebGLRenderbuffer} renderbuffer
  */
+interface AttachmentInfo {
+    attachmentType?: string;
+    framebufferTarget?: number;
+    attachment?: number;
+    samples?: number;
+    target?: number;
+    internalFormat?: number;
+    format?: number;
+    type?: number;
+    minFilter?: number;
+    magFilter?: number;
+    wrapS?: number;
+    wrapT?: number;
+    data?: any;
+    texture?: Texture;
+    renderbuffer?: WebGLRenderbuffer;
+}
