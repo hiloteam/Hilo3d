@@ -22,6 +22,7 @@ export interface ShadowConfig {
  */
 class Light extends Node {
     readonly isLight: boolean = true;
+
     readonly className: string = 'Light';
 
     /**
@@ -140,10 +141,11 @@ class Light extends Node {
 
     /**
      * 生成阴影贴图，支持阴影的子类需要重写
-     * @param  {WebGLRenderer} renderer
-     * @param  {Camera} camera
+     * @param  {WebGLRenderer} _renderer
+     * @param  {Camera} _camera
      */
-    createShadowMap(renderer: any, camera: any): void { // eslint-disable-line no-unused-vars
+    // eslint-disable-next-line class-methods-use-this
+    createShadowMap(_renderer: any, _camera: any): void {
 
     }
 }

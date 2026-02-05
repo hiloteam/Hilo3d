@@ -120,10 +120,12 @@ class AreaLight extends Light {
      * ltcTexture1
      * @type {DataTexture}
      */
+    // eslint-disable-next-line class-methods-use-this
     get ltcTexture1(): DataTexture | null {
         return AreaLight.ltcTexture1;
     }
 
+    // eslint-disable-next-line class-methods-use-this
     set ltcTexture1(texture: DataTexture | null) {
         AreaLight.ltcTexture1 = texture;
     }
@@ -132,10 +134,12 @@ class AreaLight extends Light {
      * ltcTexture2
      * @type {DataTexture}
      */
+    // eslint-disable-next-line class-methods-use-this
     get ltcTexture2(): DataTexture | null {
         return AreaLight.ltcTexture2;
     }
 
+    // eslint-disable-next-line class-methods-use-this
     set ltcTexture2(texture: DataTexture | null) {
         AreaLight.ltcTexture2 = texture;
     }

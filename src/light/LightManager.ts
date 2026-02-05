@@ -115,9 +115,13 @@ class LightManager {
     lightInfo: LightInfo;
 
     directionalInfo?: DirectionalInfo;
+
     pointInfo?: PointInfo;
+
     spotInfo?: SpotInfo;
+
     areaInfo?: AreaInfo;
+
     ambientInfo?: Float32Array;
 
     /**

@@ -28,6 +28,7 @@ class SpotLight extends Light {
     lightShadow: LightShadow | null = null;
 
     private _cutoffCos: number = 0.9763;
+
     private _cutoff: number = 12.5;
 
     /**
@@ -45,6 +46,7 @@ class SpotLight extends Light {
     }
 
     private _outerCutoffCos: number = 0.9537;
+
     private _outerCutoff: number = 17.5;
 
     /**
