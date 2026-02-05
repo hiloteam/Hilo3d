@@ -138,6 +138,11 @@ class OrthographicCamera extends Camera {
         this.projectionMatrix.ortho(this.left, this.right, this.bottom, this.top, this.near, this.far);
     }
 
+    /**
+     * 获取几何体
+     * @param {Boolean} forceUpdate 是否强制更新
+     * @return {Geometry} 摄像机视锥体几何体
+     */
     getGeometry(forceUpdate?: boolean): Geometry {
         if (forceUpdate || !this._geometry || this._isGeometryDirty) {
             this._isGeometryDirty = false;
