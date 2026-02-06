@@ -1,6 +1,7 @@
 import Color from '../math/Color';
 import Material from './Material';
 import capabilities from '../renderer/capabilities';
+import type { PBRMaterialParams } from '../types/common';
 
 /**
  * PBR材质
@@ -268,7 +269,7 @@ class PBRMaterial extends Material {
      * @param {number} [params.specularEnvIntensity=1] 环境反射(Specular IBL)贴图强度
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params?: any) {
+    constructor(params?: PBRMaterialParams) {
         super(params);
 
         Object.assign(this.uniforms, {

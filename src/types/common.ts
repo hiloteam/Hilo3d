@@ -7,6 +7,8 @@ import type Material from '../material/Material';
 import type Fog from '../core/Fog';
 import type Geometry from '../geometry/Geometry';
 import type Skeleton from '../core/Skeleton';
+import type Texture from '../texture/Texture';
+import type Color from '../math/Color';
 
 /**
  * Mesh-like object interface
@@ -96,3 +98,71 @@ export interface ShaderParams {
     fs?: string;
     alwaysUse?: boolean;
 }
+
+/**
+ * Base material constructor parameters
+ */
+export interface MaterialParams {
+    id?: string;
+    name?: string;
+    lightType?: string;
+    diffuse?: Color | null;
+    ambient?: Color | null;
+    specular?: Color | null;
+    emission?: Color | null;
+    shininess?: number;
+    transparency?: number;
+    alphaCutoff?: number;
+    normalMap?: Texture | null;
+    parallaxMap?: Texture | null;
+    emissionMap?: Texture | null;
+    specularMap?: Texture | null;
+    diffuseMap?: Texture | null;
+    ambientMap?: Texture | null;
+    alphaMap?: Texture | null;
+    transparentMap?: Texture | null;
+    side?: string;
+    gammaOutput?: boolean;
+    gammaFactor?: number;
+    useHDR?: boolean;
+    uvMatrix?: any; // Matrix3 but avoid circular dependency
+    uvMatrix1?: any; // Matrix3
+    writeOriginData?: boolean;
+    premultiplyAlpha?: boolean;
+    [key: string]: any; // Allow additional custom properties
+}
+
+/**
+ * PBR material constructor parameters
+ */
+export interface PBRMaterialParams extends MaterialParams {
+    baseColor?: Color | null;
+    metallic?: number;
+    roughness?: number;
+    baseColorMap?: Texture | null;
+    metallicMap?: Texture | null;
+    roughnessMap?: Texture | null;
+    metallicRoughnessMap?: Texture | null;
+    occlusionMap?: Texture | null;
+    brdfLUT?: Texture | null;
+}
+
+/**
+ * Shader material constructor parameters
+ */
+export interface ShaderMaterialParams extends MaterialParams {
+    vs?: string;
+    fs?: string;
+    uniforms?: any;
+    attributes?: any;
+    shaderCacheId?: string;
+    useHeaderCache?: boolean;
+}
+
+/**
+ * Geometry material constructor parameters
+ */
+export interface GeometryMaterialParams extends MaterialParams {
+    useInstanced?: boolean;
+}
+
