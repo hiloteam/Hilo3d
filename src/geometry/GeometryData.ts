@@ -8,6 +8,7 @@ import {
     getTypedArrayGLType,
     getTypedArrayClass
 } from '../utils/util';
+import type { GeometryDataParams } from '../types/common';
 
 type TypedArray = Int8Array | Uint8Array | Int16Array | Uint16Array | Int32Array | Uint32Array | Float32Array | Float64Array;
 
@@ -102,7 +103,7 @@ class GeometryData {
      * @param  {Number} size The number of components per vertex attribute.Must be 1, 2, 3, or 4.
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(data: TypedArray | null, size: number, params?: any) {
+    constructor(data: TypedArray | null, size: number, params?: GeometryDataParams) {
         this.id = math.generateUUID(this.className);
         this.size = size;
 

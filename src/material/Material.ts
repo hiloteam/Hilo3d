@@ -3,7 +3,7 @@ import semantic from './semantic';
 import log from '../utils/log';
 import constants from '../constants';
 import capabilities from '../renderer/capabilities';
-import type { MaterialParams } from '../types/common';
+import type { MaterialParams, RenderOptions } from '../types/common';
 
 const {
     LEQUAL,
@@ -685,7 +685,7 @@ class Material {
      * 增加贴图 uniforms
      * @param {Object} textureUniforms textureName:semanticName 键值对
      */
-    addTextureUniforms(textureUniforms: any) {
+    addTextureUniforms(textureUniforms: Record<string, string>) {
         const uniforms = {};
 
         for (const uniformName in textureUniforms) {
@@ -702,7 +702,7 @@ class Material {
      * @param  {Object} [option={}] 渲染选项值
      * @return {Object} 渲染选项值
      */
-    getRenderOption(option: any = {}) {
+    getRenderOption(option: RenderOptions = {}): RenderOptions {
         const lightType = this.lightType;
         option[`LIGHT_TYPE_${lightType}`] = 1;
         option.SIDE = this.side;
