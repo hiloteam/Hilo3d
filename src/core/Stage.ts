@@ -1,4 +1,5 @@
 import Node from './Node';
+/* eslint-disable class-methods-use-this */
 import version from './version';
 import WebGLRenderer from '../renderer/WebGLRenderer';
 import Ray from '../math/Ray';

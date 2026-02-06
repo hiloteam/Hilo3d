@@ -1,4 +1,5 @@
 import math from '../math/math';
+/* eslint-disable class-methods-use-this */
 import semantic from './semantic';
 import log from '../utils/log';
 import constants from '../constants';

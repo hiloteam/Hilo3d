@@ -1,4 +1,5 @@
 import Ray3d from 'ray-3d';
+/* eslint-disable class-methods-use-this */
 import Vector3 from './Vector3';
 import Matrix4 from './Matrix4';
 

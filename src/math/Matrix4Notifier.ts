@@ -1,4 +1,5 @@
 import {
+/* eslint-disable class-methods-use-this */
     mat4
 } from 'gl-matrix';
 import Vector3 from './Vector3';

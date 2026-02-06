@@ -1,4 +1,5 @@
 import Node from '../core/Node';
+/* eslint-disable class-methods-use-this */
 import Matrix4 from '../math/Matrix4';
 import Frustum from '../math/Frustum';
 import Vector3 from '../math/Vector3';

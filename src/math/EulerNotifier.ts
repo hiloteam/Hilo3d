@@ -1,4 +1,5 @@
 import math from './math';
+/* eslint-disable class-methods-use-this */
 import Euler from './Euler';
 
 const DEG2RAD = math.DEG2RAD;

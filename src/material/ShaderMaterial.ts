@@ -80,6 +80,7 @@ class ShaderMaterial extends Material {
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
+    // eslint-disable-next-line no-useless-constructor
     constructor(params?: ShaderMaterialParams) {
         super(params);
     }

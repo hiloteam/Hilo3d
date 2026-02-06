@@ -1,4 +1,5 @@
 import math from '../math/math';
+/* eslint-disable class-methods-use-this */
 import { EventObject, EventMixinCallback } from '../core/EventMixin';
 import log from '../utils/log';
 import AnimationStates from './AnimationStates';
