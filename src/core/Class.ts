@@ -41,7 +41,7 @@ const Class = (function() {
             };
             defineProperties = function(obj, props) {
                 for (const prop in props) {
-                    if (props.hasOwnProperty(prop)) { // eslint-disable-line
+                    if (Object.prototype.hasOwnProperty.call(props, prop)) {
                         defineProperty(obj, prop, props[prop]);
                     }
                 }
@@ -115,10 +115,11 @@ const Class = (function() {
                 items = [items];
             }
             const proto = this.prototype;
-            let item;
 
-            while (item = items.shift()) { // eslint-disable-line
+            let item = items.shift();
+            while (item) {
                 mix(proto, item.prototype || item);
+                item = items.shift();
             }
         },
 
@@ -133,7 +134,7 @@ const Class = (function() {
             key;
         for (key in properties) {
             value = properties[key];
-            if (classMutators.hasOwnProperty(key)) { // eslint-disable-line
+            if (Object.prototype.hasOwnProperty.call(classMutators, key)) {
                 classMutators[key].call(this, value);
             } else {
                 proto[key] = value;
@@ -156,7 +157,7 @@ const Class = (function() {
      */
     const create = function(properties) {
         properties = properties || {};
-        const clazz = properties.hasOwnProperty('constructor') ? properties.constructor : function() {}; // eslint-disable-line
+        const clazz = Object.prototype.hasOwnProperty.call(properties, 'constructor') ? properties.constructor : function() {};
         implement.call(clazz, properties);
         return clazz;
     };

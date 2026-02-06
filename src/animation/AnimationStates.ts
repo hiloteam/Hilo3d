@@ -1,5 +1,4 @@
 import math from '../math/math';
-/* eslint-disable class-methods-use-this */
 import Quaternion from '../math/Quaternion';
 import Euler from '../math/Euler';
 import {

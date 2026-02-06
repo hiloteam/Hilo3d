@@ -162,7 +162,7 @@ class VertexArrayObject {
 
     private _isDestroyed: boolean = false;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
+    // eslint-disable-next-line no-undef
     [key: string]: any;
 
     /**

@@ -1,5 +1,4 @@
 import {
-/* eslint-disable class-methods-use-this */
     quat
 } from 'gl-matrix';
 import Matrix3 from './Matrix3';

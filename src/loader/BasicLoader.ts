@@ -269,7 +269,6 @@ class BasicLoader {
      * @param {string} url 需要判断的链接
      * @return {boolean} 是否跨域
      */
-    // eslint-disable-next-line class-methods-use-this
     isCrossOrigin(url: string): boolean {
         const loc = window.location;
         const a = document.createElement('a');
@@ -277,12 +276,10 @@ class BasicLoader {
         return a.hostname !== loc.hostname || a.port !== loc.port || a.protocol !== loc.protocol;
     }
 
-    // eslint-disable-next-line class-methods-use-this
     isBase64(url: string): boolean {
         return /^data:(.+?);base64,/.test(url);
     }
 
-    // eslint-disable-next-line class-methods-use-this
     Uint8ArrayFrom(source: string, mapFn: (char: string) => number): Uint8Array {
         if (Uint8Array.from) {
             return Uint8Array.from(source, mapFn);

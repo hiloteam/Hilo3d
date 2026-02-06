@@ -144,7 +144,6 @@ class Light extends Node {
      * @param  {WebGLRenderer} _renderer
      * @param  {Camera} _camera
      */
-    // eslint-disable-next-line class-methods-use-this
     createShadowMap(_renderer: any, _camera: any): void {
 
     }

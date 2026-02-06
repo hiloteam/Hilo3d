@@ -323,7 +323,6 @@ class Texture {
         return this.minFilter !== LINEAR && this.minFilter !== NEAREST;
     }
 
-    // eslint-disable-next-line class-methods-use-this
     set useMipmap(value: boolean) {
         log.warn('texture.useMipmap is readOnly!');
     }
@@ -337,7 +336,6 @@ class Texture {
         return this.wrapS !== CLAMP_TO_EDGE || this.wrapT !== CLAMP_TO_EDGE;
     }
 
-    // eslint-disable-next-line class-methods-use-this
     set useRepeat(value: boolean) {
         log.warn('texture.useRepeat is readOnly!');
     }
@@ -351,7 +349,6 @@ class Texture {
         return Math.floor(Math.log2(Math.max(this.width, this.height)) + 1);
     }
 
-    // eslint-disable-next-line class-methods-use-this
     set mipmapCount(value: number) {
         log.warn('texture.mipmapCount is readOnly!');
     }
@@ -374,7 +371,6 @@ class Texture {
      * @param  {HTMLImageElement}  img
      * @return {Boolean}
      */
-    // eslint-disable-next-line class-methods-use-this
     isImgPowerOfTwo(img: any): boolean {
         return math.isPowerOfTwo(img.width) && math.isPowerOfTwo(img.height);
     }

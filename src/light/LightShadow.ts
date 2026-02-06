@@ -255,7 +255,6 @@ class LightShadow {
         renderer.viewport();
     }
 
-    // eslint-disable-next-line class-methods-use-this
     renderShadowScene(renderer: any, shadowMaterial: GeometryMaterial): void {
         const preForceMaterial = renderer.forceMaterial;
 
