@@ -6,9 +6,7 @@ import basicFragCode from './basic.frag';
 import basicVertCode from './basic.vert';
 import geometryFragCode from './geometry.frag';
 import pbrFragCode from './pbr.frag';
-import type {
-    MeshLike, MaterialLike, LightManagerLike, FogLike, WebGLRendererLike, RenderOptions, ShaderParams
-} from '../types/common';
+import type { MeshLike, MaterialLike, LightManagerLike, FogLike, WebGLRendererLike, RenderOptions, ShaderParams } from '../types/common';
 
 const cache = new Cache();
 const headerCache = new Cache();
@@ -57,11 +55,8 @@ class Shader {
     private _isDestroyed: boolean = false;
 
     static renderer: WebGLRendererLike;
-
     static commonHeader: string;
-
     static commonOptions: RenderOptions = {};
-
     /**
      * 内部的所有shader块字符串，可以用来拼接glsl代码
      * @type {Object}

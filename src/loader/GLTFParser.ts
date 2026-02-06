@@ -20,10 +20,7 @@ import log from '../utils/log';
 import BasicLoader from './BasicLoader';
 import * as util from '../utils/util';
 import * as extensionHandlers from './GLTFExtensions';
-import type {
-    GLTFData,
-    GLTFImage
-} from '../types/common';
+import type { GLTFData, GLTFNode, GLTFMesh, GLTFMaterial, GLTFPrimitive, GLTFAccessor, GLTFTexture, GLTFImage } from '../types/common';
 
 import constants from '../constants';
 

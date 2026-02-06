@@ -1,6 +1,4 @@
-import type {
-    ANGLEInstancedArraysExtension, GLenum, GLint, GLsizei, GLintptr, GLuint
-} from '../../types/common';
+import type { ANGLEInstancedArraysExtension } from '../../types/common';
 
 export class WebGL1InstancedArraysExtension {
     private _ext: ANGLEInstancedArraysExtension;

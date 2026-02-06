@@ -1,4 +1,4 @@
-import type { OESVertexArrayObjectExtension, GLboolean } from '../../types/common';
+import type { OESVertexArrayObjectExtension } from '../../types/common';
 
 export class WebGL1VertexArrayObjectExtension {
     private _ext: OESVertexArrayObjectExtension;
