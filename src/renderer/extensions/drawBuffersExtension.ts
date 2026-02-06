@@ -1,3 +1,5 @@
+import type { GLenum } from '../../types/common';
+
 export class WebGL1DrawBuffersExtension {
     private _ext: any;
 

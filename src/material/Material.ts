@@ -3,7 +3,7 @@ import semantic from './semantic';
 import log from '../utils/log';
 import constants from '../constants';
 import capabilities from '../renderer/capabilities';
-import type { MaterialParams, RenderOptions } from '../types/common';
+import type { MaterialParams, RenderOptions, GLenum } from '../types/common';
 
 const {
     LEQUAL,

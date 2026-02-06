@@ -43,7 +43,9 @@ class Ray {
     isRay: boolean = true;
 
     private _origin: Vector3;
+
     private _direction: Vector3;
+
     private _ray: Ray3d;
 
     /**

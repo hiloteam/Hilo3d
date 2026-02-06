@@ -19,13 +19,13 @@ class Matrix4 {
      * @default Matrix4
      */
     className: string = 'Matrix4';
-    
+
     /**
      * @type {Boolean}
      * @default true
      */
     isMatrix4: boolean = true;
-    
+
     /**
      * 数据
      * @type {Float32Array}

@@ -2,13 +2,18 @@
  * Common TypeScript type definitions for Hilo3d
  */
 
-import type Mesh from '../core/Mesh';
-import type Material from '../material/Material';
-import type Fog from '../core/Fog';
 import type Geometry from '../geometry/Geometry';
 import type Skeleton from '../core/Skeleton';
 import type Texture from '../texture/Texture';
 import type Color from '../math/Color';
+
+// WebGL type aliases
+export type GLenum = number;
+export type GLint = number;
+export type GLuint = number;
+export type GLsizei = number;
+export type GLintptr = number;
+export type GLboolean = boolean;
 
 /**
  * Mesh-like object interface

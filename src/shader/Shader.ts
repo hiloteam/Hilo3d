@@ -6,7 +6,9 @@ import basicFragCode from './basic.frag';
 import basicVertCode from './basic.vert';
 import geometryFragCode from './geometry.frag';
 import pbrFragCode from './pbr.frag';
-import type { MeshLike, MaterialLike, LightManagerLike, FogLike, WebGLRendererLike, RenderOptions, ShaderParams } from '../types/common';
+import type {
+    MeshLike, MaterialLike, LightManagerLike, FogLike, WebGLRendererLike, RenderOptions, ShaderParams
+} from '../types/common';
 
 const cache = new Cache();
 const headerCache = new Cache();
@@ -22,17 +24,20 @@ class Shader {
      * @type {boolean}
      */
     isShader: boolean = true;
+
     /**
      * @default Shader
      * @type {string}
      */
     className: string = 'Shader';
+
     /**
      * vs 顶点代码
      * @default ''·
      * @type {String}
      */
     vs: string = '';
+
     /**
      * vs 片段代码
      * @default ''
@@ -48,72 +53,76 @@ class Shader {
     alwaysUse: boolean = false;
 
     id: string;
+
     private _isDestroyed: boolean = false;
 
     static renderer: WebGLRendererLike;
+
     static commonHeader: string;
+
     static commonOptions: RenderOptions = {};
+
     /**
      * 内部的所有shader块字符串，可以用来拼接glsl代码
      * @type {Object}
      */
     static shaders: Record<string, any> = {
-            'chunk/baseDefine.glsl': require('./chunk/baseDefine.glsl'),
-            'chunk/color.frag': require('./chunk/color.frag'),
-            'chunk/color.vert': require('./chunk/color.vert'),
-            'chunk/color_main.vert': require('./chunk/color_main.vert'),
-            'chunk/diffuse.frag': require('./chunk/diffuse.frag'),
-            'chunk/diffuse_main.frag': require('./chunk/diffuse_main.frag'),
-            'chunk/extensions.frag': require('./chunk/extensions.frag'),
-            'chunk/extensions.vert': require('./chunk/extensions.vert'),
-            'chunk/fog.frag': require('./chunk/fog.frag'),
-            'chunk/fog_main.frag': require('./chunk/fog_main.frag'),
-            'chunk/frag_color.frag': require('./chunk/frag_color.frag'),
-            'chunk/joint.vert': require('./chunk/joint.vert'),
-            'chunk/joint_main.vert': require('./chunk/joint_main.vert'),
-            'chunk/light.frag': require('./chunk/light.frag'),
-            'chunk/lightFog.frag': require('./chunk/lightFog.frag'),
-            'chunk/lightFog.vert': require('./chunk/lightFog.vert'),
-            'chunk/lightFog_main.frag': require('./chunk/lightFog_main.frag'),
-            'chunk/lightFog_main.vert': require('./chunk/lightFog_main.vert'),
-            'chunk/logDepth.frag': require('./chunk/logDepth.frag'),
-            'chunk/logDepth_main.frag': require('./chunk/logDepth_main.frag'),
-            'chunk/logDepth.vert': require('./chunk/logDepth.vert'),
-            'chunk/logDepth_main.vert': require('./chunk/logDepth_main.vert'),
-            'chunk/morph.vert': require('./chunk/morph.vert'),
-            'chunk/morph_main.vert': require('./chunk/morph_main.vert'),
-            'chunk/normal.frag': require('./chunk/normal.frag'),
-            'chunk/normal.vert': require('./chunk/normal.vert'),
-            'chunk/normal_main.frag': require('./chunk/normal_main.frag'),
-            'chunk/normal_main.vert': require('./chunk/normal_main.vert'),
-            'chunk/pbr.frag': require('./chunk/pbr.frag'),
-            'chunk/pbr_main.frag': require('./chunk/pbr_main.frag'),
-            'chunk/phong.frag': require('./chunk/phong.frag'),
-            'chunk/phong_main.frag': require('./chunk/phong_main.frag'),
-            'chunk/precision.frag': require('./chunk/precision.frag'),
-            'chunk/precision.vert': require('./chunk/precision.vert'),
-            'chunk/transparency.frag': require('./chunk/transparency.frag'),
-            'chunk/transparency_main.frag': require('./chunk/transparency_main.frag'),
-            'chunk/unQuantize.vert': require('./chunk/unQuantize.vert'),
-            'chunk/unQuantize_main.vert': require('./chunk/unQuantize_main.vert'),
-            'chunk/uv.frag': require('./chunk/uv.frag'),
-            'chunk/uv.vert': require('./chunk/uv.vert'),
-            'chunk/uv_main.vert': require('./chunk/uv_main.vert'),
+        'chunk/baseDefine.glsl': require('./chunk/baseDefine.glsl'),
+        'chunk/color.frag': require('./chunk/color.frag'),
+        'chunk/color.vert': require('./chunk/color.vert'),
+        'chunk/color_main.vert': require('./chunk/color_main.vert'),
+        'chunk/diffuse.frag': require('./chunk/diffuse.frag'),
+        'chunk/diffuse_main.frag': require('./chunk/diffuse_main.frag'),
+        'chunk/extensions.frag': require('./chunk/extensions.frag'),
+        'chunk/extensions.vert': require('./chunk/extensions.vert'),
+        'chunk/fog.frag': require('./chunk/fog.frag'),
+        'chunk/fog_main.frag': require('./chunk/fog_main.frag'),
+        'chunk/frag_color.frag': require('./chunk/frag_color.frag'),
+        'chunk/joint.vert': require('./chunk/joint.vert'),
+        'chunk/joint_main.vert': require('./chunk/joint_main.vert'),
+        'chunk/light.frag': require('./chunk/light.frag'),
+        'chunk/lightFog.frag': require('./chunk/lightFog.frag'),
+        'chunk/lightFog.vert': require('./chunk/lightFog.vert'),
+        'chunk/lightFog_main.frag': require('./chunk/lightFog_main.frag'),
+        'chunk/lightFog_main.vert': require('./chunk/lightFog_main.vert'),
+        'chunk/logDepth.frag': require('./chunk/logDepth.frag'),
+        'chunk/logDepth_main.frag': require('./chunk/logDepth_main.frag'),
+        'chunk/logDepth.vert': require('./chunk/logDepth.vert'),
+        'chunk/logDepth_main.vert': require('./chunk/logDepth_main.vert'),
+        'chunk/morph.vert': require('./chunk/morph.vert'),
+        'chunk/morph_main.vert': require('./chunk/morph_main.vert'),
+        'chunk/normal.frag': require('./chunk/normal.frag'),
+        'chunk/normal.vert': require('./chunk/normal.vert'),
+        'chunk/normal_main.frag': require('./chunk/normal_main.frag'),
+        'chunk/normal_main.vert': require('./chunk/normal_main.vert'),
+        'chunk/pbr.frag': require('./chunk/pbr.frag'),
+        'chunk/pbr_main.frag': require('./chunk/pbr_main.frag'),
+        'chunk/phong.frag': require('./chunk/phong.frag'),
+        'chunk/phong_main.frag': require('./chunk/phong_main.frag'),
+        'chunk/precision.frag': require('./chunk/precision.frag'),
+        'chunk/precision.vert': require('./chunk/precision.vert'),
+        'chunk/transparency.frag': require('./chunk/transparency.frag'),
+        'chunk/transparency_main.frag': require('./chunk/transparency_main.frag'),
+        'chunk/unQuantize.vert': require('./chunk/unQuantize.vert'),
+        'chunk/unQuantize_main.vert': require('./chunk/unQuantize_main.vert'),
+        'chunk/uv.frag': require('./chunk/uv.frag'),
+        'chunk/uv.vert': require('./chunk/uv.vert'),
+        'chunk/uv_main.vert': require('./chunk/uv_main.vert'),
 
-            'method/encoding.glsl': require('./method/encoding.glsl'),
-            'method/getDiffuse.glsl': require('./method/getDiffuse.glsl'),
-            'method/getLightAttenuation.glsl': require('./method/getLightAttenuation.glsl'),
-            'method/getShadow.glsl': require('./method/getShadow.glsl'),
-            'method/getSpecular.glsl': require('./method/getSpecular.glsl'),
-            'method/packFloat.glsl': require('./method/packFloat.glsl'),
-            'method/textureEnvMap.glsl': require('./method/textureEnvMap.glsl'),
-            'method/transpose.glsl': require('./method/transpose.glsl'),
-            'method/unpackFloat.glsl': require('./method/unpackFloat.glsl'),
+        'method/encoding.glsl': require('./method/encoding.glsl'),
+        'method/getDiffuse.glsl': require('./method/getDiffuse.glsl'),
+        'method/getLightAttenuation.glsl': require('./method/getLightAttenuation.glsl'),
+        'method/getShadow.glsl': require('./method/getShadow.glsl'),
+        'method/getSpecular.glsl': require('./method/getSpecular.glsl'),
+        'method/packFloat.glsl': require('./method/packFloat.glsl'),
+        'method/textureEnvMap.glsl': require('./method/textureEnvMap.glsl'),
+        'method/transpose.glsl': require('./method/transpose.glsl'),
+        'method/unpackFloat.glsl': require('./method/unpackFloat.glsl'),
 
-            'basic.frag': require('./basic.frag'),
-            'basic.vert': require('./basic.vert'),
-            'geometry.frag': require('./geometry.frag'),
-            'pbr.frag': require('./pbr.frag'),
+        'basic.frag': require('./basic.frag'),
+        'basic.vert': require('./basic.vert'),
+        'geometry.frag': require('./geometry.frag'),
+        'pbr.frag': require('./pbr.frag'),
         'screen.frag': require('./screen.frag'),
         'screen.vert': require('./screen.vert')
     };

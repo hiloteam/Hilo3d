@@ -13,13 +13,13 @@ class Matrix3 {
      * @default Matrix3
      */
     className: string = 'Matrix3';
-    
+
     /**
      * @type {Boolean}
      * @default true
      */
     isMatrix3: boolean = true;
-    
+
     /**
      * 数据
      * @type {Float32Array}

@@ -167,7 +167,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POSITION: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.vertices;
         }
     },
@@ -176,7 +176,7 @@ const semantic = {
      * @type {semanticObject}
      */
     NORMAL: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.normals;
         }
     },
@@ -185,7 +185,7 @@ const semantic = {
      * @type {semanticObject}
      */
     TANGENT: {
-        get(mesh, material, programInfo) {
+        get(mesh, material, _programInfo) {
             const normalMap = material.normalMap || material.clearcoatNormalMap;
             if (normalMap && normalMap.isTexture) {
                 if (Number(normalMap.uv) === 1) {
@@ -200,7 +200,7 @@ const semantic = {
      * @type {semanticObject}
      */
     TEXCOORD_0: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (!mesh.geometry.uvs) {
                 return undefined;
             }
@@ -212,7 +212,7 @@ const semantic = {
      * @type {semanticObject}
      */
     TEXCOORD_1: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (!mesh.geometry.uvs1) {
                 return undefined;
             }
@@ -224,7 +224,7 @@ const semantic = {
      * @type {semanticObject}
      */
     UVMATRIX_0: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (!material.uvMatrix) {
                 return undefined;
             }
@@ -236,7 +236,7 @@ const semantic = {
      * @type {semanticObject}
      */
     UVMATRIX_1: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (!material.uvMatrix1) {
                 return undefined;
             }
@@ -248,7 +248,7 @@ const semantic = {
      * @type {semanticObject}
      */
     CAMERAFAR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (camera.isPerspectiveCamera) {
                 return camera.far;
             }
@@ -260,7 +260,7 @@ const semantic = {
      * @type {semanticObject}
      */
     CAMERANEAR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (camera.isPerspectiveCamera) {
                 return camera.near;
             }
@@ -272,7 +272,7 @@ const semantic = {
      * @type {semanticObject}
      */
     CAMERATYPE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (camera.isPerspectiveCamera) {
                 return 1;
             }
@@ -281,7 +281,7 @@ const semantic = {
     },
 
     CAMERAPOSITION: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return camera.worldMatrix.getTranslation(tempVector3).elements;
         }
     },
@@ -291,7 +291,7 @@ const semantic = {
      * @type {semanticObject}
      */
     COLOR_0: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (!mesh.geometry.colors) {
                 return undefined;
             }
@@ -303,7 +303,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SKININDICES: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.skinIndices;
         }
     },
@@ -312,7 +312,7 @@ const semantic = {
      * @type {semanticObject}
      */
     JOINT: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.skinIndices;
         }
     },
@@ -321,7 +321,7 @@ const semantic = {
      * @type {semanticObject}
      */
     WEIGHT: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.skinWeights;
         }
     },
@@ -330,7 +330,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SKINWEIGHTS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.skinWeights;
         }
     },
@@ -341,7 +341,7 @@ const semantic = {
      * @type {semanticObject}
      */
     RENDERERSIZE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             tempFloat32Array2[0] = renderer.width;
             tempFloat32Array2[1] = renderer.height;
             return tempFloat32Array2;
@@ -352,7 +352,7 @@ const semantic = {
      * @type {semanticObject}
      */
     LOCAL: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.matrix.elements;
         },
         isDependMesh: true
@@ -362,7 +362,7 @@ const semantic = {
      * @type {semanticObject}
      */
     MODEL: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.worldMatrix.elements;
         },
         isDependMesh: true
@@ -372,7 +372,7 @@ const semantic = {
      * @type {semanticObject}
      */
     VIEW: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return camera.viewMatrix.elements;
         }
     },
@@ -381,7 +381,7 @@ const semantic = {
      * @type {semanticObject}
      */
     PROJECTION: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return camera.projectionMatrix.elements;
         }
     },
@@ -390,7 +390,7 @@ const semantic = {
      * @type {semanticObject}
      */
     VIEWPROJECTION: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return camera.viewProjectionMatrix.elements;
         }
     },
@@ -399,7 +399,7 @@ const semantic = {
      * @type {semanticObject}
      */
     MODELVIEW: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return camera.getModelViewMatrix(mesh, tempMatrix4).elements;
         },
         isDependMesh: true
@@ -409,7 +409,7 @@ const semantic = {
      * @type {semanticObject}
      */
     MODELVIEWPROJECTION: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return camera.getModelProjectionMatrix(mesh, tempMatrix4).elements;
         },
         isDependMesh: true
@@ -419,7 +419,7 @@ const semantic = {
      * @type {semanticObject}
      */
     MODELINVERSE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return tempMatrix4.invert(mesh.worldMatrix).elements;
         },
         isDependMesh: true
@@ -429,7 +429,7 @@ const semantic = {
      * @type {semanticObject}
      */
     VIEWINVERSE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return camera.worldMatrix.elements;
         }
     },
@@ -438,7 +438,7 @@ const semantic = {
      * @type {semanticObject}
     */
     VIEWINVERSEINVERSETRANSPOSE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return tempMatrix3.normalFromMat4(camera.worldMatrix).elements;
         }
     },
@@ -447,7 +447,7 @@ const semantic = {
      * @type {semanticObject}
      */
     PROJECTIONINVERSE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return tempMatrix4.invert(camera.projectionMatrix).elements;
         }
     },
@@ -456,7 +456,7 @@ const semantic = {
      * @type {semanticObject}
      */
     MODELVIEWINVERSE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return tempMatrix4.invert(camera.getModelViewMatrix(mesh, tempMatrix4)).elements;
         },
         isDependMesh: true
@@ -466,7 +466,7 @@ const semantic = {
      * @type {semanticObject}
      */
     MODELVIEWPROJECTIONINVERSE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return tempMatrix4.invert(camera.getModelProjectionMatrix(mesh, tempMatrix4)).elements;
         },
         isDependMesh: true
@@ -476,7 +476,7 @@ const semantic = {
      * @type {semanticObject}
      */
     MODELINVERSETRANSPOSE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return tempMatrix3.normalFromMat4(mesh.worldMatrix).elements;
         },
         isDependMesh: true
@@ -486,7 +486,7 @@ const semantic = {
      * @type {semanticObject}
      */
     MODELVIEWINVERSETRANSPOSE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return tempMatrix3.normalFromMat4(camera.getModelViewMatrix(mesh, tempMatrix4)).elements;
         },
         isDependMesh: true
@@ -503,7 +503,7 @@ const semantic = {
      * @type {semanticObject}
      */
     JOINTMATRIX: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (mesh.isSkinedMesh) {
                 return mesh.getJointMat();
             }
@@ -518,7 +518,7 @@ const semantic = {
      * @type {semanticObject}
      */
     JOINTMATRIXTEXTURE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (mesh.isSkinedMesh) {
                 mesh.updateJointMatTexture();
                 return semantic.handlerTexture(mesh.jointMatTexture, programInfo.textureIndex);
@@ -534,7 +534,7 @@ const semantic = {
      * @type {semanticObject}
      */
     JOINTMATRIXTEXTURESIZE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (mesh.isSkinedMesh) {
                 mesh.initJointMatTexture();
                 return [mesh.jointMatTexture.width, mesh.jointMatTexture.height];
@@ -550,7 +550,7 @@ const semantic = {
      * @type {semanticObject}
      */
     NORMALMAPSCALE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.normalMapScale;
         }
     },
@@ -559,7 +559,7 @@ const semantic = {
      * @type {semanticObject}
      */
     OCCLUSIONSTRENGTH: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.occlusionStrength;
         }
     },
@@ -569,7 +569,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SHININESS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.shininess;
         }
     },
@@ -578,7 +578,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPECULARENVMATRIX: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (material.specularEnvMatrix && material.specularEnvMap) {
                 return material.specularEnvMatrix.elements;
             }
@@ -591,7 +591,7 @@ const semantic = {
      * @type {semanticObject}
      */
     REFLECTIVITY: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.reflectivity;
         }
     },
@@ -600,7 +600,7 @@ const semantic = {
      * @type {semanticObject}
      */
     REFRACTRATIO: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.refractRatio;
         }
     },
@@ -609,13 +609,13 @@ const semantic = {
      * @type {semanticObject}
      */
     REFRACTIVITY: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.refractivity;
         }
     },
 
     LOGDEPTH: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return 2.0 / (Math.log(camera.far + 1.0) / Math.LN2);
         }
     },
@@ -626,7 +626,7 @@ const semantic = {
      * @type {semanticObject}
      */
     AMBIENTLIGHTSCOLOR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.ambientInfo;
         }
     },
@@ -635,7 +635,7 @@ const semantic = {
      * @type {semanticObject}
      */
     DIRECTIONALLIGHTSCOLOR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.directionalInfo.colors;
         }
     },
@@ -644,7 +644,7 @@ const semantic = {
      * @type {semanticObject}
      */
     DIRECTIONALLIGHTSINFO: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.directionalInfo.infos;
         }
     },
@@ -653,7 +653,7 @@ const semantic = {
      * @type {semanticObject}
      */
     DIRECTIONALLIGHTSSHADOWMAP: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             const result = lightManager.directionalInfo.shadowMap.map((texture, i) => {
                 return semantic.handlerTexture(texture, programInfo.textureIndex + i);
             });
@@ -665,7 +665,7 @@ const semantic = {
      * @type {semanticObject}
      */
     DIRECTIONALLIGHTSSHADOWMAPSIZE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.directionalInfo.shadowMapSize;
         }
     },
@@ -674,7 +674,7 @@ const semantic = {
      * @type {semanticObject}
      */
     DIRECTIONALLIGHTSSHADOWBIAS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.directionalInfo.shadowBias;
         }
     },
@@ -683,7 +683,7 @@ const semantic = {
      * @type {semanticObject}
      */
     DIRECTIONALLIGHTSPACEMATRIX: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.directionalInfo.lightSpaceMatrix;
         }
     },
@@ -692,7 +692,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POINTLIGHTSPOS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.pointInfo.poses;
         }
     },
@@ -701,7 +701,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POINTLIGHTSCOLOR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.pointInfo.colors;
         }
     },
@@ -710,7 +710,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POINTLIGHTSINFO: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.pointInfo.infos;
         }
     },
@@ -719,7 +719,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POINTLIGHTSRANGE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.pointInfo.ranges;
         }
     },
@@ -728,7 +728,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POINTLIGHTSSHADOWMAP: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             const result = lightManager.pointInfo.shadowMap.map((texture, i) => {
                 return semantic.handlerTexture(texture, programInfo.textureIndex + i);
             });
@@ -740,7 +740,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POINTLIGHTSSHADOWBIAS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.pointInfo.shadowBias;
         }
     },
@@ -749,7 +749,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POINTLIGHTSPACEMATRIX: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.pointInfo.lightSpaceMatrix;
         }
     },
@@ -758,7 +758,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POINTLIGHTCAMERA: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.pointInfo.cameras;
         }
     },
@@ -767,7 +767,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSPOS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.spotInfo.poses;
         }
     },
@@ -776,7 +776,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSDIR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.spotInfo.dirs;
         }
     },
@@ -785,7 +785,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSCOLOR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.spotInfo.colors;
         }
     },
@@ -794,7 +794,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSCUTOFFS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.spotInfo.cutoffs;
         }
     },
@@ -803,7 +803,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSINFO: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.spotInfo.infos;
         }
     },
@@ -812,7 +812,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSRANGE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.spotInfo.ranges;
         }
     },
@@ -821,7 +821,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSSHADOWMAP: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             const result = lightManager.spotInfo.shadowMap.map((texture, i) => {
                 return semantic.handlerTexture(texture, programInfo.textureIndex + i);
             });
@@ -833,7 +833,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSSHADOWMAPSIZE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.spotInfo.shadowMapSize;
         }
     },
@@ -842,7 +842,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSSHADOWBIAS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.spotInfo.shadowBias;
         }
     },
@@ -851,7 +851,7 @@ const semantic = {
      * @type {semanticObject}
      */
     SPOTLIGHTSPACEMATRIX: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.spotInfo.lightSpaceMatrix;
         }
     },
@@ -860,7 +860,7 @@ const semantic = {
      * @type {semanticObject}
      */
     AREALIGHTSCOLOR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.areaInfo.colors;
         }
     },
@@ -869,7 +869,7 @@ const semantic = {
      * @type {semanticObject}
      */
     AREALIGHTSPOS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.areaInfo.poses;
         }
     },
@@ -878,7 +878,7 @@ const semantic = {
      * @type {semanticObject}
      */
     AREALIGHTSWIDTH: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.areaInfo.width;
         }
     },
@@ -887,7 +887,7 @@ const semantic = {
      * @type {semanticObject}
      */
     AREALIGHTSHEIGHT: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return lightManager.areaInfo.height;
         }
     },
@@ -896,7 +896,7 @@ const semantic = {
      * @type {semanticObject}
      */
     AREALIGHTSLTCTEXTURE1: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerTexture(lightManager.areaInfo.ltcTexture1, programInfo.textureIndex);
         }
     },
@@ -905,7 +905,7 @@ const semantic = {
      * @type {semanticObject}
      */
     AREALIGHTSLTCTEXTURE2: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerTexture(lightManager.areaInfo.ltcTexture2, programInfo.textureIndex);
         }
     },
@@ -916,7 +916,7 @@ const semantic = {
      * @type {semanticObject}
      */
     FOGCOLOR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (fog) {
                 return fog.color.elements;
             }
@@ -928,7 +928,7 @@ const semantic = {
      * @type {semanticObject}
      */
     FOGINFO: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             if (fog) {
                 return fog.getInfo();
             }
@@ -942,7 +942,7 @@ const semantic = {
      * @type {semanticObject}
      */
     POSITIONDECODEMAT: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.positionDecodeMat;
         },
         isDependMesh: true
@@ -952,7 +952,7 @@ const semantic = {
      * @type {semanticObject}
      */
     NORMALDECODEMAT: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.normalDecodeMat;
         },
         isDependMesh: true
@@ -962,13 +962,13 @@ const semantic = {
      * @type {semanticObject}
      */
     UVDECODEMAT: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.uvDecodeMat;
         },
         isDependMesh: true
     },
     UV1DECODEMAT: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return mesh.geometry.uv1DecodeMat;
         },
         isDependMesh: true
@@ -980,7 +980,7 @@ const semantic = {
      * @type {semanticObject}
      */
     BASECOLOR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.baseColor.elements;
         }
     },
@@ -990,7 +990,7 @@ const semantic = {
      * @type {Object}
      */
     EMISSIONFACTOR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.emissionFactor.elements;
         }
     },
@@ -1000,7 +1000,7 @@ const semantic = {
      * @type {semanticObject}
      */
     METALLIC: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.metallic;
         }
     },
@@ -1009,7 +1009,7 @@ const semantic = {
      * @type {semanticObject}
      */
     ROUGHNESS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.roughness;
         }
     },
@@ -1018,7 +1018,7 @@ const semantic = {
      * @type {semanticObject}
      */
     DIFFUSEENVMAP: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerTexture(material.diffuseEnvMap, programInfo.textureIndex);
         }
     },
@@ -1026,13 +1026,13 @@ const semantic = {
      * @type {semanticObject}
      */
     DIFFUSEENVINTENSITY: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.diffuseEnvIntensity;
         }
     },
 
     DIFFUSEENVSPHEREHARMONICS3: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             const sphereHarmonics3 = material.diffuseEnvSphereHarmonics3;
             if (sphereHarmonics3) {
                 return sphereHarmonics3.toArray();
@@ -1045,7 +1045,7 @@ const semantic = {
      * @type {semanticObject}
      */
     BRDFLUT: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerTexture(material.brdfLUT, programInfo.textureIndex);
         }
     },
@@ -1054,17 +1054,17 @@ const semantic = {
      * @type {semanticObject}
      */
     SPECULARENVMAP: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerTexture(material.specularEnvMap, programInfo.textureIndex);
         }
     },
     SPECULARENVINTENSITY: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.specularEnvIntensity;
         }
     },
     SPECULARENVMAPMIPCOUNT: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             const specularEnvMap = material.specularEnvMap;
             if (specularEnvMap) {
                 return specularEnvMap.mipmapCount;
@@ -1073,22 +1073,22 @@ const semantic = {
         }
     },
     GLOSSINESS: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.glossiness;
         }
     },
     ALPHACUTOFF: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.alphaCutoff;
         }
     },
     EXPOSURE: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.exposure;
         }
     },
     GAMMAFACTOR: {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.gammaFactor;
         }
     },
@@ -1097,7 +1097,7 @@ const semantic = {
     MORPHWEIGHTS: {
         isDependMesh: true,
         notSupportInstanced: true,
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             const geometry = mesh.geometry;
             if (!geometry.isMorphGeometry || !geometry.weights) {
                 return undefined;
@@ -1109,7 +1109,7 @@ const semantic = {
     CLEARCOATFACTOR: {
         isDependMesh: false,
         notSupportInstanced: false,
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.clearcoatFactor;
         }
     },
@@ -1117,7 +1117,7 @@ const semantic = {
     CLEARCOATROUGHNESSFACTOR: {
         isDependMesh: false,
         notSupportInstanced: false,
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return material.clearcoatRoughnessFactor;
         }
     },
@@ -1128,7 +1128,7 @@ semantic._TIME = (function() {
     return {
         isDependMesh: false,
         notSupportInstanced: false,
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return (new Date().getTime() - startTime) * 0.001;
         }
     };
@@ -1176,13 +1176,13 @@ semantic._TIME = (function() {
     ] = info;
 
     semantic[semanticName] = {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerColorOrTexture(material[textureName], programInfo.textureIndex);
         }
     };
 
     semantic[`${semanticName}UV`] = {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerUV(material[textureName]);
         }
     };
@@ -1209,13 +1209,13 @@ semantic._TIME = (function() {
     ] = info;
 
     semantic[semanticName] = {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerTexture(material[textureName], programInfo.textureIndex);
         }
     };
 
     semantic[`${semanticName}UV`] = {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerUV(material[textureName]);
         }
     };
@@ -1231,7 +1231,7 @@ semantic._TIME = (function() {
     ] = info;
 
     semantic[semanticName] = {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             const value = material[textureName];
             if (value && value.isTexture) {
                 return semantic.handlerTexture(value, programInfo.textureIndex);
@@ -1246,7 +1246,7 @@ semantic._TIME = (function() {
     };
 
     semantic[`${semanticName}UV`] = {
-        get(mesh, material, programInfo) {
+        get(mesh, _material, _programInfo) {
             return semantic.handlerUV(material[textureName]);
         }
     };
