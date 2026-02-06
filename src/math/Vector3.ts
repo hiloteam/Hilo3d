@@ -330,7 +330,7 @@ class Vector3 {
      * Computes the cross product of two vec3's
      * @param  {Vector3} a
      * @param  {Vector3} [b] 如果不传，计算 this 和 a 的结果
-     * @return {Vector3}  cross product of a and b
+     * @return {Vector3} this
      */
     cross(a: Vector3, b?: Vector3): Vector3 {
         if (!b) {
