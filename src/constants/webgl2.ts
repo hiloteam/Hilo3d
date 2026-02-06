@@ -809,32 +809,32 @@ export const COPY_WRITE_BUFFER_BINDING = 0x8F3;
  * @memberOf constants
  * @type {GLenum}
  */
-export const FLOAT_MAT2x3 = 0x8B65; // eslint-disable-line
+export const FLOAT_MAT2x3 = 0x8B65;
 /**
  * @memberOf constants
  * @type {GLenum}
  */
-export const FLOAT_MAT2x4 = 0x8B66; // eslint-disable-line
+export const FLOAT_MAT2x4 = 0x8B66;
 /**
  * @memberOf constants
  * @type {GLenum}
  */
-export const FLOAT_MAT3x2 = 0x8B67; // eslint-disable-line
+export const FLOAT_MAT3x2 = 0x8B67;
 /**
  * @memberOf constants
  * @type {GLenum}
  */
-export const FLOAT_MAT3x4 = 0x8B68; // eslint-disable-line
+export const FLOAT_MAT3x4 = 0x8B68;
 /**
  * @memberOf constants
  * @type {GLenum}
  */
-export const FLOAT_MAT4x2 = 0x8B69; // eslint-disable-line
+export const FLOAT_MAT4x2 = 0x8B69;
 /**
  * @memberOf constants
  * @type {GLenum}
  */
-export const FLOAT_MAT4x3 = 0x8B6A; // eslint-disable-line
+export const FLOAT_MAT4x3 = 0x8B6A;
 /**
  * @memberOf constants
  * @type {GLenum}

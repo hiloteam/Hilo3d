@@ -186,11 +186,9 @@ class Ticker {
      * @param callback 回调函数
      * @return tickObject 定时器对象
      */
-    // eslint-disable-next-line no-unused-vars
     nextTick(callback: (dt: number) => void): TickObject {
         const that = this;
         const tickObj: TickObject = {
-            // eslint-disable-next-line no-unused-vars
             tick(_dt: number) {
                 that.removeTick(tickObj);
                 callback(_dt);
@@ -211,7 +209,6 @@ class Ticker {
         const that = this;
         const targetTime = new Date().getTime() + duration;
         const tickObj: TickObject = {
-            // eslint-disable-next-line no-unused-vars
             tick(_dt: number) {
                 const nowTime = new Date().getTime();
                 const dt = nowTime - targetTime;
@@ -235,7 +232,6 @@ class Ticker {
         const that = this;
         let targetTime = new Date().getTime() + duration;
         const tickObj: TickObject = {
-            // eslint-disable-next-line no-unused-vars
             tick(_dt: number) {
                 let nowTime = new Date().getTime();
                 const dt = nowTime - targetTime;
