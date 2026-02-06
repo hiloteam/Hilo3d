@@ -2,7 +2,9 @@ import {
     quat
 } from 'gl-matrix';
 import Matrix3 from './Matrix3';
-import Class from '../core/Class';
+import Matrix4 from './Matrix4';
+import Vector3 from './Vector3';
+import Euler from './Euler';
 
 const tempMat3 = new Matrix3();
 
@@ -10,23 +12,32 @@ const tempMat3 = new Matrix3();
  * 四元数，具有 onUpdate 回调
  * @class
  */
-const QuaternionNotifier = Class.create(/** @lends QuaternionNotifier.prototype */ {
+class QuaternionNotifier {
     /**
      * 类名
      * @type {String}
      * @default QuaternionNotifier
      */
-    className: 'QuaternionNotifier',
+    className: string = 'QuaternionNotifier';
+
     /**
      * @type {Boolean}
      * @default true
      */
-    isQuaternionNotifier: true,
+    isQuaternionNotifier: boolean = true;
+
     /**
      * @type {Boolean}
      * @default true
      */
-    isQuaternion: true,
+    isQuaternion: boolean = true;
+
+    /**
+     * 数据
+     * @type {Float32Array}
+     */
+    elements: Float32Array;
+
     /**
      * Creates a new identity quat
      * @constructs
@@ -34,48 +45,49 @@ const QuaternionNotifier = Class.create(/** @lends QuaternionNotifier.prototype 
      * @param  {Number} [y=0] Y component
      * @param  {Number} [z=0] Z component
      * @param  {Number} [w=1] W component
-    */
-    constructor(x = 0, y = 0, z = 0, w = 1) {
-    /**
-     * 数据
-     * @type {Float32Array}
      */
+    constructor(x: number = 0, y: number = 0, z: number = 0, w: number = 1) {
+        /**
+         * 数据
+         * @type {Float32Array}
+         */
         this.elements = quat.fromValues(x, y, z, w);
-    },
+    }
 
     /**
      * 更新的回调
      */
-    onUpdate() {
+    onUpdate(): void {
 
-    },
+    }
 
     /**
-   * Copy the values from one quat to this
-   * @param  {Quaternion} q
-   * @return {Quaternion} this
-   */
-    copy(q) {
+     * Copy the values from one quat to this
+     * @param  {Quaternion} q
+     * @return {Quaternion} this
+     */
+    copy(q: QuaternionNotifier): QuaternionNotifier {
         quat.copy(this.elements, q.elements);
         this.onUpdate();
         return this;
-    },
-    /**
-   * Creates a new quat initialized with values from an existing quaternion
-   * @return {Quaternion} a new quaternion
-   */
-    clone() {
-        const el = this.elements;
-        return new this.constructor(el[0], el[1], el[2], el[3]);
-    },
+    }
 
     /**
-   * 转换到数组
-   * @param  {number[]|TypedArray}  [array=[]] 数组
-   * @param  {Number} [offset=0] 数组偏移值
-   * @return {Array}
-   */
-    toArray(array = [], offset = 0) {
+     * Creates a new quat initialized with values from an existing quaternion
+     * @return {Quaternion} a new quaternion
+     */
+    clone(): QuaternionNotifier {
+        const el = this.elements;
+        return new this.constructor(el[0], el[1], el[2], el[3]) as QuaternionNotifier;
+    }
+
+    /**
+     * 转换到数组
+     * @param  {number[]|TypedArray}  [array=[]] 数组
+     * @param  {Number} [offset=0] 数组偏移值
+     * @return {Array}
+     */
+    toArray(array: number[] | Float32Array = [], offset: number = 0): number[] | Float32Array {
         const el = this.elements;
 
         array[offset] = el[0];
@@ -84,14 +96,15 @@ const QuaternionNotifier = Class.create(/** @lends QuaternionNotifier.prototype 
         array[offset + 3] = el[3];
 
         return array;
-    },
+    }
+
     /**
-   * 从数组赋值
-   * @param  {number[]|TypedArray} array  数组
-   * @param  {Number} [offset=0] 数组偏移值
-   * @return {Quaternion} this
-   */
-    fromArray(array, offset = 0) {
+     * 从数组赋值
+     * @param  {number[]|TypedArray} array  数组
+     * @param  {Number} [offset=0] 数组偏移值
+     * @return {Quaternion} this
+     */
+    fromArray(array: number[] | Float32Array, offset: number = 0): QuaternionNotifier {
         const el = this.elements;
 
         el[0] = array[offset];
@@ -102,304 +115,330 @@ const QuaternionNotifier = Class.create(/** @lends QuaternionNotifier.prototype 
         this.onUpdate();
 
         return this;
-    },
+    }
 
     /**
-   * Set the components of a quat to the given values
-   * @param {Number} x  X component
-   * @param {Number} y  Y component
-   * @param {Number} z  Z component
-   * @param {Number} w  W component
-   * @return {Quaternion} this
-   */
-    set(x, y, z, w) {
+     * Set the components of a quat to the given values
+     * @param {Number} x  X component
+     * @param {Number} y  Y component
+     * @param {Number} z  Z component
+     * @param {Number} w  W component
+     * @return {Quaternion} this
+     */
+    set(x: number, y: number, z: number, w: number): QuaternionNotifier {
         quat.set(this.elements, x, y, z, w);
         this.onUpdate();
         return this;
-    },
+    }
 
     /**
-   * Set this to the identity quaternion
-   * @return {Quaternion} this
-   */
-    identity() {
+     * Set this to the identity quaternion
+     * @return {Quaternion} this
+     */
+    identity(): QuaternionNotifier {
         quat.identity(this.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Sets a quaternion to represent the shortest rotation from one
-   * vector to another.
-   * @param  {Vector3} a the initial vector
-   * @param  {Vector3} b the destination vector
-   * @return {Quaternion} this
-   */
-    rotationTo(a, b) {
+     * Sets a quaternion to represent the shortest rotation from one
+     * vector to another.
+     * @param  {Vector3} a the initial vector
+     * @param  {Vector3} b the destination vector
+     * @return {Quaternion} this
+     */
+    rotationTo(a: Vector3, b: Vector3): QuaternionNotifier {
         quat.rotationTo(this.elements, a.elements, b.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Sets the specified quaternion with values corresponding to the given
-   * axes. Each axis is a vec3 and is expected to be unit length and
-   * perpendicular to all other specified axes.
-   *
-   * @param {Vector3} view  the vector representing the viewing direction
-   * @param {Vector3} right the vector representing the local "right" direction
-   * @param {Vector3} up    the vector representing the local "up" direction
-   * @return {Quaternion} this
-   */
-    setAxes(view, right, up) {
+     * Sets the specified quaternion with values corresponding to the given
+     * axes. Each axis is a vec3 and is expected to be unit length and
+     * perpendicular to all other specified axes.
+     *
+     * @param {Vector3} view  the vector representing the viewing direction
+     * @param {Vector3} right the vector representing the local "right" direction
+     * @param {Vector3} up    the vector representing the local "up" direction
+     * @return {Quaternion} this
+     */
+    setAxes(view: Vector3, right: Vector3, up: Vector3): QuaternionNotifier {
         quat.setAxes(this.elements, view.elements, right.elements, up.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Sets a quat from the given angle and rotation axis,
-   * then returns it.
-   * @param {Vector3} axis the axis around which to rotate
-   * @param {Number} rad the angle in radians
-   * @return {Quaternion} this
-   */
-    setAxisAngle(axis, rad) {
+     * Sets a quat from the given angle and rotation axis,
+     * then returns it.
+     * @param {Vector3} axis the axis around which to rotate
+     * @param {Number} rad the angle in radians
+     * @return {Quaternion} this
+     */
+    setAxisAngle(axis: Vector3, rad: number): QuaternionNotifier {
         quat.setAxisAngle(this.elements, axis.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Gets the rotation axis and angle for a given
-   *  quaternion. If a quaternion is created with
-   *  setAxisAngle, this method will return the same
-   *  values as providied in the original parameter list
-   *  OR functionally equivalent values.
-   * Example: The quaternion formed by axis [0, 0, 1] and
-   *  angle -90 is the same as the quaternion formed by
-   *  [0, 0, 1] and 270. This method favors the latter.
-   * @param  {Vector3} out_axis  Vector receiving the axis of rotation
-   * @return {Number} Angle, in radians, of the rotation
-   */
-    getAxisAngle(axis) {
+     * Gets the rotation axis and angle for a given
+     *  quaternion. If a quaternion is created with
+     *  setAxisAngle, this method will return the same
+     *  values as providied in the original parameter list
+     *  OR functionally equivalent values.
+     * Example: The quaternion formed by axis [0, 0, 1] and
+     *  angle -90 is the same as the quaternion formed by
+     *  [0, 0, 1] and 270. This method favors the latter.
+     * @param  {Vector3} out_axis  Vector receiving the axis of rotation
+     * @return {Number} Angle, in radians, of the rotation
+     */
+    getAxisAngle(axis: Vector3): number {
         return quat.getAxisAngle(axis.elements, this.elements);
-    },
+    }
+
     /**
-   * Adds two quat's
-   * @param {Quaternion} q
-   * @return {Quaternion} this
-   */
-    add(q) {
+     * Adds two quat's
+     * @param {Quaternion} q
+     * @return {Quaternion} this
+     */
+    add(q: QuaternionNotifier): QuaternionNotifier {
         quat.add(this.elements, this.elements, q.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Multiplies two quat's
-   * @param  {Quaternion} q
-   * @return {Quaternion} this
-   */
-    multiply(q) {
+     * Multiplies two quat's
+     * @param  {Quaternion} q
+     * @return {Quaternion} this
+     */
+    multiply(q: QuaternionNotifier): QuaternionNotifier {
         quat.multiply(this.elements, this.elements, q.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * premultiply the quat
-   * @param  {Quaternion} q
-   * @return {Quaternion} this
-   */
-    premultiply(q) {
+     * premultiply the quat
+     * @param  {Quaternion} q
+     * @return {Quaternion} this
+     */
+    premultiply(q: QuaternionNotifier): QuaternionNotifier {
         quat.multiply(this.elements, q.elements, this.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Scales a quat by a scalar number
-   * @param  {Vector3} scale the vector to scale
-   * @return {Quaternion} this
-   */
-    scale(scale) {
+     * Scales a quat by a scalar number
+     * @param  {Vector3} scale the vector to scale
+     * @return {Quaternion} this
+     */
+    scale(scale: number): QuaternionNotifier {
         quat.scale(this.elements, this.elements, scale);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Rotates a quaternion by the given angle about the X axis
-   * @param  {Number} rad angle (in radians) to rotate
-   * @return {Quaternion} this
-   */
-    rotateX(rad) {
+     * Rotates a quaternion by the given angle about the X axis
+     * @param  {Number} rad angle (in radians) to rotate
+     * @return {Quaternion} this
+     */
+    rotateX(rad: number): QuaternionNotifier {
         quat.rotateX(this.elements, this.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Rotates a quaternion by the given angle about the Y axis
-   * @param  {Number} rad angle (in radians) to rotate
-   * @return {Quaternion} this
-   */
-    rotateY(rad) {
+     * Rotates a quaternion by the given angle about the Y axis
+     * @param  {Number} rad angle (in radians) to rotate
+     * @return {Quaternion} this
+     */
+    rotateY(rad: number): QuaternionNotifier {
         quat.rotateY(this.elements, this.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Rotates a quaternion by the given angle about the Z axis
-   * @param  {Number} rad angle (in radians) to rotate
-   * @return {Quaternion} this
-   */
-    rotateZ(rad) {
+     * Rotates a quaternion by the given angle about the Z axis
+     * @param  {Number} rad angle (in radians) to rotate
+     * @return {Quaternion} this
+     */
+    rotateZ(rad: number): QuaternionNotifier {
         quat.rotateZ(this.elements, this.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Calculates the W component of a quat from the X, Y, and Z components.
-   * Assumes that quaternion is 1 unit in length.
-   * Any existing W component will be ignored.
-   * @returns {Quaternion} this
-   */
-    calculateW() {
+     * Calculates the W component of a quat from the X, Y, and Z components.
+     * Assumes that quaternion is 1 unit in length.
+     * Any existing W component will be ignored.
+     * @returns {Quaternion} this
+     */
+    calculateW(): QuaternionNotifier {
         quat.calculateW(this.elements, this.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Calculates the dot product of two quat's
-   * @param  {Quaternion} q
-   * @return {Number} dot product of two quat's
-   */
-    dot(q) {
+     * Calculates the dot product of two quat's
+     * @param  {Quaternion} q
+     * @return {Number} dot product of two quat's
+     */
+    dot(q: QuaternionNotifier): number {
         return quat.dot(this.elements, q.elements);
-    },
+    }
+
     /**
-   * Performs a linear interpolation between two quat's
-   * @param  {Quaternion} q
-   * @param  {Number} t interpolation amount between the two inputs
-   * @return {Quaternion} this
-   */
-    lerp(q, t) {
+     * Performs a linear interpolation between two quat's
+     * @param  {Quaternion} q
+     * @param  {Number} t interpolation amount between the two inputs
+     * @return {Quaternion} this
+     */
+    lerp(q: QuaternionNotifier, t: number): QuaternionNotifier {
         quat.lerp(this.elements, this.elements, q.elements, t);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Performs a spherical linear interpolation between two quat
-   * @param  {Quaternion} q
-   * @param  {Number} t interpolation amount between the two inputs
-   * @return {Quaternion} this
-   */
-    slerp(q, t) {
+     * Performs a spherical linear interpolation between two quat
+     * @param  {Quaternion} q
+     * @param  {Number} t interpolation amount between the two inputs
+     * @return {Quaternion} this
+     */
+    slerp(q: QuaternionNotifier, t: number): QuaternionNotifier {
         quat.slerp(this.elements, this.elements, q.elements, t);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Performs a spherical linear interpolation with two control points
-   * @param  {Quaternion} qa
-   * @param  {Quaternion} qb
-   * @param  {Quaternion} qc
-   * @param  {Quaternion} qd
-   * @param  {Number} t interpolation amount
-   * @return {Quaternion} this
-   */
-    sqlerp(qa, qb, qc, qd, t) {
+     * Performs a spherical linear interpolation with two control points
+     * @param  {Quaternion} qa
+     * @param  {Quaternion} qb
+     * @param  {Quaternion} qc
+     * @param  {Quaternion} qd
+     * @param  {Number} t interpolation amount
+     * @return {Quaternion} this
+     */
+    sqlerp(qa: QuaternionNotifier, qb: QuaternionNotifier, qc: QuaternionNotifier, qd: QuaternionNotifier, t: number): QuaternionNotifier {
         quat.sqlerp(this.elements, qa.elements, qb.elements, qc.elements, qd.elements, t);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Calculates the inverse of a quat
-   * @return {Quaternion} this
-   */
-    invert() {
+     * Calculates the inverse of a quat
+     * @return {Quaternion} this
+     */
+    invert(): QuaternionNotifier {
         quat.invert(this.elements, this.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Calculates the conjugate of a quat
-   * If the quaternion is normalized, this function is faster than quat.inverse and produces the same result.
-   * @return {Quaternion} this
-   */
-    conjugate() {
+     * Calculates the conjugate of a quat
+     * If the quaternion is normalized, this function is faster than quat.inverse and produces the same result.
+     * @return {Quaternion} this
+     */
+    conjugate(): QuaternionNotifier {
         quat.conjugate(this.elements, this.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Calculates the length of a quat
-   * @return {Number} length of this
-   */
-    length() {
+     * Calculates the length of a quat
+     * @return {Number} length of this
+     */
+    length(): number {
         return quat.length(this.elements);
-    },
+    }
+
     /**
-   * Calculates the squared length of a quat
-   * @return {Number} squared length of this
-   */
-    squaredLength() {
+     * Calculates the squared length of a quat
+     * @return {Number} squared length of this
+     */
+    squaredLength(): number {
         return quat.squaredLength(this.elements);
-    },
+    }
+
     /**
-   * Normalize this
-   * @return {Quaternion} this
-   */
-    normalize() {
+     * Normalize this
+     * @return {Quaternion} this
+     */
+    normalize(): QuaternionNotifier {
         quat.normalize(this.elements, this.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Creates a quaternion from the given 3x3 rotation matrix.
-   *
-   * NOTE: The resultant quaternion is not normalized, so you should be sure
-   * to renormalize the quaternion yourself where necessary.
-   *
-   * @param {Matrix3} m rotation matrix
-   * @return {Quaternion} this
-   */
-    fromMat3(mat) {
+     * Creates a quaternion from the given 3x3 rotation matrix.
+     *
+     * NOTE: The resultant quaternion is not normalized, so you should be sure
+     * to renormalize the quaternion yourself where necessary.
+     *
+     * @param {Matrix3} m rotation matrix
+     * @return {Quaternion} this
+     */
+    fromMat3(mat: Matrix3): QuaternionNotifier {
         quat.fromMat3(this.elements, mat.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
-   * Creates a quaternion from the given 3x3 rotation matrix.
-   *
-   * NOTE: The resultant quaternion is not normalized, so you should be sure
-   * to renormalize the quaternion yourself where necessary.
-   *
-   * @param {Matrix4} m rotation matrix
-   * @return {Quaternion} this
-   */
-    fromMat4(mat) {
+     * Creates a quaternion from the given 3x3 rotation matrix.
+     *
+     * NOTE: The resultant quaternion is not normalized, so you should be sure
+     * to renormalize the quaternion yourself where necessary.
+     *
+     * @param {Matrix4} m rotation matrix
+     * @return {Quaternion} this
+     */
+    fromMat4(mat: Matrix4): QuaternionNotifier {
         tempMat3.fromMat4(mat);
         this.fromMat3(tempMat3);
         return this;
-    },
+    }
+
     /**
-   * Returns whether or not the quaternions have exactly the same elements in the same position (when compared with ===)
-   * @param  {Quaternion} q
-   * @return {Boolean}
-   */
-    exactEquals(q) {
+     * Returns whether or not the quaternions have exactly the same elements in the same position (when compared with ===)
+     * @param  {Quaternion} q
+     * @return {Boolean}
+     */
+    exactEquals(q: QuaternionNotifier): boolean {
         return quat.exactEquals(this.elements, q.elements);
-    },
+    }
+
     /**
-   * Returns whether or not the quaternions have approximately the same elements in the same position.
-   * @param  {Quaternion} q
-   * @return {Boolean}
-   */
-    equals(q) {
+     * Returns whether or not the quaternions have approximately the same elements in the same position.
+     * @param  {Quaternion} q
+     * @return {Boolean}
+     */
+    equals(q: QuaternionNotifier): boolean {
         return quat.equals(this.elements, q.elements);
-    },
+    }
+
     /**
-   * Creates a quaternion from the given euler.
-   * @param  {Euler} euler
-   * @param  {Boolean} [notCallUpdate=false] 是否需要调用onUpdate
-   * @return {Quaternion} this
-   */
-    fromEuler(euler, notCallUpdate) {
-    // Based on https://github.com/mrdoob/three.js/blob/dev/src/math/Quaternion.js#L200
+     * Creates a quaternion from the given euler.
+     * @param  {Euler} euler
+     * @param  {Boolean} [notCallUpdate=false] 是否需要调用onUpdate
+     * @return {Quaternion} this
+     */
+    fromEuler(euler: Euler, notCallUpdate?: boolean): QuaternionNotifier {
+        // Based on https://github.com/mrdoob/three.js/blob/dev/src/math/Quaternion.js#L200
 
         // quat.fromEuler(this.elements, euler.x, euler.y, euler.z);
         const x = euler.x * .5;
@@ -453,60 +492,60 @@ const QuaternionNotifier = Class.create(/** @lends QuaternionNotifier.prototype 
         }
 
         return this;
-    },
-    /**
-   * X component
-   * @type {Number}
-   */
-    x: {
-        get() {
-            return this.elements[0];
-        },
-        set(value) {
-            this.elements[0] = value;
-            this.onUpdate();
-        }
-    },
-    /**
-   * Y component
-   * @type {Number}
-   */
-    y: {
-        get() {
-            return this.elements[1];
-        },
-        set(value) {
-            this.elements[1] = value;
-            this.onUpdate();
-        }
-    },
-    /**
-   * Z component
-   * @type {Number}
-   */
-    z: {
-        get() {
-            return this.elements[2];
-        },
-        set(value) {
-            this.elements[2] = value;
-            this.onUpdate();
-        }
-    },
-    /**
-   * W component
-   * @type {Number}
-   */
-    w: {
-        get() {
-            return this.elements[3];
-        },
-        set(value) {
-            this.elements[3] = value;
-            this.onUpdate();
-        }
     }
-});
+
+    /**
+     * X component
+     * @type {Number}
+     */
+    get x(): number {
+        return this.elements[0];
+    }
+
+    set x(value: number) {
+        this.elements[0] = value;
+        this.onUpdate();
+    }
+
+    /**
+     * Y component
+     * @type {Number}
+     */
+    get y(): number {
+        return this.elements[1];
+    }
+
+    set y(value: number) {
+        this.elements[1] = value;
+        this.onUpdate();
+    }
+
+    /**
+     * Z component
+     * @type {Number}
+     */
+    get z(): number {
+        return this.elements[2];
+    }
+
+    set z(value: number) {
+        this.elements[2] = value;
+        this.onUpdate();
+    }
+
+    /**
+     * W component
+     * @type {Number}
+     */
+    get w(): number {
+        return this.elements[3];
+    }
+
+    set w(value: number) {
+        this.elements[3] = value;
+        this.onUpdate();
+    }
+}
 
 /**
  * Alias for {@link QuaternionNotifier#multiply}

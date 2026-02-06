@@ -1,12 +1,11 @@
 import {
     mat4
 } from 'gl-matrix';
-import Class from '../core/Class';
 import Vector3 from './Vector3';
 import Matrix4 from './Matrix4';
 import Quaternion from './Quaternion';
 
-let tempMatrix4;
+let tempMatrix4: Matrix4;
 const tempVector3 = new Vector3();
 const tempVector32 = new Vector3();
 
@@ -15,60 +14,66 @@ const tempVector32 = new Vector3();
  * @class
  * @extends {Matrix4}
  */
-const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
-    Extends: Matrix4,
+class Matrix4Notifier extends Matrix4 {
     /**
      * 类名
      * @type {String}
      * @default Matrix4Notifier
      */
-    className: 'Matrix4Notifier',
+    className: string = 'Matrix4Notifier';
+
     /**
      * @type {Boolean}
      * @default true
      */
-    isMatrix4Notifier: true,
+    isMatrix4Notifier: boolean = true;
+
     /**
      * Creates a new identity mat4
      * @constructs
      */
     constructor() {
+        super();
         /**
          * 数据
          * @type {Float32Array}
          */
         this.elements = mat4.create();
-    },
+    }
+
     /**
      * 更新的回调
      */
-    onUpdate() {
+    onUpdate(): void {
 
-    },
+    }
+
     /**
      * Copy the values from one mat4 to this
      * @param  {Matrix4} m the source matrix
      * @return {Matrix4Notifier} this
      */
-    copy(m) {
+    copy(m: Matrix4): Matrix4Notifier {
         mat4.copy(this.elements, m.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * 从数组赋值
      * @param  {number[]|TypedArray} array  数组
      * @param  {Number} [offset=0] 数组偏移值
      * @return {Matrix4Notifier} this
      */
-    fromArray(array, offset = 0) {
+    fromArray(array: number[] | Float32Array, offset: number = 0): Matrix4Notifier {
         const elements = this.elements;
         for (let i = 0; i < 16; i++) {
             elements[i] = array[offset + i];
         }
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Set the components of a mat3 to the given values
      * @param {Number} m00
@@ -89,63 +94,69 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param {Number} m33
      * @return {Matrix4Notifier} this
      */
-    set(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33) {
+    set(m00: number, m01: number, m02: number, m03: number, m10: number, m11: number, m12: number, m13: number, m20: number, m21: number, m22: number, m23: number, m30: number, m31: number, m32: number, m33: number): Matrix4Notifier {
         mat4.set(this.elements, m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Set this to the identity matrix
      * @return {Matrix4Notifier} this
      */
-    identity() {
+    identity(): Matrix4Notifier {
         mat4.identity(this.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Transpose the values of this
      * @return {Matrix4Notifier} this
      */
-    transpose() {
+    transpose(): Matrix4Notifier {
         mat4.transpose(this.elements, this.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * invert a matrix
      * @param {Matrix4} [m=this]
      * @return {Matrix4Notifier} this
      */
-    invert(m = this) {
+    invert(m: Matrix4 = this): Matrix4Notifier {
         mat4.invert(this.elements, m.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Calculates the adjugate of a mat4
      * @param {Matrix4} [m=this]
      * @return {Matrix4Notifier} this
      */
-    adjoint(m = this) {
+    adjoint(m: Matrix4 = this): Matrix4Notifier {
         mat4.adjoint(this.elements, m.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Calculates the determinant of this
      * @return {Matrix4Notifier} this
      */
-    determinant() {
+    determinant(): number {
         return mat4.determinant(this.elements);
-    },
+    }
+
     /**
      * Multiplies two matrix4's
      * @param {Matrix4} a
      * @param {Matrix4} [b] 如果不传，计算 this 和 a 的乘积
      * @return {Matrix4Notifier} this
      */
-    multiply(a, b) {
+    multiply(a: Matrix4, b?: Matrix4): Matrix4Notifier {
         if (!b) {
             b = a;
             a = this;
@@ -153,150 +164,165 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
         mat4.multiply(this.elements, a.elements, b.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * 左乘
      * @param {Matrix4} m
      * @return {Matrix4Notifier} this
      */
-    premultiply(m) {
+    premultiply(m: Matrix4): Matrix4Notifier {
         this.multiply(m, this);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Translate this by the given vector
      * @param {Vector3} v vector to translate by
      * @return {Matrix4Notifier} this
      */
-    translate(v) {
+    translate(v: Vector3): Matrix4Notifier {
         mat4.translate(this.elements, this.elements, v.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Scales the mat3 by the dimensions in the given vec2
      * @param {Vector3} v the vec3 to scale the matrix by
      * @return {Matrix4Notifier} this
      */
-    scale(v) {
+    scale(v: Vector3): Matrix4Notifier {
         mat4.scale(this.elements, this.elements, v.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Rotates this by the given angle
      * @param {Number} rad the angle to rotate the matrix by
      * @param {Vector3} axis the axis to rotate around
      * @return {Matrix4Notifier} this
      */
-    rotate(rad, axis) {
+    rotate(rad: number, axis: Vector3): Matrix4Notifier {
         mat4.rotate(this.elements, this.elements, rad, axis.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Rotates this by the given angle around the X axis
      * @param {Number} rad the angle to rotate the matrix by
      * @return {Matrix4Notifier} this
      */
-    rotateX(rad) {
+    rotateX(rad: number): Matrix4Notifier {
         mat4.rotateX(this.elements, this.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Rotates this by the given angle around the Y axis
      * @param {Number} rad the angle to rotate the matrix by
      * @return {Matrix4Notifier} this
      */
-    rotateY(rad) {
+    rotateY(rad: number): Matrix4Notifier {
         mat4.rotateY(this.elements, this.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Rotates this by the given angle around the Z axis
      * @param {Number} rad the angle to rotate the matrix by
      * @return {Matrix4Notifier} this
      */
-    rotateZ(rad) {
+    rotateZ(rad: number): Matrix4Notifier {
         mat4.rotateZ(this.elements, this.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Creates a matrix from a vector translation
      * @param {Vector3} transition Translation vector
      * @return {Matrix4Notifier} this
      */
-    fromTranslation(v) {
+    fromTranslation(v: Vector3): Matrix4Notifier {
         mat4.fromTranslation(this.elements, v.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Creates a matrix from a vector scaling
      * @param  {Vector3} v Scaling vector
      * @return {Matrix4Notifier} this
      */
-    fromScaling(v) {
+    fromScaling(v: Vector3): Matrix4Notifier {
         mat4.fromScaling(this.elements, v.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Creates a matrix from a given angle around a given axis
      * @param {Number} rad the angle to rotate the matrix by
      * @param {Vector3} axis the axis to rotate around
      * @return {Matrix4Notifier} this
      */
-    fromRotation(rad, axis) {
+    fromRotation(rad: number, axis: Vector3): Matrix4Notifier {
         mat4.fromRotation(this.elements, rad, axis.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Creates a matrix from the given angle around the X axis
      * @param {Number} rad the angle to rotate the matrix by
      * @return {Matrix4Notifier} this
      */
-    fromXRotation(rad) {
+    fromXRotation(rad: number): Matrix4Notifier {
         mat4.fromXRotation(this.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Creates a matrix from the given angle around the Y axis
      * @param {Number} rad the angle to rotate the matrix by
      * @return {Matrix4Notifier} this
      */
-    fromYRotation(rad) {
+    fromYRotation(rad: number): Matrix4Notifier {
         mat4.fromYRotation(this.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Creates a matrix from the given angle around the Z axis
      * @param {Number} rad the angle to rotate the matrix by
      * @return {Matrix4Notifier} this
      */
-    fromZRotation(rad) {
+    fromZRotation(rad: number): Matrix4Notifier {
         mat4.fromZRotation(this.elements, rad);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Creates a matrix from a quaternion rotation and vector translation
      * @param  {Quaternion} q Rotation quaternion
      * @param  {Vector3} v Translation vector
      * @return {Matrix4Notifier} this
      */
-    fromRotationTranslation(q, v) {
+    fromRotationTranslation(q: Quaternion, v: Vector3): Matrix4Notifier {
         mat4.fromRotationTranslation(this.elements, q.elements, v.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Returns the translation vector component of a transformation
      *  matrix. If a matrix is built with fromRotationTranslation,
@@ -305,10 +331,11 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Vector3} [out=new Vector3] Vector to receive translation component
      * @return {Vector3} out
      */
-    getTranslation(out = new Vector3()) {
+    getTranslation(out: Vector3 = new Vector3()): Vector3 {
         mat4.getTranslation(out.elements, this.elements);
         return out;
-    },
+    }
+
     /**
      * Returns the scaling factor component of a transformation
      *  matrix. If a matrix is built with fromRotationTranslationScale
@@ -318,10 +345,11 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Vector3} [out=new Vector3] Vector to receive scaling factor component
      * @return {Vector3} out
      */
-    getScaling(out = new Vector3()) {
+    getScaling(out: Vector3 = new Vector3()): Vector3 {
         mat4.getScaling(out.elements, this.elements);
         return out;
-    },
+    }
+
     /**
      * Returns a quaternion representing the rotational component
      *  of a transformation matrix. If a matrix is built with
@@ -330,10 +358,11 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param {Quaternion} out Quaternion to receive the rotation component
      * @return {Quaternion} out
      */
-    getRotation(out = new Quaternion()) {
+    getRotation(out: Quaternion = new Quaternion()): Quaternion {
         mat4.getRotation(out.elements, this.elements);
         return out;
-    },
+    }
+
     /**
      * Creates a matrix from a quaternion rotation, vector translation and vector scale
      * @param  {Quaternion} q Rotation quaternion
@@ -341,11 +370,12 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Vector3} s Scaling vector
      * @return {Matrix4Notifier} this
      */
-    fromRotationTranslationScale(q, v, s) {
+    fromRotationTranslationScale(q: Quaternion, v: Vector3, s: Vector3): Matrix4Notifier {
         mat4.fromRotationTranslationScale(this.elements, q.elements, v.elements, s.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Creates a matrix from a quaternion rotation, vector translation and vector scale, rotating and scaling around the given origin
      * @param  {Quaternion} q Rotation quaternion
@@ -355,23 +385,25 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Boolean} [notCallUpdate=false] notCallUpdate
      * @return {Matrix4Notifier} this
      */
-    fromRotationTranslationScaleOrigin(q, v, s, o, notCallUpdate) {
+    fromRotationTranslationScaleOrigin(q: Quaternion, v: Vector3, s: Vector3, o: Vector3, notCallUpdate?: boolean): Matrix4Notifier {
         mat4.fromRotationTranslationScaleOrigin(this.elements, q.elements, v.elements, s.elements, o.elements);
         if (!notCallUpdate) {
             this.onUpdate();
         }
         return this;
-    },
+    }
+
     /**
      * Calculates a 4x4 matrix from the given quaternion
      * @param {Quaternion} q Quaternion to create matrix from
      * @return {Matrix4Notifier} this
      */
-    fromQuat(q) {
+    fromQuat(q: Quaternion): Matrix4Notifier {
         mat4.fromQuat(this.elements, q.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Generates a frustum matrix with the given bounds
      * @param  {Number} left  Left bound of the frustum
@@ -382,11 +414,12 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Number} far Far bound of the frustum
      * @return {Matrix4Notifier} this
      */
-    frustum(left, right, bottom, top, near, far) {
+    frustum(left: number, right: number, bottom: number, top: number, near: number, far: number): Matrix4Notifier {
         mat4.frustum(this.elements, left, right, bottom, top, near, far);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Generates a perspective projection matrix with the given bounds
      * @param {Number} fovy Vertical field of view in radians
@@ -395,11 +428,12 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param {Number} far Far bound of the frustum
      * @return {Matrix4Notifier} this
      */
-    perspective(fovy, aspect, near, far) {
+    perspective(fovy: number, aspect: number, near: number, far: number): Matrix4Notifier {
         mat4.perspective(this.elements, fovy, aspect, near, far);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Generates a perspective projection matrix with the given field of view.
      * @param  {Object} fov Object containing the following values: upDegrees, downDegrees, leftDegrees, rightDegrees
@@ -407,11 +441,12 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Number} far Far bound of the frustum
      * @return {Matrix4Notifier} this
      */
-    perspectiveFromFieldOfView(fov, near, far) {
+    perspectiveFromFieldOfView(fov: any, near: number, far: number): Matrix4Notifier {
         mat4.perspectiveFromFieldOfView(this.elements, fov, near, far);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Generates a orthogonal projection matrix with the given bounds
      * @param  {Number} left  Left bound of the frustum
@@ -422,11 +457,12 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Number} far Far bound of the frustum
      * @return {Matrix4Notifier} this
      */
-    ortho(left, right, bottom, top, near, far) {
+    ortho(left: number, right: number, bottom: number, top: number, near: number, far: number): Matrix4Notifier {
         mat4.ortho(this.elements, left, right, bottom, top, near, far);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Generates a look-at matrix with the given eye position, focal point, and up axis
      * @param  {XYZObject} eye Position of the viewer
@@ -434,7 +470,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Vector3} up pointing up
      * @return {Matrix4Notifier} this
      */
-    lookAt(eye, center, up) {
+    lookAt(eye: any, center: any, up: Vector3): Matrix4Notifier {
         if (!eye.isVector3) {
             eye = tempVector3.set(eye.x, eye.y, eye.z);
         }
@@ -446,7 +482,8 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
 
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Generates a matrix that makes something look at something else.
      * @param  {XYZObject} eye Position of the viewer
@@ -454,7 +491,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Vector3} up pointing up
      * @return {Matrix4Notifier} this
      */
-    targetTo(eye, target, up) {
+    targetTo(eye: any, target: any, up: Vector3): Matrix4Notifier {
         if (!eye.isVector3) {
             eye = tempVector3.set(eye.x, eye.y, eye.z);
         }
@@ -530,21 +567,23 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
         out[15] = 1;
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Returns Frobenius norm of a mat4
      * @return {Number} Frobenius norm
      */
-    frob() {
+    frob(): number {
         return mat4.frob(this.elements);
-    },
+    }
+
     /**
      * Adds two mat4's
      * @param {Matrix4} a
      * @param {Matrix4} [b] 如果不传，计算 this 和 a 的和
      * @return {Matrix4} this
      */
-    add(a, b) {
+    add(a: Matrix4, b?: Matrix4): Matrix4Notifier {
         if (!b) {
             b = a;
             a = this;
@@ -552,14 +591,15 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
         mat4.add(this.elements, a.elements, b.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Subtracts matrix b from matrix a
      * @param {Matrix4} a
      * @param {Matrix4} [b]  如果不传，计算 this 和 a 的差
      * @return {Matrix4} this
      */
-    subtract(a, b) {
+    subtract(a: Matrix4, b?: Matrix4): Matrix4Notifier {
         if (!b) {
             b = a;
             a = this;
@@ -567,33 +607,36 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
         mat4.subtract(this.elements, a.elements, b.elements);
         this.onUpdate();
         return this;
-    },
+    }
+
     /**
      * Returns whether or not the matrices have exactly the same elements in the same position (when compared with ===)
      * @param {Matrix4} a
      * @param {Matrix4} [b] 如果不传，比较 this 和 a 是否相等
      * @return {Boolean}
      */
-    exactEquals(a, b) {
+    exactEquals(a: Matrix4, b?: Matrix4): boolean {
         if (!b) {
             b = a;
             a = this;
         }
         return mat4.exactEquals(a.elements, b.elements);
-    },
+    }
+
     /**
      * Returns whether or not the matrices have approximately the same elements in the same position.
      * @param {Matrix4} a
      * @param {Matrix4} [b] 如果不传，比较 this 和 a 是否近似相等
      * @return {Boolean}
      */
-    equals(a, b) {
+    equals(a: Matrix4, b?: Matrix4): boolean {
         if (!b) {
             b = a;
             a = this;
         }
         return mat4.equals(a.elements, b.elements);
-    },
+    }
+
     /**
      * compose
      * @param  {Quaternion} q quaternion
@@ -602,14 +645,15 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Vector3} p [pivot]
      * @return {Matrix4Notifier}  this
      */
-    compose(q, v, s, p) {
+    compose(q: Quaternion, v: Vector3, s: Vector3, p?: Vector3): Matrix4Notifier {
         if (p) {
             this.fromRotationTranslationScaleOrigin(q, v, s, p);
         } else {
             this.fromRotationTranslationScale(q, v, s);
         }
         return this;
-    },
+    }
+
     /**
      * decompose
      * @param  {Quaternion} q quaternion
@@ -618,7 +662,7 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
      * @param  {Vector3} p [pivot]
      * @return {Matrix4Notifier}  this
      */
-    decompose(q, v, s, p) {
+    decompose(q: Quaternion, v: Vector3, s: Vector3, p?: Vector3): Matrix4Notifier {
         this.getScaling(s);
         this.getTranslation(v);
 
@@ -640,6 +684,6 @@ const Matrix4Notifier = Class.create(/** @lends Matrix4Notifier.prototype */ {
         }
         return this;
     }
-});
+}
 
 export default Matrix4Notifier;
