@@ -20,6 +20,7 @@ import log from '../utils/log';
 import BasicLoader from './BasicLoader';
 import * as util from '../utils/util';
 import * as extensionHandlers from './GLTFExtensions';
+import type { GLTFData, GLTFNode, GLTFMesh, GLTFMaterial, GLTFPrimitive, GLTFAccessor, GLTFTexture, GLTFImage } from '../types/common';
 
 import constants from '../constants';
 
@@ -146,7 +147,7 @@ class GLTFParser {
 
     isLoadAllTextures: boolean = false;
 
-    preHandlerImageURI: ((uri: any, imgData: any) => any) | null = null;
+    preHandlerImageURI: ((uri: string, imgData: GLTFImage) => string) | null = null;
 
     preHandlerBufferURI: ((uri: string, bufferData: any) => string) | null = null;
 
@@ -160,7 +161,7 @@ class GLTFParser {
 
     content: ArrayBuffer | string;
 
-    json: any;
+    json: GLTFData;
 
     glTFVersion: number = 0;
 
@@ -203,7 +204,16 @@ class GLTFParser {
      * @param  {ArrayBuffer|String} content
      * @param  {Object} params
      */
-    constructor(content: ArrayBuffer | string, params?: any) {
+    constructor(content: ArrayBuffer | string, params?: {
+        isMultiAnim?: boolean;
+        isProgressive?: boolean;
+        isUnQuantizeInShader?: boolean;
+        isLoadAllTextures?: boolean;
+        preHandlerImageURI?: ((uri: string, imgData: GLTFImage) => string) | null;
+        preHandlerBufferURI?: ((uri: string, bufferData: any) => string) | null;
+        defaultScene?: number | string;
+        [key: string]: any;
+    }) {
         this.content = content;
         if (params) {
             Object.assign(this, params);
@@ -561,7 +571,7 @@ class GLTFParser {
     }
 
     // get Texture for glTF 2.0
-    getTexture(textureInfo: any): LazyTexture | null {
+    getTexture(textureInfo: { index: number; texCoord?: number; [key: string]: any }): LazyTexture | null {
         let texture = this.textures[textureInfo.index];
         if (!texture) {
             return null;

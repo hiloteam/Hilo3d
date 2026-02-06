@@ -1,6 +1,7 @@
 import math from '../math/math';
 import Camera from './Camera';
 import Geometry from '../geometry/Geometry';
+import type { PerspectiveCameraParams } from '../types/common';
 
 /**
  * 透视投影摄像机
@@ -97,7 +98,7 @@ class PerspectiveCamera extends Camera {
      * @param {number} [params.aspect=1] 宽高比
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params?: any) {
+    constructor(params?: PerspectiveCameraParams) {
         super(params);
         this.updateProjectionMatrix();
     }

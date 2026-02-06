@@ -20,6 +20,7 @@ import WebGLResourceManager from './WebGLResourceManager';
 import LightManager from '../light/LightManager';
 import EventMixin from '../core/EventMixin';
 import Texture from '../texture/Texture';
+import type { WebGLRendererParams } from '../types/common';
 
 import constants from '../constants';
 
@@ -314,7 +315,7 @@ class WebGLRenderer extends EventMixin {
      * @constructs
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params?: any) {
+    constructor(params?: WebGLRendererParams) {
         super();
 
         this.clearColor = new Color(1, 1, 1);

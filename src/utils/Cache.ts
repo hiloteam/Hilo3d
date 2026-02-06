@@ -71,7 +71,6 @@ class Cache<T = any> {
      * 遍历所有缓存
      * @param callback 回调函数(value, id)
      */
-    // eslint-disable-next-line no-unused-vars
     each(callback: (value: T, id: string) => void): void {
         const cache = this._cache;
         for (const id in cache) {

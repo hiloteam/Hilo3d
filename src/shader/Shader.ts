@@ -6,6 +6,7 @@ import basicFragCode from './basic.frag';
 import basicVertCode from './basic.vert';
 import geometryFragCode from './geometry.frag';
 import pbrFragCode from './pbr.frag';
+import type { MeshLike, MaterialLike, LightManagerLike, FogLike, WebGLRendererLike, RenderOptions, ShaderParams } from '../types/common';
 
 const cache = new Cache();
 const headerCache = new Cache();
@@ -49,9 +50,9 @@ class Shader {
     id: string;
     private _isDestroyed: boolean = false;
 
-    static renderer: any;
+    static renderer: WebGLRendererLike;
     static commonHeader: string;
-    static commonOptions: any = {};
+    static commonOptions: RenderOptions = {};
     /**
      * 内部的所有shader块字符串，可以用来拼接glsl代码
      * @type {Object}
@@ -121,7 +122,7 @@ class Shader {
      * 初始化
      * @param  {WebGLRenderer} renderer
      */
-    static init(renderer: any): void {
+    static init(renderer: WebGLRendererLike): void {
         this.renderer = renderer;
         this.commonHeader = this._getCommonHeader(this.renderer);
     }
@@ -147,7 +148,7 @@ class Shader {
     /**
      * 重置
      */
-    static reset(gl: any): void { // eslint-disable-line no-unused-vars
+    static reset(_gl: WebGLRenderingContext): void {
         cache.removeAll();
     }
 
@@ -160,7 +161,7 @@ class Shader {
      * @param {Boolean} useLogDepth 是否使用对数深度
      * @return {string}
      */
-    static getHeaderKey(mesh: any, material: any, lightManager: any, fog: any, useLogDepth?: boolean): string {
+    static getHeaderKey(mesh: MeshLike, material: MaterialLike, lightManager: LightManagerLike, fog: FogLike | null, useLogDepth?: boolean): string {
         let headerKey = 'header_' + material.id + '_' + lightManager.lightInfo.uid;
         if (mesh.isSkinedMesh) {
             headerKey += '_joint' + mesh.skeleton.jointCount;
@@ -185,11 +186,11 @@ class Shader {
      * @param {Fog} fog
      * @return {String}
      */
-    static getHeader(mesh: any, material: any, lightManager: any, fog: any, useLogDepth?: boolean): string {
+    static getHeader(mesh: MeshLike, material: MaterialLike, lightManager: LightManagerLike, fog: FogLike | null, useLogDepth?: boolean): string {
         const headerKey = this.getHeaderKey(mesh, material, lightManager, fog);
         let header = headerCache.get(headerKey);
         if (!header || material.isDirty) {
-            const headers: any = {};
+            const headers: RenderOptions = {};
             Object.assign(headers, this.commonOptions);
             const lightType = material.lightType;
             if (lightType && lightType !== 'NONE') {
@@ -233,7 +234,7 @@ class Shader {
         return header;
     }
 
-    private static _getCommonHeader(renderer: any): string {
+    private static _getCommonHeader(renderer: WebGLRendererLike): string {
         const vertexPrecision = capabilities.getMaxPrecision(capabilities.MAX_VERTEX_PRECISION, renderer.vertexPrecision);
         const fragmentPrecision = capabilities.getMaxPrecision(capabilities.MAX_FRAGMENT_PRECISION, renderer.fragmentPrecision);
         const precision = capabilities.getMaxPrecision(vertexPrecision, fragmentPrecision);
@@ -254,7 +255,7 @@ class Shader {
      * @param {Boolean} useLogDepth
      * @return {Shader}
      */
-    static getShader(mesh: any, material: any, isUseInstance: boolean, lightManager: any, fog: any, useLogDepth: boolean): Shader | null {
+    static getShader(mesh: MeshLike, material: MaterialLike, isUseInstance: boolean, lightManager: LightManagerLike, fog: FogLike | null, useLogDepth: boolean): Shader | null {
         const header = this.getHeader(mesh, material, lightManager, fog, useLogDepth);
 
         if (material.isBasicMaterial || material.isPBRMaterial) {
@@ -274,10 +275,10 @@ class Shader {
      * @param  {Fog}  fog
      * @return {Shader}
      */
-    static getBasicShader(material: any, isUseInstance: boolean, header: string): Shader {
+    static getBasicShader(material: MaterialLike, isUseInstance: boolean, header: string): Shader {
         let instancedUniforms = '';
         if (isUseInstance) {
-            instancedUniforms = material.getInstancedUniforms().map((x: any) => x.name);
+            instancedUniforms = material.getInstancedUniforms!().map((x: { name: string }) => x.name);
             instancedUniforms = instancedUniforms.join('|');
         }
         let key = material.className + ':' + instancedUniforms;
@@ -323,7 +324,7 @@ class Shader {
         return shader;
     }
 
-    private static _getNumId(obj: any): number | null {
+    private static _getNumId(obj: Shader): number | null {
         const id = obj.id;
         const res = id.match(/_(\d+)/);
         if (res && res[1]) {
@@ -369,7 +370,7 @@ class Shader {
      * @constructs
      * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params?: any) {
+    constructor(params?: ShaderParams) {
         this.id = math.generateUUID(this.className);
         Object.assign(this, params);
     }
@@ -379,7 +380,7 @@ class Shader {
      * @param  {WebGLRenderer} renderer
      * @return {Shader} this
      */
-    destroyIfNoRef(renderer: any): Shader {
+    destroyIfNoRef(renderer: WebGLRendererLike): Shader {
         const resourceManager = renderer.resourceManager;
         resourceManager.destroyIfNoRef(this);
 
