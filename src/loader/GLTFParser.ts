@@ -571,7 +571,7 @@ class GLTFParser {
     }
 
     // get Texture for glTF 2.0
-    getTexture(textureInfo: any): LazyTexture | null {
+    getTexture(textureInfo: { index: number; texCoord?: number; [key: string]: any }): LazyTexture | null {
         let texture = this.textures[textureInfo.index];
         if (!texture) {
             return null;
