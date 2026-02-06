@@ -1,5 +1,6 @@
 import Camera from './Camera';
 import Geometry from '../geometry/Geometry';
+import type { OrthographicCameraParams } from '../types/common';
 
 /**
  * 正交投影摄像机
@@ -126,7 +127,7 @@ class OrthographicCamera extends Camera {
      * @param {number} [params.far=1]
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params?: any) {
+    constructor(params?: OrthographicCameraParams) {
         super(params);
         this.updateProjectionMatrix();
     }

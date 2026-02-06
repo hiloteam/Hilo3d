@@ -1,7 +1,9 @@
-export class WebGL1VertexArrayObjectExtension {
-    private _ext: any;
+import type { OESVertexArrayObjectExtension } from '../../types/common';
 
-    constructor(vaoExtension: any) {
+export class WebGL1VertexArrayObjectExtension {
+    private _ext: OESVertexArrayObjectExtension;
+
+    constructor(vaoExtension: OESVertexArrayObjectExtension) {
         this._ext = vaoExtension;
     }
 
