@@ -1,4 +1,4 @@
-/* eslint no-unused-vars: "off" */
+/* eslint-disable no-unused-vars, @typescript-eslint/no-unused-vars */
 import DataTexture from '../texture/DataTexture';
 import Vector3 from '../math/Vector3';
 import Matrix3 from '../math/Matrix3';
@@ -185,7 +185,7 @@ const semantic = {
      * @type {semanticObject}
      */
     TANGENT: {
-        get(mesh, material, programInfo) {
+        get(mesh, material, _programInfo) {
             const normalMap = material.normalMap || material.clearcoatNormalMap;
             if (normalMap && normalMap.isTexture) {
                 if (Number(normalMap.uv) === 1) {

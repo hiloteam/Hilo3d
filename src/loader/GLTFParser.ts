@@ -20,7 +20,10 @@ import log from '../utils/log';
 import BasicLoader from './BasicLoader';
 import * as util from '../utils/util';
 import * as extensionHandlers from './GLTFExtensions';
-import type { GLTFData, GLTFNode, GLTFMesh, GLTFMaterial, GLTFPrimitive, GLTFAccessor, GLTFTexture, GLTFImage } from '../types/common';
+import type {
+    GLTFData,
+    GLTFImage
+} from '../types/common';
 
 import constants from '../constants';
 
@@ -293,7 +296,6 @@ class GLTFParser {
         return result;
     }
 
-    // eslint-disable-next-line class-methods-use-this
     isUseExtension(data: any, extensionName: string): boolean {
         return !!(data && data.extensions && data.extensions[extensionName]);
     }
@@ -1137,7 +1139,6 @@ class GLTFParser {
         });
     }
 
-    // eslint-disable-next-line class-methods-use-this
     handlerNodeTransform(node: any, data: any): void {
         if (data.matrix) {
             node.matrix.fromArray(data.matrix);

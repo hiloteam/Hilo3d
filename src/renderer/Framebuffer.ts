@@ -92,7 +92,7 @@ class Framebuffer {
      * 重置所有framebuffer
      * @param  {WebGLRenderingContext} gl
      */
-    static reset(gl: WebGLRenderingContext | WebGL2RenderingContext): void {
+    static reset(_gl: WebGLRenderingContext | WebGL2RenderingContext): void {
         cache.each((framebuffer) => {
             framebuffer.reset();
         });
@@ -102,7 +102,7 @@ class Framebuffer {
      * 销毁所有 Framebuffer
      * @param  {WebGLRenderingContext} gl
      */
-    static destroy(gl: WebGLRenderingContext | WebGL2RenderingContext): void {
+    static destroy(_gl: WebGLRenderingContext | WebGL2RenderingContext): void {
         cache.each((framebuffer) => {
             framebuffer.destroy();
         });

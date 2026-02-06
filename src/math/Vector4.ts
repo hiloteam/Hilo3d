@@ -11,13 +11,13 @@ class Vector4 {
      * @default Vector4
      */
     className: string = 'Vector4';
-    
+
     /**
      * @type {Boolean}
      * @default true
      */
     isVector4: boolean = true;
-    
+
     /**
      * 数据
      * @type {Float32Array}

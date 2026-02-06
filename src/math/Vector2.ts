@@ -11,13 +11,13 @@ class Vector2 {
      * @default Vector2
      */
     className: string = 'Vector2';
-    
+
     /**
      * @type {Boolean}
      * @default true
      */
     isVector2: boolean = true;
-    
+
     /**
      * 数据
      * @type {Float32Array}

@@ -1,3 +1,5 @@
+import type { GLenum } from '../types/common';
+
 interface GLTypeInfo {
     name: string;
     byteSize: number;

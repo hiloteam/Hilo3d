@@ -571,8 +571,6 @@ class Tween {
 }
 
 
-/* eslint-disable no-return-assign, no-cond-assign */
-
 function createEase(
     obj: any,
     easeInFn?: (k: number) => number,
@@ -614,7 +612,12 @@ const Quad: TweenEaseObject = createEase(null,
     },
 
     (k: number) => {
-        return ((k *= 2) < 1) ? 0.5 * k * k : -0.5 * (--k * (k - 2) - 1);
+        k *= 2;
+        if (k < 1) {
+            return 0.5 * k * k;
+        }
+        k--;
+        return -0.5 * (k * (k - 2) - 1);
     });
 
 const Cubic: TweenEaseObject = createEase(null,
@@ -623,11 +626,17 @@ const Cubic: TweenEaseObject = createEase(null,
     },
 
     (k: number) => {
-        return --k * k * k + 1;
+        k--;
+        return k * k * k + 1;
     },
 
     (k: number) => {
-        return ((k *= 2) < 1) ? 0.5 * k * k * k : 0.5 * ((k -= 2) * k * k + 2);
+        k *= 2;
+        if (k < 1) {
+            return 0.5 * k * k * k;
+        }
+        k -= 2;
+        return 0.5 * (k * k * k + 2);
     });
 
 const Quart: TweenEaseObject = createEase(null,
@@ -636,11 +645,17 @@ const Quart: TweenEaseObject = createEase(null,
     },
 
     (k: number) => {
-        return -(--k * k * k * k - 1);
+        k--;
+        return -(k * k * k * k - 1);
     },
 
     (k: number) => {
-        return ((k *= 2) < 1) ? 0.5 * k * k * k * k : -0.5 * ((k -= 2) * k * k * k - 2);
+        k *= 2;
+        if (k < 1) {
+            return 0.5 * k * k * k * k;
+        }
+        k -= 2;
+        return -0.5 * (k * k * k * k - 2);
     });
 
 const Quint: TweenEaseObject = createEase(null,
@@ -649,11 +664,17 @@ const Quint: TweenEaseObject = createEase(null,
     },
 
     (k: number) => {
-        return (k -= 1) * k * k * k * k + 1;
+        k -= 1;
+        return k * k * k * k * k + 1;
     },
 
     (k: number) => {
-        return ((k *= 2) < 1) ? 0.5 * k * k * k * k * k : 0.5 * ((k -= 2) * k * k * k * k + 2);
+        k *= 2;
+        if (k < 1) {
+            return 0.5 * k * k * k * k * k;
+        }
+        k -= 2;
+        return 0.5 * (k * k * k * k * k + 2);
     });
 
 const PI = Math.PI;
@@ -686,7 +707,8 @@ const Expo: TweenEaseObject = createEase(null,
 
     (k: number) => {
         if (k === 0 || k === 1) return k;
-        if ((k *= 2) < 1) return 0.5 * (2 ** (10 * (k - 1)));
+        k *= 2;
+        if (k < 1) return 0.5 * (2 ** (10 * (k - 1)));
         return 0.5 * (-(2 ** (-10 * (k - 1))) + 2);
     });
 
@@ -696,12 +718,15 @@ const Circ: TweenEaseObject = createEase(null,
     },
 
     (k: number) => {
-        return sqrt(1 - (--k * k));
+        k--;
+        return sqrt(1 - (k * k));
     },
 
     (k: number) => {
-        if ((k /= 0.5) < 1) return -0.5 * (sqrt(1 - k * k) - 1);
-        return 0.5 * (sqrt(1 - (k -= 2) * k) + 1);
+        k /= 0.5;
+        if (k < 1) return -0.5 * (sqrt(1 - k * k) - 1);
+        k -= 2;
+        return 0.5 * (sqrt(1 - k * k) + 1);
     });
 
 const Elastic: TweenEaseElasticObject = createEase(
@@ -718,7 +743,8 @@ const Elastic: TweenEaseElasticObject = createEase(
     },
 
     (k: number) => {
-        return -(Elastic.a * (2 ** (10 * (k -= 1))) * sin((k - Elastic.s) * (2 * PI) / Elastic.p));
+        k -= 1;
+        return -(Elastic.a * (2 ** (10 * k)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p));
     },
 
     (k: number) => {
@@ -726,8 +752,13 @@ const Elastic: TweenEaseElasticObject = createEase(
     },
 
     (k: number) => {
-        return ((k *= 2) < 1) ? -0.5 * (Elastic.a * (2 ** (10 * (k -= 1))) * sin((k - Elastic.s) * (2 * PI) / Elastic.p))
-            : Elastic.a * (2 ** (-10 * (k -= 1))) * sin((k - Elastic.s) * (2 * PI) / Elastic.p) * 0.5 + 1;
+        k *= 2;
+        if (k < 1) {
+            k -= 1;
+            return -0.5 * (Elastic.a * (2 ** (10 * k)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p));
+        }
+        k -= 1;
+        return Elastic.a * (2 ** (-10 * k)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p) * 0.5 + 1;
     }
 );
 
@@ -747,11 +778,17 @@ const Back: TweenEaseBackObject = createEase(
     },
 
     (k: number) => {
-        return (k -= 1) * k * ((Back.o + 1) * k + Back.o) + 1;
+        k -= 1;
+        return k * k * ((Back.o + 1) * k + Back.o) + 1;
     },
 
     (k: number) => {
-        return ((k *= 2) < 1) ? 0.5 * (k * k * ((Back.s + 1) * k - Back.s)) : 0.5 * ((k -= 2) * k * ((Back.s + 1) * k + Back.s) + 2);
+        k *= 2;
+        if (k < 1) {
+            return 0.5 * (k * k * ((Back.s + 1) * k - Back.s));
+        }
+        k -= 2;
+        return 0.5 * (k * k * ((Back.s + 1) * k + Back.s) + 2);
     }
 );
 
@@ -761,20 +798,25 @@ const Bounce: TweenEaseBounceObject = createEase(null,
     },
 
     (k: number) => {
-        if ((k /= 1) < 0.36364) {
+        k /= 1;
+        if (k < 0.36364) {
             return 7.5625 * k * k;
-        } if (k < 0.72727) {
-            return 7.5625 * (k -= 0.54545) * k + 0.75;
-        } if (k < 0.90909) {
-            return 7.5625 * (k -= 0.81818) * k + 0.9375;
         }
-        return 7.5625 * (k -= 0.95455) * k + 0.984375;
+        if (k < 0.72727) {
+            k -= 0.54545;
+            return 7.5625 * k * k + 0.75;
+        }
+        if (k < 0.90909) {
+            k -= 0.81818;
+            return 7.5625 * k * k + 0.9375;
+        }
+        k -= 0.95455;
+        return 7.5625 * k * k + 0.984375;
     },
 
     (k: number) => {
         return k < 0.5 ? Bounce.EaseIn(k * 2) * 0.5 : Bounce.EaseOut(k * 2 - 1) * 0.5 + 0.5;
     });
-/* eslint-enable no-return-assign, no-cond-assign */
 
 Tween.Ease = {
     Linear,

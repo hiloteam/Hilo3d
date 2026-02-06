@@ -52,6 +52,7 @@ class Euler {
         this.elements = new Float32Array([x, y, z]);
         this.updateDegrees();
     }
+
     /**
      * 克隆
      * @return {Euler}
@@ -132,6 +133,7 @@ class Euler {
         array[offset + 2] = this.elements[0 + 2];
         return array;
     }
+
     /**
      * Creates a euler from the given 4x4 rotation matrix.
      * @param {Matrix4} mat rotation matrix

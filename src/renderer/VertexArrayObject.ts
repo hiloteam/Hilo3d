@@ -75,7 +75,7 @@ class VertexArrayObject {
      * 重置所有vao
      * @param  {WebGLRenderingContext} gl
      */
-    static reset(_gl: WebGLRenderingContext): void {
+    static reset(gl: WebGLRenderingContext): void {
         currentVao = null;
         globalStates = [];
         this.bindSystemVao();
@@ -162,7 +162,7 @@ class VertexArrayObject {
 
     private _isDestroyed: boolean = false;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-undef
+    // eslint-disable-next-line no-undef
     [key: string]: any;
 
     /**
