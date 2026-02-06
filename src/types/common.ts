@@ -166,3 +166,39 @@ export interface GeometryMaterialParams extends MaterialParams {
     useInstanced?: boolean;
 }
 
+/**
+ * GeometryData constructor parameters
+ */
+export interface GeometryDataParams {
+    bufferViewId?: string;
+    stride?: number;
+    offset?: number;
+    normalized?: boolean;
+    type?: number;
+    target?: number;
+    usage?: number;
+    count?: number;
+    realSize?: number;
+    quantization?: any; // Quantization parameters
+    min?: number[];
+    max?: number[];
+    [key: string]: any;
+}
+
+/**
+ * Geometry constructor parameters
+ */
+export interface GeometryParams {
+    id?: string;
+    mode?: number;
+    indices?: any; // GeometryData or TypedArray
+    vertices?: any; // GeometryData or TypedArray
+    normals?: any;
+    tangents?: any;
+    uvs?: any;
+    uvs1?: any;
+    colors?: any;
+    skinIndices?: any;
+    skinWeights?: any;
+    [key: string]: any; // Allow custom attributes
+}
