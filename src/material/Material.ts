@@ -3,6 +3,7 @@ import semantic from './semantic';
 import log from '../utils/log';
 import constants from '../constants';
 import capabilities from '../renderer/capabilities';
+import type { MaterialParams } from '../types/common';
 
 const {
     LEQUAL,
@@ -550,7 +551,7 @@ class Material {
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params?: any) {
+    constructor(params?: MaterialParams) {
         this.id = math.generateUUID(this.className);
         this.uniforms = {};
         this.attributes = {};

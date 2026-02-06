@@ -1,5 +1,6 @@
 import Material from './Material';
 import Color from '../math/Color';
+import type { MaterialParams } from '../types/common';
 
 /**
  * 基础材质，支持 NONE, PHONG, BLINN-PHONG, LAMBERT光照模型
@@ -118,7 +119,7 @@ class BasicMaterial extends Material {
      * @param {number} [params.shininess=32] 高光发光值
      * @param {any} [params.[value:string]] 其它属性
      */
-    constructor(params?: any) {
+    constructor(params?: MaterialParams) {
         super(params);
 
         Object.assign(this.uniforms, {

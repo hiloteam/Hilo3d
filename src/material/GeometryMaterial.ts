@@ -1,5 +1,6 @@
 import BasicMaterial from './BasicMaterial';
 import constants from '../constants';
+import type { GeometryMaterialParams } from '../types/common';
 
 const {
     POSITION,
@@ -49,7 +50,7 @@ class GeometryMaterial extends BasicMaterial {
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params?: any) {
+    constructor(params?: GeometryMaterialParams) {
         super(params);
         Object.assign(this.uniforms, {
             u_cameraFar: 'CAMERAFAR',

@@ -1,4 +1,5 @@
 import Material from './Material';
+import type { ShaderMaterialParams, RenderOptions } from '../types/common';
 
 /**
  * Shader材质
@@ -79,11 +80,11 @@ class ShaderMaterial extends Material {
      * @constructs
      * @param {object} [params] 初始化参数，所有params都会复制到实例上
      */
-    constructor(params?: any) {
+    constructor(params?: ShaderMaterialParams) {
         super(params);
     }
 
-    getRenderOption(option: any = {}): any {
+    getRenderOption(option: RenderOptions = {}): RenderOptions {
         super.getRenderOption(option);
         if (this.getCustomRenderOption) {
             const custumOption = this.getCustomRenderOption({});
