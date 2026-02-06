@@ -1,22 +1,31 @@
-import Class from '../core/Class';
 import Plane from './Plane';
+import Matrix4 from './Matrix4';
+import Sphere from './Sphere';
 
 /**
  * 平截头体
  * @class
  */
-const Frustum = Class.create(/** @lends Frustum.prototype */ {
+class Frustum {
     /**
      * 类名
      * @type {String}
      * @default Frustum
      */
-    className: 'Frustum',
+    className: string = 'Frustum';
+
     /**
      * @type {Boolean}
      * @default true
      */
-    isFrustum: true,
+    isFrustum: boolean = true;
+
+    /**
+     * 平面数组
+     * @type {Plane[]}
+     */
+    planes: Plane[];
+
     /**
      * @constructs
      */
@@ -26,34 +35,37 @@ const Frustum = Class.create(/** @lends Frustum.prototype */ {
         while (num--) {
             this.planes.push(new Plane());
         }
-    },
+    }
+
     /**
      * Copy the values from one frustum to this
-     * @param  {Frustum} m the source frustum
+     * @param  {Frustum} frustum the source frustum
      * @return {Frustum} this
      */
-    copy(frustum) {
+    copy(frustum: Frustum): Frustum {
         const planes = frustum.planes;
         this.planes.forEach((plane, index) => {
             plane.copy(planes[index]);
         });
         return this;
-    },
+    }
+
     /**
      * Creates a new frustum initialized with values from this frustum
      * @return {Frustum} a new Frustum
      */
-    clone() {
-        const frustum = new this.constructor();
+    clone(): Frustum {
+        const frustum = new Frustum();
         frustum.copy(this);
         return frustum;
-    },
+    }
+
     /**
      * fromMatrix
      * @param  {Matrix4} mat
      * @return {Frustum}  this
      */
-    fromMatrix(mat) {
+    fromMatrix(mat: Matrix4): Frustum {
         // Based on https://github.com/mrdoob/three.js/blob/dev/src/math/Frustum.js#L63
 
         const planes = this.planes;
@@ -83,13 +95,14 @@ const Frustum = Class.create(/** @lends Frustum.prototype */ {
         planes[5].set(me3 + me2, me7 + me6, me11 + me10, me15 + me14).normalize();
 
         return this;
-    },
+    }
+
     /**
      * 与球体相交
      * @param  {Sphere} sphere
      * @return {Boolean} 是否相交
      */
-    intersectsSphere(sphere) {
+    intersectsSphere(sphere: Sphere): boolean {
         const planes = this.planes;
         const center = sphere.center;
         const negRadius = -sphere.radius;
@@ -104,6 +117,6 @@ const Frustum = Class.create(/** @lends Frustum.prototype */ {
 
         return true;
     }
-});
+}
 
 export default Frustum;
