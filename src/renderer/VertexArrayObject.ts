@@ -75,7 +75,7 @@ class VertexArrayObject {
      * 重置所有vao
      * @param  {WebGLRenderingContext} gl
      */
-    static reset(gl: WebGLRenderingContext): void { // eslint-disable-line no-unused-vars
+    static reset(_gl: WebGLRenderingContext): void {
         currentVao = null;
         globalStates = [];
         this.bindSystemVao();

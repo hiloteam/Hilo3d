@@ -148,7 +148,7 @@ class Shader {
     /**
      * 重置
      */
-    static reset(gl: WebGLRenderingContext): void { // eslint-disable-line no-unused-vars
+    static reset(_gl: WebGLRenderingContext): void {
         cache.removeAll();
     }
 
