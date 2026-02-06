@@ -1,7 +1,9 @@
-export class WebGL1InstancedArraysExtension {
-    private _ext: any;
+import type { ANGLEInstancedArraysExtension } from '../../types/common';
 
-    constructor(instancedArraysExtension: any) {
+export class WebGL1InstancedArraysExtension {
+    private _ext: ANGLEInstancedArraysExtension;
+
+    constructor(instancedArraysExtension: ANGLEInstancedArraysExtension) {
         this._ext = instancedArraysExtension;
     }
 

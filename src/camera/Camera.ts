@@ -3,6 +3,7 @@ import Matrix4 from '../math/Matrix4';
 import Frustum from '../math/Frustum';
 import Vector3 from '../math/Vector3';
 import type Geometry from '../geometry/Geometry';
+import type { CameraParams } from '../types/common';
 
 const tempMatrix4 = new Matrix4();
 
@@ -60,7 +61,7 @@ class Camera extends Node {
      * @constructs
      * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
      */
-    constructor(params?: any) {
+    constructor(params?: CameraParams) {
         super(params);
         this.viewMatrix = new Matrix4();
         this.projectionMatrix = new Matrix4();
