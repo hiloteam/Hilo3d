@@ -20,10 +20,14 @@
     ```
     $ npm install hilo3d
     ```
+
+    ```ts
+    import { Stage, PerspectiveCamera } from 'hilo3d';
+    ```
 * 使用 script 标签加载 [cdn][cdn-url]
 
     ```
-   <script src='//cdn.jsdelivr.net/npm/hilo3d@1.19.0/build/Hilo3d.js'></script>
+   <script src='//cdn.jsdelivr.net/npm/hilo3d@2/dist/Hilo3d.umd.cjs'></script>
     ```
 
 ### 文档
@@ -31,10 +35,19 @@
 * [教程](https://github.com/hiloteam/article/issues?q=is%3Aissue+is%3Aopen+label%3AHilo3d)
 
 ### 开发
-* 运行 `npm run dev` 开发。
-* 运行 `npm run release` 发布代码。
-* 运行 `npm run doc` 生成 api 文档。
-* 运行 `npm run test` 运行测试用例。
+
+需要 Node.js 20.19 或更高版本。当前维护的引擎和测试源码均使用 TypeScript，
+开发工具链为 Vite、Vitest Browser Mode、Playwright 和 ESLint。
+
+* 运行 `npm run dev` 启动 Vite 开发服务器。
+* 运行 `npm run typecheck` 执行严格 TypeScript 检查。
+* 运行 `npm run lint` 执行带类型信息的 ESLint 检查。
+* 运行 `npm test` 在无头 Chromium 中执行测试。
+* 运行 `npm run build` 在 `dist/` 中生成 ESM 和 UMD 构建产物。
+* 运行 `npm run examples:dev` 启动全部 TypeScript 示例。
+* 运行 `npm run examples:build` 将所有示例页面构建到 `dist-examples/`。
+* 运行 `npm run examples:test` 在 Chromium 中冒烟测试代表性示例。
+* 运行 `npm run validate` 执行全部发布前检查。
 
 ### 案例
 * 淘宝人生
@@ -126,4 +139,4 @@
 [size-image]:https://img.shields.io/bundlephobia/minzip/hilo3d?style=flat-square&label=zipped%20size
 [ci-url]:https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev
 [ci-image]:https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?branch=dev
-[cdn-url]: https://cdn.jsdelivr.net/npm/hilo3d@1.19.0/build/Hilo3d.js
+[cdn-url]: https://cdn.jsdelivr.net/npm/hilo3d@2/dist/Hilo3d.umd.cjs

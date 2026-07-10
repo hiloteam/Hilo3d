@@ -6,7 +6,7 @@
     <link rel='stylesheet' href='./css/index.css'>
 </head>
 <body>
-    <script>window.notInit = true</script>
+    <script type="module" src="./js/prelude.ts"></script>
     <input type='file' multiple id='input'>
     <div id='inputContainer'>
         <div class='title'>It's a glTF Viewer rendered by <a href='https://github.com/hiloteam/Hilo3d'>Hilo3d</a>.</div>
@@ -20,13 +20,15 @@
         </div>
     </div>
     <div id='stageContainer'></div>
-    <script src='./lib/simple-dropzone.min.js'></script>
-    <script src='../../build/Hilo3d.js'></script>
-    <script src="../../examples/loader/draco/draco_decoder.js"></script>
-    <script src="../../examples/loader/draco/DracoLoader.js"></script>
-    <script src='../../examples/js/init.js'></script>
-    <script src='../../examples/js/stats.js'></script>
-    <script src='../../examples/js/OrbitControls.js'></script>
-    <script src='./js/index.js'></script>
+    <!-- @vite-ignore: third-party classic script copied by vite.examples.config.ts -->
+    <script src='./lib/simple-dropzone.vendor.min.js'></script>
+    <script type="module" src='../js/hilo3d.ts'></script>
+    <!-- @vite-ignore: Emscripten decoder exposes a classic-script global -->
+    <script src="../../examples/loader/draco/draco_decoder.vendor.js"></script>
+    <script type="module" src="../../examples/loader/draco/DracoLoader.ts"></script>
+    <script type="module" src='../../examples/js/init.ts'></script>
+    <script type="module" src='../../examples/js/stats.ts'></script>
+    <script type="module" src='../../examples/js/OrbitControls.ts'></script>
+    <script type="module" src='./js/index.ts'></script>
 </body>
 </html>

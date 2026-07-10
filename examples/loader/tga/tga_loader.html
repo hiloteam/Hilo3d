@@ -8,31 +8,11 @@
 </head>
 <body>
     <div id="container"></div>
-    <script src="../../../build/Hilo3d.js"></script>
-    <script src="./TGALoader.js"></script>
-    <script src="../../js/stats.js"></script>
-    <script src="../../js/OrbitControls.js"></script>
-    <script src="../../js/init.js"></script>
-    <script>
-        const boxGeometry = new Hilo3d.BoxGeometry();
-        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
-
-        const tgaLoader = new Hilo3d.TGALoader();
-        tgaLoader.load({
-            src: '//g.alicdn.com/eva-assets/137b7a9ebee547ea998694edc62a0b68/0.0.1/tga_sample/tga_sample.tga'
-        }).then(diffuse => {
-            const box = new Hilo3d.Mesh({
-                geometry: boxGeometry,
-                material: new Hilo3d.BasicMaterial({
-                    diffuse: diffuse
-                }),
-                onUpdate: function() {
-                    this.rotationX += .5;
-                    this.rotationZ += .5;
-                }
-            });
-            stage.addChild(box);
-        })
-    </script>
+    <script type="module" src="../../js/hilo3d.ts"></script>
+    <script type="module" src="./TGALoader.ts"></script>
+    <script type="module" src="../../js/stats.ts"></script>
+    <script type="module" src="../../js/OrbitControls.ts"></script>
+    <script type="module" src="../../js/init.ts"></script>
+    <script type="module" src="./tga_loader.ts"></script>
 </body>
 </html>

@@ -8,44 +8,10 @@
 </head>
 <body>
     <div id="container"></div>
-    <script src="../build/Hilo3d.js"></script>
-    <script src="./js/stats.js"></script>
-    <script src="./js/OrbitControls.js"></script>
-    <script src="./js/init.js"></script>
-    <script>
-        var planeGeometry = new Hilo3d.PlaneGeometry();
-
-        var sRGBPlane = new Hilo3d.Mesh({
-            geometry:planeGeometry,
-            material: new Hilo3d.BasicMaterial({
-                lightType: 'NONE',
-                diffuse:new Hilo3d.LazyTexture({
-                    src:'//gw.alicdn.com/imgextra/i2/O1CN015YnrkX1jp17VWipnN_!!6000000004596-2-tps-512-512.png',
-                    format: Hilo3d.constants.RGBA,
-                    internalFormat: Hilo3d.constants.SRGB8_ALPHA8,
-                    flipY: true,
-                    minFilter: Hilo3d.constants.NEAREST,
-                    magFilter: Hilo3d.constants.NEAREST,
-                }),
-            }),
-            x: -1,
-        });
-        stage.addChild(sRGBPlane);
-
-        var linearPlane = new Hilo3d.Mesh({
-            geometry:planeGeometry,
-            material: new Hilo3d.BasicMaterial({
-                lightType: 'NONE',
-                diffuse:new Hilo3d.LazyTexture({
-                    src:'//gw.alicdn.com/imgextra/i3/O1CN01sTOdgW1CgslZ8CrFJ_!!6000000000111-2-tps-512-512.png',
-                    flipY: true,
-                    minFilter: Hilo3d.constants.NEAREST,
-                    magFilter: Hilo3d.constants.NEAREST,
-                }),
-            }),
-            x: 1
-        });
-        stage.addChild(linearPlane);
-    </script>
+    <script type="module" src="./js/hilo3d.ts"></script>
+    <script type="module" src="./js/stats.ts"></script>
+    <script type="module" src="./js/OrbitControls.ts"></script>
+    <script type="module" src="./js/init.ts"></script>
+    <script type="module" src="./sRGB.ts"></script>
 </body>
 </html>

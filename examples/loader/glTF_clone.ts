@@ -1,0 +1,24 @@
+// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+
+renderer.useInstanced = true;
+        const loader = new Hilo3d.GLTFLoader();
+        loader.load({
+            useInstanced: true,
+            src: '../models/Tmall/Tmall.gltf'
+        }).then(function (model) {
+            const node = model.node;
+            node.setScale(0.002);
+            stage.addChild(node);
+            for (let i = 0; i < 100; i++) {
+                const cloneNode = node.clone();
+                cloneNode.anim.timeScale = Math.random();
+                cloneNode.setScale(0.0005);
+                cloneNode.x = Math.random() * 2 - 1;
+                cloneNode.y = Math.random() * 2 - 1;
+                cloneNode.z = Math.random() * 2 - 1;
+                cloneNode.anim.stop();
+                stage.addChild(cloneNode);
+            }
+        });
+
+        stage.addChild(new Hilo3d.AxisNetHelper({ size: 4 }));

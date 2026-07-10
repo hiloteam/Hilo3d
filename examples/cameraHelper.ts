@@ -1,0 +1,63 @@
+// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+
+var boxGeometry = new Hilo3d.BoxGeometry();
+        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+
+        var colorBox = new Hilo3d.Mesh({
+            geometry: boxGeometry,
+            material: new Hilo3d.BasicMaterial({
+                diffuse: new Hilo3d.Color(0.8, 0, 0)
+            }),
+            onUpdate: function() {
+                this.rotationX += .5;
+                this.rotationY += .5;
+            }
+        });
+        colorBox.setScale(0.3);
+        stage.addChild(colorBox);
+
+        var testCamera = new Hilo3d.PerspectiveCamera({
+            aspect: innerWidth / innerHeight,
+            far: 1.5,
+            near: 0.5,
+            x:1,
+            rotationY:90,
+        });
+
+        Hilo3d.Tween.to(testCamera, {
+            fov:20
+        }, {
+            duration:1500,
+            reverse:true,
+            loop:true
+        })
+
+        var cameraHelper = new Hilo3d.CameraHelper({
+            camera:testCamera,
+            color:new Hilo3d.Color(0.3, 0.6, 0.9)
+        });
+
+        stage.addChild(cameraHelper);
+
+        var framebuffer = new Hilo3d.Framebuffer(renderer, {
+            width: renderer.width,
+            height: renderer.height
+        });
+
+        var clearColor = new Hilo3d.Color(1, 1, 1);
+        renderer.on('afterRender', function(){
+            var currentCamera = testCamera;
+            var stageCamera = stage.camera;
+            
+            framebuffer.bind();
+            renderer.state.viewport(0, 0, framebuffer.width, framebuffer.height);
+            renderer.clear(clearColor);
+            currentCamera.updateViewProjectionMatrix();
+            Hilo3d.semantic.setCamera(currentCamera);
+            renderer.renderScene();
+            framebuffer.unbind();
+            Hilo3d.semantic.setCamera(stageCamera);
+            renderer.viewport();
+            var size = 0.4;
+            framebuffer.render(1 - size, 1 - size, size, size);
+        });

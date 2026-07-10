@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "vitest/globals"],
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleDetection": "force",
+    "allowUmdGlobalAccess": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/globals.d.ts",
+    "test/setup.ts",
+    "test/types/**/*.ts",
+    "examples/**/*.ts",
+    "scripts/**/*.ts",
+    "types/**/*.d.ts",
+    "vite.config.ts",
+    "vite.examples.config.ts",
+    "vitest.config.ts",
+    "eslint.config.ts"
+  ]
+}

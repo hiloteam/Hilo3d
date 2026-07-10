@@ -20,10 +20,14 @@ English | [简体中文](./README_ZH.md)
 	```
 	$ npm install hilo3d
 	```
+
+	```ts
+	import { Stage, PerspectiveCamera } from 'hilo3d';
+	```
 * use script tag from a [cdn][cdn-url]
 
 	```
-	<script src='//cdn.jsdelivr.net/npm/hilo3d@1.19.0/build/Hilo3d.js'></script>
+	<script src='//cdn.jsdelivr.net/npm/hilo3d@2/dist/Hilo3d.umd.cjs'></script>
 	```
 
 ### Documentation
@@ -31,10 +35,19 @@ English | [简体中文](./README_ZH.md)
 * [Tutorial](https://github.com/hiloteam/article/issues?q=is%3Aissue+is%3Aopen+label%3AHilo3d)
 
 ### Development
-* run `npm run dev` to dev.
-* run `npm run release` release the code.
-* run `npm run doc` to build API documentation.
-* run `npm run test` to run tests.
+
+Node.js 20.19 or newer is required. The maintained engine and test sources are
+written in TypeScript and use Vite, Vitest Browser Mode, Playwright and ESLint.
+
+* run `npm run dev` to start the Vite development server.
+* run `npm run typecheck` to run strict TypeScript checks.
+* run `npm run lint` to run the typed ESLint rules.
+* run `npm test` to run the test suite in headless Chromium.
+* run `npm run build` to create ESM and UMD bundles in `dist/`.
+* run `npm run examples:dev` to serve all TypeScript examples.
+* run `npm run examples:build` to build every example page into `dist-examples/`.
+* run `npm run examples:test` to smoke-test representative examples in Chromium.
+* run `npm run validate` to run all release checks.
 
 ### Showcase
 * 淘宝人生
@@ -125,4 +138,4 @@ English | [简体中文](./README_ZH.md)
 [size-image]:https://img.shields.io/bundlephobia/minzip/hilo3d?style=flat-square&label=zipped%20size
 [ci-url]:https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev
 [ci-image]:https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?branch=dev
-[cdn-url]: https://cdn.jsdelivr.net/npm/hilo3d@1.19.0/build/Hilo3d.js
+[cdn-url]: https://cdn.jsdelivr.net/npm/hilo3d@2/dist/Hilo3d.umd.cjs

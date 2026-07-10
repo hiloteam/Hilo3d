@@ -3,8 +3,12 @@ npm-debug.log
 .DS_Store
 .vscode
 .idea
+dist
+dist-examples
+.vitest-attachments
 test/hilo3d.test.js
 test/screenshot
+test/**/__screenshots__
 reports
 logs
 **/*.map

@@ -10,22 +10,11 @@
 
 <body>
     <div id="container"></div>
-    <script src="../build/Hilo3d.js"></script>
-    <script src="./js/stats.js"></script>
-    <script src="./js/OrbitControls.js"></script>
-    <script src="./js/init.js"></script>
-    <script>
-        const loader = new Hilo3d.GLTFLoader();
-        loader.load({
-            src: './models/Tmall/Tmall.gltf',
-        }).then(function(model) {
-            model.node.setScale(0.001);
-            model.materials.forEach(material => {
-                material.wireframe = true;
-            });
-            stage.addChild(model.node);
-        });
-    </script>
+    <script type="module" src="./js/hilo3d.ts"></script>
+    <script type="module" src="./js/stats.ts"></script>
+    <script type="module" src="./js/OrbitControls.ts"></script>
+    <script type="module" src="./js/init.ts"></script>
+    <script type="module" src="./wireframe.ts"></script>
 </body>
 
 </html>

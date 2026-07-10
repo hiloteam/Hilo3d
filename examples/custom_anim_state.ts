@@ -1,0 +1,54 @@
+// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+
+Hilo3d.AnimationStates.registerStateHandler('UV_Translate', (node, state) => {
+            if (!node.material) {
+                node = node.children[0];
+            }
+            if (!node.material.uvMatrix) {
+                node.material.uvMatrix = new Hilo3d.Matrix3();
+                node.material.isDirty = true;
+            }
+            node.material.uvMatrix.set(state[2] || 1, 0, 0, 0, state[3] || 1, 0, state[0], state[1], 1);
+        });
+
+        const geometry = new Hilo3d.PlaneGeometry();
+        const mat = new Hilo3d.BasicMaterial({
+            lightType:'NONE',
+            side:Hilo3d.constants.FRONT_AND_BACK,
+            diffuse:new Hilo3d.LazyTexture({
+                flipY: true,
+                src: '//img.alicdn.com/tps/TB12IsqKVXXXXalXpXXXXXXXXXX-174-1512.png',
+            }),
+            uvMatrix: new Hilo3d.Matrix3(),
+            transparent: true
+        });
+
+        const rect = new Hilo3d.Mesh({
+            geometry: geometry,
+            material: mat,
+        });
+        stage.addChild(rect);
+
+
+        const keyTime = [];
+        const states = [];
+        const w = 1;
+        const h = 12;
+        for (let i = 0; i < h; i++) {
+            for (let j = 0; j < w; j++) {
+                keyTime.push(0.16 * (i + 1) * (j + 1));
+                states.push([j / w, 1 - 1 / h - i / h, 1 / w, 1 / h]);
+            }
+        }
+
+        const anim = new Hilo3d.Animation({
+            animStatesList: [new Hilo3d.AnimationStates({
+                interpolationType: 'STEP',
+                nodeName: rect.name,
+                keyTime,
+                states: states,
+                type: Hilo3d.AnimationStates.getType('UV_Translate')
+            })]
+        });
+        rect.setAnim(anim);
+        anim.play();

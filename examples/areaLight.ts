@@ -1,0 +1,72 @@
+// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+
+var box = new Hilo3d.Mesh({
+            geometry:new Hilo3d.BoxGeometry(),
+            material:new Hilo3d.PBRMaterial({
+                baseColor:new Hilo3d.Color(1, 1, 1)
+            }),
+            rotationY:30,
+            rotationX:30,
+            onUpdate:function(){
+                this.rotationY ++;
+            }
+        }).addTo(stage).setScale(10);
+
+        var plane = new Hilo3d.Mesh({
+            geometry: new Hilo3d.PlaneGeometry(),
+            material:new Hilo3d.PBRMaterial({
+                baseColor:new Hilo3d.Color(1, 1, 1),
+                side:Hilo3d.constants.FRONT_AND_BACK
+            }),
+            rotationX:90
+        }).addTo(stage).setScale(2000, 2000, 1);
+
+        var num = 6;
+        while(num --) {
+            var areaLight = new Hilo3d.AreaLight({
+                color: new Hilo3d.Color(Math.random(), Math.random(), Math.random()),
+                x: 5,
+                y: 5,
+                z: 0,
+                amount:10,
+                rotationX:90,
+                startAngle:num * Math.PI * 2 / 6,
+                width:5 + Math.random() * 2,
+                height:5,
+                onUpdate:function(){
+                    var t = ( Date.now() / 2000 + this.startAngle);
+
+                    var r = 12.0;
+
+                    var lx = r * Math.cos( t );
+                    var lz = r * Math.sin( t );
+
+                    var ly = (5.0 + 5.0 * Math.sin( t * 5 )) * 0.5 + this.height * 0.5;
+
+                    this.setPosition( lx, ly, lz );
+                    this.lookAt( box );
+                }
+            }).addTo(stage)
+
+            var areaLightMesh = new Hilo3d.Mesh({
+                geometry:new Hilo3d.PlaneGeometry(), 
+                material:new Hilo3d.BasicMaterial({
+                    diffuse:areaLight.color,
+                    lightType:'NONE',
+                    side:Hilo3d.constants.FRONT_AND_BACK
+                })
+            });
+            areaLightMesh.scaleX = areaLight.width;
+            areaLightMesh.scaleY = areaLight.height;
+            areaLight.addChild( areaLightMesh );
+        }
+
+        camera.fov = 45;
+        camera.near = 1;
+        camera.far = 1000;
+        camera.setPosition(0, 20, 35);
+        camera.lookAt(box);
+        stage.clearColor.set(1, 1, 1, 1);
+
+        directionLight.amount = 0;
+        ambientLight.amount = 0;

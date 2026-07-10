@@ -1,3 +1,23 @@
+# 2.0.0 (2026-07-10)
+
+### Breaking changes
+
+* Require Node.js 20.19 or newer for development and releases.
+* Publish ESM and UMD/CJS bundles from `dist/` through package `exports`.
+* Replace the legacy Gulp, Webpack, Mocha and Electron toolchain with Vite,
+  TypeScript, Vitest Browser Mode, Playwright and ESLint flat config.
+
+### Changes
+
+* Migrate maintained engine and test sources from JavaScript to TypeScript.
+* Migrate all first-party example scripts and inline page logic to TypeScript modules.
+* Add Vite multi-page example builds and Playwright example smoke tests.
+* Enable strict TypeScript checks for modernized modules and public declarations.
+* Replace broad public declaration `any` types with `unknown` or concrete WebGL types.
+* Run the existing engine suite in headless Chromium with real WebGL contexts.
+* Make package entry evaluation safe in non-browser runtimes.
+* Fix the `COPY_WRITE_BUFFER_BINDING` WebGL2 constant.
+
 ## [1.19.1](https://github.com/hiloteam/Hilo3d/compare/1.19.0...1.19.1) (2025-10-15)
 
 
@@ -378,5 +398,3 @@
 ### Performance Improvements
 
 * optimize Buffer.uploadGeometryData ([152ec21](https://github.com/hiloteam/Hilo3d/commit/152ec2156002b02ca11a3a4dd8d23ce735176d44))
-
-

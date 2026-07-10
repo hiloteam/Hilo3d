@@ -2,6 +2,8 @@ export = hilo3d;
 export as namespace hilo3d;
 declare namespace hilo3d {
 
+const version: string;
+
 type TypedArray =
     | Int8Array
     | Uint8Array
@@ -953,13 +955,35 @@ namespace constants {
  * Bird.isBird(swallow);
  */
 namespace Class {
+    type ClassLike = abstract new (...params: never[]) => object;
+    type DynamicMembers = Record<string, unknown>;
+    type ConstructorParametersOf<Constructor> = Constructor extends abstract new (
+        ...args: infer Parameters
+    ) => unknown ? Parameters : never;
+    type Definition<Static extends ClassLike> = Partial<InstanceType<Static>>
+        & DynamicMembers
+        & ThisType<InstanceType<Static> & DynamicMembers & { constructor: Static }>
+        & {
+            Statics?: DynamicMembers & ThisType<Static & DynamicMembers>;
+            Extends?: ClassLike;
+            Mixes?: object | ClassLike | readonly (object | ClassLike)[];
+            constructor?: (...params: ConstructorParametersOf<Static>) => void;
+        };
+    type LegacyClass<Static extends ClassLike> = Static & DynamicMembers & {
+        superclass: InstanceType<Static>;
+    };
+    type InferredClass<Members extends object> =
+        (new (...params: readonly unknown[]) => Members)
+        & DynamicMembers
+        & { superclass: Members };
+
     /**
      * 混入属性或方法。
      * @param target - 混入目标对象。
      * @param source - 要混入的属性和方法来源。可支持多个来源参数。
      * @returns 混入目标对象。
      */
-    function mix(target: any, ...source: any[]): any;
+    function mix<Target extends object>(target: Target, ...source: readonly unknown[]): Target;
     /**
      * 根据参数指定的属性和方法创建类。
      * @param params - 要创建的类的相关属性和方法。
@@ -969,13 +993,14 @@ namespace Class {
      * @param [params.constructor] - 构造函数
      * @param params.[value:string] - 其他创建类的成员属性或方法。
      */
-    function create(params: {
-        Statics?: any;
-        Extends?: any;
-        Mixes?: any;
-        constructor?: (...params: any[]) => any;
-        [value:string]: any;
-    }): void;
+    function create<Static extends ClassLike>(): (
+        params: Definition<Static>
+    ) => LegacyClass<Static>;
+    function create<Members extends object>(
+        params: Members & DynamicMembers & ThisType<Members & DynamicMembers & {
+            constructor: InferredClass<Members>;
+        }>
+    ): InferredClass<Members>;
 }
 
 /**
@@ -991,7 +1016,7 @@ interface EventObject {
     /**
      * 事件数据
     */
-    detail?: any;
+    detail?: unknown;
 }
 
 /**
@@ -1007,8 +1032,8 @@ interface EventObject {
  */
 type EventMixinCallback = (e: {
     type: string;
-    detail: any;
-    target: any;
+    detail: unknown;
+    target: unknown;
     stageX: number;
     stageY: number;
     eventTarget: Node;
@@ -1088,7 +1113,7 @@ type raycastInfo = {
  * Node traverse 回调
  * @param node
  */
-type NodeTraverseCallback = (node: Node) => any;
+type NodeTraverseCallback = (node: Node) => unknown;
 
 /**
  * Node getChildByCallback 回调
@@ -1110,10 +1135,10 @@ type NodeGetChildByCallback = (node: Node) => boolean;
 interface TweenParams {
     duration: number;
     delay?: number | string;
-    ease?: (...params: any[]) => any;
-    onStart?: (...params: any[]) => any;
-    onComplete?: (...params: any[]) => any;
-    onUpdate?: (...params: any[]) => any;
+    ease?: (...params: never[]) => unknown;
+    onStart?: (...params: never[]) => unknown;
+    onComplete?: (...params: never[]) => unknown;
+    onUpdate?: (...params: never[]) => unknown;
     loop?: boolean;
     reverse?: boolean;
     repeat?: number;
@@ -1125,16 +1150,16 @@ interface TweenParams {
  * @property EaseInOut
  */
 interface TweenEaseObject {
-    EaseIn: (...params: any[]) => any;
-    EaseOut: (...params: any[]) => any;
-    EaseInOut: (...params: any[]) => any;
+    EaseIn: (...params: never[]) => unknown;
+    EaseOut: (...params: never[]) => unknown;
+    EaseInOut: (...params: never[]) => unknown;
 }
 
 /**
  * @property EaseNone
  */
 interface TweenEaseNoneObject {
-    EaseNone: (...params: any[]) => any;
+    EaseNone: (...params: never[]) => unknown;
 }
 
 /**
@@ -1187,7 +1212,7 @@ interface ILightManager {
      * 获取渲染配置
      * @param [option]
      */
-    getRenderOption(option?: any): void;
+    getRenderOption(option?: unknown): void;
     shadowEnabled: boolean;
     lightInfo: ILightInfo;
 }
@@ -1204,7 +1229,7 @@ interface IGLTFExtensionHandler {
      * @param [options]
      * @returns [result] 一般需要返回原始元素或者替换的新的元素
      */
-    parse?(extensionData?: any, parser?: GLTFParser, element?: any, options?: any): any;
+    parse?(extensionData?: unknown, parser?: GLTFParser, element?: unknown, options?: unknown): unknown;
     /**
      * 解析全局扩展，在资源加载后执行
      * @param [extensionData] - 扩展数据
@@ -1212,7 +1237,7 @@ interface IGLTFExtensionHandler {
      * @param [element] - parse的元素，这里为 null
      * @param [options]
      */
-    parseOnLoad?(extensionData?: any, parser?: GLTFParser, element?: any, options?: any): void;
+    parseOnLoad?(extensionData?: unknown, parser?: GLTFParser, element?: unknown, options?: unknown): void;
     /**
      * 解析全局扩展，在所有元素解析结束后执行
      * @param [extensionData] - 扩展数据
@@ -1220,7 +1245,7 @@ interface IGLTFExtensionHandler {
      * @param [element] - parse的元素，这里为加载后的model，{node, scene, meshes, json, cameras, lights, textures, materials}
      * @param [options]
      */
-    parseOnEnd?(extensionData?: any, parser?: GLTFParser, element?: GLTFModel, options?: any): void;
+    parseOnEnd?(extensionData?: unknown, parser?: GLTFParser, element?: GLTFModel, options?: unknown): void;
     /**
      * 初始化全局扩展，在加载前执行，可进行添加需要加载的资源
      * @param [gltfLoader]
@@ -1238,7 +1263,7 @@ interface IGLTFExtensionHandler {
      * @param [extensionData] - 扩展数据
      * @param [map] - used texture map
      */
-    getUsedTextureNameMap?(extensionData?: any, map?: any): void;
+    getUsedTextureNameMap?(extensionData?: unknown, map?: unknown): void;
 }
 
 /**
@@ -1248,7 +1273,7 @@ type GLTFModel = {
     /**
      * 原始数据
      */
-    json: any;
+    json: unknown;
     /**
      * 模型的根节点
      */
@@ -1294,7 +1319,7 @@ interface ILoadCacheFile {
      * 可选值为：LoadCache.LOADED LoadCache.PENDING LoadCache.FAILED
     */
     state: number;
-    data: any;
+    data: unknown;
 }
 
 /**
@@ -1429,7 +1454,7 @@ namespace semantic {
     /**
      * EMISSION FACTOR
      */
-    var EMISSIONFACTOR: any;
+    var EMISSIONFACTOR: unknown;
     var METALLIC: semanticObject;
     var ROUGHNESS: semanticObject;
     var DIFFUSEENVMAP: semanticObject;
@@ -1453,7 +1478,7 @@ type semanticObject = {
     /**
      * 获取数据方法
      */
-    get: (...params: any[]) => any;
+    get: (...params: never[]) => unknown;
 };
 
 /**
@@ -1550,7 +1575,7 @@ type RenderListInstancedTraverseCallback = (meshes: Mesh[]) => void;
  * 顶点对象
  */
 type AttributeObject = {
-    attribute: any;
+    attribute: unknown;
     buffer: WebGLBuffer;
     geometryData: GeometryData;
     useInstanced: boolean;
@@ -1620,21 +1645,19 @@ namespace capabilities {
     function getMaxPrecision(a: string, b: string): string;
 }
 
-type ANGLEInstancedArrays = any;
+type ANGLEInstancedArrays = ANGLE_instanced_arrays;
 
-type OESVertexArrayObject = any;
+type OESVertexArrayObject = OES_vertex_array_object;
 
-type OESTextureFloat = any;
+type OESTextureFloat = OES_texture_float;
 
-type EXTFragDepth = any;
+type EXTFragDepth = EXT_frag_depth;
 
-type WebGLLoseContext = any;
+type WebGLLoseContext = WEBGL_lose_context;
 
-type EXTTextureFilterAnisotropic = any;
+type EXTTextureFilterAnisotropic = EXT_texture_filter_anisotropic;
 
-type EXT_sRGB = any;
-
-type WEBGLDrawBuffers = any;
+type WEBGLDrawBuffers = WEBGL_draw_buffers;
 
 /**
  * WebGL 扩展管理，默认开启的扩展有：ANGLE_instanced_arrays, OES_vertex_array_object, OES_texture_float, OES_element_index_uint, EXT_shader_texture_lod, EXT_texture_filter_anisotropic, WEBGL_lose_context, WEBGL_draw_buffers
@@ -1693,7 +1716,7 @@ namespace extensions {
      * @param name - 扩展名称
      * @param [alias = name] - 别名，默认和 name 相同
      */
-    function get(name: string, alias?: string): any | null;
+    function get(name: string, alias?: string): unknown | null;
     /**
      * 禁止扩展
      * @param name - 扩展名称
@@ -1736,11 +1759,11 @@ type glTypeInfo = {
     /**
      * uniform单个值方法
      */
-    uniform: (...params: any[]) => any;
+    uniform: (...params: never[]) => unknown;
     /**
      * uniform多个值方法
      */
-    uniformArray: (...params: any[]) => any;
+    uniformArray: (...params: never[]) => unknown;
 };
 
 namespace glType {
@@ -1904,7 +1927,7 @@ namespace log {
      * @param params
      * @returns this
      */
-    function log(...params: any[]): typeof log;
+    function log(...params: unknown[]): typeof log;
     /**
      * warn，等同 console.warn
      * @example
@@ -1912,7 +1935,7 @@ namespace log {
      * @param params
      * @returns this
      */
-    function warn(...params: any[]): typeof log;
+    function warn(...params: unknown[]): typeof log;
     /**
      * error，等同 console.error
      * @example
@@ -1920,7 +1943,7 @@ namespace log {
      * @param params
      * @returns this
      */
-    function error(...params: any[]): typeof log;
+    function error(...params: unknown[]): typeof log;
     /**
      * logOnce 相同 id 只 log 一次
      * @example
@@ -1929,7 +1952,7 @@ namespace log {
      * @param params
      * @returns this
      */
-    function logOnce(id: string, ...params: any[]): typeof log;
+    function logOnce(id: string, ...params: unknown[]): typeof log;
     /**
      * warnOnce  相同 id 只 once 一次
      * @example
@@ -1938,7 +1961,7 @@ namespace log {
      * @param params
      * @returns this
      */
-    function warnOnce(id: string, ...params: any[]): typeof log;
+    function warnOnce(id: string, ...params: unknown[]): typeof log;
     /**
      * errorOnce 相同 id 只 error 一次
      * @example
@@ -1947,7 +1970,7 @@ namespace log {
      * @param params
      * @returns this
      */
-    function errorOnce(id: string, ...params: any[]): typeof log;
+    function errorOnce(id: string, ...params: unknown[]): typeof log;
 }
 
 namespace util {
@@ -1969,19 +1992,19 @@ namespace util {
      * @param obj
      * @param fn
      */
-    function each(obj: any, fn: (...params: any[]) => any): void;
+    function each(obj: unknown, fn: (...params: never[]) => unknown): void;
     /**
      * @param array
      * @param value
      * @param compareFn
      */
-    function getIndexFromSortedArray(array: any[], value: any, compareFn: (...params: any[]) => any): number[];
+    function getIndexFromSortedArray(array: unknown[], value: unknown, compareFn: (...params: never[]) => unknown): number[];
     /**
      * @param array
      * @param item
      * @param compareFn
      */
-    function insertToSortedArray(array: any[], item: any, compareFn: (...params: any[]) => any): void;
+    function insertToSortedArray(array: unknown[], item: unknown, compareFn: (...params: never[]) => unknown): void;
     /**
      * @param str
      * @param len
@@ -1995,7 +2018,7 @@ namespace util {
     /**
      * @param type
      */
-    function getTypedArrayClass(type: GLenum): any;
+    function getTypedArrayClass(type: GLenum): unknown;
     /**
      * @param destArr
      * @param srcArr
@@ -2003,11 +2026,11 @@ namespace util {
      * @param srcIdx
      * @param count
      */
-    function copyArrayData(destArr: any[], srcArr: any[], destIdx: number, srcIdx: number, count: number): void;
+    function copyArrayData(destArr: unknown[], srcArr: unknown[], destIdx: number, srcIdx: number, count: number): void;
     /**
      * @param d
      */
-    function isStrOrNumber(d: any): boolean;
+    function isStrOrNumber(d: unknown): boolean;
     /**
      * @param url
      */
@@ -2024,26 +2047,26 @@ namespace util {
     /**
      * @param obj
      */
-    function isArrayLike(obj: any): boolean;
+    function isArrayLike(obj: unknown): boolean;
     /**
      * @param elem
      */
-    function getElementRect(elem: Element): any;
+    function getElementRect(elem: Element): unknown;
     /**
      * @param data
      * @param fn
      */
-    function serialRun(data: any, fn: (...params: any[]) => any): Promise<any>;
+    function serialRun(data: unknown, fn: (...params: never[]) => unknown): Promise<unknown>;
     /**
      * @param obj
      * @param name
      */
-    function hasOwnProperty(obj: any, name: string): boolean;
+    function hasOwnProperty(obj: unknown, name: string): boolean;
     /**
      * 是否是 WebGL2
      * @param gl
      */
-    function isWebGL2(gl: any): boolean;
+    function isWebGL2(gl: unknown): boolean;
 }
 
 /**
@@ -2080,32 +2103,32 @@ class Ticker {
      * 添加定时器对象。定时器对象必须实现 tick 方法。
      * @param ticker - 对象
      */
-    addTick(ticker: any): void;
+    addTick(ticker: unknown): void;
     /**
      * 删除定时器对象。
      * @param tickObject - 要删除的定时器对象。
      */
-    removeTick(tickObject: any): void;
+    removeTick(tickObject: unknown): void;
     /**
      * 下次tick时回调
      * @param callback
      * @returns tickObject 定时器对象
      */
-    nextTick(callback: (...params: any[]) => any): any;
+    nextTick(callback: (...params: never[]) => unknown): unknown;
     /**
      * 延迟指定的时间后调用回调, 类似setTimeout
      * @param callback
      * @param duration - 延迟的毫秒数
      * @returns tickObject 定时器对象
      */
-    timeout(callback: (...params: any[]) => any, duration: number): any;
+    timeout(callback: (...params: never[]) => unknown, duration: number): unknown;
     /**
      * 指定的时间周期来调用函数, 类似setInterval
      * @param callback
      * @param duration - 时间周期，单位毫秒
      * @returns tickObject 定时器对象
      */
-    interval(callback: (...params: any[]) => any, duration: number): any;
+    interval(callback: (...params: never[]) => unknown, duration: number): unknown;
 }
 
 /**
@@ -2118,7 +2141,7 @@ class Ticker {
  * @param [params] - 创建对象的属性参数，可包含此类的所有属性。
  */
 class MeshPicker {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isMeshPicker: boolean;
     className: string;
     /**
@@ -2153,19 +2176,19 @@ class Cache {
      * 获取对象
      * @param id
      */
-    get(id: string): any;
+    get(id: string): unknown;
     /**
      * 获取对象
      * @param obj
      * @returns [description]
      */
-    getObject(obj: any): any;
+    getObject(obj: unknown): unknown;
     /**
      * 增加对象
      * @param id
      * @param obj
      */
-    add(id: string, obj: any): void;
+    add(id: string, obj: unknown): void;
     /**
      * 移除对象
      * @param id
@@ -2175,7 +2198,7 @@ class Cache {
      * 移除对象
      * @param obj
      */
-    removeObject(obj: any): void;
+    removeObject(obj: unknown): void;
     /**
      * 移除所有对象
      */
@@ -2184,7 +2207,7 @@ class Cache {
      * 遍历所有缓存
      * @param callback
      */
-    each(callback: (...params: any[]) => any): void;
+    each(callback: (...params: never[]) => unknown): void;
 }
 
 /**
@@ -2202,11 +2225,11 @@ class Cache {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class Texture {
-    constructor(params?: any);
+    constructor(params?: unknown);
     /**
      * 缓存
      */
-    static readonly cache: any;
+    static readonly cache: unknown;
     /**
      * 重置
      * @param gl
@@ -2326,7 +2349,7 @@ class Texture {
      * @param [needPowerOfTwo = false]
      * @returns { width, height }
      */
-    getSupportSize(img: HTMLImageElement, needPowerOfTwo?: boolean): any;
+    getSupportSize(img: HTMLImageElement, needPowerOfTwo?: boolean): unknown;
     /**
      * 更新图片大小成为 2 的 n 次方
      * @param img
@@ -2407,7 +2430,7 @@ class LazyTexture extends Texture implements EventMixin {
         placeHolder?: HTMLImageElement;
         autoLoad?: boolean;
         src?: string;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isLazyTexture: boolean;
     className: string;
@@ -2454,7 +2477,7 @@ class LazyTexture extends Texture implements EventMixin {
  */
 class DataTexture extends Texture {
     constructor(params?: {
-        data?: any[] | Float32Array;
+        data?: unknown[] | Float32Array;
     });
     isDataTexture: boolean;
     className: string;
@@ -2562,7 +2585,7 @@ class CubeTexture extends Texture {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class Shader {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isShader: boolean;
     className: string;
     /**
@@ -2576,7 +2599,7 @@ class Shader {
     /**
      * 内部的所有shader块字符串，可以用来拼接glsl代码
      */
-    static shaders: any;
+    static shaders: unknown;
     /**
      * 初始化
      * @param renderer
@@ -2814,7 +2837,7 @@ interface WebGLResourceManager extends EventMixin {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class WebGLResourceManager implements EventMixin {
-    constructor(params?: any);
+    constructor(params?: unknown);
     /**
      * 类名
      */
@@ -2829,7 +2852,7 @@ class WebGLResourceManager implements EventMixin {
      * @param res
      * @returns this
      */
-    destroyIfNoRef(res: any): WebGLResourceManager;
+    destroyIfNoRef(res: unknown): WebGLResourceManager;
     /**
      * 获取 rootNode 用到的资源
      * @param [rootNode] - 根节点，不传返回空数组
@@ -2856,7 +2879,7 @@ interface WebGLRenderer extends EventMixin {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class WebGLRenderer implements EventMixin {
-    constructor(params?: any);
+    constructor(params?: unknown);
     className: string;
     isWebGLRenderer: boolean;
     /**
@@ -2920,7 +2943,7 @@ class WebGLRenderer implements EventMixin {
     /**
      * framebuffer配置
      */
-    framebufferOption: any;
+    framebufferOption: unknown;
     /**
      * 是否使用对数深度
      */
@@ -3117,12 +3140,12 @@ class WebGLRenderer implements EventMixin {
      * 渲染一个mesh
      * @param mesh
      */
-    renderMesh(mesh: Mesh, silent = false): void;
+    renderMesh(mesh: Mesh, silent?: boolean): void;
     /**
      * 渲染一组 instanced mesh
      * @param meshes
      */
-    renderInstancedMeshes(meshes: Mesh[], silent = false): void;
+    renderInstancedMeshes(meshes: Mesh[], silent?: boolean): void;
     /**
      * 渲染一组普通mesh
      * @param meshes
@@ -3141,7 +3164,7 @@ class WebGLRenderer implements EventMixin {
  * @param params
  */
 class VertexArrayObject {
-    constructor(gl: WebGLRenderingContext, id: string, params: any);
+    constructor(gl: WebGLRenderingContext, id: string, params: unknown);
     /**
      * 缓存
      */
@@ -3152,7 +3175,7 @@ class VertexArrayObject {
      * @param id - 缓存id
      * @param params
      */
-    static getVao(gl: WebGLRenderingContext, id: string, params: any): VertexArrayObject;
+    static getVao(gl: WebGLRenderingContext, id: string, params: unknown): VertexArrayObject;
     /**
      * 重置所有vao
      * @param gl
@@ -3217,7 +3240,7 @@ class VertexArrayObject {
      * @param onInit
      * @returns attributeObject
      */
-    addAttribute(geometryData: GeometryData, attribute: any, usage: GLenum, onInit: (...params: any[]) => any): AttributeObject;
+    addAttribute(geometryData: GeometryData, attribute: unknown, usage: GLenum, onInit: (...params: never[]) => unknown): AttributeObject;
     /**
      * addInstancedAttribute
      * @param attribute
@@ -3225,7 +3248,7 @@ class VertexArrayObject {
      * @param getData
      * @returns attributeObject
      */
-    addInstancedAttribute(attribute: any, meshes: any[], getData: (...params: any[]) => any): AttributeObject;
+    addInstancedAttribute(attribute: unknown, meshes: unknown[], getData: (...params: never[]) => unknown): AttributeObject;
     /**
      * 获取资源
      * @param [resources = []]
@@ -3273,15 +3296,15 @@ class RenderList {
     /**
      * 不透明物体列表
      */
-    opaqueList: any[];
+    opaqueList: unknown[];
     /**
      * 透明物体列表
      */
-    transparentList: any[];
+    transparentList: unknown[];
     /**
      * instanced物体字典
      */
-    instancedDict: any;
+    instancedDict: unknown;
     /**
      * 重置列表
      */
@@ -3371,15 +3394,15 @@ class Program {
     /**
      * attribute 集合
      */
-    attributes: any;
+    attributes: unknown;
     /**
      * uniform 集合
      */
-    uniforms: any;
+    uniforms: unknown;
     /**
      * uniformBlock 集合
      */
-    uniformBlocks: any;
+    uniformBlocks: unknown;
     /**
      * program
      */
@@ -3445,7 +3468,7 @@ class Program {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class Framebuffer {
-    constructor(renderer: WebGLRenderer, params?: any);
+    constructor(renderer: WebGLRenderer, params?: unknown);
     /**
      * 缓存
      */
@@ -3718,7 +3741,7 @@ class Vector4 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: number[] | TypedArray, offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): unknown[];
     /**
      * 从数组赋值
      * @param array - 数组
@@ -4005,7 +4028,7 @@ class Vector3 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: number[] | TypedArray, offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): unknown[];
     /**
      * 从数组赋值
      * @param array - 数组
@@ -4312,7 +4335,7 @@ class Vector2 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: number[] | TypedArray, offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): unknown[];
     /**
      * 从数组赋值
      * @param array - 数组
@@ -4575,7 +4598,7 @@ class SphericalHarmonics3 {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class Sphere {
-    constructor(params?: any);
+    constructor(params?: unknown);
     /**
      * 类名
      */
@@ -4600,7 +4623,7 @@ class Sphere {
      * @param points
      * @returns this
      */
-    fromPoints(points: any[]): Sphere;
+    fromPoints(points: unknown[]): Sphere;
     /**
      * 从点生成
      * @param geometryData
@@ -4710,20 +4733,20 @@ class Ray {
      * @param triangle - [[a.x, a.y, a.z], [b.x, b.y, b.z],[c.x, c.y, c.z]]
      * @returns 碰撞点，如果没有碰撞返回 null
      */
-    intersectsTriangle(triangle: any[]): Vector3;
+    intersectsTriangle(triangle: unknown[]): Vector3;
     /**
      * intersectsBox
      * @param aabb - [[min.x, min.y, min.z], [max.x, max.y, max.z]]
      * @returns 碰撞点，如果没有碰撞返回 null
      */
-    intersectsBox(aabb: any[]): Vector3;
+    intersectsBox(aabb: unknown[]): Vector3;
     /**
      * intersectsTriangleCell
      * @param cell
      * @param positions
      * @returns 碰撞点，如果没有碰撞返回 null
      */
-    intersectsTriangleCell(cell: any[], positions: any[]): Vector3;
+    intersectsTriangleCell(cell: unknown[], positions: unknown[]): Vector3;
 }
 
 /**
@@ -4765,7 +4788,7 @@ class QuaternionNotifier {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: number[] | TypedArray, offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): unknown[];
     /**
      * 从数组赋值
      * @param array - 数组
@@ -5030,7 +5053,7 @@ class Quaternion {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: number[] | TypedArray, offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): unknown[];
     /**
      * 从数组赋值
      * @param array - 数组
@@ -5366,7 +5389,7 @@ class Matrix4 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: number[] | TypedArray, offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): unknown[];
     /**
      * 从数组赋值
      * @param array - 数组
@@ -5594,7 +5617,7 @@ class Matrix4 {
      * @param far - Far bound of the frustum
      * @returns this
      */
-    perspectiveFromFieldOfView(fov: any, Near: number, far: number): Matrix4;
+    perspectiveFromFieldOfView(fov: unknown, Near: number, far: number): Matrix4;
     /**
      * Generates a orthogonal projection matrix with the given bounds
      * @param left - Left bound of the frustum
@@ -5710,7 +5733,7 @@ class Matrix3 {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: number[] | TypedArray, offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): unknown[];
     /**
      * 从数组赋值
      * @param array - 数组
@@ -6010,7 +6033,7 @@ class Euler {
      * @param [array = []] - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    toArray(array?: number[] | TypedArray, offset?: number): any[];
+    toArray(array?: number[] | TypedArray, offset?: number): unknown[];
     /**
      * Creates a euler from the given 4x4 rotation matrix.
      * @param mat - rotation matrix
@@ -6086,13 +6109,13 @@ class Color extends Vector4 {
      * @param [array = []] - 转换到的数组
      * @param [offset = 0] - 数组偏移值
      */
-    toRGBArray(array?: any[], offset?: number): any[];
+    toRGBArray(array?: unknown[], offset?: number): unknown[];
     /**
      * 从数组赋值
      * @param array - 数组
      * @param [offset = 0] - 数组偏移值
      */
-    fromUintArray(array: any[], offset?: number): Color;
+    fromUintArray(array: unknown[], offset?: number): Color;
     /**
      * 从十六进制值赋值
      * @param hex - 颜色的十六进制值，可以以下形式："#ff9966", "ff9966", "#f96", "f96", 0xff9966
@@ -6140,7 +6163,7 @@ class Color extends Vector4 {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class ShaderMaterial extends Material {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isShaderMaterial: boolean;
     className: string;
     /**
@@ -6158,7 +6181,7 @@ class ShaderMaterial extends Material {
     /**
      * 获取定制的渲染参数
      */
-    getCustomRenderOption: (...params: any[]) => any;
+    getCustomRenderOption: (...params: never[]) => unknown;
 }
 
 /**
@@ -6202,7 +6225,7 @@ class PBRMaterial extends Material {
         specularEnvMap?: Texture;
         brdfLUT?: Texture;
         specularEnvIntensity?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isPBRMaterial: boolean;
     className: string;
@@ -6337,7 +6360,7 @@ class PBRMaterial extends Material {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class Material {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isMaterial: boolean;
     className: string;
     /**
@@ -6379,7 +6402,7 @@ class Material {
     /**
      * 深度测试Range
      */
-    depthRange: any[];
+    depthRange: unknown[];
     /**
      * 深度测试方法
      */
@@ -6415,7 +6438,7 @@ class Material {
     /**
      * 用户数据
      */
-    userData: any;
+    userData: unknown;
     /**
      * 渲染顺序数字小的先渲染（透明物体和不透明在不同的队列）
      */
@@ -6564,11 +6587,11 @@ class Material {
     /**
      * 可以通过指定，semantic来指定值的获取方式，或者自定义get方法
      */
-    uniforms: any;
+    uniforms: unknown;
     /**
      * 可以通过指定，semantic来指定值的获取方式，或者自定义get方法
      */
-    attributes: any;
+    attributes: unknown;
     /**
      * 增加基础 attributes
      */
@@ -6581,13 +6604,13 @@ class Material {
      * 增加贴图 uniforms
      * @param textureUniforms - textureName:semanticName 键值对
      */
-    addTextureUniforms(textureUniforms: any): void;
+    addTextureUniforms(textureUniforms: unknown): void;
     /**
      * 获取渲染选项值
      * @param [option = {}] - 渲染选项值
      * @returns 渲染选项值
      */
-    getRenderOption(option?: any): any;
+    getRenderOption(option?: unknown): unknown;
     /**
      * clone 当前Material
      * @returns 返回clone的Material
@@ -6618,7 +6641,7 @@ class Material {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class GeometryMaterial extends BasicMaterial {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isGeometryMaterial: boolean;
     className: string;
     /**
@@ -6668,7 +6691,7 @@ class BasicMaterial extends Material {
         refractRatio?: number;
         refractivity?: number;
         shininess?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isBasicMaterial: boolean;
     className: string;
@@ -6788,22 +6811,22 @@ class Loader {
      * @param ext - 资源扩展，如gltf, png 等
      * @param LoaderClass - 用于加载的类，需要继承BasicLoader
      */
-    static addLoader(ext: string, LoaderClass: any): void;
+    static addLoader(ext: string, LoaderClass: unknown): void;
     /**
      * 获取对应类型的 loader
      * @param ext
      * @returns loader
      */
-    static getLoader(ext: string): any;
+    static getLoader(ext: string): unknown;
     /**
      * url 预处理函数
      */
-    preHandlerUrl: (...params: any[]) => any;
+    preHandlerUrl: (...params: never[]) => unknown;
     /**
      * load
      * @param data
      */
-    load(data: any | any[]): Promise<any>;
+    load(data: unknown | unknown[]): Promise<unknown>;
 }
 
 interface LoadQueue extends EventMixin {
@@ -6852,7 +6875,7 @@ interface LoadQueue extends EventMixin {
  * @param [source] - 需要加载的资源列表
  */
 class LoadQueue implements EventMixin {
-    constructor(source?: any[]);
+    constructor(source?: unknown[]);
     isLoadQueue: boolean;
     className: string;
     /**
@@ -6884,13 +6907,13 @@ class LoadQueue implements EventMixin {
      * @param id - id
      * @returns 返回对应的资源信息
      */
-    get(id: string): any;
+    get(id: string): unknown;
     /**
      * 获取指定id加载完后的数据
      * @param id - id
      * @returns 加载完的结果
      */
-    getContent(id: string): any;
+    getContent(id: string): unknown;
     /**
      * 开始加载资源
      * @returns 返回this
@@ -6908,7 +6931,7 @@ class LoadQueue implements EventMixin {
      * 获取加载的所有资源结果
      * @returns 加载的所有资源结果
      */
-    getAllContent(): any[];
+    getAllContent(): unknown[];
 }
 
 interface LoadCache extends EventMixin {
@@ -6942,7 +6965,7 @@ class LoadCache implements EventMixin {
      * @param state - 可选值为：LoadCache.LOADED LoadCache.PENDING LoadCache.FAILED
      * @param data
      */
-    update(key: string, state: number, data: any): void;
+    update(key: string, state: number, data: unknown): void;
     /**
      * get
      * @param key
@@ -6952,7 +6975,7 @@ class LoadCache implements EventMixin {
      * 获取下载完成的资源，没下载完或下载失败返回 null
      * @param key
      */
-    getLoaded(key: string): any;
+    getLoaded(key: string): unknown;
     /**
      * remove
      * @param key
@@ -6966,7 +6989,7 @@ class LoadCache implements EventMixin {
      * wait
      * @param file
      */
-    wait(file: ILoadCacheFile): Promise<any>;
+    wait(file: ILoadCacheFile): Promise<unknown>;
 }
 
 /**
@@ -7003,7 +7026,7 @@ class KTXLoader {
      * load
      * @param params
      */
-    load(params: any): void;
+    load(params: unknown): void;
 }
 
 class HDRLoader {
@@ -7014,7 +7037,7 @@ class HDRLoader {
      * load
      * @param params
      */
-    load(params: any): Promise<Texture>;
+    load(params: unknown): Promise<Texture>;
 }
 
 /**
@@ -7022,13 +7045,13 @@ class HDRLoader {
  * @param params
  */
 class GLTFParser {
-    constructor(content: ArrayBuffer | string, params: any);
+    constructor(content: ArrayBuffer | string, params: unknown);
     isGLTFParser: boolean;
     className: string;
     /**
      * 扩展接口
      */
-    static extensionHandlers: any;
+    static extensionHandlers: unknown;
     /**
      * 注册扩展接口
      * @param extensionName - 接口名称
@@ -7156,7 +7179,7 @@ class BasicLoader implements EventMixin {
     load(data: {
         src: string;
         type?: string;
-    }): Promise<any>;
+    }): Promise<unknown>;
     /**
      * 判断链接是否跨域，无法处理二级域名，及修改 document.domain 的情况
      * @param url - 需要判断的链接
@@ -7176,7 +7199,7 @@ class BasicLoader implements EventMixin {
      * @param [type = text] - 资源类型(json, buffer, text)
      * @returns 返回加载完的内容对象(Object, ArrayBuffer, String)
      */
-    loadRes(url: string, type?: string): Promise<any>;
+    loadRes(url: string, type?: string): Promise<unknown>;
     /**
      * XHR资源请求
      * @param opt - 请求参数
@@ -7191,9 +7214,9 @@ class BasicLoader implements EventMixin {
         url: string;
         type?: string;
         method?: string;
-        headers?: any;
+        headers?: unknown;
         body?: string;
-    }): Promise<any>;
+    }): Promise<unknown>;
     /**
      * 增加一个事件监听。
      * @param type - 要监听的事件类型。
@@ -7201,21 +7224,21 @@ class BasicLoader implements EventMixin {
      * @param [once] - 是否是一次性监听，即回调函数响应一次后即删除，不再响应。
      * @returns 对象本身。链式调用支持。
      */
-    on(type: string, listener: EventMixinCallback, once?: boolean): any;
+    on(type: string, listener: EventMixinCallback, once?: boolean): unknown;
     /**
      * 删除一个事件监听。如果不传入任何参数，则删除所有的事件监听；如果不传入第二个参数，则删除指定类型的所有事件监听。
      * @param [type] - 要删除监听的事件类型。
      * @param [listener] - 要删除监听的回调函数。
      * @returns 对象本身。链式调用支持。
      */
-    off(type?: string, listener?: EventMixinCallback): any;
+    off(type?: string, listener?: EventMixinCallback): unknown;
     /**
      * 发送事件。当第一个参数类型为Object时，则把它作为一个整体事件对象。
      * @param [type] - 要发送的事件类型或者一个事件对象。
      * @param [detail] - 要发送的事件的具体信息，即事件随带参数。
      * @returns 是否成功调度事件。
      */
-    fire(type?: string | EventObject, detail?: any): boolean;
+    fire(type?: string | EventObject, detail?: unknown): boolean;
 }
 
 /**
@@ -7237,7 +7260,7 @@ class SpotLight extends Light {
         direction?: Vector3;
         cutoff?: number;
         outerCutoff?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isSpotLight: boolean;
     className: string;
@@ -7268,7 +7291,7 @@ class PointLight extends Light {
         color?: Color;
         amount?: number;
         range?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isPointLight: boolean;
     className: string;
@@ -7287,7 +7310,7 @@ class LightShadow {
     constructor(params: {
         light: Light;
         renderer: WebGLRenderer;
-        cameraInfo?: any;
+        cameraInfo?: unknown;
         width: number;
         height: number;
         debug?: boolean;
@@ -7302,7 +7325,7 @@ class LightShadow {
     height: number;
     maxBias: number;
     minBias: number;
-    cameraInfo: any;
+    cameraInfo: unknown;
 }
 
 /**
@@ -7310,7 +7333,7 @@ class LightShadow {
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
 class LightManager {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isLightManager: boolean;
     className: string;
     /**
@@ -7332,26 +7355,26 @@ class LightManager {
      * 获取方向光信息
      * @param camera - 摄像机
      */
-    getDirectionalInfo(camera: Camera): any;
+    getDirectionalInfo(camera: Camera): unknown;
     /**
      * 获取聚光灯信息
      * @param camera - 摄像机
      */
-    getSpotInfo(camera: Camera): any;
+    getSpotInfo(camera: Camera): unknown;
     /**
      * 获取点光源信息
      * @param camera - 摄像机
      */
-    getPointInfo(camera: Camera): any;
+    getPointInfo(camera: Camera): unknown;
     /**
      * 获取面光源信息
      * @param camera - 摄像机
      */
-    getAreaInfo(camera: Camera): any;
+    getAreaInfo(camera: Camera): unknown;
     /**
      * 获取环境光信息
      */
-    getAmbientInfo(): any;
+    getAmbientInfo(): unknown;
     /**
      * 更新所有光源信息
      * @param camera - 摄像机
@@ -7364,7 +7387,7 @@ class LightManager {
     /**
      * 获取光源信息
      */
-    getInfo(): any;
+    getInfo(): unknown;
     /**
      * 重置所有光源
      */
@@ -7394,7 +7417,7 @@ class LightManager {
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
 class Light extends Node {
-    constructor(params?: any);
+    constructor(params?: unknown);
     /**
      * 光强度
      */
@@ -7456,7 +7479,7 @@ class Light extends Node {
         /**
          * 阴影摄像机信息，没有会根据当前相机自动计算
          */
-        cameraInfo?: any;
+        cameraInfo?: unknown;
     };
     /**
      * 是否光照信息变化
@@ -7471,7 +7494,7 @@ class Light extends Node {
      * @param out - 信息接受数组
      * @param offset - 偏移值
      */
-    toInfoArray(out: any[], offset: number): void;
+    toInfoArray(out: unknown[], offset: number): void;
     /**
      * 获取真正的颜色，光强度乘以颜色
      * @returns 光强度乘以颜色后的颜色
@@ -7499,7 +7522,7 @@ class DirectionalLight extends Light {
         color?: Color;
         amount?: number;
         direction?: Vector3;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isDirectionalLight: boolean;
     className: string;
@@ -7527,7 +7550,7 @@ class DirectionalLight extends Light {
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
 class AreaLight extends Light {
-    constructor(params?: any);
+    constructor(params?: unknown);
     /**
      * ltcTexture1
      */
@@ -7583,7 +7606,7 @@ class AmbientLight extends Light {
     constructor(params?: {
         color?: Color;
         amount?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     readonly isAmbientLight: boolean;
     readonly className: string;
@@ -7596,7 +7619,7 @@ class AmbientLight extends Light {
  * @param [params] - 初始化参数
  */
 class CameraHelper extends Mesh {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isCameraHelper: boolean;
     className: string;
     /**
@@ -7608,7 +7631,7 @@ class CameraHelper extends Mesh {
     /**
      * update 回调
      */
-    onUpdate: (...params: any[]) => any;
+    onUpdate: (...params: never[]) => unknown;
 }
 
 /**
@@ -7618,7 +7641,7 @@ class CameraHelper extends Mesh {
  * @param [params] - 初始化参数
  */
 class AxisNetHelper extends Mesh {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isAxisNetHelper: boolean;
     className: string;
     /**
@@ -7640,7 +7663,7 @@ class AxisNetHelper extends Mesh {
  * @param [params] - 初始化参数
  */
 class AxisHelper extends Node {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isAxisHelper: boolean;
     className: string;
     /**
@@ -7662,7 +7685,7 @@ class SphereGeometry extends Geometry {
         radius?: number;
         heightSegments?: number;
         widthSegments?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isSphereGeometry: boolean;
     className: string;
@@ -7715,7 +7738,7 @@ class PlaneGeometry extends Geometry {
         height?: number;
         widthSegments?: number;
         heightSegments?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isPlaneGeometry: boolean;
     className: string;
@@ -7758,7 +7781,7 @@ class PlaneGeometry extends Geometry {
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
 class MorphGeometry extends Geometry {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isMorphGeometry: boolean;
     className: string;
     /**
@@ -7773,7 +7796,7 @@ class MorphGeometry extends Geometry {
      *     tangents: [[], []]
      * }
      */
-    targets: any;
+    targets: unknown;
     /**
      * 是否是静态
      */
@@ -7787,7 +7810,7 @@ class MorphGeometry extends Geometry {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class GeometryData {
-    constructor(data: TypedArray, size: number, params?: any);
+    constructor(data: TypedArray, size: number, params?: unknown);
     /**
      * 类名
      */
@@ -7908,7 +7931,7 @@ class GeometryData {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class Geometry {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isGeometry: boolean;
     className: string;
     /**
@@ -7958,7 +7981,7 @@ class Geometry {
     /**
      * 用户数据
      */
-    userData: any;
+    userData: unknown;
     /**
      * id
      */
@@ -8150,7 +8173,7 @@ class BoxGeometry extends Geometry {
         widthSegments?: number;
         heightSegments?: number;
         depthSegments?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isBoxGeometry: boolean;
     className: string;
@@ -8272,7 +8295,7 @@ class BoxGeometry extends Geometry {
  * @param params - 缓动参数。可包含Tween类所有可写属性。
  */
 class Tween {
-    constructor(target: any, fromProps: any, toProps: any, params: TweenParams);
+    constructor(target: unknown, fromProps: unknown, toProps: unknown, params: TweenParams);
     /**
      * 启动缓动动画的播放。
      * @returns Tween变换本身。可用于链式调用。
@@ -8322,7 +8345,7 @@ class Tween {
      * @param tweenOrTarget - 要删除的Tween对象或target对象或要删除的一组对象。
      * @returns Tween。
      */
-    static remove(tweenOrTarget: Tween | any | any[]): Tween;
+    static remove(tweenOrTarget: Tween | unknown | unknown[]): Tween;
     /**
      * 删除所有Tween实例。
      * @returns Tween。
@@ -8336,7 +8359,7 @@ class Tween {
      * @param params - 缓动动画的参数。
      * @returns 一个Tween实例对象或Tween实例数组。
      */
-    static fromTo(target: any | any[], fromProps: any, toProps: any, params: TweenParams): Tween | any[];
+    static fromTo(target: unknown | unknown[], fromProps: unknown, toProps: unknown, params: TweenParams): Tween | unknown[];
     /**
      * 创建一个缓动动画，让目标对象从当前属性变换到目标属性。
      * @param target - 缓动目标对象或缓动目标数组。
@@ -8344,7 +8367,7 @@ class Tween {
      * @param params - 缓动动画的参数。
      * @returns 一个Tween实例对象或Tween实例数组。
      */
-    static to(target: any | any[], toProps: any, params: TweenParams): Tween | any[];
+    static to(target: unknown | unknown[], toProps: unknown, params: TweenParams): Tween | unknown[];
     /**
      * 创建一个缓动动画，让目标对象从指定的起始属性变换到当前属性。
      * @param target - 缓动目标对象或缓动目标数组。
@@ -8352,7 +8375,7 @@ class Tween {
      * @param params - 缓动动画的参数。
      * @returns 一个Tween实例对象或Tween实例数组。
      */
-    static from(target: any | any[], fromProps: any, params: TweenParams): Tween | any[];
+    static from(target: unknown | unknown[], fromProps: unknown, params: TweenParams): Tween | unknown[];
     /**
      * Ease类包含为Tween类提供各种缓动功能的函数。
      * @property Linear - 线性匀速缓动函数
@@ -8416,7 +8439,7 @@ class Tween {
     /**
      * 缓动目标。只读属性。
     */
-    target: any;
+    target: unknown;
     /**
      * 缓动总时长。单位毫秒。
     */
@@ -8448,7 +8471,7 @@ class Tween {
     /**
      * 缓动变化函数。默认为null。
     */
-    ease: (...params: any[]) => any;
+    ease: (...params: never[]) => unknown;
     /**
      * 缓动已进行的时长。单位毫秒。只读属性。
     */
@@ -8456,15 +8479,15 @@ class Tween {
     /**
      * 缓动开始回调函数。它接受1个参数：tween。默认值为null。
     */
-    onStart: (...params: any[]) => any;
+    onStart: (...params: never[]) => unknown;
     /**
      * 缓动更新回调函数。它接受2个参数：ratio和tween。默认值为null。
     */
-    onUpdate: (...params: any[]) => any;
+    onUpdate: (...params: never[]) => unknown;
     /**
      * 缓动结束回调函数。它接受1个参数：tween。默认值为null。
     */
-    onComplete: (...params: any[]) => any;
+    onComplete: (...params: never[]) => unknown;
 }
 
 /**
@@ -8508,7 +8531,7 @@ class Stage extends Node {
         clearColor?: Color;
         preferWebGL2?: boolean;
         useFramebuffer?: boolean;
-        framebufferOption?: any;
+        framebufferOption?: unknown;
         useLogDepth?: boolean;
         alpha?: boolean;
         depth?: boolean;
@@ -8518,7 +8541,7 @@ class Stage extends Node {
         preserveDrawingBuffer?: boolean;
         failIfMajorPerformanceCaveat?: boolean;
         gameMode?: boolean;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     /**
      * 渲染器
@@ -8589,12 +8612,12 @@ class Stage extends Node {
      * @param enabled - 指定开启还是关闭。如果不传此参数，则默认为开启。
      * @returns 舞台本身。链式调用支持。
      */
-    enableDOMEvent(type: string | any[], enabled: boolean): Stage;
+    enableDOMEvent(type: string | unknown[], enabled: boolean): Stage;
     /**
      * 更新 DOM viewport
      * @returns DOM viewport, {left, top, right, bottom}
      */
-    updateDomViewport(): any;
+    updateDomViewport(): unknown;
     /**
      * 获取指定点的 mesh
      * @param x
@@ -8623,7 +8646,7 @@ class SkinedMesh extends Mesh {
         geometry?: Geometry;
         material?: Material;
         skeleton?: Skeleton;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isSkinedMesh: boolean;
     className: string;
@@ -8673,13 +8696,13 @@ class SkinedMesh extends Mesh {
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
 class Skeleton {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isSkeleton: boolean;
     className: string;
     /**
      * 用户数据
      */
-    userData: any;
+    userData: unknown;
     /**
      * id
      */
@@ -8733,7 +8756,7 @@ interface Node extends EventMixin {
  * @param [params] - 初始化参数，所有params都会复制到实例上
  */
 class Node implements EventMixin {
-    constructor(params?: any);
+    constructor(params?: unknown);
     /**
      * traverse callback 返回值，执行后不暂停 traverse
      */
@@ -8799,11 +8822,11 @@ class Node implements EventMixin {
     /**
      * 用户数据
      */
-    userData: any;
+    userData: unknown;
     /**
      * update 回调
      */
-    onUpdate: (...params: any[]) => any;
+    onUpdate: (...params: never[]) => unknown;
     /**
      * 只同步四元数，不同步欧拉角
      */
@@ -8840,7 +8863,7 @@ class Node implements EventMixin {
      * 将所以子孙元素放到一个对象中，对象key为元素的name，value为该元素
      * @returns 返回获取的对象
      */
-    getChildrenNameMap(): any;
+    getChildrenNameMap(): unknown;
     /**
      * 添加一个子元素
      * @param child - 需要添加的子元素
@@ -9002,7 +9025,7 @@ class Node implements EventMixin {
      * @param node - 需要朝向的元素，或者坐标
      * @returns this
      */
-    lookAt(node: Node | any | Vector3): Node;
+    lookAt(node: Node | unknown | Vector3): Node;
     /**
      * raycast
      * @param ray
@@ -9128,7 +9151,7 @@ class Mesh extends Node {
     constructor(params?: {
         geometry?: Geometry;
         material?: Material;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isMesh: boolean;
     className: string;
@@ -9147,7 +9170,7 @@ class Mesh extends Node {
      * @param [option = {}] - 渲染选项值
      * @returns 渲染选项值
      */
-    getRenderOption(option?: any): any;
+    getRenderOption(option?: unknown): unknown;
     /**
      * 是否被销毁
      */
@@ -9159,7 +9182,7 @@ class Mesh extends Node {
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
 class Fog {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isFog: boolean;
     className: string;
     /**
@@ -9190,7 +9213,7 @@ class Fog {
      * 获取雾信息
      * @returns res
      */
-    getInfo(): any[];
+    getInfo(): unknown[];
 }
 
 /**
@@ -9204,21 +9227,21 @@ class EventMixin {
      * @param [once] - 是否是一次性监听，即回调函数响应一次后即删除，不再响应。
      * @returns 对象本身。链式调用支持。
      */
-    on(type: string, listener: EventMixinCallback, once?: boolean): any;
+    on(type: string, listener: EventMixinCallback, once?: boolean): unknown;
     /**
      * 删除一个事件监听。如果不传入任何参数，则删除所有的事件监听；如果不传入第二个参数，则删除指定类型的所有事件监听。
      * @param [type] - 要删除监听的事件类型。
      * @param [listener] - 要删除监听的回调函数。
      * @returns 对象本身。链式调用支持。
      */
-    off(type?: string, listener?: EventMixinCallback): any;
+    off(type?: string, listener?: EventMixinCallback): unknown;
     /**
      * 发送事件。当第一个参数类型为Object时，则把它作为一个整体事件对象。
      * @param [type] - 要发送的事件类型或者一个事件对象。
      * @param [detail] - 要发送的事件的具体信息，即事件随带参数。
      * @returns 是否成功调度事件。
      */
-    fire(type?: string | EventObject, detail?: any): boolean;
+    fire(type?: string | EventObject, detail?: unknown): boolean;
 }
 
 /**
@@ -9236,7 +9259,7 @@ class PerspectiveCamera extends Camera {
         near?: number;
         far?: number;
         aspect?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isPerspectiveCamera: boolean;
     className: string;
@@ -9277,7 +9300,7 @@ class OrthographicCamera extends Camera {
         bottom?: number;
         near?: number;
         far?: number;
-        [value:string]: any;
+        [value:string]: unknown;
     });
     isOrthographicCamera: boolean;
     className: string;
@@ -9294,7 +9317,7 @@ class OrthographicCamera extends Camera {
  * @param [params] - 创建对象的属性参数。可包含此类的所有属性。
  */
 class Camera extends Node {
-    constructor(params?: any);
+    constructor(params?: unknown);
     isCamera: boolean;
     className: string;
     /**
@@ -9381,7 +9404,7 @@ class Camera extends Node {
  * @param [parmas] - 创建对象的属性参数。可包含此类的所有属性。
  */
 class AnimationStates {
-    constructor(parmas?: any);
+    constructor(parmas?: unknown);
     /**
      * 根据名字获取状态类型
      * @param name - 名字，忽略大小写，如 translate => StateType.TRANSLATE
@@ -9393,7 +9416,7 @@ class AnimationStates {
      * @param name - 属性名
      * @param handler - 属性处理方法
      */
-    static registerStateHandler(name: string, handler: (...params: any[]) => any): void;
+    static registerStateHandler(name: string, handler: (...params: never[]) => unknown): void;
     isAnimationStates: boolean;
     className: string;
     /**
@@ -9416,7 +9439,7 @@ class AnimationStates {
     /**
      * 对应时间上的状态，数组长度应该跟keyTime一致，即每一帧上的状态信息
      */
-    states: any[][];
+    states: unknown[][];
     /**
      * 查找指定时间在 keyTime 数组中的位置
      * @param time - 指定的时间
@@ -9468,7 +9491,7 @@ interface Animation extends EventMixin {
  * @param [parmas] - 创建对象的属性参数。可包含此类的所有属性。
  */
 class Animation implements EventMixin {
-    constructor(parmas?: any);
+    constructor(parmas?: unknown);
     /**
      * tick
      * @param dt - 一帧时间
@@ -9523,12 +9546,12 @@ class Animation implements EventMixin {
     /**
      * AnimationId集合
      */
-    validAnimationIds: any;
+    validAnimationIds: unknown;
     id: string;
     /**
      * 动画剪辑列表，{ name: { start: 0, end: 1} }，play的时候可以通过name来播放某段剪辑
      */
-    clips: any;
+    clips: unknown;
     /**
      * 添加动画剪辑
      * @param name - 剪辑名字
@@ -9547,7 +9570,7 @@ class Animation implements EventMixin {
      * @param animStatesList - 动画列表
      * @returns result {startTime, endTime} 时间信息
      */
-    getAnimStatesListTimeInfo(animStatesList: AnimationStates[]): any;
+    getAnimStatesListTimeInfo(animStatesList: AnimationStates[]): unknown;
     /**
      * 初始化 node name map
      */

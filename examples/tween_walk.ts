@@ -1,0 +1,65 @@
+// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+
+const tweenTo = function (target, toProps, params) {
+            return new Promise(function (resolve) {
+                params.onComplete = resolve;
+                Hilo3d.Tween.to(target, toProps, params);
+            });
+        };
+
+        camera.far = 5;
+        const container = x=new Hilo3d.Node({
+            rotationX:-60,
+            rotationY:30,
+        }).addTo(stage);
+        const loader = new Hilo3d.GLTFLoader();
+        loader.load({
+            src: '//g.alicdn.com/eva-assets/58e94af6ada5ea6dba71c5f219f428ef/0.0.1/tmp/49a485d/2598cc71-4dd9-47cb-924e-46e68a786f77.glb',
+        }).then(function (model) {
+            const box = new Hilo3d.Mesh({
+                geometry: new Hilo3d.BoxGeometry(),
+                material: new Hilo3d.PBRMaterial({
+                    baseColor: new Hilo3d.Color(.6, .9, .3),
+                }),
+            });
+
+            model.node.setScale(0.3);
+            model.node.y = .5;
+            model.node.z = -.5;
+
+            const run = function(){
+                const node = model.node;
+                const Tween = Hilo3d.Tween;
+                const moveTime = 2000;
+                const rotateTime = 500;
+                Tween.to(node, { z: 0.5 }, { duration: moveTime })
+                .link(Tween.to(node, { rotationX: 90 }, { duration: rotateTime, delay:'+0' }))
+                .link(Tween.to(node, { y: -.5 }, { duration: moveTime, delay:'+0' }))
+                .link(Tween.to(node, { rotationX: 180 }, { duration: rotateTime, delay:'+0' }))
+                .link(Tween.to(node, { z: -.5 }, { duration: moveTime, delay:'+0' }))
+                .link(Tween.to(node, { rotationX: 270 }, { duration: rotateTime, delay:'+0' }))
+                .link(Tween.to(node, { y: .5 }, { duration: moveTime, delay:'+0' }))
+                .link(Tween.to(node, { rotationX: 360 }, { duration: rotateTime, delay:'+0', onComplete:function(){
+                    node.rotationX = 0;
+                    run();
+                }}))
+            }            
+
+            run();
+            container.addChild(box);
+            container.addChild(model.node);
+        });
+
+        new Hilo3d.DirectionalLight({
+            color: new Hilo3d.Color(1, 1, 1),
+            amount: 2,
+            direction: new Hilo3d.Vector3(0, 1, -1),
+            shadow: {
+
+            }
+        }).addTo(container);
+
+        new Hilo3d.AmbientLight({
+            color:new Hilo3d.Color(1, 1, 1),
+            amount: .1
+        }).addTo(stage);

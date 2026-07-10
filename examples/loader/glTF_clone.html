@@ -8,33 +8,10 @@
 </head>
 <body>
     <div id="container"></div>
-    <script src="../../build/Hilo3d.js"></script>
-    <script src="../js/stats.js"></script>
-    <script src="../js/OrbitControls.js"></script>
-    <script src="../js/init.js"></script>
-    <script>
-        renderer.useInstanced = true;
-        const loader = new Hilo3d.GLTFLoader();
-        loader.load({
-            useInstanced: true,
-            src: '../models/Tmall/Tmall.gltf'
-        }).then(function (model) {
-            const node = model.node;
-            node.setScale(0.002);
-            stage.addChild(node);
-            for (let i = 0; i < 100; i++) {
-                const cloneNode = node.clone();
-                cloneNode.anim.timeScale = Math.random();
-                cloneNode.setScale(0.0005);
-                cloneNode.x = Math.random() * 2 - 1;
-                cloneNode.y = Math.random() * 2 - 1;
-                cloneNode.z = Math.random() * 2 - 1;
-                cloneNode.anim.stop();
-                stage.addChild(cloneNode);
-            }
-        });
-
-        stage.addChild(new Hilo3d.AxisNetHelper({ size: 4 }));
-    </script>
+    <script type="module" src="../js/hilo3d.ts"></script>
+    <script type="module" src="../js/stats.ts"></script>
+    <script type="module" src="../js/OrbitControls.ts"></script>
+    <script type="module" src="../js/init.ts"></script>
+    <script type="module" src="./glTF_clone.ts"></script>
 </body>
 </html>
