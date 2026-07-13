@@ -23,7 +23,7 @@ import {
     TRIANGLE_FAN,
     TRIANGLE_STRIP
 } from '../constants/webgl';
-import type { ShaderOptions, TypedArrayConstructor } from '../renderer/types';
+import type { ShaderOptions, TypedArrayConstructor } from '../renderer/common/types';
 const tempVector31 = new Vector3();
 const tempVector32 = new Vector3();
 const tempVector33 = new Vector3();

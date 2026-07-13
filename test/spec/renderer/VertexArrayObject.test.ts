@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import type { ProgramAttribute } from '../../../src/renderer/Program';
+import type { ProgramAttribute } from '../../../src/renderer/webgl/Program';
 import { testEnv } from '../../setup';
 
 const VertexArrayObject = Hilo3d.VertexArrayObject;

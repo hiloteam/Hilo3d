@@ -22,16 +22,23 @@ import {
     RED_INTEGER,
     RGBA8,
     TEXTURE_2D_ARRAY,
-    TEXTURE_3D,
-    TEXTURE_WRAP_R
+    TEXTURE_3D
 } from '../../../src/constants/webgl2';
 import { COMPRESSED_RGB_S3TC_DXT1_EXT } from '../../../src/constants/webglExtensions';
 import { getTextureRecoveryBacking } from '../../../src/texture/Texture';
+import { WebGLTextureManager } from '../../../src/renderer/webgl/WebGLTextureManager';
+import {
+    updateWebGLTexture,
+    type WebGLTextureState
+} from '../../../src/renderer/webgl/WebGLTextureUploader';
 
 const Texture = Hilo3d.Texture;
 
 interface MockTextureContext {
     readonly gl: WebGL2RenderingContext;
+    readonly createTexture: ReturnType<typeof vi.fn>;
+    readonly deleteTexture: ReturnType<typeof vi.fn>;
+    readonly texImage2D: ReturnType<typeof vi.fn>;
     readonly texImage3D: ReturnType<typeof vi.fn>;
     readonly texSubImage2D: ReturnType<typeof vi.fn>;
     readonly texSubImage3D: ReturnType<typeof vi.fn>;
@@ -42,6 +49,9 @@ interface MockTextureContext {
 }
 
 function createMockTextureContext(): MockTextureContext {
+    const createTexture = vi.fn(() => ({}));
+    const deleteTexture = vi.fn();
+    const texImage2D = vi.fn();
     const texImage3D = vi.fn();
     const texSubImage2D = vi.fn();
     const texSubImage3D = vi.fn();
@@ -59,9 +69,9 @@ function createMockTextureContext(): MockTextureContext {
             activeTexture: vi.fn(),
             bindTexture: vi.fn(),
             pixelStorei: vi.fn(),
-            createTexture: vi.fn(() => ({})),
-            deleteTexture: vi.fn(),
-            texImage2D: vi.fn(),
+            createTexture,
+            deleteTexture,
+            texImage2D,
             texImage3D,
             texSubImage2D,
             texSubImage3D,
@@ -72,6 +82,9 @@ function createMockTextureContext(): MockTextureContext {
             texParameterf: vi.fn(),
             generateMipmap
         } as unknown as WebGL2RenderingContext,
+        createTexture,
+        deleteTexture,
+        texImage2D,
         texImage3D,
         texSubImage2D,
         texSubImage3D,
@@ -89,19 +102,15 @@ function createTextureState(
         readonly max3DTextureSize?: number;
         readonly maxArrayTextureLayers?: number;
     } = {}
-): Hilo3d.TextureWebGLState {
+): WebGLTextureState {
     return {
         gl,
         capabilities: {
             MAX_TEXTURE_SIZE: limits.maxTextureSize ?? 4096,
             MAX_3D_TEXTURE_SIZE: limits.max3DTextureSize ?? 256,
             MAX_ARRAY_TEXTURE_LAYERS: limits.maxArrayTextureLayers ?? 256,
-            MAX_TEXTURE_INDEX: 0,
-            MAX_TEXTURE_MAX_ANISOTROPY: 1
-        } as Hilo3d.WebGLCapabilities,
-        extensions: {
-            textureFilterAnisotropic: null
-        } as Hilo3d.WebGLExtensions,
+            MAX_TEXTURE_INDEX: 0
+        },
         activeTexture: texture => {
             gl.activeTexture(texture);
         },
@@ -124,7 +133,7 @@ function createRealWebGL2Context(): WebGL2RenderingContext {
     return gl;
 }
 
-function createRealTextureState(gl: WebGL2RenderingContext): Hilo3d.TextureWebGLState {
+function createRealTextureState(gl: WebGL2RenderingContext): WebGLTextureState {
     return createTextureState(gl, {
         maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
         max3DTextureSize: gl.getParameter(gl.MAX_3D_TEXTURE_SIZE) as number,
@@ -266,7 +275,8 @@ describe('Texture', () => {
             height: 2,
             image: Array.from({ length: 6 }, () => new Uint8Array(12))
         });
-        cube.updateTexture(state, {});
+        const cubeAllocation = {};
+        updateWebGLTexture(state, cube, cubeAllocation);
         cube.updateSubTexture({
             mipLevel: 0,
             face: 4,
@@ -276,7 +286,7 @@ describe('Texture', () => {
             height: 1,
             image: new Uint8Array([1, 2, 3])
         });
-        cube.updateTexture(state, {});
+        updateWebGLTexture(state, cube, cubeAllocation);
         expect(mock.texSubImage2D).toHaveBeenLastCalledWith(
             Hilo3d.constants.TEXTURE_CUBE_MAP_POSITIVE_X + 4,
             0,
@@ -297,7 +307,8 @@ describe('Texture', () => {
                 depth: 2,
                 image: new Uint8Array(32)
             });
-            texture.updateTexture(state, {});
+            const allocation = {};
+            updateWebGLTexture(state, texture, allocation);
             texture.updateSubTexture({
                 mipLevel: 0,
                 ...(target === TEXTURE_3D ? { z: 1 } : { layer: 1 }),
@@ -308,7 +319,7 @@ describe('Texture', () => {
                 depth: 1,
                 image: new Uint8Array(8)
             });
-            texture.updateTexture(state, {});
+            updateWebGLTexture(state, texture, allocation);
         }
         expect(mock.texSubImage3D).toHaveBeenNthCalledWith(
             1,
@@ -347,7 +358,8 @@ describe('Texture', () => {
             internalFormat: COMPRESSED_RGB_S3TC_DXT1_EXT,
             type: 0
         });
-        compressed.updateTexture(state, {});
+        const compressedAllocation = {};
+        updateWebGLTexture(state, compressed, compressedAllocation);
         compressed.updateSubTexture({
             mipLevel: 0,
             x: 4,
@@ -356,7 +368,7 @@ describe('Texture', () => {
             height: 4,
             image: new Uint8Array(8)
         });
-        compressed.updateTexture(state, {});
+        updateWebGLTexture(state, compressed, compressedAllocation);
         expect(mock.compressedTexSubImage2D).toHaveBeenCalledWith(
             TEXTURE_2D,
             0,
@@ -472,7 +484,7 @@ describe('Texture', () => {
             image: new Uint8Array(4)
         });
         volume.compressed = true;
-        expect(() => volume.updateTexture(createTextureState(mock.gl), {})).toThrow(
+        expect(() => updateWebGLTexture(createTextureState(mock.gl), volume, {})).toThrow(
             /Compressed 3D textures are unsupported/
         );
         expect(mock.compressedTexImage3D).not.toHaveBeenCalled();
@@ -500,7 +512,7 @@ describe('Texture', () => {
             image: new Uint8Array(32)
         });
         volume.minFilter = NEAREST_MIPMAP_NEAREST;
-        expect(() => volume.updateTexture(createTextureState(mock.gl), {})).toThrow(
+        expect(() => updateWebGLTexture(createTextureState(mock.gl), volume, {})).toThrow(
             /require a complete explicit mipmap chain/
         );
         expect(mock.texImage3D).not.toHaveBeenCalled();
@@ -515,7 +527,7 @@ describe('Texture', () => {
             minFilter: NEAREST_MIPMAP_NEAREST,
             mipmaps: [{ data: new Uint8Array(32), width: 2, height: 2, depth: 2 }]
         });
-        expect(() => incomplete.updateTexture(createTextureState(mock.gl), {})).toThrow(
+        expect(() => updateWebGLTexture(createTextureState(mock.gl), incomplete, {})).toThrow(
             /has 1 levels; 2 are required/
         );
         expect(mock.texImage3D).not.toHaveBeenCalled();
@@ -585,44 +597,60 @@ describe('Texture', () => {
         const nativeTexture: WebGLTexture = {};
 
         expect(() =>
-            new Texture({
-                target: TEXTURE_3D,
-                width: 0,
-                height: 1,
-                depth: 1,
-                image: new Uint8Array(0)
-            }).updateTexture(state, nativeTexture)
+            updateWebGLTexture(
+                state,
+                new Texture({
+                    target: TEXTURE_3D,
+                    width: 0,
+                    height: 1,
+                    depth: 1,
+                    image: new Uint8Array(0)
+                }),
+                nativeTexture
+            )
         ).toThrow(/width must be a positive safe integer/);
         expect(() =>
-            new Texture({
-                target: TEXTURE_3D,
-                width: 5,
-                height: 1,
-                depth: 1,
-                image: new Uint8Array(20)
-            }).updateTexture(state, nativeTexture)
+            updateWebGLTexture(
+                state,
+                new Texture({
+                    target: TEXTURE_3D,
+                    width: 5,
+                    height: 1,
+                    depth: 1,
+                    image: new Uint8Array(20)
+                }),
+                nativeTexture
+            )
         ).toThrow(/width 5 exceeds.*limit 4/);
         expect(() =>
-            new Texture({
-                target: TEXTURE_2D_ARRAY,
-                width: 1,
-                height: 1,
-                depth: 4,
-                image: new Uint8Array(16)
-            }).updateTexture(state, nativeTexture)
+            updateWebGLTexture(
+                state,
+                new Texture({
+                    target: TEXTURE_2D_ARRAY,
+                    width: 1,
+                    height: 1,
+                    depth: 4,
+                    image: new Uint8Array(16)
+                }),
+                nativeTexture
+            )
         ).toThrow(/layer count 4 exceeds.*limit 3/);
 
         const canvas = document.createElement('canvas');
         canvas.width = 1;
         canvas.height = 1;
         expect(() =>
-            new Texture({
-                target: TEXTURE_3D,
-                width: 1,
-                height: 1,
-                depth: 1,
-                image: canvas
-            }).updateTexture(state, nativeTexture)
+            updateWebGLTexture(
+                state,
+                new Texture({
+                    target: TEXTURE_3D,
+                    width: 1,
+                    height: 1,
+                    depth: 1,
+                    image: canvas
+                }),
+                nativeTexture
+            )
         ).toThrow(/require raw pixel data or null/);
 
         const incomplete = new Texture({
@@ -635,7 +663,7 @@ describe('Texture', () => {
             format: RGBA,
             type: UNSIGNED_BYTE
         });
-        expect(() => incomplete.updateTexture(state, nativeTexture)).toThrow(
+        expect(() => updateWebGLTexture(state, incomplete, nativeTexture)).toThrow(
             /contains 31 elements; 32 are required/
         );
         expect(mock.texImage3D).not.toHaveBeenCalled();
@@ -657,7 +685,7 @@ describe('Texture', () => {
                 { data: new Uint8Array(4), width: 1, height: 1, depth: 1 }
             ]
         });
-        expect(() => volume.updateTexture(state, {})).toThrow(
+        expect(() => updateWebGLTexture(state, volume, {})).toThrow(
             /Mipmap 0 depth is undefined; expected 4/
         );
 
@@ -673,7 +701,9 @@ describe('Texture', () => {
                 { data: new Uint8Array(4), width: 1, height: 1, depth: 1 }
             ]
         });
-        expect(() => array.updateTexture(state, {})).toThrow(/Mipmap 1 depth is 1; expected 3/);
+        expect(() => updateWebGLTexture(state, array, {})).toThrow(
+            /Mipmap 1 depth is 1; expected 3/
+        );
     });
 
     it('routes layered raw and compressed storage through the WebGL 2 3D entry points', () => {
@@ -690,7 +720,7 @@ describe('Texture', () => {
             type: UNSIGNED_BYTE,
             wrapR: CLAMP_TO_EDGE
         });
-        raw.updateTexture(state, {});
+        updateWebGLTexture(state, raw, {});
         expect(mock.texImage3D).toHaveBeenCalledWith(
             TEXTURE_3D,
             0,
@@ -715,7 +745,7 @@ describe('Texture', () => {
             format: RGB,
             type: 0
         });
-        compressed.updateTexture(state, {});
+        updateWebGLTexture(state, compressed, {});
         expect(mock.compressedTexImage3D).toHaveBeenCalledWith(
             TEXTURE_2D_ARRAY,
             0,
@@ -737,7 +767,7 @@ describe('Texture', () => {
             internalFormat: COMPRESSED_RGB_S3TC_DXT1_EXT,
             type: 0
         });
-        expect(() => invalid.updateTexture(state, {})).toThrow(
+        expect(() => updateWebGLTexture(state, invalid, {})).toThrow(
             /contains 15 bytes; 16 are required/
         );
         expect(mock.compressedTexImage3D).toHaveBeenCalledTimes(1);
@@ -772,20 +802,22 @@ describe('Texture', () => {
         expect(backing?.mipmaps?.[0]?.data).not.toBe(level0);
 
         const recoveredContext = createMockTextureContext();
+        const recoveredManager = new WebGLTextureManager(createTextureState(recoveredContext.gl));
         try {
-            texture.getGLTexture(createTextureState(recoveredContext.gl));
+            recoveredManager.get(texture);
             expect(recoveredContext.texImage3D).toHaveBeenCalledTimes(2);
             expect(recoveredContext.texImage3D.mock.calls[0]?.[5]).toBe(2);
             expect(recoveredContext.texImage3D.mock.calls[1]?.[5]).toBe(1);
             expect(recoveredContext.generateMipmap).not.toHaveBeenCalled();
         } finally {
-            Texture.reset(recoveredContext.gl);
+            recoveredManager.destroy();
         }
     });
 
     it('uploads real WebGL 2 volume and array textures without GL errors', () => {
         const gl = createRealWebGL2Context();
         const state = createRealTextureState(gl);
+        const manager = new WebGLTextureManager(state);
         const volume = new Texture({
             target: TEXTURE_3D,
             width: 2,
@@ -818,16 +850,15 @@ describe('Texture', () => {
 
         expect(gl.getError()).toBe(gl.NO_ERROR);
         try {
-            volume.getGLTexture(state);
-            expect(gl.getError()).toBe(gl.NO_ERROR);
-            expect(gl.getTexParameter(TEXTURE_3D, TEXTURE_WRAP_R)).toBe(CLAMP_TO_EDGE);
+            manager.get(volume);
             expect(gl.getError()).toBe(gl.NO_ERROR);
 
-            array.getGLTexture(state);
+            manager.get(array);
             expect(gl.getError()).toBe(gl.NO_ERROR);
         } finally {
             volume.destroy();
             array.destroy();
+            manager.destroy();
         }
         expect(gl.getError()).toBe(gl.NO_ERROR);
     });
@@ -854,21 +885,20 @@ describe('Texture', () => {
             image: new DataView(storage.buffer, 1, 16)
         });
 
-        texture.updateTexture(
+        updateWebGLTexture(
             {
                 gl,
                 capabilities: {
                     MAX_TEXTURE_SIZE: 0,
-                    MAX_TEXTURE_INDEX: 0,
-                    MAX_TEXTURE_MAX_ANISOTROPY: 1
-                } as Hilo3d.WebGLCapabilities,
-                extensions: {
-                    textureFilterAnisotropic: null
-                } as Hilo3d.WebGLExtensions,
+                    MAX_3D_TEXTURE_SIZE: 0,
+                    MAX_ARRAY_TEXTURE_LAYERS: 0,
+                    MAX_TEXTURE_INDEX: 0
+                },
                 activeTexture: vi.fn(),
                 bindTexture: vi.fn(),
                 pixelStorei
             },
+            texture,
             {}
         );
 
@@ -902,22 +932,24 @@ describe('Texture', () => {
             } as unknown as WebGL2RenderingContext;
             return { gl, compressedTexImage2D };
         };
-        const createState = (gl: WebGL2RenderingContext): Hilo3d.TextureWebGLState => ({
+        const createState = (gl: WebGL2RenderingContext): WebGLTextureState => ({
             gl,
             capabilities: {
                 MAX_TEXTURE_SIZE: 4096,
-                MAX_TEXTURE_INDEX: 0,
-                MAX_TEXTURE_MAX_ANISOTROPY: 1
-            } as Hilo3d.WebGLCapabilities,
-            extensions: {
-                textureFilterAnisotropic: null
-            } as Hilo3d.WebGLExtensions,
+                MAX_3D_TEXTURE_SIZE: 256,
+                MAX_ARRAY_TEXTURE_LAYERS: 256,
+                MAX_TEXTURE_INDEX: 0
+            },
             activeTexture: vi.fn(),
             bindTexture: vi.fn(),
             pixelStorei: vi.fn()
         });
         const first = createFakeContext();
         const second = createFakeContext();
+        const firstState = createState(first.gl);
+        const secondState = createState(second.gl);
+        const firstManager = new WebGLTextureManager(firstState);
+        const secondManager = new WebGLTextureManager(secondState);
         const level0 = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
         const level1 = new Uint8Array([9, 10, 11, 12]);
         const level2 = new Uint8Array([13, 14, 15, 16]);
@@ -938,13 +970,13 @@ describe('Texture', () => {
         });
 
         try {
-            const firstAllocation = texture.getGLTexture(createState(first.gl));
+            const firstAllocation = firstManager.get(texture);
             expect(firstAllocation).toBeDefined();
             expect(first.compressedTexImage2D).toHaveBeenCalledTimes(3);
             expect(texture.isImageReleased).toBe(true);
             expect(texture.mipmaps).toBeNull();
 
-            const secondAllocation = texture.getGLTexture(createState(second.gl));
+            const secondAllocation = secondManager.get(texture);
             expect(secondAllocation).not.toBe(firstAllocation);
             expect(second.compressedTexImage2D).toHaveBeenCalledTimes(3);
             expect(second.compressedTexImage2D.mock.calls[0]?.[6]).not.toBe(level0);
@@ -964,12 +996,250 @@ describe('Texture', () => {
                     { data: level1, width: 2, height: 2 }
                 ]
             });
-            expect(() => incomplete.updateTexture(createState(first.gl), {})).toThrow(
+            expect(() => updateWebGLTexture(firstState, incomplete, {})).toThrow(
                 /has 2 levels; 3 are required/
             );
         } finally {
-            Texture.reset(first.gl);
-            Texture.reset(second.gl);
+            firstManager.destroy();
+            secondManager.destroy();
         }
+    });
+
+    it('refreshes stable native allocations when a shared descriptor changes', () => {
+        const first = createMockTextureContext();
+        const second = createMockTextureContext();
+        const firstManager = new WebGLTextureManager(createTextureState(first.gl));
+        const secondManager = new WebGLTextureManager(createTextureState(second.gl));
+        const texture = new Texture<null>({
+            width: 1,
+            height: 1,
+            image: null,
+            minFilter: NEAREST,
+            magFilter: NEAREST
+        });
+
+        try {
+            const firstAllocation = firstManager.get(texture);
+            const secondAllocation = secondManager.get(texture);
+            texture.width = 2;
+            texture.height = 3;
+
+            expect(firstManager.get(texture)).toBe(firstAllocation);
+            expect(secondManager.get(texture)).toBe(secondAllocation);
+            expect(first.texImage2D).toHaveBeenCalledTimes(2);
+            expect(second.texImage2D).toHaveBeenCalledTimes(2);
+            expect(first.texImage2D.mock.calls[1]?.slice(3, 5)).toEqual([2, 3]);
+            expect(second.texImage2D.mock.calls[1]?.slice(3, 5)).toEqual([2, 3]);
+        } finally {
+            firstManager.destroy();
+            secondManager.destroy();
+        }
+    });
+
+    it('recreates allocations only when the WebGL texture target changes', () => {
+        const mock = createMockTextureContext();
+        const manager = new WebGLTextureManager(createTextureState(mock.gl));
+        const texture = new Texture<null>({ width: 1, height: 1, image: null });
+
+        try {
+            const firstAllocation = manager.get(texture);
+            texture.target = TEXTURE_3D;
+            texture.depth = 1;
+            const secondAllocation = manager.get(texture);
+
+            expect(secondAllocation).not.toBe(firstAllocation);
+            expect(mock.deleteTexture).toHaveBeenCalledWith(firstAllocation);
+            expect(mock.createTexture).toHaveBeenCalledTimes(2);
+            expect(mock.texImage3D).toHaveBeenCalledOnce();
+        } finally {
+            manager.destroy();
+        }
+    });
+
+    it('keeps sampler-only changes out of texture content uploads', () => {
+        const mock = createMockTextureContext();
+        const manager = new WebGLTextureManager(createTextureState(mock.gl));
+        const texture = new Texture<null>({ width: 1, height: 1, image: null });
+
+        try {
+            const allocation = manager.get(texture);
+            texture.wrapS = CLAMP_TO_EDGE;
+            texture.anisotropic = 8;
+
+            expect(manager.get(texture)).toBe(allocation);
+            expect(mock.texImage2D).toHaveBeenCalledOnce();
+        } finally {
+            manager.destroy();
+        }
+    });
+
+    it('does not re-upload released CPU content on a clean manager lookup', () => {
+        const mock = createMockTextureContext();
+        const manager = new WebGLTextureManager(createTextureState(mock.gl));
+        const texture = new Texture({
+            width: 1,
+            height: 1,
+            image: new Uint8Array(4),
+            isImageCanRelease: true
+        });
+
+        try {
+            const allocation = manager.get(texture);
+            expect(texture.isImageReleased).toBe(true);
+            expect(manager.get(texture)).toBe(allocation);
+            expect(mock.texImage2D).toHaveBeenCalledOnce();
+        } finally {
+            manager.destroy();
+        }
+    });
+
+    it('uploads a full recovery checkpoint without replaying its sub-updates', () => {
+        const mock = createMockTextureContext();
+        const manager = new WebGLTextureManager(createTextureState(mock.gl));
+        const texture = new Texture({
+            width: 2,
+            height: 2,
+            image: new Uint8Array(16),
+            flipY: false
+        });
+        texture.updateSubTexture({
+            mipLevel: 0,
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            image: new Uint8Array([1, 2, 3, 4])
+        });
+
+        try {
+            manager.get(texture);
+            expect(mock.texImage2D).toHaveBeenCalledOnce();
+            expect(mock.texSubImage2D).not.toHaveBeenCalled();
+            expect(mock.texImage2D.mock.calls[0]?.[8]).toEqual(
+                new Uint8Array([1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            );
+        } finally {
+            manager.destroy();
+        }
+    });
+
+    it('keeps explicit-mipmap sub-updates incremental', () => {
+        const mock = createMockTextureContext();
+        const manager = new WebGLTextureManager(createTextureState(mock.gl));
+        const texture = new Texture<null>({
+            width: 2,
+            height: 2,
+            image: null,
+            minFilter: NEAREST_MIPMAP_NEAREST,
+            flipY: false,
+            mipmaps: [
+                { data: new Uint8Array(16), width: 2, height: 2 },
+                { data: new Uint8Array(4), width: 1, height: 1 }
+            ]
+        });
+
+        try {
+            manager.get(texture);
+            texture.updateSubTexture({
+                mipLevel: 1,
+                x: 0,
+                y: 0,
+                width: 1,
+                height: 1,
+                image: new Uint8Array([5, 6, 7, 8])
+            });
+            manager.get(texture);
+
+            expect(mock.texImage2D).toHaveBeenCalledTimes(2);
+            expect(mock.texSubImage2D).toHaveBeenCalledOnce();
+            expect(mock.generateMipmap).not.toHaveBeenCalled();
+        } finally {
+            manager.destroy();
+        }
+    });
+
+    it('drops a partially updated native resource after an upload failure', () => {
+        const mock = createMockTextureContext();
+        const manager = new WebGLTextureManager(createTextureState(mock.gl));
+        const texture = new Texture<null>({ width: 1, height: 1, image: null });
+
+        try {
+            const firstAllocation = manager.get(texture);
+            texture.width = 2;
+            mock.texImage2D.mockImplementationOnce(() => {
+                throw new Error('upload failed');
+            });
+
+            expect(() => manager.get(texture)).toThrow('upload failed');
+            expect(mock.deleteTexture).toHaveBeenCalledWith(firstAllocation);
+            const recoveredAllocation = manager.get(texture);
+            expect(recoveredAllocation).not.toBe(firstAllocation);
+            expect(mock.createTexture).toHaveBeenCalledTimes(2);
+        } finally {
+            manager.destroy();
+        }
+    });
+
+    it('downscales per context without mutating shared CPU texture dimensions', () => {
+        const low = createMockTextureContext();
+        const high = createMockTextureContext();
+        const lowManager = new WebGLTextureManager(
+            createTextureState(low.gl, { maxTextureSize: 2 })
+        );
+        const highManager = new WebGLTextureManager(
+            createTextureState(high.gl, { maxTextureSize: 8 })
+        );
+        const source = document.createElement('canvas');
+        source.width = 4;
+        source.height = 4;
+        const texture = new Texture({ image: source, flipY: false });
+
+        try {
+            lowManager.get(texture);
+            highManager.get(texture);
+
+            expect(low.texImage2D.mock.calls[0]?.[5]).toMatchObject({ width: 2, height: 2 });
+            expect(high.texImage2D.mock.calls[0]?.[5]).toBe(source);
+            expect(texture.image).toBe(source);
+            expect(texture.width).toBe(4);
+            expect(texture.height).toBe(4);
+
+            texture.updateSubTexture({
+                mipLevel: 0,
+                x: 3,
+                y: 3,
+                width: 1,
+                height: 1,
+                image: new ImageData(1, 1)
+            });
+            lowManager.get(texture);
+            expect(low.texImage2D).toHaveBeenCalledTimes(2);
+            expect(low.texSubImage2D).not.toHaveBeenCalled();
+        } finally {
+            lowManager.destroy();
+            highManager.destroy();
+        }
+    });
+
+    it('releases every backend allocation before cancellable public destroy listeners', () => {
+        const first = createMockTextureContext();
+        const second = createMockTextureContext();
+        const firstManager = new WebGLTextureManager(createTextureState(first.gl));
+        const secondManager = new WebGLTextureManager(createTextureState(second.gl));
+        const texture = new Texture<null>({ width: 1, height: 1, image: null });
+        texture.on('destroy', event => {
+            event.stopImmediatePropagation?.();
+            throw new Error('public listener failed');
+        });
+        const firstAllocation = firstManager.get(texture);
+        const secondAllocation = secondManager.get(texture);
+
+        expect(() => texture.destroy()).toThrow('public listener failed');
+        expect(first.deleteTexture).toHaveBeenCalledWith(firstAllocation);
+        expect(second.deleteTexture).toHaveBeenCalledWith(secondAllocation);
+        expect(firstManager.cache.get(texture.id)).toBeUndefined();
+        expect(secondManager.cache.get(texture.id)).toBeUndefined();
+        firstManager.destroy();
+        secondManager.destroy();
     });
 });

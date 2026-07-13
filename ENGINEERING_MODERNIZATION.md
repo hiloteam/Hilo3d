@@ -1,6 +1,6 @@
 # Hilo3d 现代前端工程改造记录
 
-状态：已完成 · 目标版本：2.0.0 · 最后核验：2026-07-13
+状态：已完成 · 目标版本：2.0.0 · 最后核验：2026-07-14
 
 范围：源码、示例、测试、构建、类型声明、API 文档、站点、npm 包、CI 与发布流程
 
@@ -19,6 +19,10 @@
   3.00 为唯一源码；共享材质/阴影/呈现 shader 以及 WebGPU 专用的 mipmap 等内部 pass 均严格执行“引擎预处理 →
   Vulkan GLSL 4.50 → Naga WASM → WGSL”，不存在手写 WGSL 镜像、WebGL 1、GLSL 1.00 或逐项 numeric
   uniform 路径。
+- 渲染目录按 `common/webgl/webgpu` 明确分层；`UniformBuffer` 与 frame
+  planning 保持后端中立，WebGPU 通过同步 `renderFrame()`
+  合并资源已就绪的多 pass，并以 submission 内 UBO
+  revision 快照保证阴影与多相机数据不会互相覆盖。Shader variant 使用有界结构化 hash 与精确碰撞校验。
 - Vite 负责库与多页面示例构建，Vitest Browser
   Mode 在真实 Chromium 环境中运行单元测试；Playwright 从示例目录自动收集 78 个 HTML，除明确限定为 WebGL
   2 的 WebXR 页面外，逐页执行 WebGL 2 +
@@ -127,8 +131,10 @@ const webgpuStage = await Stage.create({ backend: 'webgpu', camera });
 ```
 
 省略 `backend` 只表示选择文档化的 WebGL
-2 默认值，不是能力探测。显式选择 WebGPU 后，浏览器不支持、adapter 不存在、feature/limit 不满足、恢复失败或 shader 编译失败都会成为可观察错误；禁止捕获后创建 WebGL
-2 renderer、关闭 feature 或换一条低能力渲染路径继续运行。
+2 默认值，不是能力探测。显式选择 WebGPU 后，浏览器不支持、adapter 不存在、feature/limit 不满足、恢复失败或 shader 编译失败都会成为可观察错误；引擎内部禁止吞掉错误后静默创建 WebGL
+2
+renderer、关闭 feature 或换一条低能力渲染路径继续运行。应用可以捕获该错误，并按自身产品策略显式发起一次独立的
+`Stage.create({ backend: 'webgl2', ... })` 请求。
 
 WebGL 2 backend 直接使用 core API 和原生 GLSL ES 3.00；项目不创建 WebGL 1 context，不保留 WebGL 1
 extension adapter，也不接受 GLSL 1.00 自定义 shader。
@@ -272,7 +278,9 @@ history 后执行一次完整上传，再恢复 partial。资源以
 保存；阴影、主画布和每个 RenderTarget 各自更新命中的 variant，不会用一次 pass 的快照覆盖其他 pass。材质/几何 identity 替换、target 销毁和 mesh 销毁会确定性释放对应状态，每个 mesh 的 variant 使用 32 项 LRU 上限；完整帧成功后才原子提交，异常帧只回收未提交的新资源。共享资源按 renderer 全局最终引用判断，不能被另一个 scene/pass 提前销毁。owner 释放会同时删除 CPU
 UBO cache 和 native wrapper。pipeline、layout、sampler 与 bind-group
 cache 都有明确的失效或容量边界；vertex/instance/index buffer variant 使用 per-owner
-LRU，pipeline 把不可淘汰的 in-flight 去重层与已完成的有界 LRU 分开。UBO/texture
+LRU，WebGPU 的 immutable sampler descriptor、每纹理 resolved snapshot 与每个 base
+shader 的 numeric-depth 专化同样使用有界 access-order
+LRU；pipeline 把不可淘汰的 in-flight 去重层与已完成的有界 LRU 分开。UBO/texture
 identity 变化只失效 bind group，不重建稳定的 pipeline
 layout，资源 churn 不会让历史 variant 永久常驻、重复并发编译或触发无关 pipeline 重编译。
 
@@ -297,21 +305,30 @@ disabled、light 离开 stage、GPU resource release、device suspend/recovery �
 destroy 都会 prune 对应节点并解除 parent/listener。多个 renderer 不共享这些节点，重复恢复也不会让 light
 children 增长。
 
-WebGL 2 的 native
-resource 也不使用进程级单例所有权。Program、Buffer、VertexArrayObject 与 Texture 的 cache
-namespace 都以 `WebGL2RenderingContext` 为 WeakMap key；VAO 的 current binding、Framebuffer
-reset/destroy、capability snapshot、extension object 与自定义 `UniformBuffer`
-allocation 同样是 context-local。同一 shader/geometry/texture
-identity 可在多个 renderer 中各自建立 native
+WebGL 2 的 native resource 也不使用进程级单例所有权。Program、Buffer 与 VertexArrayObject 按
+`WebGL2RenderingContext` 分区；Texture 与 `UniformBuffer` allocation、upload
+cursor 和 cache 则由每个 `WebGLState` 的 backend manager 持有；不可变 `WebGLSampler`
+variant 由有界 sampler manager 按 context 和 texture unit 管理。共享 `Texture`
+只保存 CPU 内容、revision 与恢复 snapshot，WebGL uploader 不再位于
+`src/texture`，公开 API 也不暴露 native texture/cache。VAO current binding、Framebuffer
+reset/destroy、capability snapshot 与 extension object 同样是 context-local。
+
+同一 shader/geometry/texture identity 可在多个 renderer 中各自建立 native
 allocation，不会把 A 的 program/state/gl 返回给 B。A 的 context
 loss、restore、`releaseGPUResources()`
-或 destroy 只清理 A 的 namespace，不删除 B 的 handle、不覆盖 B 的 extension/capability 视图。`Texture.needDestroy`
-由任一 backend 消费时会失效该逻辑纹理在所有 WebGL context 与 WebGPU
-device 上的旧 allocation，不能由第一个消费者吞掉全局状态。这一所有权边界由两个真实 WebGL 2
+或 destroy 只清理 A 的 namespace，不删除 B 的 handle、不覆盖 B 的 extension/capability 视图。Texture
+content descriptor snapshot 会检测 size/format/mipmap 变化，并在 framebuffer
+resize/reset 时稳定复用 native object；一个 texture attachment 不能同时归属两个 framebuffer
+graph。不可取消的内部 destroy observer 会先释放所有 backend
+allocation，再触发公开事件；`Texture.needDestroy` 也会同步失效该逻辑纹理在所有 WebGL
+context 与 WebGPU device 上的旧 allocation，不能由第一个消费者吞掉全局状态。
+
+这一所有权边界由两个真实 WebGL 2
 context 的首次分配、reset/release 和继续渲染回归锁定，不使用单 context mock 代替。旧的根导出
-`capabilities`/`extensions` 单例已删除，因为它们无法表示“当前”多个 context；调用方从所属
-`WebGLRenderer.capabilities`/`WebGLRenderer.extensions` 读取，低层资源 cache 检查也必须显式传入
-`gl`。
+`capabilities`/`extensions` 单例已删除，因为它们无法表示“当前”多个context；调用方从所属
+`WebGLRenderer.capabilities`/`WebGLRenderer.extensions`
+读取。Program、Buffer、VAO 等仍公开的低层 cache 检查必须显式传入 `gl`，Texture native
+cache 则完全由 backend manager 私有持有。
 
 固定 ABI 同时固定容量：最多 8 个 directional light、8 个 spot light、16 个 point light、8 个 area
 light、128 个 skin joint、8 个 morph weight 与每个 WebGPU instanced batch
@@ -371,7 +388,8 @@ depth texture 同时支持 comparison 与 numeric 两条正式 ABI：shadow samp
 WGSL binding 专门化为 `texture_depth_*`，并把标量 sample/load 结果恢复成 GLSL 的 vec4 `.r`
 语义。WebGPU numeric depth 必须是 nearest-only、`anisotropic: 1` 的 non-filtering
 sampler，非法 filter 在创建 bind group 前失败；WebGL 2 按 Program 反射出的 shadow/ordinary
-sampler 类型切换 `TEXTURE_COMPARE_MODE`，因此同一个 depth
+sampler 类型选择按 texture unit 绑定的不可变 `WebGLSampler` variant，comparison
+function 来自同一 render-target 契约；WebGPU bind group 使用相同的默认 compare，因此同一个 depth
 attachment 可安全用于两种读取方式。sampler 仍按完整 descriptor 缓存，并在 resolved
 binding 中保存不可变快照。
 
@@ -415,8 +433,13 @@ identity、尺寸和可用 allocation，不存在部分替换。
 alignment 后再压紧，WebGL 2 内部处理 framebuffer
 resolve 和坐标方向；这些 native 差异不会泄漏到调用方。target-owned texture 继续使用引擎 `Texture`
 identity，因此材质 sampler、bind-group/cache 与资源释放共享同一生命周期，不复制旁路纹理系统。attachment
-identity 在 resize、WebGL context restore 与 WebGPU device recovery 前后保持不变；WebGL
-resize 会事务性更新全部 draw/resolve/depth
+identity 在 resize、WebGL context restore 与 WebGPU device
+recovery 前后保持不变。两个 backend 的 target owner 都跟踪 attachment allocation generation：公开
+`Texture.destroy()`、target 变化或上传失败会先清除旧 native
+handle；WebGL 重新挂接 manager 的当前 allocation，WebGPU 则在同一逻辑 texture
+identity 下原子重建，设备 suspend 期间禁止在失效 device 上分配。若这类失效发生在 WebGPU command
+recording 期间，整帧会被 poison 且不提交，下一帧再恢复，旧 observer 或 material
+binding 不能创建脱离 target 的旁路纹理。WebGL resize 会事务性更新全部 draw/resolve/depth
 attachment，任一 allocation 失败就完整回滚，回滚本身失败则销毁 target 并抛出聚合错误，绝不留下半提交状态。显式 present 在两个 backend 都使用 fullscreen
 texture-load pipeline；WebGL
 2 不会把单采样 FBO 非法 blit 到浏览器可能启用 MSAA 的默认 framebuffer。WebGL

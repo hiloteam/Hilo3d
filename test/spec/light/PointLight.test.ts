@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import CubeTexture from '../../../src/texture/CubeTexture';
-import BuiltInUniformBlockManager from '../../../src/renderer/BuiltInUniformBlockManager';
-import { getLightShadow } from '../../../src/light/LightShadowRegistry';
+import BuiltInUniformBlockManager from '../../../src/renderer/common/BuiltInUniformBlockManager';
+import { getLightShadow } from '../../../src/renderer/webgl/shadow/LightShadowRegistry';
 import {
     releaseWebGLShadowMaps,
     renderWebGLShadowMaps
-} from '../../../src/renderer/WebGLShadowMapManager';
+} from '../../../src/renderer/webgl/WebGLShadowMapManager';
+import { getWebGLTexture, getWebGLTextureCache } from '../../../src/renderer/webgl/WebGLState';
 import { createHilo3dEnvironment, testEnv } from '../../setup';
 
 const PointLight = Hilo3d.PointLight;
@@ -106,7 +107,7 @@ describe('PointLight', () => {
                 throw new Error('Expected an initialized point-light cube shadow framebuffer.');
             }
 
-            const glTexture = texture.getGLTexture(renderer.state);
+            const glTexture = getWebGLTexture(renderer.state, texture);
             framebuffer.bind();
             try {
                 expect(
@@ -198,7 +199,7 @@ describe('PointLight', () => {
             if (!(failedTexture instanceof CubeTexture)) {
                 throw new Error('Cube shadow recovery did not retain its logical texture');
             }
-            expect(Hilo3d.Texture.getCache(gl).get(failedTexture.id)).toBeUndefined();
+            expect(getWebGLTextureCache(renderer.state).get(failedTexture.id)).toBeUndefined();
 
             expect(() => {
                 renderWebGLShadowMaps(manager, renderer, camera, activeCamera => {
@@ -206,7 +207,7 @@ describe('PointLight', () => {
                 });
             }).not.toThrow();
             expect(runtime?.framebuffer?.texture).toBe(failedTexture);
-            expect(gl.isTexture(failedTexture.getGLTexture(renderer.state))).toBe(true);
+            expect(gl.isTexture(getWebGLTexture(renderer.state, failedTexture))).toBe(true);
             expect(checkFramebufferStatus).toHaveBeenCalledTimes(2);
         } finally {
             renderer.renderList.reset();

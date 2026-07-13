@@ -6,12 +6,15 @@ import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import Material from '../../../src/material/Material';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
-import { decodeMeshPickingId, getMeshPickingIdentity } from '../../../src/renderer/PickingIdentity';
-import type { Renderer, RendererBackend } from '../../../src/renderer/Renderer';
+import {
+    decodeMeshPickingId,
+    getMeshPickingIdentity
+} from '../../../src/renderer/common/PickingIdentity';
+import type { Renderer, RendererBackend } from '../../../src/renderer/common/Renderer';
 import type {
     RenderTarget,
     RenderTargetColorAttachmentReadback
-} from '../../../src/renderer/RenderTarget';
+} from '../../../src/renderer/common/RenderTarget';
 import MeshPicker from '../../../src/utils/MeshPicker';
 
 function encodedIdentity(id: number): Uint8Array {

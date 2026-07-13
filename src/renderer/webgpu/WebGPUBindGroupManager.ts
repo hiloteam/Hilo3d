@@ -1,16 +1,22 @@
 import type Texture from '../../texture/Texture';
-import type { TranslatedShaderPair, WebGPUSamplerBinding } from '../../shader/GlslToWgsl';
+import { touchBoundedLruEntry } from '../common/BoundedLruCache';
+import type { TranslatedShaderPair, WebGPUSamplerBinding } from './shader/GlslToWgsl';
 import { WEBGPU_BIND_GROUP_COUNT } from './WebGPUBindingLayout';
 import { WebGPUShaderStage } from './WebGPUConstants';
 import {
     createWebGPUSamplerDescriptor,
+    default as WebGPUTextureManager,
+    getWebGPUTextureDefaultCompare,
     resolveWebGPUTextureFormat,
     type WebGPUTextureRequestOptions,
     type WebGPUTextureResource
 } from './WebGPUTextureManager';
 import type { WebGPUUniformBufferBinding } from './WebGPUUniformBufferManager';
 
+const MAX_CACHED_BIND_GROUPS_PER_GROUP = 256;
 const MAX_CACHED_BIND_GROUP_SETS = 256;
+const MAX_CACHED_BIND_GROUP_LAYOUTS_PER_GROUP = 256;
+const MAX_CACHED_PIPELINE_LAYOUTS = 256;
 
 export interface ResolvedWebGPUSampler {
     readonly binding: WebGPUSamplerBinding;
@@ -26,6 +32,7 @@ export interface WebGPUPipelineBindingLayout {
 
 export interface WebGPUTextureResolver {
     get(texture: Texture<unknown>, options?: WebGPUTextureRequestOptions): WebGPUTextureResource;
+    getDefaultCompare?(texture: Texture<unknown>): WebGPUTextureRequestOptions['compare'];
 }
 
 function stageVisibility(stages: readonly ('vertex' | 'fragment')[]): GPUShaderStageFlags {
@@ -173,31 +180,6 @@ function sortedUniqueEntries<T extends { readonly binding: number }>(
     return entries;
 }
 
-function layoutSignature(
-    shader: TranslatedShaderPair,
-    samplers: readonly ResolvedWebGPUSampler[],
-    device: GPUDevice
-): string {
-    return JSON.stringify({
-        blocks: [...shader.uniformBlocks]
-            .sort(compareUniformBlocks)
-            .map(block => [block.group, block.binding, stageVisibility(block.stages)]),
-        samplers: [...samplers].sort(compareSamplers).map(sampler => {
-            const sampleType = declaredTextureSampleType(device, sampler);
-            const comparison = sampler.binding.type.endsWith('Shadow');
-            return [
-                sampler.binding.group,
-                sampler.binding.textureBinding,
-                sampler.binding.samplerBinding,
-                stageVisibility(sampler.binding.stages),
-                sampleType,
-                validateSamplerDimension(sampler),
-                samplerBindingType(sampleType, comparison)
-            ];
-        })
-    });
-}
-
 function validateResourceLimits(
     shader: TranslatedShaderPair,
     samplers: readonly ResolvedWebGPUSampler[],
@@ -260,7 +242,15 @@ export default class WebGPUBindGroupManager {
     private readonly device: GPUDevice;
     private readonly textureManager: WebGPUTextureResolver;
     private readonly layouts = new Map<string, WebGPUPipelineBindingLayout>();
-    private readonly bindGroups = new Map<string, readonly GPUBindGroup[]>();
+    private readonly groupLayouts = Array.from(
+        { length: WEBGPU_BIND_GROUP_COUNT },
+        () => new Map<string, GPUBindGroupLayout>()
+    );
+    private readonly bindGroupsByGroup = Array.from(
+        { length: WEBGPU_BIND_GROUP_COUNT },
+        () => new Map<string, GPUBindGroup>()
+    );
+    private readonly bindGroupSets = new Map<string, readonly GPUBindGroup[]>();
     private readonly objectIds = new WeakMap<object, number>();
     private nextObjectId = 1;
 
@@ -271,7 +261,7 @@ export default class WebGPUBindGroupManager {
 
     /** Bounded cache size exposed for deterministic lifecycle diagnostics. */
     get bindGroupCacheSize(): number {
-        return this.bindGroups.size;
+        return this.bindGroupSets.size;
     }
 
     resolveSampler(
@@ -325,7 +315,18 @@ export default class WebGPUBindGroupManager {
         return {
             binding,
             texture,
-            resource: this.textureManager.get(texture, comparison ? { compare: 'less-equal' } : {})
+            resource: this.textureManager.get(
+                texture,
+                comparison
+                    ? {
+                          compare:
+                              (this.textureManager instanceof WebGPUTextureManager
+                                  ? getWebGPUTextureDefaultCompare(this.textureManager, texture)
+                                  : this.textureManager.getDefaultCompare?.(texture)) ??
+                              'less-equal'
+                      }
+                    : {}
+            )
         };
     }
 
@@ -334,10 +335,6 @@ export default class WebGPUBindGroupManager {
         samplers: readonly ResolvedWebGPUSampler[]
     ): WebGPUPipelineBindingLayout {
         validateResourceLimits(shader, samplers, this.device.limits);
-        const signature = layoutSignature(shader, samplers, this.device);
-        const cached = this.layouts.get(signature);
-        if (cached) return cached;
-
         const groupEntries = Array.from(
             { length: WEBGPU_BIND_GROUP_COUNT },
             () => [] as GPUBindGroupLayoutEntry[]
@@ -380,18 +377,52 @@ export default class WebGPUBindGroupManager {
                 }
             );
         }
-        const bindGroupLayouts = groupEntries.map((entries, group) =>
-            this.device.createBindGroupLayout({
-                label: `Hilo3d bind group ${String(group)}`,
-                entries: sortedUniqueEntries(entries, group)
-            })
+        const normalizedEntries = groupEntries.map((entries, group) =>
+            sortedUniqueEntries(entries, group)
         );
+        const groupSignatures = normalizedEntries.map(entries => JSON.stringify(entries));
+        const signature = groupSignatures
+            .map(groupSignature => `${String(groupSignature.length)}:${groupSignature}`)
+            .join('|');
+        const cached = this.layouts.get(signature);
+        if (cached) {
+            touchBoundedLruEntry(this.layouts, signature, cached, MAX_CACHED_PIPELINE_LAYOUTS);
+            return cached;
+        }
+        const bindGroupLayouts = normalizedEntries.map((entries, group) => {
+            const cache = this.groupLayouts[group];
+            const groupSignature = groupSignatures[group];
+            if (!cache || groupSignature === undefined) {
+                throw new RangeError(`WebGPU bind group ${String(group)} is outside the ABI`);
+            }
+            const cachedGroup = cache.get(groupSignature);
+            if (cachedGroup) {
+                touchBoundedLruEntry(
+                    cache,
+                    groupSignature,
+                    cachedGroup,
+                    MAX_CACHED_BIND_GROUP_LAYOUTS_PER_GROUP
+                );
+                return cachedGroup;
+            }
+            const created = this.device.createBindGroupLayout({
+                label: `Hilo3d bind group ${String(group)}`,
+                entries
+            });
+            touchBoundedLruEntry(
+                cache,
+                groupSignature,
+                created,
+                MAX_CACHED_BIND_GROUP_LAYOUTS_PER_GROUP
+            );
+            return created;
+        });
         const result: WebGPUPipelineBindingLayout = Object.freeze({
             signature,
             bindGroupLayouts: Object.freeze(bindGroupLayouts),
             pipelineLayout: this.device.createPipelineLayout({ bindGroupLayouts })
         });
-        this.layouts.set(signature, result);
+        touchBoundedLruEntry(this.layouts, signature, result, MAX_CACHED_PIPELINE_LAYOUTS);
         return result;
     }
 
@@ -410,10 +441,9 @@ export default class WebGPUBindGroupManager {
             { length: WEBGPU_BIND_GROUP_COUNT },
             () => [] as GPUBindGroupEntry[]
         );
-        const identities: (string | number)[] = [layout.signature];
-        for (const groupLayout of layout.bindGroupLayouts) {
-            identities.push(this.objectId(groupLayout));
-        }
+        const identities = layout.bindGroupLayouts.map(
+            (groupLayout, group) => [group, this.objectId(groupLayout)] as number[]
+        );
         for (const block of [...shader.uniformBlocks].sort(compareUniformBlocks)) {
             const resource = uniformBuffers[block.name];
             if (!resource) throw new Error(`No WebGPU uniform buffer resolved for ${block.name}`);
@@ -431,8 +461,7 @@ export default class WebGPUBindGroupManager {
                     size: resource.size
                 }
             });
-            identities.push(
-                block.group,
+            identities[block.group]?.push(
                 block.binding,
                 this.objectId(resource.buffer),
                 resource.offset,
@@ -450,47 +479,62 @@ export default class WebGPUBindGroupManager {
                 { binding: sampler.binding.textureBinding, resource: sampler.resource.view },
                 { binding: sampler.binding.samplerBinding, resource: sampler.resource.sampler }
             );
-            identities.push(
-                sampler.binding.group,
+            identities[sampler.binding.group]?.push(
                 sampler.binding.textureBinding,
                 this.objectId(sampler.resource.view),
                 sampler.binding.samplerBinding,
                 this.objectId(sampler.resource.sampler)
             );
         }
-        const key = identities.join(':');
-        const cached = this.bindGroups.get(key);
-        if (cached) {
-            this.bindGroups.delete(key);
-            this.bindGroups.set(key, cached);
-            return cached;
+        const groupKeys = identities.map(identity => identity.join(':'));
+        const setKey = groupKeys.join('|');
+        const cachedSet = this.bindGroupSets.get(setKey);
+        if (cachedSet) {
+            touchBoundedLruEntry(this.bindGroupSets, setKey, cachedSet, MAX_CACHED_BIND_GROUP_SETS);
+            cachedSet.forEach((bindGroup, group) => {
+                const cache = this.bindGroupsByGroup[group];
+                const key = groupKeys[group];
+                if (cache && key !== undefined) {
+                    touchBoundedLruEntry(cache, key, bindGroup, MAX_CACHED_BIND_GROUPS_PER_GROUP);
+                }
+            });
+            return cachedSet;
         }
-        const groups = layout.bindGroupLayouts.map((groupLayout, group) =>
-            this.device.createBindGroup({
+        const groups = layout.bindGroupLayouts.map((groupLayout, group) => {
+            const cache = this.bindGroupsByGroup[group];
+            const key = groupKeys[group];
+            if (!cache || key === undefined) {
+                throw new RangeError(`WebGPU bind group ${String(group)} is outside the ABI`);
+            }
+            const cached = cache.get(key);
+            if (cached) {
+                touchBoundedLruEntry(cache, key, cached, MAX_CACHED_BIND_GROUPS_PER_GROUP);
+                return cached;
+            }
+            const created = this.device.createBindGroup({
                 label: `Hilo3d bind group ${String(group)}`,
                 layout: groupLayout,
                 entries: sortedUniqueEntries(entries[group] ?? [], group)
-            })
-        );
+            });
+            touchBoundedLruEntry(cache, key, created, MAX_CACHED_BIND_GROUPS_PER_GROUP);
+            return created;
+        });
         const result = Object.freeze(groups);
-        this.bindGroups.set(key, result);
-        while (this.bindGroups.size > MAX_CACHED_BIND_GROUP_SETS) {
-            const oldest = this.bindGroups.keys().next().value;
-            if (oldest === undefined) break;
-            this.bindGroups.delete(oldest);
-        }
+        touchBoundedLruEntry(this.bindGroupSets, setKey, result, MAX_CACHED_BIND_GROUP_SETS);
         return result;
     }
 
     /** Drop resource-identity caches while preserving immutable pipeline-layout identities. */
     clearBindGroups(): void {
-        this.bindGroups.clear();
+        this.bindGroupSets.clear();
+        for (const cache of this.bindGroupsByGroup) cache.clear();
     }
 
     /** Drop every device-owned cache. Intended for renderer/device teardown only. */
     clear(): void {
         this.clearBindGroups();
         this.layouts.clear();
+        for (const cache of this.groupLayouts) cache.clear();
     }
 
     private objectId(object: object): number {

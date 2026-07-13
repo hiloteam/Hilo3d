@@ -1,8 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import type { EventListener } from '../../../src/core/EventDispatcher';
-import type { WebGLCapabilities } from '../../../src/renderer/capabilities';
-import type { WebGLExtensions } from '../../../src/renderer/extensions';
-import WebGLState from '../../../src/renderer/WebGLState';
+import type { WebGLCapabilities } from '../../../src/renderer/webgl/capabilities';
+import type { WebGLExtensions } from '../../../src/renderer/webgl/extensions';
+import WebGLState, {
+    destroyWebGLTextures,
+    getWebGLTexture,
+    getWebGLTextureCache
+} from '../../../src/renderer/webgl/WebGLState';
+import { WebGLTextureManager } from '../../../src/renderer/webgl/WebGLTextureManager';
+import { updateWebGLTexture } from '../../../src/renderer/webgl/WebGLTextureUploader';
 import Texture from '../../../src/texture/Texture';
 import CubeTexture from '../../../src/texture/CubeTexture';
 import {
@@ -20,6 +25,7 @@ import {
     NEAREST,
     NEAREST_MIPMAP_LINEAR,
     NEAREST_MIPMAP_NEAREST,
+    REPEAT,
     RGB,
     RGBA,
     SHORT,
@@ -84,11 +90,18 @@ import {
     UNSIGNED_INT_5_9_9_9_REV
 } from '../../../src/constants/webgl2';
 import WebGPUTextureManager, {
+    beginWebGPUTextureSubmission,
     createWebGPUSamplerDescriptor,
+    endWebGPUTextureSubmission,
     expandRGBToRGBA,
+    getWebGPUTextureDefaultCompare,
+    MAX_CACHED_WEBGPU_SAMPLERS,
+    MAX_CACHED_WEBGPU_TEXTURE_SNAPSHOTS,
+    restoreWebGPUTextureDevice,
+    suspendWebGPUTextures,
     resolveWebGPUTextureFormat
 } from '../../../src/renderer/webgpu/WebGPUTextureManager';
-import { NagaShaderTranslator } from '../../../src/shader/GlslToWgsl';
+import { NagaShaderTranslator } from '../../../src/renderer/webgpu/shader/GlslToWgsl';
 
 let translator: NagaShaderTranslator;
 
@@ -1020,8 +1033,8 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
 
         manager.get(texture);
         const translatedShader: unknown = Reflect.get(manager, 'mipmapShader');
-        manager.suspendAll();
-        manager.restoreDevice(replacement.device);
+        suspendWebGPUTextures(manager);
+        restoreWebGPUTextureDevice(manager, replacement.device);
         manager.get(texture);
         const recoveredShader: unknown = Reflect.get(manager, 'mipmapShader');
 
@@ -1358,11 +1371,11 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
 
         manager.get(texture);
         expect(controlled.requestFrame).toHaveBeenCalledTimes(1);
-        manager.suspendAll();
+        suspendWebGPUTextures(manager);
         expect(controlled.cancelFrame).toHaveBeenCalledTimes(1);
         expect(manager.resourceCount).toBe(0);
 
-        manager.restoreDevice(replacement.device);
+        restoreWebGPUTextureDevice(manager, replacement.device);
         manager.get(texture);
         expect(controlled.requestFrame).toHaveBeenCalledTimes(2);
         manager.destroyAll();
@@ -1541,7 +1554,7 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         try {
             const first = firstManager.get(texture);
             const peer = secondManager.get(texture);
-            const webglAllocation = texture.getGLTexture(state);
+            const webglAllocation = getWebGLTexture(state, texture);
 
             texture.needDestroy = true;
             const replacement = firstManager.get(texture);
@@ -1551,13 +1564,14 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
             expect(secondFake.textures[0]?.destroy).toHaveBeenCalledOnce();
             expect(secondManager.resourceCount).toBe(0);
             expect(gl.isTexture(webglAllocation)).toBe(false);
-            expect(Texture.getCache(gl).get(texture.id)).toBeUndefined();
+            expect(getWebGLTextureCache(state).get(texture.id)).toBeUndefined();
             expect(texture.needDestroy).toBe(false);
 
             expect(secondManager.get(texture)).not.toBe(peer);
-            expect(texture.getGLTexture(state)).not.toBe(webglAllocation);
+            expect(getWebGLTexture(state, texture)).not.toBe(webglAllocation);
         } finally {
             texture.destroy();
+            destroyWebGLTextures(state);
             firstManager.destroyAll();
             secondManager.destroyAll();
         }
@@ -1580,6 +1594,71 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
         expect(onResourceDestroyed).toHaveBeenCalledOnce();
         texture.destroy();
+        expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
+    });
+
+    it('releases native resources before a public destroy listener can cancel or throw', () => {
+        const fake = createFakeWebGPU();
+        const manager = createTextureManager(fake.device);
+        const texture = new Texture({
+            width: 1,
+            height: 1,
+            image: new Uint8Array([1, 2, 3, 4])
+        });
+        texture.on('destroy', event => {
+            event.stopImmediatePropagation?.();
+            throw new Error('public listener failed');
+        });
+
+        manager.get(texture);
+        expect(() => texture.destroy()).toThrow('public listener failed');
+        expect(manager.resourceCount).toBe(0);
+        expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
+        texture.off('destroy');
+        manager.destroyAll();
+    });
+
+    it('defers native destruction for textures used by a pending submission', () => {
+        const fake = createFakeWebGPU();
+        const manager = createTextureManager(fake.device);
+        const texture = new Texture({
+            width: 1,
+            height: 1,
+            image: new Uint8Array([1, 2, 3, 4])
+        });
+
+        beginWebGPUTextureSubmission(manager);
+        manager.get(texture);
+        texture.destroy();
+
+        expect(manager.resourceCount).toBe(0);
+        expect(fake.textures[0]?.destroy).not.toHaveBeenCalled();
+        endWebGPUTextureSubmission(manager);
+        expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
+    });
+
+    it('rejects destroyAll without side effects while a submission is active', () => {
+        const fake = createFakeWebGPU();
+        const manager = createTextureManager(fake.device);
+        const texture = new Texture({
+            width: 1,
+            height: 1,
+            image: new Uint8Array([1, 2, 3, 4])
+        });
+
+        beginWebGPUTextureSubmission(manager);
+        const resource = manager.get(texture);
+        expect(() => {
+            manager.destroyAll();
+        }).toThrow(/while a submission is active/);
+
+        expect(manager.resourceCount).toBe(1);
+        expect(manager.get(texture).gpuTexture).toBe(resource.gpuTexture);
+        expect(fake.textures[0]?.destroy).not.toHaveBeenCalled();
+        endWebGPUTextureSubmission(manager);
+        expect(fake.textures[0]?.destroy).not.toHaveBeenCalled();
+
+        manager.destroyAll();
         expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
     });
 
@@ -1640,6 +1719,34 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         ).toThrow(/Comparison samplers require/);
     });
 
+    it('retains the default comparison function of an external depth attachment', () => {
+        const fake = createFakeWebGPU();
+        const manager = createTextureManager(fake.device);
+        const depth = new Texture({
+            width: 4,
+            height: 4,
+            internalFormat: DEPTH_COMPONENT16,
+            format: DEPTH_COMPONENT,
+            type: UNSIGNED_SHORT,
+            minFilter: LINEAR,
+            magFilter: LINEAR,
+            image: null
+        });
+        const native = fake.createTexture({} as GPUTextureDescriptor);
+        const registered = manager.registerExternal(depth, native, {
+            takeOwnership: true,
+            compare: GEQUAL
+        });
+
+        const defaultCompare = getWebGPUTextureDefaultCompare(manager, depth);
+        expect(defaultCompare).toBe(GEQUAL);
+        if (defaultCompare === undefined) throw new Error('External depth comparison was not kept');
+        expect(manager.get(depth, { compare: defaultCompare }).sampler).toBe(registered.sampler);
+
+        manager.destroy(depth);
+        expect(getWebGPUTextureDefaultCompare(manager, depth)).toBeUndefined();
+    });
+
     it('keeps low-level regular and comparison descriptor snapshots immutable', () => {
         const fake = createFakeWebGPU();
         const manager = createTextureManager(fake.device);
@@ -1684,6 +1791,108 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         expect(changed.sampler).not.toBe(originalSampler);
         expect(first.sampler).toBe(originalSampler);
         expect(manager.get(firstTexture).sampler).toBe(changed.sampler);
+    });
+
+    it('bounds immutable sampler descriptors with least-recently-used eviction', () => {
+        const fake = createFakeWebGPU();
+        const manager = createTextureManager(fake.device);
+        const wrapModes = [CLAMP_TO_EDGE, MIRRORED_REPEAT, REPEAT] as const;
+        const wrapMode = (index: number) => wrapModes[index % wrapModes.length] ?? CLAMP_TO_EDGE;
+        const textures = Array.from(
+            { length: MAX_CACHED_WEBGPU_SAMPLERS + 1 },
+            (_, index) =>
+                new Texture({
+                    width: 1,
+                    height: 1,
+                    image: null,
+                    minFilter: LINEAR,
+                    magFilter: LINEAR,
+                    wrapS: wrapMode(index),
+                    wrapT: wrapMode(Math.floor(index / 3)),
+                    wrapR: wrapMode(Math.floor(index / 9)),
+                    anisotropic: Math.floor(index / 27) + 1
+                })
+        );
+        const firstTexture = textures[0];
+        const secondTexture = textures[1];
+        const overflowTexture = textures[MAX_CACHED_WEBGPU_SAMPLERS];
+        if (!firstTexture || !secondTexture || !overflowTexture) {
+            throw new Error('Incomplete sampler LRU fixture');
+        }
+        const first = manager.get(firstTexture);
+        const second = manager.get(secondTexture);
+        for (let index = 2; index < MAX_CACHED_WEBGPU_SAMPLERS; index++) {
+            const cachedTexture = textures[index];
+            if (!cachedTexture) throw new Error('Missing sampler LRU texture');
+            manager.get(cachedTexture);
+        }
+        expect(fake.createSampler).toHaveBeenCalledTimes(MAX_CACHED_WEBGPU_SAMPLERS);
+
+        expect(manager.get(firstTexture)).toBe(first);
+        manager.get(overflowTexture);
+        expect(manager.get(firstTexture)).toBe(first);
+        expect(fake.createSampler).toHaveBeenCalledTimes(MAX_CACHED_WEBGPU_SAMPLERS + 1);
+
+        const rebuiltSecond = manager.get(secondTexture);
+        expect(fake.createSampler).toHaveBeenCalledTimes(MAX_CACHED_WEBGPU_SAMPLERS + 2);
+        expect(rebuiltSecond).not.toBe(second);
+        expect(rebuiltSecond.gpuTexture).toBe(second.gpuTexture);
+        expect(rebuiltSecond.view).toBe(second.view);
+        expect(rebuiltSecond.sampler).not.toBe(second.sampler);
+        const samplers = Reflect.get(manager, 'samplers') as Map<string, GPUSampler>;
+        expect(samplers).toHaveLength(MAX_CACHED_WEBGPU_SAMPLERS);
+    });
+
+    it('bounds per-texture snapshots and replaces snapshots backed by an evicted sampler', () => {
+        const fake = createFakeWebGPU();
+        const manager = createTextureManager(fake.device);
+        const texture = new Texture({ width: 1, height: 1, image: null });
+        manager.get(texture);
+        interface TextureResourceCacheFixture {
+            readonly snapshots: Map<string, { readonly sampler: GPUSampler }>;
+        }
+        const resources = Reflect.get(manager, 'resourcesByTexture') as WeakMap<
+            Texture<unknown>,
+            TextureResourceCacheFixture
+        >;
+        const resource = resources.get(texture);
+        if (!resource) throw new Error('Missing texture resource cache fixture');
+        const snapshotResource = Reflect.get(manager, 'snapshotResource') as (
+            resource: TextureResourceCacheFixture,
+            samplerKey: string,
+            sampler: GPUSampler
+        ) => { readonly sampler: GPUSampler };
+        const snapshots = resource.snapshots;
+        snapshots.clear();
+        const samplers = Array.from(
+            { length: MAX_CACHED_WEBGPU_TEXTURE_SNAPSHOTS + 1 },
+            (_, index) => ({ index }) as unknown as GPUSampler
+        );
+        for (let index = 0; index < MAX_CACHED_WEBGPU_TEXTURE_SNAPSHOTS; index++) {
+            const sampler = samplers[index];
+            if (!sampler) throw new Error('Missing sampler cache fixture');
+            snapshotResource.call(manager, resource, String(index), sampler);
+        }
+
+        const firstSampler = samplers.at(0);
+        const overflowSampler = samplers.at(MAX_CACHED_WEBGPU_TEXTURE_SNAPSHOTS);
+        if (!firstSampler || !overflowSampler) throw new Error('Incomplete sampler cache fixture');
+        const first = snapshotResource.call(manager, resource, '0', firstSampler);
+        snapshotResource.call(
+            manager,
+            resource,
+            String(MAX_CACHED_WEBGPU_TEXTURE_SNAPSHOTS),
+            overflowSampler
+        );
+        expect(snapshots).toHaveLength(MAX_CACHED_WEBGPU_TEXTURE_SNAPSHOTS);
+        expect(snapshots.has('0')).toBe(true);
+        expect(snapshots.has('1')).toBe(false);
+
+        const replacementSampler = { replacement: true } as unknown as GPUSampler;
+        const replacement = snapshotResource.call(manager, resource, '0', replacementSampler);
+        expect(replacement).not.toBe(first);
+        expect(replacement.sampler).toBe(replacementSampler);
+        expect(snapshots.get('0')).toBe(replacement);
     });
 
     it('validates sampler state before allocating and destroys failed texture transactions', () => {
@@ -1870,7 +2079,7 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         };
         const glTexture = {} as WebGLTexture;
 
-        texture.updateTexture(state, glTexture);
+        updateWebGLTexture(state, texture, glTexture);
         manager.get(texture);
         expect(texture.needUpdate).toBe(false);
 
@@ -1882,7 +2091,7 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
             height: 1,
             image: new Uint8Array([5, 6, 7, 8])
         });
-        texture.updateTexture(state, glTexture);
+        updateWebGLTexture(state, texture, glTexture);
         manager.get(texture);
 
         texture.updateSubTexture({
@@ -1894,7 +2103,7 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
             image: new Uint8Array([9, 10, 11, 12])
         });
         manager.get(texture);
-        texture.updateTexture(state, glTexture);
+        updateWebGLTexture(state, texture, glTexture);
 
         expect(texImage2D).toHaveBeenCalledOnce();
         expect(texSubImage2D).toHaveBeenCalledTimes(2);
@@ -1937,9 +2146,10 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
             bindTexture: vi.fn(),
             pixelStorei: vi.fn()
         };
+        const webglManager = new WebGLTextureManager(state);
 
         try {
-            texture.getGLTexture(state);
+            webglManager.get(texture);
             expect(texture.isImageReleased).toBe(true);
             expect(() => texture.image).toThrow(/has been released/);
 
@@ -1949,7 +2159,7 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
             expect(Array.from(upload.subarray(0, 4))).toEqual(Array.from(pixels));
             expect(texture.isImageReleased).toBe(true);
         } finally {
-            Texture.reset(gl);
+            webglManager.destroy();
             manager.destroyAll();
         }
     });
@@ -1983,6 +2193,7 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
             bindTexture: vi.fn(),
             pixelStorei: vi.fn()
         };
+        const webglManager = new WebGLTextureManager(state);
         const mipTexture = new Texture({
             width: 2,
             height: 2,
@@ -2002,8 +2213,8 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         });
 
         try {
-            mipTexture.getGLTexture(state);
-            emptyTexture.getGLTexture(state);
+            webglManager.get(mipTexture);
+            webglManager.get(emptyTexture);
             expect(mipTexture.isImageReleased).toBe(true);
             expect(emptyTexture.isImageReleased).toBe(true);
 
@@ -2012,7 +2223,7 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
             expect(fake.queue.writeTexture).toHaveBeenCalledTimes(2);
             expect(fake.createTexture).toHaveBeenCalledTimes(2);
         } finally {
-            Texture.reset(gl);
+            webglManager.destroy();
             manager.destroyAll();
         }
     });
@@ -2057,8 +2268,8 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         typedSource.fill(99);
         dataViewStorage.fill(88);
 
-        manager.suspendAll();
-        manager.restoreDevice(replacement.device);
+        suspendWebGPUTextures(manager);
+        restoreWebGPUTextureDevice(manager, replacement.device);
         manager.get(typedTexture);
         manager.get(dataViewTexture);
 
@@ -2093,8 +2304,8 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         manager.get(texture);
         mipmaps.forEach(mipmap => mipmap.data.fill(9));
 
-        manager.suspendAll();
-        manager.restoreDevice(replacement.device);
+        suspendWebGPUTextures(manager);
+        restoreWebGPUTextureDevice(manager, replacement.device);
         manager.get(texture);
 
         expect(
@@ -2115,8 +2326,8 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         manager.get(texture);
         faces.forEach(face => face.data.fill(0));
 
-        manager.suspendAll();
-        manager.restoreDevice(replacement.device);
+        suspendWebGPUTextures(manager);
+        restoreWebGPUTextureDevice(manager, replacement.device);
         manager.get(texture);
 
         const recoveredSources = replacement.queue.copyExternalImageToTexture.mock.calls.map(
@@ -2150,8 +2361,8 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         manager.get(texture);
         update.fill(99);
 
-        manager.suspendAll();
-        manager.restoreDevice(replacement.device);
+        suspendWebGPUTextures(manager);
+        restoreWebGPUTextureDevice(manager, replacement.device);
         manager.get(texture);
 
         expect(replacement.queue.writeTexture).toHaveBeenCalledOnce();
@@ -2194,16 +2405,16 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         >;
         const oldListenersByTexture = Reflect.get(manager, 'recoveryDestroyListeners') as WeakMap<
             Texture<unknown>,
-            { readonly texture: WeakRef<Texture<unknown>>; readonly listener: EventListener }
+            { readonly texture: WeakRef<Texture<unknown>>; readonly observer: () => void }
         >;
         const oldListenerOwners = Reflect.get(manager, 'recoveryListenerOwners') as Set<{
             readonly texture: WeakRef<Texture<unknown>>;
-            readonly listener: EventListener;
+            readonly observer: () => void;
         }>;
-        const oldListeners = textures.map(texture => {
-            const listener = oldListenersByTexture.get(texture)?.listener;
-            if (!listener) throw new Error(`Texture ${texture.id} has no recovery listener`);
-            return listener;
+        const oldObservers = textures.map(texture => {
+            const observer = oldListenersByTexture.get(texture)?.observer;
+            if (!observer) throw new Error(`Texture ${texture.id} has no recovery observer`);
+            return observer;
         });
 
         expect((oldBackings.get(rawTexture)?.image as Uint8Array).byteLength).toBe(
@@ -2214,13 +2425,9 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         expect(oldBackings.get(imageDataTexture)?.image).not.toBe(imageData);
         expect(oldBackings.get(externalTexture)?.image).toBe(canvas);
         expect(oldListenerOwners).toHaveLength(textures.length);
-        textures.forEach((texture, index) => {
-            expect(
-                texture._listeners?.['destroy']?.some(
-                    entry => entry.listener === oldListeners[index]
-                ) ?? false
-            ).toBe(true);
-        });
+        expect([...oldListenerOwners].map(owner => owner.observer)).toEqual(
+            expect.arrayContaining(oldObservers)
+        );
 
         manager.destroyAll();
 
@@ -2228,21 +2435,17 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         textures.forEach((texture, index) => {
             expect(oldBackings.has(texture)).toBe(false);
             expect(oldListenersByTexture.has(texture)).toBe(false);
-            expect(
-                texture._listeners?.['destroy']?.some(
-                    entry => entry.listener === oldListeners[index]
-                ) ?? false
-            ).toBe(false);
 
-            // Reinsert a sentinel into the old map and dispatch the same event. If the old closure
-            // were still registered on this live Texture it would delete the sentinel again.
+            // Reinsert a sentinel and run the real lifecycle. A detached internal observer must
+            // not delete manager-local state after destroyAll().
             oldBackings.set(texture, { image: Symbol('detached-backing') });
-            texture.fire('destroy');
+            texture.destroy();
             expect(oldBackings.has(texture)).toBe(true);
             oldBackings.delete(texture);
+            expect(oldObservers[index]).toBeTypeOf('function');
         });
 
-        manager.restoreDevice(replacement.device);
+        restoreWebGPUTextureDevice(manager, replacement.device);
 
         for (const texture of textures) {
             expect(() => manager.get(texture)).not.toThrow();

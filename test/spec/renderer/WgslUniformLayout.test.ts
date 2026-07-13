@@ -3,7 +3,7 @@ import {
     createStd140Layout,
     type Std140MatrixType,
     type Std140Type
-} from '../../../src/renderer/ubo/Std140Layout';
+} from '../../../src/renderer/common/ubo/Std140Layout';
 import {
     createWgslUniformLayout,
     makeWgslUniformLayoutsPortable

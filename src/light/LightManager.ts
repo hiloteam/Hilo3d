@@ -6,7 +6,6 @@ import DirectionalLight from './DirectionalLight';
 import type Light from './Light';
 import PointLight from './PointLight';
 import SpotLight from './SpotLight';
-import { getLightShadow } from './LightShadowRegistry';
 import type Camera from '../camera/Camera';
 import type Texture from '../texture/Texture';
 import type { TextureBinding } from '../texture/Texture';
@@ -77,6 +76,28 @@ export interface AreaLightInfo {
 export interface LightManagerParameters {
     shadowEnabled?: boolean;
     updateCustomInfo?: ((manager: LightManager, camera: Camera) => void) | null;
+}
+
+/** Backend-provided native shadow result consumed by the shared light parameter packer. */
+export interface LightShadowBinding {
+    readonly texture: TextureBinding;
+    readonly width: number;
+    readonly height: number;
+    readonly minBias: number;
+    readonly maxBias: number;
+    readonly camera: Camera & { readonly near: number; readonly far: number | null };
+}
+
+export type LightShadowBindingProvider = (light: Light) => LightShadowBinding | null;
+const shadowBindingProviders = new WeakMap<LightManager, LightShadowBindingProvider>();
+
+/** Renderer-backend integration hook; intentionally absent from the public LightManager surface. */
+export function setLightShadowBindingProvider(
+    manager: LightManager,
+    provider: LightShadowBindingProvider | null
+): void {
+    if (provider) shadowBindingProviders.set(manager, provider);
+    else shadowBindingProviders.delete(manager);
 }
 /**
  * 光管理类
@@ -164,12 +185,12 @@ class LightManager {
         const lightSpaceMatrix: number[] = [];
         const shadowBias: number[] = [];
         this.directionalLights.forEach((light, index) => {
-            const lightShadow = getLightShadow(this, light);
+            const lightShadow = shadowBindingProviders.get(this)?.(light) ?? null;
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
             light.getViewDirection(camera).toArray(infos, offset);
-            if (light.shadow && lightShadow?.framebuffer?.texture && lightShadow.camera) {
-                shadowMap.push(lightShadow.framebuffer.texture);
+            if (light.shadow && lightShadow) {
+                shadowMap.push(lightShadow.texture);
                 shadowMapSize.push(lightShadow.width);
                 shadowMapSize.push(lightShadow.height);
                 shadowBias.push(lightShadow.minBias, lightShadow.maxBias);
@@ -206,7 +227,7 @@ class LightManager {
         const shadowBias: number[] = [];
         const ranges: number[] = [];
         this.spotLights.forEach((light, index) => {
-            const lightShadow = getLightShadow(this, light);
+            const lightShadow = shadowBindingProviders.get(this)?.(light) ?? null;
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
             light.toInfoArray(infos, offset);
@@ -216,8 +237,8 @@ class LightManager {
             camera.getModelViewMatrix(light, tempMatrix4);
             tempMatrix4.getTranslation(tempVector3);
             tempVector3.toArray(poses, offset);
-            if (light.shadow && lightShadow?.framebuffer?.texture && lightShadow.camera) {
-                shadowMap.push(lightShadow.framebuffer.texture);
+            if (light.shadow && lightShadow) {
+                shadowMap.push(lightShadow.texture);
                 shadowMapSize.push(lightShadow.width);
                 shadowMapSize.push(lightShadow.height);
                 shadowBias.push(lightShadow.minBias, lightShadow.maxBias);
@@ -255,7 +276,7 @@ class LightManager {
         const cameras: number[] = [];
         const ranges: number[] = [];
         this.pointLights.forEach((light, index) => {
-            const lightShadow = getLightShadow(this, light);
+            const lightShadow = shadowBindingProviders.get(this)?.(light) ?? null;
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
             light.toInfoArray(infos, offset);
@@ -263,8 +284,8 @@ class LightManager {
             camera.getModelViewMatrix(light, tempMatrix4);
             tempMatrix4.getTranslation(tempVector3);
             tempVector3.toArray(poses, offset);
-            if (light.shadow && lightShadow?.framebuffer?.texture && lightShadow.camera) {
-                shadowMap.push(lightShadow.framebuffer.texture);
+            if (light.shadow && lightShadow) {
+                shadowMap.push(lightShadow.texture);
                 shadowBias.push(lightShadow.minBias, lightShadow.maxBias);
                 camera.worldMatrix.toArray(lightSpaceMatrix, index * 16);
                 cameras[index * 2] = lightShadow.camera.near;

@@ -51,6 +51,40 @@ describe('RenderList', () => {
         expect(callback).toHaveBeenCalledTimes(7);
     });
 
+    it('keeps explicitly opted-in transparent meshes on the instanced path', () => {
+        const transparent = createMesh(true);
+        const material = transparent.material;
+        const geometry = transparent.geometry;
+        const second = new Hilo3d.Mesh({ material, geometry, useInstanced: true });
+        transparent.useInstanced = true;
+        list.reset();
+        list.useInstanced = true;
+
+        list.addMesh(transparent, testEnv.camera);
+        list.addMesh(second, testEnv.camera);
+
+        expect(list.transparentList).toHaveLength(0);
+        const instancedCallback = vi.fn<(meshes: Hilo3d.Mesh[]) => void>();
+        list.traverse(vi.fn(), instancedCallback);
+        expect(instancedCallback).toHaveBeenCalledOnce();
+        expect(instancedCallback).toHaveBeenCalledWith([transparent, second]);
+    });
+
+    it('does not downgrade a single opted-in mesh from the instanced shader contract', () => {
+        const mesh = createMesh(false);
+        mesh.useInstanced = true;
+        list.reset();
+        list.useInstanced = true;
+        list.addMesh(mesh, testEnv.camera);
+
+        const directCallback = vi.fn<(item: Hilo3d.Mesh) => void>();
+        const instancedCallback = vi.fn<(meshes: Hilo3d.Mesh[]) => void>();
+        list.traverse(directCallback, instancedCallback);
+
+        expect(directCallback).not.toHaveBeenCalled();
+        expect(instancedCallback).toHaveBeenCalledWith([mesh]);
+    });
+
     it('reset', () => {
         list.reset();
         expect(list.transparentList).toHaveLength(0);

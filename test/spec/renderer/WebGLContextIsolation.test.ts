@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
+import {
+    destroyWebGLTextures,
+    getWebGLTexture,
+    getWebGLTextureCache,
+    getWebGLUniformBuffer
+} from '../../../src/renderer/webgl/WebGLState';
 
 const vertexShader = `#version 300 es
 void main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }`;
@@ -71,8 +77,8 @@ describe('WebGL2 context isolation', () => {
             const secondBuffer = Hilo3d.Buffer.createVertexBuffer(secondGL, geometryData);
             const firstVao = Hilo3d.VertexArrayObject.getVao(firstGL, 'shared-vao');
             const secondVao = Hilo3d.VertexArrayObject.getVao(secondGL, 'shared-vao');
-            const firstTexture = texture.getGLTexture(firstState);
-            const secondTexture = texture.getGLTexture(secondState);
+            const firstTexture = getWebGLTexture(firstState, texture);
+            const secondTexture = getWebGLTexture(secondState, texture);
 
             expect(firstProgram).not.toBe(secondProgram);
             expect(firstProgram.gl).toBe(firstGL);
@@ -99,7 +105,7 @@ describe('WebGL2 context isolation', () => {
             Hilo3d.Program.reset(firstGL);
             Hilo3d.Buffer.reset(firstGL);
             Hilo3d.VertexArrayObject.reset(firstGL);
-            Hilo3d.Texture.reset(firstGL);
+            destroyWebGLTextures(firstState);
 
             expect(secondProgram.program).not.toBeNull();
             expect(secondGL.isProgram(secondProgram.program)).toBe(true);
@@ -108,7 +114,7 @@ describe('WebGL2 context isolation', () => {
                 secondGL.isVertexArray(Reflect.get(secondVao, 'vao') as WebGLVertexArrayObject)
             ).toBe(true);
             expect(secondGL.isTexture(secondTexture)).toBe(true);
-            expect(texture.getGLTexture(secondState)).toBe(secondTexture);
+            expect(getWebGLTexture(secondState, texture)).toBe(secondTexture);
             expect(firstGL.getError()).toBe(firstGL.NO_ERROR);
             expect(secondGL.getError()).toBe(secondGL.NO_ERROR);
         } finally {
@@ -118,8 +124,8 @@ describe('WebGL2 context isolation', () => {
             Hilo3d.Buffer.reset(secondGL);
             Hilo3d.VertexArrayObject.reset(firstGL);
             Hilo3d.VertexArrayObject.reset(secondGL);
-            Hilo3d.Texture.reset(firstGL);
-            Hilo3d.Texture.reset(secondGL);
+            destroyWebGLTextures(firstState);
+            destroyWebGLTextures(secondState);
             shader.destroy();
         }
     });
@@ -167,7 +173,7 @@ describe('WebGL2 context isolation', () => {
             const secondVao = managedResource(secondRenderer, mesh, 'isVertexArrayObject');
             const firstBuffer = managedResource(firstRenderer, mesh, 'isBuffer');
             const secondBuffer = managedResource(secondRenderer, mesh, 'isBuffer');
-            const secondTexture = Hilo3d.Texture.getCache(secondRenderer.gl).get(texture.id);
+            const secondTexture = getWebGLTextureCache(secondRenderer.state).get(texture.id);
 
             expect(firstRenderer.gl).not.toBe(secondRenderer.gl);
             expect(firstRenderer.capabilities).not.toBe(secondRenderer.capabilities);
@@ -191,7 +197,7 @@ describe('WebGL2 context isolation', () => {
                 )
             ).toBe(true);
             expect(secondTexture && secondRenderer.gl.isTexture(secondTexture)).toBe(true);
-            expect(Hilo3d.Texture.getCache(secondRenderer.gl).get(texture.id)).toBe(secondTexture);
+            expect(getWebGLTextureCache(secondRenderer.state).get(texture.id)).toBe(secondTexture);
 
             secondRenderer.render(scene, camera);
             expect(secondRenderer.gl.getError()).toBe(secondRenderer.gl.NO_ERROR);
@@ -250,8 +256,8 @@ describe('WebGL2 context isolation', () => {
         try {
             firstRenderer.render(scene, camera);
             secondRenderer.render(scene, camera);
-            const firstAllocation = uniformBuffer.getBuffer(firstRenderer.gl);
-            const secondAllocation = uniformBuffer.getBuffer(secondRenderer.gl);
+            const firstAllocation = getWebGLUniformBuffer(firstRenderer.state, uniformBuffer);
+            const secondAllocation = getWebGLUniformBuffer(secondRenderer.state, uniformBuffer);
 
             expect(firstAllocation).not.toBe(secondAllocation);
             expect(firstRenderer.gl.isBuffer(firstAllocation.buffer)).toBe(true);
@@ -261,19 +267,22 @@ describe('WebGL2 context isolation', () => {
 
             expect(firstRenderer.gl.isBuffer(firstAllocation.buffer)).toBe(false);
             expect(secondRenderer.gl.isBuffer(secondAllocation.buffer)).toBe(true);
-            expect(uniformBuffer.getBuffer(secondRenderer.gl)).toBe(secondAllocation);
+            expect(getWebGLUniformBuffer(secondRenderer.state, uniformBuffer)).toBe(
+                secondAllocation
+            );
 
             firstRenderer.render(scene, camera);
-            const recreatedAllocation = uniformBuffer.getBuffer(firstRenderer.gl);
+            const recreatedAllocation = getWebGLUniformBuffer(firstRenderer.state, uniformBuffer);
             expect(recreatedAllocation).not.toBe(firstAllocation);
             expect(firstRenderer.gl.isBuffer(recreatedAllocation.buffer)).toBe(true);
-            expect(uniformBuffer.getBuffer(secondRenderer.gl)).toBe(secondAllocation);
+            expect(getWebGLUniformBuffer(secondRenderer.state, uniformBuffer)).toBe(
+                secondAllocation
+            );
             secondRenderer.render(scene, camera);
             expect(secondRenderer.gl.getError()).toBe(secondRenderer.gl.NO_ERROR);
         } finally {
             firstRenderer.destroy();
             secondRenderer.destroy();
-            uniformBuffer.destroy();
         }
     });
 });

@@ -15,8 +15,8 @@ import type LightManager from '../light/LightManager';
 import type SphericalHarmonics3 from '../math/SphericalHarmonics3';
 import type Material from './Material';
 import type { MaterialTexture, MaterialTextureValue, ProgramBindingInfo } from './Material';
-import { getMeshPickingIdentity } from '../renderer/PickingIdentity';
-import type { RendererViewport } from '../renderer/Renderer';
+import { getMeshPickingIdentity } from '../renderer/common/PickingIdentity';
+import type { RendererViewport } from '../renderer/common/Renderer';
 
 const tempVector3 = new Vector3();
 const tempMatrix3 = new Matrix3();

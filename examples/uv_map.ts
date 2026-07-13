@@ -3,7 +3,7 @@ import { createExampleContext } from './shared/init';
 
 const { stage } = await createExampleContext();
 
-let diffuseTexture: Hilo3d.Texture | null = null;
+let diffuseTexture: Hilo3d.Texture<unknown> | null = null;
 const textureMaterial = new Hilo3d.ShaderMaterial({
     vs: `#version 300 es
         in vec3 a_position;

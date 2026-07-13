@@ -1,5 +1,5 @@
 import type Material from '../../material/Material';
-import type { WebGPUFragmentOutput } from '../../shader/GlslToWgsl';
+import type { WebGPUFragmentOutput } from './shader/GlslToWgsl';
 import {
     ALWAYS,
     BACK,

@@ -32,7 +32,7 @@ import {
     UNSIGNED_INT_2_10_10_10_REV,
     UNSIGNED_INT_5_9_9_9_REV
 } from '../constants/webgl2';
-import type { TexturePixelData, TypedArray } from '../renderer/types';
+import type { TexturePixelData, TypedArray } from '../renderer/common/types';
 
 const PACKED_PIXEL_TYPES = new Set<GLenum>([
     UNSIGNED_SHORT_4_4_4_4,

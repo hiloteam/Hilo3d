@@ -8,14 +8,20 @@ import GeometryData from '../../../src/geometry/GeometryData';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import ShaderMaterial from '../../../src/material/ShaderMaterial';
 import Shader from '../../../src/shader/Shader';
-import Framebuffer from '../../../src/renderer/Framebuffer';
-import type WebGLRenderer from '../../../src/renderer/WebGLRenderer';
-import WebGLRenderTarget from '../../../src/renderer/WebGLRenderTarget';
+import Framebuffer from '../../../src/renderer/webgl/Framebuffer';
+import type WebGLRenderer from '../../../src/renderer/webgl/WebGLRenderer';
+import WebGLRenderTarget from '../../../src/renderer/webgl/WebGLRenderTarget';
+import {
+    destroyWebGLTextures,
+    getWebGLTexture,
+    getWebGLTextureCache,
+    releaseWebGLTexture
+} from '../../../src/renderer/webgl/WebGLState';
 import {
     normalizeRenderTargetParameters,
     type RenderTarget
-} from '../../../src/renderer/RenderTarget';
-import Texture from '../../../src/texture/Texture';
+} from '../../../src/renderer/common/RenderTarget';
+import type Texture from '../../../src/texture/Texture';
 import { testEnv } from '../../setup';
 
 const targets: RenderTarget[] = [];
@@ -329,6 +335,67 @@ describe('WebGL2 backend-neutral render targets', () => {
         ]).toEqual([0, 255, 0, 255]);
     });
 
+    it('rebuilds a destroyed attachment allocation before direct readback', async () => {
+        const renderer = createRenderer();
+        const target = track(
+            renderer.createRenderTarget({
+                width: 4,
+                height: 4,
+                colorAttachments: [{ clearValue: { r: 1, g: 0, b: 0, a: 1 } }],
+                depthStencilAttachment: false
+            })
+        );
+        const texture = target.getColorTexture();
+        const framebuffer = Reflect.get(target, 'drawFramebuffer') as Framebuffer;
+        const firstFramebuffer = framebuffer.framebuffer;
+        const firstAllocation = getWebGLTexture(renderer.state, texture);
+
+        texture.destroy();
+        expect(renderer.gl.isTexture(firstAllocation)).toBe(false);
+
+        await expect(target.readColorAttachment({ width: 1, height: 1 })).resolves.toBeDefined();
+        const replacement = getWebGLTexture(renderer.state, texture);
+        expect(framebuffer.framebuffer).not.toBe(firstFramebuffer);
+        expect(replacement).not.toBe(firstAllocation);
+        expect(renderer.gl.isTexture(replacement)).toBe(true);
+        expect(framebuffer.isComplete()).toBe(true);
+        expect(renderer.gl.getError()).toBe(renderer.gl.NO_ERROR);
+    });
+
+    it('reattaches a manager-replaced resolve allocation before multisample blit', async () => {
+        const renderer = createRenderer();
+        const target = track(
+            renderer.createRenderTarget({
+                width: 4,
+                height: 4,
+                sampleCount: 4,
+                colorAttachments: [{ clearValue: { r: 1, g: 0, b: 0, a: 1 } }],
+                depthStencilAttachment: false
+            })
+        );
+        const texture = target.getColorTexture();
+        const resolveFramebuffers = Reflect.get(target, 'resolveFramebuffers') as Framebuffer[];
+        const resolveFramebuffer = resolveFramebuffers[0];
+        if (!resolveFramebuffer) throw new Error('Missing multisample resolve framebuffer');
+        const firstFramebuffer = resolveFramebuffer.framebuffer;
+        const firstAllocation = getWebGLTexture(renderer.state, texture);
+
+        target.beginRenderPass();
+        const released = releaseWebGLTexture(renderer.state, texture);
+        target.endRenderPass(true);
+
+        const replacement = getWebGLTexture(renderer.state, texture);
+        expect(released).toBe(true);
+        expect(renderer.gl.isTexture(firstAllocation)).toBe(false);
+        expect(resolveFramebuffer.framebuffer).not.toBe(firstFramebuffer);
+        expect(replacement).not.toBe(firstAllocation);
+        expect(resolveFramebuffer.isComplete()).toBe(true);
+        expect([...(await target.readColorAttachment({ width: 1, height: 1 })).data]).toEqual([
+            255, 0, 0, 255
+        ]);
+        expect(renderer.gl.getError()).toBe(renderer.gl.NO_ERROR);
+    });
+
     it('presents attachment zero through a native fullscreen draw on antialiased canvases', () => {
         const renderer = createRenderer();
         const target = track(
@@ -549,9 +616,9 @@ describe('WebGL2 backend-neutral render targets', () => {
         const depth = target.getDepthTexture();
         if (!depth) throw new Error('Render target did not create its sampled depth texture');
         const allocations = [
-            colors[0].getGLTexture(renderer.state),
-            colors[1].getGLTexture(renderer.state),
-            depth.getGLTexture(renderer.state)
+            getWebGLTexture(renderer.state, colors[0]),
+            getWebGLTexture(renderer.state, colors[1]),
+            getWebGLTexture(renderer.state, depth)
         ] as const;
         const destroyListener = vi.fn();
         colors[0].on('destroy', destroyListener);
@@ -559,7 +626,7 @@ describe('WebGL2 backend-neutral render targets', () => {
         depth.on('destroy', destroyListener);
         const { scene, mesh, material } = createTexturedScene(colors[0]);
 
-        Texture.reset(renderer.gl);
+        destroyWebGLTextures(renderer.state);
         renderer.state.reset();
         Framebuffer.reset(renderer.gl);
         target.handleContextRestored();
@@ -570,9 +637,9 @@ describe('WebGL2 backend-neutral render targets', () => {
         expect(target.getDepthTexture()).toBe(depth);
         expect(destroyListener).not.toHaveBeenCalled();
         const restoredAllocations = [
-            colors[0].getGLTexture(renderer.state),
-            colors[1].getGLTexture(renderer.state),
-            depth.getGLTexture(renderer.state)
+            getWebGLTexture(renderer.state, colors[0]),
+            getWebGLTexture(renderer.state, colors[1]),
+            getWebGLTexture(renderer.state, depth)
         ] as const;
         restoredAllocations.forEach((allocation, index) => {
             const previousAllocation = allocations[index];
@@ -602,7 +669,7 @@ describe('WebGL2 backend-neutral render targets', () => {
             })
         );
         const colors = [target.getColorTexture(0), target.getColorTexture(1)] as const;
-        const allocations = colors.map(texture => texture.getGLTexture(renderer.state));
+        const allocations = colors.map(texture => getWebGLTexture(renderer.state, texture));
         const drawFramebuffer = Reflect.get(target, 'drawFramebuffer') as Framebuffer;
         const resolveFramebuffers = Reflect.get(target, 'resolveFramebuffers') as Framebuffer[];
         const nativeCheckFramebufferStatus = renderer.gl.checkFramebufferStatus.bind(renderer.gl);
@@ -633,12 +700,11 @@ describe('WebGL2 backend-neutral render targets', () => {
         colors.forEach((texture, index) => {
             expect(texture.width).toBe(4);
             expect(texture.height).toBe(3);
-            const allocation = texture.getGLTexture(renderer.state);
+            const allocation = getWebGLTexture(renderer.state, texture);
             const previousAllocation = allocations[index];
             if (!previousAllocation) throw new Error('Missing pre-resize texture allocation');
-            expect(allocation).not.toBe(previousAllocation);
+            expect(allocation).toBe(previousAllocation);
             expect(renderer.gl.isTexture(allocation)).toBe(true);
-            expect(renderer.gl.isTexture(previousAllocation)).toBe(false);
         });
         expect(drawFramebuffer.width).toBe(4);
         expect(drawFramebuffer.height).toBe(3);
@@ -669,8 +735,8 @@ describe('WebGL2 backend-neutral render targets', () => {
         const depthDestroy = vi.fn();
         colorTexture.on('destroy', colorDestroy);
         depthTexture.on('destroy', depthDestroy);
-        const colorAllocation = colorTexture.getGLTexture(renderer.state);
-        const depthAllocation = depthTexture.getGLTexture(renderer.state);
+        const colorAllocation = getWebGLTexture(renderer.state, colorTexture);
+        const depthAllocation = getWebGLTexture(renderer.state, depthTexture);
         const ownedFramebuffers: Framebuffer[] = [];
         Framebuffer.getCache(renderer.gl).each(framebuffer => {
             if (
@@ -692,12 +758,10 @@ describe('WebGL2 backend-neutral render targets', () => {
         expect(colorTexture.height).toBe(7);
         expect(depthTexture.width).toBe(5);
         expect(depthTexture.height).toBe(7);
-        const resizedColorAllocation = colorTexture.getGLTexture(renderer.state);
-        const resizedDepthAllocation = depthTexture.getGLTexture(renderer.state);
-        expect(resizedColorAllocation).not.toBe(colorAllocation);
-        expect(resizedDepthAllocation).not.toBe(depthAllocation);
-        expect(renderer.gl.isTexture(colorAllocation)).toBe(false);
-        expect(renderer.gl.isTexture(depthAllocation)).toBe(false);
+        const resizedColorAllocation = getWebGLTexture(renderer.state, colorTexture);
+        const resizedDepthAllocation = getWebGLTexture(renderer.state, depthTexture);
+        expect(resizedColorAllocation).toBe(colorAllocation);
+        expect(resizedDepthAllocation).toBe(depthAllocation);
         expect(renderer.gl.isTexture(resizedColorAllocation)).toBe(true);
         expect(renderer.gl.isTexture(resizedDepthAllocation)).toBe(true);
         expect(colorDestroy).not.toHaveBeenCalled();
@@ -713,8 +777,8 @@ describe('WebGL2 backend-neutral render targets', () => {
         expect(first.isDestroyed).toBe(true);
         expect(colorDestroy).toHaveBeenCalledOnce();
         expect(depthDestroy).toHaveBeenCalledOnce();
-        expect(Texture.getCache(renderer.gl).get(colorTexture.id)).toBeUndefined();
-        expect(Texture.getCache(renderer.gl).get(depthTexture.id)).toBeUndefined();
+        expect(getWebGLTextureCache(renderer.state).get(colorTexture.id)).toBeUndefined();
+        expect(getWebGLTextureCache(renderer.state).get(depthTexture.id)).toBeUndefined();
         ownedFramebuffers.forEach(framebuffer => {
             expect(Framebuffer.getCache(renderer.gl).get(framebuffer.id)).toBeUndefined();
         });

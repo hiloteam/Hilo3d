@@ -324,13 +324,15 @@ const bloomPipeline: Hilo3d.Tickable = {
     tick(deltaTime): void {
         stage.traverseUpdate(deltaTime);
         resizePipelineTargets();
-        renderer.renderToTarget(sceneTarget, stage, camera, false);
-        extractPass.render(extractTarget);
-        for (const level of blurLevels) {
-            level.horizontalPass.render(level.horizontalTarget);
-            level.verticalPass.render(level.verticalTarget);
-        }
-        compositePass.render();
+        renderer.renderFrame(() => {
+            renderer.renderToTarget(sceneTarget, stage, camera, false);
+            extractPass.render(extractTarget);
+            for (const level of blurLevels) {
+                level.horizontalPass.render(level.horizontalTarget);
+                level.verticalPass.render(level.verticalTarget);
+            }
+            compositePass.render();
+        });
     }
 };
 

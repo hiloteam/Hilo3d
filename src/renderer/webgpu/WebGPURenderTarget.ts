@@ -35,11 +35,16 @@ import type {
     RenderTargetDepthStencilFormat,
     RenderTargetParameters,
     RenderTargetReadColorAttachmentOptions
-} from '../RenderTarget';
+} from '../common/RenderTarget';
 import { WebGPUBufferUsage, WebGPUMapMode, WebGPUTextureUsage } from './WebGPUConstants';
 import {
     createWebGPUSamplerDescriptor,
+    registerWebGPUExternalTexture,
+    registerWebGPUExternalTextureOwner,
+    releaseWebGPUTextureResource,
+    replaceWebGPUExternalTextureBatch,
     resolveWebGPUTextureFormat,
+    unregisterWebGPUExternalTextureOwner,
     type default as WebGPUTextureManager,
     type WebGPUExternalTextureRegistration,
     type WebGPUTextureFormatInfo,
@@ -437,6 +442,16 @@ function normalizeDepthStencilAttachment(
  * Device-scoped WebGPU render target with sampleable color resolves, optional depth/stencil,
  * explicit multisampling and aligned asynchronous readback.
  */
+const operationGuards = new WeakMap<WebGPURenderTarget, (operation: string) => void>();
+
+/** @internal Install a renderer-owned guard around submission-crossing target operations. */
+export function setWebGPURenderTargetOperationGuard(
+    target: WebGPURenderTarget,
+    guard: (operation: string) => void
+): void {
+    operationGuards.set(target, guard);
+}
+
 export default class WebGPURenderTarget implements RenderTarget {
     readonly backend = 'webgpu' as const;
     readonly className = 'WebGPURenderTarget';
@@ -455,7 +470,42 @@ export default class WebGPURenderTarget implements RenderTarget {
     private readonly depthStencilAttachment: DepthStencilAttachmentState | null;
     private destroyed = false;
     private resourcesAvailable = false;
+    private attachmentRecoveryPending = false;
+    private deviceResourcesSuspended = false;
+    private attachmentOwnerManager: WebGPUTextureManager | null = null;
     private readonly onDestroy: (target: WebGPURenderTarget) => void;
+
+    private readonly invalidateAttachmentResources = (recoverImmediately = true): void => {
+        if (this.destroyed) return;
+        // Clear every target-side handle before the guard can reject a frame-crossing rebuild.
+        // A caught guard error therefore cannot leave a stale render-pass attachment usable.
+        this.releaseResources();
+        this.attachmentRecoveryPending = true;
+        if (this.deviceResourcesSuspended) return;
+        operationGuards.get(this)?.('render-target attachment recovery');
+        if (!recoverImmediately) return;
+        this.ensureAttachmentResources();
+    };
+
+    private readonly ensureAttachmentResources = (): void => {
+        this.assertAlive();
+        if (this.resourcesAvailable) {
+            this.attachmentRecoveryPending = false;
+            return;
+        }
+        if (this.deviceResourcesSuspended || !this.attachmentRecoveryPending) {
+            throw new Error('WebGPURenderTarget GPU resources are unavailable during recovery');
+        }
+        operationGuards.get(this)?.('render-target attachment recovery');
+        try {
+            this.createResources();
+            this.attachmentRecoveryPending = false;
+        } catch (error) {
+            this.releaseResources();
+            this.attachmentRecoveryPending = true;
+            throw error;
+        }
+    };
 
     get device(): GPUDevice {
         return this._device;
@@ -541,9 +591,11 @@ export default class WebGPURenderTarget implements RenderTarget {
         this.depthStencilFormat = this.depthStencilAttachment?.format ?? null;
         this.validateDeviceLimits(this._width, this._height);
         try {
+            this.registerAttachmentOwners(textureManager);
             this.createResources();
         } catch (error) {
             this.releaseResources();
+            this.unregisterAttachmentOwners();
             this.destroyed = true;
             throw error;
         }
@@ -555,8 +607,101 @@ export default class WebGPURenderTarget implements RenderTarget {
 
     private assertResourcesAvailable(): void {
         this.assertAlive();
+        const changedTexture = this.findAttachmentTextureNeedingAllocation();
+        if (changedTexture) {
+            if (changedTexture.isImageReleased) {
+                throw new Error(
+                    `Texture ${changedTexture.id} cannot recreate changed GPU allocations after its image was released`
+                );
+            }
+            changedTexture.destroy();
+            changedTexture.needDestroy = false;
+        }
+        if (!this.resourcesAvailable && this.attachmentRecoveryPending) {
+            this.ensureAttachmentResources();
+        }
         if (!this.resourcesAvailable) {
             throw new Error('WebGPURenderTarget GPU resources are unavailable during recovery');
+        }
+    }
+
+    private findAttachmentTextureNeedingAllocation(): Texture<unknown> | null {
+        for (const attachment of this.colorAttachments) {
+            if (attachment.texture.needDestroy) return attachment.texture;
+        }
+        const depthTexture = this.depthStencilAttachment?.texture ?? null;
+        return depthTexture?.needDestroy === true ? depthTexture : null;
+    }
+
+    private forEachAttachmentTexture(visitor: (texture: Texture<unknown>) => void): void {
+        for (const attachment of this.colorAttachments) visitor(attachment.texture);
+        const depthTexture = this.depthStencilAttachment?.texture;
+        if (depthTexture) visitor(depthTexture);
+    }
+
+    private registerAttachmentOwners(manager: WebGPUTextureManager): void {
+        if (this.attachmentOwnerManager === manager) return;
+        if (this.attachmentOwnerManager) {
+            throw new Error('WebGPURenderTarget attachment owners are already registered');
+        }
+        const attachmentTextures: Texture<unknown>[] = [];
+        const identities = new Set<Texture<unknown>>();
+        this.forEachAttachmentTexture(texture => {
+            if (identities.has(texture)) {
+                throw new TypeError(
+                    `Texture ${texture.id} cannot back more than one WebGPU render-target attachment`
+                );
+            }
+            identities.add(texture);
+            attachmentTextures.push(texture);
+        });
+        const registered: Texture<unknown>[] = [];
+        try {
+            for (const texture of attachmentTextures) {
+                registerWebGPUExternalTextureOwner(
+                    manager,
+                    texture,
+                    this.invalidateAttachmentResources,
+                    this.ensureAttachmentResources
+                );
+                registered.push(texture);
+            }
+            this.attachmentOwnerManager = manager;
+        } catch (error) {
+            for (const texture of registered) {
+                unregisterWebGPUExternalTextureOwner(manager, texture);
+            }
+            throw error;
+        }
+    }
+
+    private unregisterAttachmentOwners(): void {
+        const manager = this.attachmentOwnerManager;
+        if (!manager) return;
+        this.forEachAttachmentTexture(texture => {
+            unregisterWebGPUExternalTextureOwner(manager, texture);
+        });
+        this.attachmentOwnerManager = null;
+    }
+
+    private validateAttachmentTextures(): void {
+        for (const [index, attachment] of this.colorAttachments.entries()) {
+            validateRenderTargetTexture(attachment.texture, `Color attachment ${String(index)}`);
+            const format = resolveWebGPUTextureFormat(attachment.texture).format;
+            if (format !== attachment.format) {
+                throw new TypeError(
+                    `Color attachment ${String(index)} changed from ${attachment.format} to ${format}`
+                );
+            }
+        }
+        const depth = this.depthStencilAttachment;
+        if (!depth?.texture) return;
+        validateRenderTargetTexture(depth.texture, 'Depth/stencil attachment');
+        const format = resolveWebGPUTextureFormat(depth.texture).format;
+        if (format !== depth.format) {
+            throw new TypeError(
+                `Depth/stencil attachment changed from ${depth.format} to ${format}`
+            );
         }
     }
 
@@ -608,6 +753,7 @@ export default class WebGPURenderTarget implements RenderTarget {
 
     private createResources(): void {
         this.resourcesAvailable = false;
+        this.validateAttachmentTextures();
         for (const attachment of this.colorAttachments) {
             attachment.texture.width = this._width;
             attachment.texture.height = this._height;
@@ -626,7 +772,8 @@ export default class WebGPURenderTarget implements RenderTarget {
                     WebGPUTextureUsage.TEXTURE_BINDING |
                     WebGPUTextureUsage.RENDER_ATTACHMENT
             });
-            attachment.resource = this.textureManager.registerExternal(
+            attachment.resource = registerWebGPUExternalTexture(
+                this.textureManager,
                 attachment.texture,
                 resolveTexture,
                 { takeOwnership: true }
@@ -669,17 +816,29 @@ export default class WebGPURenderTarget implements RenderTarget {
                 WebGPUTextureUsage.RENDER_ATTACHMENT |
                 (depth.sampled ? WebGPUTextureUsage.TEXTURE_BINDING : 0)
         });
-        depth.renderView = depth.gpuTexture.createView({ dimension: '2d' });
+        try {
+            depth.renderView = depth.gpuTexture.createView({ dimension: '2d' });
+        } catch (error) {
+            depth.gpuTexture.destroy();
+            depth.gpuTexture = null;
+            depth.renderView = null;
+            throw error;
+        }
         if (depth.texture) {
             try {
-                this.textureManager.registerExternal(depth.texture, depth.gpuTexture, {
-                    takeOwnership: true,
-                    compare: depth.compare,
-                    viewDescriptor: {
-                        dimension: '2d',
-                        aspect: hasStencil(depth.format) ? 'depth-only' : 'all'
+                registerWebGPUExternalTexture(
+                    this.textureManager,
+                    depth.texture,
+                    depth.gpuTexture,
+                    {
+                        takeOwnership: true,
+                        compare: depth.compare,
+                        viewDescriptor: {
+                            dimension: '2d',
+                            aspect: hasStencil(depth.format) ? 'depth-only' : 'all'
+                        }
                     }
-                });
+                );
             } catch (error) {
                 depth.gpuTexture = null;
                 depth.renderView = null;
@@ -692,7 +851,9 @@ export default class WebGPURenderTarget implements RenderTarget {
     private releaseResources(): void {
         this.resourcesAvailable = false;
         for (const attachment of this.colorAttachments) {
-            if (attachment.resource) this.textureManager.destroy(attachment.texture);
+            if (attachment.resource) {
+                releaseWebGPUTextureResource(this.textureManager, attachment.texture);
+            }
             attachment.resource = null;
             attachment.multisampleTexture?.destroy();
             attachment.multisampleTexture = null;
@@ -701,7 +862,7 @@ export default class WebGPURenderTarget implements RenderTarget {
         const depth = this.depthStencilAttachment;
         if (!depth?.gpuTexture) return;
         if (depth.texture) {
-            this.textureManager.destroy(depth.texture);
+            releaseWebGPUTextureResource(this.textureManager, depth.texture);
         } else {
             depth.gpuTexture.destroy();
         }
@@ -796,13 +957,15 @@ export default class WebGPURenderTarget implements RenderTarget {
     }
 
     /** @internal Suspend native allocations while retaining the public target and textures. */
-    suspendDeviceResources(): void {
+    private suspendDeviceResources(): void {
         if (this.destroyed) return;
+        this.deviceResourcesSuspended = true;
+        this.attachmentRecoveryPending = false;
         this.releaseResources();
     }
 
     /** @internal Recreate native allocations on a replacement WebGPU device. */
-    restoreDeviceResources(device: GPUDevice, textureManager: WebGPUTextureManager): void {
+    private restoreDeviceResources(device: GPUDevice, textureManager: WebGPUTextureManager): void {
         this.assertAlive();
         if (textureManager.device !== device) {
             throw new TypeError(
@@ -810,13 +973,18 @@ export default class WebGPURenderTarget implements RenderTarget {
             );
         }
         this.releaseResources();
+        this.unregisterAttachmentOwners();
         this._device = device;
         this._textureManager = textureManager;
-        this.validateDeviceLimits(this._width, this._height);
+        this.deviceResourcesSuspended = false;
+        this.attachmentRecoveryPending = false;
         try {
+            this.registerAttachmentOwners(textureManager);
+            this.validateDeviceLimits(this._width, this._height);
             this.createResources();
         } catch (error) {
             this.releaseResources();
+            this.attachmentRecoveryPending = this.attachmentOwnerManager !== null;
             throw error;
         }
     }
@@ -946,6 +1114,7 @@ export default class WebGPURenderTarget implements RenderTarget {
         assertPositiveInteger(height, 'Render-target height');
         this.validateDeviceLimits(width, height);
         if (width === this._width && height === this._height) return;
+        operationGuards.get(this)?.('render-target resize');
         if (!this.resourcesAvailable) {
             this._width = width;
             this._height = height;
@@ -960,6 +1129,8 @@ export default class WebGPURenderTarget implements RenderTarget {
             }
             return;
         }
+
+        this.validateAttachmentTextures();
 
         const staged = this.stageResources(width, height);
         const previousColorDimensions = this.colorAttachments.map(attachment => ({
@@ -1002,7 +1173,7 @@ export default class WebGPURenderTarget implements RenderTarget {
 
         let resources: readonly WebGPUTextureResource[];
         try {
-            resources = this.textureManager.replaceExternalBatch(registrations);
+            resources = replaceWebGPUExternalTextureBatch(this.textureManager, registrations);
         } catch (error) {
             this.colorAttachments.forEach((attachment, index) => {
                 const dimensions = previousColorDimensions[index];
@@ -1046,6 +1217,7 @@ export default class WebGPURenderTarget implements RenderTarget {
     async readColorAttachment(
         options: WebGPUReadColorAttachmentOptions = {}
     ): Promise<WebGPUColorAttachmentReadback> {
+        operationGuards.get(this)?.('render-target readback');
         this.assertResourcesAvailable();
         const attachmentIndex = options.attachmentIndex ?? 0;
         if (!Number.isInteger(attachmentIndex) || attachmentIndex < 0) {
@@ -1128,8 +1300,35 @@ export default class WebGPURenderTarget implements RenderTarget {
 
     destroy(): void {
         if (this.destroyed) return;
+        operationGuards.get(this)?.('render-target destroy');
+        this.unregisterAttachmentOwners();
         this.releaseResources();
+        this.attachmentRecoveryPending = false;
+        this.deviceResourcesSuspended = false;
         this.destroyed = true;
         this.onDestroy(this);
     }
+}
+
+interface WebGPURenderTargetInternalAccess {
+    suspendDeviceResources(): void;
+    restoreDeviceResources(device: GPUDevice, textureManager: WebGPUTextureManager): void;
+}
+
+function internalTargetAccess(target: WebGPURenderTarget): WebGPURenderTargetInternalAccess {
+    return target as unknown as WebGPURenderTargetInternalAccess;
+}
+
+/** Suspend native allocations while retaining target identity for device recovery. @internal */
+export function suspendWebGPURenderTarget(target: WebGPURenderTarget): void {
+    internalTargetAccess(target).suspendDeviceResources();
+}
+
+/** Restore a suspended target on the replacement manager/device pair. @internal */
+export function restoreWebGPURenderTarget(
+    target: WebGPURenderTarget,
+    device: GPUDevice,
+    textureManager: WebGPUTextureManager
+): void {
+    internalTargetAccess(target).restoreDeviceResources(device, textureManager);
 }

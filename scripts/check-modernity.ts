@@ -25,9 +25,9 @@ const publicContractRules = [
     },
     ...[
         'src/core/Stage.ts',
-        'src/renderer/Renderer.ts',
-        'src/renderer/WebGLRenderer.ts',
-        'src/renderer/WebGPURenderer.ts'
+        'src/renderer/common/Renderer.ts',
+        'src/renderer/webgl/WebGLRenderer.ts',
+        'src/renderer/webgpu/WebGPURenderer.ts'
     ].map(path => ({
         path,
         rules: [
@@ -110,6 +110,43 @@ const forbiddenEngineSourceRules = [
         pattern: /@(?:vertex|fragment|compute)\b/u
     }
 ] as const;
+const forbiddenCommonRendererRules = [
+    {
+        label: 'backend implementation imported by renderer/common',
+        pattern: /(?:from\s+["'][^"']*(?:\/webgl\/|\/webgpu\/|\.\.\/webgl|\.\.\/webgpu))/u
+    },
+    {
+        label: 'native graphics handle declared by renderer/common',
+        pattern:
+            /\b(?:GPU(?:Adapter|Device|Queue|CanvasContext|CommandEncoder|RenderPassEncoder|Buffer|Texture|TextureView|Sampler|BindGroup|BindGroupLayout|PipelineLayout|RenderPipeline|ComputePipeline|ShaderModule)|WebGL(?:RenderingContext|2RenderingContext|Buffer|Program|Texture|Sampler|Framebuffer|Renderbuffer|UniformLocation|VertexArrayObject))\b/u
+    }
+] as const;
+const forbiddenBackendCrossImportRules = {
+    webgl: {
+        label: 'WebGL backend imports WebGPU implementation',
+        pattern: /from\s+["'][^"']*(?:\/webgpu\/|\.\.\/webgpu)/u
+    },
+    webgpu: {
+        label: 'WebGPU backend imports WebGL implementation',
+        pattern: /from\s+["'][^"']*(?:\/webgl\/|\.\.\/webgl)/u
+    }
+} as const;
+const forbiddenSharedResourceRules = [
+    {
+        label: 'shared resource model imports a backend implementation',
+        pattern: /from\s+["'][^"']*(?:\/renderer\/webgl\/|\/renderer\/webgpu\/)/u
+    },
+    {
+        label: 'shared resource model declares a native graphics handle',
+        pattern:
+            /\b(?:GPU(?:Device|Queue|Buffer|Texture|TextureView|Sampler|BindGroup|RenderPipeline)|WebGL(?:RenderingContext|2RenderingContext|Buffer|Program|Texture|Sampler|Framebuffer|Renderbuffer|UniformLocation|VertexArrayObject))\b/u
+    },
+    {
+        label: 'shared texture model implements a backend upload adapter',
+        pattern:
+            /\b(?:TextureWebGLState|synchronizeWebGLTexture|updateWebGLTexture|_glUploadTexture|_uploadTexture)\b/u
+    }
+] as const;
 const backendNeutralExampleExclusions = new Set([
     'examples/shared/init.ts',
     'examples/webgl_support.ts',
@@ -174,11 +211,39 @@ async function collectLegacyArtifacts(directory: string): Promise<string[]> {
         }
         if (sourceExtensions.has(extension) && relativePath !== 'scripts/check-modernity.ts') {
             const source = await readFile(absolutePath, 'utf8');
+            if (/^src\/renderer\/[^/]+\.(?:ts|tsx|mts|cts)$/u.test(relativePath)) {
+                matches.push(`${relativePath} (renderer implementation outside backend boundary)`);
+            }
             for (const rule of forbiddenSourceRules) {
                 if (rule.pattern.test(source)) matches.push(`${relativePath} (${rule.label})`);
             }
             if (relativePath.startsWith('src/')) {
                 for (const rule of forbiddenEngineSourceRules) {
+                    if (rule.pattern.test(source)) {
+                        matches.push(`${relativePath} (${rule.label})`);
+                    }
+                }
+            }
+            if (relativePath.startsWith('src/renderer/common/')) {
+                for (const rule of forbiddenCommonRendererRules) {
+                    if (rule.pattern.test(source)) {
+                        matches.push(`${relativePath} (${rule.label})`);
+                    }
+                }
+            }
+            if (relativePath.startsWith('src/renderer/webgl/')) {
+                const rule = forbiddenBackendCrossImportRules.webgl;
+                if (rule.pattern.test(source)) matches.push(`${relativePath} (${rule.label})`);
+            }
+            if (relativePath.startsWith('src/renderer/webgpu/')) {
+                const rule = forbiddenBackendCrossImportRules.webgpu;
+                if (rule.pattern.test(source)) matches.push(`${relativePath} (${rule.label})`);
+            }
+            if (
+                relativePath.startsWith('src/texture/') ||
+                relativePath.startsWith('src/material/')
+            ) {
+                for (const rule of forbiddenSharedResourceRules) {
                     if (rule.pattern.test(source)) {
                         matches.push(`${relativePath} (${rule.label})`);
                     }

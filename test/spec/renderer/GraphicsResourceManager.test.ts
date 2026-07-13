@@ -5,7 +5,7 @@ import Geometry from '../../../src/geometry/Geometry';
 import Material from '../../../src/material/Material';
 import GraphicsResourceManager, {
     type ManagedResource
-} from '../../../src/renderer/GraphicsResourceManager';
+} from '../../../src/renderer/common/GraphicsResourceManager';
 
 function resource(id: string): ManagedResource & { readonly destroy: () => void } {
     return { id, destroy: vi.fn<() => void>() };

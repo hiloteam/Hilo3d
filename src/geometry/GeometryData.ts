@@ -5,8 +5,7 @@ import Vector4 from '../math/Vector4';
 import Matrix3 from '../math/Matrix3';
 import Matrix4 from '../math/Matrix4';
 import { getTypedArrayGLType, getTypedArrayClass } from '../utils/util';
-import type Buffer from '../renderer/Buffer';
-import type { TypedArray } from '../renderer/types';
+import type { TypedArray } from '../renderer/common/types';
 
 export type GeometryComponentSize = 1 | 2 | 3 | 4 | 9 | 16;
 export type GeometryAttributeValue = number | Vector2 | Vector3 | Vector4 | Matrix3 | Matrix4;
@@ -116,10 +115,6 @@ class GeometryData {
         if (!value) this.clearSubData();
     }
     bufferViewId: string;
-    /**
-     * glBuffer
-     */
-    glBuffer: Buffer | null = null;
     readonly id: string;
     private _data: TypedArray;
     private readonly subDataList: SubDataUpdate[] = [];

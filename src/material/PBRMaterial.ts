@@ -6,7 +6,7 @@ import Material, {
     type MaterialTexture,
     type MaterialTextureValue
 } from './Material';
-import type { ShaderOptions } from '../renderer/types';
+import type { ShaderOptions } from '../renderer/common/types';
 
 export interface PBRMaterialParameters extends MaterialParameters {
     lightType?: 'PBR' | 'NONE';

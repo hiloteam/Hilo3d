@@ -4,8 +4,8 @@ import Matrix4 from '../math/Matrix4';
 import type Vector3 from '../math/Vector3';
 import type Geometry from '../geometry/Geometry';
 import type Material from '../material/Material';
-import type { Renderer } from '../renderer/Renderer';
-import type { ShaderOptions } from '../renderer/types';
+import type { Renderer } from '../renderer/common/Renderer';
+import type { ShaderOptions } from '../renderer/common/types';
 const tempRay = new Ray();
 const tempMatrix4 = new Matrix4();
 

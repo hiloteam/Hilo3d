@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import UniformBuffer from '../../../src/renderer/UniformBuffer';
-import { createStd140Layout } from '../../../src/renderer/ubo/Std140Layout';
+import UniformBuffer from '../../../src/renderer/common/UniformBuffer';
+import BuiltInUniformBlockManager from '../../../src/renderer/common/BuiltInUniformBlockManager';
+import { createStd140Layout } from '../../../src/renderer/common/ubo/Std140Layout';
 import { WebGPUUniformBufferManager } from '../../../src/renderer/webgpu/WebGPUUniformBufferManager';
+import { WebGLUniformBufferManager } from '../../../src/renderer/webgl/WebGLUniformBufferManager';
 import { testEnv } from '../../setup';
+import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
+import Mesh from '../../../src/core/Mesh';
+import Geometry from '../../../src/geometry/Geometry';
+import Material from '../../../src/material/Material';
 
 function createDevice() {
     const writeBuffer = vi.fn();
@@ -106,6 +112,67 @@ describe('WebGPUUniformBufferManager lifecycle', () => {
         expect(writeBuffer).toHaveBeenCalledTimes(2);
     });
 
+    it('snapshots changing revisions within one submission and reuses the pooled slots', () => {
+        const { createBuffer, device } = createDevice();
+        const manager = new WebGPUUniformBufferManager(device);
+        const block = UniformBuffer.fromSchema(createStd140Layout({ value: 'vec4' }), {
+            value: [1, 2, 3, 4]
+        });
+
+        manager.beginSubmission();
+        const first = manager.getBinding(block);
+        expect(manager.getBinding(block)).toBe(first);
+        block.set('value', [5, 6, 7, 8]);
+        const second = manager.getBinding(block);
+        expect(second.buffer).not.toBe(first.buffer);
+        expect(manager.getBinding(block)).toBe(second);
+        manager.endSubmission();
+
+        manager.beginSubmission();
+        const reused = manager.getBinding(block);
+        manager.endSubmission();
+        expect(reused.buffer).toBe(first.buffer);
+        expect(createBuffer).toHaveBeenCalledTimes(2);
+    });
+
+    it('binds distinct CameraBlock snapshots for multiple cameras in one submission', () => {
+        const { device } = createDevice();
+        const gpuManager = new WebGPUUniformBufferManager(device);
+        const blockManager = new BuiltInUniformBlockManager({ width: 64, height: 64 });
+        const mesh = new Mesh({ geometry: new Geometry(), material: new Material() });
+        const material = mesh.material;
+        if (!material) throw new Error('Mesh material was not created');
+        const firstCamera = new PerspectiveCamera({ z: 2 });
+        const secondCamera = new PerspectiveCamera({ x: 3, z: 5 });
+        firstCamera.updateViewProjectionMatrix();
+        secondCamera.updateViewProjectionMatrix();
+
+        gpuManager.beginSubmission();
+        blockManager.beginFrame(firstCamera);
+        const firstBlock = blockManager.getUniformBlocks(
+            ['CameraBlock'],
+            mesh,
+            material,
+            firstCamera
+        )['CameraBlock'];
+        if (!firstBlock) throw new Error('CameraBlock was not created');
+        const firstBinding = gpuManager.getBinding(firstBlock);
+
+        blockManager.beginPass(secondCamera);
+        const secondBlock = blockManager.getUniformBlocks(
+            ['CameraBlock'],
+            mesh,
+            material,
+            secondCamera
+        )['CameraBlock'];
+        if (!secondBlock) throw new Error('CameraBlock was not created');
+        const secondBinding = gpuManager.getBinding(secondBlock);
+        gpuManager.endSubmission();
+
+        expect(secondBlock).toBe(firstBlock);
+        expect(secondBinding.buffer).not.toBe(firstBinding.buffer);
+    });
+
     it('keeps fast and slow consumers independent and fully refreshes an expired consumer', () => {
         const fast = createDevice();
         const slow = createDevice();
@@ -158,25 +225,26 @@ describe('WebGPUUniformBufferManager lifecycle', () => {
     it('does not let WebGL2 consume changes before WebGPU observes them', () => {
         const { device, writeBuffer } = createDevice();
         const manager = new WebGPUUniformBufferManager(device);
+        const webGLManager = new WebGLUniformBufferManager(testEnv.gl);
         const block = UniformBuffer.fromSchema(createStd140Layout({ head: 'vec4', tail: 'vec4' }));
         const webGLUpload = vi.spyOn(testEnv.gl, 'bufferSubData');
 
-        block.getBuffer(testEnv.gl);
+        webGLManager.getBuffer(block);
         manager.getBinding(block);
         writeBuffer.mockClear();
 
         block.set('tail', [1, 0, 0, 0]);
-        block.getBuffer(testEnv.gl);
+        webGLManager.getBuffer(block);
         manager.getBinding(block);
         expect(webGLUpload).toHaveBeenCalledTimes(1);
         expect(writeBuffer).toHaveBeenCalledTimes(1);
 
         block.set('tail', [2, 0, 0, 0]);
         manager.getBinding(block);
-        block.getBuffer(testEnv.gl);
+        webGLManager.getBuffer(block);
         expect(webGLUpload).toHaveBeenCalledTimes(2);
         expect(writeBuffer).toHaveBeenCalledTimes(2);
-        block.destroy(testEnv.gl);
+        webGLManager.destroy();
     });
 
     it('bounds 10k WebGPU-only frame updates while retaining partial uploads', () => {
@@ -210,7 +278,7 @@ describe('WebGPUUniformBufferManager lifecycle', () => {
             {
                 revision: block.revision,
                 byteOffset: 16,
-                byteLength: 16
+                byteLength: 4
             }
         ]);
     });

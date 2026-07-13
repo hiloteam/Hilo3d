@@ -10,16 +10,33 @@ import Material from '../../../src/material/Material';
 import Color from '../../../src/math/Color';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
-import { LINE_STRIP, TRIANGLES, TRIANGLE_FAN } from '../../../src/constants/webgl';
+import {
+    DEPTH_COMPONENT,
+    DEPTH_COMPONENT16,
+    LINE_STRIP,
+    NEAREST,
+    TRIANGLES,
+    TRIANGLE_FAN,
+    UNSIGNED_SHORT
+} from '../../../src/constants/webgl';
 import Shader from '../../../src/shader/Shader';
 import {
     NagaShaderTranslator,
     type TranslatedShaderPair,
     type WebGPUVertexInput
-} from '../../../src/shader/GlslToWgsl';
-import WebGPURenderer from '../../../src/renderer/WebGPURenderer';
-import BuiltInUniformBlockManager from '../../../src/renderer/BuiltInUniformBlockManager';
+} from '../../../src/renderer/webgpu/shader/GlslToWgsl';
+import WebGPURenderer, {
+    MAX_CACHED_WEBGPU_DEPTH_SHADER_VARIANTS
+} from '../../../src/renderer/webgpu/WebGPURenderer';
+import BuiltInUniformBlockManager from '../../../src/renderer/common/BuiltInUniformBlockManager';
+import type { RendererFrame, RendererFrameCallback } from '../../../src/renderer/common/Renderer';
+import type {
+    WebGPUBufferManager,
+    WebGPUVertexBufferBinding
+} from '../../../src/renderer/webgpu/WebGPUBufferManager';
+import type { ResolvedWebGPUSampler } from '../../../src/renderer/webgpu/WebGPUBindGroupManager';
 import type WebGPUTextureManager from '../../../src/renderer/webgpu/WebGPUTextureManager';
+import type { WebGPUTextureResource } from '../../../src/renderer/webgpu/WebGPUTextureManager';
 import type { WebGPURenderPipelineRequest } from '../../../src/renderer/webgpu/WebGPUPipelineManager';
 import type WebGPURenderTarget from '../../../src/renderer/webgpu/WebGPURenderTarget';
 import Texture from '../../../src/texture/Texture';
@@ -34,6 +51,7 @@ interface Deferred<T> {
 interface FakeGPUDevice {
     readonly device: GPUDevice;
     readonly destroyDevice: ReturnType<typeof vi.fn>;
+    readonly createBuffer: ReturnType<typeof vi.fn>;
     readonly createShaderModule: ReturnType<typeof vi.fn>;
     readonly createSampler: ReturnType<typeof vi.fn>;
     readonly createBindGroupLayout: ReturnType<typeof vi.fn>;
@@ -85,6 +103,14 @@ function createFakeGPUDevice(features: readonly GPUFeatureName[] = []): FakeGPUD
     const submit = vi.fn();
     const writeTexture = vi.fn();
     const createShaderModule = vi.fn(() => ({}) as GPUShaderModule);
+    const createBuffer = vi.fn((descriptor: GPUBufferDescriptor) => {
+        const mappedRange = new ArrayBuffer(descriptor.size);
+        return {
+            destroy: vi.fn(),
+            getMappedRange: vi.fn(() => mappedRange),
+            unmap: vi.fn()
+        } as unknown as GPUBuffer;
+    });
     const createSampler = vi.fn((descriptor: GPUSamplerDescriptor) => ({
         descriptor
     }));
@@ -133,7 +159,9 @@ function createFakeGPUDevice(features: readonly GPUFeatureName[] = []): FakeGPUD
             maxTextureDimension2D: 4096,
             maxTextureArrayLayers: 256,
             maxColorAttachments: 8,
-            maxColorAttachmentBytesPerSample: 64
+            maxColorAttachmentBytesPerSample: 64,
+            maxVertexAttributes: 16,
+            maxVertexBufferArrayStride: 2048
         },
         queue: {
             writeBuffer: vi.fn(),
@@ -142,6 +170,7 @@ function createFakeGPUDevice(features: readonly GPUFeatureName[] = []): FakeGPUD
             submit
         },
         createTexture,
+        createBuffer,
         createSampler,
         createBindGroupLayout,
         createPipelineLayout,
@@ -156,6 +185,7 @@ function createFakeGPUDevice(features: readonly GPUFeatureName[] = []): FakeGPUD
     return {
         device,
         destroyDevice,
+        createBuffer,
         createShaderModule,
         createSampler,
         createBindGroupLayout,
@@ -232,6 +262,199 @@ afterEach(() => {
 });
 
 describe('WebGPURenderer initialization lifecycle', () => {
+    it('records multiple passes into one application-frame encoder and one submission', async () => {
+        const fake = createFakeWebGPU();
+        const renderer = new WebGPURenderer({ domElement: fake.canvas, antialias: false });
+        await renderer.ready;
+        const target = renderer.createRenderTarget({
+            width: 2,
+            height: 2,
+            depthStencilAttachment: false
+        });
+        fake.createCommandEncoder.mockClear();
+        fake.beginRenderPass.mockClear();
+        fake.createBindGroup.mockClear();
+        fake.submit.mockClear();
+
+        renderer.renderFrame(frame => {
+            expect(frame.backend).toBe('webgpu');
+            frame.present(target);
+            frame.present(target);
+        });
+
+        expect(fake.createCommandEncoder).toHaveBeenCalledOnce();
+        expect(fake.beginRenderPass).toHaveBeenCalledTimes(2);
+        expect(fake.createBindGroup).toHaveBeenCalledOnce();
+        expect(fake.submit).toHaveBeenCalledOnce();
+        expect(() => {
+            renderer.renderFrame(() => {
+                renderer.renderFrame(() => undefined);
+            });
+        }).toThrow(/Nested renderer frames/u);
+        const asyncCallback = (() => Promise.resolve()) as unknown as RendererFrameCallback;
+        expect(() => {
+            renderer.renderFrame(asyncCallback);
+        }).toThrow(/must be synchronous/u);
+        renderer.destroy();
+    });
+
+    it('aborts a poisoned application frame even when its command error is caught', async () => {
+        const fake = createFakeWebGPU();
+        const renderer = new WebGPURenderer({ domElement: fake.canvas, antialias: false });
+        await renderer.ready;
+        const valid = renderer.createRenderTarget({
+            width: 2,
+            height: 2,
+            depthStencilAttachment: false
+        });
+        const destroyed = renderer.createRenderTarget({
+            width: 2,
+            height: 2,
+            depthStencilAttachment: false
+        });
+        destroyed.destroy();
+        fake.submit.mockClear();
+
+        expect(() => {
+            renderer.renderFrame(frame => {
+                frame.present(valid);
+                try {
+                    frame.present(destroyed);
+                } catch {
+                    // Application code cannot make a partially recorded command buffer valid.
+                }
+                expect(() => {
+                    frame.present(valid);
+                }).toThrow(/frame recording was aborted/u);
+            });
+        }).toThrow(/frame recording was aborted/u);
+        expect(fake.submit).not.toHaveBeenCalled();
+
+        let escapedFrame: RendererFrame | undefined;
+        renderer.renderFrame(frame => {
+            escapedFrame = frame;
+        });
+        expect(() => {
+            escapedFrame?.present(valid);
+        }).toThrow(/only valid inside/u);
+        renderer.renderFrame(frame => {
+            expect(frame).not.toBe(escapedFrame);
+            expect(() => escapedFrame?.present(valid)).toThrow(/only valid inside/u);
+            frame.present(valid);
+        });
+        renderer.destroy();
+    });
+
+    it('rejects texture content changes after first use in an application frame', async () => {
+        const fake = createFakeWebGPU();
+        const renderer = new WebGPURenderer({ domElement: fake.canvas, antialias: false });
+        await renderer.ready;
+        const target = renderer.createRenderTarget({
+            width: 2,
+            height: 2,
+            depthStencilAttachment: false
+        });
+        fake.submit.mockClear();
+
+        expect(() => {
+            renderer.renderFrame(frame => {
+                frame.present(target);
+                target.getColorTexture(0).needUpdate = true;
+                expect(() => {
+                    frame.present(target);
+                }).toThrow(/Texture content cannot change/u);
+            });
+        }).toThrow(/frame recording was aborted/u);
+        expect(fake.submit).not.toHaveBeenCalled();
+        renderer.destroy();
+    });
+
+    it('rejects render-target mutation and readback during application-frame recording', async () => {
+        const fake = createFakeWebGPU();
+        const renderer = new WebGPURenderer({ domElement: fake.canvas, antialias: false });
+        await renderer.ready;
+        const target = renderer.createRenderTarget({
+            width: 2,
+            height: 2,
+            depthStencilAttachment: false
+        });
+        fake.submit.mockClear();
+
+        expect(() => {
+            renderer.renderFrame(frame => {
+                frame.present(target);
+                target.resize(4, 4);
+            });
+        }).toThrow(/render-target resize cannot run/u);
+        expect(target.width).toBe(2);
+        expect(fake.submit).not.toHaveBeenCalled();
+
+        let readback: Promise<unknown> | undefined;
+        expect(() => {
+            renderer.renderFrame(() => {
+                readback = target.readColorAttachment();
+            });
+        }).toThrow(/frame recording was aborted/u);
+        await expect(readback).rejects.toThrow(/render-target readback cannot run/u);
+        expect(fake.submit).not.toHaveBeenCalled();
+
+        expect(() => {
+            renderer.renderFrame(() => {
+                target.destroy();
+            });
+        }).toThrow(/render-target destroy cannot run/u);
+        expect(target.isDestroyed).toBe(false);
+        renderer.destroy();
+    });
+
+    it('poisons a frame when an attachment Texture is destroyed after it was encoded', async () => {
+        const fake = createFakeWebGPU();
+        const renderer = new WebGPURenderer({ domElement: fake.canvas, antialias: false });
+        await renderer.ready;
+        const target = renderer.createRenderTarget({
+            width: 2,
+            height: 2,
+            depthStencilAttachment: false
+        });
+        const texture = target.getColorTexture();
+        const oldGPUTexture = target.getColorGPUTexture();
+        fake.submit.mockClear();
+
+        expect(() => {
+            renderer.renderFrame(frame => {
+                frame.present(target);
+                expect(() => {
+                    texture.destroy();
+                }).toThrow(/render-target attachment recovery cannot run/u);
+                expect(() => {
+                    frame.present(target);
+                }).toThrow(/frame recording was aborted/u);
+            });
+        }).toThrow(/frame recording was aborted/u);
+        expect(fake.submit).not.toHaveBeenCalled();
+        expect(target.isDestroyed).toBe(false);
+
+        const rebuiltGPUTexture = target.getColorGPUTexture();
+        expect(rebuiltGPUTexture).not.toBe(oldGPUTexture);
+        fake.submit.mockClear();
+        renderer.renderFrame(frame => {
+            frame.present(target);
+        });
+        expect(fake.submit).toHaveBeenCalledOnce();
+
+        fake.submit.mockClear();
+        renderer.renderFrame(frame => {
+            frame.present(target);
+            expect(() => {
+                target.textureManager.destroyAll();
+            }).toThrow(/while a submission is active/u);
+            frame.present(target);
+        });
+        expect(fake.submit).toHaveBeenCalledOnce();
+        expect(target.getColorGPUTexture()).toBe(rebuiltGPUTexture);
+        renderer.destroy();
+    });
+
     it('presents with the Naga-translated shared GLSL sampler layout', async () => {
         const fake = createFakeWebGPU();
         const renderer = new WebGPURenderer({ domElement: fake.canvas, antialias: false });
@@ -280,6 +503,107 @@ describe('WebGPURenderer initialization lifecycle', () => {
         expect(fake.setBindGroup).toHaveBeenCalledWith(1, expect.anything());
         expect(fake.submit).toHaveBeenCalledOnce();
 
+        renderer.destroy();
+    });
+
+    it('bounds numeric-depth shader specialization with per-base LRU eviction', async () => {
+        vi.spyOn(NagaShaderTranslator.prototype, 'initialize').mockResolvedValue(undefined);
+        const fake = createFakeWebGPU();
+        const renderer = new WebGPURenderer({ domElement: fake.canvas });
+        await renderer.ready;
+        const bindings: TranslatedShaderPair['samplers'] = Array.from(
+            { length: 6 },
+            (_, index) => ({
+                name: `u_depth${String(index)}`,
+                arrayIndex: 0,
+                type: 'sampler2D',
+                group: 1,
+                textureBinding: index * 2,
+                samplerBinding: index * 2 + 1,
+                stages: ['fragment']
+            })
+        );
+        const fragmentWgsl = bindings
+            .map(
+                binding =>
+                    `@group(${String(binding.group)}) @binding(${String(binding.textureBinding)}) var depth${String(binding.textureBinding)}: texture_2d<f32>;`
+            )
+            .join('\n');
+        const translated: TranslatedShaderPair = {
+            vertex: { glsl: '', wgsl: '' },
+            fragment: { glsl: '', wgsl: fragmentWgsl },
+            vertexInputs: [],
+            fragmentOutputs: [],
+            uniformBlocks: [],
+            samplers: bindings
+        };
+        interface CompiledShaderFixture {
+            readonly translated: TranslatedShaderPair;
+            readonly vertexModule: GPUShaderModule;
+            readonly fragmentModule: GPUShaderModule;
+        }
+        const compiled: CompiledShaderFixture = {
+            translated,
+            vertexModule: {} as GPUShaderModule,
+            fragmentModule: {} as GPUShaderModule
+        };
+        const depthTexture = new Texture({
+            width: 1,
+            height: 1,
+            internalFormat: DEPTH_COMPONENT16,
+            format: DEPTH_COMPONENT,
+            type: UNSIGNED_SHORT,
+            minFilter: NEAREST,
+            magFilter: NEAREST,
+            image: null
+        });
+        const resolved = bindings.map(
+            binding =>
+                ({
+                    binding,
+                    texture: depthTexture,
+                    resource: {} as WebGPUTextureResource
+                }) satisfies ResolvedWebGPUSampler
+        );
+        const shader = new Shader({ vs: 'vertex', fs: 'fragment' });
+        const specialize = Reflect.get(renderer, 'getDepthSpecializedShader') as (
+            shader: Shader,
+            compiled: CompiledShaderFixture,
+            samplers: readonly ResolvedWebGPUSampler[]
+        ) => CompiledShaderFixture;
+        const samplersForMask = (mask: number) =>
+            resolved.filter((_, index) => (mask & (1 << index)) !== 0);
+        const modulesBeforeVariants = fake.createShaderModule.mock.calls.length;
+        let first: CompiledShaderFixture | undefined;
+        for (let mask = 1; mask <= MAX_CACHED_WEBGPU_DEPTH_SHADER_VARIANTS; mask++) {
+            const specialized = specialize.call(renderer, shader, compiled, samplersForMask(mask));
+            if (mask === 1) first = specialized;
+        }
+        if (!first) throw new Error('Missing depth specialization cache fixture');
+
+        expect(specialize.call(renderer, shader, compiled, samplersForMask(1))).toBe(first);
+        specialize.call(
+            renderer,
+            shader,
+            compiled,
+            samplersForMask(MAX_CACHED_WEBGPU_DEPTH_SHADER_VARIANTS + 1)
+        );
+        const caches = Reflect.get(renderer, 'depthSpecializedShaders') as WeakMap<
+            CompiledShaderFixture,
+            Map<string, CompiledShaderFixture>
+        >;
+        const variants = caches.get(compiled);
+        expect(variants).toHaveLength(MAX_CACHED_WEBGPU_DEPTH_SHADER_VARIANTS);
+        expect(variants?.has('1:0')).toBe(true);
+        expect(variants?.has('1:2')).toBe(false);
+        expect(fake.createShaderModule).toHaveBeenCalledTimes(
+            modulesBeforeVariants + (MAX_CACHED_WEBGPU_DEPTH_SHADER_VARIANTS + 1) * 2
+        );
+
+        specialize.call(renderer, shader, compiled, samplersForMask(2));
+        expect(fake.createShaderModule).toHaveBeenCalledTimes(
+            modulesBeforeVariants + (MAX_CACHED_WEBGPU_DEPTH_SHADER_VARIANTS + 2) * 2
+        );
         renderer.destroy();
     });
 
@@ -727,6 +1051,7 @@ describe('WebGPURenderer initialization lifecycle', () => {
             height: 4,
             depthStencilAttachment: false
         });
+        const textureManager = Reflect.get(renderer, 'textureManager') as WebGPUTextureManager;
         const colorTexture = target.getColorTexture();
         const firstGPUTexture = target.getColorGPUTexture();
         renderer.setRenderTarget(target, { present: true, takeOwnership: true });
@@ -752,6 +1077,9 @@ describe('WebGPURenderer initialization lifecycle', () => {
             renderer.render(new Node(), new PerspectiveCamera());
         }).not.toThrow();
         expect(replacement.submit).not.toHaveBeenCalled();
+        const lostDeviceTextureCreationCount = fake.createTexture.mock.calls.length;
+        colorTexture.destroy();
+        expect(fake.createTexture).toHaveBeenCalledTimes(lostDeviceTextureCreationCount);
 
         recoveryRequest.resolve(replacement.device);
         await renderer.recoveryPromise;
@@ -767,6 +1095,14 @@ describe('WebGPURenderer initialization lifecycle', () => {
         expect(target.device).toBe(replacement.device);
         expect(target.getColorTexture()).toBe(colorTexture);
         expect(target.getColorGPUTexture()).not.toBe(firstGPUTexture);
+        const recoveredTextureManager = Reflect.get(
+            renderer,
+            'textureManager'
+        ) as WebGPUTextureManager;
+        expect(recoveredTextureManager).toBe(textureManager);
+        expect(recoveredTextureManager.get(colorTexture).gpuTexture).toBe(
+            target.getColorGPUTexture()
+        );
         expect(onDeviceRestored).toHaveBeenCalledOnce();
         expect(onDeviceRestored.mock.calls[0]?.[0].detail).toBe(replacement.device);
         expect(onRecoveryFailed).not.toHaveBeenCalled();
@@ -1321,6 +1657,100 @@ describe('WebGPURenderer optional vertex inputs', () => {
         expect(secondSources?.[1]?.geometryData).toBe(firstSources?.[1]?.geometryData);
         expect(secondSources?.[2]?.geometryData).toBe(firstSources?.[2]?.geometryData);
 
+        renderer.destroy();
+    });
+
+    it('isolates mesh-dependent instance streams by exact batch membership', async () => {
+        vi.spyOn(NagaShaderTranslator.prototype, 'initialize').mockResolvedValue(undefined);
+        const fake = createFakeWebGPU();
+        const renderer = new WebGPURenderer({ domElement: fake.canvas });
+        await renderer.ready;
+        const bufferManager = Reflect.get(renderer, 'bufferManager') as WebGPUBufferManager;
+        const getInterleavedInstanceBuffer = vi.spyOn(
+            bufferManager,
+            'getInterleavedInstanceBuffer'
+        );
+        const geometry = new Geometry({
+            vertices: new GeometryData(new Float32Array(9), 3)
+        });
+        const firstValue = new Float32Array([1, 2, 3, 4]);
+        const secondValue = new Float32Array([5, 6, 7, 8]);
+        const thirdValue = new Float32Array([9, 10, 11, 12]);
+        const material = new Material({
+            needBasicAttributes: false,
+            needBasicUniforms: false,
+            uniforms: {
+                u_particleData: {
+                    isDependMesh: true,
+                    get: mesh => mesh.userData
+                }
+            }
+        });
+        const first = new Mesh({ geometry, material, userData: firstValue });
+        const second = new Mesh({ geometry, material, userData: secondValue });
+        const third = new Mesh({ geometry, material, userData: thirdValue });
+        const input: WebGPUVertexInput = {
+            name: 'u_particleData',
+            type: 'vec4',
+            location: 0,
+            locationCount: 1
+        };
+        const getOwner = Reflect.get(renderer, 'getInstanceBatchOwner') as (
+            meshes: readonly Mesh[]
+        ) => object;
+        const resolve = Reflect.get(renderer, 'resolveVertexBuffers') as (
+            meshes: readonly Mesh[],
+            activeMaterial: Material,
+            vertexInputs: readonly WebGPUVertexInput[],
+            useInstanced: boolean,
+            instanceBatchOwner: object
+        ) => readonly WebGPUVertexBufferBinding[];
+        const firstBatch = [first, second];
+        const secondBatch = [first, third];
+        const firstOwner = getOwner.call(renderer, firstBatch);
+        const secondOwner = getOwner.call(renderer, secondBatch);
+
+        expect(secondOwner).not.toBe(firstOwner);
+        expect(getOwner.call(renderer, firstBatch)).toBe(firstOwner);
+        bufferManager.beginSubmission();
+        try {
+            const firstBinding = resolve.call(
+                renderer,
+                firstBatch,
+                material,
+                [input],
+                true,
+                firstOwner
+            );
+            const secondBinding = resolve.call(
+                renderer,
+                secondBatch,
+                material,
+                [input],
+                true,
+                secondOwner
+            );
+            const repeatedBinding = resolve.call(
+                renderer,
+                firstBatch,
+                material,
+                [input],
+                true,
+                firstOwner
+            );
+
+            expect(secondBinding[0]?.buffer).not.toBe(firstBinding[0]?.buffer);
+            expect(repeatedBinding[0]?.buffer).toBe(firstBinding[0]?.buffer);
+        } finally {
+            bufferManager.endSubmission();
+        }
+
+        expect(getInterleavedInstanceBuffer).toHaveBeenCalledTimes(3);
+        const call = getInterleavedInstanceBuffer.mock.calls[0];
+        expect(call?.[0]).toBe(firstOwner);
+        expect(call?.[1]).toBe(2);
+        expect(call?.[2]?.[0]?.getValue(0)).toBe(firstValue);
+        expect(call?.[2]?.[0]?.getValue(1)).toBe(secondValue);
         renderer.destroy();
     });
 });

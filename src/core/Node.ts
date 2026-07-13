@@ -10,7 +10,7 @@ import type Ray from '../math/Ray';
 import type Animation from '../animation/Animation';
 import Geometry, { type Bounds } from '../geometry/Geometry';
 import Skeleton from './Skeleton';
-import type { Renderer } from '../renderer/Renderer';
+import type { Renderer } from '../renderer/common/Renderer';
 import math from '../math/math';
 const defaultUp = new Vector3(0, 1, 0);
 const tempMatrix4 = new Matrix4();

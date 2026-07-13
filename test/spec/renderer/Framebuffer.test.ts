@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import Framebuffer, { type FramebufferRenderer } from '../../../src/renderer/Framebuffer';
-import WebGLState from '../../../src/renderer/WebGLState';
+import Framebuffer, { type FramebufferRenderer } from '../../../src/renderer/webgl/Framebuffer';
+import WebGLState, {
+    getWebGLTexture,
+    getWebGLTextureCache,
+    releaseWebGLTexture
+} from '../../../src/renderer/webgl/WebGLState';
+import { TEXTURE_3D } from '../../../src/constants/webgl2';
 import Texture from '../../../src/texture/Texture';
 import { testEnv } from '../../setup';
 
@@ -158,7 +163,7 @@ describe('Framebuffer', () => {
         }
     });
 
-    it('keeps attachment identity while reset and resize replace native allocations', () => {
+    it('keeps attachment and native allocation identity across reset and resize', () => {
         const framebuffer = new Framebuffer(testEnv.renderer, { width: 4, height: 5 });
         framebuffer.init();
         const texture = framebuffer.texture;
@@ -167,33 +172,92 @@ describe('Framebuffer', () => {
         }
         const destroyListener = vi.fn();
         texture.on('destroy', destroyListener);
-        const firstAllocation = texture.getGLTexture(testEnv.state);
+        const firstAllocation = getWebGLTexture(testEnv.state, texture);
 
         framebuffer.reset();
 
-        const resetAllocation = texture.getGLTexture(testEnv.state);
+        const resetAllocation = getWebGLTexture(testEnv.state, texture);
         expect(framebuffer.texture).toBe(texture);
         expect(framebuffer.colorAttachmentInfos[0]?.texture).toBe(texture);
-        expect(resetAllocation).not.toBe(firstAllocation);
-        expect(testEnv.gl.isTexture(firstAllocation)).toBe(false);
+        expect(resetAllocation).toBe(firstAllocation);
         expect(testEnv.gl.isTexture(resetAllocation)).toBe(true);
         expect(destroyListener).not.toHaveBeenCalled();
 
         framebuffer.resize(7, 9);
 
-        const resizedAllocation = texture.getGLTexture(testEnv.state);
+        const resizedAllocation = getWebGLTexture(testEnv.state, texture);
         expect(framebuffer.texture).toBe(texture);
         expect(texture.width).toBe(7);
         expect(texture.height).toBe(9);
-        expect(resizedAllocation).not.toBe(resetAllocation);
-        expect(testEnv.gl.isTexture(resetAllocation)).toBe(false);
+        expect(resizedAllocation).toBe(resetAllocation);
         expect(testEnv.gl.isTexture(resizedAllocation)).toBe(true);
         expect(framebuffer.isComplete()).toBe(true);
         expect(destroyListener).not.toHaveBeenCalled();
 
         framebuffer.destroy();
         expect(destroyListener).toHaveBeenCalledOnce();
-        expect(Texture.getCache(testEnv.gl).get(texture.id)).toBeUndefined();
+        expect(getWebGLTextureCache(testEnv.state).get(texture.id)).toBeUndefined();
+    });
+
+    it('rejects one texture being owned by multiple framebuffer attachment graphs', () => {
+        const texture = new Texture<null>({ width: 4, height: 4, image: null });
+        const first = new Framebuffer(testEnv.renderer, {
+            width: 4,
+            height: 4,
+            needRenderbuffer: false,
+            colorAttachmentInfos: [
+                {
+                    attachmentType: Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+                    texture
+                }
+            ]
+        });
+        const second = new Framebuffer(testEnv.renderer, {
+            width: 4,
+            height: 4,
+            needRenderbuffer: false,
+            colorAttachmentInfos: [
+                {
+                    attachmentType: Framebuffer.ATTACHMENT_TYPE_TEXTURE,
+                    texture
+                }
+            ]
+        });
+
+        try {
+            first.init();
+            expect(() => {
+                second.init();
+            }).toThrow(/already attached to another framebuffer/);
+            expect(first.isComplete()).toBe(true);
+        } finally {
+            second.destroy();
+            first.destroy();
+        }
+    });
+
+    it('reattaches a framebuffer texture after external native invalidation', () => {
+        const framebuffer = new Framebuffer(testEnv.renderer, { width: 4, height: 4 });
+        framebuffer.init();
+        const texture = framebuffer.texture;
+        if (!(texture instanceof Texture)) {
+            throw new Error('Framebuffer did not create an engine color texture');
+        }
+        const firstAllocation = getWebGLTexture(testEnv.state, texture);
+
+        try {
+            texture.destroy();
+            expect(testEnv.gl.isTexture(firstAllocation)).toBe(false);
+
+            framebuffer.bind();
+            framebuffer.unbind();
+            const replacement = getWebGLTexture(testEnv.state, texture);
+            expect(replacement).not.toBe(firstAllocation);
+            expect(testEnv.gl.isTexture(replacement)).toBe(true);
+            expect(framebuffer.isComplete()).toBe(true);
+        } finally {
+            framebuffer.destroy();
+        }
     });
 
     it('restores independent read and draw bindings after repeated bind and unbind calls', () => {
@@ -348,6 +412,8 @@ describe('Framebuffer', () => {
             expect(framebuffer.depthStencilAttachmentInfo?.renderbuffer).toBeNull();
             expect(deleteFramebuffer).toHaveBeenCalledTimes(1);
             expect(deleteTexture).toHaveBeenCalledTimes(1);
+            if (!failedTexture) throw new Error('Framebuffer did not preserve its logical texture');
+            expect(getWebGLTextureCache(testEnv.state).get(failedTexture.id)).toBeUndefined();
             expect(deleteRenderbuffer).toHaveBeenCalledTimes(1);
             expect(testEnv.state.currentReadFramebuffer).toBe(previousRead);
             expect(testEnv.state.currentDrawFramebuffer).toBe(previousDraw);
@@ -357,6 +423,8 @@ describe('Framebuffer', () => {
             }).not.toThrow();
             expect(framebuffer.isComplete()).toBe(true);
             expect(framebuffer.texture).toBe(failedTexture);
+            expect(deleteTexture).toHaveBeenCalledTimes(1);
+            expect(getWebGLTextureCache(testEnv.state).get(failedTexture.id)).toBeDefined();
             expect(checkFramebufferStatus).toHaveBeenCalledTimes(3);
             expect(testEnv.state.currentReadFramebuffer).toBe(previousRead);
             expect(testEnv.state.currentDrawFramebuffer).toBe(previousDraw);
@@ -365,6 +433,62 @@ describe('Framebuffer', () => {
             framebuffer.destroy();
             testEnv.gl.deleteFramebuffer(previousRead);
             testEnv.gl.deleteFramebuffer(previousDraw);
+        }
+    });
+
+    it('reattaches a manager-replaced texture allocation before the next bind', () => {
+        const framebuffer = new Framebuffer(testEnv.renderer);
+        framebuffer.init();
+        const texture = framebuffer.texture;
+        if (!texture) throw new Error('Framebuffer did not create its color texture');
+        const firstAllocation = getWebGLTexture(testEnv.state, texture);
+
+        expect(releaseWebGLTexture(testEnv.state, texture)).toBe(true);
+        expect(testEnv.gl.isTexture(firstAllocation)).toBe(false);
+
+        framebuffer.bind();
+        try {
+            const replacement = getWebGLTexture(testEnv.state, texture);
+            expect(replacement).not.toBe(firstAllocation);
+            expect(
+                testEnv.gl.getFramebufferAttachmentParameter(
+                    testEnv.gl.FRAMEBUFFER,
+                    testEnv.gl.COLOR_ATTACHMENT0,
+                    testEnv.gl.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
+                )
+            ).toBe(replacement);
+            expect(framebuffer.isComplete()).toBe(true);
+        } finally {
+            framebuffer.unbind();
+            framebuffer.destroy();
+        }
+    });
+
+    it('rejects an attachment target mutation and recovers after it is restored', () => {
+        const framebuffer = new Framebuffer(testEnv.renderer);
+        framebuffer.init();
+        const texture = framebuffer.texture;
+        if (!texture) throw new Error('Framebuffer did not create its color texture');
+        const firstAllocation = getWebGLTexture(testEnv.state, texture);
+
+        texture.target = TEXTURE_3D;
+        texture.depth = 1;
+        const incompatibleAllocation = getWebGLTexture(testEnv.state, texture);
+        expect(incompatibleAllocation).not.toBe(firstAllocation);
+        expect(() => {
+            framebuffer.bind();
+        }).toThrow(/does not match attachment target/u);
+
+        texture.target = testEnv.gl.TEXTURE_2D;
+        framebuffer.bind();
+        try {
+            const recoveredAllocation = getWebGLTexture(testEnv.state, texture);
+            expect(recoveredAllocation).not.toBe(incompatibleAllocation);
+            expect(framebuffer.isComplete()).toBe(true);
+            expect(testEnv.gl.getError()).toBe(testEnv.gl.NO_ERROR);
+        } finally {
+            framebuffer.unbind();
+            framebuffer.destroy();
         }
     });
 

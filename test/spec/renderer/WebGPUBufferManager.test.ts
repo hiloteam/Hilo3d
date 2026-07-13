@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import GeometryData from '../../../src/geometry/GeometryData';
-import type { WebGPUVertexInput } from '../../../src/shader/GlslToWgsl';
+import type { WebGPUVertexInput } from '../../../src/renderer/webgpu/shader/GlslToWgsl';
 import {
     WebGPUBufferManager,
     type WebGPUIndexBufferBinding,
@@ -653,22 +653,23 @@ describe('WebGPUBufferManager instance buffers and lifecycle', () => {
         const manager = new WebGPUBufferManager(fake.device);
         const normalScratch = new Float32Array(9);
         const modelScratch = new Float32Array(16);
-        const resource = manager.getInterleavedInstanceBuffer('instances', 2, [
+        const sources = [
             {
                 input: input('normalMatrix', 'mat3', 0, 3),
-                getValue: instanceIndex => {
+                getValue: (instanceIndex: number) => {
                     normalScratch.fill(instanceIndex + 1);
                     return normalScratch;
                 }
             },
             {
                 input: input('modelMatrix', 'mat4', 3, 4),
-                getValue: instanceIndex => {
+                getValue: (instanceIndex: number) => {
                     modelScratch.fill((instanceIndex + 1) * 10);
                     return modelScratch;
                 }
             }
-        ]);
+        ];
+        const resource = manager.getInterleavedInstanceBuffer('instances', 2, sources);
 
         expect(fake.records).toHaveLength(1);
         expect(resource.layout.stepMode).toBe('instance');
@@ -688,6 +689,8 @@ describe('WebGPUBufferManager instance buffers and lifecycle', () => {
             ...new Array<number>(9).fill(2),
             ...new Array<number>(16).fill(20)
         ]);
+        expect(manager.getInterleavedInstanceBuffer('instances', 2, sources)).toBe(resource);
+        expect(fake.writes).toHaveLength(0);
     });
 
     it('bounds instance shader-layout variants and uses access-order eviction', () => {
@@ -710,6 +713,36 @@ describe('WebGPUBufferManager instance buffers and lifecycle', () => {
         expect(fake.record(second.buffer).destroyCount).toBe(1);
         expect(fake.record(third.buffer).destroyCount).toBe(0);
         expect(fake.records.filter(record => record.destroyCount === 0)).toHaveLength(2);
+    });
+
+    it('preserves submission snapshots and defers eviction until submission end', () => {
+        const fake = fakeGPU();
+        const manager = new WebGPUBufferManager(fake.device, {
+            instanceVariantsPerOwner: 1
+        });
+        const owner = {};
+        let value = 1;
+        const mutableSource = {
+            input: input('instanceValue', 'float', 0),
+            getValue: () => [value]
+        };
+
+        manager.beginSubmission();
+        const first = manager.getInterleavedInstanceBuffer(owner, 1, [mutableSource]);
+        value = 2;
+        expect(() => manager.getInterleavedInstanceBuffer(owner, 1, [mutableSource])).toThrow(
+            /cannot change after its first use/u
+        );
+        expect(fake.writes).toHaveLength(0);
+
+        const second = manager.getInterleavedInstanceBuffer(owner, 1, [
+            { input: input('otherInstanceValue', 'float', 1), getValue: () => [3] }
+        ]);
+        expect(fake.record(first.buffer).destroyCount).toBe(0);
+        expect(fake.record(second.buffer).destroyCount).toBe(0);
+        manager.endSubmission();
+        expect(fake.record(first.buffer).destroyCount).toBe(1);
+        expect(fake.record(second.buffer).destroyCount).toBe(0);
     });
 
     it('releases an owner, destroys globally once, and rebuilds fresh resources', () => {

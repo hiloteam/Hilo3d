@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import type { ProgramAttribute } from '../../../src/renderer/Program';
-import type Program from '../../../src/renderer/Program';
+import type { ProgramAttribute } from '../../../src/renderer/webgl/Program';
+import type Program from '../../../src/renderer/webgl/Program';
+import type { RendererFrameCallback } from '../../../src/renderer/common/Renderer';
+import { getWebGLTexture } from '../../../src/renderer/webgl/WebGLState';
 import { testEnv } from '../../setup';
 
 const WebGLRenderer = Hilo3d.WebGLRenderer;
@@ -20,6 +22,54 @@ describe('WebGLRenderer', () => {
         expect(renderer.renderList.useInstanced).toBe(true);
         renderer.useInstanced = false;
         expect(renderer.renderList.useInstanced).toBe(false);
+    });
+
+    it('exposes the same explicit application-frame boundary as WebGPU', () => {
+        const renderer = new WebGLRenderer();
+        const callback = vi.fn();
+        const present = vi.spyOn(renderer, 'present').mockImplementation(() => undefined);
+
+        renderer.renderFrame(frame => {
+            expect(frame.backend).toBe('webgl2');
+            callback();
+        });
+
+        expect(callback).toHaveBeenCalledOnce();
+        expect(() => {
+            renderer.renderFrame(() => {
+                renderer.renderFrame(() => undefined);
+            });
+        }).toThrow(/Nested renderer frames/u);
+        const asyncCallback = (() => Promise.resolve()) as unknown as RendererFrameCallback;
+        expect(() => {
+            renderer.renderFrame(asyncCallback);
+        }).toThrow(/must be synchronous/u);
+
+        let staleFrame: Parameters<RendererFrameCallback>[0] | undefined;
+        renderer.renderFrame(frame => {
+            staleFrame = frame;
+        });
+        renderer.renderFrame(frame => {
+            expect(frame).not.toBe(staleFrame);
+            expect(() => staleFrame?.present()).toThrow(/only valid inside/u);
+            expect(() => {
+                frame.present();
+            }).not.toThrow();
+        });
+        expect(present).toHaveBeenCalledOnce();
+    });
+
+    it('resolves ready only after a real WebGL2 context is initialized', async () => {
+        const renderer = new WebGLRenderer({
+            domElement: document.createElement('canvas')
+        });
+
+        expect(renderer.isReady).toBe(false);
+        await renderer.ready;
+        expect(renderer.isInit).toBe(true);
+        expect(renderer.isReady).toBe(true);
+        renderer.destroy();
+        expect(renderer.isReady).toBe(false);
     });
 
     it('normalizes LINE_LOOP geometry before WebGL2 shader and VAO setup', () => {
@@ -79,7 +129,7 @@ describe('WebGLRenderer', () => {
 
         expect(renderer.gl.getParameter(renderer.gl.ACTIVE_TEXTURE)).toBe(renderer.gl.TEXTURE0);
         expect(renderer.gl.getParameter(renderer.gl.TEXTURE_BINDING_2D)).toBe(
-            texture.getGLTexture(renderer.state)
+            getWebGLTexture(renderer.state, texture)
         );
         expect(renderer.gl.getError()).toBe(renderer.gl.NO_ERROR);
         renderer.destroy();

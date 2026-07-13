@@ -1,7 +1,28 @@
-# 2.0.0 (2026-07-10)
+# 2.0.0 (2026-07-14)
 
 ### Breaking changes
 
+- Add the required synchronous `Renderer.renderFrame(callback)` application-frame boundary. Custom
+  renderer implementations must provide it; callbacks may not return a Promise or retain the frame
+  facade after returning.
+- Make `UniformBuffer` a backend-neutral CPU/std140 object. Remove its WebGL-native `getBuffer()`,
+  `bind()`, and `destroy()` methods; native allocations now belong to renderer-local WebGL/WebGPU
+  managers and are released through renderer resource ownership.
+- Make `Texture` a backend-neutral CPU descriptor. Remove `Texture.getCache()`, `reset()`,
+  `getGLTexture()`, `setGLTexture()`, `updateTexture()`, the protected WebGL upload hooks, and the
+  root `TextureWebGLState` type; WebGL allocation, upload revision, descriptor snapshot, and native
+  cache ownership now belong to the renderer's texture manager/uploader.
+- Restrict `TextureBinding` and `MaterialTexture` to engine `Texture<unknown>` objects so both
+  backends consume one real resource contract. Remove the WebGL-native `location`, `type`, `size`,
+  and `glTypeInfo` fields from `ProgramBindingInfo`.
+- Change `Shader.reset(gl?)` to backend-independent `Shader.reset()`. Change `RendererFrameCallback`
+  to return `unknown`; the runtime rejects Promise-like results and escaped frame facades rather
+  than allowing asynchronous recording.
+- Remove the unused WebGL-native `GeometryData.glBuffer` field. Geometry data now exposes only CPU
+  content/revisions, while each backend owns its buffer variants.
+- Make WebGPU manager/target suspend, device-rebind, and atomic attachment-replacement operations
+  renderer-internal. Public `WebGPUTextureManager` mutations now preserve render-target ownership;
+  `registerExternal()` rejects target-owned textures instead of creating detached allocations.
 - Require Node.js 22.22.2 and npm 12 for development and releases.
 - Publish a single ES2022 ESM package entry and remove CommonJS/UMD, global-script, and namespace
   declaration variants.
@@ -23,9 +44,9 @@
 - Remove the WebGL-cache-specific `logGLResource()` export. Use
   `renderer.resourceManager.getDiagnostics(rootNode?)` for stable backend-neutral ownership counts.
 - Remove the context-blind `capabilities` and `extensions` singletons. WebGL 2 callers use the
-  owning `WebGLRenderer.capabilities` and `WebGLRenderer.extensions`; low-level resource cache
-  inspection now requires `getCache(gl)` so native objects can never be mistaken for cross-context
-  resources.
+  owning `WebGLRenderer.capabilities` and `WebGLRenderer.extensions`; remaining public low-level
+  Program/Buffer/VAO cache inspection requires `getCache(gl)`, while Texture native caches are
+  backend-private.
 - Restrict shadow construction to directional, spot, and point lights through
   `ShadowCastingLightParameters`. Area, ambient, and base lights reject shadow configuration before
   backend selection instead of allowing a backend to ignore it.
@@ -57,6 +78,30 @@
 
 ### Changes
 
+- Split rendering code into explicit `renderer/common`, `renderer/webgl`, and `renderer/webgpu`
+  boundaries, move WebGL shadow allocation under its backend, and keep common frame planning free of
+  native graphics handles.
+- Record resource-ready WebGPU scene, shadow, target, and presentation passes through an explicit
+  application frame. One submission uses revision-snapshotted UBO slots so each camera/pass observes
+  its own data; recording failures poison the frame instead of submitting partial commands.
+- Add bounded per-group bind-group layout/resource caches, WebGPU sampler/snapshot and numeric-depth
+  specialization LRUs, presentation bind-group reuse, pooled UBO submission slots, dirty-range
+  instance uploads, and per-pass command-state deduplication.
+- Move WebGL texture allocation/upload into a per-state manager and backend uploader, detect
+  descriptor changes without replacing stable framebuffer texture objects, and release native
+  allocations through an internal lifecycle channel that public events cannot cancel.
+- Add a bounded immutable WebGLSampler cache with per-texture descriptor-key memoization and
+  per-unit bindings. Numeric and comparison reads can share one depth texture without mutating its
+  global state, and active samplers are never evicted from a texture unit.
+- Track render-target attachment allocation generations across WebGL 2 and WebGPU. Texture target
+  changes, failed uploads, and public attachment destruction now invalidate the previous allocation;
+  targets rebuild or reattach before reuse and reject stale native handles.
+- Protect pending WebGPU submissions from early target, buffer, texture, and shadow-atlas
+  destruction; defer native retirement until submission ends and reject same-submission geometry or
+  instance-buffer mutation instead of rewriting resources already referenced by recorded passes.
+- Replace serialized shader variant keys with a bounded, structured dual-lane 64-bit hash, exact
+  collision buckets, stable-draw revision snapshots, source-aware custom shader keys, and
+  generation-safe cache release. GLSL ES 3.00 remains the only authored shader language.
 - Migrate all maintained engine, test, example and tooling code to checked TypeScript without
   type-checking bypasses.
 - Split TypeScript into referenced library, test, example and Node projects with strict shared

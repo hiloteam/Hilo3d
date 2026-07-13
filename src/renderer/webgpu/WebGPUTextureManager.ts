@@ -1,9 +1,11 @@
 import {
     getTextureRecoveryBacking,
+    observeTextureDestroy,
+    unobserveTextureDestroy,
     type default as Texture,
+    type TextureDestroyObserver,
     type TextureMipmap
 } from '../../texture/Texture';
-import type { EventListener } from '../../core/EventDispatcher';
 import {
     ALWAYS,
     BYTE,
@@ -37,6 +39,7 @@ import {
     UNSIGNED_INT,
     UNSIGNED_SHORT
 } from '../../constants/webgl';
+import { touchBoundedLruEntry } from '../common/BoundedLruCache';
 import {
     COMPRESSED_RGBA_ASTC_4X4_KHR,
     COMPRESSED_RGBA_S3TC_DXT1_EXT,
@@ -130,14 +133,14 @@ import {
     UNSIGNED_INT_2_10_10_10_REV,
     UNSIGNED_INT_5_9_9_9_REV
 } from '../../constants/webgl2';
-import type { TexturePixelData, TextureSubImage, TypedArray } from '../types';
+import type { TexturePixelData, TextureSubImage, TypedArray } from '../common/types';
 import {
     flipTexturePixelRows,
     isTexturePixelData,
     textureElementsPerPixel,
     texturePixelDataToTypedArray
 } from '../../texture/texturePixelData';
-import type { NagaShaderTranslator, TranslatedShaderPair } from '../../shader/GlslToWgsl';
+import type { NagaShaderTranslator, TranslatedShaderPair } from './shader/GlslToWgsl';
 import mipmapFragmentSource from '../../shader/webgpu/mipmap.frag';
 import mipmapVertexSource from '../../shader/webgpu/mipmap.vert';
 import {
@@ -219,7 +222,9 @@ export interface WebGPUTextureResource {
 
 interface InternalTextureResource {
     readonly sourceTexture: Texture<unknown>;
-    readonly destroyListener: EventListener;
+    readonly destroyObserver: TextureDestroyObserver;
+    /** Distinguishes an observer snapshot for an old allocation from its replacement. */
+    readonly destroyToken: object;
     readonly textureId: string;
     readonly gpuTexture: GPUTexture;
     readonly view: GPUTextureView;
@@ -230,10 +235,19 @@ interface InternalTextureResource {
     readonly mipLevelCount: number;
     readonly dimension: WebGPUTextureDimension;
     readonly descriptor: ResolvedTextureDescriptor;
+    /** Comparison function selected by a renderer-owned sampled depth attachment. */
+    readonly defaultCompare: GLenum | GPUCompareFunction | undefined;
     readonly videoUpload: VideoUploadState | null;
     readonly snapshots: Map<string, WebGPUTextureResource>;
     readonly owned: boolean;
     uploadedRevision: number;
+}
+
+interface ExternalTextureOwner {
+    readonly invalidate: (recoverImmediately: boolean) => void;
+    readonly ensure: () => void;
+    readonly observer: TextureDestroyObserver;
+    handling: boolean;
 }
 
 interface VideoUploadState {
@@ -255,6 +269,11 @@ interface NativeTextureRecord {
     /** Ownership is sticky once transferred so aliases can never observe premature destruction. */
     owned: boolean;
 }
+
+/** Global immutable sampler descriptors retained per WebGPU device. */
+export const MAX_CACHED_WEBGPU_SAMPLERS = 256;
+/** Immutable sampler views retained for one live native texture allocation. */
+export const MAX_CACHED_WEBGPU_TEXTURE_SNAPSHOTS = 16;
 
 interface ResolvedTextureDescriptor {
     readonly key: string;
@@ -285,7 +304,7 @@ interface RecoverableTextureBacking {
 interface RecoverableTextureListenerOwner {
     /** Keep listener ownership enumerable without preventing an otherwise unreachable Texture from collecting. */
     readonly texture: WeakRef<Texture<unknown>>;
-    readonly listener: EventListener;
+    readonly observer: TextureDestroyObserver;
 }
 
 function clonePixelData(source: TexturePixelData): TexturePixelData {
@@ -1125,11 +1144,20 @@ export default class WebGPUTextureManager {
         RecoverableTextureListenerOwner
     >();
     private readonly recoveryListenerOwners = new Set<RecoverableTextureListenerOwner>();
+    /**
+     * Renderer-owned attachments deliberately keep their logical Texture alive until their
+     * owner unregisters it. This prevents a missing target allocation from falling through to
+     * the ordinary image-upload path and creating a detached sampled texture.
+     */
+    private readonly externalTextureOwners = new Map<Texture<unknown>, ExternalTextureOwner>();
     private nativeTextures = new WeakMap<GPUTexture, NativeTextureRecord>();
     private readonly liveResources = new Set<InternalTextureResource>();
     private readonly mipmapPipelines = new Map<GPUTextureFormat, MipmapPipeline>();
     private readonly samplers = new Map<string, GPUSampler>();
     private mipmapShader: TranslatedShaderPair | null = null;
+    private submissionActive = false;
+    private submissionUsedTextures = new WeakSet<GPUTexture>();
+    private readonly deferredTextureDestructions = new Set<GPUTexture>();
 
     /**
      * @param device - Device that owns every allocation created by this manager.
@@ -1152,6 +1180,37 @@ export default class WebGPUTextureManager {
 
     get resourceCount(): number {
         return this.liveResources.size;
+    }
+
+    /** Resolve the comparison default registered by a renderer-owned depth attachment. */
+    private defaultCompareFor(texture: Texture<unknown>): GLenum | GPUCompareFunction | undefined {
+        return this.resourcesByTexture.get(texture)?.defaultCompare;
+    }
+
+    /** Preserve native textures referenced by one pending command-buffer submission. */
+    private beginSubmission(): void {
+        if (this.submissionActive) {
+            throw new Error('A WebGPU texture submission is already active');
+        }
+        this.submissionActive = true;
+        this.submissionUsedTextures = new WeakSet();
+    }
+
+    /** Retire deferred textures after their command buffer has been queued or abandoned. */
+    private endSubmission(): void {
+        if (!this.submissionActive) return;
+        this.submissionActive = false;
+        for (const texture of this.deferredTextureDestructions) texture.destroy();
+        this.deferredTextureDestructions.clear();
+        this.submissionUsedTextures = new WeakSet();
+    }
+
+    private destroyNativeTexture(texture: GPUTexture): void {
+        if (this.submissionActive && this.submissionUsedTextures.has(texture)) {
+            this.deferredTextureDestructions.add(texture);
+            return;
+        }
+        texture.destroy();
     }
 
     private createVideoUploadState(
@@ -1276,10 +1335,96 @@ export default class WebGPUTextureManager {
         });
     }
 
-    private createDestroyListener(texture: Texture<unknown>): EventListener {
+    private createDestroyObserver(
+        texture: Texture<unknown>,
+        destroyToken: object
+    ): TextureDestroyObserver {
         return () => {
-            this.destroy(texture);
+            if (this.resourcesByTexture.get(texture)?.destroyToken !== destroyToken) return;
+            this.releaseTextureResource(texture);
         };
+    }
+
+    private registerExternalOwner(
+        texture: Texture<unknown>,
+        invalidate: (recoverImmediately: boolean) => void,
+        ensure: () => void
+    ): void {
+        const existing = this.externalTextureOwners.get(texture);
+        if (existing) {
+            if (existing.invalidate === invalidate && existing.ensure === ensure) return;
+            throw new TypeError(
+                `Texture ${texture.id} already belongs to another WebGPU external resource owner`
+            );
+        }
+        const observer: TextureDestroyObserver = () => {
+            this.invalidateExternalOwner(texture, true, owner);
+        };
+        const owner: ExternalTextureOwner = { invalidate, ensure, observer, handling: false };
+        this.externalTextureOwners.set(texture, owner);
+        observeTextureDestroy(texture, observer);
+    }
+
+    private unregisterExternalOwner(texture: Texture<unknown>): void {
+        const owner = this.externalTextureOwners.get(texture);
+        if (!owner) return;
+        unobserveTextureDestroy(texture, owner.observer);
+        this.externalTextureOwners.delete(texture);
+    }
+
+    private ensureExternalOwnerResource(texture: Texture<unknown>): void {
+        const owner = this.externalTextureOwners.get(texture);
+        if (!owner) return;
+        if (owner.handling) {
+            throw new Error(
+                `Texture ${texture.id} WebGPU external owner is already handling an allocation change`
+            );
+        }
+        owner.handling = true;
+        try {
+            owner.ensure();
+        } finally {
+            owner.handling = false;
+        }
+    }
+
+    private invalidateExternalOwner(
+        texture: Texture<unknown>,
+        recoverImmediately: boolean,
+        expectedOwner?: ExternalTextureOwner
+    ): boolean {
+        const owner = this.externalTextureOwners.get(texture);
+        if (!owner || owner.handling || (expectedOwner && owner !== expectedOwner)) return false;
+        owner.handling = true;
+        try {
+            // Release the current manager mapping before asking the owner to rebuild. A resource
+            // observer that remains in Texture.destroy()'s snapshot is protected by its allocation
+            // token and therefore cannot release the replacement.
+            this.releaseTextureResource(texture);
+            owner.invalidate(recoverImmediately);
+            return true;
+        } finally {
+            owner.handling = false;
+        }
+    }
+
+    private invalidateAllExternalOwners(recoverImmediately: boolean): void {
+        const errors: unknown[] = [];
+        for (const [texture, owner] of [...this.externalTextureOwners]) {
+            if (this.externalTextureOwners.get(texture) !== owner || owner.handling) continue;
+            owner.handling = true;
+            try {
+                owner.invalidate(recoverImmediately);
+            } catch (error: unknown) {
+                errors.push(error);
+            } finally {
+                owner.handling = false;
+            }
+        }
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) {
+            throw new AggregateError(errors, 'WebGPU external texture invalidation failed');
+        }
     }
 
     private observeRecoverableTexture(texture: Texture<unknown>): void {
@@ -1291,22 +1436,24 @@ export default class WebGPUTextureManager {
             if (owner.texture.deref() === undefined) listenerOwners.delete(owner);
         }
         const textureReference = new WeakRef(texture);
-        const listener: EventListener = () => {
+        const observer: TextureDestroyObserver = () => {
             const observedTexture = textureReference.deref();
             if (!observedTexture) return;
             backings.delete(observedTexture);
             const owner = listenersByTexture.get(observedTexture);
             listenersByTexture.delete(observedTexture);
             if (owner) listenerOwners.delete(owner);
+            unobserveTextureDestroy(observedTexture, observer);
         };
-        const owner = { texture: textureReference, listener };
+        const owner = { texture: textureReference, observer };
         this.recoveryDestroyListeners.set(texture, owner);
         this.recoveryListenerOwners.add(owner);
-        texture.on('destroy', listener, true);
+        observeTextureDestroy(texture, observer);
     }
 
     private track(texture: Texture<unknown>, resource: InternalTextureResource): void {
-        texture.on('destroy', resource.destroyListener);
+        this.deferredTextureDestructions.delete(resource.gpuTexture);
+        observeTextureDestroy(texture, resource.destroyObserver);
         this.resourcesByTexture.set(texture, resource);
         this.liveResources.add(resource);
         let nativeRecord = this.nativeTextures.get(resource.gpuTexture);
@@ -1320,7 +1467,7 @@ export default class WebGPUTextureManager {
     }
 
     private releaseResource(resource: InternalTextureResource, notify = true): void {
-        resource.sourceTexture.off('destroy', resource.destroyListener);
+        unobserveTextureDestroy(resource.sourceTexture, resource.destroyObserver);
         this.disposeVideoUploadState(resource.videoUpload);
         this.liveResources.delete(resource);
         resource.snapshots.clear();
@@ -1332,10 +1479,10 @@ export default class WebGPUTextureManager {
             nativeRecord.resources.delete(resource);
             if (nativeRecord.resources.size === 0) {
                 this.nativeTextures.delete(resource.gpuTexture);
-                if (nativeRecord.owned) resource.gpuTexture.destroy();
+                if (nativeRecord.owned) this.destroyNativeTexture(resource.gpuTexture);
             }
         } else if (resource.owned) {
-            resource.gpuTexture.destroy();
+            this.destroyNativeTexture(resource.gpuTexture);
         }
         if (notify) this.onResourceDestroyed?.();
     }
@@ -1371,9 +1518,11 @@ export default class WebGPUTextureManager {
         }
         const key = JSON.stringify(samplerDescriptor);
         let sampler = this.samplers.get(key);
-        if (!sampler) {
+        if (sampler) {
+            touchBoundedLruEntry(this.samplers, key, sampler, MAX_CACHED_WEBGPU_SAMPLERS);
+        } else {
             sampler = this.device.createSampler(samplerDescriptor);
-            this.samplers.set(key, sampler);
+            touchBoundedLruEntry(this.samplers, key, sampler, MAX_CACHED_WEBGPU_SAMPLERS);
         }
         return { key, sampler };
     }
@@ -1383,8 +1532,17 @@ export default class WebGPUTextureManager {
         samplerKey: string,
         sampler: GPUSampler
     ): WebGPUTextureResource {
+        if (this.submissionActive) this.submissionUsedTextures.add(resource.gpuTexture);
         const cached = resource.snapshots.get(samplerKey);
-        if (cached) return cached;
+        if (cached?.sampler === sampler) {
+            touchBoundedLruEntry(
+                resource.snapshots,
+                samplerKey,
+                cached,
+                MAX_CACHED_WEBGPU_TEXTURE_SNAPSHOTS
+            );
+            return cached;
+        }
         const snapshot: WebGPUTextureResource = Object.freeze({
             textureId: resource.textureId,
             gpuTexture: resource.gpuTexture,
@@ -1397,7 +1555,12 @@ export default class WebGPUTextureManager {
             mipLevelCount: resource.mipLevelCount,
             dimension: resource.dimension
         });
-        resource.snapshots.set(samplerKey, snapshot);
+        touchBoundedLruEntry(
+            resource.snapshots,
+            samplerKey,
+            snapshot,
+            MAX_CACHED_WEBGPU_TEXTURE_SNAPSHOTS
+        );
         return snapshot;
     }
 
@@ -1580,9 +1743,11 @@ export default class WebGPUTextureManager {
                           stagePresentedVideoFrame
                       )
                     : null;
+            const destroyToken = {};
             const resource: InternalTextureResource = {
                 sourceTexture: texture,
-                destroyListener: this.createDestroyListener(texture),
+                destroyObserver: this.createDestroyObserver(texture, destroyToken),
+                destroyToken,
                 textureId: texture.id,
                 gpuTexture,
                 view: gpuTexture.createView(
@@ -1603,6 +1768,7 @@ export default class WebGPUTextureManager {
                 mipLevelCount: descriptor.mipLevelCount,
                 dimension: descriptor.dimension,
                 descriptor,
+                defaultCompare: undefined,
                 videoUpload,
                 snapshots: new Map(),
                 owned: true,
@@ -2233,6 +2399,15 @@ export default class WebGPUTextureManager {
             texture.needDestroy = false;
         }
         let resource = this.resourcesByTexture.get(texture);
+        if (!resource && this.externalTextureOwners.has(texture)) {
+            this.ensureExternalOwnerResource(texture);
+            resource = this.resourcesByTexture.get(texture);
+            if (!resource) {
+                throw new Error(
+                    `Texture ${texture.id} is owned by an unavailable WebGPU external resource`
+                );
+            }
+        }
         let backing = this.recoverableBackings.get(texture);
         const sharedBacking = getTextureRecoveryBacking(texture);
         if (!texture.isImageReleased && !sharedBacking && backing) {
@@ -2283,6 +2458,11 @@ export default class WebGPUTextureManager {
             resource?.videoUpload?.source === sourceImage &&
             (resource.videoUpload.presentedFrame > 0 || resource.videoUpload.pendingPresentation);
         if (resourceSourceChanged || (resource && resource.descriptor.key !== descriptor.key)) {
+            if (this.externalTextureOwners.has(texture)) {
+                throw new TypeError(
+                    `Texture ${texture.id} cannot change the allocation descriptor owned by its WebGPU external resource`
+                );
+            }
             if (texture.isImageReleased) {
                 throw new Error(
                     `Texture ${texture.id} cannot recreate a changed WebGPU allocation after its image was released`
@@ -2376,6 +2556,19 @@ export default class WebGPUTextureManager {
         gpuTexture: GPUTexture,
         options: WebGPUExternalTextureOptions = {}
     ): WebGPUTextureResource {
+        if (this.externalTextureOwners.has(texture)) {
+            throw new TypeError(
+                `Texture ${texture.id} is owned by a WebGPU render target and cannot be replaced through registerExternal()`
+            );
+        }
+        return this.registerExternalResource(texture, gpuTexture, options);
+    }
+
+    private registerExternalResource(
+        texture: Texture<unknown>,
+        gpuTexture: GPUTexture,
+        options: WebGPUExternalTextureOptions
+    ): WebGPUTextureResource {
         if (texture.needDestroy) {
             if (texture.isImageReleased) {
                 throw new Error(
@@ -2434,9 +2627,11 @@ export default class WebGPUTextureManager {
                     arrayLayerCount: descriptor.layers
                 }
               : { dimension: descriptor.is3D ? '3d' : '2d' };
+        const destroyToken = {};
         const resource: InternalTextureResource = {
             sourceTexture: texture,
-            destroyListener: this.createDestroyListener(texture),
+            destroyObserver: this.createDestroyObserver(texture, destroyToken),
+            destroyToken,
             textureId: texture.id,
             gpuTexture,
             view: gpuTexture.createView({
@@ -2450,6 +2645,7 @@ export default class WebGPUTextureManager {
             mipLevelCount: descriptor.mipLevelCount,
             dimension: expectedDimension,
             descriptor,
+            defaultCompare: options.compare,
             videoUpload: null,
             snapshots: new Map(),
             owned: options.takeOwnership ?? true,
@@ -2467,7 +2663,7 @@ export default class WebGPUTextureManager {
      * validation step leaves every previous registration live and destroys only newly supplied
      * owned GPU textures.
      */
-    replaceExternalBatch(
+    private replaceExternalBatch(
         registrations: readonly WebGPUExternalTextureRegistration[]
     ): readonly WebGPUTextureResource[] {
         if (registrations.length === 0) return [];
@@ -2541,6 +2737,11 @@ export default class WebGPUTextureManager {
     }
 
     destroy(texture: Texture<unknown>): void {
+        if (this.invalidateExternalOwner(texture, true)) return;
+        this.releaseTextureResource(texture);
+    }
+
+    private releaseTextureResource(texture: Texture<unknown>): void {
         const resource = this.resourcesByTexture.get(texture);
         if (!resource) return;
         this.releaseResource(resource);
@@ -2558,12 +2759,13 @@ export default class WebGPUTextureManager {
     }
 
     /** @internal Drop device allocations while retaining CPU recovery backings. */
-    suspendAll(): void {
+    private suspendAll(): void {
         this.releaseDeviceAllocations();
+        this.invalidateAllExternalOwners(false);
     }
 
     /** @internal Rebind an empty manager to a replacement device after loss. */
-    restoreDevice(device: GPUDevice): void {
+    private restoreDevice(device: GPUDevice): void {
         if (this.liveResources.size > 0) {
             throw new Error('WebGPUTextureManager must be suspended before replacing its device');
         }
@@ -2574,15 +2776,31 @@ export default class WebGPUTextureManager {
         this.samplers.clear();
     }
 
-    /** Destroy every GPU allocation and release private CPU recovery backings. */
+    /**
+     * Destroy every GPU allocation and release private CPU recovery backings. Renderer-owned
+     * attachment identities remain registered and recover lazily on their next target/material use.
+     */
     destroyAll(): void {
+        if (this.submissionActive) {
+            throw new Error(
+                'WebGPU texture allocations cannot be destroyed while a submission is active'
+            );
+        }
         this.releaseDeviceAllocations();
+        let ownerInvalidationError: unknown;
+        let ownerInvalidationFailed = false;
+        try {
+            this.invalidateAllExternalOwners(false);
+        } catch (error: unknown) {
+            ownerInvalidationError = error;
+            ownerInvalidationFailed = true;
+        }
         const backings = this.recoverableBackings;
         const listenersByTexture = this.recoveryDestroyListeners;
         for (const owner of this.recoveryListenerOwners) {
             const texture = owner.texture.deref();
             if (!texture) continue;
-            texture.off('destroy', owner.listener);
+            unobserveTextureDestroy(texture, owner.observer);
             backings.delete(texture);
             listenersByTexture.delete(texture);
         }
@@ -2592,5 +2810,114 @@ export default class WebGPUTextureManager {
             Texture<unknown>,
             RecoverableTextureListenerOwner
         >();
+        this.submissionActive = false;
+        this.submissionUsedTextures = new WeakSet();
+        for (const texture of this.deferredTextureDestructions) texture.destroy();
+        this.deferredTextureDestructions.clear();
+        if (ownerInvalidationFailed) {
+            if (ownerInvalidationError instanceof Error) throw ownerInvalidationError;
+            throw new Error('WebGPU external texture invalidation failed', {
+                cause: ownerInvalidationError
+            });
+        }
     }
+}
+
+interface WebGPUTextureInternalAccess {
+    beginSubmission(): void;
+    endSubmission(): void;
+    suspendAll(): void;
+    restoreDevice(device: GPUDevice): void;
+    defaultCompareFor(texture: Texture<unknown>): GLenum | GPUCompareFunction | undefined;
+    registerExternalResource(
+        texture: Texture<unknown>,
+        gpuTexture: GPUTexture,
+        options: WebGPUExternalTextureOptions
+    ): WebGPUTextureResource;
+    replaceExternalBatch(
+        registrations: readonly WebGPUExternalTextureRegistration[]
+    ): readonly WebGPUTextureResource[];
+    releaseTextureResource(texture: Texture<unknown>): void;
+    registerExternalOwner(
+        texture: Texture<unknown>,
+        invalidate: (recoverImmediately: boolean) => void,
+        ensure: () => void
+    ): void;
+    unregisterExternalOwner(texture: Texture<unknown>): void;
+}
+
+function internalAccess(manager: WebGPUTextureManager): WebGPUTextureInternalAccess {
+    return manager as unknown as WebGPUTextureInternalAccess;
+}
+
+/** Begin renderer-owned texture submission tracking. @internal */
+export function beginWebGPUTextureSubmission(manager: WebGPUTextureManager): void {
+    internalAccess(manager).beginSubmission();
+}
+
+/** End renderer-owned texture submission tracking. @internal */
+export function endWebGPUTextureSubmission(manager: WebGPUTextureManager): void {
+    internalAccess(manager).endSubmission();
+}
+
+/** Drop device allocations while retaining CPU recovery state and target ownership. @internal */
+export function suspendWebGPUTextures(manager: WebGPUTextureManager): void {
+    internalAccess(manager).suspendAll();
+}
+
+/** Rebind a suspended manager to a replacement device. @internal */
+export function restoreWebGPUTextureDevice(manager: WebGPUTextureManager, device: GPUDevice): void {
+    internalAccess(manager).restoreDevice(device);
+}
+
+/** Resolve a renderer-owned depth attachment's comparison default. @internal */
+export function getWebGPUTextureDefaultCompare(
+    manager: WebGPUTextureManager,
+    texture: Texture<unknown>
+): GLenum | GPUCompareFunction | undefined {
+    return internalAccess(manager).defaultCompareFor(texture);
+}
+
+/** Register the sole renderer owner of an external texture identity. @internal */
+export function registerWebGPUExternalTextureOwner(
+    manager: WebGPUTextureManager,
+    texture: Texture<unknown>,
+    invalidate: (recoverImmediately: boolean) => void,
+    ensure: () => void
+): void {
+    internalAccess(manager).registerExternalOwner(texture, invalidate, ensure);
+}
+
+/** Release renderer ownership without destroying the current allocation. @internal */
+export function unregisterWebGPUExternalTextureOwner(
+    manager: WebGPUTextureManager,
+    texture: Texture<unknown>
+): void {
+    internalAccess(manager).unregisterExternalOwner(texture);
+}
+
+/** Register a renderer-owned native texture without crossing the public owner guard. @internal */
+export function registerWebGPUExternalTexture(
+    manager: WebGPUTextureManager,
+    texture: Texture<unknown>,
+    gpuTexture: GPUTexture,
+    options: WebGPUExternalTextureOptions
+): WebGPUTextureResource {
+    return internalAccess(manager).registerExternalResource(texture, gpuTexture, options);
+}
+
+/** Atomically replace renderer-owned native texture registrations. @internal */
+export function replaceWebGPUExternalTextureBatch(
+    manager: WebGPUTextureManager,
+    registrations: readonly WebGPUExternalTextureRegistration[]
+): readonly WebGPUTextureResource[] {
+    return internalAccess(manager).replaceExternalBatch(registrations);
+}
+
+/** Release one native mapping without invalidating its renderer owner. @internal */
+export function releaseWebGPUTextureResource(
+    manager: WebGPUTextureManager,
+    texture: Texture<unknown>
+): void {
+    internalAccess(manager).releaseTextureResource(texture);
 }

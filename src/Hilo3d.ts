@@ -95,10 +95,10 @@ export {
     type SphereGeometryParameters
 } from './geometry/SphereGeometry';
 
-export { default as Buffer, type BufferData, type BufferRenderer } from './renderer/Buffer';
-export { WebGLCapabilities, type NumericCapabilityName } from './renderer/capabilities';
-export { WebGLExtensions } from './renderer/extensions';
-export { default as glType } from './renderer/glType';
+export { default as Buffer, type BufferData, type BufferRenderer } from './renderer/webgl/Buffer';
+export { WebGLCapabilities, type NumericCapabilityName } from './renderer/webgl/capabilities';
+export { WebGLExtensions } from './renderer/webgl/extensions';
+export { default as glType } from './renderer/webgl/glType';
 export {
     type AttributePointerParameters,
     default as Program,
@@ -109,9 +109,9 @@ export {
     type ProgramUniform,
     type ProgramUniformBlock,
     ShaderCompilationError
-} from './renderer/Program';
-export { default as RenderInfo } from './renderer/RenderInfo';
-export { default as RenderList } from './renderer/RenderList';
+} from './renderer/webgl/Program';
+export { default as RenderInfo } from './renderer/common/RenderInfo';
+export { default as RenderList } from './renderer/common/RenderList';
 export type {
     RenderTarget,
     RenderTargetColor,
@@ -127,12 +127,12 @@ export type {
     RenderTargetSampleCount,
     RenderTargetSelectionOptions,
     RenderTargetStoreOp
-} from './renderer/RenderTarget';
+} from './renderer/common/RenderTarget';
 export {
     default as UniformBuffer,
     type UniformBufferDirtyRange,
     type UniformBufferRange
-} from './renderer/UniformBuffer';
+} from './renderer/common/UniformBuffer';
 export {
     createStd140Layout,
     Std140Layout,
@@ -147,31 +147,31 @@ export {
     type Std140Value,
     type Std140Values,
     type Std140VectorType
-} from './renderer/ubo/Std140Layout';
+} from './renderer/common/ubo/Std140Layout';
 export {
     BUILTIN_UNIFORM_BLOCK_BINDING_COUNT,
     getUniformBlockBinding,
     registerUniformBlockBinding,
     UNIFORM_BLOCK_BINDINGS
-} from './renderer/ubo/UniformBlockBindings';
+} from './renderer/common/ubo/UniformBlockBindings';
 export {
     type AttributeObject,
     default as VertexArrayObject,
     type VertexArrayObjectParameters,
     type VaoRenderer
-} from './renderer/VertexArrayObject';
+} from './renderer/webgl/VertexArrayObject';
 export {
     type MeshSetup,
     default as WebGLRenderer,
     type WebGLRendererParameters,
     type WebGLRendererScene
-} from './renderer/WebGLRenderer';
-export { default as WebGLRenderTarget } from './renderer/WebGLRenderTarget';
+} from './renderer/webgl/WebGLRenderer';
+export { default as WebGLRenderTarget } from './renderer/webgl/WebGLRenderTarget';
 export {
     default as WebGPURenderer,
     type WebGPUDeviceRecoveryState,
     type WebGPURendererParameters
-} from './renderer/WebGPURenderer';
+} from './renderer/webgpu/WebGPURenderer';
 export {
     WEBGPU_BYTES_PER_ROW_ALIGNMENT,
     type WebGPUColorAttachmentOperations,
@@ -201,12 +201,14 @@ export {
 export type {
     Renderer,
     RendererBackend,
+    RendererFrame,
+    RendererFrameCallback,
     RendererResourceDiagnostics,
     RendererResourceManager,
     RendererScene,
     RendererViewport,
     TextureCompressionFormat
-} from './renderer/Renderer';
+} from './renderer/common/Renderer';
 export {
     getWebGPUUniformBlockBinding,
     registerWebGPUCustomUniformBlockBinding,
@@ -220,7 +222,7 @@ export {
     type GraphicsResourceManagerParameters,
     type ManagedResource,
     type MeshResourceVariant
-} from './renderer/GraphicsResourceManager';
+} from './renderer/common/GraphicsResourceManager';
 export {
     type FourParameterMethod,
     type OneParameterMethod,
@@ -228,10 +230,8 @@ export {
     type ThreeParameterMethod,
     type TwoParameterMethod,
     default as WebGLState
-} from './renderer/WebGLState';
+} from './renderer/webgl/WebGLState';
 export type {
-    GLContext,
-    GLTypeInfo,
     Resource,
     ShaderDefineValue,
     ShaderOptions,
@@ -242,9 +242,9 @@ export type {
     TextureSource,
     TextureSubImage,
     TypedArray,
-    TypedArrayConstructor,
-    VertexAttributeInfo
-} from './renderer/types';
+    TypedArrayConstructor
+} from './renderer/common/types';
+export type { GLContext, GLTypeInfo, VertexAttributeInfo } from './renderer/webgl/WebGLTypes';
 
 export {
     default as BasicLoader,
@@ -319,8 +319,7 @@ export {
     type TextureParameters,
     type TextureUpdateSnapshot,
     type ResizableTextureImage,
-    type TextureUVChannel,
-    type TextureWebGLState
+    type TextureUVChannel
 } from './texture/Texture';
 
 export {
@@ -344,7 +343,7 @@ export {
     type WebGPUSamplerBinding,
     type WebGPUUniformBlock,
     type WebGPUVertexInput
-} from './shader/GlslToWgsl';
+} from './renderer/webgpu/shader/GlslToWgsl';
 
 export {
     type BasicLightType,

@@ -14,19 +14,15 @@ import {
     SRC_ALPHA,
     ZERO
 } from '../constants/webgl';
-import Texture, { type TextureBinding } from '../texture/Texture';
+import Texture from '../texture/Texture';
 import type Color from '../math/Color';
 import type Matrix3 from '../math/Matrix3';
 import type Mesh from '../core/Mesh';
-import type UniformBuffer from '../renderer/UniformBuffer';
-import type { GLTypeInfo, ShaderOptions } from '../renderer/types';
+import type UniformBuffer from '../renderer/common/UniformBuffer';
+import type { ShaderOptions } from '../renderer/common/types';
 export interface ProgramBindingInfo {
     textureIndex?: number;
     name?: string;
-    location?: GLint | WebGLUniformLocation | null;
-    type?: GLenum;
-    size?: GLint;
-    glTypeInfo?: GLTypeInfo;
 }
 
 export interface MaterialBindingInfo {
@@ -43,10 +39,7 @@ export interface MaterialShaderSource {
     fs: string;
 }
 export type MaterialBeforeCompile = (vs: string, fs: string) => MaterialShaderSource;
-export interface MaterialTexture extends TextureBinding {
-    readonly mipmapCount: number;
-    destroy(): void;
-}
+export type MaterialTexture = Texture<unknown>;
 export type MaterialTextureValue = MaterialTexture | Color | null;
 
 export interface MaterialParameters {

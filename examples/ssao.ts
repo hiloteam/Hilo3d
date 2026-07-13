@@ -335,21 +335,23 @@ const ssaoPipeline: Hilo3d.Tickable = {
         stage.traverseUpdate(deltaTime);
         resizePipelineTargets();
 
-        const previousMaterial = renderer.forceMaterial;
-        try {
-            renderer.forceMaterial = positionMaterial;
-            renderer.renderToTarget(positionTarget, stage, camera, false);
-            renderer.forceMaterial = normalMaterial;
-            renderer.renderToTarget(normalTarget, stage, camera, false);
-            renderer.forceMaterial = depthMaterial;
-            renderer.renderToTarget(depthTarget, stage, camera, false);
-        } finally {
-            renderer.forceMaterial = previousMaterial;
-        }
+        renderer.renderFrame(() => {
+            const previousMaterial = renderer.forceMaterial;
+            try {
+                renderer.forceMaterial = positionMaterial;
+                renderer.renderToTarget(positionTarget, stage, camera, false);
+                renderer.forceMaterial = normalMaterial;
+                renderer.renderToTarget(normalTarget, stage, camera, false);
+                renderer.forceMaterial = depthMaterial;
+                renderer.renderToTarget(depthTarget, stage, camera, false);
+            } finally {
+                renderer.forceMaterial = previousMaterial;
+            }
 
-        samplingPass.render(ssaoTarget);
-        blurPass.render(outputTarget);
-        renderer.present(outputTarget);
+            samplingPass.render(ssaoTarget);
+            blurPass.render(outputTarget);
+            renderer.present(outputTarget);
+        });
     }
 };
 

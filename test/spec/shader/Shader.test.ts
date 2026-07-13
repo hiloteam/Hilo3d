@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import type { ShaderRenderer } from '../../../src/shader/Shader';
 import { testEnv } from '../../setup';
@@ -16,12 +16,13 @@ describe('Shader', () => {
     });
 
     it('getHeaderKey', () => {
-        const { mesh, material, renderer, geometry, fog } = testEnv;
+        const { mesh, material, renderer, fog } = testEnv;
         const lightManager = renderer.lightManager;
         const key = Shader.getHeaderKey(mesh, material, lightManager, fog, false);
-        expect(key).toBe(
-            `header_${material.id}_${lightManager.lightInfo.uid}_fog_${fog.mode}_${geometry.getShaderKey()}`
-        );
+        expect(key).toMatch(/^h:[\da-f]{16}$/);
+        expect(Shader.getHeaderKey(mesh, material, lightManager, fog, false)).toBe(key);
+        expect(key).not.toContain(material.id);
+        expect(key.length).toBeLessThan(24);
     });
 
     it('getHeader', () => {
@@ -307,10 +308,203 @@ void main(){}`);
         }
     });
 
+    it('keys material and light structural revisions without reusing stale macros', () => {
+        const material = new Hilo3d.BasicMaterial({ lightType: 'PHONG' });
+        const mesh = new Hilo3d.Mesh({
+            geometry: new Hilo3d.Geometry(),
+            material
+        });
+        const lightManager = new Hilo3d.LightManager();
+        lightManager.lightInfo.POINT_LIGHTS = 1;
+
+        const firstKey = Shader.getHeaderKey(mesh, material, lightManager, null, false);
+        const firstHeader = Shader.getHeader(mesh, material, lightManager, null, false);
+        material.receiveShadows = false;
+        lightManager.lightInfo.POINT_LIGHTS = 2;
+        material.isDirty = true;
+        lightManager.lightInfo.uid = 'point-lights-2';
+        const secondKey = Shader.getHeaderKey(mesh, material, lightManager, null, false);
+        const secondHeader = Shader.getHeader(mesh, material, lightManager, null, false);
+
+        expect(secondKey).not.toBe(firstKey);
+        expect(firstHeader).toContain('#define HILO_POINT_LIGHTS 1');
+        expect(firstHeader).toContain('#define HILO_RECEIVE_SHADOWS 1');
+        expect(secondHeader).toContain('#define HILO_POINT_LIGHTS 2');
+        expect(secondHeader).not.toContain('HILO_RECEIVE_SHADOWS');
+    });
+
+    it('skips render-option collection on the stable draw hot path', () => {
+        const getCustomRenderOption = vi.fn(() => ({ STABLE_VARIANT: 1 }));
+        const material = new ShaderMaterial({ getCustomRenderOption });
+        const geometry = new Hilo3d.Geometry();
+        const mesh = new Hilo3d.Mesh({ geometry, material });
+        const lightManager = new Hilo3d.LightManager();
+        const fog = new Hilo3d.Fog();
+
+        const first = Shader.getHeader(mesh, material, lightManager, fog, false);
+        const second = Shader.getHeader(mesh, material, lightManager, fog, false);
+        expect(second).toBe(first);
+        expect(getCustomRenderOption).toHaveBeenCalledTimes(1);
+
+        material.isDirty = true;
+        expect(Shader.getHeader(mesh, material, lightManager, fog, false)).toBe(first);
+        expect(getCustomRenderOption).toHaveBeenCalledTimes(2);
+
+        geometry.isDirty = true;
+        expect(Shader.getHeader(mesh, material, lightManager, fog, false)).toBe(first);
+        expect(getCustomRenderOption).toHaveBeenCalledTimes(3);
+
+        lightManager.lightInfo.uid = 'structural-light-edit';
+        expect(Shader.getHeader(mesh, material, lightManager, fog, false)).toBe(first);
+        expect(getCustomRenderOption).toHaveBeenCalledTimes(4);
+    });
+
+    it('recompiles callbacks by revision but caches their final GLSL variant', () => {
+        let injectedValue = 1;
+        const onBeforeCompile = vi.fn((vs: string, fs: string) => ({
+            vs: `${vs}\n#define CALLBACK_VALUE ${String(injectedValue)}`,
+            fs
+        }));
+        const material = new Hilo3d.BasicMaterial({ lightType: 'NONE', onBeforeCompile });
+        const header = '#define HILO_LIGHT_TYPE_NONE 1\n';
+
+        const first = Shader.getBasicShader(material, false, header, testEnv.renderer);
+        material.isDirty = true;
+        const sameSource = Shader.getBasicShader(material, false, header, testEnv.renderer);
+        injectedValue = 2;
+        material.isDirty = true;
+        const changedSource = Shader.getBasicShader(material, false, header, testEnv.renderer);
+
+        expect(onBeforeCompile).toHaveBeenCalledTimes(3);
+        expect(sameSource).toBe(first);
+        expect(changedSource).not.toBe(first);
+        expect(changedSource.vs).toContain('#define CALLBACK_VALUE 2');
+    });
+
+    it('rejects non-finite shader options', () => {
+        const optionName = 'NON_FINITE_TEST';
+        const material = new Hilo3d.BasicMaterial({ lightType: 'NONE' });
+        const mesh = new Hilo3d.Mesh({ geometry: new Hilo3d.Geometry(), material });
+
+        try {
+            Shader.commonOptions[optionName] = Number.POSITIVE_INFINITY;
+            expect(() =>
+                Shader.getHeader(mesh, material, testEnv.renderer.lightManager, null, false)
+            ).toThrow(`Shader option ${optionName} must be finite`);
+            Shader.commonOptions[optionName] = Number.NaN;
+            expect(() =>
+                Shader.getHeader(mesh, material, testEnv.renderer.lightManager, null, false)
+            ).toThrow(`Shader option ${optionName} must be finite`);
+        } finally {
+            Reflect.deleteProperty(Shader.commonOptions, optionName);
+        }
+    });
+
+    it('bounds header and shader variant caches', () => {
+        const optionName = 'BOUNDED_HEADER_TEST';
+        const material = new Hilo3d.BasicMaterial({ lightType: 'NONE' });
+        const mesh = new Hilo3d.Mesh({ geometry: new Hilo3d.Geometry(), material });
+        Shader.reset();
+
+        try {
+            Shader.commonOptions[optionName] = 0;
+            const firstHeaderKey = Shader.getHeaderKey(
+                mesh,
+                material,
+                testEnv.renderer.lightManager,
+                null,
+                false
+            );
+            Shader.getHeader(mesh, material, testEnv.renderer.lightManager, null, false);
+            Shader.commonOptions[optionName] = 1;
+            const secondHeaderKey = Shader.getHeaderKey(
+                mesh,
+                material,
+                testEnv.renderer.lightManager,
+                null,
+                false
+            );
+            Shader.getHeader(mesh, material, testEnv.renderer.lightManager, null, false);
+            for (let index = 2; index < 1024; index++) {
+                Shader.commonOptions[optionName] = index;
+                Shader.getHeader(mesh, material, testEnv.renderer.lightManager, null, false);
+            }
+            Shader.commonOptions[optionName] = 0;
+            Shader.getHeader(mesh, material, testEnv.renderer.lightManager, null, false);
+            Shader.commonOptions[optionName] = 1024;
+            Shader.getHeader(mesh, material, testEnv.renderer.lightManager, null, false);
+
+            let headerCount = 0;
+            Shader.headerCache.each(() => headerCount++);
+            expect(headerCount).toBeLessThanOrEqual(1024);
+            expect(Shader.headerCache.get(firstHeaderKey)).toBeTypeOf('string');
+            expect(Shader.headerCache.get(secondHeaderKey)).toBeUndefined();
+
+            const firstShader = Shader.getCustomShader('', '', '', 'bounded-shader-0');
+            const secondShader = Shader.getCustomShader('', '', '', 'bounded-shader-1');
+            for (let index = 2; index < 2048; index++) {
+                Shader.getCustomShader('', '', '', `bounded-shader-${String(index)}`);
+            }
+            expect(Shader.getCustomShader('', '', '', 'bounded-shader-0')).toBe(firstShader);
+            Shader.getCustomShader('', '', '', 'bounded-shader-2048');
+
+            let shaderCount = 0;
+            Shader.cache.each(() => shaderCount++);
+            expect(shaderCount).toBeLessThanOrEqual(2048);
+            expect(Shader.cache.getObject(firstShader)).toBe(firstShader);
+            expect(Shader.cache.getObject(secondShader)).toBeUndefined();
+        } finally {
+            Reflect.deleteProperty(Shader.commonOptions, optionName);
+            Shader.reset();
+        }
+    });
+
+    it('does not let a pre-reset shader release a new cache generation', () => {
+        const stale = Shader.getCustomShader('', '', '', 'reset-generation');
+        Shader.reset();
+        const current = Shader.getCustomShader('', '', '', 'reset-generation');
+
+        stale.destroy();
+
+        expect(Shader.cache.getObject(current)).toBe(current);
+        expect(Shader.getCustomShader('', '', '', 'reset-generation')).toBe(current);
+    });
+
+    it('does not reuse an explicit custom cache ID for different GLSL sources', () => {
+        const first = Shader.getCustomShader(
+            'void main(){ gl_Position = vec4(0.0); }',
+            'out vec4 color; void main(){ color = vec4(1.0); }',
+            '',
+            'same-explicit-id'
+        );
+        const repeated = Shader.getCustomShader(
+            'void main(){ gl_Position = vec4(0.0); }',
+            'out vec4 color; void main(){ color = vec4(1.0); }',
+            '',
+            'same-explicit-id'
+        );
+        const changed = Shader.getCustomShader(
+            'void main(){ gl_Position = vec4(1.0); }',
+            'out vec4 color; void main(){ color = vec4(0.0); }',
+            '',
+            'same-explicit-id'
+        );
+
+        expect(repeated).toBe(first);
+        expect(changed).not.toBe(first);
+        expect(changed.vs).toContain('gl_Position = vec4(1.0)');
+        expect(changed.fs).toContain('color = vec4(0.0)');
+    });
+
     it('cache', () => {
         const shader = Shader.getCustomShader('', '', '', 'testCustomId');
         expect(Shader.cache.getObject(shader)).toBe(shader);
-        Shader.reset();
+        shader.destroy();
         expect(Shader.cache.getObject(shader)).toBeUndefined();
+        const recreated = Shader.getCustomShader('', '', '', 'testCustomId');
+        expect(recreated).not.toBe(shader);
+        expect(Shader.cache.getObject(recreated)).toBe(recreated);
+        Shader.reset();
+        expect(Shader.cache.getObject(recreated)).toBeUndefined();
     });
 });

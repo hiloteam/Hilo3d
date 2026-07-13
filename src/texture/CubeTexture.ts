@@ -1,16 +1,5 @@
-import Texture, {
-    isTextureImageSource,
-    type TextureImageSource,
-    type TextureParameters,
-    type TextureWebGLState
-} from './Texture';
-import {
-    CLAMP_TO_EDGE,
-    LINEAR,
-    RGB,
-    TEXTURE_CUBE_MAP,
-    TEXTURE_CUBE_MAP_POSITIVE_X
-} from '../constants/webgl';
+import Texture, { type TextureImageSource, type TextureParameters } from './Texture';
+import { CLAMP_TO_EDGE, LINEAR, RGB, TEXTURE_CUBE_MAP } from '../constants/webgl';
 import { RGB8 } from '../constants/webgl2';
 
 export type CubeTextureImage = (TextureImageSource | null)[];
@@ -71,44 +60,6 @@ class CubeTexture extends Texture<CubeTextureImage> {
             image: image ?? []
         });
     }
-    protected override _uploadTexture(state: TextureWebGLState): this {
-        const mipmaps = this.getWebGLUploadMipmaps();
-        if (this.useMipmap && mipmaps && mipmaps.length > 0) {
-            mipmaps.forEach((mipmap, entry) => {
-                const level = Math.floor(entry / 6);
-                const face = entry % 6;
-                this._glUploadTexture(
-                    state,
-                    TEXTURE_CUBE_MAP_POSITIVE_X + face,
-                    mipmap.data,
-                    level,
-                    mipmap.width,
-                    mipmap.height,
-                    1
-                );
-            });
-            return this;
-        }
-        const images = this.getWebGLUploadImage();
-        if (!Array.isArray(images) || images.length !== 6) {
-            throw new TypeError('CubeTexture requires exactly six image faces');
-        }
-        const firstImage = images[0];
-        if (firstImage instanceof HTMLImageElement) {
-            this.width = firstImage.width;
-            this.height = firstImage.height;
-        }
-        images.forEach((img, i) => {
-            if (img !== null && !isTextureImageSource(img)) {
-                throw new TypeError(
-                    `CubeTexture face ${String(i)} is not a supported WebGL texture source`
-                );
-            }
-            this._glUploadTexture(state, TEXTURE_CUBE_MAP_POSITIVE_X + i, img, 0);
-        });
-        return this;
-    }
-
     private getImage(index: number): HTMLImageElement | undefined {
         const image = this.image?.[index];
         return image instanceof HTMLImageElement ? image : undefined;

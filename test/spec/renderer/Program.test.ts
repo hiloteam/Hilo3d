@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import { cameraBlockLayout } from '../../../src/renderer/ubo/BuiltInUniformBlocks';
+import { cameraBlockLayout } from '../../../src/renderer/common/ubo/BuiltInUniformBlocks';
+import { releaseWebGLUniformBuffer } from '../../../src/renderer/webgl/WebGLState';
 import { testEnv } from '../../setup';
 
 const Program = Hilo3d.Program;
@@ -94,7 +95,7 @@ describe('Program', () => {
         expect(() => {
             program.setUniformBlock('CameraBlock', buffer);
         }).not.toThrow();
-        buffer.destroy();
+        releaseWebGLUniformBuffer(testEnv.state, buffer);
     });
 
     it('accepts driver reflection that removes an inactive canonical block tail', () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     BUILTIN_UNIFORM_BLOCK_BINDING_COUNT,
     registerUniformBlockBinding
-} from '../../../src/renderer/ubo/UniformBlockBindings';
+} from '../../../src/renderer/common/ubo/UniformBlockBindings';
 import {
     getWebGPUMaterialTextureBinding,
     getWebGPUUniformBlockBinding,

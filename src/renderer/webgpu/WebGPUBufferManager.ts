@@ -1,6 +1,6 @@
 import type GeometryData from '../../geometry/GeometryData';
-import type { WebGPUVertexInput } from '../../shader/GlslToWgsl';
-import type { TypedArray } from '../types';
+import type { WebGPUVertexInput } from './shader/GlslToWgsl';
+import type { TypedArray } from '../common/types';
 import { WebGPUBufferUsage } from './WebGPUConstants';
 
 export interface WebGPUVertexBufferBinding {
@@ -62,6 +62,7 @@ interface CachedIndexBuffer extends WebGPUIndexBufferBinding {
 
 interface CachedInstanceBuffer extends WebGPUVertexBufferBinding {
     byteLength: number;
+    data: Uint8Array;
 }
 
 interface InputShape {
@@ -630,6 +631,9 @@ export class WebGPUBufferManager {
     private readonly objectIds = new WeakMap<object, number>();
     private nextObjectId = 1;
     private readonly ownedBuffers = new Set<GPUBuffer>();
+    private submissionActive = false;
+    private submissionUsedBuffers = new WeakSet<GPUBuffer>();
+    private readonly deferredBufferDestructions = new Set<GPUBuffer>();
     readonly cacheLimits: Readonly<WebGPUBufferCacheLimits>;
 
     constructor(device: GPUDevice, cacheLimits: Partial<WebGPUBufferCacheLimits> = {}) {
@@ -653,9 +657,39 @@ export class WebGPUBufferManager {
         });
     }
 
+    /** Preserve every native buffer referenced by one pending command-buffer submission. */
+    beginSubmission(): void {
+        if (this.submissionActive) {
+            throw new Error('A WebGPU buffer submission is already active');
+        }
+        this.submissionActive = true;
+        this.submissionUsedBuffers = new WeakSet();
+    }
+
+    /** Release buffers evicted after use once their command buffer has been queued or abandoned. */
+    endSubmission(): void {
+        if (!this.submissionActive) return;
+        this.submissionActive = false;
+        for (const buffer of this.deferredBufferDestructions) {
+            buffer.destroy();
+            this.ownedBuffers.delete(buffer);
+        }
+        this.deferredBufferDestructions.clear();
+        this.submissionUsedBuffers = new WeakSet();
+    }
+
+    private markSubmissionUse(resource: { readonly buffer: GPUBuffer }): void {
+        if (this.submissionActive) this.submissionUsedBuffers.add(resource.buffer);
+    }
+
     private destroyCachedBuffer(resource: { readonly buffer: GPUBuffer }): void {
-        resource.buffer.destroy();
-        this.ownedBuffers.delete(resource.buffer);
+        const buffer = resource.buffer;
+        if (this.submissionActive && this.submissionUsedBuffers.has(buffer)) {
+            this.deferredBufferDestructions.add(buffer);
+            return;
+        }
+        buffer.destroy();
+        this.ownedBuffers.delete(buffer);
     }
 
     private touchVariant<Value>(variants: Map<string, Value>, key: string, value: Value): void {
@@ -725,6 +759,23 @@ export class WebGPUBufferManager {
         const variantKey = `${prepared.signature}:${cacheKey}`;
         let resource = variants.get(variantKey);
         const byteLength = packedByteLength(count, prepared.layout.arrayStride);
+        const resourceChanged =
+            resource !== undefined &&
+            (resource.byteLength !== byteLength ||
+                resource.structureKey !== structureKey ||
+                resource.sourceRevisions.some(
+                    (revision, index) => revision !== sourceRevisions[index]
+                ));
+        if (
+            resource !== undefined &&
+            resourceChanged &&
+            this.submissionActive &&
+            this.submissionUsedBuffers.has(resource.buffer)
+        ) {
+            throw new Error(
+                'Geometry data cannot change after its first use in one WebGPU submission'
+            );
+        }
         if (resource?.byteLength !== byteLength) {
             const data = packVertexSources(sources, prepared, count);
             const buffer = uploadNewBuffer(
@@ -733,8 +784,7 @@ export class WebGPUBufferManager {
                 WebGPUBufferUsage.VERTEX | WebGPUBufferUsage.COPY_DST,
                 data
             );
-            resource?.buffer.destroy();
-            if (resource) this.ownedBuffers.delete(resource.buffer);
+            if (resource) this.destroyCachedBuffer(resource);
             this.ownedBuffers.add(buffer);
             resource = {
                 buffer,
@@ -772,6 +822,7 @@ export class WebGPUBufferManager {
             resource.sourceRevisions = [...sourceRevisions];
             resource.count = count;
         }
+        this.markSubmissionUse(resource);
         this.touchVariant(variants, variantKey, resource);
         this.evictVariantOverflow(variants, this.cacheLimits.vertexVariantsPerOwner);
         return resource;
@@ -798,6 +849,22 @@ export class WebGPUBufferManager {
             this.indexBuffers.set(geometryData, variants);
         }
         let resource = variants.get(info.key);
+        const resourceChanged =
+            resource !== undefined &&
+            (resource.byteLength !== byteLength ||
+                resource.format !== info.format ||
+                resource.revision !== revision ||
+                resource.structureKey !== structureKey);
+        if (
+            resource !== undefined &&
+            resourceChanged &&
+            this.submissionActive &&
+            this.submissionUsedBuffers.has(resource.buffer)
+        ) {
+            throw new Error(
+                'Geometry data cannot change after its first use in one WebGPU submission'
+            );
+        }
         if (resource?.byteLength !== byteLength || resource.format !== info.format) {
             const data = packAllIndexData(geometryData, info);
             const buffer = uploadNewBuffer(
@@ -806,8 +873,7 @@ export class WebGPUBufferManager {
                 WebGPUBufferUsage.INDEX | WebGPUBufferUsage.COPY_DST,
                 data
             );
-            resource?.buffer.destroy();
-            if (resource) this.ownedBuffers.delete(resource.buffer);
+            if (resource) this.destroyCachedBuffer(resource);
             this.ownedBuffers.add(buffer);
             resource = {
                 buffer,
@@ -838,6 +904,7 @@ export class WebGPUBufferManager {
             resource.structureKey = structureKey;
             resource.count = geometryData.count;
         }
+        this.markSubmissionUse(resource);
         this.touchVariant(variants, info.key, resource);
         this.evictVariantOverflow(variants, this.cacheLimits.indexVariantsPerOwner);
         return resource;
@@ -862,6 +929,16 @@ export class WebGPUBufferManager {
             this.instanceBuffers.set(owner, variants);
         }
         let resource = variants.get(prepared.signature);
+        if (
+            resource?.byteLength !== data.byteLength &&
+            resource !== undefined &&
+            this.submissionActive &&
+            this.submissionUsedBuffers.has(resource.buffer)
+        ) {
+            throw new Error(
+                'Instance data cannot change after its first use in one WebGPU submission'
+            );
+        }
         if (resource?.byteLength !== data.byteLength) {
             const buffer = uploadNewBuffer(
                 this.device,
@@ -869,26 +946,40 @@ export class WebGPUBufferManager {
                 WebGPUBufferUsage.VERTEX | WebGPUBufferUsage.COPY_DST,
                 data
             );
-            resource?.buffer.destroy();
-            if (resource) this.ownedBuffers.delete(resource.buffer);
+            if (resource) this.destroyCachedBuffer(resource);
             this.ownedBuffers.add(buffer);
             resource = {
                 buffer,
                 layout: prepared.layout,
                 count,
-                byteLength: data.byteLength
+                byteLength: data.byteLength,
+                data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice()
             };
             variants.set(prepared.signature, resource);
         } else {
-            this.device.queue.writeBuffer(
-                resource.buffer,
-                0,
-                data.buffer,
-                data.byteOffset,
-                data.byteLength
-            );
+            const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+            let start = 0;
+            while (start < bytes.byteLength && resource.data[start] === bytes[start]) start++;
+            if (start < bytes.byteLength) {
+                if (this.submissionActive && this.submissionUsedBuffers.has(resource.buffer)) {
+                    throw new Error(
+                        'Instance data cannot change after its first use in one WebGPU submission'
+                    );
+                }
+                let end = bytes.byteLength;
+                while (end > start && resource.data[end - 1] === bytes[end - 1]) end--;
+                const alignedStart = Math.floor(start / 4) * 4;
+                const alignedEnd = Math.ceil(end / 4) * 4;
+                this.device.queue.writeBuffer(
+                    resource.buffer,
+                    alignedStart,
+                    bytes.subarray(alignedStart, alignedEnd)
+                );
+                resource.data.set(bytes);
+            }
             resource.count = count;
         }
+        this.markSubmissionUse(resource);
         this.touchVariant(variants, prepared.signature, resource);
         this.evictVariantOverflow(variants, this.cacheLimits.instanceVariantsPerOwner);
         return resource;
@@ -922,6 +1013,9 @@ export class WebGPUBufferManager {
     }
 
     destroy(): void {
+        this.submissionActive = false;
+        this.submissionUsedBuffers = new WeakSet();
+        this.deferredBufferDestructions.clear();
         for (const buffer of this.ownedBuffers) buffer.destroy();
         this.ownedBuffers.clear();
         this.instanceBuffers.clear();

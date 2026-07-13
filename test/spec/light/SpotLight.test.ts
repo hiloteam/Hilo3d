@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import { renderWebGLShadowMaps } from '../../../src/renderer/WebGLShadowMapManager';
+import { renderWebGLShadowMaps } from '../../../src/renderer/webgl/WebGLShadowMapManager';
 import { createHilo3dEnvironment } from '../../setup';
 
 const SpotLight = Hilo3d.SpotLight;

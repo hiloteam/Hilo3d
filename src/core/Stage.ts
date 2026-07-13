@@ -1,8 +1,8 @@
 import Node, { type NodeParameters, type NodePointerEvent, type NodeRaycastInfo } from './Node';
 import version from './version';
-import WebGLRenderer from '../renderer/WebGLRenderer';
-import WebGPURenderer from '../renderer/WebGPURenderer';
-import type { RendererBackend } from '../renderer/Renderer';
+import WebGLRenderer from '../renderer/webgl/WebGLRenderer';
+import WebGPURenderer from '../renderer/webgpu/WebGPURenderer';
+import type { RendererBackend } from '../renderer/common/Renderer';
 import Ray from '../math/Ray';
 import Vector3 from '../math/Vector3';
 import type Color from '../math/Color';

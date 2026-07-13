@@ -4,13 +4,21 @@ import {
     DEPTH_COMPONENT,
     LINEAR,
     RGBA,
+    TEXTURE_2D,
+    TEXTURE_CUBE_MAP,
     UNSIGNED_BYTE,
     UNSIGNED_INT
 } from '../../../src/constants/webgl';
 import { DEPTH_COMPONENT24, RGBA8 } from '../../../src/constants/webgl2';
-import WebGPURenderTarget from '../../../src/renderer/webgpu/WebGPURenderTarget';
-import WebGPUTextureManager from '../../../src/renderer/webgpu/WebGPUTextureManager';
-import { NagaShaderTranslator } from '../../../src/shader/GlslToWgsl';
+import WebGPURenderTarget, {
+    restoreWebGPURenderTarget,
+    setWebGPURenderTargetOperationGuard,
+    suspendWebGPURenderTarget
+} from '../../../src/renderer/webgpu/WebGPURenderTarget';
+import WebGPUTextureManager, {
+    getWebGPUTextureDefaultCompare
+} from '../../../src/renderer/webgpu/WebGPUTextureManager';
+import { NagaShaderTranslator } from '../../../src/renderer/webgpu/shader/GlslToWgsl';
 
 let translator: NagaShaderTranslator;
 
@@ -307,6 +315,221 @@ describe('WebGPURenderTarget attachments and passes', () => {
         expect(() => target.createRenderPassDescriptor()).toThrow(/destroyed/);
     });
 
+    it('atomically rebuilds a target allocation when its public color Texture is destroyed', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 8,
+            height: 4,
+            depthStencilAttachment: false
+        });
+        const texture = target.getColorTexture();
+        const firstGPUTexture = target.getColorGPUTexture();
+        const firstView = target.createRenderPassDescriptor().colorAttachments[0]?.view;
+
+        texture.destroy();
+
+        const secondGPUTexture = target.getColorGPUTexture();
+        const secondRecord = fake.textures[1];
+        expect(target.getColorTexture()).toBe(texture);
+        expect(secondGPUTexture).not.toBe(firstGPUTexture);
+        expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
+        expect(secondRecord?.destroy).not.toHaveBeenCalled();
+        expect(textures.get(texture).gpuTexture).toBe(secondGPUTexture);
+        expect(target.createRenderPassDescriptor().colorAttachments[0]?.view).not.toBe(firstView);
+
+        // The old allocation observer still exists in Texture.destroy()'s notification snapshot.
+        // A second rebuild proves that its generation token cannot release the replacement.
+        texture.destroy();
+        expect(secondRecord?.destroy).toHaveBeenCalledOnce();
+        expect(fake.textures[2]?.destroy).not.toHaveBeenCalled();
+        expect(target.getColorGPUTexture()).toBe(fake.textures[2]?.gpuTexture);
+    });
+
+    it('rebuilds sampled depth ownership and preserves its comparison default', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 8,
+            height: 8,
+            colorAttachments: [],
+            depthStencilAttachment: {
+                format: 'depth24plus-stencil8',
+                sampled: true,
+                compare: 'greater-equal'
+            }
+        });
+        const texture = target.getDepthTexture();
+        const firstGPUTexture = target.getDepthStencilGPUTexture();
+        if (!texture) throw new Error('Expected a sampled depth texture');
+
+        texture.destroy();
+
+        expect(target.getDepthTexture()).toBe(texture);
+        expect(target.getDepthStencilGPUTexture()).not.toBe(firstGPUTexture);
+        expect(textures.get(texture).gpuTexture).toBe(target.getDepthStencilGPUTexture());
+        expect(getWebGPUTextureDefaultCompare(textures, texture)).toBe('greater-equal');
+        expect(fake.textures[1]?.views.map(view => view.descriptor)).toEqual([
+            { dimension: '2d' },
+            { dimension: '2d', aspect: 'depth-only' }
+        ]);
+    });
+
+    it('clears stale handles and rejects attachment recovery during active frame recording', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 4,
+            height: 4,
+            depthStencilAttachment: false
+        });
+        const texture = target.getColorTexture();
+        const guard = vi.fn(() => {
+            throw new Error('Injected active-frame mutation rejection');
+        });
+        setWebGPURenderTargetOperationGuard(target, guard);
+
+        expect(() => texture.destroy()).toThrow(/active-frame mutation rejection/);
+        expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
+        expect(textures.resourceCount).toBe(0);
+        expect(() => target.getColorGPUTexture()).toThrow(/active-frame mutation rejection/);
+        expect(fake.textures).toHaveLength(1);
+
+        setWebGPURenderTargetOperationGuard(target, () => undefined);
+        expect(target.getColorGPUTexture()).toBe(fake.textures[1]?.gpuTexture);
+        expect(textures.get(texture).gpuTexture).toBe(fake.textures[1]?.gpuTexture);
+        expect(guard).toHaveBeenCalledTimes(2);
+    });
+
+    it('never falls back to an ordinary texture after an owned attachment descriptor changes', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 4,
+            height: 4,
+            depthStencilAttachment: false
+        });
+        const texture = target.getColorTexture();
+        texture.target = TEXTURE_CUBE_MAP;
+        texture.needDestroy = true;
+
+        expect(() => textures.get(texture)).toThrow(/must use the TEXTURE_2D target/);
+        expect(fake.textures).toHaveLength(1);
+        expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
+        expect(textures.resourceCount).toBe(0);
+
+        texture.target = TEXTURE_2D;
+        expect(target.getColorGPUTexture()).toBe(fake.textures[1]?.gpuTexture);
+        expect(textures.get(texture).gpuTexture).toBe(fake.textures[1]?.gpuTexture);
+    });
+
+    it('keeps failed attachment recovery pending for the next manager sampling request', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 4,
+            height: 4,
+            depthStencilAttachment: false
+        });
+        const texture = target.getColorTexture();
+        const firstGPUTexture = target.getColorGPUTexture();
+        fake.failTextureCreationsAfter = 0;
+
+        expect(() => texture.destroy()).toThrow(/allocation failure/);
+        expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
+        expect(textures.resourceCount).toBe(0);
+
+        const recovered = textures.get(texture);
+        expect(recovered.gpuTexture).not.toBe(firstGPUTexture);
+        expect(recovered.gpuTexture).toBe(target.getColorGPUTexture());
+        expect(target.createRenderPassDescriptor().colorAttachments[0]?.view).toBe(recovered.view);
+        expect(textures.resourceCount).toBe(1);
+    });
+
+    it('rejects direct owned-descriptor drift without creating a detached texture', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 4,
+            height: 4,
+            depthStencilAttachment: false
+        });
+        const texture = target.getColorTexture();
+        const gpuTexture = target.getColorGPUTexture();
+        const allocationCount = fake.textures.length;
+        texture.width++;
+
+        expect(() => textures.get(texture)).toThrow(
+            /cannot change the allocation descriptor owned by its WebGPU external resource/
+        );
+        expect(fake.textures).toHaveLength(allocationCount);
+        expect(target.getColorGPUTexture()).toBe(gpuTexture);
+        expect(textures.resourceCount).toBe(1);
+
+        texture.width = target.width;
+        expect(textures.get(texture).gpuTexture).toBe(gpuTexture);
+    });
+
+    it('unregisters attachment ownership when the render target is destroyed', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 2,
+            height: 2,
+            depthStencilAttachment: false
+        });
+        const texture = target.getColorTexture();
+
+        target.destroy();
+        texture.destroy();
+
+        expect(fake.textures).toHaveLength(1);
+        expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
+        expect(textures.resourceCount).toBe(0);
+    });
+
+    it('keeps target ownership coherent across public texture-manager mutations', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 2,
+            height: 2,
+            depthStencilAttachment: false
+        });
+        const texture = target.getColorTexture();
+        const firstGPUTexture = target.getColorGPUTexture();
+
+        textures.destroy(texture);
+        const secondGPUTexture = target.getColorGPUTexture();
+        expect(secondGPUTexture).not.toBe(firstGPUTexture);
+        expect(textures.get(texture).gpuTexture).toBe(secondGPUTexture);
+        expect(
+            fake.textures.find(record => record.gpuTexture === firstGPUTexture)?.destroy
+        ).toHaveBeenCalledOnce();
+
+        const foreignGPUTexture = fake.device.createTexture({
+            size: { width: 2, height: 2 },
+            format: 'rgba8unorm',
+            usage: 0
+        });
+        expect(() => {
+            textures.registerExternal(texture, foreignGPUTexture, { takeOwnership: true });
+        }).toThrow(/owned by a WebGPU render target/);
+        expect(
+            fake.textures.find(record => record.gpuTexture === foreignGPUTexture)?.destroy
+        ).not.toHaveBeenCalled();
+        expect(target.getColorGPUTexture()).toBe(secondGPUTexture);
+
+        textures.destroyAll();
+        expect(textures.resourceCount).toBe(0);
+        expect(
+            fake.textures.find(record => record.gpuTexture === secondGPUTexture)?.destroy
+        ).toHaveBeenCalledOnce();
+        const thirdGPUTexture = target.getColorGPUTexture();
+        expect(thirdGPUTexture).not.toBe(secondGPUTexture);
+        expect(textures.get(texture).gpuTexture).toBe(thirdGPUTexture);
+    });
+
     it('keeps every old allocation live when staged resize texture creation fails', () => {
         const fake = createFakeWebGPU();
         const textures = createTextureManager(fake.device);
@@ -424,10 +647,11 @@ describe('WebGPURenderTarget attachments and passes', () => {
             colorAttachments: [{ format: 'rgba8unorm' }, { format: 'rgba16float' }],
             depthStencilAttachment: { format: 'depth24plus-stencil8' }
         });
-        const colorTextures = [target.getColorTexture(0), target.getColorTexture(1)];
+        const firstColorTexture = target.getColorTexture(0);
+        const colorTextures = [firstColorTexture, target.getColorTexture(1)];
         const firstGPUTextures = [target.getColorGPUTexture(0), target.getColorGPUTexture(1)];
 
-        target.suspendDeviceResources();
+        suspendWebGPURenderTarget(target);
 
         expect(target.isDestroyed).toBe(false);
         expect(target.getColorTexture(0)).toBe(colorTextures[0]);
@@ -435,10 +659,16 @@ describe('WebGPURenderTarget attachments and passes', () => {
         await expect(target.readColorAttachment()).rejects.toThrow(/unavailable during recovery/);
         expect(first.submit).not.toHaveBeenCalled();
 
+        const suspendedAllocationCount = first.textures.length;
+        firstColorTexture.destroy();
+        expect(first.textures).toHaveLength(suspendedAllocationCount);
+        expect(() => firstTextures.get(firstColorTexture)).toThrow(/unavailable during recovery/);
+        expect(first.textures).toHaveLength(suspendedAllocationCount);
+
         target.resize(12, 10);
         expect(target.width).toBe(12);
         expect(target.height).toBe(10);
-        target.restoreDeviceResources(second.device, secondTextures);
+        restoreWebGPURenderTarget(target, second.device, secondTextures);
 
         expect(target.device).toBe(second.device);
         expect(target.textureManager).toBe(secondTextures);
@@ -447,6 +677,7 @@ describe('WebGPURenderTarget attachments and passes', () => {
         expect(target.getColorTexture(1)).toBe(colorTextures[1]);
         expect(target.getColorGPUTexture(0)).not.toBe(firstGPUTextures[0]);
         expect(target.getColorGPUTexture(1)).not.toBe(firstGPUTextures[1]);
+        expect(secondTextures.get(firstColorTexture).gpuTexture).toBe(target.getColorGPUTexture(0));
         expect(target.createRenderPassDescriptor().colorAttachments).toHaveLength(2);
         expect(second.textures.map(record => record.descriptor.size)).toEqual(
             Array.from({ length: 5 }, () => ({
@@ -622,5 +853,65 @@ describe('WebGPURenderTarget validation', () => {
             })
         ).toThrow(/Stencil operations require/);
         await expect(target.readColorAttachment({ x: 1, width: 2 })).rejects.toThrow(/exceeds/);
+    });
+
+    it('rejects duplicate attachment identities and ownership across targets', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const texture = new Texture({
+            width: 2,
+            height: 2,
+            internalFormat: RGBA8,
+            format: RGBA,
+            type: UNSIGNED_BYTE,
+            image: null
+        });
+
+        expect(
+            () =>
+                new WebGPURenderTarget(fake.device, textures, {
+                    width: 2,
+                    height: 2,
+                    colorAttachments: [{ texture }, { texture }],
+                    depthStencilAttachment: false
+                })
+        ).toThrow(/more than one WebGPU render-target attachment/);
+
+        const owner = new WebGPURenderTarget(fake.device, textures, {
+            width: 2,
+            height: 2,
+            colorAttachments: [{ texture }],
+            depthStencilAttachment: false
+        });
+        expect(
+            () =>
+                new WebGPURenderTarget(fake.device, textures, {
+                    width: 2,
+                    height: 2,
+                    colorAttachments: [{ texture }],
+                    depthStencilAttachment: false
+                })
+        ).toThrow(/another WebGPU external resource owner/);
+        expect(owner.getColorGPUTexture()).toBe(textures.get(texture).gpuTexture);
+    });
+
+    it('destroys sampled depth allocation when its render view cannot be created', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        fake.failViewForLabel = 'depth-view-failure.depthStencil';
+
+        expect(
+            () =>
+                new WebGPURenderTarget(fake.device, textures, {
+                    width: 2,
+                    height: 2,
+                    label: 'depth-view-failure',
+                    colorAttachments: [],
+                    depthStencilAttachment: { format: 'depth24plus', sampled: true }
+                })
+        ).toThrow(/view failure/);
+        expect(fake.textures).toHaveLength(1);
+        expect(fake.textures[0]?.destroy).toHaveBeenCalledOnce();
+        expect(textures.resourceCount).toBe(0);
     });
 });

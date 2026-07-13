@@ -1,4 +1,4 @@
-import type { TranslatedShaderPair } from '../../shader/GlslToWgsl';
+import type { TranslatedShaderPair } from './shader/GlslToWgsl';
 import { WebGPUShaderStage } from './WebGPUConstants';
 
 export interface WebGPUFullscreenPassResources {

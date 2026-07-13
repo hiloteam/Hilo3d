@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import AmbientLight from '../../../src/light/AmbientLight';
 import BasicMaterial from '../../../src/material/BasicMaterial';
-import BuiltInUniformBlockManager from '../../../src/renderer/BuiltInUniformBlockManager';
+import BuiltInUniformBlockManager from '../../../src/renderer/common/BuiltInUniformBlockManager';
 import Color from '../../../src/math/Color';
 import CubeTexture from '../../../src/texture/CubeTexture';
 import DirectionalLight from '../../../src/light/DirectionalLight';
@@ -11,11 +11,11 @@ import Matrix4 from '../../../src/math/Matrix4';
 import PBRMaterial from '../../../src/material/PBRMaterial';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import SkinnedMesh from '../../../src/core/SkinnedMesh';
-import type Program from '../../../src/renderer/Program';
-import UniformBuffer from '../../../src/renderer/UniformBuffer';
+import type Program from '../../../src/renderer/webgl/Program';
+import UniformBuffer from '../../../src/renderer/common/UniformBuffer';
 import Vector3 from '../../../src/math/Vector3';
 import semantic from '../../../src/material/semantic';
-import { cameraBlockLayout } from '../../../src/renderer/ubo/BuiltInUniformBlocks';
+import { cameraBlockLayout } from '../../../src/renderer/common/ubo/BuiltInUniformBlocks';
 import { testEnv } from '../../setup';
 
 function blockProgram(id: string, blockName: string, uniformNames: readonly string[]): Program {
@@ -79,7 +79,6 @@ describe('BuiltInUniformBlockManager', () => {
 
         manager.beginFrame(testEnv.camera);
         expect(fieldWriteCount(set, 'u_frameIndex')).toBe(2);
-        manager.destroy();
     });
 
     it('publishes the physical viewport through the pass-frequency CameraBlock', () => {
@@ -106,7 +105,6 @@ describe('BuiltInUniformBlockManager', () => {
 
         semantic.setViewport([3, 5, 41, 29]);
         expect(semantic.VIEWPORT.get()).toEqualishValues(3, 5, 41, 29);
-        manager.destroy();
     });
 
     it('uses per-frame, per-material and per-transform update frequencies', () => {
@@ -151,7 +149,6 @@ describe('BuiltInUniformBlockManager', () => {
         manager.beginFrame(testEnv.camera);
         manager.bind(sceneProgram, testEnv.mesh, testEnv.material, false);
         expect(fieldWriteCount(set, 'u_fogInfo')).toBe(2);
-        manager.destroy();
     });
 
     it('writes six distinct CameraBlock snapshots when a cube pass reuses one camera', () => {
@@ -212,7 +209,6 @@ describe('BuiltInUniformBlockManager', () => {
         expect(new Set(snapshots.map(snapshot => floatSignature(snapshot.projection))).size).toBe(
             1
         );
-        manager.destroy();
     });
 
     it('tracks scalar, color, in-place matrix and texture-derived MaterialBlock changes', () => {
@@ -309,8 +305,6 @@ describe('BuiltInUniformBlockManager', () => {
         second.getUniformBlocks(['MaterialBlock'], mesh, material);
         expect(firstBlock.revision).toBe(firstStableRevision);
         expect(secondBlock.revision).toBe(secondStableRevision);
-        first.destroy();
-        second.destroy();
     });
 
     it('refreshes texture-derived MaterialBlock values without a material dirty flag', () => {
@@ -332,7 +326,6 @@ describe('BuiltInUniformBlockManager', () => {
         expect(block.revision).toBe(initialRevision + 1);
         manager.getUniformBlocks(['MaterialBlock'], mesh, material);
         expect(block.revision).toBe(initialRevision + 1);
-        manager.destroy();
     });
 
     it('packs the current world transform into ModelBlock and refreshes it after rotation', () => {
@@ -360,7 +353,6 @@ describe('BuiltInUniformBlockManager', () => {
         expect(readFloatField(second, 'u_modelMatrix', 16)).toEqualishValues(
             ...mesh.worldMatrix.elements
         );
-        manager.destroy();
     });
 
     it('packs ambient and directional lighting into LightBlock for every render pass', () => {
@@ -408,7 +400,6 @@ describe('BuiltInUniformBlockManager', () => {
             0.125,
             0.5
         );
-        manager.destroy();
     });
 
     it('writes a stable picking identity into every per-mesh ModelBlock', () => {
@@ -425,11 +416,11 @@ describe('BuiltInUniformBlockManager', () => {
         const writes = set.mock.calls.filter(([name]) => name === 'u_objectIdColor');
         expect(writes).toHaveLength(1);
         expect(writes[0]?.[1]).toBeInstanceOf(Float32Array);
-        manager.destroy();
     });
 
-    it('owns and destroys allocations created by object and geometry caches', () => {
+    it('keeps logical parameter blocks independent from backend GPU allocation', () => {
         const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
+        const createBuffer = vi.spyOn(testEnv.gl, 'createBuffer');
         manager.beginFrame(testEnv.camera);
         testEnv.geometry.isDirty = false;
         manager.bind(
@@ -444,10 +435,7 @@ describe('BuiltInUniformBlockManager', () => {
             testEnv.material,
             false
         );
-        const destroy = vi.spyOn(UniformBuffer.prototype, 'destroy');
-
-        manager.destroy(testEnv.gl);
-        expect(destroy).toHaveBeenCalledTimes(6);
+        expect(createBuffer).not.toHaveBeenCalled();
     });
 
     it('updates skinning and morph animation data at most once per mesh per frame', () => {
@@ -479,7 +467,6 @@ describe('BuiltInUniformBlockManager', () => {
         manager.bind(skinningProgram, skinnedMesh, testEnv.material, false);
         expect(morphData.mock.calls.filter(([name]) => name === 'u_morphWeights')).toHaveLength(2);
         expect(jointData).toHaveBeenCalledTimes(2);
-        manager.destroy();
     });
 
     it('observes material and geometry revisions independently across backend managers', () => {
@@ -526,8 +513,6 @@ describe('BuiltInUniformBlockManager', () => {
         expect(fieldWriteCount(set, 'u_positionDecodeMat') - initialGeometryWrites).toBe(2);
         testEnv.material.alphaCutoff = previousAlphaCutoff;
         testEnv.geometry.positionDecodeMat = previousDecodeMatrix;
-        first.destroy();
-        second.destroy();
     });
 
     it('releases owner-frequency logical buffers and rebuilds them on demand', () => {
@@ -546,16 +531,13 @@ describe('BuiltInUniformBlockManager', () => {
         const skinning = manager.getUniformBlocks(['SkinningBlock'], skinnedMesh, testEnv.material)[
             'SkinningBlock'
         ];
-        const destroy = vi.spyOn(UniformBuffer.prototype, 'destroy');
-
-        expect(manager.releaseOwner(testEnv.material, testEnv.gl)).toBe(1);
-        expect(manager.releaseOwner(testEnv.geometry, testEnv.gl)).toBe(1);
-        expect(manager.releaseOwner(testEnv.mesh, testEnv.gl)).toBe(2);
-        expect(manager.releaseOwner(skinnedMesh, testEnv.gl)).toBe(1);
-        expect(destroy).toHaveBeenCalledTimes(5);
+        expect(manager.releaseOwner(testEnv.material)).toBe(1);
+        expect(manager.releaseOwner(testEnv.geometry)).toBe(1);
+        expect(manager.releaseOwner(testEnv.mesh)).toBe(2);
+        expect(manager.releaseOwner(skinnedMesh)).toBe(1);
         const releasedModelBlock = blocks['ModelBlock'];
         if (!releasedModelBlock) throw new Error('ModelBlock was not resolved');
-        expect(manager.releaseBuffer(releasedModelBlock, testEnv.gl)).toBe(false);
+        expect(manager.releaseBuffer(releasedModelBlock)).toBe(false);
 
         const rebuilt = manager.getUniformBlocks(
             ['MaterialBlock', 'ModelBlock', 'GeometryBlock', 'MorphBlock'],
@@ -567,6 +549,5 @@ describe('BuiltInUniformBlockManager', () => {
         expect(rebuilt['GeometryBlock']).not.toBe(blocks['GeometryBlock']);
         expect(rebuilt['MorphBlock']).not.toBe(blocks['MorphBlock']);
         expect(skinning).toBeInstanceOf(UniformBuffer);
-        manager.destroy();
     });
 });

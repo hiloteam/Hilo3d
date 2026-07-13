@@ -4,21 +4,37 @@ import basicFragCode from './basic.frag';
 import basicVertCode from './basic.vert';
 import geometryFragCode from './geometry.frag';
 import pbrFragCode from './pbr.frag';
+import {
+    CollisionSafeVariantKeyRegistry,
+    hashVariantValues,
+    type VariantHashValue
+} from './VariantHash';
 import type Mesh from '../core/Mesh';
 import type Fog from '../core/Fog';
 import type LightManager from '../light/LightManager';
 import type Material from '../material/Material';
-import type GraphicsResourceManager from '../renderer/GraphicsResourceManager';
-import type { GLContext, ShaderPrecision } from '../renderer/types';
+import type GraphicsResourceManager from '../renderer/common/GraphicsResourceManager';
+import type { ShaderPrecision } from '../renderer/common/types';
 import {
     MAX_AREA_LIGHTS,
     MAX_DIRECTIONAL_LIGHTS,
     MAX_POINT_LIGHTS,
     MAX_SPOT_LIGHTS
-} from '../renderer/ubo/BuiltInUniformBlocks';
+} from '../renderer/common/ubo/BuiltInUniformBlocks';
 
 const cache = new Cache<Shader>();
 const headerCache = new Cache<string>();
+const headerVariantKeys = new CollisionSafeVariantKeyRegistry();
+const shaderVariantKeys = new CollisionSafeVariantKeyRegistry();
+const stringFingerprints = new Map<string, string>();
+const STRING_FINGERPRINT_CACHE_LIMIT = 4096;
+const HEADER_VARIANT_CACHE_LIMIT = 1024;
+const SHADER_VARIANT_CACHE_LIMIT = 2048;
+const MESH_HEADER_SNAPSHOT_LIMIT = 4;
+const trackedHeaderVariantKeys = new Map<string, true>();
+const trackedShaderVariants = new Map<string, Shader>();
+let meshHeaderSnapshots = new WeakMap<Mesh, HeaderVariantSnapshot[]>();
+let beforeCompileSnapshots = new WeakMap<Material, BeforeCompileSnapshot>();
 const rendererHeaderCache = new WeakMap<ShaderPrecisionProvider, RendererHeaderSnapshot>();
 const CUSTOM_OPTION_PREFIX = 'HILO_CUSTOM_OPTION_';
 const DEFAULT_COMMON_HEADER = `
@@ -33,6 +49,23 @@ const shaderModules = import.meta.glob<string>('./**/*.{frag,glsl,vert}', {
 const shaderSources = Object.fromEntries(
     Object.entries(shaderModules).map(([path, source]) => [path.slice(2), source])
 );
+
+function getStringFingerprint(value: string): string {
+    let fingerprint = stringFingerprints.get(value);
+    if (fingerprint !== undefined) {
+        stringFingerprints.delete(value);
+        stringFingerprints.set(value, fingerprint);
+        return fingerprint;
+    }
+
+    fingerprint = hashVariantValues([value]);
+    if (stringFingerprints.size >= STRING_FINGERPRINT_CACHE_LIMIT) {
+        const oldest = stringFingerprints.keys().next().value;
+        if (oldest !== undefined) stringFingerprints.delete(oldest);
+    }
+    stringFingerprints.set(value, fingerprint);
+    return fingerprint;
+}
 
 export interface ShaderParameters {
     vs?: string;
@@ -53,6 +86,37 @@ interface RendererHeaderSnapshot {
     readonly vertexPrecision: ShaderPrecision;
     readonly fragmentPrecision: ShaderPrecision;
     readonly header: string;
+}
+
+interface HeaderVariant {
+    readonly headerKey: string;
+    readonly options: Record<string, number>;
+    readonly shaderName: string;
+}
+
+interface HeaderVariantSnapshot {
+    readonly material: Material;
+    readonly materialRevision: number;
+    readonly geometry: NonNullable<Mesh['geometry']>;
+    readonly geometryRevision: number;
+    readonly lightManager: LightManager;
+    readonly lightUid: string;
+    readonly fog: Fog | null;
+    readonly fogMode: Fog['mode'] | null;
+    readonly useLogDepth: boolean;
+    readonly jointCount: number | null;
+    readonly shaderName: string;
+    readonly lightType: string;
+    readonly commonOptions: Readonly<Record<string, number>>;
+    readonly variant: HeaderVariant;
+}
+
+interface BeforeCompileSnapshot {
+    readonly callback: NonNullable<Material['onBeforeCompile']>;
+    readonly materialRevision: number;
+    readonly shaderFamily: string;
+    readonly vs: string;
+    readonly fs: string;
 }
 
 interface BasicShaderMaterial extends Material {
@@ -95,21 +159,27 @@ function isCustomMaterial(material: Material): material is CustomShaderMaterial 
     );
 }
 
-function beforeCompile(material: Material): Material['onBeforeCompile'] {
-    const callback = material.onBeforeCompile;
-    if (!callback) return null;
-    return (vs, fs) => {
-        const result: unknown = callback.call(material, vs, fs);
-        if (typeof result !== 'object' || result === null) {
-            throw new TypeError('Material.onBeforeCompile must return shader source strings');
-        }
-        const nextVS: unknown = Reflect.get(result, 'vs');
-        const nextFS: unknown = Reflect.get(result, 'fs');
-        if (typeof nextVS !== 'string' || typeof nextFS !== 'string') {
-            throw new TypeError('Material.onBeforeCompile must return { vs, fs }');
-        }
-        return { vs: nextVS, fs: nextFS };
-    };
+function runBeforeCompile(
+    material: Material,
+    callback: NonNullable<Material['onBeforeCompile']>,
+    vs: string,
+    fs: string
+): MaterialShaderSource {
+    const result: unknown = callback.call(material, vs, fs);
+    if (typeof result !== 'object' || result === null) {
+        throw new TypeError('Material.onBeforeCompile must return shader source strings');
+    }
+    const nextVS: unknown = Reflect.get(result, 'vs');
+    const nextFS: unknown = Reflect.get(result, 'fs');
+    if (typeof nextVS !== 'string' || typeof nextFS !== 'string') {
+        throw new TypeError('Material.onBeforeCompile must return { vs, fs }');
+    }
+    return { vs: nextVS, fs: nextFS };
+}
+
+interface MaterialShaderSource {
+    readonly vs: string;
+    readonly fs: string;
 }
 
 function skeletonJointCount(mesh: Mesh): number | null {
@@ -120,13 +190,27 @@ function skeletonJointCount(mesh: Mesh): number | null {
     return typeof count === 'number' ? count : null;
 }
 
-function shaderOptionsSignature(options: Readonly<Record<string, number>>): string {
-    return JSON.stringify(
-        Object.keys(options)
-            .sort()
-            .map(name => [name, String(options[name])])
-    );
+function optionValueEqual(left: number | undefined, right: number | undefined): boolean {
+    return left === right || (Number.isNaN(left) && Number.isNaN(right));
 }
+
+function commonOptionsEqual(
+    left: Readonly<Record<string, number>>,
+    right: Readonly<Record<string, number>>
+): boolean {
+    let leftCount = 0;
+    let rightCount = 0;
+    for (const name in left) {
+        if (!Object.hasOwn(left, name)) continue;
+        leftCount++;
+        if (!Object.hasOwn(right, name) || !optionValueEqual(left[name], right[name])) return false;
+    }
+    for (const name in right) {
+        if (Object.hasOwn(right, name)) rightCount++;
+    }
+    return leftCount === rightCount;
+}
+
 /**
  * Shader类
  */
@@ -135,6 +219,7 @@ class Shader {
     readonly className = 'Shader';
     readonly id: string;
     private _isDestroyed = false;
+    private _variantKey: string | null = null;
     /**
      * vs 顶点代码
      */
@@ -170,8 +255,19 @@ class Shader {
     /**
      * 重置
      */
-    static reset(_gl?: GLContext): void {
+    static reset(): void {
+        for (const [variantKey, shader] of trackedShaderVariants) {
+            if (shader._variantKey === variantKey) shader._variantKey = null;
+        }
+        trackedShaderVariants.clear();
         cache.removeAll();
+        headerCache.removeAll();
+        headerVariantKeys.clear();
+        shaderVariantKeys.clear();
+        stringFingerprints.clear();
+        trackedHeaderVariantKeys.clear();
+        meshHeaderSnapshots = new WeakMap<Mesh, HeaderVariantSnapshot[]>();
+        beforeCompileSnapshots = new WeakMap<Material, BeforeCompileSnapshot>();
     }
     /**
      * 获取header缓存的key
@@ -188,19 +284,7 @@ class Shader {
         fog: Fog | null,
         useLogDepth: boolean
     ): string {
-        let headerKey = `header_${material.id}_${lightManager.lightInfo.uid}`;
-        const jointCount = skeletonJointCount(mesh);
-        if (jointCount !== null) headerKey += `_joint${String(jointCount)}`;
-        if (fog) {
-            headerKey += `_fog_${fog.mode}`;
-        }
-        if (!mesh.geometry)
-            throw new Error('Cannot create a shader header for a mesh without geometry');
-        headerKey += `_${mesh.geometry.getShaderKey()}`;
-        if (useLogDepth) {
-            headerKey += '_fogDepth';
-        }
-        return headerKey;
+        return this.getHeaderVariant(mesh, material, lightManager, fog, useLogDepth).headerKey;
     }
     /**
      * 获取header
@@ -216,62 +300,186 @@ class Shader {
         fog: Fog | null,
         useLogDepth: boolean
     ): string {
-        const commonOptions = { ...this.commonOptions };
-        const headerKey = JSON.stringify([
-            this.getHeaderKey(mesh, material, lightManager, fog, useLogDepth),
-            shaderOptionsSignature(commonOptions)
-        ]);
-        let header = headerCache.get(headerKey);
-        if (!header || material.isDirty) {
-            const headers: Record<string, number> = commonOptions;
-            const lightType = material.lightType;
-            if (lightType && lightType !== 'NONE') {
-                lightManager.getRenderOption(headers);
-                const limits: readonly (readonly [string, number])[] = [
-                    ['DIRECTIONAL_LIGHTS', MAX_DIRECTIONAL_LIGHTS],
-                    ['SPOT_LIGHTS', MAX_SPOT_LIGHTS],
-                    ['POINT_LIGHTS', MAX_POINT_LIGHTS],
-                    ['AREA_LIGHTS', MAX_AREA_LIGHTS]
-                ];
-                for (const [name, limit] of limits) {
-                    const count = headers[name] ?? 0;
-                    if (count > limit) {
-                        throw new RangeError(
-                            `${name} count ${String(count)} exceeds the fixed UBO capacity ${String(limit)}`
-                        );
-                    }
+        const variant = this.getHeaderVariant(mesh, material, lightManager, fog, useLogDepth);
+        const cached = headerCache.get(variant.headerKey);
+        if (cached) return cached;
+
+        let header = `#define SHADER_NAME ${variant.shaderName}\n`;
+        header += `${Object.entries(variant.options)
+            .map(([name, value]) => {
+                if (name.includes(CUSTOM_OPTION_PREFIX)) {
+                    return `#define ${name.replace(CUSTOM_OPTION_PREFIX, '')} ${String(value)}`;
+                }
+                return `#define HILO_${name} ${String(value)}`;
+            })
+            .join('\n')}\n`;
+        headerCache.add(variant.headerKey, header);
+        return header;
+    }
+
+    private static getHeaderVariant(
+        mesh: Mesh,
+        material: Material,
+        lightManager: LightManager,
+        fog: Fog | null,
+        useLogDepth: boolean
+    ): HeaderVariant {
+        const geometry = mesh.geometry;
+        if (!geometry) {
+            throw new Error('Cannot create a shader header for a mesh without geometry');
+        }
+
+        const materialRevision = material.revision;
+        const geometryRevision = geometry.revision;
+        const lightUid = lightManager.lightInfo.uid;
+        const fogMode = fog?.mode ?? null;
+        const jointCount = skeletonJointCount(mesh);
+        const shaderName = material.shaderName ?? material.className;
+        const lightType = material.lightType;
+        const snapshots = meshHeaderSnapshots.get(mesh);
+        let cachedSnapshot: HeaderVariantSnapshot | undefined;
+        if (snapshots) {
+            for (const snapshot of snapshots) {
+                if (
+                    snapshot.material === material &&
+                    snapshot.materialRevision === materialRevision &&
+                    snapshot.geometry === geometry &&
+                    snapshot.geometryRevision === geometryRevision &&
+                    snapshot.lightManager === lightManager &&
+                    snapshot.lightUid === lightUid &&
+                    snapshot.fog === fog &&
+                    snapshot.fogMode === fogMode &&
+                    snapshot.useLogDepth === useLogDepth &&
+                    snapshot.jointCount === jointCount &&
+                    snapshot.shaderName === shaderName &&
+                    snapshot.lightType === lightType &&
+                    commonOptionsEqual(snapshot.commonOptions, this.commonOptions)
+                ) {
+                    cachedSnapshot = snapshot;
+                    break;
                 }
             }
-            material.getRenderOption(headers);
-            mesh.getRenderOption(headers);
-            if (fog) {
-                headers['HAS_FOG'] = 1;
-                fog.getRenderOption(headers);
-            }
-            if (useLogDepth) {
-                headers['USE_LOG_DEPTH'] = 1;
-                headers['USE_FRAG_DEPTH'] = 1;
-            }
-            if (headers['HAS_NORMAL'] && headers['NORMAL_MAP']) {
-                headers['HAS_TANGENT'] = 1;
-            }
-            if (!headers['RECEIVE_SHADOWS']) {
-                delete headers['DIRECTIONAL_LIGHTS_SMC'];
-                delete headers['SPOT_LIGHTS_SMC'];
-                delete headers['POINT_LIGHTS_SMC'];
-            }
-            header = `#define SHADER_NAME ${material.shaderName ?? material.className}\n`;
-            header += `${Object.entries(headers)
-                .map(([name, value]) => {
-                    if (name.includes(CUSTOM_OPTION_PREFIX)) {
-                        return `#define ${name.replace(CUSTOM_OPTION_PREFIX, '')} ${String(value)}`;
-                    }
-                    return `#define HILO_${name} ${String(value)}`;
-                })
-                .join('\n')}\n`;
-            headerCache.add(headerKey, header);
         }
-        return header;
+        if (cachedSnapshot) {
+            this.trackHeaderVariantKey(cachedSnapshot.variant.headerKey);
+            return cachedSnapshot.variant;
+        }
+
+        const options: Record<string, number> = { ...this.commonOptions };
+        if (lightType && lightType !== 'NONE') {
+            lightManager.getRenderOption(options);
+            const limits: readonly (readonly [string, number])[] = [
+                ['DIRECTIONAL_LIGHTS', MAX_DIRECTIONAL_LIGHTS],
+                ['SPOT_LIGHTS', MAX_SPOT_LIGHTS],
+                ['POINT_LIGHTS', MAX_POINT_LIGHTS],
+                ['AREA_LIGHTS', MAX_AREA_LIGHTS]
+            ];
+            for (const [name, limit] of limits) {
+                const count = options[name] ?? 0;
+                if (count > limit) {
+                    throw new RangeError(
+                        `${name} count ${String(count)} exceeds the fixed UBO capacity ${String(limit)}`
+                    );
+                }
+            }
+        }
+        material.getRenderOption(options);
+        mesh.getRenderOption(options);
+        if (fog) {
+            options['HAS_FOG'] = 1;
+            fog.getRenderOption(options);
+        }
+        if (useLogDepth) {
+            options['USE_LOG_DEPTH'] = 1;
+            options['USE_FRAG_DEPTH'] = 1;
+        }
+        if (options['HAS_NORMAL'] && options['NORMAL_MAP']) {
+            options['HAS_TANGENT'] = 1;
+        }
+        if (!options['RECEIVE_SHADOWS']) {
+            delete options['DIRECTIONAL_LIGHTS_SMC'];
+            delete options['SPOT_LIGHTS_SMC'];
+            delete options['POINT_LIGHTS_SMC'];
+        }
+
+        const values: VariantHashValue[] = [shaderName];
+        const optionNames = Object.keys(options).sort();
+        for (const name of optionNames) {
+            const value = options[name];
+            if (typeof value === 'number' && !Number.isFinite(value)) {
+                throw new RangeError(
+                    `Shader option ${name} must be finite; received ${String(value)}`
+                );
+            }
+            values.push(name, value);
+        }
+        const variant: HeaderVariant = {
+            headerKey: headerVariantKeys.resolve('h', values),
+            options,
+            shaderName
+        };
+        this.trackHeaderVariantKey(variant.headerKey);
+
+        const currentSnapshots = meshHeaderSnapshots.get(mesh) ?? [];
+        const replacedIndex = currentSnapshots.findIndex(
+            snapshot =>
+                snapshot.material === material &&
+                snapshot.geometry === geometry &&
+                snapshot.lightManager === lightManager &&
+                snapshot.fog === fog &&
+                snapshot.useLogDepth === useLogDepth
+        );
+        if (replacedIndex >= 0) currentSnapshots.splice(replacedIndex, 1);
+        currentSnapshots.unshift({
+            material,
+            materialRevision,
+            geometry,
+            geometryRevision,
+            lightManager,
+            lightUid,
+            fog,
+            fogMode,
+            useLogDepth,
+            jointCount,
+            shaderName,
+            lightType,
+            commonOptions: { ...this.commonOptions },
+            variant
+        });
+        if (currentSnapshots.length > MESH_HEADER_SNAPSHOT_LIMIT) currentSnapshots.pop();
+        meshHeaderSnapshots.set(mesh, currentSnapshots);
+        return variant;
+    }
+
+    private static trackHeaderVariantKey(headerKey: string): void {
+        if (trackedHeaderVariantKeys.delete(headerKey)) {
+            trackedHeaderVariantKeys.set(headerKey, true);
+            return;
+        }
+        trackedHeaderVariantKeys.set(headerKey, true);
+        if (trackedHeaderVariantKeys.size <= HEADER_VARIANT_CACHE_LIMIT) return;
+
+        const oldest = trackedHeaderVariantKeys.keys().next().value;
+        if (oldest === undefined) return;
+        trackedHeaderVariantKeys.delete(oldest);
+        headerCache.remove(oldest);
+        headerVariantKeys.release(oldest);
+        // A snapshot may retain an evicted collision slot, so invalidate all weak snapshots.
+        meshHeaderSnapshots = new WeakMap<Mesh, HeaderVariantSnapshot[]>();
+    }
+
+    private static trackShaderVariant(variantKey: string, shader: Shader): void {
+        trackedShaderVariants.delete(variantKey);
+        trackedShaderVariants.set(variantKey, shader);
+        if (trackedShaderVariants.size <= SHADER_VARIANT_CACHE_LIMIT) return;
+
+        const oldest = trackedShaderVariants.entries().next().value;
+        if (oldest === undefined) return;
+        const [oldestKey, oldestShader] = oldest;
+        trackedShaderVariants.delete(oldestKey);
+        if (cache.get(oldestKey) === oldestShader) cache.remove(oldestKey);
+        if (oldestShader._variantKey === oldestKey) oldestShader._variantKey = null;
+        shaderVariantKeys.release(oldestKey);
     }
     private static getCommonHeader(renderer: ShaderPrecisionProvider): string {
         const vertexPrecision = renderer.vertexPrecision;
@@ -337,32 +545,66 @@ class Shader {
         if (isUseInstance) {
             header += '#define HILO_INSTANCED 1\n';
         }
-        let key = `${material.className}:${isUseInstance ? 'instanced' : 'single'}`;
-        const compile = beforeCompile(material);
+        const shaderFamily = isPBRMaterial(material)
+            ? 'pbr'
+            : isBasicMaterial(material) && material.isGeometryMaterial
+              ? 'geometry'
+              : 'basic';
+        let key = `${shaderFamily}:${material.className}:${isUseInstance ? 'instanced' : 'single'}`;
+        let fs = '';
+        let vs = basicVertCode;
+        if (isBasicMaterial(material)) {
+            fs = material.isGeometryMaterial ? geometryFragCode : basicFragCode;
+        } else if (isPBRMaterial(material)) {
+            fs = pbrFragCode;
+        }
+
+        const compile = material.onBeforeCompile;
         if (compile) {
             key += `:${material.shaderCacheId ?? material.id}`;
+            const snapshot = beforeCompileSnapshots.get(material);
+            if (
+                snapshot?.callback === compile &&
+                snapshot.materialRevision === material.revision &&
+                snapshot.shaderFamily === shaderFamily
+            ) {
+                vs = snapshot.vs;
+                fs = snapshot.fs;
+            } else {
+                const compiled = runBeforeCompile(material, compile, vs, fs);
+                vs = compiled.vs;
+                fs = compiled.fs;
+                beforeCompileSnapshots.set(material, {
+                    callback: compile,
+                    materialRevision: material.revision,
+                    shaderFamily,
+                    vs,
+                    fs
+                });
+            }
         }
         const commonHeader = this.getRendererHeader(renderer);
-        let shader = cache.get(this.getCustomShaderCacheKey(key, commonHeader, header, true));
+        const variantValues: VariantHashValue[] = [key, commonHeader, header, true, vs, fs];
+        const hashedValues: VariantHashValue[] = [
+            key,
+            commonHeader,
+            getStringFingerprint(header),
+            true,
+            getStringFingerprint(vs),
+            getStringFingerprint(fs)
+        ];
+        const variantKey = shaderVariantKeys.resolve('b', variantValues, hashedValues);
+        let shader = cache.get(variantKey);
         if (!shader) {
-            let fs = '';
-            let vs = basicVertCode;
-            if (isBasicMaterial(material)) {
-                if (material.isGeometryMaterial) {
-                    fs += geometryFragCode;
-                } else {
-                    fs += basicFragCode;
-                }
-            } else if (isPBRMaterial(material)) {
-                fs += pbrFragCode;
-            }
-            if (compile) {
-                const newCode = compile(vs, fs);
-                fs = newCode.fs;
-                vs = newCode.vs;
-            }
-            shader = this.getCustomShader(vs, fs, header, key, true, renderer);
+            const shaderHeader = commonHeader + header;
+            shader = new Shader({
+                vs: this.assembleGLSL300(vs, shaderHeader),
+                fs: this.assembleGLSL300(fs, shaderHeader)
+            });
+            shader._variantKey = variantKey;
+            cache.add(variantKey, shader);
         }
+        this.trackShaderVariant(variantKey, shader);
         const shaderNumId = this.getNumericId(shader);
         if (shaderNumId !== null) {
             Reflect.set(material, '_shaderNumId', shaderNumId);
@@ -395,7 +637,22 @@ class Shader {
         const commonHeader = this.getRendererHeader(renderer);
         let shader: Shader | undefined;
         if (cacheKey) {
-            cacheKey = this.getCustomShaderCacheKey(cacheKey, commonHeader, header, useHeaderCache);
+            const variantValues: VariantHashValue[] = [
+                cacheKey,
+                commonHeader,
+                header,
+                useHeaderCache,
+                vs,
+                fs
+            ];
+            cacheKey = shaderVariantKeys.resolve('c', variantValues, [
+                cacheKey,
+                commonHeader,
+                getStringFingerprint(header),
+                useHeaderCache,
+                getStringFingerprint(vs),
+                getStringFingerprint(fs)
+            ]);
             shader = cache.get(cacheKey);
         }
         if (!shader) {
@@ -405,9 +662,11 @@ class Shader {
                 fs: this.assembleGLSL300(fs, shaderHeader)
             });
             if (cacheKey) {
+                shader._variantKey = cacheKey;
                 cache.add(cacheKey, shader);
             }
         }
+        if (cacheKey) this.trackShaderVariant(cacheKey, shader);
         return shader;
     }
 
@@ -427,15 +686,6 @@ class Shader {
         });
         rendererHeaderCache.set(renderer, snapshot);
         return snapshot.header;
-    }
-
-    private static getCustomShaderCacheKey(
-        cacheKey: string,
-        commonHeader: string,
-        header: string,
-        useHeaderCache: boolean
-    ): string {
-        return JSON.stringify([cacheKey, commonHeader, useHeaderCache, header]);
     }
 
     private static assembleGLSL300(source: string, header: string): string {
@@ -471,7 +721,17 @@ class Shader {
         if (this._isDestroyed) {
             return this;
         }
-        cache.removeObject(this);
+        const wasCached = cache.getObject(this) === this;
+        if (wasCached) {
+            cache.removeObject(this);
+            if (this._variantKey) {
+                if (trackedShaderVariants.get(this._variantKey) === this) {
+                    trackedShaderVariants.delete(this._variantKey);
+                }
+                shaderVariantKeys.release(this._variantKey);
+            }
+        }
+        this._variantKey = null;
         this._isDestroyed = true;
         return this;
     }

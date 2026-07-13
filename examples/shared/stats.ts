@@ -1,4 +1,4 @@
-import type RenderInfo from '../../src/renderer/RenderInfo';
+import type RenderInfo from '../../src/renderer/common/RenderInfo';
 import type Ticker from '../../src/utils/Ticker';
 
 interface PerformanceMemory {

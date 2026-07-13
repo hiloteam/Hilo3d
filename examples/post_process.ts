@@ -82,8 +82,10 @@ const diagnosticTarget = renderer.createRenderTarget({
 const postProcessFrame: Hilo3d.Tickable = {
     tick(deltaTime): void {
         stage.traverseUpdate(deltaTime);
-        renderer.renderToTarget(sceneTarget, stage, camera, true);
-        postProcess.render(sceneTarget.getColorTexture());
+        renderer.renderFrame(() => {
+            renderer.renderToTarget(sceneTarget, stage, camera, true);
+            postProcess.render(sceneTarget.getColorTexture());
+        });
     }
 };
 ticker.removeTick(stage);

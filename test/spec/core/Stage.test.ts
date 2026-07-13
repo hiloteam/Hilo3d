@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 
 const Stage = Hilo3d.Stage;
@@ -58,6 +58,24 @@ describe('Stage', () => {
         expect(target.width).toBe(563);
         expect(target.height).toBe(1001);
         target.destroy();
+    });
+
+    it('awaits real WebGL2 initialization and rejects unavailable contexts', async () => {
+        const stage = await Stage.create({ width: 16, height: 16, pixelRatio: 1 });
+        expect(stage.renderer.isInit).toBe(true);
+        expect(stage.renderer.isReady).toBe(true);
+        stage.renderer.destroy();
+
+        const unavailableCanvas = document.createElement('canvas');
+        vi.spyOn(unavailableCanvas, 'getContext').mockReturnValue(null);
+        await expect(
+            Stage.create({
+                canvas: unavailableCanvas,
+                width: 16,
+                height: 16,
+                pixelRatio: 1
+            })
+        ).rejects.toThrow(/could not create a WebGL 2 context/u);
     });
 
     it('rejects the WebGL2-only preserved-framebuffer option before WebGPU initialization', () => {

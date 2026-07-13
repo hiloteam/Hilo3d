@@ -1337,8 +1337,6 @@ export class CubeTexture extends Texture<CubeTextureImage> {
     set right(img: HTMLImageElement | undefined);
     get top(): HTMLImageElement | undefined;
     set top(img: HTMLImageElement | undefined);
-    // (undocumented)
-    protected _uploadTexture(state: TextureWebGLState): this;
 }
 
 // @public (undocumented)
@@ -1725,7 +1723,6 @@ export class GeometryData {
     getCopy(index: number): GeometryAttributeValue;
     getOffset(index: number): number;
     getSubDataUpdatesSince(revision: number): readonly SubDataUpdate[] | null;
-    glBuffer: Buffer | null;
     // (undocumented)
     readonly id: string;
     // (undocumented)
@@ -3582,12 +3579,7 @@ export interface MaterialShaderSource {
 }
 
 // @public (undocumented)
-export interface MaterialTexture extends TextureBinding {
-    // (undocumented)
-    destroy(): void;
-    // (undocumented)
-    readonly mipmapCount: number;
-}
+export type MaterialTexture = Texture<unknown>;
 
 // @public (undocumented)
 export type MaterialTextureValue = MaterialTexture | Color | null;
@@ -4562,17 +4554,9 @@ export interface ProgramAttribute {
 // @public (undocumented)
 export interface ProgramBindingInfo {
     // (undocumented)
-    glTypeInfo?: GLTypeInfo;
-    // (undocumented)
-    location?: GLint | WebGLUniformLocation | null;
-    // (undocumented)
     name?: string;
     // (undocumented)
-    size?: GLint;
-    // (undocumented)
     textureIndex?: number;
-    // (undocumented)
-    type?: GLenum;
 }
 
 // @public (undocumented)
@@ -4846,6 +4830,7 @@ export interface Renderer {
     releaseGPUResources(): void;
     // (undocumented)
     render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    renderFrame(callback: RendererFrameCallback): void;
     // (undocumented)
     readonly renderTarget: RenderTarget | null;
     // (undocumented)
@@ -4868,6 +4853,21 @@ export interface Renderer {
 
 // @public (undocumented)
 export type RendererBackend = 'webgl2' | 'webgpu';
+
+// @public
+export interface RendererFrame {
+    // (undocumented)
+    readonly backend: RendererBackend;
+    // (undocumented)
+    present(target?: RenderTarget): void;
+    // (undocumented)
+    render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    // (undocumented)
+    renderToTarget(target: RenderTarget, stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+}
+
+// @public
+export type RendererFrameCallback = (frame: RendererFrame) => unknown;
 
 // @public
 export interface RendererResourceDiagnostics {
@@ -5585,7 +5585,7 @@ export class Shader {
     static init(renderer: ShaderPrecisionProvider): void;
     // (undocumented)
     readonly isShader = true;
-    static reset(_gl?: GLContext): void;
+    static reset(): void;
     static shaders: {
         [k: string]: string;
     };
@@ -6143,18 +6143,10 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     compressed: boolean;
     depth: number;
     destroy(): this;
-    protected _fixInternalFormat(type: GLenum, format: GLenum, internalFormat: GLenum): GLenum;
     flipY: boolean;
     format: number;
-    static getCache(gl: GLContext): Cache_2<WebGLTexture>;
-    getGLTexture(state: TextureWebGLState): WebGLTexture;
     getSupportSize(img: ResizableTextureImage, maxTextureSize?: number): Size;
     getTextureUpdatesSince(revision: number): TextureUpdateSnapshot;
-    // (undocumented)
-    protected getWebGLUploadImage(): Image | null;
-    // (undocumented)
-    protected getWebGLUploadMipmaps(): readonly TextureMipmap[] | null;
-    protected _glUploadTexture(state: TextureWebGLState, target: GLenum, image: TextureImageSource | null, level?: number, width?: number, height?: number, depth?: number): this;
     // (undocumented)
     height: number;
     // (undocumented)
@@ -6182,15 +6174,11 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     // (undocumented)
     protected _releaseImage(): void;
     releaseImageIfAllowed(): boolean;
-    static reset(gl: GLContext): void;
     resizeImg(img: ResizableTextureImage, width: number, height: number): ResizableTextureImage | HTMLCanvasElement;
-    setGLTexture(state: TextureWebGLState, texture: WebGLTexture, needDestroy?: boolean): this;
     target: number;
     type: number;
     get updateRevision(): number;
     updateSubTexture(descriptor: TextureSubImage): void;
-    updateTexture(state: TextureWebGLState, glTexture: WebGLTexture): this;
-    protected _uploadTexture(state: TextureWebGLState): this;
     get useMipmap(): boolean;
     uv: TextureUVChannel;
     // (undocumented)
@@ -6201,12 +6189,7 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
 }
 
 // @public
-export interface TextureBinding {
-    // (undocumented)
-    getGLTexture(state: TextureWebGLState): WebGLTexture;
-    // (undocumented)
-    readonly target: GLenum;
-}
+export type TextureBinding = Texture<unknown>;
 
 // @public (undocumented)
 export type TextureComponentStorage = 'i8' | 'u8' | 'i16' | 'u16' | 'i32' | 'u32' | 'f16' | 'f32' | 'depth' | 'compressed';
@@ -6336,22 +6319,6 @@ export interface TextureUpdateSnapshot {
 
 // @public (undocumented)
 export type TextureUVChannel = 0 | 1;
-
-// @public (undocumented)
-export interface TextureWebGLState {
-    // (undocumented)
-    activeTexture(texture: GLenum): void;
-    // (undocumented)
-    bindTexture(target: GLenum, texture: WebGLTexture | null): void;
-    // (undocumented)
-    readonly capabilities: WebGLCapabilities;
-    // (undocumented)
-    readonly extensions: WebGLExtensions;
-    // (undocumented)
-    readonly gl: GLContext;
-    // (undocumented)
-    pixelStorei(pname: GLenum, param: number | boolean): void;
-}
 
 // @public (undocumented)
 export type ThreeParameterMethod = 'stencilFunc' | 'stencilOp';
@@ -6609,18 +6576,13 @@ export const UNIFORM_BLOCK_BINDINGS: Readonly<{
 export class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     constructor(layout: Std140Layout<Schema>, values?: Partial<Std140Values<Schema>>);
     // (undocumented)
-    bind(gl: WebGL2RenderingContext, bindingPoint: number, range?: UniformBufferRange): void;
-    // (undocumented)
     get byteLength(): number;
     // (undocumented)
     readonly className = "UniformBuffer";
     get data(): ArrayBuffer;
     set data(data: ArrayBuffer);
-    destroy(gl?: WebGL2RenderingContext): void;
     // (undocumented)
     static fromSchema<const Schema extends Std140Schema>(layout: Std140Layout<Schema>, values?: Partial<Std140Values<Schema>>): UniformBuffer<Schema>;
-    // (undocumented)
-    getBuffer(gl: WebGL2RenderingContext): Buffer;
     getDirtyRangesSince(revision: number): readonly UniformBufferDirtyRange[] | null;
     // (undocumented)
     readonly isUniformBuffer = true;
@@ -7779,6 +7741,7 @@ export class WebGLRenderer extends EventDispatcher {
     releaseGPUResources(): void;
     // (undocumented)
     render(stage: WebGLRendererScene, camera: Camera, fireEvent?: boolean): void;
+    renderFrame(callback: RendererFrameCallback): void;
     // (undocumented)
     readonly renderInfo: RenderInfo;
     // (undocumented)
@@ -8098,16 +8061,6 @@ export interface WebGPUExternalTextureOptions extends WebGPUTextureRequestOption
     readonly viewDescriptor?: GPUTextureViewDescriptor;
 }
 
-// @internal
-interface WebGPUExternalTextureRegistration {
-    // (undocumented)
-    readonly gpuTexture: GPUTexture;
-    // (undocumented)
-    readonly options?: WebGPUExternalTextureOptions;
-    // (undocumented)
-    readonly texture: Texture<unknown>;
-}
-
 // @public (undocumented)
 export interface WebGPUFragmentOutput {
     // (undocumented)
@@ -8184,6 +8137,7 @@ export class WebGPURenderer extends EventDispatcher {
     releaseGPUResources(): void;
     // (undocumented)
     render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    renderFrame(callback: RendererFrameCallback): void;
     // (undocumented)
     readonly renderInfo: RenderInfo;
     // (undocumented)
@@ -8282,7 +8236,7 @@ export interface WebGPURenderPassOptions {
     readonly label?: string;
 }
 
-// @public
+// @public (undocumented)
 export class WebGPURenderTarget implements RenderTarget {
     constructor(device: GPUDevice, textureManager: WebGPUTextureManager, parameters: WebGPURenderTargetParameters, onDestroy?: (target: WebGPURenderTarget) => void);
     // (undocumented)
@@ -8326,12 +8280,8 @@ export class WebGPURenderTarget implements RenderTarget {
     readColorAttachment(options?: WebGPUReadColorAttachmentOptions): Promise<WebGPUColorAttachmentReadback>;
     // (undocumented)
     resize(width: number, height: number): void;
-    // @internal
-    restoreDeviceResources(device: GPUDevice, textureManager: WebGPUTextureManager): void;
     // (undocumented)
     readonly sampleCount: 1 | 4;
-    // @internal
-    suspendDeviceResources(): void;
     // (undocumented)
     get textureManager(): WebGPUTextureManager;
     // (undocumented)
@@ -8412,16 +8362,8 @@ export class WebGPUTextureManager {
     // (undocumented)
     getSampler(texture: Texture<unknown>, options?: WebGPUTextureRequestOptions): GPUSampler;
     registerExternal(texture: Texture<unknown>, gpuTexture: GPUTexture, options?: WebGPUExternalTextureOptions): WebGPUTextureResource;
-    // Warning: (ae-forgotten-export) The symbol "WebGPUExternalTextureRegistration" needs to be exported by the entry point Hilo3d.d.ts
-    //
-    // @internal
-    replaceExternalBatch(registrations: readonly WebGPUExternalTextureRegistration[]): readonly WebGPUTextureResource[];
     // (undocumented)
     get resourceCount(): number;
-    // @internal
-    restoreDevice(device: GPUDevice): void;
-    // @internal
-    suspendAll(): void;
 }
 
 // @public (undocumented)

@@ -2,7 +2,7 @@ import {
     BUILTIN_UNIFORM_BLOCK_BINDING_COUNT,
     getUniformBlockBinding,
     registerUniformBlockBinding
-} from '../ubo/UniformBlockBindings';
+} from '../common/ubo/UniformBlockBindings';
 
 export const WEBGPU_BIND_GROUPS = Object.freeze({
     GLOBAL: 0,

@@ -16,7 +16,7 @@ import type {
     TranslatedShaderPair,
     WebGPUSamplerBinding,
     WebGPUUniformBlock
-} from '../../../src/shader/GlslToWgsl';
+} from '../../../src/renderer/webgpu/shader/GlslToWgsl';
 import WebGPUBindGroupManager, {
     type ResolvedWebGPUSampler
 } from '../../../src/renderer/webgpu/WebGPUBindGroupManager';
@@ -190,6 +190,46 @@ describe('WebGPUBindGroupManager layouts', () => {
         const secondGroups = manager.getBindGroups(second, secondShader, buffers, []);
         expect(secondGroups).toBe(firstGroups);
         expect(fake.bindGroupDescriptors).toHaveLength(4);
+    });
+
+    it('reuses unchanged group layouts and bind groups across pipeline-layout variants', () => {
+        const fake = fakeDevice();
+        const manager = managerFor(fake.device);
+        const frameBlock = uniformBlock('FrameBlock', 0, 0);
+        const materialBlock = uniformBlock('MaterialBlock', 1, 0, ['fragment']);
+        const firstShader = shader([frameBlock]);
+        const secondShader = shader([frameBlock, materialBlock]);
+        const firstLayout = manager.getLayout(firstShader, []);
+        const secondLayout = manager.getLayout(secondShader, []);
+
+        expect(secondLayout).not.toBe(firstLayout);
+        expect(secondLayout.bindGroupLayouts[0]).toBe(firstLayout.bindGroupLayouts[0]);
+        expect(secondLayout.bindGroupLayouts[1]).not.toBe(firstLayout.bindGroupLayouts[1]);
+        expect(secondLayout.bindGroupLayouts[2]).toBe(firstLayout.bindGroupLayouts[2]);
+        expect(secondLayout.bindGroupLayouts[3]).toBe(firstLayout.bindGroupLayouts[3]);
+        expect(fake.layoutDescriptors).toHaveLength(5);
+
+        const frameBuffer = {} as GPUBuffer;
+        const firstGroups = manager.getBindGroups(
+            firstLayout,
+            firstShader,
+            { FrameBlock: { buffer: frameBuffer, offset: 0, size: 64 } },
+            []
+        );
+        const secondGroups = manager.getBindGroups(
+            secondLayout,
+            secondShader,
+            {
+                FrameBlock: { buffer: frameBuffer, offset: 0, size: 64 },
+                MaterialBlock: { buffer: {} as GPUBuffer, offset: 0, size: 64 }
+            },
+            []
+        );
+        expect(secondGroups[0]).toBe(firstGroups[0]);
+        expect(secondGroups[1]).not.toBe(firstGroups[1]);
+        expect(secondGroups[2]).toBe(firstGroups[2]);
+        expect(secondGroups[3]).toBe(firstGroups[3]);
+        expect(fake.bindGroupDescriptors).toHaveLength(5);
     });
 
     it('rejects duplicate binding slots and resource/view dimension mismatches synchronously', () => {
@@ -370,6 +410,30 @@ describe('WebGPUBindGroupManager layouts', () => {
         }
     );
 
+    it('prefers a renderer-owned depth texture comparison default', () => {
+        const fake = fakeDevice();
+        const resource = textureResource({ format: 'depth16unorm' });
+        const get = vi.fn(() => resource);
+        const getDefaultCompare = vi.fn(() => 'greater-equal' as const);
+        const manager = new WebGPUBindGroupManager(fake.device, {
+            get,
+            getDefaultCompare
+        });
+        const texture = new Texture({
+            width: 1,
+            height: 1,
+            internalFormat: DEPTH_COMPONENT16,
+            format: DEPTH_COMPONENT,
+            type: UNSIGNED_SHORT,
+            image: null
+        });
+
+        manager.resolveSampler(samplerBinding({ type: 'sampler2DShadow' }), texture);
+
+        expect(getDefaultCompare).toHaveBeenCalledWith(texture);
+        expect(get).toHaveBeenCalledWith(texture, { compare: 'greater-equal' });
+    });
+
     it('rejects integer sampler format and filtering mismatches before allocation', () => {
         const fake = fakeDevice();
         const get = vi.fn(() => textureResource({ format: 'rgba8sint' }));
@@ -546,7 +610,11 @@ describe('WebGPUBindGroupManager resource identity', () => {
             [samplerResourceC]
         );
         expect(changedSampler).not.toBe(changedView);
-        expect(fake.bindGroupDescriptors).toHaveLength(20);
+        expect(changedUbo[0]).toBe(first[0]);
+        expect(changedUbo[1]).not.toBe(first[1]);
+        expect(changedUbo[2]).toBe(first[2]);
+        expect(changedUbo[3]).toBe(first[3]);
+        expect(fake.bindGroupDescriptors).toHaveLength(8);
     });
 
     it('clears layout and bind-group caches so rebuilt GPU identities are used', () => {
