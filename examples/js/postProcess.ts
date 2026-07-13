@@ -1,5 +1,7 @@
 import * as Hilo3d from '../../src/Hilo3d';
 
+Hilo3d.registerUniformBlockBinding('PostProcessKernelBlock');
+
 export interface PostProcessUniformGetter {
     get(
         mesh: Hilo3d.Mesh | null,
@@ -8,13 +10,15 @@ export interface PostProcessUniformGetter {
     ): unknown;
 }
 
-export type PostProcessUniform = Hilo3d.UniformValue | PostProcessUniformGetter;
+export type PostProcessUniform = number | Int32Array | PostProcessUniformGetter;
 
 export interface PostProcessPass {
     id?: string;
     vert?: string;
     frag?: string;
     uniforms?: Record<string, PostProcessUniform>;
+    uniformBlocks?: Record<string, Hilo3d.UniformBuffer>;
+    prepare?: () => void;
     clearColor?: Hilo3d.Color;
     kernel?: readonly number[];
 }
@@ -131,57 +135,56 @@ export class PostProcess {
         }
 
         const renderer = this.renderer;
-        const textureSize = new Float32Array(2);
-        const kernelValues = new Float32Array(9);
+        const layout = Hilo3d.createStd140Layout({
+            u_textureSize: 'vec2',
+            u_kernel: { type: 'float', arrayLength: 9 },
+            u_kernelWeight: 'float'
+        });
+        const materialBlock = Hilo3d.UniformBuffer.fromSchema(layout);
         const pass: PostProcessPass = { kernel };
 
-        const uniforms: Record<string, PostProcessUniform> = {
-            u_textureSize: {
-                get: () => {
-                    textureSize[0] = renderer.width;
-                    textureSize[1] = renderer.height;
-                    return textureSize;
-                }
-            },
-            u_kernelWeight: {
-                get: () => Math.max(1, pass.kernel?.reduce((sum, value) => sum + value, 0) ?? 1)
-            },
-            u_kernel: {
-                get: () => {
-                    const currentKernel = pass.kernel;
-                    if (currentKernel?.length !== 9) {
-                        throw new RangeError('Post-process kernel must contain exactly 9 values.');
-                    }
-                    kernelValues.set(currentKernel);
-                    return kernelValues;
-                }
-            }
-        };
-
         pass.id = id ?? Hilo3d.math.generateUUID('pass');
-        pass.frag = `
-                    precision HILO_MAX_FRAGMENT_PRECISION float;
-                    varying vec2 v_texcoord0;
+        pass.frag = `#version 300 es
+                    precision highp float;
+                    in vec2 v_texcoord0;
                     uniform sampler2D u_diffuse;
-                    uniform vec2 u_textureSize;
-                    uniform float u_kernel[9];
-                    uniform float u_kernelWeight;
+                    layout(std140) uniform PostProcessKernelBlock {
+                        vec2 u_textureSize;
+                        float u_kernel[9];
+                        float u_kernelWeight;
+                    };
+                    layout(location = 0) out vec4 fragmentColor;
                     void main(void) {
                         vec2 onePixel = vec2(1.0) / u_textureSize;
                         vec4 colorSum =
-                            texture2D(u_diffuse, v_texcoord0 + onePixel * vec2(-1, -1)) * u_kernel[0] +
-                            texture2D(u_diffuse, v_texcoord0 + onePixel * vec2( 0, -1)) * u_kernel[1] +
-                            texture2D(u_diffuse, v_texcoord0 + onePixel * vec2( 1, -1)) * u_kernel[2] +
-                            texture2D(u_diffuse, v_texcoord0 + onePixel * vec2(-1,  0)) * u_kernel[3] +
-                            texture2D(u_diffuse, v_texcoord0 + onePixel * vec2( 0,  0)) * u_kernel[4] +
-                            texture2D(u_diffuse, v_texcoord0 + onePixel * vec2( 1,  0)) * u_kernel[5] +
-                            texture2D(u_diffuse, v_texcoord0 + onePixel * vec2(-1,  1)) * u_kernel[6] +
-                            texture2D(u_diffuse, v_texcoord0 + onePixel * vec2( 0,  1)) * u_kernel[7] +
-                            texture2D(u_diffuse, v_texcoord0 + onePixel * vec2( 1,  1)) * u_kernel[8];
-                        gl_FragColor = colorSum / u_kernelWeight;
+                            texture(u_diffuse, v_texcoord0 + onePixel * vec2(-1, -1)) * u_kernel[0] +
+                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 0, -1)) * u_kernel[1] +
+                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 1, -1)) * u_kernel[2] +
+                            texture(u_diffuse, v_texcoord0 + onePixel * vec2(-1,  0)) * u_kernel[3] +
+                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 0,  0)) * u_kernel[4] +
+                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 1,  0)) * u_kernel[5] +
+                            texture(u_diffuse, v_texcoord0 + onePixel * vec2(-1,  1)) * u_kernel[6] +
+                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 0,  1)) * u_kernel[7] +
+                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 1,  1)) * u_kernel[8];
+                        fragmentColor = colorSum / u_kernelWeight;
                     }
                 `;
-        pass.uniforms = uniforms;
+        pass.uniformBlocks = { PostProcessKernelBlock: materialBlock };
+        pass.prepare = () => {
+            const currentKernel = pass.kernel;
+            if (currentKernel?.length !== 9) {
+                throw new RangeError('Post-process kernel must contain exactly 9 values.');
+            }
+            materialBlock.set('u_textureSize', [renderer.width, renderer.height]);
+            materialBlock.set('u_kernel', currentKernel);
+            materialBlock.set(
+                'u_kernelWeight',
+                Math.max(
+                    1,
+                    currentKernel.reduce((sum, value) => sum + value, 0)
+                )
+            );
+        };
         this.passes.push(pass);
         return pass;
     }
@@ -244,6 +247,14 @@ export class PostProcess {
             const shader = Hilo3d.Shader.getCustomShader(vertexShader, fragmentShader, '', passId);
             const program = Hilo3d.Program.getProgram(shader, state);
             program.useProgram();
+            pass.prepare?.();
+            for (const name of Object.keys(program.uniformBlocks)) {
+                const uniformBuffer = pass.uniformBlocks?.[name];
+                if (!uniformBuffer) {
+                    throw new Error(`Post-process pass ${passId} does not bind ${name}.`);
+                }
+                program.setUniformBlock(name, uniformBuffer);
+            }
 
             const vao = Hilo3d.VertexArrayObject.getVao(gl, program.id, {
                 mode: gl.TRIANGLE_STRIP

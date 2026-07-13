@@ -42,6 +42,23 @@ be committed when a rendering change is intentional.
 - Public API changes must update tests, TypeDoc comments, the generated API report via
   `npm run api:update`, and `CHANGELOG.md`.
 
+## WebGL 2 and shader policy
+
+- The renderer has one backend: WebGL 2 with native GLSL ES 3.00. Do not add WebGL 1 context
+  fallback, GLSL 1.00 compatibility macros, or extension wrappers for WebGL 2 core features.
+- Engine and example shaders must use `in`/`out`, `texture()`, and explicit fragment outputs.
+  `attribute`, `varying`, `texture2D`, `textureCube`, `gl_FragColor`, and WebGL 1 shader extensions
+  are rejected by the test suite.
+- Non-sampler shader data belongs in a std140 uniform block. Samplers are the only permitted classic
+  uniforms; `Program` rejects any other active classic uniform at link time.
+- Built-in bindings 0–8 are reserved for `FrameBlock`, `CameraBlock`, `SceneBlock`, `LightBlock`,
+  `MaterialBlock`, `ModelBlock`, `GeometryBlock`, `SkinningBlock`, and `MorphBlock`. Do not reorder
+  or repurpose them.
+- Register a custom block with `registerUniformBlockBinding` before linking it. Every new block must
+  document its owner and update frequency and include std140 offset, size, and dirty-update tests.
+- Instanced object data uses explicit instance attributes. Do not restore source rewriting that
+  changes a uniform into an attribute, and do not place per-instance data in a per-draw UBO.
+
 ## Commits and pull requests
 
 Use concise Conventional Commit messages, for example `fix: handle incomplete GLTF buffers` or

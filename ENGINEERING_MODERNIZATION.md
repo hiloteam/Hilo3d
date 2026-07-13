@@ -14,6 +14,8 @@
   中不再存在一方 JavaScript 实现。
 - 源码内部使用原生 ESM、原生
   `class`、显式领域类型和标准浏览器 API；旧的动态类系统仅保留为公共兼容边界，内部实现不再依赖它。
+- 渲染器以 WebGL 2 和原生 GLSL ES 3.00 为唯一图形后端；数值 shader 数据全部通过固定 std140 UBO
+  ABI 传递，不存在 WebGL 1、GLSL 1.00 或逐项 numeric uniform 路径。
 - Vite 负责库与多页面示例构建，Vitest Browser Mode 在真实 Chromium
   WebGL 环境中运行单元测试，Playwright 覆盖全部示例和确定性视觉回归。
 - 类型声明、TypeDoc API 页面和 API Extractor 签名报告全部从同一份已检查源码生成。
@@ -39,6 +41,7 @@
 | UI 测试  | 少量代表页面 smoke test                                 | Playwright 加载全部 79 个示例，并检查页面、控制台、请求和 WebGL 错误    |
 | 视觉测试 | 截图比较为空实现                                        | Linux Chromium/SwiftShader 确定性基线与像素差异阈值                     |
 | 示例     | 旧全局变量、vendor 脚本、远程运行时资源                 | 严格 TS 多页面应用，本地 npm 依赖与本地静态资产                         |
+| 渲染 ABI | WebGL 1/2 分支、GLSL 1.00 转译与逐项 uniform            | WebGL 2-only、原生 GLSL ES 3.00、固定 std140 UBO 与 sampler-only 例外   |
 | npm 包   | 仓库内入口能运行即视为通过                              | publint、Are the Types Wrong、Bundler/NodeNext/UMD 类型与真实运行时消费 |
 | CI/发布  | 老版本 Actions、Node 与零散命令                         | Node 22 最低版本 + Node 24 双矩阵，npm 12、Chromium、单一完整门禁       |
 | 文档站点 | 跟踪旧生成物                                            | CI 现场生成 TypeDoc 与 Vite 示例站点并部署 Pages                        |
@@ -70,6 +73,12 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 
 ### 运行时与资源
 
+- WebGL 2 是强制运行条件。上下文创建失败会直接报告不支持，不再尝试 WebGL 1 或扩展模拟核心能力。
+- VAO、实例化、MRT/draw buffers、三维/数组纹理和 UBO 均使用 WebGL 2 core
+  API；扩展注册表只保留各向异性过滤、context loss、浮点颜色附件和纹理压缩格式等真正可选能力。
+- 删除 `KHR_techniques_webgl` loader、类型和 SampleTechniques 资产。该历史扩展以任意 GLSL
+  1.00 与 classic numeric uniform 为接口，无法满足固定 UBO
+  ABI；仅改内置样例而继续宣称支持会使外部资产在 program link 时失败，因此不保留伪兼容入口。
 - 删除 AMC 专有扩展；相关演示资产转换为标准 glTF。
 - WebXR 使用标准 WebXR 类型与浏览器 API。
 - 物理示例使用 `cannon-es`，Draco 使用由 Vite 封装的浏览器 WASM decoder。
@@ -77,6 +86,149 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 - 示例运行时资源来自仓库或 npm 依赖，不依赖第三方 CDN 才能通过测试。
 - 处理 Draco 上游浏览器 wrapper 时，构建插件会验证预期结构；上游格式变化会直接使构建失败，而不是静默回退到 Node
   shim。
+
+## WebGL 2 渲染 ABI
+
+### 单一图形后端
+
+引擎 shader 直接编写为原生 GLSL ES 3.00，使用 `in`/`out`、`texture()`、显式 fragment output 与 WebGL
+2 core API。运行时不再 prepend WebGL 1 兼容宏，也不再把 `attribute`、`varying`、 `texture2D()` 或
+`gl_FragColor` 动态改写为新语法。
+
+这是一项有意的 breaking change：Hilo3d 2.x 不支持 WebGL 1 设备，应用也不能继续提交 GLSL
+1.00 自定义 shader。删除兼容层的目的不是减少几条分支，而是让 shader 接口、资源能力、测试矩阵和错误模型只存在一种解释。
+
+### 固定 uniform block binding ABI
+
+所有内置数值 shader 数据按所有权和更新频率进入固定 std140
+block。绑定号由 block 名称决定，而不是取决于某个 program 的反射顺序：
+
+| Binding | Block           | 数据所有者与典型内容                        | 更新时机                      |
+| ------: | --------------- | ------------------------------------------- | ----------------------------- |
+|       0 | `FrameBlock`    | render size、时间与帧序号                   | 每个 renderer frame 一次      |
+|       1 | `CameraBlock`   | view/projection、逆矩阵、相机位置与裁剪平面 | 每个 camera/render pass 一次  |
+|       2 | `SceneBlock`    | fog 等 scene-owned 状态                     | scene revision 变化时         |
+|       3 | `LightBlock`    | view-space 灯光、衰减与阴影参数             | 每个 camera/render pass 一次  |
+|       4 | `MaterialBlock` | Basic/PBR、IBL、UV 变换与材质标志           | material revision 变化时      |
+|       5 | `ModelBlock`    | model 与 world-normal 变换                  | 非实例对象的 transform 变化时 |
+|       6 | `GeometryBlock` | position/normal/UV decode 变换              | geometry revision 变化时      |
+|       7 | `SkinningBlock` | joint palette                               | skeleton pose 变化时          |
+|       8 | `MorphBlock`    | morph weights 与 target 状态                | morph pose 变化时             |
+
+这些名称和 binding 是公共 ABI，不允许重新排序或按 shader variant 临时分配。引擎通过
+`UNIFORM_BLOCK_DATA_SIZE` 检查绑定范围，通过 `MAX_UNIFORM_BUFFER_BINDINGS`、
+`MAX_UNIFORM_BLOCK_SIZE` 与 `UNIFORM_BUFFER_OFFSET_ALIGNMENT`
+验证设备和动态 range。std140 布局由类型化 schema 生成并由 offset、matrix stride、array
+stride 测试锁定；字段更新只上传 dirty byte range，不会为了使用 UBO 而在每次 draw 重新 `bufferData`
+整块数据。
+
+内置 block 占用 0–8。应用自定义 block 必须在 program 首次 link 前调用
+`registerUniformBlockBinding(name)`，默认从 9 开始稳定分配；也可以显式指定全局唯一 binding。未注册 block、binding 冲突、超出设备上限或 buffer/range 小于反射大小都会立即失败。
+
+当前灯光着色使用 view-space 数据，因此 `LightBlock` 与 `CameraBlock`
+同属 render-pass 频率：切换 camera 时各更新一次，但不会在同一 pass 的每个 model
+draw 重复上传。当前环境贴图、球谐与 IBL 强度允许逐材质变化，因此属于 `MaterialBlock`；`SceneBlock`
+不虚构一个尚不存在的全局 environment owner。若未来引入 Stage
+environment，必须作为显式 API/ABI 迁移评审，不能仅为追求名称整齐而改变现有材质语义。
+
+固定 ABI 同时固定资源容量：最多 8 个 directional light、8 个 spot light、16 个 point
+light、8 个 area light、128 个 skin joint 和 8 个 morph
+weight。超过容量会抛出带领域名称和实际数量的错误，禁止截断数组、复用最后一项或退回 classic
+uniform。提高上限必须先验证 WebGL 2 最低
+`MAX_UNIFORM_BLOCK_SIZE`、纹理单元预算、shader 编译成本和所有 std140
+offset 测试，再作为 ABI 变更评审。
+
+### sampler 是唯一例外
+
+GLSL opaque sampler 不能成为 uniform block 成员，因此 sampler 是 block 外唯一合法的
+`uniform`：材质纹理、环境贴图、BRDF LUT、LTC、阴影贴图和 post-process input 都属于这个例外。program
+link 后只为 active sampler 写入整数 texture
+unit；渲染阶段绑定纹理对象。任何 block 外的 float、vector、matrix、integer、boolean 或其数组都会被
+`Program` 拒绝，不能借 `ShaderMaterial`、`onBeforeCompile` 或示例代码绕过。
+
+sampler 例外不是继续保留通用逐项 uniform 系统的理由。纹理 UV
+channel、强度、尺寸、阈值和 kernel 等数值元数据必须进入相应的 Scene、Light、Material 或自定义 block；只有 opaque
+texture handle 留在 classic uniform。
+
+### 实例化、骨骼与 morph 边界
+
+- 一次 instanced draw 不能按 `gl_InstanceID` 改变 UBO range。每实例 model/normal
+  transform 使用显式 instanced vertex attributes；不再通过正则把 `uniform` 偷换成 `attribute`。
+- `ModelBlock` 只服务普通 draw 或整个 batch 的公共数据；model-view 与 MVP 在 shader 中由
+  `CameraBlock × ModelBlock`
+  推导，不重复上传 camera-dependent 派生矩阵。自定义每实例数据也必须显式声明为 instance
+  attribute，并接受 `MAX_VERTEX_ATTRIBS` 预算检查。
+- geometry decode 变换属于低频 `GeometryBlock`，绝不能因为它被 vertex
+  shader 使用就变成每实例 attribute 或每 model draw 重写。
+- joint index/weight 和 morph target 仍是 vertex attribute；joint palette 进入
+  `SkinningBlock`，morph weight 进入
+  `MorphBlock`。骨骼/形变与实例化组合必须走明确支持的路径，不能因为 block 绑定方便而共享错误 pose。
+- geometry-owned decode 数据、material-owned UV 变换和 model-owned
+  transform 不得互相塞入错误 scope；否则会把低频数据退化为逐 draw 上传。
+
+### ShaderMaterial 迁移
+
+旧的数值 semantic/uniform 写法：
+
+```ts
+new ShaderMaterial({
+    uniforms: {
+        u_color: {
+            get: () => [1, 0, 0, 1]
+        }
+    }
+});
+```
+
+必须迁为注册过的 std140 block：
+
+```ts
+import {
+    ShaderMaterial,
+    UniformBuffer,
+    createStd140Layout,
+    registerUniformBlockBinding
+} from 'hilo3d';
+
+registerUniformBlockBinding('EffectBlock');
+
+const effectLayout = createStd140Layout({
+    color: 'vec4',
+    strength: 'float'
+});
+const effectBlock = UniformBuffer.fromSchema(effectLayout, {
+    color: [1, 0, 0, 1],
+    strength: 0.75
+});
+
+const material = new ShaderMaterial({
+    attributes: { a_position: 'POSITION' },
+    uniformBlocks: { EffectBlock: effectBlock },
+    vs: `#version 300 es
+        layout(std140) uniform EffectBlock {
+            vec4 color;
+            float strength;
+        };
+        in vec3 a_position;
+        out vec4 v_color;
+        void main() {
+            v_color = vec4(color.rgb * strength, color.a);
+            gl_Position = vec4(a_position, 1.0);
+        }`,
+    fs: `#version 300 es
+        precision highp float;
+        in vec4 v_color;
+        layout(location = 0) out vec4 outColor;
+        void main() {
+            outColor = v_color;
+        }`
+});
+
+effectBlock.set('strength', 1);
+```
+
+如果自定义 shader 使用相机、场景或模型数据，应声明对应的 canonical
+block，而不是复制一套同义散装 uniform。如果使用纹理，sampler 可以保留在 block 外；与纹理相关的其他数值仍放在 block 内。
 
 ## 构建、包与发布契约
 
@@ -133,8 +285,8 @@ Chromium，因此 DOM、Canvas 与 WebGL 行为来自真实浏览器上下文。
 
 当前基线：
 
-- 82 个测试文件；
-- 504 个测试全部通过；
+- 86 个测试文件；
+- 526 个测试全部通过；
 - statements 60.92%；
 - branches 40.00%；
 - functions 58.96%；
@@ -184,6 +336,11 @@ npm run validate
 `validate` 按顺序执行：清理生成物、格式检查、typed lint、全部 TypeScript project
 references、浏览器单测与覆盖率、库构建、三类类型消费、全量 UI、视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
 
+其中 shader 静态门禁会同时扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00
+`attribute`/`varying`、`texture2D`/`textureCube`、`gl_FragColor`/`gl_FragData`、WebGL 1 shader
+extensions，以及 block 外的 non-sampler `uniform`。运行时门禁会再次在 program
+link 时拒绝漏网接口，静态规则与运行时规则互为补充。
+
 ## 验收清单
 
 - [x] 一方源码、示例、测试与脚本没有类型检查绕过或显式 `any`。
@@ -192,9 +349,15 @@ references、浏览器单测与覆盖率、库构建、三类类型消费、全�
 - [x] typed ESLint、Prettier 与 EditorConfig 覆盖整仓。
 - [x] 公共声明从源码生成，API 文档与 API report 同源。
 - [x] ESM、UMD、类型、source map、package exports 与真实 tarball 一致。
-- [x] 82 个浏览器单测文件与 504 个用例通过，并执行完整源码覆盖率门禁。
+- [x] 86 个浏览器单测文件与 526 个用例通过，并执行完整源码覆盖率门禁；当前 statements
+      63.75%、branches 43.94%、functions 63.55%、lines 65.35%。
 - [x] 79 个示例全部构建并通过 UI 错误检查。
 - [x] 关键 WebGL 场景具有真实截图差异测试。
+- [x] 渲染器只创建 WebGL 2 上下文，shader 全部使用原生 GLSL ES 3.00。
+- [x] 内置数值 shader 数据进入 binding 0–8 的固定 std140 ABI，sampler 是唯一 classic uniform。
+- [x] ShaderMaterial、自定义 loader shader 与全部示例遵守 UBO/sampler 边界。
+- [x] std140 offset/stride、固定 block binding、dirty-range upload 和非法 classic
+      uniform 有自动测试。
 - [x] 旧构建、测试、文档生成和运行时 vendor 链路已删除。
 - [x] CI 验证最低 Node 与当前 Node，发布前复用同一完整门禁。
 
@@ -208,3 +371,8 @@ references、浏览器单测与覆盖率、库构建、三类类型消费、全�
 6. 不提交
    `dist/`、`dist-examples/`、`docs/`、`site/`、coverage 或浏览器报告；发布只接受 CI 现场生成物。
 7. 新工具必须替换旧工具的职责，不允许两套活跃构建、测试、文档或发布链路长期并存。
+8. 不得新增 WebGL 1/GLSL 1.00 兼容源码、运行时 shader 转译或 block 外 numeric
+   uniform；兼容需求应通过明确的新后端设计讨论，而不是在 WebGL 2 backend 中恢复分支。
+9. 新增 uniform block 必须先分配全局稳定 binding、定义 std140
+   schema、补 offset/size 测试，并标明 owner、更新频率和 dirty
+   revision；不能按 program 反射顺序临时占号。

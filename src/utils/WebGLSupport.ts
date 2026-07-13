@@ -5,7 +5,7 @@ function detectWebGLSupport(): boolean {
 
     try {
         const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl');
+        const gl = canvas.getContext('webgl2');
         if (!gl) return false;
 
         gl.clearColor(0, 1, 0, 1);
@@ -19,7 +19,7 @@ function detectWebGLSupport(): boolean {
     }
 }
 
-/** Lazily detects whether the current runtime can create and read a WebGL context. */
+/** Lazily detects whether the current runtime can create and read a WebGL 2 context. */
 const WebGLSupport = {
     get(): boolean {
         cachedSupport ??= detectWebGLSupport();

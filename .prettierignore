@@ -13,6 +13,6 @@ test-results
 **/*.gltf
 examples/loader/osg/**/*.gz
 examples/models
-examples/js/ltcTexture.json
+src/light/assets/ltcTexture.json
 test/asset
 test/expectScreenshot

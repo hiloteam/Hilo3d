@@ -2,7 +2,7 @@
 
 [English](./README.md) | 简体中文
 
-一个 TypeScript-first 的 WebGL 3D 渲染引擎，支持基于物理的渲染与 glTF。
+一个 TypeScript-first、WebGL 2-only 的 3D 渲染引擎，支持基于物理的渲染与 glTF。
 
 [![npm](https://img.shields.io/npm/v/hilo3d.svg?style=flat-square)](https://www.npmjs.com/package/hilo3d)
 [![CI](https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?style=flat-square)](https://github.com/hiloteam/Hilo3d/actions/workflows/npm_test.yml)
@@ -75,6 +75,32 @@ ticker.start();
 包根路径只提供 ESM。`hilo3d/umd` 兼容子路径在 `import` 时解析到现代 ESM 产物，在 `require`
 时解析到自包含 UMD 产物；浏览器直接使用上面的 UMD 文件。
 
+## 渲染与 shader 契约
+
+Hilo3d 2.x 强制要求 WebGL 2，不再创建 WebGL 1 上下文或运行时转译 GLSL
+1.00。自定义 shader 必须直接使用 GLSL ES 3.00 的 `in`/`out`、`texture()` 和显式 fragment output。
+
+所有非纹理 shader 数据都通过固定 std140 uniform block 传递：
+
+| Binding | Block           | 更新域                |
+| ------: | --------------- | --------------------- |
+|       0 | `FrameBlock`    | 每帧                  |
+|       1 | `CameraBlock`   | 每 camera/render pass |
+|       2 | `SceneBlock`    | fog/scene 变化        |
+|       3 | `LightBlock`    | 每 camera/render pass |
+|       4 | `MaterialBlock` | 材质/IBL 变化         |
+|       5 | `ModelBlock`    | 对象 transform 变化   |
+|       6 | `GeometryBlock` | geometry decode 变化  |
+|       7 | `SkinningBlock` | 骨骼 pose 变化        |
+|       8 | `MorphBlock`    | morph pose 变化       |
+
+sampler 因 GLSL opaque type 规则不能进入 UBO，是 block 外唯一允许的 `uniform`。自定义
+`ShaderMaterial` block 必须在首次 link 前调用 `registerUniformBlockBinding()`，再使用
+`createStd140Layout()` 和 `UniformBuffer.fromSchema()`
+创建与更新数据；block 外的 float、vector、matrix 或 integer
+uniform 会直接导致链接接口校验失败。完整 ABI、迁移示例和 breaking changes 见
+[工程现代化改造记录](./ENGINEERING_MODERNIZATION.md#webgl-2-渲染-abi)。
+
 ## 文档与示例
 
 - [API 文档](https://hilo3d.js.org/docs/)
@@ -88,8 +114,8 @@ API 页面由 TypeDoc 直接从已检查的 TypeScript 源码生成。仓库中�
 
 ## 开发
 
-开发环境要求 Node.js 22.22.2 或更高版本以及 npm 12.0.1；版本分别记录在 `.node-version` 和
-`package.json` 中。
+运行环境必须支持 WebGL 2。开发环境要求 Node.js 22.22.2 或更高版本以及 npm 12.0.1；版本分别记录在
+`.node-version` 和 `package.json` 中。
 
 ```sh
 npm install --global npm@12.0.1

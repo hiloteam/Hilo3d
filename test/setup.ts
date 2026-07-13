@@ -66,7 +66,7 @@ export interface TestEnvironment {
     stage: Hilo3d.Stage;
     camera: Hilo3d.PerspectiveCamera;
     renderer: Hilo3d.WebGLRenderer;
-    gl: WebGLRenderingContext;
+    gl: WebGL2RenderingContext;
     state: Hilo3d.WebGLState;
     geometry: Hilo3d.MorphGeometry;
     material: Hilo3d.Material;

@@ -3,9 +3,9 @@ vec3 emissionColor = u_emissionFactor.rgb;
 
 #ifdef HILO_BASE_COLOR_MAP
     #ifdef HILO_GAMMA_CORRECTION
-        baseColor *= sRGBToLinear(HILO_TEXTURE_2D(u_baseColorMap));
+        baseColor *= sRGBToLinear(HILO_TEXTURE_2D(u_baseColorMap, HILO_BASE_COLOR_MAP));
     #else
-        baseColor *= HILO_TEXTURE_2D(u_baseColorMap);
+        baseColor *= HILO_TEXTURE_2D(u_baseColorMap, HILO_BASE_COLOR_MAP);
     #endif
 #endif
 
@@ -23,16 +23,16 @@ color.a = baseColor.a;
     vec3 V = normalize(viewPos - v_fragPos);
 
     #ifdef HILO_OCCLUSION_MAP
-        float ao  = HILO_TEXTURE_2D(u_occlusionMap).r;
+        float ao  = HILO_TEXTURE_2D(u_occlusionMap, HILO_OCCLUSION_MAP).r;
     #else
         float ao = 1.0;
     #endif
 
     #ifdef HILO_PBR_SPECULAR_GLOSSINESS
-        vec3 specular = u_specular.rgb;
+        vec3 specular = u_specularColor.rgb;
         float glossiness = u_glossiness;
         #ifdef HILO_SPECULAR_GLOSSINESS_MAP
-            vec4 specularGlossiness = sRGBToLinear(HILO_TEXTURE_2D(u_specularGlossinessMap));
+            vec4 specularGlossiness = sRGBToLinear(HILO_TEXTURE_2D(u_specularGlossinessMap, HILO_SPECULAR_GLOSSINESS_MAP));
             specular = specularGlossiness.rgb * specular;
             glossiness = specularGlossiness.a * glossiness;
         #endif
@@ -44,13 +44,13 @@ color.a = baseColor.a;
         float metallic = u_metallic;
         float roughness = u_roughness;
         #ifdef HILO_METALLIC_MAP
-            metallic = HILO_TEXTURE_2D(u_metallicMap).r * u_metallic;
+            metallic = HILO_TEXTURE_2D(u_metallicMap, HILO_METALLIC_MAP).r * u_metallic;
         #endif
         #ifdef HILO_ROUGHNESS_MAP
-            roughness  = HILO_TEXTURE_2D(u_roughnessMap).r * u_roughness;
+            roughness  = HILO_TEXTURE_2D(u_roughnessMap, HILO_ROUGHNESS_MAP).r * u_roughness;
         #endif
         #ifdef HILO_METALLIC_ROUGHNESS_MAP
-            vec4 metallicRoughnessMap = HILO_TEXTURE_2D(u_metallicRoughnessMap);
+            vec4 metallicRoughnessMap = HILO_TEXTURE_2D(u_metallicRoughnessMap, HILO_METALLIC_ROUGHNESS_MAP);
             #ifdef HILO_IS_OCCLUSION_MAP_IN_METALLIC_ROUGHNESS_MAP
                 ao = metallicRoughnessMap.r;
             #endif
@@ -82,11 +82,11 @@ color.a = baseColor.a;
     #ifdef HILO_HAS_CLEARCOAT
         float clearcoatFactor = u_clearcoatFactor;
         #ifdef HILO_CLEARCOAT_MAP
-            clearcoatFactor *= HILO_TEXTURE_2D(u_clearcoatMap).r;
+            clearcoatFactor *= HILO_TEXTURE_2D(u_clearcoatMap, HILO_CLEARCOAT_MAP).r;
         #endif
         float clearcoatRoughnessFactor = u_clearcoatRoughnessFactor;
         #ifdef HILO_CLEARCOAT_ROUGHNESS_MAP
-            clearcoatRoughnessFactor *= HILO_TEXTURE_2D(u_clearcoatRoughnessMap).g;
+            clearcoatRoughnessFactor *= HILO_TEXTURE_2D(u_clearcoatRoughnessMap, HILO_CLEARCOAT_ROUGHNESS_MAP).g;
         #endif
 
         float clearcoatAlphaRoughnessFactor = clearcoatRoughnessFactor * clearcoatRoughnessFactor;
@@ -104,7 +104,7 @@ color.a = baseColor.a;
             #ifdef HILO_DIRECTIONAL_LIGHTS_SMC
                 if (i < HILO_DIRECTIONAL_LIGHTS_SMC) {
                     float bias = HILO_MAX(u_directionalLightsShadowBias[i][1] * (1.0 - dot(N, lightDir)), u_directionalLightsShadowBias[i][0]);
-                    shadow = getShadow(u_directionalLightsShadowMap[i], u_directionalLightsShadowMapSize[i], bias, v_fragPos, u_directionalLightSpaceMatrix[i]);
+                    shadow = hiloDirectionalShadow(i, u_directionalLightsShadowMapSize[i], bias, v_fragPos, u_directionalLightSpaceMatrix[i]);
                 }
             #endif
             #ifdef HILO_HAS_CLEARCOAT
@@ -129,7 +129,7 @@ color.a = baseColor.a;
             #ifdef HILO_SPOT_LIGHTS_SMC
                 if (i < HILO_SPOT_LIGHTS_SMC) {
                     float bias = HILO_MAX(u_spotLightsShadowBias[i][1] * (1.0 - dot(N, lightDir)), u_spotLightsShadowBias[i][0]);
-                    shadow = getShadow(u_spotLightsShadowMap[i], u_spotLightsShadowMapSize[i], bias, v_fragPos, u_spotLightSpaceMatrix[i]);
+                    shadow = hiloSpotShadow(i, u_spotLightsShadowMapSize[i], bias, v_fragPos, u_spotLightSpaceMatrix[i]);
                 }
             #endif
             #ifdef HILO_HAS_CLEARCOAT
@@ -148,7 +148,7 @@ color.a = baseColor.a;
             #ifdef HILO_POINT_LIGHTS_SMC
                 if (i < HILO_POINT_LIGHTS_SMC) {
                     float bias = HILO_MAX(u_pointLightsShadowBias[i][1] * (1.0 - dot(normal, lightDir)), u_pointLightsShadowBias[i][0]);
-                    shadow = getShadow(u_pointLightsShadowMap[i], bias, u_pointLightsPos[i], v_fragPos, u_pointLightCamera[i], u_pointLightSpaceMatrix[i]);
+                    shadow = hiloPointShadow(i, bias, u_pointLightsPos[i], v_fragPos, u_pointLightCamera[i], u_pointLightSpaceMatrix[i]);
                 }
             #endif
 
@@ -169,7 +169,7 @@ color.a = baseColor.a;
     #endif
 
     #ifdef HILO_LIGHT_MAP
-        vec4 lightMapColor = HILO_TEXTURE_2D(u_lightMap);
+        vec4 lightMapColor = HILO_TEXTURE_2D(u_lightMap, HILO_LIGHT_MAP);
         // https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Vendor/EXT_lights_image_based#rgbd
         color.rgb += baseColor.rgb * decodeRGBD(lightMapColor);
     #endif
@@ -180,15 +180,15 @@ color.a = baseColor.a;
     #endif
     color.rgb += getIBLContribution(N, V, diffuseColor, specularColor, ao, NdotV, roughness);
 
-    #if defined(HILO_AMBIENT_LIGHTS) && (defined(HILO_IS_DIFFUESENV_AND_AMBIENTLIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
+    #if defined(HILO_AMBIENT_LIGHTS) && (defined(HILO_IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
         color.rgb += u_ambientLightsColor * baseColor.rgb * ao;
     #endif
 
     #ifdef HILO_EMISSION_MAP
         #ifdef HILO_GAMMA_CORRECTION
-            emissionColor *= sRGBToLinear(HILO_TEXTURE_2D(u_emission)).rgb;
+            emissionColor *= sRGBToLinear(HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP)).rgb;
         #else
-            emissionColor *= HILO_TEXTURE_2D(u_emission).rgb;
+            emissionColor *= HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP).rgb;
         #endif
     #endif
 

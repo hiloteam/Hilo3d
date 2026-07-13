@@ -4,7 +4,6 @@ import { createExampleContext } from './js/init';
 const { stage, renderer } = createExampleContext();
 
 renderer.useInstanced = true;
-renderer.useVao = true;
 
 function rand(min: number, max: number): number {
     return Math.random() * (max - min) + min;

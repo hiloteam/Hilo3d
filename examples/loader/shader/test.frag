@@ -1,10 +1,8 @@
-#ifdef GL_ES
+#version 300 es
 precision highp float;
-#endif
 uniform sampler2D u_diffuse;
-// uniform vec4 u_diffuse;
-varying vec2 v_uv;
+in vec2 v_uv;
+layout(location = 0) out vec4 fragmentColor;
 void main(void) {
-    gl_FragColor = texture2D(u_diffuse, v_uv);
-    // gl_FragColor = u_diffuse;
+    fragmentColor = texture(u_diffuse, v_uv);
 }

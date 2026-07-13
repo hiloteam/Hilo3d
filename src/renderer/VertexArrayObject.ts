@@ -1,19 +1,16 @@
-import extensions from './extensions';
 import Buffer from './Buffer';
 import GeometryData, { type GeometryComponentSize } from '../geometry/GeometryData';
 import bufferUtil from '../utils/bufferUtil';
 import Cache from '../utils/Cache';
 import { TRIANGLES } from '../constants/webgl';
+import requireGLResource from './requireGLResource';
 import type Mesh from '../core/Mesh';
 import type WebGLResourceManager from './WebGLResourceManager';
 import type { ManagedResource } from './WebGLResourceManager';
 import type { ProgramAttribute } from './Program';
 import type { GLContext } from './types';
-import type { InstancedArraysExtension } from './extensions/InstancedArraysExtension';
-import type { VertexArrayObjectExtension } from './extensions/VertexArrayObjectExtension';
 
 export interface VertexArrayObjectParameters {
-    useVao?: boolean;
     useInstanced?: boolean;
     mode?: GLenum;
     vertexCount?: number | null;
@@ -23,14 +20,12 @@ export interface AttributeObject {
     attribute: ProgramAttribute;
     buffer: Buffer;
     geometryData: GeometryData;
-    useInstanced: boolean;
 }
 
 export interface VaoRenderer {
     resourceManager: WebGLResourceManager;
 }
 
-let globalStates: (AttributeObject | undefined)[] = [];
 let currentVao: VertexArrayObject | null = null;
 const cache = new Cache<VertexArrayObject>();
 
@@ -75,82 +70,44 @@ class VertexArrayObject implements ManagedResource {
         return vao;
     }
 
-    static reset(_gl?: GLContext): void {
+    static reset(gl: GLContext): void {
         currentVao = null;
-        globalStates = [];
-        this.bindSystemVao();
+        gl.bindVertexArray(null);
         cache.each(vao => vao.destroy());
-    }
-
-    static bindSystemVao(): void {
-        extensions.vao?.bindVertexArray(null);
-        currentVao = null;
     }
 
     readonly className = 'VertexArrayObject';
     readonly isVertexArrayObject = true;
     readonly id: string;
     readonly gl: GLContext;
-    useVao = false;
     useInstanced = false;
     mode: GLenum = TRIANGLES;
     isDirty = true;
     vertexCount: number | null = null;
     indexType: GLenum;
 
-    private readonly instancedExtension: InstancedArraysExtension | null;
-    private readonly vaoExtension: VertexArrayObjectExtension | null;
-    private vao: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null = null;
+    private vao: WebGLVertexArrayObject | null;
     private readonly attributes: AttributeObject[] = [];
     private readonly attributesByName = new Map<string, AttributeObject>();
-    private readonly activeStates: (AttributeObject | undefined)[] = [];
     private indexBuffer: Buffer | null = null;
     private _isDestroyed = false;
 
     constructor(gl: GLContext, id: string, params: VertexArrayObjectParameters = {}) {
         this.gl = gl;
         this.id = id;
-        this.instancedExtension = extensions.instanced;
-        this.vaoExtension = extensions.vao;
         this.indexType = gl.UNSIGNED_SHORT;
         Object.assign(this, params);
-        if (!this.vaoExtension) this.useVao = false;
-        if (!this.instancedExtension) this.useInstanced = false;
-        if (this.useVao) this.vao = this.vaoExtension?.createVertexArray() ?? null;
+        this.vao = requireGLResource(this.gl.createVertexArray(), 'a vertex array object');
     }
 
     bind(): void {
         if (currentVao === this) return;
-        if (this.useVao && this.vaoExtension) this.vaoExtension.bindVertexArray(this.vao);
-        else this.bindSystemVao();
+        this.gl.bindVertexArray(this.vao);
         setCurrentVao(this);
     }
 
-    private bindSystemVao(): void {
-        if (currentVao?.useVao) currentVao.unbind();
-        let lastBuffer: Buffer | null = null;
-        for (const attributeObject of this.attributes) {
-            const { buffer, attribute, geometryData } = attributeObject;
-            if (lastBuffer !== buffer) {
-                lastBuffer = buffer;
-                buffer.bind();
-            }
-            attribute.enable();
-            attribute.pointer(geometryData);
-            attribute.divisor(attributeObject.useInstanced ? 1 : 0);
-        }
-        globalStates.forEach((globalAttribute, index) => {
-            if (globalAttribute && !this.activeStates[index]) {
-                globalAttribute.attribute.divisor(0);
-                this.gl.disableVertexAttribArray(index);
-            }
-        });
-        this.indexBuffer?.bind();
-        globalStates = [...this.activeStates];
-    }
-
     unbind(): void {
-        if (this.useVao) this.vaoExtension?.bindVertexArray(null);
+        this.gl.bindVertexArray(null);
         currentVao = null;
     }
 
@@ -168,9 +125,9 @@ class VertexArrayObject implements ManagedResource {
 
     drawInstance(primcount = 1): void {
         this.bind();
-        if (!this.useInstanced || !this.instancedExtension) return;
+        if (!this.useInstanced) return;
         if (this.indexBuffer) {
-            this.instancedExtension.drawElementsInstanced(
+            this.gl.drawElementsInstanced(
                 this.mode,
                 this.getVertexCount(),
                 this.indexType,
@@ -178,12 +135,7 @@ class VertexArrayObject implements ManagedResource {
                 primcount
             );
         } else {
-            this.instancedExtension.drawArraysInstanced(
-                this.mode,
-                0,
-                this.getVertexCount(),
-                primcount
-            );
+            this.gl.drawArraysInstanced(this.mode, 0, this.getVertexCount(), primcount);
         }
     }
 
@@ -214,10 +166,9 @@ class VertexArrayObject implements ManagedResource {
             buffer.bind();
             attribute.enable();
             attribute.pointer(geometryData);
-            attributeObject = { attribute, buffer, geometryData, useInstanced: false };
+            attributeObject = { attribute, buffer, geometryData };
             this.attributes.push(attributeObject);
             this.attributesByName.set(attribute.name, attributeObject);
-            attribute.addTo(this.activeStates, attributeObject);
             onInit?.(attributeObject);
         }
         if (geometryData.isDirty) {
@@ -260,9 +211,8 @@ class VertexArrayObject implements ManagedResource {
                 geometryComponentSize(attribute.glTypeInfo.size)
             );
         }
-        return this.addAttribute(geometryData, attribute, this.gl.DYNAMIC_DRAW, attributeObject => {
+        return this.addAttribute(geometryData, attribute, this.gl.DYNAMIC_DRAW, () => {
             attribute.divisor(1);
-            attributeObject.useInstanced = true;
         });
     }
 
@@ -279,12 +229,11 @@ class VertexArrayObject implements ManagedResource {
 
     destroy(): this {
         if (this._isDestroyed) return this;
-        if (this.useVao) this.vaoExtension?.deleteVertexArray(this.vao);
+        this.gl.deleteVertexArray(this.vao);
         this.vao = null;
         this.indexBuffer = null;
         this.attributes.length = 0;
         this.attributesByName.clear();
-        this.activeStates.length = 0;
         cache.removeObject(this);
         this._isDestroyed = true;
         return this;

@@ -45,7 +45,6 @@ class MeshPicker {
     private createFramebuffer(): void {
         if (this.framebuffer) return;
         this.framebuffer = new Framebuffer(this.renderer, {
-            useVao: this.renderer.useVao,
             width: this.renderer.width,
             height: this.renderer.height
         });

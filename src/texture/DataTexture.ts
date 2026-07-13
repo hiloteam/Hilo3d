@@ -2,6 +2,7 @@ import math from '../math/math';
 import Texture, { type TextureParameters } from './Texture';
 import { getTypedArrayClass } from '../utils/util';
 import { CLAMP_TO_EDGE, FLOAT, NEAREST, RGBA, TEXTURE_2D } from '../constants/webgl';
+import { RGBA32F } from '../constants/webgl2';
 import type { TypedArray, TypedArrayConstructor } from '../renderer/types';
 
 export interface DataTextureParameters extends Omit<TextureParameters<TypedArray>, 'image'> {
@@ -15,7 +16,7 @@ class DataTexture extends Texture<TypedArray> {
     isDataTexture = true;
     override readonly className: string = 'DataTexture';
     override target = TEXTURE_2D;
-    override internalFormat = RGBA;
+    override internalFormat = RGBA32F;
     override format = RGBA;
     override type = FLOAT;
     override magFilter = NEAREST;

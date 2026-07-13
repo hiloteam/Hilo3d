@@ -41,7 +41,7 @@ export {
     type NodeTraverseResult
 } from './core/Node';
 export { default as Skeleton, type SkeletonParameters } from './core/Skeleton';
-export { default as SkinedMesh, type SkinedMeshParameters } from './core/SkinedMesh';
+export { default as SkinnedMesh, type SkinnedMeshParameters } from './core/SkinnedMesh';
 export { default as Stage, type StageParameters, type StagePointerEvent } from './core/Stage';
 export {
     type BackEaseObject,
@@ -107,13 +107,7 @@ export {
     default as capabilities,
     type NumericCapabilityName
 } from './renderer/capabilities';
-export {
-    type DrawBuffersExtension,
-    type InstancedArraysExtension,
-    type VertexArrayObjectExtension,
-    WebGLExtensions,
-    default as extensions
-} from './renderer/extensions';
+export { WebGLExtensions, default as extensions } from './renderer/extensions';
 export {
     type CopyFramebufferOptions,
     default as Framebuffer,
@@ -140,7 +134,32 @@ export {
 } from './renderer/Program';
 export { default as RenderInfo } from './renderer/RenderInfo';
 export { default as RenderList } from './renderer/RenderList';
-export { default as UniformBuffer, type UniformBufferData } from './renderer/UniformBuffer';
+export {
+    default as UniformBuffer,
+    type UniformBufferData,
+    type UniformBufferRange
+} from './renderer/UniformBuffer';
+export {
+    createStd140Layout,
+    Std140Layout,
+    type Std140ArrayValue,
+    type Std140FieldDefinition,
+    type Std140FieldLayout,
+    type Std140FieldValue,
+    type Std140MatrixType,
+    type Std140ScalarType,
+    type Std140Schema,
+    type Std140Type,
+    type Std140Value,
+    type Std140Values,
+    type Std140VectorType
+} from './renderer/ubo/Std140Layout';
+export {
+    BUILTIN_UNIFORM_BLOCK_BINDING_COUNT,
+    getUniformBlockBinding,
+    registerUniformBlockBinding,
+    UNIFORM_BLOCK_BINDINGS
+} from './renderer/ubo/UniformBlockBindings';
 export {
     type AttributeObject,
     default as VertexArrayObject,
@@ -177,11 +196,6 @@ export type {
     TextureSubImage,
     TypedArray,
     TypedArrayConstructor,
-    UniformArray,
-    UniformBlockInfo,
-    UniformInfo,
-    UniformScalar,
-    UniformValue,
     VertexAttributeInfo
 } from './renderer/types';
 

@@ -6,7 +6,6 @@ import Material, {
     type MaterialTexture,
     type MaterialTextureValue
 } from './Material';
-import capabilities from '../renderer/capabilities';
 import type { ShaderOptions } from '../renderer/types';
 
 export interface PBRMaterialParameters extends MaterialParameters {
@@ -204,7 +203,7 @@ class PBRMaterial extends Material {
             u_baseColor: 'BASECOLOR',
             u_metallic: 'METALLIC',
             u_roughness: 'ROUGHNESS',
-            u_specular: 'SPECULAR',
+            u_specularColor: 'SPECULAR',
             u_emissionFactor: 'EMISSIONFACTOR',
             u_glossiness: 'GLOSSINESS',
             u_brdfLUT: 'BRDFLUT',
@@ -243,7 +242,7 @@ class PBRMaterial extends Material {
         textureOption.add(this.lightMap, 'LIGHT_MAP');
         if (this.brdfLUT) {
             textureOption.add(this.specularEnvMap, 'SPECULAR_ENV_MAP');
-            if (capabilities.SHADER_TEXTURE_LOD && this.specularEnvMap) {
+            if (this.specularEnvMap) {
                 option['USE_SHADER_TEXTURE_LOD'] = 1;
             }
         }

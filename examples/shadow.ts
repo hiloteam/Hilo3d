@@ -12,7 +12,6 @@ const {
     stage: { useFramebuffer: false, rotationX: 30 }
 });
 renderer.useInstanced = false;
-renderer.useVao = true;
 camera.lookAt(new Hilo3d.Vector3());
 defaultDirectionLight.amount = 0;
 ambientLight.amount = 0.1;

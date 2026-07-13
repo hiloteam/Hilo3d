@@ -16,6 +16,12 @@ renderer.useInstanced = true;
 initScene();
 
 function initSSAO(): void {
+    Hilo3d.registerUniformBlockBinding('SsaoSamplingBlock');
+    Hilo3d.registerUniformBlockBinding('SsaoBlurBlock');
+    const cameraFar = (): number => {
+        if (camera.far === null) throw new Error('SSAO requires a finite camera far plane.');
+        return camera.far;
+    };
     const num = 32;
     const ssaoKernel = new Float32Array(num * 3);
     for (let i = 0; i < num; i++) {
@@ -65,23 +71,40 @@ function initSSAO(): void {
         wrapS: Hilo3d.constants.REPEAT,
         wrapT: Hilo3d.constants.REPEAT
     });
-    const textureSize = new Float32Array([renderer.width, renderer.height]);
-    const noiseScale = new Float32Array([renderer.width / 4, renderer.height / 4]);
+    const ssaoLayout = Hilo3d.createStd140Layout({
+        u_kernel: { type: 'vec3', arrayLength: 32 },
+        u_projection: 'mat4',
+        u_noiseScale: 'vec2',
+        u_radius: 'float',
+        u_cameraFar: 'float',
+        u_cameraNear: 'float'
+    });
+    const ssaoMaterialBlock = Hilo3d.UniformBuffer.fromSchema(ssaoLayout, {
+        u_kernel: ssaoKernel,
+        u_radius: 0.1,
+        u_noiseScale: [renderer.width / 4, renderer.height / 4],
+        u_projection: camera.projectionMatrix.elements,
+        u_cameraFar: cameraFar(),
+        u_cameraNear: camera.near
+    });
 
     const ssaoPass = postProcess.addPass({
-        frag: `
-            precision HILO_MAX_FRAGMENT_PRECISION float;
-            varying vec2 v_texcoord0;
+        frag: `#version 300 es
+            precision highp float;
+            in vec2 v_texcoord0;
             uniform sampler2D u_normal;
             uniform sampler2D u_position;
             uniform sampler2D u_depth;
             uniform sampler2D u_noise;
-            uniform vec3 u_kernel[32];
-            uniform mat4 u_projection;
-            uniform vec2 u_noiseScale;
-            uniform float u_radius;
-            uniform float u_cameraFar;
-            uniform float u_cameraNear;
+            layout(std140) uniform SsaoSamplingBlock {
+                vec3 u_kernel[32];
+                mat4 u_projection;
+                vec2 u_noiseScale;
+                float u_radius;
+                float u_cameraFar;
+                float u_cameraNear;
+            };
+            layout(location = 0) out vec4 fragmentColor;
 
             float unpackFloat(vec4 rgbaDepth) {
                 const vec4 bitShift = vec4(1.0 / (256.0 * 256.0 * 256.0), 1.0 / (256.0 * 256.0), 1.0 / 256.0, 1.0);
@@ -90,13 +113,13 @@ function initSSAO(): void {
             }
 
             void main(void) {
-                vec4 fragPosAll = texture2D(u_position, v_texcoord0);
+                vec4 fragPosAll = texture(u_position, v_texcoord0);
                 if(fragPosAll.a < 1.0){
                     discard;
                 }
                 vec3 fragPos = fragPosAll.xyz;
-                vec3 normal = texture2D(u_normal, v_texcoord0).xyz;
-                vec3 randomVec = texture2D(u_noise, v_texcoord0 * u_noiseScale).xyz;
+                vec3 normal = texture(u_normal, v_texcoord0).xyz;
+                vec3 randomVec = texture(u_noise, v_texcoord0 * u_noiseScale).xyz;
                 vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
                 vec3 bitangent = cross(normal, tangent);
                 mat3 TBN = mat3(tangent, bitangent, normal);
@@ -113,47 +136,43 @@ function initSSAO(): void {
                     offset.xyz /= offset.w; // 透视划分
                     offset.xyz = offset.xyz * 0.5 + 0.5; // 变换到0.0 - 1.0的值域
                     
-                    float sampleDepth = unpackFloat(texture2D(u_depth, offset.xy));
+                    float sampleDepth = unpackFloat(texture(u_depth, offset.xy));
                     sampleDepth = sampleDepth * 2.0 - 1.0;
                     sampleDepth = (-2.0 * u_cameraNear * u_cameraFar) / (u_cameraFar + u_cameraNear - sampleDepth * (u_cameraFar - u_cameraNear));
                     float rangeCheck = smoothstep(0.0, 1.0, u_radius / abs(fragPos.z - sampleDepth));
                     occlusion += (sampleDepth >= samplePos.z ? 1.0 : 0.0) * rangeCheck;    
                 }
                 occlusion = 1.0 - (occlusion / 32.0);
-                gl_FragColor = vec4(vec3(occlusion), 1.0);
+                fragmentColor = vec4(vec3(occlusion), 1.0);
             }`,
         uniforms: {
             u_position: postProcess.uniformTextureGetter(positionFramebuffer.texture),
             u_normal: postProcess.uniformTextureGetter(normalFramebuffer.texture),
             u_depth: postProcess.uniformTextureGetter(depthFramebuffer.texture),
-            u_noise: postProcess.uniformTextureGetter(noiseTexture),
-            u_kernel: ssaoKernel,
-            u_radius: 0.1,
-            u_noiseScale: noiseScale,
-            u_projection: {
-                get() {
-                    return camera.projectionMatrix.elements;
-                }
-            },
-            u_cameraFar: {
-                get() {
-                    return camera.far;
-                }
-            },
-            u_cameraNear: {
-                get() {
-                    return camera.near;
-                }
-            }
+            u_noise: postProcess.uniformTextureGetter(noiseTexture)
+        },
+        uniformBlocks: { SsaoSamplingBlock: ssaoMaterialBlock },
+        prepare: () => {
+            ssaoMaterialBlock.set('u_projection', camera.projectionMatrix.elements);
+            ssaoMaterialBlock.set('u_noiseScale', [renderer.width / 4, renderer.height / 4]);
+            ssaoMaterialBlock.set('u_cameraFar', cameraFar());
+            ssaoMaterialBlock.set('u_cameraNear', camera.near);
         }
     });
 
+    const blurLayout = Hilo3d.createStd140Layout({ u_textureSize: 'vec2' });
+    const blurMaterialBlock = Hilo3d.UniformBuffer.fromSchema(blurLayout, {
+        u_textureSize: [renderer.width, renderer.height]
+    });
     const blurPass = postProcess.addPass({
-        frag: `
-                precision HILO_MAX_FRAGMENT_PRECISION float;
-                varying vec2 v_texcoord0;
+        frag: `#version 300 es
+                precision highp float;
+                in vec2 v_texcoord0;
                 uniform sampler2D u_ssao;
-                uniform vec2 u_textureSize;
+                layout(std140) uniform SsaoBlurBlock {
+                    vec2 u_textureSize;
+                };
+                layout(location = 0) out vec4 fragmentColor;
                 void main(void) {
                     vec2 texelSize = 1.0 / u_textureSize;
                     float result = 0.0;
@@ -162,15 +181,18 @@ function initSSAO(): void {
                         for (int y = -2; y < 2; ++y) 
                         {
                             vec2 offset = vec2(float(x), float(y)) * texelSize;
-                            result += texture2D(u_ssao, v_texcoord0 + offset).r;
+                            result += texture(u_ssao, v_texcoord0 + offset).r;
                         }
                     }
-                    gl_FragColor = vec4(vec3(result / (4.0 * 4.0)), 1.0);
+                    fragmentColor = vec4(vec3(result / (4.0 * 4.0)), 1.0);
                 }
             `,
         uniforms: {
-            u_ssao: postProcess.uniformTextureGetter(ssaoFramebuffer.texture),
-            u_textureSize: textureSize
+            u_ssao: postProcess.uniformTextureGetter(ssaoFramebuffer.texture)
+        },
+        uniformBlocks: { SsaoBlurBlock: blurMaterialBlock },
+        prepare: () => {
+            blurMaterialBlock.set('u_textureSize', [renderer.width, renderer.height]);
         }
     });
 

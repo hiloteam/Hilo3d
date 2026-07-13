@@ -9,7 +9,7 @@ float getShadow(vec2 pos, sampler2D shadowMap, float currentDepth) {
     if (isOutOfRange(pos)) {
         return 0.0;
     }
-    float pcfDepth = unpackFloat(texture2D(shadowMap, pos));
+    float pcfDepth = unpackFloat(texture(shadowMap, pos));
     return step(pcfDepth, currentDepth);
 }
 
@@ -51,7 +51,7 @@ float getShadow(samplerCube shadowMap, float bias, vec3 lightPos, vec3 position,
         {
             for(float z = -offset; z < offset; z +=step)
             {
-                float closestDistance = camera[0] + (camera[1] - camera[0]) * unpackFloat(textureCube(shadowMap, direction + vec3(x, y, z)));
+                float closestDistance = camera[0] + (camera[1] - camera[0]) * unpackFloat(texture(shadowMap, direction + vec3(x, y, z)));
                 if (closestDistance == camera[0]) {
                     continue;
                 }

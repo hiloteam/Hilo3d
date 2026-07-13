@@ -15,6 +15,9 @@ import capabilities from './capabilities';
 import glType from './glType';
 import WebGLState from './WebGLState';
 import WebGLResourceManager from './WebGLResourceManager';
+import BuiltInUniformBlockManager from './BuiltInUniformBlockManager';
+import { BUILTIN_UNIFORM_BLOCK_BINDING_COUNT } from './ubo/UniformBlockBindings';
+import { BUILT_IN_UNIFORM_BLOCK_LAYOUTS } from './ubo/BuiltInUniformBlocks';
 import LightManager from '../light/LightManager';
 import Light from '../light/Light';
 import Texture from '../texture/Texture';
@@ -42,7 +45,6 @@ export interface WebGLRendererParameters {
     pixelRatio?: number;
     domElement?: HTMLCanvasElement | null;
     useInstanced?: boolean;
-    useVao?: boolean;
     alpha?: boolean;
     depth?: boolean;
     stencil?: boolean;
@@ -60,7 +62,6 @@ export interface WebGLRendererParameters {
     offsetX?: number;
     offsetY?: number;
     forceMaterial?: Material | null;
-    preferWebGL2?: boolean;
     clearColor?: Color;
 }
 
@@ -107,7 +108,6 @@ class WebGLRenderer extends EventDispatcher {
     pixelRatio = 1;
     domElement: HTMLCanvasElement | null = null;
     useInstanced = false;
-    useVao = true;
     alpha = false;
     depth = true;
     stencil = false;
@@ -126,8 +126,6 @@ class WebGLRenderer extends EventDispatcher {
     offsetY = 0;
     forceMaterial: Material | null = null;
     isInitFailed = false;
-    isWebGL2 = false;
-    preferWebGL2 = false;
     clearColor: Color;
     framebuffer: Framebuffer | null = null;
 
@@ -139,6 +137,7 @@ class WebGLRenderer extends EventDispatcher {
     private _initError: Error | null = null;
     private _lastMaterial: Material | null = null;
     private _lastProgram: Program | null = null;
+    private readonly uniformBlockManager: BuiltInUniformBlockManager;
 
     private readonly handleContextLost = (event: Event): void => {
         this.onContextLost(event);
@@ -171,6 +170,7 @@ class WebGLRenderer extends EventDispatcher {
         this.renderList = new RenderList();
         this.lightManager = new LightManager();
         this.resourceManager = new WebGLResourceManager();
+        this.uniformBlockManager = new BuiltInUniformBlockManager(this);
     }
 
     resize(width: number, height: number, force = false): void {
@@ -255,26 +255,34 @@ class WebGLRenderer extends EventDispatcher {
             powerPreference: this.powerPreference
         };
 
-        let gl: GLContext | null = null;
-        if (this.preferWebGL2) gl = canvas.getContext('webgl2', contextAttributes);
-        gl ??= canvas.getContext('webgl', contextAttributes);
-        if (!gl) throw new Error('This browser or device could not create a WebGL context');
+        const gl = canvas.getContext('webgl2', contextAttributes);
+        if (!gl) throw new Error('This browser or device could not create a WebGL 2 context');
 
         this._gl = gl;
-        this.isWebGL2 = 'createVertexArray' in gl;
         gl.viewport(0, 0, this.width, this.height);
         glType.init(gl);
         extensions.init(gl);
         capabilities.init(gl);
+        const largestBuiltInBlock = Math.max(
+            ...Object.values(BUILT_IN_UNIFORM_BLOCK_LAYOUTS).map(layout => layout.byteLength)
+        );
+        if (capabilities.MAX_UNIFORM_BUFFER_BINDINGS < BUILTIN_UNIFORM_BLOCK_BINDING_COUNT) {
+            throw new Error(
+                `WebGL2 exposes ${String(capabilities.MAX_UNIFORM_BUFFER_BINDINGS)} UBO bindings; Hilo3d requires ${String(BUILTIN_UNIFORM_BLOCK_BINDING_COUNT)}`
+            );
+        }
+        if (capabilities.MAX_UNIFORM_BLOCK_SIZE < largestBuiltInBlock) {
+            throw new Error(
+                `WebGL2 exposes ${String(capabilities.MAX_UNIFORM_BLOCK_SIZE)} bytes per UBO; Hilo3d requires ${String(largestBuiltInBlock)}`
+            );
+        }
         Shader.init(this);
         this._state = new WebGLState(gl);
-        if (!extensions.instanced) this.useInstanced = false;
         this.renderList.useInstanced = this.useInstanced;
 
         if (this.useFramebuffer) {
             this.framebuffer = new Framebuffer(this, {
                 ...this.framebufferOption,
-                useVao: this.framebufferOption.useVao ?? this.useVao,
                 width: this.framebufferOption.width ?? this.width,
                 height: this.framebufferOption.height ?? this.height
             });
@@ -379,14 +387,9 @@ class WebGLRenderer extends EventDispatcher {
         }
     }
 
-    setupUniforms(program: Program, mesh: Mesh, useInstanced: boolean, force = false): void {
+    setupShaderBindings(program: Program, mesh: Mesh, useInstanced: boolean, force = false): void {
         const material = materialFor(mesh, this.forceMaterial);
-        if (this.isWebGL2) {
-            for (const name of Object.keys(program.uniformBlocks)) {
-                const uniformBlock = material.uniformBlocks[name];
-                if (uniformBlock) program.setUniformBlock(name, uniformBlock);
-            }
-        }
+        this.uniformBlockManager.bind(program, mesh, material, force, semantic.camera);
         for (const [name, programUniform] of Object.entries(program.uniforms)) {
             const uniformInfo = material.getUniformInfo(name);
             if (uniformInfo.isBlankInfo) continue;
@@ -435,7 +438,7 @@ class WebGLRenderer extends EventDispatcher {
             this.setupStencil(material);
             needForceUpdateUniforms = true;
         }
-        this.setupUniforms(program, mesh, useInstanced, needForceUpdateUniforms);
+        this.setupShaderBindings(program, mesh, useInstanced, needForceUpdateUniforms);
         material.isDirty = false;
         this._lastMaterial = material;
     }
@@ -461,7 +464,6 @@ class WebGLRenderer extends EventDispatcher {
 
         const vao = VertexArrayObject.getVao(this.gl, geometry.id + program.id, {
             useInstanced,
-            useVao: this.useVao,
             mode: geometry.mode
         });
         this.setupVao(vao, program, mesh);
@@ -484,6 +486,7 @@ class WebGLRenderer extends EventDispatcher {
         semantic.init(this, this.state, camera, this.lightManager, this.fog);
         stage.updateMatrixWorld();
         camera.updateViewProjectionMatrix();
+        this.uniformBlockManager.beginFrame(camera);
 
         const lights: Light[] = [];
         stage.traverse(node => {
@@ -494,6 +497,7 @@ class WebGLRenderer extends EventDispatcher {
         });
         this.renderList.sort();
         this.lightManager.update(this, camera, lights);
+        this.uniformBlockManager.beginPass(camera);
         if (fireEvent) this.fire('beforeRender');
         if (this.useFramebuffer) this.framebuffer?.bind();
         this.clear();
@@ -593,6 +597,7 @@ class WebGLRenderer extends EventDispatcher {
         this._state?.reset();
         Texture.reset(gl);
         Framebuffer.destroy(gl);
+        this.uniformBlockManager.destroy(gl);
         this.framebuffer = null;
     }
 

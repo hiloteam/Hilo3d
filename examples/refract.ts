@@ -45,7 +45,6 @@ function initModel(): void {
                         let fragmentSource = fs.replace(
                             /(void\s+main\s*\()/,
                             `
-                            uniform vec2 u_rendererSize;
                             uniform sampler2D u_refractionMap;
                             $1`
                         );
@@ -54,7 +53,7 @@ function initModel(): void {
                             `
                         vec2 screenUV = gl_FragCoord.xy/u_rendererSize;
                         vec2 bump = normal.xy;
-                        vec4 screenColor = texture2D(u_refractionMap, screenUV - bump*vec2(0.03, 0.01)).rgba;
+                        vec4 screenColor = texture(u_refractionMap, screenUV - bump*vec2(0.03, 0.01)).rgba;
 
                         if (color.a <= 0.9 && screenColor.a > 0.5) {
                             color.rgb *= color.a;

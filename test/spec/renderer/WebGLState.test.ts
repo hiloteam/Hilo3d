@@ -121,22 +121,27 @@ describe('WebGLState', () => {
         const framebuffer2 = gl.createFramebuffer();
         const framebuffer3 = gl.createFramebuffer();
 
-        state.bindFramebuffer(1, framebuffer1);
+        state.bindFramebuffer(gl.FRAMEBUFFER, framebuffer1);
         expect(bindFramebuffer).toHaveBeenCalledTimes(1);
 
-        state.bindFramebuffer(1, framebuffer1);
+        state.bindFramebuffer(gl.FRAMEBUFFER, framebuffer1);
         expect(bindFramebuffer).toHaveBeenCalledTimes(1);
 
-        state.bindFramebuffer(1, framebuffer2);
+        state.bindFramebuffer(gl.FRAMEBUFFER, framebuffer2);
         expect(bindFramebuffer).toHaveBeenCalledTimes(2);
         expect(state.preFramebuffer).toBe(framebuffer1);
 
-        state.bindFramebuffer(1, framebuffer3);
+        state.bindFramebuffer(gl.DRAW_FRAMEBUFFER, framebuffer3);
         expect(bindFramebuffer).toHaveBeenCalledTimes(3);
         expect(state.preFramebuffer).toBe(framebuffer2);
 
-        state.bindSystemFramebuffer();
+        state.bindFramebuffer(gl.READ_FRAMEBUFFER, framebuffer1);
         expect(bindFramebuffer).toHaveBeenCalledTimes(4);
+        expect(state.currentReadFramebuffer).toBe(framebuffer1);
+        expect(state.currentDrawFramebuffer).toBe(framebuffer3);
+
+        state.bindSystemFramebuffer();
+        expect(bindFramebuffer).toHaveBeenCalledTimes(5);
         expect(state.preFramebuffer).toBe(framebuffer3);
 
         bindFramebuffer.mockRestore();

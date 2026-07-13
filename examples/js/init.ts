@@ -141,7 +141,6 @@ export function createExampleContext(options: ExampleContextOptions = {}): Examp
         clearColor: new Hilo3d.Color(0.3, 0.35, 0.35),
         width,
         height,
-        preferWebGL2: new URLSearchParams(location.search).has('webgl2'),
         antialias: false,
         alpha: false,
         useLogDepth: false,
@@ -181,7 +180,7 @@ export function createExampleContext(options: ExampleContextOptions = {}): Examp
     window.addEventListener('resize', handleResize);
 
     renderer.on('init', () => {
-        console.info(`Stage uses ${renderer.isWebGL2 ? 'WebGL2' : 'WebGL1'}`);
+        console.info('Stage uses WebGL2');
     });
     renderer.on('initFailed', event => {
         console.error('Stage initialization failed', event.detail);

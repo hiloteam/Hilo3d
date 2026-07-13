@@ -2,9 +2,9 @@
 #include "./chunk/baseDefine.glsl"
 #include "./chunk/precision.vert"
 
-attribute vec2 a_position;
-attribute vec2 a_texcoord0;
-varying vec2 v_texcoord0;
+in vec2 a_position;
+in vec2 a_texcoord0;
+out vec2 v_texcoord0;
 
 
 void main(void) {

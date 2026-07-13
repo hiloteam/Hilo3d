@@ -55,12 +55,6 @@ const models: Readonly<Record<string, ModelInfo>> = {
         scale: 0.3,
         src: '../models/AlphaBlendModeTest/AlphaBlendModeTest.gltf',
         ambient: 0.8
-    },
-    SampleTechniques: {
-        name: 'SampleTechniques',
-        scale: 0.5,
-        src: '../models/SampleTechniques/SampleTechniques.gltf',
-        isProgressive: true
     }
 };
 

@@ -2,7 +2,6 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './js/init';
 
 const { camera, stage, renderer, ticker } = createExampleContext();
-renderer.useVao = true;
 
 function random(min: number, max: number): number {
     return Math.random() * (max - min) + min;

@@ -5,7 +5,6 @@ import capabilities from '../renderer/capabilities';
 import Cache from '../utils/Cache';
 import {
     BROWSER_DEFAULT_WEBGL,
-    CLAMP_TO_EDGE,
     FLOAT,
     LINEAR,
     NEAREST,
@@ -19,7 +18,7 @@ import {
     UNPACK_PREMULTIPLY_ALPHA_WEBGL,
     UNSIGNED_BYTE
 } from '../constants/webgl';
-import { RGB32F, RGBA32F } from '../constants/webgl2';
+import { RGB8, RGB32F, RGBA8, RGBA32F } from '../constants/webgl2';
 import requireGLResource from '../renderer/requireGLResource';
 import type { GLContext, Size, TextureSubImage, TypedArray } from '../renderer/types';
 const cache = new Cache<WebGLTexture>();
@@ -74,7 +73,6 @@ type TextureConstructor<Image> = new (params?: TextureParameters<Image>) => Text
 
 export interface TextureWebGLState {
     readonly gl: GLContext;
-    readonly isWebGL2: boolean;
     activeTexture(texture: GLenum): void;
     bindTexture(target: GLenum, texture: WebGLTexture | null): void;
     pixelStorei(pname: GLenum, param: number | boolean): void;
@@ -207,7 +205,7 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
     /**
      * Texture Internal Format
      */
-    internalFormat = RGBA;
+    internalFormat = RGBA8;
     /**
      * 图片 Format
      */
@@ -290,16 +288,10 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         return this.minFilter !== LINEAR && this.minFilter !== NEAREST;
     }
     /**
-     * 是否使用 repeat
-     */
-    get useRepeat(): boolean {
-        return this.wrapS !== CLAMP_TO_EDGE || this.wrapT !== CLAMP_TO_EDGE;
-    }
-    /**
      * mipmapCount
      */
     get mipmapCount(): number {
-        return Math.floor(Math.log2(Math.max(this.width, this.height)) + 1);
+        return Math.max(1, Math.floor(Math.log2(Math.max(this.width, this.height)) + 1));
     }
     /**
      * @param params - 初始化参数，所有params都会复制到实例上
@@ -310,27 +302,14 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         Object.assign(this, params);
     }
     /**
-     * 是否是 2 的 n 次方
-     * @param img -
-     */
-    isImgPowerOfTwo(img: ResizableTextureImage): boolean {
-        const size = dimensions(img);
-        return size !== null && math.isPowerOfTwo(size.width) && math.isPowerOfTwo(size.height);
-    }
-    /**
      * 获取支持的尺寸
      * @param img -
-     * @param needPowerOfTwo -
      * @returns `{ width, height }`
      */
-    getSupportSize(img: ResizableTextureImage, needPowerOfTwo = false): Size {
+    getSupportSize(img: ResizableTextureImage): Size {
         const imageSize = dimensions(img);
         if (!imageSize) throw new TypeError('Texture image has no dimensions');
         let { width, height } = imageSize;
-        if (needPowerOfTwo && !this.isImgPowerOfTwo(img)) {
-            width = math.nextPowerOfTwo(width);
-            height = math.nextPowerOfTwo(height);
-        }
         const maxTextureSize = capabilities.MAX_TEXTURE_SIZE;
         if (maxTextureSize) {
             if (width > maxTextureSize) {
@@ -344,14 +323,6 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
             width,
             height
         };
-    }
-    /**
-     * 更新图片大小成为 2 的 n 次方
-     * @param img -
-     */
-    resizeImgToPowerOfTwo(img: ResizableTextureImage): ResizableTextureImage | HTMLCanvasElement {
-        const sizeResult = this.getSupportSize(img, true);
-        return this.resizeImg(img, sizeResult.width, sizeResult.height);
     }
     /**
      * 更新图片大小
@@ -421,7 +392,7 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
                 image
             );
         } else {
-            internalFormat = this._fixInternalFormat(state, type, format, internalFormat);
+            internalFormat = this._fixInternalFormat(type, format, internalFormat);
             if (isTypedArray(image) || image === null) {
                 gl.texImage2D(
                     target,
@@ -441,26 +412,19 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         return this;
     }
     /**
-     * 修复 WebGL & WebGL2 internalFormat
-     * @param state -
+     * Resolves sized floating-point formats required by WebGL 2.
+     * @param type - Texture data type.
+     * @param format - Texture source format.
+     * @param internalFormat - Requested internal format.
      * @returns internalFormat
      */
-    protected _fixInternalFormat(
-        state: TextureWebGLState,
-        type: GLenum,
-        format: GLenum,
-        internalFormat: GLenum
-    ): GLenum {
-        if (state.isWebGL2) {
-            if (type === FLOAT) {
-                if (format === RGBA) {
-                    internalFormat = RGBA32F;
-                } else if (format === RGB) {
-                    internalFormat = RGB32F;
-                }
+    protected _fixInternalFormat(type: GLenum, format: GLenum, internalFormat: GLenum): GLenum {
+        if (type === FLOAT) {
+            if (format === RGBA && (internalFormat === RGBA || internalFormat === RGBA8)) {
+                internalFormat = RGBA32F;
+            } else if (format === RGB && (internalFormat === RGB || internalFormat === RGB8)) {
+                internalFormat = RGB32F;
             }
-        } else if (format !== internalFormat) {
-            internalFormat = this.format;
         }
         return internalFormat;
     }
@@ -511,12 +475,13 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
                 this.image = this._originImage as Image;
             }
             const useMipmap = this.useMipmap;
-            const useRepeat = this.useRepeat;
             const currentImage: unknown = this.image;
             if (isResizableImage(currentImage)) {
-                if (!state.isWebGL2) {
-                    const needPowerOfTwo = useRepeat || useMipmap;
-                    const sizeResult = this.getSupportSize(currentImage, needPowerOfTwo);
+                const sizeResult = this.getSupportSize(currentImage);
+                if (
+                    sizeResult.width !== currentImage.width ||
+                    sizeResult.height !== currentImage.height
+                ) {
                     const resized = this.resizeImg(
                         currentImage,
                         sizeResult.width,

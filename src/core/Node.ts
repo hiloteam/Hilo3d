@@ -78,7 +78,7 @@ function hasGeometry(node: Node): node is GeometryNode {
 }
 function isSkinnedNode(node: Node): node is SkinnedNode {
     const skeleton: unknown = Reflect.get(node, 'skeleton');
-    return node.isSkinedMesh && (skeleton === null || skeleton instanceof Skeleton);
+    return node.isSkinnedMesh && (skeleton === null || skeleton instanceof Skeleton);
 }
 export interface NodeParameters {
     name?: string;
@@ -155,7 +155,7 @@ class Node extends EventDispatcher {
     isNode = true;
     isCamera = false;
     isMesh = false;
-    isSkinedMesh = false;
+    isSkinnedMesh = false;
     className = 'Node';
     /**
      * Node 的名字，可以通过 getChildByName 查找
@@ -279,7 +279,7 @@ class Node extends EventDispatcher {
             if (this.anim) {
                 node.anim = this.anim.clone(node);
             }
-            node.resetSkinedMeshRootNode();
+            node.resetSkinnedMeshRootNode();
         }
         return node;
     }
@@ -294,9 +294,9 @@ class Node extends EventDispatcher {
         return this;
     }
     /**
-     * 重置子孙元素中 SkinedMesh 的根节点为当前元素
+     * 重置子孙元素中 SkinnedMesh 的根节点为当前元素
      */
-    resetSkinedMeshRootNode(): void {
+    resetSkinnedMeshRootNode(): void {
         this.traverse(mesh => {
             if (isSkinnedNode(mesh) && mesh.skeleton) {
                 mesh.skeleton.rootNode = this;

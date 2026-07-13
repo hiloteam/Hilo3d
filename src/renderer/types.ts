@@ -14,7 +14,8 @@ export interface TypedArrayConstructor {
     new (values: number | ArrayLike<number>): TypedArray;
 }
 
-export type GLContext = WebGLRenderingContext | WebGL2RenderingContext;
+/** The renderer targets WebGL 2 exclusively. */
+export type GLContext = WebGL2RenderingContext;
 
 export type ShaderPrecision = 'highp' | 'mediump' | 'lowp';
 
@@ -34,19 +35,12 @@ export interface Size {
     height: number;
 }
 
-export type UniformScalar = number | boolean;
-export type UniformArray = Float32List | Int32List | Uint32List;
-export type UniformValue = UniformScalar | UniformArray;
-
 export interface GLTypeInfo {
     readonly name: string;
     readonly byteSize: number;
-    readonly uniformFuncName: string;
     readonly type: 'Scalar' | 'Vector' | 'Matrix';
     readonly size: number;
     glValue: GLenum;
-    uniform(location: WebGLUniformLocation | null, value: UniformScalar | undefined): void;
-    uniformArray(location: WebGLUniformLocation | null, value: UniformArray): void;
 }
 
 export interface VertexAttributeInfo {
@@ -54,19 +48,6 @@ export interface VertexAttributeInfo {
     type: GLenum;
     size: number;
     location: GLint;
-}
-
-export interface UniformInfo {
-    name: string;
-    type: GLenum;
-    size: number;
-    location: WebGLUniformLocation | null;
-    glTypeInfo: GLTypeInfo;
-}
-
-export interface UniformBlockInfo {
-    name: string;
-    index: GLuint;
 }
 
 export interface Resource {

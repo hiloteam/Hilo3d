@@ -8,35 +8,7 @@ describe('Texture', () => {
         const texture = new Texture();
         expect(texture.isTexture).toBe(true);
         expect(texture.className).toBe('Texture');
-    });
-
-    it('isImgPowerOfTwo', () => {
-        const texture = new Texture();
-        const img = new Image();
-        img.width = 100;
-        img.height = 100;
-
-        expect(texture.isImgPowerOfTwo(img)).toBe(false);
-        img.width = 512;
-        expect(texture.isImgPowerOfTwo(img)).toBe(false);
-        img.height = 1024;
-        expect(texture.isImgPowerOfTwo(img)).toBe(true);
-    });
-
-    it('resizeImgToPowerOfTwo', async () => {
-        const texture = new Texture();
-        const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-            img.onload = () => {
-                resolve();
-            };
-            img.onerror = () => {
-                reject(new Error('fixture image failed to load'));
-            };
-            img.src = '/test/asset/images/logo.png';
-        });
-        expect(texture.isImgPowerOfTwo(img)).toBe(false);
-        expect(texture.isImgPowerOfTwo(texture.resizeImgToPowerOfTwo(img))).toBe(true);
+        expect(texture.mipmapCount).toBe(1);
     });
 
     it('getSupportSize', () => {
@@ -57,22 +29,18 @@ describe('Texture', () => {
             expect(size.width).toBe(4096);
             expect(size.height).toBe(2040);
 
-            size = texture.getSupportSize(img, true);
-            expect(size.width).toBe(4096);
-            expect(size.height).toBe(2048);
-
             img.width = 4097;
             img.height = 4097;
-            size = texture.getSupportSize(img, true);
+            size = texture.getSupportSize(img);
             expect(size.width).toBe(4096);
             expect(size.height).toBe(4096);
 
             img.width = 4097;
             img.height = 19_999;
             Hilo3d.capabilities.MAX_TEXTURE_SIZE = 20_000;
-            size = texture.getSupportSize(img, true);
-            expect(size.width).toBe(8192);
-            expect(size.height).toBe(20_000);
+            size = texture.getSupportSize(img);
+            expect(size.width).toBe(4097);
+            expect(size.height).toBe(19_999);
         } finally {
             Hilo3d.capabilities.MAX_TEXTURE_SIZE = originMaxTextureSize;
         }

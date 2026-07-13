@@ -310,32 +310,6 @@ export interface GLTFPunctualLightNodeExtension {
     light: GLTFIndex;
 }
 
-export interface GLTFTechniquesWebGLShader extends GLTFProperty {
-    uri: string;
-    type?: number;
-}
-
-export type GLTFTechniquesWebGLProgram = GLTFProgram;
-
-export interface GLTFTechniquesWebGLTechnique extends GLTFProperty {
-    program: GLTFIndex;
-    attributes?: Readonly<Record<string, GLTFTechniqueBinding>>;
-    uniforms?: Readonly<Record<string, GLTFTechniqueBinding>>;
-}
-
-export interface GLTFTechniquesWebGLExtension {
-    programs?: GLTFCollection<GLTFTechniquesWebGLProgram>;
-    shaders?: GLTFCollection<GLTFTechniquesWebGLShader>;
-    techniques?: GLTFCollection<GLTFTechniquesWebGLTechnique>;
-}
-
-export interface GLTFTechniquesWebGLMaterialExtension {
-    technique: GLTFIndex;
-    values?: Readonly<Record<string, JsonValue>>;
-    defines?: Readonly<Record<string, string | number | boolean>>;
-    premultiplyAlpha?: boolean;
-}
-
 export interface GLTFRoot extends GLTFProperty {
     asset: GLTFAsset;
     scene?: GLTFIndex;

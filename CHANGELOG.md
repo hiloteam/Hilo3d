@@ -4,6 +4,17 @@
 
 - Require Node.js 22.22.2 and npm 12 for development and releases.
 - Publish an ES2022 ESM root entry point and a separate self-contained UMD compatibility entry.
+- Require WebGL 2 and native GLSL ES 3.00; remove WebGL 1 contexts, compatibility shader rewriting,
+  and extension adapters for WebGL 2 core features.
+- Move every non-sampler shader value to the fixed std140 `FrameBlock`, `CameraBlock`, `SceneBlock`,
+  `LightBlock`, `MaterialBlock`, `ModelBlock`, `GeometryBlock`, `SkinningBlock`, or `MorphBlock`
+  ABI. Custom `ShaderMaterial` numeric uniforms must migrate to a registered UBO; samplers are the
+  only classic uniform exception.
+- Remove `KHR_techniques_webgl` loading and its GLSL 1.00 sample assets because the extension's
+  arbitrary classic-uniform shader interface is incompatible with the fixed WebGL 2 UBO ABI.
+- Correct legacy public API spellings: `SkinedMesh` is now `SkinnedMesh`, `needBasicUnifroms` is
+  `needBasicUniforms`, `ignoreTranparent` is `ignoreTransparent`, and the
+  diffuse-environment/ambient-light material flag now uses its correctly spelled name.
 - Replace the legacy Gulp, Webpack, Mocha, JSDoc and Electron toolchain with Vite, strict
   TypeScript, Vitest Browser Mode, Playwright, TypeDoc and ESLint flat config.
 
@@ -21,6 +32,10 @@
   runtime loading and the UMD browser global.
 - Generate and deploy the API documentation and examples site from TypeDoc and Vite in CI.
 - Run the existing engine suite in headless Chromium with real WebGL contexts.
+- Bundle the area-light LTC lookup data and skybox textures locally so rendering never depends on
+  third-party runtime URLs.
+- Add type-safe std140 layout packing, stable global uniform-block bindings, reflected range-size
+  validation, partial dirty uploads, and static/runtime rejection of legacy shader interfaces.
 - Make package entry evaluation safe in non-browser runtimes.
 - Fix the `COPY_WRITE_BUFFER_BINDING` WebGL2 constant.
 

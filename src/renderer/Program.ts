@@ -1,16 +1,15 @@
 import math from '../math/math';
 import Cache from '../utils/Cache';
-import GLSL300VertDefineCode from '../shader/chunk/GLSL300Define.vert';
-import GLSL300FragDefineCode from '../shader/chunk/GLSL300Define.frag';
 import { VERTEX_SHADER } from '../constants/webgl';
 import glType from './glType';
-import extensions from './extensions';
 import Shader from '../shader/Shader';
-import UniformBuffer from './UniformBuffer';
+import UniformBuffer, { type UniformBufferRange } from './UniformBuffer';
+import { BUILT_IN_UNIFORM_BLOCK_LAYOUTS } from './ubo/BuiltInUniformBlocks';
+import { getUniformBlockBinding } from './ubo/UniformBlockBindings';
 import requireGLResource from './requireGLResource';
 import type WebGLState from './WebGLState';
 import type WebGLResourceManager from './WebGLResourceManager';
-import type { GLContext, GLTypeInfo, UniformArray, UniformScalar } from './types';
+import type { GLContext, GLTypeInfo } from './types';
 
 export interface ProgramParameters {
     state: WebGLState;
@@ -60,7 +59,6 @@ export interface ProgramAttribute {
     pointer(parameters: AttributePointerParameters): void;
     enable(): void;
     divisor(value?: GLuint): void;
-    addTo<State extends object>(array: (State | undefined)[], data: State): void;
 }
 
 export interface ProgramUniform {
@@ -73,7 +71,12 @@ export interface ProgramUniform {
 }
 
 export interface ProgramUniformBlock {
+    name: string;
     blockIndex: GLuint;
+    bindingPoint: GLuint;
+    byteLength: number;
+    activeUniformIndices: readonly GLuint[];
+    uniformNames: readonly string[];
 }
 
 export interface ProgramRenderer {
@@ -85,19 +88,6 @@ const cache = new Cache<Program>();
 function numericParameter(value: unknown, name: string): number {
     if (typeof value !== 'number') throw new TypeError(`WebGL ${name} did not return a number`);
     return value;
-}
-
-function isUniformArray(value: unknown): value is UniformArray {
-    return (
-        Array.isArray(value) ||
-        value instanceof Float32Array ||
-        value instanceof Int32Array ||
-        value instanceof Uint32Array
-    );
-}
-
-function isUniformScalar(value: unknown): value is UniformScalar {
-    return typeof value === 'number' || typeof value === 'boolean';
 }
 
 function integerArray(value: unknown): number[] | null {
@@ -119,8 +109,70 @@ function uniformBlockIndices(value: unknown, count: number): Int32Array {
     return Int32Array.from(values, index => (index === 0xffffffff ? -1 : index));
 }
 
-function isWebGL2Context(gl: GLContext): gl is WebGL2RenderingContext {
-    return 'bindBufferBase' in gl && 'getActiveUniforms' in gl;
+function isUniformBufferRange(value: unknown): value is UniformBufferRange {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        'uniformBuffer' in value &&
+        (value as { uniformBuffer?: unknown }).uniformBuffer instanceof UniformBuffer &&
+        'byteOffset' in value &&
+        'byteLength' in value
+    );
+}
+
+function isSamplerType(gl: WebGL2RenderingContext, type: GLenum): boolean {
+    return new Set<GLenum>([
+        gl.SAMPLER_2D,
+        gl.SAMPLER_3D,
+        gl.SAMPLER_CUBE,
+        gl.SAMPLER_2D_SHADOW,
+        gl.SAMPLER_2D_ARRAY,
+        gl.SAMPLER_2D_ARRAY_SHADOW,
+        gl.SAMPLER_CUBE_SHADOW,
+        gl.INT_SAMPLER_2D,
+        gl.INT_SAMPLER_3D,
+        gl.INT_SAMPLER_CUBE,
+        gl.INT_SAMPLER_2D_ARRAY,
+        gl.UNSIGNED_INT_SAMPLER_2D,
+        gl.UNSIGNED_INT_SAMPLER_3D,
+        gl.UNSIGNED_INT_SAMPLER_CUBE,
+        gl.UNSIGNED_INT_SAMPLER_2D_ARRAY
+    ]).has(type);
+}
+
+interface SamplerTypeInfo extends GLTypeInfo {
+    uniform(location: WebGLUniformLocation | null, value: number): void;
+    uniformArray(location: WebGLUniformLocation | null, value: readonly number[]): void;
+}
+
+function samplerTypeInfo(gl: WebGL2RenderingContext, type: GLenum): SamplerTypeInfo {
+    return {
+        name: 'SAMPLER',
+        byteSize: 4,
+        type: 'Scalar',
+        size: 1,
+        glValue: type,
+        uniform(location, value) {
+            gl.uniform1i(location, value);
+        },
+        uniformArray(location, value) {
+            gl.uniform1iv(location, Array.from(value));
+        }
+    };
+}
+
+function reflectedUniformValues(
+    gl: WebGL2RenderingContext,
+    program: WebGLProgram,
+    indices: readonly GLuint[],
+    pname: GLenum,
+    label: string
+): number[] {
+    const values = integerArray(gl.getActiveUniforms(program, indices, pname));
+    if (values?.length !== indices.length) {
+        throw new TypeError(`WebGL did not return ${label} for reflected uniform block members`);
+    }
+    return values;
 }
 
 class Program {
@@ -148,7 +200,7 @@ class Program {
     static getBlankProgram(state: WebGLState): Program {
         const shader = Shader.getCustomShader(
             'void main(){}',
-            'precision HILO_MAX_FRAGMENT_PRECISION float;void main(){gl_FragColor = vec4(0.0);}',
+            'precision HILO_MAX_FRAGMENT_PRECISION float;out vec4 hiloFragColor;void main(){hiloFragColor=vec4(0.0);}',
             '',
             '__hiloBlankShader'
         );
@@ -160,7 +212,6 @@ class Program {
     readonly id: string;
     readonly gl: GLContext;
     readonly state: WebGLState;
-    readonly isWebGL2: boolean;
     fragShader = '';
     vertexShader = '';
     attributes: Record<string, ProgramAttribute> = {};
@@ -168,19 +219,24 @@ class Program {
     uniformBlocks: Record<string, ProgramUniformBlock> = {};
     program: WebGLProgram | null;
     alwaysUse = false;
-    private readonly uniformValues = new Map<string, UniformScalar>();
+    private readonly uniformValues = new Map<string, number>();
     private _isDestroyed = false;
 
     constructor(params: ProgramParameters) {
         this.id = math.generateUUID(this.className);
         this.state = params.state;
         this.gl = params.state.gl;
-        this.isWebGL2 = params.state.isWebGL2;
         this.vertexShader = params.vertexShader ?? '';
         this.fragShader = params.fragShader ?? '';
         this.program = this.createProgram();
-        this.initAttributes();
-        this.initUniforms();
+        try {
+            this.initAttributes();
+            this.initUniforms();
+        } catch (error: unknown) {
+            this.gl.deleteProgram(this.program);
+            this.program = null;
+            throw error;
+        }
     }
 
     createProgram(): WebGLProgram {
@@ -222,7 +278,7 @@ class Program {
     }
 
     /** Bind a named uniform block through the validated property generated at link time. */
-    setUniformBlock(name: string, value: UniformBuffer): void {
+    setUniformBlock(name: string, value: UniformBuffer | UniformBufferRange): void {
         if (!this.uniformBlocks[name])
             throw new Error(`Program has no active uniform block named ${name}`);
         if (!Reflect.set(this, name, value))
@@ -230,13 +286,12 @@ class Program {
     }
 
     createShader(shaderType: GLenum, source: string): WebGLShader {
-        const code = this.isWebGL2 ? this.convertToGLSL300(shaderType, source) : source;
         const shader = requireGLResource(this.gl.createShader(shaderType), 'a shader');
-        this.gl.shaderSource(shader, code);
+        this.gl.shaderSource(shader, source);
         this.gl.compileShader(shader);
         const compiled: unknown = this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS);
         if (compiled !== true) {
-            const numberedCode = code
+            const numberedCode = source
                 .split('\n')
                 .map((line, index) => `${String(index + 1)} ${line}`)
                 .join('\n');
@@ -251,11 +306,6 @@ class Program {
         return shader;
     }
 
-    private convertToGLSL300(shaderType: GLenum, code: string): string {
-        if (shaderType === this.gl.VERTEX_SHADER) return GLSL300VertDefineCode + code;
-        return (GLSL300FragDefineCode + code).replace(/gl_FragData\[(\d)\]/g, 'hilo_FragData$1');
-    }
-
     initAttributes(): void {
         const program = this.program;
         if (!program) return;
@@ -264,8 +314,6 @@ class Program {
             gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES),
             'ACTIVE_ATTRIBUTES'
         );
-        const instancedExtension = extensions.instanced;
-
         for (let index = 0; index < count; index++) {
             const active = gl.getActiveAttrib(program, index);
             if (!active) continue;
@@ -322,14 +370,8 @@ class Program {
                     });
                 },
                 divisor: (value = 1) => {
-                    if (instancedExtension)
-                        eachLocation(location => {
-                            instancedExtension.vertexAttribDivisor(location, value);
-                        });
-                },
-                addTo: (array, data) => {
                     eachLocation(location => {
-                        array[location] = data;
+                        gl.vertexAttribDivisor(location, value);
                     });
                 }
             };
@@ -345,27 +387,136 @@ class Program {
             gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS),
             'ACTIVE_UNIFORMS'
         );
-        let activeUniformBlockIndices: Int32Array | null = null;
+        let activeUniformBlockIndices: Int32Array;
 
-        if (this.isWebGL2 && isWebGL2Context(gl)) {
+        {
             const blockCount = numericParameter(
                 gl.getProgramParameter(program, gl.ACTIVE_UNIFORM_BLOCKS),
                 'ACTIVE_UNIFORM_BLOCKS'
+            );
+            const maximumBindings = numericParameter(
+                gl.getParameter(gl.MAX_UNIFORM_BUFFER_BINDINGS),
+                'MAX_UNIFORM_BUFFER_BINDINGS'
             );
             for (let index = 0; index < blockCount; index++) {
                 const blockName = gl.getActiveUniformBlockName(program, index);
                 if (!blockName) continue;
                 const blockIndex = gl.getUniformBlockIndex(program, blockName);
-                gl.uniformBlockBinding(program, blockIndex, index);
-                this.uniformBlocks[blockName] = { blockIndex };
-                Object.defineProperty(this, blockName, {
-                    set: (value: unknown) => {
-                        if (!(value instanceof UniformBuffer)) {
-                            throw new TypeError(
-                                `Uniform block ${blockName} requires a UniformBuffer`
+                const bindingPoint = getUniformBlockBinding(blockName);
+                if (bindingPoint >= maximumBindings) {
+                    throw new RangeError(
+                        `Uniform block ${blockName} binding point ${String(bindingPoint)} exceeds WebGL2 limit ${String(maximumBindings)}`
+                    );
+                }
+                const byteLength = numericParameter(
+                    gl.getActiveUniformBlockParameter(
+                        program,
+                        blockIndex,
+                        gl.UNIFORM_BLOCK_DATA_SIZE
+                    ),
+                    'UNIFORM_BLOCK_DATA_SIZE'
+                );
+                const queriedIndices: unknown = gl.getActiveUniformBlockParameter(
+                    program,
+                    blockIndex,
+                    gl.UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES
+                );
+                const activeUniformIndices = integerArray(queriedIndices);
+                if (!activeUniformIndices) {
+                    throw new TypeError(
+                        `WebGL did not return active uniform indices for block ${blockName}`
+                    );
+                }
+                const uniformNames = activeUniformIndices.map(uniformIndex => {
+                    const uniformName = gl.getActiveUniform(program, uniformIndex)?.name;
+                    if (!uniformName) {
+                        throw new TypeError(
+                            `WebGL did not return active uniform ${String(uniformIndex)} for block ${blockName}`
+                        );
+                    }
+                    return (uniformName.split('.').at(-1) ?? uniformName).replace(/\[0\]$/, '');
+                });
+                const canonicalLayout = BUILT_IN_UNIFORM_BLOCK_LAYOUTS[blockName];
+                if (canonicalLayout) {
+                    if (Math.ceil(byteLength / 16) * 16 !== canonicalLayout.byteLength) {
+                        throw new Error(
+                            `${blockName} is ${String(byteLength)} bytes in GLSL but the canonical ABI requires ${String(canonicalLayout.byteLength)}`
+                        );
+                    }
+                    const offsets = reflectedUniformValues(
+                        gl,
+                        program,
+                        activeUniformIndices,
+                        gl.UNIFORM_OFFSET,
+                        'UNIFORM_OFFSET'
+                    );
+                    const arrayStrides = reflectedUniformValues(
+                        gl,
+                        program,
+                        activeUniformIndices,
+                        gl.UNIFORM_ARRAY_STRIDE,
+                        'UNIFORM_ARRAY_STRIDE'
+                    );
+                    const matrixStrides = reflectedUniformValues(
+                        gl,
+                        program,
+                        activeUniformIndices,
+                        gl.UNIFORM_MATRIX_STRIDE,
+                        'UNIFORM_MATRIX_STRIDE'
+                    );
+                    uniformNames.forEach((uniformName, uniformIndex) => {
+                        const field = canonicalLayout.fields[uniformName];
+                        if (!field) {
+                            throw new Error(
+                                `${blockName}.${uniformName} is outside the canonical WebGL2 ABI`
                             );
                         }
-                        gl.bindBufferBase(gl.UNIFORM_BUFFER, index, value.getBuffer(gl).buffer);
+                        const reflected = {
+                            offset: offsets[uniformIndex],
+                            arrayStride: arrayStrides[uniformIndex],
+                            matrixStride: matrixStrides[uniformIndex]
+                        };
+                        if (
+                            reflected.offset !== field.offset ||
+                            reflected.arrayStride !== field.arrayStride ||
+                            reflected.matrixStride !== field.matrixStride
+                        ) {
+                            throw new Error(
+                                `${blockName}.${uniformName} std140 layout does not match the canonical WebGL2 ABI`
+                            );
+                        }
+                    });
+                }
+                gl.uniformBlockBinding(program, blockIndex, bindingPoint);
+                this.uniformBlocks[blockName] = {
+                    name: blockName,
+                    blockIndex,
+                    bindingPoint,
+                    byteLength,
+                    activeUniformIndices,
+                    uniformNames
+                };
+                Object.defineProperty(this, blockName, {
+                    set: (value: unknown) => {
+                        const uniformBuffer =
+                            value instanceof UniformBuffer
+                                ? value
+                                : isUniformBufferRange(value)
+                                  ? value.uniformBuffer
+                                  : null;
+                        if (!uniformBuffer) {
+                            throw new TypeError(
+                                `Uniform block ${blockName} requires a UniformBuffer or UniformBufferRange`
+                            );
+                        }
+                        const range = isUniformBufferRange(value) ? value : undefined;
+                        const availableByteLength = range?.byteLength ?? uniformBuffer.byteLength;
+                        if (availableByteLength < byteLength) {
+                            throw new RangeError(
+                                `Uniform block ${blockName} requires ${String(byteLength)} bytes; binding provides ${String(availableByteLength)}`
+                            );
+                        }
+                        uniformBuffer.bind(gl, bindingPoint, range);
                     }
                 });
             }
@@ -379,12 +530,21 @@ class Program {
         }
 
         let nextTextureIndex = 0;
+        const maximumTextureUnits = numericParameter(
+            gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS),
+            'MAX_COMBINED_TEXTURE_IMAGE_UNITS'
+        );
         for (let index = 0; index < count; index++) {
             const active = gl.getActiveUniform(program, index);
-            if (!active || (activeUniformBlockIndices?.[index] ?? -1) !== -1) continue;
+            if (!active || activeUniformBlockIndices[index] !== -1) continue;
             const name = active.name.replace(/\[0\]$/, '');
+            if (!isSamplerType(gl, active.type)) {
+                throw new Error(
+                    `Classic uniform ${name} is not a sampler; place non-texture data in a std140 uniform block`
+                );
+            }
             const location = gl.getUniformLocation(program, name);
-            const glTypeInfo = glType.get(active.type);
+            const glTypeInfo = samplerTypeInfo(gl, active.type);
             const info: ProgramUniform = {
                 name,
                 location,
@@ -392,26 +552,30 @@ class Program {
                 size: active.size,
                 glTypeInfo
             };
-            if (active.type === gl.SAMPLER_2D || active.type === gl.SAMPLER_CUBE) {
-                info.textureIndex = nextTextureIndex;
-                nextTextureIndex += active.size;
+            info.textureIndex = nextTextureIndex;
+            nextTextureIndex += active.size;
+            if (nextTextureIndex > maximumTextureUnits) {
+                throw new RangeError(
+                    `Program requires ${String(nextTextureIndex)} texture units but WebGL2 exposes ${String(maximumTextureUnits)}`
+                );
             }
             this.uniforms[name] = info;
 
             Object.defineProperty(this, name, {
                 set: (value: unknown) => {
-                    if (isUniformArray(value)) {
-                        glTypeInfo.uniformArray(location, value);
-                    } else if (glTypeInfo.size === 1 && active.size === 1) {
-                        if (!isUniformScalar(value)) {
-                            throw new TypeError(`Uniform ${name} requires a scalar value`);
-                        }
+                    if (typeof value === 'number' && Number.isInteger(value) && active.size === 1) {
                         if (this.uniformValues.get(name) !== value) {
                             this.uniformValues.set(name, value);
                             glTypeInfo.uniform(location, value);
                         }
                     } else {
-                        throw new TypeError(`Uniform ${name} requires numeric array data`);
+                        const units = integerArray(value);
+                        if (units?.length !== active.size) {
+                            throw new TypeError(
+                                `Sampler uniform ${name} requires ${String(active.size)} integer texture unit${active.size === 1 ? '' : 's'}`
+                            );
+                        }
+                        glTypeInfo.uniformArray(location, units);
                     }
                 }
             });

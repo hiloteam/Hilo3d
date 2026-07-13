@@ -1,16 +1,16 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './js/init';
 
-const isWebGLSupport = Hilo3d.WebGLSupport.get();
+const webGL2Available = Hilo3d.WebGLSupport.get();
 const canvas = document.createElement('canvas');
 let infoText = '';
-infoText += `context: ${canvas.getContext('webgl') ? 'available' : 'unavailable'}<br/>`;
-infoText += `WebGLSupport: ${String(isWebGLSupport)}`;
+infoText += `WebGL 2 context: ${canvas.getContext('webgl2') ? 'available' : 'unavailable'}<br/>`;
+infoText += `WebGL 2 support check: ${String(webGL2Available)}`;
 
 const info = document.getElementById('info');
 if (!info) throw new Error('WebGL support example requires #info');
 info.innerHTML = infoText;
-if (isWebGLSupport) {
+if (webGL2Available) {
     const { stage } = createExampleContext();
     const boxGeometry = new Hilo3d.BoxGeometry();
     boxGeometry.setAllRectUV([

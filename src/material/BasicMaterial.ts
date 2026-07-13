@@ -109,9 +109,9 @@ class BasicMaterial extends Material {
     protected initializeBasicMaterialBindings(): void {
         this.initializeBindings();
         Object.assign(this.uniforms, {
-            u_diffuse: 'DIFFUSE',
-            u_specular: 'SPECULAR',
-            u_ambient: 'AMBIENT',
+            u_diffuseColor: 'DIFFUSE',
+            u_specularColor: 'SPECULAR',
+            u_ambientColor: 'AMBIENT',
             u_shininess: 'SHININESS',
             u_reflectivity: 'REFLECTIVITY',
             u_refractRatio: 'REFRACTRATIO',

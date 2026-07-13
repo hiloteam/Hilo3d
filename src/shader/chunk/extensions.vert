@@ -1,0 +1,1 @@
+#define HILO_VERTEX_SHADER

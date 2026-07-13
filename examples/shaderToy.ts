@@ -604,54 +604,60 @@ function bindChannel(
 const screenVertexShader = Hilo3d.Shader.shaders['screen.vert'];
 if (screenVertexShader === undefined)
     throw new Error('ShaderToy screen vertex shader is unavailable');
+Hilo3d.registerUniformBlockBinding('ShaderToyBlock');
+const shaderToyLayout = Hilo3d.createStd140Layout({
+    iResolution: 'vec3',
+    iTime: 'float',
+    iTimeDelta: 'float',
+    iFrame: 'int',
+    iFrameRate: 'float',
+    iChannelTime: { type: 'float', arrayLength: 4 },
+    iMouse: 'vec4',
+    iDate: 'vec4',
+    iSampleRate: 'float',
+    iChannelResolution: { type: 'vec3', arrayLength: 4 }
+});
+const shaderToyBlock = Hilo3d.UniformBuffer.fromSchema(shaderToyLayout);
 const material = new Hilo3d.ShaderMaterial({
     depthTest: false,
     side: Hilo3d.constants.FRONT_AND_BACK,
-    needBasicUnifroms: false,
+    needBasicUniforms: false,
     needBasicAttributes: false,
     uniforms: {
-        iResolution: { get: () => resolution },
-        iTime: { get: () => elapsedTime },
-        iTimeDelta: { get: () => timeDelta },
-        iFrame: { get: () => frame },
-        iFrameRate: { get: () => ticker.getMeasuredFPS() },
-        iChannelTime: { get: () => channelTime },
-        iMouse: { get: () => mouse },
-        iDate: { get: () => date },
-        iSampleRate: { get: () => 0 },
-        iChannelResolution: { get: () => channelResolution },
         iChannel0: { get: (_mesh, _material, info) => bindChannel(channel0, info) },
         iChannel1: { get: (_mesh, _material, info) => bindChannel(null, info) },
         iChannel2: { get: (_mesh, _material, info) => bindChannel(null, info) },
         iChannel3: { get: (_mesh, _material, info) => bindChannel(null, info) }
     },
+    uniformBlocks: { ShaderToyBlock: shaderToyBlock },
     attributes: {
         a_position: 'POSITION',
         a_texcoord0: 'TEXCOORD_0'
     },
-    fs: `
-        #extension GL_OES_standard_derivatives: enable
-        #define texture texture2D
-        precision HILO_MAX_FRAGMENT_PRECISION float;
-        uniform vec3 iResolution;
-        uniform float iTime;
-        uniform float iTimeDelta;
-        uniform int iFrame;
-        uniform float iFrameRate;
-        uniform float iChannelTime[4];
-        uniform vec4 iMouse;
-        uniform vec4 iDate;
-        uniform float iSampleRate;
-        uniform vec3 iChannelResolution[4];
+    fs: `#version 300 es
+        precision highp float;
+        layout(std140) uniform ShaderToyBlock {
+            vec3 iResolution;
+            float iTime;
+            float iTimeDelta;
+            int iFrame;
+            float iFrameRate;
+            float iChannelTime[4];
+            vec4 iMouse;
+            vec4 iDate;
+            float iSampleRate;
+            vec3 iChannelResolution[4];
+        };
         uniform sampler2D iChannel0;
         uniform sampler2D iChannel1;
         uniform sampler2D iChannel2;
         uniform sampler2D iChannel3;
+        layout(location = 0) out vec4 fragmentColor;
         ${shaderToyCode}
         void main(void) {
             vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
             mainImage(color, gl_FragCoord.xy);
-            gl_FragColor = color;
+            fragmentColor = color;
         }
     `,
     vs: screenVertexShader
@@ -680,5 +686,15 @@ mesh.onUpdate = deltaTime => {
         now.getSeconds() +
         now.getMilliseconds() / 1000;
     mouse.set([pointer.x, pointer.y, pointer.deltaX, pointer.deltaY]);
+    shaderToyBlock.set('iResolution', resolution);
+    shaderToyBlock.set('iTime', elapsedTime);
+    shaderToyBlock.set('iTimeDelta', timeDelta);
+    shaderToyBlock.set('iFrame', frame);
+    shaderToyBlock.set('iFrameRate', ticker.getMeasuredFPS());
+    shaderToyBlock.set('iChannelTime', channelTime);
+    shaderToyBlock.set('iMouse', mouse);
+    shaderToyBlock.set('iDate', date);
+    shaderToyBlock.set('iSampleRate', 0);
+    shaderToyBlock.set('iChannelResolution', channelResolution);
 };
 stage.addChild(mesh);

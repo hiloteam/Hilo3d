@@ -14,7 +14,6 @@ import {
     COLOR_ATTACHMENT0,
     COLOR_BUFFER_BIT,
     CULL_FACE,
-    DEPTH_STENCIL,
     DEPTH_STENCIL_ATTACHMENT,
     DEPTH_TEST,
     FRAMEBUFFER,
@@ -24,9 +23,7 @@ import {
     TRIANGLE_STRIP,
     UNSIGNED_BYTE
 } from '../constants/webgl';
-import { DRAW_FRAMEBUFFER, READ_FRAMEBUFFER } from '../constants/webgl2';
-import extensions from './extensions';
-import capabilities from './capabilities';
+import { DEPTH24_STENCIL8, DRAW_FRAMEBUFFER, READ_FRAMEBUFFER, RGBA8 } from '../constants/webgl2';
 import requireGLResource from './requireGLResource';
 import type WebGLState from './WebGLState';
 import type { GLContext, TypedArray } from './types';
@@ -73,7 +70,6 @@ export interface FramebufferParameters {
     data?: TypedArray | null;
     attachment?: GLenum;
     needRenderbuffer?: boolean;
-    useVao?: boolean;
     colorAttachmentInfos?: FramebufferAttachmentInfo[];
     depthStencilAttachmentInfo?: FramebufferAttachmentInfo;
 }
@@ -121,7 +117,7 @@ const defaultAttachmentOptions: ResolvedAttachmentOptions = {
     attachment: COLOR_ATTACHMENT0,
     target: TEXTURE_2D,
     format: RGBA,
-    internalFormat: RGBA,
+    internalFormat: RGBA8,
     type: UNSIGNED_BYTE,
     minFilter: NEAREST,
     magFilter: NEAREST,
@@ -129,10 +125,6 @@ const defaultAttachmentOptions: ResolvedAttachmentOptions = {
     wrapT: CLAMP_TO_EDGE,
     data: null
 };
-
-function isWebGL2Context(gl: GLContext): gl is WebGL2RenderingContext {
-    return 'blitFramebuffer' in gl && 'renderbufferStorageMultisample' in gl;
-}
 
 /** Render target backed by texture or renderbuffer attachments. */
 class Framebuffer {
@@ -162,7 +154,7 @@ class Framebuffer {
 
     width: number;
     height: number;
-    bufferInternalFormat = DEPTH_STENCIL;
+    bufferInternalFormat = DEPTH24_STENCIL8;
     framebufferTarget = defaultAttachmentOptions.framebufferTarget;
     target = defaultAttachmentOptions.target;
     format = defaultAttachmentOptions.format;
@@ -175,7 +167,6 @@ class Framebuffer {
     data: TypedArray | null = null;
     attachment = defaultAttachmentOptions.attachment;
     needRenderbuffer = true;
-    useVao = true;
     texture: FramebufferTexture | null = null;
     renderbuffer: WebGLRenderbuffer | null = null;
     framebuffer: WebGLFramebuffer | null = null;
@@ -230,7 +221,7 @@ class Framebuffer {
                 attachmentType: Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
                 framebufferTarget: this.framebufferTarget,
                 attachment: DEPTH_STENCIL_ATTACHMENT,
-                internalFormat: DEPTH_STENCIL
+                internalFormat: DEPTH24_STENCIL8
             };
         }
         cache.add(this.id, this);
@@ -292,12 +283,7 @@ class Framebuffer {
             );
         }
 
-        if (drawBuffers.length > 1 && capabilities.DRAW_BUFFERS) {
-            const drawBuffersExtension = extensions.drawBuffers;
-            if (!drawBuffersExtension)
-                throw new Error('Draw buffers capability is missing its extension adapter');
-            drawBuffersExtension.drawBuffers(drawBuffers);
-        }
+        if (drawBuffers.length > 1) this.gl.drawBuffers(drawBuffers);
     }
 
     private createAttachment(info: FramebufferAttachmentInfo, attachment: GLenum): void {
@@ -372,7 +358,6 @@ class Framebuffer {
         const internalFormat = info.internalFormat ?? this.bufferInternalFormat;
         const samples = info.samples ?? 0;
         if (samples > 0) {
-            if (!isWebGL2Context(gl)) throw new Error('Multisampled renderbuffers require WebGL 2');
             gl.renderbufferStorageMultisample(
                 gl.RENDERBUFFER,
                 samples,
@@ -466,7 +451,6 @@ class Framebuffer {
             program.useProgram();
             const vaoId = [x, y, width, height, program.id].map(String).join('_');
             const vao = VertexArrayObject.getVao(gl, vaoId, {
-                useVao: this.useVao,
                 useInstanced: false,
                 mode: TRIANGLE_STRIP
             });
@@ -538,25 +522,29 @@ class Framebuffer {
         srcFramebuffer.init();
         if (!this._isInit) return;
         const gl = this.gl;
-        if (!isWebGL2Context(gl)) throw new Error('Framebuffer copies require WebGL 2');
         const srcSize = config.srcSize ?? [0, 0, srcFramebuffer.width, srcFramebuffer.height];
         const dstSize = config.dstSize ?? [0, 0, this.width, this.height];
-        gl.bindFramebuffer(READ_FRAMEBUFFER, srcFramebuffer.framebuffer);
-        gl.bindFramebuffer(DRAW_FRAMEBUFFER, this.framebuffer);
-        gl.blitFramebuffer(
-            srcSize[0],
-            srcSize[1],
-            srcSize[2],
-            srcSize[3],
-            dstSize[0],
-            dstSize[1],
-            dstSize[2],
-            dstSize[3],
-            config.mask ?? COLOR_BUFFER_BIT,
-            config.filter ?? NEAREST
-        );
-        gl.bindFramebuffer(READ_FRAMEBUFFER, null);
-        gl.bindFramebuffer(DRAW_FRAMEBUFFER, null);
+        const previousReadFramebuffer = this.state.currentReadFramebuffer;
+        const previousDrawFramebuffer = this.state.currentDrawFramebuffer;
+        this.state.bindFramebuffer(READ_FRAMEBUFFER, srcFramebuffer.framebuffer);
+        this.state.bindFramebuffer(DRAW_FRAMEBUFFER, this.framebuffer);
+        try {
+            gl.blitFramebuffer(
+                srcSize[0],
+                srcSize[1],
+                srcSize[2],
+                srcSize[3],
+                dstSize[0],
+                dstSize[1],
+                dstSize[2],
+                dstSize[3],
+                config.mask ?? COLOR_BUFFER_BIT,
+                config.filter ?? NEAREST
+            );
+        } finally {
+            this.state.bindFramebuffer(READ_FRAMEBUFFER, previousReadFramebuffer);
+            this.state.bindFramebuffer(DRAW_FRAMEBUFFER, previousDrawFramebuffer);
+        }
     }
 
     destroy(): this {

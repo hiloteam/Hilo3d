@@ -4,9 +4,9 @@
     #ifdef HILO_FOG_LINEAR
         fogFactor = (u_fogInfo.y - v_dist)/(u_fogInfo.y - u_fogInfo.x);
     #elif defined(HILO_FOG_EXP)
-        fogFactor = exp(-abs(u_fogInfo * v_dist));
+        fogFactor = exp(-abs(u_fogInfo.x * v_dist));
     #elif defined(HILO_FOG_EXP2)
-        fogFactor = exp(-(u_fogInfo * v_dist) * (u_fogInfo * v_dist)); 
+        fogFactor = exp(-(u_fogInfo.x * v_dist) * (u_fogInfo.x * v_dist));
     #endif
     
     fogFactor = clamp(fogFactor, 0.0, 1.0);

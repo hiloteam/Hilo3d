@@ -39,7 +39,6 @@ textureBox.onUpdate = () => {
 stage.addChild(textureBox);
 
 const framebuffer = new Hilo3d.Framebuffer(renderer, {
-    useVao: renderer.useVao,
     width: renderer.width,
     height: renderer.height
 });

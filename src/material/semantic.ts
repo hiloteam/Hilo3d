@@ -38,11 +38,8 @@ export interface SemanticRenderer {
 
 export interface SemanticMesh extends Mesh {
     geometry: Geometry;
-    isSkinedMesh: boolean;
-    jointMatTexture: DataTexture | null;
+    isSkinnedMesh: boolean;
     getJointMat(): Float32Array;
-    initJointMatTexture(): DataTexture;
-    updateJointMatTexture(): void;
 }
 
 export interface SemanticMaterial extends Material {
@@ -619,47 +616,11 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            if (mesh.isSkinedMesh) {
+            if (mesh.isSkinnedMesh) {
                 return mesh.getJointMat();
             }
             throw new TypeError(
                 `Semantic JOINTMATRIX requires a skinned mesh; received ${mesh.id}`
-            );
-        },
-        isDependMesh: true,
-        notSupportInstanced: true
-    },
-
-    JOINTMATRIXTEXTURE: {
-        get(
-            mesh: SemanticMesh,
-            material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
-        ): unknown {
-            if (mesh.isSkinedMesh) {
-                mesh.updateJointMatTexture();
-                return semantic.handlerTexture(mesh.jointMatTexture, textureIndex(programInfo));
-            }
-            throw new TypeError(
-                `Semantic JOINTMATRIXTEXTURE requires a skinned mesh; received ${mesh.id}`
-            );
-        },
-        isDependMesh: true,
-        notSupportInstanced: true
-    },
-
-    JOINTMATRIXTEXTURESIZE: {
-        get(
-            mesh: SemanticMesh,
-            _material: SemanticMaterial,
-            _programInfo: ProgramBindingInfo
-        ): unknown {
-            if (mesh.isSkinedMesh) {
-                const jointTexture = mesh.initJointMatTexture();
-                return [jointTexture.width, jointTexture.height];
-            }
-            throw new TypeError(
-                `Semantic JOINTMATRIXTEXTURESIZE requires a skinned mesh; received ${mesh.id}`
             );
         },
         isDependMesh: true,

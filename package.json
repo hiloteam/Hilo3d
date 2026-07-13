@@ -1,7 +1,7 @@
 {
   "name": "hilo3d",
   "version": "2.0.0",
-  "description": "A TypeScript-first WebGL 3D engine.",
+  "description": "A TypeScript-first, WebGL 2-only 3D engine.",
   "type": "module",
   "types": "./dist/Hilo3d.d.ts",
   "exports": {
@@ -73,6 +73,7 @@
     "hilo",
     "3d",
     "webgl",
+    "webgl2",
     "typescript"
   ],
   "author": "06wj",

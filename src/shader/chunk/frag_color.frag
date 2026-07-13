@@ -16,4 +16,4 @@ color.a = 1.0;
     color.rgb *= color.a;
 #endif
 
-gl_FragColor = color;
+hilo_FragColor = color;

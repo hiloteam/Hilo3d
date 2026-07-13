@@ -1,4 +1,4 @@
-import type { GLContext, GLTypeInfo, UniformArray, UniformScalar } from './types';
+import type { GLContext, GLTypeInfo } from './types';
 
 type GLTypeName =
     | 'FLOAT'
@@ -19,63 +19,46 @@ type GLTypeName =
     | 'SAMPLER_2D'
     | 'SAMPLER_CUBE';
 
-type GLTypeDefinition = Omit<GLTypeInfo, 'name' | 'glValue' | 'uniform' | 'uniformArray'> & {
+type GLTypeDefinition = Omit<GLTypeInfo, 'name' | 'glValue'> & {
     name: GLTypeName;
 };
 
 const DATA_TYPES: readonly GLTypeDefinition[] = [
-    { name: 'FLOAT', byteSize: 4, uniformFuncName: 'uniform1f', type: 'Scalar', size: 1 },
-    { name: 'FLOAT_VEC2', byteSize: 8, uniformFuncName: 'uniform2f', type: 'Vector', size: 2 },
-    { name: 'FLOAT_VEC3', byteSize: 12, uniformFuncName: 'uniform3f', type: 'Vector', size: 3 },
-    { name: 'FLOAT_VEC4', byteSize: 16, uniformFuncName: 'uniform4f', type: 'Vector', size: 4 },
+    { name: 'FLOAT', byteSize: 4, type: 'Scalar', size: 1 },
+    { name: 'FLOAT_VEC2', byteSize: 8, type: 'Vector', size: 2 },
+    { name: 'FLOAT_VEC3', byteSize: 12, type: 'Vector', size: 3 },
+    { name: 'FLOAT_VEC4', byteSize: 16, type: 'Vector', size: 4 },
     {
         name: 'FLOAT_MAT2',
         byteSize: 16,
-        uniformFuncName: 'uniformMatrix2fv',
         type: 'Matrix',
         size: 4
     },
     {
         name: 'FLOAT_MAT3',
         byteSize: 36,
-        uniformFuncName: 'uniformMatrix3fv',
         type: 'Matrix',
         size: 9
     },
     {
         name: 'FLOAT_MAT4',
         byteSize: 64,
-        uniformFuncName: 'uniformMatrix4fv',
         type: 'Matrix',
         size: 16
     },
-    { name: 'INT', byteSize: 4, uniformFuncName: 'uniform1i', type: 'Scalar', size: 1 },
-    { name: 'INT_VEC2', byteSize: 8, uniformFuncName: 'uniform2i', type: 'Vector', size: 2 },
-    { name: 'INT_VEC3', byteSize: 12, uniformFuncName: 'uniform3i', type: 'Vector', size: 3 },
-    { name: 'INT_VEC4', byteSize: 16, uniformFuncName: 'uniform4i', type: 'Vector', size: 4 },
-    { name: 'BOOL', byteSize: 4, uniformFuncName: 'uniform1i', type: 'Scalar', size: 1 },
-    { name: 'BOOL_VEC2', byteSize: 8, uniformFuncName: 'uniform2i', type: 'Vector', size: 2 },
-    { name: 'BOOL_VEC3', byteSize: 12, uniformFuncName: 'uniform3i', type: 'Vector', size: 3 },
-    { name: 'BOOL_VEC4', byteSize: 16, uniformFuncName: 'uniform4i', type: 'Vector', size: 4 },
-    { name: 'SAMPLER_2D', byteSize: 4, uniformFuncName: 'uniform1i', type: 'Scalar', size: 1 },
-    { name: 'SAMPLER_CUBE', byteSize: 4, uniformFuncName: 'uniform1i', type: 'Scalar', size: 1 }
+    { name: 'INT', byteSize: 4, type: 'Scalar', size: 1 },
+    { name: 'INT_VEC2', byteSize: 8, type: 'Vector', size: 2 },
+    { name: 'INT_VEC3', byteSize: 12, type: 'Vector', size: 3 },
+    { name: 'INT_VEC4', byteSize: 16, type: 'Vector', size: 4 },
+    { name: 'BOOL', byteSize: 4, type: 'Scalar', size: 1 },
+    { name: 'BOOL_VEC2', byteSize: 8, type: 'Vector', size: 2 },
+    { name: 'BOOL_VEC3', byteSize: 12, type: 'Vector', size: 3 },
+    { name: 'BOOL_VEC4', byteSize: 16, type: 'Vector', size: 4 },
+    { name: 'SAMPLER_2D', byteSize: 4, type: 'Scalar', size: 1 },
+    { name: 'SAMPLER_CUBE', byteSize: 4, type: 'Scalar', size: 1 }
 ];
 
 const DATA_DICT: Partial<Record<GLenum, GLTypeInfo>> = {};
-
-function setScalar(
-    gl: GLContext,
-    name: string,
-    location: WebGLUniformLocation | null,
-    value: UniformScalar | undefined
-): void {
-    if (value === undefined) return;
-    if (name === 'FLOAT') {
-        gl.uniform1f(location, Number(value));
-    } else {
-        gl.uniform1i(location, Number(value));
-    }
-}
 
 function getGLValue(gl: GLContext, name: GLTypeName): GLenum {
     switch (name) {
@@ -116,59 +99,7 @@ function getGLValue(gl: GLContext, name: GLTypeName): GLenum {
     }
 }
 
-function setArray(
-    gl: GLContext,
-    name: string,
-    location: WebGLUniformLocation | null,
-    value: UniformArray
-): void {
-    const values = Array.from(value);
-    switch (name) {
-        case 'FLOAT':
-            gl.uniform1fv(location, values);
-            break;
-        case 'FLOAT_VEC2':
-            gl.uniform2fv(location, values);
-            break;
-        case 'FLOAT_VEC3':
-            gl.uniform3fv(location, values);
-            break;
-        case 'FLOAT_VEC4':
-            gl.uniform4fv(location, values);
-            break;
-        case 'FLOAT_MAT2':
-            gl.uniformMatrix2fv(location, false, values);
-            break;
-        case 'FLOAT_MAT3':
-            gl.uniformMatrix3fv(location, false, values);
-            break;
-        case 'FLOAT_MAT4':
-            gl.uniformMatrix4fv(location, false, values);
-            break;
-        case 'INT':
-        case 'BOOL':
-        case 'SAMPLER_2D':
-        case 'SAMPLER_CUBE':
-            gl.uniform1iv(location, values);
-            break;
-        case 'INT_VEC2':
-        case 'BOOL_VEC2':
-            gl.uniform2iv(location, values);
-            break;
-        case 'INT_VEC3':
-        case 'BOOL_VEC3':
-            gl.uniform3iv(location, values);
-            break;
-        case 'INT_VEC4':
-        case 'BOOL_VEC4':
-            gl.uniform4iv(location, values);
-            break;
-        default:
-            throw new Error(`Unsupported WebGL uniform type: ${name}`);
-    }
-}
-
-/** WebGL uniform and attribute metadata registry. */
+/** WebGL vertex attribute metadata registry. */
 const glType = {
     dict: DATA_DICT,
 
@@ -177,13 +108,7 @@ const glType = {
             const glValue = getGLValue(gl, definition.name);
             const info: GLTypeInfo = {
                 ...definition,
-                glValue,
-                uniform: (location, value) => {
-                    setScalar(gl, definition.name, location, value);
-                },
-                uniformArray: (location, value) => {
-                    setArray(gl, definition.name, location, value);
-                }
+                glValue
             };
             DATA_DICT[glValue] = info;
         }

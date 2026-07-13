@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './js/init';
 
-const { stage, renderer } = createExampleContext();
+const { camera, stage, renderer } = createExampleContext();
 
 renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
 const container = new Hilo3d.Node();
@@ -15,13 +15,18 @@ const diffuseTexture = new Hilo3d.LazyTexture({
     minFilter: Hilo3d.constants.LINEAR_MIPMAP_LINEAR
 });
 let elapsedTime = 0;
-const extensionChunk = Hilo3d.Shader.shaders['chunk/extensions.frag'];
-if (extensionChunk === undefined) throw new Error('Texture LOD shader chunk is unavailable');
+Hilo3d.registerUniformBlockBinding('TextureLodModelBlock');
+Hilo3d.registerUniformBlockBinding('TextureLodMaterialBlock');
+const modelLayout = Hilo3d.createStd140Layout({ u_modelViewProjectionMatrix: 'mat4' });
+const materialLayout = Hilo3d.createStd140Layout({ u_time: 'float' });
+const modelBlock = Hilo3d.UniformBuffer.fromSchema(modelLayout);
+const materialBlock = Hilo3d.UniformBuffer.fromSchema(materialLayout, { u_time: 0 });
+const modelViewProjection = new Hilo3d.Matrix4();
 const mesh = new Hilo3d.Mesh({
     geometry,
     material: new Hilo3d.ShaderMaterial({
         shaderCacheId: 'UVAnimation',
-        needBasicUnifroms: false,
+        needBasicUniforms: false,
         needBasicAttributes: false,
         side: Hilo3d.constants.BACK,
         enableTextureLod: true,
@@ -33,34 +38,40 @@ const mesh = new Hilo3d.Mesh({
                     }
                     return Hilo3d.semantic.handlerTexture(diffuseTexture, programInfo.textureIndex);
                 }
-            },
-            u_modelViewProjectionMatrix: 'MODELVIEWPROJECTION',
-            u_time: { get: () => elapsedTime }
+            }
+        },
+        uniformBlocks: {
+            TextureLodModelBlock: modelBlock,
+            TextureLodMaterialBlock: materialBlock
         },
         attributes: {
             a_position: 'POSITION',
             a_texcoord0: 'TEXCOORD_0'
         },
-        fs: `
-                precision HILO_MAX_FRAGMENT_PRECISION float;
-                ${extensionChunk}
-                varying vec2 v_texcoord0;
+        fs: `#version 300 es
+                precision highp float;
+                in vec2 v_texcoord0;
                 uniform sampler2D u_diffuse;
-                uniform float u_time;
+                layout(std140) uniform TextureLodMaterialBlock {
+                    float u_time;
+                };
+                layout(location = 0) out vec4 fragmentColor;
                                 
                 void main(void) {
                     float uOffset = cos(u_time * 0.0001) + .5;
                     float level = (sin(u_time * 0.0013) * 0.5 + 0.5) * 9.;
-                    vec4 diffuse = texture2DLodEXT(u_diffuse, vec2(v_texcoord0.x + uOffset, v_texcoord0.y), level);    
-                    gl_FragColor = diffuse;
+                    vec4 diffuse = textureLod(u_diffuse, vec2(v_texcoord0.x + uOffset, v_texcoord0.y), level);
+                    fragmentColor = diffuse;
                 }
             `,
-        vs: `
-                precision HILO_MAX_VERTEX_PRECISION float;
-                attribute vec3 a_position;
-                attribute vec2 a_texcoord0;
-                uniform mat4 u_modelViewProjectionMatrix;
-                varying vec2 v_texcoord0;
+        vs: `#version 300 es
+                precision highp float;
+                in vec3 a_position;
+                in vec2 a_texcoord0;
+                layout(std140) uniform TextureLodModelBlock {
+                    mat4 u_modelViewProjectionMatrix;
+                };
+                out vec2 v_texcoord0;
 
                 void main(void) {
                     vec4 pos = vec4(a_position, 1.0);
@@ -72,7 +83,12 @@ const mesh = new Hilo3d.Mesh({
 });
 mesh.onUpdate = deltaTime => {
     elapsedTime += deltaTime;
+    materialBlock.set('u_time', elapsedTime);
 };
+mesh.on('beforeRender', () => {
+    camera.getModelProjectionMatrix(mesh, modelViewProjection);
+    modelBlock.set('u_modelViewProjectionMatrix', modelViewProjection.elements);
+});
 
 container.addChild(mesh);
 stage.addChild(container);

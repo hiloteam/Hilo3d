@@ -46,14 +46,15 @@ stage.addChild(plane);
 
 postProcess.init(renderer);
 postProcess.addPass({
-    frag: '\n\
-        precision HILO_MAX_FRAGMENT_PRECISION float;\n\
-        varying vec2 v_texcoord0;\n\
+    frag: '#version 300 es\n\
+        precision highp float;\n\
+        in vec2 v_texcoord0;\n\
         uniform sampler2D u_diffuse;\n\
+        layout(location = 0) out vec4 fragmentColor;\n\
         void main(void) {\n\
-            vec4 color = texture2D(u_diffuse, v_texcoord0);\n\
+            vec4 color = texture(u_diffuse, v_texcoord0);\n\
             float luminance = color.r * 0.3 + color.g * 0.59 + color.b * 0.11;\n\
-            gl_FragColor = vec4(vec3(luminance), color.a);\n\
+            fragmentColor = vec4(vec3(luminance), color.a);\n\
         }'
 });
 

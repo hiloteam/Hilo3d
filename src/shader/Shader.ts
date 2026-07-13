@@ -11,10 +11,16 @@ import type LightManager from '../light/LightManager';
 import type Material from '../material/Material';
 import type WebGLResourceManager from '../renderer/WebGLResourceManager';
 import type { GLContext, ShaderPrecision } from '../renderer/types';
+import {
+    MAX_AREA_LIGHTS,
+    MAX_DIRECTIONAL_LIGHTS,
+    MAX_POINT_LIGHTS,
+    MAX_SPOT_LIGHTS
+} from '../renderer/ubo/BuiltInUniformBlocks';
 
 const cache = new Cache<Shader>();
 const headerCache = new Cache<string>();
-const CUSTUM_OPTION_PREFIX = 'HILO_CUSTUM_OPTION_';
+const CUSTOM_OPTION_PREFIX = 'HILO_CUSTOM_OPTION_';
 const shaderModules = import.meta.glob<string>('./**/*.{frag,glsl,vert}', {
     eager: true,
     import: 'default'
@@ -93,7 +99,7 @@ function beforeCompile(material: Material): Material['onBeforeCompile'] {
 }
 
 function skeletonJointCount(mesh: Mesh): number | null {
-    if (!hasTrueFlag(mesh, 'isSkinedMesh')) return null;
+    if (!hasTrueFlag(mesh, 'isSkinnedMesh')) return null;
     const skeleton: unknown = Reflect.get(mesh, 'skeleton');
     if (typeof skeleton !== 'object' || skeleton === null) return null;
     const count: unknown = Reflect.get(skeleton, 'jointCount');
@@ -198,6 +204,20 @@ class Shader {
             const lightType = material.lightType;
             if (lightType && lightType !== 'NONE') {
                 lightManager.getRenderOption(headers);
+                const limits: readonly (readonly [string, number])[] = [
+                    ['DIRECTIONAL_LIGHTS', MAX_DIRECTIONAL_LIGHTS],
+                    ['SPOT_LIGHTS', MAX_SPOT_LIGHTS],
+                    ['POINT_LIGHTS', MAX_POINT_LIGHTS],
+                    ['AREA_LIGHTS', MAX_AREA_LIGHTS]
+                ];
+                for (const [name, limit] of limits) {
+                    const count = headers[name] ?? 0;
+                    if (count > limit) {
+                        throw new RangeError(
+                            `${name} count ${String(count)} exceeds the fixed UBO capacity ${String(limit)}`
+                        );
+                    }
+                }
             }
             material.getRenderOption(headers);
             mesh.getRenderOption(headers);
@@ -207,9 +227,7 @@ class Shader {
             }
             if (useLogDepth) {
                 headers['USE_LOG_DEPTH'] = 1;
-                if (capabilities.FRAG_DEPTH) {
-                    headers['USE_FRAG_DEPTH'] = 1;
-                }
+                headers['USE_FRAG_DEPTH'] = 1;
             }
             if (headers['HAS_NORMAL'] && headers['NORMAL_MAP']) {
                 headers['HAS_TANGENT'] = 1;
@@ -222,8 +240,8 @@ class Shader {
             header = `#define SHADER_NAME ${material.shaderName ?? material.className}\n`;
             header += `${Object.entries(headers)
                 .map(([name, value]) => {
-                    if (name.includes(CUSTUM_OPTION_PREFIX)) {
-                        return `#define ${name.replace(CUSTUM_OPTION_PREFIX, '')} ${String(value)}`;
+                    if (name.includes(CUSTOM_OPTION_PREFIX)) {
+                        return `#define ${name.replace(CUSTOM_OPTION_PREFIX, '')} ${String(value)}`;
                     }
                     return `#define HILO_${name} ${String(value)}`;
                 })
@@ -287,14 +305,10 @@ class Shader {
      * @param header - 已生成的 shader 宏定义
      */
     static getBasicShader(material: Material, isUseInstance: boolean, header: string): Shader {
-        let instancedUniforms = '';
         if (isUseInstance) {
-            instancedUniforms = material
-                .getInstancedUniforms()
-                .map(item => item.name)
-                .join('|');
+            header += '#define HILO_INSTANCED 1\n';
         }
-        let key = `${material.className}:${instancedUniforms}`;
+        let key = `${material.className}:${isUseInstance ? 'instanced' : 'single'}`;
         const compile = beforeCompile(material);
         if (compile) {
             key += `:${material.shaderCacheId ?? material.id}`;
@@ -316,13 +330,6 @@ class Shader {
                 const newCode = compile(vs, fs);
                 fs = newCode.fs;
                 vs = newCode.vs;
-            }
-            if (instancedUniforms) {
-                const instancedUniformsReg = new RegExp(
-                    `^\\s*uniform\\s+(\\w+)\\s+(${instancedUniforms});`,
-                    'gm'
-                );
-                vs = vs.replace(instancedUniformsReg, 'attribute $1 $2;');
             }
             shader = this.getCustomShader(vs, fs, header, key, true);
         }
@@ -363,15 +370,21 @@ class Shader {
             shader = cache.get(cacheKey);
         }
         if (!shader) {
+            const shaderHeader = commonHeader + header;
             shader = new Shader({
-                vs: commonHeader + header + vs,
-                fs: commonHeader + header + fs
+                vs: this.assembleGLSL300(vs, shaderHeader),
+                fs: this.assembleGLSL300(fs, shaderHeader)
             });
             if (cacheKey) {
                 cache.add(cacheKey, shader);
             }
         }
         return shader;
+    }
+
+    private static assembleGLSL300(source: string, header: string): string {
+        const version = /^\s*#version\s+300\s+es\s*/;
+        return `#version 300 es\n${header}${source.replace(version, '')}`;
     }
     /**
      * 是否始终使用

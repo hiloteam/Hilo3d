@@ -2,7 +2,8 @@
 
 English | [简体中文](./README_ZH.md)
 
-A TypeScript-first WebGL 3D rendering engine with physically based rendering and glTF support.
+A TypeScript-first, WebGL 2-only 3D rendering engine with physically based rendering and glTF
+support.
 
 [![npm](https://img.shields.io/npm/v/hilo3d.svg?style=flat-square)](https://www.npmjs.com/package/hilo3d)
 [![CI](https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?style=flat-square)](https://github.com/hiloteam/Hilo3d/actions/workflows/npm_test.yml)
@@ -77,6 +78,33 @@ The root package export is ESM-only. The `hilo3d/umd` compatibility subpath reso
 ESM build for `import` and to the self-contained UMD build for `require`; direct browser scripts use
 the UMD file shown above.
 
+## Rendering and shader contract
+
+Hilo3d 2.x requires WebGL 2. It no longer creates WebGL 1 contexts or translates GLSL 1.00 at
+runtime. Custom shaders must use native GLSL ES 3.00 `in`/`out`, `texture()`, and explicit fragment
+outputs.
+
+All non-texture shader data uses a fixed std140 uniform-block ABI:
+
+| Binding | Block           | Update scope             |
+| ------: | --------------- | ------------------------ |
+|       0 | `FrameBlock`    | renderer frame           |
+|       1 | `CameraBlock`   | camera/render pass       |
+|       2 | `SceneBlock`    | fog/scene changes        |
+|       3 | `LightBlock`    | camera/render pass       |
+|       4 | `MaterialBlock` | material/IBL changes     |
+|       5 | `ModelBlock`    | object transform changes |
+|       6 | `GeometryBlock` | geometry decode changes  |
+|       7 | `SkinningBlock` | skeleton pose changes    |
+|       8 | `MorphBlock`    | morph pose changes       |
+
+Samplers are the only classic uniforms because GLSL opaque types cannot be uniform-block members.
+Register a custom `ShaderMaterial` block with `registerUniformBlockBinding()` before its first link,
+then create and update its data through `createStd140Layout()` and `UniformBuffer.fromSchema()`.
+Classic float, vector, matrix, or integer uniforms are rejected. See the
+[WebGL 2 rendering ABI](./ENGINEERING_MODERNIZATION.md#webgl-2-渲染-abi) for the complete contract,
+migration example, and breaking changes.
+
 ## Documentation and examples
 
 - [API documentation](https://hilo3d.js.org/docs/)
@@ -90,8 +118,8 @@ API pages are generated from the checked TypeScript source with TypeDoc. The com
 
 ## Development
 
-Development requires Node.js 22.22.2 or newer and npm 12.0.1. The versions are recorded in
-`.node-version` and `package.json`.
+The runtime requires WebGL 2. Development requires Node.js 22.22.2 or newer and npm 12.0.1. The
+versions are recorded in `.node-version` and `package.json`.
 
 ```sh
 npm install --global npm@12.0.1

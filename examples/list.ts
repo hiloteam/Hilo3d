@@ -142,14 +142,3 @@ window.addEventListener('keydown', event => {
     const next = examples[nextIndex];
     if (next) showExample(next);
 });
-
-const versionForm = requireElement('#webglVersionForm', HTMLFormElement);
-versionForm.addEventListener('change', event => {
-    if (!(event.target instanceof HTMLInputElement)) return;
-    location.search = event.target.id === 'webglVersion1' ? '?webgl1=true' : '?webgl2=true';
-});
-
-const selectedVersion = location.search.includes('webgl2')
-    ? requireElement('#webglVersion2', HTMLInputElement)
-    : requireElement('#webglVersion1', HTMLInputElement);
-selectedVersion.checked = true;

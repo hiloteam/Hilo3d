@@ -1,7 +1,7 @@
 import Node from '../core/Node';
 import Skeleton from '../core/Skeleton';
 import Mesh from '../core/Mesh';
-import SkinedMesh from '../core/SkinedMesh';
+import SkinnedMesh from '../core/SkinnedMesh';
 import BasicMaterial, { type BasicLightType } from '../material/BasicMaterial';
 import Material from '../material/Material';
 import PBRMaterial from '../material/PBRMaterial';
@@ -1000,7 +1000,7 @@ class GLTFParser {
                 material.alphaCutoff = materialData.alphaCutoff ?? 0.5;
                 break;
             case 'OPAQUE':
-                material.ignoreTranparent = true;
+                material.ignoreTransparent = true;
                 break;
             default:
                 throw new RangeError(
@@ -1138,19 +1138,13 @@ class GLTFParser {
             else {
                 const common = getKHRMaterialsCommonInfo(materialData.extensions);
                 if (this.isGLTF2 && !common) {
-                    material = this.isUseExtension(materialData, 'KHR_techniques_webgl')
-                        ? requireMaterial(
-                              this.parseExtension(materialData.extensions, 'KHR_techniques_webgl'),
-                              `Material ${name} technique`
-                          )
-                        : this.createPBRMaterial(materialData);
+                    material = this.createPBRMaterial(materialData);
                     this.parseMaterialCommonProps(material, materialData);
                 } else material = this.createKMCMaterial(materialData, common);
             }
             material = requireMaterial(
                 this.parseExtensions(materialData.extensions, material, {
                     ignoreExtensions: {
-                        KHR_techniques_webgl: true,
                         KHR_materials_common: true,
                         KHR_materials_pbrSpecularGlossiness: true
                     },
@@ -1475,8 +1469,8 @@ class GLTFParser {
         return geometry;
     }
 
-    handlerSkinedMesh(mesh: Mesh, skeleton: Skeleton | undefined): void {
-        if (!(mesh instanceof SkinedMesh) || !skeleton) return;
+    handlerSkinnedMesh(mesh: Mesh, skeleton: Skeleton | undefined): void {
+        if (!(mesh instanceof SkinnedMesh) || !skeleton) return;
         mesh.skeleton = skeleton;
         if (this.useInstanced) mesh.useInstanced = true;
     }
@@ -1540,7 +1534,7 @@ class GLTFParser {
                         : (this.materials[String(primitive.material)] ?? new BasicMaterial());
                 const geometry = this.primitiveStates.get(primitive)?.geometry ?? null;
                 mesh = skeleton
-                    ? new SkinedMesh({
+                    ? new SkinnedMesh({
                           geometry,
                           material,
                           name: `mesh-${meshData.name ?? String(meshName)}`
@@ -1554,7 +1548,7 @@ class GLTFParser {
             }
             if (nodeData.weights) this.meshMorphWeights.set(mesh, nodeData.weights);
             if (mesh.geometry) mesh.geometry = this.geometryForMesh(mesh.geometry, mesh);
-            this.handlerSkinedMesh(mesh, skeleton);
+            this.handlerSkinnedMesh(mesh, skeleton);
             if (this.isProgressive && !mesh.geometry) {
                 mesh.visible = false;
                 const state = this.primitiveStates.get(primitive) ?? { meshes: [] };
@@ -1898,7 +1892,7 @@ class GLTFParser {
                 return mapped;
             });
         }
-        rootNode.resetSkinedMeshRootNode();
+        rootNode.resetSkinnedMeshRootNode();
     }
 }
 

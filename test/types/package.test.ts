@@ -47,8 +47,7 @@ const camera = new PerspectiveCamera({ aspect: 16 / 9, near: 0.1, far: 1_000, z:
 const rendererParameters = {
     width: 640,
     height: 360,
-    pixelRatio: 1,
-    preferWebGL2: true
+    pixelRatio: 1
 } satisfies WebGLRendererParameters;
 const renderer = new WebGLRenderer(rendererParameters);
 const stageParameters = {
@@ -112,8 +111,9 @@ declare const gl: GLContext;
 const state = new WebGLState(gl);
 const programParameters = {
     state,
-    vertexShader: 'void main(){gl_Position=vec4(0.0);}',
-    fragShader: 'precision mediump float;void main(){gl_FragColor=vec4(1.0);}'
+    vertexShader: '#version 300 es\nvoid main(){gl_Position=vec4(0.0);}',
+    fragShader:
+        '#version 300 es\nprecision mediump float;layout(location=0) out vec4 fragmentColor;void main(){fragmentColor=vec4(1.0);}'
 } satisfies ProgramParameters;
 const program = new Program(programParameters);
 const compilationError = new ShaderCompilationError(

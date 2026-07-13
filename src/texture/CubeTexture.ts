@@ -11,6 +11,7 @@ import {
     TEXTURE_CUBE_MAP,
     TEXTURE_CUBE_MAP_POSITIVE_X
 } from '../constants/webgl';
+import { RGB8 } from '../constants/webgl2';
 
 export type CubeTextureImage = (TextureImageSource | null)[];
 
@@ -53,7 +54,7 @@ class CubeTexture extends Texture<CubeTextureImage> {
     isCubeTexture = true;
     override readonly className: string = 'CubeTexture';
     override target = TEXTURE_CUBE_MAP;
-    override internalFormat = RGB;
+    override internalFormat = RGB8;
     override format = RGB;
     override magFilter = LINEAR;
     override minFilter = LINEAR;

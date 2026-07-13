@@ -143,7 +143,6 @@ export interface StageParameters extends NodeParameters {
     height?: number;
     pixelRatio?: number;
     clearColor?: Color;
-    preferWebGL2?: boolean;
     useFramebuffer?: boolean;
     framebufferOption?: FramebufferParameters;
     useLogDepth?: boolean;
@@ -237,7 +236,6 @@ class Stage extends Node {
      * - `params.height`: stage的高，默认网页高度
      * - `params.pixelRatio`: 像素密度。
      * - `params.clearColor`: 背景色。
-     * - `params.preferWebGL2`: 是否优先使用 WebGL2
      * - `params.useFramebuffer`: 是否使用Framebuffer，有后处理需求时需要。
      * - `params.framebufferOption`: framebufferOption Framebuffer的配置，useFramebuffer为true时生效。
      * - `params.useLogDepth`: 是否使用对数深度，处理深度冲突。

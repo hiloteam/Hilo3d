@@ -3,7 +3,6 @@ import { createExampleContext } from './js/init';
 
 const { camera, stage, renderer, ticker } = createExampleContext();
 
-renderer.preferWebGL2 = true;
 ticker.targetFPS = 1;
 renderer.clearColor = new Hilo3d.Color(0.9, 0.6, 0.3);
 

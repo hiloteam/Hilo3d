@@ -1,4 +1,3 @@
-import { isWebGL2 } from '../utils/util';
 import type { GLContext } from './types';
 
 export type StateValue = number | boolean | WebGLProgram | null;
@@ -31,11 +30,15 @@ function sameValues(
 class WebGLState {
     readonly className = 'WebGLState';
     readonly isWebGLState = true;
-    readonly isWebGL2: boolean;
     readonly gl: GLContext;
     systemFramebuffer: WebGLFramebuffer | null = null;
-    currentFramebuffer: WebGLFramebuffer | null = null;
+    currentDrawFramebuffer: WebGLFramebuffer | null = null;
+    currentReadFramebuffer: WebGLFramebuffer | null = null;
     preFramebuffer: WebGLFramebuffer | null = null;
+
+    get currentFramebuffer(): WebGLFramebuffer | null {
+        return this.currentDrawFramebuffer;
+    }
 
     private readonly state = new Map<string, readonly StateValue[]>();
     private activeTextureIndex: GLenum | null = null;
@@ -44,7 +47,6 @@ class WebGLState {
 
     constructor(gl: GLContext) {
         this.gl = gl;
-        this.isWebGL2 = isWebGL2(gl);
         this.reset();
     }
 
@@ -52,7 +54,8 @@ class WebGLState {
         this.state.clear();
         this.activeTextureIndex = null;
         this.textureUnits.clear();
-        this.currentFramebuffer = null;
+        this.currentDrawFramebuffer = null;
+        this.currentReadFramebuffer = null;
         this.preFramebuffer = null;
         this.pixelStore.clear();
     }
@@ -82,9 +85,26 @@ class WebGLState {
     }
 
     bindFramebuffer(target: GLenum, framebuffer: WebGLFramebuffer | null): void {
-        if (this.currentFramebuffer === framebuffer) return;
-        this.preFramebuffer = this.currentFramebuffer;
-        this.currentFramebuffer = framebuffer;
+        if (target === this.gl.FRAMEBUFFER) {
+            if (
+                this.currentDrawFramebuffer === framebuffer &&
+                this.currentReadFramebuffer === framebuffer
+            ) {
+                return;
+            }
+            this.preFramebuffer = this.currentDrawFramebuffer;
+            this.currentDrawFramebuffer = framebuffer;
+            this.currentReadFramebuffer = framebuffer;
+        } else if (target === this.gl.DRAW_FRAMEBUFFER) {
+            if (this.currentDrawFramebuffer === framebuffer) return;
+            this.preFramebuffer = this.currentDrawFramebuffer;
+            this.currentDrawFramebuffer = framebuffer;
+        } else if (target === this.gl.READ_FRAMEBUFFER) {
+            if (this.currentReadFramebuffer === framebuffer) return;
+            this.currentReadFramebuffer = framebuffer;
+        } else {
+            throw new RangeError(`Unsupported framebuffer target: ${String(target)}`);
+        }
         this.gl.bindFramebuffer(target, framebuffer);
     }
 

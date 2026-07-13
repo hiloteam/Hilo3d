@@ -21,7 +21,6 @@ const stage = new Stage({
     height: 480,
     pixelRatio: 1,
     antialias: false,
-    preferWebGL2: false,
     clearColor: new Color(0.08, 0.1, 0.14)
 });
 

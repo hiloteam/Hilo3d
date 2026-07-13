@@ -10,6 +10,17 @@ describe('WebGLRenderer', () => {
         expect(renderer.className).toBe('WebGLRenderer');
     });
 
+    it('creates only a WebGL 2 context', () => {
+        const canvas = document.createElement('canvas');
+        const getContext = vi.spyOn(canvas, 'getContext');
+        const renderer = new WebGLRenderer({ domElement: canvas });
+
+        renderer.initContext();
+
+        expect(getContext).toHaveBeenCalledWith('webgl2', expect.any(Object));
+        expect(getContext.mock.calls.some(([contextId]) => contextId === 'webgl')).toBe(false);
+    });
+
     it('onInit', () => {
         const renderer = new WebGLRenderer({
             domElement: document.createElement('canvas')

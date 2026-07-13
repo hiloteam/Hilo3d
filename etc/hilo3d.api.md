@@ -208,9 +208,9 @@ export class AreaLight extends Light {
     get enabled(): boolean;
     set enabled(value: boolean);
     height: number;
+    static initializeLtcTexture(): void;
     // (undocumented)
     isAreaLight: boolean;
-    static loadLtcTexture(): Promise<void>;
     static ltcTexture1: DataTexture | null;
     get ltcTexture1(): DataTexture | null;
     set ltcTexture1(texture: DataTexture | null);
@@ -218,7 +218,6 @@ export class AreaLight extends Light {
     get ltcTexture2(): DataTexture | null;
     set ltcTexture2(texture: DataTexture | null);
     static ltcTextureReady: boolean;
-    static ltcTextureUrl: string;
     // (undocumented)
     static readonly typeName = "AreaLight";
     width: number;
@@ -256,8 +255,6 @@ export interface AttributeObject {
     buffer: Buffer;
     // (undocumented)
     geometryData: GeometryData;
-    // (undocumented)
-    useInstanced: boolean;
 }
 
 // @public (undocumented)
@@ -580,6 +577,9 @@ export interface BufferRenderer {
 }
 
 // @public (undocumented)
+export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 9;
+
+// @public (undocumented)
 export type BuiltInAnimationStateType = (typeof STATE_TYPES)[keyof typeof STATE_TYPES];
 
 // @public
@@ -751,7 +751,7 @@ export const constants: {
     readonly MAX_VERTEX_OUTPUT_COMPONENTS: 37154;
     readonly MAX_FRAGMENT_INPUT_COMPONENTS: 37157;
     readonly MAX_SERVER_WAIT_TIMEOUT: 37137;
-    readonly MAX_ELEMENT_INDEX: 2262;
+    readonly MAX_ELEMENT_INDEX: 36203;
     readonly RED: 6403;
     readonly RGB8: 32849;
     readonly RGBA8: 32856;
@@ -815,7 +815,7 @@ export const constants: {
     readonly RGBA8_SNORM: 36759;
     readonly RGB10_A2UI: 36975;
     readonly TEXTURE_IMMUTABLE_FORMAT: 37167;
-    readonly TEXTURE_IMMUTABLE_LEVELS: 2093;
+    readonly TEXTURE_IMMUTABLE_LEVELS: 33503;
     readonly UNSIGNED_INT_2_10_10_10_REV: 33640;
     readonly UNSIGNED_INT_10F_11F_11F_REV: 35899;
     readonly UNSIGNED_INT_5_9_9_9_REV: 35902;
@@ -824,12 +824,12 @@ export const constants: {
     readonly HALF_FLOAT: 5131;
     readonly RG: 33319;
     readonly RG_INTEGER: 33320;
-    readonly INT_2_10_10_10_REV: 2265;
+    readonly INT_2_10_10_10_REV: 36255;
     readonly URRENT_QUERY: 34917;
     readonly QUERY_RESULT: 34918;
     readonly QUERY_RESULT_AVAILABLE: 34919;
     readonly ANY_SAMPLES_PASSED: 35887;
-    readonly ANY_SAMPLES_PASSED_CONSERVATIVE: 2262;
+    readonly ANY_SAMPLES_PASSED_CONSERVATIVE: 36202;
     readonly MAX_DRAW_BUFFERS: 34852;
     readonly DRAW_BUFFER0: 34853;
     readonly DRAW_BUFFER1: 34854;
@@ -862,7 +862,17 @@ export const constants: {
     readonly COLOR_ATTACHMENT12: 36076;
     readonly COLOR_ATTACHMENT13: 36077;
     readonly COLOR_ATTACHMENT14: 36078;
-    readonly COLOR_ATTACHMENT15: 2254;
+    readonly COLOR_ATTACHMENT15: 36079;
+    readonly COMPRESSED_R11_EAC: 37488;
+    readonly COMPRESSED_SIGNED_R11_EAC: 37489;
+    readonly COMPRESSED_RG11_EAC: 37490;
+    readonly COMPRESSED_SIGNED_RG11_EAC: 37491;
+    readonly COMPRESSED_RGB8_ETC2: 37492;
+    readonly COMPRESSED_RGBA8_ETC2_EAC: 37493;
+    readonly COMPRESSED_SRGB8_ETC2: 37494;
+    readonly COMPRESSED_SRGB8_ALPHA8_ETC2_EAC: 37495;
+    readonly COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2: 37496;
+    readonly COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2: 37497;
     readonly SAMPLER_3D: 35679;
     readonly SAMPLER_2D_SHADOW: 35682;
     readonly SAMPLER_2D_ARRAY: 36289;
@@ -877,7 +887,7 @@ export const constants: {
     readonly UNSIGNED_INT_SAMPLER_CUBE: 36308;
     readonly UNSIGNED_INT_SAMPLER_2D_ARRAY: 36311;
     readonly MAX_SAMPLES: 36183;
-    readonly SAMPLER_BINDING: 2193;
+    readonly SAMPLER_BINDING: 35097;
     readonly PIXEL_PACK_BUFFER: 35051;
     readonly PIXEL_UNPACK_BUFFER: 35052;
     readonly PIXEL_PACK_BUFFER_BINDING: 35053;
@@ -896,9 +906,9 @@ export const constants: {
     readonly UNSIGNED_INT_VEC3: 36295;
     readonly UNSIGNED_INT_VEC4: 36296;
     readonly UNSIGNED_NORMALIZED: 35863;
-    readonly SIGNED_NORMALIZED: 2297;
+    readonly SIGNED_NORMALIZED: 36764;
     readonly VERTEX_ATTRIB_ARRAY_INTEGER: 35069;
-    readonly VERTEX_ATTRIB_ARRAY_DIVISOR: 2191;
+    readonly VERTEX_ATTRIB_ARRAY_DIVISOR: 35070;
     readonly TRANSFORM_FEEDBACK_BUFFER_MODE: 35967;
     readonly MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS: 35968;
     readonly TRANSFORM_FEEDBACK_VARYINGS: 35971;
@@ -914,7 +924,7 @@ export const constants: {
     readonly TRANSFORM_FEEDBACK: 36386;
     readonly TRANSFORM_FEEDBACK_PAUSED: 36387;
     readonly TRANSFORM_FEEDBACK_ACTIVE: 36388;
-    readonly TRANSFORM_FEEDBACK_BINDING: 2274;
+    readonly TRANSFORM_FEEDBACK_BINDING: 36389;
     readonly FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING: 33296;
     readonly FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE: 33297;
     readonly FRAMEBUFFER_ATTACHMENT_RED_SIZE: 33298;
@@ -933,7 +943,7 @@ export const constants: {
     readonly READ_FRAMEBUFFER_BINDING: 36010;
     readonly RENDERBUFFER_SAMPLES: 36011;
     readonly FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER: 36052;
-    readonly FRAMEBUFFER_INCOMPLETE_MULTISAMPLE: 2261;
+    readonly FRAMEBUFFER_INCOMPLETE_MULTISAMPLE: 36182;
     readonly UNIFORM_BUFFER: 35345;
     readonly UNIFORM_BUFFER_BINDING: 35368;
     readonly UNIFORM_BUFFER_START: 35369;
@@ -959,7 +969,7 @@ export const constants: {
     readonly UNIFORM_BLOCK_ACTIVE_UNIFORMS: 35394;
     readonly UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES: 35395;
     readonly UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER: 35396;
-    readonly UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER: 2212;
+    readonly UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER: 35398;
     readonly OBJECT_TYPE: 37138;
     readonly SYNC_CONDITION: 37139;
     readonly SYNC_STATUS: 37140;
@@ -972,7 +982,7 @@ export const constants: {
     readonly TIMEOUT_EXPIRED: 37147;
     readonly CONDITION_SATISFIED: 37148;
     readonly WAIT_FAILED: 37149;
-    readonly SYNC_FLUSH_COMMANDS_BIT: 0;
+    readonly SYNC_FLUSH_COMMANDS_BIT: 1;
     readonly COLOR: 6144;
     readonly STENCIL: 6146;
     readonly MIN: 32775;
@@ -986,10 +996,9 @@ export const constants: {
     readonly DYNAMIC_COPY: 35050;
     readonly DEPTH_COMPONENT32F: 36012;
     readonly DEPTH32F_STENCIL8: 36013;
-    readonly INVALID_INDEX: 268435455;
+    readonly INVALID_INDEX: 4294967295;
     readonly TIMEOUT_IGNO: number;
-    readonly MAX_CLIENT_WAIT_TIMEOUT_WEBGL: 2340;
-    readonly VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE: 35070;
+    readonly MAX_CLIENT_WAIT_TIMEOUT_WEBGL: 37447;
     readonly UNMASKED_VENDOR_WEBGL: 37445;
     readonly UNMASKED_RENDERER_WEBGL: 37446;
     readonly MAX_TEXTURE_MAX_ANISOTROPY_EXT: 34047;
@@ -998,72 +1007,14 @@ export const constants: {
     readonly COMPRESSED_RGBA_S3TC_DXT1_EXT: 33777;
     readonly COMPRESSED_RGBA_S3TC_DXT3_EXT: 33778;
     readonly COMPRESSED_RGBA_S3TC_DXT5_EXT: 33779;
-    readonly COMPRESSED_R11_EAC: 37488;
-    readonly COMPRESSED_SIGNED_R11_EAC: 37489;
-    readonly COMPRESSED_RG11_EAC: 37490;
-    readonly COMPRESSED_SIGNED_RG11_EAC: 37491;
-    readonly COMPRESSED_RGB8_ETC2: 37492;
-    readonly COMPRESSED_RGBA8_ETC2_EAC: 37493;
-    readonly COMPRESSED_SRGB8_ETC2: 37494;
-    readonly COMPRESSED_SRGB8_ALPHA8_ETC2_EAC: 37495;
-    readonly COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2: 37496;
-    readonly COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2: 37497;
     readonly COMPRESSED_RGB_PVRTC_4BPPV1_IMG: 35840;
-    readonly COMPRESSED_RGBA_PVRTC_4BPPV1_IMG: 35842;
     readonly COMPRESSED_RGB_PVRTC_2BPPV1_IMG: 35841;
+    readonly COMPRESSED_RGBA_PVRTC_4BPPV1_IMG: 35842;
     readonly COMPRESSED_RGBA_PVRTC_2BPPV1_IMG: 35843;
     readonly COMPRESSED_RGB_ETC1_WEBGL: 36196;
-    readonly _WEBGL: 35986;
-    readonly COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL: 35986;
+    readonly COMPRESSED_RGB_ATC_WEBGL: 35986;
+    readonly COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL: 35987;
     readonly COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL: 34798;
-    readonly UNSIGNED_INT_24_8_WEBGL: 34042;
-    readonly HALF_FLOAT_OES: 36193;
-    readonly RGBA32F_EXT: 34836;
-    readonly RGB32F_EXT: 34837;
-    readonly FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT: 33297;
-    readonly UNSIGNED_NORMALIZED_EXT: 35863;
-    readonly MIN_EXT: 32775;
-    readonly MAX_EXT: 32776;
-    readonly SRGB_EXT: 35904;
-    readonly SRGB_ALPHA_EXT: 35906;
-    readonly SRGB8_ALPHA8_EXT: 35907;
-    readonly FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT: 33296;
-    readonly FRAGMENT_SHADER_DERIVATIVE_HINT_OES: 35723;
-    readonly COLOR_ATTACHMENT0_WEBGL: 36064;
-    readonly COLOR_ATTACHMENT1_WEBGL: 36065;
-    readonly COLOR_ATTACHMENT2_WEBGL: 36066;
-    readonly COLOR_ATTACHMENT3_WEBGL: 36067;
-    readonly COLOR_ATTACHMENT4_WEBGL: 36068;
-    readonly COLOR_ATTACHMENT5_WEBGL: 36069;
-    readonly COLOR_ATTACHMENT6_WEBGL: 36070;
-    readonly COLOR_ATTACHMENT7_WEBGL: 36071;
-    readonly COLOR_ATTACHMENT8_WEBGL: 36072;
-    readonly COLOR_ATTACHMENT9_WEBGL: 36073;
-    readonly COLOR_ATTACHMENT10_WEBGL: 36074;
-    readonly COLOR_ATTACHMENT11_WEBGL: 36075;
-    readonly COLOR_ATTACHMENT12_WEBGL: 36076;
-    readonly COLOR_ATTACHMENT13_WEBGL: 36077;
-    readonly COLOR_ATTACHMENT14_WEBGL: 36078;
-    readonly COLOR_ATTACHMENT15_WEBGL: 36079;
-    readonly DRAW_BUFFER0_WEBGL: 34853;
-    readonly DRAW_BUFFER1_WEBGL: 34854;
-    readonly DRAW_BUFFER2_WEBGL: 34855;
-    readonly DRAW_BUFFER3_WEBGL: 34856;
-    readonly DRAW_BUFFER4_WEBGL: 34857;
-    readonly DRAW_BUFFER5_WEBGL: 34858;
-    readonly DRAW_BUFFER6_WEBGL: 34859;
-    readonly DRAW_BUFFER7_WEBGL: 34860;
-    readonly DRAW_BUFFER8_WEBGL: 34861;
-    readonly DRAW_BUFFER9_WEBGL: 34862;
-    readonly DRAW_BUFFER10_WEBGL: 34863;
-    readonly DRAW_BUFFER11_WEBGL: 34864;
-    readonly DRAW_BUFFER12_WEBGL: 34865;
-    readonly DRAW_BUFFER13_WEBGL: 34866;
-    readonly DRAW_BUFFER14_WEBGL: 34867;
-    readonly DRAW_BUFFER15_WEBGL: 34868;
-    readonly MAX_COLOR_ATTACHMENTS_WEBGL: 36063;
-    readonly MAX_DRAW_BUFFERS_WEBGL: 34852;
-    readonly VERTEX_ARRAY_BINDING_OES: 34229;
     readonly QUERY_COUNTER_BITS_EXT: 34916;
     readonly CURRENT_QUERY_EXT: 34917;
     readonly QUERY_RESULT_EXT: 34918;
@@ -1395,6 +1346,9 @@ export function createClass<Definition extends object>(properties: Definition & 
 // @public (undocumented)
 export function createEmptyGLTFRoot(): GLTFRoot;
 
+// @public (undocumented)
+export function createStd140Layout<const Schema extends Std140Schema>(schema: Schema): Std140Layout<Schema>;
+
 // @public
 export class CubeLightShadow extends LightShadow {
     // (undocumented)
@@ -1587,12 +1541,6 @@ const DISTANCE = "DISTANCE";
 //
 // @public (undocumented)
 type DOMViewport = ReturnType<typeof getElementRect>;
-
-// @public (undocumented)
-export interface DrawBuffersExtension {
-    // (undocumented)
-    drawBuffers(buffers: readonly GLenum[]): void;
-}
 
 // @public (undocumented)
 export type DynamicMembers = Record<string, unknown>;
@@ -1851,8 +1799,6 @@ export class Framebuffer {
     // (undocumented)
     unbind(): void;
     // (undocumented)
-    useVao: boolean;
-    // (undocumented)
     width: number;
     // (undocumented)
     wrapS: number;
@@ -1939,8 +1885,6 @@ export interface FramebufferParameters {
     target?: GLenum;
     // (undocumented)
     type?: GLenum;
-    // (undocumented)
-    useVao?: boolean;
     // (undocumented)
     width?: number;
     // (undocumented)
@@ -2231,7 +2175,10 @@ function getElementRect(elem: HTMLElement): {
 };
 
 // @public (undocumented)
-export type GLContext = WebGLRenderingContext | WebGL2RenderingContext;
+export function getUniformBlockBinding(name: string): number;
+
+// @public
+export type GLContext = WebGL2RenderingContext;
 
 // @public (undocumented)
 export interface GLTFAccessor extends GLTFProperty {
@@ -2458,8 +2405,15 @@ export interface GLTFExtensionOptions {
 
 // @public (undocumented)
 export namespace GLTFExtensions {
-    export { GLTFExtensions_d_ALI_animation_clips as ALI_animation_clips, GLTFExtensions_d_ALI_bounding_box as ALI_bounding_box, GLTFExtensions_d_HILO_animation_clips as HILO_animation_clips, GLTFExtensions_d_KHR_lights_punctual as KHR_lights_punctual, GLTFExtensions_d_KHR_materials_clearcoat as KHR_materials_clearcoat, GLTFExtensions_d_KHR_materials_pbrSpecularGlossiness as KHR_materials_pbrSpecularGlossiness, GLTFExtensions_d_KHR_techniques_webgl as KHR_techniques_webgl, GLTFExtensions_d_WEB3D_quantized_attributes as WEB3D_quantized_attributes };
-    export export type { GLTFExtensions_d_GLTFTechniqueCollection as GLTFTechniqueCollection, GLTFExtensions_d_GLTFTechniqueExtensions as GLTFTechniqueExtensions };
+    export {
+        GLTFExtensions_d_ALI_animation_clips as ALI_animation_clips,
+        GLTFExtensions_d_ALI_bounding_box as ALI_bounding_box,
+        GLTFExtensions_d_HILO_animation_clips as HILO_animation_clips,
+        GLTFExtensions_d_KHR_lights_punctual as KHR_lights_punctual,
+        GLTFExtensions_d_KHR_materials_clearcoat as KHR_materials_clearcoat,
+        GLTFExtensions_d_KHR_materials_pbrSpecularGlossiness as KHR_materials_pbrSpecularGlossiness,
+        GLTFExtensions_d_WEB3D_quantized_attributes as WEB3D_quantized_attributes,
+    };
 }
 
 // @public (undocumented)
@@ -2676,7 +2630,7 @@ export class GLTFParser {
     // (undocumented)
     handlerNodeTransform(node: Node_2, data: GLTFNode): void;
     // (undocumented)
-    handlerSkinedMesh(mesh: Mesh, skeleton: Skeleton | undefined): void;
+    handlerSkinnedMesh(mesh: Mesh, skeleton: Skeleton | undefined): void;
     // (undocumented)
     ignoreTextureError: boolean;
     // (undocumented)
@@ -3091,49 +3045,6 @@ export interface GLTFTechniqueStates {
 }
 
 // @public (undocumented)
-export interface GLTFTechniquesWebGLExtension {
-    // (undocumented)
-    programs?: GLTFCollection<GLTFTechniquesWebGLProgram>;
-    // (undocumented)
-    shaders?: GLTFCollection<GLTFTechniquesWebGLShader>;
-    // (undocumented)
-    techniques?: GLTFCollection<GLTFTechniquesWebGLTechnique>;
-}
-
-// @public (undocumented)
-export interface GLTFTechniquesWebGLMaterialExtension {
-    // (undocumented)
-    defines?: Readonly<Record<string, string | number | boolean>>;
-    // (undocumented)
-    premultiplyAlpha?: boolean;
-    // (undocumented)
-    technique: GLTFIndex;
-    // (undocumented)
-    values?: Readonly<Record<string, JsonValue>>;
-}
-
-// @public (undocumented)
-export type GLTFTechniquesWebGLProgram = GLTFProgram;
-
-// @public (undocumented)
-export interface GLTFTechniquesWebGLShader extends GLTFProperty {
-    // (undocumented)
-    type?: number;
-    // (undocumented)
-    uri: string;
-}
-
-// @public (undocumented)
-export interface GLTFTechniquesWebGLTechnique extends GLTFProperty {
-    // (undocumented)
-    attributes?: Readonly<Record<string, GLTFTechniqueBinding>>;
-    // (undocumented)
-    program: GLTFIndex;
-    // (undocumented)
-    uniforms?: Readonly<Record<string, GLTFTechniqueBinding>>;
-}
-
-// @public (undocumented)
 export interface GLTFTexture extends GLTFProperty {
     // (undocumented)
     sampler?: GLTFIndex;
@@ -3185,12 +3096,6 @@ export interface GLTypeInfo {
     readonly size: number;
     // (undocumented)
     readonly type: 'Scalar' | 'Vector' | 'Matrix';
-    // (undocumented)
-    uniform(location: WebGLUniformLocation | null, value: UniformScalar | undefined): void;
-    // (undocumented)
-    uniformArray(location: WebGLUniformLocation | null, value: UniformArray): void;
-    // (undocumented)
-    readonly uniformFuncName: string;
 }
 
 // @public (undocumented)
@@ -3230,16 +3135,6 @@ export type ImageCrossOrigin = boolean | '' | 'anonymous' | 'use-credentials';
 export type InferredClass<Definition extends object> = (new (...params: readonly unknown[]) => Definition) & {
     superclass: Definition;
 };
-
-// @public (undocumented)
-export interface InstancedArraysExtension {
-    // (undocumented)
-    drawArraysInstanced(mode: GLenum, first: GLint, count: GLsizei, instanceCount: GLsizei): void;
-    // (undocumented)
-    drawElementsInstanced(mode: GLenum, count: GLsizei, type: GLenum, offset: GLintptr, instanceCount: GLsizei): void;
-    // (undocumented)
-    vertexAttribDivisor(index: GLuint, divisor: GLuint): void;
-}
 
 // @public (undocumented)
 export interface InstancedUniform {
@@ -3814,17 +3709,17 @@ export class Material {
     getUniformInfo(name: string): MaterialBindingInfo;
     // (undocumented)
     readonly id: string;
-    ignoreTranparent: boolean;
+    ignoreTransparent: boolean;
     // (undocumented)
     protected initializeBindings(): void;
-    isDiffuesEnvAndAmbientLightWorkTogether: boolean;
+    isDiffuseEnvAndAmbientLightWorkTogether: boolean;
     isDirty: boolean;
     // (undocumented)
     readonly isMaterial = true;
     lightType: string;
     name: string | null;
     needBasicAttributes: boolean;
-    needBasicUnifroms: boolean;
+    needBasicUniforms: boolean;
     normalMap: Texture | null;
     normalMapScale: number;
     // (undocumented)
@@ -3856,9 +3751,7 @@ export class Material {
     transparency: number | Texture;
     get transparent(): boolean;
     set transparent(value: boolean);
-    // (undocumented)
     uniformBlocks: Record<string, UniformBuffer>;
-    // (undocumented)
     uniforms: MaterialBindingMap;
     useHDR: boolean;
     usePhysicsLight: boolean;
@@ -3938,9 +3831,9 @@ export interface MaterialParameters {
     // (undocumented)
     gammaFactor?: number;
     // (undocumented)
-    ignoreTranparent?: boolean;
+    ignoreTransparent?: boolean;
     // (undocumented)
-    isDiffuesEnvAndAmbientLightWorkTogether?: boolean;
+    isDiffuseEnvAndAmbientLightWorkTogether?: boolean;
     // (undocumented)
     isDirty?: boolean;
     // (undocumented)
@@ -3950,7 +3843,7 @@ export interface MaterialParameters {
     // (undocumented)
     needBasicAttributes?: boolean;
     // (undocumented)
-    needBasicUnifroms?: boolean;
+    needBasicUniforms?: boolean;
     // (undocumented)
     normalMap?: Texture | null;
     // (undocumented)
@@ -3993,9 +3886,7 @@ export interface MaterialParameters {
     transparency?: number | Texture;
     // (undocumented)
     transparent?: boolean;
-    // (undocumented)
     uniformBlocks?: Record<string, UniformBuffer>;
-    // (undocumented)
     uniforms?: MaterialBindingMap;
     // (undocumented)
     useHDR?: boolean;
@@ -4352,7 +4243,7 @@ class Node_2 extends EventDispatcher {
     // (undocumented)
     isNode: boolean;
     // (undocumented)
-    isSkinedMesh: boolean;
+    isSkinnedMesh: boolean;
     jointName: string;
     lookAt(node: {
         x: number;
@@ -4406,7 +4297,7 @@ class Node_2 extends EventDispatcher {
     raycast(ray: Ray, sort?: boolean, eventMode?: boolean): NodeRaycastInfo[] | Vector3[] | null;
     removeChild(child: Node_2): this;
     removeFromParent(): this;
-    resetSkinedMeshRootNode(): void;
+    resetSkinnedMeshRootNode(): void;
     get rotation(): EulerNotifier;
     // (undocumented)
     protected _rotation: EulerNotifier;
@@ -4588,7 +4479,7 @@ export type NodeTraverseResult = 0 | 1 | 2;
 const NORMAL = "NORMAL";
 
 // @public (undocumented)
-export type NumericCapabilityName = 'MAX_RENDERBUFFER_SIZE' | 'MAX_COMBINED_TEXTURE_IMAGE_UNITS' | 'MAX_CUBE_MAP_TEXTURE_SIZE' | 'MAX_FRAGMENT_UNIFORM_VECTORS' | 'MAX_TEXTURE_IMAGE_UNITS' | 'MAX_TEXTURE_SIZE' | 'MAX_VARYING_VECTORS' | 'MAX_VERTEX_ATTRIBS' | 'MAX_VERTEX_TEXTURE_IMAGE_UNITS' | 'MAX_VERTEX_UNIFORM_VECTORS';
+export type NumericCapabilityName = 'MAX_RENDERBUFFER_SIZE' | 'MAX_COMBINED_TEXTURE_IMAGE_UNITS' | 'MAX_CUBE_MAP_TEXTURE_SIZE' | 'MAX_FRAGMENT_UNIFORM_COMPONENTS' | 'MAX_TEXTURE_IMAGE_UNITS' | 'MAX_TEXTURE_SIZE' | 'MAX_3D_TEXTURE_SIZE' | 'MAX_ARRAY_TEXTURE_LAYERS' | 'MAX_COLOR_ATTACHMENTS' | 'MAX_DRAW_BUFFERS' | 'MAX_SAMPLES' | 'MAX_VARYING_COMPONENTS' | 'MAX_VERTEX_ATTRIBS' | 'MAX_VERTEX_TEXTURE_IMAGE_UNITS' | 'MAX_VERTEX_UNIFORM_COMPONENTS' | 'MAX_UNIFORM_BUFFER_BINDINGS' | 'MAX_UNIFORM_BLOCK_SIZE' | 'UNIFORM_BUFFER_OFFSET_ALIGNMENT' | 'MAX_COMBINED_UNIFORM_BLOCKS' | 'MAX_VERTEX_UNIFORM_BLOCKS' | 'MAX_FRAGMENT_UNIFORM_BLOCKS';
 
 // @public (undocumented)
 export type OneParameterMethod = 'useProgram' | 'depthFunc' | 'depthMask' | 'stencilMask' | 'cullFace' | 'frontFace' | 'enable';
@@ -4910,13 +4801,11 @@ export class Program {
     // (undocumented)
     readonly isProgram = true;
     // (undocumented)
-    readonly isWebGL2: boolean;
-    // (undocumented)
     program: WebGLProgram | null;
     // (undocumented)
     static reset(_gl?: GLContext): void;
     setUniform(name: string, value: unknown): void;
-    setUniformBlock(name: string, value: UniformBuffer): void;
+    setUniformBlock(name: string, value: UniformBuffer | UniformBufferRange): void;
     // (undocumented)
     readonly state: WebGLState;
     // (undocumented)
@@ -4931,8 +4820,6 @@ export class Program {
 
 // @public (undocumented)
 export interface ProgramAttribute {
-    // (undocumented)
-    addTo<State extends object>(array: (State | undefined)[], data: State): void;
     // (undocumented)
     divisor(value?: GLuint): void;
     // (undocumented)
@@ -5009,7 +4896,17 @@ export interface ProgramUniform {
 // @public (undocumented)
 export interface ProgramUniformBlock {
     // (undocumented)
+    activeUniformIndices: readonly GLuint[];
+    // (undocumented)
+    bindingPoint: GLuint;
+    // (undocumented)
     blockIndex: GLuint;
+    // (undocumented)
+    byteLength: number;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    uniformNames: readonly string[];
 }
 
 // @public (undocumented)
@@ -5183,6 +5080,9 @@ export interface RayParameters {
     origin?: Vector3;
 }
 
+// @public
+export function registerUniformBlockBinding(name: string, bindingPoint?: number): number;
+
 // @public (undocumented)
 type RegistryLoadMethod = {
     load(data: LoaderRequest): Promise<unknown>;
@@ -5302,7 +5202,7 @@ export const semantic: {
     camera: Camera | null;
     lightManager: LightManager | null;
     fog: Fog | null;
-    gl: GLContext | null;
+    gl: WebGL2RenderingContext | null;
     renderer: SemanticRenderer | null;
     blankInfo: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): undefined;
@@ -5422,16 +5322,6 @@ export const semantic: {
     };
     VIEWPORT: undefined;
     JOINTMATRIX: {
-        get(mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
-        isDependMesh: boolean;
-        notSupportInstanced: boolean;
-    };
-    JOINTMATRIXTEXTURE: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown;
-        isDependMesh: boolean;
-        notSupportInstanced: boolean;
-    };
-    JOINTMATRIXTEXTURESIZE: {
         get(mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
         isDependMesh: boolean;
         notSupportInstanced: boolean;
@@ -5714,13 +5604,7 @@ export interface SemanticMesh extends Mesh {
     // (undocumented)
     getJointMat(): Float32Array;
     // (undocumented)
-    initJointMatTexture(): DataTexture;
-    // (undocumented)
-    isSkinedMesh: boolean;
-    // (undocumented)
-    jointMatTexture: DataTexture | null;
-    // (undocumented)
-    updateJointMatTexture(): void;
+    isSkinnedMesh: boolean;
 }
 
 // @public (undocumented)
@@ -5942,31 +5826,28 @@ export interface SkeletonParameters {
 }
 
 // @public
-export class SkinedMesh extends Mesh {
-    constructor(params?: SkinedMeshParameters);
+export class SkinnedMesh extends Mesh {
+    constructor(params?: SkinnedMeshParameters);
     // (undocumented)
     className: string;
     // (undocumented)
-    clone(isChild?: boolean): SkinedMesh;
+    clone(isChild?: boolean): SkinnedMesh;
     frustumTest: boolean;
     getJointMat(): Float32Array;
     // (undocumented)
     getRenderOption(opt?: ShaderOptions): ShaderOptions;
-    initJointMatTexture(): DataTexture;
     // (undocumented)
-    isSkinedMesh: boolean;
-    jointMatTexture: DataTexture | null;
+    isSkinnedMesh: boolean;
     resetJointNamesByNodeName(skeleton: Skeleton): void;
     resetSkinIndices(skeleton: Skeleton): void;
     skeleton: Skeleton | null;
     // (undocumented)
     static readonly typeName: string;
-    updateJointMatTexture(): void;
     useInstanced: boolean;
 }
 
 // @public (undocumented)
-export interface SkinedMeshParameters extends MeshParameters {
+export interface SkinnedMeshParameters extends MeshParameters {
     // (undocumented)
     skeleton?: Skeleton | null;
 }
@@ -6146,8 +6027,6 @@ export interface StageParameters extends NodeParameters {
     // (undocumented)
     pixelRatio?: number;
     // (undocumented)
-    preferWebGL2?: boolean;
-    // (undocumented)
     premultipliedAlpha?: boolean;
     // (undocumented)
     preserveDrawingBuffer?: boolean;
@@ -6193,6 +6072,86 @@ export const STATE_TYPES: Readonly<{
 export type StateValue = number | boolean | WebGLProgram | null;
 
 // @public (undocumented)
+export type Std140ArrayValue = ArrayLike<number | boolean>;
+
+// @public (undocumented)
+export interface Std140FieldDefinition {
+    // (undocumented)
+    arrayLength?: number;
+    // (undocumented)
+    type: Std140Type;
+}
+
+// @public (undocumented)
+export interface Std140FieldLayout {
+    // (undocumented)
+    readonly alignment: number;
+    // (undocumented)
+    readonly arrayLength: number;
+    // (undocumented)
+    readonly arrayStride: number;
+    // (undocumented)
+    readonly byteLength: number;
+    // (undocumented)
+    readonly componentCount: number;
+    // (undocumented)
+    readonly matrixStride: number;
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly offset: number;
+    // (undocumented)
+    readonly type: Std140Type;
+}
+
+// @public (undocumented)
+export type Std140FieldValue<Definition> = Definition extends {
+    readonly arrayLength: number;
+} ? Std140ArrayValue : Definition extends {
+    readonly type: infer Type;
+} ? Std140FieldValue<Type> : Definition extends 'bool' ? boolean : Definition extends Std140ScalarType ? number : Std140ArrayValue;
+
+// @public
+export class Std140Layout<Schema extends Std140Schema = Std140Schema> {
+    constructor(schema: Schema);
+    // (undocumented)
+    readonly byteLength: number;
+    // (undocumented)
+    createBuffer(values?: Partial<Std140Values<Schema>>): ArrayBuffer;
+    // (undocumented)
+    readonly fields: Readonly<Record<keyof Schema & string, Std140FieldLayout>>;
+    // (undocumented)
+    readonly schema: Schema;
+    write<Name extends keyof Schema & string>(target: ArrayBuffer, name: Name, value: Std140FieldValue<Schema[Name]>): {
+        byteOffset: number;
+        byteLength: number;
+    };
+}
+
+// @public (undocumented)
+export type Std140MatrixType = 'mat2' | 'mat3' | 'mat4' | 'mat2x3' | 'mat2x4' | 'mat3x2' | 'mat3x4' | 'mat4x2' | 'mat4x3';
+
+// @public (undocumented)
+export type Std140ScalarType = 'float' | 'int' | 'uint' | 'bool';
+
+// @public (undocumented)
+export type Std140Schema = Readonly<Record<string, Std140Type | Std140FieldDefinition>>;
+
+// @public (undocumented)
+export type Std140Type = Std140ScalarType | Std140VectorType | Std140MatrixType;
+
+// @public (undocumented)
+export type Std140Value = number | boolean | Std140ArrayValue;
+
+// @public (undocumented)
+export type Std140Values<Schema extends Std140Schema> = {
+    [Name in keyof Schema]: Std140FieldValue<Schema[Name]>;
+};
+
+// @public (undocumented)
+export type Std140VectorType = 'vec2' | 'vec3' | 'vec4' | 'ivec2' | 'ivec3' | 'ivec4' | 'uvec2' | 'uvec3' | 'uvec4' | 'bvec2' | 'bvec3' | 'bvec4';
+
+// @public (undocumented)
 export interface SubDataUpdate {
     // (undocumented)
     byteOffset: number;
@@ -6214,11 +6173,11 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     colorSpaceConversion: boolean;
     compressed: boolean;
     destroy(): this;
-    protected _fixInternalFormat(state: TextureWebGLState, type: GLenum, format: GLenum, internalFormat: GLenum): GLenum;
+    protected _fixInternalFormat(type: GLenum, format: GLenum, internalFormat: GLenum): GLenum;
     flipY: boolean;
     format: number;
     getGLTexture(state: TextureWebGLState): WebGLTexture;
-    getSupportSize(img: ResizableTextureImage, needPowerOfTwo?: boolean): Size;
+    getSupportSize(img: ResizableTextureImage): Size;
     protected _glUploadTexture(state: TextureWebGLState, target: GLenum, image: TextureImageSource | null, level?: number, width?: number, height?: number): this;
     // (undocumented)
     height: number;
@@ -6228,7 +6187,6 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     set image(_img: Image | null);
     internalFormat: number;
     isImageCanRelease: boolean;
-    isImgPowerOfTwo(img: ResizableTextureImage): boolean;
     // (undocumented)
     readonly isTexture = true;
     magFilter: number;
@@ -6247,7 +6205,6 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     protected _releaseImage(): void;
     static reset(gl: GLContext): void;
     resizeImg(img: ResizableTextureImage, width: number, height: number): ResizableTextureImage | HTMLCanvasElement;
-    resizeImgToPowerOfTwo(img: ResizableTextureImage): ResizableTextureImage | HTMLCanvasElement;
     setGLTexture(texture: WebGLTexture, needDestroy?: boolean): this;
     target: number;
     type: number;
@@ -6255,7 +6212,6 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     updateTexture(state: TextureWebGLState, glTexture: WebGLTexture): this;
     protected _uploadTexture(state: TextureWebGLState): this;
     get useMipmap(): boolean;
-    get useRepeat(): boolean;
     uv: TextureUVChannel;
     // (undocumented)
     width: number;
@@ -6383,8 +6339,6 @@ export interface TextureWebGLState {
     bindTexture(target: GLenum, texture: WebGLTexture | null): void;
     // (undocumented)
     readonly gl: GLContext;
-    // (undocumented)
-    readonly isWebGL2: boolean;
     // (undocumented)
     pixelStorei(pname: GLenum, param: number | boolean): void;
 }
@@ -6605,58 +6559,63 @@ export interface TypedArrayConstructor {
 }
 
 // @public (undocumented)
-export type UniformArray = Float32List | Int32List | Uint32List;
-
-// @public (undocumented)
-export interface UniformBlockInfo {
-    // (undocumented)
-    index: GLuint;
-    // (undocumented)
-    name: string;
-}
+export const UNIFORM_BLOCK_BINDINGS: Readonly<{
+    readonly FrameBlock: 0;
+    readonly CameraBlock: 1;
+    readonly SceneBlock: 2;
+    readonly LightBlock: 3;
+    readonly MaterialBlock: 4;
+    readonly ModelBlock: 5;
+    readonly GeometryBlock: 6;
+    readonly SkinningBlock: 7;
+    readonly MorphBlock: 8;
+}>;
 
 // @public
-export class UniformBuffer {
-    constructor(data: UniformBufferData);
+export class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
+    constructor(data: UniformBufferData, layout?: Std140Layout<Schema>);
+    // (undocumented)
+    bind(gl: WebGL2RenderingContext, bindingPoint: number, range?: UniformBufferRange): void;
+    // (undocumented)
+    get byteLength(): number;
     // (undocumented)
     readonly className = "UniformBuffer";
     get data(): UniformBufferData;
     set data(data: UniformBufferData);
+    destroy(gl?: WebGL2RenderingContext): void;
     // (undocumented)
-    destroy(): void;
+    static fromSchema<const Schema extends Std140Schema>(layout: Std140Layout<Schema>, values?: Partial<Std140Values<Schema>>): UniformBuffer<Schema>;
     // (undocumented)
     getBuffer(gl: WebGL2RenderingContext): Buffer;
-    isDirty: boolean;
+    get isDirty(): boolean;
+    set isDirty(value: boolean);
     // (undocumented)
     readonly isUniformBuffer = true;
+    // (undocumented)
+    readonly layout: Std140Layout<Schema> | null;
+    markDirty(byteOffset?: number, byteLength?: number): this;
+    // (undocumented)
+    range(byteOffset: number, byteLength: number): UniformBufferRange;
+    set<Name extends keyof Schema & string>(name: Name, value: Std140FieldValue<Schema[Name]>): this;
+    write(byteOffset: number, data: TypedArray): this;
 }
 
 // @public (undocumented)
 export type UniformBufferData = TypedArray | ArrayBuffer;
 
 // @public (undocumented)
-export interface UniformInfo {
+export interface UniformBufferRange {
     // (undocumented)
-    glTypeInfo: GLTypeInfo;
+    readonly byteLength: number;
     // (undocumented)
-    location: WebGLUniformLocation | null;
+    readonly byteOffset: number;
     // (undocumented)
-    name: string;
-    // (undocumented)
-    size: number;
-    // (undocumented)
-    type: GLenum;
+    readonly uniformBuffer: UniformBuffer;
 }
 
 // @public (undocumented)
-export type UniformScalar = number | boolean;
-
-// @public (undocumented)
-export type UniformValue = UniformScalar | UniformArray;
-
-// @public (undocumented)
 export namespace util {
-    export { util_d_convertUint8ArrayToString as convertUint8ArrayToString, util_d_copyArrayData as copyArrayData, util_d_each as each, util_d_getBlobUrl as getBlobUrl, util_d_getElementRect as getElementRect, util_d_getExtension as getExtension, util_d_getIndexFromSortedArray as getIndexFromSortedArray, util_d_getRelativePath as getRelativePath, util_d_getTypedArrayClass as getTypedArrayClass, util_d_getTypedArrayGLType as getTypedArrayGLType, util_d_hasOwnProperty as hasOwnProperty, util_d_insertToSortedArray as insertToSortedArray, util_d_isArrayLike as isArrayLike, util_d_isBlobUrl as isBlobUrl, util_d_isStrOrNumber as isStrOrNumber, util_d_isWebGL2 as isWebGL2, util_d_padLeft as padLeft, util_d_revokeBlobUrl as revokeBlobUrl, util_d_serialRun as serialRun };
+    export { util_d_convertUint8ArrayToString as convertUint8ArrayToString, util_d_copyArrayData as copyArrayData, util_d_each as each, util_d_getBlobUrl as getBlobUrl, util_d_getElementRect as getElementRect, util_d_getExtension as getExtension, util_d_getIndexFromSortedArray as getIndexFromSortedArray, util_d_getRelativePath as getRelativePath, util_d_getTypedArrayClass as getTypedArrayClass, util_d_getTypedArrayGLType as getTypedArrayGLType, util_d_hasOwnProperty as hasOwnProperty, util_d_insertToSortedArray as insertToSortedArray, util_d_isArrayLike as isArrayLike, util_d_isBlobUrl as isBlobUrl, util_d_isStrOrNumber as isStrOrNumber, util_d_padLeft as padLeft, util_d_revokeBlobUrl as revokeBlobUrl, util_d_serialRun as serialRun };
     export export type { util_d_GeometryDataLike as GeometryDataLike, util_d_MutableArrayLike as MutableArrayLike, util_d_TypedArray as TypedArray, util_d_TypedArrayConstructor as TypedArrayConstructor };
 }
 
@@ -6926,8 +6885,6 @@ export class VertexArrayObject implements ManagedResource {
     // (undocumented)
     bind(): void;
     // (undocumented)
-    static bindSystemVao(): void;
-    // (undocumented)
     static get cache(): Cache_2<VertexArrayObject>;
     // (undocumented)
     readonly className = "VertexArrayObject";
@@ -6958,27 +6915,13 @@ export class VertexArrayObject implements ManagedResource {
     // (undocumented)
     mode: GLenum;
     // (undocumented)
-    static reset(_gl?: GLContext): void;
+    static reset(gl: GLContext): void;
     // (undocumented)
     unbind(): void;
     // (undocumented)
     useInstanced: boolean;
     // (undocumented)
-    useVao: boolean;
-    // (undocumented)
     vertexCount: number | null;
-}
-
-// @public (undocumented)
-export interface VertexArrayObjectExtension {
-    // (undocumented)
-    bindVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): void;
-    // (undocumented)
-    createVertexArray(): WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null;
-    // (undocumented)
-    deleteVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): void;
-    // (undocumented)
-    isVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): boolean;
 }
 
 // @public (undocumented)
@@ -6987,8 +6930,6 @@ export interface VertexArrayObjectParameters {
     mode?: GLenum;
     // (undocumented)
     useInstanced?: boolean;
-    // (undocumented)
-    useVao?: boolean;
     // (undocumented)
     vertexCount?: number | null;
 }
@@ -7029,6 +6970,16 @@ export namespace webgl2Constants {
         webgl2_COLOR_ATTACHMENT8 as COLOR_ATTACHMENT8,
         webgl2_COLOR_ATTACHMENT9 as COLOR_ATTACHMENT9,
         webgl2_COMPARE_REF_TO_TEXTURE as COMPARE_REF_TO_TEXTURE,
+        webgl2_COMPRESSED_R11_EAC as COMPRESSED_R11_EAC,
+        webgl2_COMPRESSED_RG11_EAC as COMPRESSED_RG11_EAC,
+        webgl2_COMPRESSED_RGB8_ETC2 as COMPRESSED_RGB8_ETC2,
+        webgl2_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2 as COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2,
+        webgl2_COMPRESSED_RGBA8_ETC2_EAC as COMPRESSED_RGBA8_ETC2_EAC,
+        webgl2_COMPRESSED_SIGNED_R11_EAC as COMPRESSED_SIGNED_R11_EAC,
+        webgl2_COMPRESSED_SIGNED_RG11_EAC as COMPRESSED_SIGNED_RG11_EAC,
+        webgl2_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC as COMPRESSED_SRGB8_ALPHA8_ETC2_EAC,
+        webgl2_COMPRESSED_SRGB8_ETC2 as COMPRESSED_SRGB8_ETC2,
+        webgl2_COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2 as COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2,
         webgl2_CONDITION_SATISFIED as CONDITION_SATISFIED,
         webgl2_COPY_READ_BUFFER as COPY_READ_BUFFER,
         webgl2_COPY_READ_BUFFER_BINDING as COPY_READ_BUFFER_BINDING,
@@ -7279,31 +7230,37 @@ export namespace webgl2Constants {
 // @public (undocumented)
 export class WebGLCapabilities {
     // (undocumented)
-    DRAW_BUFFERS: boolean;
-    // (undocumented)
-    FRAG_DEPTH: boolean;
-    // (undocumented)
-    FRAGMENT_TEXTURE_FLOAT: boolean;
-    // (undocumented)
     get(name: NumericCapabilityName): number;
     // (undocumented)
     getMaxPrecision(a: ShaderPrecision, b: ShaderPrecision): ShaderPrecision;
     // (undocumented)
     init(gl: GLContext): void;
     // (undocumented)
-    isWebGL2: boolean;
+    MAX_3D_TEXTURE_SIZE: number;
+    // (undocumented)
+    MAX_ARRAY_TEXTURE_LAYERS: number;
+    // (undocumented)
+    MAX_COLOR_ATTACHMENTS: number;
     // (undocumented)
     MAX_COMBINED_TEXTURE_IMAGE_UNITS: number;
     // (undocumented)
+    MAX_COMBINED_UNIFORM_BLOCKS: number;
+    // (undocumented)
     MAX_CUBE_MAP_TEXTURE_SIZE: number;
+    // (undocumented)
+    MAX_DRAW_BUFFERS: number;
     // (undocumented)
     MAX_FRAGMENT_PRECISION: ShaderPrecision;
     // (undocumented)
-    MAX_FRAGMENT_UNIFORM_VECTORS: number;
+    MAX_FRAGMENT_UNIFORM_BLOCKS: number;
+    // (undocumented)
+    MAX_FRAGMENT_UNIFORM_COMPONENTS: number;
     // (undocumented)
     MAX_PRECISION: ShaderPrecision;
     // (undocumented)
     MAX_RENDERBUFFER_SIZE: number;
+    // (undocumented)
+    MAX_SAMPLES: number;
     // (undocumented)
     MAX_TEXTURE_IMAGE_UNITS: number;
     // (undocumented)
@@ -7313,7 +7270,11 @@ export class WebGLCapabilities {
     // (undocumented)
     MAX_TEXTURE_SIZE: number;
     // (undocumented)
-    MAX_VARYING_VECTORS: number;
+    MAX_UNIFORM_BLOCK_SIZE: number;
+    // (undocumented)
+    MAX_UNIFORM_BUFFER_BINDINGS: number;
+    // (undocumented)
+    MAX_VARYING_COMPONENTS: number;
     // (undocumented)
     MAX_VERTEX_ATTRIBS: number;
     // (undocumented)
@@ -7321,11 +7282,11 @@ export class WebGLCapabilities {
     // (undocumented)
     MAX_VERTEX_TEXTURE_IMAGE_UNITS: number;
     // (undocumented)
-    MAX_VERTEX_UNIFORM_VECTORS: number;
+    MAX_VERTEX_UNIFORM_BLOCKS: number;
     // (undocumented)
-    SHADER_TEXTURE_LOD: boolean;
+    MAX_VERTEX_UNIFORM_COMPONENTS: number;
     // (undocumented)
-    VERTEX_TEXTURE_FLOAT: boolean;
+    UNIFORM_BUFFER_OFFSET_ALIGNMENT: number;
 }
 
 // @public (undocumented)
@@ -7638,27 +7599,6 @@ export namespace webglConstants {
 // @public (undocumented)
 export namespace webglExtensionConstants {
     export {
-        webglExtensions_COLOR_ATTACHMENT0_WEBGL as COLOR_ATTACHMENT0_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT10_WEBGL as COLOR_ATTACHMENT10_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT11_WEBGL as COLOR_ATTACHMENT11_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT12_WEBGL as COLOR_ATTACHMENT12_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT13_WEBGL as COLOR_ATTACHMENT13_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT14_WEBGL as COLOR_ATTACHMENT14_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT15_WEBGL as COLOR_ATTACHMENT15_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT1_WEBGL as COLOR_ATTACHMENT1_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT2_WEBGL as COLOR_ATTACHMENT2_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT3_WEBGL as COLOR_ATTACHMENT3_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT4_WEBGL as COLOR_ATTACHMENT4_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT5_WEBGL as COLOR_ATTACHMENT5_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT6_WEBGL as COLOR_ATTACHMENT6_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT7_WEBGL as COLOR_ATTACHMENT7_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT8_WEBGL as COLOR_ATTACHMENT8_WEBGL,
-        webglExtensions_COLOR_ATTACHMENT9_WEBGL as COLOR_ATTACHMENT9_WEBGL,
-        webglExtensions_COMPRESSED_R11_EAC as COMPRESSED_R11_EAC,
-        webglExtensions_COMPRESSED_RG11_EAC as COMPRESSED_RG11_EAC,
-        webglExtensions_COMPRESSED_RGB8_ETC2 as COMPRESSED_RGB8_ETC2,
-        webglExtensions_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2 as COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2,
-        webglExtensions_COMPRESSED_RGBA8_ETC2_EAC as COMPRESSED_RGBA8_ETC2_EAC,
         webglExtensions_COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL as COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL,
         webglExtensions_COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL as COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL,
         webglExtensions_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG as COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,
@@ -7666,103 +7606,47 @@ export namespace webglExtensionConstants {
         webglExtensions_COMPRESSED_RGBA_S3TC_DXT1_EXT as COMPRESSED_RGBA_S3TC_DXT1_EXT,
         webglExtensions_COMPRESSED_RGBA_S3TC_DXT3_EXT as COMPRESSED_RGBA_S3TC_DXT3_EXT,
         webglExtensions_COMPRESSED_RGBA_S3TC_DXT5_EXT as COMPRESSED_RGBA_S3TC_DXT5_EXT,
+        webglExtensions_COMPRESSED_RGB_ATC_WEBGL as COMPRESSED_RGB_ATC_WEBGL,
         webglExtensions_COMPRESSED_RGB_ETC1_WEBGL as COMPRESSED_RGB_ETC1_WEBGL,
         webglExtensions_COMPRESSED_RGB_PVRTC_2BPPV1_IMG as COMPRESSED_RGB_PVRTC_2BPPV1_IMG,
         webglExtensions_COMPRESSED_RGB_PVRTC_4BPPV1_IMG as COMPRESSED_RGB_PVRTC_4BPPV1_IMG,
         webglExtensions_COMPRESSED_RGB_S3TC_DXT1_EXT as COMPRESSED_RGB_S3TC_DXT1_EXT,
-        webglExtensions_COMPRESSED_SIGNED_R11_EAC as COMPRESSED_SIGNED_R11_EAC,
-        webglExtensions_COMPRESSED_SIGNED_RG11_EAC as COMPRESSED_SIGNED_RG11_EAC,
-        webglExtensions_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC as COMPRESSED_SRGB8_ALPHA8_ETC2_EAC,
-        webglExtensions_COMPRESSED_SRGB8_ETC2 as COMPRESSED_SRGB8_ETC2,
-        webglExtensions_COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2 as COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2,
         webglExtensions_CURRENT_QUERY_EXT as CURRENT_QUERY_EXT,
-        webglExtensions_DRAW_BUFFER0_WEBGL as DRAW_BUFFER0_WEBGL,
-        webglExtensions_DRAW_BUFFER10_WEBGL as DRAW_BUFFER10_WEBGL,
-        webglExtensions_DRAW_BUFFER11_WEBGL as DRAW_BUFFER11_WEBGL,
-        webglExtensions_DRAW_BUFFER12_WEBGL as DRAW_BUFFER12_WEBGL,
-        webglExtensions_DRAW_BUFFER13_WEBGL as DRAW_BUFFER13_WEBGL,
-        webglExtensions_DRAW_BUFFER14_WEBGL as DRAW_BUFFER14_WEBGL,
-        webglExtensions_DRAW_BUFFER15_WEBGL as DRAW_BUFFER15_WEBGL,
-        webglExtensions_DRAW_BUFFER1_WEBGL as DRAW_BUFFER1_WEBGL,
-        webglExtensions_DRAW_BUFFER2_WEBGL as DRAW_BUFFER2_WEBGL,
-        webglExtensions_DRAW_BUFFER3_WEBGL as DRAW_BUFFER3_WEBGL,
-        webglExtensions_DRAW_BUFFER4_WEBGL as DRAW_BUFFER4_WEBGL,
-        webglExtensions_DRAW_BUFFER5_WEBGL as DRAW_BUFFER5_WEBGL,
-        webglExtensions_DRAW_BUFFER6_WEBGL as DRAW_BUFFER6_WEBGL,
-        webglExtensions_DRAW_BUFFER7_WEBGL as DRAW_BUFFER7_WEBGL,
-        webglExtensions_DRAW_BUFFER8_WEBGL as DRAW_BUFFER8_WEBGL,
-        webglExtensions_DRAW_BUFFER9_WEBGL as DRAW_BUFFER9_WEBGL,
-        webglExtensions_FRAGMENT_SHADER_DERIVATIVE_HINT_OES as FRAGMENT_SHADER_DERIVATIVE_HINT_OES,
-        webglExtensions_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT as FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT,
-        webglExtensions_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT as FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT,
         webglExtensions_GPU_DISJOINT_EXT as GPU_DISJOINT_EXT,
-        webglExtensions_HALF_FLOAT_OES as HALF_FLOAT_OES,
-        webglExtensions_MAX_COLOR_ATTACHMENTS_WEBGL as MAX_COLOR_ATTACHMENTS_WEBGL,
-        webglExtensions_MAX_DRAW_BUFFERS_WEBGL as MAX_DRAW_BUFFERS_WEBGL,
-        webglExtensions_MAX_EXT as MAX_EXT,
         webglExtensions_MAX_TEXTURE_MAX_ANISOTROPY_EXT as MAX_TEXTURE_MAX_ANISOTROPY_EXT,
-        webglExtensions_MIN_EXT as MIN_EXT,
         webglExtensions_QUERY_COUNTER_BITS_EXT as QUERY_COUNTER_BITS_EXT,
         webglExtensions_QUERY_RESULT_AVAILABLE_EXT as QUERY_RESULT_AVAILABLE_EXT,
         webglExtensions_QUERY_RESULT_EXT as QUERY_RESULT_EXT,
-        webglExtensions_RGB32F_EXT as RGB32F_EXT,
-        webglExtensions_RGBA32F_EXT as RGBA32F_EXT,
-        webglExtensions_SRGB8_ALPHA8_EXT as SRGB8_ALPHA8_EXT,
-        webglExtensions_SRGB_ALPHA_EXT as SRGB_ALPHA_EXT,
-        webglExtensions_SRGB_EXT as SRGB_EXT,
         webglExtensions_TEXTURE_MAX_ANISOTROPY_EXT as TEXTURE_MAX_ANISOTROPY_EXT,
         webglExtensions_TIMESTAMP_EXT as TIMESTAMP_EXT,
         webglExtensions_TIME_ELAPSED_EXT as TIME_ELAPSED_EXT,
         webglExtensions_UNMASKED_RENDERER_WEBGL as UNMASKED_RENDERER_WEBGL,
         webglExtensions_UNMASKED_VENDOR_WEBGL as UNMASKED_VENDOR_WEBGL,
-        webglExtensions_UNSIGNED_INT_24_8_WEBGL as UNSIGNED_INT_24_8_WEBGL,
-        webglExtensions_UNSIGNED_NORMALIZED_EXT as UNSIGNED_NORMALIZED_EXT,
-        webglExtensions_VERTEX_ARRAY_BINDING_OES as VERTEX_ARRAY_BINDING_OES,
-        webglExtensions_VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE as VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE,
-        webglExtensions__WEBGL as _WEBGL,
     };
 }
 
-// @public (undocumented)
+// @public
 export class WebGLExtensions {
     // (undocumented)
     colorBufferFloat: ExtensionObject | null;
     // (undocumented)
     disable(name: string): void;
     // (undocumented)
-    drawBuffers: DrawBuffersExtension | null;
-    // (undocumented)
     enable(name: string): void;
-    // (undocumented)
-    fragDepth: ExtensionObject | null;
     // (undocumented)
     get(name: string, alias?: string): ExtensionObject | null;
     // (undocumented)
     init(gl: GLContext): void;
-    // (undocumented)
-    instanced: InstancedArraysExtension | null;
-    // (undocumented)
-    isWebGL2: boolean;
+    // Warning: (ae-forgotten-export) The symbol "ExtensionObject" needs to be exported by the entry point Hilo3d.d.ts
+    //
     // (undocumented)
     loseContext: ExtensionObject | null;
     // (undocumented)
     reset(gl: GLContext): void;
     // (undocumented)
-    shaderTextureLod: ExtensionObject | null;
-    // (undocumented)
-    sRGB: ExtensionObject | null;
-    // Warning: (ae-forgotten-export) The symbol "ExtensionObject" needs to be exported by the entry point Hilo3d.d.ts
-    //
-    // (undocumented)
-    texFloat: ExtensionObject | null;
-    // (undocumented)
     textureFilterAnisotropic: EXT_texture_filter_anisotropic | null;
     // (undocumented)
-    uintIndices: ExtensionObject | null;
-    // (undocumented)
     use(name: string, alias?: string): void;
-    // (undocumented)
-    vao: VertexArrayObjectExtension | null;
 }
 
 // @public
@@ -7813,8 +7697,6 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     isInitFailed: boolean;
     // (undocumented)
-    isWebGL2: boolean;
-    // (undocumented)
     readonly isWebGLRenderer = true;
     // (undocumented)
     readonly lightManager: LightManager;
@@ -7828,8 +7710,6 @@ export class WebGLRenderer extends EventDispatcher {
     pixelRatio: number;
     // (undocumented)
     powerPreference: WebGLPowerPreference;
-    // (undocumented)
-    preferWebGL2: boolean;
     // (undocumented)
     premultipliedAlpha: boolean;
     // (undocumented)
@@ -7871,9 +7751,9 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     setupSampleAlphaToCoverage(material: Material): void;
     // (undocumented)
-    setupStencil(material: Material): void;
+    setupShaderBindings(program: Program, mesh: Mesh, useInstanced: boolean, force?: boolean): void;
     // (undocumented)
-    setupUniforms(program: Program, mesh: Mesh, useInstanced: boolean, force?: boolean): void;
+    setupStencil(material: Material): void;
     // (undocumented)
     setupVao(vao: VertexArrayObject, program: Program, mesh: Mesh): void;
     // (undocumented)
@@ -7886,8 +7766,6 @@ export class WebGLRenderer extends EventDispatcher {
     useInstanced: boolean;
     // (undocumented)
     useLogDepth: boolean;
-    // (undocumented)
-    useVao: boolean;
     // (undocumented)
     vertexPrecision: ShaderPrecision;
     // (undocumented)
@@ -7929,8 +7807,6 @@ export interface WebGLRendererParameters {
     // (undocumented)
     powerPreference?: WebGLPowerPreference;
     // (undocumented)
-    preferWebGL2?: boolean;
-    // (undocumented)
     premultipliedAlpha?: boolean;
     // (undocumented)
     preserveDrawingBuffer?: boolean;
@@ -7942,8 +7818,6 @@ export interface WebGLRendererParameters {
     useInstanced?: boolean;
     // (undocumented)
     useLogDepth?: boolean;
-    // (undocumented)
-    useVao?: boolean;
     // (undocumented)
     vertexPrecision?: ShaderPrecision;
     // (undocumented)
@@ -8003,7 +7877,11 @@ export class WebGLState {
     // (undocumented)
     cullFace(mode: GLenum): void;
     // (undocumented)
-    currentFramebuffer: WebGLFramebuffer | null;
+    currentDrawFramebuffer: WebGLFramebuffer | null;
+    // (undocumented)
+    get currentFramebuffer(): WebGLFramebuffer | null;
+    // (undocumented)
+    currentReadFramebuffer: WebGLFramebuffer | null;
     // (undocumented)
     depthFunc(func: GLenum): void;
     // (undocumented)
@@ -8023,8 +7901,6 @@ export class WebGLState {
     // (undocumented)
     readonly gl: GLContext;
     isEnabled(capability: GLenum): boolean;
-    // (undocumented)
-    readonly isWebGL2: boolean;
     // (undocumented)
     readonly isWebGLState = true;
     // (undocumented)

@@ -5,7 +5,11 @@ import postProcess from './js/postProcess';
 const CELL_SCALE = 8;
 const width = Math.max(1, Math.floor(window.innerWidth / CELL_SCALE));
 const height = Math.max(1, Math.floor(window.innerHeight / CELL_SCALE));
-const sizeUniform = new Float32Array([width, height]);
+Hilo3d.registerUniformBlockBinding('LifeGameBlock');
+const materialLayout = Hilo3d.createStd140Layout({ u_size: 'vec2' });
+const materialBlock = Hilo3d.UniformBuffer.fromSchema(materialLayout, {
+    u_size: [width, height]
+});
 const liveCell = new Uint8Array([255, 255, 255, 255]);
 
 let framebuffer: Hilo3d.Framebuffer | null = null;
@@ -64,15 +68,18 @@ renderer.on('afterRender', () => {
             0
         );
         postProcess.draw(sourceTexture, {
-            uniforms: { u_size: sizeUniform },
-            frag: `
-                precision HILO_MAX_FRAGMENT_PRECISION float;
-                varying vec2 v_texcoord0;
+            uniformBlocks: { LifeGameBlock: materialBlock },
+            frag: `#version 300 es
+                precision highp float;
+                in vec2 v_texcoord0;
                 uniform sampler2D u_diffuse;
-                uniform vec2 u_size;
+                layout(std140) uniform LifeGameBlock {
+                    vec2 u_size;
+                };
+                layout(location = 0) out vec4 fragmentColor;
 
                 int get(int x, int y) {
-                    return int(texture2D(u_diffuse, (gl_FragCoord.xy + vec2(x, y)) / u_size).b);
+                    return int(texture(u_diffuse, (gl_FragCoord.xy + vec2(x, y)) / u_size).b);
                 }
 
                 void main(void) {
@@ -86,12 +93,12 @@ renderer.on('afterRender', () => {
                               get( 1,  1);
 
                     if (sum == 3) {
-                        gl_FragColor = vec4(1.0);
+                        fragmentColor = vec4(1.0);
                     } else if (sum == 2) {
                         float current = float(get(0, 0));
-                        gl_FragColor = vec4(current, current, current, 1.0);
+                        fragmentColor = vec4(current, current, current, 1.0);
                     } else {
-                        gl_FragColor = vec4(0.0);
+                        fragmentColor = vec4(0.0);
                     }
                 }
             `

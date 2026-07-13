@@ -1,9 +1,9 @@
 #include "./chunk/extensions.vert"
 #include "./chunk/baseDefine.glsl"
 #include "./chunk/precision.vert"
+#include "./chunk/uniformBlocks.glsl"
 
-attribute vec3 a_position;
-uniform mat4 u_modelViewProjectionMatrix;
+in vec3 a_position;
 
 #include "./chunk/unQuantize.vert"
 #include "./chunk/joint.vert"
@@ -37,7 +37,7 @@ void main(void) {
     #include "./chunk/normal_main.vert"
     #include "./chunk/lightFog_main.vert"
 
-    gl_Position = u_modelViewProjectionMatrix * pos;
+    gl_Position = u_viewProjectionMatrix * u_modelMatrix * pos;
 
     #include "./chunk/logDepth_main.vert"
 }

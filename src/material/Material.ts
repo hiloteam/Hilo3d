@@ -14,7 +14,6 @@ import {
     SRC_ALPHA,
     ZERO
 } from '../constants/webgl';
-import capabilities from '../renderer/capabilities';
 import Texture, { type TextureBinding } from '../texture/Texture';
 import type Color from '../math/Color';
 import type Matrix3 from '../math/Matrix3';
@@ -69,10 +68,10 @@ export interface MaterialParameters {
     parallaxMap?: Texture | null;
     emission?: MaterialTextureValue;
     normalMapScale?: number;
-    ignoreTranparent?: boolean;
+    ignoreTransparent?: boolean;
     gammaCorrection?: boolean;
     usePhysicsLight?: boolean;
-    isDiffuesEnvAndAmbientLightWorkTogether?: boolean;
+    isDiffuseEnvAndAmbientLightWorkTogether?: boolean;
     userData?: unknown;
     renderOrder?: number;
     premultiplyAlpha?: boolean;
@@ -104,10 +103,16 @@ export interface MaterialParameters {
     exposure?: number;
     enableTextureLod?: boolean;
     enableDrawBuffers?: boolean;
-    needBasicUnifroms?: boolean;
+    needBasicUniforms?: boolean;
     needBasicAttributes?: boolean;
+    /**
+     * Semantic resolvers used by canonical UBO packing and standalone sampler bindings.
+     * Application-defined classic uniforms must be sampler types; put every numeric value in
+     * `uniformBlocks`.
+     */
     uniforms?: MaterialBindingMap;
     attributes?: MaterialBindingMap;
+    /** Registered std140 blocks keyed by their globally stable GLSL block name. */
     uniformBlocks?: Record<string, UniformBuffer>;
     onBeforeCompile?: MaterialBeforeCompile | null;
 }
@@ -229,7 +234,7 @@ class Material {
     /**
      * 是否忽略透明度
      */
-    ignoreTranparent = false;
+    ignoreTransparent = false;
     /**
      * 是否开启 gamma 矫正
      */
@@ -241,7 +246,7 @@ class Material {
     /**
      * 是否环境贴图和环境光同时生效
      */
-    isDiffuesEnvAndAmbientLightWorkTogether = false;
+    isDiffuseEnvAndAmbientLightWorkTogether = false;
     /**
      * 用户数据
      */
@@ -475,14 +480,19 @@ class Material {
     /**
      * 是否需要加基础 uniforms
      */
-    needBasicUnifroms = true;
+    needBasicUniforms = true;
     /**
      * 是否需要加基础 attributes
      */
     needBasicAttributes = true;
     readonly id: string;
+    /**
+     * Semantic resolvers for canonical block fields and sampler bindings. Program linking rejects
+     * every active classic uniform that is not an opaque sampler.
+     */
     uniforms: MaterialBindingMap = {};
     attributes: MaterialBindingMap = {};
+    /** Registered std140 blocks keyed by GLSL block name. */
     uniformBlocks: Record<string, UniformBuffer> = {};
     protected readonly textureOption = new TextureOptionBuilder();
     private _instancedUniforms: InstancedUniform[] | null = null;
@@ -502,7 +512,7 @@ class Material {
         if (this.needBasicAttributes) {
             this.addBasicAttributes();
         }
-        if (this.needBasicUnifroms) {
+        if (this.needBasicUniforms) {
             this.addBasicUniforms();
         }
     }
@@ -579,8 +589,6 @@ class Material {
             u_areaLightsLtcTexture2: 'AREALIGHTSLTCTEXTURE2',
             // joint
             u_jointMat: 'JOINTMATRIX',
-            u_jointMatTexture: 'JOINTMATRIXTEXTURE',
-            u_jointMatTextureSize: 'JOINTMATRIXTEXTURESIZE',
             // quantization
             u_positionDecodeMat: 'POSITIONDECODEMAT',
             u_normalDecodeMat: 'NORMALDECODEMAT',
@@ -589,8 +597,8 @@ class Material {
             // morph
             u_morphWeights: 'MORPHWEIGHTS',
             u_normalMapScale: 'NORMALMAPSCALE',
-            u_emission: 'EMISSION',
-            u_transparency: 'TRANSPARENCY',
+            u_emissionColor: 'EMISSION',
+            u_transparencyFactor: 'TRANSPARENCY',
             // uv matrix
             u_uvMatrix: 'UVMATRIX_0',
             u_uvMatrix1: 'UVMATRIX_1',
@@ -636,10 +644,10 @@ class Material {
         if (this.premultiplyAlpha) {
             option['PREMULTIPLY_ALPHA'] = 1;
         }
-        if (capabilities.SHADER_TEXTURE_LOD && this.enableTextureLod) {
+        if (this.enableTextureLod) {
             option['USE_SHADER_TEXTURE_LOD'] = 1;
         }
-        if (capabilities.DRAW_BUFFERS && this.enableDrawBuffers) {
+        if (this.enableDrawBuffers) {
             option['USE_DRAW_BUFFERS'] = 1;
         }
         const textureOption = this.textureOption.reset(option);
@@ -654,7 +662,7 @@ class Material {
         textureOption.add(this.parallaxMap, 'PARALLAX_MAP');
         textureOption.add(this.emission, 'EMISSION_MAP');
         textureOption.add(this.transparency, 'TRANSPARENCY_MAP');
-        if (this.ignoreTranparent) {
+        if (this.ignoreTransparent) {
             option['IGNORE_TRANSPARENT'] = 1;
         }
         if (this.alphaCutoff > 0) {
@@ -681,8 +689,8 @@ class Material {
         if (this.usePhysicsLight) {
             option['USE_PHYSICS_LIGHT'] = 1;
         }
-        if (this.isDiffuesEnvAndAmbientLightWorkTogether) {
-            option['IS_DIFFUESENV_AND_AMBIENTLIGHT_WORK_TOGETHER'] = 1;
+        if (this.isDiffuseEnvAndAmbientLightWorkTogether) {
+            option['IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER'] = 1;
         }
         textureOption.update();
         return option;

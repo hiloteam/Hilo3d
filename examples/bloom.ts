@@ -1,6 +1,9 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './js/init';
 
+Hilo3d.registerUniformBlockBinding('BloomBlurBlock');
+Hilo3d.registerUniformBlockBinding('BloomCompositeBlock');
+
 const {
     camera,
     stage,
@@ -20,6 +23,8 @@ interface ScreenShaderPassOptions extends RenderPassOptions {
     frag: string;
     vert?: string;
     uniforms?: Hilo3d.MaterialBindingMap;
+    uniformBlocks?: Record<string, Hilo3d.UniformBuffer>;
+    prepare?: () => void;
 }
 
 function requireTextureIndex(programInfo: Hilo3d.ProgramBindingInfo): number {
@@ -104,9 +109,11 @@ class ScreenShaderPass extends RenderPass {
         vertices: new Hilo3d.GeometryData(new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), 2),
         uvs: new Hilo3d.GeometryData(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2)
     });
+    private readonly prepare: (() => void) | undefined;
 
     constructor(renderer: Hilo3d.WebGLRenderer, options: ScreenShaderPassOptions) {
         super(renderer, options);
+        this.prepare = options.prepare;
         const vertexShader = options.vert ?? Hilo3d.Shader.shaders['screen.vert'];
         if (!vertexShader) throw new Error('Built-in screen vertex shader is unavailable.');
         new Hilo3d.Mesh({
@@ -131,12 +138,14 @@ class ScreenShaderPass extends RenderPass {
                         }
                     },
                     ...options.uniforms
-                }
+                },
+                ...(options.uniformBlocks ? { uniformBlocks: options.uniformBlocks } : {})
             })
         }).addTo(this.scene);
     }
 
     protected override render(renderer: Hilo3d.WebGLRenderer): void {
+        this.prepare?.();
         renderer.render(this.scene, this.camera);
     }
 
@@ -186,14 +195,15 @@ sceneRenderer.on('afterRender', () => {
 });
 
 const lightPass = new ScreenShaderPass(sceneRenderer, {
-    frag: `
-        precision HILO_MAX_FRAGMENT_PRECISION float;
-        varying vec2 v_texcoord0;
+    frag: `#version 300 es
+        precision highp float;
+        in vec2 v_texcoord0;
         uniform sampler2D u_screen;
+        layout(location = 0) out vec4 fragmentColor;
         void main(void) {
-            vec4 color = texture2D(u_screen, v_texcoord0);
+            vec4 color = texture(u_screen, v_texcoord0);
             float brightness = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
-            gl_FragColor = brightness > 0.4 ? vec4(color.rgb, 1.0) : vec4(0.0);
+            fragmentColor = brightness > 0.4 ? vec4(color.rgb, 1.0) : vec4(0.0);
         }
     `,
     uniforms: {
@@ -211,15 +221,21 @@ const blurPasses: ScreenShaderPass[] = [];
 for (let index = 0; index < 5; index++) {
     const blurWidth = Math.ceil(sceneRenderer.width / Math.pow(2, index));
     const blurHeight = Math.ceil(sceneRenderer.height / Math.pow(2, index));
-    const textureSize = new Float32Array([blurWidth, blurHeight]);
+    const blurLayout = Hilo3d.createStd140Layout({ u_textureSize: 'vec2' });
+    const blurMaterialBlock = Hilo3d.UniformBuffer.fromSchema(blurLayout, {
+        u_textureSize: [blurWidth, blurHeight]
+    });
     new ScreenShaderPass(sceneRenderer, {
         width: blurWidth,
         height: blurHeight,
-        frag: `
-            precision HILO_MAX_FRAGMENT_PRECISION float;
+        frag: `#version 300 es
+            precision highp float;
             uniform sampler2D u_lightTexture;
-            varying vec2 v_texcoord0;
-            uniform vec2 u_textureSize;
+            in vec2 v_texcoord0;
+            layout(std140) uniform BloomBlurBlock {
+                vec2 u_textureSize;
+            };
+            layout(location = 0) out vec4 fragmentColor;
 
             void main(void) {
                 float weight[5];
@@ -229,17 +245,16 @@ for (let index = 0; index < 5; index++) {
                 weight[3] = 0.054054;
                 weight[4] = 0.016216;
                 vec2 texel = 1.0 / u_textureSize;
-                vec3 result = texture2D(u_lightTexture, v_texcoord0).rgb * weight[0];
+                vec3 result = texture(u_lightTexture, v_texcoord0).rgb * weight[0];
                 for (int sampleIndex = 1; sampleIndex < 5; ++sampleIndex) {
                     float offset = texel.x * float(sampleIndex);
-                    result += texture2D(u_lightTexture, v_texcoord0 + vec2(offset, 0.0)).rgb * weight[sampleIndex];
-                    result += texture2D(u_lightTexture, v_texcoord0 - vec2(offset, 0.0)).rgb * weight[sampleIndex];
+                    result += texture(u_lightTexture, v_texcoord0 + vec2(offset, 0.0)).rgb * weight[sampleIndex];
+                    result += texture(u_lightTexture, v_texcoord0 - vec2(offset, 0.0)).rgb * weight[sampleIndex];
                 }
-                gl_FragColor = vec4(result, 1.0);
+                fragmentColor = vec4(result, 1.0);
             }
         `,
         uniforms: {
-            u_textureSize: { get: () => textureSize },
             u_lightTexture: {
                 get: (_mesh, _material, programInfo) =>
                     Hilo3d.semantic.handlerTexture(
@@ -247,7 +262,8 @@ for (let index = 0; index < 5; index++) {
                         requireTextureIndex(programInfo)
                     )
             }
-        }
+        },
+        uniformBlocks: { BloomBlurBlock: blurMaterialBlock }
     }).addTo(postProcessRenderer);
 
     const blurYPass = new ScreenShaderPass(sceneRenderer, {
@@ -257,11 +273,14 @@ for (let index = 0; index < 5; index++) {
             minFilter: Hilo3d.constants.NEAREST,
             magFilter: Hilo3d.constants.LINEAR
         },
-        frag: `
-            precision HILO_MAX_FRAGMENT_PRECISION float;
+        frag: `#version 300 es
+            precision highp float;
             uniform sampler2D u_lastTexture;
-            varying vec2 v_texcoord0;
-            uniform vec2 u_textureSize;
+            in vec2 v_texcoord0;
+            layout(std140) uniform BloomBlurBlock {
+                vec2 u_textureSize;
+            };
+            layout(location = 0) out vec4 fragmentColor;
 
             void main(void) {
                 float weight[5];
@@ -271,45 +290,50 @@ for (let index = 0; index < 5; index++) {
                 weight[3] = 0.054054;
                 weight[4] = 0.016216;
                 vec2 texel = 1.0 / u_textureSize;
-                vec3 result = texture2D(u_lastTexture, v_texcoord0).rgb * weight[0];
+                vec3 result = texture(u_lastTexture, v_texcoord0).rgb * weight[0];
                 for (int sampleIndex = 1; sampleIndex < 5; ++sampleIndex) {
                     float offset = texel.y * float(sampleIndex);
-                    result += texture2D(u_lastTexture, v_texcoord0 + vec2(0.0, offset)).rgb * weight[sampleIndex];
-                    result += texture2D(u_lastTexture, v_texcoord0 - vec2(0.0, offset)).rgb * weight[sampleIndex];
+                    result += texture(u_lastTexture, v_texcoord0 + vec2(0.0, offset)).rgb * weight[sampleIndex];
+                    result += texture(u_lastTexture, v_texcoord0 - vec2(0.0, offset)).rgb * weight[sampleIndex];
                 }
-                gl_FragColor = vec4(result, 1.0);
+                fragmentColor = vec4(result, 1.0);
             }
         `,
-        uniforms: {
-            u_textureSize: { get: () => textureSize }
-        }
+        uniformBlocks: { BloomBlurBlock: blurMaterialBlock }
     }).addTo(postProcessRenderer);
 
     blurPasses.push(blurYPass);
 }
 
 let bloomStrength = 1;
+const bloomLayout = Hilo3d.createStd140Layout({ u_bloomStrength: 'float' });
+const bloomMaterialBlock = Hilo3d.UniformBuffer.fromSchema(bloomLayout, {
+    u_bloomStrength: bloomStrength
+});
 new ScreenShaderPass(sceneRenderer, {
-    frag: `
-        precision HILO_MAX_FRAGMENT_PRECISION float;
+    frag: `#version 300 es
+        precision highp float;
         uniform sampler2D u_blurTexture0;
         uniform sampler2D u_blurTexture1;
         uniform sampler2D u_blurTexture2;
         uniform sampler2D u_blurTexture3;
         uniform sampler2D u_blurTexture4;
         uniform sampler2D u_scene;
-        uniform float u_bloomStrength;
-        varying vec2 v_texcoord0;
+        layout(std140) uniform BloomCompositeBlock {
+            float u_bloomStrength;
+        };
+        in vec2 v_texcoord0;
+        layout(location = 0) out vec4 fragmentColor;
 
         void main(void) {
-            vec3 color = texture2D(u_scene, v_texcoord0).rgb;
-            color += texture2D(u_blurTexture0, v_texcoord0).rgb * u_bloomStrength;
-            color += texture2D(u_blurTexture1, v_texcoord0).rgb * u_bloomStrength;
-            color += texture2D(u_blurTexture2, v_texcoord0).rgb * u_bloomStrength;
-            color += texture2D(u_blurTexture3, v_texcoord0).rgb * u_bloomStrength;
-            color += texture2D(u_blurTexture4, v_texcoord0).rgb * u_bloomStrength;
+            vec3 color = texture(u_scene, v_texcoord0).rgb;
+            color += texture(u_blurTexture0, v_texcoord0).rgb * u_bloomStrength;
+            color += texture(u_blurTexture1, v_texcoord0).rgb * u_bloomStrength;
+            color += texture(u_blurTexture2, v_texcoord0).rgb * u_bloomStrength;
+            color += texture(u_blurTexture3, v_texcoord0).rgb * u_bloomStrength;
+            color += texture(u_blurTexture4, v_texcoord0).rgb * u_bloomStrength;
             vec3 result = vec3(1.0) - exp(-color * 0.8);
-            gl_FragColor = vec4(result, 1.0);
+            fragmentColor = vec4(result, 1.0);
         }
     `,
     uniforms: {
@@ -338,8 +362,11 @@ new ScreenShaderPass(sceneRenderer, {
                         )
                 }
             ])
-        ),
-        u_bloomStrength: { get: () => bloomStrength }
+        )
+    },
+    uniformBlocks: { BloomCompositeBlock: bloomMaterialBlock },
+    prepare: () => {
+        bloomMaterialBlock.set('u_bloomStrength', bloomStrength);
     },
     renderToScreen: true
 }).addTo(postProcessRenderer);

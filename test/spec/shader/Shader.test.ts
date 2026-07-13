@@ -40,8 +40,8 @@ describe('Shader', () => {
             mesh,
             new ShaderMaterial({
                 getCustomRenderOption(options) {
-                    options['CUSTUM_1'] = 1;
-                    options['CUSTUM_2'] = 0;
+                    options['CUSTOM_1'] = 1;
+                    options['CUSTOM_2'] = 0;
                     return options;
                 }
             }),
@@ -55,8 +55,8 @@ describe('Shader', () => {
 #define HILO_PREMULTIPLY_ALPHA 1
 #define HILO_RECEIVE_SHADOWS 1
 #define HILO_CAST_SHADOWS 1
-#define CUSTUM_1 1
-#define CUSTUM_2 0
+#define CUSTOM_1 1
+#define CUSTOM_2 0
 #define HILO_HAS_FOG 1
 #define HILO_FOG_LINEAR 1
 `);
@@ -68,14 +68,16 @@ describe('Shader', () => {
             'void main(){}',
             '#define HILO_LIGHT_TYPE_NONE 1\n'
         );
-        expect(shader.vs).toBe(`
+        expect(shader.vs).toBe(`#version 300 es
+
 #define HILO_MAX_PRECISION highp
 #define HILO_MAX_VERTEX_PRECISION highp
 #define HILO_MAX_FRAGMENT_PRECISION highp
 #define HILO_LIGHT_TYPE_NONE 1
 void main(){}`);
 
-        expect(shader.fs).toBe(`
+        expect(shader.fs).toBe(`#version 300 es
+
 #define HILO_MAX_PRECISION highp
 #define HILO_MAX_VERTEX_PRECISION highp
 #define HILO_MAX_FRAGMENT_PRECISION highp
