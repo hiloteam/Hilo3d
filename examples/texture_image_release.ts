@@ -1,66 +1,83 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
+
+const { stage } = createExampleContext();
 
 // basic loader will cache all requests,
-        // if you want to release image memory,
-        // you should disable or clear(Hilo3d.BasicLoader.clearCache()) after load
-        Hilo3d.BasicLoader.disableCache();
-        var loader = new Hilo3d.Loader();
+// if you want to release image memory,
+// you should disable or clear(Hilo3d.BasicLoader.clearCache()) after load
+Hilo3d.BasicLoader.disableCache();
+const cubeTextureLoader = new Hilo3d.CubeTextureLoader();
+const imageLoader = new Hilo3d.BasicLoader();
+const imageUrl = (name: string): string => new URL(`./image/${name}`, import.meta.url).href;
 
-        loader.load({
-            type: 'CubeTexture',
-            isImageCanRelease: true,
-            images: [
-                '//gw.alicdn.com/tfs/TB1Ss.ORpXXXXcNXVXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1YhUDRpXXXXcyaXXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1Y1MORpXXXXcpXVXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1ZgAqRpXXXXa0aFXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1IVZNRpXXXXaNXFXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1M3gyRpXXXXb9apXXXXXXXXXX-2048-2048.jpg_960x960.jpg'
-            ]
-        }).then(skyboxMap => {
-            window.skyboxMap = skyboxMap;
-            var skybox = new Hilo3d.Mesh({
-                geometry: new Hilo3d.BoxGeometry(),
-                material: new Hilo3d.BasicMaterial({
-                    lightType: 'NONE',
-                    side: Hilo3d.constants.BACK,
-                    diffuse: skyboxMap
-                })
-            }).addTo(stage);
-            skybox.setScale(20);
-        });
-
-        var boxGeometry = new Hilo3d.BoxGeometry();
-        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
-        var texture = new Hilo3d.LazyTexture({
-            isImageCanRelease: true,
-            crossOrigin:true,
-            src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
-        });
-
-        var angle = 0;
-        var axis = new Hilo3d.Vector3(1, 1, 1).normalize();
-        var textureBox = new Hilo3d.Mesh({
-            geometry:boxGeometry,
+void cubeTextureLoader
+    .load({
+        isImageCanRelease: true,
+        images: [
+            imageUrl('px.jpg'),
+            imageUrl('nx.jpg'),
+            imageUrl('py.jpg'),
+            imageUrl('ny.jpg'),
+            imageUrl('pz.jpg'),
+            imageUrl('nz.jpg')
+        ]
+    })
+    .then(skyboxMap => {
+        const skybox = new Hilo3d.Mesh({
+            geometry: new Hilo3d.BoxGeometry(),
             material: new Hilo3d.BasicMaterial({
-                diffuse: texture
-            }),
-            // x: 1,
-            onUpdate: function() {
-                angle += Hilo3d.math.DEG2RAD;
-                this.quaternion.setAxisAngle(axis, angle);
-            }
-        });
-        stage.addChild(textureBox);
+                lightType: 'NONE',
+                side: Hilo3d.constants.BACK,
+                diffuse: skyboxMap
+            })
+        }).addTo(stage);
+        skybox.setScale(20);
+    })
+    .catch((error: unknown) => {
+        console.error('Failed to load releasable skybox', error);
+    });
 
-        var idx = 0;
-        setInterval(function() {
-            loader.load({
-                src: ++idx % 2 ? './models/Tmall/baseColor.png' : '//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
-            }).then(img => {
-                if (Math.random() < .5) {
-                    texture.image = img;
-                }
-                texture.needUpdate = true;
-            });
-        }, 3000);
+const boxGeometry = new Hilo3d.BoxGeometry();
+boxGeometry.setAllRectUV([
+    [0, 1],
+    [1, 1],
+    [1, 0],
+    [0, 0]
+]);
+const texture = new Hilo3d.LazyTexture({
+    isImageCanRelease: true,
+    src: imageUrl('UV_Grid_Sm.jpg')
+});
+
+let angle = 0;
+const axis = new Hilo3d.Vector3(1, 1, 1).normalize();
+const textureBox = new Hilo3d.Mesh({
+    geometry: boxGeometry,
+    material: new Hilo3d.BasicMaterial({ diffuse: texture })
+});
+textureBox.onUpdate = () => {
+    angle += Hilo3d.math.DEG2RAD;
+    textureBox.quaternion.setAxisAngle(axis, angle);
+};
+stage.addChild(textureBox);
+
+let idx = 0;
+setInterval(function () {
+    void imageLoader
+        .load({
+            src: ++idx % 2 ? './models/Tmall/baseColor.png' : imageUrl('UV_Grid_Sm.jpg')
+        })
+        .then(img => {
+            if (!(img instanceof HTMLImageElement)) {
+                throw new TypeError('Replacement texture request did not return an image');
+            }
+            if (Math.random() < 0.5) {
+                texture.image = img;
+            }
+            texture.needUpdate = true;
+        })
+        .catch((error: unknown) => {
+            console.error('Failed to replace texture image', error);
+        });
+}, 3000);

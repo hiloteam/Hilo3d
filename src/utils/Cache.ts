@@ -1,80 +1,47 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
+/** A keyed cache with optional object-identity lookup. */
+class Cache<Value = unknown> {
+    private readonly entries = new Map<string, Value>();
+    private objectIds = new WeakMap<object, string>();
 
-/**
- * 缓存类
- * @class
- * @example
- * const cache = new Hilo3d.Cache();
- * cache.add('id1', {a:1});
- * cache.get('id1');
- * cache.remove('id1');
- */
-const Cache = Class.create<typeof hilo3d.Cache>()(/** @lends Cache.prototype */ {
-    /**
-     * @constructs
-     */
-    constructor() {
-        this._cache = {};
-    },
-    /**
-     * 获取对象
-     * @param  {String} id
-     * @return {Object}
-     */
-    get(id) {
-        return this._cache[id];
-    },
-    /**
-     * 获取对象
-     * @param {Object} obj
-     * @return {Object} [description]
-     */
-    getObject(obj) {
-        return this._cache[obj.__cacheId];
-    },
-    /**
-     * 增加对象
-     * @param {String} id
-     * @param {Object} obj
-     */
-    add(id, obj) {
-        if (typeof obj === 'object') {
-            obj.__cacheId = id;
-        }
-        this._cache[id] = obj;
-    },
-    /**
-     * 移除对象
-     * @param {String} id
-     */
-    remove(id) {
-        delete this._cache[id];
-    },
-    /**
-     * 移除对象
-     * @param {Object} obj
-     */
-    removeObject(obj) {
-        delete this._cache[obj.__cacheId];
-    },
-    /**
-     * 移除所有对象
-     */
-    removeAll() {
-        this._cache = {};
-    },
-    /**
-     * 遍历所有缓存
-     * @param  {Function} callback
-     */
-    each(callback) {
-        const cache = this._cache;
-        for (let id in cache) {
-            callback(cache[id], id);
+    get(id: string): Value | undefined {
+        return this.entries.get(id);
+    }
+
+    getObject(object: object): Value | undefined {
+        const id = this.objectIds.get(object);
+        return id === undefined ? undefined : this.entries.get(id);
+    }
+
+    add(id: string, value: Value): void {
+        this.entries.set(id, value);
+        if ((typeof value === 'object' && value !== null) || typeof value === 'function') {
+            this.objectIds.set(value, id);
         }
     }
-});
+
+    remove(id: string): void {
+        const value = this.entries.get(id);
+        if ((typeof value === 'object' && value !== null) || typeof value === 'function') {
+            this.objectIds.delete(value);
+        }
+        this.entries.delete(id);
+    }
+
+    removeObject(object: object): void {
+        const id = this.objectIds.get(object);
+        if (id === undefined) return;
+        this.objectIds.delete(object);
+        this.entries.delete(id);
+    }
+
+    removeAll(): void {
+        this.entries.clear();
+        this.objectIds = new WeakMap<object, string>();
+    }
+
+    each(callback: (value: Value, id: string) => void): void {
+        for (const [id, value] of this.entries) callback(value, id);
+    }
+}
 
 export default Cache;

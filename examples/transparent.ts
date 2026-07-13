@@ -1,27 +1,35 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-var boxGeometry = new Hilo3d.BoxGeometry();
-        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+const { stage } = createExampleContext();
 
-        var container = new Hilo3d.Node({
-            rotationY:-70
-        }).addTo(stage);
-        var n = totalNum = 8;
-        while(n --){
-            var box = new Hilo3d.Mesh({
-                geometry: boxGeometry,
-                material: new Hilo3d.BasicMaterial({
-                    transparent:true,
-                    transparency:0.5,
-                    diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random())
-                }),
-                x:- totalNum * 0.5 + n + 0.2,
-                rotationX:n * 36,
-                onUpdate: function() {
-                    this.rotationX += .5;
-                }
-            });
-            container.addChild(box);
-        } 
+const boxGeometry = new Hilo3d.BoxGeometry();
+boxGeometry.setAllRectUV([
+    [0, 1],
+    [1, 1],
+    [1, 0],
+    [0, 0]
+]);
 
-        stage.setScale(0.4);
+const container = new Hilo3d.Node({
+    rotationY: -70
+}).addTo(stage);
+const totalNum = 8;
+let n = totalNum;
+while (n--) {
+    const box = new Hilo3d.Mesh({
+        geometry: boxGeometry,
+        material: new Hilo3d.BasicMaterial({
+            transparent: true,
+            transparency: 0.5,
+            diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random())
+        }),
+        x: -totalNum * 0.5 + n + 0.2,
+        rotationX: n * 36
+    });
+    box.onUpdate = () => {
+        box.rotationX += 0.5;
+    };
+    container.addChild(box);
+}
+stage.setScale(0.4);

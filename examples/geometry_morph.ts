@@ -1,42 +1,59 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-var boxGeometry = new Hilo3d.BoxGeometry();
-        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
-        directionLight.direction.set(-1, -0.5, 0);
+const { stage, directionLight } = createExampleContext();
+directionLight.direction.set(-1, -0.5, 0);
 
-        var morphGeometry = new Hilo3d.MorphGeometry({
-            vertices: boxGeometry.vertices.clone(),
-            indices: boxGeometry.indices.clone(),
-            uvs: boxGeometry.uvs.clone(),
-            weights:[0, 1]
-        }); 
+function requireGeometryData(data: Hilo3d.GeometryData | null, name: string): Hilo3d.GeometryData {
+    if (!data) throw new Error(`Box geometry did not create ${name}.`);
+    return data;
+}
 
-        morphGeometry.targets = {
-            vertices: [new Hilo3d.GeometryData(new Float32Array(morphGeometry.vertices.length), 3), new Hilo3d.GeometryData(new Float32Array(morphGeometry.vertices.length), 3)]
-        };
+const boxGeometry = new Hilo3d.BoxGeometry();
+boxGeometry.setAllRectUV([
+    [0, 1],
+    [1, 1],
+    [1, 0],
+    [0, 0]
+]);
+const vertices = requireGeometryData(boxGeometry.vertices, 'vertices').clone();
+const indices = requireGeometryData(boxGeometry.indices, 'indices').clone();
+const uvs = requireGeometryData(boxGeometry.uvs, 'UV coordinates').clone();
+const positiveTarget = new Hilo3d.GeometryData(new Float32Array(vertices.length), 3);
+const negativeTarget = new Hilo3d.GeometryData(new Float32Array(vertices.length), 3);
+const morphGeometry = new Hilo3d.MorphGeometry({
+    vertices,
+    indices,
+    uvs,
+    weights: [0, 1],
+    targets: { vertices: [positiveTarget, negativeTarget] }
+});
 
-        var a = new Hilo3d.Vector3(0.5, 0.5, 0.5);
-        var b = new Hilo3d.Vector3(-0.5, -0.5, -0.5);
-        morphGeometry.vertices.traverse(function(attribute, index){
-            if (attribute.equals(a)) {
-                morphGeometry.targets.vertices[0].set(index, new Hilo3d.Vector3(0.3, 0.3, 0.3));
-            }
+const positiveCorner = new Hilo3d.Vector3(0.5, 0.5, 0.5);
+const negativeCorner = new Hilo3d.Vector3(-0.5, -0.5, -0.5);
+vertices.traverse((attribute, index) => {
+    if (!(attribute instanceof Hilo3d.Vector3)) {
+        throw new TypeError('Box position attribute must contain vec3 values.');
+    }
+    if (attribute.equals(positiveCorner)) {
+        positiveTarget.set(index, new Hilo3d.Vector3(0.3, 0.3, 0.3));
+    }
+    if (attribute.equals(negativeCorner)) {
+        negativeTarget.set(index, new Hilo3d.Vector3(-0.3, -0.3, -0.3));
+    }
+    return undefined;
+});
 
-            if (attribute.equals(b)) {
-                morphGeometry.targets.vertices[1].set(index, new Hilo3d.Vector3(-0.3, -0.3, -0.3));
-            }
+const mesh = new Hilo3d.Mesh({
+    geometry: morphGeometry,
+    material: new Hilo3d.PBRMaterial({
+        baseColorMap: new Hilo3d.LazyTexture({
+            src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
         })
-
-        var mesh = new Hilo3d.Mesh({
-            geometry: morphGeometry,
-            material:new Hilo3d.PBRMaterial({
-                baseColorMap:new Hilo3d.LazyTexture({
-                    src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
-                })
-            }),
-            onUpdate:function(){
-                var weights = this.geometry.weights;
-                weights[0] = Math.abs(Math.sin(new Date().getTime()/1000));
-                weights[1] = 1 - weights[0];
-            }
-        }).addTo(stage);
+    })
+}).addTo(stage);
+mesh.onUpdate = () => {
+    const firstWeight = Math.abs(Math.sin(performance.now() / 1000));
+    morphGeometry.weights[0] = firstWeight;
+    morphGeometry.weights[1] = 1 - firstWeight;
+};

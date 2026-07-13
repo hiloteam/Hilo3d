@@ -1,123 +1,97 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import Vector4 from './Vector4';
-import {
-    padLeft
-} from '../utils/util';
-
+import { padLeft } from '../utils/util';
+import { requireNumber } from './numberArray';
 /**
  * 颜色类
- * @class
- * @extends Vector4
  */
-const Color = Class.create<typeof hilo3d.Color>()(/** @lends Color.prototype */ {
-    Extends: Vector4,
+class Color extends Vector4 {
     /**
      * 类名
-     * @type {String}
-     * @default Color
      */
-    className: 'Color',
-    /**
-     * @type {Boolean}
-     * @default true
-     */
-    isColor: true,
+    override className = 'Color';
+    isColor = true;
     /**
      * r
-     * @type {Number}
      */
-    r: {
-        get() {
-            return this.x;
-        },
-        set(v) {
-            this.x = v;
-        }
-    },
+    get r(): number {
+        return this.x;
+    }
+
+    set r(value: number) {
+        this.x = value;
+    }
     /**
      * g
-     * @type {Number}
      */
-    g: {
-        get() {
-            return this.y;
-        },
-        set(v) {
-            this.y = v;
-        }
-    },
+    get g(): number {
+        return this.y;
+    }
+
+    set g(value: number) {
+        this.y = value;
+    }
     /**
      * b
-     * @type {Number}
      */
-    b: {
-        get() {
-            return this.z;
-        },
-        set(v) {
-            this.z = v;
-        }
-    },
+    get b(): number {
+        return this.z;
+    }
+
+    set b(value: number) {
+        this.z = value;
+    }
     /**
      * a
-     * @type {Number}
      */
-    a: {
-        get() {
-            return this.w;
-        },
-        set(v) {
-            this.w = v;
-        }
-    },
+    get a(): number {
+        return this.w;
+    }
+
+    set a(value: number) {
+        this.w = value;
+    }
     /**
-     * @constructs
-     * @param  {Number} [r=1]
-     * @param  {Number} [g=1]
-     * @param  {Number} [b=1]
-     * @param  {Number} [a=1]
+     * @param r -
+     * @param g -
+     * @param b -
+     * @param a -
      */
     constructor(r = 1, g = 1, b = 1, a = 1) {
-        Color.superclass.constructor.call(this, r, g, b, a);
-    },
+        super(r, g, b, a);
+    }
     /**
      * 转换到数组
-     * @param  {Array}  [array=[]] 转换到的数组
-     * @param  {Number} [offset=0] 数组偏移值
-     * @return {Array}
+     * @param array - 转换到的数组
+     * @param offset - 数组偏移值
      */
-    toRGBArray(array = [], offset = 0) {
+    toRGBArray(array: number[] = [], offset = 0): number[] {
         const el = this.elements;
         array[offset] = el[0];
         array[offset + 1] = el[1];
         array[offset + 2] = el[2];
         return array;
-    },
+    }
     /**
      * 从数组赋值
-     * @param  {Array} array 数组
-     * @param  {Number} [offset=0] 数组偏移值
-     * @return {Color}
+     * @param array - 数组
+     * @param offset - 数组偏移值
      */
-    fromUintArray(array, offset = 0) {
-        this.elements[0] = array[offset] / 255;
-        this.elements[1] = array[offset + 1] / 255;
-        this.elements[2] = array[offset + 2] / 255;
-        this.elements[3] = array[offset + 3] / 255;
+    fromUintArray(array: ArrayLike<number>, offset = 0): this {
+        this.elements[0] = requireNumber(array, offset) / 255;
+        this.elements[1] = requireNumber(array, offset + 1) / 255;
+        this.elements[2] = requireNumber(array, offset + 2) / 255;
+        this.elements[3] = requireNumber(array, offset + 3) / 255;
         return this;
-    },
+    }
     /**
      * 从十六进制值赋值
-     * @param  {String|Number} hex 颜色的十六进制值，可以以下形式："#ff9966", "ff9966", "#f96", "f96", 0xff9966
-     * @return {Color}
+     * @param hex - 颜色的十六进制值，可以以下形式："#ff9966", "ff9966", "#f96", "f96", 0xff9966
      */
-    fromHEX(hex) {
+    fromHEX(hex: string | number): this {
         if (typeof hex === 'number') {
             hex = padLeft(hex.toString(16), 6);
         } else {
-            if (hex[0] === '#') {
+            if (hex.startsWith('#')) {
                 hex = hex.slice(1);
             }
             if (hex.length === 3) {
@@ -128,18 +102,16 @@ const Color = Class.create<typeof hilo3d.Color>()(/** @lends Color.prototype */ 
         this.elements[1] = parseInt(hex.slice(2, 4), 16) / 255;
         this.elements[2] = parseInt(hex.slice(4, 6), 16) / 255;
         return this;
-    },
+    }
     /**
      * 转16进制
-     * @return {String}
      */
-    toHEX() {
+    toHEX(): string {
         let hex = '';
         for (let i = 0; i < 3; i++) {
-            hex += padLeft(Math.floor(this.elements[i] * 255).toString(16), 2);
+            hex += padLeft(Math.floor(requireNumber(this.elements, i) * 255).toString(16), 2);
         }
         return hex;
     }
-});
-
+}
 export default Color;

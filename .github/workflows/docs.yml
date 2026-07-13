@@ -1,0 +1,65 @@
+name: API documentation
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/docs.yml'
+      - 'src/**'
+      - 'examples/**'
+      - 'README.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig*.json'
+      - 'typedoc.json'
+      - 'vite.config.ts'
+      - 'vite.examples.config.ts'
+      - 'scripts/build-site.ts'
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.22.2
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm install --global npm@12.0.1
+          npm ci
+
+      - name: Build documentation and examples site
+        run: npm run site:build
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

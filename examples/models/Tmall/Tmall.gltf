@@ -1871,10 +1871,13 @@
                 {
                     "material": 0,
                     "mode": 4,
-                    "extensions": {
-                        "ALI_amc_mesh_compression": {
-                            "bufferView": 2
-                        }
+                    "indices": 95,
+                    "attributes": {
+                        "POSITION": 96,
+                        "NORMAL": 97,
+                        "TEXCOORD_0": 98,
+                        "JOINTS_0": 99,
+                        "WEIGHTS_0": 100
                     }
                 }
             ]
@@ -1924,7 +1927,6 @@
     ],
     "extensionsUsed": [
         "HILO_animation_clips",
-        "ALI_amc_mesh_compression",
         "KHR_materials_pbrSpecularGlossiness"
     ],
     "extensions": {
@@ -3634,6 +3636,58 @@
             ],
             "bufferView": 1,
             "byteOffset": 0
+        },
+        {
+            "bufferView": 2,
+            "byteOffset": 0,
+            "componentType": 5123,
+            "count": 11706,
+            "type": "SCALAR"
+        },
+        {
+            "bufferView": 3,
+            "byteOffset": 0,
+            "componentType": 5126,
+            "count": 2373,
+            "type": "VEC3",
+            "min": [
+                -64.08705139160156,
+                0.02784596011042595,
+                -12.232001304626465
+            ],
+            "max": [
+                64.0840835571289,
+                176.12384033203125,
+                14.634076118469238
+            ]
+        },
+        {
+            "bufferView": 4,
+            "byteOffset": 0,
+            "componentType": 5126,
+            "count": 2373,
+            "type": "VEC3"
+        },
+        {
+            "bufferView": 5,
+            "byteOffset": 0,
+            "componentType": 5126,
+            "count": 2373,
+            "type": "VEC2"
+        },
+        {
+            "bufferView": 6,
+            "byteOffset": 0,
+            "componentType": 5123,
+            "count": 2373,
+            "type": "VEC4"
+        },
+        {
+            "bufferView": 7,
+            "byteOffset": 0,
+            "componentType": 5126,
+            "count": 2373,
+            "type": "VEC4"
         }
     ],
     "bufferViews": [
@@ -3649,17 +3703,45 @@
         },
         {
             "buffer": 0,
-            "byteLength": 79927,
-            "byteOffset": 636516
+            "byteLength": 23412,
+            "byteOffset": 636516,
+            "target": 34963
+        },
+        {
+            "buffer": 0,
+            "byteLength": 28476,
+            "byteOffset": 659928,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteLength": 28476,
+            "byteOffset": 688404,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteLength": 18984,
+            "byteOffset": 716880,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteLength": 18984,
+            "byteOffset": 735864,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteLength": 37968,
+            "byteOffset": 754848,
+            "target": 34962
         }
     ],
     "buffers": [
         {
-            "byteLength": 716443,
+            "byteLength": 792816,
             "uri": "./model.bin"
         }
-    ],
-    "extensionsRequired": [
-        "ALI_amc_mesh_compression"
     ]
 }

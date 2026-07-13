@@ -1,6 +1,3 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import math from '../math/math';
 import Vector2 from '../math/Vector2';
 import Vector3 from '../math/Vector3';
@@ -8,482 +5,522 @@ import Vector4 from '../math/Vector4';
 import Matrix3 from '../math/Matrix3';
 import Matrix4 from '../math/Matrix4';
 import Quaternion from '../math/Quaternion';
+import Euler from '../math/Euler';
 import Sphere from '../math/Sphere';
-import GeometryData from './GeometryData';
-import log from '../utils/log';
-import {
-    copyArrayData,
-    hasOwnProperty
-} from '../utils/util';
-
-import constants from '../constants';
-
-const {
-    TRIANGLES,
-    LINES,
-    FRONT,
-    BACK,
-    FRONT_AND_BACK
-} = constants;
-
+import type Ray from '../math/Ray';
+import GeometryData, {
+    type GeometryAttributeValue,
+    type GeometryComponentSize
+} from './GeometryData';
+import { copyArrayData } from '../utils/util';
+import { BACK, FRONT, FRONT_AND_BACK, LINES, TRIANGLES, TRIANGLE_STRIP } from '../constants/webgl';
+import type { ShaderOptions, TypedArrayConstructor } from '../renderer/types';
 const tempVector31 = new Vector3();
 const tempVector32 = new Vector3();
 const tempVector33 = new Vector3();
-
 const tempVector41 = new Vector4();
-
 const tempVector21 = new Vector2();
 const tempVector22 = new Vector2();
 const tempVector23 = new Vector2();
-
 const tempMatrix3 = new Matrix3();
 const tempMatrix4 = new Matrix4();
 const tempQuaternion = new Quaternion();
+const tempEuler = new Euler();
 
+export interface Bounds {
+    x: number;
+    y: number;
+    z: number;
+    width: number;
+    height: number;
+    depth: number;
+    xMin: number;
+    xMax: number;
+    yMin: number;
+    yMax: number;
+    zMin: number;
+    zMax: number;
+}
 
+export interface GeometryParameters {
+    vertices?: GeometryData | null;
+    uvs?: GeometryData | null;
+    uvs1?: GeometryData | null;
+    colors?: GeometryData | null;
+    indices?: GeometryData | null;
+    skinIndices?: GeometryData | null;
+    skinWeights?: GeometryData | null;
+    normals?: GeometryData | null;
+    tangents?: GeometryData | null;
+    tangents1?: GeometryData | null;
+    mode?: GLenum;
+    isStatic?: boolean;
+    isDirty?: boolean;
+    useAABBRaycast?: boolean;
+    userData?: unknown;
+    positionDecodeMat?: Float32Array | number[] | null;
+    normalDecodeMat?: Float32Array | number[] | null;
+    uvDecodeMat?: Float32Array | number[] | null;
+    uv1DecodeMat?: Float32Array | number[] | null;
+}
+
+type GeometryDataKey =
+    'vertices' | 'uvs' | 'uvs1' | 'colors' | 'indices' | 'skinIndices' | 'skinWeights';
+
+type TangentKey = '_tangents' | '_tangents1';
+export type Point3 = readonly number[];
+export type Point2 = readonly number[];
+type GeometryConstructor = new (params?: GeometryParameters) => Geometry;
+
+function vector2Attribute(value: GeometryAttributeValue): Vector2 {
+    if (!(value instanceof Vector2)) throw new TypeError('Expected a Vector2 geometry attribute');
+    return value;
+}
+
+function vector3Attribute(value: GeometryAttributeValue): Vector3 {
+    if (!(value instanceof Vector3)) throw new TypeError('Expected a Vector3 geometry attribute');
+    return value;
+}
+
+function vector4Attribute(value: GeometryAttributeValue): Vector4 {
+    if (!(value instanceof Vector4)) throw new TypeError('Expected a Vector4 geometry attribute');
+    return value;
+}
+
+function readIndex(indices: ArrayLike<number>, index: number): number {
+    const value = indices[index];
+    if (value === undefined)
+        throw new RangeError(`Geometry index ${String(index)} is out of bounds`);
+    return value;
+}
+
+function forEachTriangle(
+    indices: ArrayLike<number>,
+    mode: GLenum,
+    callback: (a: number, b: number, c: number) => void
+): void {
+    if (mode === TRIANGLES) {
+        if (indices.length % 3 !== 0) {
+            throw new RangeError(
+                `Triangle index data must contain complete triples; received ${String(indices.length)} indices`
+            );
+        }
+        for (let index = 0; index < indices.length; index += 3) {
+            callback(
+                readIndex(indices, index),
+                readIndex(indices, index + 1),
+                readIndex(indices, index + 2)
+            );
+        }
+        return;
+    }
+    if (mode === TRIANGLE_STRIP) {
+        for (let index = 0; index + 2 < indices.length; index += 1) {
+            const first = readIndex(indices, index);
+            const second = readIndex(indices, index + 1);
+            const third = readIndex(indices, index + 2);
+            const a = index % 2 === 0 ? first : second;
+            const b = index % 2 === 0 ? second : first;
+            if (a !== b && b !== third && third !== a) callback(a, b, third);
+        }
+        return;
+    }
+    throw new Error(`Geometry triangle operations do not support draw mode ${String(mode)}`);
+}
+
+function coordinate(point: readonly number[], index: number): number {
+    const value = point[index];
+    if (value === undefined) throw new TypeError(`Point is missing coordinate ${String(index)}`);
+    return value;
+}
+
+function isGeometryData(value: unknown): value is GeometryData {
+    return value instanceof GeometryData;
+}
 /**
  * 几何体
- * @class
  * @example
+ * ```ts
  * const geometry = new Hilo3d.Geometry();
  * geometry.addFace([-0.5, -0.289, 0], [0.5, -0.289, 0], [0, 0.577, 0]);
+ * ```
  */
-const Geometry = Class.create<typeof hilo3d.Geometry>()(/** @lends Geometry.prototype */ {
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isGeometry: true,
-
-    /**
-     * @default Geometry
-     * @type {string}
-     */
-    className: 'Geometry',
-
+class Geometry {
+    readonly isGeometry = true;
+    readonly className: string = 'Geometry';
+    readonly isMorphGeometry: boolean = false;
     /**
      * 顶点数据
-     * @default null
-     * @type {GeometryData}
      */
-    vertices: null,
-
+    vertices: GeometryData | null = null;
     /**
      * uv 数据
-     * @default null
-     * @type {GeometryData}
      */
-    uvs: null,
-
+    uvs: GeometryData | null = null;
     /**
      * uv1 数据
-     * @default null
-     * @type {GeometryData}
      */
-    uvs1: null,
-
+    uvs1: GeometryData | null = null;
     /**
      * color 数据
-     * @default null
-     * @type {GeometryData}
      */
-    colors: null,
-
+    colors: GeometryData | null = null;
     /**
      * 顶点索引数据
-     * @default null
-     * @type {GeometryData}
      */
-    indices: null,
-
+    indices: GeometryData | null = null;
     /**
      * 骨骼索引
-     * @default null
-     * @type {GeometryData}
      */
-    skinIndices: null,
-
+    skinIndices: GeometryData | null = null;
     /**
      * 骨骼权重数据
-     * @default null
-     * @type {GeometryData}
      */
-    skinWeights: null,
-
+    skinWeights: GeometryData | null = null;
     /**
      * 绘制模式
-     * @default TRIANGLES
-     * @type {number}
      */
-    mode: TRIANGLES,
-
+    mode = TRIANGLES;
     /**
      * 是否是静态
-     * @type {Boolean}
-     * @default true
      */
-    isStatic: true,
-
+    isStatic = true;
     /**
      * 是否需要更新
-     * @type {Boolean}
-     * @default true
      */
-    isDirty: true,
-
+    isDirty = true;
     /**
      * 使用 aabb 碰撞检测
-     * @type {Boolean}
      */
-    useAABBRaycast: false,
-
+    useAABBRaycast = false;
     /**
      * 用户数据
-     * @default null
-     * @type {unknown}
      */
-    userData: null,
-
+    userData: unknown = null;
+    readonly id: string;
+    currentVerticesCount = 0;
+    currentIndicesCount = 0;
+    positionDecodeMat: Float32Array | number[] | null = null;
+    normalDecodeMat: Float32Array | number[] | null = null;
+    uvDecodeMat: Float32Array | number[] | null = null;
+    uv1DecodeMat: Float32Array | number[] | null = null;
+    private _normals: GeometryData | null = null;
+    private _tangents: GeometryData | null = null;
+    private _tangents1: GeometryData | null = null;
+    private _localBounds: Bounds | null = null;
+    private _sphereBounds: Sphere | null = null;
+    private _localSphereBounds: Sphere | null = null;
+    private _shaderKey: string | undefined;
     /**
-     * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
+     * @param params - 初始化参数，所有params都会复制到实例上
      */
-    constructor(params) {
+    constructor(params: GeometryParameters = {}) {
         /**
          * id
-         * @type {string}
          */
         this.id = math.generateUUID(this.className);
-
         Object.assign(this, params);
-
         this.currentVerticesCount = 0;
         this.currentIndicesCount = 0;
-    },
-    _needUpdateNormals: false,
+    }
+    private _needUpdateNormals = false;
     /**
      * 法向量数据，如果没有的话会自动生成
-     * @default null
-     * @type {GeometryData}
      */
-    normals: {
-        get() {
-            if (this._needUpdateNormals || !this._normals) {
-                this.calculateNormals();
-            }
-            return this._normals;
-        },
-        set(data) {
-            this._normals = data;
-            this._needUpdateNormals = false;
+    get normals(): GeometryData | null {
+        if (this._needUpdateNormals || !this._normals) {
+            this.calculateNormals();
         }
-    },
-    calculateNormals() {
+        return this._normals;
+    }
+    /**
+     * 法向量数据，如果没有的话会自动生成
+     */
+    set normals(data: GeometryData | null) {
+        this._normals = data;
+        this._needUpdateNormals = false;
+    }
+    calculateNormals(): void {
         const vertices = this.vertices;
         if (!vertices) {
-            log.warnOnce('geometry.calculateNormals', 'geometry.calculateNormals error:no vertices data.');
-            return;
+            throw new Error('Geometry.calculateNormals requires vertex data');
         }
-
-        if (!this._normals) {
-            this._normals = new GeometryData(new Float32Array(vertices.realLength), 3);
-        }
+        this._normals ??= new GeometryData(new Float32Array(vertices.realLength), 3);
         const normals = this._normals;
-        let indices;
+        let indices: ArrayLike<number>;
         if (this.indices) {
             indices = this.indices.data;
         } else {
             const len = vertices.length / 3;
-            indices = new Array(len);
-            for (let i = 0; i < len; i++) {
-                indices[i] = i;
-            }
+            indices = Array.from({ length: len }, (_value, index) => index);
         }
-        let idx = 0;
         const verticesInFaceCountList = new Uint8Array(vertices.count);
-        for (let i = 0; i < indices.length; i += 3) {
-            idx = indices[i];
-            tempVector31.copy(vertices.get(idx));
-            idx = indices[i + 1];
-            tempVector32.copy(vertices.get(idx));
-            idx = indices[i + 2];
-            tempVector33.copy(vertices.get(idx));
-
+        forEachTriangle(indices, this.mode, (a, b, c) => {
+            tempVector31.copy(vector3Attribute(vertices.get(a)));
+            tempVector32.copy(vector3Attribute(vertices.get(b)));
+            tempVector33.copy(vector3Attribute(vertices.get(c)));
             tempVector32.sub(tempVector31);
             tempVector33.sub(tempVector31);
             tempVector32.cross(tempVector33);
-
-            for (let j = 0; j < 3; j++) {
-                idx = indices[i + j];
-                if (verticesInFaceCountList[idx]) {
-                    let oldNormal = normals.get(idx);
-                    oldNormal.scale(verticesInFaceCountList[idx]);
+            for (const idx of [a, b, c]) {
+                const faceCount = verticesInFaceCountList[idx] ?? 0;
+                if (faceCount > 0) {
+                    const oldNormal = vector3Attribute(normals.get(idx));
+                    oldNormal.scale(faceCount);
                     oldNormal.add(tempVector32);
-                    oldNormal.scale(1 / (verticesInFaceCountList[idx] + 1));
+                    oldNormal.scale(1 / (faceCount + 1));
                     normals.set(idx, oldNormal);
                 } else {
                     normals.set(idx, tempVector32);
                 }
-                verticesInFaceCountList[idx]++;
+                verticesInFaceCountList[idx] = faceCount + 1;
             }
-        }
+        });
         this.isDirty = true;
         this._needUpdateNormals = false;
-    },
+    }
     /**
      * 切线向量数据，如果没有的话会自动生成
-     * @default null
-     * @type {GeometryData}
      */
-    tangents: {
-        get() {
-            if (!this._tangents) {
-                this.calculateTangents(this.uvs, '_tangents');
-            }
-            return this._tangents;
-        },
-        set(data) {
-            this._tangents = data;
+    get tangents(): GeometryData | null {
+        if (!this._tangents) {
+            this.calculateTangents(this.uvs, '_tangents');
         }
-    },
+        return this._tangents;
+    }
     /**
      * 切线向量数据，如果没有的话会自动生成
-     * @default null
-     * @type {GeometryData}
      */
-    tangents1: {
-        get() {
-            if (!this._tangents1) {
-                this.calculateTangents(this.uvs1, '_tangents1');
-            }
-            return this._tangents1;
-        },
-        set(data) {
-            this._tangents1 = data;
+    set tangents(data: GeometryData | null) {
+        this._tangents = data;
+    }
+    /**
+     * 切线向量数据，如果没有的话会自动生成
+     */
+    get tangents1(): GeometryData | null {
+        if (!this._tangents1) {
+            this.calculateTangents(this.uvs1, '_tangents1');
         }
-    },
-    calculateTangents(uvs, tangentsName) {
+        return this._tangents1;
+    }
+    /**
+     * 切线向量数据，如果没有的话会自动生成
+     */
+    set tangents1(data: GeometryData | null) {
+        this._tangents1 = data;
+    }
+    private calculateTangents(uvs: GeometryData | null, tangentsName: TangentKey): void {
         const vertices = this.vertices;
         if (!vertices) {
-            log.warnOnce('geometry.calculateTangents', 'geometry.calculateTangents error:no vertices data.');
-            return;
+            throw new Error('Geometry.calculateTangents requires vertex data');
         }
-        if (!this[tangentsName]) {
-            this[tangentsName] = new GeometryData(new Float32Array(vertices.count * 4), 4);
+        if (!uvs) {
+            throw new Error('Geometry.calculateTangents requires UV data');
         }
+        this[tangentsName] ??= new GeometryData(new Float32Array(vertices.count * 4), 4);
         const tangents = this[tangentsName];
-        let indices;
+        let indices: ArrayLike<number>;
         if (this.indices) {
             indices = this.indices.data;
         } else {
             const len = vertices.length / 3;
-            indices = new Array(len);
-            for (let i = 0; i < len; i++) {
-                indices[i] = i;
-            }
+            indices = Array.from({ length: len }, (_value, index) => index);
         }
-
-        let idx = 0;
-        for (let i = 0; i < indices.length; i += 3) {
-            idx = indices[i];
-            tempVector31.copy(vertices.get(idx));
-            tempVector21.copy(uvs.get(idx));
-            idx = indices[i + 1];
-            tempVector32.copy(vertices.get(idx));
-            tempVector22.copy(uvs.get(idx));
-            idx = indices[i + 2];
-            tempVector33.copy(vertices.get(idx));
-            tempVector23.copy(uvs.get(idx));
-
+        forEachTriangle(indices, this.mode, (a, b, c) => {
+            tempVector31.copy(vector3Attribute(vertices.get(a)));
+            tempVector21.copy(vector2Attribute(uvs.get(a)));
+            tempVector32.copy(vector3Attribute(vertices.get(b)));
+            tempVector22.copy(vector2Attribute(uvs.get(b)));
+            tempVector33.copy(vector3Attribute(vertices.get(c)));
+            tempVector23.copy(vector2Attribute(uvs.get(c)));
             // eage1
             tempVector32.sub(tempVector31);
             // eage2
             tempVector33.sub(tempVector31);
-
             // deltauv1
             tempVector22.sub(tempVector21);
             // deltauv2
             tempVector23.sub(tempVector21);
-
-            let f = 1 / (tempVector22.x * tempVector23.y - tempVector23.x * tempVector22.y);
+            const f = 1 / (tempVector22.x * tempVector23.y - tempVector23.x * tempVector22.y);
             if (!Number.isFinite(f)) {
                 tempVector31.x = 0;
                 tempVector31.y = 0;
                 tempVector31.z = 1;
             } else {
-                tempVector31.x = f * (tempVector23.y * tempVector32.x - tempVector22.y * tempVector33.x);
-                tempVector31.y = f * (tempVector23.y * tempVector32.y - tempVector22.y * tempVector33.y);
-                tempVector31.z = f * (tempVector23.y * tempVector32.z - tempVector22.y * tempVector33.z);
+                tempVector31.x =
+                    f * (tempVector23.y * tempVector32.x - tempVector22.y * tempVector33.x);
+                tempVector31.y =
+                    f * (tempVector23.y * tempVector32.y - tempVector22.y * tempVector33.y);
+                tempVector31.z =
+                    f * (tempVector23.y * tempVector32.z - tempVector22.y * tempVector33.z);
             }
-
             tempVector41.set(tempVector31.x, tempVector31.y, tempVector31.z, 1);
-
-            tangents.set(indices[i], tempVector41);
-            tangents.set(indices[i + 1], tempVector41);
-            tangents.set(indices[i + 2], tempVector41);
-        }
-
+            tangents.set(a, tempVector41);
+            tangents.set(b, tempVector41);
+            tangents.set(c, tempVector41);
+        });
         this.isDirty = true;
-    },
+    }
     /**
      * 将三角形模式转换为线框模式，即 Material 中的 wireframe
      */
-    convertToLinesMode() {
+    convertToLinesMode(): void {
         if (this.mode !== TRIANGLES) {
-            log.warn('Only support convert triangles to lines mode!');
-            return;
+            throw new Error('Geometry.convertToLinesMode requires TRIANGLES mode');
         }
         if (!this.indices) {
-            log.warn('Has no indices!');
-            return;
+            throw new Error('Geometry.convertToLinesMode requires index data');
         }
-
-        let newIndices = new Uint16Array(this.indices.length * 2);
-        let data = this.indices.data;
+        const newIndices = new Uint16Array(this.indices.length * 2);
+        const data = this.indices.data;
         for (let i = 0; i < data.length; i += 3) {
-            newIndices[i * 2] = data[i]; // A
-            newIndices[i * 2 + 1] = data[i + 1]; // B
-            newIndices[i * 2 + 2] = data[i + 1]; // B
-            newIndices[i * 2 + 3] = data[i + 2]; // C
-            newIndices[i * 2 + 4] = data[i + 2]; // C
-            newIndices[i * 2 + 5] = data[i]; // A
+            const a = readIndex(data, i);
+            const b = readIndex(data, i + 1);
+            const c = readIndex(data, i + 2);
+            newIndices[i * 2] = a;
+            newIndices[i * 2 + 1] = b;
+            newIndices[i * 2 + 2] = b;
+            newIndices[i * 2 + 3] = c;
+            newIndices[i * 2 + 4] = c;
+            newIndices[i * 2 + 5] = a;
         }
         this.indices.data = newIndices;
         this.mode = LINES;
-    },
+    }
     /**
      * 平移
-     * @param  {Number} [x=0]
-     * @param  {Number} [y=0]
-     * @param  {Number} [z=0]
-     * @return {Geometry} this
+     * @param x -
+     * @param y -
+     * @param z -
+     * @returns this
      */
-    translate(x = 0, y = 0, z = 0) {
+    translate(x = 0, y = 0, z = 0): this {
         this.transformMat4(tempMatrix4.fromTranslation(tempVector31.set(x, y, z)));
         return this;
-    },
+    }
     /**
      * 缩放
-     * @param  {Number} [x=1]
-     * @param  {Number} [y=1]
-     * @param  {Number} [z=1]
-     * @return {Geometry} this
+     * @param x -
+     * @param y -
+     * @param z -
+     * @returns this
      */
-    scale(x = 1, y = 1, z = 1) {
+    scale(x = 1, y = 1, z = 1): this {
         this.transformMat4(tempMatrix4.fromScaling(tempVector31.set(x, y, z)));
         return this;
-    },
+    }
     /**
      * 旋转
-     * @param  {Number} [x=0] 旋转角度x
-     * @param  {Number} [y=0] 旋转角度y
-     * @param  {Number} [z=0] 旋转角度z
-     * @return {Geometry} this
+     * @param x - 旋转角度x
+     * @param y - 旋转角度y
+     * @param z - 旋转角度z
+     * @returns this
      */
-    rotate(x = 0, y = 0, z = 0) {
-        this.transformMat4(tempMatrix4.fromQuat(tempQuaternion.fromEuler({
-            x: x * math.DEG2RAD,
-            y: y * math.DEG2RAD,
-            z: z * math.DEG2RAD
-        })));
+    rotate(x = 0, y = 0, z = 0): this {
+        tempEuler.set(x * math.DEG2RAD, y * math.DEG2RAD, z * math.DEG2RAD);
+        this.transformMat4(tempMatrix4.fromQuat(tempQuaternion.fromEuler(tempEuler)));
         return this;
-    },
+    }
     /**
      * Transforms the geometry with a mat4.
-     * @param  {Matrix4} mat4
-     * @return {Geometry} this
+     * @param mat4 -
+     * @returns this
      */
-    transformMat4(mat4) {
+    transformMat4(mat4: Matrix4): this {
         const vertices = this.vertices;
         if (vertices) {
             vertices.traverse((vertex, index, offset) => {
-                vertices.setByOffset(offset, vertex.transformMat4(mat4));
+                vertices.setByOffset(offset, vector3Attribute(vertex).transformMat4(mat4));
             });
         }
-
         tempMatrix3.normalFromMat4(mat4);
         if (this._normals) {
-            const normals = this.normals;
+            const normals = this._normals;
             normals.traverse((vertex, index, offset) => {
-                normals.setByOffset(offset, vertex.transformMat3(tempMatrix3).normalize());
+                normals.setByOffset(
+                    offset,
+                    vector3Attribute(vertex).transformMat3(tempMatrix3).normalize()
+                );
             });
         }
-
         if (this._tangents) {
-            const tangents = this.tangents;
+            const tangents = this._tangents;
             tangents.traverse((vertex, index, offset) => {
-                tangents.setByOffset(offset, vertex.transformMat3(tempMatrix3).normalize());
+                const tangent = vector4Attribute(vertex);
+                tempVector31
+                    .set(tangent.x, tangent.y, tangent.z)
+                    .transformMat3(tempMatrix3)
+                    .normalize();
+                tangent.set(tempVector31.x, tempVector31.y, tempVector31.z, tangent.w);
+                tangents.setByOffset(offset, tangent);
             });
         }
-
         this.isDirty = true;
         return this;
-    },
+    }
     /**
      * 合并两个 geometry
-     * @param  {Geometry} geometry
-     * @param  {Matrix4} [matrix=null] 合并的矩阵
-     * @return {Geometry} this
+     * @param geometry -
+     * @param matrix - 合并的矩阵
+     * @returns this
      */
-    merge(geometry, matrix) {
+    merge(geometry: Geometry, matrix?: Matrix4): this {
         let vertices = geometry.vertices;
         if (vertices && this.vertices) {
             const count = this.vertices.count;
-
             if (matrix) {
-                vertices = geometry.vertices.clone();
-                vertices.traverse((vertex, index, offset) => {
-                    vertices.setByOffset(offset, vertex.transformMat4(matrix));
+                vertices = vertices.clone();
+                const transformedVertices = vertices;
+                transformedVertices.traverse((vertex, index, offset) => {
+                    transformedVertices.setByOffset(
+                        offset,
+                        vector3Attribute(vertex).transformMat4(matrix)
+                    );
                 });
             }
-
             this.vertices.merge(vertices);
-
             if (this.indices && geometry.indices) {
                 this.indices.merge(geometry.indices, data => data + count);
             } else {
                 this.indices = null;
             }
         }
-
         if (this.uvs && geometry.uvs) {
             this.uvs.merge(geometry.uvs);
         } else {
             this.uvs = null;
         }
-
         if (this.uvs1 && geometry.uvs1) {
             this.uvs1.merge(geometry.uvs1);
         } else {
             this.uvs1 = null;
         }
-
         if (this.colors && geometry.colors) {
             this.colors.merge(geometry.colors);
         } else {
             this.colors = null;
         }
-
         if (this._normals) {
             this._normals = null;
         }
-
         if (this._tangents) {
             this._tangents = null;
         }
-
         if (this._tangents1) {
             this._tangents1 = null;
         }
-
         this.isDirty = true;
-
         return this;
-    },
-    ensureData(name, size, total, TypedArray) {
-        let geometryData = this[name];
+    }
+    private ensureData(
+        name: GeometryDataKey,
+        size: GeometryComponentSize,
+        total: number,
+        DataClass: TypedArrayConstructor
+    ): GeometryData {
+        const geometryData = this[name];
         if (!geometryData || total > geometryData.length) {
-            const newData = new TypedArray(total);
+            const newData = new DataClass(total);
             if (geometryData) {
                 newData.set(geometryData.data);
                 geometryData.data = newData;
@@ -491,142 +528,142 @@ const Geometry = Class.create<typeof hilo3d.Geometry>()(/** @lends Geometry.prot
                 this[name] = new GeometryData(newData, size);
             }
         }
-    },
+        const result = this[name];
+        if (!result) throw new Error(`Failed to initialize geometry data: ${name}`);
+        return result;
+    }
     /**
      * 添加顶点
-     * @param {...number[]} points 顶点坐标，如 addPoints([x, y, z], [x, y, z])
+     * @param points - 顶点坐标，如 addPoints([x, y, z], [x, y, z])
      */
-    addPoints() {
-        const points = [].slice.call(arguments);
+    addPoints(...points: Point3[]): number {
         const total = (this.currentVerticesCount + points.length) * 3;
-        this.ensureData('vertices', 3, total, Float32Array);
-
-        const data = this.vertices.data;
-        points.forEach((point) => {
-            let start = this.currentVerticesCount++ * 3;
-            data[start] = point[0];
-            data[start + 1] = point[1];
-            data[start + 2] = point[2];
+        const data = this.ensureData('vertices', 3, total, Float32Array).data;
+        points.forEach(point => {
+            const start = this.currentVerticesCount++ * 3;
+            data[start] = coordinate(point, 0);
+            data[start + 1] = coordinate(point, 1);
+            data[start + 2] = coordinate(point, 2);
         });
         return this.currentVerticesCount - points.length;
-    },
+    }
     /**
      * 添加顶点索引
-     * @param {...number} indices 顶点索引，如 addIndices(0, 1, 2)
+     * @param indices - 顶点索引，如 addIndices(0, 1, 2)
      */
-    addIndices() {
-        const indices = [].slice.call(arguments);
+    addIndices(...indices: number[]): void {
         const total = this.currentIndicesCount + indices.length;
-        this.ensureData('indices', 1, total, Uint16Array);
-        const data = this.indices.data;
-        indices.forEach((idx) => {
+        const data = this.ensureData('indices', 1, total, Uint16Array).data;
+        indices.forEach(idx => {
             data[this.currentIndicesCount++] = idx;
         });
-
         this._needUpdateNormals = true;
-    },
+    }
     /**
      * 添加一条线
-     * @param {number[]} p1 起点坐标，如 [x, y, z]
-     * @param {number[]} p2 终点坐标
+     * @param p1 - 起点坐标，如 [x, y, z]
+     * @param p2 - 终点坐标
      */
-    addLine(p1, p2) {
-        let start = this.addPoints(p1, p2);
+    addLine(p1: Point3, p2: Point3): void {
+        const start = this.addPoints(p1, p2);
         this.addIndices(start, start + 1);
-    },
+    }
     /**
      * 添加一个三角形 ABC
-     * @param {number[]} p1 点A，如 [x, y, z]
-     * @param {number[]} p2 点B
-     * @param {number[]} p3 点C
+     * @param p1 - 点A，如 [x, y, z]
+     * @param p2 - 点B
+     * @param p3 - 点C
      */
-    addFace(p1, p2, p3) {
-        let start = this.addPoints(p1, p2, p3);
+    addFace(p1: Point3, p2: Point3, p3: Point3): void {
+        const start = this.addPoints(p1, p2, p3);
         this.addIndices(start, start + 1, start + 2);
-    },
+    }
     /**
      * 添加一个矩形 ABCD
-     * @param {number[]} p1 点A，如 [x, y, z]
-     * @param {number[]} p2 点B
-     * @param {number[]} p3 点C
-     * @param {number[]} p4 点D
+     * @param p1 - 点A，如 [x, y, z]
+     * @param p2 - 点B
+     * @param p3 - 点C
+     * @param p4 - 点D
      */
-    addRect(p1, p2, p3, p4) {
-        let start = this.addPoints(p1, p2, p3, p4);
+    addRect(p1: Point3, p2: Point3, p3: Point3, p4: Point3): void {
+        const start = this.addPoints(p1, p2, p3, p4);
         // 0 1 2 & 0 2 3 make a rect
         this.addIndices(start, start + 1, start + 2, start, start + 2, start + 3);
-    },
+    }
     /**
      * 设置顶点对应的uv坐标
-     * @param {number} start 开始的顶点索引
-     * @param {number[][]} uvs uv坐标数据，如 [[0, 0], [1, 0]]
+     * @param start - 开始的顶点索引
+     * @param uvs - uv坐标数据，如 [[0, 0], [1, 0]]
      */
-    setVertexUV(start, uvs) {
-        this.ensureData('uvs', 2, this.vertices.length / 3 * 2, Float32Array);
-        const data = this.uvs.data;
+    setVertexUV(start: number, uvs: readonly Point2[]): void {
+        if (!this.vertices) throw new Error('Cannot set UVs before vertices are initialized');
+        const data = this.ensureData('uvs', 2, (this.vertices.length / 3) * 2, Float32Array).data;
         for (let i = 0; i < uvs.length; i++) {
-            data[start + i * 2] = uvs[i][0];
-            data[start + i * 2 + 1] = uvs[i][1];
+            const uv = uvs[i];
+            if (!uv) throw new RangeError(`UV index ${String(i)} is out of bounds`);
+            data[start + i * 2] = coordinate(uv, 0);
+            data[start + i * 2 + 1] = coordinate(uv, 1);
         }
-    },
+    }
     /**
      * 设置三角形ABC的uv
-     * @param {number} start 开始的顶点索引
-     * @param {number[]} p1 点A的uv，如 [0, 0]
-     * @param {number[]} p2 点B的uv
-     * @param {number[]} p3 点C的uv
+     * @param start - 开始的顶点索引
+     * @param p1 - 点A的uv，如 [0, 0]
+     * @param p2 - 点B的uv
+     * @param p3 - 点C的uv
      */
-    setFaceUV(start, p1, p2, p3) {
+    setFaceUV(start: number, p1: Point2, p2: Point2, p3: Point2): void {
         this.setVertexUV(start, [p1, p2, p3]);
-    },
+    }
     /**
      * 设置矩形ABCD的uv
-     * @param {number} start 开始的顶点索引
-     * @param {number[]} p1 点A的uv，如 [0, 0]
-     * @param {number[]} p2 点B的uv
-     * @param {number[]} p3 点C的uv
-     * @param {number[]} p4 点D的uv
+     * @param start - 开始的顶点索引
+     * @param p1 - 点A的uv，如 [0, 0]
+     * @param p2 - 点B的uv
+     * @param p3 - 点C的uv
+     * @param p4 - 点D的uv
      */
-    setRectUV(start, p1, p2, p3, p4) {
+    setRectUV(start: number, p1: Point2, p2: Point2, p3: Point2, p4: Point2): void {
         this.setVertexUV(start, [p1, p2, p3, p4]);
-    },
+    }
     /**
      * 获取指定matrix变化后的包围盒数据
      *
-     * @param {Matrix4} [matrix=null] matrix 需要变换的矩阵
-     * @param {Bounds} [bounds=null] 包围盒数据，传入的话会改变他
-     * @return {Bounds} 包围盒数据
+     * @param matrix - matrix 需要变换的矩阵
+     * @param bounds - 包围盒数据，传入的话会改变他
+     * @returns 包围盒数据
      */
-    getBounds(matrix, bounds) {
-        if (!bounds) {
-            bounds = {
-                xMin: Infinity,
-                xMax: -Infinity,
-                yMin: Infinity,
-                yMax: -Infinity,
-                zMin: Infinity,
-                zMax: -Infinity
-            };
-        }
-
+    getBounds(matrix?: Matrix4, bounds?: Bounds): Bounds {
+        bounds ??= {
+            xMin: Infinity,
+            xMax: -Infinity,
+            yMin: Infinity,
+            yMax: -Infinity,
+            zMin: Infinity,
+            zMax: -Infinity,
+            x: 0,
+            y: 0,
+            z: 0,
+            width: 0,
+            height: 0,
+            depth: 0
+        };
         const vertices = this.vertices;
         if (!vertices) {
-            log.warnOnce('geometry.getBounds', 'geometry has no vertices data, geometry.getBounds will return Infinity bounds.');
-            return bounds;
+            throw new Error('Geometry.getBounds requires vertex data');
         }
-
-        vertices.traverse((vertexData) => {
+        vertices.traverse(vertexData => {
+            const vertex = vector3Attribute(vertexData);
             if (matrix) {
-                vertexData.transformMat4(matrix);
+                vertex.transformMat4(matrix);
             }
-            bounds.xMax = Math.max(bounds.xMax, vertexData.x);
-            bounds.yMax = Math.max(bounds.yMax, vertexData.y);
-            bounds.zMax = Math.max(bounds.zMax, vertexData.z);
-            bounds.xMin = Math.min(bounds.xMin, vertexData.x);
-            bounds.yMin = Math.min(bounds.yMin, vertexData.y);
-            bounds.zMin = Math.min(bounds.zMin, vertexData.z);
+            bounds.xMax = Math.max(bounds.xMax, vertex.x);
+            bounds.yMax = Math.max(bounds.yMax, vertex.y);
+            bounds.zMax = Math.max(bounds.zMax, vertex.z);
+            bounds.xMin = Math.min(bounds.xMin, vertex.x);
+            bounds.yMin = Math.min(bounds.yMin, vertex.y);
+            bounds.zMin = Math.min(bounds.zMin, vertex.z);
         });
-
         bounds.width = bounds.xMax - bounds.xMin;
         bounds.height = bounds.yMax - bounds.yMin;
         bounds.depth = bounds.zMax - bounds.zMin;
@@ -634,40 +671,35 @@ const Geometry = Class.create<typeof hilo3d.Geometry>()(/** @lends Geometry.prot
         bounds.y = (bounds.yMin + bounds.yMax) / 2;
         bounds.z = (bounds.zMin + bounds.zMax) / 2;
         return bounds;
-    },
+    }
     /**
      * 获取本地包围盒
-     * @param  {Boolean} [force=false] 是否强制刷新
-     * @return {Bounds}
+     * @param force - 是否强制刷新
      */
-    getLocalBounds(force = false) {
+    getLocalBounds(force = false): Bounds {
         if (!this._localBounds || force) {
             this._localBounds = this.getBounds();
         }
         return this._localBounds;
-    },
+    }
     /**
      * 获取球面包围盒
-     * @param  {Matrix4} matrix
-     * @return {Sphere}
+     * @param matrix -
      */
-    getSphereBounds(matrix) {
-        if (!this._sphereBounds) {
-            this._sphereBounds = new Sphere();
-        }
+    getSphereBounds(matrix?: Matrix4): Sphere {
+        this._sphereBounds ??= new Sphere();
         const sphereBounds = this._sphereBounds;
         sphereBounds.copy(this.getLocalSphereBounds());
         if (matrix) {
             sphereBounds.transformMat4(matrix);
         }
         return sphereBounds;
-    },
+    }
     /**
      * 获取本地球面包围盒
-     * @param  {Boolean} [force=false] 是否强制刷新
-     * @return {Sphere}
+     * @param force - 是否强制刷新
      */
-    getLocalSphereBounds(force = false) {
+    getLocalSphereBounds(force = false): Sphere {
         if (!this._localSphereBounds || force) {
             const localBounds = this.getLocalBounds(force);
             const sphere = new Sphere({
@@ -677,27 +709,33 @@ const Geometry = Class.create<typeof hilo3d.Geometry>()(/** @lends Geometry.prot
             if (vertices) {
                 sphere.fromGeometryData(vertices);
             } else {
-                log.warnOnce('geometry.getLocalSphereBounds', 'geometry has no vertices data, geometry.getLocalSphereBounds will return Infinity bounds.');
-                sphere.radius = Infinity;
+                throw new Error('Geometry.getLocalSphereBounds requires vertex data');
             }
             this._localSphereBounds = sphere;
         }
         return this._localSphereBounds;
-    },
+    }
     /**
      * 将 Geometry 转换成无 indices
-     * @param {number} [verticesItemLen=3] 转换结果的顶点数据的位数(3 or 4)，如果为4会补1
+     * @param verticesItemLen - 转换结果的顶点数据的位数(3 or 4)，如果为4会补1
      */
-    convertToNoIndices(verticesItemLen = 3) {
+    convertToNoIndices(verticesItemLen: 3 | 4 = 3): void {
         if (this.mode !== TRIANGLES) {
-            log.warn('Only support convert triangles to lines mode!');
-            return;
+            throw new Error('Geometry.convertToNoIndices requires TRIANGLES mode');
         }
         if (!this.indices) {
-            log.warn('Has no indices!');
-            return;
+            throw new Error('Geometry.convertToNoIndices requires index data');
         }
         const indices = this.indices.data;
+        const sourceVertices = this.vertices;
+        if (!sourceVertices) {
+            throw new Error('Geometry.convertToNoIndices requires vertex data');
+        }
+        const sourceUvs = this.uvs;
+        const sourceNormals = this.normals;
+        const sourceColors = this.colors;
+        const sourceSkinIndices = this.skinIndices;
+        const sourceSkinWeights = this.skinWeights;
         const indicesLen = indices.length;
         const vertices = new Float32Array(indicesLen * verticesItemLen);
         const uvs = this.uvs ? new Float32Array(indicesLen * 2) : null;
@@ -705,48 +743,55 @@ const Geometry = Class.create<typeof hilo3d.Geometry>()(/** @lends Geometry.prot
         const colors = this.colors ? new Float32Array(this.colors.size * indicesLen) : null;
         const skinIndices = this.skinIndices ? new Float32Array(indicesLen * 4) : null;
         const skinWeights = this.skinWeights ? new Float32Array(indicesLen * 4) : null;
-
         for (let i = 0; i < indicesLen; i++) {
-            const idx = indices[i];
-            copyArrayData(vertices, this.vertices, i * verticesItemLen, idx * 3, 3);
+            const idx = readIndex(indices, i);
+            copyArrayData(vertices, sourceVertices, i * verticesItemLen, idx * 3, 3);
             if (verticesItemLen === 4) {
                 vertices[i * 4 + 3] = 1;
             }
-            copyArrayData(uvs, this.uvs, i * 2, idx * 2, 2);
-            copyArrayData(normals, this.normals, i * 3, idx * 3, 3);
-            copyArrayData(skinIndices, this.skinIndices, i * 4, idx * 4, 4);
-            copyArrayData(skinWeights, this.skinWeights, i * 4, idx * 4, 4);
-            if (this.colors) {
-                copyArrayData(colors, this.colors, i * this.colors.size, idx * this.colors.size, this.colors.size);
+            if (uvs && sourceUvs) copyArrayData(uvs, sourceUvs, i * 2, idx * 2, 2);
+            if (sourceNormals) copyArrayData(normals, sourceNormals, i * 3, idx * 3, 3);
+            if (skinIndices && sourceSkinIndices)
+                copyArrayData(skinIndices, sourceSkinIndices, i * 4, idx * 4, 4);
+            if (skinWeights && sourceSkinWeights)
+                copyArrayData(skinWeights, sourceSkinWeights, i * 4, idx * 4, 4);
+            if (colors && sourceColors) {
+                copyArrayData(
+                    colors,
+                    sourceColors,
+                    i * sourceColors.size,
+                    idx * sourceColors.size,
+                    sourceColors.size
+                );
             }
         }
-        delete this.indices;
-        this.vertices.data = vertices;
-        if (this.uvs) {
+        this.indices = null;
+        sourceVertices.data = vertices;
+        if (this.uvs && uvs) {
             this.uvs.data = uvs;
         }
-        if (this.normals) {
-            this.normals.data = normals;
+        if (this._normals) {
+            this._normals.data = normals;
         }
-        if (this.colors) {
+        if (this.colors && colors) {
             this.colors.data = colors;
         }
-        if (this.skinIndices) {
+        if (this.skinIndices && skinIndices) {
             this.skinIndices.data = skinIndices;
         }
-        if (this.skinWeights) {
+        if (this.skinWeights && skinWeights) {
             this.skinWeights.data = skinWeights;
         }
-    },
+    }
     /**
      * clone当前Geometry
-     * @return {Geometry} 返回clone的Geometry
+     * @returns 返回clone的Geometry
      */
-    clone() {
-        const geometry = new this.constructor({
+    clone(): Geometry {
+        const Constructor = this.constructor as GeometryConstructor;
+        const geometry = new Constructor({
             mode: this.mode
         });
-
         if (this.vertices) {
             geometry.vertices = this.vertices.clone();
         }
@@ -789,60 +834,54 @@ const Geometry = Class.create<typeof hilo3d.Geometry>()(/** @lends Geometry.prot
         if (this.normalDecodeMat) {
             geometry.normalDecodeMat = this.normalDecodeMat;
         }
-
         return geometry;
-    },
+    }
     /**
      * 检测 aabb 碰撞
-     * @param  {Ray} ray
-     * @return {Vector3[]|null}
+     * @param ray -
      */
-    _aabbRaycast(ray) {
+    _aabbRaycast(ray: Ray): Vector3[] | null {
         const bounds = this.getLocalBounds();
         const res = ray.intersectsBox([
             [bounds.xMin, bounds.yMin, bounds.zMin],
             [bounds.xMax, bounds.yMax, bounds.zMax]
         ]);
-
         if (res) {
             return [res];
         }
-
         return null;
-    },
+    }
     /**
      * _raycast，子类可覆盖实现
-     * @param  {Ray} ray
-     * @param  {GLenum} side
-     * @return {Vector3[]|null}
+     * @param ray -
+     * @param side -
      */
-    _raycast(ray, side) {
+    _raycast(ray: Ray, side: GLenum): Vector3[] | null {
         // TODO:optimize
-
         const vertices = this.vertices;
-
         if (!vertices) {
             return null;
         }
-
         const indices = this.indices;
-        const triangle = [];
-        const resArray = [];
+        const triangle: [ArrayLike<number>, ArrayLike<number>, ArrayLike<number>] = [
+            tempVector31.elements,
+            tempVector32.elements,
+            tempVector33.elements
+        ];
+        const resArray: Vector3[] = [];
         let len;
         if (indices) {
             len = indices.realLength;
         } else {
             len = vertices.realLength / 3;
         }
-
-        for (let i = 0; i < len; i += 3) {
-            let idx = indices ? indices.get(i) : i;
-            tempVector31.copy(vertices.get(idx));
-            idx = indices ? indices.get(i + 1) : (i + 1);
-            tempVector32.copy(vertices.get(idx));
-            idx = indices ? indices.get(i + 2) : (i + 2);
-            tempVector33.copy(vertices.get(idx));
-
+        const triangleIndices: ArrayLike<number> = indices
+            ? indices.data
+            : Array.from({ length: len }, (_value, index) => index);
+        forEachTriangle(triangleIndices, this.mode, (a, b, c) => {
+            tempVector31.copy(vector3Attribute(vertices.get(a)));
+            tempVector32.copy(vector3Attribute(vertices.get(b)));
+            tempVector33.copy(vector3Attribute(vertices.get(c)));
             let res;
             if (side === FRONT) {
                 triangle[0] = tempVector31.elements;
@@ -866,59 +905,54 @@ const Geometry = Class.create<typeof hilo3d.Geometry>()(/** @lends Geometry.prot
                     res = ray.intersectsTriangle(triangle);
                 }
             }
-
             if (res) {
                 resArray.push(res);
             }
-        }
-
+        });
         return resArray.length ? resArray : null;
-    },
+    }
     /**
      * raycast
-     * @param  {Ray} ray
-     * @param  {GLenum} side
-     * @param {Boolean} [sort=true] 是否按距离排序
-     * @return {Vector3[]|null}
+     * @param ray -
+     * @param side -
+     * @param sort - 是否按距离排序
      */
-    raycast(ray, side, sort = true) {
+    raycast(ray: Ray, side: GLenum, sort = true): Vector3[] | null {
         let res;
         if (this.useAABBRaycast) {
             res = this._aabbRaycast(ray);
         } else {
             res = this._raycast(ray, side);
         }
-
         if (res && sort) {
             ray.sortPoints(res);
         }
-
         return res;
-    },
-    getRenderOption(opt = {}) {
+    }
+    getRenderOption(opt: ShaderOptions = {}): ShaderOptions {
         if (this.positionDecodeMat) {
-            opt.QUANTIZED = 1;
-            opt.POSITION_QUANTIZED = 1;
+            opt['QUANTIZED'] = 1;
+            opt['POSITION_QUANTIZED'] = 1;
         }
         if (this.normalDecodeMat) {
-            opt.QUANTIZED = 1;
-            opt.NORMAL_QUANTIZED = 1;
+            opt['QUANTIZED'] = 1;
+            opt['NORMAL_QUANTIZED'] = 1;
         }
         if (this.uvDecodeMat) {
-            opt.QUANTIZED = 1;
-            opt.UV_QUANTIZED = 1;
+            opt['QUANTIZED'] = 1;
+            opt['UV_QUANTIZED'] = 1;
         }
         if (this.uv1DecodeMat) {
-            opt.QUANTIZED = 1;
-            opt.UV1_QUANTIZED = 1;
+            opt['QUANTIZED'] = 1;
+            opt['UV1_QUANTIZED'] = 1;
         }
         if (this.colors) {
-            opt.HAS_COLOR = 1;
-            opt.COLOR_SIZE = this.colors.size;
+            opt['HAS_COLOR'] = 1;
+            opt['COLOR_SIZE'] = this.colors.size;
         }
         return opt;
-    },
-    getShaderKey() {
+    }
+    getShaderKey(): string {
         if (this._shaderKey === undefined) {
             this._shaderKey = 'geometry';
             if (this.isMorphGeometry) {
@@ -927,35 +961,23 @@ const Geometry = Class.create<typeof hilo3d.Geometry>()(/** @lends Geometry.prot
                 if (this.colors) {
                     this._shaderKey += '_colors';
                 }
-
                 if (this.positionDecodeMat) {
                     this._shaderKey += 'positionDecodeMat';
                 }
             }
         }
-
         return this._shaderKey;
-    },
+    }
     /**
      * 获取数据的内存大小，只处理顶点数据，单位为字节
-     * @return {number} 内存占用大小
+     * @returns 内存占用大小
      */
-    getSize() {
+    getSize(): number {
         let sum = 0;
-        for (const key in this) {
-            if (hasOwnProperty(this, key) && this[key] && this[key].isGeometryData) {
-                sum += this[key].getByteLength();
-            }
+        for (const value of Object.values(this)) {
+            if (isGeometryData(value)) sum += value.getByteLength();
         }
         return sum;
-    },
-    /**
-     * @deprecated
-     * @return {Geometry} this
-     */
-    destroy() {
-        log.warn('Geometry.destroy has been deprecated, use mesh.destroy(renderer) instead.');
     }
-});
-
+}
 export default Geometry;

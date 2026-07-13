@@ -1,18 +1,16 @@
 declare const HILO3D_VERSION: string;
 
-declare module 'glslify' {
-    interface CompileOptions {
-        basedir?: string;
-    }
-
-    interface Glslify {
-        compile(source: string, options?: CompileOptions): string;
-    }
-
-    const glslify: Glslify;
-    export default glslify;
+declare module '*.frag' {
+    const source: string;
+    export default source;
 }
 
-interface Window {
-    Hilo3dMath?: typeof import('./math/index');
+declare module '*.glsl' {
+    const source: string;
+    export default source;
+}
+
+declare module '*.vert' {
+    const source: string;
+    export default source;
 }

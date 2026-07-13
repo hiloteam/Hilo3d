@@ -1,31 +1,31 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-    <title>glTF loader example</title>
-    <link rel="stylesheet" type="text/css" href="../example.css">
-    <style>
-        #modelSelect,
-        #cameraSelect {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 99999;
-        }
-        #cameraSelect {
-            top: 40px;
-        }
-    </style>
-</head>
-<body>
-    <div id="container"></div>
-    <select name="modelSelect" id="modelSelect"></select>
-    <select name="cameraSelect" id="cameraSelect"></select>
-    <script type="module" src="../js/hilo3d.ts"></script>
-    <script type="module" src="../js/stats.ts"></script>
-    <script type="module" src="../js/OrbitControls.ts"></script>
-    <script type="module" src="../js/init.ts"></script>
-    <script type="module" src="./glTF_loader.ts"></script>
-</body>
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+        />
+        <title>glTF loader example</title>
+        <link rel="stylesheet" type="text/css" href="../example.css" />
+        <style>
+            #modelSelect,
+            #cameraSelect {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                z-index: 99999;
+            }
+            #cameraSelect {
+                top: 40px;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="container"></div>
+        <select name="modelSelect" id="modelSelect"></select>
+        <select name="cameraSelect" id="cameraSelect"></select>
+
+        <script type="module" src="./glTF_loader.ts"></script>
+    </body>
 </html>

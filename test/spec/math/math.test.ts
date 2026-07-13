@@ -1,43 +1,46 @@
+import { describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+
 const math = Hilo3d.math;
 
-describe('math', function() {
+describe('math', function () {
     it('generateUUID', () => {
-        math.generateUUID().should.not.equal(math.generateUUID());
-        math.generateUUID().should.be.String();
+        expect(math.generateUUID()).not.toBe(math.generateUUID());
+        expect(math.generateUUID()).toBeTypeOf('string');
     });
 
     it('clamp', () => {
-        math.clamp(1, 1, 2).should.equalish(1);
-        math.clamp(2, 1, 2).should.equalish(2);
-        math.clamp(-1, 1, 2).should.equalish(1);
-        math.clamp(3, 1, 2).should.equalish(2);
-        math.clamp(1.5, 1, 2).should.equalish(1.5);
+        expect(math.clamp(1, 1, 2)).toBeEqualish(1);
+        expect(math.clamp(2, 1, 2)).toBeEqualish(2);
+        expect(math.clamp(-1, 1, 2)).toBeEqualish(1);
+        expect(math.clamp(3, 1, 2)).toBeEqualish(2);
+        expect(math.clamp(1.5, 1, 2)).toBeEqualish(1.5);
     });
 
     it('degToRad', () => {
-        math.DEG2RAD.should.equalish(Math.PI/180);
-        math.degToRad(90).should.equalish(Math.PI/2);
+        expect(math.DEG2RAD).toBeEqualish(Math.PI / 180);
+        expect(math.degToRad(90)).toBeEqualish(Math.PI / 2);
     });
 
     it('radToDeg', () => {
-        math.RAD2DEG.should.equalish(180/Math.PI);
-        math.radToDeg(Math.PI/3).should.equalish(60);
+        expect(math.RAD2DEG).toBeEqualish(180 / Math.PI);
+        expect(math.radToDeg(Math.PI / 3)).toBeEqualish(60);
     });
 
     it('isPowerOfTwo', () => {
-        math.isPowerOfTwo(2).should.be.true();
-        math.isPowerOfTwo(256).should.be.true();
-        math.isPowerOfTwo(238).should.be.false();
+        expect(math.isPowerOfTwo(2)).toBe(true);
+        expect(math.isPowerOfTwo(256)).toBe(true);
+        expect(math.isPowerOfTwo(238)).toBe(false);
     });
 
     it('nearestPowerOfTwo', () => {
-        math.nearestPowerOfTwo(2).should.equalish(2);
-        math.nearestPowerOfTwo(9).should.equalish(8);
-        math.nearestPowerOfTwo(15).should.equalish(16);
+        expect(math.nearestPowerOfTwo(2)).toBeEqualish(2);
+        expect(math.nearestPowerOfTwo(9)).toBeEqualish(8);
+        expect(math.nearestPowerOfTwo(15)).toBeEqualish(16);
     });
 
     it('nextPowerOfTwo', () => {
-        math.nextPowerOfTwo(9).should.equalish(16);
-        math.nextPowerOfTwo(2).should.equalish(2);
+        expect(math.nextPowerOfTwo(9)).toBeEqualish(16);
+        expect(math.nextPowerOfTwo(2)).toBeEqualish(2);
     });
 });

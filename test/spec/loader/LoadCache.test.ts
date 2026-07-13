@@ -1,52 +1,65 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+import type { DispatchEvent } from '../../../src/core/EventMixin';
+
 const LoadCache = Hilo3d.LoadCache;
 
 describe('LoadCache', () => {
-    let cache;
-    beforeEach(function(){
-        cache = new LoadCache();
+    let cache: Hilo3d.LoadCache<number>;
+    beforeEach(() => {
+        cache = new LoadCache<number>();
     });
     it('create', () => {
-        cache.isLoadCache.should.be.true();
-        cache.className.should.equal('LoadCache');
+        expect(cache.isLoadCache).toBe(true);
+        expect(cache.className).toBe('LoadCache');
     });
 
     it('update', () => {
-        const callbackAll = sinon.spy();
-        const callbackA = sinon.spy();
-        const callbackB = sinon.spy();
+        const allDetails: unknown[] = [];
+        const aDetails: unknown[] = [];
+        const bDetails: unknown[] = [];
+        const callbackAll = vi.fn((event: DispatchEvent) => {
+            allDetails.push(event.detail);
+        });
+        const callbackA = vi.fn((event: DispatchEvent) => {
+            aDetails.push(event.detail);
+        });
+        const callbackB = vi.fn((event: DispatchEvent) => {
+            bDetails.push(event.detail);
+        });
         cache.on('update', callbackAll);
         cache.on('update:a', callbackA);
         cache.on('update:b', callbackB);
-        
+
         cache.update('a', LoadCache.LOADED, 1);
 
-        callbackAll.callCount.should.equal(1);
-        callbackAll.lastCall.args[0].detail.should.deepEqual({
+        expect(callbackAll).toHaveBeenCalledTimes(1);
+        expect(allDetails.at(-1)).toEqual({
             key: 'a',
             state: LoadCache.LOADED,
             data: 1
         });
 
-        callbackA.callCount.should.equal(1);
-        callbackA.lastCall.args[0].detail.should.deepEqual({
+        expect(callbackA).toHaveBeenCalledTimes(1);
+        expect(aDetails.at(-1)).toEqual({
             key: 'a',
             state: LoadCache.LOADED,
             data: 1
         });
 
-        callbackB.callCount.should.equal(0);
-        
+        expect(callbackB).toHaveBeenCalledTimes(0);
+
         cache.update('b', LoadCache.PENDING, 2);
 
-        callbackAll.callCount.should.equal(2);
-        callbackAll.lastCall.args[0].detail.should.deepEqual({
+        expect(callbackAll).toHaveBeenCalledTimes(2);
+        expect(allDetails.at(-1)).toEqual({
             key: 'b',
             state: LoadCache.PENDING,
             data: 2
         });
-        callbackA.callCount.should.equal(1);
-        callbackB.callCount.should.equal(1);
-        callbackB.lastCall.args[0].detail.should.deepEqual({
+        expect(callbackA).toHaveBeenCalledTimes(1);
+        expect(callbackB).toHaveBeenCalledTimes(1);
+        expect(bDetails.at(-1)).toEqual({
             key: 'b',
             state: LoadCache.PENDING,
             data: 2
@@ -57,34 +70,34 @@ describe('LoadCache', () => {
         cache.update('a', LoadCache.LOADED, 1);
         cache.update('b', LoadCache.PENDING, 2);
 
-        cache.get('a').should.deepEqual({
+        expect(cache.get('a')).toEqual({
             key: 'a',
             state: LoadCache.LOADED,
             data: 1
         });
 
-        cache.get('b').should.deepEqual({
+        expect(cache.get('b')).toEqual({
             key: 'b',
             state: LoadCache.PENDING,
             data: 2
         });
 
-        should.not.exist(cache.get('c'));
+        expect(cache.get('c')).toBeNull();
     });
 
     it('enabled', () => {
         cache.enabled = false;
 
-        const callbackAll = sinon.spy();
-        const callbackA = sinon.spy();
+        const callbackAll = vi.fn<(event: DispatchEvent) => void>();
+        const callbackA = vi.fn<(event: DispatchEvent) => void>();
         cache.on('update', callbackAll);
         cache.on('update:a', callbackA);
-        
-        cache.update('a', LoadCache.LOADED, 1);
-        callbackAll.callCount.should.equal(0);
-        callbackA.callCount.should.equal(0);
 
-        should.not.exist(cache.get('a'));
+        cache.update('a', LoadCache.LOADED, 1);
+        expect(callbackAll).toHaveBeenCalledTimes(0);
+        expect(callbackA).toHaveBeenCalledTimes(0);
+
+        expect(cache.get('a')).toBeNull();
     });
 
     it('getLoaded', () => {
@@ -93,44 +106,44 @@ describe('LoadCache', () => {
         cache.update('c', LoadCache.PENDING, 3);
         cache.update('d', LoadCache.FAILED, 4);
 
-        cache.getLoaded('a').should.equal(1);
-        cache.getLoaded('b').should.equal(2);
-        should(cache.getLoaded('c')).be.null();
-        should(cache.getLoaded('d')).be.null();
-        should(cache.getLoaded('e')).be.null();
+        expect(cache.getLoaded('a')).toBe(1);
+        expect(cache.getLoaded('b')).toBe(2);
+        expect(cache.getLoaded('c')).toBeNull();
+        expect(cache.getLoaded('d')).toBeNull();
+        expect(cache.getLoaded('e')).toBeNull();
     });
 
     it('remove', () => {
         cache.update('a', LoadCache.LOADED, 1);
-        should.exist(cache.get('a'));
+        expect(cache.get('a')).not.toBeNull();
         cache.remove('a');
-        should.not.exist(cache.get('a'));
+        expect(cache.get('a')).toBeNull();
     });
 
     it('clear', () => {
         cache.update('a', LoadCache.LOADED, 1);
         cache.update('b', LoadCache.LOADED, 1);
-        should.exist(cache.get('a'));
-        should.exist(cache.get('b'));
+        expect(cache.get('a')).not.toBeNull();
+        expect(cache.get('b')).not.toBeNull();
         cache.clear();
-        should.not.exist(cache.get('a'));
-        should.not.exist(cache.get('b'));
+        expect(cache.get('a')).toBeNull();
+        expect(cache.get('b')).toBeNull();
     });
 
     it('wait', async () => {
-        const resolveA0 = sinon.spy();
-        const rejectA0 = sinon.spy();
-        const resolveA1 = sinon.spy();
-        const rejectA1 = sinon.spy();
+        const resolveA0 = vi.fn<(value: number) => void>();
+        const rejectA0 = vi.fn<(reason: unknown) => void>();
+        const resolveA1 = vi.fn<(value: number) => void>();
+        const rejectA1 = vi.fn<(reason: unknown) => void>();
 
-        const resolveB0 = sinon.spy();
-        const rejectB0 = sinon.spy();
-        const resolveB1 = sinon.spy();
-        const rejectB1 = sinon.spy();
+        const resolveB0 = vi.fn<(value: number) => void>();
+        const rejectB0 = vi.fn<(reason: unknown) => void>();
+        const resolveB1 = vi.fn<(value: number) => void>();
+        const rejectB1 = vi.fn<(reason: unknown) => void>();
 
-        const resolveC = sinon.spy();
-        const rejectC = sinon.spy();
-        
+        const resolveC = vi.fn<(value: number) => void>();
+        const rejectC = vi.fn<(reason: unknown) => void>();
+
         cache.update('a', LoadCache.PENDING);
         cache.wait(cache.get('a')).then(resolveA0, rejectA0);
         cache.update('a', LoadCache.LOADED, 1);
@@ -144,22 +157,21 @@ describe('LoadCache', () => {
         cache.wait(cache.get('c')).then(resolveC, rejectC);
 
         await Promise.resolve();
-            resolveA0.callCount.should.equal(1);
-            resolveA0.lastCall.args[0].should.equal(1);
-            rejectA0.callCount.should.equal(0);
+        expect(resolveA0).toHaveBeenCalledTimes(1);
+        expect(resolveA0).toHaveBeenLastCalledWith(1);
+        expect(rejectA0).toHaveBeenCalledTimes(0);
 
-            resolveA1.callCount.should.equal(1);
-            resolveA1.lastCall.args[0].should.equal(1);
-            rejectA1.callCount.should.equal(0);
+        expect(resolveA1).toHaveBeenCalledTimes(1);
+        expect(resolveA1).toHaveBeenLastCalledWith(1);
+        expect(rejectA1).toHaveBeenCalledTimes(0);
 
-            resolveB0.callCount.should.equal(0);
-            rejectB0.callCount.should.equal(1);
+        expect(resolveB0).toHaveBeenCalledTimes(0);
+        expect(rejectB0).toHaveBeenCalledTimes(1);
 
-            resolveB1.callCount.should.equal(0);
-            rejectB1.callCount.should.equal(1);
+        expect(resolveB1).toHaveBeenCalledTimes(0);
+        expect(rejectB1).toHaveBeenCalledTimes(1);
 
-            resolveC.callCount.should.equal(0);
-            rejectC.callCount.should.equal(1);
-
+        expect(resolveC).toHaveBeenCalledTimes(0);
+        expect(rejectC).toHaveBeenCalledTimes(1);
     });
 });

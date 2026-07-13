@@ -1,38 +1,22 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import Light from './Light';
+import Light, { type LightParameters } from './Light';
 
+export type AmbientLightParameters = LightParameters;
 /**
  * 环境光
- * @class
- * @extends Light
  */
-const AmbientLight = Class.create<typeof hilo3d.AmbientLight>()(/** @lends AmbientLight.prototype */{
-    Extends: Light,
+class AmbientLight extends Light {
+    static override readonly typeName = 'AmbientLight';
+    override isAmbientLight = true;
+    override className = 'AmbientLight';
+    override autoUpdateWorldMatrix = false;
     /**
-     * @type {Boolean}
-     * @readOnly
-     * @default true
+     * @param params - 创建对象的属性参数。可包含此类的所有属性。
+     * - `params.color`: 光颜色
+     * - `params.amount`: 光强度
      */
-    isAmbientLight: true,
-    /**
-     * @type {String}
-     * @readOnly
-     * @default AmbientLight
-     */
-    className: 'AmbientLight',
-    autoUpdateWorldMatrix: false,
-    /**
-     * @constructs
-     * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
-     * @param {Color} [params.color=new Color(1, 1, 1)] 光颜色
-     * @param {number} [params.amount=1] 光强度
-     * @param {unknown} [params.[value:string]] 其它属性
-     */
-    constructor(params) {
-        AmbientLight.superclass.constructor.call(this, params);
+    constructor(params: AmbientLightParameters = {}) {
+        super();
+        Object.assign(this, params);
     }
-});
-
+}
 export default AmbientLight;

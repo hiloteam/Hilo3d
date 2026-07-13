@@ -5,16 +5,26 @@ import * as Hilo from './Hilo';
 
 /**
  * WebGL, WebGL extensions 枚举值
- * @namespace
  * @example
+ * ```ts
  * Hilo3d.constants.LINEAR_MIPMAP_NEAREST
+ * ```
  */
 const constants = {
+    ...webgl,
+    ...webglExtensions,
+    ...webgl2,
+    ...Hilo,
     webgl,
     webglExtensions,
     webgl2,
     Hilo
-};
-Object.assign(constants, webgl, webglExtensions, webgl2, Hilo);
+} as const;
 
+export {
+    Hilo as engineConstants,
+    webgl as webglConstants,
+    webgl2 as webgl2Constants,
+    webglExtensions as webglExtensionConstants
+};
 export default constants;

@@ -1,243 +1,150 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
+export interface Tickable {
+    tick(deltaTime: number): void;
+}
 
-/**
- * Ticker是一个定时器类。它可以按指定帧率重复运行，从而按计划执行代码。
- * @class Ticker
- * @param {Number} [fps] 指定定时器的运行帧率。默认60。
- */
-const Ticker = Class.create<typeof hilo3d.Ticker>()(/** @lends Ticker.prototype */ {
-    constructor(fps) {
-        this.targetFPS = fps || 60;
-        this._tickers = [];
-    },
+/** Frame scheduler shared by stages, tweens and animations. */
+class Ticker {
+    private paused = false;
+    private targetFrameRate = 60;
+    private intervalMs = 1000 / 60;
+    private intervalId: number | null = null;
+    private readonly tickers: Tickable[] = [];
+    private lastTime = 0;
+    private tickCount = 0;
+    private tickTime = 0;
+    private measuredFPS = 0;
+    private useAnimationFrame = false;
 
-    _paused: false,
-    _targetFPS: 0,
-    _interval: 0,
-    _intervalId: null,
-    _tickers: null,
-    _lastTime: 0,
-    _tickCount: 0,
-    _tickTime: 0,
-    _measuredFPS: 0,
+    constructor(fps = 60) {
+        this.targetFPS = fps;
+    }
 
-    /**
-     * 定时器的目标帧率
-     * @type {number}
-     */
-    targetFPS: {
-        set(value) {
-            this._targetFPS = value;
-            this._interval = 1000 / this._targetFPS;
-            if (this._intervalId) {
-                this._cancelRunLoop();
-                this._startRunLoop();
-            }
-        },
-        get() {
-            return this._targetFPS;
+    get targetFPS(): number {
+        return this.targetFrameRate;
+    }
+
+    set targetFPS(value: number) {
+        if (!Number.isFinite(value) || value <= 0) {
+            throw new RangeError('Ticker.targetFPS must be a positive finite number.');
         }
-    },
-
-    /**
-     * 启动定时器。
-     */
-    start() {
-        this._paused = false;
-        this._startRunLoop();
-    },
-
-    /**
-     * 停止定时器。
-     */
-    stop() {
-        this._paused = true;
-        this._cancelRunLoop();
-        this._lastTime = 0;
-    },
-
-    /**
-     * 暂停定时器。
-     */
-    pause() {
-        this._paused = true;
-    },
-
-    /**
-     * 恢复定时器。
-     */
-    resume() {
-        this._paused = false;
-    },
-
-    /**
-     * @private
-     */
-    _startRunLoop() {
-        if (this._intervalId) {
-            return;
+        this.targetFrameRate = value;
+        this.intervalMs = 1000 / value;
+        if (this.intervalId !== null) {
+            this.cancelRunLoop();
+            this.startRunLoop();
         }
+    }
 
-        this._lastTime = +new Date();
+    start(): void {
+        this.paused = false;
+        this.startRunLoop();
+    }
 
-        const self = this;
-        const interval = this._interval;
-        const raf = window.requestAnimationFrame;
+    stop(): void {
+        this.paused = true;
+        this.cancelRunLoop();
+        this.lastTime = 0;
+    }
 
-        let runLoop;
-        if (raf && interval < 17) {
-            this._useRAF = true;
-            runLoop = function() {
-                self._intervalId = raf(runLoop);
-                self._tick();
-            };
-        } else {
-            this._useRAF = false;
-            runLoop = function() {
-                self._intervalId = setTimeout(runLoop, interval);
-                self._tick();
-            };
-        }
+    pause(): void {
+        this.paused = true;
+    }
 
+    resume(): void {
+        this.paused = false;
+    }
+
+    private startRunLoop(): void {
+        if (this.intervalId !== null) return;
+
+        this.lastTime = performance.now();
+        this.useAnimationFrame = this.intervalMs < 17;
+
+        const runLoop = (): void => {
+            this.intervalId = this.useAnimationFrame
+                ? requestAnimationFrame(runLoop)
+                : window.setTimeout(runLoop, this.intervalMs);
+            this.tick();
+        };
         runLoop();
-    },
+    }
 
-    /**
-     * @private
-     */
-    _cancelRunLoop() {
-        if (this._useRAF) {
-            const cancelRAF = window.cancelAnimationFrame;
-            cancelRAF(this._intervalId);
+    private cancelRunLoop(): void {
+        if (this.intervalId === null) return;
+        if (this.useAnimationFrame) cancelAnimationFrame(this.intervalId);
+        else clearTimeout(this.intervalId);
+        this.intervalId = null;
+    }
+
+    private tick(): void {
+        if (this.paused) return;
+
+        const startTime = performance.now();
+        const deltaTime = startTime - this.lastTime;
+
+        this.tickCount++;
+        if (this.tickCount >= this.targetFrameRate) {
+            this.measuredFPS = Math.round(1000 / (this.tickTime / this.tickCount));
+            this.tickCount = 0;
+            this.tickTime = 0;
         } else {
-            clearTimeout(this._intervalId);
+            this.tickTime += deltaTime;
         }
-        this._intervalId = null;
-    },
+        this.lastTime = startTime;
 
-    /**
-     * @private
-     */
-    _tick() {
-        if (this._paused) return;
-        const startTime = +new Date();
-        const deltaTime = startTime - this._lastTime;
-        const tickers = this._tickers;
+        for (const ticker of [...this.tickers]) ticker.tick(deltaTime);
+    }
 
-        // calculates the real fps
-        if (++this._tickCount >= this._targetFPS) {
-            this._measuredFPS = (1000 / (this._tickTime / this._tickCount) + 0.5) >> 0;
-            this._tickCount = 0;
-            this._tickTime = 0;
-        } else {
-            this._tickTime += startTime - this._lastTime;
-        }
-        this._lastTime = startTime;
+    getMeasuredFPS(): number {
+        return Math.min(this.measuredFPS, this.targetFrameRate);
+    }
 
-        const tickersCopy = tickers.slice(0);
-        for (let i = 0, len = tickersCopy.length; i < len; i++) {
-            tickersCopy[i].tick(deltaTime);
-        }
-    },
+    addTick(tickObject: Tickable): void {
+        if (!this.tickers.includes(tickObject)) this.tickers.push(tickObject);
+    }
 
-    /**
-     * 获得测定的运行时帧率。
-     * @return {number}
-     */
-    getMeasuredFPS() {
-        return Math.min(this._measuredFPS, this._targetFPS);
-    },
+    removeTick(tickObject: Tickable): void {
+        const index = this.tickers.indexOf(tickObject);
+        if (index >= 0) this.tickers.splice(index, 1);
+    }
 
-    /**
-     * 添加定时器对象。定时器对象必须实现 tick 方法。
-     * @param {Object}  ticker 对象
-     */
-    addTick(tickObject) {
-        if (!tickObject || typeof tickObject.tick !== 'function') {
-            throw new Error(
-                'Ticker: The tick object must implement the tick method.'
-            );
-        }
-        this._tickers.push(tickObject);
-    },
-
-    /**
-     * 删除定时器对象。
-     * @param {Object} tickObject 要删除的定时器对象。
-     */
-    removeTick(tickObject) {
-        const tickers = this._tickers;
-        const index = tickers.indexOf(tickObject);
-        if (index >= 0) {
-            tickers.splice(index, 1);
-        }
-    },
-    /**
-     * 下次tick时回调
-     * @param  {Function} callback
-     * @return {Object} tickObject 定时器对象
-     */
-    nextTick(callback) {
-        const that = this;
-        const tickObj = {
-            tick(dt) {
-                that.removeTick(tickObj);
-                callback(dt);
-            },
+    nextTick(callback: (deltaTime: number) => void): Tickable {
+        const tickObject: Tickable = {
+            tick: deltaTime => {
+                this.removeTick(tickObject);
+                callback(deltaTime);
+            }
         };
+        this.addTick(tickObject);
+        return tickObject;
+    }
 
-        that.addTick(tickObj);
-        return tickObj;
-    },
-    /**
-     * 延迟指定的时间后调用回调, 类似setTimeout
-     * @param  {Function} callback
-     * @param  {Number}   duration 延迟的毫秒数
-     * @return {Object} tickObject 定时器对象
-     */
-    timeout(callback, duration) {
-        const that = this;
-        const targetTime = new Date().getTime() + duration;
-        const tickObj = {
-            tick() {
-                const nowTime = new Date().getTime();
-                const dt = nowTime - targetTime;
-                if (dt >= 0) {
-                    that.removeTick(tickObj);
-                    callback();
-                }
-            },
+    timeout(callback: () => void, duration: number): Tickable {
+        const targetTime = performance.now() + duration;
+        const tickObject: Tickable = {
+            tick: () => {
+                if (performance.now() < targetTime) return;
+                this.removeTick(tickObject);
+                callback();
+            }
         };
-        that.addTick(tickObj);
-        return tickObj;
-    },
-    /**
-     * 指定的时间周期来调用函数, 类似setInterval
-     * @param  {Function} callback
-     * @param  {Number}   duration 时间周期，单位毫秒
-     * @return {Object} tickObject 定时器对象
-     */
-    interval(callback, duration) {
-        const that = this;
-        let targetTime = new Date().getTime() + duration;
-        const tickObj = {
-            tick() {
-                let nowTime = new Date().getTime();
-                const dt = nowTime - targetTime;
-                if (dt >= 0) {
-                    if (dt < duration) {
-                        nowTime -= dt;
-                    }
-                    targetTime = nowTime + duration;
-                    callback();
-                }
-            },
+        this.addTick(tickObject);
+        return tickObject;
+    }
+
+    interval(callback: () => void, duration: number): Tickable {
+        let targetTime = performance.now() + duration;
+        const tickObject: Tickable = {
+            tick: () => {
+                const now = performance.now();
+                if (now < targetTime) return;
+                targetTime = now + duration;
+                callback();
+            }
         };
-        that.addTick(tickObj);
-        return tickObj;
-    },
-});
+        this.addTick(tickObject);
+        return tickObject;
+    }
+}
 
 export default Ticker;

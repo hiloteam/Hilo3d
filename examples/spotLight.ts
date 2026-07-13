@@ -1,102 +1,87 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-const camera = new Hilo3d.PerspectiveCamera({
-            aspect: innerWidth / innerHeight,
-            far: 3,
-            near: 0.01,
-            z: 1
-        });
-        camera.lookAt({ x: 0, y: 0, z: 0 });
-        
-        const stage = new Hilo3d.Stage({
-            container: document.getElementById('container'),
-            camera: camera,
-            width: innerWidth,
-            height: innerHeight,
-            rotationX: 30
-        });
+const { camera, stage, directionLight, ambientLight } = createExampleContext({
+    camera: { far: 3, near: 0.01, z: 1 },
+    stage: { rotationX: 30 }
+});
+camera.lookAt(new Hilo3d.Vector3());
+directionLight.amount = 0;
+ambientLight.amount = 0.2;
 
-        const glTFLoader = new Hilo3d.GLTFLoader();
-        glTFLoader.load({
-            src: '//g.alicdn.com/eva-assets/58e94af6ada5ea6dba71c5f219f428ef/0.0.1/tmp/49a485d/2598cc71-4dd9-47cb-924e-46e68a786f77.glb',
-        }).then(function (model) {
-            stage.addChild(model.node);
-            model.node.setScale(0.2);
-        });
+const glTFLoader = new Hilo3d.GLTFLoader();
+void glTFLoader
+    .load({
+        src: './models/Tmall/Tmall.gltf'
+    })
+    .then(function (model) {
+        stage.addChild(model.node);
+        model.node.setScale(0.002);
+    })
+    .catch((error: unknown) => {
+        console.error('Failed to load spotlight model', error);
+    });
 
-        const wall = new Hilo3d.Mesh({
-            rotationX: -90,
-            geometry: new Hilo3d.PlaneGeometry(),
-            material: new Hilo3d.PBRMaterial({
-                baseColorMap: new Hilo3d.LazyTexture({
-                    src: '//img.alicdn.com/tfs/TB1aNxtQpXXXXX1XVXXXXXXXXXX-1024-1024.jpg'
-                }),
-            })
-        }).addTo(stage);
+new Hilo3d.Mesh({
+    rotationX: -90,
+    geometry: new Hilo3d.PlaneGeometry(),
+    material: new Hilo3d.PBRMaterial({
+        baseColorMap: new Hilo3d.LazyTexture({
+            src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
+        })
+    })
+}).addTo(stage);
 
-        const spotlight0 = new Hilo3d.SpotLight({
-            x: 0,
-            y: 1,
-            z: 0,
-            color: new Hilo3d.Color(1, 0, 0),
-            direction: new Hilo3d.Vector3(0.4, -1, 0),
-            cutoff: 5,
-            outerCutoff: 7,
-            range:2,
-            amount:10,
-            onUpdate() {
-                this.direction.rotateY(new Hilo3d.Vector3(), -0.01)
-                this.lightShadow && this.lightShadow.updateLightCamera(stage.camera);
-            },
-            shadow: {
-                maxBias: 0.01,
-                minBias: 0.0001,
-            }
-        }).addTo(stage);
+const spotlight0 = new Hilo3d.SpotLight({
+    x: 0,
+    y: 1,
+    z: 0,
+    color: new Hilo3d.Color(1, 0, 0),
+    direction: new Hilo3d.Vector3(0.4, -1, 0),
+    cutoff: 5,
+    outerCutoff: 7,
+    range: 2,
+    amount: 10,
+    shadow: {
+        maxBias: 0.01,
+        minBias: 0.0001
+    }
+}).addTo(stage);
+spotlight0.onUpdate = () => {
+    spotlight0.direction.rotateY(new Hilo3d.Vector3(), -0.01);
+    spotlight0.lightShadow?.updateLightCamera(camera);
+};
 
-        const spotlight1 = new Hilo3d.SpotLight({
-            x: -0,
-            y: 1,
-            z: 0,
-            color:new Hilo3d.Color(.3, .9, .6),
-            direction:new Hilo3d.Vector3(0, -1, 0),
-            cutoff: 24,
-            outerCutoff: 26,
-            range:2,
-            amount:10,
-            shadow: {
-                maxBias: 0.03,
-                minBias: 0.001,
-            }
-        }).addTo(stage);
+new Hilo3d.SpotLight({
+    x: -0,
+    y: 1,
+    z: 0,
+    color: new Hilo3d.Color(0.3, 0.9, 0.6),
+    direction: new Hilo3d.Vector3(0, -1, 0),
+    cutoff: 24,
+    outerCutoff: 26,
+    range: 2,
+    amount: 10,
+    shadow: {
+        maxBias: 0.03,
+        minBias: 0.001
+    }
+}).addTo(stage);
 
-        const box = new Hilo3d.Mesh({
-            geometry: new Hilo3d.BoxGeometry(),
-            material: new Hilo3d.PBRMaterial({
-              baseColor: new Hilo3d.Color(.9, .3, .6),
-              roughness: 1,
-              metallic: 1,
-            }),
-            x: 0.2,
-            y: .3,
-            z: 0.2,
-            onUpdate() {
-              this.rotationX++;
-              this.rotationY++;
-            }
-        }).addTo(stage).setScale(0.1);
-
-        new Hilo3d.AmbientLight({
-            color:new Hilo3d.Color(1, 1, 1),
-            amount: .2
-        }).addTo(stage);
-
-        const ticker = new Hilo3d.Ticker(60);
-        ticker.addTick(stage);
-        ticker.addTick(Hilo3d.Animation);
-        ticker.start();
-        const stats = new Stats(ticker, stage.renderer.renderInfo);
-        const orbitControls = new OrbitControls(stage, {
-            isLockMove:true,
-            isLockZ:true
-        });
+const box = new Hilo3d.Mesh({
+    geometry: new Hilo3d.BoxGeometry(),
+    material: new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.9, 0.3, 0.6),
+        roughness: 1,
+        metallic: 1
+    }),
+    x: 0.2,
+    y: 0.3,
+    z: 0.2
+})
+    .addTo(stage)
+    .setScale(0.1);
+box.onUpdate = () => {
+    box.rotationX += 1;
+    box.rotationY += 1;
+};

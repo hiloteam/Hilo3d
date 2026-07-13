@@ -1,111 +1,119 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
+
+const { camera, stage, renderer, ticker } = createExampleContext();
 
 renderer.preferWebGL2 = true;
-      ticker.targetFPS = 1;
-      renderer.clearColor = new Hilo3d.Color(.9, .6, .3);
+ticker.targetFPS = 1;
+renderer.clearColor = new Hilo3d.Color(0.9, 0.6, 0.3);
 
-      var sphereGeometry = new Hilo3d.PlaneGeometry();
-      var material = new Hilo3d.BasicMaterial({
-        lightType: "NONE",
-        diffuse: new Hilo3d.Color(1, 1, 1),
-        wireframe: true,
-      });
+const sphereGeometry = new Hilo3d.PlaneGeometry();
+const material = new Hilo3d.BasicMaterial({
+    lightType: 'NONE',
+    diffuse: new Hilo3d.Color(1, 1, 1),
+    wireframe: true
+});
 
-      camera.lookAt(new Hilo3d.Vector3(0, 0, 0));
+camera.lookAt(new Hilo3d.Vector3(0, 0, 0));
 
-      var sceneNode = new Hilo3d.Node();
-      const mesh = new Hilo3d.Mesh({
-        material: material,
-        geometry: sphereGeometry,
-        x: 0,
-        y: 0,
-        z: 0,
-        rotationZ: 30,
-        onUpdate: function () {
-          this.rotationZ += 6.7;
-        },
-      }).setScale(1.4);
-      sceneNode.addChild(mesh);
+const sceneNode = new Hilo3d.Node();
+const mesh = new Hilo3d.Mesh({
+    material,
+    geometry: sphereGeometry,
+    x: 0,
+    y: 0,
+    z: 0,
+    rotationZ: 30
+}).setScale(1.4);
+mesh.onUpdate = () => {
+    mesh.rotationZ += 6.7;
+};
+sceneNode.addChild(mesh);
 
-      var framebufferWidth = renderer.width / 32;
-      var framebufferHeight = renderer.height / 32;
+const framebufferWidth = renderer.width / 32;
+const framebufferHeight = renderer.height / 32;
 
-      var framebuffers = [0, 2, 4].map(samples => {
-        var multiSampledFramebuffer = new Hilo3d.Framebuffer(renderer, {
-          width: framebufferWidth,
-          height: framebufferHeight,
-          colorAttachmentInfos: [
+const framebuffers = [0, 2, 4].map(samples => {
+    const multiSampledFramebuffer = new Hilo3d.Framebuffer(renderer, {
+        width: framebufferWidth,
+        height: framebufferHeight,
+        colorAttachmentInfos: [
             {
-              attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
-              internalFormat: Hilo3d.constants.RGBA8,
-              samples,
-            },
-          ],
-          depthStencilAttachmentInfo: {
+                attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
+                internalFormat: Hilo3d.constants.RGBA8,
+                samples
+            }
+        ],
+        depthStencilAttachmentInfo: {
             attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
             internalFormat: Hilo3d.constants.DEPTH_COMPONENT24,
             attachment: Hilo3d.constants.DEPTH_ATTACHMENT,
-            samples,
-          },
-        });
+            samples
+        }
+    });
 
-        var copyFramebuffer = new Hilo3d.Framebuffer(renderer, {
-          width: framebufferWidth,
-          height: framebufferHeight,
-          colorAttachmentInfos: [
-            {
-              attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
-            },
-          ],
-        });
-
-        return {
-          multiSampledFramebuffer,
-          copyFramebuffer,
-        };
-      });
-
-      var singleFramebuffer = new Hilo3d.Framebuffer(renderer, {
+    const copyFramebuffer = new Hilo3d.Framebuffer(renderer, {
         width: framebufferWidth,
         height: framebufferHeight,
-        colorAttachmentInfos:[{
-          attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
-        }]
-      });
+        colorAttachmentInfos: [
+            {
+                attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE
+            }
+        ]
+    });
 
-      stage.onUpdate = function () {
-        const preWidth = renderer.width;
-        const preHeight = renderer.height;
+    return {
+        multiSampledFramebuffer,
+        copyFramebuffer
+    };
+});
 
-        sceneNode.traverseUpdate();
-        renderer.width = framebufferWidth;
-        renderer.height = framebufferHeight;
-        renderer.viewport(0, 0, framebufferWidth, framebufferHeight);
+const singleFramebuffer = new Hilo3d.Framebuffer(renderer, {
+    width: framebufferWidth,
+    height: framebufferHeight,
+    colorAttachmentInfos: [
+        {
+            attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE
+        }
+    ]
+});
 
-        framebuffers.forEach(framebuffer => {
-          const {
-            multiSampledFramebuffer,
-            copyFramebuffer,
-          } = framebuffer;
+stage.onUpdate = function () {
+    const preWidth = renderer.width;
+    const preHeight = renderer.height;
 
-          multiSampledFramebuffer.bind();
-          stage.renderer.render(sceneNode, camera);
+    sceneNode.traverseUpdate(0);
+    renderer.width = framebufferWidth;
+    renderer.height = framebufferHeight;
+    renderer.viewport(0, 0, framebufferWidth, framebufferHeight);
 
-          copyFramebuffer.copyFramebuffer(multiSampledFramebuffer);
-        });
+    framebuffers.forEach(framebuffer => {
+        const { multiSampledFramebuffer, copyFramebuffer } = framebuffer;
 
-        singleFramebuffer.bind();
+        multiSampledFramebuffer.bind();
         stage.renderer.render(sceneNode, camera);
 
-        renderer.state.bindSystemFramebuffer();
-        renderer.width = preWidth;
-        renderer.height = preHeight;
-        renderer.viewport();
-      };
+        copyFramebuffer.copyFramebuffer(multiSampledFramebuffer);
+    });
 
-      renderer.on("afterRender", () => {
-        singleFramebuffer.render(.025, .025, .45, .45);
-        framebuffers[0].copyFramebuffer.render(.525, .025, .45, .45);
-        framebuffers[1].copyFramebuffer.render(.025, .525, .45, .45);
-        framebuffers[2].copyFramebuffer.render(.525, .525, .45, .45);
-      });
+    singleFramebuffer.bind();
+    stage.renderer.render(sceneNode, camera);
+
+    renderer.state.bindSystemFramebuffer();
+    renderer.width = preWidth;
+    renderer.height = preHeight;
+    renderer.viewport();
+};
+
+renderer.on('afterRender', () => {
+    singleFramebuffer.render(0.025, 0.025, 0.45, 0.45);
+    const viewports = [
+        [0.525, 0.025, 0.45, 0.45],
+        [0.025, 0.525, 0.45, 0.45],
+        [0.525, 0.525, 0.45, 0.45]
+    ] as const;
+    framebuffers.forEach(({ copyFramebuffer }, index) => {
+        const viewport = viewports[index];
+        if (viewport) copyFramebuffer.render(...viewport);
+    });
+});

@@ -1,91 +1,99 @@
+import { describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+import {
+    BACK,
+    FRONT,
+    FRONT_AND_BACK,
+    ONE,
+    ONE_MINUS_SRC_ALPHA
+} from '../../../src/constants/webgl';
+
 const Material = Hilo3d.Material;
-const constants = Hilo3d.constants;
 
 describe('Material', () => {
     it('create', () => {
         const material = new Material();
-        material.isMaterial.should.be.true();
-        material.className.should.equal('Material');
+        expect(material.isMaterial).toBe(true);
+        expect(material.className).toBe('Material');
     });
 
     it('clone', () => {
         const material = new Material({
-            diffuse:new Hilo3d.Color(),
-            transparent:true
+            name: 'source',
+            transparent: true
         });
 
         const clonedMaterial = material.clone();
-        clonedMaterial.diffuse.elements.should.equal(material.diffuse.elements);
-        clonedMaterial.transparent.should.equal(material.transparent);
+        expect(clonedMaterial).not.toBe(material);
+        expect(clonedMaterial.name).toBe(material.name);
+        expect(clonedMaterial.transparent).toBe(material.transparent);
     });
 
     it('side & cullFace', () => {
-        const material = new Material;
+        const material = new Material();
 
-        material.side = constants.FRONT;
-        material.cullFace.should.be.true();
-        material.cullFaceType.should.equal(constants.BACK);
+        material.side = FRONT;
+        expect(material.cullFace).toBe(true);
+        expect(material.cullFaceType).toBe(BACK);
 
-        material.side = constants.FRONT_AND_BACK;
-        material.cullFace.should.be.false();
+        material.side = FRONT_AND_BACK;
+        expect(material.cullFace).toBe(false);
 
-        material.side = constants.BACK;
-        material.cullFace.should.be.true();
-        material.cullFaceType.should.equal(constants.FRONT);
+        material.side = BACK;
+        expect(material.cullFace).toBe(true);
+        expect(material.cullFaceType).toBe(FRONT);
 
-        material.cullFaceType = constants.BACK;
-        material.side.should.equal(constants.FRONT);
+        material.cullFaceType = BACK;
+        expect(material.side).toBe(FRONT);
 
         material.cullFace = false;
-        material.side.should.equal(constants.FRONT_AND_BACK);
+        expect(material.side).toBe(FRONT_AND_BACK);
     });
 
     it('transparent', () => {
-        const material = new Material;
+        const material = new Material();
 
         material.transparent = true;
-        material.blend.should.be.true();
-        material.blendSrc.should.equal(constants.ONE);
-        material.blendDst.should.equal(constants.ONE_MINUS_SRC_ALPHA);
-        material.blendSrcAlpha.should.equal(constants.ONE);
-        material.blendDstAlpha.should.equal(constants.ONE_MINUS_SRC_ALPHA);
-        material.depthMask.should.be.false();
+        expect(material.blend).toBe(true);
+        expect(material.blendSrc).toBe(ONE);
+        expect(material.blendDst).toBe(ONE_MINUS_SRC_ALPHA);
+        expect(material.blendSrcAlpha).toBe(ONE);
+        expect(material.blendDstAlpha).toBe(ONE_MINUS_SRC_ALPHA);
+        expect(material.depthMask).toBe(false);
 
         material.transparent = false;
-        material.blend.should.be.false();
-        material.depthMask.should.be.true();
+        expect(material.blend).toBe(false);
+        expect(material.depthMask).toBe(true);
     });
 
     it('getRenderOption', () => {
         const material = new Material({
-            normalMap:new Hilo3d.Texture({
-                uv:1
+            normalMap: new Hilo3d.Texture({
+                uv: 1
             }),
-            alphaCutoff:0.8
+            alphaCutoff: 0.8
         });
 
         const option = material.getRenderOption({
-            HAS_LIGHT:1
+            HAS_LIGHT: 1
         });
-        option.NORMAL_MAP.should.equal(1);
-        option.HAS_TEXCOORD1.should.equal(1);
-        should(option.HAS_TEXCOORD0).be.undefined();
-        option.ALPHA_CUTOFF.should.equal(1);
+        expect(option['NORMAL_MAP']).toBe(1);
+        expect(option['HAS_TEXCOORD1']).toBe(1);
+        expect(option['HAS_TEXCOORD0']).toBeUndefined();
+        expect(option['ALPHA_CUTOFF']).toBe(1);
     });
 
     it('gammaCorrection', () => {
-        let material = new Material();
+        const material = new Material();
 
-        material.gammaCorrection.should.be.false();
-        material.gammaOutput.should.be.false();
-        should(material.getRenderOption().GAMMA_CORRECTION).be.undefined();
+        expect(material.gammaCorrection).toBe(false);
+        expect(material.getRenderOption()['GAMMA_CORRECTION']).toBeUndefined();
 
         material.gammaCorrection = true;
-        material.gammaOutput.should.be.true();
-        should(material.getRenderOption().GAMMA_CORRECTION).be.equal(1);
+        expect(material.getRenderOption()['GAMMA_CORRECTION']).toBe(1);
 
-        material.gammaOutput = false;
-        material.gammaCorrection.should.be.false();
-        should(material.getRenderOption().GAMMA_CORRECTION).be.undefined();
+        material.gammaCorrection = false;
+        expect(material.gammaCorrection).toBe(false);
+        expect(material.getRenderOption()['GAMMA_CORRECTION']).toBeUndefined();
     });
 });

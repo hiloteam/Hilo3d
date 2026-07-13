@@ -1,40 +1,43 @@
+import { describe, expect, it, vi } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+
 const WebGLRenderer = Hilo3d.WebGLRenderer;
 
 describe('WebGLRenderer', () => {
     it('create', () => {
-        const renderer = new WebGLRenderer;
-        renderer.isWebGLRenderer.should.be.true();
-        renderer.className.should.equal('WebGLRenderer');
+        const renderer = new WebGLRenderer();
+        expect(renderer.isWebGLRenderer).toBe(true);
+        expect(renderer.className).toBe('WebGLRenderer');
     });
 
     it('onInit', () => {
         const renderer = new WebGLRenderer({
-            domElement:document.createElement('canvas')
+            domElement: document.createElement('canvas')
         });
-        const onInit1 = sinon.stub();
-        const onInit2 = sinon.stub();
-        const onInit3 = sinon.stub();
-        
+        const onInit1 = vi.fn();
+        const onInit2 = vi.fn();
+        const onInit3 = vi.fn();
+
         renderer.onInit(onInit1);
         renderer.on('init', onInit2);
-        onInit1.callCount.should.equal(0);
-        onInit2.callCount.should.equal(0);
-        onInit3.callCount.should.equal(0);
+        expect(onInit1).toHaveBeenCalledTimes(0);
+        expect(onInit2).toHaveBeenCalledTimes(0);
+        expect(onInit3).toHaveBeenCalledTimes(0);
 
         // init context
         renderer.initContext();
-        onInit1.callCount.should.equal(1);
-        onInit2.callCount.should.equal(1);
-        onInit3.callCount.should.equal(0);
+        expect(onInit1).toHaveBeenCalledTimes(1);
+        expect(onInit2).toHaveBeenCalledTimes(1);
+        expect(onInit3).toHaveBeenCalledTimes(0);
 
         renderer.onInit(onInit3);
-        onInit1.callCount.should.equal(1);
-        onInit2.callCount.should.equal(1);
-        onInit3.callCount.should.equal(1);
+        expect(onInit1).toHaveBeenCalledTimes(1);
+        expect(onInit2).toHaveBeenCalledTimes(1);
+        expect(onInit3).toHaveBeenCalledTimes(1);
 
         renderer.fire('init');
-        onInit1.callCount.should.equal(1);
-        onInit2.callCount.should.equal(2);
-        onInit3.callCount.should.equal(1);
+        expect(onInit1).toHaveBeenCalledTimes(1);
+        expect(onInit2).toHaveBeenCalledTimes(2);
+        expect(onInit3).toHaveBeenCalledTimes(1);
     });
 });

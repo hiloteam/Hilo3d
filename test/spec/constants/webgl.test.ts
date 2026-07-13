@@ -1,21 +1,25 @@
-const webgl = Hilo3d.constants.webgl;
-const webgl2 = Hilo3d.constants.webgl2;
+import { describe, expect, it } from 'vitest';
+import * as webgl from '../../../src/constants/webgl';
+import * as webgl2 from '../../../src/constants/webgl2';
 
 describe('constants/webgl', () => {
-    it('webgl constants value should equal webgl value', () => {
+    it('matches WebGL context constants', () => {
         const gl = document.createElement('canvas').getContext('webgl');
-        for (var name in webgl) {
-            if(gl[name] !== undefined){
-                webgl[name].should.equal(gl[name]);
+        if (!gl) throw new Error('Expected the test browser to provide WebGL');
+
+        for (const [name, value] of Object.entries(webgl)) {
+            const contextValue: unknown = Reflect.get(gl, name);
+            if (typeof contextValue === 'number') {
+                expect(value).toBe(contextValue);
             }
         }
     });
 
-    it('webgl2 copy buffer binding constants should equal WebGL2 values', () => {
+    it('matches WebGL2 copy-buffer binding constants', () => {
         const gl = document.createElement('canvas').getContext('webgl2');
         if (!gl) return;
 
-        webgl2.COPY_READ_BUFFER_BINDING.should.equal(gl.COPY_READ_BUFFER_BINDING);
-        webgl2.COPY_WRITE_BUFFER_BINDING.should.equal(gl.COPY_WRITE_BUFFER_BINDING);
+        expect(webgl2.COPY_READ_BUFFER_BINDING).toBe(gl.COPY_READ_BUFFER_BINDING);
+        expect(webgl2.COPY_WRITE_BUFFER_BINDING).toBe(gl.COPY_WRITE_BUFFER_BINDING);
     });
 });

@@ -1,60 +1,83 @@
-const Class = Hilo3d.Class;
+import { describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
 
-describe('Class', function(){
-    var A;
-    it('new', function(){
-        A = Class.create({
-            id:'a',
-            getId:function(){
-                return this.id;
-            }
-        });
+const { Class } = Hilo3d;
 
-        var a = new A;
-        a.should.instanceOf(A);
-        a.id.should.equal('a');
-        a.getId().should.equal('a');
+interface BaseShape {
+    id: string;
+    getId(): string;
+}
+
+type BaseConstructor = new () => BaseShape;
+
+const LegacyBase = Class.create<BaseConstructor>()({
+    id: 'a',
+    getId() {
+        return this.id;
+    }
+});
+
+describe('Class compatibility API', () => {
+    it('creates constructible classes', () => {
+        const instance = new LegacyBase();
+        expect(instance).toBeInstanceOf(LegacyBase);
+        expect(instance.id).toBe('a');
+        expect(instance.getId()).toBe('a');
     });
 
-    it('Extends', function(){
-        var B = Class.create({
-            id:'b',
-            Extends:A
-        });
+    it('preserves prototype inheritance', () => {
+        type DerivedConstructor = new () => BaseShape;
 
-        var b = new B;
-        b.should.instanceOf(A);
-        b.should.instanceOf(B);
-        B.superclass.should.equal(A.prototype);
-        b.id.should.equal('b');
-        b.getId().should.equal('b');
+        const LegacyDerived = Class.create<DerivedConstructor>()({
+            id: 'b',
+            Extends: LegacyBase
+        });
+        const instance = new LegacyDerived();
+
+        expect(instance).toBeInstanceOf(LegacyBase);
+        expect(instance).toBeInstanceOf(LegacyDerived);
+        expect(LegacyDerived.superclass).toBe(LegacyBase.prototype);
+        expect(instance.id).toBe('b');
+        expect(instance.getId()).toBe('b');
     });
 
-    it('Mixes', function(){
-        var C = Class.create({
-            Mixes:[{
-                    mixA:'mixA'
-                },{
-                    mixB:function(){
-                        return 'mixB'
+    it('mixes typed members into the prototype', () => {
+        interface MixedShape {
+            mixA: string;
+            mixB(): string;
+        }
+        type MixedConstructor = new () => MixedShape;
+
+        const MixedClass = Class.create<MixedConstructor>()({
+            Mixes: [
+                { mixA: 'mixA' },
+                {
+                    mixB() {
+                        return 'mixB';
                     }
                 }
             ]
         });
+        const instance = new MixedClass();
 
-        var c = new C;
-        c.mixA.should.equal('mixA');
-        c.mixB().should.equal('mixB');
+        expect(instance.mixA).toBe('mixA');
+        expect(instance.mixB()).toBe('mixB');
     });
 
-    it('Statics', function(){
-        var D = Class.create({
-            Statics:{
-                hello:function(){
+    it('copies typed static members', () => {
+        interface StaticConstructor {
+            new (): object;
+            hello(): string;
+        }
+
+        const StaticClass = Class.create<StaticConstructor>()({
+            Statics: {
+                hello() {
                     return 'hello';
                 }
             }
         });
-        D.hello().should.equal('hello');
+
+        expect(StaticClass.hello()).toBe('hello');
     });
 });

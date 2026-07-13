@@ -1,3 +1,6 @@
+import type RenderInfo from '../../src/renderer/RenderInfo';
+import type Ticker from '../../src/utils/Ticker';
+
 interface PerformanceMemory {
     usedJSHeapSize: number;
     jsHeapSizeLimit: number;
@@ -7,22 +10,14 @@ interface PerformanceWithMemory extends Performance {
     memory?: PerformanceMemory;
 }
 
-interface ProfiledTicker extends hilo3d.Ticker {
-    _tick(): void;
-}
-
 /** Lightweight renderer statistics overlay used by the examples. */
 class Stats {
-    readonly ticker: hilo3d.Ticker;
-    readonly renderInfo: hilo3d.RenderInfo;
+    readonly ticker: Ticker;
+    readonly renderInfo: RenderInfo;
     readonly container: HTMLElement;
     private intervalId: number | undefined;
 
-    constructor(
-        ticker: hilo3d.Ticker,
-        renderInfo: hilo3d.RenderInfo,
-        container?: HTMLElement
-    ) {
+    constructor(ticker: Ticker, renderInfo: RenderInfo, container?: HTMLElement) {
         this.ticker = ticker;
         this.renderInfo = renderInfo;
         this.container = container ?? this.createContainer();
@@ -45,21 +40,21 @@ class Stats {
     }
 
     getFpsInfo(): string {
-        return `fps: ${this.ticker.getMeasuredFPS()}`;
+        return `fps: ${String(this.ticker.getMeasuredFPS())}`;
     }
 
     getFaceCountInfo(): string {
-        return `faceCount: ${this.renderInfo.faceCount}`;
+        return `faceCount: ${String(this.renderInfo.faceCount)}`;
     }
 
     getDrawCountInfo(): string {
-        return `drawCount: ${this.renderInfo.drawCount}`;
+        return `drawCount: ${String(this.renderInfo.drawCount)}`;
     }
 
     getMemoryInfo(): string {
         const memory = (window.performance as PerformanceWithMemory).memory;
         if (!memory) return 'memory: NaN';
-        const percentage = memory.usedJSHeapSize / memory.jsHeapSizeLimit * 100;
+        const percentage = (memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100;
         return `memory: ${percentage.toFixed(2)}%`;
     }
 
@@ -80,20 +75,6 @@ class Stats {
         window.clearInterval(this.intervalId);
         this.intervalId = undefined;
     }
-
-    profile(name: string): void {
-        console.profile(name);
-        (this.ticker as ProfiledTicker)._tick();
-        console.profileEnd(name);
-    }
 }
-
-declare global {
-    interface Window {
-        Stats: typeof Stats;
-    }
-}
-
-window.Stats = Stats;
 
 export default Stats;

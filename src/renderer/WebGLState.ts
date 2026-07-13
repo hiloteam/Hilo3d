@@ -1,340 +1,268 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import { isWebGL2 } from '../utils/util';
+import type { GLContext } from './types';
 
-/**
- * WebGL 状态管理，减少 api 调用
- * @class
- */
-const WebGLState = Class.create<typeof hilo3d.WebGLState>()(/** @lends WebGLState.prototype */ {
-    /**
-     * @default WebGLState
-     * @type {String}
-     */
-    className: 'WebGLState',
+export type StateValue = number | boolean | WebGLProgram | null;
+export type OneParameterMethod =
+    'useProgram' | 'depthFunc' | 'depthMask' | 'stencilMask' | 'cullFace' | 'frontFace' | 'enable';
+export type TwoParameterMethod = 'depthRange' | 'blendEquationSeparate';
+export type ThreeParameterMethod = 'stencilFunc' | 'stencilOp';
+export type FourParameterMethod = 'colorMask' | 'blendFuncSeparate' | 'viewport';
 
-    /**
-     * @default true
-     * @type {Boolean}
-     */
-    isWebGLState: true,
+function numberValue(value: StateValue, method: string): number {
+    if (typeof value !== 'number') throw new TypeError(`${method} requires numeric parameters`);
+    return value;
+}
 
-    /**
-     * 系统framebuffer
-     * @default true
-     * @type {null}
-     */
-    systemFramebuffer: null,
+function booleanValue(value: StateValue, method: string): boolean {
+    if (typeof value !== 'boolean') throw new TypeError(`${method} requires boolean parameters`);
+    return value;
+}
 
-    /**
-    * 是否是 WebGL2
-    * @default false
-    * @type {Boolean}
-    */
-    isWebGL2: false,
+function sameValues(
+    previous: readonly StateValue[] | undefined,
+    next: readonly StateValue[]
+): boolean {
+    return (
+        previous?.length === next.length && next.every((value, index) => previous[index] === value)
+    );
+}
 
-    /**
-     * @constructs
-     * @param  {WebGLRenderingContext} gl
-     */
-    constructor(gl) {
-        /**
-         * gl
-         * @type {WebGLRenderingContext}
-         */
+/** WebGL state cache that avoids redundant context calls. */
+class WebGLState {
+    readonly className = 'WebGLState';
+    readonly isWebGLState = true;
+    readonly isWebGL2: boolean;
+    readonly gl: GLContext;
+    systemFramebuffer: WebGLFramebuffer | null = null;
+    currentFramebuffer: WebGLFramebuffer | null = null;
+    preFramebuffer: WebGLFramebuffer | null = null;
+
+    private readonly state = new Map<string, readonly StateValue[]>();
+    private activeTextureIndex: GLenum | null = null;
+    private readonly textureUnits = new Map<GLenum, Map<GLenum, WebGLTexture | null>>();
+    private readonly pixelStore = new Map<GLenum, number | boolean>();
+
+    constructor(gl: GLContext) {
         this.gl = gl;
         this.isWebGL2 = isWebGL2(gl);
         this.reset();
-    },
-    /**
-     * 重置状态
-     */
-    reset() {
-        this._dict = {};
+    }
+
+    reset(): void {
+        this.state.clear();
         this.activeTextureIndex = null;
-        this.textureUnitDict = {};
+        this.textureUnits.clear();
         this.currentFramebuffer = null;
         this.preFramebuffer = null;
-        this._pixelStorei = {};
-    },
-    /**
-     * enable
-     * @param  {GLenum} capability
-     */
-    enable(capability) {
-        const value = this._dict[capability];
-        if (value !== true) {
-            this._dict[capability] = true;
-            this.gl.enable(capability);
-        }
-    },
-    /**
-     * disable
-     * @param  {GLenum} capability
-     */
-    disable(capability) {
-        const value = this._dict[capability];
-        if (value !== false) {
-            this._dict[capability] = false;
-            this.gl.disable(capability);
-        }
-    },
-    /**
-     * bindFramebuffer
-     * @param  {GLenum} target
-     * @param  {WebGLFramebuffer} framebuffer
-     */
-    bindFramebuffer(target, framebuffer) {
-        if (this.currentFramebuffer !== framebuffer) {
-            this.preFramebuffer = this.currentFramebuffer;
-            this.currentFramebuffer = framebuffer;
-            this.gl.bindFramebuffer(target, framebuffer);
-        }
-    },
-    /**
-     * 绑定系统framebuffer
-     */
-    bindSystemFramebuffer() {
+        this.pixelStore.clear();
+    }
+
+    enable(capability: GLenum): void {
+        const key = `capability:${String(capability)}`;
+        if (this.state.get(key)?.[0] === true) return;
+        this.state.set(key, [true]);
+        this.gl.enable(capability);
+    }
+
+    disable(capability: GLenum): void {
+        const key = `capability:${String(capability)}`;
+        if (this.state.get(key)?.[0] === false) return;
+        this.state.set(key, [false]);
+        this.gl.disable(capability);
+    }
+
+    /** Returns a capability value while keeping the state cache synchronized with WebGL. */
+    isEnabled(capability: GLenum): boolean {
+        const key = `capability:${String(capability)}`;
+        const cached = this.state.get(key)?.[0];
+        if (typeof cached === 'boolean') return cached;
+        const enabled = this.gl.isEnabled(capability);
+        this.state.set(key, [enabled]);
+        return enabled;
+    }
+
+    bindFramebuffer(target: GLenum, framebuffer: WebGLFramebuffer | null): void {
+        if (this.currentFramebuffer === framebuffer) return;
+        this.preFramebuffer = this.currentFramebuffer;
+        this.currentFramebuffer = framebuffer;
+        this.gl.bindFramebuffer(target, framebuffer);
+    }
+
+    bindSystemFramebuffer(): void {
         this.bindFramebuffer(this.gl.FRAMEBUFFER, this.systemFramebuffer);
-    },
-    /**
-     * useProgram
-     * @param  { WebGLProgram} program
-     */
-    useProgram(program) {
+    }
+
+    useProgram(program: WebGLProgram | null): void {
         this.set1('useProgram', program);
-    },
-    /**
-     * depthFunc
-     * @param  {GLenum } func
-     */
-    depthFunc(func) {
+    }
+
+    depthFunc(func: GLenum): void {
         this.set1('depthFunc', func);
-    },
-    /**
-     * depthMask
-     * @param  {GLenum } flag
-     */
-    depthMask(flag) {
+    }
+
+    depthMask(flag: boolean): void {
         this.set1('depthMask', flag);
-    },
-    /**
-     * clear
-     * @param  {Number} mask
-     */
-    clear(mask) {
+    }
+
+    clear(mask: GLbitfield): void {
         this.gl.clear(mask);
-    },
-    /**
-     * depthRange
-     * @param  {Number} zNear
-     * @param  {Number} zFar
-     */
-    depthRange(zNear, zFar) {
+    }
+
+    depthRange(zNear: number, zFar: number): void {
         this.set2('depthRange', zNear, zFar);
-    },
-    /**
-     * stencilFunc
-     * @param  {GLenum} func
-     * @param  {Number} ref
-     * @param  {Number} mask
-     */
-    stencilFunc(func, ref, mask) {
+    }
+
+    stencilFunc(func: GLenum, ref: GLint, mask: GLuint): void {
         this.set3('stencilFunc', func, ref, mask);
-    },
-    /**
-     * stencilMask
-     * @param  {Number} mask
-     */
-    stencilMask(mask) {
+    }
+
+    stencilMask(mask: GLuint): void {
         this.set1('stencilMask', mask);
-    },
-    /**
-     * stencilOp
-     * @param  {GLenum} fail
-     * @param  {GLenum} zfail
-     * @param  {GLenum} zpass
-     */
-    stencilOp(fail, zfail, zpass) {
+    }
+
+    stencilOp(fail: GLenum, zfail: GLenum, zpass: GLenum): void {
         this.set3('stencilOp', fail, zfail, zpass);
-    },
-    /**
-     * colorMask
-     * @param  {Boolean} red
-     * @param  {Boolean} green
-     * @param  {Boolean} blue
-     * @param  {Boolean} alpha
-     */
-    colorMask(red, green, blue, alpha) {
+    }
+
+    colorMask(red: boolean, green: boolean, blue: boolean, alpha: boolean): void {
         this.set4('colorMask', red, green, blue, alpha);
-    },
-    /**
-     * cullFace
-     * @param  {GLenum} mode
-     */
-    cullFace(mode) {
+    }
+
+    cullFace(mode: GLenum): void {
         this.set1('cullFace', mode);
-    },
-    /**
-     * frontFace
-     * @param  {GLenum} mode
-     */
-    frontFace(mode) {
+    }
+
+    frontFace(mode: GLenum): void {
         this.set1('frontFace', mode);
-    },
-    /**
-     * blendFuncSeparate
-     * @param  {GLenum} srcRGB
-     * @param  {GLenum} dstRGB
-     * @param  {GLenum} srcAlpha
-     * @param  {GLenum} dstAlpha
-     */
-    blendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha) {
+    }
+
+    blendFuncSeparate(srcRGB: GLenum, dstRGB: GLenum, srcAlpha: GLenum, dstAlpha: GLenum): void {
         this.set4('blendFuncSeparate', srcRGB, dstRGB, srcAlpha, dstAlpha);
-    },
-    /**
-     * blendEquationSeparate
-     * @param  {GLenum} modeRGB
-     * @param  {GLenum} modeAlpha
-     */
-    blendEquationSeparate(modeRGB, modeAlpha) {
+    }
+
+    blendEquationSeparate(modeRGB: GLenum, modeAlpha: GLenum): void {
         this.set2('blendEquationSeparate', modeRGB, modeAlpha);
-    },
-    /**
-     * pixelStorei
-     * @param  {GLenum} pname
-     * @param  {GLenum} param
-     */
-    pixelStorei(pname, param) {
-        const currentParam = this._pixelStorei[pname];
-        if (currentParam !== param) {
-            this._pixelStorei[pname] = param;
-            this.gl.pixelStorei(pname, param);
-        }
-    },
-    /**
-     * viewport
-     * @param  {Number} x
-     * @param  {Number} y
-     * @param  {Number} width
-     * @param  {Number} height
-     */
-    viewport(x, y, width, height) {
+    }
+
+    pixelStorei(pname: GLenum, param: number | boolean): void {
+        if (this.pixelStore.get(pname) === param) return;
+        this.pixelStore.set(pname, param);
+        this.gl.pixelStorei(pname, param);
+    }
+
+    viewport(x: GLint, y: GLint, width: GLsizei, height: GLsizei): void {
         this.set4('viewport', x, y, width, height);
-    },
-    /**
-     * activeTexture
-     * @param  {GLenum} texture
-     */
-    activeTexture(texture) {
-        if (this.activeTextureIndex !== texture) {
-            this.activeTextureIndex = texture;
-            this.gl.activeTexture(texture);
-        }
-    },
-    /**
-     * bindTexture
-     * @param  {GLenum} target
-     * @param  {WebGLTexture } texture
-     */
-    bindTexture(target, texture) {
-        let textureUnit = this.getActiveTextureUnit();
-        if (textureUnit[target] !== texture) {
-            textureUnit[target] = texture;
-            this.gl.bindTexture(target, texture);
-        }
-    },
-    /**
-     * 获取当前激活的纹理对象
-     * @return {GLenum}
-     */
-    getActiveTextureUnit() {
-        let textureUnit = this.textureUnitDict[this.activeTextureIndex];
+    }
+
+    activeTexture(texture: GLenum): void {
+        if (this.activeTextureIndex === texture) return;
+        this.activeTextureIndex = texture;
+        this.gl.activeTexture(texture);
+    }
+
+    bindTexture(target: GLenum, texture: WebGLTexture | null): void {
+        const textureUnit = this.getActiveTextureUnit();
+        if (textureUnit.get(target) === texture) return;
+        textureUnit.set(target, texture);
+        this.gl.bindTexture(target, texture);
+    }
+
+    getActiveTextureUnit(): Map<GLenum, WebGLTexture | null> {
+        const activeIndex = this.activeTextureIndex ?? this.gl.TEXTURE0;
+        let textureUnit = this.textureUnits.get(activeIndex);
         if (!textureUnit) {
-            textureUnit = this.textureUnitDict[this.activeTextureIndex] = {};
+            textureUnit = new Map();
+            this.textureUnits.set(activeIndex, textureUnit);
         }
         return textureUnit;
-    },
-    /**
-     * 调 gl 1参数方法
-     * @private
-     * @param  {String} name  方法名
-     * @param  {Number|Object} param 方法参数
-     */
-    set1(name, param) {
-        const value = this._dict[name];
-        if (value !== param) {
-            this._dict[name] = param;
-            this.gl[name](param);
-        }
-    },
-    /**
-     * 调 gl 2参数方法
-     * @private
-     * @param  {String} name  方法名
-     * @param  {Number|Object} param0 方法参数
-     * @param  {Number|Object} param1 方法参数
-     */
-    set2(name, param0, param1) {
-        let value = this._dict[name];
-        if (!value) {
-            value = this._dict[name] = [];
-        }
-
-        if (value[0] !== param0 || value[1] !== param1) {
-            value[0] = param0;
-            value[1] = param1;
-            this.gl[name](param0, param1);
-        }
-    },
-    /**
-     * 调 gl 3参数方法
-     * @private
-     * @param  {String} name  方法名
-     * @param  {Number|Object} param0 方法参数
-     * @param  {Number|Object} param1 方法参数
-     * @param  {Number|Object} param2 方法参数
-     */
-    set3(name, param0, param1, param2) {
-        let value = this._dict[name];
-        if (!value) {
-            value = this._dict[name] = [];
-        }
-
-        if (value[0] !== param0 || value[1] !== param1 || value[2] !== param2) {
-            value[0] = param0;
-            value[1] = param1;
-            value[2] = param2;
-            this.gl[name](param0, param1, param2);
-        }
-    },
-    /**
-     * 调 gl 4参数方法
-     * @private
-     * @param  {String} name  方法名
-     * @param  {Number|Object} param0 方法参数
-     * @param  {Number|Object} param1 方法参数
-     * @param  {Number|Object} param2 方法参数
-     * @param  {Number|Object} param3 方法参数
-     */
-    set4(name, param0, param1, param2, param3) {
-        let value = this._dict[name];
-        if (!value) {
-            value = this._dict[name] = [];
-        }
-
-        if (value[0] !== param0 || value[1] !== param1 || value[2] !== param2 || value[3] !== param3) {
-            value[0] = param0;
-            value[1] = param1;
-            value[2] = param2;
-            value[3] = param3;
-            this.gl[name](param0, param1, param2, param3);
-        }
-    },
-    get(name) {
-        return this._dict[name];
     }
-});
+
+    set1(name: OneParameterMethod, param: StateValue): void {
+        const values = [param];
+        if (sameValues(this.state.get(name), values)) return;
+        this.state.set(name, values);
+        switch (name) {
+            case 'useProgram':
+                if (param !== null && typeof param !== 'object') {
+                    throw new TypeError('useProgram requires a WebGLProgram or null');
+                }
+                this.gl.useProgram(param);
+                break;
+            case 'depthMask':
+                this.gl.depthMask(booleanValue(param, name));
+                break;
+            case 'depthFunc':
+                this.gl.depthFunc(numberValue(param, name));
+                break;
+            case 'stencilMask':
+                this.gl.stencilMask(numberValue(param, name));
+                break;
+            case 'cullFace':
+                this.gl.cullFace(numberValue(param, name));
+                break;
+            case 'frontFace':
+                this.gl.frontFace(numberValue(param, name));
+                break;
+            case 'enable':
+                this.gl.enable(numberValue(param, name));
+                break;
+        }
+    }
+
+    set2(name: TwoParameterMethod, param0: number, param1: number): void {
+        const values = [param0, param1];
+        if (sameValues(this.state.get(name), values)) return;
+        this.state.set(name, values);
+        if (name === 'depthRange') this.gl.depthRange(param0, param1);
+        else this.gl.blendEquationSeparate(param0, param1);
+    }
+
+    set3(name: ThreeParameterMethod, param0: number, param1: number, param2: number): void {
+        const values = [param0, param1, param2];
+        if (sameValues(this.state.get(name), values)) return;
+        this.state.set(name, values);
+        if (name === 'stencilFunc') this.gl.stencilFunc(param0, param1, param2);
+        else this.gl.stencilOp(param0, param1, param2);
+    }
+
+    set4(
+        name: FourParameterMethod,
+        param0: number | boolean,
+        param1: number | boolean,
+        param2: number | boolean,
+        param3: number | boolean
+    ): void {
+        const values = [param0, param1, param2, param3];
+        if (sameValues(this.state.get(name), values)) return;
+        this.state.set(name, values);
+        if (name === 'colorMask') {
+            this.gl.colorMask(
+                booleanValue(param0, name),
+                booleanValue(param1, name),
+                booleanValue(param2, name),
+                booleanValue(param3, name)
+            );
+        } else if (name === 'blendFuncSeparate') {
+            this.gl.blendFuncSeparate(
+                numberValue(param0, name),
+                numberValue(param1, name),
+                numberValue(param2, name),
+                numberValue(param3, name)
+            );
+        } else {
+            this.gl.viewport(
+                numberValue(param0, name),
+                numberValue(param1, name),
+                numberValue(param2, name),
+                numberValue(param3, name)
+            );
+        }
+    }
+
+    get(name: string): StateValue | readonly StateValue[] | undefined {
+        const values = this.state.get(name);
+        return values?.length === 1 ? values[0] : values;
+    }
+}
 
 export default WebGLState;

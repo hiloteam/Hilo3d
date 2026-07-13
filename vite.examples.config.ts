@@ -1,8 +1,8 @@
-import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
-import { createLogger, defineConfig, type Plugin } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import packageJson from './package.json' with { type: 'json' };
-import { glslPlugin } from './vite.config';
+import { shaderIncludePlugin } from './vite.config';
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -14,19 +14,51 @@ function collectHtmlFiles(directory: string): string[] {
 
 const htmlInputs = Object.fromEntries(
     collectHtmlFiles('examples').map(path => {
-        const name = relative('examples', path)
-            .slice(0, -'.html'.length)
-            .split(sep)
-            .join('/');
+        const name = relative('examples', path).slice(0, -'.html'.length).split(sep).join('/');
         return [name, path];
     })
 );
-const logger = createLogger();
-const warn = logger.warn.bind(logger);
-logger.warn = (message, options) => {
-    if (message.includes('can\'t be bundled without type="module" attribute')) return;
-    warn(message, options);
-};
+
+const dracoDecoderModuleId = 'virtual:hilo3d-draco-decoder';
+const resolvedDracoDecoderModuleId = `\0${dracoDecoderModuleId}`;
+
+/** Adapts the upstream browser-only Draco WASM wrapper into a typed ESM module. */
+function dracoBrowserDecoderPlugin(): Plugin {
+    const decoderDirectory = resolve('node_modules/@loaders.gl/draco/dist/libs');
+    const wrapperPath = resolve(decoderDirectory, 'draco_wasm_wrapper.js');
+    const wasmPath = resolve(decoderDirectory, 'draco_decoder.wasm');
+    return {
+        name: 'hilo3d-draco-browser-decoder',
+        resolveId(source) {
+            return source === dracoDecoderModuleId ? resolvedDracoDecoderModuleId : null;
+        },
+        load(id) {
+            if (id !== resolvedDracoDecoderModuleId) return null;
+            const wrapper = readFileSync(wrapperPath, 'utf8');
+            const commonJsFooter = wrapper.indexOf(
+                '"object"===typeof exports&&"object"===typeof module'
+            );
+            if (commonJsFooter < 0) {
+                throw new Error(
+                    'The upstream Draco wrapper no longer has the expected UMD footer.'
+                );
+            }
+            const esmWrapper = wrapper
+                .slice(0, commonJsFooter)
+                .replaceAll('require("path")', 'undefined')
+                .replaceAll('require("fs")', 'undefined');
+            if (esmWrapper.includes('require("')) {
+                throw new Error('The upstream Draco browser wrapper contains a new Node import.');
+            }
+            return [
+                `import decoderWasmUrl from ${JSON.stringify(`${wasmPath}?url`)};`,
+                esmWrapper,
+                'export { decoderWasmUrl };',
+                'export default DracoDecoderModule;'
+            ].join('\n');
+        }
+    };
+}
 
 function copyExampleAssets(): Plugin {
     return {
@@ -39,7 +71,10 @@ function copyExampleAssets(): Plugin {
                         copyDirectory(source);
                         continue;
                     }
-                    if (entry.name === '.DS_Store' || ['.html', '.ts', '.css'].includes(extname(source))) {
+                    if (
+                        entry.name === '.DS_Store' ||
+                        ['.html', '.ts', '.css'].includes(extname(source))
+                    ) {
                         continue;
                     }
 
@@ -57,13 +92,14 @@ function copyExampleAssets(): Plugin {
 export default defineConfig({
     appType: 'mpa',
     base: './',
-    customLogger: logger,
-    plugins: [glslPlugin(), copyExampleAssets()],
+    plugins: [dracoBrowserDecoderPlugin(), shaderIncludePlugin(), copyExampleAssets()],
     define: {
-        HILO3D_VERSION: JSON.stringify(packageJson.version)
+        HILO3D_VERSION: JSON.stringify(packageJson.version),
+        process: 'undefined',
+        __filename: 'undefined'
     },
     build: {
-        target: 'es2020',
+        target: 'es2022',
         outDir: 'dist-examples',
         emptyOutDir: true,
         copyPublicDir: false,

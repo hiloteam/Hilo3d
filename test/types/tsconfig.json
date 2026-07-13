@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowUmdGlobalAccess": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "./package.test.ts",
+    "./package-umd.test.ts",
+    "./package-umd-global.test.ts",
+    "./package-umd-require.test.cts"
+  ]
+}

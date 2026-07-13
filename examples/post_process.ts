@@ -1,73 +1,83 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
+import postProcess from './js/postProcess';
+
+const { camera, stage, renderer, directionLight } = createExampleContext({
+    stage: { useFramebuffer: true }
+});
 
 camera.far = 5;
-    stage.rotationX = 25;
-    directionLight.shadow = {};
-    const glTFLoader = new Hilo3d.GLTFLoader();
-    glTFLoader.load({
-        src: './models/Tmall/Tmall.gltf',
-    }).then(function (model) {
+stage.rotationX = 25;
+directionLight.shadow = {};
+const glTFLoader = new Hilo3d.GLTFLoader();
+glTFLoader
+    .load({
+        src: './models/Tmall/Tmall.gltf'
+    })
+    .then(model => {
         model.node.y = 0.2;
         model.node.setScale(0.0015);
-        model.materials.map(function (m) {
-            m.side = Hilo3d.constants.FRONT_AND_BACK;
+        model.materials.forEach(material => {
+            material.side = Hilo3d.constants.FRONT_AND_BACK;
         });
-        model.node.onUpdate = function(){
+        model.node.onUpdate = function () {
             this.rotationY += 1;
         };
         stage.addChild(model.node);
+    })
+    .catch((error: unknown) => {
+        queueMicrotask(() => {
+            throw error;
+        });
     });
 
-    const plane = new Hilo3d.Mesh({
-        y: -.4,
-        rotationX: -90,
-        geometry: new Hilo3d.PlaneGeometry(),
-        material: new Hilo3d.BasicMaterial({
-            lightType:'LAMBERT',
-            side: Hilo3d.constants.FRONT_AND_BACK,
-            diffuse:new Hilo3d.Color(.612, .612, .612)
-        })
-    });
-    plane.setScale(1.8);
-    stage.addChild(plane);
+const plane = new Hilo3d.Mesh({
+    y: -0.4,
+    rotationX: -90,
+    geometry: new Hilo3d.PlaneGeometry(),
+    material: new Hilo3d.BasicMaterial({
+        lightType: 'LAMBERT',
+        side: Hilo3d.constants.FRONT_AND_BACK,
+        diffuse: new Hilo3d.Color(0.612, 0.612, 0.612)
+    })
+});
+plane.setScale(1.8);
+stage.addChild(plane);
 
-    let time = 0;
-    postProcess.init(renderer);
-    postProcess.addPass({
-        frag:'\n\
+postProcess.init(renderer);
+postProcess.addPass({
+    frag: '\n\
         precision HILO_MAX_FRAGMENT_PRECISION float;\n\
         varying vec2 v_texcoord0;\n\
         uniform sampler2D u_diffuse;\n\
         void main(void) {\n\
             vec4 color = texture2D(u_diffuse, v_texcoord0);\n\
-            gl_FragColor = vec4(color.r * 0.3 + color.g * 0.59 + color.b * 0.11);\n\
-        }',
-        uniforms:{
-            u_r:{
-                get:function(){
-                    return time;
-                }
-            }
-        }
-    });
-    
-    const currentKernel = 'edgeDetect6';
-    const kernelPass = postProcess.addKernelPass(postProcess.kernels[currentKernel]);
+            float luminance = color.r * 0.3 + color.g * 0.59 + color.b * 0.11;\n\
+            gl_FragColor = vec4(vec3(luminance), color.a);\n\
+        }'
+});
 
-    renderer.on('afterRender', ()=>{
-        time += 0.016;
-        postProcess.render();
-    });
+const currentKernel = 'edgeDetect6';
+const initialKernel = postProcess.kernels[currentKernel];
+if (!initialKernel) throw new Error(`Unknown post-process kernel: ${currentKernel}`);
+const kernelPass = postProcess.addKernelPass(initialKernel);
 
-    var kernelSelect = document.getElementById('kernelSelect');
-    for (var name in postProcess.kernels) {
-        var opt = document.createElement('option');
-        opt.innerText = name;
-        opt.setAttribute('value', name);
-        kernelSelect.appendChild(opt);
-    }
+renderer.on('afterRender', () => {
+    postProcess.render();
+});
 
-    kernelSelect.value = currentKernel;
-    kernelSelect.addEventListener('change', function () {
-        kernelPass.kernel = postProcess.kernels[kernelSelect.value];
-    });
+const kernelSelect = document.querySelector<HTMLSelectElement>('#kernelSelect');
+if (!kernelSelect) throw new Error('Kernel selector is missing.');
+for (const name in postProcess.kernels) {
+    const option = document.createElement('option');
+    option.textContent = name;
+    option.value = name;
+    kernelSelect.append(option);
+}
+
+kernelSelect.value = currentKernel;
+kernelSelect.addEventListener('change', () => {
+    const kernel = postProcess.kernels[kernelSelect.value];
+    if (!kernel) throw new Error(`Unknown post-process kernel: ${kernelSelect.value}`);
+    kernelPass.kernel = kernel;
+});

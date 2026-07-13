@@ -1,117 +1,140 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
-    renderer.preferWebGL2 = true;
-    var container = new Hilo3d.Node();
-    var geometry = new Hilo3d.SphereGeometry({
+const { camera, renderer, stage } = createExampleContext({
+    stage: {
+        clearColor: new Hilo3d.Color(0, 0, 0, 1),
+        preferWebGL2: true
+    }
+});
+
+const modelData = new Float32Array(16);
+const materialData = new Float32Array(8);
+const modelUniformBuffer = new Hilo3d.UniformBuffer(modelData);
+const materialUniformBuffer = new Hilo3d.UniformBuffer(materialData);
+const modelViewProjection = new Hilo3d.Matrix4();
+
+function requiredTextureUnit(textureIndex: number | undefined): number {
+    if (textureIndex === undefined) {
+        throw new Error('The UBO example shader did not receive a texture unit.');
+    }
+    return textureIndex;
+}
+
+function showWebGL2Requirement(): void {
+    const message = document.createElement('p');
+    message.className = 'example-requirement';
+    message.textContent = 'This example requires WebGL 2 Uniform Buffer Objects.';
+    document.body.append(message);
+}
+
+renderer.onInit(() => {
+    if (!renderer.isWebGL2) {
+        showWebGL2Requirement();
+        return;
+    }
+
+    const diffuse = new Hilo3d.LazyTexture({
+        src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
+    });
+    const mixTexture = new Hilo3d.LazyTexture({
+        src: new URL('./image/brdfLUT.png', import.meta.url).href
+    });
+    const geometry = new Hilo3d.SphereGeometry({
         radius: 1,
         heightSegments: 32,
-        widthSegments: 64,
-    })
-    var modelUniformBuffer = new Hilo3d.UniformBuffer(new Float32Array(16));
-    var materialUniformBuffer = new Hilo3d.UniformBuffer(new Float32Array(8));
-
-    var mesh = new Hilo3d.Mesh({
-        rotationX:90,
-        time:0,
-        geometry: geometry,
-        material: new Hilo3d.ShaderMaterial({
-            shaderCacheId: "UVAnimation",
-            getCustomRenderOption(option){
-                option.CUSTOM_OPTION = 1;
-                return option;
-            },
-            needBasicUnifroms: false,
-            needBasicAttributes: false,
-            diffuse: new Hilo3d.LazyTexture({
-                src: '//gw.alicdn.com/tfs/TB1Q8dQSVXXXXciXVXXXXXXXXXX-512-512.jpg'
-            }),
-            mixTexture:new Hilo3d.LazyTexture({
-                src: '//gw.alicdn.com/tfs/TB1T1wEizTpK1RjSZKPXXa3UpXa-512-512.png'
-            }),
-            uniforms:{
-                u_diffuse:'DIFFUSE',
-                u_mixTexture:{
-                    get(mesh, material, programInfo) {
-                        return Hilo3d.semantic.handlerTexture(material.mixTexture, programInfo.textureIndex);
-                    }
-                },
-            },
-            uniformBlocks: {
-                MaterialBlock: materialUniformBuffer,
-                ModelBlock: modelUniformBuffer,
-            },
-            attributes:{
-                a_position: 'POSITION',
-                a_texcoord0:'TEXCOORD_0'
-            },
-            fs:`
-                precision HILO_MAX_FRAGMENT_PRECISION float;
-
-                in vec2 v_texcoord0;
-
-                uniform sampler2D u_diffuse;
-                uniform sampler2D u_mixTexture;
-
-                layout(std140)  uniform MaterialBlock {
-                  vec4 color;
-                  float u_time;
-                };
-
-                void main(void) {
-                    float uOffset = sin(u_time * 0.0005);
-                    float vOffset = cos(u_time * 0.0003);
-                    vec4 diffuse = texture2D(u_diffuse, vec2(v_texcoord0.x + uOffset, v_texcoord0.y + vOffset));    
-                    vec4 mixTexture = texture2D(u_mixTexture, v_texcoord0);    
-                    gl_FragColor = mix(vec4(diffuse.r, diffuse.g, color.b, 1), mixTexture, 0.05);
+        widthSegments: 64
+    });
+    const material = new Hilo3d.ShaderMaterial({
+        shaderCacheId: 'UniformBufferAnimation',
+        needBasicUnifroms: false,
+        needBasicAttributes: false,
+        uniforms: {
+            u_diffuse: {
+                get(_mesh, _material, programInfo) {
+                    return Hilo3d.semantic.handlerTexture(
+                        diffuse,
+                        requiredTextureUnit(programInfo.textureIndex)
+                    );
                 }
-            `,
-            vs:`
-                precision HILO_MAX_VERTEX_PRECISION float;
-
-                layout(location = 0) in vec3 a_position;
-                layout(location = 1) in vec2 a_texcoord0;
-
-                layout(std140) uniform ModelBlock {
-                  uniform mat4 u_modelViewProjectionMatrix;
-                };
-
-                out vec2 v_texcoord0;
-
-                void main(void) {
-                    vec4 pos = vec4(a_position, 1.0);
-                    gl_Position = u_modelViewProjectionMatrix * pos;
-                    v_texcoord0 = a_texcoord0;
+            },
+            u_mixTexture: {
+                get(_mesh, _material, programInfo) {
+                    return Hilo3d.semantic.handlerTexture(
+                        mixTexture,
+                        requiredTextureUnit(programInfo.textureIndex)
+                    );
                 }
-            `
-        }),
-        onUpdate(dt){
-            this.time += dt;
-            Hilo3d.semantic.init(renderer, {}, stage.camera, renderer.lightManager, renderer.fog);
+            }
+        },
+        uniformBlocks: {
+            MaterialBlock: materialUniformBuffer,
+            ModelBlock: modelUniformBuffer
+        },
+        attributes: {
+            a_position: 'POSITION',
+            a_texcoord0: 'TEXCOORD_0'
+        },
+        fs: `precision highp float;
 
-            materialUniformBuffer.data.set([1, 0, Math.sin(this.time * 0.001) * 0.5 + 0.5, 1], 0);
-            materialUniformBuffer.data[4] = this.time;
-            materialUniformBuffer.isDirty = true;
+            varying vec2 v_texcoord0;
+            uniform sampler2D u_diffuse;
+            uniform sampler2D u_mixTexture;
 
-            modelUniformBuffer.data.set(Hilo3d.semantic.MODELVIEWPROJECTION.get(this), 0);
-            modelUniformBuffer.isDirty = true;
-        }
+            layout(std140) uniform MaterialBlock {
+                vec4 color;
+                float u_time;
+            };
+
+            void main(void) {
+                float uOffset = sin(u_time * 0.0005);
+                float vOffset = cos(u_time * 0.0003);
+                vec4 diffuseColor = texture2D(
+                    u_diffuse,
+                    vec2(v_texcoord0.x + uOffset, v_texcoord0.y + vOffset)
+                );
+                vec4 mixedColor = texture2D(u_mixTexture, v_texcoord0);
+                gl_FragColor = mix(
+                    vec4(diffuseColor.r, diffuseColor.g, color.b, 1.0),
+                    mixedColor,
+                    0.05
+                );
+            }
+        `,
+        vs: `precision highp float;
+
+            layout(location = 0) attribute vec3 a_position;
+            layout(location = 1) attribute vec2 a_texcoord0;
+
+            layout(std140) uniform ModelBlock {
+                mat4 u_modelViewProjectionMatrix;
+            };
+
+            varying vec2 v_texcoord0;
+
+            void main(void) {
+                gl_Position = u_modelViewProjectionMatrix * vec4(a_position, 1.0);
+                v_texcoord0 = a_texcoord0;
+            }
+        `
     });
 
-    container.addChild(mesh);
-    stage.addChild(container);
+    let elapsed = 0;
+    const mesh = new Hilo3d.Mesh({
+        rotationX: 90,
+        geometry,
+        material
+    });
+    mesh.onUpdate = deltaTime => {
+        elapsed += deltaTime;
 
-    // stage.renderer.initContext();
-    // var material = mesh.material;
-    
-    // // 编译
-    // var shader = Hilo3d.Shader.getCustomShader(material.vs, material.fs, '', material.shaderCacheId);
-    // shader.alwaysUse = true;
-    // var program = Hilo3d.Program.getProgram(, Hilo3d.Shader.renderer.state);
-    // program.alwaysUse = true;
+        materialData.set([1, 0, Math.sin(elapsed * 0.001) * 0.5 + 0.5, 1], 0);
+        materialData[4] = elapsed;
+        materialUniformBuffer.isDirty = true;
 
-    // // 删除
-    // var shader = Hilo3d.Shader.cache.get(material.shaderCacheId);
-    // var program = Hilo3d.Program.cache.get(shader.id);
-    // shader.destroy();
-    // program.destroy();
+        camera.getModelProjectionMatrix(mesh, modelViewProjection);
+        modelData.set(modelViewProjection.elements);
+        modelUniformBuffer.isDirty = true;
+    };
+    mesh.addTo(stage);
+});

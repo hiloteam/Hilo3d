@@ -3,42 +3,71 @@
   "version": "2.0.0",
   "description": "A TypeScript-first WebGL 3D engine.",
   "type": "module",
-  "main": "./dist/Hilo3d.umd.cjs",
-  "module": "./dist/Hilo3d.js",
-  "types": "./types/index.d.ts",
+  "types": "./dist/Hilo3d.d.ts",
   "exports": {
     ".": {
-      "types": "./types/index.d.ts",
+      "types": "./dist/Hilo3d.d.ts",
       "import": "./dist/Hilo3d.js",
-      "require": "./dist/Hilo3d.umd.cjs"
-    }
+      "default": "./dist/Hilo3d.js"
+    },
+    "./umd": {
+      "import": {
+        "types": "./dist/Hilo3d.umd.d.mts",
+        "default": "./dist/Hilo3d.js"
+      },
+      "require": {
+        "types": "./dist/Hilo3d.umd.d.cts",
+        "default": "./dist/Hilo3d.umd.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist/",
-    "types/",
     "CHANGELOG.md",
     "LICENSE",
     "README.md",
     "README_ZH.md"
   ],
   "scripts": {
+    "clean": "rimraf .cache coverage dist dist-examples docs playwright-report reports site test-results",
+    "clean:build": "rimraf .cache/types .cache/tsconfig.lib.tsbuildinfo dist",
     "dev": "vite --host 0.0.0.0",
     "examples:dev": "vite --config vite.examples.config.ts --host 0.0.0.0",
+    "examples:serve": "vite --config vite.examples.config.ts --host 127.0.0.1 --port 4173 --strictPort",
     "examples:build": "vite build --config vite.examples.config.ts",
-    "examples:test": "jiti scripts/examples-smoke.ts",
-    "build": "vite build",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint eslint.config.ts vite.config.ts vite.examples.config.ts vitest.config.ts src/Hilo3d.ts src/constants src/core/Class.ts src/core/version.ts src/env.d.ts src/math.ts src/math/index.ts src/math/math.ts src/renderer/logGLResource.ts src/utils/browser.ts src/utils/log.ts src/utils/bufferUtil.ts src/utils/WebGLSupport.ts examples/js/hilo3d.ts examples/js/hilo3d-math.ts examples/js/init.ts examples/js/OrbitControls.ts examples/js/stats.ts examples/js/NormalTangentHelper.ts scripts/examples-smoke.ts test/setup.ts test/globals.d.ts test/types/package.test.ts",
+    "examples:test": "npm run test:ui",
+    "build": "npm run clean:build && npm run build:js && npm run build:types",
+    "build:js": "vite build --mode library-es && vite build --mode library-umd",
+    "build:types": "tsc -p tsconfig.lib.json && jiti scripts/build-types.ts",
+    "typecheck": "tsc -b --force --pretty",
+    "typecheck:clean": "tsc -b --clean",
+    "lint": "npm run build:types && eslint . --max-warnings 0",
     "lint:fix": "npm run lint -- --fix",
-    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test:unit",
+    "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:browser": "vitest run",
-    "validate": "npm run typecheck && npm run lint && npm run test && npm run build && npm run examples:build && npm run examples:test",
+    "test:ui": "playwright test --grep-invert @visual",
+    "test:visual": "playwright test --grep @visual",
+    "test:types": "tsc -p test/types/tsconfig.bundler.json && tsc -p test/types/tsconfig.nodenext.json && tsc -p test/types/tsconfig.umd.json",
+    "test:package": "npm run build && npm run test:package:built",
+    "test:package:built": "publint && attw --pack . --profile esm-only && jiti scripts/test-package.ts",
+    "api:update": "npm run build:types && api-extractor run --local",
+    "api:check": "npm run build:types && api-extractor run",
+    "docs:build": "typedoc",
+    "docs:check": "typedoc --emit none",
+    "site:build": "npm run docs:build && npm run examples:build && jiti scripts/build-site.ts",
+    "pack:check": "npm pack --dry-run --ignore-scripts",
+    "validate": "npm run clean && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run test:types && npm run test:ui && npm run test:visual && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
+    "prepack": "npm run build",
     "prepublishOnly": "npm run validate"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/hiloteam/Hilo3d.git"
+    "url": "git+https://github.com/hiloteam/Hilo3d.git"
   },
   "keywords": [
     "hilo",
@@ -51,27 +80,47 @@
   "bugs": {
     "url": "https://github.com/hiloteam/Hilo3d/issues"
   },
-  "homepage": "https://hiloteam.github.io/Hilo3d",
+  "homepage": "https://hilo3d.js.org",
   "engines": {
-    "node": ">=20.19.0"
+    "node": ">=22.22.2"
+  },
+  "packageManager": "npm@12.0.1",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=22.22.2",
+      "onFail": "error"
+    },
+    "packageManager": {
+      "name": "npm",
+      "onFail": "error"
+    }
   },
   "dependencies": {
-    "amc": "^1.0.6",
-    "gl-matrix": "^3.4.4",
-    "parse-hdr": "^1.0.0",
-    "ray-3d": "^1.1.1"
+    "gl-matrix": "^3.4.4"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.1.1",
-    "@types/sinon": "^22.0.0",
+    "@loaders.gl/draco": "4.4.3",
+    "@microsoft/api-extractor": "^7.58.9",
+    "@playwright/test": "^1.61.1",
+    "@types/draco3d": "1.4.10",
+    "@types/node": "^22.20.1",
+    "@types/webxr": "0.5.24",
     "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.10",
+    "cannon-es": "0.20.0",
     "eslint": "^10.6.0",
-    "glslify": "^7.1.1",
+    "eslint-config-prettier": "^10.1.8",
     "jiti": "^2.7.0",
     "playwright": "^1.61.1",
-    "should": "^13.2.3",
-    "sinon": "^22.0.0",
+    "prettier": "^3.9.5",
+    "publint": "^0.3.21",
+    "rimraf": "^6.1.3",
+    "rollup": "^4.62.2",
+    "rollup-plugin-dts": "^6.4.1",
+    "typedoc": "^0.28.20",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.63.0",
     "vite": "^8.1.4",

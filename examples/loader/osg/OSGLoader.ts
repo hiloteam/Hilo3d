@@ -1,504 +1,669 @@
-// @ts-nocheck -- legacy example compatibility module
-(function () {
-    var Class = Hilo3d.Class;
-    var BasicLoader = Hilo3d.BasicLoader;
-    var Node = Hilo3d.Node;
-    var BasicMaterial = Hilo3d.BasicMaterial;
-    var Geometry = Hilo3d.Geometry;
-    var GeometryData = Hilo3d.GeometryData;
-    var Mesh = Hilo3d.Mesh;
-    var util = Hilo3d.util;
-    var Matrix4 = Hilo3d.Matrix4;
+import BasicLoader from '../../../src/loader/BasicLoader';
+import Geometry from '../../../src/geometry/Geometry';
+import GeometryData, { type GeometryComponentSize } from '../../../src/geometry/GeometryData';
+import BasicMaterial from '../../../src/material/BasicMaterial';
+import type Material from '../../../src/material/Material';
+import PBRMaterial from '../../../src/material/PBRMaterial';
+import Mesh from '../../../src/core/Mesh';
+import Node from '../../../src/core/Node';
+import LazyTexture from '../../../src/texture/LazyTexture';
+import { TRIANGLES, TRIANGLE_STRIP } from '../../../src/constants/webgl';
+import { getRelativePath } from '../../../src/utils/util';
+import type { TypedArray } from '../../../src/renderer/types';
 
-    var ATTR_ENUM = {
-        Vertex: 1,
-        Normal: 2,
-        TexCoord: 4,
-        Color: 8,
-        Triangle: 16,
-        Tangent: 32
+type JsonObject = Record<string, unknown>;
+type OSGArray = Float32Array | Int32Array | Uint16Array | Uint32Array;
+type OSGIntegerArray = Int32Array | Uint16Array | Uint32Array;
+type ArrayKind = 'Float32Array' | 'Int32Array' | 'Uint16Array' | 'Uint32Array';
+
+interface ArrayDescriptor {
+    readonly kind: ArrayKind;
+    readonly file: string;
+    readonly size: number;
+    readonly offset: number;
+    readonly encoding: string | null;
+}
+
+interface TextureChannel {
+    readonly internalFormat?: string;
+    readonly magFilter?: string;
+    readonly minFilter?: string;
+    readonly wrapS?: string;
+    readonly wrapT?: string;
+    readonly factor?: number;
+    readonly texture: {
+        readonly image: string;
+        readonly uid?: string;
+        readonly name?: string;
     };
-    var V = {
-        quantization: 1,
-        prediction: 2,
-        delta: 4
-    };
-    var _ = {
-        delta: 1,
-        highWatermark: 2,
-        implicit: 4
-    };
+}
 
-    var IMPLICIT_HEADER = {
-        PRIMITIVE_LENGTH: 0,
-        MASK_LENGTH: 1,
-        EXPECTED_INDEX: 2,
-        LENGTH: 3,
-    };
+export interface OSGMaterialInfo {
+    readonly name?: string;
+    readonly isPBR?: boolean;
+    readonly reflection?: number;
+    readonly transparency?: TextureChannel;
+    readonly baseColor?: unknown;
+    readonly emission?: unknown;
+    readonly ao?: unknown;
+    readonly diffuse?: TextureChannel;
+    readonly normalMap?: TextureChannel;
+    readonly metallic?: unknown;
+    readonly specular?: TextureChannel;
+}
 
-    var sphereCoordCache = {};
+export interface OSGLoadRequest {
+    readonly src: string;
+    readonly materials?: Readonly<Record<string, OSGMaterialInfo>>;
+}
 
-    var OSGLoader = Class.create({
-        Extends: BasicLoader,
-        constructor: function () {
-            OSGLoader.superclass.constructor.call(this);
-        },
-        getMaterial: function (data, materialInfo) {
-            var material;
-            if (!materialInfo) {
-                material = new BasicMaterial();
-                if (!data.StateSet) {
-                    return material;
-                }
-                if (!data.StateSet['osg.StateSet'].AttributeList) {
-                    return material;
-                }
-                var values = data.StateSet['osg.StateSet'].AttributeList[0]['osg.Material'];
-                material.name = values.Name;
-                if (values.Diffuse) {
-                    material.diffuse.fromArray(values.Diffuse);
-                }
-                if (values.Emission) {
-                    material.emission.fromArray(values.Emission);
-                }
-                if (values.Shininess) {
-                    material.shininess = values.Shininess;
-                }
-                if (values.Specular) {
-                    material.specular.fromArray(values.Specular);
-                }
-            } else {
-                if (materialInfo.material) {
-                    return materialInfo.material;
-                }
-                if (materialInfo.isPBR) {
-                    material = new Hilo3d.PBRMaterial();
-                    // material.transparent = true;
-                    // material.transparency = new Hilo3d.LazyTexture({
-                    //     flipY: true,
-                    //     src: materialInfo.transparency.texture.image
-                    // });
-                    material.baseColorMap = new Hilo3d.LazyTexture({
-                        flipY: true,
-                        src: materialInfo.diffuse.texture.image
-                    });
-                    // material.normalMap = new Hilo3d.LazyTexture({
-                    //     flipY: true,
-                    //     src: materialInfo.normalMap.texture.image
-                    // });
-                    material.isSpecularGlossiness = true;
-                    material.specularGlossinessMap = new Hilo3d.LazyTexture({
-                        flipY: true,
-                        src: materialInfo.specular.texture.image
-                    });
-                    materialInfo.material = material;
-                }
-            }
+export interface OSGModel {
+    readonly node: Node;
+}
 
-            return material;
-        },
-        decodeForDelta(data, start) {
-            start = start || 0;
-            var len = data.length;
-            var prev = data[start];
-            for (var i = start + 1; i < len; i++) {
-                var d = data[i];
-                data[i] = prev + (d >> 1 ^ -(1 & d));
-                prev = data[i];
-            }
-        },
-        decodeForImplicit: function(data, newData, start, highWatermark) {
-            // for (var a = e[r.IMPLICIT_HEADER_EXPECTED_INDEX], o = e[r.IMPLICIT_HEADER_MASK_LENGTH], s = new Uint32Array(e.subarray(r.IMPLICIT_HEADER_LENGTH, o + r.IMPLICIT_HEADER_LENGTH)), u = 32 * o - t.length, l = 0; l < o; ++l)
-            //     for (var c = s[l], h = 32 * l, d = l === o - 1 ? u : 0, p = d; p < 32; ++p,
-            //         ++h)
-            //         t[h] = c & 1 << 31 >>> p ? e[i++] : n ? a : a++;
-            // return t
-            var a = data[IMPLICIT_HEADER.EXPECTED_INDEX];
-            var o = data[IMPLICIT_HEADER.MASK_LENGTH];
-            var s = new Uint32Array(data.subarray(IMPLICIT_HEADER.LENGTH, o + IMPLICIT_HEADER.LENGTH));
-            var u = 32 * o - newData.length;
-            for (var l = 0; l < o; ++l) {
-                var c = s[l];
-                var h = 32 * l;
-                var d = l === o - 1 ? u : 0;
+interface DecodedAttribute {
+    readonly data: TypedArray;
+    readonly size: GeometryComponentSize;
+}
 
-                for (var p = d; p < 32; ++p,++h) {
-                    newData[h] = c & 1 << 31 >>> p ? data[start++] : highWatermark ? a : a++;
-                }
-            }
-        },
-        decodeForHighWatermark: function (data, newData, i) {
-            var len = data.length;
-            for (var r = i[0], a = 0; a < len; ++a) {
-                var o = r - data[a];
-                newData[a] = o;
-                if (r <= o) {
-                    r = o + 1;
-                }
-            }
-            i[0] = r;
-        },
-        decodeVarint(sourceData, TypedArray, count) {
-            var data = new TypedArray(count);
-            var isSigned = TypedArray.name[0] !== 'U';
-            var j = -1;
-            for (var i = 0; i < count; i++) {
-                var d = 0;
-                var k = 0;
-                do {
-                    j++;
-                    d |= (sourceData[j] & 0x7f) << k;
-                    k += 7;
-                } while(sourceData[j] & 0x80);
-                if (isSigned) {
-                    d = d >> 1 ^ -(1 & d);
-                }
-                data[i] = d;
-            }
-            // console.log('source data length:', j + 1);
-            return data;
-        },
-        decodeNormal(data, newData, itemSize, epsilon, nphi, isSourceThree) {
-            // 球坐标转换 e, t       i           a       o       s
-            // isSourceThree 原数据是否为3元素，默认为2元素()
-            epsilon = epsilon || .25;
-            nphi = nphi || 720;
+const VERTEX_QUANTIZATION = 1;
+const VERTEX_PREDICTION = 2;
+const TRIANGLE_DELTA = 1;
+const TRIANGLE_HIGH_WATERMARK = 2;
+const TRIANGLE_IMPLICIT = 4;
+const IMPLICIT_PRIMITIVE_LENGTH = 0;
+const IMPLICIT_MASK_LENGTH = 1;
+const IMPLICIT_EXPECTED_INDEX = 2;
+const IMPLICIT_HEADER_LENGTH = 3;
+const NORMAL_CACHE_SIZE = 1_801_779;
 
-            var u = Math.cos(.01745329251 * epsilon);
-            var l = 0;
-            var table = sphereCoordCache.table;
-            if (void 0 === table){
-                table = sphereCoordCache.table = new Float32Array(1801779)
-                for (l = 0; l < 1801779; ++l) {
-                    table[l] = 1 / 0;
-                }
-            }
-            var rad = Math.PI / (nphi - 1);
-            var d = 1.57079632679 / (nphi - 1);
-            var sourceItemSize = isSourceThree ? 3 : 2;
-            var sourceItemCount = data.length / sourceItemSize;
-            for (l = 0; l < sourceItemCount; ++l) {
-                var destIdx = l * itemSize;
-                var sourceIdx = l * sourceItemSize;
-                var theta = data[sourceIdx];
-                var phi = data[sourceIdx + 1];
+function jsonObject(value: unknown, label: string): JsonObject {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        throw new TypeError(`${label} must be an object.`);
+    }
+    const result: JsonObject = {};
+    for (const key of Object.keys(value)) result[key] = Reflect.get(value, key);
+    return result;
+}
 
-                if (itemSize === 4 && !isSourceThree) {
-                    newData[destIdx + 3] = 1024 & theta ? -1 : 1;
-                    theta &= -1025;
-                }
+function jsonArray(value: unknown, label: string): unknown[] {
+    if (!Array.isArray(value)) throw new TypeError(`${label} must be an array.`);
+    return value;
+}
 
-                var b, x, S, cacheKey = 3 * (theta + nphi * phi);
-                var isOut = cacheKey >= 1801779;
-                if (isOut || table[cacheKey] === 1 / 0) {
-                    var thetaRad = theta * rad;
-                    var cosTheta = Math.cos(thetaRad);
-                    var sinTheta = Math.sin(thetaRad);
-                    thetaRad += d;
+function jsonString(value: unknown, label: string): string {
+    if (typeof value !== 'string') throw new TypeError(`${label} must be a string.`);
+    return value;
+}
 
-                    var A = (u - cosTheta * Math.cos(thetaRad)) / Math.max(1e-5, sinTheta * Math.sin(thetaRad));
-                    if (A > 1) {
-                        A = 1;
-                    } else if (A < -1) {
-                        A = -1;
-                    }
-                    var E = 6.28318530718 * phi / Math.ceil(Math.PI / Math.max(1e-5, Math.acos(A)));
-                    b = sinTheta * Math.cos(E);
-                    x = sinTheta * Math.sin(E);
-                    S = cosTheta;
-                    if (!isOut) {
-                        table[cacheKey] = b;
-                        table[cacheKey + 1] = x;
-                        table[cacheKey + 2] = S;
-                    }
-                } else {
-                    b = table[cacheKey];
-                    x = table[cacheKey + 1];
-                    S = table[cacheKey + 2];
-                }
-                if (isSourceThree) {
-                    var P = 47938362584151635e-21 * data[sourceIdx + 2];
-                    var N = Math.sin(P);
-                    newData[destIdx] = N * b;
-                    newData[destIdx + 1] = N * x;
-                    newData[destIdx + 2] = N * S;
-                    newData[destIdx + 3] = Math.cos(P);
-                } else {
-                    newData[destIdx] = b;
-                    newData[destIdx + 1] = x;
-                    newData[destIdx + 2] = S
-                }
-            }
-        },
-        decodeFloatData1(data, itemSize, indices) {
-            //            e       t         i
-            var count = data.length / itemSize;
-            var map = new Uint8Array(count);
-            var lastIndex = indices.length - 1;
-            // first face
-            map[indices[0]] = 1;
-            map[indices[1]] = 1;
-            map[indices[2]] = 1;
+function jsonNumber(value: unknown, label: string): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new TypeError(`${label} must be a finite number.`);
+    }
+    return value;
+}
 
-            for (var o = 2; o < lastIndex; ++o) {
-                var s = o - 2;
-                var u = indices[s];
-                var l = indices[s + 1];
-                var c = indices[s + 2];
-                var h = indices[s + 3];
-                if (1 !== map[h]) {
-                    map[h] = 1;
-                    u *= itemSize;
-                    l *= itemSize;
-                    c *= itemSize;
-                    h *= itemSize;
-                    for (var d = 0; d < itemSize; ++d) {
-                        data[h + d] = data[h + d] + data[l + d] + data[c + d] - data[u + d];
-                    }
-                }
-            }
-        },
-        decodeFloatData2(mode, data, itemSize, name, decodeControl) {
-            //              e,   t,     r,      n,      a
-            var namePrefix = "POSITION" === name ? "vtx_" : "uv_0_";
-            var needDecode = mode & V.quantization && void 0 !== decodeControl[namePrefix + "bbl_x"];
-            var isDataFloat32 = data instanceof Float32Array;
-            if (!needDecode && isDataFloat32) {
-                return data;
-            }
-            var newData;
-            if (data.BYTES_PER_ELEMENT === 4) {
-                newData = new Float32Array(data.buffer, data.byteOffset, data.length);
-            } else {
-                newData = new Float32Array(data.length);
-            }
-            if (needDecode) {
-                var S = [];
-                var y = [];
-                S[0] = decodeControl[namePrefix + "bbl_x"];
-                S[1] = decodeControl[namePrefix + "bbl_y"];
-                y[0] = decodeControl[namePrefix + "h_x"];
-                y[1] = decodeControl[namePrefix + "h_y"];
-                if (itemSize === 3) {
-                    S[2] = decodeControl[namePrefix + "bbl_z"];
-                    y[2] = decodeControl[namePrefix + "h_z"];
-                }
-                // i.i(c.a)(t, l, S, y, r);
-                // e, t, i, r, n
-                for (var a = data.length / itemSize, o = 0; o < a; ++o) {
-                    for (var s = o * itemSize, u = 0; u < itemSize; ++u){
-                        newData[s + u] = S[u] + data[s + u] * y[u];
-                    }
-                }
-            }
-            return newData;
-        },
-        decodeGeometryData(attrName, info, buffers, decodeControl, indices) {
-            this.geometryDataMap = this.geometryDataMap || {};
-            if (this.geometryDataMap[info.UniqueID]) {
-                return this.geometryDataMap[info.UniqueID];
-            }
+function jsonInteger(value: unknown, label: string): number {
+    const result = jsonNumber(value, label);
+    if (!Number.isInteger(result) || result < 0) {
+        throw new TypeError(`${label} must be a non-negative integer.`);
+    }
+    return result;
+}
 
-            var arrayInfo = info.Array;
-            var TypedArray = Float32Array;
-            if (arrayInfo.Uint32Array) {
-                arrayInfo = arrayInfo.Uint32Array;
-                TypedArray = Uint32Array;
-            } else if (arrayInfo.Int32Array) {
-                arrayInfo = arrayInfo.Int32Array;
-                TypedArray = Int32Array;
-            } else if (arrayInfo.Float32Array) {
-                arrayInfo = arrayInfo.Float32Array;
-            } else if (arrayInfo.Uint16Array) {
-                arrayInfo = arrayInfo.Uint16Array;
-                TypedArray = Uint16Array;
-            } else {
-                console.warn('cant resolve', info.Array);
-            }
+function numberArray(value: unknown, label: string): number[] {
+    return jsonArray(value, label).map((item, index) =>
+        jsonNumber(item, `${label}[${String(index)}]`)
+    );
+}
 
-            var buffer = buffers[arrayInfo.File];
+function componentSize(value: unknown, label: string): GeometryComponentSize {
+    const size = jsonInteger(value, label);
+    if (size !== 1 && size !== 2 && size !== 3 && size !== 4 && size !== 16) {
+        throw new RangeError(`${label} has unsupported component size ${String(size)}.`);
+    }
+    return size;
+}
 
-            var result;
-            if (!arrayInfo.Encoding) {
-                var data = new TypedArray(buffer, arrayInfo.Offset, arrayInfo.Size * info.ItemSize);
-                result = new GeometryData(data, info.ItemSize);
-            } else {
-                // decompression data
-                var count = arrayInfo.Size * info.ItemSize;
-                var sourceData = new Uint8Array(buffer, arrayInfo.Offset);
-                var data = this.decodeVarint(sourceData, TypedArray, count);
+function arrayValue(data: ArrayLike<number>, index: number, label: string): number {
+    const value = data[index];
+    if (value === undefined)
+        throw new RangeError(`${label} is truncated at index ${String(index)}.`);
+    return value;
+}
 
-                var isTriangleStrip = decodeControl.__mode === 5;
-                var triangleMode = Number(decodeControl.triangle_mode);
-                if (attrName === 'INDICES') {
-                    var start = 0;
-                    var newData = data;
-                    if (triangleMode & _.implicit && isTriangleStrip) {
-                        start = IMPLICIT_HEADER.LENGTH + data[IMPLICIT_HEADER.MASK_LENGTH];
-                        newData = new Uint16Array(data[IMPLICIT_HEADER.PRIMITIVE_LENGTH]);
-                    }
-                    if (triangleMode & _.delta) {
-                        this.decodeForDelta(data, start);
-                    }
-                    if (triangleMode & _.implicit && isTriangleStrip) {
-                        this.decodeForImplicit(data, newData, start, triangleMode & _.highWatermark);
-                    }
-                    if (triangleMode & _.highWatermark) {
-                        this.decodeForHighWatermark(newData, newData, decodeControl.__xx);
-                    }
-                    data = newData;
-                } else if (attrName === 'NORMAL' || attrName === 'TANGENT') {
-                    var newData = new Float32Array(arrayInfo.Size * 3);
-                    this.decodeNormal(data, newData, 3, decodeControl.epsilon, decodeControl.nphi);
-                    data = newData;
-                } else if (attrName === 'POSITION') {
-                    var mode = decodeControl.uv_0_mode || decodeControl.vertex_mode;
-                    if (mode & V.prediction) {
-                        this.decodeFloatData1(data, 3, indices);
-                        data = this.decodeFloatData2(mode, data, 3, attrName, decodeControl);
-                    }
-                } else if (attrName === 'UV') {
-                    var mode = decodeControl.uv_0_mode || decodeControl.vertex_mode;
-                    if (mode & V.prediction) {
-                        this.decodeFloatData1(data, 2, indices);
-                        data = this.decodeFloatData2(mode, data, 2, attrName, decodeControl);
-                    }
-                }
+function isIntegerArray(value: TypedArray): value is OSGIntegerArray {
+    return (
+        value instanceof Int32Array || value instanceof Uint16Array || value instanceof Uint32Array
+    );
+}
 
-                result = new GeometryData(data, info.ItemSize);
-            }
-            this.geometryDataMap[info.UniqueID] = result;
-            return result;
-        },
-        parseUserDataContainer: function(data) {
-            var result = {};
-            if (data && data.Values) {
-                data.Values.forEach(d => {
-                    if (/^-?[\.0-9]+$/.test(d.Value)) {
-                        d.Value = Number(d.Value);
-                    }
-                    result[d.Name] = d.Value;
-                });
-            }
-            return result;
-        },
-        parseGeometry: function (parent, data, buffers, materialInfo) {
-            var that = this;
-            var material = this.getMaterial(data, materialInfo);
-            var userData = this.parseUserDataContainer(data.UserDataContainer) || {};
-            var attr = data.VertexAttributeList;
-            userData.__xx = [0];
-            util.each(data.PrimitiveSetList, function (set) {
-                var drawInfo = set.DrawElementsUShort || set.DrawElementsUInt;
-                if (!drawInfo) {
-                    console.log('has no drawInfo', set);
-                    return;
-                }
-                var geometry = new Geometry();
-                geometry.mode = Hilo3d.constants[drawInfo.Mode];
-                userData.__mode = geometry.mode;
-                geometry.indices = that.decodeGeometryData('INDICES', drawInfo.Indices, buffers, userData);
-                var indices = geometry.indices.data;
-                if (attr.Normal) {
-                    geometry.normals = that.decodeGeometryData('NORMAL', attr.Normal, buffers, userData, indices);
-                }
-                if (attr.Vertex) {
-                    geometry.vertices = that.decodeGeometryData('POSITION', attr.Vertex, buffers, userData, indices);
-                }
-                if (attr.TexCoord0) {
-                    geometry.uvs = that.decodeGeometryData('UV', attr.TexCoord0, buffers, userData, indices);
-                }
-                if (geometry.mode < 4) {
-                    return;
-                }
+function parseArrayDescriptor(info: JsonObject, label: string): ArrayDescriptor {
+    const array = jsonObject(info['Array'], `${label}.Array`);
+    const kinds = ['Float32Array', 'Int32Array', 'Uint16Array', 'Uint32Array'] as const;
+    for (const kind of kinds) {
+        const candidate = array[kind];
+        if (candidate === undefined) continue;
+        const descriptor = jsonObject(candidate, `${label}.Array.${kind}`);
+        const encoding = descriptor['Encoding'];
+        return {
+            kind,
+            file: jsonString(descriptor['File'], `${label}.Array.${kind}.File`),
+            size: jsonInteger(descriptor['Size'], `${label}.Array.${kind}.Size`),
+            offset: jsonInteger(descriptor['Offset'], `${label}.Array.${kind}.Offset`),
+            encoding:
+                encoding === undefined
+                    ? null
+                    : jsonString(encoding, `${label}.Array.${kind}.Encoding`)
+        };
+    }
+    throw new TypeError(`${label}.Array does not contain a supported typed array.`);
+}
 
-                var mesh = new Mesh({
-                    geometry,
-                    material
-                });
-                parent.addChild(mesh);
-            });
-        },
-        parseNode: function (parent, data, buffers, materialsInfo) {
-            var that = this;
-            var node = new Node({
-                name: data.Name
-            });
-
-            if (data.Matrix) {
-                var mat = new Matrix4();
-                mat.fromArray(data.Matrix);
-                node.matrix = mat;
-            }
-
-            if (data.Children) {
-                util.each(data.Children, function (c) {
-                    if (c['osg.Node']) {
-                        that.parseNode(node, c['osg.Node'], buffers, materialsInfo);
-                    } else if (c['osg.MatrixTransform']) {
-                        that.parseNode(node, c['osg.MatrixTransform'], buffers, materialsInfo);
-                    } else if (c['osg.Geometry']) {
-                        var materialInfo = materialsInfo.RootNode;
-                        that.parseGeometry(node, c['osg.Geometry'], buffers, materialInfo);
-                    }
-                });
-            }
-            parent.addChild(node);
-        },
-        getBinFilesList: function(data, list) {
-            var that = this;
-            list = list || {};
-            if (data.Children) {
-                util.each(data.Children, function (c) {
-                    if (c['osg.Node']) {
-                        that.getBinFilesList(c['osg.Node'], list);
-                    } else if (c['osg.MatrixTransform']) {
-                        that.getBinFilesList(c['osg.MatrixTransform'], list);
-                    } else if (c['osg.Geometry']) {
-                        var g = c['osg.Geometry'];
-                        util.each(g.PrimitiveSetList, function (drawInfos) {
-                            util.each(drawInfos, function (drawInfo) {
-                                var arrayInfo = drawInfo.Indices.Array;
-                                util.each(arrayInfo, function (info) {
-                                    list[info.File] = true;
-                                });
-                            });
-                        });
-                        util.each(g.VertexAttributeList, function (attrInfo) {
-                            var arrayInfo = attrInfo.Array;
-                            util.each(arrayInfo, function (info) {
-                                list[info.File] = true;
-                            });
-                        });
-                    }
-                });
-            }
-            return list;
-        },
-        load: function (params) {
-            var that = this;
-            return that.loadRes(params.src, 'json')
-                .then(json => {
-                    var externalFiles = that.getBinFilesList(json['osg.Node']);
-                    var buffers = {};
-                    return Promise.all(Object.keys(externalFiles).map(function(path) {
-                        return that.loadRes(util.getRelativePath(params.src, path), 'buffer').then(function (buffer) {
-                            buffers[path] = buffer;
-                        });
-                    })).then(function () {
-                        var rootNode = new Node();
-                        that.parseNode(rootNode, json['osg.Node'], buffers, params.materials || {});
-                        return {
-                            node: rootNode
-                        };
-                    });
-                }).catch(function (err) {
-                    console.warn('load gltf failed', err.message, err.stack);
-                    throw err;
-                });
+function createArray(
+    kind: ArrayKind,
+    bufferOrLength: ArrayBuffer | number,
+    offset = 0,
+    length?: number
+): OSGArray {
+    if (typeof bufferOrLength === 'number') {
+        switch (kind) {
+            case 'Float32Array':
+                return new Float32Array(bufferOrLength);
+            case 'Int32Array':
+                return new Int32Array(bufferOrLength);
+            case 'Uint16Array':
+                return new Uint16Array(bufferOrLength);
+            case 'Uint32Array':
+                return new Uint32Array(bufferOrLength);
         }
-    });
+    }
+    switch (kind) {
+        case 'Float32Array':
+            return new Float32Array(bufferOrLength, offset, length);
+        case 'Int32Array':
+            return new Int32Array(bufferOrLength, offset, length);
+        case 'Uint16Array':
+            return new Uint16Array(bufferOrLength, offset, length);
+        case 'Uint32Array':
+            return new Uint32Array(bufferOrLength, offset, length);
+    }
+}
 
-    Hilo3d.OSGLoader = OSGLoader;
-    Hilo3d.Loader.addLoader('osg', OSGLoader);
-})();
+function decodeVarint(source: Uint8Array, kind: ArrayKind, count: number): OSGArray {
+    const result = createArray(kind, count);
+    const signed = kind === 'Int32Array' || kind === 'Float32Array';
+    let sourceIndex = 0;
+    for (let index = 0; index < count; index += 1) {
+        let encoded = 0;
+        let shift = 0;
+        let byte: number;
+        do {
+            byte = arrayValue(source, sourceIndex, 'OSG varint stream');
+            sourceIndex += 1;
+            encoded |= (byte & 0x7f) << shift;
+            shift += 7;
+            if (shift > 35) throw new RangeError('OSG varint exceeds 32 bits.');
+        } while ((byte & 0x80) !== 0);
+        result[index] = signed ? (encoded >> 1) ^ -(encoded & 1) : encoded;
+    }
+    return result;
+}
+
+function decodeDelta(data: OSGArray, start: number): void {
+    if (start >= data.length) return;
+    let previous = arrayValue(data, start, 'delta stream');
+    for (let index = start + 1; index < data.length; index += 1) {
+        const encoded = arrayValue(data, index, 'delta stream');
+        const value = previous + ((encoded >> 1) ^ -(encoded & 1));
+        data[index] = value;
+        previous = value;
+    }
+}
+
+function decodeImplicit(
+    data: OSGIntegerArray,
+    result: OSGIntegerArray,
+    start: number,
+    useHighWatermark: boolean
+): void {
+    let expected = arrayValue(data, IMPLICIT_EXPECTED_INDEX, 'implicit header');
+    const maskLength = arrayValue(data, IMPLICIT_MASK_LENGTH, 'implicit header');
+    const masks = new Uint32Array(maskLength);
+    for (let index = 0; index < maskLength; index += 1) {
+        masks[index] = arrayValue(data, index + IMPLICIT_HEADER_LENGTH, 'implicit mask');
+    }
+    const unusedBits = 32 * maskLength - result.length;
+    for (let maskIndex = 0; maskIndex < maskLength; maskIndex += 1) {
+        const mask = arrayValue(masks, maskIndex, 'implicit mask');
+        let targetIndex = 32 * maskIndex;
+        const firstBit = maskIndex === maskLength - 1 ? unusedBits : 0;
+        for (let bit = firstBit; bit < 32; bit += 1, targetIndex += 1) {
+            const isExplicit = (mask & ((1 << 31) >>> bit)) !== 0;
+            result[targetIndex] = isExplicit
+                ? arrayValue(data, start++, 'implicit index data')
+                : expected;
+            if (!isExplicit && !useHighWatermark) expected += 1;
+        }
+    }
+}
+
+function decodeHighWatermark(data: OSGIntegerArray, highWatermark: [number]): void {
+    let next = highWatermark[0];
+    for (let index = 0; index < data.length; index += 1) {
+        const value = next - arrayValue(data, index, 'high-watermark stream');
+        data[index] = value;
+        if (next <= value) next = value + 1;
+    }
+    highWatermark[0] = next;
+}
+
+function decodePredictedAttribute(
+    data: OSGArray,
+    itemSize: number,
+    indices: OSGIntegerArray
+): void {
+    const vertexCount = data.length / itemSize;
+    const visited = new Uint8Array(vertexCount);
+    for (let index = 0; index < Math.min(3, indices.length); index += 1) {
+        visited[arrayValue(indices, index, 'prediction indices')] = 1;
+    }
+    for (let index = 2; index < indices.length - 1; index += 1) {
+        let previous = arrayValue(indices, index - 2, 'prediction indices');
+        let first = arrayValue(indices, index - 1, 'prediction indices');
+        let second = arrayValue(indices, index, 'prediction indices');
+        let target = arrayValue(indices, index + 1, 'prediction indices');
+        if (visited[target] === 1) continue;
+        visited[target] = 1;
+        previous *= itemSize;
+        first *= itemSize;
+        second *= itemSize;
+        target *= itemSize;
+        for (let component = 0; component < itemSize; component += 1) {
+            data[target + component] =
+                arrayValue(data, target + component, 'predicted attribute') +
+                arrayValue(data, first + component, 'predicted attribute') +
+                arrayValue(data, second + component, 'predicted attribute') -
+                arrayValue(data, previous + component, 'predicted attribute');
+        }
+    }
+}
+
+function dequantizeAttribute(
+    data: OSGArray,
+    itemSize: number,
+    name: 'POSITION' | 'UV',
+    controls: Readonly<Record<string, number>>
+): Float32Array {
+    const prefix = name === 'POSITION' ? 'vtx_' : 'uv_0_';
+    const requiredControl = (suffix: string): number => {
+        const value = controls[`${prefix}${suffix}`];
+        if (value === undefined) {
+            throw new TypeError(`OSG ${name} quantization metadata is missing ${prefix}${suffix}.`);
+        }
+        return value;
+    };
+    const lowerBounds: number[] = [requiredControl('bbl_x'), requiredControl('bbl_y')];
+    const steps: number[] = [requiredControl('h_x'), requiredControl('h_y')];
+    if (itemSize === 3) {
+        lowerBounds.push(requiredControl('bbl_z'));
+        steps.push(requiredControl('h_z'));
+    }
+    const result = new Float32Array(data.length);
+    for (let index = 0; index < data.length; index += 1) {
+        const component = index % itemSize;
+        result[index] =
+            arrayValue(lowerBounds, component, `${name} lower bounds`) +
+            arrayValue(data, index, `${name} quantized data`) *
+                arrayValue(steps, component, `${name} quantization steps`);
+    }
+    return result;
+}
+
+function createNormalTable(): Float32Array {
+    const table = new Float32Array(NORMAL_CACHE_SIZE);
+    table.fill(Number.POSITIVE_INFINITY);
+    return table;
+}
+
+function decodeNormals(
+    data: OSGArray,
+    epsilon: number,
+    nphi: number,
+    table: Float32Array
+): Float32Array {
+    const result = new Float32Array((data.length / 2) * 3);
+    const cosineEpsilon = Math.cos((Math.PI / 180) * epsilon);
+    const thetaStep = Math.PI / (nphi - 1);
+    const thetaOffset = Math.PI / 2 / (nphi - 1);
+    for (let index = 0; index < data.length / 2; index += 1) {
+        const sourceIndex = index * 2;
+        const targetIndex = index * 3;
+        const theta = arrayValue(data, sourceIndex, 'normal stream');
+        const phi = arrayValue(data, sourceIndex + 1, 'normal stream');
+        const cacheIndex = 3 * (theta + nphi * phi);
+        const cached = cacheIndex >= 0 && cacheIndex + 2 < table.length;
+        if (cached && table[cacheIndex] !== Number.POSITIVE_INFINITY) {
+            result[targetIndex] = arrayValue(table, cacheIndex, 'normal cache');
+            result[targetIndex + 1] = arrayValue(table, cacheIndex + 1, 'normal cache');
+            result[targetIndex + 2] = arrayValue(table, cacheIndex + 2, 'normal cache');
+            continue;
+        }
+        const thetaRadians = theta * thetaStep;
+        const cosineTheta = Math.cos(thetaRadians);
+        const sineTheta = Math.sin(thetaRadians);
+        const denominator = Math.max(1e-5, sineTheta * Math.sin(thetaRadians + thetaOffset));
+        const rawArc =
+            (cosineEpsilon - cosineTheta * Math.cos(thetaRadians + thetaOffset)) / denominator;
+        const arc = Math.min(1, Math.max(-1, rawArc));
+        const longitude = (Math.PI * 2 * phi) / Math.ceil(Math.PI / Math.max(1e-5, Math.acos(arc)));
+        const x = sineTheta * Math.cos(longitude);
+        const y = sineTheta * Math.sin(longitude);
+        const z = cosineTheta;
+        result.set([x, y, z], targetIndex);
+        if (cached) table.set([x, y, z], cacheIndex);
+    }
+    return result;
+}
+
+/** Strict ESM decoder for the optimized osgjs geometry used by the local sample asset. */
+export default class OSGLoader {
+    private readonly resourceLoader = new BasicLoader();
+    private readonly geometryData = new Map<number, GeometryData>();
+    private readonly materialCache = new WeakMap<OSGMaterialInfo, Material>();
+    private readonly normalTable = createNormalTable();
+
+    private getMaterial(materialInfo: OSGMaterialInfo | undefined): Material {
+        if (!materialInfo?.isPBR) return new BasicMaterial();
+        const cached = this.materialCache.get(materialInfo);
+        if (cached) return cached;
+        if (!materialInfo.diffuse || !materialInfo.specular) {
+            throw new TypeError('The OSG PBR material requires diffuse and specular textures.');
+        }
+        const material = new PBRMaterial({
+            baseColorMap: new LazyTexture({
+                flipY: true,
+                src: materialInfo.diffuse.texture.image
+            }),
+            normalMap: materialInfo.normalMap
+                ? new LazyTexture({ flipY: true, src: materialInfo.normalMap.texture.image })
+                : null,
+            isSpecularGlossiness: true,
+            specularGlossinessMap: new LazyTexture({
+                flipY: true,
+                src: materialInfo.specular.texture.image
+            })
+        });
+        this.materialCache.set(materialInfo, material);
+        return material;
+    }
+
+    private parseControls(data: JsonObject): {
+        values: Record<string, number>;
+        highWatermark: [number];
+        primitiveMode: number;
+    } {
+        const values: Record<string, number> = {};
+        const container = data['UserDataContainer'];
+        if (container !== undefined) {
+            const entries = jsonArray(
+                jsonObject(container, 'UserDataContainer')['Values'],
+                'UserDataContainer.Values'
+            );
+            for (const entry of entries) {
+                const item = jsonObject(entry, 'UserDataContainer value');
+                const name = jsonString(item['Name'], 'UserDataContainer value name');
+                const rawValue = item['Value'];
+                const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+                if (Number.isFinite(value)) values[name] = value;
+            }
+        }
+        return { values, highWatermark: [0], primitiveMode: TRIANGLES };
+    }
+
+    private decodeGeometryData(
+        name: 'INDICES' | 'NORMAL' | 'POSITION' | 'UV',
+        info: JsonObject,
+        buffers: ReadonlyMap<string, ArrayBuffer>,
+        controls: ReturnType<OSGLoader['parseControls']>,
+        indices?: OSGIntegerArray
+    ): GeometryData {
+        const uniqueId = jsonInteger(info['UniqueID'], `${name}.UniqueID`);
+        const cached = this.geometryData.get(uniqueId);
+        if (cached) return cached;
+        const size = componentSize(info['ItemSize'], `${name}.ItemSize`);
+        const descriptor = parseArrayDescriptor(info, name);
+        const buffer = buffers.get(descriptor.file);
+        if (!buffer) throw new Error(`OSG buffer ${descriptor.file} was not loaded.`);
+
+        let decoded: DecodedAttribute;
+        if (!descriptor.encoding) {
+            decoded = {
+                data: createArray(
+                    descriptor.kind,
+                    buffer,
+                    descriptor.offset,
+                    descriptor.size * size
+                ),
+                size
+            };
+        } else {
+            const data = decodeVarint(
+                new Uint8Array(buffer, descriptor.offset),
+                descriptor.kind,
+                descriptor.size * size
+            );
+            if (name === 'INDICES') {
+                if (!isIntegerArray(data))
+                    throw new TypeError('OSG indices must use integer data.');
+                const triangleMode = controls.values['triangle_mode'] ?? 0;
+                const isTriangleStrip = controls.primitiveMode === TRIANGLE_STRIP;
+                let start = 0;
+                let indexData = data;
+                if ((triangleMode & TRIANGLE_IMPLICIT) !== 0 && isTriangleStrip) {
+                    start =
+                        IMPLICIT_HEADER_LENGTH +
+                        arrayValue(data, IMPLICIT_MASK_LENGTH, 'implicit header');
+                    const length = arrayValue(data, IMPLICIT_PRIMITIVE_LENGTH, 'implicit header');
+                    const implicit = createArray(descriptor.kind, length);
+                    if (!isIntegerArray(implicit)) {
+                        throw new TypeError('Implicit OSG indices must use integer data.');
+                    }
+                    indexData = implicit;
+                }
+                if ((triangleMode & TRIANGLE_DELTA) !== 0) decodeDelta(data, start);
+                if ((triangleMode & TRIANGLE_IMPLICIT) !== 0 && isTriangleStrip) {
+                    decodeImplicit(
+                        data,
+                        indexData,
+                        start,
+                        (triangleMode & TRIANGLE_HIGH_WATERMARK) !== 0
+                    );
+                }
+                if ((triangleMode & TRIANGLE_HIGH_WATERMARK) !== 0) {
+                    decodeHighWatermark(indexData, controls.highWatermark);
+                }
+                decoded = { data: indexData, size };
+            } else if (name === 'NORMAL') {
+                decoded = {
+                    data: decodeNormals(
+                        data,
+                        controls.values['epsilon'] ?? 0.25,
+                        controls.values['nphi'] ?? 720,
+                        this.normalTable
+                    ),
+                    size: 3
+                };
+            } else {
+                if (!indices) throw new TypeError(`${name} decoding requires triangle indices.`);
+                const mode =
+                    name === 'POSITION'
+                        ? (controls.values['vertex_mode'] ?? 0)
+                        : (controls.values['uv_0_mode'] ?? 0);
+                if ((mode & VERTEX_PREDICTION) !== 0) {
+                    decodePredictedAttribute(data, size, indices);
+                }
+                decoded = {
+                    data:
+                        (mode & VERTEX_QUANTIZATION) !== 0
+                            ? dequantizeAttribute(data, size, name, controls.values)
+                            : data,
+                    size
+                };
+            }
+        }
+        const result = new GeometryData(decoded.data, decoded.size);
+        this.geometryData.set(uniqueId, result);
+        return result;
+    }
+
+    private parseGeometry(
+        parent: Node,
+        data: JsonObject,
+        buffers: ReadonlyMap<string, ArrayBuffer>,
+        materialInfo: OSGMaterialInfo | undefined
+    ): void {
+        const material = this.getMaterial(materialInfo);
+        const controls = this.parseControls(data);
+        const attributes = jsonObject(data['VertexAttributeList'], 'VertexAttributeList');
+        const primitiveSets = jsonArray(data['PrimitiveSetList'], 'PrimitiveSetList');
+        for (const primitiveSet of primitiveSets) {
+            const set = jsonObject(primitiveSet, 'PrimitiveSet');
+            const rawDrawInfo = set['DrawElementsUShort'] ?? set['DrawElementsUInt'];
+            if (rawDrawInfo === undefined) {
+                throw new TypeError('OSG geometry contains an unsupported primitive set.');
+            }
+            const drawInfo = jsonObject(rawDrawInfo, 'DrawElements');
+            const mode = jsonString(drawInfo['Mode'], 'DrawElements.Mode');
+            controls.primitiveMode =
+                mode === 'TRIANGLE_STRIP' ? TRIANGLE_STRIP : mode === 'TRIANGLES' ? TRIANGLES : 0;
+            if (controls.primitiveMode === 0) continue;
+            const geometry = new Geometry({ mode: controls.primitiveMode });
+            geometry.indices = this.decodeGeometryData(
+                'INDICES',
+                jsonObject(drawInfo['Indices'], 'DrawElements.Indices'),
+                buffers,
+                controls
+            );
+            if (!isIntegerArray(geometry.indices.data)) {
+                throw new TypeError('Decoded OSG geometry indices are not integers.');
+            }
+            const indices = geometry.indices.data;
+            if (attributes['Normal'] !== undefined) {
+                geometry.normals = this.decodeGeometryData(
+                    'NORMAL',
+                    jsonObject(attributes['Normal'], 'Normal attribute'),
+                    buffers,
+                    controls,
+                    indices
+                );
+            }
+            if (attributes['Vertex'] !== undefined) {
+                geometry.vertices = this.decodeGeometryData(
+                    'POSITION',
+                    jsonObject(attributes['Vertex'], 'Vertex attribute'),
+                    buffers,
+                    controls,
+                    indices
+                );
+            }
+            if (attributes['TexCoord0'] !== undefined) {
+                geometry.uvs = this.decodeGeometryData(
+                    'UV',
+                    jsonObject(attributes['TexCoord0'], 'Texture coordinate attribute'),
+                    buffers,
+                    controls,
+                    indices
+                );
+            }
+            parent.addChild(new Mesh({ geometry, material }));
+        }
+    }
+
+    private parseNode(
+        parent: Node,
+        data: JsonObject,
+        buffers: ReadonlyMap<string, ArrayBuffer>,
+        materials: Readonly<Record<string, OSGMaterialInfo>>
+    ): void {
+        const nameValue = data['Name'];
+        const node = new Node(typeof nameValue === 'string' ? { name: nameValue } : {});
+        if (data['Matrix'] !== undefined) {
+            node.matrix.fromArray(numberArray(data['Matrix'], 'Node.Matrix'));
+            node.updateTransform();
+        }
+        const children = data['Children'];
+        if (children !== undefined) {
+            for (const rawChild of jsonArray(children, 'Node.Children')) {
+                const child = jsonObject(rawChild, 'Node child');
+                const type = Object.keys(child)[0];
+                if (!type) throw new TypeError('OSG node child has no type.');
+                const value = jsonObject(child[type], `Node child ${type}`);
+                if (type === 'osg.Node' || type === 'osg.MatrixTransform') {
+                    this.parseNode(node, value, buffers, materials);
+                } else if (type === 'osg.Geometry') {
+                    this.parseGeometry(node, value, buffers, materials['RootNode']);
+                }
+            }
+        }
+        parent.addChild(node);
+    }
+
+    private collectBufferFiles(data: JsonObject, files: Set<string>): void {
+        const children = data['Children'];
+        if (children === undefined) return;
+        for (const rawChild of jsonArray(children, 'Node.Children')) {
+            const child = jsonObject(rawChild, 'Node child');
+            const type = Object.keys(child)[0];
+            if (!type) throw new TypeError('OSG node child has no type.');
+            const value = jsonObject(child[type], `Node child ${type}`);
+            if (type === 'osg.Node' || type === 'osg.MatrixTransform') {
+                this.collectBufferFiles(value, files);
+                continue;
+            }
+            if (type !== 'osg.Geometry') continue;
+            for (const primitive of jsonArray(value['PrimitiveSetList'], 'PrimitiveSetList')) {
+                const set = jsonObject(primitive, 'PrimitiveSet');
+                const draw = set['DrawElementsUShort'] ?? set['DrawElementsUInt'];
+                if (draw === undefined) continue;
+                const indices = jsonObject(jsonObject(draw, 'DrawElements')['Indices'], 'Indices');
+                if (indices['Array'] !== undefined) {
+                    files.add(parseArrayDescriptor(indices, 'Indices').file);
+                }
+            }
+            const attributes = jsonObject(value['VertexAttributeList'], 'VertexAttributeList');
+            for (const [name, attribute] of Object.entries(attributes)) {
+                const info = jsonObject(attribute, name);
+                if (info['Array'] !== undefined) {
+                    files.add(parseArrayDescriptor(info, name).file);
+                }
+            }
+        }
+    }
+
+    async load(request: OSGLoadRequest): Promise<OSGModel> {
+        this.geometryData.clear();
+        const rawDocument = await this.resourceLoader.loadRes(request.src, BasicLoader.TYPE_JSON);
+        if (rawDocument instanceof ArrayBuffer) throw new TypeError('OSG document must be JSON.');
+        const document = jsonObject(rawDocument, 'OSG document');
+        const root = jsonObject(document['osg.Node'], 'OSG root node');
+        const files = new Set<string>();
+        this.collectBufferFiles(root, files);
+        const buffers = new Map<string, ArrayBuffer>();
+        await Promise.all(
+            [...files].map(async file => {
+                const resource = await this.resourceLoader.loadRes(
+                    getRelativePath(request.src, file),
+                    BasicLoader.TYPE_BUFFER
+                );
+                if (!(resource instanceof ArrayBuffer)) {
+                    throw new TypeError(`OSG resource ${file} must be binary.`);
+                }
+                buffers.set(file, resource);
+            })
+        );
+        const node = new Node();
+        this.parseNode(node, root, buffers, request.materials ?? {});
+        return { node };
+    }
+}

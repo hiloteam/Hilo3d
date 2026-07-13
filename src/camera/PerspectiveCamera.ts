@@ -1,132 +1,104 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import math from '../math/math';
-import Camera from './Camera';
+import Camera, { type CameraParameters } from './Camera';
 import Geometry from '../geometry/Geometry';
 
+export interface PerspectiveCameraParameters extends CameraParameters {
+    fov?: number;
+    near?: number;
+    far?: number | null;
+    aspect?: number;
+}
 /**
  * 透视投影摄像机
- * @class
- * @extends Camera
  */
-const PerspectiveCamera = Class.create<typeof hilo3d.PerspectiveCamera>()(/** @lends PerspectiveCamera.prototype */ {
-    Extends: Camera,
-
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isPerspectiveCamera: true,
-
-    /**
-     * @default PerspectiveCamera
-     * @type {string}
-     */
-    className: 'PerspectiveCamera',
-
-    _near: 0.1,
+class PerspectiveCamera extends Camera {
+    static override readonly typeName: string = 'PerspectiveCamera';
+    override isPerspectiveCamera = true;
+    override className = 'PerspectiveCamera';
+    private _near = 0.1;
     /**
      * 相机视锥体近平面z
-     * @default 0.1
-     * @type {number}
      */
-    near: {
-        get() {
-            return this._near;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._near = value;
-        }
-    },
-
-    _far: null,
+    get near(): number {
+        return this._near;
+    }
+    /**
+     * 相机视锥体近平面z
+     */
+    set near(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._near = value;
+    }
+    private _far: number | null = null;
     /**
      * 相机视锥体远平面z，null 时为无限远
-     * @default null
-     * @type {number}
      */
-    far: {
-        get() {
-            return this._far;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._far = value;
-        }
-    },
-
-    _fov: 50,
+    get far(): number | null {
+        return this._far;
+    }
+    /**
+     * 相机视锥体远平面z，null 时为无限远
+     */
+    set far(value: number | null) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._far = value;
+    }
+    private _fov = 50;
     /**
      * 相机视野大小，角度制
-     * @default 50
-     * @type {number}
      */
-    fov: {
-        get() {
-            return this._fov;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._fov = value;
-        }
-    },
-
-    _aspect: 1,
+    get fov(): number {
+        return this._fov;
+    }
+    /**
+     * 相机视野大小，角度制
+     */
+    set fov(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._fov = value;
+    }
+    private _aspect = 1;
     /**
      * 宽高比
-     * @default 1
-     * @type {number}
      */
-    aspect: {
-        get() {
-            return this._aspect;
-        },
-        set(value) {
-            this._needUpdateProjectionMatrix = true;
-            this._isGeometryDirty = true;
-            this._aspect = value;
-        }
-    },
-
+    get aspect(): number {
+        return this._aspect;
+    }
     /**
-     * @constructs
-     * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
-     * @param {number} [params.fov=50] 相机视野大小，角度制
-     * @param {number} [params.near=0.1] 相机视锥体近平面z
-     * @param {number} [params.far=null] 相机视锥体远平面z，null 时为无限远
-     * @param {number} [params.aspect=1] 宽高比
-     * @param {unknown} [params.[value:string]] 其它属性
+     * 宽高比
      */
-    constructor(params) {
-        PerspectiveCamera.superclass.constructor.call(this, params);
+    set aspect(value: number) {
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this._aspect = value;
+    }
+    /**
+     * @param params - 创建对象的属性参数。可包含此类的所有属性。
+     * - `params.fov`: 相机视野大小，角度制
+     * - `params.near`: 相机视锥体近平面z
+     * - `params.far`: 相机视锥体远平面z，null 时为无限远
+     * - `params.aspect`: 宽高比
+     */
+    constructor(params: PerspectiveCameraParameters = {}) {
+        super();
+        Object.assign(this, params);
         this.updateProjectionMatrix();
-    },
-
+    }
     /**
      * 更新投影矩阵
      */
-    updateProjectionMatrix() {
+    override updateProjectionMatrix(): void {
         // this.projectionMatrix.perspective(math.degToRad(this.fov), this.aspect, this.near, this.far);
-
         const elements = this.projectionMatrix.elements;
-        const {
-            near,
-            far,
-            aspect,
-            fov
-        } = this;
+        const { near, far, aspect, fov } = this;
         const f = 1 / Math.tan(0.5 * math.degToRad(fov));
-
         elements[0] = f / aspect;
         elements[5] = f;
         elements[11] = -1;
         elements[15] = 0;
-
         if (far) {
             const nf = 1 / (near - far);
             elements[10] = (near + far) * nf;
@@ -135,43 +107,35 @@ const PerspectiveCamera = Class.create<typeof hilo3d.PerspectiveCamera>()(/** @l
             elements[10] = -1;
             elements[14] = -2 * near;
         }
-    },
-
-    getGeometry(forceUpdate) {
+    }
+    override getGeometry(forceUpdate = false): Geometry {
         if (forceUpdate || !this._geometry || this._isGeometryDirty) {
             this._isGeometryDirty = false;
-
             const geometry = new Geometry();
-            const tan = Math.tan(this.fov / 2 * Math.PI / 180);
+            const tan = Math.tan(((this.fov / 2) * Math.PI) / 180);
             const near = this.near;
-            const far = this.far;
+            const far = this.far ?? near * 1000;
             const vNear = near * tan;
             const vFar = far * tan;
             const hNear = this.aspect * vNear;
             const hFar = this.aspect * vFar;
-
             const p1 = [-hNear, -vNear, -near];
             const p2 = [hNear, -vNear, -near];
             const p3 = [hNear, vNear, -near];
             const p4 = [-hNear, vNear, -near];
-
             const p5 = [-hFar, -vFar, -far];
             const p6 = [hFar, -vFar, -far];
             const p7 = [hFar, vFar, -far];
             const p8 = [-hFar, vFar, -far];
-
             geometry.addRect(p5, p6, p7, p8); // front
             geometry.addRect(p6, p2, p3, p7); // right
             geometry.addRect(p2, p1, p4, p3); // back
             geometry.addRect(p1, p5, p8, p4); // left
             geometry.addRect(p8, p7, p3, p4); // top
             geometry.addRect(p1, p2, p6, p5); // bottom
-
             this._geometry = geometry;
         }
-
         return this._geometry;
     }
-});
-
+}
 export default PerspectiveCamera;

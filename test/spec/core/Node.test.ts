@@ -1,11 +1,15 @@
+import { describe, expect, it, vi } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+import type { NodeTraverseCallback } from '../../../src/core/Node';
+
 const Node = Hilo3d.Node;
 
-describe('Node', function() {
+describe('Node', () => {
     it('create', () => {
         const node = new Node();
-        node.isNode.should.be.true();
-        node.className.should.equal('Node');
-        node.up.isVector3.should.be.true();
+        expect(node.isNode).toBe(true);
+        expect(node.className).toBe('Node');
+        expect(node.up.isVector3).toBe(true);
     });
 
     it('clone', () => {
@@ -16,17 +20,20 @@ describe('Node', function() {
             z: 1,
             jointName: 'head'
         });
-        node.addChild(new Node({
-            name: 'child0'
-        }));
+        node.addChild(
+            new Node({
+                name: 'child0'
+            })
+        );
 
         const clonedNode = node.clone();
-        clonedNode.name.should.equal(node.name);
-        clonedNode.x.should.equal(node.x);
-        clonedNode.y.should.equal(node.y);
-        clonedNode.z.should.equal(node.z);
-        clonedNode.jointName.should.equal(node.jointName);
-        clonedNode.children[0].name.should.equal('child0');
+        expect(clonedNode.name).toBe(node.name);
+        expect(clonedNode.x).toBe(node.x);
+        expect(clonedNode.y).toBe(node.y);
+        expect(clonedNode.z).toBe(node.z);
+        expect(clonedNode.jointName).toBe(node.jointName);
+        expect(clonedNode.children).toHaveLength(1);
+        expect(clonedNode.children.at(0)?.name).toBe('child0');
     });
 
     it('getChildrenNameMap', () => {
@@ -51,10 +58,10 @@ describe('Node', function() {
         node.addChild(b3);
 
         const map = node.getChildrenNameMap();
-        map.b1.should.equal(b1);
-        map.b2.should.equal(b2);
-        map.b3.should.equal(b3);
-        should(map.a1).be.undefined();
+        expect(map['b1']).toBe(b1);
+        expect(map['b2']).toBe(b2);
+        expect(map['b3']).toBe(b3);
+        expect(map['a1']).toBeUndefined();
     });
 
     it('getChild', () => {
@@ -70,10 +77,8 @@ describe('Node', function() {
             name: 'b2'
         });
 
-        const b3 = new Node({
-            name: 'b3',
-            id: 'hhh'
-        });
+        const b3 = new Node({ name: 'b3' });
+        b3.id = 'hhh';
 
         const b4 = new Node({
             name: 'b4'
@@ -94,18 +99,18 @@ describe('Node', function() {
         b4.addChild(b5);
         b5.addChild(b6);
 
-        node.getChildByFn(child => child.name === 'b1').should.equal(b1);
-        node.getChildByFn(child => child.name === 'b5').should.equal(b5);
-        node.getChildByFnBFS(child => child.name === 'b1').should.equal(b1);
-        node.getChildByFnBFS(child => child.name === 'b6').should.equal(b6);
-        node.getChildrenByFn(child => child.name === 'b5')[0].should.equal(b5);
-        node.getChildByName('b2').should.equal(b2);
-        node.getChildrenByName('b2')[0].should.equal(b2);
-        node.getChildById('hhh').should.equal(b3);
-        node.getChildrenByClassName('Node')[0].should.equal(b1);
-        node.getChildByNamePath(['b3']).should.equal(b3);
-        node.getChildByNamePath(['b3', 'b5']).should.equal(b5);
-        should(node.getChildByNamePath(['b3', 'b5', 'b2'])).be.null();
+        expect(node.getChildByFn(child => child.name === 'b1')).toBe(b1);
+        expect(node.getChildByFn(child => child.name === 'b5')).toBe(b5);
+        expect(node.getChildByFnBFS(child => child.name === 'b1')).toBe(b1);
+        expect(node.getChildByFnBFS(child => child.name === 'b6')).toBe(b6);
+        expect(node.getChildrenByFn(child => child.name === 'b5').at(0)).toBe(b5);
+        expect(node.getChildByName('b2')).toBe(b2);
+        expect(node.getChildrenByName('b2').at(0)).toBe(b2);
+        expect(node.getChildById('hhh')).toBe(b3);
+        expect(node.getChildrenByClassName('Node').at(0)).toBe(b1);
+        expect(node.getChildByNamePath(['b3'])).toBe(b3);
+        expect(node.getChildByNamePath(['b3', 'b5'])).toBe(b5);
+        expect(node.getChildByNamePath(['b3', 'b5', 'b2'])).toBeNull();
     });
 
     it('traverse_path', () => {
@@ -165,89 +170,93 @@ describe('Node', function() {
         c0.addChild(c1);
 
         /**
-        *         r
-        *       / | \
-        *      a  b  c
-        *     /   |   \
-        *   a0    b0   c0
-        *   /    /  \   \
-        *  a1   b1  b2   c1
-        */
+         *         r
+         *       / | \
+         *      a  b  c
+         *     /   |   \
+         *   a0    b0   c0
+         *   /    /  \   \
+         *  a1   b1  b2   c1
+         */
 
-        let res = [];
-        node.traverse((node) => {
-            res.push(node.name);
+        let names: string[] = [];
+        node.traverse(traversedNode => {
+            names.push(traversedNode.name);
         });
-        res.join('-').should.equal('r-a-a0-a1-b-b0-b1-b2-c-c0-c1');
+        expect(names.join('-')).toBe('r-a-a0-a1-b-b0-b1-b2-c-c0-c1');
 
-        res = [];
-        node.traverse((node) => {
-            res.push(node.name);
+        names = [];
+        node.traverse(traversedNode => {
+            names.push(traversedNode.name);
         }, true);
-        res.join('-').should.equal('a-a0-a1-b-b0-b1-b2-c-c0-c1');
+        expect(names.join('-')).toBe('a-a0-a1-b-b0-b1-b2-c-c0-c1');
 
-        res = [];
-        node.traverse((node) => {
-            res.push(node.name);
+        names = [];
+        node.traverse(traversedNode => {
+            names.push(traversedNode.name);
             return Node.TRAVERSE_STOP_NONE;
         }, true);
-        res.join('-').should.equal('a-a0-a1-b-b0-b1-b2-c-c0-c1');
+        expect(names.join('-')).toBe('a-a0-a1-b-b0-b1-b2-c-c0-c1');
 
-        res = [];
-        node.traverse((node) => {
-            res.push(node.name);
-            if (node.name === 'b0') {
+        names = [];
+        node.traverse(traversedNode => {
+            names.push(traversedNode.name);
+            if (traversedNode.name === 'b0') {
                 return Node.TRAVERSE_STOP_ALL;
             }
+            return Node.TRAVERSE_STOP_NONE;
         }, true);
-        res.join('-').should.equal('a-a0-a1-b-b0');
+        expect(names.join('-')).toBe('a-a0-a1-b-b0');
 
-        res = [];
-        node.traverse((node) => {
-            res.push(node.name);
-            if (node.name === 'b0') {
+        names = [];
+        node.traverse(traversedNode => {
+            names.push(traversedNode.name);
+            if (traversedNode.name === 'b0') {
                 return Node.TRAVERSE_STOP_CHILDREN;
             }
+            return Node.TRAVERSE_STOP_NONE;
         }, true);
-        res.join('-').should.equal('a-a0-a1-b-b0-c-c0-c1');
+        expect(names.join('-')).toBe('a-a0-a1-b-b0-c-c0-c1');
 
         // traverseBFS
-        res = [];
-        node.traverseBFS((node) => {
-            res.push(node.name);
+        names = [];
+        node.traverseBFS(traversedNode => {
+            names.push(traversedNode.name);
         });
-        res.join('-').should.equal('r-a-b-c-a0-b0-c0-a1-b1-b2-c1');
+        expect(names.join('-')).toBe('r-a-b-c-a0-b0-c0-a1-b1-b2-c1');
 
-        res = [];
-        node.traverseBFS((node) => {
-            res.push(node.name);
+        names = [];
+        node.traverseBFS(traversedNode => {
+            names.push(traversedNode.name);
         }, true);
-        res.join('-').should.equal('a-b-c-a0-b0-c0-a1-b1-b2-c1');
+        expect(names.join('-')).toBe('a-b-c-a0-b0-c0-a1-b1-b2-c1');
 
-        res = [];
-        node.traverseBFS((node) => {
-            res.push(node.name);
-            return Node.TRAVERSE_STOP_NONE
+        names = [];
+        node.traverseBFS(traversedNode => {
+            names.push(traversedNode.name);
+            return Node.TRAVERSE_STOP_NONE;
         }, true);
-        res.join('-').should.equal('a-b-c-a0-b0-c0-a1-b1-b2-c1');
+        expect(names.join('-')).toBe('a-b-c-a0-b0-c0-a1-b1-b2-c1');
 
-        res = [];
-        node.traverseBFS((node) => {
-            res.push(node.name);
-            if (node.name === 'b0'){
-                return Node.TRAVERSE_STOP_ALL
+        names = [];
+        node.traverseBFS(traversedNode => {
+            names.push(traversedNode.name);
+            if (traversedNode.name === 'b0') {
+                return Node.TRAVERSE_STOP_ALL;
             }
+            return Node.TRAVERSE_STOP_NONE;
         }, true);
-        res.join('-').should.equal('a-b-c-a0-b0');
+        expect(names.join('-')).toBe('a-b-c-a0-b0');
 
-        res = [];
-        node.traverseBFS((node) => {
-            res.push(node.name);
-            if (node.name === 'b0'){
-                return Node.TRAVERSE_STOP_CHILDREN
+        names = [];
+        node.traverseBFS(traversedNode => {
+            names.push(traversedNode.name);
+            if (traversedNode.name === 'b0') {
+                return Node.TRAVERSE_STOP_CHILDREN;
             }
+            return Node.TRAVERSE_STOP_NONE;
         }, true);
-        res.join('-').should.equal('a-b-c-a0-b0-c0-a1-c1');
+        expect(names.join('-')).toBe('a-b-c-a0-b0-c0-a1-c1');
     });
 
     it('traverse', () => {
@@ -264,11 +273,11 @@ describe('Node', function() {
         });
 
         const b3 = new Node({
-            name: 'b3',
+            name: 'b3'
         });
 
         const c1 = new Node({
-            name: 'c1',
+            name: 'c1'
         });
 
         node.addChild(b1);
@@ -282,29 +291,31 @@ describe('Node', function() {
          * c1
          */
 
-        const callback = sinon.stub();
+        const callback = vi.fn<NodeTraverseCallback>();
         node.traverse(callback);
-        callback.callCount.should.equal(5);
+        expect(callback).toHaveBeenCalledTimes(5);
 
-        callback.reset();
-        callback.onCall(0).returns(Hilo3d.Node.TRAVERSE_STOP_ALL);
+        callback.mockReset();
+        callback.mockReturnValueOnce(Hilo3d.Node.TRAVERSE_STOP_ALL);
         node.traverse(callback);
-        callback.callCount.should.equal(1);
+        expect(callback).toHaveBeenCalledTimes(1);
 
-        callback.reset();
-        callback.onCall(0).returns(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
+        callback.mockReset();
+        callback.mockReturnValueOnce(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
         node.traverse(callback);
-        callback.callCount.should.equal(1);
+        expect(callback).toHaveBeenCalledTimes(1);
 
-        callback.reset();
-        callback.onCall(1).returns(Hilo3d.Node.TRAVERSE_STOP_ALL);
+        callback.mockReset();
+        callback.mockReturnValueOnce(undefined).mockReturnValueOnce(Hilo3d.Node.TRAVERSE_STOP_ALL);
         node.traverse(callback);
-        callback.callCount.should.equal(2);
+        expect(callback).toHaveBeenCalledTimes(2);
 
-        callback.reset();
-        callback.onCall(1).returns(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
+        callback.mockReset();
+        callback
+            .mockReturnValueOnce(undefined)
+            .mockReturnValueOnce(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
         node.traverse(callback);
-        callback.callCount.should.equal(4);
+        expect(callback).toHaveBeenCalledTimes(4);
     });
 
     it('traverseBFS', () => {
@@ -321,7 +332,7 @@ describe('Node', function() {
         });
 
         const b3 = new Node({
-            name: 'b3',
+            name: 'b3'
         });
 
         node.addChild(b1);
@@ -329,24 +340,30 @@ describe('Node', function() {
         node.addChild(b3);
         b2.addChild(new Node());
 
-        const callback = sinon.stub();
+        const callback = vi.fn<NodeTraverseCallback>();
         node.traverseBFS(callback);
-        callback.callCount.should.equal(5);
+        expect(callback).toHaveBeenCalledTimes(5);
 
-        callback.reset();
-        callback.onCall(0).returns(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
+        callback.mockReset();
+        callback.mockReturnValueOnce(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
         node.traverseBFS(callback);
-        callback.callCount.should.equal(1);
+        expect(callback).toHaveBeenCalledTimes(1);
 
-        callback.reset();
-        callback.onCall(2).returns(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
+        callback.mockReset();
+        callback
+            .mockReturnValueOnce(undefined)
+            .mockReturnValueOnce(undefined)
+            .mockReturnValueOnce(Hilo3d.Node.TRAVERSE_STOP_CHILDREN);
         node.traverseBFS(callback);
-        callback.callCount.should.equal(4);
+        expect(callback).toHaveBeenCalledTimes(4);
 
-        callback.reset();
-        callback.onCall(2).returns(Hilo3d.Node.TRAVERSE_STOP_ALL);
+        callback.mockReset();
+        callback
+            .mockReturnValueOnce(undefined)
+            .mockReturnValueOnce(undefined)
+            .mockReturnValueOnce(Hilo3d.Node.TRAVERSE_STOP_ALL);
         node.traverseBFS(callback);
-        callback.callCount.should.equal(3);
+        expect(callback).toHaveBeenCalledTimes(3);
     });
 
     it('traverseUpdate', () => {
@@ -361,7 +378,7 @@ describe('Node', function() {
         node.addChild(b3);
         b3.addChild(c1);
 
-        let onUpdate = sinon.stub();
+        const onUpdate = vi.fn<(deltaTime: number) => void>();
 
         node.onUpdate = onUpdate;
         b1.onUpdate = onUpdate;
@@ -369,18 +386,18 @@ describe('Node', function() {
         b3.onUpdate = onUpdate;
         c1.onUpdate = onUpdate;
 
-        node.traverseUpdate();
-        onUpdate.callCount.should.equal(5);
+        node.traverseUpdate(16);
+        expect(onUpdate).toHaveBeenCalledTimes(5);
 
-        onUpdate.reset();
+        onUpdate.mockReset();
         b3.needCallChildUpdate = false;
-        node.traverseUpdate();
-        onUpdate.callCount.should.equal(4);
+        node.traverseUpdate(16);
+        expect(onUpdate).toHaveBeenCalledTimes(4);
 
-        onUpdate.reset();
+        onUpdate.mockReset();
         node.needCallChildUpdate = false;
-        node.traverseUpdate();
-        onUpdate.callCount.should.equal(1);
+        node.traverseUpdate(16);
+        expect(onUpdate).toHaveBeenCalledTimes(1);
     });
 
     it('raycast', () => {
@@ -440,32 +457,33 @@ describe('Node', function() {
         c0.addChild(c1);
 
         /**
-        *         r
-        *       / | \
-        *      a  b  c
-        *     /   |   \
-        *   a0    b0   c0
-        *   /    /  \   \
-        *  a1   b1  b2   c1
-        */
+         *         r
+         *       / | \
+         *      a  b  c
+         *     /   |   \
+         *   a0    b0   c0
+         *   /    /  \   \
+         *  a1   b1  b2   c1
+         */
 
-        const pathList = [];
-        node.traverse((node) => {
-            node.raycast = () => {
-                pathList.push(node.name);
+        const pathList: string[] = [];
+        node.traverse(traversedNode => {
+            traversedNode.raycast = () => {
+                pathList.push(traversedNode.name);
+                return [];
             };
-            node.isMesh = true;
+            traversedNode.isMesh = true;
         }, true);
         const ray = new Hilo3d.Ray();
 
         pathList.length = 0;
         node.raycast(ray, false, true);
-        pathList.join('-').should.equal('a-a0-a1-b-b0-b1-b2-c-c0-c1');
+        expect(pathList.join('-')).toBe('a-a0-a1-b-b0-b1-b2-c-c0-c1');
 
         pathList.length = 0;
         node.pointerChildren = false;
         node.raycast(ray, false, true);
-        pathList.join('-').should.equal('');
+        expect(pathList.join('-')).toBe('');
 
         node.pointerChildren = true;
         a.pointerEnabled = false;
@@ -473,6 +491,6 @@ describe('Node', function() {
         c0.pointerChildren = false;
         pathList.length = 0;
         node.raycast(ray, false, true);
-        pathList.join('-').should.equal('b-c-c0');
+        expect(pathList.join('-')).toBe('b-c-c0');
     });
 });

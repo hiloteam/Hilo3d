@@ -1,63 +1,55 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import Plane from './Plane';
-
+import type Matrix4 from './Matrix4';
+import type Sphere from './Sphere';
 /**
  * 平截头体
- * @class
  */
-const Frustum = Class.create<typeof hilo3d.Frustum>()(/** @lends Frustum.prototype */ {
+class Frustum {
+    planes: [Plane, Plane, Plane, Plane, Plane, Plane];
     /**
      * 类名
-     * @type {String}
-     * @default Frustum
      */
-    className: 'Frustum',
-    /**
-     * @type {Boolean}
-     * @default true
-     */
-    isFrustum: true,
-    /**
-     * @constructs
-     */
+    className = 'Frustum';
+    isFrustum = true;
     constructor() {
-        this.planes = [];
-        let num = 6;
-        while (num--) {
-            this.planes.push(new Plane());
-        }
-    },
+        this.planes = [
+            new Plane(),
+            new Plane(),
+            new Plane(),
+            new Plane(),
+            new Plane(),
+            new Plane()
+        ];
+    }
     /**
      * Copy the values from one frustum to this
-     * @param  {Frustum} m the source frustum
-     * @return {Frustum} this
+     * @param frustum - the source frustum
+     * @returns this
      */
-    copy(frustum) {
+    copy(frustum: Frustum): this {
         const planes = frustum.planes;
         this.planes.forEach((plane, index) => {
-            plane.copy(planes[index]);
+            const source = planes[index];
+            if (source) plane.copy(source);
         });
         return this;
-    },
+    }
     /**
      * Creates a new frustum initialized with values from this frustum
-     * @return {Frustum} a new Frustum
+     * @returns a new Frustum
      */
-    clone() {
-        const frustum = new this.constructor();
+    clone(): Frustum {
+        const frustum = new Frustum();
         frustum.copy(this);
         return frustum;
-    },
+    }
     /**
      * fromMatrix
-     * @param  {Matrix4} mat
-     * @return {Frustum}  this
+     * @param mat -
+     * @returns this
      */
-    fromMatrix(mat) {
+    fromMatrix(mat: Matrix4): this {
         // Based on https://github.com/mrdoob/three.js/blob/dev/src/math/Frustum.js#L63
-
         const planes = this.planes;
         const me = mat.elements;
         const me0 = me[0];
@@ -76,36 +68,32 @@ const Frustum = Class.create<typeof hilo3d.Frustum>()(/** @lends Frustum.prototy
         const me13 = me[13];
         const me14 = me[14];
         const me15 = me[15];
-
         planes[0].set(me3 - me0, me7 - me4, me11 - me8, me15 - me12).normalize();
         planes[1].set(me3 + me0, me7 + me4, me11 + me8, me15 + me12).normalize();
         planes[2].set(me3 + me1, me7 + me5, me11 + me9, me15 + me13).normalize();
         planes[3].set(me3 - me1, me7 - me5, me11 - me9, me15 - me13).normalize();
         planes[4].set(me3 - me2, me7 - me6, me11 - me10, me15 - me14).normalize();
         planes[5].set(me3 + me2, me7 + me6, me11 + me10, me15 + me14).normalize();
-
         return this;
-    },
+    }
     /**
      * 与球体相交
-     * @param  {Sphere} sphere
-     * @return {Boolean} 是否相交
+     * @param sphere -
+     * @returns 是否相交
      */
-    intersectsSphere(sphere) {
+    intersectsSphere(sphere: Sphere): boolean {
         const planes = this.planes;
         const center = sphere.center;
         const negRadius = -sphere.radius;
-
         for (let i = 0; i < 6; i++) {
-            const distance = planes[i].distanceToPoint(center);
-
+            const plane = planes[i];
+            if (!plane) continue;
+            const distance = plane.distanceToPoint(center);
             if (distance < negRadius) {
                 return false;
             }
         }
-
         return true;
     }
-});
-
+}
 export default Frustum;

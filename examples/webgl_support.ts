@@ -1,42 +1,50 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-var isWebGLSupport = Hilo3d.WebGLSupport.get();
-        var canvas = document.createElement('canvas');
-        var infoText = '';
-        infoText += 'context: ' + canvas.getContext('webgl') + '<br/>';
-        infoText += 'WebGLSupport: ' + isWebGLSupport;
+const isWebGLSupport = Hilo3d.WebGLSupport.get();
+const canvas = document.createElement('canvas');
+let infoText = '';
+infoText += `context: ${canvas.getContext('webgl') ? 'available' : 'unavailable'}<br/>`;
+infoText += `WebGLSupport: ${String(isWebGLSupport)}`;
 
-        document.getElementById('info').innerHTML = infoText;
-        if(isWebGLSupport){
-            var boxGeometry = new Hilo3d.BoxGeometry();
-            boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+const info = document.getElementById('info');
+if (!info) throw new Error('WebGL support example requires #info');
+info.innerHTML = infoText;
+if (isWebGLSupport) {
+    const { stage } = createExampleContext();
+    const boxGeometry = new Hilo3d.BoxGeometry();
+    boxGeometry.setAllRectUV([
+        [0, 1],
+        [1, 1],
+        [1, 0],
+        [0, 0]
+    ]);
 
-            var colorBox = new Hilo3d.Mesh({
-                geometry: boxGeometry,
-                material: new Hilo3d.BasicMaterial({
-                    diffuse: new Hilo3d.Color(0.8, 0, 0)
-                }),
-                x: -1,
-                onUpdate: function() {
-                    this.rotationX += .5;
-                    this.rotationY += .5;
-                }
-            });
-            stage.addChild(colorBox);
+    const colorBox = new Hilo3d.Mesh({
+        geometry: boxGeometry,
+        material: new Hilo3d.BasicMaterial({
+            diffuse: new Hilo3d.Color(0.8, 0, 0)
+        }),
+        x: -1
+    });
+    colorBox.onUpdate = () => {
+        colorBox.rotationX += 0.5;
+        colorBox.rotationY += 0.5;
+    };
+    stage.addChild(colorBox);
 
-            var textureBox = new Hilo3d.Mesh({
-                geometry:boxGeometry,
-                material: new Hilo3d.BasicMaterial({
-                    diffuse:new Hilo3d.LazyTexture({
-                        crossOrigin:true,
-                        src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png_500x500.jpg'
-                    })
-                }),
-                x: 1,
-                onUpdate: function() {
-                    this.rotationX += .5;
-                    this.rotationZ += .5;
-                }
-            });
-            stage.addChild(textureBox);
-        }
+    const textureBox = new Hilo3d.Mesh({
+        geometry: boxGeometry,
+        material: new Hilo3d.BasicMaterial({
+            diffuse: new Hilo3d.LazyTexture({
+                src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
+            })
+        }),
+        x: 1
+    });
+    textureBox.onUpdate = () => {
+        textureBox.rotationX += 0.5;
+        textureBox.rotationZ += 0.5;
+    };
+    stage.addChild(textureBox);
+}

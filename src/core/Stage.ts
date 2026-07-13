@@ -1,400 +1,535 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from './Class';
-import Node from './Node';
+import Node, { type NodeParameters, type NodePointerEvent, type NodeRaycastInfo } from './Node';
 import version from './version';
 import WebGLRenderer from '../renderer/WebGLRenderer';
+import type { FramebufferParameters } from '../renderer/Framebuffer';
 import Ray from '../math/Ray';
 import Vector3 from '../math/Vector3';
-import browser from '../utils/browser';
+import type Color from '../math/Color';
+import type Camera from '../camera/Camera';
 import log from '../utils/log';
-import {
-    getElementRect
-} from '../utils/util';
+import { getElementRect } from '../utils/util';
 
+type DOMViewport = ReturnType<typeof getElementRect>;
+
+interface DOMPointerInfo {
+    pageX: number;
+    pageY: number;
+    clientX: number;
+    clientY: number;
+    pointerId: number;
+    pointerType: string;
+    isPrimary: boolean;
+    button: number;
+    buttons: number;
+    pressure: number;
+    width: number;
+    height: number;
+    altKey: boolean;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    shiftKey: boolean;
+}
+
+const DOM_EVENT_OPTIONS: AddEventListenerOptions = { passive: false };
+const DIRECT_MANIPULATION_EVENTS = new Set([
+    'pointerdown',
+    'pointermove',
+    'touchstart',
+    'touchmove'
+]);
+const EXIT_EVENTS = new Set(['pointerout', 'pointerleave', 'mouseout', 'mouseleave', 'touchout']);
+const CANCEL_EVENTS = new Set(['pointercancel', 'touchcancel']);
+const END_EVENTS = new Set(['pointerup', 'mouseup', 'touchend']);
+
+function getOutEventType(type: string): string | null {
+    if (type.startsWith('pointer')) return 'pointerout';
+    if (type.startsWith('mouse')) return 'mouseout';
+    if (type.startsWith('touch')) return 'touchout';
+    return null;
+}
+
+function getDOMPointerInfo(event: Event): DOMPointerInfo {
+    if (typeof PointerEvent !== 'undefined' && event instanceof PointerEvent) {
+        return {
+            pageX: event.pageX,
+            pageY: event.pageY,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            pointerId: event.pointerId,
+            pointerType: event.pointerType,
+            isPrimary: event.isPrimary,
+            button: event.button,
+            buttons: event.buttons,
+            pressure: event.pressure,
+            width: event.width,
+            height: event.height,
+            altKey: event.altKey,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            shiftKey: event.shiftKey
+        };
+    }
+
+    if (typeof TouchEvent !== 'undefined' && event instanceof TouchEvent) {
+        const touch = event.changedTouches[0] ?? event.touches[0];
+        if (touch) {
+            return {
+                pageX: touch.pageX,
+                pageY: touch.pageY,
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                pointerId: touch.identifier,
+                pointerType: 'touch',
+                isPrimary: touch === event.touches[0] || event.touches.length === 0,
+                button: 0,
+                buttons: event.type === 'touchend' || event.type === 'touchcancel' ? 0 : 1,
+                pressure: touch.force,
+                width: touch.radiusX * 2,
+                height: touch.radiusY * 2,
+                altKey: event.altKey,
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
+                shiftKey: event.shiftKey
+            };
+        }
+    }
+
+    if (typeof MouseEvent !== 'undefined' && event instanceof MouseEvent) {
+        return {
+            pageX: event.pageX,
+            pageY: event.pageY,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            pointerId: 1,
+            pointerType: 'mouse',
+            isPrimary: true,
+            button: event.button,
+            buttons: event.buttons,
+            pressure: event.buttons === 0 ? 0 : 0.5,
+            width: 1,
+            height: 1,
+            altKey: event.altKey,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            shiftKey: event.shiftKey
+        };
+    }
+
+    return {
+        pageX: 0,
+        pageY: 0,
+        clientX: 0,
+        clientY: 0,
+        pointerId: 0,
+        pointerType: '',
+        isPrimary: true,
+        button: 0,
+        buttons: 0,
+        pressure: 0,
+        width: 1,
+        height: 1,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false
+    };
+}
+
+export interface StageParameters extends NodeParameters {
+    container?: HTMLElement;
+    canvas?: HTMLCanvasElement;
+    camera?: Camera | null;
+    width?: number;
+    height?: number;
+    pixelRatio?: number;
+    clearColor?: Color;
+    preferWebGL2?: boolean;
+    useFramebuffer?: boolean;
+    framebufferOption?: FramebufferParameters;
+    useLogDepth?: boolean;
+    alpha?: boolean;
+    depth?: boolean;
+    stencil?: boolean;
+    antialias?: boolean;
+    premultipliedAlpha?: boolean;
+    preserveDrawingBuffer?: boolean;
+    failIfMajorPerformanceCaveat?: boolean;
+    gameMode?: boolean;
+}
+
+export interface StagePointerEvent extends NodePointerEvent {
+    stageX: number;
+    stageY: number;
+    originalEvent: Event;
+    lastEventTarget?: Node;
+    preventDefault(): void;
+    stopPropagation(): void;
+}
+
+function containsNode(parent: Node, possibleChild: Node): boolean {
+    for (let node: Node | null = possibleChild.parent; node; node = node.parent) {
+        if (node === parent) return true;
+    }
+    return false;
+}
 /**
  * 舞台类
- * @class
- * @extends Node
  * @example
+ * ```ts
  * const stage = new Hilo3d.Stage({
  *     container:document.body,
  *     width:innerWidth,
  *     height:innerHeight
  * });
+ * ```
  */
-const Stage = Class.create<typeof hilo3d.Stage>()(/** @lends Stage.prototype */ {
-    Extends: Node,
-
-    isStage: true,
-    className: 'Stage',
-
+class Stage extends Node {
+    static override readonly typeName: string = 'Stage';
+    isStage = true;
+    override className = 'Stage';
     /**
      * 渲染器
-     * @type {WebGLRenderer}
      */
-    renderer: null,
-
+    renderer: WebGLRenderer;
     /**
      * 摄像机
-     * @type {Camera}
      */
-    camera: null,
-
+    camera: Camera | null = null;
     /**
      * 像素密度
-     * @type {Number}
-     * @default 根据设备自动判断
      */
-    pixelRatio: null,
-
+    pixelRatio = 1;
     /**
      * 偏移值
-     * @type {Number}
-     * @default 0
      */
-    offsetX: 0,
-
+    offsetX = 0;
     /**
      * 偏移值
-     * @type {Number}
-     * @default 0
      */
-    offsetY: 0,
-
+    offsetY = 0;
     /**
      * 舞台宽度
-     * @type {Number}
-     * @default 0
      */
-    width: 0,
-
+    width = 0;
     /**
      * 舞台高度
-     * @type {Number}
-     * @default 0
      */
-    height: 0,
-
+    height = 0;
     /**
      * canvas
-     * @type {HTMLCanvasElement}
-     * @default null
      */
-    canvas: null,
-
+    canvas: HTMLCanvasElement;
+    rendererWidth = 0;
+    rendererHeight = 0;
+    domViewport: DOMViewport | null = null;
+    private _domListener: EventListener | null = null;
+    private readonly _eventTargets = new Map<number, Node>();
+    private readonly _enabledDOMEvents = new Set<string>();
+    private _previousTouchAction: string | null = null;
+    private _ray: Ray | null = null;
+    private _stageResultAtPoint: NodeRaycastInfo | null = null;
     /**
-     * @constructs
-     * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性，所有属性会透传给 Renderer。
-     * @param {HTMLElement} [params.container] stage的容器, 如果有，会把canvas加进container里。
-     * @param {HTMLCanvasElement} [params.canvas] stage的canvas，不传会自动创建。
-     * @param {Camera} [params.camera] stage的摄像机。
-     * @param {number} [params.width=innerWidth] stage的宽，默认网页宽度
-     * @param {number} [params.height=innerHeight] stage的高，默认网页高度
-     * @param {number} [params.pixelRatio=根据设备自动判断] 像素密度。
-     * @param {Color} [params.clearColor=new Color(1, 1, 1, 1)] 背景色。
-     * @param {boolean} [params.preferWebGL2=false] 是否优先使用 WebGL2
-     * @param {boolean} [params.useFramebuffer=false] 是否使用Framebuffer，有后处理需求时需要。
-     * @param {Object} [params.framebufferOption={}] framebufferOption Framebuffer的配置，useFramebuffer为true时生效。
-     * @param {boolean} [params.useLogDepth=false] 是否使用对数深度，处理深度冲突。
-     * @param {boolean} [params.alpha=false] 是否背景透明。
-     * @param {boolean} [params.depth=true] 是否需要深度缓冲区。
-     * @param {boolean} [params.stencil=false] 是否需要模版缓冲区。
-     * @param {boolean} [params.antialias=true] 是否抗锯齿。
-     * @param {boolean} [params.premultipliedAlpha=true] 是否需要 premultipliedAlpha。
-     * @param {boolean} [params.preserveDrawingBuffer=false] 是否需要 preserveDrawingBuffer。
-     * @param {boolean} [params.failIfMajorPerformanceCaveat=false] 是否需要 failIfMajorPerformanceCaveat。
-     * @param {unknown} [params.[value:string]] 其它属性
+     * @param params - 创建对象的属性参数。可包含此类的所有属性，所有属性会透传给 Renderer。
+     * - `params.container`: stage的容器, 如果有，会把canvas加进container里。
+     * - `params.canvas`: stage的canvas，不传会自动创建。
+     * - `params.camera`: stage的摄像机。
+     * - `params.width`: stage的宽，默认网页宽度
+     * - `params.height`: stage的高，默认网页高度
+     * - `params.pixelRatio`: 像素密度。
+     * - `params.clearColor`: 背景色。
+     * - `params.preferWebGL2`: 是否优先使用 WebGL2
+     * - `params.useFramebuffer`: 是否使用Framebuffer，有后处理需求时需要。
+     * - `params.framebufferOption`: framebufferOption Framebuffer的配置，useFramebuffer为true时生效。
+     * - `params.useLogDepth`: 是否使用对数深度，处理深度冲突。
+     * - `params.alpha`: 是否背景透明。
+     * - `params.depth`: 是否需要深度缓冲区。
+     * - `params.stencil`: 是否需要模版缓冲区。
+     * - `params.antialias`: 是否抗锯齿。
+     * - `params.premultipliedAlpha`: 是否需要 premultipliedAlpha。
+     * - `params.preserveDrawingBuffer`: 是否需要 preserveDrawingBuffer。
+     * - `params.failIfMajorPerformanceCaveat`: 是否需要 failIfMajorPerformanceCaveat。
      */
-    constructor(params) {
-        if (!params.width) {
-            params.width = window.innerWidth;
-        }
-
-        if (!params.height) {
-            params.height = window.innerHeight;
-        }
-
-        if (!params.pixelRatio) {
-            let pixelRatio = window.devicePixelRatio || 1;
-            pixelRatio = Math.min(pixelRatio, 1024 / Math.max(params.width, params.height), 2);
+    constructor(params: StageParameters = {}) {
+        const width = params.width ?? window.innerWidth;
+        const height = params.height ?? window.innerHeight;
+        let pixelRatio = params.pixelRatio;
+        if (!pixelRatio) {
+            pixelRatio = window.devicePixelRatio || 1;
+            pixelRatio = Math.min(pixelRatio, 1024 / Math.max(width, height), 2);
             pixelRatio = Math.max(pixelRatio, 1);
-            params.pixelRatio = pixelRatio;
         }
-
-        Stage.superclass.constructor.call(this, params);
-        this.initRenderer(params);
-
-        log.log(`Hilo3d version: ${version}`);
-    },
-    /**
-     * 初始化渲染器
-     * @private
-     * @param  {Object} params
-     */
-    initRenderer(params) {
-        const canvas = this.canvas = this.createCanvas(params);
-        this.renderer = new WebGLRenderer(Object.assign(params, {
-            domElement: canvas
-        }));
+        const resolvedParams: StageParameters = { ...params, width, height, pixelRatio };
+        super();
+        Object.assign(this, resolvedParams);
+        this.canvas = this.createCanvas(resolvedParams);
+        this.renderer = new WebGLRenderer({ ...resolvedParams, domElement: this.canvas });
         this.resize(this.width, this.height, this.pixelRatio, true);
-    },
+        log.log(`Hilo3d version: ${version}`);
+    }
     /**
      * 生成canvas
-     * @private
-     * @param  {Object} params
-     * @return {HTMLCanvasElement}
+     * @param params -
      */
-    createCanvas(params) {
-        let canvas;
+    private createCanvas(params: StageParameters): HTMLCanvasElement {
+        let canvas: HTMLCanvasElement;
         if (params.canvas) {
             canvas = params.canvas;
         } else {
             canvas = document.createElement('canvas');
         }
-
         if (params.container) {
             params.container.appendChild(canvas);
         }
-
         return canvas;
-    },
+    }
     /**
      * 缩放舞台
-     * @param  {Number} width 舞台宽
-     * @param  {Number} height 舞台高
-     * @param  {Number} [pixelRatio=this.pixelRatio] 像素密度
-     * @param  {Boolean} [force=false] 是否强制刷新
-     * @return {Stage} 舞台本身。链式调用支持。
+     * @param width - 舞台宽
+     * @param height - 舞台高
+     * @param pixelRatio - 像素密度
+     * @param force - 是否强制刷新
+     * @returns 舞台本身。链式调用支持。
      */
-    resize(width, height, pixelRatio, force) {
-        if (pixelRatio === undefined) {
-            pixelRatio = this.pixelRatio;
-        }
-
-        if (force || this.width !== width || this.height !== height || this.pixelRatio !== pixelRatio) {
+    resize(width: number, height: number, pixelRatio?: number, force?: boolean): this {
+        pixelRatio ??= this.pixelRatio;
+        if (
+            force ||
+            this.width !== width ||
+            this.height !== height ||
+            this.pixelRatio !== pixelRatio
+        ) {
             this.width = width;
             this.height = height;
             this.pixelRatio = pixelRatio;
             this.rendererWidth = width * pixelRatio;
             this.rendererHeight = height * pixelRatio;
-
             const canvas = this.canvas;
             const renderer = this.renderer;
-
             renderer.resize(this.rendererWidth, this.rendererHeight, force);
-            canvas.style.width = this.width + 'px';
-            canvas.style.height = this.height + 'px';
+            canvas.style.width = `${String(this.width)}px`;
+            canvas.style.height = `${String(this.height)}px`;
             this.updateDomViewport();
         }
         return this;
-    },
+    }
     /**
      * 设置舞台偏移值
-     * @param {Number} x x
-     * @param {Number} y y
-     * @return {Stage} 舞台本身。链式调用支持。
+     * @param x - x
+     * @param y - y
+     * @returns 舞台本身。链式调用支持。
      */
-    setOffset(x, y) {
+    setOffset(x: number, y: number): this {
         if (this.offsetX !== x || this.offsetY !== y) {
             this.offsetX = x;
             this.offsetY = y;
-
             const pixelRatio = this.pixelRatio;
             this.renderer.setOffset(x * pixelRatio, y * pixelRatio);
         }
         return this;
-    },
+    }
     /**
      * 改viewport
-     * @param  {Number} x      x
-     * @param  {Number} y      y
-     * @param  {Number} width  width
-     * @param  {Number} height height
-     * @return {Stage} 舞台本身。链式调用支持。
+     * @param x - x
+     * @param y - y
+     * @param width - width
+     * @param height - height
+     * @returns 舞台本身。链式调用支持。
      */
-    viewport(x, y, width, height) {
+    viewport(x: number, y: number, width: number, height: number): this {
         this.resize(width, height, this.pixelRatio, true);
         this.setOffset(x, y);
         return this;
-    },
+    }
     /**
      * 渲染一帧
-     * @param  {Number} dt 间隔时间
-     * @return {Stage} 舞台本身。链式调用支持。
+     * @param dt - 间隔时间
+     * @returns 舞台本身。链式调用支持。
      */
-    tick(dt) {
+    tick(dt: number): this {
         this.traverseUpdate(dt);
         if (this.camera) {
             this.renderer.render(this, this.camera, true);
         }
         return this;
-    },
+    }
     /**
      * 开启/关闭舞台的DOM事件响应。要让舞台上的可视对象响应用户交互，必须先使用此方法开启舞台的相应事件的响应。
-     * @param {String|Array} type 要开启/关闭的事件名称或数组。
-     * @param {Boolean} enabled 指定开启还是关闭。如果不传此参数，则默认为开启。
-     * @return {Stage} 舞台本身。链式调用支持。
+     * @param types - 要开启/关闭的事件名称或数组。
+     * @param enabled - 指定开启还是关闭。如果不传此参数，则默认为开启。
+     * @returns 舞台本身。链式调用支持。
      */
-    enableDOMEvent(types, enabled = true) {
+    enableDOMEvent(types: string | readonly string[], enabled = true): this {
         const canvas = this.canvas;
-        const handler = this._domListener || (this._domListener = (e) => {
-            this._onDOMEvent(e);
-        });
+        const handler =
+            this._domListener ??
+            (this._domListener = (e: Event) => {
+                this._onDOMEvent(e);
+            });
         types = typeof types === 'string' ? [types] : types;
-
-        types.forEach((type) => {
-            if (enabled) {
-                canvas.addEventListener(type, handler, false);
-            } else {
-                canvas.removeEventListener(type, handler);
+        types.forEach(type => {
+            if (enabled && !this._enabledDOMEvents.has(type)) {
+                canvas.addEventListener(type, handler, DOM_EVENT_OPTIONS);
+                this._enabledDOMEvents.add(type);
+            } else if (!enabled && this._enabledDOMEvents.has(type)) {
+                canvas.removeEventListener(type, handler, DOM_EVENT_OPTIONS);
+                this._enabledDOMEvents.delete(type);
             }
         });
+        this.updateTouchAction();
         return this;
-    },
+    }
+
+    private updateTouchAction(): void {
+        const handlesDirectManipulation = [...this._enabledDOMEvents].some(type =>
+            DIRECT_MANIPULATION_EVENTS.has(type)
+        );
+        if (handlesDirectManipulation && this._previousTouchAction === null) {
+            this._previousTouchAction = this.canvas.style.touchAction;
+            this.canvas.style.touchAction = 'none';
+        } else if (!handlesDirectManipulation && this._previousTouchAction !== null) {
+            this.canvas.style.touchAction = this._previousTouchAction;
+            this._previousTouchAction = null;
+        }
+    }
     /**
      * DOM事件处理函数。此方法会把事件调度到事件的坐标点所对应的可视对象。
-     * @private
      */
-    _onDOMEvent(event) {
+    private _onDOMEvent(event: Event): void {
         const canvas = this.canvas;
-        const target = this._eventTarget;
-
         const type = event.type;
-        const isTouch = type.indexOf('touch') === 0;
-
-        // calculate stageX/stageY
-        let posObj = event;
-        if (isTouch) {
-            const touches = event.touches;
-            const changedTouches = event.changedTouches;
-            if (touches && touches.length) {
-                posObj = touches[0];
-            } else if (changedTouches && changedTouches.length) {
-                posObj = changedTouches[0];
+        const domViewport = this.domViewport ?? this.updateDomViewport();
+        const pointerInfo = getDOMPointerInfo(event);
+        const target = this._eventTargets.get(pointerInfo.pointerId) ?? null;
+        const x = pointerInfo.pageX - domViewport.left;
+        const y = pointerInfo.pageY - domViewport.top;
+        const pointerEvent: StagePointerEvent = {
+            type,
+            stageX: x,
+            stageY: y,
+            ...pointerInfo,
+            originalEvent: event,
+            preventDefault: () => {
+                event.preventDefault();
+            },
+            stopPropagation() {
+                this._stopPropagationed = true;
             }
-        }
-
-        const domViewport = this.domViewport || this.updateDomViewport();
-        const x = (posObj.pageX || posObj.clientX) - domViewport.left;
-        const y = (posObj.pageY || posObj.clientY) - domViewport.top;
-        event.stageX = x;
-        event.stageY = y;
-
-        // 鼠标事件需要阻止冒泡方法 Prevent bubbling on mouse events.
-        event.stopPropagation = function() {
-            this._stopPropagationed = true;
         };
-
         const meshResult = this.getMeshResultAtPoint(x, y, true);
-        const obj = meshResult.mesh;
-        event.hitPoint = meshResult.point;
+        const obj = meshResult?.mesh ?? null;
+        if (meshResult) pointerEvent.hitPoint = meshResult.point;
 
-        // fire mouseout/touchout event for last event target
-        const leave = type === 'mouseout';
-        // 当obj和target不同 且obj不是target的子元素时才触发out事件 fire out event when obj and target isn't the same as well as obj is not a child element to target.
-        if (target && (target !== obj && (!target.contains || !target.contains(obj)) || leave)) {
-            let out = false;
-            if (type === 'touchmove') {
-                out = 'touchout';
-            } else if (type === 'mousemove' || leave || !obj) {
-                out = 'mouseout';
+        if (CANCEL_EVENTS.has(type)) {
+            const cancelTarget = target ?? obj;
+            if (cancelTarget?.pointerEnabled) {
+                pointerEvent.eventTarget = cancelTarget;
+                cancelTarget._firePointerEvent(pointerEvent);
             }
+            this._eventTargets.delete(pointerInfo.pointerId);
+            canvas.style.cursor = '';
+            return;
+        }
 
-            if (out) {
-                const outEvent = Object.assign({}, event);
-                outEvent.type = out;
+        if (EXIT_EVENTS.has(type)) {
+            const exitTarget = target ?? obj;
+            if (exitTarget?.pointerEnabled) {
+                pointerEvent.eventTarget = exitTarget;
+                exitTarget._firePointerEvent(pointerEvent);
+            }
+            this._eventTargets.delete(pointerInfo.pointerId);
+            canvas.style.cursor = '';
+            return;
+        }
+
+        // A target transition emits the matching modern or compatibility
+        // boundary event without relying on browser or device detection.
+        if (target && target !== obj && (!obj || !containsNode(target, obj))) {
+            const outType = getOutEventType(type);
+            if (outType) {
+                const outEvent: StagePointerEvent = { ...pointerEvent, type: outType };
                 outEvent.eventTarget = target;
-                target._fireMouseEvent(outEvent);
+                target._firePointerEvent(outEvent);
             }
-            event.lastEventTarget = target;
-            this._eventTarget = null;
+            pointerEvent.lastEventTarget = target;
+            this._eventTargets.delete(pointerInfo.pointerId);
         }
 
-        // fire event for current view
-        if (obj && obj.pointerEnabled && type !== 'mouseout') {
-            event.eventTarget = this._eventTarget = obj;
-            obj._fireMouseEvent(event);
+        if (obj?.pointerEnabled) {
+            pointerEvent.eventTarget = obj;
+            this._eventTargets.set(pointerInfo.pointerId, obj);
+            obj._firePointerEvent(pointerEvent);
+        } else {
+            this._eventTargets.delete(pointerInfo.pointerId);
         }
 
-        // set cursor for current view
-        if (!isTouch) {
-            let cursor = (obj && obj.pointerEnabled && obj.useHandCursor) ? 'pointer' : '';
-            canvas.style.cursor = cursor;
+        if (END_EVENTS.has(type) && pointerInfo.pointerType !== 'mouse') {
+            this._eventTargets.delete(pointerInfo.pointerId);
         }
-
-        // fix android: `touchmove` fires only once
-        if (browser.android && type === 'touchmove') {
-            event.preventDefault();
-        }
-    },
+        canvas.style.cursor =
+            pointerInfo.pointerType === 'touch'
+                ? ''
+                : obj?.pointerEnabled && obj.useHandCursor
+                  ? 'pointer'
+                  : '';
+    }
     /**
      * 更新 DOM viewport
-     * @return {Object} DOM viewport, {left, top, right, bottom}
+     * @returns DOM viewport，格式为 `{ left, top, right, bottom }`
      */
-    updateDomViewport() {
+    updateDomViewport(): DOMViewport {
         const canvas = this.canvas;
-        let domViewport = null;
-        if (canvas.parentNode) {
-            domViewport = this.domViewport = getElementRect(canvas);
-        }
+        const domViewport = getElementRect(canvas);
+        this.domViewport = domViewport;
         return domViewport;
-    },
+    }
     /**
      * 获取指定点的 mesh
-     * @param  {Number}  x
-     * @param  {Number}  y
-     * @param  {Boolean} [eventMode=false]
-     * @return {Mesh|null}
+     * @param x -
+     * @param y -
+     * @param eventMode -
      */
-    getMeshResultAtPoint(x, y, eventMode = false) {
+    getMeshResultAtPoint(x: number, y: number, eventMode = false): NodeRaycastInfo | null {
         const camera = this.camera;
-        let ray = this._ray;
-        if (!ray) {
-            ray = this._ray = new Ray();
-        }
+        if (!camera) return null;
+        const ray = (this._ray ??= new Ray());
         ray.fromCamera(camera, x, y, this.width, this.height);
         const hitResult = this.raycast(ray, true, eventMode);
-        if (hitResult) {
-            return hitResult[0];
+        const firstHit = hitResult?.[0];
+        if (firstHit && !(firstHit instanceof Vector3)) {
+            return firstHit;
         }
-
-        if (!this._stageResultAtPoint) {
-            this._stageResultAtPoint = {
-                mesh: this,
-                point: new Vector3()
-            };
-        }
-
+        this._stageResultAtPoint ??= {
+            mesh: this,
+            point: new Vector3()
+        };
         const point = this._stageResultAtPoint.point;
         point.copy(camera.unprojectVector(point.set(x, y, 0), this.width, this.height));
         return this._stageResultAtPoint;
-    },
+    }
     /**
      * 释放 WebGL 资源
-     * @return {Stage} this
+     * @returns this
      */
-    releaseGLResource() {
+    releaseGLResource(): this {
         this.renderer.releaseGLResource();
         return this;
-    },
+    }
     /**
      * 销毁
-     * @override
-     * @return {Stage} this
+     * @returns this
      */
-    destroy() {
-        Stage.superclass.destroy.call(this, this.renderer);
+    override destroy(): this {
+        this.enableDOMEvent([...this._enabledDOMEvents], false);
+        this._eventTargets.clear();
+        super.destroy(this.renderer);
         this.releaseGLResource();
-        this.traverse((child) => {
+        this.traverse(child => {
             child.off();
             child.parent = null;
         });
         this.children.length = 0;
         this.renderer.off();
-
         return this;
     }
-});
-
+}
 export default Stage;

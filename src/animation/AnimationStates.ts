@@ -1,380 +1,425 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import math from '../math/math';
 import Quaternion from '../math/Quaternion';
 import Euler from '../math/Euler';
-import {
-    isArrayLike,
-    getIndexFromSortedArray
-} from '../utils/util';
-import log from '../utils/log';
+import Vector3 from '../math/Vector3';
+import { requireNumber } from '../math/numberArray';
+import type Node from '../core/Node';
+import MorphGeometry from '../geometry/MorphGeometry';
+import { getIndexFromSortedArray } from '../utils/util';
 
-const tempQuat1 = new Quaternion();
-const tempQuat2 = new Quaternion();
-const tempQuat3 = new Quaternion();
-const tempQuat4 = new Quaternion();
-const tempQuat5 = new Quaternion();
-const tempQuat6 = new Quaternion();
+const tempQuaternions = [
+    new Quaternion(),
+    new Quaternion(),
+    new Quaternion(),
+    new Quaternion(),
+    new Quaternion(),
+    new Quaternion()
+];
 const tempEuler = new Euler();
-const tempArr = [];
+const tempNumbers: number[] = [];
 
-function ascCompare(a, b) {
-    return a - b;
+export const STATE_TYPES = Object.freeze({
+    TRANSLATE: 'Translation',
+    POSITION: 'Translation',
+    TRANSLATION: 'Translation',
+    SCALE: 'Scale',
+    ROTATE: 'Rotation',
+    ROTATION: 'Rotation',
+    QUATERNION: 'Quaternion',
+    WEIGHTS: 'Weights'
+});
+
+export type BuiltInAnimationStateType = (typeof STATE_TYPES)[keyof typeof STATE_TYPES];
+export type AnimationStateType = BuiltInAnimationStateType | (string & {});
+export type AnimationStateHandler = (node: Node, state: unknown) => void;
+export type AnimationInterpolationType = 'LINEAR' | 'STEP' | 'CUBICSPLINE';
+
+const NORMALIZED_STATE_TYPES: Record<string, BuiltInAnimationStateType> = {
+    TRANSLATE: STATE_TYPES.TRANSLATE,
+    POSITION: STATE_TYPES.POSITION,
+    TRANSLATION: STATE_TYPES.TRANSLATION,
+    SCALE: STATE_TYPES.SCALE,
+    ROTATE: STATE_TYPES.ROTATE,
+    ROTATION: STATE_TYPES.ROTATION,
+    QUATERNION: STATE_TYPES.QUATERNION,
+    WEIGHTS: STATE_TYPES.WEIGHTS
+};
+
+export interface AnimationStatesParameters {
+    nodeName?: string;
+    type?: AnimationStateType;
+    interpolationType?: AnimationInterpolationType;
+    keyTime?: number[];
+    states?: unknown[];
 }
 
-/**
- * 元素动画状态序列处理
- * @class
- */
-const AnimationStates = Class.create<typeof hilo3d.AnimationStates>()(/** @lends AnimationStates.prototype */ {
-    Statics: {
-        interpolation: {
-            LINEAR(a, b, t) {
-                if (b === undefined) {
-                    return a;
-                }
-                if (a.slerp) {
-                    return a.slerp(b, t);
-                }
+export type InterpolatedValue = number | number[] | Vector3 | Quaternion;
+export type InterpolationFunction = (
+    first: unknown,
+    second?: unknown,
+    ratio?: number,
+    timeRange?: number
+) => InterpolatedValue;
 
-                if (a.lerp) {
-                    return a.lerp(b, t);
-                }
+function compareNumbers(first: number, second: number): number {
+    return first - second;
+}
 
-                if (isArrayLike(a)) {
-                    tempArr.length = 0;
-                    for (let i = a.length - 1; i >= 0; i--) {
-                        tempArr[i] = a[i] + t * (b[i] - a[i]);
-                    }
-                    return tempArr;
-                }
-                return a + t * (b - a);
-            },
-            STEP(a, b, t) { // eslint-disable-line no-unused-vars
-                return a;
-            },
-            CUBICSPLINE(a, b, t, tr) { // eslint-disable-line no-unused-vars
-                const itemLen = a.length / 3;
-                if (b === undefined) {
-                    if (itemLen === 1) {
-                        return a[1];
-                    }
-                    return a.slice(itemLen, -itemLen);
-                }
-                let p0 = a[1];
-                let m0 = a[2];
-                let p1 = b[1];
-                let m1 = b[0];
-                if (itemLen > 1) {
-                    p0 = a.slice(itemLen, -itemLen);
-                    m0 = a.slice(-itemLen);
-                    p1 = b.slice(itemLen, -itemLen);
-                    m1 = b.slice(0, itemLen);
-                }
+function isArrayLikeValue(value: unknown): value is ArrayLike<unknown> {
+    if (typeof value !== 'object' || value === null) return false;
+    const length: unknown = Reflect.get(value, 'length');
+    return typeof length === 'number' && Number.isSafeInteger(length) && length >= 0;
+}
 
-                if (p0.hermite) {
-                    p0.hermite(p0, m0.scale(tr), p1, m1.scale(tr), t);
-                } else if (p0.isQuaternion) {
-                    p0.fromArray(this._cubicSpline(p0.elements, m0.elements, p1.elements, m1.elements, tr, t), 0);
-                    p0.normalize();
-                } else {
-                    if (!isArrayLike(p0)) {
-                        p0 = [p0];
-                        m0 = [m0];
-                        p1 = [p1];
-                        m1 = [m1];
-                    }
+function toNumberArray(value: unknown): number[] {
+    if (!isArrayLikeValue(value)) {
+        throw new TypeError('Animation state must be a numeric array.');
+    }
 
-                    p0 = this._cubicSpline(p0, m0, p1, m1, tr, t);
-                }
-
-                return p0;
-            },
-
-            _cubicSpline(p0, m0, p1, m1, tr, t) {
-                const t2 = t * t;
-                const t3 = t2 * t;
-
-                const x1 = 2 * t3 - 3 * t2 + 1;
-                const x2 = t3 - 2 * t2 + t;
-                const x3 = -2 * t3 + 3 * t2;
-                const x4 = t3 - t2;
-
-                tempArr.length = 0;
-                for (let i = p0.length - 1; i >= 0; i--) {
-                    tempArr[i] = p0[i] * x1 + x2 * m0[i] * tr + p1[i] * x3 + x4 * m1[i] * tr;
-                }
-
-                return tempArr;
-            }
-        },
-        /**
-         * 状态类型
-         * @memberOf AnimationStates
-         * @static
-         * @enum {string}
-         */
-        StateType: {
-            TRANSLATE: 'Translation',
-            POSITION: 'Translation',
-            TRANSLATION: 'Translation',
-            SCALE: 'Scale',
-            ROTATE: 'Rotation',
-            ROTATION: 'Rotation',
-            QUATERNION: 'Quaternion',
-            WEIGHTS: 'Weights'
-        },
-        /**
-         * 根据名字获取状态类型
-         * @memberOf AnimationStates
-         * @static
-         * @param {string} name 名字，忽略大小写，如 translate => StateType.TRANSLATE
-         * @return {AnimationStates.StateType} 返回获取的状态名
-         */
-        getType(name) {
-            name = String(name).toUpperCase();
-            return AnimationStates.StateType[name] || AnimationStates._extraStateHandlers.type[name];
-        },
-        _extraStateHandlers: {
-            type: {},
-            handler: {}
-        },
-        /**
-         * 注册属性处理器
-         * @memberOf AnimationStates
-         * @param {string} name 属性名
-         * @param {Function} handler 属性处理方法
-         */
-        registerStateHandler(name, handler) {
-            AnimationStates._extraStateHandlers.type[String(name).toUpperCase()] = name;
-            AnimationStates._extraStateHandlers.handler[name] = handler;
+    const result: number[] = [];
+    for (let index = 0; index < value.length; index++) {
+        const item = value[index];
+        if (typeof item !== 'number') {
+            throw new TypeError(`Animation state value at index ${String(index)} is not numeric.`);
         }
+        result.push(item);
+    }
+    return result;
+}
+
+function cubicSpline(
+    point0: ArrayLike<number>,
+    tangent0: ArrayLike<number>,
+    point1: ArrayLike<number>,
+    tangent1: ArrayLike<number>,
+    timeRange: number,
+    ratio: number
+): number[] {
+    const ratioSquared = ratio * ratio;
+    const ratioCubed = ratioSquared * ratio;
+    const factor1 = 2 * ratioCubed - 3 * ratioSquared + 1;
+    const factor2 = ratioCubed - 2 * ratioSquared + ratio;
+    const factor3 = -2 * ratioCubed + 3 * ratioSquared;
+    const factor4 = ratioCubed - ratioSquared;
+
+    tempNumbers.length = 0;
+    for (let index = 0; index < point0.length; index++) {
+        tempNumbers[index] =
+            requireNumber(point0, index) * factor1 +
+            factor2 * requireNumber(tangent0, index) * timeRange +
+            requireNumber(point1, index) * factor3 +
+            factor4 * requireNumber(tangent1, index) * timeRange;
+    }
+    return tempNumbers;
+}
+
+const INTERPOLATION: Record<AnimationInterpolationType, InterpolationFunction> = {
+    LINEAR(first, second, ratio = 0) {
+        if (second === undefined) {
+            if (
+                typeof first === 'number' ||
+                Array.isArray(first) ||
+                first instanceof Vector3 ||
+                first instanceof Quaternion
+            ) {
+                return first;
+            }
+            throw new TypeError('Unsupported animation state value.');
+        }
+        if (first instanceof Quaternion && second instanceof Quaternion) {
+            return first.slerp(second, ratio);
+        }
+        if (first instanceof Vector3 && second instanceof Vector3) {
+            return first.lerp(second, ratio);
+        }
+        if (isArrayLikeValue(first) && isArrayLikeValue(second)) {
+            const firstValues = toNumberArray(first);
+            const secondValues = toNumberArray(second);
+            return firstValues.map((value, index) => {
+                return value + ratio * (requireNumber(secondValues, index) - value);
+            });
+        }
+        if (typeof first === 'number' && typeof second === 'number') {
+            return first + ratio * (second - first);
+        }
+        throw new TypeError('Animation keyframes must have compatible value types.');
     },
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isAnimationStates: true,
-    /**
-     * @default AnimationStates
-     * @type {string}
-     */
-    className: 'AnimationStates',
-    /**
-     * 对应的node名字(动画是根据名字关联的)
-     * @type {string}
-     */
-    nodeName: '',
-    /**
-     * 状态类型
-     * @type {AnimationStates.StateType}
-     */
-    type: '',
-    /**
-     * 插值算法
-     * @default LINEAR
-     * @type {string}
-     */
-    interpolationType: 'LINEAR',
-    /**
-     * @constructs
-     * @param {Object} [parmas] 创建对象的属性参数。可包含此类的所有属性。
-     */
-    constructor(parmas) {
-        /**
-         * @type {string}
-         */
+
+    STEP(first) {
+        return INTERPOLATION.LINEAR(first);
+    },
+
+    CUBICSPLINE(first, second, ratio = 0, timeRange = 0) {
+        const firstFrame = Array.from(isArrayLikeValue(first) ? first : []);
+        if (firstFrame.length === 0 || firstFrame.length % 3 !== 0) {
+            throw new TypeError(
+                'Cubic spline keyframes must contain input tangent, value and output tangent.'
+            );
+        }
+
+        const itemLength = firstFrame.length / 3;
+        if (second === undefined) {
+            const value =
+                itemLength === 1 ? firstFrame[1] : firstFrame.slice(itemLength, itemLength * 2);
+            return INTERPOLATION.LINEAR(value);
+        }
+
+        const secondFrame = Array.from(isArrayLikeValue(second) ? second : []);
+        if (secondFrame.length !== firstFrame.length) {
+            throw new TypeError('Cubic spline keyframes must use the same component count.');
+        }
+
+        const point0 =
+            itemLength === 1 ? firstFrame[1] : firstFrame.slice(itemLength, itemLength * 2);
+        const tangent0 = itemLength === 1 ? firstFrame[2] : firstFrame.slice(itemLength * 2);
+        const point1 =
+            itemLength === 1 ? secondFrame[1] : secondFrame.slice(itemLength, itemLength * 2);
+        const tangent1 = itemLength === 1 ? secondFrame[0] : secondFrame.slice(0, itemLength);
+
+        if (
+            point0 instanceof Vector3 &&
+            tangent0 instanceof Vector3 &&
+            point1 instanceof Vector3 &&
+            tangent1 instanceof Vector3
+        ) {
+            return point0.hermite(
+                point0,
+                tangent0.scale(timeRange),
+                point1,
+                tangent1.scale(timeRange),
+                ratio
+            );
+        }
+        if (
+            point0 instanceof Quaternion &&
+            tangent0 instanceof Quaternion &&
+            point1 instanceof Quaternion &&
+            tangent1 instanceof Quaternion
+        ) {
+            point0.fromArray(
+                cubicSpline(
+                    point0.elements,
+                    tangent0.elements,
+                    point1.elements,
+                    tangent1.elements,
+                    timeRange,
+                    ratio
+                )
+            );
+            return point0.normalize();
+        }
+
+        const point0Values = typeof point0 === 'number' ? [point0] : toNumberArray(point0);
+        const tangent0Values = typeof tangent0 === 'number' ? [tangent0] : toNumberArray(tangent0);
+        const point1Values = typeof point1 === 'number' ? [point1] : toNumberArray(point1);
+        const tangent1Values = typeof tangent1 === 'number' ? [tangent1] : toNumberArray(tangent1);
+        const result = cubicSpline(
+            point0Values,
+            tangent0Values,
+            point1Values,
+            tangent1Values,
+            timeRange,
+            ratio
+        );
+        return itemLength === 1 ? requireNumber(result, 0) : result;
+    }
+};
+
+/** A typed animation channel targeting one property of a scene node. */
+class AnimationStates {
+    static readonly interpolation = INTERPOLATION;
+    static readonly StateType = STATE_TYPES;
+    private static readonly extraTypes: Record<string, string> = {};
+    private static readonly extraHandlers: Record<string, AnimationStateHandler> = {};
+
+    static getType(name: string): AnimationStateType {
+        const normalized = name.toUpperCase();
+        const builtIn = NORMALIZED_STATE_TYPES[normalized];
+        return builtIn ?? AnimationStates.extraTypes[normalized] ?? name;
+    }
+
+    static registerStateHandler(name: string, handler: AnimationStateHandler): void {
+        AnimationStates.extraTypes[name.toUpperCase()] = name;
+        AnimationStates.extraHandlers[name] = handler;
+    }
+
+    readonly id: string;
+    readonly isAnimationStates = true;
+    readonly className = 'AnimationStates';
+    nodeName = '';
+    type: AnimationStateType = '';
+    interpolationType: AnimationInterpolationType = 'LINEAR';
+    keyTime: number[] = [];
+    states: unknown[] = [];
+    private originalWeightIndices: number[] = [];
+
+    constructor(params: AnimationStatesParameters = {}) {
         this.id = math.generateUUID(this.className);
-        /**
-         * 时间序列
-         * @default []
-         * @type {number[]}
-         */
-        this.keyTime = [];
-        /**
-         * 对应时间上的状态，数组长度应该跟keyTime一致，即每一帧上的状态信息
-         * @default []
-         * @type {Array.<Array>}
-         */
-        this.states = [];
+        Object.assign(this, params);
+    }
 
-        Object.assign(this, parmas);
-    },
-    /**
-     * 查找指定时间在 keyTime 数组中的位置
-     * @param {number} time 指定的时间
-     * @return {number[]} 返回找到的位置，如: [low, high]
-     */
-    findIndexByTime(time) {
-        const indexArr = getIndexFromSortedArray(this.keyTime, time, ascCompare);
-        if (indexArr[0] < 0) {
-            indexArr[0] = 0;
-        }
-        if (indexArr[1] >= this.keyTime.length) {
-            indexArr[1] = this.keyTime.length - 1;
-        }
-        return indexArr;
-    },
-    getStateByIndex(index) {
-        const len = this.states.length / this.keyTime.length;
-        if (len === 1) {
-            return this.states[index];
-        }
-        return this.states.slice(index * len, index * len + len);
-    },
-    /**
-     * 获取指定时间上对应的状态，这里会进行插值计算
-     * @param {number} time 指定的时间
-     * @return {number[]} 返回插值后的状态数据
-     */
-    getState(time) {
-        const [index1, index2] = this.findIndexByTime(time);
-        const time1 = this.keyTime[index1];
-        const time2 = this.keyTime[index2];
-        let state1 = this.getStateByIndex(index1);
+    findIndexByTime(time: number): [number, number] {
+        if (this.keyTime.length === 0) return [0, 0];
+        const indexArr = getIndexFromSortedArray(this.keyTime, time, compareNumbers);
+        const low = Math.max(0, indexArr[0]);
+        const high = Math.min(this.keyTime.length - 1, indexArr[1]);
+        return [low, high];
+    }
 
-        if (this.interpolationType === 'STEP') {
-            return state1;
-        }
+    getStateByIndex(index: number): unknown {
+        if (this.keyTime.length === 0) return undefined;
+        const itemLength = this.states.length / this.keyTime.length;
+        if (itemLength === 1) return this.states[index];
+        return this.states.slice(index * itemLength, index * itemLength + itemLength);
+    }
 
-        if (index1 === index2) {
-            let result = this.interpolation(state1);
-            if (this.type === AnimationStates.StateType.ROTATION) {
-                result = tempQuat1.fromEuler(tempEuler.fromArray(result));
+    private convertRotationState(state: unknown, quaternion: boolean, offset = 0): unknown {
+        if (isArrayLikeValue(state) && isArrayLikeValue(state[0])) {
+            return Array.from(state, (value, index) => {
+                const target = tempQuaternions[offset + index];
+                if (!target)
+                    throw new RangeError(
+                        'Animation cubic spline contains too many tangent values.'
+                    );
+                return quaternion
+                    ? target.fromArray(toNumberArray(value))
+                    : target.fromEuler(tempEuler.fromArray(toNumberArray(value)));
+            });
+        }
+        const target = tempQuaternions[offset];
+        if (!target) throw new RangeError('Animation quaternion scratch value is unavailable.');
+        return quaternion
+            ? target.fromArray(toNumberArray(state))
+            : target.fromEuler(tempEuler.fromArray(toNumberArray(state)));
+    }
+
+    getState(time: number): unknown {
+        if (this.keyTime.length === 0) return undefined;
+        const [firstIndex, secondIndex] = this.findIndexByTime(time);
+        const firstTime = requireNumber(this.keyTime, firstIndex);
+        const secondTime = requireNumber(this.keyTime, secondIndex);
+        let firstState = this.getStateByIndex(firstIndex);
+
+        if (this.interpolationType === 'STEP' || firstIndex === secondIndex) {
+            const result = this.interpolation(firstState);
+            if (this.type === STATE_TYPES.ROTATION) {
+                return tempQuaternions[0]?.fromEuler(tempEuler.fromArray(toNumberArray(result)))
+                    .elements;
             }
-            return result.elements || result;
+            return result instanceof Vector3 || result instanceof Quaternion
+                ? result.elements
+                : result;
         }
 
-        let state2 = this.getStateByIndex(index2);
-
-        const timeRange = time2 - time1;
-        const ratio = (time - time1) / timeRange;
-
-        if (this.type === AnimationStates.StateType.ROTATION) {
-            if (isArrayLike(state1[0])) {
-                state1[0] = tempQuat1.fromEuler(tempEuler.fromArray(state1[0]));
-                state1[1] = tempQuat2.fromEuler(tempEuler.fromArray(state1[1]));
-                state1[2] = tempQuat3.fromEuler(tempEuler.fromArray(state1[2]));
-                state2[0] = tempQuat4.fromEuler(tempEuler.fromArray(state2[0]));
-                state2[1] = tempQuat5.fromEuler(tempEuler.fromArray(state2[1]));
-                state2[2] = tempQuat6.fromEuler(tempEuler.fromArray(state2[2]));
-            } else {
-                state1 = tempQuat1.fromEuler(tempEuler.fromArray(state1));
-                state2 = tempQuat2.fromEuler(tempEuler.fromArray(state2));
-            }
-        } else if (this.type === AnimationStates.StateType.QUATERNION) {
-            if (isArrayLike(state1[0])) {
-                state1[0] = tempQuat1.fromArray(state1[0]);
-                state1[1] = tempQuat2.fromArray(state1[1]);
-                state1[2] = tempQuat3.fromArray(state1[2]);
-                state2[0] = tempQuat4.fromArray(state2[0]);
-                state2[1] = tempQuat5.fromArray(state2[1]);
-                state2[2] = tempQuat6.fromArray(state2[2]);
-            } else {
-                state1 = tempQuat1.fromArray(state1);
-                state2 = tempQuat2.fromArray(state2);
-            }
+        let secondState = this.getStateByIndex(secondIndex);
+        const timeRange = secondTime - firstTime;
+        const ratio = timeRange === 0 ? 0 : (time - firstTime) / timeRange;
+        if (this.type === STATE_TYPES.ROTATION) {
+            firstState = this.convertRotationState(firstState, false);
+            secondState = this.convertRotationState(secondState, false, 3);
+        } else if (this.type === STATE_TYPES.QUATERNION) {
+            firstState = this.convertRotationState(firstState, true);
+            secondState = this.convertRotationState(secondState, true, 3);
         }
 
-        const result = this.interpolation(state1, state2, ratio, timeRange);
-        return result.elements || result;
-    },
-    interpolation(a, b, t, tr) {
-        return AnimationStates.interpolation[this.interpolationType](a, b, t, tr);
-    },
-    /**
-     * 更新指定元素的位置
-     * @param {Node} node 需要更新的元素
-     * @param {number[]} value 位置信息，[x, y, z]
-     */
-    updateNodeTranslation(node, value) {
-        node.x = value[0];
-        node.y = value[1];
-        node.z = value[2];
-    },
-    /**
-     * 更新指定元素的缩放
-     * @param {Node} node 需要更新的元素
-     * @param {number[]} value 缩放信息，[scaleX, scaleY, scaleZ]
-     */
-    updateNodeScale(node, value) {
-        node.scaleX = value[0];
-        node.scaleY = value[1];
-        node.scaleZ = value[2];
-    },
-    /**
-     * 更新指定元素的旋转(四元数)
-     * @param {Node} node 需要更新的元素
-     * @param {number[]} value 四元数的旋转信息，[x, y, z, w]
-     */
-    updateNodeQuaternion(node, value) {
-        node.quaternion.fromArray(value);
-    },
-    updateNodeWeights(node, weights) {
-        const originalWeightIndices = this._originalWeightIndices = this._originalWeightIndices || [];
-        const len = weights.length;
-        weights = weights.slice();
-        for (let i = 0; i < len; i++) {
-            originalWeightIndices[i] = i;
-        }
-        for (let i = 0; i < len; i++) {
-            for (let j = i + 1; j < len; j++) {
-                if (weights[j] > weights[i]) {
-                    let t = weights[i];
-                    weights[i] = weights[j];
-                    weights[j] = t;
-                    t = originalWeightIndices[i];
-                    originalWeightIndices[i] = originalWeightIndices[j];
-                    originalWeightIndices[j] = t;
+        const result = this.interpolation(firstState, secondState, ratio, timeRange);
+        return result instanceof Vector3 || result instanceof Quaternion ? result.elements : result;
+    }
+
+    interpolation(
+        first: unknown,
+        second?: unknown,
+        ratio?: number,
+        timeRange?: number
+    ): InterpolatedValue {
+        return INTERPOLATION[this.interpolationType](first, second, ratio, timeRange);
+    }
+
+    updateNodeTranslation(node: Node, value: unknown): void {
+        const values = toNumberArray(value);
+        node.setPosition(
+            requireNumber(values, 0),
+            requireNumber(values, 1),
+            requireNumber(values, 2)
+        );
+    }
+
+    updateNodeScale(node: Node, value: unknown): void {
+        const values = toNumberArray(value);
+        node.setScale(requireNumber(values, 0), requireNumber(values, 1), requireNumber(values, 2));
+    }
+
+    updateNodeQuaternion(node: Node, value: unknown): void {
+        node.quaternion.fromArray(toNumberArray(value));
+    }
+
+    updateNodeWeights(node: Node, value: unknown): void {
+        const weights = typeof value === 'number' ? [value] : toNumberArray(value);
+        this.originalWeightIndices = weights.map((_, index) => index);
+
+        for (let index = 0; index < weights.length; index++) {
+            for (let next = index + 1; next < weights.length; next++) {
+                if (requireNumber(weights, next) > requireNumber(weights, index)) {
+                    const weight = requireNumber(weights, index);
+                    weights[index] = requireNumber(weights, next);
+                    weights[next] = weight;
+                    const originalIndex = requireNumber(this.originalWeightIndices, index);
+                    this.originalWeightIndices[index] = requireNumber(
+                        this.originalWeightIndices,
+                        next
+                    );
+                    this.originalWeightIndices[next] = originalIndex;
                 }
             }
         }
 
-        node.traverse((mesh) => {
-            if (mesh.isMesh && mesh.geometry && mesh.geometry.isMorphGeometry) {
-                mesh.geometry.update(weights, originalWeightIndices);
+        node.traverse(mesh => {
+            const geometry: unknown = Reflect.get(mesh, 'geometry');
+            if (geometry instanceof MorphGeometry) {
+                geometry.update(weights, this.originalWeightIndices);
             }
         });
-    },
-    /**
-     * 更新指定元素的状态
-     * @param {number} time 时间，从keyTime中查找到状态然后更新
-     * @param {Node} node 需要更新的元素
-     */
-    updateNodeState(time, node) {
-        if (!node) {
-            return;
-        }
-        let type = this.type;
-        if (type === AnimationStates.StateType.ROTATION) {
-            type = AnimationStates.StateType.QUATERNION;
-        }
+    }
+
+    updateNodeState(time: number, node?: Node): void {
+        if (!node) return;
+        const type = this.type === STATE_TYPES.ROTATION ? STATE_TYPES.QUATERNION : this.type;
         const state = this.getState(time);
-        if (!state) {
-            return;
+        if (state === undefined) return;
+
+        switch (type) {
+            case STATE_TYPES.TRANSLATION:
+                this.updateNodeTranslation(node, state);
+                return;
+            case STATE_TYPES.SCALE:
+                this.updateNodeScale(node, state);
+                return;
+            case STATE_TYPES.QUATERNION:
+                this.updateNodeQuaternion(node, state);
+                return;
+            case STATE_TYPES.WEIGHTS:
+                this.updateNodeWeights(node, state);
+                return;
+            default: {
+                const handler = AnimationStates.extraHandlers[type];
+                if (handler) {
+                    handler.call(this, node, state);
+                } else {
+                    throw new RangeError(`Unknown animation state type: ${type}`);
+                }
+            }
         }
-        const fnName = 'updateNode' + type;
-        if (this[fnName]) {
-            this[fnName](node, state);
-        } else if (AnimationStates._extraStateHandlers.handler[type]) {
-            AnimationStates._extraStateHandlers.handler[type].call(this, node, state);
-        } else {
-            log.warnOnce(fnName, 'updateNodeState failed unknow type(%s)', type);
-        }
-    },
-    /**
-     * clone
-     * @return {AnimationStates} 返回clone的实例
-     */
-    clone() {
-        return new this.constructor({
+    }
+
+    clone(): AnimationStates {
+        return new AnimationStates({
             keyTime: this.keyTime,
             states: this.states,
             type: this.type,
-            nodeName: this.nodeName
+            nodeName: this.nodeName,
+            interpolationType: this.interpolationType
         });
     }
-});
+}
 
 export default AnimationStates;

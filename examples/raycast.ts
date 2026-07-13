@@ -1,117 +1,73 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-var hitStyle = document.getElementById('hit').style;
-        var boxGeometry = new Hilo3d.BoxGeometry();
-        boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
+const { camera, stage } = createExampleContext();
+const queriedHitElement = document.querySelector<HTMLElement>('#hit');
+if (!queriedHitElement) throw new Error('Raycast example requires #hit.');
+const hitElement: HTMLElement = queriedHitElement;
 
-        var sphereGeometry = new Hilo3d.SphereGeometry();
-        var planeGeometry = new Hilo3d.PlaneGeometry();
+const boxGeometry = new Hilo3d.BoxGeometry();
+boxGeometry.setAllRectUV([
+    [0, 1],
+    [1, 1],
+    [1, 0],
+    [0, 0]
+]);
+const sphereGeometry = new Hilo3d.SphereGeometry();
+const planeGeometry = new Hilo3d.PlaneGeometry();
+const texture = new Hilo3d.LazyTexture({
+    src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
+});
+const material = new Hilo3d.BasicMaterial({ diffuse: texture });
+const doubleSidedMaterial = new Hilo3d.BasicMaterial({
+    side: Hilo3d.constants.FRONT_AND_BACK,
+    diffuse: texture
+});
+const backSidedMaterial = new Hilo3d.BasicMaterial({
+    side: Hilo3d.constants.BACK,
+    diffuse: texture
+});
 
-        var material = new Hilo3d.BasicMaterial({
-            diffuse:new Hilo3d.LazyTexture({
-                crossOrigin:true,
-                src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
-            })
-        });
+function addRotatingMesh(
+    geometry: Hilo3d.Geometry,
+    meshMaterial: Hilo3d.Material,
+    x: number,
+    y: number,
+    scale: number
+): void {
+    const mesh = new Hilo3d.Mesh({ geometry, material: meshMaterial, x, y });
+    mesh.onUpdate = () => {
+        mesh.rotationX += 0.5;
+        mesh.rotationZ += 0.5;
+    };
+    mesh.setScale(scale).addTo(stage);
+}
 
-        var doubleSidedMaterial = new Hilo3d.BasicMaterial({
-            side:Hilo3d.constants.FRONT_AND_BACK,
-            diffuse:new Hilo3d.LazyTexture({
-                crossOrigin:true,
-                src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
-            })
-        });
+const boxMesh = new Hilo3d.Mesh({ geometry: boxGeometry, material, x: -0.8 });
+boxMesh.onUpdate = () => {
+    boxMesh.rotationX += 0.5;
+    boxMesh.rotationY += 0.5;
+};
+boxMesh.setScale(0.4).addTo(stage);
+addRotatingMesh(sphereGeometry, material, 0, 0, 0.3);
+addRotatingMesh(planeGeometry, doubleSidedMaterial, 0.8, -0.5, 0.4);
+addRotatingMesh(planeGeometry, material, 0.8, 0, 0.4);
+addRotatingMesh(planeGeometry, backSidedMaterial, 0.8, 0.5, 0.4);
 
-        var backSidedMaterial = new Hilo3d.BasicMaterial({
-            side:Hilo3d.constants.BACK,
-            diffuse:new Hilo3d.LazyTexture({
-                crossOrigin:true,
-                src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
-            })
-        });
+const ray = new Hilo3d.Ray();
+const pointer = { x: 0, y: 0 };
 
-        var boxMesh = new Hilo3d.Mesh({
-            geometry: boxGeometry,
-            material: material,
-            x: -0.8,
-            onUpdate: function() {
-                this.rotationX += .5;
-                this.rotationY += .5;
-            }
-        });
-        boxMesh.setScale(0.4);
-        stage.addChild(boxMesh);
+function updateHitIndicator(): void {
+    ray.fromCamera(camera, pointer.x, pointer.y, stage.width, stage.height);
+    const firstHit = stage.raycast(ray, true)?.[0];
+    const hitPoint = firstHit instanceof Hilo3d.Vector3 ? firstHit : firstHit?.point;
+    const position = hitPoint ? camera.projectVector(hitPoint, stage.width, stage.height) : pointer;
+    hitElement.style.transform = `translate3d(${String(position.x)}px, ${String(position.y)}px, 0)`;
+    hitElement.style.opacity = hitPoint ? '1' : '0.1';
+}
 
-        var sphereMesh = new Hilo3d.Mesh({
-            geometry:sphereGeometry,
-            material: material,
-            x: 0,
-            onUpdate: function() {
-                this.rotationX += .5;
-                this.rotationZ += .5;
-            }
-        });
-        sphereMesh.setScale(0.3);
-        stage.addChild(sphereMesh);
-
-        var doubleSidedPlaneMesh = new Hilo3d.Mesh({
-            geometry:planeGeometry,
-            material:doubleSidedMaterial,
-            x:0.8,
-            y:-0.5,
-            onUpdate: function() {
-                this.rotationX += .5;
-                this.rotationZ += .5;
-            }
-        });
-        doubleSidedPlaneMesh.setScale(0.4);
-        stage.addChild(doubleSidedPlaneMesh);
-
-        var planeMesh = new Hilo3d.Mesh({
-            geometry:planeGeometry,
-            material:material,
-            x:0.8,
-            onUpdate: function() {
-                this.rotationX += .5;
-                this.rotationZ += .5;
-            }
-        });
-        planeMesh.setScale(0.4);
-        stage.addChild(planeMesh);
-
-        var backSidedPlaneMesh = new Hilo3d.Mesh({
-            geometry:planeGeometry,
-            material:backSidedMaterial,
-            x:0.8,
-            y:0.5,
-            onUpdate: function() {
-                this.rotationX += .5;
-                this.rotationZ += .5;
-            }
-        });
-        backSidedPlaneMesh.setScale(0.4);
-        stage.addChild(backSidedPlaneMesh);
-
-        var ray = new Hilo3d.Ray();
-
-        var mousePos = {x:0, y:0};
-        document.body.onmousemove = document.body.ontouchmove = function(e){
-            e = e.changedTouches?e.changedTouches[0]:e;
-            mousePos.x = e.clientX;
-            mousePos.y = e.clientY;
-            onHit();
-        }
-
-        var onHit = function(){
-            ray.fromCamera(camera, mousePos.x, mousePos.y, stage.width, stage.height);
-            var hitResult = stage.raycast(ray);
-
-            var pos = hitResult?camera.projectVector(hitResult[0].point, stage.width, stage.height):mousePos;
-            hitStyle.webkitTransform = 'translate3d(' + pos.x + 'px,' + pos.y + 'px, 0px)';
-            if(hitResult){
-                hitStyle.opacity = 1;
-            }
-            else{
-                hitStyle.opacity = 0.1;
-            }
-        }
+stage.canvas.addEventListener('pointermove', event => {
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    updateHitIndicator();
+});

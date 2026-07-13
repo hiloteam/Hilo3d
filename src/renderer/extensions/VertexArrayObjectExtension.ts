@@ -1,45 +1,50 @@
-// @ts-nocheck
-// Dynamic WebGL compatibility module; public API is checked by types/index.d.ts.
-export class WebGL1VertexArrayObjectExtension {
-    constructor(vaoExtension) {
-        this._ext = vaoExtension;
+export interface VertexArrayObjectExtension {
+    createVertexArray(): WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null;
+    deleteVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): void;
+    isVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): boolean;
+    bindVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): void;
+}
+
+export class WebGL1VertexArrayObjectExtension implements VertexArrayObjectExtension {
+    constructor(private readonly extension: OES_vertex_array_object) {}
+
+    createVertexArray(): WebGLVertexArrayObjectOES | null {
+        return this.extension.createVertexArrayOES();
     }
 
-    createVertexArray(vertexArray) {
-        return this._ext.createVertexArrayOES(vertexArray);
+    deleteVertexArray(
+        vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null
+    ): void {
+        this.extension.deleteVertexArrayOES(vertexArray);
     }
 
-    deleteVertexArray(vertexArray) {
-        this._ext.deleteVertexArrayOES(vertexArray);
+    isVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): boolean {
+        return this.extension.isVertexArrayOES(vertexArray);
     }
 
-    isVertexArray(vertexArray) {
-        return this._ext.isVertexArrayOES(vertexArray);
-    }
-
-    bindVertexArray(vertexArray) {
-        this._ext.bindVertexArrayOES(vertexArray);
+    bindVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): void {
+        this.extension.bindVertexArrayOES(vertexArray);
     }
 }
 
-export class WebGL2VertexArrayObjectExtension {
-    constructor(gl) {
-        this._gl = gl;
+export class WebGL2VertexArrayObjectExtension implements VertexArrayObjectExtension {
+    constructor(private readonly gl: WebGL2RenderingContext) {}
+
+    createVertexArray(): WebGLVertexArrayObject | null {
+        return this.gl.createVertexArray();
     }
 
-    createVertexArray(vertexArray) {
-        return this._gl.createVertexArray(vertexArray);
+    deleteVertexArray(
+        vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null
+    ): void {
+        this.gl.deleteVertexArray(vertexArray);
     }
 
-    deleteVertexArray(vertexArray) {
-        this._gl.deleteVertexArray(vertexArray);
+    isVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): boolean {
+        return this.gl.isVertexArray(vertexArray);
     }
 
-    isVertexArray(vertexArray) {
-        return this._gl.isVertexArray(vertexArray);
-    }
-
-    bindVertexArray(vertexArray) {
-        this._gl.bindVertexArray(vertexArray);
+    bindVertexArray(vertexArray: WebGLVertexArrayObject | WebGLVertexArrayObjectOES | null): void {
+        this.gl.bindVertexArray(vertexArray);
     }
 }

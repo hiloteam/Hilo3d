@@ -1,84 +1,31 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import math from '../math/math';
-import Texture from './Texture';
-import {
-    getTypedArrayClass
-} from '../utils/util';
+import Texture, { type TextureParameters } from './Texture';
+import { getTypedArrayClass } from '../utils/util';
+import { CLAMP_TO_EDGE, FLOAT, NEAREST, RGBA, TEXTURE_2D } from '../constants/webgl';
+import type { TypedArray, TypedArrayConstructor } from '../renderer/types';
 
-import constants from '../constants';
-
-const {
-    TEXTURE_2D,
-    RGBA,
-    NEAREST,
-    CLAMP_TO_EDGE,
-    FLOAT
-} = constants;
-
+export interface DataTextureParameters extends Omit<TextureParameters<TypedArray>, 'image'> {
+    image?: TypedArray | null;
+    data?: ArrayLike<number> | TypedArray | null;
+}
 /**
  * 数据纹理
- * @class
- * @extends Texture
  */
-const DataTexture = Class.create<typeof hilo3d.DataTexture>()(/** @lends DataTexture.prototype */ {
-    Extends: Texture,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isDataTexture: true,
-    /**
-     * @default DataTexture
-     * @type {string}
-     */
-    className: 'DataTexture',
+class DataTexture extends Texture<TypedArray> {
+    isDataTexture = true;
+    override readonly className: string = 'DataTexture';
+    override target = TEXTURE_2D;
+    override internalFormat = RGBA;
+    override format = RGBA;
+    override type = FLOAT;
+    override magFilter = NEAREST;
+    override minFilter = NEAREST;
+    override wrapS = CLAMP_TO_EDGE;
+    override wrapT = CLAMP_TO_EDGE;
+    dataLength = 0;
+    private DataClass: TypedArrayConstructor = Float32Array;
 
-    /**
-     * @default TEXTURE_2D
-     * @type {number}
-     */
-    target: TEXTURE_2D,
-    /**
-     * @default RGBA
-     * @type {number}
-     */
-    internalFormat: RGBA,
-    /**
-     * @default RGBA
-     * @type {number}
-     */
-    format: RGBA,
-    /**
-     * @default FLOAT
-     * @type {number}
-     */
-    type: FLOAT,
-
-    /**
-     * @default NEAREST
-     * @type {number}
-     */
-    magFilter: NEAREST,
-    /**
-     * @default NEAREST
-     * @type {number}
-     */
-    minFilter: NEAREST,
-    /**
-     * @default CLAMP_TO_EDGE
-     * @type {number}
-     */
-    wrapS: CLAMP_TO_EDGE,
-    /**
-     * @default CLAMP_TO_EDGE
-     * @type {number}
-     */
-    wrapT: CLAMP_TO_EDGE,
-    dataLength: 0,
-
-    resetSize(dataLen) {
+    private resetSize(dataLen: number): void {
         if (dataLen === this.dataLength) {
             return;
         }
@@ -90,41 +37,46 @@ const DataTexture = Class.create<typeof hilo3d.DataTexture>()(/** @lends DataTex
         this.width = 2 ** w;
         this.height = 2 ** h;
         this.DataClass = getTypedArrayClass(this.type);
-    },
-
+    }
     /**
      * 数据，改变数据的时候会自动更新Texture
-     * @type {Float32Array}
      */
-    data: {
-        get() {
-            return this.image;
-        },
-        set(_data) {
-            if (this.image !== _data) {
-                this.resetSize(_data.length);
-                const len = this.width * this.height * 4;
-                if (len === _data.length && _data instanceof this.DataClass) {
-                    this.image = _data;
-                } else {
-                    if (!this.image || this.image.length !== len) {
-                        this.image = new this.DataClass(len);
-                    }
-                    this.image.set(_data, 0);
-                }
-                this.needUpdate = true;
-            }
-        }
-    },
-
-    /**
-     * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
-     * @param {Array|Float32Array} [params.data] 数据
-     */
-    constructor(params) {
-        DataTexture.superclass.constructor.call(this, params);
+    get data(): TypedArray | null {
+        return this.image;
     }
-});
-
+    /**
+     * 数据，改变数据的时候会自动更新Texture
+     */
+    set data(_data: ArrayLike<number> | TypedArray | null) {
+        if (_data === null) {
+            this.image = null;
+            this.dataLength = 0;
+            this.width = 0;
+            this.height = 0;
+            this.needUpdate = true;
+            return;
+        }
+        if (this.image !== _data) {
+            this.resetSize(_data.length);
+            const len = this.width * this.height * 4;
+            if (len === _data.length && _data instanceof this.DataClass) {
+                this.image = _data;
+            } else {
+                if (this.image?.length !== len) {
+                    this.image = new this.DataClass(len);
+                }
+                this.image.set(_data, 0);
+            }
+            this.needUpdate = true;
+        }
+    }
+    /**
+     * @param params - 初始化参数，所有params都会复制到实例上
+     * - `params.data`: 数据
+     */
+    constructor(params: DataTextureParameters = {}) {
+        super();
+        Object.assign(this, params);
+    }
+}
 export default DataTexture;

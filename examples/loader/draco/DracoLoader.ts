@@ -1,185 +1,287 @@
-// @ts-nocheck -- legacy example compatibility module
-(function() {
-    var Class = Hilo3d.Class;
-    var BasicLoader = Hilo3d.BasicLoader;
-    var Geometry = Hilo3d.Geometry;
-    var GeometryData = Hilo3d.GeometryData;
+import createDecoderModule, { decoderWasmUrl } from 'virtual:hilo3d-draco-decoder';
+import type {
+    Attribute,
+    Decoder,
+    DecoderModule,
+    Mesh as DracoMesh,
+    PointCloud,
+    Status
+} from 'draco3d';
+import Geometry from '../../../src/geometry/Geometry';
+import GeometryData, { type GeometryComponentSize } from '../../../src/geometry/GeometryData';
+import BasicLoader, { type LoaderRequest } from '../../../src/loader/BasicLoader';
+import GLTFParser, {
+    type GLTFExtensionHandler,
+    type GLTFExtensionOptions
+} from '../../../src/loader/GLTFParser';
+import type { GLTFIndex } from '../../../src/loader/GLTFTypes';
+import Loader from '../../../src/loader/Loader';
 
-    var dracoDecoder = window.dracoDecoder = new DracoDecoderModule();
-    dracoDecoder.onModuleLoaded = function(module) {
-        dracoDecoder = module;
+type GeometryAttributeName =
+    'vertices' | 'normals' | 'tangents' | 'uvs' | 'uvs1' | 'colors' | 'skinIndices' | 'skinWeights';
+
+interface AttributeBinding {
+    readonly geometryAttribute: GeometryAttributeName;
+    readonly round?: boolean;
+}
+
+interface DracoExtensionData {
+    readonly bufferView: GLTFIndex;
+    readonly attributes: Readonly<Record<string, number>>;
+}
+
+const ATTRIBUTE_BINDINGS: Readonly<Record<string, AttributeBinding>> = {
+    POSITION: { geometryAttribute: 'vertices' },
+    NORMAL: { geometryAttribute: 'normals' },
+    TANGENT: { geometryAttribute: 'tangents' },
+    TEX_COORD: { geometryAttribute: 'uvs' },
+    TEXCOORD_0: { geometryAttribute: 'uvs' },
+    TEXCOORD_1: { geometryAttribute: 'uvs1' },
+    COLOR: { geometryAttribute: 'colors' },
+    COLOR_0: { geometryAttribute: 'colors' },
+    JOINTS_0: { geometryAttribute: 'skinIndices', round: true },
+    WEIGHTS_0: { geometryAttribute: 'skinWeights' }
+};
+
+const decoderModule = createDecoderModule({
+    locateFile: (path: string) => (path.endsWith('.wasm') ? decoderWasmUrl : path)
+});
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readExtensionData(value: unknown): DracoExtensionData {
+    if (!isRecord(value)) throw new TypeError('Draco extension data must be an object.');
+    const bufferView = value['bufferView'];
+    if (typeof bufferView !== 'string' && typeof bufferView !== 'number') {
+        throw new TypeError('Draco extension bufferView must be a string or number.');
     }
-
-    function getAttributeData(decoder, dracoGeometry, attribute) {
-        if (attribute.ptr === 0) {
-            return null;
-        }
-
-        var numComponents = attribute.num_components();
-        var attributeData = new dracoDecoder.DracoFloat32Array();
-
-        decoder.GetAttributeFloatForAllPoints(dracoGeometry, attribute, attributeData);
-        var numPoints = dracoGeometry.num_points();
-        var numValues = numPoints * numComponents;
-        var result = new Float32Array(numValues);
-        for (var i = 0; i < numValues; i++) {
-            result[i] = attributeData.GetValue(i);
-        }
-        return result;
+    const rawAttributes = value['attributes'];
+    if (!isRecord(rawAttributes)) {
+        throw new TypeError('Draco extension attributes must be an object.');
     }
+    const attributes: Record<string, number> = {};
+    for (const [semantic, rawId] of Object.entries(rawAttributes)) {
+        if (typeof rawId !== 'number' || !Number.isSafeInteger(rawId) || rawId < 0) {
+            throw new TypeError(`Draco attribute ${semantic} must use a non-negative integer id.`);
+        }
+        attributes[semantic] = rawId;
+    }
+    return { bufferView, attributes };
+}
 
-    function decode(byteArray, info, primitive) {
-        var attributesMap = info.attributes;
-        var buffer = new dracoDecoder.DecoderBuffer();
-        buffer.Init(byteArray, byteArray.byteLength);
-        var decoder = new dracoDecoder.Decoder();
+function componentSize(value: number): GeometryComponentSize {
+    if (value === 1 || value === 2 || value === 3 || value === 4) return value;
+    throw new RangeError(`Draco attribute has unsupported component count ${String(value)}.`);
+}
 
-        var geometryType = decoder.GetEncodedGeometryType(buffer);
-        var dracoGeometry, decodingStatus;
-        if (geometryType == dracoDecoder.TRIANGULAR_MESH) {
-            dracoGeometry = new dracoDecoder.Mesh();
-            decodingStatus = decoder.DecodeBufferToMesh(buffer, dracoGeometry);
+function assignAttribute(
+    geometry: Geometry,
+    name: GeometryAttributeName,
+    data: GeometryData
+): void {
+    switch (name) {
+        case 'vertices':
+            geometry.vertices = data;
+            break;
+        case 'normals':
+            geometry.normals = data;
+            break;
+        case 'tangents':
+            geometry.tangents = data;
+            break;
+        case 'uvs':
+            geometry.uvs = data;
+            break;
+        case 'uvs1':
+            geometry.uvs1 = data;
+            break;
+        case 'colors':
+            geometry.colors = data;
+            break;
+        case 'skinIndices':
+            geometry.skinIndices = data;
+            break;
+        case 'skinWeights':
+            geometry.skinWeights = data;
+            break;
+    }
+}
+
+function readAttribute(
+    module: DecoderModule,
+    decoder: Decoder,
+    dracoGeometry: PointCloud,
+    attribute: Attribute,
+    round: boolean
+): GeometryData {
+    const size = componentSize(attribute.num_components());
+    const source = new module.DracoFloat32Array();
+    try {
+        decoder.GetAttributeFloatForAllPoints(dracoGeometry, attribute, source);
+        const values = new Float32Array(dracoGeometry.num_points() * size);
+        for (let index = 0; index < values.length; index++) {
+            const value = source.GetValue(index);
+            values[index] = round ? Math.round(value) : value;
+        }
+        return new GeometryData(values, size);
+    } finally {
+        module.destroy(source);
+    }
+}
+
+function decodeIndices(module: DecoderModule, decoder: Decoder, mesh: DracoMesh): GeometryData {
+    const indices =
+        mesh.num_points() > 65_535
+            ? new Uint32Array(mesh.num_faces() * 3)
+            : new Uint16Array(mesh.num_faces() * 3);
+    const face = new module.DracoInt32Array();
+    try {
+        for (let faceIndex = 0; faceIndex < mesh.num_faces(); faceIndex++) {
+            decoder.GetFaceFromMesh(mesh, faceIndex, face);
+            const offset = faceIndex * 3;
+            indices[offset] = face.GetValue(0);
+            indices[offset + 1] = face.GetValue(1);
+            indices[offset + 2] = face.GetValue(2);
+        }
+    } finally {
+        module.destroy(face);
+    }
+    return new GeometryData(indices, 1);
+}
+
+function decodeExplicitAttributes(
+    module: DecoderModule,
+    decoder: Decoder,
+    dracoGeometry: PointCloud,
+    geometry: Geometry,
+    attributeIds: Readonly<Record<string, number>>
+): void {
+    for (const [semantic, id] of Object.entries(attributeIds)) {
+        const binding = ATTRIBUTE_BINDINGS[semantic];
+        if (!binding) throw new RangeError(`Unsupported Draco attribute semantic ${semantic}.`);
+        const attribute = decoder.GetAttributeByUniqueId(dracoGeometry, id);
+        assignAttribute(
+            geometry,
+            binding.geometryAttribute,
+            readAttribute(module, decoder, dracoGeometry, attribute, binding.round ?? false)
+        );
+    }
+}
+
+function decodeStandardAttributes(
+    module: DecoderModule,
+    decoder: Decoder,
+    dracoGeometry: PointCloud,
+    geometry: Geometry
+): void {
+    const standards = [
+        ['POSITION', module.POSITION],
+        ['NORMAL', module.NORMAL],
+        ['TEX_COORD', module.TEX_COORD],
+        ['COLOR', module.COLOR]
+    ] as const;
+    for (const [semantic, attributeType] of standards) {
+        const id = decoder.GetAttributeId(dracoGeometry, attributeType);
+        if (id < 0) continue;
+        const binding = ATTRIBUTE_BINDINGS[semantic];
+        if (!binding) continue;
+        const attribute = decoder.GetAttribute(dracoGeometry, id);
+        assignAttribute(
+            geometry,
+            binding.geometryAttribute,
+            readAttribute(module, decoder, dracoGeometry, attribute, false)
+        );
+    }
+}
+
+export async function decodeDracoGeometry(
+    bytes: Uint8Array,
+    attributeIds: Readonly<Record<string, number>> = {},
+    geometry = new Geometry()
+): Promise<Geometry> {
+    const module = await decoderModule;
+    const buffer = new module.DecoderBuffer();
+    const decoder = new module.Decoder();
+    let dracoGeometry: PointCloud | null = null;
+    let mesh: DracoMesh | null = null;
+    let status: Status | null = null;
+    try {
+        buffer.Init(
+            new Int8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+            bytes.byteLength
+        );
+        if (decoder.GetEncodedGeometryType(buffer) === module.TRIANGULAR_MESH) {
+            mesh = new module.Mesh();
+            dracoGeometry = mesh;
+            status = decoder.DecodeBufferToMesh(buffer, mesh);
         } else {
-            dracoGeometry = new dracoDecoder.PointCloud();
-            decodingStatus = decoder.DecodeBufferToPointCloud(buffer, dracoGeometry);
+            dracoGeometry = new module.PointCloud();
+            status = decoder.DecodeBufferToPointCloud(buffer, dracoGeometry);
         }
 
-        if (!decodingStatus.ok() || dracoGeometry.ptr == 0) {
-            console.error('decodingStatus error');
-            return;
-        }
-        dracoDecoder.destroy(buffer);
-
-        var geometry = primitive._geometry || new Geometry();
-
-        var numFaces = dracoGeometry.num_faces();
-        var numPoints = dracoGeometry.num_points();
-        // Verify if there is position attribute.
-        var posAttId = decoder.GetAttributeId(dracoGeometry,
-            dracoDecoder.POSITION);
-        if (posAttId == -1) {
-            var errorMsg = 'THREE.DRACOLoader: No position attribute found.';
-            console.error(errorMsg);
-            dracoDecoder.destroy(decoder);
-            dracoDecoder.destroy(dracoGeometry);
-            throw new Error(errorMsg);
-        }
-        var posAttribute = decoder.GetAttribute(dracoGeometry, posAttId);
-        var posTransform = new dracoDecoder.AttributeQuantizationTransform();
-        if (posTransform.InitFromAttribute(posAttribute)) {
-
+        if (!status.ok()) {
+            throw new Error(`Draco geometry decoding failed: ${status.error_msg()}`);
         }
 
-        var dracoAttributesMap = {
-            POSITION: ['vertices', 3],
-            NORMAL: ['normals', 3],
-            TANGENT: ['tangents', 4],
-            TEX_COORD: ['uvs', 2],
-            TEXCOORD_0: ['uvs', 2],
-            TEXCOORD_1: ['uvs1', 2],
-            COLOR: ['color', 2],
-            COLOR_0: ['color', 2],
-            JOINTS_0: ['skinIndices', 4],
-            WEIGHTS_0: ['skinWeights', 4],
-        };
-
-        var attributeUsedMap = {};
-        for (var attributeName in dracoAttributesMap) {
-            var info = dracoAttributesMap[attributeName];
-            var attId = decoder.GetAttributeId(dracoGeometry, dracoDecoder[attributeName]);
-            if (dracoDecoder[attributeName] !== undefined && attId !== -1) {
-                var attribute = decoder.GetAttribute(dracoGeometry, attId);
-                var data = getAttributeData(decoder, dracoGeometry, attribute);
-                if (data) {
-                    geometry[info[0]] = new GeometryData(data, info[1]);
-                }
-                attributeUsedMap[info[0]] = true;
-            }
-        }
-
-        for (var attributeName in attributesMap) {
-            var info = dracoAttributesMap[attributeName];
-            if (!info) {
-                console.warn(attributeName + ' not exist');
-                continue;
-            }
-            if (attributeUsedMap[info[0]]) {
-                continue;
-            }
-            var attributeId = attributesMap[attributeName];
-            var attribute = decoder.GetAttributeByUniqueId(dracoGeometry,
-                attributeId);
-            var data = getAttributeData(decoder, dracoGeometry, attribute);
-            if (data) {
-                geometry[info[0]] = new GeometryData(data, info[1]);
-            }
-        }
-
-        if (geometry._tangents) {
-            if (geometry._tangents.length > geometry.vertices.length) {
-                geometry._tangents.stride = 16;
-                geometry._tangents.size = 3;
-            }
-        }
-
-        if (geometry.skinIndices) {
-            var x = geometry.skinIndices.data;
-            for (var i = x.length - 1; i >= 0; i--) {
-                x[i] = Math.round(x[i]);
-            }
-        }
-
-        var indicesArray;
-        if (numPoints > 65535) {
-            indicesArray = new Uint32Array(numFaces * 3);
+        if (Object.keys(attributeIds).length > 0) {
+            decodeExplicitAttributes(module, decoder, dracoGeometry, geometry, attributeIds);
         } else {
-            indicesArray = new Uint16Array(numFaces * 3);
+            decodeStandardAttributes(module, decoder, dracoGeometry, geometry);
         }
-        var ia = new dracoDecoder.DracoInt32Array();
-        for (var i = 0; i < numFaces; i++) {
-            decoder.GetFaceFromMesh(dracoGeometry, i, ia);
-            var idx = i * 3;
-            indicesArray[idx] = ia.GetValue(0);
-            indicesArray[idx + 1] = ia.GetValue(1);
-            indicesArray[idx + 2] = ia.GetValue(2);
-        }
-        geometry.indices = new GeometryData(indicesArray, 1);
-
-        dracoDecoder.destroy(ia);
-        dracoDecoder.destroy(dracoGeometry);
-        dracoDecoder.destroy(decoder);
+        if (!geometry.vertices)
+            throw new Error('Decoded Draco geometry has no position attribute.');
+        if (mesh) geometry.indices = decodeIndices(module, decoder, mesh);
         return geometry;
+    } finally {
+        if (status) module.destroy(status);
+        if (dracoGeometry) module.destroy(dracoGeometry);
+        module.destroy(decoder);
+        module.destroy(buffer);
     }
+}
 
+class DracoLoader {
+    static readonly decode = decodeDracoGeometry;
+    private readonly transport = new BasicLoader();
 
-    var DracoLoader = Class.create({
-        Extends: BasicLoader,
-        Statics: {
-            decode: decode
-        },
-        constructor: function() {
-            DracoLoader.superclass.constructor.call(this);
-        },
-        load: function(params) {
-            return this.loadRes(params.src, 'buffer')
-                .then(function(data) {
-                    return decode(data);
-                }).catch(function(err) {
-                    console.warn('load draco failed', err);
-                    throw err;
-                });
+    async load(params: LoaderRequest): Promise<Geometry> {
+        if (!params.src) throw new TypeError('DracoLoader requires a source URL.');
+        const resource = await this.transport.loadRes(params.src, BasicLoader.TYPE_BUFFER);
+        if (!(resource instanceof ArrayBuffer)) {
+            throw new TypeError(`Draco resource ${params.src} did not resolve to an ArrayBuffer.`);
         }
-    });
+        return decodeDracoGeometry(new Uint8Array(resource));
+    }
+}
 
-    Hilo3d.DracoLoader = DracoLoader;
-    Hilo3d.Loader.addLoader('drc', DracoLoader);
-
-    Hilo3d.GLTFParser.extensionHandlers.KHR_draco_mesh_compression = {
-        parse: function(info, parser, result, options) {
-            var bufferView = parser.bufferViews[info.bufferView];
-            var uintArray = new Uint8Array(bufferView.buffer, bufferView.byteOffset, bufferView.byteLength);
-            var geometry = decode(uintArray, info, options.primitive);
-            return geometry;
+const dracoExtension: GLTFExtensionHandler = {
+    async parse(
+        extensionData: unknown,
+        parser: GLTFParser,
+        result: unknown,
+        _options: GLTFExtensionOptions
+    ): Promise<Geometry> {
+        const info = readExtensionData(extensionData);
+        const bufferView = parser.bufferViews[String(info.bufferView)];
+        if (!bufferView) {
+            throw new RangeError(`Draco bufferView ${String(info.bufferView)} does not exist.`);
         }
-    };
-})();
+        const bytes = new Uint8Array(
+            bufferView.buffer,
+            bufferView.byteOffset,
+            bufferView.byteLength
+        );
+        return decodeDracoGeometry(
+            bytes,
+            info.attributes,
+            result instanceof Geometry ? result : new Geometry()
+        );
+    }
+};
+
+Loader.addLoader('drc', DracoLoader);
+GLTFParser.registerExtensionHandler('KHR_draco_mesh_compression', dracoExtension);
+
+export default DracoLoader;

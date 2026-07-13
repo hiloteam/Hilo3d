@@ -1,77 +1,69 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import BasicLoader from './BasicLoader';
-import {
-    getExtension
-} from '../utils/util';
+import BasicLoader, { type LoaderRequest } from './BasicLoader';
+import { getExtension } from '../utils/util';
 
-/**
- * @class
- */
-const Loader = Class.create<typeof hilo3d.Loader>()(/** @lends Loader.prototype */{
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isLoader: true,
-    /**
-     * @default Loader
-     * @type {string}
-     */
-    className: 'Loader',
-    maxConnections: 2,
-    Statics: {
-        _loaderClassMap: {},
-        _loaders: {},
-        /**
-         * 给Loader类添加扩展Loader
-         * @memberOf Loader
-         * @static
-         * @param {string} ext 资源扩展，如gltf, png 等
-         * @param {unknown} LoaderClass 用于加载的类，需要继承BasicLoader
-         */
-        addLoader(ext, LoaderClass) {
-            Loader._loaderClassMap[ext] = LoaderClass;
-        },
-        /**
-         * 获取对应类型的 loader
-         * @memberOf Loader
-         * @static
-         * @param  {string} ext
-         * @return {unknown} loader
-         */
-        getLoader(ext) {
-            if (!Loader._loaders[ext]) {
-                const LoaderClass = Loader._loaderClassMap[ext] ? Loader._loaderClassMap[ext] : BasicLoader;
-                Loader._loaders[ext] = new LoaderClass();
-            }
-            return Loader._loaders[ext];
+type RegistryLoadMethod = {
+    load(data: LoaderRequest): Promise<unknown>;
+}['load'];
+
+export interface ResourceLoader {
+    load: RegistryLoadMethod;
+}
+
+export type ResourceLoaderConstructor = new () => ResourceLoader;
+
+function isRequestList(
+    data: LoaderRequest | readonly LoaderRequest[]
+): data is readonly LoaderRequest[] {
+    return Array.isArray(data);
+}
+
+function normalizeExtension(extension: string): string {
+    const normalized = extension.trim().replace(/^\./u, '').toLowerCase();
+    if (!normalized) throw new TypeError('Loader extension must not be empty.');
+    return normalized;
+}
+
+/** Extension-based loader registry and dispatch facade. */
+class Loader {
+    private static readonly loaderClasses = new Map<string, ResourceLoaderConstructor>();
+    private static readonly loaders = new Map<string, ResourceLoader>();
+
+    static addLoader(extension: string, LoaderClass: ResourceLoaderConstructor): void {
+        const normalized = normalizeExtension(extension);
+        this.loaderClasses.set(normalized, LoaderClass);
+        this.loaders.delete(normalized);
+    }
+
+    static getLoader(extension: string): ResourceLoader {
+        const normalized = normalizeExtension(extension);
+        const existing = this.loaders.get(normalized);
+        if (existing) return existing;
+
+        const LoaderClass = this.loaderClasses.get(normalized) ?? BasicLoader;
+        const loader = new LoaderClass();
+        this.loaders.set(normalized, loader);
+        return loader;
+    }
+
+    readonly isLoader = true;
+    readonly className = 'Loader';
+    preHandlerUrl: ((url: string) => string) | null = null;
+
+    load(data: LoaderRequest): Promise<unknown>;
+    load(data: readonly LoaderRequest[]): Promise<unknown[]>;
+    load(data: LoaderRequest | readonly LoaderRequest[]): Promise<unknown> | Promise<unknown[]> {
+        if (isRequestList(data)) return Promise.all(data.map(item => this.load(item)));
+
+        const extension =
+            data.type ?? (data.src ? (getExtension(data.src) ?? BasicLoader.TYPE_TEXT) : null);
+        if (!extension) {
+            throw new TypeError('Loader requests require either a resource type or source URL.');
         }
-    },
-    /**
-     * url 预处理函数
-     * @type {Function}
-     */
-    preHandlerUrl: null,
-    /**
-     * load
-     * @param  {Object|Array} data
-     * @return {Promise<unknown>}
-     */
-    load(data) {
-        if (data instanceof Array) {
-            return Promise.all(data.map(d => this.load(d)));
-        }
-        const type = data.type || getExtension(data.src);
-        const loader = Loader.getLoader(type);
-        let loadData = data;
-        if (this.preHandlerUrl) {
-            loadData = Object.assign({}, data);
-            loadData.src = this.preHandlerUrl(data.src);
-        }
+        const loader = Loader.getLoader(extension);
+        const loadData: LoaderRequest =
+            this.preHandlerUrl && data.src ? { ...data, src: this.preHandlerUrl(data.src) } : data;
         return loader.load(loadData);
     }
-});
+}
 
 export default Loader;

@@ -1,178 +1,108 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-function $(id) {
-        return document.getElementById(id);
-    }
+const { stage, ticker } = createExampleContext({
+    camera: { far: 20_000, near: 0.1, z: 1000 },
+    stage: { alpha: true, clearColor: new Hilo3d.Color(0, 0, 0) },
+    controls: { isLockMove: true }
+});
 
-    var camera = new Hilo3d.PerspectiveCamera({
-        aspect: innerWidth / innerHeight,
-        far: 20000,
-        near: 0.1,
-        z: 1000
-    });
-    var stage = new Hilo3d.Stage({
-        container: $('container'),
-        camera: camera,
-        clearColor: new Hilo3d.Color(0, 0, 0),
-        width: innerWidth,
-        height: innerHeight,
-        alpha: true
-    });
-
-    var renderer = stage.renderer;
-    var gl;
-
-    var directionLight = new Hilo3d.DirectionalLight({
-        color: new Hilo3d.Color(1, 1, 1),
-        direction: new Hilo3d.Vector3(0, -1, 0)
-    }).addTo(stage);
-
-    var ambientLight = new Hilo3d.AmbientLight({
-        color: new Hilo3d.Color(1, 1, 1),
-        amount: .5
-    }).addTo(stage);
-
-    var ticker = new Hilo3d.Ticker(60);
-    ticker.addTick(stage);
-    ticker.addTick(Hilo3d.Tween);
-    ticker.addTick(Hilo3d.Animation);
-        var stats = new Stats(ticker, stage.renderer.renderInfo);
-    var orbitControls = new OrbitControls(stage, {
-        isLockMove: true
-    });
-
-    setTimeout(function () {
-        ticker.start(true);
-        gl = renderer.gl;
-        gl.enable(gl.BLEND);
-        gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
-        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
-    }, 10);
-
-
-    function getUniformsFun(name) {
-        return function (mesh, material, programInfo) {
-            if (material[name]) {
-                return material[name];
-            }
-            return this.value;
+function createSnowflakeTexture(size = 32): Hilo3d.DataTexture {
+    const pixels = new Uint8Array(size * size * 4);
+    const center = (size - 1) / 2;
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const distance = Math.hypot(x - center, y - center) / center;
+            const alpha = Math.max(0, Math.min(255, Math.round((1 - distance) * 255)));
+            const offset = (y * size + x) * 4;
+            pixels[offset] = 255;
+            pixels[offset + 1] = 255;
+            pixels[offset + 2] = 255;
+            pixels[offset + 3] = alpha;
         }
-
     }
+    return new Hilo3d.DataTexture({
+        data: pixels,
+        width: size,
+        height: size,
+        wrapS: Hilo3d.constants.CLAMP_TO_EDGE,
+        wrapT: Hilo3d.constants.CLAMP_TO_EDGE
+    });
+}
 
-    let semantic = Hilo3d.semantic;
-
-
-    function getTexture(mesh, material, programInfo) {
-
-        return semantic.handlerColorOrTexture(material.u_diffuse, programInfo.textureIndex);
-    }
-
-    var uniforms = {
-        modelMatrix: 'MODEL',
-        u_modelViewProjectionMatrix: 'MODELVIEWPROJECTION',
-        u_PointSize: {
-            get: getUniformsFun('u_PointSize')
-        },
-        u_diffuse: {
-            value: null,
-            get: getTexture
-        }
-
-    }
-    var fragmentShader = `
-    precision HILO_MAX_VERTEX_PRECISION float;
-
-
+const particleCount = 10_000;
+const positions = new Float32Array(particleCount * 3);
+for (let index = 0; index < particleCount; index++) {
+    const offset = index * 3;
+    positions[offset] = Math.random() * 2000 - 1000;
+    positions[offset + 1] = Math.random() * 2000 - 1000;
+    positions[offset + 2] = Math.random() * 2000 - 1000;
+}
+const geometry = new Hilo3d.Geometry({
+    mode: Hilo3d.constants.POINTS,
+    vertices: new Hilo3d.GeometryData(positions, 3)
+});
+const snowflakeTexture = createSnowflakeTexture();
+const fragmentShader = `
+    precision HILO_MAX_FRAGMENT_PRECISION float;
     uniform sampler2D u_diffuse;
-
-    void main() {
-        gl_FragColor = texture2D(u_diffuse,gl_PointCoord);
-    }`
-
-
-    var vertexShader = `
-    precision highp float;
-    precision highp int;
-
-    attribute vec3 position;
+    void main(void) {
+        vec4 color = texture2D(u_diffuse, gl_PointCoord);
+        if (color.a < 0.01) discard;
+        gl_FragColor = color;
+    }
+`;
+const vertexShader = `
+    precision HILO_MAX_VERTEX_PRECISION float;
+    attribute vec3 a_position;
     uniform mat4 u_modelViewProjectionMatrix;
-    uniform float u_PointSize;
-    void main() {
-        float scale = 400.0;
-        gl_Position = u_modelViewProjectionMatrix * vec4( position, 1.0 );
-        gl_PointSize = u_PointSize * ( scale / abs(gl_Position.z) );
+    uniform float u_pointSize;
+    void main(void) {
+        gl_Position = u_modelViewProjectionMatrix * vec4(a_position, 1.0);
+        gl_PointSize = u_pointSize * (400.0 / abs(gl_Position.z));
+    }
+`;
 
-    }`
-
-    var material = new Hilo3d.ShaderMaterial({
-
-        u_diffuse: null,
-        u_PointSize: 50,
-        uniforms: uniforms,
-        attributes: {
-            position: 'POSITION'
+function createParticleMaterial(pointSize: number): Hilo3d.ShaderMaterial {
+    return new Hilo3d.ShaderMaterial({
+        uniforms: {
+            u_modelViewProjectionMatrix: 'MODELVIEWPROJECTION',
+            u_pointSize: { get: () => pointSize },
+            u_diffuse: {
+                get: (_mesh, _material, programInfo) => {
+                    if (programInfo.textureIndex === undefined) {
+                        throw new Error('u_diffuse is not a sampler uniform.');
+                    }
+                    return Hilo3d.semantic.handlerTexture(
+                        snowflakeTexture,
+                        programInfo.textureIndex
+                    );
+                }
+            }
         },
+        attributes: { a_position: 'POSITION' },
         blend: true,
         transparent: true,
+        depthMask: false,
         fs: fragmentShader,
         vs: vertexShader
-    })
-
-
-    let geometry = new Hilo3d.Geometry({
-        mode: 0
     });
-    geometry.points = []
+}
 
-    for (let i = 0; i < 10000; i++) {
+const particleMeshes = [40, 35, 20, 10, 50].map(pointSize => {
+    const mesh = new Hilo3d.Mesh({ geometry, material: createParticleMaterial(pointSize) });
+    mesh.rotationX = Math.random() * 600;
+    mesh.rotationY = Math.random() * 600;
+    mesh.rotationZ = Math.random() * 600;
+    return mesh.addTo(stage);
+});
 
-        var vertex = new Hilo3d.Vector3();
-        vertex.x = Math.random() * 2000 - 1000;
-        vertex.y = Math.random() * 2000 - 1000;
-        vertex.z = Math.random() * 2000 - 1000;
-
-        geometry.addPoints([vertex.x, vertex.y, vertex.z]);
-        geometry.points.push(vertex)
-
+ticker.addTick({
+    tick(): void {
+        const time = performance.now() * 0.00005;
+        particleMeshes.forEach((mesh, index) => {
+            const direction = index < 4 ? index + 1 : -(index + 1);
+            mesh.rotationY = time * direction * 10;
+        });
     }
-
-    let parameters = [
-        [40, '//gw.alicdn.com/tfs/TB17oDXbOqAXuNjy1XdXXaYcVXa-32-32.png'],
-        [35, '//gw.alicdn.com/tfs/TB17oDXbOqAXuNjy1XdXXaYcVXa-32-32.png'],
-        [20, '//gw.alicdn.com/tfs/TB18pJ_efDH8KJjy1XcXXcpdXXa-32-32.png'],
-        [10, '//gw.alicdn.com/tfs/TB19VJ_efDH8KJjy1XcXXcpdXXa-32-32.png'],
-        [50, '//gw.alicdn.com/tfs/TB1XChgedzJ8KJjSspkXXbF7VXa-32-32.png']
-    ];
-
-
-    let meshs = []
-    parameters.forEach(function (item) {
-        let nm = material.clone();
-        nm.u_diffuse = new Hilo3d.LazyTexture({
-            crossOrigin: true,
-            src: item[1]
-        })
-        nm.u_PointSize = item[0]
-        let mesh = new Hilo3d.Mesh({
-            geometry: geometry,
-            material: nm
-        })
-        mesh.rotationX = Math.random() * 6 * 100;
-        mesh.rotationY = Math.random() * 6 * 100;
-        mesh.rotationZ = Math.random() * 6 * 100
-
-        stage.addChild(mesh)
-        meshs.push(mesh)
-    })
-
-    ticker.addTick({
-        tick: function () {
-            var time = Date.now() * 0.00005;
-            meshs.forEach(function (mesh,i) {
-                mesh.rotationY = time * ( i < 4 ? i + 1 : -( i + 1 ) ) * 10 ;
-
-            })
-
-        }
-    });
+});

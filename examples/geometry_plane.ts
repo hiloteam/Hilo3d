@@ -1,31 +1,37 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-function rand(min, max) {
-            return Math.random() * (max - min) + min;
-        }
+const { stage } = createExampleContext();
 
-        var geometry = new Hilo3d.PlaneGeometry();
-        var textureMaterial = new Hilo3d.BasicMaterial({
-            lightType:'NONE',
-            side:Hilo3d.constants.FRONT_AND_BACK,
-            diffuse:new Hilo3d.LazyTexture({
-                flipY: true,
-                src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
-            })
-        });
+function rand(min: number, max: number): number {
+    return Math.random() * (max - min) + min;
+}
 
-        for (var i = 0; i < 100; i++) {
-            var rect = new Hilo3d.Mesh({
-                geometry: geometry,
-                material: Math.random() < .5 ? textureMaterial : new Hilo3d.BasicMaterial({
-                    lightType:'NONE',
-                    side:Hilo3d.constants.FRONT_AND_BACK,
-                    diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random())
-                }),
-                x: rand(-1, 1),
-                y: rand(-1, 1),
-                z: rand(-1, 1)
-            });
-            rect.setScale(rand(0.2, 0.2));
-            stage.addChild(rect);
-        }
+const geometry = new Hilo3d.PlaneGeometry();
+const textureMaterial = new Hilo3d.BasicMaterial({
+    lightType: 'NONE',
+    side: Hilo3d.constants.FRONT_AND_BACK,
+    diffuse: new Hilo3d.LazyTexture({
+        flipY: true,
+        src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
+    })
+});
+
+for (let i = 0; i < 100; i++) {
+    const rect = new Hilo3d.Mesh({
+        geometry,
+        material:
+            Math.random() < 0.5
+                ? textureMaterial
+                : new Hilo3d.BasicMaterial({
+                      lightType: 'NONE',
+                      side: Hilo3d.constants.FRONT_AND_BACK,
+                      diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random())
+                  }),
+        x: rand(-1, 1),
+        y: rand(-1, 1),
+        z: rand(-1, 1)
+    });
+    rect.setScale(rand(0.2, 0.2));
+    stage.addChild(rect);
+}

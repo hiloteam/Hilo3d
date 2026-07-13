@@ -4,35 +4,28 @@ type ClassLike = abstract new (...params: never[]) => object;
 // runtime-defined members. Keep the unsafe escape hatch isolated here instead
 // of weakening every engine module. Known public members are contextualized by
 // the declaration file; genuinely private legacy members remain `unknown`.
-type DynamicMembers = Record<string, unknown>;
+export type DynamicMembers = Record<string, unknown>;
 
-interface RuntimeClassLike {
+export interface RuntimeClassLike {
     prototype: object;
     superclass?: object;
 }
 
-type ConstructorParametersOf<Constructor> = Constructor extends abstract new (
-    ...args: infer Parameters
-) => unknown ? Parameters : never;
-
-type ClassDefinition<Static extends ClassLike> =
-    Partial<InstanceType<Static>>
-    & DynamicMembers
-    & ThisType<InstanceType<Static> & DynamicMembers & { constructor: Static }>
-    & {
-        constructor?: (...params: ConstructorParametersOf<Static>) => void;
+type ClassDefinition<Static extends ClassLike> = DynamicMembers &
+    ThisType<InstanceType<Static> & DynamicMembers & { constructor: Static }> & {
         Extends?: RuntimeClassLike;
         Mixes?: object | RuntimeClassLike | readonly (object | RuntimeClassLike)[];
         Statics?: DynamicMembers & ThisType<Static & DynamicMembers>;
     };
 
-type LegacyClass<Static extends ClassLike> = Static & DynamicMembers & {
-    superclass: InstanceType<Static>;
-};
+type LegacyClass<Static extends ClassLike> = Static &
+    DynamicMembers & {
+        superclass: InstanceType<Static>;
+    };
 
-type InferredClass<Definition extends object> =
-    (new (...params: readonly unknown[]) => Definition)
-    & { superclass: Definition };
+export type InferredClass<Definition extends object> = (new (
+    ...params: readonly unknown[]
+) => Definition) & { superclass: Definition };
 
 type DescriptorRecord = Record<PropertyKey, PropertyDescriptor>;
 type MutableRecord = Record<PropertyKey, unknown>;
@@ -45,11 +38,12 @@ function isPropertyDescriptor(value: unknown): value is PropertyDescriptor {
 /**
  * 将一个或多个对象的成员混入目标对象，并保留 Hilo3d 旧版的属性描述符语义。
  */
-function mix<Target extends object>(target: Target, ...sources: readonly unknown[]): Target {
+export function mix<Target extends object>(target: Target, ...sources: readonly unknown[]): Target {
     const targetRecord = target as MutableRecord;
 
     for (const source of sources) {
-        if ((typeof source !== 'object' && typeof source !== 'function') || source === null) continue;
+        if ((typeof source !== 'object' && typeof source !== 'function') || source === null)
+            continue;
 
         const descriptors: DescriptorRecord = {};
         for (const key of Object.keys(source)) {
@@ -69,8 +63,14 @@ function mix<Target extends object>(target: Target, ...sources: readonly unknown
     return target;
 }
 
-function asClassLike(value: object | RuntimeClassLike): RuntimeClassLike | null {
-    return typeof value === 'function' && 'prototype' in value ? value : null;
+function asClassLike(value: unknown): RuntimeClassLike | null {
+    if (typeof value !== 'function') return null;
+    const prototype: unknown = Reflect.get(value, 'prototype');
+    return typeof prototype === 'object' && prototype !== null ? value : null;
+}
+
+function isUnknownArray(value: unknown): value is unknown[] {
+    return Array.isArray(value);
 }
 
 function applyDefinition(clazz: RuntimeClassLike, properties: Record<string, unknown>): void {
@@ -81,7 +81,7 @@ function applyDefinition(clazz: RuntimeClassLike, properties: Record<string, unk
             case 'constructor':
                 break;
             case 'Extends': {
-                const parent = asClassLike(value as object | ClassLike);
+                const parent = asClassLike(value);
                 if (!parent) break;
 
                 const existingPrototype = clazz.prototype;
@@ -94,9 +94,10 @@ function applyDefinition(clazz: RuntimeClassLike, properties: Record<string, unk
                 break;
             }
             case 'Mixes': {
-                const items = Array.isArray(value) ? value : [value];
+                const items = isUnknownArray(value) ? value : [value];
                 for (const item of items) {
-                    if ((typeof item !== 'object' && typeof item !== 'function') || item === null) continue;
+                    if ((typeof item !== 'object' && typeof item !== 'function') || item === null)
+                        continue;
                     const sourceClass = asClassLike(item);
                     mix(clazz.prototype, sourceClass?.prototype ?? item);
                 }
@@ -117,29 +118,37 @@ function applyDefinition(clazz: RuntimeClassLike, properties: Record<string, unk
  * Hilo3d 的兼容类工厂。新代码优先使用原生 `class`，该工厂用于保持既有公共 API
  * 和原型布局，同时为旧模块提供完整的 TypeScript 上下文类型。
  */
-function create<Static extends ClassLike>(): (
+export function create<Static extends ClassLike>(): (
     properties: ClassDefinition<Static>
 ) => LegacyClass<Static>;
-function create<Definition extends object>(
-    properties: Definition & DynamicMembers & ThisType<Definition & DynamicMembers & {
-        constructor: InferredClass<Definition>;
-    }>
+export function create<Definition extends object>(
+    properties: Definition &
+        DynamicMembers &
+        ThisType<
+            Definition &
+                DynamicMembers & {
+                    constructor: InferredClass<Definition>;
+                }
+        >
 ): InferredClass<Definition> & DynamicMembers;
-function create<Definition extends object>(properties?: Definition): InferredClass<Definition> | ((
-    definition: Definition
-) => InferredClass<Definition>) {
+export function create<Definition extends object>(
+    properties?: Definition
+): InferredClass<Definition> | ((definition: Definition) => InferredClass<Definition>) {
     if (properties === undefined) {
         return (definition: Definition) => createRuntimeClass(definition);
     }
     return createRuntimeClass(properties);
 }
 
-function createRuntimeClass<Definition extends object>(properties: Definition): InferredClass<Definition> {
+function createRuntimeClass<Definition extends object>(
+    properties: Definition
+): InferredClass<Definition> {
     const definition = properties as Definition & Record<string, unknown>;
     const hasConstructor = Object.prototype.hasOwnProperty.call(definition, 'constructor');
-    const userConstructor = hasConstructor && typeof definition.constructor === 'function'
-        ? definition.constructor
-        : null;
+    const userConstructor =
+        hasConstructor && typeof definition.constructor === 'function'
+            ? definition.constructor
+            : null;
     const clazz = function DynamicClass(this: object, ...params: readonly unknown[]): unknown {
         return userConstructor ? Reflect.apply(userConstructor, this, params) : undefined;
     } as unknown as InferredClass<Definition>;

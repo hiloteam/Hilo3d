@@ -1,68 +1,60 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-var boxGeometry = new Hilo3d.BoxGeometry();
-    boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
-    var skyboxMap = new Hilo3d.CubeTexture({
-        image: [
-            new Hilo3d.Color(0.8, 0, 0),
-            new Hilo3d.Color(0, 0, 0),
-            new Hilo3d.Color(1, 1, 0),
-            new Hilo3d.Color(0.5, 0.5, 0.5),
-            new Hilo3d.Color(1, 1, 1),
-            new Hilo3d.Color(0, 0, 1)
-        ]
+const { stage, renderer } = createExampleContext();
+
+const boxGeometry = new Hilo3d.BoxGeometry();
+boxGeometry.setAllRectUV([
+    [0, 1],
+    [1, 1],
+    [1, 0],
+    [0, 0]
+]);
+const colorBox = new Hilo3d.Mesh({
+    geometry: boxGeometry,
+    material: new Hilo3d.BasicMaterial({
+        diffuse: new Hilo3d.Color(0.8, 0, 0)
+    }),
+    x: -1
+});
+colorBox.onUpdate = () => {
+    colorBox.rotationX += 0.5;
+    colorBox.rotationY += 0.5;
+};
+stage.addChild(colorBox);
+const texture = new Hilo3d.LazyTexture({
+    src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
+});
+const textureMaterial = new Hilo3d.BasicMaterial({ diffuse: texture.clone() });
+const textureBox = new Hilo3d.Mesh({
+    geometry: boxGeometry,
+    material: textureMaterial,
+    x: 1,
+    rotationX: 45
+});
+textureBox.onUpdate = () => {
+    textureBox.rotationX += 0.5;
+    textureBox.rotationZ += 0.5;
+};
+stage.addChild(textureBox);
+
+const framebuffer = new Hilo3d.Framebuffer(renderer, {
+    useVao: renderer.useVao,
+    width: renderer.width,
+    height: renderer.height
+});
+
+const clearColor = new Hilo3d.Color(1, 1, 1);
+
+renderer.on('afterRender', () => {
+    framebuffer.bind();
+    renderer.clear(clearColor);
+    textureMaterial.diffuse = texture;
+    renderer.renderList.traverse(mesh => {
+        renderer.renderMesh(mesh);
     });
-    var colorBox = new Hilo3d.Mesh({
-        geometry: boxGeometry,
-        material: new Hilo3d.BasicMaterial({
-            diffuse: new Hilo3d.Color(0.8, 0, 0)
-        }),
-        x: -1,
-        onUpdate: function() {
-            this.rotationX += .5;
-            this.rotationY += .5;
-        }
-    });
-    stage.addChild(colorBox);
-    var texture = new Hilo3d.LazyTexture({
-        crossOrigin:true,
-        src:'//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
-    });
-    var textureBox = new Hilo3d.Mesh({
-        geometry:boxGeometry,
-        material: new Hilo3d.BasicMaterial({
-            diffuse:texture.clone()
-        }),
-        x: 1,
-        rotationX:45,
-        onUpdate: function() {
-            this.rotationX += .5;
-            this.rotationZ += .5;
-        }
-    });
-    stage.addChild(textureBox);
+    framebuffer.unbind();
 
-
-
-    framebuffer = new Hilo3d.Framebuffer(renderer, {
-        useVao: renderer.useVao,
-        width: renderer.width,
-        height: renderer.height
-    });
-
-
-    const clearColor = new Hilo3d.Color(1, 1, 1);
-
-    renderer.on('afterRender', () => {
-        framebuffer.bind();
-        renderer.clear(clearColor);
-        textureBox.material.diffuse = texture;
-        renderer.renderList.traverse((mesh) => {
-            renderer.renderMesh(mesh);
-        });
-        framebuffer.unbind()
-
-        framebuffer.render(0, 0.7, 0.3, 0.3);
-        textureBox.material.diffuse = framebuffer.texture;
-
-    });
+    framebuffer.render(0, 0.7, 0.3, 0.3);
+    textureMaterial.diffuse = framebuffer.texture;
+});

@@ -1,90 +1,63 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import Geometry from './Geometry';
+import Geometry, { type GeometryParameters } from './Geometry';
 import GeometryData from './GeometryData';
-
-import constants from '../constants';
-
-const {
-    FRONT,
-    BACK
-} = constants;
-
+import type Ray from '../math/Ray';
+import type Vector3 from '../math/Vector3';
+import { BACK, FRONT } from '../constants/webgl';
 const normalData = [0, 0, 1];
+
+export interface PlaneGeometryParameters extends GeometryParameters {
+    width?: number;
+    height?: number;
+    widthSegments?: number;
+    heightSegments?: number;
+}
 /**
  * 平面几何体
- * @class
- * @extends Geometry
  */
-const PlaneGeometry = Class.create<typeof hilo3d.PlaneGeometry>()(/** @lends PlaneGeometry.prototype */ {
-    Extends: Geometry,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isPlaneGeometry: true,
-    /**
-     * @default PlaneGeometry
-     * @type {string}
-     */
-    className: 'PlaneGeometry',
+class PlaneGeometry extends Geometry {
+    isPlaneGeometry = true;
+    override readonly className: string = 'PlaneGeometry';
     /**
      * 宽度
-     * @default 1
-     * @type {number}
      */
-    width: 1,
+    width = 1;
     /**
      * 高度
-     * @default 1
-     * @type {number}
      */
-    height: 1,
+    height = 1;
     /**
      * 水平分割面的数量
-     * @default 1
-     * @type {number}
      */
-    widthSegments: 1,
+    widthSegments = 1;
     /**
      * 垂直分割面的数量
-     * @default 1
-     * @type {number}
      */
-    heightSegments: 1,
+    heightSegments = 1;
     /**
-     * @constructs
-     * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
-     * @param {number} [params.width=1] 宽度
-     * @param {number} [params.height=1] 高度
-     * @param {number} [params.widthSegments=1] 水平分割面的数量
-     * @param {number} [params.heightSegments=1] 垂直分割面的数量
-     * @param {unknown} [params.[value:string]] 其它属性
+     * @param params - 创建对象的属性参数。可包含此类的所有属性。
+     * - `params.width`: 宽度
+     * - `params.height`: 高度
+     * - `params.widthSegments`: 水平分割面的数量
+     * - `params.heightSegments`: 垂直分割面的数量
      */
-    constructor(params) {
-        PlaneGeometry.superclass.constructor.call(this, params);
+    constructor(params: PlaneGeometryParameters = {}) {
+        super();
+        Object.assign(this, params);
         this.build();
-    },
-    build() {
-        const {
-            widthSegments,
-            heightSegments
-        } = this;
+    }
+    private build(): void {
+        const { widthSegments, heightSegments } = this;
         const count = (widthSegments + 1) * (heightSegments + 1);
         const diffW = this.width / widthSegments;
         const diffH = this.height / heightSegments;
-
         const vertices = new Float32Array(count * 3);
         const normals = new Float32Array(count * 3);
         const uvs = new Float32Array(count * 2);
         const indices = new Uint16Array(widthSegments * heightSegments * 6);
-
         let indicesIdx = 0;
-
         for (let h = 0; h <= heightSegments; h++) {
             for (let w = 0; w <= widthSegments; w++) {
-                let idx = h * (widthSegments + 1) + w;
+                const idx = h * (widthSegments + 1) + w;
                 vertices[idx * 3] = w * diffW - this.width / 2;
                 vertices[idx * 3 + 1] = this.height / 2 - h * diffH;
                 normals[idx * 3] = 0;
@@ -92,9 +65,8 @@ const PlaneGeometry = Class.create<typeof hilo3d.PlaneGeometry>()(/** @lends Pla
                 normals[idx * 3 + 2] = 1;
                 uvs[idx * 2] = w / widthSegments;
                 uvs[idx * 2 + 1] = 1 - h / heightSegments;
-
                 if (h < heightSegments && w < widthSegments) {
-                    let lb = (h + 1) * (widthSegments + 1) + w;
+                    const lb = (h + 1) * (widthSegments + 1) + w;
                     indices[indicesIdx++] = idx;
                     indices[indicesIdx++] = lb;
                     indices[indicesIdx++] = lb + 1;
@@ -104,36 +76,31 @@ const PlaneGeometry = Class.create<typeof hilo3d.PlaneGeometry>()(/** @lends Pla
                 }
             }
         }
-
         this.vertices = new GeometryData(vertices, 3);
         this.indices = new GeometryData(indices, 1);
         this.normals = new GeometryData(normals, 3);
         this.uvs = new GeometryData(uvs, 2);
-    },
-    _raycast(ray, side) {
+    }
+    override _raycast(ray: Ray, side: GLenum): Vector3[] | null {
         const originZ = ray.origin.z;
         const directionZ = ray.direction.z;
-
         if (side === FRONT && (directionZ > 0 || originZ < 0)) {
             return null;
         }
-
         if (side === BACK && (directionZ < 0 || originZ > 0)) {
             return null;
         }
-
         const point = ray.intersectsPlane(normalData, 0);
         if (point) {
             const x = point.x;
             const y = point.y;
-            const halfWidth = this.width * .5;
-            const halfHeight = this.height * .5;
+            const halfWidth = this.width * 0.5;
+            const halfHeight = this.height * 0.5;
             if (x >= -halfWidth && x <= halfWidth && y >= -halfHeight && y <= halfHeight) {
                 return [point];
             }
         }
         return null;
     }
-});
-
+}
 export default PlaneGeometry;

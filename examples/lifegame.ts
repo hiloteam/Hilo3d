@@ -1,93 +1,122 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
+import postProcess from './js/postProcess';
 
-renderer.on('init', function(){
-        console.log('init');
-        scale = 8;
-        width = Math.floor(innerWidth/scale);
-        height = Math.floor(innerHeight/scale)
-        totalTile = width * height;
-        lifegameData = new Uint8Array(totalTile*4);
-        for(var i = 0;i < totalTile;i ++){
-            lifegameData[i * 4 + 2] = Math.random() < 0.6 ? 255:0;
-        }
+const CELL_SCALE = 8;
+const width = Math.max(1, Math.floor(window.innerWidth / CELL_SCALE));
+const height = Math.max(1, Math.floor(window.innerHeight / CELL_SCALE));
+const sizeUniform = new Float32Array([width, height]);
+const liveCell = new Uint8Array([255, 255, 255, 255]);
 
-        lifegameFramebuffer = new Hilo3d.Framebuffer(renderer, {
-            needRenderbuffer:false,
-            width:width,
-            height:height,
-            data:lifegameData
-        });
-        
-        lifegameFramebuffer.bind();
-        lifegameFramebuffer.backTexture = lifegameFramebuffer.texture;
-        lifegameFramebuffer.frontTexture = lifegameFramebuffer.createTexture();
-        lifegameFramebuffer.unbind();
+let framebuffer: Hilo3d.Framebuffer | null = null;
+let currentTexture: Hilo3d.FramebufferTexture | null = null;
+let nextTexture: Hilo3d.FramebufferTexture | null = null;
+
+function requireTexture(
+    texture: Hilo3d.FramebufferTexture | null,
+    description: string
+): Hilo3d.FramebufferTexture {
+    if (!texture) throw new Error(`${description} is not initialized.`);
+    return texture;
+}
+
+const { renderer, ticker } = createExampleContext();
+postProcess.init(renderer);
+
+renderer.onInit(() => {
+    framebuffer?.destroy();
+    const data = new Uint8Array(width * height * 4);
+    for (let index = 0; index < width * height; index++) {
+        data[index * 4 + 2] = Math.random() < 0.6 ? 255 : 0;
+    }
+
+    const nextFramebuffer = new Hilo3d.Framebuffer(renderer, {
+        needRenderbuffer: false,
+        width,
+        height,
+        data
     });
-    
-    postProcess.init(renderer);
-    renderer.on('afterRender', function(){
-        lifegameFramebuffer.bind();
-        lifegameFramebuffer.texture = lifegameFramebuffer.backTexture;
-        renderer.gl.framebufferTexture2D(renderer.gl.FRAMEBUFFER, lifegameFramebuffer.attachment, lifegameFramebuffer.target, lifegameFramebuffer.texture.getGLTexture(renderer.state), 0);
+    nextFramebuffer.bind();
+    try {
+        currentTexture = requireTexture(nextFramebuffer.texture, 'Life-game current texture');
+        nextTexture = nextFramebuffer.createTexture();
+    } finally {
+        nextFramebuffer.unbind();
+    }
+    framebuffer = nextFramebuffer;
+});
 
-        postProcess.draw(lifegameFramebuffer.frontTexture, {
-            uniforms:{
-                u_size:new Float32Array([width, height])
-            },
-            frag:`
+renderer.on('afterRender', () => {
+    const target = framebuffer;
+    const sourceTexture = currentTexture;
+    const targetTexture = nextTexture;
+    if (!target || !sourceTexture || !targetTexture) return;
+
+    const { gl, state } = renderer;
+    target.bind();
+    try {
+        target.texture = targetTexture;
+        gl.framebufferTexture2D(
+            gl.FRAMEBUFFER,
+            target.attachment,
+            target.target,
+            targetTexture.getGLTexture(state),
+            0
+        );
+        postProcess.draw(sourceTexture, {
+            uniforms: { u_size: sizeUniform },
+            frag: `
                 precision HILO_MAX_FRAGMENT_PRECISION float;
                 varying vec2 v_texcoord0;
                 uniform sampler2D u_diffuse;
                 uniform vec2 u_size;
+
                 int get(int x, int y) {
                     return int(texture2D(u_diffuse, (gl_FragCoord.xy + vec2(x, y)) / u_size).b);
                 }
 
                 void main(void) {
                     int sum = get(-1, -1) +
-                          get(-1,  0) +
-                          get(-1,  1) +
-                          get( 0, -1) +
-                          get( 0,  1) +
-                          get( 1, -1) +
-                          get( 1,  0) +
-                          get( 1,  1);
+                              get(-1,  0) +
+                              get(-1,  1) +
+                              get( 0, -1) +
+                              get( 0,  1) +
+                              get( 1, -1) +
+                              get( 1,  0) +
+                              get( 1,  1);
 
                     if (sum == 3) {
-                        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+                        gl_FragColor = vec4(1.0);
                     } else if (sum == 2) {
                         float current = float(get(0, 0));
                         gl_FragColor = vec4(current, current, current, 1.0);
                     } else {
-                        gl_FragColor = vec4(.0, .0, .0, .0);
+                        gl_FragColor = vec4(0.0);
                     }
                 }
             `
         });
+    } finally {
+        target.unbind();
+    }
 
-        var temp = lifegameFramebuffer.backTexture;
-        lifegameFramebuffer.backTexture = lifegameFramebuffer.frontTexture;
-        lifegameFramebuffer.frontTexture = temp;
+    currentTexture = targetTexture;
+    nextTexture = sourceTexture;
+    target.render(0, 0, 1, 1, null, currentTexture);
+});
 
-        lifegameFramebuffer.unbind()
-        lifegameFramebuffer.render();
-    });
+document.addEventListener('click', event => {
+    const firstTexture = currentTexture;
+    const secondTexture = nextTexture;
+    if (!firstTexture || !secondTexture || !renderer.isInit) return;
 
-    document.addEventListener('click', function(e){
-        var x = Math.floor(e.offsetX/scale);
-        var y = Math.floor(height - e.offsetY/scale);
-        x = Math.min(width-1, x);
-        y = Math.min(height-1, y);
+    const x = Math.max(0, Math.min(width - 1, Math.floor(event.offsetX / CELL_SCALE)));
+    const y = Math.max(0, Math.min(height - 1, Math.floor(height - event.offsetY / CELL_SCALE)));
+    const { gl, state } = renderer;
+    for (const texture of [firstTexture, secondTexture]) {
+        gl.bindTexture(gl.TEXTURE_2D, texture.getGLTexture(state));
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, liveCell);
+    }
+});
 
-        gl.bindTexture(gl.TEXTURE_2D, lifegameFramebuffer.frontTexture.getGLTexture(renderer.state));
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, 1, 1,
-                         gl.RGBA, gl.UNSIGNED_BYTE,
-                         new Uint8Array([255, 255, 255, 255]));
-        gl.bindTexture(gl.TEXTURE_2D, lifegameFramebuffer.backTexture.getGLTexture(renderer.state));
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, 1, 1,
-                         gl.RGBA, gl.UNSIGNED_BYTE,
-                         new Uint8Array([255, 255, 255, 255]));
-    });
-
-    ticker._targetFPS = 24;
-    ticker._interval = 1000 / ticker._targetFPS;
+ticker.targetFPS = 24;

@@ -7,7 +7,7 @@ const math = {
         let uid = 0;
         return (prefix = ''): string => {
             const id = ++uid;
-            return prefix ? `${prefix}_${id}` : String(id);
+            return prefix ? `${prefix}_${String(id)}` : String(id);
         };
     })(),
 

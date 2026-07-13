@@ -1,684 +1,245 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from './Class';
+export type TweenEaseFunction = (ratio: number) => number;
+export type TweenProperties = Readonly<Record<string, number>>;
 
-function now() {
-    return +new Date();
+export interface TweenParameters {
+    duration?: number;
+    delay?: number | string;
+    paused?: boolean;
+    loop?: boolean;
+    reverse?: boolean;
+    repeat?: number;
+    repeatDelay?: number;
+    ease?: TweenEaseFunction | null;
+    time?: number;
+    stagger?: number;
+    onStart?: TweenStartCallback | null;
+    onUpdate?: TweenUpdateCallback | null;
+    onComplete?: TweenCompleteCallback | null;
 }
 
-/**
- * Tween类提供缓动功能。
- * @class  Tween
- * @param {Object} target 缓动对象。
- * @param {Object} fromProps 对象缓动的起始属性集合。
- * @param {Object} toProps 对象缓动的目标属性集合。
- * @param {TweenParams} params 缓动参数。可包含Tween类所有可写属性。
- * @property {Object} target 缓动目标。只读属性。
- * @property {number} duration 缓动总时长。单位毫秒。
- * @property {number} delay 缓动延迟时间。单位毫秒。
- * @property {boolean} paused 缓动是否暂停。默认为false。
- * @property {boolean} loop 缓动是否循环。默认为false。
- * @property {boolean} reverse 缓动是否反转播放。默认为false。
- * @property {number} repeat 缓动重复的次数。默认为0。
- * @property {number} repeatDelay 缓动重复的延迟时长。单位为毫秒。
- * @property {Function} ease 缓动变化函数。默认为null。
- * @property {number} time 缓动已进行的时长。单位毫秒。只读属性。
- * @property {Function} onStart 缓动开始回调函数。它接受1个参数：tween。默认值为null。
- * @property {Function} onUpdate 缓动更新回调函数。它接受2个参数：ratio和tween。默认值为null。
- * @property {Function} onComplete 缓动结束回调函数。它接受1个参数：tween。默认值为null。
- * @see {@link https://hiloteam.github.io/Hilo/docs/api-zh/symbols/Tween.html}
- * @example
- * Hilo.Tween.to(node, {
- *     x:100,
- *     y:20
- * }, {
- *     duration:1000,
- *     delay:500,
- *     ease:Hilo3d.Tween.Ease.Quad.EaseIn,
- *     onComplete:function(){
- *         console.log('complete');
- *     }
- * });
- */
-const Tween = Class.create<typeof hilo3d.Tween>()(/** @lends Tween.prototype */ {
-    constructor(target, fromProps, toProps, params) {
-        const me = this;
+export type TweenStartCallback = (this: Tween, tween: Tween) => void;
+export type TweenUpdateCallback = (this: Tween, ratio: number, tween: Tween) => void;
+export type TweenCompleteCallback = (this: Tween, tween: Tween) => void;
 
-        me.target = target;
-        me._startTime = 0;
-        me._seekTime = 0;
-        me._pausedTime = 0;
-        me._pausedStartTime = 0;
-        me._reverseFlag = 1;
-        me._repeatCount = 0;
-
-        // no fromProps if pass 3 arguments
-        if (arguments.length === 3) {
-            params = toProps;
-            toProps = fromProps;
-            fromProps = null;
-        }
-
-        for (const p in params) me[p] = params[p];
-        me._fromProps = fromProps;
-        me._toProps = toProps;
-
-        // for old version compatiblity
-        if (!params.duration && params.time) {
-            me.duration = params.time || 0;
-            me.time = 0;
-        }
-    },
-
-    target: null,
-    duration: 1000,
-    delay: 0,
-    paused: false,
-    loop: false,
-    reverse: false,
-    repeat: 0,
-    repeatDelay: 0,
-    ease: null,
-    time: 0, // ready only
-
-    isStart: false,
-    isComplete: false,
-    onStart: null,
-    onUpdate: null,
-    onComplete: null,
-
-    setProps(fromProps, toProps) {
-        const me = this;
-        const target = me.target;
-        const propNames = fromProps || toProps;
-        const from = me._fromProps = {};
-        const to = me._toProps = {};
-
-        fromProps = fromProps || target;
-        toProps = toProps || target;
-
-        for (const p in propNames) {
-            to[p] = toProps[p] || 0;
-            target[p] = from[p] = fromProps[p] || 0;
-        }
-        return me;
-    },
-
-    /**
-     * 启动缓动动画的播放。
-     * @memberOf Tween.prototype
-     * @method start
-     * @returns {Tween} Tween变换本身。可用于链式调用。
-     */
-    start() {
-        const me = this;
-        me._startTime = now() + me.delay;
-        me._seekTime = 0;
-        me._pausedTime = 0;
-        me._reverseFlag = 1;
-        me._repeatCount = 0;
-        me.paused = false;
-        me.isStart = false;
-        me.isComplete = false;
-        Tween.add(me);
-        return me;
-    },
-
-    /**
-     * 停止缓动动画的播放。
-     * @memberOf Tween.prototype
-     * @method stop
-     * @returns {Tween} Tween变换本身。可用于链式调用。
-     */
-    stop() {
-        Tween.remove(this);
-        return this;
-    },
-
-    /**
-     * 暂停缓动动画的播放。
-     * @memberOf Tween.prototype
-     * @method pause
-     * @returns {Tween} Tween变换本身。可用于链式调用。
-     */
-    pause() {
-        const me = this;
-        me.paused = true;
-        me._pausedStartTime = now();
-        return me;
-    },
-
-    /**
-     * 恢复缓动动画的播放。
-     * @memberOf Tween.prototype
-     * @method resume
-     * @returns {Tween} Tween变换本身。可用于链式调用。
-     */
-    resume() {
-        const me = this;
-        me.paused = false;
-        if (me._pausedStartTime) me._pausedTime += now() - me._pausedStartTime;
-        me._pausedStartTime = 0;
-        return me;
-    },
-
-    /**
-     * 跳转Tween到指定的时间。
-     * @memberOf Tween.prototype
-     * @method seek
-     * @param {number} time 指定要跳转的时间。取值范围为：0 - duraion。
-     * @param {boolean} pause 是否暂停。
-     * @returns {Tween} Tween变换本身。可用于链式调用。
-     */
-    seek(time, pause) {
-        const me = this;
-        const current = now();
-        me._startTime = current;
-        me._seekTime = time;
-        me._pausedTime = 0;
-        if (pause !== undefined) me.paused = pause;
-        me._update(current, true);
-        Tween.add(me);
-        return me;
-    },
-
-    /**
-     * 连接下一个Tween变换。其开始时间根据delay值不同而不同。当delay值为字符串且以'+'或'-'开始时，Tween的开始时间从当前变换结束点计算，否则以当前变换起始点计算。
-     * @memberOf Tween.prototype
-     * @method link
-     * @param {Tween} tween 要连接的Tween变换。
-     * @returns {Tween} 下一个Tween。可用于链式调用。
-     */
-    link(tween) {
-        const me = this;
-        let delay = tween.delay;
-        const startTime = me._startTime;
-
-        let plus;
-        let minus;
-        if (typeof delay === 'string') {
-            plus = delay.indexOf('+') === 0;
-            minus = delay.indexOf('-') === 0;
-            delay = plus || minus ? Number(delay.substr(1)) * (plus ? 1 : -1) : Number(delay);
-        }
-        tween.delay = delay;
-        tween._startTime = plus || minus ? startTime + me.duration + delay : startTime + delay;
-
-        me._next = tween;
-        Tween.remove(tween);
-        return tween;
-    },
-
-    /**
-     * Tween类的内部渲染方法。
-     * @private
-     */
-    _render(ratio) {
-        const me = this;
-        const target = me.target;
-        const fromProps = me._fromProps;
-        for (let p in fromProps) {
-            target[p] = fromProps[p] + (me._toProps[p] - fromProps[p]) * ratio;
-        }
-    },
-
-    /**
-     * Tween类的内部更新方法。
-     * @private
-     */
-    _update(time, forceUpdate) {
-        const me = this;
-        if (me.paused && !forceUpdate) return false;
-        if (me.isComplete) return true;
-
-        // elapsed time
-        const elapsed = time - me._startTime - me._pausedTime + me._seekTime;
-        if (elapsed < 0) return false;
-
-        // elapsed ratio
-        let ratio = elapsed / me.duration;
-        let callback;
-        if (ratio <= 0) {
-            ratio = 0;
-        } else if (ratio >= 1) {
-            ratio = 1;
-        }
-        let easeRatio = me.ease ? me.ease(ratio) : ratio;
-
-        if (me.reverse && me.isStart) {
-            // backward
-            if (me._reverseFlag < 0) {
-                ratio = 1 - ratio;
-                easeRatio = 1 - easeRatio;
-            }
-            // forward
-            if (ratio < 1e-7) {
-                // repeat complete or not loop
-                if ((me.repeat > 0 && me._repeatCount++ >= me.repeat) || (me.repeat === 0 && !me.loop)) {
-                    me.isComplete = true;
-                } else {
-                    me._startTime = now();
-                    me._pausedTime = 0;
-                    me._reverseFlag *= -1;
-                }
-            }
-        }
-
-        // start callback
-        if (!me.isStart) {
-            me.setProps(me._fromProps, me._toProps);
-            me.isStart = true;
-            if (me.onStart) {
-                me.onStart.call(me, me);
-            }
-        }
-        me.time = elapsed;
-
-        // render & update callback
-        me._render(easeRatio);
-        callback = me.onUpdate;
-        if (callback) {
-            callback.call(me, easeRatio, me);
-        }
-
-        // check if complete
-        if (ratio >= 1) {
-            if (me.reverse) {
-                me._startTime = now();
-                me._pausedTime = 0;
-                me._reverseFlag *= -1;
-            } else if (me.loop || me.repeat > 0 && me._repeatCount++ < me.repeat) {
-                me._startTime = now() + me.repeatDelay;
-                me._pausedTime = 0;
-            } else {
-                me.isComplete = true;
-            }
-        }
-
-        // next tween
-        const next = me._next;
-        if (next && next.time <= 0) {
-            const nextStartTime = next._startTime;
-            if (nextStartTime > 0 && nextStartTime <= time) {
-                // parallel tween
-                next._render(ratio);
-                next.time = elapsed;
-                Tween.add(next);
-            } else if (me.isComplete && (nextStartTime < 0 || nextStartTime > time)) {
-                // next tween
-                next.start();
-            }
-        }
-
-        // complete
-        if (me.isComplete) {
-            callback = me.onComplete;
-            if (callback) {
-                callback.call(me, me);
-            }
-            return true;
-        }
-
-        return false;
-    },
-
-    Statics: /** @lends Tween */ {
-        _tweens: [],
-
-        /**
-         * 更新所有Tween实例。
-         * @memberOf Tween
-         * @method tick
-         * @returns {Tween} Tween
-         */
-        tick() {
-            const tweens = Tween._tweens;
-            let tween;
-            let i;
-            const len = tweens.length;
-
-            for (i = 0; i < len; i++) {
-                tween = tweens[i];
-                if (tween && tween._update(now())) {
-                    tweens.splice(i, 1);
-                    i--;
-                }
-            }
-            return Tween;
-        },
-
-        /**
-         * 添加Tween实例。
-         * @memberOf Tween
-         * @param {Tween} tween 要添加的Tween对象。
-         * @returns {Tween} Tween。
-         */
-        add(tween) {
-            const tweens = Tween._tweens;
-            if (tweens.indexOf(tween) === -1) tweens.push(tween);
-            return Tween;
-        },
-
-
-        /**
-         * 删除Tween实例。
-         * @param {Tween|unknown|unknown[]} tweenOrTarget 要删除的Tween对象或target对象或要删除的一组对象。
-         * @returns {Tween} Tween。
-         */
-        remove(tweenOrTarget) {
-            let i; let
-                l;
-            if (tweenOrTarget instanceof Array) {
-                for (i = 0, l = tweenOrTarget.length; i < l; i++) {
-                    Tween.remove(tweenOrTarget[i]);
-                }
-                return Tween;
-            }
-
-            const tweens = Tween._tweens;
-            if (tweenOrTarget instanceof Tween) {
-                i = tweens.indexOf(tweenOrTarget);
-                if (i > -1) tweens.splice(i, 1);
-            } else {
-                for (i = 0; i < tweens.length; i++) {
-                    if (tweens[i].target === tweenOrTarget) {
-                        tweens.splice(i, 1);
-                        i--;
-                    }
-                }
-            }
-
-            return Tween;
-        },
-
-
-        /**
-         * 删除所有Tween实例。
-         * @returns {Tween} Tween。
-         */
-        removeAll() {
-            Tween._tweens.length = 0;
-            return Tween;
-        },
-
-        /**
-         * 创建一个缓动动画，让目标对象从开始属性变换到目标属性。
-         * @memberOf Tween
-         * @method fromTo
-         * @param {Object|Array} target 缓动目标对象或缓动目标数组。
-         * @param {Object} fromProps 缓动目标对象的开始属性。
-         * @param {Object} toProps 缓动目标对象的目标属性。
-         * @param {TweenParams} params 缓动动画的参数。
-         * @returns {Tween|Array} 一个Tween实例对象或Tween实例数组。
-         */
-        fromTo(target, fromProps, toProps, params) {
-            params = params || {};
-            const isArray = target instanceof Array;
-            target = isArray ? target : [target];
-
-            let tween;
-            let i;
-            const stagger = params.stagger;
-            const tweens = [];
-            for (i = 0; i < target.length; i++) {
-                tween = new Tween(target[i], fromProps, toProps, params);
-                if (stagger) {
-                    tween.delay = (params.delay || 0) + (i * stagger || 0);
-                }
-                tween.start();
-                tweens.push(tween);
-            }
-
-            return isArray ? tweens : tween;
-        },
-
-
-        /**
-         * 创建一个缓动动画，让目标对象从当前属性变换到目标属性。
-         * @memberOf Tween
-         * @method to
-         * @param {Object|Array} target 缓动目标对象或缓动目标数组。
-         * @param {Object} toProps 缓动目标对象的目标属性。
-         * @param {TweenParams} params 缓动动画的参数。
-         * @returns {Tween|Array} 一个Tween实例对象或Tween实例数组。
-         */
-        to(target, toProps, params) {
-            return Tween.fromTo(target, null, toProps, params);
-        },
-
-        /**
-         * 创建一个缓动动画，让目标对象从指定的起始属性变换到当前属性。
-         * @memberOf Tween
-         * @method from
-         * @param {Object|Array} target 缓动目标对象或缓动目标数组。
-         * @param {Object} fromProps 缓动目标对象的初始属性。
-         * @param {TweenParams} params 缓动动画的参数。
-         * @returns {Tween|Array} 一个Tween实例对象或Tween实例数组。
-         */
-        from(target, fromProps, params) {
-            return Tween.fromTo(target, fromProps, null, params);
-        }
-    }
-
-});
-
-
-/* eslint-disable no-return-assign, no-cond-assign */
-
-function createEase(obj, easeInFn, easeOutFn, easeInOutFn, easeNoneFn) {
-    obj = obj || {};
-    if (easeInFn) {
-        obj.EaseIn = easeInFn;
-    }
-
-    if (easeOutFn) {
-        obj.EaseOut = easeOutFn;
-    }
-
-    if (easeInOutFn) {
-        obj.EaseInOut = easeInOutFn;
-    }
-
-    if (easeNoneFn) {
-        obj.EaseNone = easeNoneFn;
-    }
-
-    return obj;
+export interface TweenEaseObject {
+    EaseIn: TweenEaseFunction;
+    EaseOut: TweenEaseFunction;
+    EaseInOut: TweenEaseFunction;
 }
 
-const Linear = createEase(null, null, null, null, (k) => {
-    return k;
-});
+export interface TweenEaseNoneObject {
+    EaseNone: TweenEaseFunction;
+}
 
-const Quad = createEase(null,
-    (k) => {
-        return k * k;
-    },
+export interface ElasticEaseObject extends TweenEaseObject {
+    a: number;
+    p: number;
+    s: number;
+    config(amplitude: number, period: number): void;
+}
 
-    (k) => {
-        return -k * (k - 2);
-    },
+export interface BackEaseObject extends TweenEaseObject {
+    o: number;
+    s: number;
+    config(overshoot: number): void;
+}
 
-    (k) => {
-        return ((k *= 2) < 1) ? 0.5 * k * k : -0.5 * (--k * (k - 2) - 1);
-    });
+export interface TweenEaseCollection {
+    Linear: TweenEaseNoneObject;
+    Quad: TweenEaseObject;
+    Cubic: TweenEaseObject;
+    Quart: TweenEaseObject;
+    Quint: TweenEaseObject;
+    Sine: TweenEaseObject;
+    Expo: TweenEaseObject;
+    Circ: TweenEaseObject;
+    Elastic: ElasticEaseObject;
+    Back: BackEaseObject;
+    Bounce: TweenEaseObject;
+}
 
-const Cubic = createEase(null,
-    (k) => {
-        return k * k * k;
-    },
+const PI = Math.PI;
+const HALF_PI = PI * 0.5;
 
-    (k) => {
-        return --k * k * k + 1;
-    },
+const Linear: TweenEaseNoneObject = {
+    EaseNone: ratio => ratio
+};
 
-    (k) => {
-        return ((k *= 2) < 1) ? 0.5 * k * k * k : 0.5 * ((k -= 2) * k * k + 2);
-    });
-
-const Quart = createEase(null,
-    (k) => {
-        return k * k * k * k;
-    },
-
-    (k) => {
-        return -(--k * k * k * k - 1);
-    },
-
-    (k) => {
-        return ((k *= 2) < 1) ? 0.5 * k * k * k * k : -0.5 * ((k -= 2) * k * k * k - 2);
-    });
-
-const Quint = createEase(null,
-    (k) => {
-        return k * k * k * k * k;
-    },
-
-    (k) => {
-        return (k -= 1) * k * k * k * k + 1;
-    },
-
-    (k) => {
-        return ((k *= 2) < 1) ? 0.5 * k * k * k * k * k : 0.5 * ((k -= 2) * k * k * k * k + 2);
-    });
-
-let math = Math;
-let PI = math.PI; let HALF_PI = PI * 0.5;
-let sin = math.sin; let cos = math.cos;
-let pow = math.pow; let
-    sqrt = math.sqrt;
-
-const Sine = createEase(null,
-    (k) => {
-        return -cos(k * HALF_PI) + 1;
-    },
-
-    (k) => {
-        return sin(k * HALF_PI);
-    },
-
-    (k) => {
-        return -0.5 * (cos(PI * k) - 1);
-    });
-
-const Expo = createEase(null,
-    (k) => {
-        return k === 0 ? 0 : pow(2, 10 * (k - 1));
-    },
-
-    (k) => {
-        return k === 1 ? 1 : -pow(2, -10 * k) + 1;
-    },
-
-    (k) => {
-        if (k === 0 || k === 1) return k;
-        if ((k *= 2) < 1) return 0.5 * pow(2, 10 * (k - 1));
-        return 0.5 * (-pow(2, -10 * (k - 1)) + 2);
-    });
-
-const Circ = createEase(null,
-    (k) => {
-        return -(sqrt(1 - k * k) - 1);
-    },
-
-    (k) => {
-        return sqrt(1 - (--k * k));
-    },
-
-    (k) => {
-        if ((k /= 0.5) < 1) return -0.5 * (sqrt(1 - k * k) - 1);
-        return 0.5 * (sqrt(1 - (k -= 2) * k) + 1);
-    });
-
-const Elastic = createEase(
-    {
-        a: 1,
-        p: 0.4,
-        s: 0.1,
-
-        config(amplitude, period) {
-            Elastic.a = amplitude;
-            Elastic.p = period;
-            Elastic.s = period / (2 * PI) * Math.asin(1 / amplitude) || 0;
-        }
-    },
-
-    (k) => {
-        return -(Elastic.a * pow(2, 10 * (k -= 1)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p));
-    },
-
-    (k) => {
-        return (Elastic.a * pow(2, -10 * k) * sin((k - Elastic.s) * (2 * PI) / Elastic.p) + 1);
-    },
-
-    (k) => {
-        return ((k *= 2) < 1) ? -0.5 * (Elastic.a * pow(2, 10 * (k -= 1)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p))
-            : Elastic.a * pow(2, -10 * (k -= 1)) * sin((k - Elastic.s) * (2 * PI) / Elastic.p) * 0.5 + 1;
+const Quad: TweenEaseObject = {
+    EaseIn: ratio => ratio * ratio,
+    EaseOut: ratio => -ratio * (ratio - 2),
+    EaseInOut(ratio) {
+        const value = ratio * 2;
+        return value < 1 ? 0.5 * value * value : -0.5 * ((value - 1) * (value - 3) - 1);
     }
-);
+};
 
-const Back = createEase(
-    {
-        o: 1.70158,
-        s: 2.59491,
-
-        config(overshoot) {
-            Back.o = overshoot;
-            Back.s = overshoot * 1.525;
-        }
+const Cubic: TweenEaseObject = {
+    EaseIn: ratio => ratio * ratio * ratio,
+    EaseOut(ratio) {
+        const value = ratio - 1;
+        return value * value * value + 1;
     },
-
-    (k) => {
-        return k * k * ((Back.o + 1) * k - Back.o);
-    },
-
-    (k) => {
-        return (k -= 1) * k * ((Back.o + 1) * k + Back.o) + 1;
-    },
-
-    (k) => {
-        return ((k *= 2) < 1) ? 0.5 * (k * k * ((Back.s + 1) * k - Back.s)) : 0.5 * ((k -= 2) * k * ((Back.s + 1) * k + Back.s) + 2);
+    EaseInOut(ratio) {
+        const value = ratio * 2;
+        return value < 1
+            ? 0.5 * value * value * value
+            : 0.5 * ((value - 2) * (value - 2) * (value - 2) + 2);
     }
-);
+};
 
-const Bounce = createEase(null,
-    (k) => {
-        return 1 - Bounce.EaseOut(1 - k);
+const Quart: TweenEaseObject = {
+    EaseIn: ratio => ratio * ratio * ratio * ratio,
+    EaseOut(ratio) {
+        const value = ratio - 1;
+        return -(value * value * value * value - 1);
     },
+    EaseInOut(ratio) {
+        const value = ratio * 2;
+        if (value < 1) return 0.5 * value * value * value * value;
+        const offset = value - 2;
+        return -0.5 * (offset * offset * offset * offset - 2);
+    }
+};
 
-    (k) => {
-        if ((k /= 1) < 0.36364) {
-            return 7.5625 * k * k;
-        } if (k < 0.72727) {
-            return 7.5625 * (k -= 0.54545) * k + 0.75;
-        } if (k < 0.90909) {
-            return 7.5625 * (k -= 0.81818) * k + 0.9375;
+const Quint: TweenEaseObject = {
+    EaseIn: ratio => ratio * ratio * ratio * ratio * ratio,
+    EaseOut(ratio) {
+        const value = ratio - 1;
+        return value * value * value * value * value + 1;
+    },
+    EaseInOut(ratio) {
+        const value = ratio * 2;
+        if (value < 1) return 0.5 * value * value * value * value * value;
+        const offset = value - 2;
+        return 0.5 * (offset * offset * offset * offset * offset + 2);
+    }
+};
+
+const Sine: TweenEaseObject = {
+    EaseIn: ratio => -Math.cos(ratio * HALF_PI) + 1,
+    EaseOut: ratio => Math.sin(ratio * HALF_PI),
+    EaseInOut: ratio => -0.5 * (Math.cos(PI * ratio) - 1)
+};
+
+const Expo: TweenEaseObject = {
+    EaseIn: ratio => (ratio === 0 ? 0 : Math.pow(2, 10 * (ratio - 1))),
+    EaseOut: ratio => (ratio === 1 ? 1 : -Math.pow(2, -10 * ratio) + 1),
+    EaseInOut(ratio) {
+        if (ratio === 0 || ratio === 1) return ratio;
+        const value = ratio * 2;
+        return value < 1
+            ? 0.5 * Math.pow(2, 10 * (value - 1))
+            : 0.5 * (-Math.pow(2, -10 * (value - 1)) + 2);
+    }
+};
+
+const Circ: TweenEaseObject = {
+    EaseIn: ratio => -(Math.sqrt(1 - ratio * ratio) - 1),
+    EaseOut(ratio) {
+        const value = ratio - 1;
+        return Math.sqrt(1 - value * value);
+    },
+    EaseInOut(ratio) {
+        const value = ratio * 2;
+        if (value < 1) return -0.5 * (Math.sqrt(1 - value * value) - 1);
+        const offset = value - 2;
+        return 0.5 * (Math.sqrt(1 - offset * offset) + 1);
+    }
+};
+
+const Elastic: ElasticEaseObject = {
+    a: 1,
+    p: 0.4,
+    s: 0.1,
+    config(amplitude, period) {
+        Elastic.a = amplitude;
+        Elastic.p = period;
+        Elastic.s = (period / (2 * PI)) * Math.asin(1 / amplitude) || 0;
+    },
+    EaseIn(ratio) {
+        if (ratio === 0 || ratio === 1) return ratio;
+        const value = ratio - 1;
+        return -(
+            Elastic.a *
+            Math.pow(2, 10 * value) *
+            Math.sin(((value - Elastic.s) * (2 * PI)) / Elastic.p)
+        );
+    },
+    EaseOut(ratio) {
+        if (ratio === 0 || ratio === 1) return ratio;
+        return (
+            Elastic.a *
+                Math.pow(2, -10 * ratio) *
+                Math.sin(((ratio - Elastic.s) * (2 * PI)) / Elastic.p) +
+            1
+        );
+    },
+    EaseInOut(ratio) {
+        if (ratio === 0 || ratio === 1) return ratio;
+        const value = ratio * 2;
+        if (value < 1) {
+            const offset = value - 1;
+            return (
+                -0.5 *
+                (Elastic.a *
+                    Math.pow(2, 10 * offset) *
+                    Math.sin(((offset - Elastic.s) * (2 * PI)) / Elastic.p))
+            );
         }
-        return 7.5625 * (k -= 0.95455) * k + 0.984375;
+        const offset = value - 1;
+        return (
+            Elastic.a *
+                Math.pow(2, -10 * offset) *
+                Math.sin(((offset - Elastic.s) * (2 * PI)) / Elastic.p) *
+                0.5 +
+            1
+        );
+    }
+};
+
+const Back: BackEaseObject = {
+    o: 1.70158,
+    s: 2.59491,
+    config(overshoot) {
+        Back.o = overshoot;
+        Back.s = overshoot * 1.525;
     },
+    EaseIn: ratio => ratio * ratio * ((Back.o + 1) * ratio - Back.o),
+    EaseOut(ratio) {
+        const value = ratio - 1;
+        return value * value * ((Back.o + 1) * value + Back.o) + 1;
+    },
+    EaseInOut(ratio) {
+        const value = ratio * 2;
+        if (value < 1) {
+            return 0.5 * (value * value * ((Back.s + 1) * value - Back.s));
+        }
+        const offset = value - 2;
+        return 0.5 * (offset * offset * ((Back.s + 1) * offset + Back.s) + 2);
+    }
+};
 
-    (k) => {
-        return k < 0.5 ? Bounce.EaseIn(k * 2) * 0.5 : Bounce.EaseOut(k * 2 - 1) * 0.5 + 0.5;
-    });
-/* eslint-enable no-return-assign, no-cond-assign */
+const Bounce: TweenEaseObject = {
+    EaseIn: ratio => 1 - Bounce.EaseOut(1 - ratio),
+    EaseOut(ratio) {
+        if (ratio < 0.36364) return 7.5625 * ratio * ratio;
+        if (ratio < 0.72727) {
+            const value = ratio - 0.54545;
+            return 7.5625 * value * value + 0.75;
+        }
+        if (ratio < 0.90909) {
+            const value = ratio - 0.81818;
+            return 7.5625 * value * value + 0.9375;
+        }
+        const value = ratio - 0.95455;
+        return 7.5625 * value * value + 0.984375;
+    },
+    EaseInOut: ratio =>
+        ratio < 0.5 ? Bounce.EaseIn(ratio * 2) * 0.5 : Bounce.EaseOut(ratio * 2 - 1) * 0.5 + 0.5
+};
 
-/**
- * Ease类包含为Tween类提供各种缓动功能的函数。
- * @memberOf Tween
- * @property {TweenEaseNoneObject} Linear 线性匀速缓动函数
- * @property {TweenEaseObject} Quad 二次缓动函数
- * @property {TweenEaseObject} Cubic 三次缓动函数。
- * @property {TweenEaseObject} Quart 四次缓动函数。
- * @property {TweenEaseObject} Quint 五次缓动函数。
- * @property {TweenEaseObject} Sine 正弦缓动函数。
- * @property {TweenEaseObject} Expo 指数缓动函数。
- * @property {TweenEaseObject} Circ 圆形缓动函数。
- * @property {TweenEaseObject} Elastic 弹性缓动函数。
- * @property {TweenEaseObject} Back 向后缓动函数。
- * @property {TweenEaseObject} Bounce 弹跳缓动函数。
- * @see  {@link https://hiloteam.github.io/Hilo/docs/api-zh/symbols/Ease.html}
- */
-Tween.Ease = {
+const EASE: TweenEaseCollection = {
     Linear,
     Quad,
     Cubic,
@@ -692,31 +253,341 @@ Tween.Ease = {
     Bounce
 };
 
+function numericProperty(source: object, property: string): number {
+    const value: unknown = Reflect.get(source, property);
+    return typeof value === 'number' ? value : 0;
+}
+
+function copyNumericProperties(source: object): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const property of Object.keys(source)) {
+        const value: unknown = Reflect.get(source, property);
+        if (typeof value === 'number') result[property] = value;
+    }
+    return result;
+}
+
+function delayValue(delay: number | string): number {
+    const value = typeof delay === 'number' ? delay : Number(delay);
+    return Number.isFinite(value) ? value : 0;
+}
+
+function isObjectArray(value: object | readonly object[]): value is readonly object[] {
+    return Array.isArray(value);
+}
+
+/** Time-based interpolation of numeric properties on an object. */
+class Tween {
+    static readonly Ease = EASE;
+    static readonly _tweens: Tween[] = [];
+
+    readonly target: object;
+    duration = 1000;
+    delay: number | string = 0;
+    paused = false;
+    loop = false;
+    reverse = false;
+    repeat = 0;
+    repeatDelay = 0;
+    ease: TweenEaseFunction | null = null;
+    time = 0;
+    isStart = false;
+    isComplete = false;
+    onStart: TweenStartCallback | null = null;
+    onUpdate: TweenUpdateCallback | null = null;
+    onComplete: TweenCompleteCallback | null = null;
+
+    private startTime = 0;
+    private seekTime = 0;
+    private pausedTime = 0;
+    private pausedStartTime = 0;
+    private reverseDirection: 1 | -1 = 1;
+    private repeatCount = 0;
+    private fromProperties: Record<string, number> | null = null;
+    private toProperties: Record<string, number> = {};
+    private nextTween: Tween | null = null;
+
+    constructor(target: object, toProperties: TweenProperties, params?: TweenParameters);
+    constructor(
+        target: object,
+        fromProperties: TweenProperties | null,
+        toProperties: TweenProperties,
+        params?: TweenParameters
+    );
+    constructor(
+        target: object,
+        fromOrTo: TweenProperties | null,
+        toOrParams: TweenProperties | TweenParameters = {},
+        maybeParams?: TweenParameters
+    ) {
+        this.target = target;
+        const threeArgumentForm = maybeParams === undefined;
+        const params = threeArgumentForm ? toOrParams : maybeParams;
+        this.fromProperties = threeArgumentForm
+            ? null
+            : fromOrTo === null
+              ? null
+              : copyNumericProperties(fromOrTo);
+        this.toProperties = threeArgumentForm
+            ? copyNumericProperties(fromOrTo ?? {})
+            : copyNumericProperties(toOrParams);
+        Object.assign(this, params);
+        if (params.duration === undefined && params.time !== undefined) {
+            this.duration = params.time;
+            this.time = 0;
+        }
+    }
+
+    setProps(fromProperties?: TweenProperties | null, toProperties?: TweenProperties | null): this {
+        const propertyNames = Object.keys(fromProperties ?? toProperties ?? {});
+        const from: Record<string, number> = {};
+        const to: Record<string, number> = {};
+        const fromSource = fromProperties ?? this.target;
+        const toSource = toProperties ?? this.target;
+
+        for (const property of propertyNames) {
+            from[property] = numericProperty(fromSource, property);
+            to[property] = numericProperty(toSource, property);
+            Reflect.set(this.target, property, from[property]);
+        }
+        this.fromProperties = from;
+        this.toProperties = to;
+        return this;
+    }
+
+    start(): this {
+        this.startTime = Date.now() + delayValue(this.delay);
+        this.seekTime = 0;
+        this.pausedTime = 0;
+        this.reverseDirection = 1;
+        this.repeatCount = 0;
+        this.paused = false;
+        this.isStart = false;
+        this.isComplete = false;
+        Tween.add(this);
+        return this;
+    }
+
+    stop(): this {
+        Tween.remove(this);
+        return this;
+    }
+
+    pause(): this {
+        this.paused = true;
+        this.pausedStartTime = Date.now();
+        return this;
+    }
+
+    resume(): this {
+        this.paused = false;
+        if (this.pausedStartTime) this.pausedTime += Date.now() - this.pausedStartTime;
+        this.pausedStartTime = 0;
+        return this;
+    }
+
+    seek(time: number, pause?: boolean): this {
+        const current = Date.now();
+        this.startTime = current;
+        this.seekTime = time;
+        this.pausedTime = 0;
+        if (pause !== undefined) this.paused = pause;
+        this.update(current, true);
+        Tween.add(this);
+        return this;
+    }
+
+    link(tween: Tween): Tween {
+        const rawDelay = tween.delay;
+        const relative =
+            typeof rawDelay === 'string' && (rawDelay.startsWith('+') || rawDelay.startsWith('-'));
+        const delay = delayValue(rawDelay);
+        tween.delay = delay;
+        tween.startTime = relative
+            ? this.startTime + this.duration + delay
+            : this.startTime + delay;
+        this.nextTween = tween;
+        Tween.remove(tween);
+        return tween;
+    }
+
+    private render(ratio: number): void {
+        const fromProperties = this.fromProperties;
+        if (!fromProperties) return;
+        for (const property of Object.keys(fromProperties)) {
+            const from = fromProperties[property];
+            const to = this.toProperties[property];
+            if (from === undefined || to === undefined) continue;
+            Reflect.set(this.target, property, from + (to - from) * ratio);
+        }
+    }
+
+    private update(time: number, forceUpdate = false): boolean {
+        if (this.paused && !forceUpdate) return false;
+        if (this.isComplete) return true;
+
+        const elapsed = time - this.startTime - this.pausedTime + this.seekTime;
+        if (elapsed < 0) return false;
+        let ratio = this.duration <= 0 ? 1 : Math.min(1, Math.max(0, elapsed / this.duration));
+        let easedRatio = this.ease ? this.ease(ratio) : ratio;
+
+        if (this.reverse && this.isStart) {
+            if (this.reverseDirection < 0) {
+                ratio = 1 - ratio;
+                easedRatio = 1 - easedRatio;
+            }
+            if (ratio < 1e-7) {
+                if (
+                    (this.repeat > 0 && this.repeatCount++ >= this.repeat) ||
+                    (this.repeat === 0 && !this.loop)
+                ) {
+                    this.isComplete = true;
+                } else {
+                    this.startTime = Date.now();
+                    this.pausedTime = 0;
+                    this.reverseDirection *= -1;
+                }
+            }
+        }
+
+        if (!this.isStart) {
+            this.setProps(this.fromProperties, this.toProperties);
+            this.isStart = true;
+            this.onStart?.call(this, this);
+        }
+
+        this.time = elapsed;
+        this.render(easedRatio);
+        this.onUpdate?.call(this, easedRatio, this);
+
+        if (ratio >= 1) {
+            if (this.reverse) {
+                this.startTime = Date.now();
+                this.pausedTime = 0;
+                this.reverseDirection *= -1;
+            } else if (this.loop || (this.repeat > 0 && this.repeatCount++ < this.repeat)) {
+                this.startTime = Date.now() + this.repeatDelay;
+                this.pausedTime = 0;
+            } else {
+                this.isComplete = true;
+            }
+        }
+
+        const next = this.nextTween;
+        if (next && next.time <= 0) {
+            if (next.startTime > 0 && next.startTime <= time) {
+                next.render(ratio);
+                next.time = elapsed;
+                Tween.add(next);
+            } else if (this.isComplete && (next.startTime < 0 || next.startTime > time)) {
+                next.start();
+            }
+        }
+
+        if (this.isComplete) {
+            this.onComplete?.call(this, this);
+            return true;
+        }
+        return false;
+    }
+
+    static tick(): typeof Tween {
+        for (let index = 0; index < Tween._tweens.length; index++) {
+            const tween = Tween._tweens[index];
+            if (tween?.update(Date.now())) {
+                Tween._tweens.splice(index, 1);
+                index--;
+            }
+        }
+        return Tween;
+    }
+
+    static add(tween: Tween): typeof Tween {
+        if (!Tween._tweens.includes(tween)) Tween._tweens.push(tween);
+        return Tween;
+    }
+
+    static remove(tweenOrTarget: Tween | object | readonly (Tween | object)[]): typeof Tween {
+        if (isObjectArray(tweenOrTarget)) {
+            tweenOrTarget.forEach(item => Tween.remove(item));
+            return Tween;
+        }
+        if (tweenOrTarget instanceof Tween) {
+            const index = Tween._tweens.indexOf(tweenOrTarget);
+            if (index >= 0) Tween._tweens.splice(index, 1);
+            return Tween;
+        }
+        for (let index = Tween._tweens.length - 1; index >= 0; index--) {
+            if (Tween._tweens[index]?.target === tweenOrTarget) Tween._tweens.splice(index, 1);
+        }
+        return Tween;
+    }
+
+    static removeAll(): typeof Tween {
+        Tween._tweens.length = 0;
+        return Tween;
+    }
+
+    static fromTo(
+        target: object,
+        fromProperties: TweenProperties | null,
+        toProperties: TweenProperties,
+        params?: TweenParameters
+    ): Tween;
+    static fromTo(
+        target: readonly object[],
+        fromProperties: TweenProperties | null,
+        toProperties: TweenProperties,
+        params?: TweenParameters
+    ): Tween[];
+    static fromTo(
+        target: object | readonly object[],
+        fromProperties: TweenProperties | null,
+        toProperties: TweenProperties,
+        params: TweenParameters = {}
+    ): Tween | Tween[] {
+        const targets = isObjectArray(target) ? target : [target];
+        const tweens = targets.map((item, index) => {
+            const tween = new Tween(item, fromProperties, toProperties, params);
+            if (params.stagger) {
+                tween.delay = delayValue(params.delay ?? 0) + index * params.stagger;
+            }
+            return tween.start();
+        });
+        return isObjectArray(target)
+            ? tweens
+            : (tweens[0] ?? new Tween(target, fromProperties, toProperties, params));
+    }
+
+    static to(target: object, toProperties: TweenProperties, params?: TweenParameters): Tween;
+    static to(
+        target: readonly object[],
+        toProperties: TweenProperties,
+        params?: TweenParameters
+    ): Tween[];
+    static to(
+        target: object | readonly object[],
+        toProperties: TweenProperties,
+        params: TweenParameters = {}
+    ): Tween | Tween[] {
+        if (isObjectArray(target)) return Tween.fromTo(target, null, toProperties, params);
+        return Tween.fromTo(target, null, toProperties, params);
+    }
+
+    static from(target: object, fromProperties: TweenProperties, params?: TweenParameters): Tween;
+    static from(
+        target: readonly object[],
+        fromProperties: TweenProperties,
+        params?: TweenParameters
+    ): Tween[];
+    static from(
+        target: object | readonly object[],
+        fromProperties: TweenProperties,
+        params: TweenParameters = {}
+    ): Tween | Tween[] {
+        if (isObjectArray(target)) return Tween.fromTo(target, fromProperties, {}, params);
+        return Tween.fromTo(target, fromProperties, {}, params);
+    }
+}
 
 export default Tween;
-
-
-/**
- * @interface TweenParams
- * @property {number} duration
- * @property {number|String} [delay]
- * @property {Function} [ease]
- * @property {Function} [onStart]
- * @property {Function} [onComplete]
- * @property {Function} [onUpdate]
- * @property {boolean} [loop=false]
- * @property {boolean} [reverse=false]
- * @property {number} [repeat=0]
- */
-
-/**
- * @interface TweenEaseObject
- * @property {Function} EaseIn
- * @property {Function} EaseOut
- * @property {Function} EaseInOut
- */
-
-/**
- * @interface TweenEaseNoneObject
- * @property {Function} EaseNone
- */

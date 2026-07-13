@@ -1,416 +1,372 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import math from '../math/math';
+import { EventDispatcher } from '../core/EventMixin';
 import extensions from '../renderer/extensions';
 import capabilities from '../renderer/capabilities';
 import Cache from '../utils/Cache';
-import log from '../utils/log';
-
-import constants from '../constants';
-
-const {
-    TEXTURE_2D,
+import {
+    BROWSER_DEFAULT_WEBGL,
+    CLAMP_TO_EDGE,
     FLOAT,
-    RGB,
-    RGBA,
-    RGB32F,
-    RGBA32F,
     LINEAR,
     NEAREST,
-    REPEAT,
-    CLAMP_TO_EDGE,
-    UNSIGNED_BYTE,
-    UNPACK_PREMULTIPLY_ALPHA_WEBGL,
-    UNPACK_FLIP_Y_WEBGL,
-    UNPACK_COLORSPACE_CONVERSION_WEBGL,
-    BROWSER_DEFAULT_WEBGL,
     NONE,
-} = constants;
+    REPEAT,
+    RGB,
+    RGBA,
+    TEXTURE_2D,
+    UNPACK_COLORSPACE_CONVERSION_WEBGL,
+    UNPACK_FLIP_Y_WEBGL,
+    UNPACK_PREMULTIPLY_ALPHA_WEBGL,
+    UNSIGNED_BYTE
+} from '../constants/webgl';
+import { RGB32F, RGBA32F } from '../constants/webgl2';
+import requireGLResource from '../renderer/requireGLResource';
+import type { GLContext, Size, TextureSubImage, TypedArray } from '../renderer/types';
+const cache = new Cache<WebGLTexture>();
 
-const cache = new Cache();
+export type TextureImageSource =
+    | HTMLImageElement
+    | HTMLCanvasElement
+    | ImageBitmap
+    | ImageData
+    | OffscreenCanvas
+    | HTMLVideoElement
+    | TypedArray;
+
+export type TextureUVChannel = 0 | 1;
+
+export interface TextureMipmap {
+    data: TypedArray;
+    width: number;
+    height: number;
+}
+
+export interface TextureParameters<Image = TextureImageSource> {
+    image?: Image | null;
+    mipmaps?: TextureMipmap[] | null;
+    isImageCanRelease?: boolean;
+    target?: GLenum;
+    internalFormat?: GLenum;
+    format?: GLenum;
+    type?: GLenum;
+    width?: number;
+    height?: number;
+    magFilter?: GLenum;
+    minFilter?: GLenum;
+    wrapS?: GLenum;
+    wrapT?: GLenum;
+    name?: string;
+    premultiplyAlpha?: boolean;
+    flipY?: boolean;
+    colorSpaceConversion?: boolean;
+    compressed?: boolean;
+    needUpdate?: boolean;
+    needDestroy?: boolean;
+    autoUpdate?: boolean;
+    uv?: TextureUVChannel;
+    anisotropic?: number;
+}
+
+export type ResizableTextureImage =
+    HTMLImageElement | HTMLCanvasElement | ImageBitmap | OffscreenCanvas | HTMLVideoElement;
+
+type TextureConstructor<Image> = new (params?: TextureParameters<Image>) => Texture<Image>;
+
+export interface TextureWebGLState {
+    readonly gl: GLContext;
+    readonly isWebGL2: boolean;
+    activeTexture(texture: GLenum): void;
+    bindTexture(target: GLenum, texture: WebGLTexture | null): void;
+    pixelStorei(pname: GLenum, param: number | boolean): void;
+}
+
+/** GPU texture contract used by renderer bindings and render targets. */
+export interface TextureBinding {
+    readonly target: GLenum;
+    getGLTexture(state: TextureWebGLState): WebGLTexture;
+}
+
+function isTypedArray(value: unknown): value is TypedArray {
+    return (
+        value instanceof Int8Array ||
+        value instanceof Uint8Array ||
+        value instanceof Uint8ClampedArray ||
+        value instanceof Int16Array ||
+        value instanceof Uint16Array ||
+        value instanceof Int32Array ||
+        value instanceof Uint32Array ||
+        value instanceof Float32Array ||
+        value instanceof Float64Array
+    );
+}
+
+function isResizableImage(value: unknown): value is ResizableTextureImage {
+    return (
+        (typeof HTMLImageElement !== 'undefined' && value instanceof HTMLImageElement) ||
+        (typeof HTMLCanvasElement !== 'undefined' && value instanceof HTMLCanvasElement) ||
+        (typeof ImageBitmap !== 'undefined' && value instanceof ImageBitmap) ||
+        (typeof OffscreenCanvas !== 'undefined' && value instanceof OffscreenCanvas) ||
+        (typeof HTMLVideoElement !== 'undefined' && value instanceof HTMLVideoElement)
+    );
+}
+
+export function isTextureImageSource(value: unknown): value is TextureImageSource {
+    return (
+        isTypedArray(value) ||
+        isResizableImage(value) ||
+        (typeof ImageData !== 'undefined' && value instanceof ImageData)
+    );
+}
+
+function dimensions(value: unknown): Size | null {
+    if (typeof value !== 'object' || value === null || !('width' in value) || !('height' in value))
+        return null;
+    return typeof value.width === 'number' && typeof value.height === 'number'
+        ? { width: value.width, height: value.height }
+        : null;
+}
 /**
  * 纹理
- * @class
  * @example
- * var loader = new Hilo3d.BasicLoader();
+ * ```ts
+ * const loader = new Hilo3d.BasicLoader();
  * loader.load({
- *     src: '//img.alicdn.com/tfs/TB1aNxtQpXXXXX1XVXXXXXXXXXX-1024-1024.jpg',
+ *     src: './textures/base-color.jpg',
  *     crossOrigin: true
  * }).then(img => {
  *     return new Hilo3d.Texture({
  *         image: img
  *     });
  * });
+ * ```
  */
-const Texture = Class.create<typeof hilo3d.Texture>()(/** @lends Texture.prototype */ {
-    Statics: {
-        /**
-         * 缓存
-         * @memberOf Texture
-         * @readOnly
-         * @type {Object}
-         */
-        cache: {
-            get() {
-                return cache;
-            }
-        },
-        /**
-         * 重置
-         * @memberOf Texture
-         * @param  {WebGLRenderingContext} gl
-         */
-        reset(gl) {
-            cache.each((glTexture, id) => {
-                gl.deleteTexture(glTexture);
-                cache.remove(id);
-            });
-        }
-    },
-
+class Texture<Image = TextureImageSource> extends EventDispatcher {
     /**
-     * @default true
-     * @type {boolean}
+     * 缓存
      */
-    isTexture: true,
-
+    static get cache(): Cache<WebGLTexture> {
+        return cache;
+    }
     /**
-     * @default Texture
-     * @type {string}
+     * 重置
+     * @param gl -
      */
-    className: 'Texture',
-
+    static reset(gl: GLContext): void {
+        cache.each((glTexture, id) => {
+            gl.deleteTexture(glTexture);
+            cache.remove(id);
+        });
+    }
+    readonly isTexture = true;
+    readonly className: string = 'Texture';
     /**
      * 图片资源是否可以释放，可以的话，上传到GPU后将释放图片引用
-     * @type {boolean}
-     * @default false
      */
-    isImageCanRelease: false,
-    _isImageReleased: false,
-    _image: null,
+    isImageCanRelease = false;
+    private _isImageReleased = false;
+    private _image: Image | null = null;
+    private _canvasImage: HTMLCanvasElement | null = null;
+    private _canvasCtx: CanvasRenderingContext2D | null = null;
+    private _originImage: ResizableTextureImage | null = null;
+    private _needUpdateSubTexture = false;
+    private readonly _subTextureList: TextureSubImage[] = [];
+    private gl: GLContext | null = null;
+    readonly id: string;
     /**
      * 图片对象
-     * @type {HTMLImageElement}
-     * @default null
      */
-    image: {
-        get() {
-            if (this._isImageReleased) {
-                log.errorOnce(`Read Texture.image(${this.id})`, 'Read Texture.image after image released!');
-            }
-            return this._image;
-        },
-        set(_img) {
-            this._image = _img;
-            this._isImageReleased = false;
+    get image(): Image | null {
+        if (this._isImageReleased) {
+            throw new Error(`Texture ${this.id} image has been released`);
         }
-    },
-
-    _releaseImage() {
+        return this._image;
+    }
+    /**
+     * 图片对象
+     */
+    set image(_img: Image | null) {
+        this._image = _img;
+        this._isImageReleased = false;
+    }
+    protected _releaseImage(): void {
         this._canvasImage = null;
         this._canvasCtx = null;
         this._originImage = null;
         this._image = null;
         this.mipmaps = null;
         this._isImageReleased = true;
-    },
-
+    }
     /**
      * mipmaps
-     * @type {HTMLImageElement[]|TypedArray[]}
-     * @default null
      */
-    mipmaps: null,
-
+    mipmaps: TextureMipmap[] | null = null;
     /**
      * Texture Target
-     * @default gl.TEXTURE_2D
-     * @type {GLenum}
      */
-    target: TEXTURE_2D,
-
+    target = TEXTURE_2D;
     /**
      * Texture Internal Format
-     * @default gl.RGBA
-     * @type {GLenum}
      */
-    internalFormat: RGBA,
-
+    internalFormat = RGBA;
     /**
      * 图片 Format
-     * @default gl.RGBA
-     * @type {GLenum}
      */
-    format: RGBA,
-
+    format = RGBA;
     /**
      * 类型
-     * @default gl.UNSIGNED_BYTE
-     * @type {GLenum}
      */
-    type: UNSIGNED_BYTE,
-
-    /**
-     * @default 0
-     * @type {number}
-     */
-    width: 0,
-
-    /**
-     * @default 0
-     * @type {number}
-     */
-    height: 0,
-
-    /**
-     * @default 0
-     * @readOnly
-     * @type {Number}
-     */
-    border: 0,
-
+    type = UNSIGNED_BYTE;
+    width = 0;
+    height = 0;
+    readonly border = 0;
     /**
      * magFilter
-     * @default gl.LINEAR
-     * @type {GLenum}
      */
-    magFilter: LINEAR,
-
+    magFilter = LINEAR;
     /**
      * minFilter
-     * @default gl.LINEAR
-     * @type {GLenum}
      */
-    minFilter: LINEAR,
-
+    minFilter = LINEAR;
     /**
      * wrapS
-     * @default gl.REPEAT
-     * @type {GLenum}
      */
-    wrapS: REPEAT,
-
+    wrapS = REPEAT;
     /**
      * wrapT
-     * @default gl.REPEAT
-     * @type {GLenum}
      */
-    wrapT: REPEAT,
-
-    /**
-     * @type {string}
-     */
-    name: '',
-
-    /**
-     * @default false
-     * @type {boolean}
-     */
-    premultiplyAlpha: false,
-
+    wrapT = REPEAT;
+    name = '';
+    premultiplyAlpha = false;
     /**
      * 是否翻转Texture的Y轴
-     * @default false
-     * @type {boolean}
      */
-    flipY: false,
-
+    flipY = false;
     /**
      * 是否转换到图片默认的颜色空间
-     * @default true
-     * @type {boolean}
      */
-    colorSpaceConversion: true,
-
+    colorSpaceConversion = true;
     /**
      * 是否压缩
-     * @default false
-     * @type {Boolean}
      */
-    compressed: false,
-
+    compressed = false;
     /**
      * 是否需要更新Texture
-     * @default true
-     * @type {boolean}
      */
-    needUpdate: true,
+    needUpdate = true;
     /**
      * 是否需要销毁之前的Texture，Texture参数变更之后需要销毁
-     * @default false
-     * @type {boolean}
      */
-    needDestroy: false,
-
+    needDestroy = false;
     /**
      * 是否每次都更新Texture
-     * @default false
-     * @type {boolean}
      */
-    autoUpdate: false,
+    autoUpdate = false;
     /**
      * uv
-     * @default 0
-     * @type {Number}
      */
-    uv: 0,
-
+    uv: TextureUVChannel = 0;
     /**
      * anisotropic
-     * @default 1
-     * @type {Number}
      */
-    anisotropic: 1,
-
+    anisotropic = 1;
     /**
      * 获取原始图像宽度。
-     * @default 0
-     * @type {Number}
      */
-    origWidth: {
-        get() {
-            if (this._originImage) {
-                return this._originImage.width || this.width;
-            }
-
-            if (this.image) {
-                return this.image.width || this.width;
-            }
-
-            return this.width;
-        }
-    },
-
+    get origWidth(): number {
+        return dimensions(this._originImage)?.width ?? dimensions(this.image)?.width ?? this.width;
+    }
     /**
      * 获取原始图像高度。
-     * @default 0
-     * @type {Number}
      */
-    origHeight: {
-        get() {
-            if (this.originImage) {
-                return this._originImage.height || this.height;
-            }
-
-            if (this.image) {
-                return this.image.height || this.height;
-            }
-
-            return this.height;
-        }
-    },
-
+    get origHeight(): number {
+        return (
+            dimensions(this._originImage)?.height ?? dimensions(this.image)?.height ?? this.height
+        );
+    }
     /**
      * 是否使用 mipmap
-     * @readOnly
-     * @type {Boolean}
      */
-    useMipmap: {
-        get() {
-            return this.minFilter !== LINEAR && this.minFilter !== NEAREST;
-        },
-        set() {
-            log.warn('texture.useMipmap is readOnly!');
-        }
-    },
-
+    get useMipmap(): boolean {
+        return this.minFilter !== LINEAR && this.minFilter !== NEAREST;
+    }
     /**
      * 是否使用 repeat
-     * @readOnly
-     * @type {Boolean}
      */
-    useRepeat: {
-        get() {
-            return this.wrapS !== CLAMP_TO_EDGE || this.wrapT !== CLAMP_TO_EDGE;
-        },
-        set() {
-            log.warn('texture.useRepeat is readOnly!');
-        }
-    },
-
+    get useRepeat(): boolean {
+        return this.wrapS !== CLAMP_TO_EDGE || this.wrapT !== CLAMP_TO_EDGE;
+    }
     /**
      * mipmapCount
-     * @readOnly
-     * @type {Number}
      */
-    mipmapCount: {
-        get() {
-            return Math.floor(Math.log2(Math.max(this.width, this.height)) + 1);
-        },
-        set() {
-            log.warn('texture.mipmapCount is readOnly!');
-        }
-    },
-
+    get mipmapCount(): number {
+        return Math.floor(Math.log2(Math.max(this.width, this.height)) + 1);
+    }
     /**
-     * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
+     * @param params - 初始化参数，所有params都会复制到实例上
      */
-    constructor(params) {
+    constructor(params: TextureParameters<Image> = {}) {
+        super();
         this.id = math.generateUUID(this.className);
         Object.assign(this, params);
-    },
+    }
     /**
      * 是否是 2 的 n 次方
-     * @param  {HTMLImageElement}  img
-     * @return {Boolean}
+     * @param img -
      */
-    isImgPowerOfTwo(img) {
-        return math.isPowerOfTwo(img.width) && math.isPowerOfTwo(img.height);
-    },
+    isImgPowerOfTwo(img: ResizableTextureImage): boolean {
+        const size = dimensions(img);
+        return size !== null && math.isPowerOfTwo(size.width) && math.isPowerOfTwo(size.height);
+    }
     /**
      * 获取支持的尺寸
-     * @param  {HTMLImageElement} img
-     * @param  {Boolean} [needPowerOfTwo=false]
-     * @return {Object} { width, height }
+     * @param img -
+     * @param needPowerOfTwo -
+     * @returns `{ width, height }`
      */
-    getSupportSize(img, needPowerOfTwo = false) {
-        let width = img.width;
-        let height = img.height;
-
+    getSupportSize(img: ResizableTextureImage, needPowerOfTwo = false): Size {
+        const imageSize = dimensions(img);
+        if (!imageSize) throw new TypeError('Texture image has no dimensions');
+        let { width, height } = imageSize;
         if (needPowerOfTwo && !this.isImgPowerOfTwo(img)) {
             width = math.nextPowerOfTwo(width);
             height = math.nextPowerOfTwo(height);
         }
-
         const maxTextureSize = capabilities.MAX_TEXTURE_SIZE;
         if (maxTextureSize) {
             if (width > maxTextureSize) {
                 width = maxTextureSize;
             }
-
             if (height > maxTextureSize) {
                 height = maxTextureSize;
             }
         }
-
         return {
             width,
             height
         };
-    },
+    }
     /**
      * 更新图片大小成为 2 的 n 次方
-     * @param  {HTMLImageElement} img
-     * @return {HTMLCanvasElement|HTMLImageElement}
+     * @param img -
      */
-    resizeImgToPowerOfTwo(img) {
+    resizeImgToPowerOfTwo(img: ResizableTextureImage): ResizableTextureImage | HTMLCanvasElement {
         const sizeResult = this.getSupportSize(img, true);
         return this.resizeImg(img, sizeResult.width, sizeResult.height);
-    },
+    }
     /**
      * 更新图片大小
-     * @param  {HTMLImageElement} img
-     * @param {Number} width
-     * @param {Number} height
-     * @return {HTMLCanvasElement|HTMLImageElement}
+     * @param img -
+     * @param width -
+     * @param height -
      */
-    resizeImg(img, width, height) {
+    resizeImg(
+        img: ResizableTextureImage,
+        width: number,
+        height: number
+    ): ResizableTextureImage | HTMLCanvasElement {
         if (img.width === width && img.height === height) {
             return img;
         }
-
         let canvas = this._canvasImage;
         if (!canvas) {
             canvas = document.createElement('canvas');
@@ -423,47 +379,78 @@ const Texture = Class.create<typeof hilo3d.Texture>()(/** @lends Texture.prototy
             canvas.height = height;
             this._canvasCtx = canvas.getContext('2d');
         }
-        this._canvasCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, width, height);
-        log.warnOnce(`Texture.resizeImg(${this.id})`, `image size(${img.width}x${img.height}) is not support. Resized to ${canvas.width}x${canvas.height}`, img.src);
+        const context = this._canvasCtx;
+        if (!context) throw new Error('Unable to create a 2D canvas context for texture resizing');
+        context.drawImage(img, 0, 0, img.width, img.height, 0, 0, width, height);
         this._originImage = img;
         return canvas;
-    },
+    }
     /**
      * GL上传贴图
-     * @private
-     * @param  {WebGLState} state
-     * @param  {GLenum} target
-     * @param  {HTMLImageElement|TypedArray} image
-     * @param  {HTMLImageElement} [level=0]
-     * @param  {Number} [width=this.width]
-     * @param  {Number} [height=this.height]
-     * @return {Texture}  this
+     * @param state -
+     * @param target -
+     * @param image -
+     * @param level -
+     * @param width -
+     * @param height -
+     * @returns this
      */
-    _glUploadTexture(state, target, image, level = 0, width = this.width, height = this.height) {
+    protected _glUploadTexture(
+        state: TextureWebGLState,
+        target: GLenum,
+        image: TextureImageSource | null,
+        level = 0,
+        width = this.width,
+        height = this.height
+    ): this {
         const gl = state.gl;
         const type = this.type;
         const format = this.format;
         let internalFormat = this.internalFormat;
-
         if (this.compressed) {
-            gl.compressedTexImage2D(target, level, internalFormat, width, height, this.border, image);
+            if (!isTypedArray(image)) {
+                throw new TypeError('Compressed textures require typed-array image data');
+            }
+            gl.compressedTexImage2D(
+                target,
+                level,
+                internalFormat,
+                width,
+                height,
+                this.border,
+                image
+            );
         } else {
             internalFormat = this._fixInternalFormat(state, type, format, internalFormat);
-            if (image && image.width !== undefined) {
-                gl.texImage2D(target, level, internalFormat, format, this.type, image);
+            if (isTypedArray(image) || image === null) {
+                gl.texImage2D(
+                    target,
+                    level,
+                    internalFormat,
+                    width,
+                    height,
+                    this.border,
+                    format,
+                    this.type,
+                    image
+                );
             } else {
-                gl.texImage2D(target, level, internalFormat, width, height, this.border, format, this.type, image);
+                gl.texImage2D(target, level, internalFormat, format, this.type, image);
             }
         }
-
         return this;
-    },
+    }
     /**
      * 修复 WebGL & WebGL2 internalFormat
-     * @param {WebGLState} state
-     * @returns {number} internalFormat
+     * @param state -
+     * @returns internalFormat
      */
-    _fixInternalFormat(state, type, format, internalFormat) {
+    protected _fixInternalFormat(
+        state: TextureWebGLState,
+        type: GLenum,
+        format: GLenum,
+        internalFormat: GLenum
+    ): GLenum {
         if (state.isWebGL2) {
             if (type === FLOAT) {
                 if (format === RGBA) {
@@ -476,178 +463,200 @@ const Texture = Class.create<typeof hilo3d.Texture>()(/** @lends Texture.prototy
             internalFormat = this.format;
         }
         return internalFormat;
-    },
+    }
     /**
      * 上传贴图，子类可重写
-     * @private
-     * @param  {WebGLState} state
-     * @return {Texture} this
+     * @param state -
+     * @returns this
      */
-    _uploadTexture(state) {
+    protected _uploadTexture(state: TextureWebGLState): this {
         if (this.useMipmap && this.mipmaps) {
             this.mipmaps.forEach((mipmap, index) => {
-                this._glUploadTexture(state, this.target, mipmap.data, index, mipmap.width, mipmap.height);
+                this._glUploadTexture(
+                    state,
+                    this.target,
+                    mipmap.data,
+                    index,
+                    mipmap.width,
+                    mipmap.height
+                );
             });
         } else {
-            this._glUploadTexture(state, this.target, this.image, 0);
+            const image: unknown = this.image;
+            if (image !== null && !isTextureImageSource(image)) {
+                throw new TypeError('Texture image is not a supported WebGL texture source');
+            }
+            this._glUploadTexture(state, this.target, image, 0);
         }
-
         return this;
-    },
-
-    _updatePixelStorei() {
-        const state = this.state;
+    }
+    private updatePixelStore(state: TextureWebGLState): void {
         state.pixelStorei(UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.premultiplyAlpha);
-        state.pixelStorei(UNPACK_FLIP_Y_WEBGL, !!this.flipY);
-        state.pixelStorei(UNPACK_COLORSPACE_CONVERSION_WEBGL, this.colorSpaceConversion ? BROWSER_DEFAULT_WEBGL : NONE);
-    },
-
+        state.pixelStorei(UNPACK_FLIP_Y_WEBGL, this.flipY);
+        state.pixelStorei(
+            UNPACK_COLORSPACE_CONVERSION_WEBGL,
+            this.colorSpaceConversion ? BROWSER_DEFAULT_WEBGL : NONE
+        );
+    }
     /**
      * 更新 Texture
-     * @param  {WebGLState} state
-     * @param  {WebGLTexture} glTexture
-     * @return {Texture} this
+     * @param state -
+     * @param glTexture -
+     * @returns this
      */
-    updateTexture(state, glTexture) {
+    updateTexture(state: TextureWebGLState, glTexture: WebGLTexture): this {
         const gl = state.gl;
         if (this.needUpdate || this.autoUpdate) {
             if (this._originImage && this.image === this._canvasImage) {
-                this.image = this._originImage;
+                this.image = this._originImage as Image;
             }
             const useMipmap = this.useMipmap;
             const useRepeat = this.useRepeat;
-
-            if (this.image && !this.image.length) {
+            const currentImage: unknown = this.image;
+            if (isResizableImage(currentImage)) {
                 if (!state.isWebGL2) {
                     const needPowerOfTwo = useRepeat || useMipmap;
-                    const sizeResult = this.getSupportSize(this.image, needPowerOfTwo);
-                    this.image = this.resizeImg(this.image, sizeResult.width, sizeResult.height);
+                    const sizeResult = this.getSupportSize(currentImage, needPowerOfTwo);
+                    const resized = this.resizeImg(
+                        currentImage,
+                        sizeResult.width,
+                        sizeResult.height
+                    );
+                    if (isTextureImageSource(resized)) this.image = resized as Image;
                 }
-                this.width = this.image.width;
-                this.height = this.image.height;
+                const size = dimensions(this.image);
+                if (size) {
+                    this.width = size.width;
+                    this.height = size.height;
+                }
             }
-
             state.activeTexture(gl.TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
             state.bindTexture(this.target, glTexture);
-            this._updatePixelStorei();
+            this.updatePixelStore(state);
+            if (this.compressed && useMipmap && (!this.mipmaps || this.mipmaps.length === 0)) {
+                throw new Error(
+                    'Compressed textures using a mipmap filter require explicit mipmap data'
+                );
+            }
             this._uploadTexture(state);
             if (useMipmap) {
                 if (!this.compressed) {
                     gl.generateMipmap(this.target);
-                } else if (!this.mipmaps) {
-                    log.warn(`Compressed texture has no mipmips, changed the minFilter from ${this.minFilter} to Linear!`, this);
-                    this.minFilter = LINEAR;
                 }
             }
-
             gl.texParameterf(this.target, gl.TEXTURE_MAG_FILTER, this.magFilter);
             gl.texParameterf(this.target, gl.TEXTURE_MIN_FILTER, this.minFilter);
             gl.texParameterf(this.target, gl.TEXTURE_WRAP_S, this.wrapS);
             gl.texParameterf(this.target, gl.TEXTURE_WRAP_T, this.wrapT);
-
             const textureFilterAnisotropic = extensions.textureFilterAnisotropic;
             if (textureFilterAnisotropic && this.anisotropic > 1) {
-                gl.texParameterf(this.target, textureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(this.anisotropic, capabilities.MAX_TEXTURE_MAX_ANISOTROPY));
+                gl.texParameterf(
+                    this.target,
+                    textureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT,
+                    Math.min(this.anisotropic, capabilities.MAX_TEXTURE_MAX_ANISOTROPY)
+                );
             }
-
             this.needUpdate = false;
         }
-
         if (this._needUpdateSubTexture) {
-            this._uploadSubTextures(state, glTexture);
+            this.uploadSubTextures(state, glTexture);
             this._needUpdateSubTexture = false;
         }
-
         return this;
-    },
+    }
     /**
      * 跟新所有的局部贴图
-     * @private
-     * @param  {WebGLState} state
-     * @param  {WebGLTexture} glTexture
+     * @param state -
+     * @param glTexture -
      */
-    _uploadSubTextures(state, glTexture) {
-        if (this._subTextureList && this._subTextureList.length > 0) {
+    private uploadSubTextures(state: TextureWebGLState, glTexture: WebGLTexture): void {
+        if (this._subTextureList.length > 0) {
             const gl = state.gl;
             state.activeTexture(gl.TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
             state.bindTexture(this.target, glTexture);
-            this._updatePixelStorei();
-
-            this._subTextureList.forEach((subInfo) => {
-                const xOffset = subInfo[0];
-                const yOffset = subInfo[1];
-                const image = subInfo[2];
-
-                gl.texSubImage2D(this.target, 0, xOffset, yOffset, this.format, this.type, image);
+            this.updatePixelStore(state);
+            this._subTextureList.forEach(subInfo => {
+                const { xOffset, yOffset, image } = subInfo;
+                if (isTypedArray(image)) {
+                    gl.texSubImage2D(
+                        this.target,
+                        0,
+                        xOffset,
+                        yOffset,
+                        this.width,
+                        this.height,
+                        this.format,
+                        this.type,
+                        image
+                    );
+                } else {
+                    gl.texSubImage2D(
+                        this.target,
+                        0,
+                        xOffset,
+                        yOffset,
+                        this.format,
+                        this.type,
+                        image
+                    );
+                }
             });
             this._subTextureList.length = 0;
         }
-    },
-    _needUpdateSubTexture: false,
-    _subTextureList: null,
+    }
     /**
      * 跟新局部贴图
-     * @param  {Number} xOffset
-     * @param  {Number} yOffset
-     * @param  {HTMLImageElement|HTMLCanvasElement|ImageData} image
+     * @param xOffset -
+     * @param yOffset -
+     * @param image -
      */
-    updateSubTexture(xOffset, yOffset, image) {
-        if (!this._subTextureList) {
-            this._subTextureList = [];
-        }
-        this._subTextureList.push([xOffset, yOffset, image]);
+    updateSubTexture(xOffset: number, yOffset: number, image: TextureSubImage['image']): void {
+        this._subTextureList.push({ xOffset, yOffset, image });
         this._needUpdateSubTexture = true;
-    },
+    }
     /**
      * 获取 GLTexture
-     * @param  {WebGLState} state
-     * @return {WebGLTexture}
+     * @param state -
      */
-    getGLTexture(state) {
-        this.state = state;
-        const gl = this.gl = state.gl;
+    getGLTexture(state: TextureWebGLState): WebGLTexture {
+        const gl = (this.gl = state.gl);
         const id = this.id;
-
         if (this.needDestroy) {
             this.destroy();
             this.needDestroy = false;
         }
-
         let glTexture = cache.get(id);
         if (glTexture) {
             this.updateTexture(state, glTexture);
         } else {
-            glTexture = gl.createTexture();
+            glTexture = requireGLResource(gl.createTexture(), 'a texture');
             cache.add(id, glTexture);
             this.needUpdate = true;
             this.updateTexture(state, glTexture);
         }
-
         if (this.isImageCanRelease) {
             this._releaseImage();
         }
-
         return glTexture;
-    },
+    }
     /**
      * 设置 GLTexture
-     * @param {WebGLTexture}  texture
-     * @param {Boolean} [needDestroy=false] 是否销毁之前的 GLTexture
-     * @return {Texture} this
+     * @param texture -
+     * @param needDestroy - 是否销毁之前的 GLTexture
+     * @returns this
      */
-    setGLTexture(texture, needDestroy = false) {
+    setGLTexture(texture: WebGLTexture, needDestroy = false): this {
         if (needDestroy) {
             this.destroy();
         }
         cache.add(this.id, texture);
-
         return this;
-    },
+    }
     /**
      * 销毁当前Texture
-     * @return {Texture} this
+     * @returns this
      */
-    destroy() {
+    destroy(): this {
         const id = this.id;
         const glTexture = cache.get(id);
         if (glTexture && this.gl) {
@@ -655,17 +664,35 @@ const Texture = Class.create<typeof hilo3d.Texture>()(/** @lends Texture.prototy
             cache.remove(id);
         }
         return this;
-    },
+    }
     /**
      * clone
-     * @return {Texture}
      */
-    clone() {
-        const option = Object.assign({}, this);
-        delete option.id;
-        const texture = new this.constructor(option);
-        return texture;
+    clone(): Texture<Image> {
+        const Constructor = this.constructor as TextureConstructor<Image>;
+        return new Constructor({
+            image: this.image,
+            mipmaps: this.mipmaps ? [...this.mipmaps] : null,
+            isImageCanRelease: this.isImageCanRelease,
+            target: this.target,
+            internalFormat: this.internalFormat,
+            format: this.format,
+            type: this.type,
+            width: this.width,
+            height: this.height,
+            magFilter: this.magFilter,
+            minFilter: this.minFilter,
+            wrapS: this.wrapS,
+            wrapT: this.wrapT,
+            name: this.name,
+            premultiplyAlpha: this.premultiplyAlpha,
+            flipY: this.flipY,
+            colorSpaceConversion: this.colorSpaceConversion,
+            compressed: this.compressed,
+            autoUpdate: this.autoUpdate,
+            uv: this.uv,
+            anisotropic: this.anisotropic
+        });
     }
-});
-
+}
 export default Texture;

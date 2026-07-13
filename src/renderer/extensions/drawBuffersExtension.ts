@@ -1,21 +1,19 @@
-// @ts-nocheck
-// Dynamic WebGL compatibility module; public API is checked by types/index.d.ts.
-export class WebGL1DrawBuffersExtension {
-    constructor(drawBuffersExtension) {
-        this._ext = drawBuffersExtension;
-    }
+export interface DrawBuffersExtension {
+    drawBuffers(buffers: readonly GLenum[]): void;
+}
 
-    drawBuffers(buffers) {
-        this._ext.drawBuffersWEBGL(buffers);
+export class WebGL1DrawBuffersExtension implements DrawBuffersExtension {
+    constructor(private readonly extension: WEBGL_draw_buffers) {}
+
+    drawBuffers(buffers: readonly GLenum[]): void {
+        this.extension.drawBuffersWEBGL(buffers);
     }
 }
 
-export class WebGL2DrawBuffersExtension {
-    constructor(gl) {
-        this._gl = gl;
-    }
+export class WebGL2DrawBuffersExtension implements DrawBuffersExtension {
+    constructor(private readonly gl: WebGL2RenderingContext) {}
 
-    drawBuffers(buffers) {
-        this._gl.drawBuffers(buffers);
+    drawBuffers(buffers: readonly GLenum[]): void {
+        this.gl.drawBuffers(buffers);
     }
 }

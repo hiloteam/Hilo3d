@@ -1,40 +1,52 @@
+import { describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+
 const LightManager = Hilo3d.LightManager;
 
 describe('LightManager', () => {
     it('create', () => {
-        const ligthManager = new LightManager;
-        ligthManager.isLightManager.should.be.true();
-        ligthManager.className.should.equal('LightManager');
+        const lightManager = new LightManager();
+        expect(lightManager.isLightManager).toBe(true);
+        expect(lightManager.className).toBe('LightManager');
 
-        ligthManager.ambientLights.should.be.Array();
-        ligthManager.directionalLights.should.be.Array();
-        ligthManager.pointLights.should.be.Array();
-        ligthManager.spotLights.should.be.Array();
+        expect(lightManager.ambientLights).toBeInstanceOf(Array);
+        expect(lightManager.directionalLights).toBeInstanceOf(Array);
+        expect(lightManager.pointLights).toBeInstanceOf(Array);
+        expect(lightManager.spotLights).toBeInstanceOf(Array);
     });
 
     it('getShadowMapCount & reset', () => {
-        const ligthManager = new LightManager;
-        ligthManager.addLight(new Hilo3d.PointLight({
-            shadow:{}
-        }));
-        ligthManager.addLight(new Hilo3d.PointLight());
-        ligthManager.addLight(new Hilo3d.PointLight({
-            shadow:{}
-        }));
+        const lightManager = new LightManager();
+        lightManager.addLight(
+            new Hilo3d.PointLight({
+                shadow: {}
+            })
+        );
+        lightManager.addLight(new Hilo3d.PointLight());
+        lightManager.addLight(
+            new Hilo3d.PointLight({
+                shadow: {}
+            })
+        );
 
-        ligthManager.getShadowMapCount('POINT_LIGHTS').should.equal(2);
+        expect(lightManager.getShadowMapCount('POINT_LIGHTS')).toBe(2);
 
-        ligthManager.reset();
-        ligthManager.getShadowMapCount('POINT_LIGHTS').should.equal(0);
+        lightManager.addLight(new Hilo3d.SpotLight({ shadow: {} }));
+        lightManager.addLight(new Hilo3d.AreaLight());
+        expect(lightManager.getShadowMapCount('SPOT_LIGHTS')).toBe(1);
+        expect(lightManager.getShadowMapCount('AREA_LIGHTS')).toBe(0);
+
+        lightManager.reset();
+        expect(lightManager.getShadowMapCount('POINT_LIGHTS')).toBe(0);
     });
 
     it('getRenderOption', () => {
-        const ligthManager = new LightManager();
-        should(ligthManager.getRenderOption().HAS_LIGHT).be.Undefined();
-        ligthManager.addLight(new Hilo3d.PointLight);
-        ligthManager.addLight(new Hilo3d.PointLight);
-        ligthManager.addLight(new Hilo3d.SpotLight);
-        ligthManager.updateInfo(new Hilo3d.Camera);
-        should(ligthManager.getRenderOption().POINT_LIGHTS).be.equal(2);
+        const lightManager = new LightManager();
+        expect(lightManager.getRenderOption()['HAS_LIGHT']).toBeUndefined();
+        lightManager.addLight(new Hilo3d.PointLight());
+        lightManager.addLight(new Hilo3d.PointLight());
+        lightManager.addLight(new Hilo3d.SpotLight());
+        lightManager.updateInfo(new Hilo3d.Camera());
+        expect(lightManager.getRenderOption()['POINT_LIGHTS']).toBe(2);
     });
 });

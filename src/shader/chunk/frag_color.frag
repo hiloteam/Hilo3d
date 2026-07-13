@@ -10,7 +10,7 @@ color.a = 1.0;
     color.rgb = pow(color.rgb, vec3(1.0 / u_gammaFactor));
 #endif
 
-#pragma glslify: import('./fog_main.frag');
+#include "./fog_main.frag"
 
 #ifdef HILO_PREMULTIPLY_ALPHA
     color.rgb *= color.a;

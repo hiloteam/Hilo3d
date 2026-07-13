@@ -1,84 +1,91 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import Geometry from './Geometry';
-import {
-    each
-} from '../utils/util';
+import Geometry, { type GeometryParameters } from './Geometry';
+import type GeometryData from './GeometryData';
+import type { ShaderOptions } from '../renderer/types';
 
+export type MorphTargets = Record<string, GeometryData[]>;
+
+export interface MorphGeometryParameters extends GeometryParameters {
+    weights?: number[] | Float32Array;
+    targets?: MorphTargets | null;
+}
 /**
  * Morph几何体
- * @class
- * @extends Geometry
  */
-const MorphGeometry = Class.create<typeof hilo3d.MorphGeometry>()(/** @lends MorphGeometry.prototype */ {
-    Extends: Geometry,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isMorphGeometry: true,
-    /**
-     * @default MorphGeometry
-     * @type {string}
-     */
-    className: 'MorphGeometry',
-    isStatic: false,
-
+class MorphGeometry extends Geometry {
+    override readonly isMorphGeometry = true;
+    override readonly className: string = 'MorphGeometry';
+    override isStatic = false;
     /**
      * morph animation weights
-     * @type {Array.<number>}
      */
-    weights: [],
+    weights: number[] | Float32Array = [];
     /**
      * like:
+     * ```ts
      * {
      *     vertices: [[], []],
      *     normals: [[], []],
      *     tangents: [[], []]
      * }
-     * @default null
-     * @type {Object}
+     * ```
      */
-    targets: null,
+    targets: MorphTargets | null = null;
+    private _originalMorphIndices: number[] = [];
+    private _maxMorphTargetCount = 0;
+    private readonly morphTargetIndices = new Map<string, number>();
     /**
-     * @constructs
-     * @param {object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param params - 创建对象的属性参数。可包含此类的所有属性。
      */
-    constructor(params) {
-        MorphGeometry.superclass.constructor.call(this, params);
-        this.weights = this.weights || [];
-    },
-    update(weights, originalWeightIndices) {
+    constructor(params: MorphGeometryParameters = {}) {
+        super();
+        Object.assign(this, params);
+    }
+    update(weights: number[] | Float32Array, originalWeightIndices: number[]): void {
         this.weights = weights;
         this._originalMorphIndices = originalWeightIndices;
-    },
-    clone() {
-        return Geometry.prototype.clone.call(this, {
-            targets: this.targets,
-            weights: this.weights
-        });
-    },
-    getRenderOption(opt = {}) {
-        MorphGeometry.superclass.getRenderOption.call(this, opt);
+    }
 
+    getMorphTarget(name: string, slot: number): GeometryData | undefined {
+        const targets = this.targets?.[name];
+        if (!targets) return undefined;
+        const targetIndex = this._originalMorphIndices[slot] ?? slot;
+        const data = targets[targetIndex];
+        const cacheKey = `${name}:${String(slot)}`;
+        if (data && this.morphTargetIndices.get(cacheKey) !== targetIndex) {
+            data.isDirty = true;
+            this.morphTargetIndices.set(cacheKey, targetIndex);
+        }
+        return data;
+    }
+    override clone(): MorphGeometry {
+        const geometry = super.clone();
+        if (!(geometry instanceof MorphGeometry)) {
+            throw new TypeError('MorphGeometry clone did not preserve its runtime type');
+        }
+        geometry.targets = this.targets;
+        geometry.weights =
+            this.weights instanceof Float32Array ? this.weights.slice() : [...this.weights];
+        geometry._originalMorphIndices = [...this._originalMorphIndices];
+        return geometry;
+    }
+    override getRenderOption(opt: ShaderOptions = {}): ShaderOptions {
+        super.getRenderOption(opt);
         if (this.targets) {
             if (!this._maxMorphTargetCount) {
                 this._maxMorphTargetCount = Math.floor(8 / Object.keys(this.targets).length);
             }
-            each(this.targets, (list, name) => {
-                opt.MORPH_TARGET_COUNT = Math.min(list.length, this._maxMorphTargetCount);
+            for (const [name, list] of Object.entries(this.targets)) {
+                opt['MORPH_TARGET_COUNT'] = Math.min(list.length, this._maxMorphTargetCount);
                 if (name === 'vertices') {
-                    opt.MORPH_HAS_POSITION = 1;
+                    opt['MORPH_HAS_POSITION'] = 1;
                 } else if (name === 'normals') {
-                    opt.MORPH_HAS_NORMAL = 1;
+                    opt['MORPH_HAS_NORMAL'] = 1;
                 } else if (name === 'tangents') {
-                    opt.MORPH_HAS_TANGENT = 1;
+                    opt['MORPH_HAS_TANGENT'] = 1;
                 }
-            });
+            }
         }
         return opt;
     }
-});
-
+}
 export default MorphGeometry;

@@ -1,149 +1,111 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from './Class';
 import math from '../math/math';
+import type Matrix4 from '../math/Matrix4';
+import type Node from './Node';
 
-
+export interface SkeletonParameters {
+    userData?: unknown;
+    jointNodeList?: Node[];
+    jointNames?: string[];
+    inverseBindMatrices?: Matrix4[];
+    rootNode?: Node | null;
+}
 /**
  * 骨架
- * @class
  */
-const Skeleton = Class.create<typeof hilo3d.Skeleton>()(/** @lends Skeleton.prototype */ {
-    /**
-     * @default true
-     * @type {Boolean}
-     */
-    isSkeleton: true,
-
-    /**
-     * @default Skeleton
-     * @type {String}
-     */
-    className: 'Skeleton',
-
+class Skeleton {
+    readonly id: string;
+    jointNodeList: Node[];
+    jointNames: string[];
+    inverseBindMatrices: Matrix4[];
+    isSkeleton = true;
+    className = 'Skeleton';
     /**
      * 用户数据
-     * @default null
-     * @type {unknown}
      */
-    userData: null,
-
+    userData: unknown = null;
     /**
-     * @constructs
-     * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param params - 创建对象的属性参数。可包含此类的所有属性。
      */
-    constructor(params) {
+    constructor(params: SkeletonParameters = {}) {
         /**
          * id
-         * @default math.generateUUID('Skeleton')
-         * @type {String}
          */
         this.id = math.generateUUID(this.className);
-
-        /**
-         * @default []
-         * @type {Node[]}
-         */
         this.jointNodeList = [];
-        /**
-         * @default []
-         * @type {string[]}
-         */
         this.jointNames = [];
-        /**
-         * @default []
-         * @type {Matrix4[]}
-         */
         this.inverseBindMatrices = [];
         Object.assign(this, params);
-    },
-
+    }
     /**
      * 关节数量
-     * @readOnly
-     * @type {Number}
      */
-    jointCount: {
-        get() {
-            return this.jointNodeList.length;
-        }
-    },
-
-    /**
-     * @private
-     * @type {Node}
-     */
-    _rootNode: null,
+    get jointCount(): number {
+        return this.jointNodeList.length;
+    }
+    private _rootNode: Node | null = null;
     /**
      * 设置根节点
-     * @type {Node}
      */
-    rootNode: {
-        get() {
-            return this._rootNode;
-        },
-        set(rootNode) {
-            this._rootNode = rootNode;
-            if (rootNode) {
-                this._initJointNodeList();
-            }
-        }
-    },
-
+    get rootNode(): Node | null {
+        return this._rootNode;
+    }
     /**
-     * @private
+     * 设置根节点
      */
-    _initJointNodeList() {
-        const map = {};
-        this.rootNode.traverse((node) => {
+    set rootNode(rootNode: Node | null) {
+        this._rootNode = rootNode;
+        if (rootNode) {
+            this._initJointNodeList();
+        }
+    }
+    private _initJointNodeList(): void {
+        const rootNode = this.rootNode;
+        if (!rootNode) return;
+
+        const map: Record<string, Node> = {};
+        rootNode.traverse(node => {
             map[node.jointName] = node;
         });
-
-        this.jointNodeList = this.jointNames.map((name) => {
-            return map[name];
+        this.jointNodeList = this.jointNames.map(name => {
+            const joint = map[name];
+            if (!joint) throw new Error(`Unable to find skeleton joint "${name}".`);
+            return joint;
         });
-    },
-
+    }
     /**
      * 用新骨骼的 node name 重设 jointNames
-     * @param  {Skeleton} skeleton 新骨架
+     * @param skeleton - 新骨架
      */
-    resetJointNamesByNodeName(skeleton) {
+    resetJointNamesByNodeName(skeleton: Skeleton): void {
         const jointNames = this.jointNames;
         this.jointNodeList.forEach((jointNode, index) => {
-            const mainJointNode = skeleton.rootNode.getChildByName(jointNode.name);
+            const mainJointNode = skeleton.rootNode?.getChildByName(jointNode.name);
             if (mainJointNode) {
                 jointNames[index] = mainJointNode.jointName;
             }
         });
-    },
-
+    }
     /**
      * clone
-     * @param {Node} [rootNode]
-     * @return {Skeleton}
+     * @param rootNode -
      */
-    clone(rootNode) {
+    clone(rootNode?: Node): Skeleton {
         const skeleton = new Skeleton();
         skeleton.copy(this, rootNode);
         return skeleton;
-    },
-
+    }
     /**
      * copy
-     * @param  {Skeleton} skeleton
-     * @param {Node} [rootNode]
-     * @return {Skeleton} this
+     * @param skeleton -
+     * @param rootNode -
+     * @returns this
      */
-    copy(skeleton, rootNode) {
+    copy(skeleton: Skeleton, rootNode?: Node): this {
         this.inverseBindMatrices = skeleton.inverseBindMatrices;
         this.jointNames = skeleton.jointNames.slice();
-        if (rootNode === undefined) {
-            rootNode = skeleton.rootNode;
-        }
-        this.rootNode = rootNode;
+        const selectedRoot = rootNode ?? skeleton.rootNode;
+        this.rootNode = selectedRoot;
         return this;
     }
-});
-
+}
 export default Skeleton;

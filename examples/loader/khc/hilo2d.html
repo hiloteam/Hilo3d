@@ -1,29 +1,22 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Hilo3d 2d khc in 3d example</title>
-    <link rel="stylesheet" type="text/css" href="../../example.css">
-    <style>
-        #xx {
-            display: none;
-            position: absolute;
-            left: 0;
-            top: 0;
-            z-index: 999;
-        }
-    </style>
-</head>
-<body>
-    <div id="container"></div>
-    <canvas id="xcanvas" class="canvas" width="375" height="667"></canvas>
-    <!-- <script src="//g.alicdn.com/tmapp/animation-data/4.1.37/jc/tools/vconsole.min.js"></script> -->
-    <script type="module" src="../../js/hilo3d.ts"></script>
-    <script type="module" src="../../js/stats.ts"></script>
-    <script type="module" src="../../js/OrbitControls.ts"></script>
-    <script type="module" src="../../js/init.ts"></script>
-    <!-- @vite-ignore: legacy Hilo 2D vendor bundle -->
-    <script src="./hilo-standalone.vendor.js"></script>
-    <script type="module" src="./hilo2d.ts"></script>
-</body>
+    <head>
+        <meta charset="UTF-8" />
+        <title>Hilo3d Canvas Animation Texture</title>
+        <link rel="stylesheet" type="text/css" href="../../example.css" />
+        <style>
+            #animation-canvas {
+                position: absolute;
+                left: -10000px;
+                top: 0;
+                opacity: 0;
+                pointer-events: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="container"></div>
+        <canvas id="animation-canvas" width="375" height="667"></canvas>
+        <script type="module" src="./hilo2d.ts"></script>
+    </body>
 </html>

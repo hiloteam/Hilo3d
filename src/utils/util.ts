@@ -1,119 +1,125 @@
-// @ts-nocheck
-// Dynamic WebGL compatibility module; public API is checked by types/index.d.ts.
-import log from './log';
-import constants from '../constants';
-
-/**
- * @namespace util
- */
-
-const {
+import {
     BYTE,
-    UNSIGNED_BYTE,
+    FLOAT,
+    INT,
     SHORT,
-    UNSIGNED_SHORT,
+    UNSIGNED_BYTE,
     UNSIGNED_INT,
-    FLOAT
-} = constants;
+    UNSIGNED_SHORT
+} from '../constants/webgl';
+
+export type TypedArray =
+    | Int8Array
+    | Uint8Array
+    | Uint8ClampedArray
+    | Int16Array
+    | Uint16Array
+    | Int32Array
+    | Uint32Array
+    | Float32Array
+    | Float64Array;
+
+export type TypedArrayConstructor =
+    | Int8ArrayConstructor
+    | Uint8ArrayConstructor
+    | Uint8ClampedArrayConstructor
+    | Int16ArrayConstructor
+    | Uint16ArrayConstructor
+    | Int32ArrayConstructor
+    | Uint32ArrayConstructor
+    | Float32ArrayConstructor
+    | Float64ArrayConstructor;
+
+export interface MutableArrayLike<Value> {
+    length: number;
+    [index: number]: Value;
+}
+
+export interface GeometryDataLike<Value> {
+    readonly isGeometryData: true;
+    readonly data: ArrayLike<Value>;
+}
 
 /**
- * @memberOf util
- * @param  {string} basePath
- * @param  {string} path
- * @return {string}
+ * @param basePath -
+ * @param path -
  */
-function getRelativePath(basePath, path) {
-    if (/^(?:http|blob|data:|\/)/.test(path)) {
+function getRelativePath(basePath: string, path: string): string {
+    if (/^(?:https?:|blob:|data:|\/)/u.test(path)) {
         return path;
     }
-    basePath = basePath.replace(/\/[^/]*?$/, '').split('/');
-    path = path.split('/');
+    const baseSegments = basePath.replace(/\/[^/]*?$/, '').split('/');
+    const pathSegments = path.split('/');
     let i;
-    for (i = 0; i < path.length; i++) {
-        let p = path[i];
+    for (i = 0; i < pathSegments.length; i++) {
+        const p = pathSegments[i];
         if (p === '..') {
-            basePath.pop();
+            baseSegments.pop();
         } else if (p !== '.') {
             break;
         }
     }
-    return basePath.join('/') + '/' + path.slice(i).join('/');
+    return `${baseSegments.join('/')}/${pathSegments.slice(i).join('/')}`;
 }
 
-let utf8Decoder;
+const utf8Decoder = new TextDecoder('utf-8');
 
 /**
- * @memberOf util
- * @param  {Uint8Array|number[]} array
- * @param  {boolean} [isUTF8=false]
- * @return {string}
+ * @param array -
  */
-function convertUint8ArrayToString(array, isUTF8) {
-    if (window.TextDecoder) {
-        if (!utf8Decoder) {
-            utf8Decoder = new TextDecoder('utf-8');
-        }
-
-        if (!(array instanceof Uint8Array)) {
-            array = new Uint8Array(array);
-        }
-        return utf8Decoder.decode(array);
-    }
-
-    let str = '';
-
-    for (let i = 0; i < array.length; i++) {
-        str += String.fromCharCode(array[i]);
-    }
-
-    if (isUTF8) {
-        // utf8 str fix
-        // https://developer.mozilla.org/zh-CN/docs/Web/API/WindowBase64/btoa
-        str = decodeURIComponent(escape(str));
-    }
-    return str;
+function convertUint8ArrayToString(array: Uint8Array | readonly number[]): string {
+    const bytes = array instanceof Uint8Array ? array : Uint8Array.from(array);
+    return utf8Decoder.decode(bytes);
 }
 
 /**
- * @memberOf util
- * @param  {string} url
- * @return {string}
+ * @param url -
  */
-function getExtension(url) {
-    const extRegExp = /\/?[^/]+\.(\w+)(\?\S+)?$/i;
-    const match = String(url).match(extRegExp);
+function getExtension(url: string): string | null {
+    const extRegExp = /\/?[^/]+\.(\w+)(?:\?\S+)?$/iu;
+    const match = extRegExp.exec(url);
 
-    return match && match[1].toLowerCase() || null;
+    return match?.[1]?.toLowerCase() ?? null;
 }
 
 /**
- * @memberOf util
- * @param  {object}   obj
- * @param  {Function} fn
+ * @param obj -
+ * @param fn -
  */
-function each(obj, fn) {
+function isReadonlyArray<Value>(
+    value: readonly Value[] | Readonly<Record<string, Value>>
+): value is readonly Value[] {
+    return Array.isArray(value);
+}
+
+function each<Value>(
+    obj: readonly Value[] | Readonly<Record<string, Value>> | null | undefined,
+    fn: (value: Value, key: number | string) => void
+): void {
     if (!obj) {
         return;
     }
 
-    if (Array.isArray(obj)) {
-        obj.forEach(fn);
-    } else {
-        Object.keys(obj).forEach((key) => {
-            fn(obj[key], key);
+    if (isReadonlyArray(obj)) {
+        obj.forEach((value, index) => {
+            fn(value, index);
         });
+    } else {
+        for (const [key, value] of Object.entries(obj)) fn(value, key);
     }
 }
 
 /**
- * @memberOf util
- * @param  {unknown[]} array
- * @param  {unknown} value
- * @param  {Function} compareFn
- * @return {number[]}
+ * @param array -
+ * @param value -
+ * @param compareFn -
  */
-function getIndexFromSortedArray(array, value, compareFn) {
-    if (!array || !array.length) {
+function getIndexFromSortedArray<Value>(
+    array: readonly Value[] | null | undefined,
+    value: Value,
+    compareFn: (left: Value, right: Value) => number
+): [number, number] {
+    if (!array?.length) {
         return [0, 0];
     }
     const len = array.length;
@@ -121,8 +127,10 @@ function getIndexFromSortedArray(array, value, compareFn) {
     let high = len - 1;
 
     while (low <= high) {
-        let mid = (low + high) >> 1;
-        let diff = compareFn(array[mid], value);
+        const mid = (low + high) >> 1;
+        const middleValue = array[mid];
+        if (middleValue === undefined) throw new RangeError(`Missing sorted item ${String(mid)}.`);
+        const diff = compareFn(middleValue, value);
         if (diff === 0) {
             return [mid, mid];
         }
@@ -139,37 +147,36 @@ function getIndexFromSortedArray(array, value, compareFn) {
 }
 
 /**
- * @memberOf util
- * @param  {unknown[]} array
- * @param  {unknown} item
- * @param  {Function} compareFn
+ * @param array -
+ * @param item -
+ * @param compareFn -
  */
-function insertToSortedArray(array, item, compareFn) {
+function insertToSortedArray<Value>(
+    array: Value[],
+    item: Value,
+    compareFn: (left: Value, right: Value) => number
+): void {
     const indices = getIndexFromSortedArray(array, item, compareFn);
     array.splice(indices[1], 0, item);
 }
 
 /**
- * @memberOf util
- * @param  {string} str
- * @param  {number} len
- * @param  {string} char
- * @return {string}
+ * @param str -
+ * @param len -
+ * @param char -
  */
-function padLeft(str, len, char) {
+function padLeft(str: string, len: number, char = '0'): string {
     if (len <= str.length) {
         return str;
     }
 
-    return new Array(len - str.length + 1).join(char || '0') + str;
+    return char.repeat(len - str.length) + str;
 }
 
 /**
- * @memberOf util
- * @param  {TypedArray} array
- * @return {GLenum}
+ * @param array -
  */
-function getTypedArrayGLType(array) {
+function getTypedArrayGLType(array: TypedArray): GLenum {
     if (array instanceof Float32Array) {
         return FLOAT;
     }
@@ -179,6 +186,10 @@ function getTypedArrayGLType(array) {
     }
 
     if (array instanceof Uint8Array) {
+        return UNSIGNED_BYTE;
+    }
+
+    if (array instanceof Uint8ClampedArray) {
         return UNSIGNED_BYTE;
     }
 
@@ -194,141 +205,126 @@ function getTypedArrayGLType(array) {
         return UNSIGNED_INT;
     }
 
-    return FLOAT;
+    if (array instanceof Int32Array) {
+        return INT;
+    }
+
+    throw new TypeError(`${array.constructor.name} is not a supported WebGL numeric array.`);
 }
 
 /**
- * @memberOf util
- * @method getTypedArrayClass
- * @param  {GLenum} type
- * @return {unknown}
+ * @param type -
  */
-const getTypedArrayClass = (function() {
-    const TypedArrayClassMap = {
+const getTypedArrayClass = (() => {
+    const typedArrayClassMap: Readonly<Record<number, TypedArrayConstructor>> = {
         [BYTE]: Int8Array,
         [UNSIGNED_BYTE]: Uint8Array,
         [SHORT]: Int16Array,
         [UNSIGNED_SHORT]: Uint16Array,
+        [INT]: Int32Array,
         [UNSIGNED_INT]: Uint32Array,
         [FLOAT]: Float32Array
     };
-    return function(type) {
-        return TypedArrayClassMap[type] || Float32Array;
-    };
-}());
-
-/**
- * @memberOf util
- * @param  {unknown[]} destArr
- * @param  {unknown[]} srcArr
- * @param  {number} destIdx
- * @param  {number} srcIdx
- * @param  {number} count
- */
-function copyArrayData(destArr, srcArr, destIdx, srcIdx, count) {
-    if (!destArr || !srcArr) {
-        return;
-    }
-    if (srcArr.isGeometryData) {
-        srcArr = srcArr.data;
-    }
-    for (let i = 0; i < count; i++) {
-        destArr[destIdx + i] = srcArr[srcIdx + i];
-    }
-}
-
-/**
- * @memberOf util
- * @param  {unknown}  d
- * @return {boolean}
- */
-function isStrOrNumber(d) {
-    return typeof d === 'string' || typeof d === 'number';
-}
-
-/**
- * @memberOf util
- * @param  {string}  url
- * @return {boolean}
- */
-function isBlobUrl(url) {
-    return /^blob:/.test(url);
-}
-
-/**
- * @memberOf util
- * @param  {string} blobUrl
- */
-function revokeBlobUrl(blobUrl) {
-    if (window.URL) {
-        URL.revokeObjectURL(blobUrl);
-    }
-}
-
-/**
- * @memberOf util
- * @param  {string} mimeType
- * @param  {ArrayBuffer|TypedArray} data
- * @return {string}
- */
-function getBlobUrl(mimeType, data) {
-    if (data instanceof ArrayBuffer) {
-        data = new Uint8Array(data);
-    }
-    if (window.Blob && window.URL) {
-        try {
-            const blob = new Blob([data], {
-                type: mimeType
-            });
-
-            const blobUrl = window.URL.createObjectURL(blob);
-            return blobUrl;
-        } catch (err) {
-            log.warn('new Blob error', mimeType);
+    return (type: GLenum): TypedArrayConstructor => {
+        const TypedArrayClass = typedArrayClassMap[type];
+        if (!TypedArrayClass) {
+            throw new RangeError(`Unsupported WebGL data type: ${String(type)}.`);
         }
+        return TypedArrayClass;
+    };
+})();
+
+/**
+ * @param destArr -
+ * @param source -
+ * @param destIdx -
+ * @param srcIdx -
+ * @param count -
+ */
+function copyArrayData<Value>(
+    destArr: MutableArrayLike<Value>,
+    source: ArrayLike<Value> | GeometryDataLike<Value>,
+    destIdx: number,
+    srcIdx: number,
+    count: number
+): void {
+    const srcArr = 'isGeometryData' in source ? source.data : source;
+    for (let i = 0; i < count; i++) {
+        const sourceIndex = srcIdx + i;
+        const value = srcArr[sourceIndex];
+        if (value === undefined) throw new RangeError(`Missing array item ${String(sourceIndex)}.`);
+        destArr[destIdx + i] = value;
     }
-
-    return `data:${mimeType};base64,${btoa(convertUint8ArrayToString(data))}`;
 }
 
 /**
- * @memberOf util
- * @param  {unknown}  obj
- * @return {boolean}
+ * @param value -
  */
-function isArrayLike(obj) {
-    return Array.isArray(obj) || obj.BYTES_PER_ELEMENT || obj.length;
+function isStrOrNumber(value: unknown): value is string | number {
+    return typeof value === 'string' || typeof value === 'number';
 }
 
 /**
- * @memberOf util
- * @param  {Element} elem
- * @return {unknown}
+ * @param url -
  */
-function getElementRect(elem) {
+function isBlobUrl(url: string): boolean {
+    return url.startsWith('blob:');
+}
+
+/**
+ * @param blobUrl -
+ */
+function revokeBlobUrl(blobUrl: string): void {
+    URL.revokeObjectURL(blobUrl);
+}
+
+/**
+ * @param mimeType -
+ * @param data -
+ */
+function getBlobUrl(mimeType: string, data: ArrayBuffer | ArrayBufferView): string {
+    const bytes =
+        data instanceof ArrayBuffer
+            ? new Uint8Array(data)
+            : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const ownedBuffer = Uint8Array.from(bytes).buffer;
+    return URL.createObjectURL(new Blob([ownedBuffer], { type: mimeType }));
+}
+
+/**
+ * @param value -
+ */
+function isArrayLike(value: unknown): value is ArrayLike<unknown> {
+    return (
+        value !== null &&
+        typeof value === 'object' &&
+        'length' in value &&
+        typeof value.length === 'number'
+    );
+}
+
+/**
+ * @param elem -
+ */
+function getElementRect(elem: HTMLElement): {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+} {
     const docElem = document.documentElement;
-    let bounds;
-    try {
-        // this fails if it's a disconnected DOM node
-        bounds = elem.getBoundingClientRect();
-    } catch (e) {
-        bounds = {
-            top: elem.offsetTop,
-            left: elem.offsetLeft,
-            right: elem.offsetLeft + elem.offsetWidth,
-            bottom: elem.offsetTop + elem.offsetHeight
-        };
-    }
-
-    const offsetX = ((window.pageXOffset || docElem.scrollLeft) - (docElem.clientLeft || 0)) || 0;
-    const offsetY = ((window.pageYOffset || docElem.scrollTop) - (docElem.clientTop || 0)) || 0;
-    const styles = window.getComputedStyle ? getComputedStyle(elem) : elem.currentStyle;
-    const parseIntFn = parseInt;
-
-    const padLeft = (parseIntFn(styles.paddingLeft) + parseIntFn(styles.borderLeftWidth)) || 0;
-    const padTop = (parseIntFn(styles.paddingTop) + parseIntFn(styles.borderTopWidth)) || 0;
-    const padRight = (parseIntFn(styles.paddingRight) + parseIntFn(styles.borderRightWidth)) || 0;
-    const padBottom = (parseIntFn(styles.paddingBottom) + parseIntFn(styles.borderBottomWidth)) || 0;
+    const bounds = elem.getBoundingClientRect();
+    const offsetX = window.scrollX - docElem.clientLeft;
+    const offsetY = window.scrollY - docElem.clientTop;
+    const styles = getComputedStyle(elem);
+    const paddingLeft =
+        Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.borderLeftWidth) || 0;
+    const paddingTop =
+        Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.borderTopWidth) || 0;
+    const paddingRight =
+        Number.parseFloat(styles.paddingRight) + Number.parseFloat(styles.borderRightWidth) || 0;
+    const paddingBottom =
+        Number.parseFloat(styles.paddingBottom) + Number.parseFloat(styles.borderBottomWidth) || 0;
 
     const top = bounds.top || 0;
     const left = bounds.left || 0;
@@ -336,50 +332,47 @@ function getElementRect(elem) {
     const bottom = bounds.bottom || 0;
 
     return {
-        left: left + offsetX + padLeft,
-        top: top + offsetY + padTop,
-        width: right - padRight - left - padLeft,
-        height: bottom - padBottom - top - padTop
+        left: left + offsetX + paddingLeft,
+        top: top + offsetY + paddingTop,
+        width: right - paddingRight - left - paddingLeft,
+        height: bottom - paddingBottom - top - paddingTop
     };
 }
 
 /**
- * @memberOf util
- * @param  {unknown}   data
- * @param  {Function} fn
- * @return {Promise<unknown>}
+ * @param data -
+ * @param fn -
  */
-function serialRun(data = {}, fn) {
-    if (!Array.isArray(data)) {
-        data = Object.values(data);
+async function serialRun<Value>(
+    data: readonly Value[] | Readonly<Record<string, Value>> = [],
+    fn: (value: Value, index: number) => void | PromiseLike<void>
+): Promise<void> {
+    const values: readonly Value[] = Array.isArray(data) ? data : Object.values<Value>(data);
+    for (const [index, value] of values.entries()) {
+        await fn(value, index);
     }
-    return data.reduce((seq, d, i) => {
-        return seq.then(() => {
-            return fn(d, i);
-        });
-    }, Promise.resolve());
 }
 
 /**
- * @memberOf util
- * @param  {unknown}  obj
- * @param  {string}  name
- * @return {boolean}
+ * @param obj -
+ * @param name -
  */
-function hasOwnProperty(obj, name) {
+function hasOwnProperty<Key extends PropertyKey>(
+    obj: object,
+    name: Key
+): obj is object & Record<Key, unknown> {
     return Object.prototype.hasOwnProperty.call(obj, name);
 }
 
 /**
  * 是否是 WebGL2
- * @memberOf util
- * @param  {unknown}  gl
- * @return {boolean}
+ * @param gl -
  */
-function isWebGL2(gl) {
+function isWebGL2(
+    gl: WebGLRenderingContext | WebGL2RenderingContext
+): gl is WebGL2RenderingContext {
     return typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
 }
-
 
 export {
     each,
@@ -400,5 +393,5 @@ export {
     getElementRect,
     serialRun,
     hasOwnProperty,
-    isWebGL2,
+    isWebGL2
 };

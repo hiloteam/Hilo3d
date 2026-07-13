@@ -1,27 +1,42 @@
+import { describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+import { testEnv } from '../../setup';
+
 const Framebuffer = Hilo3d.Framebuffer;
 
 describe('Framebuffer', () => {
     it('create', () => {
         const framebuffer = new Framebuffer(testEnv.renderer);
-        framebuffer.isFramebuffer.should.be.true();
-        framebuffer.className.should.equal('Framebuffer');
+        expect(framebuffer.isFramebuffer).toBe(true);
+        expect(framebuffer.className).toBe('Framebuffer');
 
         framebuffer.init();
-        framebuffer.isComplete().should.be.true();
+        expect(framebuffer.isComplete()).toBe(true);
     });
 
     it('readPixels', () => {
         const framebuffer = new Framebuffer(testEnv.renderer);
-        framebuffer.readPixels(0, 0, 2, 2).should.deepEqual(new Uint8Array(16));
+        expect(framebuffer.readPixels(0, 0, 2, 2)).toEqual(new Uint8Array(16));
+    });
+
+    it('restores depth and cull capabilities after drawing its texture', () => {
+        const framebuffer = new Framebuffer(testEnv.renderer);
+        testEnv.state.enable(testEnv.gl.DEPTH_TEST);
+        testEnv.state.disable(testEnv.gl.CULL_FACE);
+
+        framebuffer.render();
+
+        expect(testEnv.state.isEnabled(testEnv.gl.DEPTH_TEST)).toBe(true);
+        expect(testEnv.state.isEnabled(testEnv.gl.CULL_FACE)).toBe(false);
     });
 
     it('cache & destroy', () => {
         const framebuffer = new Framebuffer(testEnv.renderer);
-        Framebuffer.cache.get(framebuffer.id).should.equal(framebuffer);
+        expect(Framebuffer.cache.get(framebuffer.id)).toBe(framebuffer);
         framebuffer.destroy();
-        should(Framebuffer.cache.get(framebuffer.id)).be.undefined();
-        should(framebuffer.framebuffer).be.null();
-        should(framebuffer.texture).be.null();
-        should(framebuffer.renderbuffer).be.null();
+        expect(Framebuffer.cache.get(framebuffer.id)).toBeUndefined();
+        expect(framebuffer.framebuffer).toBeNull();
+        expect(framebuffer.texture).toBeNull();
+        expect(framebuffer.renderbuffer).toBeNull();
     });
 });

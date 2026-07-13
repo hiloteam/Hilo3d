@@ -1,7 +1,6 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import Node from '../core/Node';
+import Mesh from '../core/Mesh';
+import { EventDispatcher } from '../core/EventMixin';
 import semantic from '../material/semantic';
 import Color from '../math/Color';
 import Shader from '../shader/Shader';
@@ -10,507 +9,312 @@ import RenderInfo from './RenderInfo';
 import RenderList from './RenderList';
 import VertexArrayObject from './VertexArrayObject';
 import Buffer from './Buffer';
-import Framebuffer from './Framebuffer';
+import Framebuffer, { type FramebufferParameters } from './Framebuffer';
 import extensions from './extensions';
 import capabilities from './capabilities';
 import glType from './glType';
 import WebGLState from './WebGLState';
 import WebGLResourceManager from './WebGLResourceManager';
 import LightManager from '../light/LightManager';
-import EventMixin from '../core/EventMixin';
+import Light from '../light/Light';
 import Texture from '../texture/Texture';
-
-import constants from '../constants';
-
-const {
-    DEPTH_TEST,
-    STENCIL_TEST,
-    SAMPLE_ALPHA_TO_COVERAGE,
-    CULL_FACE,
-    FRONT_AND_BACK,
+import GeometryData from '../geometry/GeometryData';
+import {
     BLEND,
+    CULL_FACE,
+    DEPTH_TEST,
+    DYNAMIC_DRAW,
+    FRONT_AND_BACK,
     LINES,
+    SAMPLE_ALPHA_TO_COVERAGE,
     STATIC_DRAW,
-    DYNAMIC_DRAW
-} = constants;
+    STENCIL_TEST
+} from '../constants/webgl';
+import type Camera from '../camera/Camera';
+import type Fog from '../core/Fog';
+import type Geometry from '../geometry/Geometry';
+import type Material from '../material/Material';
+import type { GLContext, ShaderPrecision } from './types';
 
+export interface WebGLRendererParameters {
+    width?: number;
+    height?: number;
+    pixelRatio?: number;
+    domElement?: HTMLCanvasElement | null;
+    useInstanced?: boolean;
+    useVao?: boolean;
+    alpha?: boolean;
+    depth?: boolean;
+    stencil?: boolean;
+    antialias?: boolean;
+    premultipliedAlpha?: boolean;
+    preserveDrawingBuffer?: boolean;
+    failIfMajorPerformanceCaveat?: boolean;
+    powerPreference?: WebGLPowerPreference;
+    useFramebuffer?: boolean;
+    framebufferOption?: FramebufferParameters;
+    useLogDepth?: boolean;
+    vertexPrecision?: ShaderPrecision;
+    fragmentPrecision?: ShaderPrecision;
+    fog?: Fog | null;
+    offsetX?: number;
+    offsetY?: number;
+    forceMaterial?: Material | null;
+    preferWebGL2?: boolean;
+    clearColor?: Color;
+}
 
-/**
- * WebGL渲染器
- * @class
- * @fires init 初始化事件
- * @fires beforeRender 渲染前事件
- * @fires beforeRenderScene 渲染场景前事件
- * @fires afterRender 渲染后事件
- * @fires initFailed 初始化失败事件
- * @fires webglContextLost webglContextLost 事件
- * @fires webglContextRestored webglContextRestored 事件
- * @mixes EventMixin
- */
-const WebGLRenderer = Class.create<typeof hilo3d.WebGLRenderer>()(/** @lends WebGLRenderer.prototype */ {
-    Mixes: EventMixin,
+export type WebGLRendererScene = Node & { readonly fog?: Fog | null };
 
-    /**
-     * @default WebGLRenderer
-     * @type {String}
-     */
-    className: 'WebGLRenderer',
+export interface MeshSetup {
+    vao: VertexArrayObject;
+    program: Program;
+    geometry: Geometry;
+}
 
-    /**
-     * @default true
-     * @type {Boolean}
-     */
-    isWebGLRenderer: true,
+function materialFor(mesh: Mesh, forceMaterial: Material | null): Material {
+    const material = forceMaterial ?? mesh.material;
+    if (!material) throw new Error(`Mesh ${mesh.id} cannot render without a material`);
+    return material;
+}
 
-    /**
-     * gl
-     * @default null
-     * @type {WebGLRenderingContext}
-     */
-    gl: null,
+function geometryFor(mesh: Mesh): Geometry {
+    if (!mesh.geometry) throw new Error(`Mesh ${mesh.id} cannot render without geometry`);
+    return mesh.geometry;
+}
 
-    /**
-     * 宽
-     * @type {Number}
-     * @default 0
-     */
-    width: 0,
+function isNumericArrayLike(value: unknown): value is ArrayLike<number> {
+    if (typeof value !== 'object' || value === null || !('length' in value)) return false;
+    const length: unknown = value.length;
+    if (typeof length !== 'number' || !Number.isInteger(length) || length < 0) return false;
+    for (let index = 0; index < length; index++) {
+        if (typeof Reflect.get(value, index) !== 'number') return false;
+    }
+    return true;
+}
 
-    /**
-     * 高
-     * @type {Number}
-     * @default 0
-     */
-    height: 0,
+/** WebGL renderer with explicit state, resource and event lifecycles. */
+class WebGLRenderer extends EventDispatcher {
+    readonly className = 'WebGLRenderer';
+    readonly isWebGLRenderer = true;
+    readonly renderInfo: RenderInfo;
+    readonly renderList: RenderList;
+    readonly lightManager: LightManager;
+    readonly resourceManager: WebGLResourceManager;
 
-    /**
-     * 像素密度
-     * @type {Number}
-     * @default 1
-     */
-    pixelRatio: 1,
+    width = 0;
+    height = 0;
+    pixelRatio = 1;
+    domElement: HTMLCanvasElement | null = null;
+    useInstanced = false;
+    useVao = true;
+    alpha = false;
+    depth = true;
+    stencil = false;
+    antialias = true;
+    premultipliedAlpha = true;
+    preserveDrawingBuffer = false;
+    failIfMajorPerformanceCaveat = false;
+    powerPreference: WebGLPowerPreference = 'default';
+    useFramebuffer = false;
+    framebufferOption: FramebufferParameters = {};
+    useLogDepth = false;
+    vertexPrecision: ShaderPrecision = 'highp';
+    fragmentPrecision: ShaderPrecision = 'highp';
+    fog: Fog | null = null;
+    offsetX = 0;
+    offsetY = 0;
+    forceMaterial: Material | null = null;
+    isInitFailed = false;
+    isWebGL2 = false;
+    preferWebGL2 = false;
+    clearColor: Color;
+    framebuffer: Framebuffer | null = null;
 
-    /**
-     * dom元素
-     * @type {HTMLCanvasElement}
-     * @default null
-     */
-    domElement: null,
+    private _gl: GLContext | null = null;
+    private _state: WebGLState | null = null;
+    private _isInit = false;
+    private _isContextLost = false;
+    private _isDestroyed = false;
+    private _initError: Error | null = null;
+    private _lastMaterial: Material | null = null;
+    private _lastProgram: Program | null = null;
 
-    /**
-     * 是否使用instanced
-     * @type {Boolean}
-     * @default false
-     */
-    useInstanced: false,
+    private readonly handleContextLost = (event: Event): void => {
+        this.onContextLost(event);
+    };
 
-    /**
-     * 是否使用VAO
-     * @type {Boolean}
-     * @default true
-     */
-    useVao: true,
+    private readonly handleContextRestored = (event: Event): void => {
+        this.onContextRestored(event);
+    };
 
-    /**
-     * 是否开启透明背景
-     * @type {Boolean}
-     * @default false
-     */
-    alpha: false,
+    get gl(): GLContext {
+        if (!this._gl) throw new Error('WebGLRenderer has not initialized a WebGL context');
+        return this._gl;
+    }
 
-    /**
-     * @type {Boolean}
-     * @default true
-     */
-    depth: true,
+    get state(): WebGLState {
+        if (!this._state) throw new Error('WebGLRenderer has not initialized WebGL state');
+        return this._state;
+    }
 
-    /**
-     * @type {Boolean}
-     * @default false
-     */
-    stencil: false,
+    get isInit(): boolean {
+        return this._isInit && !this.isInitFailed && this._gl !== null && this._state !== null;
+    }
 
-    /**
-     * 是否开启抗锯齿
-     * @type {Boolean}
-     * @default true
-     */
-    antialias: true,
-
-    /**
-     * Boolean that indicates that the page compositor will assume the drawing buffer contains colors with pre-multiplied alpha.
-     * @type {Boolean}
-     * @default true
-     */
-    premultipliedAlpha: true,
-
-    /**
-     * If the value is true the buffers will not be cleared and will preserve their values until cleared or overwritten by the author.
-     * @type {Boolean}
-     * @default false
-     */
-    preserveDrawingBuffer: false,
-
-    /**
-     * Boolean that indicates if a context will be created if the system performance is low.
-     * @type {Boolean}
-     * @default false
-     */
-    failIfMajorPerformanceCaveat: false,
-
-    /**
-     * 是否使用framebuffer
-     * @type {Boolean}
-     * @default false
-     */
-    useFramebuffer: false,
-
-    /**
-     * framebuffer配置
-     * @type {Object}
-     * @default {}
-     */
-    framebufferOption: {},
-
-    /**
-     * 是否使用对数深度
-     * @type {Boolean}
-     * @default false
-     */
-    useLogDepth: false,
-
-    /**
-     * 顶点着色器精度, 可以是以下值：highp, mediump, lowp
-     * @type {String}
-     * @default highp
-     */
-    vertexPrecision: 'highp',
-
-    /**
-     * 片段着色器精度, 可以是以下值：highp, mediump, lowp
-     * @type {String}
-     * @default mediump
-     */
-    fragmentPrecision: 'highp',
-
-    /**
-     * 雾
-     * @type {Fog}
-     * @default null
-     */
-    fog: null,
-
-    /**
-     * 偏移值
-     * @type {Number}
-     * @default 0
-     */
-    offsetX: 0,
-
-    /**
-     * 偏移值
-     * @type {Number}
-     * @default 0
-     */
-    offsetY: 0,
-
-    /**
-     * 强制渲染时使用的材质
-     * @type {Material}
-     * @default null
-     */
-    forceMaterial: null,
-
-    /**
-     * 是否初始化失败
-     * @default false
-     * @type {Boolean}
-     */
-    isInitFailed: false,
-
-    /**
-     * 是否初始化
-     * @type {Boolean}
-     * @default false
-     * @private
-     */
-    _isInit: false,
-
-    /**
-     * 是否lost context
-     * @type {Boolean}
-     * @default false
-     * @private
-     */
-    _isContextLost: false,
-
-    /**
-     * 是否是 WebGL2
-     * @type {Boolean}
-     * @default false
-     */
-    isWebGL2: false,
-
-    /**
-     * 是否优先使用 WebGL2
-     * @type {Boolean}
-     * @default false
-     */
-    preferWebGL2: false,
-
-    /**
-     * @constructs
-     * @param  {Object} [params] 初始化参数，所有params都会复制到实例上
-     */
-    constructor(params) {
-        /**
-         * 背景色
-         * @type {Color}
-         * @default new Color(1, 1, 1, 1)
-         */
+    constructor(params: WebGLRendererParameters = {}) {
+        super();
         this.clearColor = new Color(1, 1, 1);
-
         Object.assign(this, params);
-
-        /**
-         * 渲染信息
-         * @type {RenderInfo}
-         * @default new RenderInfo
-         */
+        this.framebufferOption = { ...(params.framebufferOption ?? {}) };
         this.renderInfo = new RenderInfo();
-
-        /**
-         * 渲染列表
-         * @type {RenderList}
-         * @default new RenderList
-         */
         this.renderList = new RenderList();
-
-        /**
-         * 灯光管理器
-         * @type {ILightManager}
-         * @default new LightManager
-         */
         this.lightManager = new LightManager();
-
-        /**
-         * 资源管理器
-         * @type {WebGLResourceManager}
-         * @default new WebGLResourceManager
-         */
         this.resourceManager = new WebGLResourceManager();
-    },
-    /**
-     * 改变大小
-     * @param  {Number} width  宽
-     * @param  {Number} height  高
-     * @param  {Boolean} [force=false] 是否强制刷新
-     */
-    resize(width, height, force) {
-        if (force || this.width !== width || this.height !== height) {
-            const canvas = this.domElement;
-            this.width = width;
-            this.height = height;
-            canvas.width = width;
-            canvas.height = height;
+    }
 
-            if (this.framebuffer) {
-                this.framebuffer.resize(this.width, this.height, force);
-            }
-            this.viewport();
+    resize(width: number, height: number, force = false): void {
+        if (!force && this.width === width && this.height === height) return;
+        this.width = width;
+        this.height = height;
+        if (this.domElement) {
+            this.domElement.width = width;
+            this.domElement.height = height;
         }
-    },
-    /**
-     * 设置viewport偏移值
-     * @param {Number} x x
-     * @param {Number} y y
-     */
-    setOffset(x, y) {
-        if (this.offsetX !== x || this.offsetY !== y) {
-            this.offsetX = x;
-            this.offsetY = y;
-            this.viewport();
-        }
-    },
-    /**
-     * 设置viewport
-     * @param  {Number} [x=this.offsetX]  x
-     * @param  {Number} [y=this.offsetY] y
-     * @param  {Number} [width=this.gl.drawingBufferWidth]  width
-     * @param  {Number} [height=this.gl.drawingBufferHeight]  height
-     */
-    viewport(x, y, width, height) {
-        const {
-            state,
-            gl
-        } = this;
+        this.framebuffer?.resize(width, height, force);
+        this.viewport();
+    }
 
-        if (state) {
-            if (x === undefined) {
-                x = this.offsetX;
-            } else {
-                this.offsetX = x;
-            }
+    setOffset(x: number, y: number): void {
+        if (this.offsetX === x && this.offsetY === y) return;
+        this.offsetX = x;
+        this.offsetY = y;
+        this.viewport();
+    }
 
-            if (y === undefined) {
-                y = this.offsetY;
-            } else {
-                this.offsetY = y;
-            }
+    viewport(x?: number, y?: number, width?: number, height?: number): void {
+        const state = this._state;
+        const gl = this._gl;
+        if (!state || !gl) return;
+        const viewportX = x ?? this.offsetX;
+        const viewportY = y ?? this.offsetY;
+        if (x !== undefined) this.offsetX = x;
+        if (y !== undefined) this.offsetY = y;
+        state.viewport(
+            viewportX,
+            viewportY,
+            width ?? gl.drawingBufferWidth,
+            height ?? gl.drawingBufferHeight
+        );
+    }
 
-            if (width === undefined) {
-                width = gl.drawingBufferWidth;
-            }
-
-            if (height === undefined) {
-                height = gl.drawingBufferHeight;
-            }
-
-            state.viewport(x, y, width, height);
-        }
-    },
-    /**
-     * 是否初始化
-     * @type {Boolean}
-     * @default false
-     * @readOnly
-     */
-    isInit: {
-        get() {
-            return this._isInit && !this.isInitFailed;
-        }
-    },
-    /**
-     * 初始化回调
-     * @return {WebGLRenderer} this
-     */
-    onInit(callback) {
-        if (this._isInit) {
+    onInit(callback: (renderer: WebGLRenderer) => void): void {
+        if (this.isInit) {
             callback(this);
-        } else {
-            this.on('init', () => {
+            return;
+        }
+        this.on(
+            'init',
+            () => {
                 callback(this);
-            }, true);
+            },
+            true
+        );
+    }
+
+    initContext(): void {
+        if (this._isDestroyed) throw new Error('Cannot initialize a destroyed WebGLRenderer');
+        if (this._isInit) {
+            if (this._initError) throw this._initError;
+            return;
         }
-    },
-    /**
-     * 初始化 context
-     */
-    initContext() {
-        if (!this._isInit) {
-            this._isInit = true;
-            try {
-                this._initContext();
-                this.fire('init');
-            } catch (e) {
-                this.isInitFailed = true;
-                this.fire('initFailed', e);
-            }
+        this._isInit = true;
+        try {
+            this.createContext();
+            this.fire('init');
+        } catch (error: unknown) {
+            const failure = error instanceof Error ? error : new Error(String(error));
+            this.isInitFailed = true;
+            this._initError = failure;
+            this.fire('initFailed', failure);
+            throw failure;
         }
-    },
-    _initContext() {
-        const contextAttributes = {
+    }
+
+    private createContext(): void {
+        const canvas = this.domElement;
+        if (!canvas) throw new Error('WebGLRenderer requires a canvas before initialization');
+        const contextAttributes: WebGLContextAttributes = {
             alpha: this.alpha,
             depth: this.depth,
             stencil: this.stencil,
             antialias: this.antialias,
             premultipliedAlpha: this.premultipliedAlpha,
-            failIfMajorPerformanceCaveat: this.failIfMajorPerformanceCaveat
+            preserveDrawingBuffer: this.preserveDrawingBuffer,
+            failIfMajorPerformanceCaveat: this.failIfMajorPerformanceCaveat,
+            powerPreference: this.powerPreference
         };
 
-        // fix ios bug...
-        if (this.preserveDrawingBuffer === true) {
-            contextAttributes.preserveDrawingBuffer = true;
-        }
+        let gl: GLContext | null = null;
+        if (this.preferWebGL2) gl = canvas.getContext('webgl2', contextAttributes);
+        gl ??= canvas.getContext('webgl', contextAttributes);
+        if (!gl) throw new Error('This browser or device could not create a WebGL context');
 
-        if (this.preferWebGL2) {
-            try {
-                this.gl = this.domElement.getContext('webgl2', contextAttributes);
-                this.isWebGL2 = true;
-            } catch (e) {
-                this.isWebGL2 = false;
-                this.gl = null;
-            }
-        }
-
-        if (!this.gl) {
-            this.gl = this.domElement.getContext('webgl', contextAttributes);
-            this.isWebGL2 = false;
-        }
-
-        let gl = this.gl;
-
+        this._gl = gl;
+        this.isWebGL2 = 'createVertexArray' in gl;
         gl.viewport(0, 0, this.width, this.height);
         glType.init(gl);
         extensions.init(gl);
         capabilities.init(gl);
         Shader.init(this);
-
-        /**
-         * state，初始化后生成。
-         * @type {WebGLState}
-         * @default null
-         */
-        this.state = new WebGLState(gl);
-
-        if (!extensions.instanced) {
-            this.useInstanced = false;
-        }
-
+        this._state = new WebGLState(gl);
+        if (!extensions.instanced) this.useInstanced = false;
         this.renderList.useInstanced = this.useInstanced;
 
         if (this.useFramebuffer) {
-            /**
-             * framebuffer，只在 useFramebuffer 为 true 时初始化后生成
-             * @type {Framebuffer}
-             * @default null
-             */
-            this.framebuffer = new Framebuffer(this, Object.assign({
-                useVao: this.useVao,
-                width: this.width,
-                height: this.height
-            }, this.framebufferOption));
+            this.framebuffer = new Framebuffer(this, {
+                ...this.framebufferOption,
+                useVao: this.framebufferOption.useVao ?? this.useVao,
+                width: this.framebufferOption.width ?? this.width,
+                height: this.framebufferOption.height ?? this.height
+            });
         }
+        canvas.addEventListener('webglcontextlost', this.handleContextLost, false);
+        canvas.addEventListener('webglcontextrestored', this.handleContextRestored, false);
+    }
 
-        this.domElement.addEventListener('webglcontextlost', (e) => {
-            this._onContextLost(e);
-        }, false);
-
-        this.domElement.addEventListener('webglcontextrestored', (e) => {
-            this._onContextRestore(e);
-        }, false);
-    },
-    _onContextLost(e) {
-        const gl = this.gl;
+    private onContextLost(event: Event): void {
+        event.preventDefault();
+        const gl = this._gl;
+        const state = this._state;
+        if (!gl || !state) return;
         this._isContextLost = true;
-
-        e.preventDefault();
-
         Program.reset(gl);
         Shader.reset(gl);
         Texture.reset(gl);
         Buffer.reset(gl);
         VertexArrayObject.reset(gl);
-        this.state.reset(gl);
-
+        state.reset();
         this._lastMaterial = null;
         this._lastProgram = null;
-
         this.fire('webglContextLost');
-    },
-    _onContextRestore(e) { // eslint-disable-line no-unused-vars
-        const gl = this.gl;
+    }
+
+    private onContextRestored(_event: Event): void {
+        const gl = this._gl;
+        const state = this._state;
+        if (!gl || !state) throw new Error('WebGL context restored before renderer initialization');
         this._isContextLost = false;
         extensions.reset(gl);
+        capabilities.init(gl);
+        glType.init(gl);
+        Shader.init(this);
+        state.reset();
         Framebuffer.reset(gl);
-
         this.fire('webglContextRestored');
-    },
-    /**
-     * 设置深度检测
-     * @param  {Material} material
-     */
-    setupDepthTest(material) {
+    }
+
+    setupDepthTest(material: Material): void {
         const state = this.state;
         if (material.depthTest) {
             state.enable(DEPTH_TEST);
@@ -520,24 +324,14 @@ const WebGLRenderer = Class.create<typeof hilo3d.WebGLRenderer>()(/** @lends Web
         } else {
             state.disable(DEPTH_TEST);
         }
-    },
-    /**
-     * 设置alphaToCoverage
-     * @param  {Material} material
-     */
-    setupSampleAlphaToCoverage(material) {
-        const state = this.state;
-        if (material.sampleAlphaToCoverage) {
-            state.enable(SAMPLE_ALPHA_TO_COVERAGE);
-        } else {
-            state.disable(SAMPLE_ALPHA_TO_COVERAGE);
-        }
-    },
-    /**
-     * 设置背面剔除
-     * @param  {Material} material
-     */
-    setupCullFace(material) {
+    }
+
+    setupSampleAlphaToCoverage(material: Material): void {
+        if (material.sampleAlphaToCoverage) this.state.enable(SAMPLE_ALPHA_TO_COVERAGE);
+        else this.state.disable(SAMPLE_ALPHA_TO_COVERAGE);
+    }
+
+    setupCullFace(material: Material): void {
         const state = this.state;
         state.frontFace(material.frontFace);
         if (material.cullFace && material.cullFaceType !== FRONT_AND_BACK) {
@@ -546,12 +340,9 @@ const WebGLRenderer = Class.create<typeof hilo3d.WebGLRenderer>()(/** @lends Web
         } else {
             state.disable(CULL_FACE);
         }
-    },
-    /**
-     * 设置混合
-     * @param  {Material} material
-     */
-    setupBlend(material) {
+    }
+
+    setupBlend(material: Material): void {
         const state = this.state;
         if (material.blend) {
             state.enable(BLEND);
@@ -561,109 +352,81 @@ const WebGLRenderer = Class.create<typeof hilo3d.WebGLRenderer>()(/** @lends Web
                 material.blendSrcAlpha,
                 material.blendDstAlpha
             );
-            state.blendEquationSeparate(
-                material.blendEquation,
-                material.blendEquationAlpha
-            );
+            state.blendEquationSeparate(material.blendEquation, material.blendEquationAlpha);
         } else {
             state.disable(BLEND);
         }
-    },
+    }
 
-    /**
-     * 设置模板
-     * @param  {Material} material
-     */
-    setupStencil(material) {
-        if (!this.stencil) {
-            return;
-        }
-
+    setupStencil(material: Material): void {
+        if (!this.stencil) return;
         const state = this.state;
         if (material.stencilTest) {
             state.enable(STENCIL_TEST);
             state.stencilMask(material.stencilMask);
-            state.stencilFunc(material.stencilFunc, material.stencilFuncRef, material.stencilFuncMask);
-            state.stencilOp(material.stencilOpFail, material.stencilOpZFail, material.stencilOpZPass);
+            state.stencilFunc(
+                material.stencilFunc,
+                material.stencilFuncRef,
+                material.stencilFuncMask
+            );
+            state.stencilOp(
+                material.stencilOpFail,
+                material.stencilOpZFail,
+                material.stencilOpZPass
+            );
         } else {
             state.disable(STENCIL_TEST);
         }
-    },
+    }
 
-    /**
-     * 设置通用的 uniform
-     * @param  {Program} program
-     * @param  {Mesh} mesh
-     * @param  {Boolean} [force=false] 是否强制更新
-     */
-    setupUniforms(program, mesh, useInstanced, force) {
-        const material = this.forceMaterial || mesh.material;
-
+    setupUniforms(program: Program, mesh: Mesh, useInstanced: boolean, force = false): void {
+        const material = materialFor(mesh, this.forceMaterial);
         if (this.isWebGL2) {
-            const uniformBlocks = material.uniformBlocks;
-            for (let name in program.uniformBlocks) {
-                const uniformBlock = uniformBlocks[name];
-                if (uniformBlock) {
-                    program[name] = uniformBlock;
-                }
+            for (const name of Object.keys(program.uniformBlocks)) {
+                const uniformBlock = material.uniformBlocks[name];
+                if (uniformBlock) program.setUniformBlock(name, uniformBlock);
             }
         }
-
-        for (let name in program.uniforms) {
+        for (const [name, programUniform] of Object.entries(program.uniforms)) {
             const uniformInfo = material.getUniformInfo(name);
-            const programUniformInfo = program.uniforms[name];
-            if (!uniformInfo.isBlankInfo) {
-                if (force || (uniformInfo.isDependMesh && !useInstanced)) {
-                    const uniformData = uniformInfo.get(mesh, material, programUniformInfo);
-                    if (uniformData !== undefined && uniformData !== null) {
-                        program[name] = uniformData;
-                    }
-                }
+            if (uniformInfo.isBlankInfo) continue;
+            if (!force && (!uniformInfo.isDependMesh || useInstanced)) continue;
+            const uniformData = uniformInfo.get(mesh, material, programUniform);
+            if (uniformData !== undefined && uniformData !== null) {
+                program.setUniform(name, uniformData);
             }
         }
-    },
-    /**
-     * 设置vao
-     * @param  {VertexArrayObject} vao
-     * @param  {Program} program
-     * @param  {Mesh} mesh
-     */
-    setupVao(vao, program, mesh) {
-        const geometry = mesh.geometry;
-        const isStatic = geometry.isStatic;
+    }
 
+    setupVao(vao: VertexArrayObject, program: Program, mesh: Mesh): void {
+        const geometry = geometryFor(mesh);
+        const isStatic = geometry.isStatic;
         if (vao.isDirty || !isStatic || geometry.isDirty) {
             vao.isDirty = false;
-            const material = this.forceMaterial || mesh.material;
-            const materialAttributes = material.attributes;
+            const material = materialFor(mesh, this.forceMaterial);
             const usage = isStatic ? STATIC_DRAW : DYNAMIC_DRAW;
-            for (let name in materialAttributes) {
+            for (const name of Object.keys(material.attributes)) {
                 const programAttribute = program.attributes[name];
-                if (programAttribute) {
-                    const data = material.getAttributeData(name, mesh, programAttribute);
-                    if (data !== undefined && data !== null) {
-                        vao.addAttribute(data, programAttribute, usage);
-                    }
+                if (!programAttribute) continue;
+                const data = material.getAttributeData(name, mesh, programAttribute);
+                if (data === undefined || data === null) continue;
+                if (!(data instanceof GeometryData)) {
+                    throw new TypeError(`Material attribute ${name} must resolve to GeometryData`);
                 }
+                vao.addAttribute(data, programAttribute, usage);
             }
-            if (geometry.indices) {
-                vao.addIndexBuffer(geometry.indices, usage);
-            }
-
+            if (geometry.indices) vao.addIndexBuffer(geometry.indices, usage);
             geometry.isDirty = false;
         }
+    }
 
-        if (geometry.vertexCount) {
-            vao.vertexCount = geometry.vertexCount;
-        }
-    },
-    /**
-     * 设置材质
-     * @param  {Program} program
-     * @param  {Mesh} mesh
-     */
-    setupMaterial(program, mesh, useInstanced, needForceUpdateUniforms = false) {
-        const material = this.forceMaterial || mesh.material;
+    setupMaterial(
+        program: Program,
+        mesh: Mesh,
+        useInstanced: boolean,
+        needForceUpdateUniforms = false
+    ): void {
+        const material = materialFor(mesh, this.forceMaterial);
         if (material.isDirty || this._lastMaterial !== material) {
             this.setupDepthTest(material);
             this.setupSampleAlphaToCoverage(material);
@@ -672,279 +435,181 @@ const WebGLRenderer = Class.create<typeof hilo3d.WebGLRenderer>()(/** @lends Web
             this.setupStencil(material);
             needForceUpdateUniforms = true;
         }
-
         this.setupUniforms(program, mesh, useInstanced, needForceUpdateUniforms);
         material.isDirty = false;
         this._lastMaterial = material;
-    },
-    /**
-     * 设置mesh
-     * @param  {Mesh} mesh
-     * @param  {Boolean} useInstanced
-     * @return {Object} res
-     * @return {VertexArrayObject} res.vao
-     * @return {Program} res.program
-     * @return {Geometry} res.geometry
-     */
-    setupMesh(mesh, useInstanced) {
-        const gl = this.gl;
-        const state = this.state;
-        const lightManager = this.lightManager;
-        const resourceManager = this.resourceManager;
-        const geometry = mesh.geometry;
-        const material = this.forceMaterial || mesh.material;
-        const shader = Shader.getShader(mesh, material, useInstanced, lightManager, this.fog, this.useLogDepth);
-        const program = Program.getProgram(shader, state);
+    }
 
+    setupMesh(mesh: Mesh, useInstanced: boolean): MeshSetup {
+        const geometry = geometryFor(mesh);
+        const material = materialFor(mesh, this.forceMaterial);
+        const shader = Shader.getShader(
+            mesh,
+            material,
+            useInstanced,
+            this.lightManager,
+            this.fog,
+            this.useLogDepth
+        );
+        if (!shader)
+            throw new Error(`Material ${material.className} does not provide a renderable shader`);
+        const program = Program.getProgram(shader, this.state);
         program.useProgram();
         this.setupMaterial(program, mesh, useInstanced, this._lastProgram !== program);
         this._lastProgram = program;
+        if (material.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
 
-        if (mesh.material.wireframe && geometry.mode !== LINES) {
-            geometry.convertToLinesMode();
-        }
-
-        const vaoId = geometry.id + program.id;
-        const vao = VertexArrayObject.getVao(gl, vaoId, {
+        const vao = VertexArrayObject.getVao(this.gl, geometry.id + program.id, {
             useInstanced,
             useVao: this.useVao,
             mode: geometry.mode
         });
-
         this.setupVao(vao, program, mesh);
+        this.resourceManager.addMeshResources(mesh, [vao, shader, program]);
+        return { vao, program, geometry };
+    }
 
-        resourceManager.addMeshResources(mesh, [vao, shader, program]);
+    addRenderInfo(faceCount: number, drawCount: number): void {
+        this.renderInfo.addFaceCount(faceCount);
+        this.renderInfo.addDrawCount(drawCount);
+    }
 
-        return {
-            vao,
-            program,
-            geometry
-        };
-    },
-    /**
-     * 增加渲染信息
-     * @param {Number} faceCount 面数量
-     * @param {Number} drawCount 绘图数量
-     */
-    addRenderInfo(faceCount, drawCount) {
-        const renderInfo = this.renderInfo;
-        renderInfo.addFaceCount(faceCount);
-        renderInfo.addDrawCount(drawCount);
-    },
-
-    /**
-     * 渲染
-     * @param  {Stage|Node} stage
-     * @param  {Camera} camera
-     * @param  {Boolean} [fireEvent=false] 是否发送事件
-     */
-    render(stage, camera, fireEvent = false) {
+    render(stage: WebGLRendererScene, camera: Camera, fireEvent = false): void {
         this.initContext();
-        if (this.isInitFailed || this._isContextLost) {
-            return;
-        }
-
-        const {
-            renderList,
-            renderInfo,
-            lightManager,
-            resourceManager,
-            state
-        } = this;
-
-        this.fog = stage.fog;
-        lightManager.reset();
-        renderInfo.reset();
-        renderList.reset();
-
-        semantic.init(this, state, camera, lightManager, this.fog);
+        if (this._isContextLost) throw new Error('Cannot render while the WebGL context is lost');
+        this.fog = stage.fog ?? null;
+        this.lightManager.reset();
+        this.renderInfo.reset();
+        this.renderList.reset();
+        semantic.init(this, this.state, camera, this.lightManager, this.fog);
         stage.updateMatrixWorld();
         camera.updateViewProjectionMatrix();
 
-        const lights = [];
-        stage.traverse((node) => {
-            if (!node.visible) {
-                return Node.TRAVERSE_STOP_CHILDREN;
-            }
-
-            if (node.isMesh) {
-                renderList.addMesh(node, camera);
-            } else if (node.isLight) {
-                lights.push(node);
-            }
-
+        const lights: Light[] = [];
+        stage.traverse(node => {
+            if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
+            if (node instanceof Mesh) this.renderList.addMesh(node, camera);
+            else if (node instanceof Light) lights.push(node);
             return Node.TRAVERSE_STOP_NONE;
         });
-
-        renderList.sort();
-        lightManager.update(this, camera, lights);
-
-        if (fireEvent) {
-            this.fire('beforeRender');
-        }
-
-        if (this.useFramebuffer) {
-            this.framebuffer.bind();
-        }
-
+        this.renderList.sort();
+        this.lightManager.update(this, camera, lights);
+        if (fireEvent) this.fire('beforeRender');
+        if (this.useFramebuffer) this.framebuffer?.bind();
         this.clear();
-
-        if (fireEvent) {
-            this.fire('beforeRenderScene');
-        }
-
+        if (fireEvent) this.fire('beforeRenderScene');
         this.renderScene();
+        if (this.useFramebuffer && this.framebuffer) this.renderToScreen(this.framebuffer);
+        if (fireEvent) this.fire('afterRender');
+        this.resourceManager.destroyUnusedResource(stage);
+    }
 
-        if (this.useFramebuffer) {
-            this.renderToScreen(this.framebuffer);
-        }
+    renderScene(): void {
+        this.renderList.traverse(
+            mesh => {
+                this.renderMesh(mesh);
+            },
+            meshes => {
+                this.renderInstancedMeshes(meshes);
+            }
+        );
+    }
 
-        if (fireEvent) {
-            this.fire('afterRender');
-        }
-
-        resourceManager.destroyUnusedResource(stage);
-    },
-    /**
-     * 渲染场景
-     */
-    renderScene() {
-        const renderList = this.renderList;
-        renderList.traverse((mesh) => {
-            this.renderMesh(mesh);
-        }, (instancedMeshes) => {
-            this.renderInstancedMeshes(instancedMeshes);
-        });
-    },
-    /**
-     * 清除背景
-     * @param  {Color} [clearColor=this.clearColor]
-     */
-    clear(clearColor) {
-        const {
-            gl,
-            state
-        } = this;
-
-        clearColor = clearColor || this.clearColor;
-
+    clear(clearColor: Color = this.clearColor): void {
+        const { gl, state } = this;
         this._lastMaterial = null;
         this._lastProgram = null;
         gl.clearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
-
         state.depthMask(true);
         let clearMask = gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT;
         if (this.stencil) {
             state.stencilMask(0xff);
             clearMask |= gl.STENCIL_BUFFER_BIT;
         }
-        gl.clear(clearMask);
-    },
-    /**
-     * 清除深度
-     */
-    clearDepth() {
-        const {
-            gl,
-            state
-        } = this;
-        state.depthMask(true);
-        gl.clear(gl.DEPTH_BUFFER_BIT);
-    },
-    /**
-     * 清除模板
-     */
-    clearStencil() {
-        const {
-            gl,
-            state
-        } = this;
-        state.stencilMask(0xff);
-        gl.clear(gl.STENCIL_BUFFER_BIT);
-    },
-    /**
-     * 将framebuffer渲染到屏幕
-     * @param  {Framebuffer} framebuffer
-     */
-    renderToScreen(framebuffer) {
+        state.clear(clearMask);
+    }
+
+    clearDepth(): void {
+        this.state.depthMask(true);
+        this.state.clear(this.gl.DEPTH_BUFFER_BIT);
+    }
+
+    clearStencil(): void {
+        this.state.stencilMask(0xff);
+        this.state.clear(this.gl.STENCIL_BUFFER_BIT);
+    }
+
+    renderToScreen(framebuffer: Framebuffer): void {
         this.state.bindSystemFramebuffer();
         framebuffer.render(0, 0, 1, 1, this.clearColor);
-    },
-    /**
-     * 渲染一个mesh
-     * @param  {Mesh} mesh
-     */
-    renderMesh(mesh, silent = false) {
-        if (!silent) {
-            mesh.fire('beforeRender', mesh);
-        }
+    }
+
+    renderMesh(mesh: Mesh, silent = false): void {
+        if (!silent) mesh.fire('beforeRender', mesh);
         const vao = this.setupMesh(mesh, false).vao;
         vao.draw();
-        this.addRenderInfo(vao.vertexCount / 3, 1);
-        if (!silent) {
-            mesh.fire('afterRender', mesh);
-        }
-    },
-    /**
-     *
-     * 渲染一组 instanced mesh
-     * @param  {Mesh[]} meshes
-     */
-    renderInstancedMeshes(meshes, silent = false) {
-        const mesh = meshes[0];
-        if (!mesh) {
-            return;
-        }
-        if (!silent) {
-            meshes.forEach(m => m.fire('beforeRender', mesh));
-        }
-        const material = this.forceMaterial || mesh.material;
-        const {
-            vao,
-            program
-        } = this.setupMesh(mesh, true);
+        this.addRenderInfo(vao.getVertexCount() / 3, 1);
+        if (!silent) mesh.fire('afterRender', mesh);
+    }
 
-        const instancedUniforms = material.getInstancedUniforms();
-        instancedUniforms.forEach((uniformObj) => {
-            const name = uniformObj.name;
-            const info = uniformObj.info;
-            const attribute = program.attributes[name];
-            if (attribute) {
-                vao.addInstancedAttribute(attribute, meshes, (mesh) => {
-                    return info.get(mesh);
-                });
-            }
-        });
-        vao.drawInstance(meshes.length);
-        this.addRenderInfo(vao.vertexCount / 3 * meshes.length, 1);
-        if (!silent) {
-            meshes.forEach(m => m.fire('afterRender', mesh));
+    renderInstancedMeshes(meshes: readonly Mesh[], silent = false): void {
+        const mesh = meshes[0];
+        if (!mesh) return;
+        if (!silent) meshes.forEach(item => item.fire('beforeRender', mesh));
+        const material = materialFor(mesh, this.forceMaterial);
+        const { vao, program } = this.setupMesh(mesh, true);
+        for (const uniform of material.getInstancedUniforms()) {
+            const attribute = program.attributes[uniform.name];
+            if (!attribute) continue;
+            vao.addInstancedAttribute(attribute, meshes, instance => {
+                const value = uniform.info.get(instance, material, attribute);
+                if (value === undefined) return undefined;
+                if (!isNumericArrayLike(value)) {
+                    throw new TypeError(
+                        `Instanced attribute ${uniform.name} must resolve to numeric array data`
+                    );
+                }
+                return value;
+            });
         }
-    },
-    /**
-     * 渲染一组普通mesh
-     * @param  {Mesh[]} meshes
-     */
-    renderMultipleMeshes(meshes) {
-        meshes.forEach((mesh) => {
+        vao.drawInstance(meshes.length);
+        this.addRenderInfo((vao.getVertexCount() / 3) * meshes.length, 1);
+        if (!silent) meshes.forEach(item => item.fire('afterRender', mesh));
+    }
+
+    renderMultipleMeshes(meshes: readonly Mesh[]): void {
+        meshes.forEach(mesh => {
             this.renderMesh(mesh);
         });
-    },
-    /**
-     * 销毁 WebGL 资源
-     */
-    releaseGLResource() {
-        const gl = this.gl;
-        if (gl) {
-            Program.reset(gl);
-            Shader.reset(gl);
-            Buffer.reset(gl);
-            VertexArrayObject.reset(gl);
-            this.state.reset(gl);
-            Texture.reset(gl);
-            Framebuffer.destroy(gl);
-        }
     }
-});
+
+    releaseGLResource(): void {
+        const gl = this._gl;
+        if (!gl) return;
+        Program.reset(gl);
+        Shader.reset(gl);
+        Buffer.reset(gl);
+        VertexArrayObject.reset(gl);
+        this._state?.reset();
+        Texture.reset(gl);
+        Framebuffer.destroy(gl);
+        this.framebuffer = null;
+    }
+
+    destroy(): void {
+        if (this._isDestroyed) return;
+        this.releaseGLResource();
+        this.domElement?.removeEventListener('webglcontextlost', this.handleContextLost, false);
+        this.domElement?.removeEventListener(
+            'webglcontextrestored',
+            this.handleContextRestored,
+            false
+        );
+        this.off();
+        this._state = null;
+        this._gl = null;
+        this._isDestroyed = true;
+    }
+}
 
 export default WebGLRenderer;

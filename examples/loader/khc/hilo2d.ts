@@ -1,115 +1,79 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../../../src/Hilo3d';
+import { createExampleContext } from '../../js/init';
 
-var loadQueue = new Hilo3d.LoadQueue([{
-            crossOrigin: 'anonymous',
-            src: '//gw.alicdn.com/tfs/TB15OJpQFXXXXXgXVXXXXXXXXXX-512-512.png'
-        }, {
-            crossOrigin: 'anonymous',
-            src: '//gw.alicdn.com/tfs/TB1gwNqQFXXXXcIXFXXXXXXXXXX-512-512.png'
-        }, {
-            crossOrigin: 'anonymous',
-            src: '//gw.alicdn.com/tfs/TB1pyNcQFXXXXb7XVXXXXXXXXXX-512-512.png'
-        }, {
-            crossOrigin: 'anonymous',
-            src: '//gw.alicdn.com/tfs/TB1FilNQFXXXXcKXXXXXXXXXXXX-512-512.png'
-        }, {
-            crossOrigin: 'anonymous',
-            src: '//gw.alicdn.com/tfs/TB1gIpqQFXXXXcZXFXXXXXXXXXX-512-512.png'
-        }, {
-            crossOrigin: 'anonymous',
-            src: '//gw.alicdn.com/tfs/TB1RFXLQFXXXXXEXpXXXXXXXXXX-512-512.png'
-        }, {
-            src: '//cx.alicdn.com/tmx/2aa87481889ecab77adad40450eb502a.gltf'
-        }]).on('complete', function () {
-            var result = loadQueue.getAllContent();
-            var skyboxMap = new Hilo3d.CubeTexture({
-                image: result.filter(function(r){return r instanceof Image})
-            });
-            var khcTexture = new Hilo3d.Texture({
-                image: document.getElementById('xcanvas'),
-                autoUpdate: true,
-                wrapS: 33071,
-                wrapT: 33071
-            });
-            // var skybox = new Hilo3d.Mesh({
-            //     geometry: new Hilo3d.BoxGeometry(),
-            //     material: new Hilo3d.BasicMaterial({
-            //         lightType: 'NONE',
-            //         diffuse: skyboxMap
-            //     })
-            // });
-            // skybox.setScale(100);
-            // stage.addChild(skybox);
+interface Fish {
+    x: number;
+    y: number;
+    speed: number;
+    size: number;
+    hue: number;
+}
 
-            var model = result.filter(function(r){return r.node})[0];
-            model.node.setScale(.002);
-            var screenMaterial = model.meshes[5].material;
-            screenMaterial.diffuse = khcTexture;
-            model.materials.forEach(function(material){
-                if (material === screenMaterial) {
-                    material.skyboxMap = skyboxMap;
-                    material.reflectivity = 0.05;
-                    return;
-                }
-                material.skyboxMap = skyboxMap;
-                material.reflectivity = .1;
-            });
-            stage.addChild(model.node);
-            // model.node.setScale(.01);
-            // model.materials.forEach(function(material){
-            //     material.skyboxMap = skyboxMap;
-            //     material.reflectivity = .1;
-            // });
-        }).start();
+const queriedCanvas = document.querySelector<HTMLCanvasElement>('#animation-canvas');
+if (!queriedCanvas) throw new Error('Canvas animation example requires #animation-canvas.');
+const canvas: HTMLCanvasElement = queriedCanvas;
+const queriedContext = canvas.getContext('2d');
+if (!queriedContext) throw new Error('Canvas animation example requires a 2D rendering context.');
+const context: CanvasRenderingContext2D = queriedContext;
 
-        function create2d() {
-            var stage = new Hilo.Stage({
-                renderType: 'canvas',
-                canvas: 'xcanvas'
-            });
+const { stage } = createExampleContext({ camera: { z: 4 } });
+const fish: Fish[] = Array.from({ length: 12 }, (_, index) => ({
+    x: (index / 12) * canvas.width,
+    y: 90 + ((index * 97) % (canvas.height - 180)),
+    speed: 35 + (index % 5) * 11,
+    size: 13 + (index % 4) * 4,
+    hue: 175 + index * 12
+}));
 
-            ticker.addTick(stage);
-            var loader = new Hilo3d.BasicLoader();
-            loader.loadImg('//img.alicdn.com/tps/TB12IsqKVXXXXalXpXXXXXXXXXX-174-1512.png', true).then(function(img){
-                var atlas = new Hilo.TextureAtlas({
-                    image: img,
-                    width: 174,
-                    height: 1512,
-                    frames: {
-                        frameWidth: 174,
-                        frameHeight: 126,
-                        numFrames: 12
-                    },
-                    sprites: {
-                        fish: {from:0, to:11}
-                    }
-                });
+const texture = new Hilo3d.Texture({ image: canvas, autoUpdate: true });
+const screen = new Hilo3d.Mesh({
+    geometry: new Hilo3d.PlaneGeometry({ width: 1.5, height: 2.668 }),
+    material: new Hilo3d.BasicMaterial({
+        diffuse: texture,
+        lightType: 'NONE',
+        side: Hilo3d.constants.FRONT_AND_BACK
+    })
+});
+screen.addTo(stage);
 
-                var createFish = function () {
-                    var fish = new Hilo.Sprite({
-                        frames: atlas.getSprite('fish'),
-                        x: 0,
-                        y: Math.floor(Math.random() * stage.height),
-                        interval: 6,
-                        timeBased: false,
-                        loop: true,
-                        pointerEnabled: true,
-                        onUpdate: function(){
-                            if(this.x > stage.width - this.pivotX){
-                                this.x = 0;
-                            }else{
-                                this.x += 3;
-                            }
-                        }
-                    }).addTo(stage).on(Hilo.event.POINTER_END, function(evt){
-                        console.log('click', evt);
-                    });
-                };  
+function drawFish(item: Fish, elapsed: number): void {
+    const wobble = Math.sin(elapsed * 0.004 + item.y) * 4;
+    context.save();
+    context.translate(item.x, item.y + wobble);
+    context.fillStyle = `hsl(${String(item.hue)} 78% 62%)`;
+    context.beginPath();
+    context.ellipse(0, 0, item.size * 1.45, item.size, 0, 0, Math.PI * 2);
+    context.fill();
+    context.beginPath();
+    context.moveTo(-item.size * 1.2, 0);
+    context.lineTo(-item.size * 2.2, -item.size);
+    context.lineTo(-item.size * 2.2, item.size);
+    context.closePath();
+    context.fill();
+    context.fillStyle = '#071525';
+    context.beginPath();
+    context.arc(item.size * 0.65, -item.size * 0.2, 2.5, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+}
 
-                for (var i = 0; i < 5; i++) {
-                    createFish();
-                }
-            });
-        }
+let elapsed = 0;
+screen.onUpdate = deltaTime => {
+    elapsed += deltaTime;
+    const seconds = deltaTime / 1000;
+    const background = context.createLinearGradient(0, 0, 0, canvas.height);
+    background.addColorStop(0, '#082f49');
+    background.addColorStop(1, '#020617');
+    context.fillStyle = background;
+    context.fillRect(0, 0, canvas.width, canvas.height);
 
-        create2d();
+    for (const item of fish) {
+        item.x += item.speed * seconds;
+        if (item.x - item.size * 2.2 > canvas.width) item.x = -item.size * 2.2;
+        drawFish(item, elapsed);
+    }
+
+    context.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    context.font = '600 22px system-ui, sans-serif';
+    context.fillText('Canvas 2D → WebGL texture', 22, 38);
+};

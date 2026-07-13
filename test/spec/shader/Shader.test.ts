@@ -1,3 +1,7 @@
+import { describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+import { testEnv } from '../../setup';
+
 const Shader = Hilo3d.Shader;
 const ShaderMaterial = Hilo3d.ShaderMaterial;
 
@@ -5,35 +9,25 @@ describe('Shader', () => {
     Shader.init(testEnv.renderer);
 
     it('create', () => {
-        const shader = new Shader;
-        shader.isShader.should.be.true();
-        shader.className.should.equal('Shader');
+        const shader = new Shader();
+        expect(shader.isShader).toBe(true);
+        expect(shader.className).toBe('Shader');
     });
 
     it('getHeaderKey', () => {
-        const {
-            mesh,
-            material,
-            renderer,
-            geometry,
-            fog
-        } = testEnv;
+        const { mesh, material, renderer, geometry, fog } = testEnv;
         const lightManager = renderer.lightManager;
-        const key = Shader.getHeaderKey(mesh, material, lightManager, fog);
-        key.should.equal(`header_${material.id}_${lightManager.lightInfo.uid}_fog_${fog.mode}_${geometry.getShaderKey()}`);
+        const key = Shader.getHeaderKey(mesh, material, lightManager, fog, false);
+        expect(key).toBe(
+            `header_${material.id}_${lightManager.lightInfo.uid}_fog_${fog.mode}_${geometry.getShaderKey()}`
+        );
     });
 
     it('getHeader', () => {
-        const {
-            mesh,
-            material,
-            renderer,
-            geometry,
-            fog
-        } = testEnv;
+        const { mesh, material, renderer, fog } = testEnv;
         const lightManager = renderer.lightManager;
-        const header = Shader.getHeader(mesh, material, lightManager, fog);
-        header.should.equal(`#define SHADER_NAME Material
+        const header = Shader.getHeader(mesh, material, lightManager, fog, false);
+        expect(header).toBe(`#define SHADER_NAME Material
 #define HILO_LIGHT_TYPE_NONE 1
 #define HILO_SIDE 1028
 #define HILO_PREMULTIPLY_ALPHA 1
@@ -42,14 +36,20 @@ describe('Shader', () => {
 #define HILO_HAS_FOG 1
 #define HILO_FOG_LINEAR 1
 `);
-        const shaderMaterialHeader = Shader.getHeader(mesh, new ShaderMaterial({
-            getCustomRenderOption(options){
-                options.CUSTUM_1 = 1;
-                options.CUSTUM_2 = 0;
-                return options;
-            }
-        }), lightManager, fog);
-        shaderMaterialHeader.should.equal(`#define SHADER_NAME ShaderMaterial
+        const shaderMaterialHeader = Shader.getHeader(
+            mesh,
+            new ShaderMaterial({
+                getCustomRenderOption(options) {
+                    options['CUSTUM_1'] = 1;
+                    options['CUSTUM_2'] = 0;
+                    return options;
+                }
+            }),
+            lightManager,
+            fog,
+            false
+        );
+        expect(shaderMaterialHeader).toBe(`#define SHADER_NAME ShaderMaterial
 #define HILO_LIGHT_TYPE_NONE 1
 #define HILO_SIDE 1028
 #define HILO_PREMULTIPLY_ALPHA 1
@@ -63,15 +63,19 @@ describe('Shader', () => {
     });
 
     it('getCustomShader', () => {
-        const shader = Shader.getCustomShader('void main(){}', 'void main(){}', '#define HILO_LIGHT_TYPE_NONE 1\n');
-        shader.vs.should.equal(`
+        const shader = Shader.getCustomShader(
+            'void main(){}',
+            'void main(){}',
+            '#define HILO_LIGHT_TYPE_NONE 1\n'
+        );
+        expect(shader.vs).toBe(`
 #define HILO_MAX_PRECISION highp
 #define HILO_MAX_VERTEX_PRECISION highp
 #define HILO_MAX_FRAGMENT_PRECISION highp
 #define HILO_LIGHT_TYPE_NONE 1
 void main(){}`);
 
-        shader.fs.should.equal(`
+        expect(shader.fs).toBe(`
 #define HILO_MAX_PRECISION highp
 #define HILO_MAX_VERTEX_PRECISION highp
 #define HILO_MAX_FRAGMENT_PRECISION highp
@@ -80,15 +84,19 @@ void main(){}`);
     });
 
     it('getBasicShader', () => {
-        const shader = Shader.getBasicShader(testEnv.material, false, '#define HILO_LIGHT_TYPE_NONE 1');
-        shader.fs.should.be.String();
-        shader.vs.should.be.String();
+        const shader = Shader.getBasicShader(
+            testEnv.material,
+            false,
+            '#define HILO_LIGHT_TYPE_NONE 1'
+        );
+        expect(shader.fs).toBeTypeOf('string');
+        expect(shader.vs).toBeTypeOf('string');
     });
 
     it('cache', () => {
         const shader = Shader.getCustomShader('', '', '', 'testCustomId');
-        Shader.cache.get('testCustomId').should.equal(shader);
+        expect(Shader.cache.get('testCustomId')).toBe(shader);
         Shader.reset();
-        should(Shader.cache.get('testCustomId')).be.undefined();
+        expect(Shader.cache.get('testCustomId')).toBeUndefined();
     });
 });

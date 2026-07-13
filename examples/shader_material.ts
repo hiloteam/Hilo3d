@@ -1,56 +1,63 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
+
+const { stage, renderer } = createExampleContext();
 
 renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
-    var container = new Hilo3d.Node();
-    var geometry = new Hilo3d.SphereGeometry({
-        radius: 1,
-        heightSegments: 32,
-        widthSegments: 64,
-    })
-    var mesh = new Hilo3d.Mesh({
-        rotationX:90,
-        time:0,
-        geometry: geometry,
-        material: new Hilo3d.ShaderMaterial({
-            shaderCacheId: "UVAnimation",
-            getCustomRenderOption(option){
-                option.CUSTOM_OPTION = 1;
-                return option;
-            },
-            needBasicUnifroms: false,
-            needBasicAttributes: false,
-            diffuse: new Hilo3d.LazyTexture({
-                crossOrigin: true,
-                src: '//gw.alicdn.com/tfs/TB1Q8dQSVXXXXciXVXXXXXXXXXX-512-512.jpg'
-            }),
-            mixTexture:new Hilo3d.LazyTexture({
-                crossOrigin: true,
-                src: '//gw.alicdn.com/tfs/TB1T1wEizTpK1RjSZKPXXa3UpXa-512-512.png'
-            }),
-            uniforms:{
-                u_diffuse:'DIFFUSE',
-                u_modelViewProjectionMatrix:'MODELVIEWPROJECTION',
-                u_mixTexture:{
-                    get(mesh, material, programInfo) {
-                        return Hilo3d.semantic.handlerTexture(material.mixTexture, programInfo.textureIndex);
-                    }
-                },
-                u_time:{
-                    get:function(mesh, material, programInfo){
-                        return mesh.time;
-                    }
-                },
-                'u_light.color.b':{
-                    get:function(){
-                        return Math.random() - .5;
-                    }
+const container = new Hilo3d.Node();
+const geometry = new Hilo3d.SphereGeometry({
+    radius: 1,
+    heightSegments: 32,
+    widthSegments: 64
+});
+const diffuseTexture = new Hilo3d.LazyTexture({
+    src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
+});
+const mixTexture = new Hilo3d.LazyTexture({
+    src: new URL('./image/brdfLUT.png', import.meta.url).href
+});
+let elapsedTime = 0;
+const mesh = new Hilo3d.Mesh({
+    rotationX: 90,
+    geometry,
+    material: new Hilo3d.ShaderMaterial({
+        shaderCacheId: 'UVAnimation',
+        getCustomRenderOption(option) {
+            option['CUSTOM_OPTION'] = 1;
+            return option;
+        },
+        needBasicUnifroms: false,
+        needBasicAttributes: false,
+        uniforms: {
+            u_diffuse: {
+                get(_mesh, _material, programInfo) {
+                    if (programInfo.textureIndex === undefined)
+                        throw new Error('u_diffuse has no texture unit');
+                    return Hilo3d.semantic.handlerTexture(diffuseTexture, programInfo.textureIndex);
                 }
             },
-            attributes:{
-                a_position: 'POSITION',
-                a_texcoord0:'TEXCOORD_0'
+            u_modelViewProjectionMatrix: 'MODELVIEWPROJECTION',
+            u_mixTexture: {
+                get(_mesh, _material, programInfo) {
+                    if (programInfo.textureIndex === undefined)
+                        throw new Error('u_mixTexture has no texture unit');
+                    return Hilo3d.semantic.handlerTexture(mixTexture, programInfo.textureIndex);
+                }
             },
-            fs:`
+            u_time: { get: () => elapsedTime },
+            'u_light.color.r': { get: () => 0 },
+            'u_light.color.g': { get: () => 0 },
+            'u_light.color.b': {
+                get() {
+                    return Math.random() - 0.5;
+                }
+            }
+        },
+        attributes: {
+            a_position: 'POSITION',
+            a_texcoord0: 'TEXCOORD_0'
+        },
+        fs: `
                 precision HILO_MAX_FRAGMENT_PRECISION float;
                 varying vec2 v_texcoord0;
                 uniform sampler2D u_diffuse;
@@ -76,7 +83,7 @@ renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
                     gl_FragColor = mix(vec4(diffuse.r, diffuse.g, u_light.color.b, 1), mixTexture, 0.05);
                 }
             `,
-            vs:`
+        vs: `
                 precision HILO_MAX_VERTEX_PRECISION float;
                 attribute vec3 a_position;
                 attribute vec2 a_texcoord0;
@@ -89,26 +96,11 @@ renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
                     v_texcoord0 = a_texcoord0;
                 }
             `
-        }),
-        onUpdate(dt){
-            this.time += dt;
-        }
-    });
+    })
+});
+mesh.onUpdate = deltaTime => {
+    elapsedTime += deltaTime;
+};
 
-    container.addChild(mesh);
-    stage.addChild(container);
-
-    // stage.renderer.initContext();
-    // var material = mesh.material;
-    
-    // // 编译
-    // var shader = Hilo3d.Shader.getCustomShader(material.vs, material.fs, '', material.shaderCacheId);
-    // shader.alwaysUse = true;
-    // var program = Hilo3d.Program.getProgram(, Hilo3d.Shader.renderer.state);
-    // program.alwaysUse = true;
-
-    // // 删除
-    // var shader = Hilo3d.Shader.cache.get(material.shaderCacheId);
-    // var program = Hilo3d.Program.cache.get(shader.id);
-    // shader.destroy();
-    // program.destroy();
+container.addChild(mesh);
+stage.addChild(container);

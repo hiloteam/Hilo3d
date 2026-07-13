@@ -1,54 +1,45 @@
 import * as Hilo3d from '../../src/Hilo3d';
+import type { EulerOrder } from '../../src/math/Euler';
 
-interface OrbitControlsOptions {
-    model?: hilo3d.Node;
+export interface OrbitControlsOptions {
+    model?: Hilo3d.Node;
     isLockZ?: boolean;
     isLockScale?: boolean;
     isLockRotate?: boolean;
     isLockMove?: boolean;
     rotationXLimit?: number;
-    eulerOrder?: string;
+    eulerOrder?: EulerOrder;
 }
 
-interface PointerState {
-    startX: number;
-    startY: number;
-    startPointerDistance: number;
-    isDown: boolean;
-    state: number;
+interface PointerPosition {
+    x: number;
+    y: number;
 }
 
 const tempEuler = new Hilo3d.Euler();
 tempEuler.order = 'XYZ';
 const tempQuaternion = new Hilo3d.Quaternion();
 const tempVector = new Hilo3d.Vector3();
-const MOUSE = { LEFT: 0, RIGHT: 2 } as const;
-const STATE = { NONE: -1, MOVE: 0, ZOOM: 1, PAN: 2 } as const;
 
-/** Mouse and touch orbit controls shared by the examples. */
-class OrbitControls {
-    readonly stage: hilo3d.Stage;
+/** Pointer Events based orbit controls shared by the examples. */
+export default class OrbitControls {
+    readonly stage: Hilo3d.Stage;
     readonly canvas: HTMLCanvasElement;
-    readonly model: hilo3d.Node;
-    readonly isLockZ: boolean;
-    readonly isLockScale: boolean;
-    readonly isLockRotate: boolean;
-    readonly isLockMove: boolean;
-    readonly rotationXLimit: number | undefined;
-    readonly mouseInfo: PointerState = {
-        startX: 0,
-        startY: 0,
-        startPointerDistance: 0,
-        isDown: false,
-        state: STATE.NONE
-    };
+    readonly model: Hilo3d.Node;
+    isLockZ: boolean;
+    isLockScale: boolean;
+    isLockRotate: boolean;
+    isLockMove: boolean;
+    rotationXLimit: number | undefined;
     isEnabled = false;
-    onScale?: (scale: number) => void;
+    onScale: ((scale: number) => void) | undefined;
 
-    constructor(stage: hilo3d.Stage, modelOrOptions: hilo3d.Node | OrbitControlsOptions = {}) {
-        const options = modelOrOptions instanceof Hilo3d.Node
-            ? { model: modelOrOptions }
-            : modelOrOptions;
+    private readonly pointers = new Map<number, PointerPosition>();
+    private pointerDistance = 0;
+
+    constructor(stage: Hilo3d.Stage, modelOrOptions: Hilo3d.Node | OrbitControlsOptions = {}) {
+        const options =
+            modelOrOptions instanceof Hilo3d.Node ? { model: modelOrOptions } : modelOrOptions;
 
         this.stage = stage;
         this.canvas = stage.canvas;
@@ -59,53 +50,38 @@ class OrbitControls {
         this.isLockMove = options.isLockMove ?? false;
         this.rotationXLimit = options.rotationXLimit;
 
-        if (options.eulerOrder) tempEuler.order = options.eulerOrder;
+        if (options.eulerOrder !== undefined) tempEuler.order = options.eulerOrder;
         if (this.isLockZ) {
-            tempEuler.x = this.model.rotationX * Math.PI / 180;
-            tempEuler.y = this.model.rotationY * Math.PI / 180;
+            tempEuler.x = (this.model.rotationX * Math.PI) / 180;
+            tempEuler.y = (this.model.rotationY * Math.PI) / 180;
         }
 
         this.enable();
     }
 
-    private readonly preventContextMenu = (event: Event): void => {
-        event.preventDefault();
-    };
-
     enable(): void {
         if (this.isEnabled) return;
         this.isEnabled = true;
-        this.canvas.addEventListener('wheel', this.onWheel, { passive: false });
-
-        if ('ontouchmove' in window) {
-            this.canvas.addEventListener('touchstart', this.onPointerDown, { passive: false });
-            this.canvas.addEventListener('touchmove', this.onPointerMove, { passive: false });
-            this.canvas.addEventListener('touchend', this.onPointerUp);
-        } else {
-            document.addEventListener('contextmenu', this.preventContextMenu);
-            this.canvas.addEventListener('mousedown', this.onPointerDown);
-            this.canvas.addEventListener('mousemove', this.onPointerMove);
-            this.canvas.addEventListener('mouseup', this.onPointerUp);
-        }
+        this.canvas.style.touchAction = 'none';
+        this.canvas.addEventListener('pointerdown', this.handlePointerDown);
+        this.canvas.addEventListener('pointermove', this.handlePointerMove);
+        this.canvas.addEventListener('pointerup', this.handlePointerEnd);
+        this.canvas.addEventListener('pointercancel', this.handlePointerEnd);
+        this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
+        this.canvas.addEventListener('contextmenu', this.preventContextMenu);
     }
 
     disable(): void {
         if (!this.isEnabled) return;
         this.isEnabled = false;
-        this.mouseInfo.isDown = false;
-        this.mouseInfo.state = STATE.NONE;
-        this.canvas.removeEventListener('wheel', this.onWheel);
-
-        if ('ontouchmove' in window) {
-            this.canvas.removeEventListener('touchstart', this.onPointerDown);
-            this.canvas.removeEventListener('touchmove', this.onPointerMove);
-            this.canvas.removeEventListener('touchend', this.onPointerUp);
-        } else {
-            document.removeEventListener('contextmenu', this.preventContextMenu);
-            this.canvas.removeEventListener('mousedown', this.onPointerDown);
-            this.canvas.removeEventListener('mousemove', this.onPointerMove);
-            this.canvas.removeEventListener('mouseup', this.onPointerUp);
-        }
+        this.pointers.clear();
+        this.pointerDistance = 0;
+        this.canvas.removeEventListener('pointerdown', this.handlePointerDown);
+        this.canvas.removeEventListener('pointermove', this.handlePointerMove);
+        this.canvas.removeEventListener('pointerup', this.handlePointerEnd);
+        this.canvas.removeEventListener('pointercancel', this.handlePointerEnd);
+        this.canvas.removeEventListener('wheel', this.handleWheel);
+        this.canvas.removeEventListener('contextmenu', this.preventContextMenu);
     }
 
     rotate(distanceX: number, distanceY: number): void {
@@ -117,7 +93,10 @@ class OrbitControls {
             tempEuler.x += x;
             tempEuler.y += y;
             if (this.rotationXLimit !== undefined) {
-                tempEuler.x = Math.max(-this.rotationXLimit, Math.min(this.rotationXLimit, tempEuler.x));
+                tempEuler.x = Math.max(
+                    -this.rotationXLimit,
+                    Math.min(this.rotationXLimit, tempEuler.x)
+                );
             }
             this.model.quaternion.fromEuler(tempEuler);
             return;
@@ -129,7 +108,7 @@ class OrbitControls {
     }
 
     scale(scale: number): void {
-        if (this.isLockScale) return;
+        if (this.isLockScale || !Number.isFinite(scale) || scale <= 0) return;
         this.model.scaleX *= scale;
         this.model.scaleY *= scale;
         this.model.scaleZ *= scale;
@@ -142,124 +121,58 @@ class OrbitControls {
         this.model.y += y;
     }
 
-    private readonly onPointerDown = (event: Event): void => {
-        this.mouseInfo.isDown = true;
+    private readonly preventContextMenu = (event: Event): void => {
+        event.preventDefault();
+    };
 
-        if (event instanceof TouchEvent) {
-            const firstTouch = event.touches[0];
-            if (!firstTouch) return;
-            this.mouseInfo.startX = firstTouch.pageX;
-            this.mouseInfo.startY = firstTouch.pageY;
+    private readonly handlePointerDown = (event: PointerEvent): void => {
+        event.preventDefault();
+        this.canvas.setPointerCapture(event.pointerId);
+        this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        this.pointerDistance = this.getPointerDistance();
+    };
 
-            if (event.touches.length === 1) {
-                this.mouseInfo.state = STATE.MOVE;
-            } else if (event.touches.length === 2) {
-                const secondTouch = event.touches[1];
-                if (!secondTouch) return;
-                this.mouseInfo.startPointerDistance = Math.hypot(
-                    secondTouch.pageX - firstTouch.pageX,
-                    secondTouch.pageY - firstTouch.pageY
-                );
-                this.mouseInfo.state = STATE.ZOOM;
-            } else if (event.touches.length >= 3) {
-                this.mouseInfo.state = STATE.PAN;
-            }
+    private readonly handlePointerMove = (event: PointerEvent): void => {
+        const previous = this.pointers.get(event.pointerId);
+        if (!previous) return;
+
+        event.preventDefault();
+        const current = { x: event.clientX, y: event.clientY };
+        this.pointers.set(event.pointerId, current);
+
+        if (this.pointers.size >= 2) {
+            const distance = this.getPointerDistance();
+            if (this.pointerDistance > 0) this.scale(distance / this.pointerDistance);
+            this.pointerDistance = distance;
             return;
         }
 
-        if (!(event instanceof MouseEvent)) return;
-        if (event.button !== MOUSE.LEFT && event.button !== MOUSE.RIGHT) return;
-        this.mouseInfo.startX = event.pageX;
-        this.mouseInfo.startY = event.pageY;
-        this.mouseInfo.state = event.button === MOUSE.RIGHT ? STATE.PAN : STATE.MOVE;
-    };
-
-    private readonly onPointerMove = (event: Event): void => {
-        if (!this.mouseInfo.isDown) return;
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (event instanceof TouchEvent) {
-            if (this.mouseInfo.state === STATE.MOVE) this.handleTouchMove(event);
-            else if (this.mouseInfo.state === STATE.ZOOM) this.handleTouchZoom(event);
-            else if (this.mouseInfo.state === STATE.PAN) this.handleTouchPan(event);
-            return;
+        const distanceX = current.x - previous.x;
+        const distanceY = current.y - previous.y;
+        if (event.button === 2 || event.buttons === 2) {
+            this.model.worldMatrix.getScaling(tempVector);
+            this.move(distanceX * 2 * tempVector.x, distanceY * 2 * tempVector.y);
+        } else {
+            this.rotate(distanceX, distanceY);
         }
-
-        if (!(event instanceof MouseEvent)) return;
-        if (this.mouseInfo.state === STATE.MOVE) this.handlePointerMove(event);
-        else if (this.mouseInfo.state === STATE.PAN) this.handleMousePan(event);
     };
 
-    private readonly onPointerUp = (): void => {
-        this.mouseInfo.isDown = false;
-        this.mouseInfo.state = STATE.NONE;
+    private readonly handlePointerEnd = (event: PointerEvent): void => {
+        this.pointers.delete(event.pointerId);
+        if (this.canvas.hasPointerCapture(event.pointerId)) {
+            this.canvas.releasePointerCapture(event.pointerId);
+        }
+        this.pointerDistance = this.getPointerDistance();
     };
 
-    private readonly onWheel = (event: Event): void => {
+    private readonly handleWheel = (event: WheelEvent): void => {
         event.preventDefault();
-        const wheelEvent = event as WheelEvent;
-        const delta = Math.max(-90, Math.min(90, wheelEvent.deltaY));
+        const delta = Math.max(-90, Math.min(90, event.deltaY));
         this.scale(1 / (1 + delta * 0.001));
     };
 
-    private handleMousePan(event: MouseEvent): void {
-        const distanceX = event.pageX - this.mouseInfo.startX;
-        const distanceY = event.pageY - this.mouseInfo.startY;
-        this.mouseInfo.startX = event.pageX;
-        this.mouseInfo.startY = event.pageY;
-        this.model.worldMatrix.getScaling(tempVector);
-        this.move(distanceX * 2 * tempVector.x, distanceY * 2 * tempVector.y);
-    }
-
-    private handlePointerMove(pointer: Pick<MouseEvent | Touch, 'pageX' | 'pageY'>): void {
-        const distanceX = pointer.pageX - this.mouseInfo.startX;
-        const distanceY = pointer.pageY - this.mouseInfo.startY;
-        this.mouseInfo.startX = pointer.pageX;
-        this.mouseInfo.startY = pointer.pageY;
-        this.rotate(distanceX, distanceY);
-    }
-
-    private handleTouchZoom(event: TouchEvent): void {
-        const firstTouch = event.touches[0];
-        const secondTouch = event.touches[1];
-        if (!firstTouch || !secondTouch) return;
-        const distance = Math.hypot(
-            secondTouch.pageX - firstTouch.pageX,
-            secondTouch.pageY - firstTouch.pageY
-        );
-        const scale = distance / this.mouseInfo.startPointerDistance;
-        this.mouseInfo.startPointerDistance = distance;
-        if (Number.isFinite(scale) && scale !== 1) this.scale(scale);
-    }
-
-    private handleTouchPan(event: TouchEvent): void {
-        const touch = event.touches[0];
-        if (!touch) return;
-        const distanceX = touch.pageX - this.mouseInfo.startX;
-        const distanceY = touch.pageY - this.mouseInfo.startY;
-        this.mouseInfo.startX = touch.pageX;
-        this.mouseInfo.startY = touch.pageY;
-        this.move(distanceX * 0.01, -distanceY * 0.01);
-    }
-
-    private handleTouchMove(event: TouchEvent): void {
-        const touch = event.touches[0];
-        if (touch) this.handlePointerMove(touch);
-    }
-
-    bindEvent(): void {
-        // Kept for backwards compatibility with older examples.
+    private getPointerDistance(): number {
+        const [first, second] = [...this.pointers.values()];
+        return first && second ? Math.hypot(second.x - first.x, second.y - first.y) : 0;
     }
 }
-
-declare global {
-    interface Window {
-        OrbitControls: typeof OrbitControls;
-    }
-}
-
-window.OrbitControls = OrbitControls;
-
-export type { OrbitControlsOptions };
-export default OrbitControls;

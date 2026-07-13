@@ -1,137 +1,126 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import Color from '../math/Color';
+import type Mesh from '../core/Mesh';
 import Framebuffer from '../renderer/Framebuffer';
+import type WebGLRenderer from '../renderer/WebGLRenderer';
 import BasicMaterial from '../material/BasicMaterial';
-import {
-    padLeft
-} from './util';
+import { padLeft } from './util';
 
-const meshPickerMaterial = new BasicMaterial({
-    lightType: 'NONE'
-});
+const meshPickerMaterial = new BasicMaterial({ lightType: 'NONE' });
 const clearColor = new Color(1, 1, 1);
 const tempColor = new Color();
 
-/**
- * Mesh 选择工具，可以获取画布中某个区域内的Mesh
- * @class
- * @example
- * const picker = new Hilo3d.MeshPicker({
- *     renderer: stage.renderer
- * });
- * picker.getSelection(20, 20, 1, 1);
- */
-const MeshPicker = Class.create<typeof hilo3d.MeshPicker>()(/** @lends MeshPicker.prototype */{
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isMeshPicker: true,
-    /**
-     * @default MeshPicker
-     * @type {string}
-     */
-    className: 'MeshPicker',
-    /**
-     * 是否开启debug，开启后会将mesh以不同的颜色绘制在左下角
-     * @default false
-     * @type {boolean}
-     */
-    debug: false,
-    /**
-     * WebGLRenderer 的实例
-     * @default null
-     * @type {WebGLRenderer}
-     */
-    renderer: null,
-    colorMeshMap: null,
-    /**
-     * @constructs
-     * @param {object} [params] 创建对象的属性参数，可包含此类的所有属性。
-     */
-    constructor(params) {
-        Object.assign(this, params);
-        this.colorMeshMap = {};
-        this.init();
-    },
-    createFramebuffer() {
-        if (this.framebuffer) {
-            return;
-        }
+interface MeshPickerIdentity {
+    numberId: number;
+    color: string;
+}
 
-        const renderer = this.renderer;
+export interface MeshPickerParameters {
+    renderer: WebGLRenderer;
+    debug?: boolean;
+}
 
-        this.framebuffer = new Framebuffer(renderer, {
-            useVao: renderer.useVao,
-            width: renderer.width,
-            height: renderer.height
-        });
-    },
+/** GPU color-picking helper that does not mutate scene meshes. */
+class MeshPicker {
+    readonly isMeshPicker = true;
+    readonly className = 'MeshPicker';
+    debug = false;
+    readonly renderer: WebGLRenderer;
+    private framebuffer: Framebuffer | null = null;
+    private readonly colorMeshMap = new Map<string, Mesh>();
+    private meshIdentities = new WeakMap<Mesh, MeshPickerIdentity>();
+    private nextIdentity = 1;
+    private destroyed = false;
+    private readonly afterRender = (): void => {
+        this.renderColoredMeshes();
+        if (this.debug) this.renderDebug();
+    };
 
-    renderDebug() {
-        this.framebuffer.render(0, 0.7, 0.3, 0.3);
-    },
-
-    createMeshNumberId(mesh) {
-        if (!('numberId' in mesh)) {
-            mesh.numberId = Number(mesh.id.replace(/^.*_(\d+)$/, '$1')) * 10;
-            mesh.color = padLeft(mesh.numberId.toString(16), 6);
-            this.colorMeshMap[mesh.color] = mesh;
-        }
-    },
-
-    renderColoredMeshes() {
-        const {
-            renderer,
-            framebuffer
-        } = this;
-
-        framebuffer.bind();
-        renderer.clear(clearColor);
-        const currentForceMaterial = renderer.forceMaterial;
-        renderer.forceMaterial = meshPickerMaterial;
-        renderer.renderList.traverse((mesh) => {
-            this.createMeshNumberId(mesh);
-            meshPickerMaterial.diffuse.fromHEX(mesh.color);
-            meshPickerMaterial.isDirty = true;
-            renderer.renderMesh(mesh);
-        });
-        renderer.forceMaterial = currentForceMaterial;
-        framebuffer.unbind();
-    },
-
-    /**
-     * 获取指定区域内的Mesh，注意无法获取被遮挡的Mesh
-     * @param {number} x 左上角的x坐标
-     * @param {number} y 左上角的y坐标
-     * @param {number} [width=1] 区域的宽
-     * @param {number} [height=1] 区域的高
-     * @return {Mesh[]} 返回获取的Mesh数组
-     */
-    getSelection(x, y, width = 1, height = 1) {
-        const pixelRatio = this.renderer.pixelRatio;
-        const meshes = [];
-        const pixels = this.framebuffer.readPixels(x * pixelRatio, y * pixelRatio, width * pixelRatio, height * pixelRatio);
-        for (let i = 0; i < pixels.length; i += 4) {
-            let color = tempColor.fromUintArray(pixels, i).toHEX();
-            if (this.colorMeshMap[color]) {
-                meshes.push(this.colorMeshMap[color]);
-            }
-        }
-        return meshes;
-    },
-
-    init() {
+    constructor(params: MeshPickerParameters) {
+        this.renderer = params.renderer;
+        this.debug = params.debug ?? false;
         this.createFramebuffer();
-        this.renderer.on('afterRender', () => {
-            this.renderColoredMeshes();
-            if (this.debug) {
-                this.renderDebug();
-            }
+        this.renderer.on('afterRender', this.afterRender);
+    }
+
+    private createFramebuffer(): void {
+        if (this.framebuffer) return;
+        this.framebuffer = new Framebuffer(this.renderer, {
+            useVao: this.renderer.useVao,
+            width: this.renderer.width,
+            height: this.renderer.height
         });
     }
-});
+
+    private renderDebug(): void {
+        this.framebuffer?.render(0, 0.7, 0.3, 0.3);
+    }
+
+    private getMeshIdentity(mesh: Mesh): MeshPickerIdentity {
+        const existing = this.meshIdentities.get(mesh);
+        if (existing) return existing;
+
+        if (this.nextIdentity >= 0xffffff) {
+            throw new RangeError('MeshPicker exhausted the 24-bit picking color space.');
+        }
+        const numberId = this.nextIdentity++;
+        const identity = { numberId, color: padLeft(numberId.toString(16), 6) };
+        this.meshIdentities.set(mesh, identity);
+        this.colorMeshMap.set(identity.color, mesh);
+        return identity;
+    }
+
+    private renderColoredMeshes(): void {
+        const { framebuffer, renderer } = this;
+        if (!framebuffer || this.destroyed) return;
+        const diffuse = meshPickerMaterial.diffuse;
+        if (!(diffuse instanceof Color)) {
+            throw new TypeError('MeshPicker requires a color-based picking material.');
+        }
+
+        framebuffer.bind();
+        const previousForceMaterial = renderer.forceMaterial;
+        try {
+            renderer.clear(clearColor);
+            renderer.forceMaterial = meshPickerMaterial;
+            renderer.renderList.traverse(mesh => {
+                const identity = this.getMeshIdentity(mesh);
+                diffuse.fromHEX(identity.color);
+                meshPickerMaterial.isDirty = true;
+                renderer.renderMesh(mesh);
+            });
+        } finally {
+            renderer.forceMaterial = previousForceMaterial;
+            framebuffer.unbind();
+        }
+    }
+
+    getSelection(x: number, y: number, width = 1, height = 1): Mesh[] {
+        if (!this.framebuffer) return [];
+        const pixelRatio = this.renderer.pixelRatio;
+        const meshes = new Set<Mesh>();
+        const pixels = this.framebuffer.readPixels(
+            x * pixelRatio,
+            y * pixelRatio,
+            width * pixelRatio,
+            height * pixelRatio
+        );
+        for (let index = 0; index < pixels.length; index += 4) {
+            const color = tempColor.fromUintArray(pixels, index).toHEX();
+            const mesh = this.colorMeshMap.get(color);
+            if (mesh) meshes.add(mesh);
+        }
+        return [...meshes];
+    }
+
+    destroy(): void {
+        if (this.destroyed) return;
+        this.destroyed = true;
+        this.renderer.off('afterRender', this.afterRender);
+        this.framebuffer?.destroy();
+        this.framebuffer = null;
+        this.colorMeshMap.clear();
+        this.meshIdentities = new WeakMap<Mesh, MeshPickerIdentity>();
+    }
+}
 
 export default MeshPicker;

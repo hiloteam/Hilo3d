@@ -1,46 +1,65 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../../src/Hilo3d';
+import { createExampleContext } from '../js/init';
 
-window.onload = function() {
-    const $progress = document.getElementById("progress");
+const { stage } = createExampleContext();
+const progressElement = document.querySelector<HTMLElement>('#progress');
+if (!progressElement) throw new Error('Loader progress example requires #progress.');
 
-    const loader = new Hilo3d.GLTFLoader();
-    loader.load({
-        src: '//g.alicdn.com/eva-assets/9659b325fb564d5dad7a83e86a203ae6/0.0.1/Tmall/Tmall.gltf',
-    }).then(function(model) {
+interface ResourceProgress {
+    url: string;
+    loaded: number;
+    total: number;
+}
+
+function isResourceProgress(value: unknown): value is ResourceProgress {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        'url' in value &&
+        typeof value.url === 'string' &&
+        'loaded' in value &&
+        typeof value.loaded === 'number' &&
+        'total' in value &&
+        typeof value.total === 'number'
+    );
+}
+
+const loader = new Hilo3d.GLTFLoader();
+loader.on('progress', event => {
+    if (!isResourceProgress(event.detail)) {
+        throw new TypeError('Loader progress event has an invalid payload.');
+    }
+    const { loaded, total } = event.detail;
+    progressElement.textContent =
+        total > 0
+            ? `resource loaded: ${String(Math.round((loaded / total) * 100))}%`
+            : `resource loaded: ${String(loaded)} bytes`;
+});
+loader
+    .load({ src: '../models/Tmall/Tmall.gltf' })
+    .then(async model => {
+        await model.ready;
         model.node.setScale(0.002);
         stage.addChild(model.node);
+    })
+    .catch((error: unknown) => {
+        queueMicrotask(() => {
+            throw error;
+        });
     });
 
-    let protip = "";
-    loader.on("progress", function(evt) {
-        console.log(evt.detail.url + "resource loaded: " + evt.detail.loaded);
-
-        if (evt.detail.total > 0) {
-
-            //glTF文件包含bin文件和glTF原始文件,主要是bin文件.
-            //贴图类文件单独监听.
-            protip = "resource loaded: " + Math.round(evt.detail.loaded / evt.detail.total * 100) + "%";
-            $progress.innerHTML = protip; 
-        }
-    });
-
-
-    const mph = new Hilo3d.MeshPicker({
-        renderer: stage.renderer,
-        debug: false
-    });
-
-    stage.container.addEventListener('click', function(evt) {
-        const mesh = mph.getSelection(evt.clientX, evt.clientY)[0];
-        console.log(evt.clientX, evt.clientY, mesh);
-        if (mesh) {
-            if (mesh.material.isSelected) {
-                mesh.material.isSelected = false;
-                mesh.material.transparency /= 0.5;
-            } else {
-                mesh.material.isSelected = true;
-                mesh.material.transparency *= 0.5;
-            }
-        }
-    });
-}
+const picker = new Hilo3d.MeshPicker({ renderer: stage.renderer });
+const selectedMeshes = new Set<Hilo3d.Mesh>();
+stage.canvas.addEventListener('click', event => {
+    const mesh = picker.getSelection(event.clientX, event.clientY)[0];
+    const material = mesh?.material;
+    if (!mesh || !material || typeof material.transparency !== 'number') return;
+    if (selectedMeshes.delete(mesh)) {
+        material.transparency = 1;
+    } else {
+        selectedMeshes.add(mesh);
+        material.transparent = true;
+        material.transparency = 0.5;
+    }
+    material.isDirty = true;
+});

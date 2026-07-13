@@ -1,208 +1,140 @@
-// @ts-nocheck
-// Dynamic WebGL compatibility module; public API is checked by types/index.d.ts.
 import extensions from './extensions';
-import {
-    isWebGL2
-} from '../utils/util';
+import { isWebGL2 } from '../utils/util';
+import type { GLContext, ShaderPrecision } from './types';
 
-/**
- * WebGL 能力
- * @namespace capabilities
- * @type {Object}
- */
-const capabilities = {
-    /**
-     * 是否是 WebGL2
-     * @type {boolean}
-     */
-    isWebGL2: false,
-    /**
-     * 最大纹理数量
-     * @type {Number}
-     */
-    MAX_TEXTURE_INDEX: null,
+export type NumericCapabilityName =
+    | 'MAX_RENDERBUFFER_SIZE'
+    | 'MAX_COMBINED_TEXTURE_IMAGE_UNITS'
+    | 'MAX_CUBE_MAP_TEXTURE_SIZE'
+    | 'MAX_FRAGMENT_UNIFORM_VECTORS'
+    | 'MAX_TEXTURE_IMAGE_UNITS'
+    | 'MAX_TEXTURE_SIZE'
+    | 'MAX_VARYING_VECTORS'
+    | 'MAX_VERTEX_ATTRIBS'
+    | 'MAX_VERTEX_TEXTURE_IMAGE_UNITS'
+    | 'MAX_VERTEX_UNIFORM_VECTORS';
 
-    /**
-     * 最高着色器精度, 可以是以下值：highp, mediump, lowp
-     * @type {String}
-     */
-    MAX_PRECISION: null,
+function capabilityEnum(gl: GLContext, name: NumericCapabilityName): GLenum {
+    switch (name) {
+        case 'MAX_RENDERBUFFER_SIZE':
+            return gl.MAX_RENDERBUFFER_SIZE;
+        case 'MAX_COMBINED_TEXTURE_IMAGE_UNITS':
+            return gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS;
+        case 'MAX_CUBE_MAP_TEXTURE_SIZE':
+            return gl.MAX_CUBE_MAP_TEXTURE_SIZE;
+        case 'MAX_FRAGMENT_UNIFORM_VECTORS':
+            return gl.MAX_FRAGMENT_UNIFORM_VECTORS;
+        case 'MAX_TEXTURE_IMAGE_UNITS':
+            return gl.MAX_TEXTURE_IMAGE_UNITS;
+        case 'MAX_TEXTURE_SIZE':
+            return gl.MAX_TEXTURE_SIZE;
+        case 'MAX_VARYING_VECTORS':
+            return gl.MAX_VARYING_VECTORS;
+        case 'MAX_VERTEX_ATTRIBS':
+            return gl.MAX_VERTEX_ATTRIBS;
+        case 'MAX_VERTEX_TEXTURE_IMAGE_UNITS':
+            return gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS;
+        case 'MAX_VERTEX_UNIFORM_VECTORS':
+            return gl.MAX_VERTEX_UNIFORM_VECTORS;
+    }
+}
 
-    /**
-     * 最高顶点着色器精度, 可以是以下值：highp, mediump, lowp
-     * @type {String}
-     */
-    MAX_VERTEX_PRECISION: null,
+function numericParameter(gl: GLContext, name: NumericCapabilityName): number {
+    const value: unknown = gl.getParameter(capabilityEnum(gl, name));
+    if (typeof value !== 'number') {
+        throw new Error(`WebGL capability ${name} did not return a number`);
+    }
+    return value;
+}
 
-    /**
-     * 最高片段着色器精度, 可以是以下值：highp, mediump, lowp
-     * @type {String}
-     */
-    MAX_FRAGMENT_PRECISION: null,
+class WebGLCapabilities {
+    isWebGL2 = false;
+    MAX_TEXTURE_INDEX = 0;
+    MAX_PRECISION: ShaderPrecision = 'lowp';
+    MAX_VERTEX_PRECISION: ShaderPrecision = 'lowp';
+    MAX_FRAGMENT_PRECISION: ShaderPrecision = 'lowp';
+    VERTEX_TEXTURE_FLOAT = false;
+    FRAGMENT_TEXTURE_FLOAT = false;
+    MAX_TEXTURE_MAX_ANISOTROPY = 1;
+    MAX_RENDERBUFFER_SIZE = 0;
+    MAX_COMBINED_TEXTURE_IMAGE_UNITS = 0;
+    MAX_CUBE_MAP_TEXTURE_SIZE = 0;
+    MAX_FRAGMENT_UNIFORM_VECTORS = 0;
+    MAX_TEXTURE_IMAGE_UNITS = 0;
+    MAX_TEXTURE_SIZE = 0;
+    MAX_VARYING_VECTORS = 0;
+    MAX_VERTEX_ATTRIBS = 0;
+    MAX_VERTEX_TEXTURE_IMAGE_UNITS = 0;
+    MAX_VERTEX_UNIFORM_VECTORS = 0;
+    FRAG_DEPTH = false;
+    SHADER_TEXTURE_LOD = false;
+    DRAW_BUFFERS = false;
+    private gl: GLContext | null = null;
 
-    /**
-     * 顶点浮点数纹理
-     * @type {Boolean}
-     */
-    VERTEX_TEXTURE_FLOAT: null,
-
-    /**
-     * 片段浮点数纹理
-     * @type {Boolean}
-     */
-    FRAGMENT_TEXTURE_FLOAT: null,
-
-    /**
-     * MAX_TEXTURE_MAX_ANISOTROPY
-     * @type {Number}
-     */
-    MAX_TEXTURE_MAX_ANISOTROPY: 1,
-
-    /**
-     * @type {number}
-     */
-    MAX_RENDERBUFFER_SIZE: undefined,
-
-    /**
-     * @type {number}
-     */
-    MAX_COMBINED_TEXTURE_IMAGE_UNITS: undefined,
-
-    /**
-     * @type {number}
-     */
-    MAX_CUBE_MAP_TEXTURE_SIZE: undefined,
-
-    /**
-     * @type {number}
-     */
-    MAX_FRAGMENT_UNIFORM_VECTORS: undefined,
-
-    /**
-     * @type {number}
-     */
-    MAX_TEXTURE_IMAGE_UNITS: undefined,
-
-    /**
-     * @type {number}
-     */
-    MAX_TEXTURE_SIZE: undefined,
-
-    /**
-     * @type {number}
-     */
-    MAX_VARYING_VECTORS: undefined,
-
-    /**
-     * @type {number}
-     */
-    MAX_VERTEX_ATTRIBS: undefined,
-
-    /**
-     * @type {number}
-     */
-    MAX_VERTEX_TEXTURE_IMAGE_UNITS: undefined,
-
-    /**
-     * @type {number}
-     */
-    MAX_VERTEX_UNIFORM_VECTORS: undefined,
-
-    /**
-     * 初始化
-     * @param {WebGLRenderingContext} gl
-     */
-    init(gl) {
+    init(gl: GLContext): void {
         this.gl = gl;
         this.isWebGL2 = isWebGL2(gl);
-        const arr = [
-            'MAX_RENDERBUFFER_SIZE',
-            'MAX_COMBINED_TEXTURE_IMAGE_UNITS',
-            'MAX_CUBE_MAP_TEXTURE_SIZE',
-            'MAX_FRAGMENT_UNIFORM_VECTORS',
-            'MAX_TEXTURE_IMAGE_UNITS',
-            'MAX_TEXTURE_SIZE',
-            'MAX_VARYING_VECTORS',
-            'MAX_VERTEX_ATTRIBS',
-            'MAX_VERTEX_TEXTURE_IMAGE_UNITS',
-            'MAX_VERTEX_UNIFORM_VECTORS',
-        ];
 
-        arr.forEach((name) => {
-            this.get(name);
-        });
+        this.MAX_RENDERBUFFER_SIZE = this.get('MAX_RENDERBUFFER_SIZE');
+        this.MAX_COMBINED_TEXTURE_IMAGE_UNITS = this.get('MAX_COMBINED_TEXTURE_IMAGE_UNITS');
+        this.MAX_CUBE_MAP_TEXTURE_SIZE = this.get('MAX_CUBE_MAP_TEXTURE_SIZE');
+        this.MAX_FRAGMENT_UNIFORM_VECTORS = this.get('MAX_FRAGMENT_UNIFORM_VECTORS');
+        this.MAX_TEXTURE_IMAGE_UNITS = this.get('MAX_TEXTURE_IMAGE_UNITS');
+        this.MAX_TEXTURE_SIZE = this.get('MAX_TEXTURE_SIZE');
+        this.MAX_VARYING_VECTORS = this.get('MAX_VARYING_VECTORS');
+        this.MAX_VERTEX_ATTRIBS = this.get('MAX_VERTEX_ATTRIBS');
+        this.MAX_VERTEX_TEXTURE_IMAGE_UNITS = this.get('MAX_VERTEX_TEXTURE_IMAGE_UNITS');
+        this.MAX_VERTEX_UNIFORM_VECTORS = this.get('MAX_VERTEX_UNIFORM_VECTORS');
 
         this.MAX_TEXTURE_INDEX = this.MAX_COMBINED_TEXTURE_IMAGE_UNITS - 1;
-        this.MAX_VERTEX_PRECISION = this._getMaxSupportPrecision(gl.VERTEX_SHADER);
-        this.MAX_FRAGMENT_PRECISION = this._getMaxSupportPrecision(gl.FRAGMENT_SHADER);
-        this.MAX_PRECISION = this.getMaxPrecision(this.MAX_FRAGMENT_PRECISION, this.MAX_VERTEX_PRECISION);
+        this.MAX_VERTEX_PRECISION = this.getMaxSupportedPrecision(gl.VERTEX_SHADER);
+        this.MAX_FRAGMENT_PRECISION = this.getMaxSupportedPrecision(gl.FRAGMENT_SHADER);
+        this.MAX_PRECISION = this.getMaxPrecision(
+            this.MAX_FRAGMENT_PRECISION,
+            this.MAX_VERTEX_PRECISION
+        );
+        this.VERTEX_TEXTURE_FLOAT =
+            Boolean(extensions.texFloat) && this.MAX_VERTEX_TEXTURE_IMAGE_UNITS > 0;
+        this.FRAGMENT_TEXTURE_FLOAT = Boolean(extensions.texFloat);
+        this.FRAG_DEPTH = Boolean(extensions.fragDepth);
+        this.SHADER_TEXTURE_LOD = Boolean(extensions.shaderTextureLod);
+        this.DRAW_BUFFERS = Boolean(extensions.drawBuffers);
 
-        this.VERTEX_TEXTURE_FLOAT = !!extensions.texFloat && this.MAX_VERTEX_TEXTURE_IMAGE_UNITS > 0;
-        this.FRAGMENT_TEXTURE_FLOAT = !!extensions.texFloat;
-        this.FRAG_DEPTH = !!extensions.fragDepth;
-
-        this.SHADER_TEXTURE_LOD = !!extensions.shaderTextureLod;
-        this.DRAW_BUFFERS = !!extensions.drawBuffers;
-
-        if (extensions.textureFilterAnisotropic) {
-            this.MAX_TEXTURE_MAX_ANISOTROPY = gl.getParameter(extensions.textureFilterAnisotropic.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+        const anisotropic = extensions.textureFilterAnisotropic;
+        if (anisotropic) {
+            const value: unknown = gl.getParameter(anisotropic.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+            if (typeof value === 'number') this.MAX_TEXTURE_MAX_ANISOTROPY = value;
         }
-    },
-    /**
-     * 获取 WebGL 能力
-     * @param  {String} name
-     * @return {Number|String}
-     */
-    get(name) {
-        const gl = this.gl;
-        let value = this[name];
-        if (value === undefined) {
-            value = this[name] = gl.getParameter(gl[name]);
+    }
+
+    get(name: NumericCapabilityName): number {
+        if (!this.gl) throw new Error('WebGL capabilities have not been initialized');
+        return numericParameter(this.gl, name);
+    }
+
+    private getMaxSupportedPrecision(shaderType: GLenum): ShaderPrecision {
+        if (!this.gl) throw new Error('WebGL capabilities have not been initialized');
+        const precisionCandidates: readonly {
+            name: Exclude<ShaderPrecision, 'lowp'>;
+            type: GLenum;
+        }[] = [
+            { name: 'highp', type: this.gl.HIGH_FLOAT },
+            { name: 'mediump', type: this.gl.MEDIUM_FLOAT }
+        ];
+        for (const candidate of precisionCandidates) {
+            const format = this.gl.getShaderPrecisionFormat(shaderType, candidate.type);
+            if (format && format.precision > 0) return candidate.name;
         }
+        return 'lowp';
+    }
 
-        return value;
-    },
-    _getMaxSupportPrecision(shaderType) {
-        const gl = this.gl;
-
-        let maxPrecision = 'lowp';
-
-        if (gl.getShaderPrecisionFormat) {
-            const precisions = [{
-                name: 'highp',
-                type: gl.HIGH_FLOAT,
-            }, {
-                name: 'mediump',
-                type: gl.MEDIUM_FLOAT
-            }];
-
-            for (let i = 0; i < precisions.length; i++) {
-                const precision = precisions[i];
-                const precisionFormat = gl.getShaderPrecisionFormat(shaderType, precision.type) || {};
-                if (precisionFormat.precision > 0) {
-                    maxPrecision = precision.name;
-                    break;
-                }
-            }
-        } else {
-            maxPrecision = 'mediump';
-        }
-
-        return maxPrecision;
-    },
-    /**
-     * 获取最大支持精度
-     * @param  {String} a
-     * @param  {String} b
-     * @return {String}
-     */
-    getMaxPrecision(a, b) {
-        if (a === 'highp' || (a === 'mediump' && b === 'lowp')) {
-            return b;
-        }
-
+    getMaxPrecision(a: ShaderPrecision, b: ShaderPrecision): ShaderPrecision {
+        if (a === 'highp' || (a === 'mediump' && b === 'lowp')) return b;
         return a;
     }
-};
+}
 
+const capabilities = new WebGLCapabilities();
+
+export { WebGLCapabilities };
 export default capabilities;

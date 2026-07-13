@@ -1,6 +1,9 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-var shaderToyCode = `
+const { stage, renderer, ticker } = createExampleContext();
+
+const shaderToyCode = `
 
 // The MIT License
 // Copyright © 2013 Inigo Quilez
@@ -545,186 +548,137 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 }
 
 `;
-Hilo3d.extensions.use("OES_standard_derivatives");
-    renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
-    var commonUniformGetMethod = function(mesh, material, programInfo){
-        return this.value;
-    }
-    stage.enableDOMEvent([Hilo3d.browser.POINTER_MOVE, Hilo3d.browser.POINTER_START, Hilo3d.browser.POINTER_END]);
-    stage.on(Hilo3d.browser.POINTER_MOVE, function(e){
-        if (stage.isMouseDown) {
-            stage.stageDeltaX = e.stageX - stage.stageX;
-            stage.stageDeltaY = e.stageY - stage.stageY;
-            stage.stageX = e.stageX;
-            stage.stageX = e.stageX;
+Hilo3d.extensions.use('OES_standard_derivatives');
+renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
+const pointer = { x: 0, y: 0, deltaX: 0, deltaY: 0, isDown: false };
+function eventPosition(event: Hilo3d.DispatchEvent): { x: number; y: number } | null {
+    const x = 'stageX' in event ? event.stageX : undefined;
+    const y = 'stageY' in event ? event.stageY : undefined;
+    return typeof x === 'number' && typeof y === 'number' ? { x, y } : null;
+}
+function updatePointer(event: Hilo3d.DispatchEvent): void {
+    const position = eventPosition(event);
+    if (!position) return;
+    pointer.deltaX = position.x - pointer.x;
+    pointer.deltaY = position.y - pointer.y;
+    pointer.x = position.x;
+    pointer.y = position.y;
+}
+
+stage.enableDOMEvent(['pointermove', 'pointerdown', 'pointerup', 'pointercancel']);
+stage.on('pointermove', event => {
+    if (pointer.isDown) updatePointer(event);
+});
+stage.on('pointerdown', event => {
+    updatePointer(event);
+    pointer.isDown = true;
+});
+const endPointer = (event: Hilo3d.DispatchEvent): void => {
+    updatePointer(event);
+    pointer.isDown = false;
+};
+stage.on('pointerup', endPointer);
+stage.on('pointercancel', endPointer);
+
+const resolution = new Float32Array([stage.width, stage.height, 1]);
+const mouse = new Float32Array(4);
+const date = new Float32Array(4);
+const channelTime = new Float32Array(4);
+const channelResolution = new Float32Array(12);
+const channel0 = new Hilo3d.LazyTexture({
+    src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
+});
+let elapsedTime = 0;
+let timeDelta = 0;
+let frame = 0;
+
+function bindChannel(
+    texture: Hilo3d.Texture | null,
+    programInfo: Hilo3d.ProgramBindingInfo
+): number | undefined {
+    if (programInfo.textureIndex === undefined)
+        throw new Error('ShaderToy channel has no texture unit');
+    return Hilo3d.semantic.handlerTexture(texture, programInfo.textureIndex);
+}
+
+const screenVertexShader = Hilo3d.Shader.shaders['screen.vert'];
+if (screenVertexShader === undefined)
+    throw new Error('ShaderToy screen vertex shader is unavailable');
+const material = new Hilo3d.ShaderMaterial({
+    depthTest: false,
+    side: Hilo3d.constants.FRONT_AND_BACK,
+    needBasicUnifroms: false,
+    needBasicAttributes: false,
+    uniforms: {
+        iResolution: { get: () => resolution },
+        iTime: { get: () => elapsedTime },
+        iTimeDelta: { get: () => timeDelta },
+        iFrame: { get: () => frame },
+        iFrameRate: { get: () => ticker.getMeasuredFPS() },
+        iChannelTime: { get: () => channelTime },
+        iMouse: { get: () => mouse },
+        iDate: { get: () => date },
+        iSampleRate: { get: () => 0 },
+        iChannelResolution: { get: () => channelResolution },
+        iChannel0: { get: (_mesh, _material, info) => bindChannel(channel0, info) },
+        iChannel1: { get: (_mesh, _material, info) => bindChannel(null, info) },
+        iChannel2: { get: (_mesh, _material, info) => bindChannel(null, info) },
+        iChannel3: { get: (_mesh, _material, info) => bindChannel(null, info) }
+    },
+    attributes: {
+        a_position: 'POSITION',
+        a_texcoord0: 'TEXCOORD_0'
+    },
+    fs: `
+        #extension GL_OES_standard_derivatives: enable
+        #define texture texture2D
+        precision HILO_MAX_FRAGMENT_PRECISION float;
+        uniform vec3 iResolution;
+        uniform float iTime;
+        uniform float iTimeDelta;
+        uniform int iFrame;
+        uniform float iFrameRate;
+        uniform float iChannelTime[4];
+        uniform vec4 iMouse;
+        uniform vec4 iDate;
+        uniform float iSampleRate;
+        uniform vec3 iChannelResolution[4];
+        uniform sampler2D iChannel0;
+        uniform sampler2D iChannel1;
+        uniform sampler2D iChannel2;
+        uniform sampler2D iChannel3;
+        ${shaderToyCode}
+        void main(void) {
+            vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
+            mainImage(color, gl_FragCoord.xy);
+            gl_FragColor = color;
         }
-    });
-    stage.on(Hilo3d.browser.POINTER_START, function(e){
-        stage.stageDeltaX = e.stageX - stage.stageX;
-        stage.stageDeltaY = e.stageY - stage.stageY;
-        stage.stageX = e.stageX;
-        stage.stageX = e.stageX;
-        stage.isMouseDown = true;
-    });
-    stage.on(Hilo3d.browser.POINTER_END, function(e){
-        stage.stageDeltaX = e.stageX - stage.stageX;
-        stage.stageDeltaY = e.stageY - stage.stageY;
-        stage.stageX = e.stageX;
-        stage.stageX = e.stageX;
-        stage.isMouseDown = false;
-    });
-    var mesh = new Hilo3d.Mesh({
-        frustumTest:false,
-        geometry: new Hilo3d.Geometry({
-            mode:Hilo3d.constants.TRIANGLE_STRIP,
-            vertices:new Hilo3d.GeometryData(new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), 2)
-        }),
-        material: new Hilo3d.ShaderMaterial({
-            depthTest:false,
-            side:Hilo3d.constants.FRONT_AND_BACK,
-            needBasicUnifroms: false,
-            needBasicAttributes: false,
-            iChannel0: new Hilo3d.LazyTexture({
-                crossOrigin: true,
-                src: '//gw.alicdn.com/tfs/TB1lwwSGgHqK1RjSZFPXXcwapXa-1024-1024.jpg'
-            }),
-            iChannel1: null,
-            iChannel2: null,
-            iChannel3: null,
-            uniforms:{
-                // vec3
-                iResolution:{
-                    value:new Float32Array([stage.width, stage.height, 1]),
-                    get:commonUniformGetMethod
-                },
-                // value:0,
-                iTime:{
-                    value:new Date().getTime(),
-                    get:commonUniformGetMethod
-                },
-                // float
-                iTimeDelta:{
-                    value:0,
-                    get:commonUniformGetMethod
-                },
-                // int
-                iFrame:{
-                    value:0,
-                    get:commonUniformGetMethod
-                },
-                // float
-                iFrameRate:{
-                    value:0,
-                    get:commonUniformGetMethod
-                },
-                // float[4]
-                iChannelTime:{
-                    value: new Float32Array(4),
-                    get:commonUniformGetMethod
-                },
-                // vec4
-                iMouse:{
-                    value: new Float32Array(4),
-                    get:commonUniformGetMethod
-                },
-                // vec4
-                iDate:{
-                    value: new Float32Array(4),
-                    get:commonUniformGetMethod
-                },
-                // float
-                iSampleRate:{
-                    value:0,
-                    get:commonUniformGetMethod
-                },
-                // vec3[4]
-                iChannelResolution:{
-                    value: new Float32Array(12),
-                    get:commonUniformGetMethod
-                },
-                // sampler2D
-                iChannel0:{
-                    get:function(mesh, material, programInfo){
-                        Hilo3d.semantic.handlerTexture(material.iChannel0, programInfo.textureIndex);
-                    }
-                },
-                // sampler2D
-                iChannel1:{
-                    get:function(mesh, material, programInfo){
-                        Hilo3d.semantic.handlerTexture(material.iChannel1, programInfo.textureIndex);
-                    }
-                },
-                // sampler2D
-                iChannel2:{
-                    get:function(mesh, material, programInfo){
-                        Hilo3d.semantic.handlerTexture(material.iChannel2, programInfo.textureIndex);
-                    }
-                },
-                // sampler2D
-                iChannel3:{
-                    get:function(mesh, material, programInfo){
-                        Hilo3d.semantic.handlerTexture(material.iChannel3, programInfo.textureIndex);
-                    }
-                }
-            },
-            attributes:{
-                a_position: 'POSITION',
-                a_texcoord0:'TEXCOORD_0'
-            },
-            fs:`
-                #extension GL_OES_standard_derivatives: enable
-                #define texture texture2D
-                precision HILO_MAX_FRAGMENT_PRECISION float;
-                uniform vec3 iResolution;
-                uniform float iTime;
-                uniform float iTimeDelta;
-                uniform int iFrame;
-                uniform float iFrameRate;
-                uniform float iChannelTime[4];
-                uniform vec4 iMouse;
-                uniform vec4 iDate;
-                uniform float iSampleRate;
-                uniform vec3 iChannelResolution[4];
-                uniform sampler2D iChannel0;
-                uniform sampler2D iChannel1;
-                uniform sampler2D iChannel2;
-                uniform sampler2D iChannel3;
-
-                ${shaderToyCode}
-                
-                void main(void) {   
-                    vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
-                    mainImage( color, vec2(gl_FragCoord.x, gl_FragCoord.y));
-                    gl_FragColor = color;
-                }
-            `,
-            vs:Hilo3d.Shader.shaders['screen.vert']
-        }),
-        onUpdate(dt){
-            var uniforms = this.material.uniforms;
-
-            uniforms.iFrame.value ++;
-
-            var nowDate = new Date();
-            var nowTime = nowDate.getTime();
-        
-            uniforms.iResolution.value[0] = stage.renderer.width;
-            uniforms.iResolution.value[1] = stage.renderer.height;
-
-            uniforms.iDate.value[0] = nowDate.getFullYear();
-            uniforms.iDate.value[1] = nowDate.getMonth();
-            uniforms.iDate.value[2] = nowDate.getDate();
-            uniforms.iDate.value[3] = nowDate.getHours()*60.0*60 + nowDate.getMinutes()*60 + nowDate.getSeconds() + nowDate.getMilliseconds()/1000;
-
-            uniforms.iTimeDelta.value = nowTime - uniforms.iTime.value;
-            uniforms.iTime.value = uniforms.iDate.value[3];
-
-            uniforms.iMouse.value[0] = stage.stageX||0;
-            uniforms.iMouse.value[1] = stage.stageY||0;
-            uniforms.iMouse.value[2] = stage.stageDeltaX||0;
-            uniforms.iMouse.value[3] = stage.stageDeltaY||0;
-
-            uniforms.iFrameRate.value = ticker.getMeasuredFPS();
-        }
-    });
-    stage.addChild(mesh);
+    `,
+    vs: screenVertexShader
+});
+const mesh = new Hilo3d.Mesh({
+    frustumTest: false,
+    geometry: new Hilo3d.Geometry({
+        mode: Hilo3d.constants.TRIANGLE_STRIP,
+        vertices: new Hilo3d.GeometryData(new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), 2)
+    }),
+    material
+});
+mesh.onUpdate = deltaTime => {
+    frame += 1;
+    timeDelta = deltaTime / 1000;
+    elapsedTime += timeDelta;
+    resolution[0] = renderer.width;
+    resolution[1] = renderer.height;
+    const now = new Date();
+    date[0] = now.getFullYear();
+    date[1] = now.getMonth() + 1;
+    date[2] = now.getDate();
+    date[3] =
+        now.getHours() * 3600 +
+        now.getMinutes() * 60 +
+        now.getSeconds() +
+        now.getMilliseconds() / 1000;
+    mouse.set([pointer.x, pointer.y, pointer.deltaX, pointer.deltaY]);
+};
+stage.addChild(mesh);

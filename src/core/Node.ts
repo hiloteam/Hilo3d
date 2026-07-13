@@ -1,28 +1,119 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from './Class';
-import EventMixin from './EventMixin';
+import { EventDispatcher, type DispatchEvent } from './EventMixin';
 import Matrix4 from '../math/Matrix4';
 import Matrix4Notifier from '../math/Matrix4Notifier';
 import Vector3 from '../math/Vector3';
 import Vector3Notifier from '../math/Vector3Notifier';
 import EulerNotifier from '../math/EulerNotifier';
 import QuaternionNotifier from '../math/QuaternionNotifier';
+import type Quaternion from '../math/Quaternion';
+import type Ray from '../math/Ray';
+import type Animation from '../animation/Animation';
+import Geometry, { type Bounds } from '../geometry/Geometry';
+import Skeleton from './Skeleton';
+import type WebGLRenderer from '../renderer/WebGLRenderer';
 import math from '../math/math';
-import log from '../utils/log';
-
 const defaultUp = new Vector3(0, 1, 0);
 const tempMatrix4 = new Matrix4();
+const TRAVERSE_STOP_NONE = 0 as const;
+const TRAVERSE_STOP_CHILDREN = 1 as const;
+const TRAVERSE_STOP_ALL = 2 as const;
+export type NodeTraverseResult = 0 | 1 | 2;
+export type NodeTraverseCallback = (node: Node) => NodeTraverseResult | undefined;
+export type NodeGetChildByCallback = (node: Node) => boolean;
+export interface NodeRaycastInfo {
+    mesh: Node;
+    point: Vector3;
+}
+export interface NodePointerEvent extends DispatchEvent {
+    eventTarget?: Node;
+    eventCurrentTarget?: Node;
+    hitPoint?: Vector3;
+    stageX?: number;
+    stageY?: number;
+    pointerId?: number;
+    pointerType?: string;
+    isPrimary?: boolean;
+    button?: number;
+    buttons?: number;
+    pressure?: number;
+    width?: number;
+    height?: number;
+    clientX?: number;
+    clientY?: number;
+    pageX?: number;
+    pageY?: number;
+    altKey?: boolean;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    shiftKey?: boolean;
+    _stopPropagationed?: boolean;
+}
 
-const TRAVERSE_STOP_NONE = 0;
-const TRAVERSE_STOP_CHILDREN = 1;
-const TRAVERSE_STOP_ALL = 2;
+const MOVE_TO_OVER_EVENT: Readonly<Record<string, string>> = {
+    pointermove: 'pointerover',
+    mousemove: 'mouseover'
+};
+const POINTER_EXIT_EVENTS = new Set([
+    'pointerout',
+    'pointerleave',
+    'pointercancel',
+    'mouseout',
+    'mouseleave',
+    'touchout',
+    'touchcancel'
+]);
 
+function getPointerId(event: NodePointerEvent): number {
+    return event.pointerId ?? 0;
+}
+interface GeometryNode extends Node {
+    geometry: Geometry;
+}
+interface SkinnedNode extends Node {
+    skeleton: Skeleton | null;
+}
+function hasGeometry(node: Node): node is GeometryNode {
+    const geometry: unknown = Reflect.get(node, 'geometry');
+    return node.isMesh && geometry instanceof Geometry;
+}
+function isSkinnedNode(node: Node): node is SkinnedNode {
+    const skeleton: unknown = Reflect.get(node, 'skeleton');
+    return node.isSkinedMesh && (skeleton === null || skeleton instanceof Skeleton);
+}
+export interface NodeParameters {
+    name?: string;
+    anim?: Animation | null;
+    animationId?: string;
+    jointName?: string;
+    autoUpdateWorldMatrix?: boolean;
+    autoUpdateChildWorldMatrix?: boolean;
+    parent?: Node | null;
+    needCallChildUpdate?: boolean;
+    visible?: boolean;
+    pointerEnabled?: boolean;
+    pointerChildren?: boolean;
+    useHandCursor?: boolean;
+    userData?: unknown;
+    onUpdate?: ((deltaTime: number) => void) | null;
+    onlySyncQuaternion?: boolean;
+    up?: Vector3;
+    x?: number;
+    y?: number;
+    z?: number;
+    scaleX?: number;
+    scaleY?: number;
+    scaleZ?: number;
+    pivotX?: number;
+    pivotY?: number;
+    pivotZ?: number;
+    rotationX?: number;
+    rotationY?: number;
+    rotationZ?: number;
+}
 /**
  * 节点，3D场景中的元素，是大部分类的基类
- * @class
- * @mixes EventMixin
  * @example
+ * ```ts
  * const node = new Hilo3d.Node({
  *     name:'test',
  *     x:100,
@@ -33,203 +124,157 @@ const TRAVERSE_STOP_ALL = 2;
  * });
  * node.scaleX = 0.3;
  * stage.addChild(node);
+ * ```
  */
-const Node = Class.create<typeof hilo3d.Node>()(/** @lends Node.prototype */ {
-    Statics: {
-        /**
-         * traverse callback 返回值，执行后不暂停 traverse
-         * @memberOf Node
-         * @type {number}
-         */
-        TRAVERSE_STOP_NONE,
-        /**
-         * traverse callback 返回值，执行后暂停子元素 traverse
-         * @memberOf Node
-         * @type {number}
-         */
-        TRAVERSE_STOP_CHILDREN,
-        /**
-         * traverse callback 返回值，执行后暂停所有 traverse
-         * @memberOf Node
-         * @type {number}
-         */
-        TRAVERSE_STOP_ALL
-    },
-    Mixes: EventMixin,
+class Node extends EventDispatcher {
+    static readonly typeName: string = 'Node';
+    id: string;
+    up: Vector3;
+    children: Node[];
+    worldMatrix: Matrix4;
+    protected _matrix: Matrix4Notifier;
+    protected _position: Vector3Notifier;
+    protected _scale: Vector3Notifier;
+    protected _pivot: Vector3Notifier;
+    protected _rotation: EulerNotifier;
+    protected _quaternion: QuaternionNotifier;
+    _originName?: string;
+    private readonly __pointersOver = new Set<number>();
     /**
-     * @default true
-     * @type {boolean}
+     * traverse callback 返回值，执行后不暂停 traverse
      */
-    isNode: true,
+    static readonly TRAVERSE_STOP_NONE: 0 = TRAVERSE_STOP_NONE;
     /**
-     * @default Node
-     * @type {string}
+     * traverse callback 返回值，执行后暂停子元素 traverse
      */
-    className: 'Node',
+    static readonly TRAVERSE_STOP_CHILDREN: 1 = TRAVERSE_STOP_CHILDREN;
+    /**
+     * traverse callback 返回值，执行后暂停所有 traverse
+     */
+    static readonly TRAVERSE_STOP_ALL: 2 = TRAVERSE_STOP_ALL;
+    isNode = true;
+    isCamera = false;
+    isMesh = false;
+    isSkinedMesh = false;
+    className = 'Node';
     /**
      * Node 的名字，可以通过 getChildByName 查找
-     * @type {string}
      */
-    name: '',
+    name = '';
     /**
      * 动画
-     * @type {Animation}
-     * @default null
      */
-    anim: null,
+    anim: Animation | null = null;
     /**
      * animation 查找 id
-     * @type {String}
-     * @default ''
      */
-    animationId: '',
+    animationId = '';
     /**
      * 骨骼名称
-     * @type {String}
-     * @default ''
      */
-    jointName: '',
+    jointName = '';
     /**
      * 是否自动更新世界矩阵
-     * @default true
-     * @type {boolean}
      */
-    autoUpdateWorldMatrix: true,
+    autoUpdateWorldMatrix = true;
     /**
      * 是否自动更新子元素世界矩阵
-     * @default true
-     * @type {boolean}
      */
-    autoUpdateChildWorldMatrix: true,
+    autoUpdateChildWorldMatrix = true;
     /**
      * 父节点
-     * @default null
-     * @type {Node}
      */
-    parent: null,
-    _quatDirty: false,
-    _matrixDirty: false,
-
+    parent: Node | null = null;
+    _quatDirty = false;
+    _matrixDirty = false;
     /**
      * 每次更新的时候是否调用子节点的 onUpdate 方法
-     * @default true
-     * @type {boolean}
      */
-    needCallChildUpdate: true,
-
+    needCallChildUpdate = true;
     /**
      * 节点是否显示
-     * @default true
-     * @type {boolean}
      */
-    visible: true,
-
+    visible = true;
     /**
      * 可视对象是否接受交互事件。默认为接受交互事件，即true。
-     * @default true
-     * @type {Boolean}
      */
-    pointerEnabled: true,
-
+    pointerEnabled = true;
     /**
      * 子元素是否接受交互事件。
-     * @default true
-     * @type {Boolean}
      */
-    pointerChildren: true,
-
+    pointerChildren = true;
     /**
      * 是否用鼠标指针
-     * @default false
-     * @type {Boolean}
      */
-    useHandCursor: false,
-
+    useHandCursor = false;
     /**
      * 用户数据
-     * @default null
-     * @type {unknown}
      */
-    userData: null,
-
+    userData: unknown = null;
     /**
      * update 回调
-     * @type {Function}
-     * @default null
      */
-    onUpdate: null,
-
+    onUpdate: ((deltaTime: number) => void) | null = null;
     /**
      * 是否强制使用父元素 worldMatrix，供高级开发者使用
-     * @private
-     * @type {Boolean}
      */
-    __forceUseParentWorldMatrix: false,
-
+    __forceUseParentWorldMatrix = false;
     /**
      * 只同步四元数，不同步欧拉角
-     * @type {Boolean}
-     * @default false
      */
-    onlySyncQuaternion: false,
-
+    onlySyncQuaternion = false;
     /**
-     * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
+     * @param params - 初始化参数，所有params都会复制到实例上
      */
-    constructor(params) {
-        /**
-         * @type {string}
-         */
-        this.id = math.generateUUID(this.className);
+    constructor(params: NodeParameters = {}) {
+        super();
+        this.id = math.generateUUID(new.target.typeName);
         /**
          * 元素的up向量
-         * @type {Vector3}
          */
         this.up = defaultUp.clone();
         /**
          * 元素直接点数组
-         * @type {Node[]}
          */
         this.children = [];
         /**
          * 元素的世界矩阵
-         * @type {Matrix4}
          */
         this.worldMatrix = new Matrix4();
-
         this._matrix = new Matrix4Notifier();
         this._position = new Vector3Notifier(0, 0, 0);
         this._scale = new Vector3Notifier(1, 1, 1);
         this._pivot = new Vector3Notifier(0, 0, 0);
         this._rotation = new EulerNotifier();
         this._quaternion = new QuaternionNotifier();
-
         this._matrix.onUpdate = this._onMatrixUpdate.bind(this);
         this._position.onUpdate = this._onPositionUpdate.bind(this);
         this._scale.onUpdate = this._onScaleUpdate.bind(this);
         this._pivot.onUpdate = this._onPivotUpdate.bind(this);
         this._rotation.onUpdate = this._onRotationUpdate.bind(this);
         this._quaternion.onUpdate = this._onQuaternionUpdate.bind(this);
-
         Object.assign(this, params);
-    },
+    }
     /**
-     * @param {boolean} [isChild=false] 是否子节点，子节点不会处理动画及骨骼Mesh，即如果有动画将共享
-     * @return {Node} 返回clone的Node
+     * @param isChild - 是否子节点，子节点不会处理动画及骨骼Mesh，即如果有动画将共享
+     * @returns 返回clone的Node
      */
-    clone(isChild) {
-        const node = new this.constructor();
+    clone(isChild?: boolean): Node {
+        const NodeConstructor = this.constructor as new () => Node;
+        const candidate: unknown = new NodeConstructor();
+        if (!(candidate instanceof Node)) {
+            throw new TypeError('Node subclasses must construct Node-compatible instances.');
+        }
+        const node = candidate;
         node.name = this.name;
         node.jointName = this.jointName;
         node.animationId = this.animationId;
         node.setPosition(this.x, this.y, this.z);
         node.setScale(this.scaleX, this.scaleY, this.scaleZ);
         node.setRotation(this.rotationX, this.rotationY, this.rotationZ);
-        this.children.forEach((child) => {
+        this.children.forEach(child => {
             node.addChild(child.clone(true));
         });
-
         if (!isChild) {
             if (this.anim) {
                 node.anim = this.anim.clone(node);
@@ -237,36 +282,35 @@ const Node = Class.create<typeof hilo3d.Node>()(/** @lends Node.prototype */ {
             node.resetSkinedMeshRootNode();
         }
         return node;
-    },
+    }
     /**
      * 设置节点的动画，这个需要是模型的根节点
-     * @param {Animation} anim 动画实例
-     * @return {Node} this
+     * @param anim - 动画实例
+     * @returns this
      */
-    setAnim(anim) {
+    setAnim(anim: Animation): this {
         this.anim = anim;
         anim.rootNode = this;
         return this;
-    },
+    }
     /**
      * 重置子孙元素中 SkinedMesh 的根节点为当前元素
      */
-    resetSkinedMeshRootNode() {
-        this.traverse((mesh) => {
-            if (mesh.isSkinedMesh && mesh.skeleton) {
+    resetSkinedMeshRootNode(): void {
+        this.traverse(mesh => {
+            if (isSkinnedNode(mesh) && mesh.skeleton) {
                 mesh.skeleton.rootNode = this;
             }
         }, true);
-    },
+    }
     /**
      * 将所以子孙元素放到一个对象中，对象key为元素的name，value为该元素
-     * @return {Object} 返回获取的对象
+     * @returns 返回获取的对象
      */
-    getChildrenNameMap() {
-        const map = {};
-        this.traverse((child) => {
+    getChildrenNameMap(): Record<string, Node> {
+        const map: Record<string, Node> = {};
+        this.traverse(child => {
             map[child.name] = child;
-
             // fix smd animation bug
             const originName = child._originName;
             if (originName !== undefined && !map[originName]) {
@@ -274,98 +318,98 @@ const Node = Class.create<typeof hilo3d.Node>()(/** @lends Node.prototype */ {
             }
         }, true);
         return map;
-    },
+    }
     /**
      * 添加一个子元素
-     * @param {Node} child 需要添加的子元素
-     * @return {Node} this
+     * @param child - 需要添加的子元素
+     * @returns this
      */
-    addChild(child) {
+    addChild(child: Node): this {
         if (child.parent) {
             child.removeFromParent();
         }
         child.parent = this;
         this.children.push(child);
-
         return this;
-    },
+    }
     /**
      * 移除指定的子元素
-     * @param {Node} child 需要移除的元素
-     * @return {Node} this
+     * @param child - 需要移除的元素
+     * @returns this
      */
-    removeChild(child) {
+    removeChild(child: Node): this {
         const index = this.children.indexOf(child);
         if (index > -1) {
             this.children.splice(index, 1);
             child.parent = null;
         }
         return this;
-    },
+    }
     /**
      * 将当前元素添加到某个父元素的子元素中
-     * @param {Node} parent 需要添加到的父元素
-     * @return {Node} this
+     * @param parent - 需要添加到的父元素
+     * @returns this
      */
-    addTo(parent) {
+    addTo(parent: Node): this {
         parent.addChild(this);
         return this;
-    },
+    }
     /**
      * 将当前元素从其父元素中移除
-     * @return {Node} this
+     * @returns this
      */
-    removeFromParent() {
+    removeFromParent(): this {
         if (this.parent) {
             this.parent.removeChild(this);
         }
         return this;
-    },
+    }
     /**
      * 更新本地矩阵
-     * @return {Node} this
+     * @returns this
      */
-    updateMatrix() {
+    updateMatrix(): this {
         if (this._matrixDirty) {
             this._matrixDirty = false;
             this.matrixVersion++;
-            this._matrix.fromRotationTranslationScaleOrigin(this.quaternion, this._position, this._scale, this._pivot, true);
+            this._matrix.fromRotationTranslationScaleOrigin(
+                this.quaternion,
+                this._position,
+                this._scale,
+                this._pivot,
+                true
+            );
         }
-
         return this;
-    },
-
+    }
     /**
      * 更新四元数
-     * @return {Node} this
+     * @returns this
      */
-    updateQuaternion() {
+    updateQuaternion(): this {
         if (this._quatDirty) {
             this._quatDirty = false;
             this._quaternion.fromEuler(this._rotation, true);
         }
-
         return this;
-    },
-
+    }
     /**
      * 更新transform属性
-     * @return {Node} this
+     * @returns this
      */
-    updateTransform() {
+    updateTransform(): this {
         this._matrix.decompose(this._quaternion, this._position, this._scale, this._pivot);
         this._onQuaternionUpdate();
-
         this._matrixDirty = false;
         return this;
-    },
+    }
     /**
      * 更新世界矩阵
-     * @param  {Boolean} [force=true] 是否强制更新
-     * @return {Node} this
+     * @param force - 是否强制更新
+     * @returns this
      */
-    updateMatrixWorld(force) {
-        this.traverse((node) => {
+    updateMatrixWorld(force?: boolean): this {
+        this.traverse(node => {
             if (node.autoUpdateWorldMatrix || force) {
                 if (node.parent) {
                     if (!node.__forceUseParentWorldMatrix) {
@@ -378,121 +422,120 @@ const Node = Class.create<typeof hilo3d.Node>()(/** @lends Node.prototype */ {
                 }
                 node.worldMatrixVersion++;
             }
-
             if (!node.autoUpdateChildWorldMatrix && !force) {
                 return TRAVERSE_STOP_CHILDREN;
             }
-
             return TRAVERSE_STOP_NONE;
         });
         return this;
-    },
+    }
     /**
      * 获取当前元素相对于指定元素的矩阵
-     * @param {Node} [ancestor] 相对于的元素，需要是当前元素的祖先元素，不传表示获取世界矩阵
-     * @return {Matrix4} 返回获取的矩阵
+     * @param ancestor - 相对于的元素，需要是当前元素的祖先元素，不传表示获取世界矩阵
+     * @returns 返回获取的矩阵
      */
-    getConcatenatedMatrix(ancestor) {
+    getConcatenatedMatrix(ancestor?: Node): Matrix4 {
         const mtx = new Matrix4();
-
-        for (let o = this; o && o !== ancestor; o = o.parent) {
-            mtx.multiply(o.matrix, mtx);
+        if (this === ancestor) return mtx;
+        mtx.multiply(this.matrix, mtx);
+        for (let node = this.parent; node && node !== ancestor; node = node.parent) {
+            mtx.multiply(node.matrix, mtx);
         }
         return mtx;
-    },
+    }
     /**
      * _traverse
-     * @private
-     * @param  {NodeTraverseCallback} callback
-     * @param  {Boolean}  onlyChild
-     * @return {Enum}  TRAVERSE_STOP_ALL, TRAVERSE_STOP_CHILDREN, TRAVERSE_STOP_NONE
+     * @param callback -
+     * @param onlyChild -
+     * @returns TRAVERSE_STOP_ALL, TRAVERSE_STOP_CHILDREN, TRAVERSE_STOP_NONE
      */
-    _traverse(callback, onlyChild) {
+    private _traverse(callback: NodeTraverseCallback, onlyChild: boolean): NodeTraverseResult {
         if (!onlyChild) {
             const res = callback(this);
             if (res === TRAVERSE_STOP_ALL || res === TRAVERSE_STOP_CHILDREN) {
                 return res;
             }
         }
-
         const children = this.children;
         for (let i = 0, l = children.length; i < l; i++) {
-            const res = children[i]._traverse(callback, false);
+            const child = children[i];
+            if (!child) continue;
+            const res = child._traverse(callback, false);
             if (res === TRAVERSE_STOP_ALL) {
                 return res;
             }
         }
-
         return TRAVERSE_STOP_NONE;
-    },
+    }
     /**
      * 遍历当前元素的子孙元素
-     * @param {NodeTraverseCallback} callback 每个元素都会调用这个函数处理
-     * @param {Boolean} [onlyChild=false] 是否只遍历子元素
-     * @return {Node} this
+     * @param callback - 每个元素都会调用这个函数处理
+     * @param onlyChild - 是否只遍历子元素
+     * @returns this
      */
-    traverse(callback, onlyChild = false) {
+    traverse(callback: NodeTraverseCallback, onlyChild = false): this {
         this._traverse(callback, onlyChild);
         return this;
-    },
+    }
     /**
      * 遍历当前元素的子孙元素(广度优先)
-     * @param {NodeTraverseCallback} callback 每个元素都会调用这个函数处理
-     * @param {Boolean} [onlyChild=false] 是否只遍历子元素
-     * @return {Node} this
+     * @param callback - 每个元素都会调用这个函数处理
+     * @param onlyChild - 是否只遍历子元素
+     * @returns this
      */
-    traverseBFS(callback, onlyChild = false) {
-        let currentQueue;
-        let nextQueue;
+    traverseBFS(callback: NodeTraverseCallback, onlyChild = false): this {
+        let currentQueue: Node[];
+        let nextQueue: Node[];
         if (!onlyChild) {
             nextQueue = [this];
         } else {
             nextQueue = this.children;
         }
-
         while (nextQueue.length) {
             currentQueue = nextQueue;
             nextQueue = [];
             for (let i = 0, l = currentQueue.length; i < l; i++) {
                 const child = currentQueue[i];
+                if (!child) continue;
                 const res = callback(child);
                 if (res === TRAVERSE_STOP_ALL) {
                     return this;
                 }
-
                 if (res !== TRAVERSE_STOP_CHILDREN) {
                     nextQueue = nextQueue.concat(child.children);
                 }
             }
         }
         return this;
-    },
+    }
     /**
      * 根据函数来获取一个子孙元素(广度优先)
-     * @param {NodeGetChildByCallback} fn 判读函数
-     * @return {Node|null} 返回获取到的子孙元素
+     * @param fn - 判读函数
+     * @returns 返回获取到的子孙元素
      */
-    getChildByFnBFS(fn) {
-        let result = null;
-        this.traverseBFS((child) => {
+    getChildByFnBFS(fn: NodeGetChildByCallback): Node | null {
+        let result: Node | null = null;
+        this.traverseBFS(child => {
             if (fn(child)) {
                 result = child;
                 return TRAVERSE_STOP_ALL;
             }
             return TRAVERSE_STOP_NONE;
         }, true);
-
         return result;
-    },
+    }
     /**
      * 根据 name path 来获取子孙元素
-     * @param  {String[]} path 名字数组, e.g., getChildByNamePath(['a', 'b', 'c'])
-     * @return {Node|null} 返回获取到的子孙元素
+     * @param path - 名字数组, e.g., getChildByNamePath(['a', 'b', 'c'])
+     * @returns 返回获取到的子孙元素
      */
-    getChildByNamePath(path) {
-        let currentNode = this;
-        for (let i = 0, l = path.length; i < l; i++) {
+    getChildByNamePath(path: string[]): Node | null {
+        const firstName = path[0];
+        if (firstName === undefined) return this;
+        let currentNode = this.getChildByFnBFS(child => child.name === firstName);
+        for (let i = 1, l = path.length; i < l; i++) {
             const name = path[i];
+            if (name === undefined || !currentNode) return null;
             const node = currentNode.getChildByFnBFS(child => child.name === name);
             if (node) {
                 currentNode = node;
@@ -500,16 +543,15 @@ const Node = Class.create<typeof hilo3d.Node>()(/** @lends Node.prototype */ {
                 return null;
             }
         }
-
         return currentNode;
-    },
+    }
     /**
      * 遍历调用子孙元素onUpdate方法
-     * @param  {Number} dt
-     * @return {Node} this
+     * @param dt -
+     * @returns this
      */
-    traverseUpdate(dt) {
-        this.traverse((node) => {
+    traverseUpdate(dt: number): this {
+        this.traverse(node => {
             if (node.onUpdate) {
                 node.onUpdate(dt);
             }
@@ -519,128 +561,127 @@ const Node = Class.create<typeof hilo3d.Node>()(/** @lends Node.prototype */ {
             return TRAVERSE_STOP_NONE;
         });
         return this;
-    },
+    }
     /**
      * 根据函数来获取一个子孙元素
-     * @param {NodeGetChildByCallback} fn 判读函数
-     * @return {Node|null} 返回获取到的子孙元素
+     * @param fn - 判读函数
+     * @returns 返回获取到的子孙元素
      */
-    getChildByFn(fn) {
-        let result = null;
-        this.traverse((child) => {
+    getChildByFn(fn: NodeGetChildByCallback): Node | null {
+        let result: Node | null = null;
+        this.traverse(child => {
             if (fn(child)) {
                 result = child;
                 return TRAVERSE_STOP_ALL;
             }
             return TRAVERSE_STOP_NONE;
         }, true);
-
         return result;
-    },
+    }
     /**
      * 根据函数来获取匹配的所有子孙元素
-     * @param {NodeGetChildByCallback} fn 判读函数
-     * @return {Node[]} 返回获取到的子孙元素
+     * @param fn - 判读函数
+     * @returns 返回获取到的子孙元素
      */
-    getChildrenByFn(fn) {
-        let result = [];
-        this.traverse((child) => {
+    getChildrenByFn(fn: NodeGetChildByCallback): Node[] {
+        const result: Node[] = [];
+        this.traverse(child => {
             if (fn(child)) {
                 result.push(child);
             }
         }, true);
         return result;
-    },
+    }
     /**
      * 获取指定name的首个子孙元素
-     * @param {string} name 元素name
-     * @return {Node|null} 获取的元素
+     * @param name - 元素name
+     * @returns 获取的元素
      */
-    getChildByName(name) {
+    getChildByName(name: string): Node | null {
         return this.getChildByFn(child => child.name === name);
-    },
+    }
     /**
      * 获取指定name的所有子孙元素
-     * @param {string} name 元素name
-     * @return {Node[]} 获取的元素数组
+     * @param name - 元素name
+     * @returns 获取的元素数组
      */
-    getChildrenByName(name) {
+    getChildrenByName(name: string): Node[] {
         return this.getChildrenByFn(child => child.name === name);
-    },
+    }
     /**
      * 获取指定id的子孙元素
-     * @param {string} id 元素id
-     * @return {Node|null} 获取的元素
+     * @param id - 元素id
+     * @returns 获取的元素
      */
-    getChildById(id) {
+    getChildById(id: string): Node | null {
         return this.getChildByFn(child => child.id === id);
-    },
+    }
     /**
      * 获取指定类名的所有子孙元素
-     * @param {string} className 类名
-     * @return {Node[]} 获取的元素数组
+     * @param className - 类名
+     * @returns 获取的元素数组
      */
-    getChildrenByClassName(className) {
+    getChildrenByClassName(className: string): Node[] {
         return this.getChildrenByFn(child => child.className === className);
-    },
+    }
     /**
      * 获取指定基类名的所有子孙元素
-     * @param {string} className 类名
-     * @return {Node[]} 获取的元素数组
+     * @param className - 类名
+     * @returns 获取的元素数组
      */
-    getChildrenByBaseClassName(className) {
-        return this.getChildrenByFn(child => child['is' + className]);
-    },
+    getChildrenByBaseClassName(className: string): Node[] {
+        return this.getChildrenByFn(child => Reflect.get(child, `is${className}`) === true);
+    }
     /**
      * 设置元素的缩放比例，如果只有一个参数三个轴等比缩放
-     * @param {number} x X缩放比例
-     * @param {number} [y] Y缩放比例
-     * @param {number} [z] Z缩放比例
-     * @return {Node} this
+     * @param x - X缩放比例
+     * @param y - Y缩放比例
+     * @param z - Z缩放比例
+     * @returns this
      */
-    setScale(x, y = x, z = y) {
+    setScale(x: number, y: number = x, z: number = y): this {
         this._scale.set(x, y, z);
         return this;
-    },
+    }
     /**
      * 设置元素的位置
-     * @param {number} x X方向位置
-     * @param {number} y Y方向位置
-     * @param {number} z Z方向位置
-     * @return {Node} this
+     * @param x - X方向位置
+     * @param y - Y方向位置
+     * @param z - Z方向位置
+     * @returns this
      */
-    setPosition(x, y, z) {
+    setPosition(x: number, y: number, z: number): this {
         this._position.set(x, y, z);
         return this;
-    },
+    }
     /**
      * 设置元素的旋转
-     * @param {number} x X轴旋转角度, 角度制
-     * @param {number} y Y轴旋转角度, 角度制
-     * @param {number} z Z轴旋转角度, 角度制
-     * @return {Node} this
+     * @param x - X轴旋转角度, 角度制
+     * @param y - Y轴旋转角度, 角度制
+     * @param z - Z轴旋转角度, 角度制
+     * @returns this
      */
-    setRotation(x, y, z) {
+    setRotation(x: number, y: number, z: number): this {
         this._rotation.setDegree(x, y, z);
         return this;
-    },
+    }
     /**
      * 设置中心点
-     * @param {Number} x 中心点x
-     * @param {Number} y 中心点y
-     * @param {Number} z 中心点z
-     * @return {Node} this
+     * @param x - 中心点x
+     * @param y - 中心点y
+     * @param z - 中心点z
+     * @returns this
      */
-    setPivot(x, y, z) {
+    setPivot(x: number, y: number, z: number): this {
         this._pivot.set(x, y, z);
         return this;
-    },
+    }
     /**
      * 改变元素的朝向
-     * @param {Node|Object|Vector3} node 需要朝向的元素，或者坐标
-     * @return {Node} this
+     * @param node - 需要朝向的元素，或者坐标
+     * @returns this
      */
-    lookAt(node) {
+    lookAt(node: { x: number; y: number; z: number }): this {
         if (this.isCamera) {
             tempMatrix4.targetTo(this, node, this.up);
         } else {
@@ -648,376 +689,304 @@ const Node = Class.create<typeof hilo3d.Node>()(/** @lends Node.prototype */ {
         }
         this._quaternion.fromMat4(tempMatrix4);
         return this;
-    },
+    }
     /**
      * raycast
-     * @param  {Ray} ray
-     * @param {Boolean} [sort=false] 是否按距离排序
-     * @param {Boolean} [eventMode=false] 是否事件模式
-     * @return {raycastInfo[]|null}
+     * @param ray -
+     * @param sort - 是否按距离排序
+     * @param eventMode - 是否事件模式
      */
-    raycast(ray, sort = false, eventMode = false) {
+    raycast(ray: Ray, sort = false, eventMode = false): NodeRaycastInfo[] | Vector3[] | null {
         if (!this.visible) {
             return null;
         }
-        let resArray = [];
-        this.traverse((child) => {
+        let resArray: NodeRaycastInfo[] = [];
+        this.traverse(child => {
             if (eventMode && !child.pointerEnabled) {
                 return TRAVERSE_STOP_CHILDREN;
             }
-
             if (child.isMesh) {
                 const res = child.raycast(ray, false);
                 if (res) {
-                    resArray = resArray.concat(res.map((point) => {
-                        return {
-                            mesh: child,
-                            point
-                        };
-                    }));
+                    resArray = resArray.concat(
+                        res.map(result => {
+                            const point = result instanceof Vector3 ? result : result.point;
+                            return {
+                                mesh: child,
+                                point
+                            };
+                        })
+                    );
                 }
             }
-
             if (eventMode && !child.pointerChildren) {
                 return TRAVERSE_STOP_CHILDREN;
             }
-
             return TRAVERSE_STOP_NONE;
         });
-
         if (resArray.length) {
             if (sort) {
                 ray.sortPoints(resArray, 'point');
             }
             return resArray;
         }
-
         return null;
-    },
+    }
     /**
      * 元素的矩阵
-     * @type {Matrix4Notifier}
-     * @readOnly
      */
-    matrix: {
-        get() {
-            this.updateMatrix();
-            return this._matrix;
-        },
-        set(value) {
-            log.warnOnce('Node.matrix.set', 'node.matrix is readOnly.Use node.matrix.copy instead.');
-            this._matrix.copy(value);
-        }
-    },
-
+    get matrix(): Matrix4Notifier {
+        this.updateMatrix();
+        return this._matrix;
+    }
     /**
      * 位置
-     * @type {Vector3Notifier}
-     * @readOnly
      */
-    position: {
-        get() {
-            return this._position;
-        },
-        set(value) {
-            log.warnOnce('Node.position.set', 'node.position is readOnly.Use node.position.copy instead.');
-            this._position.copy(value);
-        }
-    },
-
+    get position(): Vector3Notifier {
+        return this._position;
+    }
     /**
      * x轴坐标
-     * @type {number}
      */
-    x: {
-        get() {
-            return this._position.elements[0];
-        },
-        set(value) {
-            this._position.elements[0] = value;
-            this._matrixDirty = true;
-        }
-    },
+    get x(): number {
+        return this._position.elements[0];
+    }
+    /**
+     * x轴坐标
+     */
+    set x(value: number) {
+        this._position.elements[0] = value;
+        this._matrixDirty = true;
+    }
     /**
      * y轴坐标
-     * @type {number}
      */
-    y: {
-        get() {
-            return this._position.elements[1];
-        },
-        set(value) {
-            this._position.elements[1] = value;
-            this._matrixDirty = true;
-        }
-    },
+    get y(): number {
+        return this._position.elements[1];
+    }
+    /**
+     * y轴坐标
+     */
+    set y(value: number) {
+        this._position.elements[1] = value;
+        this._matrixDirty = true;
+    }
     /**
      * z轴坐标
-     * @type {number}
      */
-    z: {
-        get() {
-            return this._position.elements[2];
-        },
-        set(value) {
-            this._position.elements[2] = value;
-            this._matrixDirty = true;
-        }
-    },
-
+    get z(): number {
+        return this._position.elements[2];
+    }
+    /**
+     * z轴坐标
+     */
+    set z(value: number) {
+        this._position.elements[2] = value;
+        this._matrixDirty = true;
+    }
     /**
      * 缩放
-     * @type {Vector3Notifier}
-     * @readOnly
      */
-    scale: {
-        get() {
-            return this._scale;
-        },
-        set(value) {
-            log.warnOnce('Node.scale.set', 'node.scale is readOnly.Use node.scale.copy instead.');
-            this._scale.copy(value);
-        }
-    },
-
+    get scale(): Vector3Notifier {
+        return this._scale;
+    }
     /**
      * 缩放比例x
-     * @type {number}
      */
-    scaleX: {
-        get() {
-            return this._scale.elements[0];
-        },
-        set(value) {
-            this._scale.elements[0] = value;
-            this._matrixDirty = true;
-        }
-    },
+    get scaleX(): number {
+        return this._scale.elements[0];
+    }
+    /**
+     * 缩放比例x
+     */
+    set scaleX(value: number) {
+        this._scale.elements[0] = value;
+        this._matrixDirty = true;
+    }
     /**
      * 缩放比例y
-     * @type {number}
      */
-    scaleY: {
-        get() {
-            return this._scale.elements[1];
-        },
-        set(value) {
-            this._scale.elements[1] = value;
-            this._matrixDirty = true;
-        }
-    },
+    get scaleY(): number {
+        return this._scale.elements[1];
+    }
+    /**
+     * 缩放比例y
+     */
+    set scaleY(value: number) {
+        this._scale.elements[1] = value;
+        this._matrixDirty = true;
+    }
     /**
      * 缩放比例z
-     * @type {number}
      */
-    scaleZ: {
-        get() {
-            return this._scale.elements[2];
-        },
-        set(value) {
-            this._scale.elements[2] = value;
-            this._matrixDirty = true;
-        }
-    },
-
+    get scaleZ(): number {
+        return this._scale.elements[2];
+    }
+    /**
+     * 缩放比例z
+     */
+    set scaleZ(value: number) {
+        this._scale.elements[2] = value;
+        this._matrixDirty = true;
+    }
     /**
      * 中心点
-     * @type {Vector3Notifier}
-     * @readOnly
      */
-    pivot: {
-        get() {
-            return this._pivot;
-        },
-        set(value) {
-            log.warnOnce('Node.pivot.set', 'node.pivot is readOnly.Use node.pivot.copy instead.');
-            this._pivot.copy(value);
-        }
-    },
-
+    get pivot(): Vector3Notifier {
+        return this._pivot;
+    }
     /**
      * 中心点x
-     * @type {Number}
      */
-    pivotX: {
-        get() {
-            return this._pivot.elements[0];
-        },
-        set(value) {
-            this._pivot.elements[0] = value;
-            this._matrixDirty = true;
-        }
-    },
+    get pivotX(): number {
+        return this._pivot.elements[0];
+    }
+    /**
+     * 中心点x
+     */
+    set pivotX(value: number) {
+        this._pivot.elements[0] = value;
+        this._matrixDirty = true;
+    }
     /**
      * 中心点y
-     * @type {Number}
      */
-    pivotY: {
-        get() {
-            return this._pivot.elements[1];
-        },
-        set(value) {
-            this._pivot.elements[1] = value;
-            this._matrixDirty = true;
-        }
-    },
+    get pivotY(): number {
+        return this._pivot.elements[1];
+    }
+    /**
+     * 中心点y
+     */
+    set pivotY(value: number) {
+        this._pivot.elements[1] = value;
+        this._matrixDirty = true;
+    }
     /**
      * 中心点z
-     * @type {Number}
      */
-    pivotZ: {
-        get() {
-            return this._pivot.elements[2];
-        },
-        set(value) {
-            this._pivot.elements[2] = value;
-            this._matrixDirty = true;
-        }
-    },
-
+    get pivotZ(): number {
+        return this._pivot.elements[2];
+    }
+    /**
+     * 中心点z
+     */
+    set pivotZ(value: number) {
+        this._pivot.elements[2] = value;
+        this._matrixDirty = true;
+    }
     /**
      * 欧拉角
-     * @type {EulerNotifier}
-     * @readOnly
      */
-    rotation: {
-        get() {
-            return this._rotation;
-        },
-        set(value) {
-            log.warnOnce('Node.rotation.set', 'node.rotation is readOnly.Use node.rotation.copy instead.');
-            this._rotation.copy(value);
-        }
-    },
-
+    get rotation(): EulerNotifier {
+        return this._rotation;
+    }
     /**
      * 旋转角度 x, 角度制
-     * @type {number}
      */
-    rotationX: {
-        get() {
-            return this._rotation.degX;
-        },
-        set(value) {
-            this._rotation.degX = value;
-        }
-    },
+    get rotationX(): number {
+        return this._rotation.degX;
+    }
+    /**
+     * 旋转角度 x, 角度制
+     */
+    set rotationX(value: number) {
+        this._rotation.degX = value;
+    }
     /**
      * 旋转角度 y, 角度制
-     * @type {number}
      */
-    rotationY: {
-        get() {
-            return this._rotation.degY;
-        },
-        set(value) {
-            this._rotation.degY = value;
-        }
-    },
+    get rotationY(): number {
+        return this._rotation.degY;
+    }
+    /**
+     * 旋转角度 y, 角度制
+     */
+    set rotationY(value: number) {
+        this._rotation.degY = value;
+    }
     /**
      * 旋转角度 z, 角度制
-     * @type {number}
      */
-    rotationZ: {
-        get() {
-            return this._rotation.degZ;
-        },
-        set(value) {
-            this._rotation.degZ = value;
-        }
-    },
-
+    get rotationZ(): number {
+        return this._rotation.degZ;
+    }
+    /**
+     * 旋转角度 z, 角度制
+     */
+    set rotationZ(value: number) {
+        this._rotation.degZ = value;
+    }
     /**
      * 四元数角度
-     * @type {Quaternion}
      */
-    quaternion: {
-        get() {
-            this.updateQuaternion();
-            return this._quaternion;
-        },
-        set(value) {
-            log.warnOnce('Node.quaternion.set', 'node.quaternion is readOnly.Use node.quaternion.copy instead.');
-            this._quaternion.copy(value);
-        }
-    },
-
+    get quaternion(): Quaternion {
+        this.updateQuaternion();
+        return this._quaternion;
+    }
     /**
      * 矩阵 version，每次改变会加一
-     * @readonly
-     * @type {Number}
-     * @default 0
      */
-    matrixVersion: 0,
+    matrixVersion = 0;
     /**
      * 世界矩阵 version，每次改变会加一
-     * @type {Number}
-     * @default 0
      */
-    worldMatrixVersion: 0,
+    worldMatrixVersion = 0;
     /**
      * 获取元素的包围盒信息
      *
-     * @param {Node} [parent] 元素相对于哪个祖先元素的包围盒，不传表示世界
-     * @param {Matrix4} [currentMatrix] 当前计算的矩阵
-     * @param {Bounds} [bounds] 当前计算的包围盒信息
-     * @return {Bounds} 返回计算的包围盒信息
+     * @param parent - 元素相对于哪个祖先元素的包围盒，不传表示世界
+     * @param currentMatrix - 当前计算的矩阵
+     * @param bounds - 当前计算的包围盒信息
+     * @returns 返回计算的包围盒信息
      */
-    getBounds(parent, currentMatrix, bounds) {
+    getBounds(parent?: Node, currentMatrix?: Matrix4, bounds?: Bounds): Bounds | undefined {
         if (!currentMatrix) {
             currentMatrix = this.getConcatenatedMatrix(parent);
         } else {
             currentMatrix.multiply(this.matrix);
         }
-
-        this.children.forEach((child) => {
-            bounds = child.getBounds(null, currentMatrix.clone(), bounds);
+        this.children.forEach(child => {
+            bounds = child.getBounds(undefined, currentMatrix.clone(), bounds);
         });
-
-        if (this.isMesh) {
+        if (hasGeometry(this)) {
             bounds = this.geometry.getBounds(currentMatrix, bounds);
         }
         return bounds;
-    },
-    /**
-     * 冒泡鼠标事件
-     * @param {Object} event
-     * @private
-     */
-    _fireMouseEvent(event) {
+    }
+    /** 冒泡指针事件，并维护各 pointerId 的进入/离开状态。 */
+    _firePointerEvent(event: NodePointerEvent): void {
         event.eventCurrentTarget = this;
         this.fire(event);
-
-        // 处理mouseover事件 mouseover不需要阻止冒泡
-        // handle mouseover event, mouseover needn't stop propagation.
-        if (event.type === 'mousemove') {
-            if (!this.__mouseOver) {
-                this.__mouseOver = true;
-                const overEvent = Object.assign({}, event);
-                overEvent.type = 'mouseover';
+        const pointerId = getPointerId(event);
+        const overType = MOVE_TO_OVER_EVENT[event.type];
+        if (overType) {
+            if (!this.__pointersOver.has(pointerId)) {
+                this.__pointersOver.add(pointerId);
+                const overEvent: NodePointerEvent = { ...event, type: overType };
                 this.fire(overEvent);
             }
-        } else if (event.type === 'mouseout') {
-            this.__mouseOver = false;
+        } else if (
+            POINTER_EXIT_EVENTS.has(event.type) ||
+            (event.type === 'pointerup' && event.pointerType === 'touch') ||
+            event.type === 'touchend'
+        ) {
+            this.__pointersOver.delete(pointerId);
         }
-
-        // 向上冒泡
-        // handle event propagation
         const parent = this.parent;
         if (!event._stopped && !event._stopPropagationed && parent) {
-            parent._fireMouseEvent(event);
+            parent._firePointerEvent(event);
         }
-    },
+    }
     /**
      * 销毁 Node 资源
-     * @param {WebGLRenderer} [renderer] stage时可以不传
-     * @param {Boolean} [destroyTextures=false] 是否销毁材质的贴图，默认不销毁
-     * @return {Node} this
+     * @param renderer - stage时可以不传
+     * @param destroyTextures - 是否销毁材质的贴图，默认不销毁
+     * @returns this
      */
-    destroy(renderer, destroyTextures = false) {
+    destroy(renderer?: WebGLRenderer, destroyTextures = false): this {
         const nodes = this.getChildrenByBaseClassName('Node');
         this.off();
-        nodes.forEach((node) => {
+        nodes.forEach(node => {
             if (node.isMesh) {
                 node.destroy(renderer, destroyTextures);
             } else {
@@ -1025,75 +994,32 @@ const Node = Class.create<typeof hilo3d.Node>()(/** @lends Node.prototype */ {
                 node.removeFromParent();
             }
         });
-
         this.removeFromParent();
         return this;
-    },
-
-    _onMatrixUpdate() {
+    }
+    _onMatrixUpdate(): void {
         this.matrixVersion++;
         this.updateTransform();
-    },
-    _onPositionUpdate() {
+    }
+    _onPositionUpdate(): void {
         this._matrixDirty = true;
-    },
-    _onScaleUpdate() {
+    }
+    _onScaleUpdate(): void {
         this._matrixDirty = true;
-    },
-    _onPivotUpdate() {
+    }
+    _onPivotUpdate(): void {
         this._matrixDirty = true;
-    },
-    _onRotationUpdate() {
+    }
+    _onRotationUpdate(): void {
         this._quatDirty = true;
         this._matrixDirty = true;
-    },
-    _onQuaternionUpdate() {
+    }
+    _onQuaternionUpdate(): void {
         if (!this.onlySyncQuaternion) {
             this._rotation.fromQuat(this._quaternion);
         }
         this._quatDirty = false;
         this._matrixDirty = true;
     }
-});
-
+}
 export default Node;
-
-/**
- * 包围盒信息
- * @typedef {object} Bounds
- * @property {number} x 包围盒中心的X坐标
- * @property {number} y 包围盒中心的Y坐标
- * @property {number} z 包围盒中心的Z坐标
- * @property {number} width 包围盒的宽度
- * @property {number} height 包围盒的高度
- * @property {number} depth 包围盒的深度
- * @property {number} xMin X轴的最小值
- * @property {number} xMax X轴的最大值
- * @property {number} yMin Y轴的最小值
- * @property {number} yMax Y轴的最大值
- * @property {number} zMin Z轴的最小值
- * @property {number} zMax Z轴的最大值
- */
-
-
-/**
- * 碰撞信息
- * @typedef {object} raycastInfo
- * @property {Mesh} mesh 碰撞的 mesh
- * @property {Vector3} point 碰撞得点
- */
-
-
-/**
- * Node traverse 回调
- * @callback NodeTraverseCallback
- * @param {Node} node
- * @return {unknown} Node.TRAVERSE_STOP_NONE | Node.TRAVERSE_STOP_CHILDREN | Node.TRAVERSE_STOP_ALL
- */
-
-/**
- * Node getChildByCallback 回调
- * @callback NodeGetChildByCallback
- * @param {Node} node
- * @return {boolean}
- */

@@ -1,37 +1,55 @@
-// @ts-nocheck
-// Dynamic WebGL compatibility module; public API is checked by types/index.d.ts.
-export class WebGL1InstancedArraysExtension {
-    constructor(instancedArraysExtension) {
-        this._ext = instancedArraysExtension;
+export interface InstancedArraysExtension {
+    drawArraysInstanced(mode: GLenum, first: GLint, count: GLsizei, instanceCount: GLsizei): void;
+    drawElementsInstanced(
+        mode: GLenum,
+        count: GLsizei,
+        type: GLenum,
+        offset: GLintptr,
+        instanceCount: GLsizei
+    ): void;
+    vertexAttribDivisor(index: GLuint, divisor: GLuint): void;
+}
+
+export class WebGL1InstancedArraysExtension implements InstancedArraysExtension {
+    constructor(private readonly extension: ANGLE_instanced_arrays) {}
+
+    drawArraysInstanced(mode: GLenum, first: GLint, count: GLsizei, instanceCount: GLsizei): void {
+        this.extension.drawArraysInstancedANGLE(mode, first, count, instanceCount);
     }
 
-    drawArraysInstanced(mode, first, count, instanceCount) {
-        this._ext.drawArraysInstancedANGLE(mode, first, count, instanceCount);
+    drawElementsInstanced(
+        mode: GLenum,
+        count: GLsizei,
+        type: GLenum,
+        offset: GLintptr,
+        instanceCount: GLsizei
+    ): void {
+        this.extension.drawElementsInstancedANGLE(mode, count, type, offset, instanceCount);
     }
 
-    drawElementsInstanced(mode, count, type, offset, instanceCount) {
-        this._ext.drawElementsInstancedANGLE(mode, count, type, offset, instanceCount);
-    }
-
-    vertexAttribDivisor(index, divisor) {
-        this._ext.vertexAttribDivisorANGLE(index, divisor);
+    vertexAttribDivisor(index: GLuint, divisor: GLuint): void {
+        this.extension.vertexAttribDivisorANGLE(index, divisor);
     }
 }
 
-export class WebGL2InstancedArraysExtension {
-    constructor(gl) {
-        this._gl = gl;
+export class WebGL2InstancedArraysExtension implements InstancedArraysExtension {
+    constructor(private readonly gl: WebGL2RenderingContext) {}
+
+    drawArraysInstanced(mode: GLenum, first: GLint, count: GLsizei, instanceCount: GLsizei): void {
+        this.gl.drawArraysInstanced(mode, first, count, instanceCount);
     }
 
-    drawArraysInstanced(mode, first, count, instanceCount) {
-        this._gl.drawArraysInstanced(mode, first, count, instanceCount);
+    drawElementsInstanced(
+        mode: GLenum,
+        count: GLsizei,
+        type: GLenum,
+        offset: GLintptr,
+        instanceCount: GLsizei
+    ): void {
+        this.gl.drawElementsInstanced(mode, count, type, offset, instanceCount);
     }
 
-    drawElementsInstanced(mode, count, type, offset, instanceCount) {
-        this._gl.drawElementsInstanced(mode, count, type, offset, instanceCount);
-    }
-
-    vertexAttribDivisor(index, divisor) {
-        this._gl.vertexAttribDivisor(index, divisor);
+    vertexAttribDivisor(index: GLuint, divisor: GLuint): void {
+        this.gl.vertexAttribDivisor(index, divisor);
     }
 }

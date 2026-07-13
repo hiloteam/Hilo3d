@@ -1,411 +1,405 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-var bloomStrength = 1.0;
-        var RenderPass = Hilo3d.Class.create({
-            Mixes: Hilo3d.EventMixin,
-            /**
-             * @constructor
-             * @param {WebGLRenderer} renderer
-             * @param {Object} params
-             * @param {Number} params.width
-             * @param {Number} params.height
-             * @param {Boolean} params.renderToScreen
-             * @param {Object} params.framebufferOption
-             */
-            constructor:function(renderer, params){
-                this.renderer = renderer;
-                Object.assign(this, params);
-                if (!this.width) {
-                    this.width = renderer.width;
-                }
+const {
+    camera,
+    stage,
+    renderer: sceneRenderer
+} = createExampleContext({
+    stage: { useFramebuffer: true }
+});
 
-                if (!this.height) {
-                    this.height = renderer.height;
-                }
+interface RenderPassOptions {
+    width?: number;
+    height?: number;
+    renderToScreen?: boolean;
+    framebufferOption?: Hilo3d.FramebufferParameters;
+}
 
-                if (!this.renderToScreen){
-                    var framebuffer = this.framebuffer = new Hilo3d.Framebuffer(renderer, Object.assign({
-                        width:this.width,
-                        height:this.height
-                    }, params.framebufferOption));
-                    renderer.onInit(function(){
-                        framebuffer.init();
-                    });
-                }
-            },
-            _render:function(renderer, lastPass){
-                this.lastPass = lastPass;
-                renderer.state.viewport(0, 0, this.width, this.height);
-                if (this.renderToScreen) {
-                    renderer.state.bindSystemFramebuffer();
-                } else {
-                    this.framebuffer.bind();
-                }
+interface ScreenShaderPassOptions extends RenderPassOptions {
+    frag: string;
+    vert?: string;
+    uniforms?: Hilo3d.MaterialBindingMap;
+}
 
-                var useFramebuffer = renderer.useFramebuffer;
-                renderer.useFramebuffer = false;
+function requireTextureIndex(programInfo: Hilo3d.ProgramBindingInfo): number {
+    const { textureIndex } = programInfo;
+    if (textureIndex === undefined) {
+        throw new Error(`Uniform ${programInfo.name ?? '<unnamed>'} is not a texture sampler.`);
+    }
+    return textureIndex;
+}
 
-                this.render(renderer, lastPass);
-                
-                renderer.viewport();
-                renderer.useFramebuffer = useFramebuffer;
+function requireFramebufferTexture(
+    framebuffer: Hilo3d.Framebuffer | null,
+    description: string
+): Hilo3d.FramebufferTexture {
+    const texture = framebuffer?.texture;
+    if (!texture) throw new Error(`${description} framebuffer has no texture attachment.`);
+    return texture;
+}
 
-                this.fire('afterRender');
-            },
-            /**
-             * 子类需实现
-             * @param  {WebGLRenderer} renderer
-             */
-            render:function(renderer, lastPass){
+abstract class RenderPass extends Hilo3d.EventDispatcher {
+    readonly renderer: Hilo3d.WebGLRenderer;
+    readonly width: number;
+    readonly height: number;
+    readonly renderToScreen: boolean;
+    readonly framebuffer: Hilo3d.Framebuffer | null;
+    protected lastPass: RenderPass | null = null;
 
-            },
-            addTo(postProcessRenderer){
-                postProcessRenderer.addPass(this);
-                return this;
-            }
+    constructor(renderer: Hilo3d.WebGLRenderer, options: RenderPassOptions = {}) {
+        super();
+        this.renderer = renderer;
+        this.width = options.width ?? renderer.width;
+        this.height = options.height ?? renderer.height;
+        this.renderToScreen = options.renderToScreen ?? false;
+        this.framebuffer = this.renderToScreen
+            ? null
+            : new Hilo3d.Framebuffer(renderer, {
+                  width: this.width,
+                  height: this.height,
+                  ...options.framebufferOption
+              });
+        renderer.onInit(() => {
+            this.framebuffer?.init();
         });
+    }
 
-        var ScreenShaderPass = Hilo3d.Class.create({
-            Extends:RenderPass,
-            /**
-             * @constructor
-             * @param  {Object} params
-             * @param {String} params.frag
-             * @param {Object} params.uniforms
-             */
-            constructor:function(renderer, params){
-                ScreenShaderPass.superclass.constructor.call(this, renderer, params);
-                var that = this;
-                this.scene = new Hilo3d.Node();
-                this.mesh = this._createMesh().addTo(this.scene);
-                this.camera = new Hilo3d.Camera();
-            },
-            render:function(renderer, lastPass){
-                renderer.render(this.scene, this.camera);
-            },
-            _createMesh(){
-                var that = this;
-                var mesh = new Hilo3d.Mesh({
-                    geometry:this._createGeometry(),
-                    material:new Hilo3d.ShaderMaterial({
-                        vs:Hilo3d.Shader.shaders['screen.vert'],
-                        fs:this.frag,
-                        depthTest:false,
-                        side:Hilo3d.constants.FRONT_AND_BACK,
-                        uniforms:Object.assign({
-                            u_lastTexture:{
-                                get:function(mesh, material, programInfo){
-                                    var lastPass = that.lastPass;
-                                    if (lastPass && lastPass.framebuffer){
-                                        return Hilo3d.semantic.handlerTexture(lastPass.framebuffer.texture, programInfo.textureIndex);
-                                    }
-                                }
-                            }
-                        },this.uniforms)
-                    })
-                });
-                return mesh;
-            },
-            _createGeometry(){
-                if (!this.geometry) {
-                    var geometry = this.geometry = new Hilo3d.Geometry({
-                        mode:Hilo3d.constants.TRIANGLE_STRIP
-                    });
-                    var x = - 1;
-                    var y = 1;
-                    width = 2;
-                    height = 2;
-                    const vertices = [x, y, x + width, y, x, y - height, x + width, y - height];
-                    geometry.vertices = new Hilo3d.GeometryData(new Float32Array(vertices), 2);
-                    geometry.uvs = new Hilo3d.GeometryData(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2);
-                }
-                return this.geometry;
-            }
-        });
+    execute(renderer: Hilo3d.WebGLRenderer, lastPass: RenderPass | null): void {
+        this.lastPass = lastPass;
+        renderer.state.viewport(0, 0, this.width, this.height);
+        if (this.renderToScreen) renderer.state.bindSystemFramebuffer();
+        else if (this.framebuffer) this.framebuffer.bind();
+        else throw new Error('Off-screen render pass has no framebuffer.');
 
-        var ShaderPass = Hilo3d.Class.create({
-            Extends:RenderPass,
-            /**
-             * @constructor
-             * @param  {WebGLRenderer} renderer 
-             * @param  {Object} params   
-             * @param  {Object} params.forceMaterial   
-             * @param  {Object} params.scene   
-             * @param  {Object} params.camera   
-             */
-            constructor:function(renderer, params){
-                ShaderPass.superclass.constructor.call(this, renderer, params);
-            },
-            render:function(renderer, lastPass){
-                var forceMaterial = renderer.forceMaterial;
-                renderer.forceMaterial = this.forceMaterial;
-                renderer.render(this.scene, this.camera);
-                renderer.forceMaterial = forceMaterial;
-            }
-        });
+        const useFramebuffer = renderer.useFramebuffer;
+        renderer.useFramebuffer = false;
+        try {
+            this.render(renderer);
+            this.fire('afterRender');
+        } finally {
+            renderer.viewport();
+            renderer.useFramebuffer = useFramebuffer;
+        }
+    }
 
-        var PostProcessRenderer = Hilo3d.Class.create({
-            constructor:function(renderer){
-                this.renderer = renderer;
-                this.passes = [];
-            },
-            render:function(){
-                var renderer = this.renderer;
-                var lastPass;
-                this.passes.forEach(function(pass, index){
-                    pass._render(renderer, lastPass);
-                    lastPass = pass;
-                });
+    protected abstract render(renderer: Hilo3d.WebGLRenderer): void;
 
-                renderer.state.bindSystemFramebuffer();
-            },
-            addPass:function(pass){
-                this.passes.push(pass);
-            },
-            clear:function(){
-                this.passes.length = 0;
-            }
-        });
+    addTo(postProcessRenderer: PostProcessRenderer): this {
+        postProcessRenderer.addPass(this);
+        return this;
+    }
 
-        var postProcessRenderer = new PostProcessRenderer(renderer);
-        renderer.on('afterRender', function(){
-            postProcessRenderer.render();
-        });
+    destroy(): void {
+        this.framebuffer?.destroy();
+        this.off();
+    }
+}
 
-        renderer.useFramebuffer = true;
+class ScreenShaderPass extends RenderPass {
+    private readonly scene = new Hilo3d.Node();
+    private readonly camera = new Hilo3d.Camera();
+    private readonly geometry = new Hilo3d.Geometry({
+        mode: Hilo3d.constants.TRIANGLE_STRIP,
+        vertices: new Hilo3d.GeometryData(new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), 2),
+        uvs: new Hilo3d.GeometryData(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2)
+    });
 
-        var getLigthPass = new ScreenShaderPass(renderer, {
-            frag:`
-                precision HILO_MAX_FRAGMENT_PRECISION float;\n\
-                varying vec2 v_texcoord0;\n\
-                uniform sampler2D u_screen;\n\
-                void main(void) {\n\
-                    vec4 color = texture2D(u_screen, v_texcoord0);\n\
-                    float brightness = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));\n\
-                    if(brightness > .4){
-                        gl_FragColor = vec4(color.rgb, 1.0);\n\
-                    }
-                }
-            `,
-            uniforms:{
-                u_screen:{
-                    get:function(mesh, material, programInfo){
-                        return Hilo3d.semantic.handlerTexture(renderer.framebuffer.texture, programInfo.textureIndex)
-                    }
-                }
-            }
-        }).addTo(postProcessRenderer);
-
-        const blurPasses = [];
-        for(var i = 0;i < 5;i ++){
-            (function(){
-                var blurWidth = Math.ceil(renderer.width/Math.pow(2, i));
-                var blurHeight = Math.ceil(renderer.height/Math.pow(2, i));
-                var u_textureSize = new Float32Array([blurWidth, blurHeight]);
-                var blurIndex = 0;
-                var blurXPass = new ScreenShaderPass(renderer, {
-                    width:blurWidth,
-                    height:blurHeight,
-                    frag:`\n\
-                    precision HILO_MAX_FRAGMENT_PRECISION float;\n\
-                    uniform sampler2D u_lightTexture;
-                    varying vec2 v_texcoord0;\n\
-                    uniform vec2 u_textureSize;
-
-                    float weight[5];
-
-                    void main()
-                    {         
-                        weight[0] = 0.227027;
-                        weight[1] = 0.1945946;
-                        weight[2] = 0.1216216;
-                        weight[3] = 0.054054;
-                        weight[4] = 0.016216;
-                        vec2 tex_offset =  vec2(1.0/u_textureSize.x, 1.0/u_textureSize.y);
-                        vec3 result = texture2D(u_lightTexture, v_texcoord0).rgb * weight[0];
-
-                        for(int i = 1; i < 5; ++i){
-                            result += texture2D(u_lightTexture, v_texcoord0 + vec2(vec2(tex_offset.x * float(i), 0.0))).rgb * weight[i];
-                            result += texture2D(u_lightTexture, v_texcoord0 - vec2(tex_offset.x * float(i), 0.0)).rgb * weight[i];
+    constructor(renderer: Hilo3d.WebGLRenderer, options: ScreenShaderPassOptions) {
+        super(renderer, options);
+        const vertexShader = options.vert ?? Hilo3d.Shader.shaders['screen.vert'];
+        if (!vertexShader) throw new Error('Built-in screen vertex shader is unavailable.');
+        new Hilo3d.Mesh({
+            geometry: this.geometry,
+            frustumTest: false,
+            material: new Hilo3d.ShaderMaterial({
+                vs: vertexShader,
+                fs: options.frag,
+                depthTest: false,
+                side: Hilo3d.constants.FRONT_AND_BACK,
+                uniforms: {
+                    u_lastTexture: {
+                        get: (_mesh, _material, programInfo) => {
+                            const texture = requireFramebufferTexture(
+                                this.lastPass?.framebuffer ?? null,
+                                'Previous render pass'
+                            );
+                            return Hilo3d.semantic.handlerTexture(
+                                texture,
+                                requireTextureIndex(programInfo)
+                            );
                         }
-                               
-                        gl_FragColor = vec4(result, 1.0);
-                    }`,
-                    uniforms:{
-                        u_textureSize:{
-                            get:()=> {
-                                return u_textureSize;
-                            }
-                        },
-                        u_lightTexture:{
-                            get:(mesh, material, programInfo) => {
-                                return Hilo3d.semantic.handlerTexture(getLigthPass.framebuffer.texture, programInfo.textureIndex);
-                            }
-                        }
-                    }
-                });
-                window.blurYPass = new ScreenShaderPass(renderer, {
-                    width:blurWidth,
-                    height:blurHeight,
-                    framebufferOption:{
-                        minFilter:Hilo3d.constants.NEAREST,
-                        magFilter:Hilo3d.constants.LINEAR
                     },
-                    frag:`\n\
-                    precision HILO_MAX_FRAGMENT_PRECISION float;\n\
-                    uniform sampler2D u_lastTexture;
-                    varying vec2 v_texcoord0;\n\
-                    uniform vec2 u_textureSize;
-
-                    float weight[5];
-
-                    void main()
-                    {         
-                        weight[0] = 0.227027;
-                        weight[1] = 0.1945946;
-                        weight[2] = 0.1216216;
-                        weight[3] = 0.054054;
-                        weight[4] = 0.016216;
-                        vec2 tex_offset =  vec2(1.0/u_textureSize.x, 1.0/u_textureSize.y);
-                        vec3 result = texture2D(u_lastTexture, v_texcoord0).rgb * weight[0];
-
-                        for(int i = 1; i < 5; ++i){
-                            result += texture2D(u_lastTexture, v_texcoord0 + vec2(vec2(0.0, tex_offset.x * float(i)))).rgb * weight[i];
-                            result += texture2D(u_lastTexture, v_texcoord0 - vec2(0.0, tex_offset.x * float(i))).rgb * weight[i];
-                        } 
-                               
-                        gl_FragColor = vec4(result, 1.0);
-                    }`,
-                    uniforms:{
-                        u_textureSize:{
-                            get:()=> {
-                                return u_textureSize;
-                            }
-                        }
-                    }
-                });
-                postProcessRenderer.addPass(blurXPass);
-                postProcessRenderer.addPass(blurYPass);
-                blurPasses.push(blurYPass);
-            })();
-        }
-
-        var CombinePass = new ScreenShaderPass(renderer, {
-            frag:`
-                precision HILO_MAX_FRAGMENT_PRECISION float;\n\
-                uniform sampler2D u_blurTexture0;
-                uniform sampler2D u_blurTexture1;
-                uniform sampler2D u_blurTexture2;
-                uniform sampler2D u_blurTexture3;
-                uniform sampler2D u_blurTexture4;
-                uniform sampler2D u_scene;
-                uniform float u_bloomStrength;
-                varying vec2 v_texcoord0;\n\
-
-                void main()
-                {       
-                    vec3 color = vec3(0.0);
-                    color += texture2D(u_scene, v_texcoord0).rgb;      
-                    color += texture2D(u_blurTexture0, v_texcoord0).rgb * u_bloomStrength;
-                    color += texture2D(u_blurTexture1, v_texcoord0).rgb * u_bloomStrength;
-                    color += texture2D(u_blurTexture2, v_texcoord0).rgb * u_bloomStrength;
-                    color += texture2D(u_blurTexture3, v_texcoord0).rgb * u_bloomStrength;
-                    color += texture2D(u_blurTexture4, v_texcoord0).rgb * u_bloomStrength;
-                    vec3 result = color;
-                    result = vec3(1.0) - exp(-color * 0.8);
-
-                    gl_FragColor = vec4(result, 0);
+                    ...options.uniforms
                 }
-            `,
-            uniforms:{
-                u_scene:{
-                    get:function(mesh, material, programInfo){
-                        return Hilo3d.semantic.handlerTexture(renderer.framebuffer.texture, programInfo.textureIndex)
-                    }
-                },
-                u_blurTexture0:{
-                    get:function(mesh, material, programInfo){
-                        return Hilo3d.semantic.handlerTexture(blurPasses[0].framebuffer.texture, programInfo.textureIndex);
-                    }
-                },
-                u_blurTexture1:{
-                    get:function(mesh, material, programInfo){
-                        return Hilo3d.semantic.handlerTexture(blurPasses[1].framebuffer.texture, programInfo.textureIndex);
-                    }
-                },
-                u_blurTexture2:{
-                    get:function(mesh, material, programInfo){
-                        return Hilo3d.semantic.handlerTexture(blurPasses[2].framebuffer.texture, programInfo.textureIndex);
-                    }
-                },
-                u_blurTexture3:{
-                    get:function(mesh, material, programInfo){
-                        return Hilo3d.semantic.handlerTexture(blurPasses[3].framebuffer.texture, programInfo.textureIndex);
-                    }
-                },
-                u_blurTexture4:{
-                    get:function(mesh, material, programInfo){
-                        return Hilo3d.semantic.handlerTexture(blurPasses[4].framebuffer.texture, programInfo.textureIndex);
-                    }
-                },
-                u_bloomStrength:{
-                    get:function(){
-                        return bloomStrength;
-                    }
-                }
-            },
-            renderToScreen:true
-        }).addTo(postProcessRenderer);
+            })
+        }).addTo(this.scene);
+    }
 
-        var random = function(min, max){
-            return Math.random() * (max - min) + min;
-        };
-        var initScene = function(){
-            camera.far = 5;
-            stage.rotationX = 25;
-            
-            var boxGeometry = new Hilo3d.BoxGeometry();
-            boxGeometry.setAllRectUV([[0, 1], [1, 1], [1, 0], [0, 0]]);
-            var sphereGeometry = new Hilo3d.SphereGeometry({
-                radius:0.7
-            });
+    protected override render(renderer: Hilo3d.WebGLRenderer): void {
+        renderer.render(this.scene, this.camera);
+    }
 
-            for(var i = 0;i < 50; i ++) {
-                var lightMinValue = 0.5;
-                var lightMaxValue = 1;
-                var colorBox = new Hilo3d.Mesh({
-                    geometry: random(0, 1)>0.5?boxGeometry:sphereGeometry,
-                    material: new Hilo3d.BasicMaterial({
-                        lightType:'NONE',
-                        diffuse: new Hilo3d.Color(random(lightMinValue, lightMaxValue), random(lightMinValue, lightMaxValue), random(lightMinValue, lightMaxValue))
-                    }),
-                    x:random(-1.5, 1.5),
-                    y:random(-1.5, 1.5),
-                    z:random(-1.5, 1.5),
-                    v:random(0.5, 1),
-                    onUpdate: function() {
-                        this.rotationX += this.v;
-                        this.rotationY += this.v;
-                    }
-                });
-                stage.addChild(colorBox);
-                colorBox.setScale(random(0.05, 0.08));
+    override destroy(): void {
+        this.scene.destroy();
+        super.destroy();
+    }
+}
+
+class PostProcessRenderer {
+    private readonly passes: RenderPass[] = [];
+    private isRendering = false;
+
+    constructor(private readonly renderer: Hilo3d.WebGLRenderer) {}
+
+    render(): void {
+        if (this.isRendering) throw new Error('Post-process rendering cannot be re-entered.');
+        this.isRendering = true;
+        let lastPass: RenderPass | null = null;
+        try {
+            for (const pass of this.passes) {
+                pass.execute(this.renderer, lastPass);
+                lastPass = pass;
             }
-
-            stage.onUpdate = function(){
-                this.rotationX += 0.5;
-                this.rotationY += 0.5;
-            }
+        } finally {
+            this.renderer.state.bindSystemFramebuffer();
+            this.isRendering = false;
         }
+    }
 
-        initScene();
+    addPass(pass: RenderPass): void {
+        if (this.passes.includes(pass)) throw new Error('Render pass has already been added.');
+        this.passes.push(pass);
+    }
 
-        Hilo3d.Tween.to({num:0}, {num:0.8}, {
-            ease:Hilo3d.Tween.Ease.Quad.EaseOut,
-            duration:1000,
-            loop: true,
-            reverse: true,
-            onUpdate:function(){
-                bloomStrength = this.target.num;
-            }
+    clear(): void {
+        this.passes.forEach(pass => {
+            pass.destroy();
         });
+        this.passes.length = 0;
+    }
+}
+
+const postProcessRenderer = new PostProcessRenderer(sceneRenderer);
+sceneRenderer.on('afterRender', () => {
+    postProcessRenderer.render();
+});
+
+const lightPass = new ScreenShaderPass(sceneRenderer, {
+    frag: `
+        precision HILO_MAX_FRAGMENT_PRECISION float;
+        varying vec2 v_texcoord0;
+        uniform sampler2D u_screen;
+        void main(void) {
+            vec4 color = texture2D(u_screen, v_texcoord0);
+            float brightness = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+            gl_FragColor = brightness > 0.4 ? vec4(color.rgb, 1.0) : vec4(0.0);
+        }
+    `,
+    uniforms: {
+        u_screen: {
+            get: (_mesh, _material, programInfo) =>
+                Hilo3d.semantic.handlerTexture(
+                    requireFramebufferTexture(sceneRenderer.framebuffer, 'Scene'),
+                    requireTextureIndex(programInfo)
+                )
+        }
+    }
+}).addTo(postProcessRenderer);
+
+const blurPasses: ScreenShaderPass[] = [];
+for (let index = 0; index < 5; index++) {
+    const blurWidth = Math.ceil(sceneRenderer.width / Math.pow(2, index));
+    const blurHeight = Math.ceil(sceneRenderer.height / Math.pow(2, index));
+    const textureSize = new Float32Array([blurWidth, blurHeight]);
+    new ScreenShaderPass(sceneRenderer, {
+        width: blurWidth,
+        height: blurHeight,
+        frag: `
+            precision HILO_MAX_FRAGMENT_PRECISION float;
+            uniform sampler2D u_lightTexture;
+            varying vec2 v_texcoord0;
+            uniform vec2 u_textureSize;
+
+            void main(void) {
+                float weight[5];
+                weight[0] = 0.227027;
+                weight[1] = 0.1945946;
+                weight[2] = 0.1216216;
+                weight[3] = 0.054054;
+                weight[4] = 0.016216;
+                vec2 texel = 1.0 / u_textureSize;
+                vec3 result = texture2D(u_lightTexture, v_texcoord0).rgb * weight[0];
+                for (int sampleIndex = 1; sampleIndex < 5; ++sampleIndex) {
+                    float offset = texel.x * float(sampleIndex);
+                    result += texture2D(u_lightTexture, v_texcoord0 + vec2(offset, 0.0)).rgb * weight[sampleIndex];
+                    result += texture2D(u_lightTexture, v_texcoord0 - vec2(offset, 0.0)).rgb * weight[sampleIndex];
+                }
+                gl_FragColor = vec4(result, 1.0);
+            }
+        `,
+        uniforms: {
+            u_textureSize: { get: () => textureSize },
+            u_lightTexture: {
+                get: (_mesh, _material, programInfo) =>
+                    Hilo3d.semantic.handlerTexture(
+                        requireFramebufferTexture(lightPass.framebuffer, 'Light extraction pass'),
+                        requireTextureIndex(programInfo)
+                    )
+            }
+        }
+    }).addTo(postProcessRenderer);
+
+    const blurYPass = new ScreenShaderPass(sceneRenderer, {
+        width: blurWidth,
+        height: blurHeight,
+        framebufferOption: {
+            minFilter: Hilo3d.constants.NEAREST,
+            magFilter: Hilo3d.constants.LINEAR
+        },
+        frag: `
+            precision HILO_MAX_FRAGMENT_PRECISION float;
+            uniform sampler2D u_lastTexture;
+            varying vec2 v_texcoord0;
+            uniform vec2 u_textureSize;
+
+            void main(void) {
+                float weight[5];
+                weight[0] = 0.227027;
+                weight[1] = 0.1945946;
+                weight[2] = 0.1216216;
+                weight[3] = 0.054054;
+                weight[4] = 0.016216;
+                vec2 texel = 1.0 / u_textureSize;
+                vec3 result = texture2D(u_lastTexture, v_texcoord0).rgb * weight[0];
+                for (int sampleIndex = 1; sampleIndex < 5; ++sampleIndex) {
+                    float offset = texel.y * float(sampleIndex);
+                    result += texture2D(u_lastTexture, v_texcoord0 + vec2(0.0, offset)).rgb * weight[sampleIndex];
+                    result += texture2D(u_lastTexture, v_texcoord0 - vec2(0.0, offset)).rgb * weight[sampleIndex];
+                }
+                gl_FragColor = vec4(result, 1.0);
+            }
+        `,
+        uniforms: {
+            u_textureSize: { get: () => textureSize }
+        }
+    }).addTo(postProcessRenderer);
+
+    blurPasses.push(blurYPass);
+}
+
+let bloomStrength = 1;
+new ScreenShaderPass(sceneRenderer, {
+    frag: `
+        precision HILO_MAX_FRAGMENT_PRECISION float;
+        uniform sampler2D u_blurTexture0;
+        uniform sampler2D u_blurTexture1;
+        uniform sampler2D u_blurTexture2;
+        uniform sampler2D u_blurTexture3;
+        uniform sampler2D u_blurTexture4;
+        uniform sampler2D u_scene;
+        uniform float u_bloomStrength;
+        varying vec2 v_texcoord0;
+
+        void main(void) {
+            vec3 color = texture2D(u_scene, v_texcoord0).rgb;
+            color += texture2D(u_blurTexture0, v_texcoord0).rgb * u_bloomStrength;
+            color += texture2D(u_blurTexture1, v_texcoord0).rgb * u_bloomStrength;
+            color += texture2D(u_blurTexture2, v_texcoord0).rgb * u_bloomStrength;
+            color += texture2D(u_blurTexture3, v_texcoord0).rgb * u_bloomStrength;
+            color += texture2D(u_blurTexture4, v_texcoord0).rgb * u_bloomStrength;
+            vec3 result = vec3(1.0) - exp(-color * 0.8);
+            gl_FragColor = vec4(result, 1.0);
+        }
+    `,
+    uniforms: {
+        u_scene: {
+            get: (_mesh, _material, programInfo) =>
+                Hilo3d.semantic.handlerTexture(
+                    requireFramebufferTexture(sceneRenderer.framebuffer, 'Scene'),
+                    requireTextureIndex(programInfo)
+                )
+        },
+        ...Object.fromEntries(
+            blurPasses.map((pass, index) => [
+                `u_blurTexture${String(index)}`,
+                {
+                    get: (
+                        _mesh: Hilo3d.Mesh,
+                        _material: Hilo3d.Material,
+                        programInfo: Hilo3d.ProgramBindingInfo
+                    ) =>
+                        Hilo3d.semantic.handlerTexture(
+                            requireFramebufferTexture(
+                                pass.framebuffer,
+                                `Blur pass ${String(index)}`
+                            ),
+                            requireTextureIndex(programInfo)
+                        )
+                }
+            ])
+        ),
+        u_bloomStrength: { get: () => bloomStrength }
+    },
+    renderToScreen: true
+}).addTo(postProcessRenderer);
+
+function random(min: number, max: number): number {
+    return Math.random() * (max - min) + min;
+}
+
+function initScene(): void {
+    camera.far = 5;
+    stage.rotationX = 25;
+
+    const boxGeometry = new Hilo3d.BoxGeometry();
+    boxGeometry.setAllRectUV([
+        [0, 1],
+        [1, 1],
+        [1, 0],
+        [0, 0]
+    ]);
+    const sphereGeometry = new Hilo3d.SphereGeometry({ radius: 0.7 });
+
+    for (let index = 0; index < 50; index++) {
+        const speed = random(0.5, 1);
+        const colorBox = new Hilo3d.Mesh({
+            geometry: random(0, 1) > 0.5 ? boxGeometry : sphereGeometry,
+            material: new Hilo3d.BasicMaterial({
+                lightType: 'NONE',
+                diffuse: new Hilo3d.Color(random(0.5, 1), random(0.5, 1), random(0.5, 1))
+            }),
+            x: random(-1.5, 1.5),
+            y: random(-1.5, 1.5),
+            z: random(-1.5, 1.5)
+        });
+        colorBox.onUpdate = () => {
+            colorBox.rotationX += speed;
+            colorBox.rotationY += speed;
+        };
+        colorBox.setScale(random(0.05, 0.08));
+        stage.addChild(colorBox);
+    }
+
+    stage.onUpdate = function () {
+        this.rotationX += 0.5;
+        this.rotationY += 0.5;
+    };
+}
+
+initScene();
+
+const bloomAnimation = { num: 0 };
+Hilo3d.Tween.to(
+    bloomAnimation,
+    { num: 0.8 },
+    {
+        ease: Hilo3d.Tween.Ease.Quad.EaseOut,
+        duration: 1000,
+        loop: true,
+        reverse: true,
+        onUpdate: () => {
+            bloomStrength = bloomAnimation.num;
+        }
+    }
+);

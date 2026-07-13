@@ -1,88 +1,52 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import Buffer from './Buffer';
+import type { TypedArray } from './types';
 
+export type UniformBufferData = TypedArray | ArrayBuffer;
 /**
  * Uniform Buffer Object
- * @class
  */
-const UniformBuffer = Class.create<typeof hilo3d.UniformBuffer>()(/** @lends UniformBuffer.prototype */ {
-    /**
-     * @default Buffer
-     * @type {String}
-     */
-    className: 'UniformBuffer',
-
-    /**
-     * @default true
-     * @type {Boolean}
-     */
-    isUniformBuffer: true,
-
+class UniformBuffer {
+    readonly className = 'UniformBuffer';
+    readonly isUniformBuffer = true;
     /**
      * is dirty
-     * @type {Boolean}
-     * @default false
-    */
-    isDirty: false,
-
+     */
+    isDirty = false;
     /**
      * data
-     * @type {TypedArray|ArrayBuffer}
-     * @default null
      */
-    data: {
-        get() {
-            return this._data;
-        },
-        set(data) {
-            this._data = data;
-            this.isDirty = true;
-        }
-    },
-
+    get data(): UniformBufferData {
+        return this._data;
+    }
     /**
      * data
-     * @type {TypedArray|ArrayBuffer}
-     * @default null
-     * @private
      */
-    _data: null,
-
+    set data(data: UniformBufferData) {
+        this._data = data;
+        this.isDirty = true;
+    }
     /**
-     * @type {Buffer}
-     * @default null
-     * @private
+     * data
      */
-    _buffer: null,
-
-    /**
-     * @constructs
-     */
-    constructor(data) {
+    private _data: UniformBufferData = new ArrayBuffer(0);
+    private _buffer: Buffer | null = null;
+    constructor(data: UniformBufferData) {
         this.data = data;
-    },
-
-    getBuffer(gl) {
-        if (!this._buffer) {
-            this._buffer = new Buffer(gl, gl.UNIFORM_BUFFER, null, gl.DYNAMIC_DRAW);
-        }
-
+    }
+    getBuffer(gl: WebGL2RenderingContext): Buffer {
+        this._buffer ??= new Buffer(gl, gl.UNIFORM_BUFFER, null, gl.DYNAMIC_DRAW);
         if (this.isDirty) {
             this._buffer.bufferData(this.data);
             this.isDirty = false;
         }
         return this._buffer;
-    },
-
-    destroy() {
+    }
+    destroy(): void {
         if (this._buffer) {
             this._buffer.destroy();
             this._buffer = null;
         }
         this.isDirty = true;
-    },
-});
-
+    }
+}
 export default UniformBuffer;

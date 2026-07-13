@@ -1,38 +1,28 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import Light from './Light';
+import Light, { type LightParameters } from './Light';
 import CubeLightShadow from './CubeLightShadow';
+import type Camera from '../camera/Camera';
+import type WebGLRenderer from '../renderer/WebGLRenderer';
 
+export type PointLightParameters = LightParameters;
 /**
  * 点光源
- * @class
- * @extends Light
  */
-const PointLight = Class.create<typeof hilo3d.PointLight>()(/** @lends PointLight.prototype */ {
-    Extends: Light,
+class PointLight extends Light {
+    static override readonly typeName = 'PointLight';
+    override isPointLight = true;
+    override className = 'PointLight';
+    lightShadow: CubeLightShadow | null = null;
     /**
-     * @default true
-     * @type {boolean}
+     * @param params - 创建对象的属性参数。可包含此类的所有属性。
+     * - `params.color`: 光颜色
+     * - `params.amount`: 光强度
+     * - `params.range`: 光照范围, 0 时代表光照范围无限大。
      */
-    isPointLight: true,
-    /**
-     * @default PointLight
-     * @type {string}
-     */
-    className: 'PointLight',
-    /**
-     * @constructs
-     * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
-     * @param {Color} [params.color=new Color(1, 1, 1)] 光颜色
-     * @param {number} [params.amount=1] 光强度
-     * @param {number} [params.range=0] 光照范围, 0 时代表光照范围无限大。
-     * @param {unknown} [params.[value:string]] 其它属性
-     */
-    constructor(params) {
-        PointLight.superclass.constructor.call(this, params);
-    },
-    createShadowMap(renderer, camera) {
+    constructor(params: PointLightParameters = {}) {
+        super();
+        Object.assign(this, params);
+    }
+    override createShadowMap(renderer: WebGLRenderer, camera: Camera): void {
         if (!this.shadow) {
             return;
         }
@@ -50,6 +40,5 @@ const PointLight = Class.create<typeof hilo3d.PointLight>()(/** @lends PointLigh
         }
         this.lightShadow.createShadowMap(camera);
     }
-});
-
+}
 export default PointLight;

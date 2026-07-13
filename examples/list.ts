@@ -1,163 +1,155 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+type ExampleEntry = string | readonly [name: string, path: string];
 
-var listElem = document.getElementById('exampleList');
-        var iframeElem = document.getElementById('exampleFrame');
-        var examples = [
-            'areaLight',
-            'billboard',
-            'bloom',
-            'cameraHelper',
-            'compressed_texture',
-            'cubeTexture_HDR',
-            'custom_anim_state',
-            'depthTexture',
-            'drawBuffers',
-            'fog',
-            'MultiSampledRenderbuffers',
-            'frameBuffer',
-            'frustum_test',
-            'geometry_box',
-            'geometry_color',
-            'geometry_custom',
-            'geometry_dynamic',
-            'geometry_dynamic2',
-            'geometry_instanced',
-            'geometry_line',
-            'geometry_merge',
-            'geometry_morph',
-            'geometry_plane',
-            'geometry_sphere',
-            'geometry_triangles',
-            'animation',
-            'gltf_light',
-            'hdr',
-            'lifegame',
-            'mesh_picker',
-            'mouse_event',
-            'normal_map',
-            'pbr',
-            'pbr2',
-            'pointLight',
-            'polly',
-            'post_process',
-            'quickStart',
-            'raycast',
-            'raycast_node',
-            'refract',
-            'resourceManagerTest',
-            'sRGB',
-            'shaderToy',
-            'shader_material',
-            'shadow',
-            'skybox',
-            'snow',
-            'sphereEnvMap',
-            'sphericalHarmonics',
-            'spotLight',
-            'ssao',
-            'stencilTest',
-            'textureLod',
-            'texture_data',
-            'texture_image_release',
-            'transparent',
-            'tween_walk',
-            'uniformBufferObject',
-            'update_sub_texture',
-            'uv_map',
-            'video',
-            'webgl_support',
-            'wireframe',
-            ['physics','./physics/cannon'],
-        ];
+type HTMLElementConstructor<ElementType extends HTMLElement> = new () => ElementType;
 
-        function getExampleName(name){
-            if(Object.prototype.toString.call(name) === '[object Array]'){
-                return name[0];
-            }
-            else{
-                return name;
-            }
-        }
+function requireElement<ElementType extends HTMLElement>(
+    selector: string,
+    Constructor: HTMLElementConstructor<ElementType>
+): ElementType {
+    const element = document.querySelector(selector);
+    if (!(element instanceof Constructor)) {
+        throw new Error(`Example index requires ${selector}`);
+    }
+    return element;
+}
 
-        function getExamplePath(name){
-            if(Object.prototype.toString.call(name) === '[object Array]'){
-                return name[1] + '.html';
-            }
-            else{
-                return name + '.html';
-            }
-        }
+const list = requireElement('#exampleList', HTMLUListElement);
+const frame = requireElement('#exampleFrame', HTMLIFrameElement);
+const examples: readonly ExampleEntry[] = [
+    'areaLight',
+    'billboard',
+    'bloom',
+    'cameraHelper',
+    'compressed_texture',
+    'cubeTexture_HDR',
+    'custom_anim_state',
+    'depthTexture',
+    'drawBuffers',
+    'fog',
+    'MultiSampledRenderbuffers',
+    'frameBuffer',
+    'frustum_test',
+    'geometry_box',
+    'geometry_color',
+    'geometry_custom',
+    'geometry_dynamic',
+    'geometry_dynamic2',
+    'geometry_instanced',
+    'geometry_line',
+    'geometry_merge',
+    'geometry_morph',
+    'geometry_plane',
+    'geometry_sphere',
+    'geometry_triangles',
+    'animation',
+    'gltf_light',
+    'hdr',
+    'lifegame',
+    'mesh_picker',
+    'mouse_event',
+    'normal_map',
+    'pbr',
+    'pbr2',
+    'pointLight',
+    'polly',
+    'post_process',
+    'quickStart',
+    'raycast',
+    'raycast_node',
+    'refract',
+    'resourceManagerTest',
+    'sRGB',
+    'shaderToy',
+    'shader_material',
+    'shadow',
+    'skybox',
+    'snow',
+    'sphereEnvMap',
+    'sphericalHarmonics',
+    'spotLight',
+    'ssao',
+    'stencilTest',
+    'textureLod',
+    'texture_data',
+    'texture_image_release',
+    'transparent',
+    'tween_walk',
+    'uniformBufferObject',
+    'update_sub_texture',
+    'uv_map',
+    'video',
+    'webgl_support',
+    'wireframe',
+    ['physics', './physics/cannon']
+];
 
-        var examplesDict = {};
-        for(var i = 0;i < examples.length;i ++){
-            (function(originName, i){
-                var name = getExampleName(originName);
-                var elem = document.createElement('li');
-                examplesDict[name] = {
-                    elem:elem,
-                    originName:originName
-                };
-                elem.innerHTML = name;
-                listElem.appendChild(elem);
-                elem.onclick = function(){
-                    setDemo(originName);
-                };
-            })(examples[i], i);
-        }
+function exampleName(entry: ExampleEntry): string {
+    return typeof entry === 'string' ? entry : entry[0];
+}
 
-        var winWidth = window.innerWidth || document.documentElement.clientWidth;
-        var winHeight = window.innerHeight || document.documentElement.clientHeight;
-        
-        iframeElem.width = winWidth - 220;
-        iframeElem.height = winHeight;
-        var iframeWindow = iframeElem.contentWindow;
+function examplePath(entry: ExampleEntry): string {
+    return `${typeof entry === 'string' ? entry : entry[1]}.html`;
+}
 
-        var hashName = location.hash.slice(1);
-        var currentName = '';
-        function setDemo(originName, first){
-            var name = getExampleName(originName);
-            var path = getExamplePath(originName);
-            if(name !== currentName){
-                location.hash = name;
-                iframeElem.src = path + (first?location.search:iframeWindow.location.search);
-                if(examplesDict[currentName]){
-                    examplesDict[currentName].elem.className = '';
-                }
-                examplesDict[name].elem.className = 'active';
-                currentName = name;
-            }
-        }
+interface ExampleNavigationItem {
+    readonly entry: ExampleEntry;
+    readonly element: HTMLLIElement;
+}
 
-        setDemo(examplesDict[hashName]?examplesDict[hashName].originName:examples[0], true);
+const navigation = new Map<string, ExampleNavigationItem>();
+let currentName = '';
 
-        window.onkeydown = function(e){
-            var index = examples.indexOf(examplesDict[currentName].originName);
-            switch(e.keyCode){
-                case 38://up
-                case 87://w
-                    index --;
-                    break;
-                case 40://down
-                case 83://s
-                    index ++;
-                    break;
-            }
-            if(index < 0){
-                index = examples.length - 1;
-            }
-            else if(index > examples.length - 1){
-                index = 0;
-            }
+function showExample(entry: ExampleEntry, preservePageQuery = false): void {
+    const name = exampleName(entry);
+    if (name === currentName) return;
+    const previous = navigation.get(currentName);
+    if (previous) previous.element.classList.remove('active');
 
-            setDemo(examples[index]);
-        };
+    const pageQuery = preservePageQuery
+        ? location.search
+        : (frame.contentWindow?.location.search ?? '');
+    frame.src = `${examplePath(entry)}${pageQuery}`;
+    location.hash = name;
+    navigation.get(name)?.element.classList.add('active');
+    currentName = name;
+}
 
-        document.getElementById('webglVersionForm').onchange = function(event) {
-            location.search = event.target.id === 'webglVersion1' ? '?webgl1=true' : '?webgl2=true';
-        }
+for (const entry of examples) {
+    const name = exampleName(entry);
+    const element = document.createElement('li');
+    element.textContent = name;
+    element.addEventListener('click', () => {
+        showExample(entry);
+    });
+    navigation.set(name, { entry, element });
+    list.appendChild(element);
+}
 
-        if (location.search.indexOf('webgl2') > -1) {
-            document.getElementById('webglVersion2').checked = true;
-        } else {
-            document.getElementById('webglVersion1').checked = true;
-        }
+frame.width = String(Math.max(0, window.innerWidth - 220));
+frame.height = String(window.innerHeight);
+const requestedName = location.hash.slice(1);
+const initial = navigation.get(requestedName)?.entry ?? examples[0];
+if (!initial) throw new Error('Example index has no entries');
+showExample(initial, true);
+
+window.addEventListener('keydown', event => {
+    if (!['ArrowUp', 'ArrowDown', 'w', 'W', 's', 'S'].includes(event.key)) return;
+    const current = navigation.get(currentName);
+    if (!current) return;
+    const direction = ['ArrowUp', 'w', 'W'].includes(event.key) ? -1 : 1;
+    const currentIndex = examples.indexOf(current.entry);
+    const nextIndex = (currentIndex + direction + examples.length) % examples.length;
+    const next = examples[nextIndex];
+    if (next) showExample(next);
+});
+
+const versionForm = requireElement('#webglVersionForm', HTMLFormElement);
+versionForm.addEventListener('change', event => {
+    if (!(event.target instanceof HTMLInputElement)) return;
+    location.search = event.target.id === 'webglVersion1' ? '?webgl1=true' : '?webgl2=true';
+});
+
+const selectedVersion = location.search.includes('webgl2')
+    ? requireElement('#webglVersion2', HTMLInputElement)
+    : requireElement('#webglVersion1', HTMLInputElement);
+selectedVersion.checked = true;

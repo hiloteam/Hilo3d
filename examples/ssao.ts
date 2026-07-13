@@ -1,71 +1,75 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
+import postProcess from './js/postProcess';
 
-var framebufferOption = {
-        type:Hilo3d.constants.FLOAT
-    };
-    renderer.framebufferOption = framebufferOption;
-    renderer.clearColor = new Hilo3d.Color(0, 0, 0, 0);
-    postProcess.init(renderer, framebufferOption);
-    renderer.useFramebuffer = false;
-    renderer.useInstanced = true;
+const { camera, stage, renderer } = createExampleContext();
 
-    initScene();
+const framebufferOption: Hilo3d.FramebufferParameters = {
+    type: Hilo3d.constants.FLOAT
+};
+renderer.framebufferOption = framebufferOption;
+renderer.clearColor = new Hilo3d.Color(0, 0, 0, 0);
+postProcess.init(renderer, framebufferOption);
+renderer.useFramebuffer = false;
+renderer.useInstanced = true;
 
-    function initSSAO(meshes){
-        var num = 32;
-        var ssaoKernel = new Float32Array(num * 3);
-        for(var i = 0;i < num;i ++){
-            var index = i * 3;
-            var scale = Math.random() * 0.9 + 0.1;
-            ssaoKernel[index] = (Math.random() * 2 -1) * scale;
-            ssaoKernel[index + 1] = (Math.random() * 2 -1) * scale;
-            ssaoKernel[index + 2] = Math.random() * scale;
-        }
-        var writeOriginData = true;
-        var positionFramebuffer = new Hilo3d.Framebuffer(renderer, {
-            type:Hilo3d.constants.FLOAT
-        });
-        positionFramebuffer.init();
-        var positionMaterial = new Hilo3d.GeometryMaterial({
-            vertexType:Hilo3d.constants.POSITION,
-            writeOriginData:writeOriginData
-        });
+initScene();
 
-        var normalFramebuffer = new Hilo3d.Framebuffer(renderer, {
-            type:Hilo3d.constants.FLOAT
-        });
-        normalFramebuffer.init();
-        var normalMaterial = new Hilo3d.GeometryMaterial({
-            vertexType:Hilo3d.constants.NORMAL,
-            writeOriginData:writeOriginData
-        });
+function initSSAO(): void {
+    const num = 32;
+    const ssaoKernel = new Float32Array(num * 3);
+    for (let i = 0; i < num; i++) {
+        const index = i * 3;
+        const scale = Math.random() * 0.9 + 0.1;
+        ssaoKernel[index] = (Math.random() * 2 - 1) * scale;
+        ssaoKernel[index + 1] = (Math.random() * 2 - 1) * scale;
+        ssaoKernel[index + 2] = Math.random() * scale;
+    }
+    const writeOriginData = true;
+    const positionFramebuffer = new Hilo3d.Framebuffer(renderer, {
+        type: Hilo3d.constants.FLOAT
+    });
+    positionFramebuffer.init();
+    const positionMaterial = new Hilo3d.GeometryMaterial({
+        vertexType: Hilo3d.constants.POSITION,
+        writeOriginData
+    });
 
-        var depthFramebuffer = new Hilo3d.Framebuffer(renderer);
-        depthFramebuffer.init();
-        var depthMaterial = new Hilo3d.GeometryMaterial({
-            vertexType:Hilo3d.constants.DEPTH,
-            writeOriginData:false
-        });
+    const normalFramebuffer = new Hilo3d.Framebuffer(renderer, {
+        type: Hilo3d.constants.FLOAT
+    });
+    normalFramebuffer.init();
+    const normalMaterial = new Hilo3d.GeometryMaterial({
+        vertexType: Hilo3d.constants.NORMAL,
+        writeOriginData
+    });
 
-        var ssaoFramebuffer = new Hilo3d.Framebuffer(renderer, {
-            type:Hilo3d.constants.FLOAT
-        });
-        ssaoFramebuffer.init();
+    const depthFramebuffer = new Hilo3d.Framebuffer(renderer);
+    depthFramebuffer.init();
+    const depthMaterial = new Hilo3d.GeometryMaterial({
+        vertexType: Hilo3d.constants.DEPTH,
+        writeOriginData: false
+    });
 
-        var noiseData = new Float32Array(48);
-        for (var i = 0; i < 48; i++) {
-            noiseData[i] = Math.random() * 2 - 1;
-        }
-        var noiseTexture = new Hilo3d.DataTexture({
-            data: noiseData,
-            wrapS:Hilo3d.constants.REPEAT,
-            wrapT:Hilo3d.constants.REPEAT
-        });
-        var textureSize = new Float32Array([renderer.width, renderer.height]);
-        var noiseScale = new Float32Array([renderer.width/4, renderer.height/4]);
+    const ssaoFramebuffer = new Hilo3d.Framebuffer(renderer, {
+        type: Hilo3d.constants.FLOAT
+    });
+    ssaoFramebuffer.init();
 
-        var ssaoPass = postProcess.addPass({
-            frag:`
+    const noiseData = new Float32Array(48);
+    for (let i = 0; i < 48; i++) {
+        noiseData[i] = Math.random() * 2 - 1;
+    }
+    const noiseTexture = new Hilo3d.DataTexture({
+        data: noiseData,
+        wrapS: Hilo3d.constants.REPEAT,
+        wrapT: Hilo3d.constants.REPEAT
+    });
+    const textureSize = new Float32Array([renderer.width, renderer.height]);
+    const noiseScale = new Float32Array([renderer.width / 4, renderer.height / 4]);
+
+    const ssaoPass = postProcess.addPass({
+        frag: `
             precision HILO_MAX_FRAGMENT_PRECISION float;
             varying vec2 v_texcoord0;
             uniform sampler2D u_normal;
@@ -118,41 +122,39 @@ var framebufferOption = {
                 occlusion = 1.0 - (occlusion / 32.0);
                 gl_FragColor = vec4(vec3(occlusion), 1.0);
             }`,
-            uniforms:{
-                u_position:postProcess.uniformTextureGetter(positionFramebuffer.texture),
-                u_normal:postProcess.uniformTextureGetter(normalFramebuffer.texture),
-                u_depth:postProcess.uniformTextureGetter(depthFramebuffer.texture),
-                u_noise:postProcess.uniformTextureGetter(noiseTexture),
-                u_kernel:ssaoKernel,
-                u_radius:.1,
-                u_noiseScale:noiseScale,
-                u_projection:{
-                    get:function(){
-                        return camera.projectionMatrix.elements;
-                    }
-                },
-                u_cameraFar:{
-                    get:function(){
-                        return camera.far;
-                    }
-                },
-                u_cameraNear:{
-                    get:function(){
-                        return camera.near;
-                    }
+        uniforms: {
+            u_position: postProcess.uniformTextureGetter(positionFramebuffer.texture),
+            u_normal: postProcess.uniformTextureGetter(normalFramebuffer.texture),
+            u_depth: postProcess.uniformTextureGetter(depthFramebuffer.texture),
+            u_noise: postProcess.uniformTextureGetter(noiseTexture),
+            u_kernel: ssaoKernel,
+            u_radius: 0.1,
+            u_noiseScale: noiseScale,
+            u_projection: {
+                get() {
+                    return camera.projectionMatrix.elements;
+                }
+            },
+            u_cameraFar: {
+                get() {
+                    return camera.far;
+                }
+            },
+            u_cameraNear: {
+                get() {
+                    return camera.near;
                 }
             }
-        });
+        }
+    });
 
-        var blurPass = postProcess.addPass({
-            frag:`
+    const blurPass = postProcess.addPass({
+        frag: `
                 precision HILO_MAX_FRAGMENT_PRECISION float;
                 varying vec2 v_texcoord0;
                 uniform sampler2D u_ssao;
                 uniform vec2 u_textureSize;
                 void main(void) {
-                    gl_FragColor = texture2D(u_ssao, v_texcoord0);
-                    gl_FragColor = vec4(1.0);
                     vec2 texelSize = 1.0 / u_textureSize;
                     float result = 0.0;
                     for (int x = -2; x < 2; ++x) 
@@ -166,53 +168,60 @@ var framebufferOption = {
                     gl_FragColor = vec4(vec3(result / (4.0 * 4.0)), 1.0);
                 }
             `,
-            uniforms:{
-                u_ssao:postProcess.uniformTextureGetter(ssaoFramebuffer.texture),
-                u_textureSize:textureSize
-            }
-        });
-
-        renderer.forceMaterial = depthMaterial;
-
-        renderer.on('afterRender', function(){
-            var forceMaterial = renderer.forceMaterial;
-
-            positionFramebuffer.bind();
-            positionFramebuffer.clear();
-            renderer.forceMaterial = positionMaterial;
-            renderer.renderScene();
-
-            normalFramebuffer.bind();
-            normalFramebuffer.clear();
-            renderer.forceMaterial = normalMaterial;
-            renderer.renderScene();
-
-            depthFramebuffer.bind();
-            depthFramebuffer.clear();
-            renderer.forceMaterial = depthMaterial;
-            renderer.renderScene();
-
-            renderer.forceMaterial = forceMaterial;
-
-            ssaoFramebuffer.bind();
-            ssaoFramebuffer.clear();
-            postProcess.draw(null, ssaoPass);
-            
-            renderer.state.bindSystemFramebuffer();
-            postProcess.draw(null, blurPass);
-        });
-    }
-    
-    renderer.on('init', function(){
-        initSSAO();
+        uniforms: {
+            u_ssao: postProcess.uniformTextureGetter(ssaoFramebuffer.texture),
+            u_textureSize: textureSize
+        }
     });
 
-    function initScene(){
-        var loader = new Hilo3d.GLTFLoader();
-        loader.load({
+    renderer.forceMaterial = depthMaterial;
+
+    const renderGeometryBuffer = (
+        framebuffer: Hilo3d.Framebuffer,
+        material: Hilo3d.Material
+    ): void => {
+        framebuffer.bind();
+        framebuffer.clear();
+        renderer.forceMaterial = material;
+        renderer.renderScene();
+    };
+
+    renderer.on('afterRender', () => {
+        const previousMaterial = renderer.forceMaterial;
+        try {
+            renderGeometryBuffer(positionFramebuffer, positionMaterial);
+            renderGeometryBuffer(normalFramebuffer, normalMaterial);
+            renderGeometryBuffer(depthFramebuffer, depthMaterial);
+        } finally {
+            renderer.forceMaterial = previousMaterial;
+        }
+
+        ssaoFramebuffer.bind();
+        ssaoFramebuffer.clear();
+        postProcess.draw(null, ssaoPass);
+
+        renderer.state.bindSystemFramebuffer();
+        postProcess.draw(null, blurPass);
+    });
+}
+
+renderer.onInit(() => {
+    initSSAO();
+});
+
+function initScene(): void {
+    const loader = new Hilo3d.GLTFLoader();
+    loader
+        .load({
             src: './models/dragon/dragon.gltf'
-        }).then(function(model){
+        })
+        .then(model => {
             model.node.setScale(0.1);
             stage.addChild(model.node);
+        })
+        .catch((error: unknown) => {
+            queueMicrotask(() => {
+                throw error;
+            });
         });
-    }
+}

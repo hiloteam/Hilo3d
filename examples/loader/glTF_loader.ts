@@ -1,193 +1,199 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../../src/Hilo3d';
+import {
+    createExampleContext,
+    type EnvironmentMaps,
+    loadEnvironmentMaps,
+    parseQuery
+} from '../js/init';
 
-Hilo3d.AliAMCExtension.useAuto = true;
-        Hilo3d.AliAMCExtension.useWASM = true;
-        Hilo3d.AliAMCExtension.useWebWorker = true;
+const { camera, stage, ambientLight } = createExampleContext();
+new Hilo3d.AxisHelper({ size: 1 }).addTo(stage);
 
-        stage.addChild(new Hilo3d.AxisHelper({
-            size: 1
-        }));
+interface ModelInfo extends Hilo3d.GLTFLoadRequest {
+    name: string;
+    src: string;
+    scale: number;
+    ambient?: number;
+    camera?: number;
+}
 
-        const glTFModels = {
-            Tmall: {
-                name: 'Tmall',
-                scale: 0.001,
-                src: '../models/Tmall/Tmall.gltf',
-                ambient:0.8
-            },
-            VC: {
-                name: 'VC',
-                scale: 0.01,
-                src: '../models/VC/VC.gltf',
-                isMultiAnim: false,
-                camera:6,
-                ambient:0.8
-            },
-            DamagedHelmet: {
-                name: 'DamagedHelmet',
-                src: '../models/DamagedHelmet/DamagedHelmet.glb',
-                scale: 0.5,
-                ambient:0.8
-            },
-            MultiUVTest: {
-                name: 'MultiUVTest',
-                scale: 0.5,
-                src: '../models/MultiUVTest/MultiUVTest.gltf',
-                ambient:0.8
-            },
-            Suzanne: {
-                name: 'Suzanne',
-                scale: 0.5,
-                src: '../models/Suzanne/Suzanne.gltf',
-                ambient:0.8
-            },
-            AlphaBlendModeTest: {
-                name: 'AlphaBlendModeTest',
-                scale: 0.3,
-                src: '../models/AlphaBlendModeTest/AlphaBlendModeTest.gltf',
-                ambient:0.8
-            },
-            SampleTechniques: {
-                name: 'SampleTechniques',
-                scale: 0.5,
-                src: '../models/SampleTechniques/SampleTechniques.gltf',
-                isProgressive: true,
-            },
-            test: {
-                name: 'test',
-                scale: 0.001,
-                src: '/model-viewer/models/test/test.gltf',
-                isProgressive: true,
-            }
-        };
+const models: Readonly<Record<string, ModelInfo>> = {
+    Tmall: {
+        name: 'Tmall',
+        scale: 0.001,
+        src: '../models/Tmall/Tmall.gltf',
+        ambient: 0.8
+    },
+    VC: {
+        name: 'VC',
+        scale: 0.01,
+        src: '../models/VC/VC.gltf',
+        isMultiAnim: false,
+        camera: 6,
+        ambient: 0.8
+    },
+    DamagedHelmet: {
+        name: 'DamagedHelmet',
+        src: '../models/DamagedHelmet/DamagedHelmet.glb',
+        scale: 0.5,
+        ambient: 0.8
+    },
+    MultiUVTest: {
+        name: 'MultiUVTest',
+        scale: 0.5,
+        src: '../models/MultiUVTest/MultiUVTest.gltf',
+        ambient: 0.8
+    },
+    Suzanne: {
+        name: 'Suzanne',
+        scale: 0.5,
+        src: '../models/Suzanne/Suzanne.gltf',
+        ambient: 0.8
+    },
+    AlphaBlendModeTest: {
+        name: 'AlphaBlendModeTest',
+        scale: 0.3,
+        src: '../models/AlphaBlendModeTest/AlphaBlendModeTest.gltf',
+        ambient: 0.8
+    },
+    SampleTechniques: {
+        name: 'SampleTechniques',
+        scale: 0.5,
+        src: '../models/SampleTechniques/SampleTechniques.gltf',
+        isProgressive: true
+    }
+};
 
-        const modelSelect = document.getElementById('modelSelect');
-        const cameraSelect = document.getElementById('cameraSelect');
-        let currentModel = null;
+function requireSelect(id: string): HTMLSelectElement {
+    const select = document.querySelector<HTMLSelectElement>(`#${id}`);
+    if (!select) throw new Error(`glTF loader example requires #${id}.`);
+    return select;
+}
 
-        initModels();
+function positiveQueryNumber(value: string | undefined, fallback: number, name: string): number {
+    if (value === undefined) return fallback;
+    const number = Number(value);
+    if (!Number.isFinite(number) || number <= 0) {
+        throw new RangeError(`${name} must be a positive number; received ${value}.`);
+    }
+    return number;
+}
 
-        function showModel(modelInfo) {
-            const loader = new Hilo3d.GLTFLoader();
-            loader.load(modelInfo).then(function(model) {
-                // add model to stage
-                currentModel = model;
-                stage.addChild(model.node);
-                model.node.setScale(modelInfo.scale);
+const modelSelect = requireSelect('modelSelect');
+const cameraSelect = requireSelect('cameraSelect');
+const query = parseQuery();
+let currentModel: Hilo3d.GLTFModel | null = null;
 
-                // set env map
-                utils.loadEnvMap(function(data) {
-                    model.materials.forEach(function(material) {
-                        material.brdfLUT = data.brdfLUT;
-                        material.diffuseEnvMap = data.diffuseEnvMap;
-                        material.specularEnvMap = data.specularEnvMap;
-                        material.isDirty = true;
-                    });
-
-                    const skyBox = new Hilo3d.Mesh({
-                        geometry: new Hilo3d.BoxGeometry(),
-                        material: new Hilo3d.BasicMaterial({
-                            lightType: 'NONE',
-                            side: Hilo3d.constants.BACK,
-                            diffuse: data.specularEnvMap
-                        })
-                    }).addTo(stage);
-                    skyBox.setScale(20);
-                });
-
-                // log decode time
-                if (Hilo3d.AliAMCExtension && Hilo3d.AliAMCExtension._decodeTotalTime) {
-                    console.log('AMC total decode time is:', Hilo3d.AliAMCExtension._decodeTotalTime);
-                }
-
-                // set cameraSelect
-                if (model.cameras.length) {
-                    for (let i = 0; i < model.cameras.length; i++) {
-                        const opt = document.createElement('option');
-                        opt.innerText = model.cameras[i].name;
-                        opt.setAttribute('value', i);
-                        cameraSelect.appendChild(opt);
-                    }
-
-                    if (modelInfo.camera) {
-                        stage.camera = model.cameras[modelInfo.camera];
-                        cameraSelect.value = modelInfo.camera;
-                    }
-                }
-
-                // show debug sphere
-                if (utils.keys.showSphere) {
-                    model.meshes.forEach((mesh) => {
-                        const sphere = mesh.geometry.getLocalSphereBounds();
-                        new Hilo3d.Mesh({
-                            material: new Hilo3d.BasicMaterial({
-                                lightType: 'NONE',
-                                diffuse: new Hilo3d.Color(1, 0, 0),
-                                wireframe: true
-                            }),
-                            geometry: new Hilo3d.SphereGeometry({
-                                radius: sphere.radius
-                            })
-                        }).setPosition(sphere.center.x, sphere.center.y, sphere.center.z).addTo(mesh);
-                    });
-                }
-            });
+function applyEnvironment(model: Hilo3d.GLTFModel, environment: EnvironmentMaps): void {
+    model.materials.forEach(material => {
+        if (material instanceof Hilo3d.PBRMaterial) {
+            material.brdfLUT = environment.brdfLUT;
+            material.diffuseEnvMap = environment.diffuseEnvMap;
+            material.specularEnvMap = environment.specularEnvMap;
+            material.isDirty = true;
+        } else if (material instanceof Hilo3d.BasicMaterial) {
+            material.specularEnvMap = environment.specularEnvMap;
+            material.isDirty = true;
         }
+    });
+    const skybox = new Hilo3d.Mesh({
+        geometry: new Hilo3d.BoxGeometry(),
+        material: new Hilo3d.BasicMaterial({
+            lightType: 'NONE',
+            side: Hilo3d.constants.BACK,
+            diffuse: environment.specularEnvMap
+        })
+    }).addTo(stage);
+    skybox.setScale(20);
+}
 
-        function initModels() {
-            let modelInfo = glTFModels.Tmall;
-            const modelName = utils.keys.model;
-            if (modelName && glTFModels[modelName]) {
-                modelInfo = glTFModels[modelName];
-            } else if (utils.keys.url) {
-                modelInfo = glTFModels.url = {
-                    name: 'url',
-                    scale: 1,
-                    src: utils.keys.url,
-                    ambient:0.5
-                };
-            }
+function populateCameras(model: Hilo3d.GLTFModel, preferredCamera?: number): void {
+    cameraSelect.replaceChildren(new Option('default', '-1'));
+    model.cameras.forEach((modelCamera, index) => {
+        cameraSelect.append(new Option(modelCamera.name, String(index)));
+    });
+    if (preferredCamera !== undefined) {
+        const modelCamera = model.cameras[preferredCamera];
+        if (!modelCamera) throw new RangeError(`Unknown model camera ${String(preferredCamera)}.`);
+        stage.camera = modelCamera;
+        cameraSelect.value = String(preferredCamera);
+    }
+}
 
-            if (utils.keys.scale) {
-                modelInfo.scale = utils.keys.scale;
-            }
+function addDebugBounds(model: Hilo3d.GLTFModel): void {
+    model.meshes.forEach(mesh => {
+        const geometry = mesh.geometry;
+        if (!geometry) return;
+        const sphere = geometry.getLocalSphereBounds();
+        new Hilo3d.Mesh({
+            material: new Hilo3d.BasicMaterial({
+                lightType: 'NONE',
+                diffuse: new Hilo3d.Color(1, 0, 0),
+                wireframe: true
+            }),
+            geometry: new Hilo3d.SphereGeometry({ radius: sphere.radius })
+        })
+            .setPosition(sphere.center.x, sphere.center.y, sphere.center.z)
+            .addTo(mesh);
+    });
+}
 
-            if (utils.keys.ambient) {
-                modelInfo.ambient = utils.keys.ambient;
-            }
+async function showModel(modelInfo: ModelInfo): Promise<void> {
+    const loader = new Hilo3d.GLTFLoader();
+    const model = await loader.load(modelInfo);
+    await model.ready;
+    currentModel = model;
+    stage.addChild(model.node);
+    model.node.setScale(modelInfo.scale);
+    applyEnvironment(model, await loadEnvironmentMaps());
+    populateCameras(model, modelInfo.camera);
+    if (query['showSphere'] !== undefined) addDebugBounds(model);
+}
 
-            if (utils.keys.debug) {
-                window.onerror = function(a, b, c) {
-                    alert(a + b + c);
-                }
-            }
+function reportAsyncError(error: unknown): void {
+    queueMicrotask(() => {
+        throw error;
+    });
+}
 
-            for (let name in glTFModels) {
-                const opt = document.createElement('option');
-                opt.innerText = name;
-                opt.setAttribute('value', name);
-                modelSelect.appendChild(opt);
-            }
+function selectedModelInfo(): ModelInfo {
+    const selectedName = query['model'] ?? 'Tmall';
+    const configured = models[selectedName];
+    const source = query['url'];
+    if (!configured && !source) throw new RangeError(`Unknown model: ${selectedName}.`);
+    const base: ModelInfo = configured ?? {
+        name: 'url',
+        scale: 1,
+        src: source ?? '',
+        ambient: 0.5
+    };
+    return {
+        ...base,
+        scale: positiveQueryNumber(query['scale'], base.scale, 'scale'),
+        ambient: positiveQueryNumber(query['ambient'], base.ambient ?? 0.5, 'ambient')
+    };
+}
 
-            modelSelect.value = modelInfo.name;
-            cameraSelect.innerHTML = '<option value="default">default</option>';
+function initialize(): void {
+    const modelInfo = selectedModelInfo();
+    Object.keys(models).forEach(name => {
+        modelSelect.append(new Option(name, name));
+    });
+    if (modelInfo.name === 'url') modelSelect.append(new Option('url', 'url'));
+    modelSelect.value = modelInfo.name;
+    ambientLight.amount = modelInfo.ambient ?? 0.5;
 
-            modelSelect.addEventListener('change', function() {
-                location.href = utils.buildUrl(location.href, {
-                    model: modelSelect.value,
-                    url: ''
-                }).replace(/&?url=/, '');
-            });
+    modelSelect.addEventListener('change', () => {
+        const next = new URL(location.href);
+        next.searchParams.set('model', modelSelect.value);
+        next.searchParams.delete('url');
+        location.assign(next);
+    });
+    cameraSelect.addEventListener('change', () => {
+        const cameraIndex = Number(cameraSelect.value);
+        stage.camera = currentModel?.cameras[cameraIndex] ?? camera;
+    });
+    showModel(modelInfo).catch(reportAsyncError);
+}
 
-            cameraSelect.addEventListener('change', function() {
-                const value = Number(cameraSelect.value);
-                if (!currentModel.cameras[value]) {
-                    stage.camera = camera;
-                } else {
-                    stage.camera = currentModel.cameras[value];
-                }
-            });
-
-            ambientLight.amount = modelInfo.ambient;
-            showModel(modelInfo);
-        }
+initialize();

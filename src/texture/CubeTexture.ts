@@ -1,47 +1,44 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import Texture from './Texture';
-import log from '../utils/log';
-import constants from '../constants';
-
-const {
-    TEXTURE_CUBE_MAP,
-    RGB,
-    LINEAR,
+import Texture, {
+    isTextureImageSource,
+    type TextureImageSource,
+    type TextureParameters,
+    type TextureWebGLState
+} from './Texture';
+import {
     CLAMP_TO_EDGE,
+    LINEAR,
+    RGB,
+    TEXTURE_CUBE_MAP,
     TEXTURE_CUBE_MAP_POSITIVE_X
-} = constants;
+} from '../constants/webgl';
 
+export type CubeTextureImage = (TextureImageSource | null)[];
+
+export interface CubeTextureParameters extends TextureParameters<CubeTextureImage> {
+    image?: CubeTextureImage | null;
+}
 /**
  * 立方体纹理
- * @class
- * @extends Texture
  * @example
- * var loadQueue = new Hilo3d.LoadQueue([{
- *     crossOrigin: 'anonymous',
- *     src: '//gw.alicdn.com/tfs/TB15OJpQFXXXXXgXVXXXXXXXXXX-512-512.png'
+ * ```ts
+ * const loadQueue = new Hilo3d.LoadQueue([{
+ *     src: './textures/cube/right.jpg'
  * }, {
- *     crossOrigin: 'anonymous',
- *     src: '//gw.alicdn.com/tfs/TB1gwNqQFXXXXcIXFXXXXXXXXXX-512-512.png'
+ *     src: './textures/cube/left.jpg'
  * }, {
- *     crossOrigin: 'anonymous',
- *     src: '//gw.alicdn.com/tfs/TB1pyNcQFXXXXb7XVXXXXXXXXXX-512-512.png'
+ *     src: './textures/cube/top.jpg'
  * }, {
- *     crossOrigin: 'anonymous',
- *     src: '//gw.alicdn.com/tfs/TB1FilNQFXXXXcKXXXXXXXXXXXX-512-512.png'
+ *     src: './textures/cube/bottom.jpg'
  * }, {
- *     crossOrigin: 'anonymous',
- *     src: '//gw.alicdn.com/tfs/TB1gIpqQFXXXXcZXFXXXXXXXXXX-512-512.png'
+ *     src: './textures/cube/front.jpg'
  * }, {
- *     crossOrigin: 'anonymous',
- *     src: '//gw.alicdn.com/tfs/TB1RFXLQFXXXXXEXpXXXXXXXXXX-512-512.png'
+ *     src: './textures/cube/back.jpg'
  * }]).on('complete', function () {
- *     var result = loadQueue.getAllContent();
- *     var skyboxMap = new Hilo3d.CubeTexture({
+ *     const result = loadQueue.getAllContent();
+ *     const skyboxMap = new Hilo3d.CubeTexture({
  *         image: result
  *     });
- *     var skybox = new Hilo3d.Mesh({
+ *     const skybox = new Hilo3d.Mesh({
  *         geometry: new Hilo3d.BoxGeometry(),
  *         material: new Hilo3d.BasicMaterial({
  *             lightType: 'NONE',
@@ -50,153 +47,130 @@ const {
  *     });
  *     stage.addChild(skybox);
  * });
+ * ```
  */
-const CubeTexture = Class.create<typeof hilo3d.CubeTexture>()(/** @lends CubeTexture.prototype */{
-    Extends: Texture,
+class CubeTexture extends Texture<CubeTextureImage> {
+    isCubeTexture = true;
+    override readonly className: string = 'CubeTexture';
+    override target = TEXTURE_CUBE_MAP;
+    override internalFormat = RGB;
+    override format = RGB;
+    override magFilter = LINEAR;
+    override minFilter = LINEAR;
+    override wrapS = CLAMP_TO_EDGE;
+    override wrapT = CLAMP_TO_EDGE;
     /**
-     * @default true
-     * @type {boolean}
+     * @param params - 初始化参数，所有params都会复制到实例上
+     * - `params.image`: 图片列表，共6张
      */
-    isCubeTexture: true,
-    /**
-     * @default CubeTexture
-     * @type {string}
-     */
-    className: 'CubeTexture',
-
-    /**
-     * @default TEXTURE_CUBE_MAP
-     * @type {number}
-     */
-    target: TEXTURE_CUBE_MAP,
-    /**
-     * @default RGB
-     * @type {number}
-     */
-    internalFormat: RGB,
-    /**
-     * @default RGB
-     * @type {number}
-     */
-    format: RGB,
-
-    /**
-     * @default LINEAR
-     * @type {number}
-     */
-    magFilter: LINEAR,
-    /**
-     * @default LINEAR
-     * @type {number}
-     */
-    minFilter: LINEAR,
-    /**
-     * @default CLAMP_TO_EDGE
-     * @type {number}
-     */
-    wrapS: CLAMP_TO_EDGE,
-    /**
-     * @default CLAMP_TO_EDGE
-     * @type {number}
-     */
-    wrapT: CLAMP_TO_EDGE,
-    /**
-     * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
-     * @param {HTMLImageElement[]} [params.image] 图片列表，共6张
-     */
-    constructor(params) {
-        CubeTexture.superclass.constructor.call(this, params);
-        this.image = this.image || [];
-    },
-    _uploadTexture(state) {
+    constructor(params: CubeTextureParameters = {}) {
+        super();
+        Object.assign(this, params);
+        this.image ??= [];
+    }
+    protected override _uploadTexture(state: TextureWebGLState): this {
         const images = this.image;
         if (!Array.isArray(images) || images.length !== 6) {
-            log.error('CubeTexture image must be an Array of length 6', images);
-            return;
+            throw new TypeError('CubeTexture requires exactly six image faces');
         }
-
-        if (images[0] && images[0].width) {
-            this.width = images[0].width;
-            this.height = images[0].height;
+        const firstImage = images[0];
+        if (firstImage instanceof HTMLImageElement) {
+            this.width = firstImage.width;
+            this.height = firstImage.height;
         }
-
         images.forEach((img, i) => {
+            if (img !== null && !isTextureImageSource(img)) {
+                throw new TypeError(
+                    `CubeTexture face ${String(i)} is not a supported WebGL texture source`
+                );
+            }
             this._glUploadTexture(state, TEXTURE_CUBE_MAP_POSITIVE_X + i, img, 0);
         });
-    },
+        return this;
+    }
+
+    private getImage(index: number): HTMLImageElement | undefined {
+        const image = this.image?.[index];
+        return image instanceof HTMLImageElement ? image : undefined;
+    }
+
+    private setImage(index: number, image: HTMLImageElement | undefined): void {
+        const images = this.image ?? [];
+        images[index] = image ?? null;
+        this.image = images;
+        this.needUpdate = true;
+    }
     /**
      * 右侧的图片
-     * @type {HTMLImageElement}
      */
-    right: {
-        get() {
-            return this.image[0];
-        },
-        set(img) {
-            this.image[0] = img;
-        }
-    },
+    get right(): HTMLImageElement | undefined {
+        return this.getImage(0);
+    }
+    /**
+     * 右侧的图片
+     */
+    set right(img: HTMLImageElement | undefined) {
+        this.setImage(0, img);
+    }
     /**
      * 左侧的图片
-     * @type {HTMLImageElement}
      */
-    left: {
-        get() {
-            return this.image[1];
-        },
-        set(img) {
-            this.image[1] = img;
-        }
-    },
+    get left(): HTMLImageElement | undefined {
+        return this.getImage(1);
+    }
+    /**
+     * 左侧的图片
+     */
+    set left(img: HTMLImageElement | undefined) {
+        this.setImage(1, img);
+    }
     /**
      * 顶部的图片
-     * @type {HTMLImageElement}
      */
-    top: {
-        get() {
-            return this.image[2];
-        },
-        set(img) {
-            this.image[2] = img;
-        }
-    },
+    get top(): HTMLImageElement | undefined {
+        return this.getImage(2);
+    }
+    /**
+     * 顶部的图片
+     */
+    set top(img: HTMLImageElement | undefined) {
+        this.setImage(2, img);
+    }
     /**
      * 底部的图片
-     * @type {HTMLImageElement}
      */
-    bottom: {
-        get() {
-            return this.image[3];
-        },
-        set(img) {
-            this.image[3] = img;
-        }
-    },
+    get bottom(): HTMLImageElement | undefined {
+        return this.getImage(3);
+    }
+    /**
+     * 底部的图片
+     */
+    set bottom(img: HTMLImageElement | undefined) {
+        this.setImage(3, img);
+    }
     /**
      * 朝前的图片
-     * @type {HTMLImageElement}
      */
-    front: {
-        get() {
-            return this.image[4];
-        },
-        set(img) {
-            this.image[4] = img;
-        }
-    },
+    get front(): HTMLImageElement | undefined {
+        return this.getImage(4);
+    }
+    /**
+     * 朝前的图片
+     */
+    set front(img: HTMLImageElement | undefined) {
+        this.setImage(4, img);
+    }
     /**
      * 朝后的图片
-     * @type {HTMLImageElement}
      */
-    back: {
-        get() {
-            return this.image[5];
-        },
-        set(img) {
-            this.image[5] = img;
-        }
+    get back(): HTMLImageElement | undefined {
+        return this.getImage(5);
     }
-});
-
+    /**
+     * 朝后的图片
+     */
+    set back(img: HTMLImageElement | undefined) {
+        this.setImage(5, img);
+    }
+}
 export default CubeTexture;

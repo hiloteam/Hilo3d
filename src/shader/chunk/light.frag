@@ -45,15 +45,15 @@
     uniform sampler2D u_areaLightsLtcTexture1;
     uniform sampler2D u_areaLightsLtcTexture2;
 
-    #pragma glslify: import('../method/getAreaLight.glsl');
+    #include "../method/getAreaLight.glsl"
 #endif
 
 #ifdef HILO_AMBIENT_LIGHTS
     uniform vec3 u_ambientLightsColor;
 #endif
 
-#pragma glslify: import('../method/getDiffuse.glsl');
-#pragma glslify: import('../method/getSpecular.glsl');
-#pragma glslify: import('../method/getLightAttenuation.glsl');
-#pragma glslify: import('../method/unpackFloat.glsl');
-#pragma glslify: import('../method/getShadow.glsl');
+#include "../method/getDiffuse.glsl"
+#include "../method/getSpecular.glsl"
+#include "../method/getLightAttenuation.glsl"
+#include "../method/unpackFloat.glsl"
+#include "../method/getShadow.glsl"

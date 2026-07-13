@@ -1,46 +1,53 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-function rand(min, max) {
-            return Math.random() * (max - min) + min;
-        }
+const { stage } = createExampleContext();
 
-        var geometry = new Hilo3d.PlaneGeometry();
-        var container = new Hilo3d.Node();
-        stage.addChild(container);
+function rand(min: number, max: number): number {
+    return Math.random() * (max - min) + min;
+}
 
-        for (var i = 0; i < 100; i++) {
-            var rect = new Hilo3d.Mesh({
-                geometry: geometry,
-                material: new Hilo3d.BasicMaterial({
-                    lightType:'NONE',
-                    diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random()),
-                    transparent:true,
-                    side:Hilo3d.constants.FRONT_AND_BACK
-                }),
-                x: rand(-0.5, 0.5),
-                y: rand(-0.5, 0.5),
-                z: rand(-1, 1),
-                useHandCursor:true
-            });
-            rect.setScale(rand(0.2, 0.2));
-            container.addChild(rect);
-        }
+const geometry = new Hilo3d.PlaneGeometry();
+const container = new Hilo3d.Node();
+stage.addChild(container);
 
-        stage.enableDOMEvent([Hilo3d.browser.POINTER_START, Hilo3d.browser.POINTER_MOVE, Hilo3d.browser.POINTER_END, 'mouseover', 'mouseout']);
-        stage.on('mouseover', (e)=>{
-            var eventTarget = e.eventTarget;
-            if(eventTarget.isMesh){
-                eventTarget.material.transparency = 0.5;
-                console.log('mesh', e.hitPoint.elements);
-            }
-            else{
-                // console.log('stage', e.hitPoint.elements);
-            }
-        });
+for (let i = 0; i < 100; i++) {
+    const rect = new Hilo3d.Mesh({
+        geometry,
+        material: new Hilo3d.BasicMaterial({
+            lightType: 'NONE',
+            diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random()),
+            transparent: true,
+            side: Hilo3d.constants.FRONT_AND_BACK
+        }),
+        x: rand(-0.5, 0.5),
+        y: rand(-0.5, 0.5),
+        z: rand(-1, 1),
+        useHandCursor: true
+    });
+    rect.setScale(rand(0.2, 0.2));
+    container.addChild(rect);
+}
 
-        stage.on('mouseout', (e)=>{
-            var eventTarget = e.eventTarget;
-            if(eventTarget.isMesh){
-                eventTarget.material.transparency = 1;
-            }
-        });
+stage.enableDOMEvent([
+    Hilo3d.browser.POINTER_START,
+    Hilo3d.browser.POINTER_MOVE,
+    Hilo3d.browser.POINTER_END,
+    'mouseover',
+    'mouseout'
+]);
+stage.on('mouseover', e => {
+    const eventTarget = 'eventTarget' in e ? e.eventTarget : undefined;
+    if (eventTarget instanceof Hilo3d.Mesh && eventTarget.material) {
+        eventTarget.material.transparency = 0.5;
+        const hitPoint = 'hitPoint' in e ? e.hitPoint : undefined;
+        if (hitPoint instanceof Hilo3d.Vector3) console.log('mesh', hitPoint.elements);
+    }
+});
+
+stage.on('mouseout', e => {
+    const eventTarget = 'eventTarget' in e ? e.eventTarget : undefined;
+    if (eventTarget instanceof Hilo3d.Mesh && eventTarget.material) {
+        eventTarget.material.transparency = 1;
+    }
+});

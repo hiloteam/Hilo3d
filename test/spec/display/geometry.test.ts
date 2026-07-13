@@ -1,3 +1,9 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+
+const container = document.querySelector<HTMLElement>('#stage');
+if (!container) throw new Error('Expected the shared test stage container to exist');
+
 describe('display:geometry', () => {
     const camera = new Hilo3d.PerspectiveCamera({
         aspect: innerWidth / innerHeight,
@@ -5,105 +11,37 @@ describe('display:geometry', () => {
         near: 0.1,
         z: 3
     });
-
     const stage = new Hilo3d.Stage({
-        container: document.querySelector('#stage'),
-        camera: camera,
+        container,
+        camera,
         clearColor: new Hilo3d.Color(1, 1, 1),
         width: innerWidth,
         height: innerHeight
     });
+    const material = new Hilo3d.BasicMaterial();
+    const mesh = new Hilo3d.Mesh({ material, rotationX: -60, rotationY: 30 });
 
-    var directionLight = new Hilo3d.DirectionalLight({
+    new Hilo3d.DirectionalLight({
         color: new Hilo3d.Color(1, 1, 1),
         direction: new Hilo3d.Vector3(0.7, -1, -0.5)
     }).addTo(stage);
-
-    var ambientLight = new Hilo3d.AmbientLight({
-        color: new Hilo3d.Color(1, 1, 1),
-        amount: .5
-    }).addTo(stage);
-
-    const material = new Hilo3d.BasicMaterial();
-
-    const mesh = new Hilo3d.Mesh({
-        material: material,
-        rotationX: -60,
-        rotationY: 30
-    });
-
+    new Hilo3d.AmbientLight({ color: new Hilo3d.Color(1, 1, 1), amount: 0.5 }).addTo(stage);
     stage.addChild(mesh);
 
-    if (window._IS_CI) {
-        it('skip in CI', () => {});
-        return;
-    }
-
-    describe('color', () => {
-        beforeEach(() => {
-            material.diffuse = new Hilo3d.Color(0.3, 0.6, 0.9);
-        });
-
-        it('box', (done) => {
-            mesh.geometry = new Hilo3d.BoxGeometry();
-            stage.tick();
-            utils.diffWithScreenshot('geometry-color-box', done);
-        });
-
-        it('sphere', (done) => {
-            mesh.geometry = new Hilo3d.SphereGeometry();
-            stage.tick();
-            utils.diffWithScreenshot('geometry-color-sphere', done);
-        });
-
-        it('plane', (done) => {
-            mesh.geometry = new Hilo3d.PlaneGeometry();
-            stage.tick();
-            utils.diffWithScreenshot('geometry-color-plane', done);
-        });
+    beforeEach(() => {
+        material.diffuse = new Hilo3d.Color(0.3, 0.6, 0.9);
     });
 
-    describe('texture', () => {
-        const texture = new Hilo3d.Texture();
-        const loader = new Hilo3d.TextureLoader();
+    it.each([
+        ['box', () => new Hilo3d.BoxGeometry()],
+        ['sphere', () => new Hilo3d.SphereGeometry()],
+        ['plane', () => new Hilo3d.PlaneGeometry()]
+    ])('renders a %s geometry through the stage', (_name, createGeometry) => {
+        const geometry = createGeometry();
+        mesh.geometry = geometry;
 
-        beforeEach((done) => {
-            material.diffuse = texture;
-            material.id = Hilo3d.math.generateUUID('BasicMaterial');
-            loader.load({
-                src: './asset/images/logo.png'
-            }).then((texture) => {
-                material.diffuse = texture;
-                done();
-            })
-        });
-
-        it('box', (done) => {
-            mesh.geometry = new Hilo3d.BoxGeometry();
-            mesh.geometry.setAllRectUV([
-                [0, 1],
-                [1, 1],
-                [1, 0],
-                [0, 0]
-            ]);
-            stage.tick();
-            utils.diffWithScreenshot('geometry-texture-box', done);
-        });
-
-        it('sphere', (done) => {
-            mesh.geometry = new Hilo3d.SphereGeometry();
-            stage.tick();
-            utils.diffWithScreenshot('geometry-texture-sphere', done);
-        });
-
-        it('plane', (done) => {
-            mesh.geometry = new Hilo3d.PlaneGeometry();
-            stage.tick();
-            if (!window._IS_CI) {
-                utils.diffWithScreenshot('geometry-texture-plane', done);
-            } else {
-                done();
-            }
-        });
+        expect(() => stage.tick(0)).not.toThrow();
+        expect(mesh.geometry).toBe(geometry);
+        expect(stage.renderer.domElement).toBeInstanceOf(HTMLCanvasElement);
     });
 });

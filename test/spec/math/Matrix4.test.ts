@@ -1,7 +1,14 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+
 const Matrix4 = Hilo3d.Matrix4;
 
-describe('Matrix4', function() {
-    var matA, matB, matC, matD, identity;
+describe('Matrix4', () => {
+    let matA = new Matrix4();
+    let matB = new Matrix4();
+    let matC = new Matrix4();
+    let matD = new Matrix4();
+    let identity = new Matrix4();
     beforeEach(() => {
         matA = new Matrix4();
         matB = new Matrix4();
@@ -16,235 +23,776 @@ describe('Matrix4', function() {
     });
 
     it('create', () => {
-        identity.isMatrix4.should.be.true();
-        identity.className.should.equal('Matrix4');
+        expect(identity.isMatrix4).toBe(true);
+        expect(identity.className).toBe('Matrix4');
     });
 
     it('copy', () => {
-        new Matrix4().copy(matC).elements.should.equalishValues(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        expect(new Matrix4().copy(matC).elements).toEqualishValues(
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+        );
     });
 
     it('clone', () => {
-        matC.clone().elements.should.equalishValues(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        expect(matC.clone().elements).toEqualishValues(
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+        );
     });
 
     it('toArray', () => {
-        var arr = [];
+        const arr: number[] = [];
         matC.toArray(arr, 3);
-        arr[3].should.equal(0);
-        arr[4].should.equal(1);
-        arr[5].should.equal(2);
+        expect(arr[3]).toBe(0);
+        expect(arr[4]).toBe(1);
+        expect(arr[5]).toBe(2);
     });
 
     it('fromArray', () => {
-        identity.fromArray([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], 3).elements.should.equalishValues(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18);
+        expect(
+            identity.fromArray(
+                [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+                3
+            ).elements
+        ).toEqualishValues(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18);
     });
 
     it('set', () => {
-        identity.set(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15).elements.should.equalishValues(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        expect(
+            identity.set(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15).elements
+        ).toEqualishValues(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
     });
 
     it('identity', () => {
-        matC.identity().elements.should.equalishValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+        expect(matC.identity().elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+        );
     });
 
     it('transpose', () => {
-        matC.transpose().elements.should.equalishValues(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15);
+        expect(matC.transpose().elements).toEqualishValues(
+            0,
+            4,
+            8,
+            12,
+            1,
+            5,
+            9,
+            13,
+            2,
+            6,
+            10,
+            14,
+            3,
+            7,
+            11,
+            15
+        );
     });
 
     it('invert', () => {
-        identity.invert(matA).elements.should.equalishValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1, -2, -3, 1);
-        matA.invert().elements.should.equalishValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1, -2, -3, 1);
+        expect(identity.invert(matA).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            -1,
+            -2,
+            -3,
+            1
+        );
+        expect(matA.invert().elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            -1,
+            -2,
+            -3,
+            1
+        );
     });
 
     it('adjoint', () => {
-        identity.adjoint(matA).elements.should.equalishValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1, -2, -3, 1);
-        matA.adjoint().elements.should.equalishValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1, -2, -3, 1);
+        expect(identity.adjoint(matA).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            -1,
+            -2,
+            -3,
+            1
+        );
+        expect(matA.adjoint().elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            -1,
+            -2,
+            -3,
+            1
+        );
     });
 
     it('determinant', () => {
-        matA.determinant().should.equalish(1);
+        expect(matA.determinant()).toBeEqualish(1);
     });
 
     it('multiply', () => {
-        identity.multiply(matA, matB).elements.should.equalishValues( 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 7, 9, 1);
-        matA.multiply(matB).elements.should.equalishValues( 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 7, 9, 1);
+        expect(identity.multiply(matA, matB).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            5,
+            7,
+            9,
+            1
+        );
+        expect(matA.multiply(matB).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            5,
+            7,
+            9,
+            1
+        );
     });
 
     it('premultiply', () => {
-        matB.premultiply(matA).elements.should.equalishValues( 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 7, 9, 1);
+        expect(matB.premultiply(matA).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            5,
+            7,
+            9,
+            1
+        );
     });
 
     it('translate', () => {
-        matA.translate(new Hilo3d.Vector3(4, 5, 6)).elements.should.equalishValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 7, 9, 1);
+        expect(matA.translate(new Hilo3d.Vector3(4, 5, 6)).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            5,
+            7,
+            9,
+            1
+        );
     });
 
     it('rotate', () => {
-        var rad = Math.PI * 0.5;
-        matA.rotate(rad, new Hilo3d.Vector3(1, 0, 0)).elements.should.equalishValues( 1, 0, 0, 0, 0, Math.cos(rad), Math.sin(rad), 0, 0, -Math.sin(rad), Math.cos(rad), 0, 1, 2, 3, 1);
+        const rad = Math.PI * 0.5;
+        expect(matA.rotate(rad, new Hilo3d.Vector3(1, 0, 0)).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            Math.cos(rad),
+            Math.sin(rad),
+            0,
+            0,
+            -Math.sin(rad),
+            Math.cos(rad),
+            0,
+            1,
+            2,
+            3,
+            1
+        );
     });
 
     it('rotateX', () => {
-        var rad = Math.PI * 0.5;
-        matA.rotateX(rad).elements.should.equalishValues( 1, 0, 0, 0, 0, Math.cos(rad), Math.sin(rad), 0, 0, -Math.sin(rad), Math.cos(rad), 0, 1, 2, 3, 1);
+        const rad = Math.PI * 0.5;
+        expect(matA.rotateX(rad).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            Math.cos(rad),
+            Math.sin(rad),
+            0,
+            0,
+            -Math.sin(rad),
+            Math.cos(rad),
+            0,
+            1,
+            2,
+            3,
+            1
+        );
     });
 
     it('rotateY', () => {
-        var rad = Math.PI * 0.5;
-        matA.rotateY(rad).elements.should.equalishValues( Math.cos(rad), 0, -Math.sin(rad), 0, 0, 1, 0, 0, Math.sin(rad), 0, Math.cos(rad), 0, 1, 2, 3, 1);
+        const rad = Math.PI * 0.5;
+        expect(matA.rotateY(rad).elements).toEqualishValues(
+            Math.cos(rad),
+            0,
+            -Math.sin(rad),
+            0,
+            0,
+            1,
+            0,
+            0,
+            Math.sin(rad),
+            0,
+            Math.cos(rad),
+            0,
+            1,
+            2,
+            3,
+            1
+        );
     });
 
     it('rotateZ', () => {
-        var rad = Math.PI * 0.5;
-        matA.rotateZ(rad, new Hilo3d.Vector3(1, 0, 0)).elements.should.equalishValues(  Math.cos(rad), Math.sin(rad), 0, 0, -Math.sin(rad), Math.cos(rad), 0, 0, 0, 0, 1, 0, 1, 2, 3, 1);
+        const rad = Math.PI * 0.5;
+        expect(matA.rotateZ(rad).elements).toEqualishValues(
+            Math.cos(rad),
+            Math.sin(rad),
+            0,
+            0,
+            -Math.sin(rad),
+            Math.cos(rad),
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            2,
+            3,
+            1
+        );
     });
 
     it('fromTranslation', () => {
-        identity.fromTranslation(new Hilo3d.Vector3(1, 2, 3)).elements.should.equalishValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1);
+        expect(identity.fromTranslation(new Hilo3d.Vector3(1, 2, 3)).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1,
+            2,
+            3,
+            1
+        );
     });
 
     it('fromScaling', () => {
-        identity.fromScaling(new Hilo3d.Vector3(2, 1, 3)).elements.should.equalishValues(2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 1);
+        expect(identity.fromScaling(new Hilo3d.Vector3(2, 1, 3)).elements).toEqualishValues(
+            2,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            3,
+            0,
+            0,
+            0,
+            0,
+            1
+        );
     });
 
     it('fromRotation', () => {
-        identity.fromRotation(Math.PI*0.5, new Hilo3d.Vector3(0, 1, 0)).elements.should.equalishValues(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1);
+        expect(
+            identity.fromRotation(Math.PI * 0.5, new Hilo3d.Vector3(0, 1, 0)).elements
+        ).toEqualishValues(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1);
     });
 
     it('fromXRotation', () => {
-        identity.fromXRotation(Math.PI*0.5).elements.should.equalishValues(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
+        expect(identity.fromXRotation(Math.PI * 0.5).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+        );
     });
 
     it('fromYRotation', () => {
-        identity.fromYRotation(Math.PI*0.5).elements.should.equalishValues(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1);
+        expect(identity.fromYRotation(Math.PI * 0.5).elements).toEqualishValues(
+            0,
+            0,
+            -1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+        );
     });
 
     it('fromZRotation', () => {
-        identity.fromZRotation(Math.PI*0.5).elements.should.equalishValues( 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+        expect(identity.fromZRotation(Math.PI * 0.5).elements).toEqualishValues(
+            0,
+            1,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+        );
     });
 
     it('fromRotationTranslation', () => {
-        identity.fromRotationTranslation(new Hilo3d.Quaternion(0, 0.7071067811865476, 0, 0.7071067811865476), new Hilo3d.Vector3(1, 2, 3)).elements.should.equalishValues(3.422854177870249e-8, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 2, 3, 1);
+        expect(
+            identity.fromRotationTranslation(
+                new Hilo3d.Quaternion(0, 0.7071067811865476, 0, 0.7071067811865476),
+                new Hilo3d.Vector3(1, 2, 3)
+            ).elements
+        ).toEqualishValues(3.422854177870249e-8, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 2, 3, 1);
     });
 
     it('getTranslation', () => {
-        matB.getTranslation().elements.should.equalishValues(4, 5, 6);
+        expect(matB.getTranslation().elements).toEqualishValues(4, 5, 6);
     });
 
     it('getScaling', () => {
-        identity.fromScaling(new Hilo3d.Vector3(1, 2, 3)).getScaling().elements.should.equalishValues(1, 2, 3);
+        expect(
+            identity.fromScaling(new Hilo3d.Vector3(1, 2, 3)).getScaling().elements
+        ).toEqualishValues(1, 2, 3);
     });
 
     it('getRotation', () => {
-        identity.rotateZ(Math.PI*0.5);
-        identity.getRotation().elements.should.equalishValues(0, 0, Math.sqrt(2)*0.5, Math.sqrt(2)*0.5);
+        identity.rotateZ(Math.PI * 0.5);
+        expect(identity.getRotation().elements).toEqualishValues(
+            0,
+            0,
+            Math.sqrt(2) * 0.5,
+            Math.sqrt(2) * 0.5
+        );
     });
 
     it('fromRotationTranslationScale', () => {
         identity.translate(new Hilo3d.Vector3(1, 2, 3));
         identity.scale(new Hilo3d.Vector3(0.1, 2, 5));
-        identity.rotate(Math.PI*0.5, new Hilo3d.Vector3(1, 0, 0));
+        identity.rotate(Math.PI * 0.5, new Hilo3d.Vector3(1, 0, 0));
 
-        matA.fromRotationTranslationScale(new Hilo3d.Quaternion(Math.sqrt(2)*0.5, 0, 0, Math.sqrt(2)*0.5), new Hilo3d.Vector3(1, 2, 3), new Hilo3d.Vector3(0.1, 5, 2));
-        matA.equals(identity).should.be.true();
+        matA.fromRotationTranslationScale(
+            new Hilo3d.Quaternion(Math.sqrt(2) * 0.5, 0, 0, Math.sqrt(2) * 0.5),
+            new Hilo3d.Vector3(1, 2, 3),
+            new Hilo3d.Vector3(0.1, 5, 2)
+        );
+        expect(matA.equals(identity)).toBe(true);
     });
 
     it('fromRotationTranslationScaleOrigin', () => {
         identity.translate(new Hilo3d.Vector3(5, 6, 7));
         identity.translate(new Hilo3d.Vector3(1, 2, 3));
         identity.scale(new Hilo3d.Vector3(0.1, 2, 5));
-        identity.rotate(Math.PI*0.5, new Hilo3d.Vector3(1, 0, 0));
+        identity.rotate(Math.PI * 0.5, new Hilo3d.Vector3(1, 0, 0));
         identity.translate(new Hilo3d.Vector3(-5, -6, -7));
 
-        matA.fromRotationTranslationScaleOrigin(new Hilo3d.Quaternion(Math.sqrt(2)*0.5, 0, 0, Math.sqrt(2)*0.5), new Hilo3d.Vector3(1, 2, 3), new Hilo3d.Vector3(0.1, 5, 2), new Hilo3d.Vector3(5, 6, 7));
-        matA.equals(identity).should.be.true();
+        matA.fromRotationTranslationScaleOrigin(
+            new Hilo3d.Quaternion(Math.sqrt(2) * 0.5, 0, 0, Math.sqrt(2) * 0.5),
+            new Hilo3d.Vector3(1, 2, 3),
+            new Hilo3d.Vector3(0.1, 5, 2),
+            new Hilo3d.Vector3(5, 6, 7)
+        );
+        expect(matA.equals(identity)).toBe(true);
     });
 
     it('fromQuat', () => {
-        identity.fromQuat(new Hilo3d.Quaternion(0, 0.7071067811865476, 0, 0.7071067811865476)).elements.should.equalishValues(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1);
+        expect(
+            identity.fromQuat(new Hilo3d.Quaternion(0, 0.7071067811865476, 0, 0.7071067811865476))
+                .elements
+        ).toEqualishValues(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1);
     });
 
     it('frustum', () => {
-        identity.frustum(-1, 1, -1, 1, -1, 1).elements.should.equalishValues(-1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0);
+        expect(identity.frustum(-1, 1, -1, 1, -1, 1).elements).toEqualishValues(
+            -1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            1,
+            0
+        );
     });
 
     it('perspective', () => {
-        var fovy = Math.PI * 0.5;
-        identity.perspective( fovy, 1, 0, 1).elements.should.equalishValues( 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0);
+        const fovy = Math.PI * 0.5;
+        expect(identity.perspective(fovy, 1, 0, 1).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            -1,
+            0,
+            0,
+            0,
+            0
+        );
     });
 
     it('perspectiveFromFieldOfView', () => {
-        var fov = 45;
-        identity.perspectiveFromFieldOfView( {
-            upDegrees:fov,
-            downDegrees:fov,
-            leftDegrees:fov,
-            rightDegrees:fov
-        }, 0, 1).elements.should.equalishValues( 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0);
+        const fov = 45;
+        expect(
+            identity.perspectiveFromFieldOfView(
+                {
+                    upDegrees: fov,
+                    downDegrees: fov,
+                    leftDegrees: fov,
+                    rightDegrees: fov
+                },
+                0,
+                1
+            ).elements
+        ).toEqualishValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0);
     });
 
     it('ortho', () => {
-        identity.ortho(-1, 1, -1, 1, -1, 1).elements.should.equalishValues(  1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1);
+        expect(identity.ortho(-1, 1, -1, 1, -1, 1).elements).toEqualishValues(
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            1
+        );
     });
 
     it('lookAt', () => {
-        identity.lookAt(new Hilo3d.Vector3(0,2,0), new Hilo3d.Vector3(0,0.6,0), new Hilo3d.Vector3(0,0,-1));
-        new Hilo3d.Vector3(1, 2, 0).transformMat4(identity).elements.should.equalishValues(1, 0, 0);
+        identity.lookAt(
+            new Hilo3d.Vector3(0, 2, 0),
+            new Hilo3d.Vector3(0, 0.6, 0),
+            new Hilo3d.Vector3(0, 0, -1)
+        );
+        expect(new Hilo3d.Vector3(1, 2, 0).transformMat4(identity).elements).toEqualishValues(
+            1,
+            0,
+            0
+        );
     });
 
     it('targetTo', () => {
-        matB.targetTo(new Hilo3d.Vector3(0, 2, 0), new Hilo3d.Vector3(0, 0.6, 0), new Hilo3d.Vector3(0, 0, -1));
-        matB.getScaling().elements.should.equalishValues(1, 1, 1);
-        new Hilo3d.Vector3(1, 2, 0).transformMat4(matB).elements.should.equalishValues(1, 2, -2);
+        matB.targetTo(
+            new Hilo3d.Vector3(0, 2, 0),
+            new Hilo3d.Vector3(0, 0.6, 0),
+            new Hilo3d.Vector3(0, 0, -1)
+        );
+        expect(matB.getScaling().elements).toEqualishValues(1, 1, 1);
+        expect(new Hilo3d.Vector3(1, 2, 0).transformMat4(matB).elements).toEqualishValues(1, 2, -2);
     });
 
     it('frob', () => {
-        matA.frob().should.equalish(Math.sqrt(Math.pow(1, 2) + Math.pow(1, 2) + Math.pow(1, 2) + Math.pow(1, 2) + Math.pow(1, 2) + Math.pow(2, 2) + Math.pow(3, 2)));
+        expect(matA.frob()).toBeEqualish(
+            Math.sqrt(
+                Math.pow(1, 2) +
+                    Math.pow(1, 2) +
+                    Math.pow(1, 2) +
+                    Math.pow(1, 2) +
+                    Math.pow(1, 2) +
+                    Math.pow(2, 2) +
+                    Math.pow(3, 2)
+            )
+        );
     });
 
     it('add', () => {
-        identity.add(matC, matD).elements.should.equalishValues(0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45);
-        matD.add(matC).elements.should.equalishValues(0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45);
+        expect(identity.add(matC, matD).elements).toEqualishValues(
+            0,
+            3,
+            6,
+            9,
+            12,
+            15,
+            18,
+            21,
+            24,
+            27,
+            30,
+            33,
+            36,
+            39,
+            42,
+            45
+        );
+        expect(matD.add(matC).elements).toEqualishValues(
+            0,
+            3,
+            6,
+            9,
+            12,
+            15,
+            18,
+            21,
+            24,
+            27,
+            30,
+            33,
+            36,
+            39,
+            42,
+            45
+        );
     });
 
     it('subtract', () => {
-        identity.subtract(matC, matD).elements.should.equalishValues(0, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15);
-        matD.subtract(matC).elements.should.equalishValues(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        expect(identity.subtract(matC, matD).elements).toEqualishValues(
+            0,
+            -1,
+            -2,
+            -3,
+            -4,
+            -5,
+            -6,
+            -7,
+            -8,
+            -9,
+            -10,
+            -11,
+            -12,
+            -13,
+            -14,
+            -15
+        );
+        expect(matD.subtract(matC).elements).toEqualishValues(
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+        );
     });
 
     it('exactEquals', () => {
-        var mat = matA.clone();
-        mat.exactEquals(matA).should.be.true();
+        const mat = matA.clone();
+        expect(mat.exactEquals(matA)).toBe(true);
     });
 
     it('equals', () => {
-        var mat = matA.clone();
+        const mat = matA.clone();
         mat.elements[0] = 1.000001;
-        mat.exactEquals(matA).should.be.false();
-        mat.equals(matA).should.be.true();
+        expect(mat.exactEquals(matA)).toBe(false);
+        expect(mat.equals(matA)).toBe(true);
     });
 
     it('compose', () => {
         identity.translate(new Hilo3d.Vector3(1, 2, 3));
         identity.scale(new Hilo3d.Vector3(0.1, 2, 5));
-        identity.rotate(Math.PI*0.5, new Hilo3d.Vector3(1, 0, 0));
+        identity.rotate(Math.PI * 0.5, new Hilo3d.Vector3(1, 0, 0));
 
-        matA.compose(new Hilo3d.Quaternion(Math.sqrt(2)*0.5, 0, 0, Math.sqrt(2)*0.5), new Hilo3d.Vector3(1, 2, 3), new Hilo3d.Vector3(0.1, 5, 2));
-        matA.equals(identity).should.be.true();
+        matA.compose(
+            new Hilo3d.Quaternion(Math.sqrt(2) * 0.5, 0, 0, Math.sqrt(2) * 0.5),
+            new Hilo3d.Vector3(1, 2, 3),
+            new Hilo3d.Vector3(0.1, 5, 2)
+        );
+        expect(matA.equals(identity)).toBe(true);
     });
 
     it('decompose', () => {
         identity.translate(new Hilo3d.Vector3(1, 2, 3));
         identity.scale(new Hilo3d.Vector3(0.1, 2, 5));
-        identity.rotate(Math.PI*0.5, new Hilo3d.Vector3(1, 0, 0));
+        identity.rotate(Math.PI * 0.5, new Hilo3d.Vector3(1, 0, 0));
 
-        var pos = new Hilo3d.Vector3();
-        var scale = new Hilo3d.Vector3();
-        var quat = new Hilo3d.Quaternion();
+        const pos = new Hilo3d.Vector3();
+        const scale = new Hilo3d.Vector3();
+        const quat = new Hilo3d.Quaternion();
         identity.decompose(quat, pos, scale);
 
-        pos.elements.should.equalishValues(1, 2, 3);
-        scale.elements.should.equalishValues(0.1, 5, 2);
-        quat.elements.should.equalishValues(Math.sqrt(2)*0.5, 0, 0, Math.sqrt(2)*0.5);
+        expect(pos.elements).toEqualishValues(1, 2, 3);
+        expect(scale.elements).toEqualishValues(0.1, 5, 2);
+        expect(quat.elements).toEqualishValues(Math.sqrt(2) * 0.5, 0, 0, Math.sqrt(2) * 0.5);
     });
 });

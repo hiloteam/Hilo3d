@@ -1,13 +1,18 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import Material from './Material';
+import Material, { type MaterialParameters } from './Material';
+import type { ShaderOptions } from '../renderer/types';
 
+export type CustomRenderOptionProvider = (option: ShaderOptions) => ShaderOptions;
+
+export interface ShaderMaterialParameters extends MaterialParameters {
+    vs?: string;
+    fs?: string;
+    useHeaderCache?: boolean;
+    getCustomRenderOption?: CustomRenderOptionProvider | null;
+}
 /**
  * Shader材质
- * @class
- * @extends Material
  * @example
+ * ```ts
  * const material = new Hilo3d.ShaderMaterial({
  *     attributes:{
  *         a_pos: 'POSITION'
@@ -38,58 +43,44 @@ import Material from './Material';
  *         }
  *     `
  * });
+ * ```
  */
-const ShaderMaterial = Class.create<typeof hilo3d.ShaderMaterial>()(/** @lends ShaderMaterial.prototype */{
-    Extends: Material,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isShaderMaterial: true,
-    /**
-     * @default ShaderMaterial
-     * @type {string}
-     */
-    className: 'ShaderMaterial',
+class ShaderMaterial extends Material {
+    isShaderMaterial = true;
+    override readonly className: string = 'ShaderMaterial';
     /**
      * vertex shader 代码
-     * @type {string}
      */
-    vs: '',
+    vs = '';
     /**
      * fragment shader 代码
-     * @type {string}
      */
-    fs: '',
+    fs = '';
     /**
      * 是否使用 header cache shader
-     * @default true
-     * @type {Boolean}
      */
-    useHeaderCache: false,
+    useHeaderCache = false;
     /**
-     * @constructs
-     * @param {object} [params] 初始化参数，所有params都会复制到实例上
+     * @param params - 初始化参数，所有params都会复制到实例上
      */
-    constructor(params) {
-        ShaderMaterial.superclass.constructor.call(this, params);
-    },
-    getRenderOption(option = {}) {
-        ShaderMaterial.superclass.getRenderOption.call(this, option);
+    constructor(params: ShaderMaterialParameters = {}) {
+        super({}, false);
+        Object.assign(this, params);
+        this.initializeBindings();
+    }
+    override getRenderOption(option: ShaderOptions = {}): ShaderOptions {
+        super.getRenderOption(option);
         if (this.getCustomRenderOption) {
             const custumOption = this.getCustomRenderOption({});
-            for (let name in custumOption) {
-                option[`HILO_CUSTUM_OPTION_${name}`] = custumOption[name];
+            for (const [name, value] of Object.entries(custumOption)) {
+                option[`HILO_CUSTUM_OPTION_${name}`] = value;
             }
         }
         return option;
-    },
+    }
     /**
      * 获取定制的渲染参数
-     * @default null
-     * @type {Function}
      */
-    getCustomRenderOption: null
-});
-
+    getCustomRenderOption: CustomRenderOptionProvider | null = null;
+}
 export default ShaderMaterial;

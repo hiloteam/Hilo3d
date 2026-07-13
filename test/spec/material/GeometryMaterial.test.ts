@@ -1,36 +1,40 @@
+import { describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+import { DEPTH, NORMAL, POSITION } from '../../../src/constants/Hilo';
+
 const GeometryMaterial = Hilo3d.GeometryMaterial;
 
 describe('GeometryMaterial', () => {
     it('create', () => {
         const material = new GeometryMaterial();
-        material.isGeometryMaterial.should.be.true();
-        material.className.should.equal('GeometryMaterial');
-        material.vertexType.should.be.String();
-        material.writeOriginData.should.be.Boolean();
-        material.lightType.should.equal(Hilo3d.constants.NONE);
+        expect(material.isGeometryMaterial).toBe(true);
+        expect(material.className).toBe('GeometryMaterial');
+        expect(material.vertexType).toBeTypeOf('string');
+        expect(material.writeOriginData).toBeTypeOf('boolean');
+        expect(material.lightType).toBe('NONE');
     });
 
     it('getRenderOption', () => {
         let material = new GeometryMaterial({
-            vertexType:Hilo3d.constants.POSITION
+            vertexType: POSITION
         });
         let option = material.getRenderOption();
-        option.VERTEX_TYPE_POSITION.should.equal(1);
-        option.HAS_FRAG_POS.should.equal(1);
+        expect(option['VERTEX_TYPE_POSITION']).toBe(1);
+        expect(option['HAS_FRAG_POS']).toBe(1);
 
         material = new GeometryMaterial({
-            vertexType:Hilo3d.constants.NORMAL
+            vertexType: NORMAL
         });
         option = material.getRenderOption();
-        option.VERTEX_TYPE_NORMAL.should.equal(1);
-        option.HAS_NORMAL.should.equal(1);
+        expect(option['VERTEX_TYPE_NORMAL']).toBe(1);
+        expect(option['HAS_NORMAL']).toBe(1);
 
         material = new GeometryMaterial({
-            vertexType:Hilo3d.constants.DEPTH,
-            writeOriginData:true
+            vertexType: DEPTH,
+            writeOriginData: true
         });
         option = material.getRenderOption();
-        option.VERTEX_TYPE_DEPTH.should.equal(1);
-        option.WRITE_ORIGIN_DATA.should.equal(1);
+        expect(option['VERTEX_TYPE_DEPTH']).toBe(1);
+        expect(option['WRITE_ORIGIN_DATA']).toBe(1);
     });
 });

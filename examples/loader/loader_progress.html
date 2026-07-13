@@ -1,33 +1,29 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+        />
+        <title>loader progress example</title>
+        <link rel="stylesheet" type="text/css" href="../example.css" />
+        <style>
+            #progress {
+                position: absolute;
+                width: 100px;
+                right: 5px;
+                top: 5px;
+                color: white;
+                font-size: 12px;
+                z-index: 999999;
+            }
+        </style>
+    </head>
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-    <title>loader progress example</title>
-    <link rel="stylesheet" type="text/css" href="../example.css">
-    <style>
-    #progress {
-        position: absolute;
-        width: 100px;
-        right: 5px;
-        top: 5px;
-        color: white;
-        font-size: 12px;
-        z-index: 999999;
-    }
-    </style>
-</head>
-
-<body>
-    <div id="container"></div>
-    <div id="progress"></div>
-    <script type="module" src="../js/hilo3d.ts"></script>
-    <script type="module" src="../js/stats.ts"></script>
-    <script type="module" src="../js/OrbitControls.ts"></script>
+    <body>
+        <div id="container"></div>
+        <div id="progress"></div>
+    </body>
     <script type="module" src="./loader_progress.ts"></script>
-</body>
-<script type="module" asyc src="../js/init.ts"></script>
-
-
 </html>

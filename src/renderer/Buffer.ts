@@ -1,182 +1,169 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-/* eslint no-buffer-constructor: "off" */
-import Class from '../core/Class';
 import Cache from '../utils/Cache';
 import math from '../math/math';
+import { ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, STATIC_DRAW } from '../constants/webgl';
+import requireGLResource from './requireGLResource';
+import type GeometryData from '../geometry/GeometryData';
+import type WebGLResourceManager from './WebGLResourceManager';
+import type { GLContext, TypedArray } from './types';
+export type BufferData = TypedArray | ArrayBuffer;
 
-import constants from '../constants';
+export interface BufferRenderer {
+    resourceManager: WebGLResourceManager;
+}
 
-const {
-    ARRAY_BUFFER,
-    ELEMENT_ARRAY_BUFFER,
-    STATIC_DRAW
-} = constants;
-
-const cache = new Cache();
+const cache = new Cache<Buffer>();
 /**
  * 缓冲
- * @class
  */
-const Buffer = Class.create<typeof hilo3d.Buffer>()(/** @lends Buffer.prototype */ {
-    Statics: /** @lends Buffer */ {
-        /**
-         * 缓存
-         * @type {Cache}
-         * @readOnly
-         * @return {Cache}
-         */
-        cache: {
-            get() {
-                return cache;
-            }
-        },
-        /**
-         * 重置缓存
-         */
-        reset(gl) { // eslint-disable-line no-unused-vars
-            cache.each((buffer) => {
-                buffer.destroy();
-            });
-        },
-        /**
-         * 生成顶点缓冲
-         * @param  {WebGLRenderingContext} gl
-         * @param  {GeometryData} geometryData
-         * @param  {GLenum} [usage = STATIC_DRAW]
-         * @return {Buffer}
-         */
-        createVertexBuffer(gl, geometryData, usage = STATIC_DRAW) {
-            return this.createBuffer(gl, ARRAY_BUFFER, geometryData, usage);
-        },
-        createBuffer(gl, target, geometryData, usage) {
-            const id = geometryData.bufferViewId;
-            let buffer = cache.get(id);
-            if (buffer) {
-                return buffer;
-            }
-            geometryData.isDirty = false;
-            buffer = new Buffer(gl, target, geometryData.data, usage);
-            cache.add(id, buffer);
+class Buffer {
+    /**
+     * 缓存
+     */
+    static get cache(): Cache<Buffer> {
+        return cache;
+    }
+    /**
+     * 重置缓存
+     */
+    static reset(_gl?: GLContext): void {
+        cache.each(buffer => {
+            buffer.destroy();
+        });
+    }
+    /**
+     * 生成顶点缓冲
+     * @param gl -
+     * @param geometryData -
+     * @param usage - Buffer usage; defaults to STATIC_DRAW.
+     */
+    static createVertexBuffer(
+        gl: GLContext,
+        geometryData: GeometryData,
+        usage: GLenum = STATIC_DRAW
+    ): Buffer {
+        return this.createBuffer(gl, ARRAY_BUFFER, geometryData, usage);
+    }
+    private static createBuffer(
+        gl: GLContext,
+        target: GLenum,
+        geometryData: GeometryData,
+        usage: GLenum
+    ): Buffer {
+        const id = geometryData.bufferViewId;
+        let buffer = cache.get(id);
+        if (buffer) {
             return buffer;
-        },
-
-        /**
-         * 生成索引缓冲
-         * @param  {WebGLRenderingContext} gl
-         * @param  {GeometryData} geometryData
-         * @param  {GLenum} [usage = STATIC_DRAW]
-         * @return {Buffer}
-         */
-        createIndexBuffer(gl, geometryData, usage = STATIC_DRAW) {
-            return this.createBuffer(gl, ELEMENT_ARRAY_BUFFER, geometryData, usage);
         }
-    },
-
+        geometryData.isDirty = false;
+        buffer = new Buffer(gl, target, geometryData.data, usage);
+        cache.add(id, buffer);
+        return buffer;
+    }
     /**
-     * @default Buffer
-     * @type {String}
+     * 生成索引缓冲
+     * @param gl -
+     * @param geometryData -
+     * @param usage - Buffer usage; defaults to STATIC_DRAW.
      */
-    className: 'Buffer',
-
+    static createIndexBuffer(
+        gl: GLContext,
+        geometryData: GeometryData,
+        usage: GLenum = STATIC_DRAW
+    ): Buffer {
+        return this.createBuffer(gl, ELEMENT_ARRAY_BUFFER, geometryData, usage);
+    }
+    readonly className = 'Buffer';
+    readonly isBuffer = true;
+    readonly id: string;
+    readonly gl: GLContext;
+    readonly target: GLenum;
+    readonly usage: GLenum;
+    readonly buffer: WebGLBuffer;
+    data: BufferData | null = null;
+    private _isDestroyed = false;
     /**
-     * @default true
-     * @type {Boolean}
+     * @param gl -
+     * @param target - Buffer target; defaults to ARRAY_BUFFER.
+     * @param data - Initial data; defaults to null.
+     * @param usage - Buffer usage; defaults to STATIC_DRAW.
      */
-    isBuffer: true,
-
-    /**
-     * @constructs
-     * @param  {WebGLRenderingContext} gl
-     * @param  {GLenum} [target = ARRAY_BUFFER]
-     * @param  {TypedArray} [data = null]
-     * @param  {GLenum} [usage = STATIC_DRAW]
-     */
-    constructor(gl, target = ARRAY_BUFFER, data = null, usage = STATIC_DRAW) {
+    constructor(
+        gl: GLContext,
+        target: GLenum = ARRAY_BUFFER,
+        data: BufferData | null = null,
+        usage: GLenum = STATIC_DRAW
+    ) {
         /**
          * id
-         * @type {String}
          */
         this.id = math.generateUUID(this.className);
-
         this.gl = gl;
         /**
          * target
-         * @type {GLenum}
          */
         this.target = target;
-
         /**
          * usage
-         * @type {GLenum}
          */
         this.usage = usage;
-
         /**
          * buffer
-         * @type {WebGLBuffer}
          */
-        this.buffer = gl.createBuffer();
-
+        this.buffer = requireGLResource(gl.createBuffer(), 'a buffer');
         if (data) {
             this.bufferData(data);
         }
-    },
+    }
     /**
      * 绑定
-     * @return {Buffer} this
+     * @returns this
      */
-    bind() {
+    bind(): this {
         this.gl.bindBuffer(this.target, this.buffer);
         return this;
-    },
+    }
     /**
      * 上传数据
-     * @param  {TypedArray} data
-     * @return {Buffer} this
+     * @param data -
+     * @returns this
      */
-    bufferData(data) {
-        const {
-            gl,
-            target,
-            usage
-        } = this;
-
+    bufferData(data: BufferData): this {
+        const { gl, target, usage } = this;
         this.bind();
         gl.bufferData(target, data, usage);
         this.data = data;
         return this;
-    },
+    }
     /**
      * 上传部分数据
-     * @param  {Number} byteOffset
-     * @param  {TypedArray} data
-     * @param  {Boolean} [isBinding=false]
-     * @return {Buffer} this
+     * @param byteOffset -
+     * @param data -
+     * @param isBinding -
+     * @returns this
      */
-    bufferSubData(byteOffset, data, isBinding = false) {
-        const {
-            gl,
-            target
-        } = this;
-
+    bufferSubData(byteOffset: number, data: TypedArray, isBinding = false): this {
+        const { gl, target } = this;
         if (!isBinding) {
             this.bind();
         }
         gl.bufferSubData(target, byteOffset, data);
         return this;
-    },
+    }
     /**
-     * @param  {GeometryData} geometryData
-     * @return {Buffer} this
+     * @param geometryData -
+     * @returns this
      */
-    uploadGeometryData(geometryData) {
-        const subDataList = geometryData.subDataList;
-        if (!this.data || this.data.byteLength < geometryData.data.byteLength || geometryData._isAllDirty === true) {
+    uploadGeometryData(geometryData: GeometryData): this {
+        const subDataList = geometryData.subDataUpdates;
+        if (
+            !this.data ||
+            this.data.byteLength < geometryData.data.byteLength ||
+            geometryData.isAllDataDirty
+        ) {
             this.bufferData(geometryData.data);
-        } else if (subDataList && subDataList.length) {
+        } else if (subDataList.length) {
             this.bind();
-            subDataList.forEach((subData) => {
+            subDataList.forEach(subData => {
                 this.bufferSubData(subData.byteOffset, subData.data, true);
             });
         } else {
@@ -184,33 +171,30 @@ const Buffer = Class.create<typeof hilo3d.Buffer>()(/** @lends Buffer.prototype 
         }
         geometryData.isDirty = false;
         return this;
-    },
+    }
     /**
      * 没有被引用时销毁资源
-     * @param  {WebGLRenderer} renderer
-     * @return {Buffer} this
+     * @param renderer -
+     * @returns this
      */
-    destroyIfNoRef(renderer) {
+    destroyIfNoRef(renderer: BufferRenderer): this {
         const resourceManager = renderer.resourceManager;
         resourceManager.destroyIfNoRef(this);
         return this;
-    },
+    }
     /**
      * 销毁资源
-     * @return {Buffer} this
+     * @returns this
      */
-    destroy() {
+    destroy(): this {
         if (this._isDestroyed) {
             return this;
         }
-
         this.gl.deleteBuffer(this.buffer);
         this.data = null;
         cache.removeObject(this);
-
         this._isDestroyed = true;
         return this;
     }
-});
-
+}
 export default Buffer;

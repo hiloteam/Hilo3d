@@ -11,7 +11,7 @@ type MutableTypedArray =
 
 interface TypedArrayConstructor<ArrayType extends MutableTypedArray> {
     readonly BYTES_PER_ELEMENT: number;
-    new(buffer: ArrayBuffer, byteOffset: number, length: number): ArrayType;
+    new (buffer: ArrayBuffer, byteOffset: number, length: number): ArrayType;
 }
 
 let cachedBuffer = new ArrayBuffer(1);
@@ -29,17 +29,13 @@ const bufferUtil = {
         return new constructor(cachedBuffer, 0, length);
     },
 
-    fillArrayData(
-        typedArray: MutableTypedArray,
-        data: ArrayLike<number>,
-        offset = 0
-    ): void {
+    fillArrayData(typedArray: MutableTypedArray, data: ArrayLike<number>, offset = 0): void {
         for (let index = 0; index < data.length; index++) {
-            typedArray[offset + index] = data[index]!;
+            const value = data[index];
+            if (value === undefined) throw new RangeError(`Missing buffer item ${String(index)}.`);
+            typedArray[offset + index] = value;
         }
-    },
-
-    _updateBuffer: updateBuffer
+    }
 };
 
 export default bufferUtil;

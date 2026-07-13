@@ -1,214 +1,236 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import Matrix4 from '../math/Matrix4';
 import Vector3 from '../math/Vector3';
-import log from '../utils/log';
-import {
-    each
-} from '../utils/util';
+import AmbientLight from './AmbientLight';
+import AreaLight from './AreaLight';
+import DirectionalLight from './DirectionalLight';
+import type Light from './Light';
+import PointLight from './PointLight';
+import SpotLight from './SpotLight';
+import type Camera from '../camera/Camera';
+import type WebGLRenderer from '../renderer/WebGLRenderer';
+import type Texture from '../texture/Texture';
+import type { TextureBinding } from '../texture/Texture';
 
 const tempMatrix4 = new Matrix4();
 const tempVector3 = new Vector3();
 const tempFloat32Array = new Float32Array([0, 0, 0]);
 
+export type LightGroupName =
+    'AMBIENT_LIGHTS' | 'POINT_LIGHTS' | 'DIRECTIONAL_LIGHTS' | 'SPOT_LIGHTS' | 'AREA_LIGHTS';
+
+const lightGroupNames: readonly LightGroupName[] = [
+    'AMBIENT_LIGHTS',
+    'POINT_LIGHTS',
+    'DIRECTIONAL_LIGHTS',
+    'SPOT_LIGHTS',
+    'AREA_LIGHTS'
+];
+
+export interface LightInfo {
+    AMBIENT_LIGHTS: number;
+    POINT_LIGHTS: number;
+    DIRECTIONAL_LIGHTS: number;
+    SPOT_LIGHTS: number;
+    AREA_LIGHTS: number;
+    SHADOW_POINT_LIGHTS: number;
+    SHADOW_DIRECTIONAL_LIGHTS: number;
+    SHADOW_SPOT_LIGHTS: number;
+    uid: string;
+}
+
+interface ShadowInfo {
+    shadowMap?: TextureBinding[];
+    shadowMapSize?: Float32Array;
+    shadowBias?: Float32Array;
+    lightSpaceMatrix?: Float32Array;
+}
+
+export interface DirectionalLightInfo extends ShadowInfo {
+    colors: Float32Array;
+    infos: Float32Array;
+}
+
+export interface SpotLightInfo extends DirectionalLightInfo {
+    poses: Float32Array;
+    dirs: Float32Array;
+    cutoffs: Float32Array;
+    ranges: Float32Array;
+}
+
+export interface PointLightInfo extends ShadowInfo {
+    colors: Float32Array;
+    infos: Float32Array;
+    poses: Float32Array;
+    ranges: Float32Array;
+    cameras?: Float32Array;
+}
+
+export interface AreaLightInfo {
+    colors: Float32Array;
+    poses: Float32Array;
+    width: Float32Array;
+    height: Float32Array;
+    ltcTexture1: Texture | null;
+    ltcTexture2: Texture | null;
+}
+
+export interface LightManagerParameters {
+    shadowEnabled?: boolean;
+    updateCustomInfo?: ((manager: LightManager, camera: Camera) => void) | null;
+}
 /**
  * 光管理类
- * @class
  */
-const LightManager = Class.create<typeof hilo3d.LightManager>()(/** @lends LightManager.prototype */{
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isLightManager: true,
-    /**
-     * @default LightManager
-     * @type {string}
-     */
-    className: 'LightManager',
-
+class LightManager {
+    ambientLights: AmbientLight[] = [];
+    directionalLights: DirectionalLight[] = [];
+    pointLights: PointLight[] = [];
+    spotLights: SpotLight[] = [];
+    areaLights: AreaLight[] = [];
+    lightInfo: LightInfo = {
+        AMBIENT_LIGHTS: 0,
+        POINT_LIGHTS: 0,
+        DIRECTIONAL_LIGHTS: 0,
+        SPOT_LIGHTS: 0,
+        AREA_LIGHTS: 0,
+        SHADOW_POINT_LIGHTS: 0,
+        SHADOW_DIRECTIONAL_LIGHTS: 0,
+        SHADOW_SPOT_LIGHTS: 0,
+        uid: '0_0_0_0_0_0_0_0'
+    };
+    directionalInfo: DirectionalLightInfo | null = null;
+    pointInfo: PointLightInfo | null = null;
+    spotInfo: SpotLightInfo | null = null;
+    areaInfo: AreaLightInfo | null = null;
+    ambientInfo: Float32Array = new Float32Array(3);
+    isLightManager = true;
+    className = 'LightManager';
     /**
      * 是否开启阴影
-     * @type {boolean}
-     * @default true
      */
-    shadowEnabled: true,
+    shadowEnabled = true;
     /**
-     * @constructs
-     * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
+     * @param params - 创建对象的属性参数。可包含此类的所有属性。
      */
-    constructor(params) {
-        /**
-         * @type {AmbientLight[]}
-         */
-        this.ambientLights = [];
-
-        /**
-         * @type {DirectionalLight[]}
-         */
-        this.directionalLights = [];
-
-        /**
-         * @type {PointLight[]}
-         */
-        this.pointLights = [];
-
-        /**
-         * @type {SpotLight[]}
-         */
-        this.spotLights = [];
-
-        /**
-         * @type {AreaLight[]}
-         */
-        this.areaLights = [];
-
-        this.lightInfo = {
-            AMBIENT_LIGHTS: 0,
-            POINT_LIGHTS: 0,
-            DIRECTIONAL_LIGHTS: 0,
-            SPOT_LIGHTS: 0,
-            AREA_LIGHTS: 0,
-            uid: 0
-        };
-
+    constructor(params: LightManagerParameters = {}) {
         Object.assign(this, params);
-    },
-    getRenderOption(option = {}) {
-        each(this.lightInfo, (count, name) => {
-            if (name === 'uid' || !count) {
-                return;
-            }
+    }
+    getRenderOption(option: Record<string, number> = {}): Record<string, number> {
+        for (const name of lightGroupNames) {
+            const count = this.lightInfo[name];
+            if (!count) continue;
             option[name] = count;
             const shadowMapCount = this.getShadowMapCount(name);
             if (shadowMapCount) {
-                option[name + '_SMC'] = shadowMapCount;
+                option[`${name}_SMC`] = shadowMapCount;
             }
-        });
+        }
         return option;
-    },
+    }
     /**
      * 增加光
-     * @param {Light} light 光源
-     * @return {LightManager} this
+     * @param light - 光源
+     * @returns this
      */
-    addLight(light) {
-        let lights = null;
-
+    addLight(light: Light): this {
         if (!light.enabled) {
             return this;
         }
-
-        if (light.isAmbientLight) {
-            lights = this.ambientLights;
-        } else if (light.isDirectionalLight) {
-            lights = this.directionalLights;
-        } else if (light.isPointLight) {
-            lights = this.pointLights;
-        } else if (light.isSpotLight) {
-            lights = this.spotLights;
-        } else if (light.isAreaLight) {
-            lights = this.areaLights;
-        } else {
-            log.warnOnce(`LightManager.addLight(${light.id})`, 'Not support this light:', light);
-        }
-
-        if (lights) {
-            if (light.shadow) {
-                lights.unshift(light);
-            } else {
-                lights.push(light);
-            }
-        }
-
+        const insert = <Value extends Light>(list: Value[], value: Value): void => {
+            if (value.shadow) list.unshift(value);
+            else list.push(value);
+        };
+        if (light instanceof AmbientLight) insert(this.ambientLights, light);
+        else if (light instanceof DirectionalLight) insert(this.directionalLights, light);
+        else if (light instanceof PointLight) insert(this.pointLights, light);
+        else if (light instanceof SpotLight) insert(this.spotLights, light);
+        else if (light instanceof AreaLight) insert(this.areaLights, light);
+        else throw new TypeError(`Unsupported light type: ${light.constructor.name}.`);
         return this;
-    },
+    }
     /**
      * 获取方向光信息
-     * @param  {Camera} camera 摄像机
-     * @return {Object}
+     * @param camera - 摄像机
      */
-    getDirectionalInfo(camera) {
-        const colors = [];
-        const infos = [];
-        const shadowMap = [];
-        const shadowMapSize = [];
-        const lightSpaceMatrix = [];
-        const shadowBias = [];
-
+    getDirectionalInfo(camera: Camera): DirectionalLightInfo {
+        const colors: number[] = [];
+        const infos: number[] = [];
+        const shadowMap: TextureBinding[] = [];
+        const shadowMapSize: number[] = [];
+        const lightSpaceMatrix: number[] = [];
+        const shadowBias: number[] = [];
         this.directionalLights.forEach((light, index) => {
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
-
             light.getViewDirection(camera).toArray(infos, offset);
-
-            if (light.shadow && light.lightShadow) {
+            if (
+                light.shadow &&
+                light.lightShadow?.framebuffer?.texture &&
+                light.lightShadow.camera
+            ) {
                 shadowMap.push(light.lightShadow.framebuffer.texture);
                 shadowMapSize.push(light.lightShadow.width);
                 shadowMapSize.push(light.lightShadow.height);
                 shadowBias.push(light.lightShadow.minBias, light.lightShadow.maxBias);
-
                 tempMatrix4.copy(camera.worldMatrix);
                 tempMatrix4.premultiply(light.lightShadow.camera.viewProjectionMatrix);
                 tempMatrix4.toArray(lightSpaceMatrix, index * 16);
             }
         });
-
-        const result = {
+        const result: DirectionalLightInfo = {
             colors: new Float32Array(colors),
             infos: new Float32Array(infos)
         };
-
         if (shadowMap.length) {
             result.shadowMap = shadowMap;
             result.shadowMapSize = new Float32Array(shadowMapSize);
             result.shadowBias = new Float32Array(shadowBias);
             result.lightSpaceMatrix = new Float32Array(lightSpaceMatrix);
         }
-
         return result;
-    },
+    }
     /**
      * 获取聚光灯信息
-     * @param {Camera} camera 摄像机
-     * @return {Object}
+     * @param camera - 摄像机
      */
-    getSpotInfo(camera) {
-        const colors = [];
-        const infos = [];
-        const poses = [];
-        const dirs = [];
-        const cutoffs = [];
-        const shadowMap = [];
-        const shadowMapSize = [];
-        const lightSpaceMatrix = [];
-        const shadowBias = [];
-        const ranges = [];
+    getSpotInfo(camera: Camera): SpotLightInfo {
+        const colors: number[] = [];
+        const infos: number[] = [];
+        const poses: number[] = [];
+        const dirs: number[] = [];
+        const cutoffs: number[] = [];
+        const shadowMap: TextureBinding[] = [];
+        const shadowMapSize: number[] = [];
+        const lightSpaceMatrix: number[] = [];
+        const shadowBias: number[] = [];
+        const ranges: number[] = [];
         this.spotLights.forEach((light, index) => {
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
             light.toInfoArray(infos, offset);
             light.getViewDirection(camera).toArray(dirs, offset);
             ranges.push(light.range);
-            cutoffs.push(light._cutoffCos, light._outerCutoffCos);
-
+            cutoffs.push(light.cutoffCos, light.outerCutoffCos);
             camera.getModelViewMatrix(light, tempMatrix4);
             tempMatrix4.getTranslation(tempVector3);
             tempVector3.toArray(poses, offset);
-
-            if (light.shadow && light.lightShadow) {
+            if (
+                light.shadow &&
+                light.lightShadow?.framebuffer?.texture &&
+                light.lightShadow.camera
+            ) {
                 shadowMap.push(light.lightShadow.framebuffer.texture);
                 shadowMapSize.push(light.lightShadow.width);
                 shadowMapSize.push(light.lightShadow.height);
                 shadowBias.push(light.lightShadow.minBias, light.lightShadow.maxBias);
-
-                tempMatrix4.multiply(light.lightShadow.camera.viewProjectionMatrix, camera.worldMatrix);
+                tempMatrix4.multiply(
+                    light.lightShadow.camera.viewProjectionMatrix,
+                    camera.worldMatrix
+                );
                 tempMatrix4.toArray(lightSpaceMatrix, index * 16);
             }
         });
-
-        const result = {
+        const result: SpotLightInfo = {
             colors: new Float32Array(colors),
             infos: new Float32Array(infos),
             poses: new Float32Array(poses),
@@ -216,102 +238,91 @@ const LightManager = Class.create<typeof hilo3d.LightManager>()(/** @lends Light
             cutoffs: new Float32Array(cutoffs),
             ranges: new Float32Array(ranges)
         };
-
         if (shadowMap.length) {
             result.shadowMap = shadowMap;
             result.shadowMapSize = new Float32Array(shadowMapSize);
             result.shadowBias = new Float32Array(shadowBias);
             result.lightSpaceMatrix = new Float32Array(lightSpaceMatrix);
         }
-
         return result;
-    },
+    }
     /**
      * 获取点光源信息
-     * @param  {Camera} camera 摄像机
-     * @return {Object}
+     * @param camera - 摄像机
      */
-    getPointInfo(camera) {
-        const colors = [];
-        const infos = [];
-        const poses = [];
-        const shadowMap = [];
-        const lightSpaceMatrix = [];
-        const shadowBias = [];
-        const cameras = [];
-        const ranges = [];
+    getPointInfo(camera: Camera): PointLightInfo {
+        const colors: number[] = [];
+        const infos: number[] = [];
+        const poses: number[] = [];
+        const shadowMap: TextureBinding[] = [];
+        const lightSpaceMatrix: number[] = [];
+        const shadowBias: number[] = [];
+        const cameras: number[] = [];
+        const ranges: number[] = [];
         this.pointLights.forEach((light, index) => {
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
             light.toInfoArray(infos, offset);
             ranges.push(light.range);
-
             camera.getModelViewMatrix(light, tempMatrix4);
             tempMatrix4.getTranslation(tempVector3);
             tempVector3.toArray(poses, offset);
-
-            if (light.shadow && light.lightShadow) {
+            if (
+                light.shadow &&
+                light.lightShadow?.framebuffer?.texture &&
+                light.lightShadow.camera
+            ) {
                 shadowMap.push(light.lightShadow.framebuffer.texture);
                 shadowBias.push(light.lightShadow.minBias, light.lightShadow.maxBias);
                 camera.worldMatrix.toArray(lightSpaceMatrix, index * 16);
                 cameras[index * 2] = light.lightShadow.camera.near;
-                cameras[index * 2 + 1] = light.lightShadow.camera.far;
+                cameras[index * 2 + 1] =
+                    light.lightShadow.camera.far ?? light.lightShadow.camera.near * 1000;
             }
         });
-
-        const result = {
+        const result: PointLightInfo = {
             colors: new Float32Array(colors),
             infos: new Float32Array(infos),
             poses: new Float32Array(poses),
             ranges: new Float32Array(ranges)
         };
-
         if (shadowMap.length) {
             result.shadowMap = shadowMap;
             result.shadowBias = new Float32Array(shadowBias);
             result.lightSpaceMatrix = new Float32Array(lightSpaceMatrix);
             result.cameras = new Float32Array(cameras);
         }
-
         return result;
-    },
+    }
     /**
      * 获取面光源信息
-     * @param  {Camera} camera 摄像机
-     * @return {Object}
+     * @param camera - 摄像机
      */
-    getAreaInfo(camera) {
-        const colors = [];
-        const poses = [];
-        const width = [];
-        const height = [];
-
-        let ltcTexture1;
-        let ltcTexture2;
-
+    getAreaInfo(camera: Camera): AreaLightInfo {
+        const colors: number[] = [];
+        const poses: number[] = [];
+        const width: number[] = [];
+        const height: number[] = [];
+        let ltcTexture1: Texture | null = null;
+        let ltcTexture2: Texture | null = null;
         this.areaLights.forEach((light, index) => {
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
-
             camera.getModelViewMatrix(light, tempMatrix4);
             tempMatrix4.getTranslation(tempVector3);
             tempVector3.toArray(poses, offset);
-
             const quat = tempMatrix4.getRotation();
             tempMatrix4.fromQuat(quat);
             tempVector3.set(light.width * 0.5, 0, 0);
             tempVector3.transformMat4(tempMatrix4);
             tempVector3.toArray(width, offset);
-
             tempVector3.set(0.0, light.height * 0.5, 0.0);
             tempVector3.transformMat4(tempMatrix4);
             tempVector3.toArray(height, offset);
-
             ltcTexture1 = light.ltcTexture1;
             ltcTexture2 = light.ltcTexture2;
         });
-
-        const result = {
+        const result: AreaLightInfo = {
             colors: new Float32Array(colors),
             poses: new Float32Array(poses),
             width: new Float32Array(width),
@@ -319,52 +330,40 @@ const LightManager = Class.create<typeof hilo3d.LightManager>()(/** @lends Light
             ltcTexture1,
             ltcTexture2
         };
-
         return result;
-    },
+    }
     /**
      * 获取环境光信息
-     * @return {Object}
      */
-    getAmbientInfo() {
+    getAmbientInfo(): Float32Array {
         tempFloat32Array[0] = tempFloat32Array[1] = tempFloat32Array[2] = 0;
-        this.ambientLights.forEach((light) => {
+        this.ambientLights.forEach(light => {
             const realColor = light.getRealColor();
-            tempFloat32Array[0] += realColor.r;
-            tempFloat32Array[1] += realColor.g;
-            tempFloat32Array[2] += realColor.b;
+            tempFloat32Array[0] = (tempFloat32Array[0] ?? 0) + realColor.r;
+            tempFloat32Array[1] = (tempFloat32Array[1] ?? 0) + realColor.g;
+            tempFloat32Array[2] = (tempFloat32Array[2] ?? 0) + realColor.b;
         });
-
         tempFloat32Array[0] = Math.min(1, tempFloat32Array[0]);
         tempFloat32Array[1] = Math.min(1, tempFloat32Array[1]);
         tempFloat32Array[2] = Math.min(1, tempFloat32Array[2]);
         return tempFloat32Array;
-    },
+    }
     /**
      * 更新所有光源信息
-     * @param  {Camera} camera 摄像机
+     * @param camera - 摄像机
      */
-    updateInfo(camera) {
-        const {
-            lightInfo,
-            ambientLights,
-            directionalLights,
-            pointLights,
-            spotLights,
-            areaLights
-        } = this;
-
+    updateInfo(camera: Camera): void {
+        const { lightInfo, ambientLights, directionalLights, pointLights, spotLights, areaLights } =
+            this;
         lightInfo.AMBIENT_LIGHTS = ambientLights.length;
         lightInfo.POINT_LIGHTS = pointLights.length;
         lightInfo.DIRECTIONAL_LIGHTS = directionalLights.length;
         lightInfo.SPOT_LIGHTS = spotLights.length;
         lightInfo.AREA_LIGHTS = areaLights.length;
-
-        const shadowFilter = light => !!light.shadow;
+        const shadowFilter = (light: Light): boolean => light.shadow !== null;
         lightInfo.SHADOW_POINT_LIGHTS = pointLights.filter(shadowFilter).length;
         lightInfo.SHADOW_SPOT_LIGHTS = spotLights.filter(shadowFilter).length;
         lightInfo.SHADOW_DIRECTIONAL_LIGHTS = directionalLights.filter(shadowFilter).length;
-
         lightInfo.uid = [
             lightInfo.AMBIENT_LIGHTS,
             lightInfo.POINT_LIGHTS,
@@ -375,7 +374,6 @@ const LightManager = Class.create<typeof hilo3d.LightManager>()(/** @lends Light
             lightInfo.SHADOW_SPOT_LIGHTS,
             lightInfo.AREA_LIGHTS
         ].join('_');
-
         this.directionalInfo = this.getDirectionalInfo(camera);
         this.pointInfo = this.getPointInfo(camera);
         this.spotInfo = this.getSpotInfo(camera);
@@ -384,42 +382,36 @@ const LightManager = Class.create<typeof hilo3d.LightManager>()(/** @lends Light
         if (this.updateCustomInfo) {
             this.updateCustomInfo(this, camera);
         }
-    },
+    }
     /**
      * 更新自定义灯光信息
-     * @type updateCustomInfoCallback
-     * @default null
      */
-    updateCustomInfo: null,
+    updateCustomInfo: ((manager: LightManager, camera: Camera) => void) | null = null;
     /**
      * 获取光源信息
-     * @return {Object}
      */
-    getInfo() {
+    getInfo(): LightInfo {
         return this.lightInfo;
-    },
+    }
     /**
      * 重置所有光源
      */
-    reset() {
+    reset(): void {
         this.ambientLights.length = 0;
         this.directionalLights.length = 0;
         this.pointLights.length = 0;
         this.spotLights.length = 0;
         this.areaLights.length = 0;
-    },
-
+    }
     /**
      * 获取阴影贴图数量
-     * @param {string} type
-     * @returns {number}
+     * @param type -
      */
-    getShadowMapCount(type) {
+    getShadowMapCount(type: LightGroupName): number {
         if (!this.shadowEnabled) {
             return 0;
         }
-
-        let lights = [];
+        let lights: Light[] = [];
         if (type === 'POINT_LIGHTS') {
             lights = this.pointLights;
         } else if (type === 'DIRECTIONAL_LIGHTS') {
@@ -427,97 +419,48 @@ const LightManager = Class.create<typeof hilo3d.LightManager>()(/** @lends Light
         } else if (type === 'SPOT_LIGHTS') {
             lights = this.spotLights;
         } else if (type === 'AREA_LIGHTS') {
-            lights = this.spotLights;
+            lights = this.areaLights;
         }
-
         let count = 0;
-        lights.forEach((light) => {
+        lights.forEach(light => {
             count += light.shadow ? 1 : 0;
         });
         return count;
-    },
-
+    }
     /**
      * 更新光源信息
-     * @param {WebGLRenderer} renderer
-     * @param {Light[]} lights
-     * @param {Camera} camera
+     * @param renderer -
+     * @param lights -
+     * @param camera -
      */
-    update(renderer, camera, lights) {
-        lights.forEach((light) => {
+    update(renderer: WebGLRenderer, camera: Camera, lights: readonly Light[]): void {
+        lights.forEach(light => {
             this.addLight(light);
         });
-
         this.createShadowMap(renderer, camera);
         this.updateInfo(camera);
-    },
-
+    }
     /**
      * 生成阴影贴图
-     * @param {WebGLRenderer} renderer
-     * @param {Camera} camera
+     * @param renderer -
+     * @param camera -
      */
-    createShadowMap(renderer, camera) {
+    createShadowMap(renderer: WebGLRenderer, camera: Camera): void {
         if (!this.shadowEnabled) {
             return;
         }
-
-        this.directionalLights.forEach((light) => {
-            light.createShadowMap(renderer, camera);
+        this.directionalLights.forEach(light => {
+            if (light.shadow) light.createShadowMap(renderer, camera);
         });
-        this.spotLights.forEach((light) => {
-            light.createShadowMap(renderer, camera);
+        this.spotLights.forEach(light => {
+            if (light.shadow) light.createShadowMap(renderer, camera);
         });
-        this.pointLights.forEach((light) => {
-            light.createShadowMap(renderer, camera);
+        this.pointLights.forEach(light => {
+            if (light.shadow) light.createShadowMap(renderer, camera);
         });
-        this.areaLights.forEach((light) => {
-            light.createShadowMap(renderer, camera);
+        this.areaLights.forEach(light => {
+            if (light.shadow) light.createShadowMap(renderer, camera);
         });
     }
-});
-
+}
 export default LightManager;
-
-/**
- * 更新自定义灯光回调
- * @callback updateCustomInfoCallback
- * @param { LightManager } lightManager
- * @param { Camera } camera
- */
-
-
-/**
- * 灯光信息接口
- * @interface ILightInfo
- * @property {string} uid
- */
-
-/**
- * 灯光管理器接口
- * @interface ILightManager
- * @property {boolean} shadowEnabled
- * @property {ILightInfo} lightInfo
- */
-
-/**
- * 重置所有光源信息
- * @function
- * @name ILightManager#reset
- */
-
-/**
- * 更新光源信息
- * @function
- * @param {WebGLRenderer} renderer
- * @param {Camera} camera
- * @param {Light[]} lights
- * @name ILightManager#update
- */
-
-/**
- * 获取渲染配置
- * @function
- * @param {object} [option]
- * @name ILightManager#getRenderOption
- */

@@ -1,127 +1,103 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import Vector3 from './Vector3';
-
+import { requireNumber } from './numberArray';
 const tempArray = new Float32Array(27);
-
 /**
  * SphericalHarmonics3
- * @class
  */
-const SphericalHarmonics3 = Class.create<typeof hilo3d.SphericalHarmonics3>()(/** @lends SphericalHarmonics3.prototype */ {
+class SphericalHarmonics3 {
+    coefficients: Vector3[];
     /**
      * 类名
-     * @type {String}
-     * @default SphericalHarmonics3
      */
-    className: 'SphericalHarmonics3',
-    /**
-     * @type {boolean}
-     * @default true
-     */
-    isSphericalHarmonics3: true,
-
-    Statics: {
-        SH3_SCALE: [
-            Math.sqrt(1 / (4 * Math.PI)),
-            -Math.sqrt(3 / (4 * Math.PI)),
-            Math.sqrt(3 / (4 * Math.PI)),
-            -Math.sqrt(3 / (4 * Math.PI)),
-            Math.sqrt(15 / (4 * Math.PI)),
-            -Math.sqrt(15 / (4 * Math.PI)),
-            Math.sqrt(5 / (16 * Math.PI)),
-            -Math.sqrt(15 / (4 * Math.PI)),
-            Math.sqrt(15 / (16 * Math.PI))
-        ]
-    },
-    /**
-     * @constructs
-     */
+    className = 'SphericalHarmonics3';
+    isSphericalHarmonics3 = true;
+    static readonly SH3_SCALE = [
+        Math.sqrt(1 / (4 * Math.PI)),
+        -Math.sqrt(3 / (4 * Math.PI)),
+        Math.sqrt(3 / (4 * Math.PI)),
+        -Math.sqrt(3 / (4 * Math.PI)),
+        Math.sqrt(15 / (4 * Math.PI)),
+        -Math.sqrt(15 / (4 * Math.PI)),
+        Math.sqrt(5 / (16 * Math.PI)),
+        -Math.sqrt(15 / (4 * Math.PI)),
+        Math.sqrt(15 / (16 * Math.PI))
+    ];
     constructor() {
         this.coefficients = [];
         for (let i = 0; i < 9; i++) {
             this.coefficients.push(new Vector3());
         }
-    },
-
+    }
     /**
      * scale
-     * @param  {Number} scale
-     * @return {SphericalHarmonics3} this
+     * @param scale -
+     * @returns this
      */
-    scale(scale) {
-        this.coefficients.forEach((coefficient) => {
+    scale(scale: number): this {
+        this.coefficients.forEach(coefficient => {
             coefficient.scale(scale);
         });
-
         return this;
-    },
-
+    }
     /**
      * fromArray
-     * @param {Number[][]|Number[]} coefficients
-     * @return {SphericalHarmonics3} this
+     * @param data -
+     * @returns this
      */
-    fromArray(data) {
-        if (data.length === 9) {
+    fromArray(data: number[][] | number[]): this {
+        if (data.length === 9 && data.every(Array.isArray)) {
             this.coefficients.forEach((coefficient, index) => {
-                coefficient.fromArray(data[index]);
+                const values = data[index];
+                if (values) coefficient.fromArray(values);
             });
-        } else if (data.length === 27) {
+        } else if (data.length === 27 && data.every(value => typeof value === 'number')) {
             this.coefficients.forEach((coefficient, index) => {
                 coefficient.fromArray(data, index * 3);
             });
         }
         return this;
-    },
-
+    }
     /**
      * scaleForRender
-     * @return {SphericalHarmonics3} this
+     * @returns this
      */
-    scaleForRender() {
+    scaleForRender(): this {
         const SH3_SCALE = SphericalHarmonics3.SH3_SCALE;
         this.coefficients.forEach((coefficient, index) => {
-            coefficient.scale(SH3_SCALE[index]);
+            coefficient.scale(requireNumber(SH3_SCALE, index));
         });
         this.scale(1 / Math.PI);
-
         return this;
-    },
-
+    }
     /**
      * toArray
-     * @returns {Float32Array}
      */
-    toArray() {
+    toArray(): Float32Array {
         this.coefficients.forEach((coefficient, index) => {
             coefficient.toArray(tempArray, index * 3);
         });
         return tempArray;
-    },
-
+    }
     /**
      * 克隆
-     * @return {SphericalHarmonics3}
      */
-    clone() {
-        const sphericalHarmonics3 = new this.constructor();
+    clone(): SphericalHarmonics3 {
+        const sphericalHarmonics3 = new SphericalHarmonics3();
         sphericalHarmonics3.copy(this);
         return sphericalHarmonics3;
-    },
+    }
     /**
      * 复制
-     * @param  {SphericalHarmonics3} other
-     * @return {SphericalHarmonics3} this
+     * @param other -
+     * @returns this
      */
-    copy(other) {
+    copy(other: SphericalHarmonics3): this {
         const otherCoefficients = other.coefficients;
         this.coefficients.forEach((coefficient, index) => {
-            coefficient.copy(otherCoefficients[index]);
+            const source = otherCoefficients[index];
+            if (source) coefficient.copy(source);
         });
         return this;
     }
-});
-
+}
 export default SphericalHarmonics3;

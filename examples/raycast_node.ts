@@ -1,51 +1,62 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
 
-function rand(min, max) {
-            return Math.random() * (max - min) + min;
-        }
+const { camera, stage } = createExampleContext();
 
-        var geometry = new Hilo3d.PlaneGeometry();
-      
-        for (var i = 0; i < 100; i++) {
-            var rect = new Hilo3d.Mesh({
-                geometry: geometry,
-                material: new Hilo3d.BasicMaterial({
-                    lightType:'NONE',
-                    diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random())
-                }),
-                x: rand(-0.5, 0.5),
-                y: rand(-0.5, 0.5),
-                z: rand(-1, 1)
-            });
-            rect.setScale(rand(0.2, 0.2));
-            stage.addChild(rect);
-        }
+function rand(min: number, max: number): number {
+    return Math.random() * (max - min) + min;
+}
 
-        var ray = new Hilo3d.Ray();
-        document.body.onclick = function(e){
-            var mousePos = {
-                x:e.clientX,
-                y:e.clientY
-            };
+const geometry = new Hilo3d.PlaneGeometry();
 
-            ray.fromCamera(camera, mousePos.x, mousePos.y, stage.width, stage.height);
+for (let i = 0; i < 100; i++) {
+    const rect = new Hilo3d.Mesh({
+        geometry,
+        material: new Hilo3d.BasicMaterial({
+            lightType: 'NONE',
+            diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random())
+        }),
+        x: rand(-0.5, 0.5),
+        y: rand(-0.5, 0.5),
+        z: rand(-1, 1)
+    });
+    rect.setScale(rand(0.2, 0.2));
+    stage.addChild(rect);
+}
 
-            var hitResult = stage.raycast(ray, true);
-            if(hitResult){
-                console.log(hitResult);
-                hitResult.forEach(function(raycastInfo, index){
-                    var mesh = raycastInfo.mesh;
-                    Hilo3d.Tween.to(mesh, {
-                        scaleX:0,
-                        scaleY:0
-                    }, {
-                        reverse:false,
-                        duration:300,
-                        delay:index * 250,
-                        onComplete:function(){
-                            mesh.removeFromParent();
-                        }
-                    });
-                });
-            }
-        };
+const ray = new Hilo3d.Ray();
+document.body.onclick = function (e) {
+    const mousePos = {
+        x: e.clientX,
+        y: e.clientY
+    };
+
+    ray.fromCamera(camera, mousePos.x, mousePos.y, stage.width, stage.height);
+
+    const hitResult = stage.raycast(ray, true);
+    const nodeHits =
+        hitResult?.filter(
+            (hit): hit is Hilo3d.NodeRaycastInfo => !(hit instanceof Hilo3d.Vector3)
+        ) ?? [];
+    if (nodeHits.length > 0) {
+        console.log(nodeHits);
+        nodeHits.forEach((raycastInfo, index) => {
+            const mesh = raycastInfo.mesh;
+            Hilo3d.Tween.to(
+                mesh,
+                {
+                    scaleX: 0,
+                    scaleY: 0
+                },
+                {
+                    reverse: false,
+                    duration: 300,
+                    delay: index * 250,
+                    onComplete() {
+                        mesh.removeFromParent();
+                    }
+                }
+            );
+        });
+    }
+};

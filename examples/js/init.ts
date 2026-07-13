@@ -1,201 +1,209 @@
 import * as Hilo3d from '../../src/Hilo3d';
-import OrbitControls from './OrbitControls';
+import type { PerspectiveCameraParameters } from '../../src/camera/PerspectiveCamera';
+import type { StageParameters } from '../../src/core/Stage';
+import OrbitControls, { type OrbitControlsOptions } from './OrbitControls';
 import Stats from './stats';
 
-type QueryValues = Record<string, string>;
+export type QueryValues = Readonly<Record<string, string>>;
 
-interface EnvironmentMaps {
-    diffuseEnvMap: hilo3d.CubeTexture;
-    specularEnvMap: hilo3d.CubeTexture;
-    brdfLUT: hilo3d.Texture;
+export interface EnvironmentMaps {
+    diffuseEnvMap: Hilo3d.CubeTexture;
+    specularEnvMap: Hilo3d.CubeTexture;
+    brdfLUT: Hilo3d.Texture;
 }
 
-interface ExampleUtils {
-    keys: QueryValues;
-    parseQuery(url: string): QueryValues;
-    buildUrl(url?: string, params?: Record<string, string | number | boolean>): string;
-    loadEnvMap(callback: (maps: EnvironmentMaps) => void): void;
+export interface ExampleContextOptions {
+    container?: HTMLElement;
+    camera?: PerspectiveCameraParameters;
+    stage?: Omit<StageParameters, 'camera' | 'container'>;
+    controls?: OrbitControlsOptions;
+    autoStart?: boolean;
 }
 
-export let camera: hilo3d.PerspectiveCamera | undefined;
-export let stage: hilo3d.Stage | undefined;
-export let renderer: hilo3d.WebGLRenderer | undefined;
-export let gl: WebGLRenderingContext | WebGL2RenderingContext | null | undefined;
-export let directionLight: hilo3d.DirectionalLight | undefined;
-export let ambientLight: hilo3d.AmbientLight | undefined;
-export let ticker: hilo3d.Ticker | undefined;
-export let stats: Stats | undefined;
-export let orbitControls: OrbitControls | undefined;
+export interface ExampleContext {
+    readonly camera: Hilo3d.PerspectiveCamera;
+    readonly stage: Hilo3d.Stage;
+    readonly renderer: Hilo3d.WebGLRenderer;
+    readonly directionLight: Hilo3d.DirectionalLight;
+    readonly ambientLight: Hilo3d.AmbientLight;
+    readonly ticker: Hilo3d.Ticker;
+    readonly stats: Stats;
+    readonly orbitControls: OrbitControls;
+    dispose(): void;
+}
 
-if (!window.notInit) {
-    camera = new Hilo3d.PerspectiveCamera({
-        aspect: innerWidth / innerHeight,
+function isTexture(value: unknown): value is Hilo3d.Texture {
+    return value instanceof Hilo3d.Texture;
+}
+
+export function parseQuery(url: string | URL = location.href): QueryValues {
+    return Object.freeze(Object.fromEntries(new URL(url, location.href).searchParams));
+}
+
+export function buildUrl(
+    url: string | URL = location.href,
+    params: Readonly<Record<string, string | number | boolean>> = {}
+): string {
+    const target = new URL(url, location.href);
+    for (const [key, value] of Object.entries(params)) {
+        target.searchParams.set(key, String(value));
+    }
+    return target.href;
+}
+
+export async function loadEnvironmentMaps(): Promise<EnvironmentMaps> {
+    const imageUrl = (name: string): string => new URL(`../image/${name}`, import.meta.url).href;
+    const queue = new Hilo3d.LoadQueue([
+        {
+            type: 'CubeTexture',
+            images: [
+                imageUrl('bakedDiffuse_01.jpg'),
+                imageUrl('bakedDiffuse_02.jpg'),
+                imageUrl('bakedDiffuse_03.jpg'),
+                imageUrl('bakedDiffuse_04.jpg'),
+                imageUrl('bakedDiffuse_05.jpg'),
+                imageUrl('bakedDiffuse_06.jpg')
+            ]
+        },
+        {
+            type: 'CubeTexture',
+            right: imageUrl('px.jpg'),
+            left: imageUrl('nx.jpg'),
+            top: imageUrl('py.jpg'),
+            bottom: imageUrl('ny.jpg'),
+            front: imageUrl('pz.jpg'),
+            back: imageUrl('nz.jpg'),
+            magFilter: Hilo3d.constants.webgl.LINEAR,
+            minFilter: Hilo3d.constants.webgl.LINEAR_MIPMAP_LINEAR
+        },
+        {
+            src: imageUrl('brdfLUT.png'),
+            wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
+            wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
+            type: 'Texture'
+        }
+    ]);
+
+    const failures: unknown[] = [];
+    queue.on('error', event => {
+        failures.push(event.detail);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+        queue.on(
+            'complete',
+            () => {
+                if (failures.length > 0) {
+                    reject(new AggregateError(failures, 'Failed to load environment maps'));
+                } else {
+                    resolve();
+                }
+            },
+            true
+        );
+        queue.start();
+    });
+
+    const [diffuseEnvMap, specularEnvMap, brdfLUT] = queue.getAllContent();
+    if (!(diffuseEnvMap instanceof Hilo3d.CubeTexture)) {
+        throw new TypeError('Diffuse environment map did not produce a CubeTexture');
+    }
+    if (!(specularEnvMap instanceof Hilo3d.CubeTexture)) {
+        throw new TypeError('Specular environment map did not produce a CubeTexture');
+    }
+    if (!isTexture(brdfLUT)) {
+        throw new TypeError('BRDF lookup table did not produce a Texture');
+    }
+
+    return { diffuseEnvMap, specularEnvMap, brdfLUT };
+}
+
+export const utils = Object.freeze({
+    keys: parseQuery(),
+    parseQuery,
+    buildUrl,
+    loadEnvironmentMaps
+});
+
+/** Creates one self-contained example runtime with no global mutable state. */
+export function createExampleContext(options: ExampleContextOptions = {}): ExampleContext {
+    const width = options.stage?.width ?? window.innerWidth;
+    const height = options.stage?.height ?? window.innerHeight;
+    const camera = new Hilo3d.PerspectiveCamera({
+        aspect: width / height,
         far: 100,
         near: 0.1,
-        z: 3
+        z: 3,
+        ...options.camera
     });
-
-    const container = document.getElementById('container');
-    stage = new Hilo3d.Stage({
-        ...(container ? { container } : {}),
-        camera,
+    const container = options.container ?? document.getElementById('container') ?? document.body;
+    const stage = new Hilo3d.Stage({
         clearColor: new Hilo3d.Color(0.3, 0.35, 0.35),
-        width: innerWidth,
-        height: innerHeight,
-        preferWebGL2: location.search.includes('webgl2'),
+        width,
+        height,
+        preferWebGL2: new URLSearchParams(location.search).has('webgl2'),
         antialias: false,
         alpha: false,
-        useLogDepth: false
+        useLogDepth: false,
+        ...options.stage,
+        container,
+        camera
     });
 
-    const activeCamera = camera;
-    const activeStage = stage;
-    window.addEventListener('resize', () => {
-        activeCamera.aspect = innerWidth / innerHeight;
-        activeStage.resize(innerWidth, innerHeight);
-    });
-
-    renderer = stage.renderer;
-    directionLight = new Hilo3d.DirectionalLight({
+    const renderer = stage.renderer;
+    const directionLight = new Hilo3d.DirectionalLight({
         color: new Hilo3d.Color(1, 1, 1),
         direction: new Hilo3d.Vector3(0, -1, 0)
     });
     directionLight.addTo(stage);
 
-    ambientLight = new Hilo3d.AmbientLight({
+    const ambientLight = new Hilo3d.AmbientLight({
         color: new Hilo3d.Color(1, 1, 1),
         amount: 0.5
     });
     ambientLight.addTo(stage);
 
-    ticker = new Hilo3d.Ticker(60);
+    const ticker = new Hilo3d.Ticker(60);
     ticker.addTick(stage);
     ticker.addTick(Hilo3d.Tween);
     ticker.addTick(Hilo3d.Animation);
-    stats = new Stats(ticker, stage.renderer.renderInfo);
-    orbitControls = new OrbitControls(stage, {
+    const stats = new Stats(ticker, renderer.renderInfo);
+    const orbitControls = new OrbitControls(stage, {
         isLockMove: true,
-        isLockZ: true
+        isLockZ: true,
+        ...options.controls
     });
 
-    for (const eventName of ['init', 'initFailed']) {
-        stage.renderer.on(eventName, event => {
-            console.log(event.type, event);
-            console.log(`Stage use ${renderer?.isWebGL2 ? 'WebGL2' : 'WebGL1'}`);
-        });
-    }
+    const handleResize = (): void => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        stage.resize(window.innerWidth, window.innerHeight);
+    };
+    window.addEventListener('resize', handleResize);
 
-    window.setTimeout(() => {
-        ticker?.start();
-        gl = renderer?.gl;
-    }, 10);
-}
+    renderer.on('init', () => {
+        console.info(`Stage uses ${renderer.isWebGL2 ? 'WebGL2' : 'WebGL1'}`);
+    });
+    renderer.on('initFailed', event => {
+        console.error('Stage initialization failed', event.detail);
+    });
 
-export const utils: ExampleUtils = {
-    keys: {},
+    if (options.autoStart ?? true) ticker.start();
 
-    parseQuery(url) {
-        const pattern = /([^?#&=]+)=([^#&]*)/gu;
-        const params: QueryValues = {};
-        let result: RegExpExecArray | null;
-        while ((result = pattern.exec(url))) {
-            const key = result[1];
-            const value = result[2];
-            if (key !== undefined && value !== undefined) params[key] = decodeURIComponent(value);
+    return {
+        camera,
+        stage,
+        renderer,
+        directionLight,
+        ambientLight,
+        ticker,
+        stats,
+        orbitControls,
+        dispose(): void {
+            window.removeEventListener('resize', handleResize);
+            orbitControls.disable();
+            stats.stop();
+            ticker.stop();
+            stage.destroy();
         }
-        return params;
-    },
-
-    buildUrl(url = '', params = {}) {
-        const values: Record<string, string | number | boolean> = {
-            ...this.parseQuery(url),
-            ...params
-        };
-        const query = Object.entries(values)
-            .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
-            .join('&');
-        return url.replace(/(\?.*)?$/u, `?${query}`);
-    },
-
-    loadEnvMap(callback) {
-        const loadQueue = new Hilo3d.LoadQueue([{
-            type: 'CubeTexture',
-            images: [
-                '//gw.alicdn.com/tfs/TB1i.dWr9cqBKNjSZFgXXX_kXXa-128-128.jpg',
-                '//gw.alicdn.com/tfs/TB1ozYarJcnBKNjSZR0XXcFqFXa-128-128.jpg',
-                '//gw.alicdn.com/tfs/TB11Nc_rRsmBKNjSZFFXXcT9VXa-128-128.jpg',
-                '//gw.alicdn.com/tfs/TB13ldPr_mWBKNjSZFBXXXxUFXa-128-128.jpg',
-                '//gw.alicdn.com/tfs/TB1RmQ6rTqWBKNjSZFAXXanSpXa-128-128.jpg',
-                '//gw.alicdn.com/tfs/TB13j8frYZnBKNjSZFKXXcGOVXa-128-128.jpg'
-            ]
-        }, {
-            type: 'CubeTexture',
-            right: '//gw.alicdn.com/tfs/TB1EJJYr9cqBKNjSZFgXXX_kXXa-1024-1024.jpg',
-            left: '//gw.alicdn.com/tfs/TB1xXKFrSYTBKNjSZKbXXXJ8pXa-1024-1024.jpg',
-            top: '//gw.alicdn.com/tfs/TB1U7Fmr7UmBKNjSZFOXXab2XXa-1024-1024.jpg',
-            bottom: '//gw.alicdn.com/tfs/TB1zJRdr8jTBKNjSZFDXXbVgVXa-1024-1024.jpg',
-            front: '//gw.alicdn.com/tfs/TB1SkFLrQZmBKNjSZPiXXXFNVXa-1024-1024.jpg',
-            back: '//gw.alicdn.com/tfs/TB1z9F2h4tnkeRjSZSgXXXAuXXa-1024-1024.jpg',
-            magFilter: Hilo3d.constants.webgl.LINEAR,
-            minFilter: Hilo3d.constants.webgl.LINEAR_MIPMAP_LINEAR
-        }, {
-            src: '//gw.alicdn.com/tfs/TB1.K0CrYZnBKNjSZFhXXc.oXXa-256-256.png',
-            wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
-            wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
-            type: 'Texture'
-        }]);
-
-        loadQueue.start().on('complete', () => {
-            const result = loadQueue.getAllContent();
-            callback({
-                diffuseEnvMap: result[0] as hilo3d.CubeTexture,
-                specularEnvMap: result[1] as hilo3d.CubeTexture,
-                brdfLUT: result[2] as hilo3d.Texture
-            });
-        });
-    }
-};
-
-utils.keys = utils.parseQuery(location.href);
-
-Object.defineProperties(window, {
-    camera: { configurable: true, get: () => camera, set: value => { camera = value; } },
-    stage: { configurable: true, get: () => stage, set: value => { stage = value; } },
-    renderer: { configurable: true, get: () => renderer, set: value => { renderer = value; } },
-    gl: { configurable: true, get: () => gl, set: value => { gl = value; } },
-    directionLight: {
-        configurable: true,
-        get: () => directionLight,
-        set: value => { directionLight = value; }
-    },
-    ambientLight: {
-        configurable: true,
-        get: () => ambientLight,
-        set: value => { ambientLight = value; }
-    },
-    ticker: { configurable: true, get: () => ticker, set: value => { ticker = value; } },
-    stats: { configurable: true, get: () => stats, set: value => { stats = value; } },
-    orbitControls: {
-        configurable: true,
-        get: () => orbitControls,
-        set: value => { orbitControls = value; }
-    },
-    utils: { configurable: true, get: () => utils }
-});
-
-declare global {
-    interface Window {
-        camera?: hilo3d.PerspectiveCamera;
-        stage?: hilo3d.Stage;
-        renderer?: hilo3d.WebGLRenderer;
-        gl?: WebGLRenderingContext | WebGL2RenderingContext | null;
-        directionLight?: hilo3d.DirectionalLight;
-        ambientLight?: hilo3d.AmbientLight;
-        ticker?: hilo3d.Ticker;
-        stats?: Stats;
-        orbitControls?: OrbitControls;
-        utils: ExampleUtils;
-    }
+    };
 }
-
-export type { EnvironmentMaps, ExampleUtils, QueryValues };

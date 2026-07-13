@@ -1,65 +1,21 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import BasicLoader from './BasicLoader';
-import Texture from '../texture/Texture';
+import BasicLoader, { type BasicLoadRequest } from './BasicLoader';
+import Texture, { type TextureParameters } from '../texture/Texture';
 import Loader from './Loader';
-import log from '../utils/log';
+import { textureOptions } from './textureOptions';
 
-/**
- * Texture加载类
- * @class
- * @extends {BasicLoader}
- * @example
- * var loader = new Hilo3d.TextureLoader();
- * loader.load({
- *     crossOrigin: true,
- *     src: '//gw.alicdn.com/tfs/TB1iNtERXXXXXcBaXXXXXXXXXXX-600-600.png'
- * }).then(function (diffuse) {
- *     var material = new Hilo3d.BasicMaterial({
- *         diffuse: diffuse
- *     });
- *     ...
- * });
- */
-const TextureLoader = Class.create<typeof hilo3d.TextureLoader>()(/** @lends TextureLoader.prototype */{
-    Extends: BasicLoader,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isTextureLoader: true,
-    /**
-     * @default TextureLoader
-     * @type {string}
-     */
-    className: 'TextureLoader',
-    /**
-     * @constructs
-     */
-    constructor() {
-        TextureLoader.superclass.constructor.call(this);
-    },
-    /**
-     * 加载Texture
-     * @param {object} params 加载参数
-     * @param {string} params.src 纹理图片地址
-     * @param {boolean} params.crossOrigin 是否跨域，不传将自动判断
-     * @async
-     * @return {Promise<Texture, Error>} 返回加载完的Texture对象
-     */
-    load(params) {
-        return this.loadImg(params.src, params.crossOrigin).then((img) => {
-            const args = Object.assign({}, params);
-            args.image = img;
-            delete args.type;
-            return new Texture(args);
-        }).catch((err) => {
-            log.error('load Texture failed', err.message, err.stack);
-            throw err;
-        });
+export type TextureLoadRequest = BasicLoadRequest &
+    Omit<TextureParameters<HTMLImageElement>, 'image' | 'type'> & { src: string };
+
+class TextureLoader {
+    readonly isTextureLoader = true;
+    readonly className = 'TextureLoader';
+    private readonly resourceLoader = new BasicLoader();
+
+    async load(params: TextureLoadRequest): Promise<Texture<HTMLImageElement>> {
+        const image = await this.resourceLoader.loadImg(params.src, params.crossOrigin);
+        return new Texture<HTMLImageElement>({ ...textureOptions(params), image });
     }
-});
+}
 
 Loader.addLoader('Texture', TextureLoader);
 

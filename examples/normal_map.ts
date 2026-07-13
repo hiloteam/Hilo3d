@@ -1,61 +1,78 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
+
+const { stage } = createExampleContext();
+
+function requireLoadedImage(id: string): HTMLImageElement {
+    const image = loadQueue.getContent(id);
+    if (image instanceof HTMLImageElement) return image;
+    throw new TypeError(`Expected ${id} to load as an image`);
+}
 
 stage.addChild(new Hilo3d.AxisHelper());
-        var loadQueue = new Hilo3d.LoadQueue();
-        loadQueue.add([{
+const loadQueue = new Hilo3d.LoadQueue();
+loadQueue
+    .add([
+        {
             id: 'brickwall',
-            crossOrigin: 'anonymous',
-            src: '//img.alicdn.com/tfs/TB1aNxtQpXXXXX1XVXXXXXXXXXX-1024-1024.jpg'
-        }, {
+            src: new URL('./models/BoomBox/BoomBox_baseColor.png', import.meta.url).href
+        },
+        {
             id: 'brickwall_normal',
-            crossOrigin: 'anonymous',
-            src: '//img.alicdn.com/tfs/TB1UCM6QXXXXXXKaFXXXXXXXXXX-1024-1024.jpg'
-        }]).on('complete', function(evt) {
-            var geometry = new Hilo3d.PlaneGeometry();
-            var diffuse = new Hilo3d.Texture({
-                image: loadQueue.get('brickwall').content
-            });
-            var normalTexture = new Hilo3d.Texture({
-                image: loadQueue.get('brickwall_normal').content
-            });
-            var material = new Hilo3d.BasicMaterial({
-                specular: new Hilo3d.Color(0.5, 0.5, 0.5),
-                diffuse: diffuse,
-                normalMap: normalTexture
-            });
-            var mesh = new Hilo3d.Mesh({
-                geometry: geometry,
-                material: material
-            });
-            window.xx = mesh;
-            stage.addChild(mesh);
-        }).on('error', function (err) {
-            console.log('load err:' + JSON.stringify(err));
-        }).start();
-
-        var pointLight = new Hilo3d.PointLight({
-            color:new Hilo3d.Color(0.5, 0.5, 0.5),
-            x: 5,
-            y: 2,
-            z: 5,
-            range:100
+            src: new URL('./models/BoomBox/BoomBox_normal.png', import.meta.url).href
+        }
+    ])
+    .on('complete', () => {
+        const geometry = new Hilo3d.PlaneGeometry();
+        const diffuse = new Hilo3d.Texture({
+            image: requireLoadedImage('brickwall')
         });
-        stage.addChild(pointLight);
-
-        var blueBox = new Hilo3d.Mesh({
-            geometry: new Hilo3d.BoxGeometry(),
-            material: new Hilo3d.BasicMaterial({
-                diffuse: new Hilo3d.Color(0, 0, 1),
-                lightType:'NONE'
-            })
+        const normalTexture = new Hilo3d.Texture({
+            image: requireLoadedImage('brickwall_normal')
         });
-        blueBox.setScale(0.1);
-        pointLight.addChild(blueBox);
-
-        Hilo3d.Tween.to(pointLight, {
-            x:-5
-        }, {
-            duration:2000,
-            loop:true,
-            reverse:true
+        const material = new Hilo3d.BasicMaterial({
+            specular: new Hilo3d.Color(0.5, 0.5, 0.5),
+            diffuse,
+            normalMap: normalTexture
         });
+        const mesh = new Hilo3d.Mesh({
+            geometry,
+            material
+        });
+        stage.addChild(mesh);
+    })
+    .on('error', event => {
+        console.error('Failed to load normal-map resources', event.detail);
+    })
+    .start();
+
+const pointLight = new Hilo3d.PointLight({
+    color: new Hilo3d.Color(0.5, 0.5, 0.5),
+    x: 5,
+    y: 2,
+    z: 5,
+    range: 100
+});
+stage.addChild(pointLight);
+
+const blueBox = new Hilo3d.Mesh({
+    geometry: new Hilo3d.BoxGeometry(),
+    material: new Hilo3d.BasicMaterial({
+        diffuse: new Hilo3d.Color(0, 0, 1),
+        lightType: 'NONE'
+    })
+});
+blueBox.setScale(0.1);
+pointLight.addChild(blueBox);
+
+Hilo3d.Tween.to(
+    pointLight,
+    {
+        x: -5
+    },
+    {
+        duration: 2000,
+        loop: true,
+        reverse: true
+    }
+);

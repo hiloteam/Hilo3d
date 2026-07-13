@@ -1,75 +1,40 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import parseHDR from 'parse-hdr';
-import Class from '../core/Class';
-import BasicLoader from './BasicLoader';
+import parseRadianceHDR from './RadianceHDRParser';
+import BasicLoader, { type BasicLoadRequest } from './BasicLoader';
 import Texture from '../texture/Texture';
 import Loader from './Loader';
-import log from '../utils/log';
-import constants from '../constants';
+import { CLAMP_TO_EDGE, FLOAT, NEAREST, RGBA } from '../constants/webgl';
+import { textureOptions, type LoaderTextureOptions } from './textureOptions';
 
-const {
-    RGBA,
-    NEAREST,
-    CLAMP_TO_EDGE,
-    FLOAT
-} = constants;
+export type HDRLoadRequest = BasicLoadRequest &
+    LoaderTextureOptions<Float32Array> & { src: string };
 
-/**
- * @class
- */
-const HDRLoader = Class.create<typeof hilo3d.HDRLoader>()(/** @lends HDRLoader.prototype */{
-    Extends: BasicLoader,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isHDRLoader: true,
-    /**
-     * @default HDRLoader
-     * @type {string}
-     */
-    className: 'HDRLoader',
-    constructor() {
-        HDRLoader.superclass.constructor.call(this);
-    },
-    /**
-     * load
-     * @param  {Object} params
-     * @return {Promise<Texture>}
-     */
-    load(params) {
-        return this.loadRes(params.src, 'buffer')
-            .then((buffer) => {
-                try {
-                    const img = parseHDR(buffer);
-                    const shape = img.shape;
-                    const pixels = img.data;
+class HDRLoader {
+    readonly isHDRLoader = true;
+    readonly className = 'HDRLoader';
+    private readonly resourceLoader = new BasicLoader();
 
-                    const texture = new Texture({
-                        width: shape[0],
-                        height: shape[1],
-                        flipY: params.flipY || false,
-                        image: pixels,
-                        type: FLOAT,
-                        magFilter: NEAREST,
-                        minFilter: NEAREST,
-                        wrapS: CLAMP_TO_EDGE,
-                        wrapT: CLAMP_TO_EDGE,
-                        internalFormat: RGBA,
-                        format: RGBA
-                    });
+    async load(params: HDRLoadRequest): Promise<Texture<Float32Array>> {
+        const resource = await this.resourceLoader.loadRes(params.src, BasicLoader.TYPE_BUFFER);
+        if (!(resource instanceof ArrayBuffer)) {
+            throw new TypeError(`HDR resource ${params.src} did not return binary data.`);
+        }
 
-                    Object.assign(texture, params);
-
-                    return texture;
-                } catch (e) {
-                    log.error('HDRLoader:parse error => ', e);
-                }
-                return null;
-            });
+        const image = parseRadianceHDR(resource);
+        return new Texture<Float32Array>({
+            width: image.shape[0],
+            height: image.shape[1],
+            image: image.data,
+            type: FLOAT,
+            magFilter: NEAREST,
+            minFilter: NEAREST,
+            wrapS: CLAMP_TO_EDGE,
+            wrapT: CLAMP_TO_EDGE,
+            internalFormat: RGBA,
+            format: RGBA,
+            ...textureOptions(params)
+        });
     }
-});
+}
 
 Loader.addLoader('hdr', HDRLoader);
 

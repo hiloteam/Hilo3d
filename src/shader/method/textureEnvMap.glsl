@@ -24,5 +24,3 @@ vec4 textureEnvMapIncludeMipmapsLod(sampler2D uTexture, vec3 position, float lod
         return textureCubeLodEXT(uTexture, position, lod);
     }
 #endif
-
-#pragma glslify: export(textureSphere)

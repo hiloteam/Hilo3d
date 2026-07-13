@@ -1,74 +1,76 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Hilo3d examples</title>
-    <style>
-        body,ul,li{
-            margin:0px;
-            padding:0px;
-        }
+    <head>
+        <meta charset="UTF-8" />
+        <title>Hilo3d examples</title>
+        <style>
+            body,
+            ul,
+            li {
+                margin: 0px;
+                padding: 0px;
+            }
 
-        #exampleList{
-            position: absolute;
-            list-style: none;
-            background: #aaa;
-            width:220px;
-            height: 100%;
-            overflow: scroll;
-        }
+            #exampleList {
+                position: absolute;
+                list-style: none;
+                background: #aaa;
+                width: 220px;
+                height: 100%;
+                overflow: scroll;
+            }
 
-        #exampleList li{
-            font-size: 16px;
-            line-height: 30px;
-            height: 30px;
-            margin: 1px 1px;
-            background: #999;
-            cursor: pointer;
-            text-align: center;
-            color: #fff;
-        }
+            #exampleList li {
+                font-size: 16px;
+                line-height: 30px;
+                height: 30px;
+                margin: 1px 1px;
+                background: #999;
+                cursor: pointer;
+                text-align: center;
+                color: #fff;
+            }
 
-        #exampleList form{
-            background: #eee;
-        }
+            #exampleList form {
+                background: #eee;
+            }
 
-        #exampleList li label{
-            font-size: 12px;
-            height: 30px;
-            line-height: 30px;
-            color: #333;
-            display: inline-block;
-            cursor: pointer;
-        }
+            #exampleList li label {
+                font-size: 12px;
+                height: 30px;
+                line-height: 30px;
+                color: #333;
+                display: inline-block;
+                cursor: pointer;
+            }
 
-        #exampleList .active{
-            background: #3a383e;
-        }
+            #exampleList .active {
+                background: #3a383e;
+            }
 
-        #exampleFrame{
-            position: absolute;
-            right:0px;
-            top:0px;
-            border:1px solid #333;
-            overflow: hidden;
-        }
-    </style>
-</head>
-<body>
-    <div>
-        <ul id='exampleList'>
-            <li>
-                <form id="webglVersionForm" onchange="javascript:console.log(1)">
-                    <input type="radio" id="webglVersion1" name="webglVersion" value="webgl">
-                    <label for="webglVersion1">WebGL</label>
-                    <input type="radio" id="webglVersion2" name="webglVersion" value="webgl2">
-                    <label for="webglVersion2">WebGL2</label>
-                </form>
-            </li>
-        </ul>
-        <iframe  id='exampleFrame' name='exampleFrame' frameborder="0"></iframe>
-    </div>
-    <script type="module" src="./list.ts"></script>
-</body>
+            #exampleFrame {
+                position: absolute;
+                right: 0px;
+                top: 0px;
+                border: 1px solid #333;
+                overflow: hidden;
+            }
+        </style>
+    </head>
+    <body>
+        <div>
+            <ul id="exampleList">
+                <li>
+                    <form id="webglVersionForm">
+                        <input type="radio" id="webglVersion1" name="webglVersion" value="webgl" />
+                        <label for="webglVersion1">WebGL</label>
+                        <input type="radio" id="webglVersion2" name="webglVersion" value="webgl2" />
+                        <label for="webglVersion2">WebGL2</label>
+                    </form>
+                </li>
+            </ul>
+            <iframe id="exampleFrame" name="exampleFrame" frameborder="0"></iframe>
+        </div>
+        <script type="module" src="./list.ts"></script>
+    </body>
 </html>

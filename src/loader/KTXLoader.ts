@@ -1,245 +1,202 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-/**
- * for description see https://www.khronos.org/opengles/sdk/tools/KTX/
- * for file layout see https://www.khronos.org/opengles/sdk/tools/KTX/file_format_spec/
- * ported from https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/js/loaders/KTXLoader.js
- */
-import Class from '../core/Class';
-import BasicLoader from './BasicLoader';
+import BasicLoader, { type LoaderRequest } from './BasicLoader';
 import Loader from './Loader';
 import Texture from '../texture/Texture';
 import extensions from '../renderer/extensions';
-import log from '../utils/log';
+import { textureOptions, type LoaderTextureOptions } from './textureOptions';
 
-/**
- * @class
- * @private
- */
-const KhronosTextureContainer = Class.create(/** @lends KhronosTextureContainer.prototype */{
-    Statics: {
-        HEADER_LEN: 12 + (13 * 4), // identifier + header elements (not including key value meta-data pairs)
-        COMPRESSED_2D: 0, // uses a gl.compressedTexImage2D()
-        COMPRESSED_3D: 1, // uses a gl.compressedTexImage3D()
-        TEX_2D: 2, // uses a gl.texImage2D()
-        TEX_3D: 3, // uses a gl.texImage3D()
+interface KTXMipmap {
+    data: Uint8Array;
+    width: number;
+    height: number;
+}
 
-    },
-    isKhronosTextureContainer: true,
-    className: 'KhronosTextureContainer',
-    /**
-     * @constructs
-     * @param {ArrayBuffer} arrayBuffer contents of the KTX container file
-     * @param {number} facesExpected should be either 1 or 6, based whether a cube texture or or
-     */
-    constructor(arrayBuffer, facesExpected, baseOffset = 0) {
+const KTX_IDENTIFIER = new Uint8Array([
+    0xab, 0x4b, 0x54, 0x58, 0x20, 0x31, 0x31, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a
+]);
+
+/** Parser for a single-face KTX 1.1 2D texture container. */
+class KhronosTextureContainer {
+    static readonly HEADER_LEN = 12 + 13 * Uint32Array.BYTES_PER_ELEMENT;
+    static readonly COMPRESSED_2D = 0;
+    static readonly TEX_2D = 2;
+
+    readonly isKhronosTextureContainer = true;
+    readonly className = 'KhronosTextureContainer';
+    readonly arrayBuffer: ArrayBuffer;
+    readonly baseOffset: number;
+    readonly glType: GLenum;
+    readonly glTypeSize: number;
+    readonly glFormat: GLenum;
+    readonly glInternalFormat: GLenum;
+    readonly glBaseInternalFormat: GLenum;
+    readonly pixelWidth: number;
+    readonly pixelHeight: number;
+    readonly pixelDepth: number;
+    readonly numberOfArrayElements: number;
+    readonly numberOfFaces: number;
+    readonly numberOfMipmapLevels: number;
+    readonly bytesOfKeyValueData: number;
+    readonly loadType: number;
+
+    constructor(arrayBuffer: ArrayBuffer, facesExpected: 1 | 6, baseOffset = 0) {
         this.arrayBuffer = arrayBuffer;
         this.baseOffset = baseOffset;
-
-        // Test that it is a ktx formatted file, based on the first 12 bytes, character representation is:
-        // '´', 'K', 'T', 'X', ' ', '1', '1', 'ª', '\r', '\n', '\x1A', '\n'
-        // 0xAB, 0x4B, 0x54, 0x58, 0x20, 0x31, 0x31, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A
-        const identifier = new Uint8Array(this.arrayBuffer, this.baseOffset, 12);
-        if (identifier[0] !== 0xAB
-            || identifier[1] !== 0x4B
-            || identifier[2] !== 0x54
-            || identifier[3] !== 0x58
-            || identifier[4] !== 0x20
-            || identifier[5] !== 0x31
-            || identifier[6] !== 0x31
-            || identifier[7] !== 0xBB
-            || identifier[8] !== 0x0D
-            || identifier[9] !== 0x0A
-            || identifier[10] !== 0x1A
-            || identifier[11] !== 0x0A) {
-            log.error('texture missing KTX identifier');
-            return;
+        const identifier = new Uint8Array(arrayBuffer, baseOffset, KTX_IDENTIFIER.length);
+        if (!identifier.every((byte, index) => byte === KTX_IDENTIFIER[index])) {
+            throw new TypeError('Texture is missing the KTX 1.1 identifier.');
         }
 
-        // load the reset of the header in native 32 bit uint
         const dataSize = Uint32Array.BYTES_PER_ELEMENT;
-        const headerDataView = new DataView(this.arrayBuffer, this.baseOffset + 12, 13 * dataSize);
-        const endianness = headerDataView.getUint32(0, true);
-        const littleEndian = endianness === 0x04030201;
-
-        this.glType = headerDataView.getUint32(1 * dataSize, littleEndian); // must be 0 for compressed textures
-        this.glTypeSize = headerDataView.getUint32(2 * dataSize, littleEndian); // must be 1 for compressed textures
-        this.glFormat = headerDataView.getUint32(3 * dataSize, littleEndian); // must be 0 for compressed textures
-        this.glInternalFormat = headerDataView.getUint32(4 * dataSize, littleEndian); // the value of arg passed to gl.compressedTexImage2D(,,x,,,,)
-        this.glBaseInternalFormat = headerDataView.getUint32(5 * dataSize, littleEndian); // specify GL_RGB, GL_RGBA, GL_ALPHA, etc (un-compressed only)
-        this.pixelWidth = headerDataView.getUint32(6 * dataSize, littleEndian); // level 0 value of arg passed to gl.compressedTexImage2D(,,,x,,,)
-        this.pixelHeight = headerDataView.getUint32(7 * dataSize, littleEndian); // level 0 value of arg passed to gl.compressedTexImage2D(,,,,x,,)
-        this.pixelDepth = headerDataView.getUint32(8 * dataSize, littleEndian); // level 0 value of arg passed to gl.compressedTexImage3D(,,,,,x,,)
-        this.numberOfArrayElements = headerDataView.getUint32(9 * dataSize, littleEndian); // used for texture arrays
-        this.numberOfFaces = headerDataView.getUint32(10 * dataSize, littleEndian); // used for cubemap textures, should either be 1 or 6
-        this.numberOfMipmapLevels = headerDataView.getUint32(11 * dataSize, littleEndian); // number of levels; disregard possibility of 0 for compressed textures
-        this.bytesOfKeyValueData = headerDataView.getUint32(12 * dataSize, littleEndian); // the amount of space after the header for meta-data
-
-        // value of zero is an indication to generate mipmaps @ runtime.  Not usually allowed for compressed, so disregard.
-        this.numberOfMipmapLevels = Math.max(1, this.numberOfMipmapLevels);
+        const header = new DataView(arrayBuffer, baseOffset + 12, 13 * dataSize);
+        const littleEndian = header.getUint32(0, true) === 0x04030201;
+        this.glType = header.getUint32(dataSize, littleEndian);
+        this.glTypeSize = header.getUint32(2 * dataSize, littleEndian);
+        this.glFormat = header.getUint32(3 * dataSize, littleEndian);
+        this.glInternalFormat = header.getUint32(4 * dataSize, littleEndian);
+        this.glBaseInternalFormat = header.getUint32(5 * dataSize, littleEndian);
+        this.pixelWidth = header.getUint32(6 * dataSize, littleEndian);
+        this.pixelHeight = header.getUint32(7 * dataSize, littleEndian);
+        this.pixelDepth = header.getUint32(8 * dataSize, littleEndian);
+        this.numberOfArrayElements = header.getUint32(9 * dataSize, littleEndian);
+        this.numberOfFaces = header.getUint32(10 * dataSize, littleEndian);
+        this.numberOfMipmapLevels = Math.max(1, header.getUint32(11 * dataSize, littleEndian));
+        this.bytesOfKeyValueData = header.getUint32(12 * dataSize, littleEndian);
 
         if (this.pixelHeight === 0 || this.pixelDepth !== 0) {
-            log.warn('only 2D textures currently supported');
-            return;
+            throw new TypeError('Only 2D KTX textures are supported.');
         }
         if (this.numberOfArrayElements !== 0) {
-            log.warn('texture arrays not currently supported');
-            return;
+            throw new TypeError('KTX texture arrays are not supported.');
         }
         if (this.numberOfFaces !== facesExpected) {
-            log.warn('number of faces expected' + facesExpected + ', but found ' + this.numberOfFaces);
-            return;
+            throw new TypeError(
+                `Expected ${String(facesExpected)} KTX face(s), received ${String(this.numberOfFaces)}.`
+            );
         }
-        // we now have a completely validated file, so could use existence of loadType as success
-        // would need to make this more elaborate & adjust checks above to support more than one load type
-        if (this.glType === 0) {
-            this.loadType = KhronosTextureContainer.COMPRESSED_2D;
-        } else {
-            this.loadType = KhronosTextureContainer.TEX_2D;
-        }
-    },
+        this.loadType =
+            this.glType === 0
+                ? KhronosTextureContainer.COMPRESSED_2D
+                : KhronosTextureContainer.TEX_2D;
+    }
 
-    // return mipmaps
-    mipmaps(loadMipmaps) {
-        let mipmaps = [];
-
-        // initialize width & height for level 1
+    mipmaps(loadMipmaps: boolean): KTXMipmap[] {
+        const mipmaps: KTXMipmap[] = [];
         let dataOffset = KhronosTextureContainer.HEADER_LEN + this.bytesOfKeyValueData;
         let width = this.pixelWidth;
         let height = this.pixelHeight;
-        let mipmapCount = loadMipmaps ? this.numberOfMipmapLevels : 1;
+        const count = loadMipmaps ? this.numberOfMipmapLevels : 1;
 
-        for (let level = 0; level < mipmapCount; level++) {
-            let imageSize = new Int32Array(this.arrayBuffer, this.baseOffset + dataOffset, 1)[0]; // size per face, since not supporting array cubemaps
-            for (let face = 0; face < this.numberOfFaces; face++) {
-                let byteArray = new Uint8Array(this.arrayBuffer, this.baseOffset + dataOffset + 4, imageSize);
-
-                mipmaps.push({
-                    data: byteArray,
-                    width,
-                    height
-                });
-
-                dataOffset += imageSize + 4; // size of the image + 4 for the imageSize field
-                dataOffset += 3 - ((imageSize + 3) % 4); // add padding for odd sized image
+        for (let level = 0; level < count; level++) {
+            const imageSize = new DataView(
+                this.arrayBuffer,
+                this.baseOffset + dataOffset,
+                Int32Array.BYTES_PER_ELEMENT
+            ).getInt32(0, true);
+            if (imageSize <= 0) {
+                throw new RangeError(`Invalid KTX mip level ${String(level)} size.`);
             }
-            width = Math.max(1.0, width * 0.5);
-            height = Math.max(1.0, height * 0.5);
-        }
 
+            for (let face = 0; face < this.numberOfFaces; face++) {
+                const data = new Uint8Array(
+                    this.arrayBuffer,
+                    this.baseOffset + dataOffset + 4,
+                    imageSize
+                );
+                mipmaps.push({ data, width, height });
+                dataOffset += imageSize + 4;
+                dataOffset += 3 - ((imageSize + 3) % 4);
+            }
+            width = Math.max(1, Math.floor(width / 2));
+            height = Math.max(1, Math.floor(height / 2));
+        }
         return mipmaps;
     }
-});
+}
 
-/**
- * KTX 加载器
- * @class
- */
-const KTXLoader = Class.create<typeof hilo3d.KTXLoader>()(/** @lends KTXLoader.prototype */{
-    Extends: BasicLoader,
-    Statics: {
-        /**
-         * astc
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_astc
-         */
-        astc: 'WEBGL_compressed_texture_astc',
-        /**
-         * etc
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_etc
-         */
-        etc: 'WEBGL_compressed_texture_etc',
-        /**
-         * etc1
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_etc1
-         */
-        etc1: 'WEBGL_compressed_texture_etc1',
-        /**
-         * pvrtc
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_pvrtc
-         */
-        pvrtc: 'WEBGL_compressed_texture_pvrtc',
-        /**
-         * s3tc
-         * @memberOf KTXLoader
-         * @type {String}
-         * @readOnly
-         * @default WEBGL_compressed_texture_s3tc
-         */
-        s3tc: 'WEBGL_compressed_texture_s3tc'
-    },
-    /**
-     * @type {boolean}
-     * @default true
-     */
-    isKTXLoader: true,
-    /**
-     * 类名
-     * @type {string}
-     * @default KTXLoader
-     */
-    className: 'KTXLoader',
+export type KTXLoadRequest = Omit<LoaderRequest, 'src'> &
+    LoaderTextureOptions<Uint8Array> & { src: string | ArrayBuffer | ArrayBufferView };
+
+function isKTXLoadRequest(request: KTXLoadRequest | LoaderRequest): request is KTXLoadRequest {
+    return (
+        typeof request.src === 'string' ||
+        request.src instanceof ArrayBuffer ||
+        ArrayBuffer.isView(request.src)
+    );
+}
+
+class KTXLoader {
+    static readonly astc = 'WEBGL_compressed_texture_astc';
+    static readonly atc = 'WEBGL_compressed_texture_atc';
+    static readonly etc = 'WEBGL_compressed_texture_etc';
+    static readonly etc1 = 'WEBGL_compressed_texture_etc1';
+    static readonly pvrtc = 'WEBGL_compressed_texture_pvrtc';
+    static readonly s3tc = 'WEBGL_compressed_texture_s3tc';
+    static readonly s3tcSrgb = 'WEBGL_compressed_texture_s3tc_srgb';
+
+    readonly isKTXLoader = true;
+    readonly className = 'KTXLoader';
+    private readonly resourceLoader = new BasicLoader();
+
     constructor() {
-        extensions.use(KTXLoader.astc);
-        extensions.use(KTXLoader.atc);
-        extensions.use(KTXLoader.etc);
-        extensions.use(KTXLoader.etc1);
-        extensions.use(KTXLoader.pvrtc);
-        extensions.use(KTXLoader.s3tc);
-        extensions.use(KTXLoader.s3tc_srgb);
-        KTXLoader.superclass.constructor.call(this);
-    },
-    /**
-     * load
-     * @param  {Object} params
-     */
-    load(params) {
-        if (params.src instanceof ArrayBuffer) {
-            return Promise.resolve(this.createTexture(params, params.src));
+        for (const extension of [
+            KTXLoader.astc,
+            KTXLoader.atc,
+            KTXLoader.etc,
+            KTXLoader.etc1,
+            KTXLoader.pvrtc,
+            KTXLoader.s3tc,
+            KTXLoader.s3tcSrgb
+        ]) {
+            extensions.use(extension);
         }
+    }
+
+    async load(params: KTXLoadRequest | LoaderRequest): Promise<Texture<Uint8Array>> {
+        if (!isKTXLoadRequest(params)) {
+            throw new TypeError('KTXLoader requires a URL or binary source.');
+        }
+        if (params.src instanceof ArrayBuffer) return this.createTexture(params, params.src);
         if (ArrayBuffer.isView(params.src)) {
-            return Promise.resolve(this.createTexture(params, params.src.buffer, params.src.byteOffset));
+            const bytes = new Uint8Array(
+                params.src.buffer,
+                params.src.byteOffset,
+                params.src.byteLength
+            );
+            return this.createTexture(params, Uint8Array.from(bytes).buffer);
         }
-        return this.loadRes(params.src, 'buffer')
-            .then((buffer) => {
-                return this.createTexture(params, buffer);
-            });
-    },
-    createTexture(params, buffer, baseOffset = 0) {
+        const resource = await this.resourceLoader.loadRes(params.src, BasicLoader.TYPE_BUFFER);
+        if (!(resource instanceof ArrayBuffer)) {
+            throw new TypeError(`KTX resource ${params.src} did not return binary data.`);
+        }
+        return this.createTexture(params, resource);
+    }
+
+    createTexture(
+        params: KTXLoadRequest,
+        buffer: ArrayBuffer,
+        baseOffset = 0
+    ): Texture<Uint8Array> {
         const ktx = new KhronosTextureContainer(buffer, 1, baseOffset);
-        const data = {
-            compressed: ktx.glType === 0,
+        const fullMipCount = Math.floor(Math.log2(Math.max(ktx.pixelWidth, ktx.pixelHeight))) + 1;
+        const mipmaps = ktx.mipmaps(ktx.numberOfMipmapLevels >= fullMipCount);
+        const firstLevel = mipmaps[0];
+        if (!firstLevel) throw new TypeError('KTX texture does not contain an image level.');
+
+        return new Texture<Uint8Array>({
+            compressed: ktx.loadType === KhronosTextureContainer.COMPRESSED_2D,
             type: ktx.glType,
             width: ktx.pixelWidth,
             height: ktx.pixelHeight,
             internalFormat: ktx.glInternalFormat,
             format: ktx.glFormat,
-            isCubemap: ktx.numberOfFaces === 6
-        };
-
-        if (ktx.numberOfMipmapLevels >= Math.floor(Math.log2(Math.max(data.width, data.height)) + 1)) {
-            data.mipmaps = ktx.mipmaps(true);
-            data.image = data.mipmaps[0].data;
-        } else {
-            data.mipmaps = null;
-            data.image = ktx.mipmaps(false)[0].data;
-        }
-
-        return new Texture(data);
+            mipmaps: ktx.numberOfMipmapLevels >= fullMipCount ? mipmaps : null,
+            image: firstLevel.data,
+            ...textureOptions(params)
+        });
     }
-});
+}
 
 Loader.addLoader('ktx', KTXLoader);
 
+export { KhronosTextureContainer };
 export default KTXLoader;

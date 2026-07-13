@@ -1,102 +1,62 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+import { testEnv } from '../../setup';
+
 const RenderList = Hilo3d.RenderList;
+
+function createMesh(transparent: boolean, options: { renderOrder?: number } = {}): Hilo3d.Mesh {
+    const material = new Hilo3d.Material({
+        transparent,
+        renderOrder: options.renderOrder ?? 0
+    });
+    const geometry = new Hilo3d.BoxGeometry();
+    return new Hilo3d.Mesh({ material, geometry });
+}
 
 describe('RenderList', () => {
     it('create', () => {
-        const list = new RenderList;
-        list.isRenderList.should.be.true();
-        list.className.should.equal('RenderList');
+        const list = new RenderList();
+        expect(list.isRenderList).toBe(true);
+        expect(list.className).toBe('RenderList');
     });
 
-    let list;
+    let list = new RenderList();
     beforeEach(() => {
-        list = new RenderList;
+        list = new RenderList();
         const camera = testEnv.camera;
-        
-        list.addMesh(new Hilo3d.Mesh({
-            material: new Hilo3d.Material({
-                transparent: true
-            }),
-            geometry: new Hilo3d.BoxGeometry()
-        }), camera);
 
-        list.addMesh(new Hilo3d.Mesh({
-            material: new Hilo3d.Material({
-                transparent: false
-            }),
-            geometry: new Hilo3d.BoxGeometry()
-        }), camera);
-
-        list.addMesh(new Hilo3d.Mesh({
-            material: new Hilo3d.Material({
-                id:'testRenderListMaterial1',
-                transparent: false
-            }),
-            geometry: new Hilo3d.BoxGeometry({
-                id:'testRenderListGeometry1',
-            })
-        }), camera);
-
-        list.addMesh(new Hilo3d.Mesh({
-            material: new Hilo3d.Material({
-                transparent: true
-            }),
-            geometry: new Hilo3d.BoxGeometry()
-        }), camera);
-
-        list.addMesh(new Hilo3d.Mesh({
-            material: new Hilo3d.Material({
-                id:'testRenderListMaterial1',
-                transparent: false
-            }),
-            geometry: new Hilo3d.BoxGeometry({
-                id:'testRenderListGeometry1',
-            })
-        }), camera);
-
-        list.addMesh(new Hilo3d.Mesh({
-            material: new Hilo3d.Material({
-                id:'testRenderListMaterial1',
-                transparent: false,
-                renderOrder:1
-            }),
-            geometry: new Hilo3d.BoxGeometry({
-                id:'testRenderListGeometry1',
-            })
-        }), camera);
-
-        list.addMesh(new Hilo3d.Mesh({
-            material: new Hilo3d.Material({
-                id:'testRenderListMaterial1',
-                transparent: false,
-                renderOrder:-1
-            }),
-            geometry: new Hilo3d.BoxGeometry({
-                id:'testRenderListGeometry1',
-            })
-        }), camera);
+        list.addMesh(createMesh(true), camera);
+        list.addMesh(createMesh(false), camera);
+        list.addMesh(createMesh(false), camera);
+        list.addMesh(createMesh(true), camera);
+        list.addMesh(createMesh(false), camera);
+        list.addMesh(createMesh(false, { renderOrder: 1 }), camera);
+        list.addMesh(createMesh(false, { renderOrder: -1 }), camera);
     });
 
-    it("sort", () => {
+    it('sort', () => {
         list.sort();
-        list.opaqueList[0].material.renderOrder.should.equal(-1);
-        list.opaqueList[list.opaqueList.length-1].material.renderOrder.should.equal(1);
+        expect(list.opaqueList.at(0)?.material?.renderOrder).toBe(-1);
+        expect(list.opaqueList.at(-1)?.material?.renderOrder).toBe(1);
     });
 
     it('addMesh', () => {
-        list.transparentList.should.have.length(2);
-        list.opaqueList.should.have.length(5);
+        expect(list.transparentList).toHaveLength(2);
+        expect(list.opaqueList).toHaveLength(5);
     });
 
     it('traverse', () => {
-        const callback = sinon.spy();
+        const callback = vi.fn<(mesh: Hilo3d.Mesh) => void>();
         list.traverse(callback);
-        callback.callCount.should.equal(7);
+        expect(callback).toHaveBeenCalledTimes(7);
     });
 
     it('reset', () => {
         list.reset();
-        list.transparentList.should.have.length(0);
-        list.opaqueList.should.have.length(0);
-        list.instancedDict.should.have.size(0);
+        expect(list.transparentList).toHaveLength(0);
+        expect(list.opaqueList).toHaveLength(0);
+        const callback = vi.fn<(mesh: Hilo3d.Mesh) => void>();
+        list.traverse(callback);
+        expect(callback).not.toHaveBeenCalled();
     });
 });

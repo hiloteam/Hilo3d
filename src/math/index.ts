@@ -1,15 +1,21 @@
 export { default as Color } from './Color';
-export { default as Euler } from './Euler';
+export { default as Euler, type EulerOrder } from './Euler';
 export { default as EulerNotifier } from './EulerNotifier';
 export { default as Frustum } from './Frustum';
 export { default as math } from './math';
 export { default as Matrix3 } from './Matrix3';
-export { default as Matrix4 } from './Matrix4';
+export { default as Matrix4, type XYZObject } from './Matrix4';
 export { default as Matrix4Notifier } from './Matrix4Notifier';
 export { default as Plane } from './Plane';
 export { default as QuaternionNotifier } from './QuaternionNotifier';
 export { default as Quaternion } from './Quaternion';
-export { default as Ray } from './Ray';
+export {
+    default as Ray,
+    type AxisAlignedBox,
+    type RayCamera,
+    type RayParameters,
+    type Triangle
+} from './Ray';
 export { default as Sphere } from './Sphere';
 export { default as SphericalHarmonics3 } from './SphericalHarmonics3';
 export { default as Vector2 } from './Vector2';

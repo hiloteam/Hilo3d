@@ -1,69 +1,52 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import Geometry from './Geometry';
+import Geometry, { type GeometryParameters } from './Geometry';
 import GeometryData from './GeometryData';
+import type Ray from '../math/Ray';
+import type Vector3 from '../math/Vector3';
 
-const centerData = [0, 0, 0]; // eslint-disable-line no-unused-vars
+export interface SphereGeometryParameters extends GeometryParameters {
+    radius?: number;
+    heightSegments?: number;
+    widthSegments?: number;
+}
 /**
  * 球形几何体
- * @class
- * @extends Geometry
  */
-const SphereGeometry = Class.create<typeof hilo3d.SphereGeometry>()(/** @lends SphereGeometry.prototype */ {
-    Extends: Geometry,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isSphereGeometry: true,
-    /**
-     * @default SphereGeometry
-     * @type {string}
-     */
-    className: 'SphereGeometry',
+class SphereGeometry extends Geometry {
+    isSphereGeometry = true;
+    override readonly className: string = 'SphereGeometry';
     /**
      * 半径
-     * @default 1
-     * @type {number}
      */
-    radius: 1,
+    radius = 1;
     /**
      * 垂直分割面的数量
-     * @default 16
-     * @type {number}
      */
-    heightSegments: 16,
+    heightSegments = 16;
     /**
      * 水平分割面的数量
-     * @default 32
-     * @type {number}
      */
-    widthSegments: 32,
+    widthSegments = 32;
     /**
-     * @constructs
-     * @param {Object} [params] 创建对象的属性参数。可包含此类的所有属性。
-     * @param {number} [params.radius=1] 半径
-     * @param {number} [params.heightSegments=16] 垂直分割面的数量
-     * @param {number} [params.widthSegments=32] 水平分割面的数量
-     * @param {unknown} [params.[value:string]] 其它属性
+     * @param params - 创建对象的属性参数。可包含此类的所有属性。
+     * - `params.radius`: 半径
+     * - `params.heightSegments`: 垂直分割面的数量
+     * - `params.widthSegments`: 水平分割面的数量
      */
-    constructor(params) {
-        SphereGeometry.superclass.constructor.call(this, params);
+    constructor(params: SphereGeometryParameters = {}) {
+        super();
+        Object.assign(this, params);
         this.build();
-    },
-    build() {
+    }
+    private build(): void {
         const radius = this.radius;
         const heightSegments = this.heightSegments;
         const widthSegments = this.widthSegments;
-
         const count = (widthSegments + 1) * (heightSegments + 1);
         const gridCount = widthSegments * heightSegments;
         const vertices = new Float32Array(count * 3);
         const tangents = new Float32Array(count * 4);
         const uvs = new Float32Array(count * 2);
         const indices = new Uint16Array(gridCount * 6);
-
         let indexId = 0;
         let vertexId = 0;
         let tangentId = 0;
@@ -71,13 +54,11 @@ const SphereGeometry = Class.create<typeof hilo3d.SphereGeometry>()(/** @lends S
         let pointId = 0;
         const ANGLE_360 = Math.PI * 2;
         const ANGLE_180 = Math.PI;
-
         for (let h = 0; h <= heightSegments; h++) {
             const v = h / heightSegments;
             const pitchAngle = ANGLE_180 * v;
             const y = Math.cos(pitchAngle) * radius;
             const yawRadius = Math.sin(pitchAngle) * radius;
-
             for (let w = 0; w <= widthSegments; w++) {
                 const u = w / widthSegments;
                 const yawAngle = ANGLE_360 * u;
@@ -85,29 +66,23 @@ const SphereGeometry = Class.create<typeof hilo3d.SphereGeometry>()(/** @lends S
                 const yawSin = Math.sin(yawAngle);
                 const x = yawCos * yawRadius;
                 const z = yawSin * yawRadius;
-
-                let tangentX = yawSin;
-                let tangentY = 0;
-                let tangentZ = -yawCos;
-
+                const tangentX = yawSin;
+                const tangentY = 0;
+                const tangentZ = -yawCos;
                 tangents[tangentId++] = tangentX;
                 tangents[tangentId++] = tangentY;
                 tangents[tangentId++] = tangentZ;
                 tangents[tangentId++] = 1;
-
                 vertices[vertexId++] = x;
                 vertices[vertexId++] = y;
                 vertices[vertexId++] = z;
-
                 uvs[uvId++] = u;
                 uvs[uvId++] = v;
-
                 if (h > 0 && w > 0) {
                     const a = pointId;
                     const b = a - 1;
                     const c = b - widthSegments - 1;
                     const d = a - widthSegments - 1;
-
                     indices[indexId++] = c;
                     indices[indexId++] = d;
                     indices[indexId++] = a;
@@ -123,11 +98,10 @@ const SphereGeometry = Class.create<typeof hilo3d.SphereGeometry>()(/** @lends S
         this.uvs = new GeometryData(uvs, 2);
         this.tangents = new GeometryData(tangents, 4);
         this.normals = new GeometryData(new Float32Array(vertices), 3);
-    },
-    _raycast(ray, side) {
-        // TODO:optimize
-        return SphereGeometry.superclass._raycast.call(this, ray, side);
     }
-});
-
+    override _raycast(ray: Ray, side: GLenum): Vector3[] | null {
+        // TODO:optimize
+        return super._raycast(ray, side);
+    }
+}
 export default SphereGeometry;

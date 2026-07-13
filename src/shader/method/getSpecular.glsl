@@ -6,5 +6,3 @@ float getSpecular(vec3 cameraPos, vec3 fragPos, vec3 lightDir, vec3 normal, floa
         return pow(max(dot(normal, normalize(lightDir + viewDir)), 0.0), shininess);
     #endif
 }
-
-#pragma glslify: export(getSpecular)

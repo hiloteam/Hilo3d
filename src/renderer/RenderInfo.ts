@@ -1,76 +1,50 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-
 /**
  * 渲染信息
- * @class
  */
-const RenderInfo = Class.create<typeof hilo3d.RenderInfo>()(/** @lends RenderInfo.prototype */ {
-    /**
-     * @default RenderInfo
-     * @type {String}
-     */
-    className: 'RenderInfo',
-
-    /**
-     * @default true
-     * @type {Boolean}
-     */
-    isRenderInfo: true,
-
-    /**
-     * @constructs
-     */
+class RenderInfo {
+    readonly className = 'RenderInfo';
+    readonly isRenderInfo = true;
+    private _currentFaceCount = 0;
+    private _currentDrawCount = 0;
+    faceCount = 0;
+    drawCount = 0;
     constructor() {
         this.reset();
-    },
+    }
     /**
      * 增加面数
-     * @param {Number} num
+     * @param num -
      */
-    addFaceCount(num) {
+    addFaceCount(num: number): void {
         this._currentFaceCount += num;
-    },
+    }
     /**
      * 增加绘图数
-     * @param {Number} num
+     * @param num -
      */
-    addDrawCount(num) {
+    addDrawCount(num: number): void {
         this._currentDrawCount += num;
-    },
+    }
     /**
      * 重置信息
      */
-    reset() {
+    reset(): void {
         /**
          * 面数
-         * @type {Number}
-         * @readOnly
          */
         this.faceCount = Math.floor(this._currentFaceCount);
-
         /**
          * 绘图数
-         * @type {Number}
-         * @readOnly
          */
         this.drawCount = Math.floor(this._currentDrawCount);
-
         /**
          * 当前面数
-         * @type {Number}
-         * @private
          */
         this._currentFaceCount = 0;
-
         /**
          * 当前绘图数
-         * @private
-         * @type {Number}
          */
         this._currentDrawCount = 0;
     }
-});
-
+}
 export default RenderInfo;

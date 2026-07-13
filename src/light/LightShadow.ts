@@ -1,6 +1,3 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
 import math from '../math/math';
 import OrthographicCamera from '../camera/OrthographicCamera';
 import PerspectiveCamera from '../camera/PerspectiveCamera';
@@ -9,258 +6,267 @@ import semantic from '../material/semantic';
 import GeometryMaterial from '../material/GeometryMaterial';
 import Color from '../math/Color';
 import Matrix4 from '../math/Matrix4';
-import constants from '../constants';
+import { DEPTH } from '../constants/Hilo';
+import { BACK } from '../constants/webgl';
 import CameraHelper from '../helper/CameraHelper';
+import type Camera from '../camera/Camera';
+import type Mesh from '../core/Mesh';
+import type Material from '../material/Material';
+import type WebGLRenderer from '../renderer/WebGLRenderer';
+import type DirectionalLight from './DirectionalLight';
+import type SpotLight from './SpotLight';
+import type Light from './Light';
+import type { ShadowCameraParameters } from './Light';
 
-const {
-    DEPTH,
-    BACK
-} = constants;
-
-let shadowMaterial = null;
+let shadowMaterial: GeometryMaterial | null = null;
 const clearColor = new Color(1, 1, 1);
 const tempMatrix4 = new Matrix4();
+type ShadowMesh = Mesh & { material: Material };
 
-const isNeedRenderMesh = function(mesh) {
-    return mesh.material.castShadows;
+const isNeedRenderMesh = (mesh: Mesh): mesh is ShadowMesh => {
+    return mesh.material?.castShadows === true;
 };
 
-/**
- * @class
- */
-const LightShadow = Class.create<typeof hilo3d.LightShadow>()(/** @lends LightShadow.prototype */{
-    /**
-     * @type {boolean}
-     * @default true
-     */
-    isLightShadow: true,
-    /**
-     * @type {string}
-     * @default LightShadow
-     */
-    className: 'LightShadow',
+export type ShadowCamera = OrthographicCamera | PerspectiveCamera;
+type ClippingCamera = Camera & { near: number; far: number | null };
 
+function hasClippingPlanes(camera: Camera): camera is ClippingCamera {
+    return (
+        'near' in camera &&
+        typeof camera.near === 'number' &&
+        'far' in camera &&
+        (typeof camera.far === 'number' || camera.far === null)
+    );
+}
+
+function finiteFarPlane(camera: ClippingCamera): number {
+    return camera.far ?? camera.near * 1000;
+}
+
+function isDirectionalLight(light: Light): light is DirectionalLight {
+    return light.isDirectionalLight;
+}
+
+function isSpotLight(light: Light): light is SpotLight {
+    return light.isSpotLight;
+}
+
+export interface LightShadowParameters {
+    light: Light;
+    renderer: WebGLRenderer;
+    width?: number;
+    height?: number;
+    maxBias?: number;
+    minBias?: number;
+    cameraInfo?: ShadowCameraParameters;
+    debug?: boolean;
+}
+class LightShadow {
+    id: string;
+    isLightShadow = true;
+    className = 'LightShadow';
+    light: Light;
+    renderer: WebGLRenderer;
+    framebuffer: Framebuffer | null = null;
+    camera: ShadowCamera | null = null;
+    width = 1024;
+    height = 1024;
+    maxBias = 0.05;
+    minBias = 0.005;
+    cameraInfo: ShadowCameraParameters | null = null;
+    debug = false;
+    private cameraMatrixVersion = -1;
+    private cameraHelper: CameraHelper | null = null;
     /**
-     * @type {Light}
-     * @default null
+     * @param params -
+     * - `params.light`:
+     * - `params.renderer`:
+     * - `params.cameraInfo`:
+     * - `params.width`:
+     * - `params.height`:
+     * - `params.debug`:
      */
-    light: null,
-    /**
-     * @type {WebGLRenderer}
-     * @default null
-     */
-    renderer: null,
-    /**
-     * @type {Framebuffer}
-     * @default null
-     */
-    framebuffer: null,
-    /**
-     * @type {Camera}
-     * @default null
-     */
-    camera: null,
-    /**
-     * @type {number}
-     * @default 1024
-     */
-    width: 1024,
-    /**
-     * @type {number}
-     * @default 1024
-     */
-    height: 1024,
-    /**
-     * @type {number}
-     * @default 0.05
-     */
-    maxBias: 0.05,
-    /**
-     * @type {number}
-     * @default 0.005
-     */
-    minBias: 0.005,
-    /**
-     * @type {unknown}
-     * @default null
-     */
-    cameraInfo: null,
-    debug: false,
-    /**
-     * @constructs
-     * @param {object} params
-     * @param {Light} params.light
-     * @param {WebGLRenderer} params.renderer
-     * @param {object} [params.cameraInfo]
-     * @param {number} params.width
-     * @param {number} params.height
-     * @param {boolean} [params.debug]
-     */
-    constructor(params) {
+    constructor(params: LightShadowParameters) {
+        this.light = params.light;
+        this.renderer = params.renderer;
         this.id = math.generateUUID(this.className);
         Object.assign(this, params);
-    },
-    createFramebuffer() {
+    }
+    createFramebuffer(): void {
         if (this.framebuffer) {
             return;
         }
-
         this.framebuffer = new Framebuffer(this.renderer, {
             width: this.width,
             height: this.height
         });
-
         if (this.debug) {
             this.showShadowMap();
         }
-    },
-    updateLightCamera(currentCamera) {
-        if (this.light.isDirectionalLight) {
+    }
+    updateLightCamera(currentCamera: Camera): void {
+        if (isDirectionalLight(this.light)) {
             this.updateDirectionalLightCamera(currentCamera);
-        } else if (this.light.isSpotLight) {
+        } else if (isSpotLight(this.light)) {
             this.updateSpotLightCamera(currentCamera);
         }
-    },
-    updateDirectionalLightCamera(currentCamera) {
+    }
+    updateDirectionalLightCamera(currentCamera: Camera): void {
+        if (!(this.camera instanceof OrthographicCamera)) {
+            throw new TypeError('Directional-light shadows require an orthographic camera.');
+        }
+        const camera = this.camera;
         const light = this.light;
-
-        this.camera.lookAt(light.direction);
-
+        if (!isDirectionalLight(light)) {
+            throw new TypeError('Directional-light shadow received an incompatible light.');
+        }
+        camera.lookAt(light.direction);
         if (this.cameraInfo) {
-            this.updateCustomCamera(this.cameraInfo, currentCamera);
+            this.updateCustomCamera(camera, this.cameraInfo, currentCamera);
         } else {
             const geometry = currentCamera.getGeometry();
-            if (geometry) {
-                this.camera.updateViewMatrix();
-                tempMatrix4.multiply(this.camera.viewMatrix, currentCamera.worldMatrix);
-                const bounds = geometry.getBounds(tempMatrix4);
-
-                this.camera.near = -bounds.zMax;
-                this.camera.far = -bounds.zMin;
-                this.camera.left = bounds.xMin;
-                this.camera.right = bounds.xMax;
-                this.camera.bottom = bounds.yMin;
-                this.camera.top = bounds.yMax;
+            camera.updateViewMatrix();
+            tempMatrix4.multiply(camera.viewMatrix, currentCamera.worldMatrix);
+            const bounds = geometry.getBounds(tempMatrix4);
+            camera.near = -bounds.zMax;
+            camera.far = -bounds.zMin;
+            camera.left = bounds.xMin;
+            camera.right = bounds.xMax;
+            camera.bottom = bounds.yMin;
+            camera.top = bounds.yMax;
+        }
+        camera.updateViewMatrix();
+    }
+    updateCustomCamera(
+        camera: ShadowCamera,
+        cameraInfo: ShadowCameraParameters,
+        currentCamera: Camera
+    ): void {
+        Object.assign(camera, cameraInfo);
+        if (cameraInfo.far === undefined) {
+            if (!hasClippingPlanes(currentCamera)) {
+                throw new TypeError(
+                    'The active camera must expose numeric near and far clipping planes.'
+                );
             }
+            camera.far = finiteFarPlane(currentCamera);
         }
-
-        this.camera.updateViewMatrix();
-    },
-    updateCustomCamera(cameraInfo, currentCamera) {
-        for (let name in cameraInfo) {
-            this.camera[name] = cameraInfo[name];
+        if (cameraInfo.near === undefined) {
+            if (!hasClippingPlanes(currentCamera)) {
+                throw new TypeError(
+                    'The active camera must expose numeric near and far clipping planes.'
+                );
+            }
+            camera.near = currentCamera.near;
         }
-
-        if (!cameraInfo.far) {
-            this.camera.far = currentCamera.far;
+    }
+    updateSpotLightCamera(currentCamera: Camera): void {
+        if (!(this.camera instanceof PerspectiveCamera)) {
+            throw new TypeError('Spot-light shadows require a perspective camera.');
         }
-
-        if (!cameraInfo.near) {
-            this.camera.near = currentCamera.near;
-        }
-    },
-    updateSpotLightCamera(currentCamera) {
+        const camera = this.camera;
         const light = this.light;
-        this.camera.lookAt(light.direction);
-
-        if (this.cameraInfo) {
-            this.updateCustomCamera(this.cameraInfo, currentCamera);
-        } else {
-            this.camera.fov = light.outerCutoff * 2;
-            this.camera.near = 0.01;
-            this.camera.far = currentCamera.far;
-            this.camera.aspect = 1;
+        if (!isSpotLight(light)) {
+            throw new TypeError('Spot-light shadow received an incompatible light.');
         }
-
-        this.camera.updateViewMatrix();
-    },
-    createCamera(currentCamera) {
+        camera.lookAt(light.direction);
+        if (this.cameraInfo) {
+            this.updateCustomCamera(camera, this.cameraInfo, currentCamera);
+        } else {
+            if (!hasClippingPlanes(currentCamera)) {
+                throw new TypeError(
+                    'The active camera must expose numeric near and far clipping planes.'
+                );
+            }
+            camera.fov = light.outerCutoff * 2;
+            camera.near = 0.01;
+            camera.far = finiteFarPlane(currentCamera);
+            camera.aspect = 1;
+        }
+        camera.updateViewMatrix();
+    }
+    createCamera(currentCamera: Camera): void {
         if (!this.camera) {
-            if (this.light.isDirectionalLight) {
+            if (isDirectionalLight(this.light)) {
                 this.camera = new OrthographicCamera();
-            } else if (this.light.isSpotLight) {
+            } else if (isSpotLight(this.light)) {
                 this.camera = new PerspectiveCamera();
+            } else {
+                throw new TypeError('Only directional and spot lights support planar shadows.');
             }
             this.camera.addTo(this.light);
-            this._createCameraHelper();
+            this.createCameraHelper();
         }
-
-        if (this.light.isDirty || this._cameraMatrixVersion !== currentCamera.matrixVersion) {
+        if (this.light.isDirty || this.cameraMatrixVersion !== currentCamera.matrixVersion) {
             this.updateLightCamera(currentCamera);
-            this._cameraMatrixVersion = currentCamera.matrixVersion;
+            this.cameraMatrixVersion = currentCamera.matrixVersion;
             this.light.isDirty = false;
         }
-    },
-    createShadowMap(currentCamera) {
+    }
+    createShadowMap(currentCamera: Camera): void {
         this.createFramebuffer();
         this.createCamera(currentCamera);
-
-        const {
-            renderer,
-            framebuffer,
-            camera
-        } = this;
-
-        if (!shadowMaterial) {
-            shadowMaterial = new GeometryMaterial({
-                vertexType: DEPTH,
-                side: BACK,
-                writeOriginData: false
-            });
-        }
-
+        const { renderer, framebuffer, camera } = this;
+        if (!framebuffer || !camera) throw new Error('Shadow resources were not initialized.');
+        shadowMaterial ??= new GeometryMaterial({
+            vertexType: DEPTH,
+            side: BACK,
+            writeOriginData: false
+        });
         framebuffer.bind();
-        renderer.state.viewport(0, 0, this.width, this.height);
-        renderer.clear(clearColor);
-        camera.updateViewProjectionMatrix();
-        semantic.setCamera(camera);
-        this.renderShadowScene(renderer, shadowMaterial);
-        framebuffer.unbind();
-        semantic.setCamera(currentCamera);
-        renderer.viewport();
-    },
-    renderShadowScene(renderer, shadowMaterial) {
+        try {
+            renderer.state.viewport(0, 0, this.width, this.height);
+            renderer.clear(clearColor);
+            camera.updateViewProjectionMatrix();
+            semantic.setCamera(camera);
+            this.renderShadowScene(renderer, shadowMaterial);
+        } finally {
+            framebuffer.unbind();
+            semantic.setCamera(currentCamera);
+            renderer.viewport();
+        }
+    }
+    renderShadowScene(renderer: WebGLRenderer, fallbackMaterial: GeometryMaterial): void {
         const preForceMaterial = renderer.forceMaterial;
-
         const renderList = renderer.renderList;
-        renderList.traverse((mesh) => {
-            if (isNeedRenderMesh(mesh)) {
-                renderer.forceMaterial = mesh.material.getShadowMaterial(shadowMaterial);
-                renderer.renderMesh(mesh);
-            }
-        }, (instancedMeshes) => {
-            if (instancedMeshes.length) {
-                renderer.forceMaterial = instancedMeshes[0].material.getShadowMaterial(shadowMaterial);
-                renderer.renderInstancedMeshes(instancedMeshes.filter(mesh => isNeedRenderMesh(mesh)));
-            }
-        });
-
-        renderer.forceMaterial = preForceMaterial;
-    },
-    showShadowMap() {
+        try {
+            renderList.traverse(
+                mesh => {
+                    if (isNeedRenderMesh(mesh)) {
+                        renderer.forceMaterial = mesh.material.getShadowMaterial(fallbackMaterial);
+                        renderer.renderMesh(mesh);
+                    }
+                },
+                instancedMeshes => {
+                    const shadowMeshes = instancedMeshes.filter(mesh => isNeedRenderMesh(mesh));
+                    const firstMesh = shadowMeshes[0];
+                    if (!firstMesh) return;
+                    renderer.forceMaterial = firstMesh.material.getShadowMaterial(fallbackMaterial);
+                    renderer.renderInstancedMeshes(shadowMeshes);
+                }
+            );
+        } finally {
+            renderer.forceMaterial = preForceMaterial;
+        }
+    }
+    showShadowMap(): void {
         this.renderer.on('afterRender', () => {
-            this.framebuffer.render(0, 0.7, 0.3, 0.3);
+            this.framebuffer?.render(0, 0.7, 0.3, 0.3);
         });
-    },
-    _createCameraHelper() {
+    }
+    private createCameraHelper(): void {
         if (!this.debug) {
             return;
         }
-
-        const {
-            light,
-            camera,
-        } = this;
-
-        if (!this._cameraHelper) {
-            this._cameraHelper = new CameraHelper({
+        const { light, camera } = this;
+        if (!camera) throw new Error('Shadow camera is unavailable.');
+        if (!this.cameraHelper) {
+            this.cameraHelper = new CameraHelper({
                 camera,
-                color: new Color(0, 1, 0),
+                color: new Color(0, 1, 0)
             });
-
-            light.addChild(this._cameraHelper);
+            light.addChild(this.cameraHelper);
         }
     }
-});
-
+}
 export default LightShadow;

@@ -1,85 +1,57 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import BasicLoader from './BasicLoader';
-import GLTFParser from './GLTFParser';
+import { EventDispatcher, type DispatchEvent } from '../core/EventMixin';
+import BasicLoader, { type LoaderRequest } from './BasicLoader';
+import GLTFParser, { type GLTFParserParameters } from './GLTFParser';
 import Loader from './Loader';
-import log from '../utils/log';
+import type { GLTFModel } from './GLTFTypes';
 
-/**
- * glTF模型加载类
- * @class
- * @extends {BasicLoader}
- * @example
- * var loader = new Hilo3d.GLTFLoader();
- * loader.load({
- *     src: '//ossgw.alicdn.com/tmall-c3/tmx/a9bedc04da498b95c57057d6a5d29fe7.gltf'
- * }).then(function (model) {
- *     stage.addChild(model.node);
- * });
- */
-const GLTFLoader = Class.create<typeof hilo3d.GLTFLoader>()(/** @lends GLTFLoader.prototype */{
-    Extends: BasicLoader,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isGLTFLoader: true,
-    /**
-     * @default GLTFLoader
-     * @type {string}
-     */
-    className: 'GLTFLoader',
-    /**
-     * @constructs
-     */
-    constructor() {
-        GLTFLoader.superclass.constructor.call(this);
-    },
-    /**
-     * 加载glTF模型
-     * @param {object} params 加载参数
-     * @param {string} params.src glTF模型地址
-     * @param {number|string} [params.defaultScene] 加载后要展示的场景，默认读模型里的
-     * @param {boolean} [params.isMultiAnim=false] 模型是否多动画，如果是的话会返回 anims 对象保存多个动画对象
-     * @param {boolean} [params.isProgressive=false] 是否渐进式加载，图片加载完前使用占位图片
-     * @param {boolean} [params.isUnQuantizeInShader=true] 是否在shader中进行量化解压数据
-     * @param {boolean} [params.ignoreTextureError=false] 是否忽略图片加载错误
-     * @param {boolean} [params.forceCreateNewBuffer=false] 解析模型数据的时候是否强制创建新buffer，以防内存被引用导致无法释放
-     * @param {function} [params.preHandlerImageURI=null] 图片URL预处理函数
-     * @param {function} [params.preHandlerBufferURI=null] Buffer URL预处理函数
-     * @param {function} [params.customMaterialCreator=null] 是否使用自定义的Material创建器
-     * @param {function} [params.isLoadAllTextures=false] 是否加载所有的贴图，默认只加载用到的贴图
-     * @async
-     * @return {Promise<GLTFModel, Error>} 返回加载完的模型对象
-     */
-    load(params) {
-        return this.loadRes(params.src, 'buffer')
-            .then((buffer) => {
-                let parser = new GLTFParser(buffer, params);
-                return parser.parse(this);
-            }).catch((err) => {
-                log.error('load gltf failed', err.message, err.stack);
-                throw err;
+export interface GLTFLoadRequest extends LoaderRequest, GLTFParserParameters {
+    src: string;
+}
+
+export interface GLTFResourceLoader {
+    loadRes(url: string, type?: string): Promise<BasicLoaderResource>;
+}
+
+export type BasicLoaderResource = Awaited<ReturnType<BasicLoader['loadRes']>>;
+
+const FORWARDED_EVENTS = ['beforeload', 'loaded', 'failed', 'progress'] as const;
+
+/** glTF loader composed with the shared network transport. */
+class GLTFLoader extends EventDispatcher implements GLTFResourceLoader {
+    readonly isGLTFLoader = true;
+    readonly className = 'GLTFLoader';
+    private readonly transport: BasicLoader;
+
+    constructor(transport: BasicLoader = new BasicLoader()) {
+        super();
+        this.transport = transport;
+        for (const type of FORWARDED_EVENTS) {
+            transport.on(type, (event: DispatchEvent) => {
+                this.fire(event);
             });
+        }
     }
-});
+
+    loadRes(url: string, type?: string): Promise<BasicLoaderResource> {
+        return this.transport.loadRes(url, type);
+    }
+
+    async load(params: GLTFLoadRequest | LoaderRequest): Promise<GLTFModel> {
+        if (!params.src) throw new TypeError('GLTFLoader requires a source URL.');
+        const request: GLTFLoadRequest = { ...params, src: params.src };
+        try {
+            const resource = await this.loadRes(request.src, BasicLoader.TYPE_BUFFER);
+            if (!(resource instanceof ArrayBuffer)) {
+                throw new TypeError('glTF source did not resolve to an ArrayBuffer.');
+            }
+            return await new GLTFParser(resource, request).parse(this);
+        } catch (error: unknown) {
+            throw new Error(`Failed to load glTF ${request.src}.`, { cause: error });
+        }
+    }
+}
 
 Loader.addLoader('gltf', GLTFLoader);
 Loader.addLoader('glb', GLTFLoader);
 
 export default GLTFLoader;
-
-/**
- * GLTFLoader 模型加载完返回的对象格式
- * @typedef {object} GLTFModel
- * @property {Object} json 原始数据
- * @property {Node} [node] 模型的根节点
- * @property {Mesh[]} [meshes] 模型的所有Mesh对象数组
- * @property {Animation} [anim] 模型的动画对象数组，没有动画的话为null
- * @property {Camera[]} [cameras] 模型中的所有Camera对象数组
- * @property {Light[]} [lights] 模型中的所有Light对象数组
- * @property {Texture[]} [textures] 模型中的所有Texture对象数组
- * @property {BasicMaterial[]} [materials] 模型中的所有Material对象数组
- * @property {Skeleton[]} [skins] 模型中的所有Skeleton对象数组
- */

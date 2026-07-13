@@ -1,35 +1,61 @@
-name: npm test
+name: CI
 
 on:
   push:
-    branches: [ dev, master, test ]
+    branches: [dev, master]
+    tags: ['v*']
   pull_request:
-    branches: [ dev ]
+    branches: [dev, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-
-    runs-on: macos-latest
-
+  validate:
+    name: Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [18.x]
+        node-version: [22.22.2, 24.x]
 
     steps:
-    - uses: actions/checkout@v1
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v1
-      with:
-        node-version: ${{ matrix.node-version }}
-        architecture: 'x64'
-    - name: npm install, build
-      run: |
-        npm install
-        npm run build --if-present
-      env:
-        CI: true
-    - name: npm test
-      run: |
-        npm test
-      env:
-        CI: true
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm install --global npm@12.0.1
+          npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate release
+        run: npm run validate
+        env:
+          CI: 'true'
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports-node-${{ matrix.node-version }}
+          path: |
+            coverage
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14

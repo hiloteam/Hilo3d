@@ -64,5 +64,3 @@ float getShadow(samplerCube shadowMap, float bias, vec3 lightPos, vec3 position,
 
     return 1.0 - shadow;
 }
-
-#pragma glslify: export(getShadow)

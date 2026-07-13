@@ -1,16 +1,19 @@
+import { describe, expect, it } from 'vitest';
+import * as Hilo3d from '../../../src/Hilo3d';
+
 const Stage = Hilo3d.Stage;
 const WebGLRenderer = Hilo3d.WebGLRenderer;
 
 describe('Stage', () => {
     it('create', () => {
         const stage = new Stage({});
-        stage.isStage.should.be.true();
-        stage.className.should.equal('Stage');
-        stage.width.should.equal(innerWidth);
-        stage.height.should.equal(innerHeight);
-        stage.pixelRatio.should.aboveOrEqual(1);
-        stage.pixelRatio.should.belowOrEqual(2);
-        stage.renderer.should.instanceOf(WebGLRenderer);
+        expect(stage.isStage).toBe(true);
+        expect(stage.className).toBe('Stage');
+        expect(stage.width).toBe(innerWidth);
+        expect(stage.height).toBe(innerHeight);
+        expect(stage.pixelRatio).toBeGreaterThanOrEqual(1);
+        expect(stage.pixelRatio).toBeLessThanOrEqual(2);
+        expect(stage.renderer).toBeInstanceOf(WebGLRenderer);
     });
 
     it('resize', () => {
@@ -20,12 +23,12 @@ describe('Stage', () => {
         });
 
         stage.resize(1000, 800, 2);
-        stage.width.should.equal(1000);
-        stage.height.should.equal(800);
-        stage.pixelRatio.should.equal(2);
-        stage.rendererWidth.should.equal(2000);
-        stage.rendererHeight.should.equal(1600);
-        stage.canvas.style.width.should.equal('1000px');
-        stage.canvas.style.height.should.equal('800px');
+        expect(stage.width).toBe(1000);
+        expect(stage.height).toBe(800);
+        expect(stage.pixelRatio).toBe(2);
+        expect(stage.rendererWidth).toBe(2000);
+        expect(stage.rendererHeight).toBe(1600);
+        expect(stage.canvas.style.width).toBe('1000px');
+        expect(stage.canvas.style.height).toBe('800px');
     });
 });

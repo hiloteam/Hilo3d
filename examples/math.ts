@@ -1,4 +1,4 @@
-// @ts-nocheck -- example entry intentionally exercises dynamic engine APIs
+import * as Hilo3dMath from '../src/math/index';
 
-var v0 = new Hilo3dMath.Vector3(1, 1, 1);
-        console.log(v0.length());
+const v0 = new Hilo3dMath.Vector3(1, 1, 1);
+console.log(v0.length());

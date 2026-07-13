@@ -1,119 +1,113 @@
-// @ts-nocheck
-// Legacy Class.create module; public API is checked by types/index.d.ts.
-import Class from '../core/Class';
-import Material from './Material';
+import Material, {
+    type MaterialParameters,
+    type MaterialTexture,
+    type MaterialTextureValue
+} from './Material';
 import Color from '../math/Color';
+import type Matrix4 from '../math/Matrix4';
+import Texture from '../texture/Texture';
+import CubeTexture from '../texture/CubeTexture';
+import type { ShaderOptions } from '../renderer/types';
 
+export type BasicLightType = 'NONE' | 'PHONG' | 'BLINN-PHONG' | 'LAMBERT';
+
+export interface BasicMaterialParameters extends MaterialParameters {
+    lightType?: BasicLightType;
+    diffuse?: MaterialTextureValue;
+    ambient?: MaterialTextureValue;
+    specular?: MaterialTextureValue;
+    emission?: MaterialTextureValue;
+    specularEnvMap?: MaterialTexture | null;
+    specularEnvMatrix?: Matrix4 | null;
+    reflectivity?: number;
+    refractRatio?: number;
+    refractivity?: number;
+    shininess?: number;
+}
 /**
  * 基础材质，支持 NONE, PHONG, BLINN-PHONG, LAMBERT光照模型
- * @class
- * @extends Material
  * @example
+ * ```ts
  * const material = new Hilo3d.BasicMaterial({
  *     diffuse: new Hilo3d.Color(1, 0, 0, 1)
  * });
+ * ```
  */
-const BasicMaterial = Class.create<typeof hilo3d.BasicMaterial>()(/** @lends BasicMaterial.prototype */ {
-    Extends: Material,
-    /**
-     * @default true
-     * @type {boolean}
-     */
-    isBasicMaterial: true,
-    /**
-     * @default BasicMaterial
-     * @type {string}
-     */
-    className: 'BasicMaterial',
+class BasicMaterial extends Material {
+    isBasicMaterial = true;
+    override readonly className: string = 'BasicMaterial';
     /**
      * 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
-     * @default BLINN-PHONG
-     * @type {'NONE'|'PHONG'|'BLINN-PHONG'|'LAMBERT'}
      */
-    lightType: 'BLINN-PHONG',
+    override lightType: BasicLightType = 'BLINN-PHONG';
     /**
      * 漫反射贴图，或颜色
-     * @default Color(.5, .5, .5)
-     * @type {Texture|Color}
      */
-    diffuse: null,
+    diffuse: MaterialTextureValue = null;
     /**
      * 环境光贴图，或颜色
-     * @default null
-     * @type {Texture|Color}
      */
-    ambient: null,
+    ambient: MaterialTextureValue = null;
     /**
      * 镜面贴图，或颜色
-     * @default Color(1, 1, 1)
-     * @type {Texture|Color}
      */
-    specular: null,
+    specular: MaterialTextureValue = null;
     /**
      * 放射光贴图，或颜色
-     * @default Color(0, 0, 0)
-     * @type {Texture|Color}
      */
-    emission: null,
+    override emission: MaterialTextureValue = null;
     /**
      * 环境贴图
-     * @default null
-     * @type {CubeTexture|Texture}
      */
-    specularEnvMap: null,
+    specularEnvMap: MaterialTexture | null = null;
     /**
      * 环境贴图变化矩阵，如旋转等
-     * @default null
-     * @type {Matrix4}
      */
-    specularEnvMatrix: null,
+    specularEnvMatrix: Matrix4 | null = null;
     /**
      * 反射率
-     * @default 0
-     * @type {number}
      */
-    reflectivity: 0,
+    reflectivity = 0;
     /**
      * 折射比率
-     * @default 0
-     * @type {number}
      */
-    refractRatio: 0,
+    refractRatio = 0;
     /**
      * 折射率
-     * @default 0
-     * @type {number}
      */
-    refractivity: 0,
+    refractivity = 0;
     /**
      * 高光发光值
-     * @default 32
-     * @type {number}
      */
-    shininess: 32,
-    usedUniformVectors: 11,
+    shininess = 32;
+    usedUniformVectors = 11;
     /**
-     * @constructs
-     * @param {Object} [params] 初始化参数，所有params都会复制到实例上
-     * @param {string} [params.lightType=BLINN-PHONG] 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
-     * @param {Texture|Color} [params.diffuse=new Color(.5, .5, .5)] 漫反射贴图，或颜色
-     * @param {Texture|Color} [params.ambient] 环境光贴图，或颜色
-     * @param {Texture|Color} [params.specular=new Color(1, 1, 1)] 镜面贴图，或颜色
-     * @param {Texture|Color} [params.emission=new Color(0, 0, 0)] 放射光贴图，或颜色
-     * @param {Texture} [params.specularEnvMap] 环境贴图
-     * @param {Matrix4} [params.specularEnvMatrix] 环境贴图变化矩阵，如旋转等
-     * @param {number} [params.reflectivity=0] 反射率
-     * @param {number} [params.refractRatio=0] 折射比率
-     * @param {number} [params.refractivity=0] 折射率
-     * @param {number} [params.shininess=32] 高光发光值
-     * @param {unknown} [params.[value:string]] 其它属性
+     * @param params - 初始化参数，所有params都会复制到实例上
+     * - `params.lightType`: 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
+     * - `params.diffuse`: 漫反射贴图，或颜色
+     * - `params.ambient`: 环境光贴图，或颜色
+     * - `params.specular`: 镜面贴图，或颜色
+     * - `params.emission`: 放射光贴图，或颜色
+     * - `params.specularEnvMap`: 环境贴图
+     * - `params.specularEnvMatrix`: 环境贴图变化矩阵，如旋转等
+     * - `params.reflectivity`: 反射率
+     * - `params.refractRatio`: 折射比率
+     * - `params.refractivity`: 折射率
+     * - `params.shininess`: 高光发光值
      */
-    constructor(params) {
-        this.diffuse = new Color(.5, .5, .5);
+    constructor(params: BasicMaterialParameters = {}) {
+        super({}, false);
+        this.diffuse = new Color(0.5, 0.5, 0.5);
         this.specular = new Color(1, 1, 1);
         this.emission = new Color(0, 0, 0);
-        BasicMaterial.superclass.constructor.call(this, params);
+        if (new.target === BasicMaterial) {
+            Object.assign(this, params);
+            this.initializeBasicMaterialBindings();
+        }
+    }
 
+    protected initializeBasicMaterialBindings(): void {
+        this.initializeBindings();
         Object.assign(this.uniforms, {
             u_diffuse: 'DIFFUSE',
             u_specular: 'SPECULAR',
@@ -125,43 +119,34 @@ const BasicMaterial = Class.create<typeof hilo3d.BasicMaterial>()(/** @lends Bas
             u_specularEnvMap: 'SPECULARENVMAP',
             u_specularEnvMatrix: 'SPECULARENVMATRIX'
         });
-
         this.addTextureUniforms({
             u_diffuse: 'DIFFUSE',
             u_specular: 'SPECULAR',
             u_ambient: 'AMBIENT'
         });
-    },
-    getRenderOption(option = {}) {
-        BasicMaterial.superclass.getRenderOption.call(this, option);
-
-        const textureOption = this._textureOption.reset(option);
-
+    }
+    override getRenderOption(option: ShaderOptions = {}): ShaderOptions {
+        super.getRenderOption(option);
+        const textureOption = this.textureOption.reset(option);
         const lightType = this.lightType;
         if (lightType === 'PHONG' || lightType === 'BLINN-PHONG') {
-            option.HAS_SPECULAR = 1;
+            option['HAS_SPECULAR'] = 1;
         }
-
-
         const diffuse = this.diffuse;
-        if (diffuse && diffuse.isTexture) {
-            if (diffuse.isCubeTexture) {
-                option.DIFFUSE_CUBE_MAP = 1;
+        if (diffuse instanceof Texture) {
+            if (diffuse instanceof CubeTexture) {
+                option['DIFFUSE_CUBE_MAP'] = 1;
             } else {
                 textureOption.add(this.diffuse, 'DIFFUSE_MAP');
             }
         }
-
-        if (option.HAS_LIGHT) {
+        if (option['HAS_LIGHT']) {
             textureOption.add(this.specular, 'SPECULAR_MAP');
             textureOption.add(this.ambient, 'AMBIENT_MAP');
             textureOption.add(this.specularEnvMap, 'SPECULAR_ENV_MAP');
         }
-
         textureOption.update();
-
         return option;
     }
-});
-
+}
 export default BasicMaterial;
