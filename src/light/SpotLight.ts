@@ -1,15 +1,13 @@
-import Light, { type LightParameters } from './Light';
-import LightShadow from './LightShadow';
+import Light, { type ShadowCastingLightParameters } from './Light';
 import math from '../math/math';
 import Matrix4 from '../math/Matrix4';
 import Vector3 from '../math/Vector3';
 import type Camera from '../camera/Camera';
-import type WebGLRenderer from '../renderer/WebGLRenderer';
 
 const tempMatrix4 = new Matrix4();
 const tempVector3 = new Vector3();
 
-export interface SpotLightParameters extends LightParameters {
+export interface SpotLightParameters extends ShadowCastingLightParameters {
     direction?: Vector3;
     cutoff?: number;
     outerCutoff?: number;
@@ -22,7 +20,6 @@ class SpotLight extends Light {
     override isSpotLight = true;
     override className = 'SpotLight';
     direction: Vector3;
-    lightShadow: LightShadow | null = null;
     private cutoffCosine = Math.cos(math.degToRad(12.5));
     private cutoffDegrees = 12.5;
     /**
@@ -85,28 +82,6 @@ class SpotLight extends Light {
          */
         this.direction = new Vector3(0, 0, 1);
         Object.assign(this, params);
-    }
-    override createShadowMap(renderer: WebGLRenderer, camera: Camera): void {
-        if (!this.shadow) {
-            return;
-        }
-        if (!this.lightShadow) {
-            this.lightShadow = new LightShadow({
-                light: this,
-                renderer,
-                width: this.shadow.width ?? renderer.width,
-                height: this.shadow.height ?? renderer.height,
-                debug: this.shadow.debug ?? false,
-                ...(this.shadow.cameraInfo ? { cameraInfo: this.shadow.cameraInfo } : {})
-            });
-            if ('minBias' in this.shadow) {
-                this.lightShadow.minBias = this.shadow.minBias;
-            }
-            if ('maxBias' in this.shadow) {
-                this.lightShadow.maxBias = this.shadow.maxBias;
-            }
-        }
-        this.lightShadow.createShadowMap(camera);
     }
     getWorldDirection(): Vector3 {
         tempVector3.copy(this.direction).transformDirection(this.worldMatrix).normalize();

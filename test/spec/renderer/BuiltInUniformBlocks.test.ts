@@ -28,11 +28,11 @@ describe('built-in std140 ABI', () => {
             InstanceBlock: instanceBlockLayout.byteLength
         }).toEqual({
             FrameBlock: 16,
-            CameraBlock: 400,
+            CameraBlock: 416,
             SceneBlock: 32,
             LightBlock: 13600,
             MaterialBlock: 480,
-            ModelBlock: 112,
+            ModelBlock: 128,
             GeometryBlock: 224,
             SkinningBlock: 8192,
             MorphBlock: 32,
@@ -49,6 +49,7 @@ describe('built-in std140 ABI', () => {
         expect(cameraBlockLayout.fields.u_viewInverseNormalMatrix.offset).toBe(320);
         expect(cameraBlockLayout.fields.u_cameraPositionNear.offset).toBe(368);
         expect(cameraBlockLayout.fields.u_cameraParams.offset).toBe(384);
+        expect(cameraBlockLayout.fields.u_viewport.offset).toBe(400);
 
         expect(materialBlockLayout.fields.u_diffuseEnvSphereHarmonics3.offset).toBe(96);
         expect(materialBlockLayout.fields.u_diffuseEnvSphereHarmonics3.arrayStride).toBe(16);
@@ -58,6 +59,7 @@ describe('built-in std140 ABI', () => {
 
         expect(modelBlockLayout.fields.u_modelMatrix.offset).toBe(0);
         expect(modelBlockLayout.fields.u_normalWorldMatrix.offset).toBe(64);
+        expect(modelBlockLayout.fields.u_objectIdColor.offset).toBe(112);
         expect(geometryBlockLayout.fields.u_positionDecodeMat.offset).toBe(0);
         expect(geometryBlockLayout.fields.u_uvDecodeMat.offset).toBe(128);
         expect(geometryBlockLayout.fields.u_uv1DecodeMat.offset).toBe(176);
@@ -87,5 +89,11 @@ describe('built-in std140 ABI', () => {
         expect(() =>
             paddedStd140Value(lightBlockLayout, 'u_directionalLightsColor', new Float32Array(25))
         ).toThrow(/fixed graphics ABI/);
+    });
+
+    it('reuses exact-size numeric views while packing frequently checked material fields', () => {
+        const color = new Float32Array([0.25, 0.5, 0.75, 1]);
+
+        expect(paddedStd140Value(materialBlockLayout, 'u_diffuseColor', color)).toBe(color);
     });
 });

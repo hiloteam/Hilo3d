@@ -55,11 +55,69 @@ import {
     mapWebGPUCompareFunction,
     mapWebGPUPrimitiveTopology,
     mapWebGPUStencilOperation,
+    resolveWebGPUFragmentColorFormats,
     resolveWebGPUColorWriteMask,
     WEBGPU_COLOR_WRITE
 } from '../../../src/renderer/webgpu/WebGPURenderState';
 
 describe('WebGPURenderState', () => {
+    it('maps sparse fragment locations without binding unwritten pass attachments', () => {
+        const formats = resolveWebGPUFragmentColorFormats(
+            [
+                { name: 'albedo', type: 'vec4', location: 0 },
+                { name: 'emissive', type: 'vec4', location: 2 }
+            ],
+            ['rgba8unorm', 'rgba16float', 'rgba32float', 'rgba8unorm-srgb']
+        );
+
+        expect(formats).toEqual(['rgba8unorm', null, 'rgba32float', null]);
+        expect(Object.isFrozen(formats)).toBe(true);
+        expect(
+            createWebGPURenderState(new Material({ depthTest: false }), TRIANGLES, {
+                colorFormats: formats
+            }).colorTargets
+        ).toEqual([
+            { format: 'rgba8unorm', writeMask: WEBGPU_COLOR_WRITE.ALL },
+            null,
+            { format: 'rgba32float', writeMask: WEBGPU_COLOR_WRITE.ALL },
+            null
+        ]);
+        expect(
+            resolveWebGPUFragmentColorFormats(
+                [{ name: 'normal', type: 'vec4', location: 1 }],
+                ['rgba8unorm', 'rgba16float', 'rgba32float']
+            )
+        ).toEqual([null, 'rgba16float', null]);
+        expect(resolveWebGPUFragmentColorFormats([], ['rgba8unorm', 'rgba16float'])).toEqual([
+            null,
+            null
+        ]);
+    });
+
+    it('rejects duplicate, invalid and unattached fragment output locations', () => {
+        expect(() =>
+            resolveWebGPUFragmentColorFormats(
+                [
+                    { name: 'first', type: 'vec4', location: 0 },
+                    { name: 'second', type: 'vec4', location: 0 }
+                ],
+                ['rgba8unorm']
+            )
+        ).toThrow(/declared more than once/);
+        expect(() =>
+            resolveWebGPUFragmentColorFormats(
+                [{ name: 'negative', type: 'vec4', location: -1 }],
+                ['rgba8unorm']
+            )
+        ).toThrow(/non-negative safe integer/);
+        expect(() =>
+            resolveWebGPUFragmentColorFormats(
+                [{ name: 'missing', type: 'vec4', location: 2 }],
+                ['rgba8unorm', 'rgba16float']
+            )
+        ).toThrow(/has no color attachment/);
+    });
+
     it('maps the default material to explicit immutable WebGPU state', () => {
         const state = createWebGPURenderState(new Material(), TRIANGLES, {
             colorFormats: ['bgra8unorm'],
@@ -85,6 +143,7 @@ describe('WebGPURenderState', () => {
             alphaToCoverageEnabled: false
         });
         expect(state.dynamic).toEqual({ depthRange: [0, 1], stencilReference: 0 });
+        expect(state.usesStencil).toBe(false);
         expect(Object.isFrozen(state)).toBe(true);
         expect(Object.isFrozen(state.primitive)).toBe(true);
         expect(Object.isFrozen(state.colorTargets)).toBe(true);
@@ -169,6 +228,7 @@ describe('WebGPURenderState', () => {
         });
         expect(state.multisample).toMatchObject({ count: 4, alphaToCoverageEnabled: true });
         expect(state.dynamic).toEqual({ depthRange: [0.2, 0.8], stencilReference: 7 });
+        expect(state.usesStencil).toBe(true);
     });
 
     it.each([
@@ -325,5 +385,33 @@ describe('WebGPURenderState', () => {
             }
         });
         expect(BACK).not.toBe(FRONT_AND_BACK);
+    });
+
+    it('honors canvas depth and stencil availability independently', () => {
+        const stencilOnly = createWebGPURenderState(
+            new Material({ stencilTest: true, stencilFunc: EQUAL, stencilFuncRef: 5 }),
+            TRIANGLES,
+            {
+                depthStencilFormat: 'depth24plus-stencil8',
+                depthTestEnabled: false,
+                stencilTestEnabled: true
+            }
+        );
+
+        expect(stencilOnly.depthStencil).toMatchObject({
+            depthCompare: 'always',
+            depthWriteEnabled: false,
+            stencilFront: { compare: 'equal' }
+        });
+        expect(stencilOnly.dynamic.stencilReference).toBe(5);
+        expect(stencilOnly.usesStencil).toBe(true);
+
+        const colorOnly = createWebGPURenderState(new Material(), TRIANGLES, {
+            colorFormats: ['rgba8unorm'],
+            depthTestEnabled: false,
+            stencilTestEnabled: false
+        });
+        expect(colorOnly.depthStencil).toBeUndefined();
+        expect(colorOnly.usesStencil).toBe(false);
     });
 });

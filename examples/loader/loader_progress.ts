@@ -1,7 +1,7 @@
 import * as Hilo3d from '../../src/Hilo3d';
 import { createExampleContext } from '../shared/init';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 const progressElement = document.querySelector<HTMLElement>('#progress');
 if (!progressElement) throw new Error('Loader progress example requires #progress.');
 
@@ -48,18 +48,27 @@ loader
         });
     });
 
-const picker = new Hilo3d.MeshPicker({ renderer: stage.renderer });
+const picker = new Hilo3d.MeshPicker({ stage });
 const selectedMeshes = new Set<Hilo3d.Mesh>();
 stage.canvas.addEventListener('click', event => {
-    const mesh = picker.getSelection(event.clientX, event.clientY)[0];
-    const material = mesh?.material;
-    if (!mesh || !material || typeof material.transparency !== 'number') return;
-    if (selectedMeshes.delete(mesh)) {
-        material.transparency = 1;
-    } else {
-        selectedMeshes.add(mesh);
-        material.transparent = true;
-        material.transparency = 0.5;
-    }
-    material.isDirty = true;
+    void picker
+        .getSelection(event.offsetX, event.offsetY)
+        .then(meshes => {
+            const mesh = meshes[0];
+            const material = mesh?.material;
+            if (!mesh || !material || typeof material.transparency !== 'number') return;
+            if (selectedMeshes.delete(mesh)) {
+                material.transparency = 1;
+            } else {
+                selectedMeshes.add(mesh);
+                material.transparent = true;
+                material.transparency = 0.5;
+            }
+            material.isDirty = true;
+        })
+        .catch((error: unknown) => {
+            queueMicrotask(() => {
+                throw error;
+            });
+        });
 });

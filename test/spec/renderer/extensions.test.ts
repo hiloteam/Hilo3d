@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import { testEnv } from '../../setup';
 
-const extensions = Hilo3d.extensions;
-
 describe('extensions', () => {
+    const extensions = new Hilo3d.WebGLExtensions();
+
     it('init', () => {
         extensions.init(testEnv.gl);
 
@@ -13,8 +13,11 @@ describe('extensions', () => {
     });
 
     it('enable & disable', () => {
+        extensions.init(testEnv.gl);
         extensions.disable('WEBGL_lose_context');
         expect(extensions.get('WEBGL_lose_context', 'loseContext')).toBeNull();
+        extensions.reset(testEnv.gl);
+        expect(extensions.loseContext).toBeNull();
         extensions.enable('WEBGL_lose_context');
         expect(extensions.get('WEBGL_lose_context', 'loseContext')).toBe(extensions.loseContext);
     });

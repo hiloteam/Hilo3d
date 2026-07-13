@@ -13,10 +13,7 @@
     <body>
         <div id="container"></div>
 
-        <video id="video" width="512" height="512" muted loop playsinline>
-            <source src="./video/sintel.mp4" codecs="avc1.42E01E, mp4a.40.2" />
-            <source src="./video/sintel.ogv" codecs="theora, vorbis" />
-        </video>
+        <video id="video" width="512" height="512" muted loop playsinline preload="auto"></video>
         <script type="module" src="./video.ts"></script>
     </body>
 </html>

@@ -15,7 +15,7 @@ export function applyEnvironmentMaps(
 }
 
 export function addEnvironmentSkybox(
-    stage: Hilo3d.Stage,
+    stage: Hilo3d.Stage<Hilo3d.RendererBackend>,
     texture: Hilo3d.MaterialTexture,
     scale = 20
 ): Hilo3d.Mesh {

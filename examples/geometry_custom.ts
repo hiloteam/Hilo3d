@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 
 const material = new Hilo3d.BasicMaterial({
     diffuse: new Hilo3d.LazyTexture({
@@ -28,7 +28,7 @@ const indicesData = new Uint16Array([
 const geometry = new Hilo3d.Geometry({
     vertices: new Hilo3d.GeometryData(verticesData, 3),
     uvs: new Hilo3d.GeometryData(uvsData, 2),
-    indices: new Hilo3d.GeometryData(indicesData, 2)
+    indices: new Hilo3d.GeometryData(indicesData, 1)
 });
 
 //  Interleaved Geometry
@@ -58,7 +58,7 @@ const interleavedGeometry = new Hilo3d.Geometry({
         offset: 12,
         bufferViewId: interleavedDataID
     }),
-    indices: new Hilo3d.GeometryData(indicesData, 2)
+    indices: new Hilo3d.GeometryData(indicesData, 1)
 });
 
 const mesh = new Hilo3d.Mesh({

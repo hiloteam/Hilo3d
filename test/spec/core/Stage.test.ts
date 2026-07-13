@@ -31,4 +31,47 @@ describe('Stage', () => {
         expect(stage.canvas.style.width).toBe('1000px');
         expect(stage.canvas.style.height).toBe('800px');
     });
+
+    it('owns scene fog and forwards instancing at renderer construction', () => {
+        const fog = new Hilo3d.Fog({ mode: 'EXP2', density: 0.2 });
+        const stage = new Stage({ fog, useInstanced: true });
+
+        expect(stage.fog).toBe(fog);
+        expect(stage.renderer.useInstanced).toBe(true);
+        expect(stage.renderer.renderList.useInstanced).toBe(true);
+    });
+
+    it('rounds fractional device-pixel backing dimensions once for renderer parity', () => {
+        const stage = new Stage({ width: 375, height: 667, pixelRatio: 1.5 });
+
+        expect(stage.rendererWidth).toBe(563);
+        expect(stage.rendererHeight).toBe(1001);
+        expect(stage.renderer.width).toBe(563);
+        expect(stage.renderer.height).toBe(1001);
+        expect(stage.canvas.width).toBe(563);
+        expect(stage.canvas.height).toBe(1001);
+        const target = stage.renderer.createRenderTarget({
+            width: stage.renderer.width,
+            height: stage.renderer.height,
+            colorAttachments: [{}]
+        });
+        expect(target.width).toBe(563);
+        expect(target.height).toBe(1001);
+        target.destroy();
+    });
+
+    it('rejects the WebGL2-only preserved-framebuffer option before WebGPU initialization', () => {
+        expect(() => {
+            new Stage<'webgpu'>({
+                backend: 'webgpu',
+                preserveDrawingBuffer: false
+            } as unknown as Hilo3d.StageParameters<'webgpu'>);
+        }).toThrow(/preserveDrawingBuffer is WebGL2-only/);
+
+        expect(() => {
+            new Hilo3d.WebGPURenderer({
+                preserveDrawingBuffer: true
+            } as unknown as Hilo3d.WebGPURendererParameters);
+        }).toThrow(/does not expose preserveDrawingBuffer/);
+    });
 });

@@ -12,6 +12,10 @@ type GLTypeName =
     | 'INT_VEC2'
     | 'INT_VEC3'
     | 'INT_VEC4'
+    | 'UNSIGNED_INT'
+    | 'UNSIGNED_INT_VEC2'
+    | 'UNSIGNED_INT_VEC3'
+    | 'UNSIGNED_INT_VEC4'
     | 'BOOL'
     | 'BOOL_VEC2'
     | 'BOOL_VEC3'
@@ -50,6 +54,10 @@ const DATA_TYPES: readonly GLTypeDefinition[] = [
     { name: 'INT_VEC2', byteSize: 8, type: 'Vector', size: 2 },
     { name: 'INT_VEC3', byteSize: 12, type: 'Vector', size: 3 },
     { name: 'INT_VEC4', byteSize: 16, type: 'Vector', size: 4 },
+    { name: 'UNSIGNED_INT', byteSize: 4, type: 'Scalar', size: 1 },
+    { name: 'UNSIGNED_INT_VEC2', byteSize: 8, type: 'Vector', size: 2 },
+    { name: 'UNSIGNED_INT_VEC3', byteSize: 12, type: 'Vector', size: 3 },
+    { name: 'UNSIGNED_INT_VEC4', byteSize: 16, type: 'Vector', size: 4 },
     { name: 'BOOL', byteSize: 4, type: 'Scalar', size: 1 },
     { name: 'BOOL_VEC2', byteSize: 8, type: 'Vector', size: 2 },
     { name: 'BOOL_VEC3', byteSize: 12, type: 'Vector', size: 3 },
@@ -84,6 +92,14 @@ function getGLValue(gl: GLContext, name: GLTypeName): GLenum {
             return gl.INT_VEC3;
         case 'INT_VEC4':
             return gl.INT_VEC4;
+        case 'UNSIGNED_INT':
+            return gl.UNSIGNED_INT;
+        case 'UNSIGNED_INT_VEC2':
+            return gl.UNSIGNED_INT_VEC2;
+        case 'UNSIGNED_INT_VEC3':
+            return gl.UNSIGNED_INT_VEC3;
+        case 'UNSIGNED_INT_VEC4':
+            return gl.UNSIGNED_INT_VEC4;
         case 'BOOL':
             return gl.BOOL;
         case 'BOOL_VEC2':

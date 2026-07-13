@@ -543,7 +543,6 @@ export class Buffer {
     readonly buffer: WebGLBuffer;
     bufferData(data: BufferData): this;
     bufferSubData(byteOffset: number, data: TypedArray, isBinding?: boolean): this;
-    static get cache(): Cache_2<Buffer>;
     // (undocumented)
     readonly className = "Buffer";
     static createIndexBuffer(gl: GLContext, geometryData: GeometryData, usage?: GLenum): Buffer;
@@ -552,6 +551,7 @@ export class Buffer {
     data: BufferData | null;
     destroy(): this;
     destroyIfNoRef(renderer: BufferRenderer): this;
+    static getCache(gl: GLContext): Cache_2<Buffer>;
     // (undocumented)
     readonly gl: GLContext;
     // (undocumented)
@@ -559,7 +559,7 @@ export class Buffer {
     // (undocumented)
     readonly isBuffer = true;
     needsGeometryDataUpload(geometryData: GeometryData): boolean;
-    static reset(_gl?: GLContext): void;
+    static reset(gl: GLContext): void;
     // (undocumented)
     readonly target: GLenum;
     // (undocumented)
@@ -667,9 +667,6 @@ export interface CameraHelperParameters extends MeshParameters {
 
 // @public (undocumented)
 export type CameraParameters = NodeParameters;
-
-// @public (undocumented)
-export const capabilities: WebGLCapabilities;
 
 // @public (undocumented)
 export function collectionEntries<Value>(collection: GLTFCollection<Value> | undefined): (readonly [string, Value])[];
@@ -851,11 +848,11 @@ export const constants: {
     readonly COMPRESSED_RG11_EAC: 37490;
     readonly COMPRESSED_SIGNED_RG11_EAC: 37491;
     readonly COMPRESSED_RGB8_ETC2: 37492;
-    readonly COMPRESSED_RGBA8_ETC2_EAC: 37493;
-    readonly COMPRESSED_SRGB8_ETC2: 37494;
-    readonly COMPRESSED_SRGB8_ALPHA8_ETC2_EAC: 37495;
-    readonly COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2: 37496;
-    readonly COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2: 37497;
+    readonly COMPRESSED_SRGB8_ETC2: 37493;
+    readonly COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2: 37494;
+    readonly COMPRESSED_SRGB8_PUNCHTHROUGH_ALPHA1_ETC2: 37495;
+    readonly COMPRESSED_RGBA8_ETC2_EAC: 37496;
+    readonly COMPRESSED_SRGB8_ALPHA8_ETC2_EAC: 37497;
     readonly SAMPLER_3D: 35679;
     readonly SAMPLER_2D_SHADOW: 35682;
     readonly SAMPLER_2D_ARRAY: 36289;
@@ -990,6 +987,10 @@ export const constants: {
     readonly COMPRESSED_RGBA_S3TC_DXT1_EXT: 33777;
     readonly COMPRESSED_RGBA_S3TC_DXT3_EXT: 33778;
     readonly COMPRESSED_RGBA_S3TC_DXT5_EXT: 33779;
+    readonly COMPRESSED_SRGB_S3TC_DXT1_EXT: 35916;
+    readonly COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT: 35917;
+    readonly COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT: 35918;
+    readonly COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT: 35919;
     readonly COMPRESSED_RGB_PVRTC_4BPPV1_IMG: 35840;
     readonly COMPRESSED_RGB_PVRTC_2BPPV1_IMG: 35841;
     readonly COMPRESSED_RGBA_PVRTC_4BPPV1_IMG: 35842;
@@ -998,6 +999,8 @@ export const constants: {
     readonly COMPRESSED_RGB_ATC_WEBGL: 35986;
     readonly COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL: 35987;
     readonly COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL: 34798;
+    readonly COMPRESSED_RGBA_ASTC_4X4_KHR: 37808;
+    readonly COMPRESSED_SRGB8_ALPHA8_ASTC_4X4_KHR: 37840;
     readonly QUERY_COUNTER_BITS_EXT: 34916;
     readonly CURRENT_QUERY_EXT: 34917;
     readonly QUERY_RESULT_EXT: 34918;
@@ -1307,18 +1310,6 @@ export const constants: {
 };
 
 // @public (undocumented)
-export interface CopyFramebufferOptions {
-    // (undocumented)
-    dstSize?: FramebufferCopyRectangle;
-    // (undocumented)
-    filter?: GLenum;
-    // (undocumented)
-    mask?: GLbitfield;
-    // (undocumented)
-    srcSize?: FramebufferCopyRectangle;
-}
-
-// @public (undocumented)
 export function createEmptyGLTFRoot(): GLTFRoot;
 
 // @public (undocumented)
@@ -1326,27 +1317,6 @@ export function createStd140Layout<const Schema extends Std140Schema>(schema: Sc
 
 // @public
 export function createWebGPUSamplerDescriptor(texture: Texture<unknown>, mipLevelCount: number, compare?: GLenum | GPUCompareFunction): GPUSamplerDescriptor;
-
-// @public
-export class CubeLightShadow extends LightShadow {
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    createCamera(currentCamera: Camera): void;
-    // (undocumented)
-    createFramebuffer(): void;
-    // (undocumented)
-    createShadowMap(currentCamera: Camera): void;
-    // (undocumented)
-    renderShadowScene(renderer: WebGLRenderer): void;
-    // (undocumented)
-    updateLightCamera(currentCamera: Camera): void;
-}
-
-// @public (undocumented)
-export type CubeLightShadowParameters = Omit<LightShadowParameters, 'light'> & {
-    light: PointLight;
-};
 
 // @public
 export class CubeTexture extends Texture<CubeTextureImage> {
@@ -1357,32 +1327,18 @@ export class CubeTexture extends Texture<CubeTextureImage> {
     set bottom(img: HTMLImageElement | undefined);
     // (undocumented)
     readonly className: string;
-    // (undocumented)
-    format: number;
     get front(): HTMLImageElement | undefined;
     set front(img: HTMLImageElement | undefined);
-    // (undocumented)
-    internalFormat: number;
     // (undocumented)
     isCubeTexture: boolean;
     get left(): HTMLImageElement | undefined;
     set left(img: HTMLImageElement | undefined);
-    // (undocumented)
-    magFilter: number;
-    // (undocumented)
-    minFilter: number;
     get right(): HTMLImageElement | undefined;
     set right(img: HTMLImageElement | undefined);
-    // (undocumented)
-    target: number;
     get top(): HTMLImageElement | undefined;
     set top(img: HTMLImageElement | undefined);
     // (undocumented)
     protected _uploadTexture(state: TextureWebGLState): this;
-    // (undocumented)
-    wrapS: number;
-    // (undocumented)
-    wrapT: number;
 }
 
 // @public (undocumented)
@@ -1410,7 +1366,7 @@ export type CubeTextureLoadRequest = LoaderRequest & Partial<Omit<CubeTexturePar
 };
 
 // @public (undocumented)
-export interface CubeTextureParameters extends TextureParameters<CubeTextureImage> {
+export interface CubeTextureParameters extends Omit<TextureParameters<CubeTextureImage>, 'target'> {
     // (undocumented)
     image?: CubeTextureImage | null;
 }
@@ -1428,27 +1384,11 @@ export class DataTexture extends Texture<TypedArray> {
     // (undocumented)
     dataLength: number;
     // (undocumented)
-    format: number;
-    // (undocumented)
-    internalFormat: number;
-    // (undocumented)
     isDataTexture: boolean;
-    // (undocumented)
-    magFilter: number;
-    // (undocumented)
-    minFilter: number;
-    // (undocumented)
-    target: number;
-    // (undocumented)
-    type: number;
-    // (undocumented)
-    wrapS: number;
-    // (undocumented)
-    wrapT: number;
 }
 
 // @public (undocumented)
-export interface DataTextureParameters extends Omit<TextureParameters<TypedArray>, 'image'> {
+export interface DataTextureParameters extends Omit<TextureParameters<TypedArray>, 'image' | 'target'> {
     // (undocumented)
     data?: ArrayLike<number> | TypedArray | null;
     // (undocumented)
@@ -1470,14 +1410,11 @@ export class DirectionalLight extends Light {
     // (undocumented)
     className: string;
     // (undocumented)
-    createShadowMap(renderer: WebGLRenderer, camera: Camera): void;
-    // (undocumented)
     direction: Vector3;
     getViewDirection(camera: Camera): Vector3;
     getWorldDirection(): Vector3;
     // (undocumented)
     isDirectionalLight: boolean;
-    lightShadow: LightShadow | null;
     // (undocumented)
     static readonly typeName = "DirectionalLight";
 }
@@ -1493,7 +1430,7 @@ export interface DirectionalLightInfo extends ShadowInfo {
 }
 
 // @public (undocumented)
-export interface DirectionalLightParameters extends LightParameters {
+export interface DirectionalLightParameters extends ShadowCastingLightParameters {
     // (undocumented)
     direction?: Vector3;
 }
@@ -1631,9 +1568,6 @@ export { EventListener_2 as EventListener }
 type ExtensionObject = object;
 
 // @public (undocumented)
-export const extensions: WebGLExtensions;
-
-// @public (undocumented)
 export class Fog {
     constructor(params?: FogParameters);
     // (undocumented)
@@ -1672,208 +1606,6 @@ export interface FogParameters {
 
 // @public (undocumented)
 export type FourParameterMethod = 'colorMask' | 'blendFuncSeparate' | 'viewport';
-
-// @public
-export class Framebuffer {
-    constructor(renderer: FramebufferRenderer, params?: FramebufferParameters);
-    // (undocumented)
-    attachment: number;
-    // (undocumented)
-    static readonly ATTACHMENT_TYPE_RENDERBUFFER: FramebufferAttachmentType;
-    // (undocumented)
-    static readonly ATTACHMENT_TYPE_TEXTURE: FramebufferAttachmentType;
-    // (undocumented)
-    bind(): void;
-    bindTexture(_index?: number): void;
-    // (undocumented)
-    bufferInternalFormat: number;
-    // (undocumented)
-    static get cache(): Cache_2<Framebuffer>;
-    // (undocumented)
-    readonly className = "Framebuffer";
-    // (undocumented)
-    clear(clearColor?: Color): void;
-    // (undocumented)
-    colorAttachmentInfos: FramebufferAttachmentInfo[];
-    // (undocumented)
-    copyFramebuffer(srcFramebuffer: Framebuffer, config?: CopyFramebufferOptions): void;
-    createTexture(options?: ResolvedAttachmentOptions): FramebufferTexture;
-    // (undocumented)
-    data: TypedArray | null;
-    // (undocumented)
-    depthStencilAttachmentInfo: FramebufferAttachmentInfo | undefined;
-    // (undocumented)
-    static destroy(_gl?: GLContext): void;
-    // (undocumented)
-    destroy(): this;
-    // (undocumented)
-    destroyResource(): this;
-    // (undocumented)
-    format: number;
-    // (undocumented)
-    framebuffer: WebGLFramebuffer | null;
-    // (undocumented)
-    framebufferTarget: number;
-    // (undocumented)
-    get gl(): GLContext;
-    // (undocumented)
-    height: number;
-    // (undocumented)
-    readonly id: string;
-    // (undocumented)
-    init(): void;
-    // (undocumented)
-    internalFormat: number;
-    // (undocumented)
-    isComplete(): boolean;
-    // (undocumented)
-    readonly isFramebuffer = true;
-    // (undocumented)
-    magFilter: number;
-    // (undocumented)
-    minFilter: number;
-    // (undocumented)
-    needRenderbuffer: boolean;
-    // (undocumented)
-    readPixels(x: number, y: number, width?: number, height?: number): TypedArray;
-    // (undocumented)
-    render(x?: number, y?: number, width?: number, height?: number, clearColor?: Color | null, texture?: FramebufferTexture | null): void;
-    // (undocumented)
-    renderbuffer: WebGLRenderbuffer | null;
-    // (undocumented)
-    readonly renderer: FramebufferRenderer;
-    // (undocumented)
-    static reset(_gl?: GLContext): void;
-    // (undocumented)
-    reset(): void;
-    // (undocumented)
-    resize(width: number, height: number, force?: boolean): void;
-    // (undocumented)
-    get state(): WebGLState;
-    // (undocumented)
-    target: number;
-    // (undocumented)
-    texture: FramebufferTexture | null;
-    // (undocumented)
-    type: number;
-    // (undocumented)
-    unbind(): void;
-    // (undocumented)
-    width: number;
-    // (undocumented)
-    wrapS: number;
-    // (undocumented)
-    wrapT: number;
-}
-
-// @public (undocumented)
-export interface FramebufferAttachmentInfo {
-    // (undocumented)
-    attachment?: GLenum;
-    // (undocumented)
-    attachmentType: FramebufferAttachmentType;
-    // (undocumented)
-    data?: TypedArray | null;
-    // (undocumented)
-    format?: GLenum;
-    // (undocumented)
-    framebufferTarget?: GLenum;
-    // (undocumented)
-    internalFormat?: GLenum;
-    // (undocumented)
-    magFilter?: GLenum;
-    // (undocumented)
-    minFilter?: GLenum;
-    // (undocumented)
-    renderbuffer?: WebGLRenderbuffer | null;
-    // (undocumented)
-    samples?: number;
-    // (undocumented)
-    target?: GLenum;
-    // (undocumented)
-    texture?: FramebufferTexture | null;
-    // (undocumented)
-    type?: GLenum;
-    // (undocumented)
-    wrapS?: GLenum;
-    // (undocumented)
-    wrapT?: GLenum;
-}
-
-// @public (undocumented)
-export type FramebufferAttachmentType = 'TEXTURE' | 'RENDERBUFFER';
-
-// @public (undocumented)
-export interface FramebufferCopyRectangle {
-    // (undocumented)
-    readonly 0: number;
-    // (undocumented)
-    readonly 1: number;
-    // (undocumented)
-    readonly 2: number;
-    // (undocumented)
-    readonly 3: number;
-}
-
-// @public (undocumented)
-export interface FramebufferParameters {
-    // (undocumented)
-    attachment?: GLenum;
-    // (undocumented)
-    bufferInternalFormat?: GLenum;
-    // (undocumented)
-    colorAttachmentInfos?: FramebufferAttachmentInfo[];
-    // (undocumented)
-    data?: TypedArray | null;
-    // (undocumented)
-    depthStencilAttachmentInfo?: FramebufferAttachmentInfo;
-    // (undocumented)
-    format?: GLenum;
-    // (undocumented)
-    framebufferTarget?: GLenum;
-    // (undocumented)
-    height?: number;
-    // (undocumented)
-    internalFormat?: GLenum;
-    // (undocumented)
-    magFilter?: GLenum;
-    // (undocumented)
-    minFilter?: GLenum;
-    // (undocumented)
-    needRenderbuffer?: boolean;
-    // (undocumented)
-    target?: GLenum;
-    // (undocumented)
-    type?: GLenum;
-    // (undocumented)
-    width?: number;
-    // (undocumented)
-    wrapS?: GLenum;
-    // (undocumented)
-    wrapT?: GLenum;
-}
-
-// @public
-export interface FramebufferRenderer extends ShaderPrecisionProvider {
-    // (undocumented)
-    readonly gl: GLContext | null;
-    // (undocumented)
-    height: number;
-    // (undocumented)
-    readonly isInit: boolean;
-    // (undocumented)
-    readonly state: WebGLState | null;
-    // (undocumented)
-    width: number;
-}
-
-// @public
-export interface FramebufferTexture extends TextureBinding {
-    // (undocumented)
-    destroy(): unknown;
-    // (undocumented)
-    readonly mipmapCount: number;
-}
 
 // @public
 export class Frustum {
@@ -1934,6 +1666,7 @@ export class Geometry {
     mode: number;
     // (undocumented)
     normalDecodeMat: Float32Array | number[] | null;
+    normalizePrimitiveTopology(): boolean;
     get normals(): GeometryData | null;
     set normals(data: GeometryData | null);
     // (undocumented)
@@ -1966,10 +1699,10 @@ export class Geometry {
 }
 
 // @public (undocumented)
-export type GeometryAttributeValue = number | Vector2 | Vector3 | Vector4 | Matrix4;
+export type GeometryAttributeValue = number | Vector2 | Vector3 | Vector4 | Matrix3 | Matrix4;
 
 // @public (undocumented)
-export type GeometryComponentSize = 1 | 2 | 3 | 4 | 16;
+export type GeometryComponentSize = 1 | 2 | 3 | 4 | 9 | 16;
 
 // @public
 export class GeometryData {
@@ -3072,9 +2805,10 @@ export interface GLTypeInfo {
 
 // @public
 export class GraphicsResourceManager extends EventDispatcher {
+    constructor(parameters?: GraphicsResourceManagerParameters);
     abortFrame(): this;
     // (undocumented)
-    addMeshResources(mesh: Mesh, resources: readonly ManagedResource[]): void;
+    addMeshResources(mesh: Mesh, resources: readonly ManagedResource[], variant?: MeshResourceVariant): void;
     beginFrame(): this;
     // (undocumented)
     readonly className = "GraphicsResourceManager";
@@ -3084,8 +2818,9 @@ export class GraphicsResourceManager extends EventDispatcher {
     // (undocumented)
     destroyMesh(mesh: Mesh): void;
     // (undocumented)
-    destroyUnusedResource(rootNode?: Node_2): this;
+    destroyUnusedResource(_rootNode?: Node_2): this;
     endFrame(): this;
+    getDiagnostics(rootNode?: Node_2): RendererResourceDiagnostics;
     // (undocumented)
     getMeshResources(mesh: Mesh, resources?: ManagedResource[]): ManagedResource[];
     // (undocumented)
@@ -3094,8 +2829,15 @@ export class GraphicsResourceManager extends EventDispatcher {
     get hasNeedDestroyResource(): boolean;
     // (undocumented)
     readonly isGraphicsResourceManager = true;
+    releasePass(pass: object): this;
+    removeMeshVariant(mesh: Mesh, variant: MeshResourceVariant): this;
     // (undocumented)
     reset(): this;
+}
+
+// @public (undocumented)
+export interface GraphicsResourceManagerParameters {
+    readonly maxVariantsPerMesh?: number;
 }
 
 // @public (undocumented)
@@ -3164,7 +2906,6 @@ export type JsonValue = JsonPrimitive | JsonValue[] | {
 
 // @public (undocumented)
 export class KTXLoader {
-    constructor();
     // (undocumented)
     static readonly astc = "WEBGL_compressed_texture_astc";
     // (undocumented)
@@ -3190,9 +2931,12 @@ export class KTXLoader {
 }
 
 // @public (undocumented)
-export type KTXLoadRequest = Omit<LoaderRequest, 'src'> & LoaderTextureOptions<Uint8Array> & {
+export type KTXLoadRequest = Omit<LoaderRequest, 'src'> & KTXTextureOptions & {
     src: string | ArrayBuffer | ArrayBufferView;
 };
+
+// @public
+export type KTXTextureOptions = Pick<LoaderTextureOptions<Uint8Array>, 'isImageCanRelease' | 'magFilter' | 'minFilter' | 'wrapS' | 'wrapT' | 'name' | 'uv' | 'anisotropic'>;
 
 // @public
 export class LazyTexture extends Texture {
@@ -3241,7 +2985,6 @@ export class Light extends Node_2 {
     // (undocumented)
     color: Color;
     constantAttenuation: number;
-    createShadowMap(renderer: WebGLRenderer, camera: Camera): void;
     // (undocumented)
     get enabled(): boolean;
     set enabled(value: boolean);
@@ -3264,7 +3007,9 @@ export class Light extends Node_2 {
     quadraticAttenuation: number;
     get range(): number;
     set range(value: number);
-    shadow: LightShadowOptions | null;
+    // (undocumented)
+    get shadow(): LightShadowOptions | null;
+    set shadow(value: LightShadowOptions | null);
     toInfoArray(out: number[] | Float32Array, offset: number): this;
     // (undocumented)
     static readonly typeName: string;
@@ -3309,7 +3054,6 @@ export class LightManager {
     areaLights: AreaLight[];
     // (undocumented)
     className: string;
-    createShadowMap(renderer: WebGLRenderer, camera: Camera): void;
     // (undocumented)
     directionalInfo: DirectionalLightInfo | null;
     // (undocumented)
@@ -3345,7 +3089,6 @@ export class LightManager {
     spotInfo: SpotLightInfo | null;
     // (undocumented)
     spotLights: SpotLight[];
-    update(renderer: WebGLRenderer, camera: Camera, lights: readonly Light[]): void;
     updateCustomInfo: ((manager: LightManager, camera: Camera) => void) | null;
     updateInfo(camera: Camera): void;
 }
@@ -3376,64 +3119,12 @@ export interface LightParameters extends NodeParameters {
     quadraticAttenuation?: number;
     // (undocumented)
     range?: number;
-    // (undocumented)
-    shadow?: LightShadowOptions | null;
-}
-
-// @public (undocumented)
-export class LightShadow {
-    constructor(params: LightShadowParameters);
-    // (undocumented)
-    camera: ShadowCamera | null;
-    // (undocumented)
-    cameraInfo: ShadowCameraParameters | null;
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    createCamera(currentCamera: Camera): void;
-    // (undocumented)
-    createFramebuffer(): void;
-    // (undocumented)
-    createShadowMap(currentCamera: Camera): void;
-    // (undocumented)
-    debug: boolean;
-    // (undocumented)
-    framebuffer: Framebuffer | null;
-    // (undocumented)
-    height: number;
-    // (undocumented)
-    id: string;
-    // (undocumented)
-    isLightShadow: boolean;
-    // (undocumented)
-    light: Light;
-    // (undocumented)
-    maxBias: number;
-    // (undocumented)
-    minBias: number;
-    // (undocumented)
-    renderer: WebGLRenderer;
-    // (undocumented)
-    renderShadowScene(renderer: WebGLRenderer, fallbackMaterial: GeometryMaterial): void;
-    // (undocumented)
-    showShadowMap(): void;
-    // (undocumented)
-    updateCustomCamera(camera: ShadowCamera, cameraInfo: ShadowCameraParameters, currentCamera: Camera): void;
-    // (undocumented)
-    updateDirectionalLightCamera(currentCamera: Camera): void;
-    // (undocumented)
-    updateLightCamera(currentCamera: Camera): void;
-    // (undocumented)
-    updateSpotLightCamera(currentCamera: Camera): void;
-    // (undocumented)
-    width: number;
 }
 
 // @public (undocumented)
 export interface LightShadowOptions {
     // (undocumented)
     cameraInfo?: ShadowCameraParameters;
-    // (undocumented)
     debug?: boolean;
     // (undocumented)
     height?: number;
@@ -3441,26 +3132,6 @@ export interface LightShadowOptions {
     maxBias?: number;
     // (undocumented)
     minBias?: number;
-    // (undocumented)
-    width?: number;
-}
-
-// @public (undocumented)
-export interface LightShadowParameters {
-    // (undocumented)
-    cameraInfo?: ShadowCameraParameters;
-    // (undocumented)
-    debug?: boolean;
-    // (undocumented)
-    height?: number;
-    // (undocumented)
-    light: Light;
-    // (undocumented)
-    maxBias?: number;
-    // (undocumented)
-    minBias?: number;
-    // (undocumented)
-    renderer: WebGLRenderer;
     // (undocumented)
     width?: number;
 }
@@ -3630,9 +3301,6 @@ export class Logger {
     // (undocumented)
     warnOnce(id: string, ...params: readonly unknown[]): this;
 }
-
-// @public
-export function logGLResource(): string;
 
 // @public (undocumented)
 export const LogLevel: {
@@ -4126,26 +3794,25 @@ export interface MeshParameters extends NodeParameters {
 // @public
 export class MeshPicker {
     constructor(params: MeshPickerParameters);
-    // (undocumented)
     readonly className = "MeshPicker";
-    // (undocumented)
-    debug: boolean;
-    // (undocumented)
     destroy(): void;
-    // (undocumented)
-    getSelection(x: number, y: number, width?: number, height?: number): Mesh[];
-    // (undocumented)
+    getSelection(x: number, y: number, width?: number, height?: number): Promise<Mesh[]>;
     readonly isMeshPicker = true;
-    // (undocumented)
-    readonly renderer: WebGLRenderer;
+    readonly renderer: Renderer;
+    readonly stage: Stage<RendererBackend>;
 }
 
-// @public (undocumented)
+// @public
 export interface MeshPickerParameters {
+    stage: Stage<RendererBackend>;
+}
+
+// @public
+export interface MeshResourceVariant {
     // (undocumented)
-    debug?: boolean;
+    readonly key: string;
     // (undocumented)
-    renderer: WebGLRenderer;
+    readonly pass?: object;
 }
 
 // @public (undocumented)
@@ -4217,7 +3884,7 @@ export class NagaShaderTranslator {
     // (undocumented)
     initialize(): Promise<void>;
     // (undocumented)
-    translate(vertexSource: string, fragmentSource: string, resolveUniformBlockBinding?: (name: string) => WebGPUResourceBinding): TranslatedShaderPair;
+    translate(vertexSource: string, fragmentSource: string, resolveUniformBlockBinding?: (name: string) => WebGPUResourceBinding, options?: PrepareGLSLForNagaOptions): TranslatedShaderPair;
 }
 
 // @public (undocumented)
@@ -4755,11 +4422,7 @@ export class PointLight extends Light {
     // (undocumented)
     className: string;
     // (undocumented)
-    createShadowMap(renderer: WebGLRenderer, camera: Camera): void;
-    // (undocumented)
     isPointLight: boolean;
-    // (undocumented)
-    lightShadow: CubeLightShadow | null;
     // (undocumented)
     static readonly typeName = "PointLight";
 }
@@ -4779,7 +4442,17 @@ export interface PointLightInfo extends ShadowInfo {
 }
 
 // @public (undocumented)
-export type PointLightParameters = LightParameters;
+export type PointLightParameters = Omit<ShadowCastingLightParameters, 'shadow'> & {
+    shadow?: PointLightShadowOptions | null;
+};
+
+// @public (undocumented)
+export interface PointLightShadowOptions extends Omit<LightShadowOptions, 'cameraInfo'> {
+    cameraInfo?: PointShadowCameraParameters;
+}
+
+// @public (undocumented)
+export type PointShadowCameraParameters = Pick<ShadowCameraParameters, 'near' | 'far'>;
 
 // @public (undocumented)
 const POSITION = "POSITION";
@@ -4807,7 +4480,12 @@ export interface PreparedShaderStage {
 }
 
 // @public
-export function prepareGLSLForNaga(vertexSource: string, fragmentSource: string, resolveUniformBlockBinding?: (name: string) => WebGPUResourceBinding): PreparedShaderPair;
+export function prepareGLSLForNaga(vertexSource: string, fragmentSource: string, resolveUniformBlockBinding?: (name: string) => WebGPUResourceBinding, options?: PrepareGLSLForNagaOptions): PreparedShaderPair;
+
+// @public (undocumented)
+export interface PrepareGLSLForNagaOptions {
+    readonly fragmentOutputs?: 'color' | 'depth-only';
+}
 
 // @public (undocumented)
 export class Program {
@@ -4816,8 +4494,6 @@ export class Program {
     alwaysUse: boolean;
     // (undocumented)
     attributes: Record<string, ProgramAttribute>;
-    // (undocumented)
-    static get cache(): Cache_2<Program>;
     // (undocumented)
     readonly className = "Program";
     // (undocumented)
@@ -4832,6 +4508,7 @@ export class Program {
     fragShader: string;
     // (undocumented)
     static getBlankProgram(state: WebGLState): Program;
+    static getCache(gl: GLContext): Cache_2<Program>;
     // (undocumented)
     static getProgram(shader: Shader, state: WebGLState): Program;
     // (undocumented)
@@ -4847,7 +4524,7 @@ export class Program {
     // (undocumented)
     program: WebGLProgram | null;
     // (undocumented)
-    static reset(_gl?: GLContext): void;
+    static reset(gl: GLContext): void;
     setUniform(name: string, value: unknown): void;
     setUniformBlock(name: string, value: UniformBuffer | UniformBufferRange): void;
     // (undocumented)
@@ -5142,9 +4819,14 @@ export interface Renderer {
     // (undocumented)
     readonly className: string;
     // (undocumented)
+    createRenderTarget(parameters: RenderTargetParameters): RenderTarget;
+    // (undocumented)
     destroy(): void;
     // (undocumented)
     domElement: HTMLCanvasElement | null;
+    // (undocumented)
+    forceMaterial: Material | null;
+    getViewport(): RendererViewport;
     // (undocumented)
     height: number;
     // (undocumented)
@@ -5154,7 +4836,10 @@ export interface Renderer {
     // (undocumented)
     on(type: string, listener: EventListener_2, once?: boolean): this;
     // (undocumented)
+    onInit(callback: (renderer: this) => void): void;
+    // (undocumented)
     pixelRatio: number;
+    present(target?: RenderTarget): void;
     // (undocumented)
     readonly ready: Promise<void>;
     // (undocumented)
@@ -5162,11 +4847,21 @@ export interface Renderer {
     // (undocumented)
     render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
     // (undocumented)
+    readonly renderTarget: RenderTarget | null;
+    // (undocumented)
+    renderToTarget(target: RenderTarget, stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    // (undocumented)
     resize(width: number, height: number, force?: boolean): void;
     // (undocumented)
     readonly resourceManager: RendererResourceManager;
     // (undocumented)
     setOffset(x: number, y: number): void;
+    // (undocumented)
+    setRenderTarget(target: RenderTarget | null, options?: RenderTargetSelectionOptions): this;
+    // (undocumented)
+    supportsTextureCompression(format: TextureCompressionFormat): boolean;
+    // (undocumented)
+    useInstanced: boolean;
     // (undocumented)
     width: number;
 }
@@ -5175,15 +4870,34 @@ export interface Renderer {
 export type RendererBackend = 'webgl2' | 'webgpu';
 
 // @public
+export interface RendererResourceDiagnostics {
+    // (undocumented)
+    readonly frameActive: boolean;
+    // (undocumented)
+    readonly pendingDestroyCount: number;
+    // (undocumented)
+    readonly trackedMeshCount: number;
+    // (undocumented)
+    readonly trackedResourceCount: number;
+    // (undocumented)
+    readonly usedResourceCount: number;
+}
+
+// @public
 export interface RendererResourceManager {
     // (undocumented)
     destroyMesh(mesh: Mesh): void;
+    // (undocumented)
+    getDiagnostics(rootNode?: Node_2): RendererResourceDiagnostics;
 }
 
 // @public (undocumented)
 export type RendererScene = Node_2 & {
     readonly fog?: Fog | null;
 };
+
+// @public
+export type RendererViewport = readonly [x: number, y: number, width: number, height: number];
 
 // @public
 export class RenderInfo {
@@ -5219,34 +4933,153 @@ export class RenderList {
     useInstanced: boolean;
 }
 
-// @public (undocumented)
-export type ResizableTextureImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap | OffscreenCanvas | HTMLVideoElement;
+// @public
+export interface RenderTarget {
+    // (undocumented)
+    readonly backend: RendererBackend;
+    // (undocumented)
+    readonly colorAttachmentCount: number;
+    // (undocumented)
+    readonly colorFormats: readonly RenderTargetColorFormat[];
+    // (undocumented)
+    readonly depthStencilFormat: RenderTargetDepthStencilFormat | null;
+    // (undocumented)
+    destroy(): void;
+    getColorTexture(index?: number): Texture<unknown>;
+    getDepthTexture(): Texture<unknown> | null;
+    // (undocumented)
+    readonly height: number;
+    // (undocumented)
+    readonly isDestroyed: boolean;
+    // (undocumented)
+    readonly label: string;
+    // (undocumented)
+    readColorAttachment(options?: RenderTargetReadColorAttachmentOptions): Promise<RenderTargetColorAttachmentReadback>;
+    // (undocumented)
+    resize(width: number, height: number): void;
+    // (undocumented)
+    readonly sampleCount: RenderTargetSampleCount;
+    // (undocumented)
+    readonly width: number;
+}
+
+// @public
+export interface RenderTargetColor {
+    // (undocumented)
+    readonly a: number;
+    // (undocumented)
+    readonly b: number;
+    // (undocumented)
+    readonly g: number;
+    // (undocumented)
+    readonly r: number;
+}
 
 // @public (undocumented)
-export interface ResolvedAttachmentOptions {
+export interface RenderTargetColorAttachmentOptions {
     // (undocumented)
-    attachment: GLenum;
+    readonly clearValue?: RenderTargetColor;
     // (undocumented)
-    data: TypedArray | null;
+    readonly format?: RenderTargetColorFormat;
     // (undocumented)
-    format: GLenum;
+    readonly label?: string;
     // (undocumented)
-    framebufferTarget: GLenum;
+    readonly loadOp?: RenderTargetLoadOp;
     // (undocumented)
-    internalFormat: GLenum;
-    // (undocumented)
-    magFilter: GLenum;
-    // (undocumented)
-    minFilter: GLenum;
-    // (undocumented)
-    target: GLenum;
-    // (undocumented)
-    type: GLenum;
-    // (undocumented)
-    wrapS: GLenum;
-    // (undocumented)
-    wrapT: GLenum;
+    readonly storeOp?: RenderTargetStoreOp;
 }
+
+// @public
+export interface RenderTargetColorAttachmentReadback {
+    // (undocumented)
+    readonly bytesPerPixel: number;
+    // (undocumented)
+    readonly bytesPerRow: number;
+    // (undocumented)
+    readonly data: Uint8Array;
+    // (undocumented)
+    readonly format: RenderTargetColorFormat;
+    // (undocumented)
+    readonly height: number;
+    // (undocumented)
+    readonly width: number;
+}
+
+// @public (undocumented)
+export type RenderTargetColorFormat = 'rgba8unorm' | 'rgba8unorm-srgb' | 'rgba16float' | 'rgba32float';
+
+// @public (undocumented)
+export type RenderTargetCompareFunction = 'never' | 'less' | 'equal' | 'less-equal' | 'greater' | 'not-equal' | 'greater-equal' | 'always';
+
+// @public (undocumented)
+export interface RenderTargetDepthStencilAttachmentOptions {
+    // (undocumented)
+    readonly compare?: RenderTargetCompareFunction;
+    // (undocumented)
+    readonly depthClearValue?: number;
+    // (undocumented)
+    readonly depthLoadOp?: RenderTargetLoadOp;
+    // (undocumented)
+    readonly depthStoreOp?: RenderTargetStoreOp;
+    // (undocumented)
+    readonly format?: RenderTargetDepthStencilFormat;
+    // (undocumented)
+    readonly label?: string;
+    readonly sampled?: boolean;
+    // (undocumented)
+    readonly stencilClearValue?: number;
+    // (undocumented)
+    readonly stencilLoadOp?: RenderTargetLoadOp;
+    // (undocumented)
+    readonly stencilStoreOp?: RenderTargetStoreOp;
+}
+
+// @public (undocumented)
+export type RenderTargetDepthStencilFormat = 'depth16unorm' | 'depth24plus' | 'depth24plus-stencil8' | 'depth32float' | 'depth32float-stencil8';
+
+// @public (undocumented)
+export type RenderTargetLoadOp = 'clear' | 'load';
+
+// @public
+export interface RenderTargetParameters {
+    readonly colorAttachments?: readonly RenderTargetColorAttachmentOptions[];
+    readonly depthStencilAttachment?: RenderTargetDepthStencilAttachmentOptions | false;
+    // (undocumented)
+    readonly height: number;
+    // (undocumented)
+    readonly label?: string;
+    readonly sampleCount?: RenderTargetSampleCount;
+    // (undocumented)
+    readonly width: number;
+}
+
+// @public (undocumented)
+export interface RenderTargetReadColorAttachmentOptions {
+    // (undocumented)
+    readonly attachmentIndex?: number;
+    // (undocumented)
+    readonly height?: number;
+    // (undocumented)
+    readonly width?: number;
+    readonly x?: number;
+    // (undocumented)
+    readonly y?: number;
+}
+
+// @public (undocumented)
+export type RenderTargetSampleCount = 1 | 4;
+
+// @public (undocumented)
+export interface RenderTargetSelectionOptions {
+    readonly present?: boolean;
+    readonly takeOwnership?: boolean;
+}
+
+// @public (undocumented)
+export type RenderTargetStoreOp = 'store' | 'discard';
+
+// @public (undocumented)
+export type ResizableTextureImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap | OffscreenCanvas | HTMLVideoElement;
 
 // @public
 export function resolveWebGPUCompareFunction(compare: GLenum | GPUCompareFunction): GPUCompareFunction;
@@ -5302,6 +5135,7 @@ export const semantic: {
     };
     init(_renderer: SemanticRenderer, _camera: Camera, _lightManager: LightManager, _fog: Fog | null): void;
     setCamera(_camera: Camera): void;
+    setViewport(viewport: RendererViewport): void;
     handlerColorOrTexture(value: MaterialTextureValue): Float32Array | TextureBinding;
     handlerTexture(value: TextureBinding | null): TextureBinding;
     handlerUV(texture: unknown): number;
@@ -5366,6 +5200,11 @@ export const semantic: {
         get(mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
         isDependMesh: boolean;
     };
+    OBJECTIDCOLOR: {
+        get(mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): Float32Array;
+        isDependMesh: boolean;
+        notSupportInstanced: boolean;
+    };
     VIEW: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
@@ -5412,7 +5251,9 @@ export const semantic: {
         get(mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
         isDependMesh: boolean;
     };
-    VIEWPORT: undefined;
+    VIEWPORT: {
+        get(_mesh?: SemanticMesh, _material?: SemanticMaterial, _programInfo?: ProgramBindingInfo): Float32Array;
+    };
     JOINTMATRIX: {
         get(mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
         isDependMesh: boolean;
@@ -5714,6 +5555,8 @@ export interface SemanticMesh extends Mesh {
 // @public (undocumented)
 export interface SemanticRenderer {
     // (undocumented)
+    getViewport(): RendererViewport;
+    // (undocumented)
     height: number;
     // (undocumented)
     width: number;
@@ -5726,8 +5569,6 @@ export class Shader {
     static get cache(): Cache_2<Shader>;
     // (undocumented)
     readonly className = "Shader";
-    // (undocumented)
-    static commonHeader: string;
     // (undocumented)
     static commonOptions: Record<string, number>;
     destroy(): this;
@@ -5839,9 +5680,6 @@ export interface ShaderRenderer extends ShaderPrecisionProvider {
 }
 
 // @public (undocumented)
-export type ShadowCamera = OrthographicCamera | PerspectiveCamera;
-
-// @public (undocumented)
 export interface ShadowCameraParameters {
     // (undocumented)
     aspect?: number;
@@ -5871,6 +5709,12 @@ export interface ShadowCameraParameters {
     y?: number;
     // (undocumented)
     z?: number;
+}
+
+// @public
+export interface ShadowCastingLightParameters extends LightParameters {
+    // (undocumented)
+    shadow?: LightShadowOptions | null;
 }
 
 // @public (undocumented)
@@ -6024,8 +5868,6 @@ export class SpotLight extends Light {
     constructor(params?: SpotLightParameters);
     // (undocumented)
     className: string;
-    // (undocumented)
-    createShadowMap(renderer: WebGLRenderer, camera: Camera): void;
     get cutoff(): number;
     set cutoff(value: number);
     // (undocumented)
@@ -6038,8 +5880,6 @@ export class SpotLight extends Light {
     getWorldDirection(): Vector3;
     // (undocumented)
     isSpotLight: boolean;
-    // (undocumented)
-    lightShadow: LightShadow | null;
     get outerCutoff(): number;
     set outerCutoff(value: number);
     // (undocumented)
@@ -6061,7 +5901,7 @@ export interface SpotLightInfo extends DirectionalLightInfo {
 }
 
 // @public (undocumented)
-export interface SpotLightParameters extends LightParameters {
+export interface SpotLightParameters extends ShadowCastingLightParameters {
     // (undocumented)
     cutoff?: number;
     // (undocumented)
@@ -6084,6 +5924,7 @@ export class Stage<Backend extends RendererBackend = 'webgl2'> extends Node_2 {
     // (undocumented)
     domViewport: DOMViewport | null;
     enableDOMEvent(types: string | readonly string[], enabled?: boolean): this;
+    fog: Fog | null;
     getMeshResultAtPoint(x: number, y: number, eventMode?: boolean): NodeRaycastInfo | null;
     height: number;
     // (undocumented)
@@ -6109,12 +5950,25 @@ export class Stage<Backend extends RendererBackend = 'webgl2'> extends Node_2 {
 }
 
 // @public (undocumented)
-export interface StageParameters<Backend extends RendererBackend = 'webgl2'> extends NodeParameters {
+export type StageBackendParameters<Backend extends RendererBackend> = [RendererBackend] extends [
+Backend
+] ? {
+    backend: RendererBackend;
+    preserveDrawingBuffer?: boolean;
+} : Backend extends 'webgpu' ? {
+    backend: 'webgpu';
+    preserveDrawingBuffer?: never;
+} : {
+    backend?: 'webgl2';
+    preserveDrawingBuffer?: boolean;
+};
+
+// @public (undocumented)
+export interface StageCommonParameters extends NodeParameters {
     // (undocumented)
     alpha?: boolean;
     // (undocumented)
     antialias?: boolean;
-    backend?: Backend;
     // (undocumented)
     camera?: Camera | null;
     // (undocumented)
@@ -6128,7 +5982,7 @@ export interface StageParameters<Backend extends RendererBackend = 'webgl2'> ext
     // (undocumented)
     failIfMajorPerformanceCaveat?: boolean;
     // (undocumented)
-    framebufferOption?: Backend extends 'webgpu' ? WebGPUFramebufferParameters : FramebufferParameters;
+    fog?: Fog | null;
     // (undocumented)
     gameMode?: boolean;
     // (undocumented)
@@ -6138,11 +5992,7 @@ export interface StageParameters<Backend extends RendererBackend = 'webgl2'> ext
     // (undocumented)
     premultipliedAlpha?: boolean;
     // (undocumented)
-    preserveDrawingBuffer?: boolean;
-    // (undocumented)
     stencil?: boolean;
-    // (undocumented)
-    useFramebuffer?: boolean;
     // (undocumented)
     useInstanced?: boolean;
     // (undocumented)
@@ -6150,6 +6000,11 @@ export interface StageParameters<Backend extends RendererBackend = 'webgl2'> ext
     // (undocumented)
     width?: number;
 }
+
+// @public (undocumented)
+export type StageParameters<Backend extends RendererBackend = 'webgl2'> = StageCommonParameters & {
+    backend?: Backend;
+} & StageBackendParameters<Backend>;
 
 // @public (undocumented)
 export interface StagePointerEvent extends NodePointerEvent {
@@ -6282,20 +6137,24 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     autoUpdate: boolean;
     // (undocumented)
     readonly border = 0;
-    static get cache(): Cache_2<WebGLTexture>;
     // (undocumented)
     readonly className: string;
     clone(): Texture<Image>;
-    colorSpaceConversion: boolean;
     compressed: boolean;
+    depth: number;
     destroy(): this;
     protected _fixInternalFormat(type: GLenum, format: GLenum, internalFormat: GLenum): GLenum;
     flipY: boolean;
     format: number;
+    static getCache(gl: GLContext): Cache_2<WebGLTexture>;
     getGLTexture(state: TextureWebGLState): WebGLTexture;
-    getSupportSize(img: ResizableTextureImage): Size;
+    getSupportSize(img: ResizableTextureImage, maxTextureSize?: number): Size;
     getTextureUpdatesSince(revision: number): TextureUpdateSnapshot;
-    protected _glUploadTexture(state: TextureWebGLState, target: GLenum, image: TextureImageSource | null, level?: number, width?: number, height?: number): this;
+    // (undocumented)
+    protected getWebGLUploadImage(): Image | null;
+    // (undocumented)
+    protected getWebGLUploadMipmaps(): readonly TextureMipmap[] | null;
+    protected _glUploadTexture(state: TextureWebGLState, target: GLenum, image: TextureImageSource | null, level?: number, width?: number, height?: number, depth?: number): this;
     // (undocumented)
     height: number;
     // (undocumented)
@@ -6325,17 +6184,18 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     releaseImageIfAllowed(): boolean;
     static reset(gl: GLContext): void;
     resizeImg(img: ResizableTextureImage, width: number, height: number): ResizableTextureImage | HTMLCanvasElement;
-    setGLTexture(texture: WebGLTexture, needDestroy?: boolean): this;
+    setGLTexture(state: TextureWebGLState, texture: WebGLTexture, needDestroy?: boolean): this;
     target: number;
     type: number;
     get updateRevision(): number;
-    updateSubTexture(xOffset: number, yOffset: number, image: TextureSubImage['image']): void;
+    updateSubTexture(descriptor: TextureSubImage): void;
     updateTexture(state: TextureWebGLState, glTexture: WebGLTexture): this;
     protected _uploadTexture(state: TextureWebGLState): this;
     get useMipmap(): boolean;
     uv: TextureUVChannel;
     // (undocumented)
     width: number;
+    wrapR: number;
     wrapS: number;
     wrapT: number;
 }
@@ -6349,10 +6209,16 @@ export interface TextureBinding {
 }
 
 // @public (undocumented)
-export type TextureComponentStorage = 'u8' | 'f16' | 'f32' | 'depth';
+export type TextureComponentStorage = 'i8' | 'u8' | 'i16' | 'u16' | 'i32' | 'u32' | 'f16' | 'f32' | 'depth' | 'compressed';
+
+// @public
+export type TextureCompressionFormat = 'bc' | 'etc1' | 'etc2' | 'astc-4x4' | 'pvrtc';
+
+// @public
+export type TextureCubeFace = 0 | 1 | 2 | 3 | 4 | 5;
 
 // @public (undocumented)
-export type TextureImageSource = HTMLImageElement | HTMLCanvasElement | ImageBitmap | ImageData | OffscreenCanvas | HTMLVideoElement | TypedArray;
+export type TextureImageSource = HTMLImageElement | HTMLCanvasElement | ImageBitmap | ImageData | OffscreenCanvas | HTMLVideoElement | TexturePixelData;
 
 // @public (undocumented)
 export class TextureLoader {
@@ -6369,10 +6235,12 @@ export type TextureLoadRequest = BasicLoadRequest & Omit<TextureParameters<HTMLI
     src: string;
 };
 
-// @public (undocumented)
+// @public
 export interface TextureMipmap {
     // (undocumented)
-    data: TypedArray;
+    data: TexturePixelData;
+    depth?: number;
+    face?: TextureCubeFace;
     // (undocumented)
     height: number;
     // (undocumented)
@@ -6396,9 +6264,8 @@ export interface TextureParameters<Image = TextureImageSource> {
     // (undocumented)
     autoUpdate?: boolean;
     // (undocumented)
-    colorSpaceConversion?: boolean;
-    // (undocumented)
     compressed?: boolean;
+    depth?: number;
     // (undocumented)
     flipY?: boolean;
     // (undocumented)
@@ -6433,32 +6300,37 @@ export interface TextureParameters<Image = TextureImageSource> {
     uv?: TextureUVChannel;
     // (undocumented)
     width?: number;
+    wrapR?: GLenum;
     // (undocumented)
     wrapS?: GLenum;
     // (undocumented)
     wrapT?: GLenum;
 }
 
-// @public (undocumented)
-export type TextureSource = TexImageSource | TypedArray;
+// @public
+export type TexturePixelData = TypedArray | DataView;
 
 // @public (undocumented)
+export type TextureSource = TexImageSource | TexturePixelData;
+
+// @public
 export interface TextureSubImage {
-    // (undocumented)
-    image: TextureSource;
-    // (undocumented)
-    xOffset: number;
-    // (undocumented)
-    yOffset: number;
+    readonly depth?: number;
+    readonly face?: TextureCubeFace;
+    readonly height: number;
+    readonly image: TextureSource;
+    readonly layer?: number;
+    readonly mipLevel: number;
+    readonly width: number;
+    readonly x: number;
+    readonly y: number;
+    readonly z?: number;
 }
 
 // @public
 export interface TextureUpdateSnapshot {
-    // (undocumented)
     readonly requiresFullUpload: boolean;
-    // (undocumented)
     readonly revision: number;
-    // (undocumented)
     readonly subTextures: readonly TextureSubImage[];
 }
 
@@ -6471,6 +6343,10 @@ export interface TextureWebGLState {
     activeTexture(texture: GLenum): void;
     // (undocumented)
     bindTexture(target: GLenum, texture: WebGLTexture | null): void;
+    // (undocumented)
+    readonly capabilities: WebGLCapabilities;
+    // (undocumented)
+    readonly extensions: WebGLExtensions;
     // (undocumented)
     readonly gl: GLContext;
     // (undocumented)
@@ -6731,15 +6607,15 @@ export const UNIFORM_BLOCK_BINDINGS: Readonly<{
 
 // @public
 export class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
-    constructor(data: UniformBufferData, layout?: Std140Layout<Schema>);
+    constructor(layout: Std140Layout<Schema>, values?: Partial<Std140Values<Schema>>);
     // (undocumented)
     bind(gl: WebGL2RenderingContext, bindingPoint: number, range?: UniformBufferRange): void;
     // (undocumented)
     get byteLength(): number;
     // (undocumented)
     readonly className = "UniformBuffer";
-    get data(): UniformBufferData;
-    set data(data: UniformBufferData);
+    get data(): ArrayBuffer;
+    set data(data: ArrayBuffer);
     destroy(gl?: WebGL2RenderingContext): void;
     // (undocumented)
     static fromSchema<const Schema extends Std140Schema>(layout: Std140Layout<Schema>, values?: Partial<Std140Values<Schema>>): UniformBuffer<Schema>;
@@ -6749,7 +6625,7 @@ export class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     // (undocumented)
     readonly isUniformBuffer = true;
     // (undocumented)
-    readonly layout: Std140Layout<Schema> | null;
+    readonly layout: Std140Layout<Schema>;
     markDirty(byteOffset?: number, byteLength?: number): this;
     // (undocumented)
     range(byteOffset: number, byteLength: number): UniformBufferRange;
@@ -6757,9 +6633,6 @@ export class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     set<Name extends keyof Schema & string>(name: Name, value: Std140FieldValue<Schema[Name]>): this;
     write(byteOffset: number, data: TypedArray): this;
 }
-
-// @public (undocumented)
-export type UniformBufferData = TypedArray | ArrayBuffer;
 
 // @public
 export interface UniformBufferDirtyRange {
@@ -7053,8 +6926,6 @@ export class VertexArrayObject implements ManagedResource {
     // (undocumented)
     bind(): void;
     // (undocumented)
-    static get cache(): Cache_2<VertexArrayObject>;
-    // (undocumented)
     readonly className = "VertexArrayObject";
     // (undocumented)
     destroy(): this;
@@ -7064,6 +6935,8 @@ export class VertexArrayObject implements ManagedResource {
     draw(): void;
     // (undocumented)
     drawInstance(primcount?: number): void;
+    // (undocumented)
+    static getCache(gl: GLContext): Cache_2<VertexArrayObject>;
     // (undocumented)
     getResources(resources?: ManagedResource[]): ManagedResource[];
     // (undocumented)
@@ -7400,6 +7273,7 @@ export namespace webgl2Constants {
 
 // @public (undocumented)
 export class WebGLCapabilities {
+    constructor(contextExtensions: WebGLExtensions);
     // (undocumented)
     get(name: NumericCapabilityName): number;
     // (undocumented)
@@ -7770,6 +7644,7 @@ export namespace webglConstants {
 // @public (undocumented)
 export namespace webglExtensionConstants {
     export {
+        webglExtensions_COMPRESSED_RGBA_ASTC_4X4_KHR as COMPRESSED_RGBA_ASTC_4X4_KHR,
         webglExtensions_COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL as COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL,
         webglExtensions_COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL as COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL,
         webglExtensions_COMPRESSED_RGBA_PVRTC_2BPPV1_IMG as COMPRESSED_RGBA_PVRTC_2BPPV1_IMG,
@@ -7782,6 +7657,11 @@ export namespace webglExtensionConstants {
         webglExtensions_COMPRESSED_RGB_PVRTC_2BPPV1_IMG as COMPRESSED_RGB_PVRTC_2BPPV1_IMG,
         webglExtensions_COMPRESSED_RGB_PVRTC_4BPPV1_IMG as COMPRESSED_RGB_PVRTC_4BPPV1_IMG,
         webglExtensions_COMPRESSED_RGB_S3TC_DXT1_EXT as COMPRESSED_RGB_S3TC_DXT1_EXT,
+        webglExtensions_COMPRESSED_SRGB8_ALPHA8_ASTC_4X4_KHR as COMPRESSED_SRGB8_ALPHA8_ASTC_4X4_KHR,
+        webglExtensions_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT as COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT,
+        webglExtensions_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT as COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT,
+        webglExtensions_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT as COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT,
+        webglExtensions_COMPRESSED_SRGB_S3TC_DXT1_EXT as COMPRESSED_SRGB_S3TC_DXT1_EXT,
         webglExtensions_CURRENT_QUERY_EXT as CURRENT_QUERY_EXT,
         webglExtensions_GPU_DISJOINT_EXT as GPU_DISJOINT_EXT,
         webglExtensions_MAX_TEXTURE_MAX_ANISOTROPY_EXT as MAX_TEXTURE_MAX_ANISOTROPY_EXT,
@@ -7798,6 +7678,7 @@ export namespace webglExtensionConstants {
 
 // @public
 export class WebGLExtensions {
+    constructor();
     // (undocumented)
     colorBufferFloat: ExtensionObject | null;
     // (undocumented)
@@ -7832,6 +7713,8 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     readonly backend: "webgl2";
     // (undocumented)
+    readonly capabilities: WebGLCapabilities;
+    // (undocumented)
     readonly className = "WebGLRenderer";
     // (undocumented)
     clear(clearColor?: Color): void;
@@ -7841,12 +7724,15 @@ export class WebGLRenderer extends EventDispatcher {
     clearDepth(): void;
     // (undocumented)
     clearStencil(): void;
+    createRenderTarget(parameters: RenderTargetParameters): WebGLRenderTarget;
     // (undocumented)
     depth: boolean;
     // (undocumented)
     destroy(): void;
     // (undocumented)
     domElement: HTMLCanvasElement | null;
+    // (undocumented)
+    readonly extensions: WebGLExtensions;
     // (undocumented)
     failIfMajorPerformanceCaveat: boolean;
     // (undocumented)
@@ -7855,10 +7741,7 @@ export class WebGLRenderer extends EventDispatcher {
     forceMaterial: Material | null;
     // (undocumented)
     fragmentPrecision: ShaderPrecision;
-    // (undocumented)
-    framebuffer: Framebuffer | null;
-    // (undocumented)
-    framebufferOption: FramebufferParameters;
+    getViewport(): RendererViewport;
     // (undocumented)
     get gl(): GLContext;
     // (undocumented)
@@ -7887,6 +7770,7 @@ export class WebGLRenderer extends EventDispatcher {
     powerPreference: WebGLPowerPreference;
     // (undocumented)
     premultipliedAlpha: boolean;
+    present(target?: RenderTarget): void;
     // (undocumented)
     preserveDrawingBuffer: boolean;
     // (undocumented)
@@ -7908,13 +7792,15 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     renderScene(): void;
     // (undocumented)
-    renderToScreen(framebuffer: Framebuffer): void;
+    renderTarget: WebGLRenderTarget | null;
+    renderToTarget(target: RenderTarget, stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
     // (undocumented)
     resize(width: number, height: number, force?: boolean): void;
     // (undocumented)
     readonly resourceManager: GraphicsResourceManager;
     // (undocumented)
     setOffset(x: number, y: number): void;
+    setRenderTarget(target: RenderTarget | null, options?: RenderTargetSelectionOptions): this;
     // (undocumented)
     setupBlend(material: Material): void;
     // (undocumented)
@@ -7938,9 +7824,10 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     stencil: boolean;
     // (undocumented)
-    useFramebuffer: boolean;
+    supportsTextureCompression(format: TextureCompressionFormat): boolean;
     // (undocumented)
-    useInstanced: boolean;
+    get useInstanced(): boolean;
+    set useInstanced(value: boolean);
     // (undocumented)
     useLogDepth: boolean;
     // (undocumented)
@@ -7972,8 +7859,6 @@ export interface WebGLRendererParameters {
     // (undocumented)
     fragmentPrecision?: ShaderPrecision;
     // (undocumented)
-    framebufferOption?: FramebufferParameters;
-    // (undocumented)
     height?: number;
     // (undocumented)
     offsetX?: number;
@@ -7990,8 +7875,6 @@ export interface WebGLRendererParameters {
     // (undocumented)
     stencil?: boolean;
     // (undocumented)
-    useFramebuffer?: boolean;
-    // (undocumented)
     useInstanced?: boolean;
     // (undocumented)
     useLogDepth?: boolean;
@@ -8005,8 +7888,50 @@ export interface WebGLRendererParameters {
 export type WebGLRendererScene = RendererScene;
 
 // @public
+export class WebGLRenderTarget implements RenderTarget {
+    constructor(owner: WebGLRenderer, parameters: RenderTargetParameters, onDestroy?: (target: WebGLRenderTarget) => void);
+    // (undocumented)
+    readonly backend: "webgl2";
+    beginRenderPass(): void;
+    // (undocumented)
+    readonly className = "WebGLRenderTarget";
+    // (undocumented)
+    get colorAttachmentCount(): number;
+    // (undocumented)
+    readonly colorFormats: readonly RenderTargetColorFormat[];
+    // (undocumented)
+    readonly depthStencilFormat: RenderTargetDepthStencilFormat | null;
+    // (undocumented)
+    destroy(): void;
+    endRenderPass(commit: boolean): void;
+    // (undocumented)
+    getColorTexture(index?: number): Texture<unknown>;
+    // (undocumented)
+    getDepthTexture(): Texture<unknown> | null;
+    handleContextRestored(): void;
+    // (undocumented)
+    get height(): number;
+    // (undocumented)
+    get isDestroyed(): boolean;
+    // (undocumented)
+    readonly isWebGLRenderTarget = true;
+    // (undocumented)
+    readonly label: string;
+    // (undocumented)
+    presentToCanvas(): void;
+    // (undocumented)
+    readColorAttachment(options?: RenderTargetReadColorAttachmentOptions): Promise<RenderTargetColorAttachmentReadback>;
+    // (undocumented)
+    resize(width: number, height: number): void;
+    // (undocumented)
+    readonly sampleCount: RenderTargetSampleCount;
+    // (undocumented)
+    get width(): number;
+}
+
+// @public
 export class WebGLState {
-    constructor(gl: GLContext);
+    constructor(gl: GLContext, contextCapabilities?: WebGLCapabilities, contextExtensions?: WebGLExtensions);
     // (undocumented)
     activeTexture(texture: GLenum): void;
     // (undocumented)
@@ -8019,6 +7944,8 @@ export class WebGLState {
     blendEquationSeparate(modeRGB: GLenum, modeAlpha: GLenum): void;
     // (undocumented)
     blendFuncSeparate(srcRGB: GLenum, dstRGB: GLenum, srcAlpha: GLenum, dstAlpha: GLenum): void;
+    // (undocumented)
+    readonly capabilities: WebGLCapabilities;
     // (undocumented)
     readonly className = "WebGLState";
     // (undocumented)
@@ -8043,6 +7970,8 @@ export class WebGLState {
     disable(capability: GLenum): void;
     // (undocumented)
     enable(capability: GLenum): void;
+    // (undocumented)
+    readonly extensions: WebGLExtensions;
     // (undocumented)
     frontFace(mode: GLenum): void;
     // (undocumented)
@@ -8126,37 +8055,15 @@ export interface WebGPUColorAttachmentOperations {
 }
 
 // @public (undocumented)
-export interface WebGPUColorAttachmentOptions {
-    // (undocumented)
-    readonly clearValue?: GPUColor;
-    readonly format?: WebGPUColorRenderTargetFormat;
-    // (undocumented)
-    readonly label?: string;
-    // (undocumented)
-    readonly loadOp?: GPULoadOp;
-    // (undocumented)
-    readonly storeOp?: GPUStoreOp;
+export interface WebGPUColorAttachmentOptions extends RenderTargetColorAttachmentOptions {
     readonly texture?: Texture<unknown>;
 }
 
 // @public
-export interface WebGPUColorAttachmentReadback {
-    // (undocumented)
-    readonly bytesPerPixel: number;
-    // (undocumented)
-    readonly bytesPerRow: number;
-    // (undocumented)
-    readonly data: Uint8Array;
-    // (undocumented)
-    readonly format: WebGPUColorRenderTargetFormat;
-    // (undocumented)
-    readonly height: number;
-    // (undocumented)
-    readonly width: number;
-}
+export type WebGPUColorAttachmentReadback = RenderTargetColorAttachmentReadback;
 
 // @public (undocumented)
-export type WebGPUColorRenderTargetFormat = 'rgba8unorm' | 'rgba8unorm-srgb' | 'rgba16float' | 'rgba32float';
+export type WebGPUColorRenderTargetFormat = RenderTargetColorFormat;
 
 // @public (undocumented)
 export interface WebGPUDepthStencilAttachmentOperations {
@@ -8175,36 +8082,30 @@ export interface WebGPUDepthStencilAttachmentOperations {
 }
 
 // @public (undocumented)
-export interface WebGPUDepthStencilAttachmentOptions {
-    // (undocumented)
-    readonly compare?: GPUCompareFunction;
-    // (undocumented)
-    readonly depthClearValue?: number;
-    // (undocumented)
-    readonly depthLoadOp?: GPULoadOp;
-    // (undocumented)
-    readonly depthStoreOp?: GPUStoreOp;
-    // (undocumented)
-    readonly format?: WebGPUDepthStencilRenderTargetFormat;
-    // (undocumented)
-    readonly label?: string;
-    readonly sampled?: boolean;
-    // (undocumented)
-    readonly stencilClearValue?: GPUStencilValue;
-    // (undocumented)
-    readonly stencilLoadOp?: GPULoadOp;
-    // (undocumented)
-    readonly stencilStoreOp?: GPUStoreOp;
+export interface WebGPUDepthStencilAttachmentOptions extends RenderTargetDepthStencilAttachmentOptions {
     readonly texture?: Texture<unknown>;
 }
 
 // @public (undocumented)
-export type WebGPUDepthStencilRenderTargetFormat = 'depth16unorm' | 'depth24plus' | 'depth24plus-stencil8' | 'depth32float' | 'depth32float-stencil8';
+export type WebGPUDepthStencilRenderTargetFormat = RenderTargetDepthStencilFormat;
+
+// @public
+export type WebGPUDeviceRecoveryState = 'initializing' | 'ready' | 'recovering' | 'failed' | 'destroyed';
 
 // @public (undocumented)
 export interface WebGPUExternalTextureOptions extends WebGPUTextureRequestOptions {
     readonly takeOwnership?: boolean;
     readonly viewDescriptor?: GPUTextureViewDescriptor;
+}
+
+// @internal
+interface WebGPUExternalTextureRegistration {
+    // (undocumented)
+    readonly gpuTexture: GPUTexture;
+    // (undocumented)
+    readonly options?: WebGPUExternalTextureOptions;
+    // (undocumented)
+    readonly texture: Texture<unknown>;
 }
 
 // @public (undocumented)
@@ -8218,24 +8119,7 @@ export interface WebGPUFragmentOutput {
 }
 
 // @public (undocumented)
-export type WebGPUFramebufferParameters = Omit<WebGPURenderTargetParameters, 'width' | 'height'> & {
-    readonly width?: number;
-    readonly height?: number;
-};
-
-// @public (undocumented)
-export interface WebGPUReadColorAttachmentOptions {
-    // (undocumented)
-    readonly attachmentIndex?: number;
-    // (undocumented)
-    readonly height?: number;
-    // (undocumented)
-    readonly width?: number;
-    // (undocumented)
-    readonly x?: number;
-    // (undocumented)
-    readonly y?: number;
-}
+export type WebGPUReadColorAttachmentOptions = RenderTargetReadColorAttachmentOptions;
 
 // @public
 export class WebGPURenderer extends EventDispatcher {
@@ -8249,14 +8133,8 @@ export class WebGPURenderer extends EventDispatcher {
     // (undocumented)
     readonly className = "WebGPURenderer";
     // (undocumented)
-    clear(): void;
-    // (undocumented)
     clearColor: Color;
-    // (undocumented)
-    clearDepth(): void;
-    // (undocumented)
-    clearStencil(): void;
-    createRenderTarget(parameters: WebGPURenderTargetParameters): WebGPURenderTarget;
+    createRenderTarget(parameters: RenderTargetParameters): WebGPURenderTarget;
     // (undocumented)
     depth: boolean;
     // (undocumented)
@@ -8273,8 +8151,7 @@ export class WebGPURenderer extends EventDispatcher {
     forceMaterial: Material | null;
     // (undocumented)
     fragmentPrecision: ShaderPrecision;
-    // (undocumented)
-    framebufferOption: WebGPUFramebufferParameters;
+    getViewport(): RendererViewport;
     // (undocumented)
     get gpuDevice(): GPUDevice;
     // (undocumented)
@@ -8291,17 +8168,18 @@ export class WebGPURenderer extends EventDispatcher {
     offsetX: number;
     // (undocumented)
     offsetY: number;
+    onInit(callback: (renderer: WebGPURenderer) => void): void;
     // (undocumented)
     pixelRatio: number;
     // (undocumented)
     powerPreference: GPUPowerPreference;
     // (undocumented)
     premultipliedAlpha: boolean;
-    present(target?: WebGPURenderTarget): void;
-    // (undocumented)
-    preserveDrawingBuffer: boolean;
+    present(target?: RenderTarget): void;
     // (undocumented)
     readonly ready: Promise<void>;
+    get recoveryPromise(): Promise<void> | null;
+    get recoveryState(): WebGPUDeviceRecoveryState;
     // (undocumented)
     releaseGPUResources(): void;
     // (undocumented)
@@ -8318,6 +8196,7 @@ export class WebGPURenderer extends EventDispatcher {
     renderScene(): void;
     // (undocumented)
     renderTarget: WebGPURenderTarget | null;
+    renderToTarget(target: RenderTarget, stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
     // (undocumented)
     requiredFeatures: readonly GPUFeatureName[];
     // (undocumented)
@@ -8328,22 +8207,18 @@ export class WebGPURenderer extends EventDispatcher {
     readonly resourceManager: GraphicsResourceManager;
     // (undocumented)
     setOffset(x: number, y: number): void;
-    setRenderTarget(target: WebGPURenderTarget | null, options?: {
-        readonly present?: boolean;
-        readonly takeOwnership?: boolean;
-    }): this;
+    setRenderTarget(target: RenderTarget | null, options?: RenderTargetSelectionOptions): this;
     // (undocumented)
     stencil: boolean;
     // (undocumented)
-    useFramebuffer: boolean;
+    supportsTextureCompression(format: TextureCompressionFormat): boolean;
     // (undocumented)
-    useInstanced: boolean;
+    get useInstanced(): boolean;
+    set useInstanced(value: boolean);
     // (undocumented)
     useLogDepth: boolean;
     // (undocumented)
     vertexPrecision: ShaderPrecision;
-    // (undocumented)
-    viewport(x?: number, y?: number): void;
     // (undocumented)
     width: number;
 }
@@ -8371,8 +8246,6 @@ export interface WebGPURendererParameters {
     // (undocumented)
     fragmentPrecision?: ShaderPrecision;
     // (undocumented)
-    framebufferOption?: WebGPUFramebufferParameters;
-    // (undocumented)
     height?: number;
     // (undocumented)
     offsetX?: number;
@@ -8385,14 +8258,11 @@ export interface WebGPURendererParameters {
     // (undocumented)
     premultipliedAlpha?: boolean;
     // (undocumented)
-    preserveDrawingBuffer?: boolean;
-    // (undocumented)
     requiredFeatures?: readonly GPUFeatureName[];
     // (undocumented)
     requiredLimits?: Readonly<Record<string, number>>;
     // (undocumented)
     stencil?: boolean;
-    useFramebuffer?: boolean;
     // (undocumented)
     useInstanced?: boolean;
     // (undocumented)
@@ -8413,8 +8283,10 @@ export interface WebGPURenderPassOptions {
 }
 
 // @public
-export class WebGPURenderTarget {
-    constructor(device: GPUDevice, textureManager: WebGPUTextureManager, parameters: WebGPURenderTargetParameters);
+export class WebGPURenderTarget implements RenderTarget {
+    constructor(device: GPUDevice, textureManager: WebGPUTextureManager, parameters: WebGPURenderTargetParameters, onDestroy?: (target: WebGPURenderTarget) => void);
+    // (undocumented)
+    readonly backend: "webgpu";
     // (undocumented)
     readonly className = "WebGPURenderTarget";
     // (undocumented)
@@ -8432,13 +8304,15 @@ export class WebGPURenderTarget {
     // (undocumented)
     destroy(): void;
     // (undocumented)
-    readonly device: GPUDevice;
+    get device(): GPUDevice;
     // (undocumented)
     getColorGPUTexture(index?: number): GPUTexture;
     // (undocumented)
     getColorTexture(index?: number): Texture<unknown>;
     // (undocumented)
     getDepthStencilGPUTexture(): GPUTexture | null;
+    // (undocumented)
+    getDepthTexture(): Texture<unknown> | null;
     getRenderPassLayout(): GPURenderPassLayout;
     // (undocumented)
     get height(): number;
@@ -8452,25 +8326,22 @@ export class WebGPURenderTarget {
     readColorAttachment(options?: WebGPUReadColorAttachmentOptions): Promise<WebGPUColorAttachmentReadback>;
     // (undocumented)
     resize(width: number, height: number): void;
+    // @internal
+    restoreDeviceResources(device: GPUDevice, textureManager: WebGPUTextureManager): void;
     // (undocumented)
     readonly sampleCount: 1 | 4;
+    // @internal
+    suspendDeviceResources(): void;
     // (undocumented)
-    readonly textureManager: WebGPUTextureManager;
+    get textureManager(): WebGPUTextureManager;
     // (undocumented)
     get width(): number;
 }
 
 // @public (undocumented)
-export interface WebGPURenderTargetParameters {
+export interface WebGPURenderTargetParameters extends Omit<RenderTargetParameters, 'colorAttachments' | 'depthStencilAttachment'> {
     readonly colorAttachments?: readonly WebGPUColorAttachmentOptions[];
     readonly depthStencilAttachment?: WebGPUDepthStencilAttachmentOptions | false;
-    // (undocumented)
-    readonly height: number;
-    // (undocumented)
-    readonly label?: string;
-    readonly sampleCount?: 1 | 4;
-    // (undocumented)
-    readonly width: number;
 }
 
 // @public (undocumented)
@@ -8500,13 +8371,26 @@ export interface WebGPUSamplerBinding {
 }
 
 // @public (undocumented)
+export type WebGPUTextureDimension = '2d' | 'cube' | '2d-array' | '3d';
+
+// @public (undocumented)
 export interface WebGPUTextureFormatInfo {
+    // (undocumented)
+    readonly blockHeight: number;
+    // (undocumented)
+    readonly blockWidth: number;
+    // (undocumented)
+    readonly bytesPerBlock: number;
     // (undocumented)
     readonly bytesPerPixel: number;
     // (undocumented)
     readonly format: GPUTextureFormat;
     // (undocumented)
+    readonly isCompressed: boolean;
+    // (undocumented)
     readonly isDepth: boolean;
+    // (undocumented)
+    readonly requiredFeature?: GPUFeatureName;
     // (undocumented)
     readonly sampleType: GPUTextureSampleType;
     // (undocumented)
@@ -8515,12 +8399,12 @@ export interface WebGPUTextureFormatInfo {
 
 // @public
 export class WebGPUTextureManager {
-    constructor(device: GPUDevice, onResourceDestroyed?: () => void);
+    constructor(device: GPUDevice, translator: NagaShaderTranslator, onResourceDestroyed?: () => void);
     // (undocumented)
     destroy(texture: Texture<unknown>): void;
     destroyAll(): void;
     // (undocumented)
-    readonly device: GPUDevice;
+    get device(): GPUDevice;
     get(texture: Texture<unknown>, options?: WebGPUTextureRequestOptions): WebGPUTextureResource;
     // (undocumented)
     getGPUTexture(texture: Texture<unknown>, options?: WebGPUTextureRequestOptions): GPUTexture;
@@ -8528,8 +8412,16 @@ export class WebGPUTextureManager {
     // (undocumented)
     getSampler(texture: Texture<unknown>, options?: WebGPUTextureRequestOptions): GPUSampler;
     registerExternal(texture: Texture<unknown>, gpuTexture: GPUTexture, options?: WebGPUExternalTextureOptions): WebGPUTextureResource;
+    // Warning: (ae-forgotten-export) The symbol "WebGPUExternalTextureRegistration" needs to be exported by the entry point Hilo3d.d.ts
+    //
+    // @internal
+    replaceExternalBatch(registrations: readonly WebGPUExternalTextureRegistration[]): readonly WebGPUTextureResource[];
     // (undocumented)
     get resourceCount(): number;
+    // @internal
+    restoreDevice(device: GPUDevice): void;
+    // @internal
+    suspendAll(): void;
 }
 
 // @public (undocumented)
@@ -8542,7 +8434,7 @@ export interface WebGPUTextureResource {
     // (undocumented)
     readonly depthOrArrayLayers: number;
     // (undocumented)
-    readonly dimension: '2d' | 'cube';
+    readonly dimension: WebGPUTextureDimension;
     // (undocumented)
     readonly format: GPUTextureFormat;
     // (undocumented)

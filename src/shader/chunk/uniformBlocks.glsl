@@ -21,6 +21,7 @@ layout(std140) uniform CameraBlock {
     mat3 u_viewInverseNormalMatrix;
     vec4 u_cameraPositionNear;
     vec4 u_cameraParams;
+    vec4 u_viewport;
 };
 
 #define u_cameraPosition u_cameraPositionNear.xyz
@@ -115,6 +116,7 @@ layout(std140) uniform MaterialBlock {
     layout(std140) uniform ModelBlock {
         mat4 u_modelMatrix;
         mat3 u_normalWorldMatrix;
+        vec4 u_objectIdColor;
     };
 #endif
 

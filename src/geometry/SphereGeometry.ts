@@ -100,7 +100,6 @@ class SphereGeometry extends Geometry {
         this.normals = new GeometryData(new Float32Array(vertices), 3);
     }
     override _raycast(ray: Ray, side: GLenum): Vector3[] | null {
-        // TODO:optimize
         return super._raycast(ray, side);
     }
 }

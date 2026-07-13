@@ -106,7 +106,8 @@ describe('WebGL 2 shader contract', () => {
         )?.[1];
         expect(snow).toBeTypeOf('string');
         expect(snow).not.toMatch(/constants\.POINTS\b/u);
-        expect(snow).toContain('renderer.useInstanced = true');
+        expect(snow).toContain('useInstanced: true');
+        expect(snow).not.toContain('renderer.useInstanced = true');
         expect(snow).toContain('mode: Hilo3d.constants.TRIANGLES');
         expect(snow).toContain('layout(std140) uniform FrameBlock');
         expect(snow).toContain('layout(std140) uniform CameraBlock');

@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 
 function isNumberArray(value: unknown): value is number[] {
     return Array.isArray(value) && value.every((item: unknown) => typeof item === 'number');
@@ -16,10 +16,7 @@ Hilo3d.AnimationStates.registerStateHandler('UV_Translate', (node, state) => {
     if (!isNumberArray(state)) {
         throw new TypeError('UV animation state must be a numeric array');
     }
-    if (!mesh.material.uvMatrix) {
-        mesh.material.uvMatrix = new Hilo3d.Matrix3();
-        mesh.material.isDirty = true;
-    }
+    mesh.material.uvMatrix ??= new Hilo3d.Matrix3();
     const [x = 0, y = 0, scaleX = 1, scaleY = 1] = state;
     mesh.material.uvMatrix.set(scaleX, 0, 0, 0, scaleY, 0, x, y, 1);
 });

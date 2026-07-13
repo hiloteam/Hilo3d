@@ -6,11 +6,17 @@ import Mesh from '../core/Mesh';
 import Node from '../core/Node';
 import { EventDispatcher } from '../core/EventDispatcher';
 import GeometryData from '../geometry/GeometryData';
+import CameraHelper from '../helper/CameraHelper';
 import Light, { type ShadowCameraParameters } from '../light/Light';
 import LightManager from '../light/LightManager';
 import type DirectionalLight from '../light/DirectionalLight';
 import type PointLight from '../light/PointLight';
 import type SpotLight from '../light/SpotLight';
+import {
+    POINT_SHADOW_DIRECTIONS,
+    POINT_SHADOW_UPS,
+    resolvePointShadowCameraPlanes
+} from '../light/PointShadowCamera';
 import type Material from '../material/Material';
 import GeometryMaterial from '../material/GeometryMaterial';
 import semantic from '../material/semantic';
@@ -18,8 +24,11 @@ import Color from '../math/Color';
 import Matrix4 from '../math/Matrix4';
 import Vector3 from '../math/Vector3';
 import Shader from '../shader/Shader';
+import presentFragmentSource from '../shader/present.frag';
+import presentVertexSource from '../shader/present.vert';
 import {
     NagaShaderTranslator,
+    specializeWebGPUDepthSamplers,
     type TranslatedShaderPair,
     type WebGPUVertexInput
 } from '../shader/GlslToWgsl';
@@ -51,7 +60,12 @@ import {
     MAX_SHADOW_ATLAS_SLICES,
     MAX_SPOT_LIGHTS
 } from './ubo/BuiltInUniformBlocks';
-import type { RendererScene } from './Renderer';
+import type { RendererScene, RendererViewport, TextureCompressionFormat } from './Renderer';
+import type {
+    RenderTarget,
+    RenderTargetParameters,
+    RenderTargetSelectionOptions
+} from './RenderTarget';
 import type { ShaderPrecision } from './types';
 import WebGPUBindGroupManager, {
     type ResolvedWebGPUSampler,
@@ -64,16 +78,24 @@ import {
     type WebGPUVertexBufferSource,
     type WebGPUVertexBufferBinding
 } from './webgpu/WebGPUBufferManager';
-import { WebGPUShaderStage, WebGPUTextureUsage } from './webgpu/WebGPUConstants';
+import { WebGPUTextureUsage } from './webgpu/WebGPUConstants';
 import { WebGPUPipelineManager } from './webgpu/WebGPUPipelineManager';
-import { createWebGPURenderState, type WebGPURenderState } from './webgpu/WebGPURenderState';
+import {
+    createWebGPURenderState,
+    resolveWebGPUFragmentColorFormats,
+    type WebGPURenderState
+} from './webgpu/WebGPURenderState';
 import WebGPUTextureManager, { resolveWebGPUTextureFormat } from './webgpu/WebGPUTextureManager';
-import WebGPURenderTarget, { type WebGPURenderTargetParameters } from './webgpu/WebGPURenderTarget';
+import WebGPURenderTarget from './webgpu/WebGPURenderTarget';
+import {
+    createWebGPUFullscreenPassBindGroup,
+    createWebGPUFullscreenPassResources,
+    type WebGPUFullscreenPassResources
+} from './webgpu/WebGPUFullscreenPass';
 import {
     WebGPUUniformBufferManager,
     type WebGPUUniformBufferBinding
 } from './webgpu/WebGPUUniformBufferManager';
-import { WGSL_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURE } from './webgpu/WgslUniformLayout';
 
 export interface WebGPURendererParameters {
     width?: number;
@@ -86,7 +108,6 @@ export interface WebGPURendererParameters {
     stencil?: boolean;
     antialias?: boolean;
     premultipliedAlpha?: boolean;
-    preserveDrawingBuffer?: boolean;
     failIfMajorPerformanceCaveat?: boolean;
     powerPreference?: GPUPowerPreference;
     forceFallbackAdapter?: boolean;
@@ -100,15 +121,22 @@ export interface WebGPURendererParameters {
     offsetY?: number;
     forceMaterial?: Material | null;
     clearColor?: Color;
-    /** Render through an engine-owned sampleable target and present it to the canvas. */
-    useFramebuffer?: boolean;
-    framebufferOption?: WebGPUFramebufferParameters;
 }
 
-export type WebGPUFramebufferParameters = Omit<WebGPURenderTargetParameters, 'width' | 'height'> & {
-    readonly width?: number;
-    readonly height?: number;
-};
+/**
+ * Observable WebGPU device lifecycle.
+ *
+ * `recovering` skips render submissions while native resources are rebuilt. `failed` is terminal
+ * for rendering and causes subsequent render calls to throw the recovery error. `destroyed` is
+ * entered only by explicit renderer destruction.
+ */
+export type WebGPUDeviceRecoveryState =
+    'initializing' | 'ready' | 'recovering' | 'failed' | 'destroyed';
+
+interface EffectiveWebGPUDeviceDescriptor {
+    readonly requiredFeatures: readonly GPUFeatureName[];
+    readonly requiredLimits: Readonly<Record<string, number>>;
+}
 
 interface CompiledWebGPUShader {
     readonly translated: TranslatedShaderPair;
@@ -129,6 +157,8 @@ interface WebGPUDrawSetup {
 interface WebGPUDrawTargetState {
     readonly colorFormats: readonly (GPUTextureFormat | null)[];
     readonly depthStencilFormat?: GPUTextureFormat;
+    readonly depthTestEnabled: boolean;
+    readonly stencilTestEnabled: boolean;
     readonly sampleCount: 1 | 4;
 }
 
@@ -150,8 +180,7 @@ interface WebGPUShadowFrameData {
     readonly pointMatrices: Float32Array;
 }
 
-interface WebGPUPresentPipeline {
-    readonly bindGroupLayout: GPUBindGroupLayout;
+interface WebGPUPresentPipeline extends WebGPUFullscreenPassResources {
     readonly pipeline: GPURenderPipeline;
 }
 
@@ -159,57 +188,17 @@ interface WebGPUInstanceBatchOwner {
     readonly key: string;
 }
 
-const pointShadowDirections = [
-    [1, 0, 0],
-    [-1, 0, 0],
-    [0, 1, 0],
-    [0, -1, 0],
-    [0, 0, 1],
-    [0, 0, -1]
-] as const;
-const pointShadowUps = [
-    [0, -1, 0],
-    [0, -1, 0],
-    [0, 0, 1],
-    [0, 0, -1],
-    [0, -1, 0],
-    [0, -1, 0]
-] as const;
-
-const PRESENT_SHADER = /* wgsl */ `
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
+function formatHasDepth(format: GPUTextureFormat | undefined): boolean {
+    return format !== undefined && format !== 'stencil8';
 }
 
-@vertex
-fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let positions = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0),
-        vec2<f32>(3.0, -1.0),
-        vec2<f32>(-1.0, 3.0)
+function formatHasStencil(format: GPUTextureFormat | undefined): boolean {
+    return (
+        format === 'stencil8' ||
+        format === 'depth24plus-stencil8' ||
+        format === 'depth32float-stencil8'
     );
-    let coordinates = array<vec2<f32>, 3>(
-        vec2<f32>(0.0, 1.0),
-        vec2<f32>(2.0, 1.0),
-        vec2<f32>(0.0, -1.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4<f32>(positions[vertexIndex], 0.0, 1.0);
-    output.uv = coordinates[vertexIndex];
-    return output;
 }
-
-@group(0) @binding(0) var sourceTexture: texture_2d<f32>;
-
-@fragment
-fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-    let dimensions = vec2<i32>(textureDimensions(sourceTexture));
-    let maximum = dimensions - vec2<i32>(1);
-    let coordinate = clamp(vec2<i32>(floor(input.uv * vec2<f32>(dimensions))), vec2<i32>(0), maximum);
-    return textureLoad(sourceTexture, coordinate, 0);
-}
-`;
 
 function cameraClippingPlanes(camera: Camera): { near: number; far: number } {
     const near: unknown = Reflect.get(camera, 'near');
@@ -258,14 +247,11 @@ function isNumericArrayLike(value: unknown): value is ArrayLike<number> {
     return true;
 }
 
-function shaderLanguageFeatureAvailable(gpu: GPU): boolean {
-    const features: unknown = Reflect.get(gpu, 'wgslLanguageFeatures');
-    if (typeof features !== 'object' || features === null) return false;
-    const has: unknown = Reflect.get(features, 'has');
-    return (
-        typeof has === 'function' &&
-        Reflect.apply(has, features, [WGSL_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURE]) === true
-    );
+function genericVertexAttributeSize(type: string): 1 | 2 | 3 | 4 | null {
+    if (type === 'float' || type === 'int' || type === 'uint') return 1;
+    const vector = /^(?:i|u)?vec([2-4])$/u.exec(type);
+    const size = vector?.[1] === undefined ? Number.NaN : Number(vector[1]);
+    return size === 2 || size === 3 || size === 4 ? size : null;
 }
 
 function adapterIsFallback(adapter: GPUAdapter): boolean {
@@ -290,7 +276,57 @@ function currentGPU(): GPU | undefined {
     return typeof gpu === 'object' && gpu !== null ? (gpu as GPU) : undefined;
 }
 
-/** WebGPU renderer using the same GLSL source of truth through the Naga compiler. */
+type WebGPUDeviceLifecycleEventName =
+    'webgpuDeviceLost' | 'webgpuDeviceRestored' | 'webgpuDeviceRecoveryFailed';
+
+function reportToConsole(...values: unknown[]): void {
+    const consoleObject: unknown = Reflect.get(globalThis, 'console');
+    const consoleError: unknown =
+        typeof consoleObject === 'object' && consoleObject !== null
+            ? Reflect.get(consoleObject, 'error')
+            : undefined;
+    if (typeof consoleError !== 'function') return;
+    try {
+        const log = consoleError as (this: unknown, ...messages: unknown[]) => void;
+        log.call(consoleObject, ...values);
+    } catch {
+        return;
+    }
+}
+
+function reportAsynchronousError(error: Error): void {
+    queueMicrotask(() => {
+        const reporter: unknown = Reflect.get(globalThis, 'reportError');
+        if (typeof reporter === 'function') {
+            try {
+                const report = reporter as (this: unknown, reportedError: Error) => void;
+                report.call(globalThis, error);
+                return;
+            } catch (reportingError: unknown) {
+                reportToConsole(error, reportingError);
+                return;
+            }
+        }
+        reportToConsole(error);
+    });
+}
+
+const WEBGPU_TEXTURE_COMPRESSION_FEATURES: readonly GPUFeatureName[] = [
+    'texture-compression-bc',
+    'texture-compression-etc2',
+    'texture-compression-astc'
+];
+
+/**
+ * WebGPU renderer using the same GLSL source of truth through the Naga compiler.
+ *
+ * Device loss is recovered without switching backends. The renderer dispatches
+ * `webgpuDeviceLost` with a `GPUDeviceLostInfo` detail before requesting a replacement
+ * adapter/device. On success it dispatches `webgpuDeviceRestored` with the replacement
+ * `GPUDevice`; on terminal failure it dispatches `webgpuDeviceRecoveryFailed` with the causal
+ * `Error`. Render calls made while recovery is in progress skip the frame without a
+ * queue submission. Render calls after a failed recovery throw explicitly.
+ */
 class WebGPURenderer extends EventDispatcher {
     readonly backend = 'webgpu' as const;
     readonly className = 'WebGPURenderer';
@@ -305,13 +341,12 @@ class WebGPURenderer extends EventDispatcher {
     height = 0;
     pixelRatio = 1;
     domElement: HTMLCanvasElement | null = null;
-    useInstanced = false;
+    private _useInstanced = false;
     alpha = false;
     depth = true;
     stencil = false;
     antialias = true;
     premultipliedAlpha = true;
-    preserveDrawingBuffer = false;
     failIfMajorPerformanceCaveat = false;
     powerPreference: GPUPowerPreference = 'high-performance';
     forceFallbackAdapter = false;
@@ -325,12 +360,12 @@ class WebGPURenderer extends EventDispatcher {
     offsetY = 0;
     forceMaterial: Material | null = null;
     clearColor = new Color(1, 1, 1);
-    useFramebuffer = false;
-    framebufferOption: WebGPUFramebufferParameters = {};
     renderTarget: WebGPURenderTarget | null = null;
     isInitFailed = false;
 
     private adapter: GPUAdapter | null = null;
+    private adapterOptions: GPURequestAdapterOptions | null = null;
+    private readonly rejectFallbackAdapter: boolean;
     private device: GPUDevice | null = null;
     private context: GPUCanvasContext | null = null;
     private canvasFormat: GPUTextureFormat = 'bgra8unorm';
@@ -339,10 +374,17 @@ class WebGPURenderer extends EventDispatcher {
     private depthTexture: GPUTexture | null = null;
     private multisampleTexture: GPUTexture | null = null;
     private readonly translator = new NagaShaderTranslator();
+    private presentShader: TranslatedShaderPair | null = null;
     private compiledShaders = new WeakMap<Shader, CompiledWebGPUShader>();
+    private depthOnlyCompiledShaders = new WeakMap<Shader, CompiledWebGPUShader>();
+    private depthSpecializedShaders = new WeakMap<
+        CompiledWebGPUShader,
+        Map<string, CompiledWebGPUShader>
+    >();
     private pipelineManager: WebGPUPipelineManager | null = null;
     private bufferManager: WebGPUBufferManager | null = null;
     private textureManager: WebGPUTextureManager | null = null;
+    private recoveryTextureManager: WebGPUTextureManager | null = null;
     private uniformBufferManager: WebGPUUniformBufferManager | null = null;
     private bindGroupManager: WebGPUBindGroupManager | null = null;
     private readonly uniformBlockManager: BuiltInUniformBlockManager;
@@ -350,18 +392,21 @@ class WebGPURenderer extends EventDispatcher {
     private readonly instanceBatchOwners = new Map<string, WebGPUInstanceBatchOwner>();
     private activePass: GPURenderPassEncoder | null = null;
     private activeDrawTarget: WebGPUDrawTargetState | null = null;
-    private activeViewport: readonly [number, number, number, number] | null = null;
+    private activeViewport: RendererViewport | null = null;
     private ownsRenderTarget = false;
     private autoPresentRenderTarget = false;
+    private readonly renderTargets = new Set<WebGPURenderTarget>();
     private readonly presentPipelines = new Map<GPUTextureSampleType, WebGPUPresentPipeline>();
     private bufferOwnerResources = new WeakMap<object, ManagedResource>();
     private uniformResources = new WeakMap<UniformBuffer, ManagedResource>();
+    private readonly genericVertexAttributes = new WeakMap<object, Map<string, GeometryData>>();
     private nextManagedResourceId = 1;
     private shadowAtlasTexture: Texture<null> | null = null;
     private shadowAtlasGPUTexture: GPUTexture | null = null;
     private shadowAtlasWidth = 0;
     private shadowAtlasHeight = 0;
-    private shadowCameras = new WeakMap<Light, Camera[]>();
+    private readonly shadowCameras = new Map<Light, Camera[]>();
+    private readonly shadowCameraHelpers = new Map<Light, CameraHelper>();
     private readonly shadowMaterial = new GeometryMaterial({
         vertexType: DEPTH,
         side: BACK,
@@ -372,19 +417,53 @@ class WebGPURenderer extends EventDispatcher {
     private initializationGeneration = 0;
     private deviceStateActive = false;
     private deviceLossInfo: GPUDeviceLostInfo | null = null;
+    private deviceDescriptor: EffectiveWebGPUDeviceDescriptor | null = null;
+    private recoveryError: Error | null = null;
+    private _recoveryState: WebGPUDeviceRecoveryState = 'initializing';
+    private _recoveryPromise: Promise<void> | null = null;
 
     constructor(params: WebGPURendererParameters = {}) {
         super();
+        if (Object.prototype.hasOwnProperty.call(params, 'preserveDrawingBuffer')) {
+            throw new TypeError(
+                'WebGPU does not expose preserveDrawingBuffer; use an explicit copy/readback pass'
+            );
+        }
         Object.assign(this, params);
         this.requiredFeatures = [...(params.requiredFeatures ?? [])];
         this.requiredLimits = { ...(params.requiredLimits ?? {}) };
-        this.framebufferOption = { ...(params.framebufferOption ?? {}) };
+        this.rejectFallbackAdapter = this.failIfMajorPerformanceCaveat;
         this.uniformBlockManager = new BuiltInUniformBlockManager(this);
         this.ready = this.initialize(++this.initializationGeneration);
     }
 
     get isReady(): boolean {
         return this.initialized && !this.destroyed && !this.isInitFailed;
+    }
+
+    /** Current initialization, recovery, failure, or destruction state. */
+    get recoveryState(): WebGPUDeviceRecoveryState {
+        return this._recoveryState;
+    }
+
+    /**
+     * Promise for the most recently started device recovery, or `null` before the first loss.
+     *
+     * It resolves only after the canvas, managers, render targets, and device observers are bound
+     * to the replacement device. It rejects with the recovery/cancellation error on terminal
+     * failure. The settled promise remains observable until another loss starts a new recovery.
+     */
+    get recoveryPromise(): Promise<void> | null {
+        return this._recoveryPromise;
+    }
+
+    get useInstanced(): boolean {
+        return this._useInstanced;
+    }
+
+    set useInstanced(value: boolean) {
+        this._useInstanced = value;
+        this.renderList.useInstanced = value;
     }
 
     get gpuDevice(): GPUDevice {
@@ -399,14 +478,56 @@ class WebGPURenderer extends EventDispatcher {
         }
     }
 
+    private validateAdapter(adapter: GPUAdapter, requiredFeatures: Iterable<GPUFeatureName>): void {
+        if (this.rejectFallbackAdapter && adapterIsFallback(adapter)) {
+            throw new Error('The available WebGPU adapter is a fallback/software adapter');
+        }
+        for (const feature of requiredFeatures) {
+            if (!adapter.features.has(feature)) {
+                throw new Error(`WebGPU adapter does not support required feature ${feature}`);
+            }
+        }
+        if (adapter.limits.maxBindGroups < 4) {
+            throw new Error('WebGPU adapter exposes fewer than the four required bind groups');
+        }
+        const largestBuiltInBlock = Math.max(
+            ...Object.values(BUILT_IN_UNIFORM_BLOCK_LAYOUTS).map(layout => layout.byteLength)
+        );
+        if (adapter.limits.maxUniformBufferBindingSize < largestBuiltInBlock) {
+            throw new Error(
+                `WebGPU adapter exposes ${String(adapter.limits.maxUniformBufferBindingSize)} bytes per uniform buffer binding; Hilo3d requires ${String(largestBuiltInBlock)}`
+            );
+        }
+        if (adapter.limits.maxUniformBuffersPerShaderStage < 9) {
+            throw new Error(
+                `WebGPU adapter exposes ${String(adapter.limits.maxUniformBuffersPerShaderStage)} uniform buffers per shader stage; Hilo3d built-in variants require 9`
+            );
+        }
+    }
+
+    private async requestRecoveryDevice(
+        descriptor: EffectiveWebGPUDeviceDescriptor,
+        generation: number
+    ): Promise<{ readonly adapter: GPUAdapter; readonly device: GPUDevice }> {
+        const gpu = currentGPU();
+        const adapterOptions = this.adapterOptions;
+        if (!gpu || !adapterOptions) {
+            throw new Error('WebGPURenderer recovery adapter configuration is unavailable');
+        }
+        const adapter = await gpu.requestAdapter(adapterOptions);
+        this.assertInitializationActive(generation);
+        if (!adapter) throw new Error('No WebGPU adapter satisfies the recovery preference');
+        this.validateAdapter(adapter, descriptor.requiredFeatures);
+        const device = await adapter.requestDevice({
+            requiredFeatures: [...descriptor.requiredFeatures],
+            requiredLimits: { ...descriptor.requiredLimits }
+        });
+        return { adapter, device };
+    }
+
     private async initialize(generation: number): Promise<void> {
         try {
             this.assertInitializationActive(generation);
-            if (this.preserveDrawingBuffer) {
-                throw new Error(
-                    'WebGPU does not expose preserveDrawingBuffer; use an explicit copy/readback pass'
-                );
-            }
             if (this.alpha && !this.premultipliedAlpha) {
                 throw new Error('WebGPU canvas compositing requires premultiplied alpha');
             }
@@ -414,46 +535,27 @@ class WebGPURenderer extends EventDispatcher {
             if (!canvas) throw new Error('WebGPURenderer requires a canvas');
             const gpu = currentGPU();
             if (!gpu) throw new Error('WebGPU is unavailable in this browser or execution context');
-            if (!shaderLanguageFeatureAvailable(gpu)) {
-                throw new Error(
-                    `WebGPU requires the WGSL ${WGSL_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURE} language feature`
-                );
-            }
-            const adapter = await gpu.requestAdapter({
+            const adapterOptions = Object.freeze({
                 powerPreference: this.powerPreference,
                 forceFallbackAdapter: this.forceFallbackAdapter
             });
+            this.adapterOptions = adapterOptions;
+            const adapter = await gpu.requestAdapter(adapterOptions);
             this.assertInitializationActive(generation);
             if (!adapter) throw new Error('No WebGPU adapter satisfies the requested preference');
-            if (this.failIfMajorPerformanceCaveat && adapterIsFallback(adapter)) {
-                throw new Error('The available WebGPU adapter is a fallback/software adapter');
-            }
             const features = new Set(this.requiredFeatures);
             if (adapter.features.has('float32-filterable')) features.add('float32-filterable');
-            for (const feature of features) {
-                if (!adapter.features.has(feature)) {
-                    throw new Error(`WebGPU adapter does not support required feature ${feature}`);
-                }
+            for (const feature of WEBGPU_TEXTURE_COMPRESSION_FEATURES) {
+                if (adapter.features.has(feature)) features.add(feature);
             }
-            if (adapter.limits.maxBindGroups < 4) {
-                throw new Error('WebGPU adapter exposes fewer than the four required bind groups');
-            }
-            const largestBuiltInBlock = Math.max(
-                ...Object.values(BUILT_IN_UNIFORM_BLOCK_LAYOUTS).map(layout => layout.byteLength)
-            );
-            if (adapter.limits.maxUniformBufferBindingSize < largestBuiltInBlock) {
-                throw new Error(
-                    `WebGPU adapter exposes ${String(adapter.limits.maxUniformBufferBindingSize)} bytes per uniform buffer binding; Hilo3d requires ${String(largestBuiltInBlock)}`
-                );
-            }
-            if (adapter.limits.maxUniformBuffersPerShaderStage < 9) {
-                throw new Error(
-                    `WebGPU adapter exposes ${String(adapter.limits.maxUniformBuffersPerShaderStage)} uniform buffers per shader stage; Hilo3d built-in variants require 9`
-                );
-            }
+            this.validateAdapter(adapter, features);
+            const deviceDescriptor: EffectiveWebGPUDeviceDescriptor = {
+                requiredFeatures: Object.freeze([...features]),
+                requiredLimits: Object.freeze({ ...this.requiredLimits })
+            };
             const device = await adapter.requestDevice({
-                requiredFeatures: [...features],
-                requiredLimits: this.requiredLimits
+                requiredFeatures: [...deviceDescriptor.requiredFeatures],
+                requiredLimits: { ...deviceDescriptor.requiredLimits }
             });
             if (this.destroyed || generation !== this.initializationGeneration) {
                 device.destroy();
@@ -461,49 +563,41 @@ class WebGPURenderer extends EventDispatcher {
             }
             this.adapter = adapter;
             this.device = device;
+            this.deviceDescriptor = deviceDescriptor;
             this.deviceStateActive = true;
             const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
             if (!context) throw new Error('Unable to create a WebGPU canvas context');
             this.context = context;
             this.canvasFormat = gpu.getPreferredCanvasFormat();
             this.sampleCount = this.antialias ? 4 : 1;
-            this.depthStencilFormat = this.depth
-                ? this.stencil
-                    ? 'depth24plus-stencil8'
-                    : 'depth24plus'
-                : undefined;
+            this.depthStencilFormat =
+                this.depth || this.stencil
+                    ? this.stencil
+                        ? 'depth24plus-stencil8'
+                        : 'depth24plus'
+                    : undefined;
             context.configure({
                 device,
                 format: this.canvasFormat,
                 alphaMode: this.alpha ? 'premultiplied' : 'opaque'
             });
+            await this.translator.initialize();
+            this.assertInitializationActive(generation);
             this.pipelineManager = new WebGPUPipelineManager(device);
             this.bufferManager = new WebGPUBufferManager(device);
-            this.textureManager = new WebGPUTextureManager(device, () => {
+            this.textureManager = new WebGPUTextureManager(device, this.translator, () => {
                 this.bindGroupManager?.clearBindGroups();
             });
             this.uniformBufferManager = new WebGPUUniformBufferManager(device);
             this.bindGroupManager = new WebGPUBindGroupManager(device, this.textureManager);
-            await this.translator.initialize();
-            this.assertInitializationActive(generation);
             Shader.init(this);
             this.renderList.useInstanced = this.useInstanced;
             this.createRenderAttachments();
-            if (this.useFramebuffer) this.createOwnedRenderTarget();
-            device.addEventListener('uncapturederror', event => {
-                if (
-                    this.destroyed ||
-                    generation !== this.initializationGeneration ||
-                    this.device !== device
-                ) {
-                    return;
-                }
-                this.fire('webgpuUncapturedError', event.error);
-            });
-            void device.lost.then(info => {
-                this.handleDeviceLoss(device, generation, info);
-            });
+            this.observeDevice(device, generation);
             this.initialized = true;
+            this._recoveryState = 'ready';
+            this.recoveryError = null;
+            this.deviceLossInfo = null;
             this.fire('init');
         } catch (error: unknown) {
             const cancelled = this.destroyed || generation !== this.initializationGeneration;
@@ -515,6 +609,8 @@ class WebGPURenderer extends EventDispatcher {
             this.disposeDeviceState();
             if (!cancelled) {
                 this.isInitFailed = true;
+                this._recoveryState = 'failed';
+                this.recoveryError = failure;
                 this.fire('initFailed', failure);
             }
             throw failure;
@@ -531,30 +627,65 @@ class WebGPURenderer extends EventDispatcher {
         }
         if (this.device) {
             this.createRenderAttachments();
-            if (this.ownsRenderTarget && this.renderTarget) {
-                this.renderTarget.resize(
-                    this.framebufferOption.width ?? Math.max(1, width),
-                    this.framebufferOption.height ?? Math.max(1, height)
-                );
-            }
         }
+        this.activeViewport = null;
     }
 
     setOffset(x: number, y: number): void {
         this.offsetX = x;
         this.offsetY = y;
+        this.activeViewport = null;
     }
 
-    viewport(x?: number, y?: number): void {
-        if (x !== undefined) this.offsetX = x;
-        if (y !== undefined) this.offsetY = y;
+    private getDefaultViewport(): RendererViewport {
+        const target = this.renderTarget;
+        if (target) return [0, 0, target.width, target.height];
+        const canvas = this.domElement;
+        return [
+            this.offsetX,
+            this.offsetY,
+            this.width > 0 ? this.width : Math.max(1, canvas?.width ?? 0),
+            this.height > 0 ? this.height : Math.max(1, canvas?.height ?? 0)
+        ];
+    }
+
+    /** Return the physical-pixel viewport used by the active render pass. */
+    getViewport(): RendererViewport {
+        return this.activeViewport ?? this.getDefaultViewport();
+    }
+
+    private beginCameraPass(
+        camera: Camera,
+        viewport: RendererViewport = this.getDefaultViewport()
+    ): void {
+        this.activeViewport = viewport;
+        semantic.setCamera(camera);
+        semantic.setViewport(viewport);
+        this.uniformBlockManager.beginPass(camera, viewport);
+    }
+
+    /** Run a callback once initialization is complete, consistently with WebGLRenderer. */
+    onInit(callback: (renderer: WebGPURenderer) => void): void {
+        if (this.isReady) {
+            callback(this);
+            return;
+        }
+        this.on(
+            'init',
+            () => {
+                callback(this);
+            },
+            true
+        );
     }
 
     render(stage: RendererScene, camera: Camera, fireEvent = false): void {
-        if (this.deviceLossInfo) {
-            const message = this.deviceLossInfo.message.trim();
+        if (this._recoveryState === 'recovering') return;
+        if (this._recoveryState === 'failed' && this.recoveryError) {
+            const context = this.deviceLossInfo ? 'device recovery' : 'initialization';
             throw new Error(
-                `WebGPURenderer cannot render because the WebGPU device was lost${message ? `: ${message}` : ''}`
+                `WebGPURenderer cannot render because WebGPU ${context} failed: ${this.recoveryError.message}`,
+                { cause: this.recoveryError }
             );
         }
         if (!this.isReady)
@@ -571,7 +702,10 @@ class WebGPURenderer extends EventDispatcher {
             semantic.init(this, camera, this.lightManager, this.fog);
             stage.updateMatrixWorld();
             camera.updateViewProjectionMatrix();
-            this.uniformBlockManager.beginFrame(camera);
+            const sceneViewport = this.getDefaultViewport();
+            this.activeViewport = sceneViewport;
+            semantic.setViewport(sceneViewport);
+            this.uniformBlockManager.beginFrame(camera, sceneViewport);
 
             const lights: Light[] = [];
             const sceneMeshes: Mesh[] = [];
@@ -579,40 +713,48 @@ class WebGPURenderer extends EventDispatcher {
                 if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
                 if (node instanceof Mesh) {
                     sceneMeshes.push(node);
-                    this.renderList.addMesh(node, camera);
                 } else if (node instanceof Light) lights.push(node);
                 return Node.TRAVERSE_STOP_NONE;
             });
+            const activeShadowLights = new Set(
+                this.lightManager.shadowEnabled
+                    ? lights.filter(light => light.enabled && light.shadow !== null)
+                    : []
+            );
+            this.pruneShadowOwners(activeShadowLights);
+            for (const mesh of sceneMeshes) {
+                if (!mesh.isDestroyed) this.renderList.addMesh(mesh, camera);
+            }
             this.renderList.sort();
             for (const light of lights) this.lightManager.addLight(light);
             this.validateLightLimits();
-            const shadowFrame = this.renderShadowAtlas(camera, sceneMeshes);
+            const encoder = device.createCommandEncoder({ label: 'Hilo3d frame' });
+            const shadowFrame = this.renderShadowAtlas(camera, sceneMeshes, encoder);
             this.lightManager.updateInfo(camera);
             this.applyShadowFrameData(shadowFrame);
-            semantic.setCamera(camera);
-            this.uniformBlockManager.beginPass(camera);
+            this.beginCameraPass(camera, sceneViewport);
             if (fireEvent) this.fire('beforeRender');
 
             const renderTarget = this.renderTarget;
             const needsCanvasTexture = renderTarget === null || this.autoPresentRenderTarget;
             const currentTexture = needsCanvasTexture ? context.getCurrentTexture() : null;
-            const encoder = device.createCommandEncoder({ label: 'Hilo3d frame' });
             const passDescriptor = renderTarget
-                ? renderTarget.createRenderPassDescriptor({ label: 'Hilo3d scene target' })
+                ? this.createRenderTargetPassDescriptor(renderTarget)
                 : this.createCanvasRenderPassDescriptor(currentTexture);
             const targetLayout = renderTarget?.getRenderPassLayout();
+            const targetDepthStencilFormat = targetLayout?.depthStencilFormat;
             this.activeDrawTarget = targetLayout
                 ? {
                       colorFormats: targetLayout.colorFormats,
-                      ...(targetLayout.depthStencilFormat
-                          ? { depthStencilFormat: targetLayout.depthStencilFormat }
+                      ...(targetDepthStencilFormat
+                          ? { depthStencilFormat: targetDepthStencilFormat }
                           : {}),
+                      depthTestEnabled: formatHasDepth(targetDepthStencilFormat),
+                      stencilTestEnabled: formatHasStencil(targetDepthStencilFormat),
                       sampleCount: targetLayout.sampleCount as 1 | 4
                   }
                 : this.getMainDrawTarget();
-            this.activeViewport = renderTarget
-                ? [0, 0, renderTarget.width, renderTarget.height]
-                : null;
+            this.activeViewport = sceneViewport;
             const pass = encoder.beginRenderPass(passDescriptor);
             this.activePass = pass;
             try {
@@ -654,6 +796,8 @@ class WebGPURenderer extends EventDispatcher {
         return {
             colorFormats: [this.canvasFormat],
             ...(this.depthStencilFormat ? { depthStencilFormat: this.depthStencilFormat } : {}),
+            depthTestEnabled: this.depth,
+            stencilTestEnabled: this.stencil,
             sampleCount: this.sampleCount
         };
     }
@@ -697,35 +841,128 @@ class WebGPURenderer extends EventDispatcher {
         return descriptor;
     }
 
+    private createRenderTargetPassDescriptor(
+        renderTarget: WebGPURenderTarget
+    ): GPURenderPassDescriptor {
+        return renderTarget.createRenderPassDescriptor({
+            label: 'Hilo3d scene target'
+        });
+    }
+
     /** Create a device-compatible offscreen target without exposing renderer internals. */
-    createRenderTarget(parameters: WebGPURenderTargetParameters): WebGPURenderTarget {
-        return new WebGPURenderTarget(this.gpuDevice, this.requireTextureManager(), parameters);
+    createRenderTarget(parameters: RenderTargetParameters): WebGPURenderTarget {
+        const target = new WebGPURenderTarget(
+            this.gpuDevice,
+            this.requireTextureManager(),
+            parameters,
+            destroyedTarget => {
+                this.resourceManager.releasePass(destroyedTarget).destroyUnusedResource();
+                this.renderTargets.delete(destroyedTarget);
+                if (this.renderTarget === destroyedTarget) {
+                    this.renderTarget = null;
+                    this.ownsRenderTarget = false;
+                    this.autoPresentRenderTarget = false;
+                }
+            }
+        );
+        this.renderTargets.add(target);
+        return target;
+    }
+
+    supportsTextureCompression(format: TextureCompressionFormat): boolean {
+        const features = this.gpuDevice.features;
+        switch (format) {
+            case 'bc':
+                return features.has('texture-compression-bc');
+            case 'etc1':
+            case 'etc2':
+                return features.has('texture-compression-etc2');
+            case 'astc-4x4':
+                return features.has('texture-compression-astc');
+            case 'pvrtc':
+                return false;
+        }
     }
 
     /** Select an offscreen target. Explicit targets are not presented unless requested. */
-    setRenderTarget(
-        target: WebGPURenderTarget | null,
-        options: { readonly present?: boolean; readonly takeOwnership?: boolean } = {}
-    ): this {
-        if (target && target.device !== this.gpuDevice) {
-            throw new TypeError('WebGPU render target belongs to a different device');
+    setRenderTarget(target: RenderTarget | null, options: RenderTargetSelectionOptions = {}): this {
+        let resolved: WebGPURenderTarget | null = null;
+        if (target !== null) {
+            if (!(target instanceof WebGPURenderTarget)) {
+                throw new TypeError(
+                    'WebGPU render target belongs to a different device or renderer'
+                );
+            }
+            if (
+                !this.renderTargets.has(target) ||
+                (this.device !== null && target.device !== this.device)
+            ) {
+                throw new TypeError(
+                    'WebGPU render target belongs to a different device or renderer'
+                );
+            }
+            if (target.isDestroyed)
+                throw new Error('Cannot select a destroyed WebGPU render target');
+            resolved = target;
         }
-        if (target?.isDestroyed) throw new Error('Cannot select a destroyed WebGPU render target');
-        if (this.ownsRenderTarget && this.renderTarget && this.renderTarget !== target) {
-            this.renderTarget.destroy();
-        }
-        this.renderTarget = target;
-        this.ownsRenderTarget = target !== null && options.takeOwnership === true;
-        this.autoPresentRenderTarget = target !== null && options.present === true;
-        this.useFramebuffer = target !== null;
+        const previous = this.renderTarget;
+        const destroyPrevious = this.ownsRenderTarget && previous !== null && previous !== resolved;
+        this.renderTarget = resolved;
+        this.activeViewport = null;
+        this.ownsRenderTarget = resolved !== null && options.takeOwnership === true;
+        this.autoPresentRenderTarget = resolved !== null && options.present === true;
+        if (destroyPrevious) previous.destroy();
         return this;
     }
 
+    /** Render one scoped pass without changing the caller's persistent target selection. */
+    renderToTarget(
+        target: RenderTarget,
+        stage: RendererScene,
+        camera: Camera,
+        fireEvent = false
+    ): void {
+        if (!(target instanceof WebGPURenderTarget)) {
+            throw new TypeError('WebGPU render target belongs to a different device or renderer');
+        }
+        if (
+            !this.renderTargets.has(target) ||
+            (this.device !== null && target.device !== this.device)
+        ) {
+            throw new TypeError('WebGPU render target belongs to a different device or renderer');
+        }
+        if (target.isDestroyed)
+            throw new Error('Cannot render to a destroyed WebGPU render target');
+        if (this._recoveryState === 'recovering') return;
+        if (this._recoveryState === 'failed') {
+            this.render(stage, camera, fireEvent);
+            return;
+        }
+        const previousTarget = this.renderTarget;
+        const previousOwnership = this.ownsRenderTarget;
+        const previousPresentation = this.autoPresentRenderTarget;
+        this.renderTarget = target;
+        this.activeViewport = null;
+        this.ownsRenderTarget = false;
+        this.autoPresentRenderTarget = false;
+        try {
+            this.render(stage, camera, fireEvent);
+        } finally {
+            this.renderTarget = previousTarget?.isDestroyed === false ? previousTarget : null;
+            this.activeViewport = null;
+            this.ownsRenderTarget = this.renderTarget !== null && previousOwnership;
+            this.autoPresentRenderTarget = this.renderTarget !== null && previousPresentation;
+        }
+    }
+
     /** Present the first color attachment of a render target to the canvas. */
-    present(target: WebGPURenderTarget = this.requireRenderTarget()): void {
+    present(target: RenderTarget = this.requireRenderTarget()): void {
+        if (!(target instanceof WebGPURenderTarget)) {
+            throw new TypeError('WebGPU render target belongs to a different device or renderer');
+        }
         const device = this.gpuDevice;
-        if (target.device !== device) {
-            throw new TypeError('WebGPU render target belongs to a different device');
+        if (target.device !== device || !this.renderTargets.has(target)) {
+            throw new TypeError('WebGPU render target belongs to a different device or renderer');
         }
         if (target.isDestroyed) throw new Error('Cannot present a destroyed WebGPU render target');
         const context = this.context;
@@ -733,36 +970,6 @@ class WebGPURenderer extends EventDispatcher {
         const encoder = device.createCommandEncoder({ label: 'Hilo3d present' });
         this.encodePresent(encoder, target, context.getCurrentTexture());
         device.queue.submit([encoder.finish()]);
-    }
-
-    private createOwnedRenderTarget(): void {
-        if (this.ownsRenderTarget && this.renderTarget) this.renderTarget.destroy();
-        const { width, height, ...configured } = this.framebufferOption;
-        const depthStencilAttachment =
-            configured.depthStencilAttachment ??
-            (this.depth
-                ? { format: this.stencil ? 'depth24plus-stencil8' : 'depth24plus' }
-                : false);
-        const colorAttachments = configured.colorAttachments ?? [
-            {
-                clearValue: {
-                    r: this.clearColor.r,
-                    g: this.clearColor.g,
-                    b: this.clearColor.b,
-                    a: this.clearColor.a
-                }
-            }
-        ];
-        this.renderTarget = this.createRenderTarget({
-            ...configured,
-            width: width ?? Math.max(1, this.width),
-            height: height ?? Math.max(1, this.height),
-            sampleCount: configured.sampleCount ?? this.sampleCount,
-            colorAttachments,
-            depthStencilAttachment
-        });
-        this.ownsRenderTarget = true;
-        this.autoPresentRenderTarget = true;
     }
 
     private encodePresent(
@@ -780,11 +987,12 @@ class WebGPURenderer extends EventDispatcher {
             throw new TypeError(`WebGPU presentation does not support ${sampleType} textures`);
         }
         const presentPipeline = this.getPresentPipeline(sampleType);
-        const bindGroup = this.gpuDevice.createBindGroup({
-            label: 'Hilo3d present bind group',
-            layout: presentPipeline.bindGroupLayout,
-            entries: [{ binding: 0, resource: resource.view }]
-        });
+        const bindGroup = createWebGPUFullscreenPassBindGroup(
+            this.gpuDevice,
+            presentPipeline,
+            resource.view,
+            'Hilo3d present bind group'
+        );
         const pass = encoder.beginRenderPass({
             label: 'Hilo3d present pass',
             colorAttachments: [
@@ -802,7 +1010,7 @@ class WebGPURenderer extends EventDispatcher {
             ]
         });
         pass.setPipeline(presentPipeline.pipeline);
-        pass.setBindGroup(0, bindGroup);
+        pass.setBindGroup(presentPipeline.bindGroupIndex, bindGroup);
         pass.setViewport(0, 0, this.width, this.height, 0, 1);
         pass.draw(3);
         pass.end();
@@ -812,33 +1020,39 @@ class WebGPURenderer extends EventDispatcher {
         const cached = this.presentPipelines.get(sampleType);
         if (cached) return cached;
         const device = this.gpuDevice;
-        const bindGroupLayout = device.createBindGroupLayout({
-            label: `Hilo3d present ${sampleType}`,
-            entries: [
-                {
-                    binding: 0,
-                    visibility: WebGPUShaderStage.FRAGMENT,
-                    texture: { sampleType, viewDimension: '2d', multisampled: false }
-                }
-            ]
+        const shader =
+            this.presentShader ??
+            (this.presentShader = this.translator.translate(
+                presentVertexSource,
+                presentFragmentSource
+            ));
+        const resources = createWebGPUFullscreenPassResources(
+            device,
+            shader,
+            sampleType,
+            `Hilo3d present ${sampleType}`
+        );
+        const vertexModule = device.createShaderModule({
+            label: 'Hilo3d present vertex shader',
+            code: shader.vertex.wgsl
         });
-        const module = device.createShaderModule({
-            label: 'Hilo3d present shader',
-            code: PRESENT_SHADER
+        const fragmentModule = device.createShaderModule({
+            label: 'Hilo3d present fragment shader',
+            code: shader.fragment.wgsl
         });
         const pipeline = device.createRenderPipeline({
             label: `Hilo3d present ${sampleType}`,
-            layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
-            vertex: { module, entryPoint: 'vertexMain' },
+            layout: resources.pipelineLayout,
+            vertex: { module: vertexModule, entryPoint: 'main' },
             fragment: {
-                module,
-                entryPoint: 'fragmentMain',
+                module: fragmentModule,
+                entryPoint: 'main',
                 targets: [{ format: this.canvasFormat }]
             },
             primitive: { topology: 'triangle-list' },
             multisample: { count: 1 }
         });
-        const result = { bindGroupLayout, pipeline };
+        const result = { ...resources, pipeline };
         this.presentPipelines.set(sampleType, result);
         return result;
     }
@@ -866,7 +1080,8 @@ class WebGPURenderer extends EventDispatcher {
 
     private renderShadowAtlas(
         mainCamera: Camera,
-        sceneMeshes: readonly Mesh[]
+        sceneMeshes: readonly Mesh[],
+        encoder: GPUCommandEncoder
     ): WebGPUShadowFrameData | null {
         if (!this.lightManager.shadowEnabled) return null;
         const directionalLights = this.lightManager.directionalLights.filter(
@@ -1007,7 +1222,7 @@ class WebGPURenderer extends EventDispatcher {
         const previousViewport = this.activeViewport;
         try {
             slices.forEach(slice => {
-                this.renderShadowSlice(slice, sceneMeshes, columns, tileWidth, tileHeight);
+                this.renderShadowSlice(slice, sceneMeshes, columns, tileWidth, tileHeight, encoder);
             });
         } finally {
             this.activePass = null;
@@ -1033,14 +1248,11 @@ class WebGPURenderer extends EventDispatcher {
         sceneMeshes: readonly Mesh[],
         columns: number,
         tileWidth: number,
-        tileHeight: number
+        tileHeight: number,
+        encoder: GPUCommandEncoder
     ): void {
         const atlas = this.shadowAtlasGPUTexture;
         if (!atlas) throw new Error('WebGPU shadow atlas is unavailable');
-        const device = this.gpuDevice;
-        const encoder = device.createCommandEncoder({
-            label: `Hilo3d shadow slice ${String(slice.logicalIndex)}`
-        });
         const pass = encoder.beginRenderPass({
             label: `Hilo3d shadow slice ${String(slice.logicalIndex)}`,
             colorAttachments: [null],
@@ -1055,8 +1267,7 @@ class WebGPURenderer extends EventDispatcher {
         const row = Math.floor(slice.physicalIndex / columns);
         this.activeViewport = [column * tileWidth, row * tileHeight, tileWidth, tileHeight];
         this.activePass = pass;
-        this.uniformBlockManager.beginPass(slice.camera);
-        semantic.setCamera(slice.camera);
+        this.beginCameraPass(slice.camera, this.activeViewport);
         const shadowList = new RenderList();
         shadowList.useInstanced = this.useInstanced;
         for (const mesh of sceneMeshes) {
@@ -1066,6 +1277,8 @@ class WebGPURenderer extends EventDispatcher {
         const target: WebGPUDrawTargetState = {
             colorFormats: [null],
             depthStencilFormat: 'depth24plus',
+            depthTestEnabled: true,
+            stencilTestEnabled: false,
             sampleCount: 1
         };
         try {
@@ -1100,7 +1313,6 @@ class WebGPURenderer extends EventDispatcher {
             this.activePass = null;
             pass.end();
         }
-        device.queue.submit([encoder.finish()]);
     }
 
     private applyShadowFrameData(data: WebGPUShadowFrameData | null): void {
@@ -1164,6 +1376,7 @@ class WebGPURenderer extends EventDispatcher {
             camera.top = bounds.yMax;
         }
         camera.updateViewProjectionMatrix();
+        this.updatePlanarShadowDebugHelper(light, camera);
         return camera;
     }
 
@@ -1194,49 +1407,69 @@ class WebGPURenderer extends EventDispatcher {
             camera.aspect = aspect;
         }
         camera.updateViewProjectionMatrix();
+        this.updatePlanarShadowDebugHelper(light, camera);
         return camera;
+    }
+
+    private updatePlanarShadowDebugHelper(light: Light, camera: Camera): void {
+        if (light.shadow?.debug !== true) return;
+        let helper = this.shadowCameraHelpers.get(light);
+        if (!helper) {
+            helper = new CameraHelper({
+                camera,
+                color: new Color(0, 1, 0)
+            });
+            helper.addTo(light);
+            this.shadowCameraHelpers.set(light, helper);
+        } else {
+            helper.camera = camera;
+        }
+        helper.onUpdate?.(0);
+    }
+
+    private releaseShadowHelper(light: Light): void {
+        const helper = this.shadowCameraHelpers.get(light);
+        if (!helper) return;
+        this.shadowCameraHelpers.delete(light);
+        helper.destroy(this);
+    }
+
+    private releaseShadowCameras(light: Light): void {
+        const cameras = this.shadowCameras.get(light);
+        if (!cameras) return;
+        this.shadowCameras.delete(light);
+        for (const camera of cameras) {
+            camera.removeFromParent();
+            camera.off();
+        }
+    }
+
+    private pruneShadowOwners(activeShadowLights: ReadonlySet<Light>): void {
+        for (const light of this.shadowCameras.keys()) {
+            if (!activeShadowLights.has(light)) this.releaseShadowCameras(light);
+        }
+        for (const light of this.shadowCameraHelpers.keys()) {
+            if (!activeShadowLights.has(light) || light.shadow?.debug !== true) {
+                this.releaseShadowHelper(light);
+            }
+        }
+    }
+
+    private releaseAllShadowOwners(): void {
+        for (const light of [...this.shadowCameraHelpers.keys()]) this.releaseShadowHelper(light);
+        for (const light of [...this.shadowCameras.keys()]) this.releaseShadowCameras(light);
     }
 
     private updatePointShadowCameras(
         light: PointLight,
         mainCamera: Camera
     ): readonly PerspectiveCamera[] {
-        const info = light.shadow?.cameraInfo;
-        if (info) {
-            const unsupported = [
-                'aspect',
-                'fov',
-                'left',
-                'right',
-                'top',
-                'bottom',
-                'x',
-                'y',
-                'z',
-                'rotationX',
-                'rotationY',
-                'rotationZ'
-            ].find(name => Reflect.get(info, name) !== undefined);
-            if (unsupported) {
-                throw new TypeError(
-                    `Point-light shadow cameraInfo.${unsupported} cannot override the six canonical cube-face cameras`
-                );
-            }
-        }
         let cameras = this.shadowCameras.get(light);
         if (cameras?.length !== 6) {
             cameras = Array.from({ length: 6 }, () => new PerspectiveCamera());
             this.shadowCameras.set(light, cameras);
         }
-        const clipping = cameraClippingPlanes(mainCamera);
-        const near = info?.near ?? clipping.near;
-        const far =
-            info?.far ?? (light.range > 0 ? Math.min(light.range, clipping.far) : clipping.far);
-        if (far <= near) {
-            throw new RangeError(
-                'Point-light shadow far plane must be greater than its near plane'
-            );
-        }
+        const { near, far } = resolvePointShadowCameraPlanes(light, mainCamera);
         const position = new Vector3();
         light.worldMatrix.getTranslation(position);
         cameras.forEach((candidate, face) => {
@@ -1244,8 +1477,8 @@ class WebGPURenderer extends EventDispatcher {
                 throw new TypeError('Point-light shadow cache contains a non-perspective camera');
             }
             candidate.position.copy(position);
-            candidate.up.fromArray(pointShadowUps[face] ?? pointShadowUps[0]);
-            const direction = pointShadowDirections[face] ?? pointShadowDirections[0];
+            candidate.up.fromArray(POINT_SHADOW_UPS[face] ?? POINT_SHADOW_UPS[0]);
+            const direction = POINT_SHADOW_DIRECTIONS[face] ?? POINT_SHADOW_DIRECTIONS[0];
             candidate.lookAt(
                 new Vector3(
                     position.x + direction[0],
@@ -1356,6 +1589,7 @@ class WebGPURenderer extends EventDispatcher {
         const mesh = meshes[0];
         if (!mesh) throw new Error('A WebGPU draw requires at least one mesh');
         const geometry = geometryFor(mesh);
+        geometry.normalizePrimitiveTopology();
         const material = materialFor(mesh, this.forceMaterial);
         if (material.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
         const shader = Shader.getShader(
@@ -1368,12 +1602,12 @@ class WebGPURenderer extends EventDispatcher {
             this
         );
         if (!shader) throw new Error(`Material ${material.className} has no renderable shader`);
-        const compiled = this.getCompiledShader(shader);
-        if (compiled.translated.fragmentOutputs.length !== target.colorFormats.length) {
-            throw new Error(
-                `The render target exposes ${String(target.colorFormats.length)} color slots, but the shader exposes ${String(compiled.translated.fragmentOutputs.length)} fragment outputs`
-            );
-        }
+        const depthOnly = target.colorFormats.every(format => format === null);
+        let compiled = this.getCompiledShader(shader, depthOnly);
+        const fragmentColorFormats = resolveWebGPUFragmentColorFormats(
+            compiled.translated.fragmentOutputs,
+            target.colorFormats
+        );
         const vertexBuffers = this.resolveVertexBuffers(
             meshes,
             material,
@@ -1388,6 +1622,7 @@ class WebGPURenderer extends EventDispatcher {
               })
             : null;
         const samplers = this.resolveSamplers(compiled.translated, mesh, material);
+        compiled = this.getDepthSpecializedShader(shader, compiled, samplers);
         const bindingLayout = this.requireBindGroupManager().getLayout(
             compiled.translated,
             samplers
@@ -1422,8 +1657,10 @@ class WebGPURenderer extends EventDispatcher {
         );
         const stripIndexFormat = indexBuffer && stripMode ? indexBuffer.format : undefined;
         const renderState = createWebGPURenderState(material, geometry.mode, {
-            colorFormats: target.colorFormats,
+            colorFormats: fragmentColorFormats,
             ...(target.depthStencilFormat ? { depthStencilFormat: target.depthStencilFormat } : {}),
+            depthTestEnabled: target.depthTestEnabled,
+            stencilTestEnabled: target.stencilTestEnabled,
             sampleCount: target.sampleCount,
             ...(stripIndexFormat ? { stripIndexFormat } : {})
         });
@@ -1435,7 +1672,6 @@ class WebGPURenderer extends EventDispatcher {
             renderState
         );
         const managedResources: ManagedResource[] = [
-            shader,
             this.getBufferOwnerResource(geometry),
             ...Object.values(uniformBlocks).map(block => this.getUniformResource(block))
         ];
@@ -1446,7 +1682,10 @@ class WebGPURenderer extends EventDispatcher {
             managedResources.push(this.getBufferOwnerResource(instanceBatchOwner));
         }
         for (const batchMesh of meshes) {
-            this.resourceManager.addMeshResources(batchMesh, managedResources);
+            this.resourceManager.addMeshResources(batchMesh, managedResources, {
+                key: `${material.id}:${shader.id}:${useInstanced ? 'instanced' : 'direct'}`,
+                pass: this.renderTarget ?? this
+            });
         }
         const fallbackVertexCount = vertexBuffers[0]?.count ?? 0;
         return {
@@ -1509,6 +1748,13 @@ class WebGPURenderer extends EventDispatcher {
         for (const input of inputs) {
             if (Object.hasOwn(material.attributes, input.name)) {
                 const value = material.getAttributeData(input.name, mesh, { name: input.name });
+                if (value === undefined || value === null) {
+                    perVertex.push({
+                        geometryData: this.getGenericVertexAttribute(geometryFor(mesh), input),
+                        input
+                    });
+                    continue;
+                }
                 if (!(value instanceof GeometryData)) {
                     throw new TypeError(`Vertex input ${input.name} must resolve to GeometryData`);
                 }
@@ -1571,6 +1817,43 @@ class WebGPURenderer extends EventDispatcher {
         return result;
     }
 
+    private getGenericVertexAttribute(
+        geometry: ReturnType<typeof geometryFor>,
+        input: WebGPUVertexInput
+    ): GeometryData {
+        const vertexCount = geometry.vertices?.count;
+        if (vertexCount === undefined) {
+            throw new Error(
+                `Cannot provide the generic default for vertex input ${input.name} without geometry vertices`
+            );
+        }
+        const size = genericVertexAttributeSize(input.type);
+        if (size === null) {
+            throw new TypeError(
+                `Vertex input ${input.name} type ${input.type} cannot use a generic default attribute`
+            );
+        }
+        let attributes = this.genericVertexAttributes.get(geometry);
+        if (!attributes) {
+            attributes = new Map();
+            this.genericVertexAttributes.set(geometry, attributes);
+        }
+        let attribute = attributes.get(input.type);
+        if (attribute?.count === vertexCount) return attribute;
+
+        const values = new Float32Array(vertexCount * size);
+        // WebGL's disabled-array generic value is (0, 0, 0, 1). Repeating that value is the
+        // deterministic WebGPU equivalent; it deliberately does not synthesize semantic data.
+        if (size === 4) {
+            for (let vertex = 0; vertex < vertexCount; vertex++) {
+                values[vertex * size + 3] = 1;
+            }
+        }
+        attribute = new GeometryData(values, size);
+        attributes.set(input.type, attribute);
+        return attribute;
+    }
+
     private resolveSamplers(
         shader: TranslatedShaderPair,
         mesh: Mesh,
@@ -1604,23 +1887,74 @@ class WebGPURenderer extends EventDispatcher {
         });
     }
 
-    private getCompiledShader(shader: Shader): CompiledWebGPUShader {
-        const cached = this.compiledShaders.get(shader);
+    private getCompiledShader(shader: Shader, depthOnly = false): CompiledWebGPUShader {
+        const cache = depthOnly ? this.depthOnlyCompiledShaders : this.compiledShaders;
+        const cached = cache.get(shader);
         if (cached) return cached;
-        const translated = this.translator.translate(shader.vs, shader.fs);
+        const translated = this.translator.translate(
+            shader.vs,
+            shader.fs,
+            undefined,
+            depthOnly ? { fragmentOutputs: 'depth-only' } : undefined
+        );
+        const device = this.gpuDevice;
+        const variant = depthOnly ? ':depth-only' : '';
+        const result: CompiledWebGPUShader = {
+            translated,
+            vertexModule: device.createShaderModule({
+                label: `${shader.id}:vertex${variant}`,
+                code: translated.vertex.wgsl
+            }),
+            fragmentModule: device.createShaderModule({
+                label: `${shader.id}:fragment${variant}`,
+                code: translated.fragment.wgsl
+            })
+        };
+        cache.set(shader, result);
+        return result;
+    }
+
+    private getDepthSpecializedShader(
+        shader: Shader,
+        compiled: CompiledWebGPUShader,
+        samplers: readonly ResolvedWebGPUSampler[]
+    ): CompiledWebGPUShader {
+        const depthBindings = samplers
+            .filter(
+                sampler =>
+                    !sampler.binding.type.endsWith('Shadow') &&
+                    resolveWebGPUTextureFormat(sampler.texture).isDepth
+            )
+            .map(sampler => sampler.binding)
+            .sort(
+                (left, right) =>
+                    left.group - right.group || left.textureBinding - right.textureBinding
+            );
+        if (depthBindings.length === 0) return compiled;
+        const signature = depthBindings
+            .map(binding => `${String(binding.group)}:${String(binding.textureBinding)}`)
+            .join(',');
+        let variants = this.depthSpecializedShaders.get(compiled);
+        if (!variants) {
+            variants = new Map();
+            this.depthSpecializedShaders.set(compiled, variants);
+        }
+        const cached = variants.get(signature);
+        if (cached) return cached;
+        const translated = specializeWebGPUDepthSamplers(compiled.translated, depthBindings);
         const device = this.gpuDevice;
         const result: CompiledWebGPUShader = {
             translated,
             vertexModule: device.createShaderModule({
-                label: `${shader.id}:vertex`,
+                label: `${shader.id}:vertex:depth:${signature}`,
                 code: translated.vertex.wgsl
             }),
             fragmentModule: device.createShaderModule({
-                label: `${shader.id}:fragment`,
+                label: `${shader.id}:fragment:depth:${signature}`,
                 code: translated.fragment.wgsl
             })
         };
-        this.compiledShaders.set(shader, result);
+        variants.set(signature, result);
         return result;
     }
 
@@ -1668,7 +2002,9 @@ class WebGPURenderer extends EventDispatcher {
             setup.renderState.dynamic.depthRange[0],
             setup.renderState.dynamic.depthRange[1]
         );
-        if (this.stencil) pass.setStencilReference(setup.renderState.dynamic.stencilReference);
+        if (setup.renderState.usesStencil) {
+            pass.setStencilReference(setup.renderState.dynamic.stencilReference);
+        }
         if (setup.indexBuffer) {
             pass.setIndexBuffer(setup.indexBuffer.buffer, setup.indexBuffer.format);
             pass.drawIndexed(setup.vertexCount, setup.instanceCount);
@@ -1746,42 +2082,205 @@ class WebGPURenderer extends EventDispatcher {
         return resource;
     }
 
-    clear(): void {
-        throw new Error('WebGPU clear operations are encoded as render-pass load operations');
-    }
-
-    clearDepth(): void {
-        throw new Error('WebGPU depth clears are encoded as render-pass load operations');
-    }
-
-    clearStencil(): void {
-        throw new Error('WebGPU stencil clears are encoded as render-pass load operations');
-    }
-
-    releaseGPUResources(): void {
+    private releaseDeviceResources(options: {
+        readonly preserveRenderTargets: boolean;
+        readonly preserveTextureRecoveryData: boolean;
+    }): void {
         this.depthTexture?.destroy();
         this.multisampleTexture?.destroy();
         this.depthTexture = null;
         this.multisampleTexture = null;
         this.destroyShadowAtlas();
-        if (this.ownsRenderTarget) this.renderTarget?.destroy();
-        this.renderTarget = null;
-        this.ownsRenderTarget = false;
-        this.autoPresentRenderTarget = false;
+        this.releaseAllShadowOwners();
+        if (options.preserveRenderTargets) {
+            this.renderTargets.forEach(target => {
+                target.suspendDeviceResources();
+            });
+        } else {
+            this.renderTargets.forEach(target => {
+                target.destroy();
+            });
+            this.renderTargets.clear();
+            this.renderTarget = null;
+            this.ownsRenderTarget = false;
+            this.autoPresentRenderTarget = false;
+        }
         this.bufferManager?.destroy();
-        this.textureManager?.destroyAll();
+        if (options.preserveTextureRecoveryData) this.textureManager?.suspendAll();
+        else this.textureManager?.destroyAll();
         this.uniformBufferManager?.destroy();
         this.bindGroupManager?.clear();
         this.pipelineManager?.clear();
         this.presentPipelines.clear();
         this.uniformBlockManager.destroy();
         this.compiledShaders = new WeakMap();
+        this.depthOnlyCompiledShaders = new WeakMap();
+        this.depthSpecializedShaders = new WeakMap();
         this.instanceUniformBuffers = new WeakMap();
         this.instanceBatchOwners.clear();
-        this.shadowCameras = new WeakMap();
         this.bufferOwnerResources = new WeakMap();
         this.uniformResources = new WeakMap();
         this.resourceManager.clear();
+    }
+
+    releaseGPUResources(): void {
+        this.releaseDeviceResources({
+            preserveRenderTargets: false,
+            preserveTextureRecoveryData: true
+        });
+        if (this.deviceStateActive && !this.destroyed) this.createRenderAttachments();
+    }
+
+    private fireDeviceLifecycleEvent(type: WebGPUDeviceLifecycleEventName, detail: unknown): void {
+        try {
+            this.fire(type, detail);
+        } catch (error: unknown) {
+            const cause = error instanceof Error ? error : new Error(String(error));
+            reportAsynchronousError(
+                new Error(`WebGPURenderer ${type} listener failed: ${cause.message}`, { cause })
+            );
+        }
+    }
+
+    private observeDevice(device: GPUDevice, generation: number): void {
+        device.addEventListener('uncapturederror', event => {
+            if (
+                this.destroyed ||
+                generation !== this.initializationGeneration ||
+                this.device !== device
+            ) {
+                return;
+            }
+            this.fire('webgpuUncapturedError', event.error);
+        });
+        void device.lost.then(
+            info => {
+                try {
+                    this.handleDeviceLoss(device, generation, info);
+                } catch (error: unknown) {
+                    const cause = error instanceof Error ? error : new Error(String(error));
+                    reportAsynchronousError(
+                        new Error(`WebGPURenderer device-loss observer failed: ${cause.message}`, {
+                            cause
+                        })
+                    );
+                }
+            },
+            (error: unknown) => {
+                const cause = error instanceof Error ? error : new Error(String(error));
+                reportAsynchronousError(
+                    new Error(`WebGPU device.lost rejected unexpectedly: ${cause.message}`, {
+                        cause
+                    })
+                );
+            }
+        );
+    }
+
+    private async recoverDevice(
+        lostDevice: GPUDevice,
+        descriptor: EffectiveWebGPUDeviceDescriptor | null,
+        generation: number
+    ): Promise<void> {
+        let replacementDevice: GPUDevice | null = null;
+        const textureManager = this.textureManager;
+        this.recoveryTextureManager = textureManager;
+        try {
+            this.disposeDeviceState({
+                expectedDevice: lostDevice,
+                destroyDevice: false,
+                preserveRenderTargets: true
+            });
+            if (!descriptor) {
+                throw new Error('WebGPURenderer recovery configuration is unavailable');
+            }
+            const replacement = await this.requestRecoveryDevice(descriptor, generation);
+            replacementDevice = replacement.device;
+            if (this.destroyed || generation !== this.initializationGeneration) {
+                replacementDevice.destroy();
+                replacementDevice = null;
+                throw new Error('WebGPURenderer device recovery was cancelled');
+            }
+            await this.translator.initialize();
+            this.assertInitializationActive(generation);
+            this.activateRecoveredDevice(
+                replacement.adapter,
+                replacementDevice,
+                generation,
+                textureManager
+            );
+            replacementDevice = null;
+            this.initialized = true;
+            this.isInitFailed = false;
+            this.deviceLossInfo = null;
+            this.recoveryError = null;
+            this._recoveryState = 'ready';
+            this.recoveryTextureManager = null;
+            this.fireDeviceLifecycleEvent('webgpuDeviceRestored', this.device);
+        } catch (error: unknown) {
+            const cancelled = this.destroyed || generation !== this.initializationGeneration;
+            const failure =
+                error instanceof Error
+                    ? error
+                    : new Error(`WebGPU recovery failed: ${String(error)}`);
+            if (this.deviceStateActive) {
+                this.disposeDeviceState({ preserveRenderTargets: true });
+            } else {
+                replacementDevice?.destroy();
+            }
+            textureManager?.destroyAll();
+            if (this.recoveryTextureManager === textureManager) {
+                this.recoveryTextureManager = null;
+            }
+            if (!cancelled) {
+                this.initialized = false;
+                this.isInitFailed = true;
+                this.recoveryError = failure;
+                this._recoveryState = 'failed';
+                this.fireDeviceLifecycleEvent('webgpuDeviceRecoveryFailed', failure);
+            }
+            throw failure;
+        }
+    }
+
+    private activateRecoveredDevice(
+        adapter: GPUAdapter,
+        device: GPUDevice,
+        generation: number,
+        recoveryTextureManager: WebGPUTextureManager | null
+    ): void {
+        const canvas = this.domElement;
+        if (!canvas) throw new Error('WebGPURenderer recovery requires a canvas');
+        const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
+        if (!context) throw new Error('Unable to restore the WebGPU canvas context');
+        this.adapter = adapter;
+        this.device = device;
+        this.context = context;
+        this.deviceStateActive = true;
+        context.configure({
+            device,
+            format: this.canvasFormat,
+            alphaMode: this.alpha ? 'premultiplied' : 'opaque'
+        });
+        this.pipelineManager = new WebGPUPipelineManager(device);
+        this.bufferManager = new WebGPUBufferManager(device);
+        if (recoveryTextureManager) {
+            recoveryTextureManager.restoreDevice(device);
+            this.textureManager = recoveryTextureManager;
+        } else {
+            this.textureManager = new WebGPUTextureManager(device, this.translator, () => {
+                this.bindGroupManager?.clearBindGroups();
+            });
+        }
+        this.uniformBufferManager = new WebGPUUniformBufferManager(device);
+        this.bindGroupManager = new WebGPUBindGroupManager(device, this.textureManager);
+        for (const target of this.renderTargets) {
+            target.restoreDeviceResources(device, this.textureManager);
+        }
+        Shader.init(this);
+        this.renderList.useInstanced = this.useInstanced;
+        this.createRenderAttachments();
+        this.observeDevice(device, generation);
     }
 
     private handleDeviceLoss(device: GPUDevice, generation: number, info: GPUDeviceLostInfo): void {
@@ -1792,22 +2291,34 @@ class WebGPURenderer extends EventDispatcher {
         ) {
             return;
         }
-        this.initializationGeneration++;
+        const descriptor = this.deviceDescriptor;
+        const recoveryGeneration = ++this.initializationGeneration;
         this.initialized = false;
-        this.isInitFailed = true;
+        this.isInitFailed = false;
         this.deviceLossInfo = info;
-        try {
-            this.disposeDeviceState({ expectedDevice: device, destroyDevice: false });
-        } finally {
-            this.fire('webgpuDeviceLost', info);
-        }
+        this.recoveryError = null;
+        this._recoveryState = 'recovering';
+        this.fireDeviceLifecycleEvent('webgpuDeviceLost', info);
+        const recovery = this.recoverDevice(device, descriptor, recoveryGeneration);
+        this._recoveryPromise = recovery;
+        void recovery.catch(() => undefined);
     }
 
     private disposeDeviceState(
-        options: { readonly expectedDevice?: GPUDevice; readonly destroyDevice?: boolean } = {}
+        options: {
+            readonly expectedDevice?: GPUDevice;
+            readonly destroyDevice?: boolean;
+            readonly preserveRenderTargets?: boolean;
+        } = {}
     ): void {
         if (options.expectedDevice && this.device !== options.expectedDevice) return;
         if (!this.deviceStateActive) {
+            if (options.preserveRenderTargets !== true) {
+                this.releaseDeviceResources({
+                    preserveRenderTargets: false,
+                    preserveTextureRecoveryData: false
+                });
+            }
             this.initialized = false;
             return;
         }
@@ -1815,7 +2326,10 @@ class WebGPURenderer extends EventDispatcher {
         const device = this.device;
         this.deviceStateActive = false;
         try {
-            this.releaseGPUResources();
+            this.releaseDeviceResources({
+                preserveRenderTargets: options.preserveRenderTargets === true,
+                preserveTextureRecoveryData: options.preserveRenderTargets === true
+            });
         } finally {
             this.pipelineManager = null;
             this.bufferManager = null;
@@ -1840,10 +2354,15 @@ class WebGPURenderer extends EventDispatcher {
     destroy(): void {
         if (this.destroyed) return;
         this.destroyed = true;
+        this._recoveryState = 'destroyed';
         this.initializationGeneration++;
         try {
             this.disposeDeviceState();
         } finally {
+            this.recoveryTextureManager?.destroyAll();
+            this.recoveryTextureManager = null;
+            this.deviceDescriptor = null;
+            this.adapterOptions = null;
             this.off();
         }
     }

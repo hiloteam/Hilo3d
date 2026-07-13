@@ -11,12 +11,6 @@ import {
 import type { WebGPUUniformBufferBinding } from './WebGPUUniformBufferManager';
 
 const MAX_CACHED_BIND_GROUP_SETS = 256;
-const supportedSamplerTypes = new Set<WebGPUSamplerBinding['type']>([
-    'sampler2D',
-    'samplerCube',
-    'sampler2DShadow',
-    'samplerCubeShadow'
-]);
 
 export interface ResolvedWebGPUSampler {
     readonly binding: WebGPUSamplerBinding;
@@ -43,19 +37,33 @@ function stageVisibility(stages: readonly ('vertex' | 'fragment')[]): GPUShaderS
 }
 
 function samplerViewDimension(type: WebGPUSamplerBinding['type']): GPUTextureViewDimension {
-    if (!supportedSamplerTypes.has(type)) {
-        const category =
-            type.startsWith('isampler') || type.startsWith('usampler')
-                ? 'integer textures'
-                : type.includes('3D')
-                  ? '3D textures'
-                  : '2D-array textures';
-        throw new TypeError(
-            `WebGPU sampler ${type} requires ${category}, which WebGPUTextureManager does not support`
-        );
-    }
+    if (type.includes('2DArray')) return '2d-array';
+    if (type.includes('3D')) return '3d';
     if (type.includes('Cube')) return 'cube';
     return '2d';
+}
+
+function isIntegerSamplerType(type: WebGPUSamplerBinding['type']): boolean {
+    return type.startsWith('isampler') || type.startsWith('usampler');
+}
+
+function validateIntegerSamplerDescriptor(
+    binding: WebGPUSamplerBinding,
+    texture: Texture<unknown>,
+    mipLevelCount: number
+): void {
+    if (!isIntegerSamplerType(binding.type)) return;
+    const descriptor = createWebGPUSamplerDescriptor(texture, mipLevelCount);
+    if (
+        descriptor.magFilter !== 'nearest' ||
+        descriptor.minFilter !== 'nearest' ||
+        descriptor.mipmapFilter !== 'nearest' ||
+        (descriptor.maxAnisotropy ?? 1) !== 1
+    ) {
+        throw new TypeError(
+            `Integer sampler ${binding.name} requires nearest minification, magnification and mipmap filters with anisotropy disabled`
+        );
+    }
 }
 
 function declaredTextureSampleType(
@@ -64,6 +72,9 @@ function declaredTextureSampleType(
 ): GPUTextureSampleType {
     const type = sampler.binding.type;
     const formatInfo = resolveWebGPUTextureFormat(sampler.texture);
+    if (formatInfo.isDepth && !type.startsWith('isampler') && !type.startsWith('usampler')) {
+        return 'depth';
+    }
     const declaredType = type.startsWith('isampler')
         ? 'sint'
         : type.startsWith('usampler')
@@ -75,6 +86,13 @@ function declaredTextureSampleType(
         if (formatInfo.sampleType !== declaredType) {
             throw new TypeError(
                 `Sampler ${sampler.binding.name} declares ${declaredType}, but texture ${sampler.texture.id} exposes ${formatInfo.sampleType}`
+            );
+        }
+        if (declaredType === 'sint' || declaredType === 'uint') {
+            validateIntegerSamplerDescriptor(
+                sampler.binding,
+                sampler.texture,
+                sampler.resource.mipLevelCount
             );
         }
         return declaredType;
@@ -263,14 +281,45 @@ export default class WebGPUBindGroupManager {
         samplerViewDimension(binding.type);
         const comparison = binding.type.endsWith('Shadow');
         const formatInfo = resolveWebGPUTextureFormat(texture);
-        if (formatInfo.isDepth && !comparison) {
+        if (formatInfo.isDepth && binding.type.includes('3D')) {
             throw new TypeError(
-                `WebGPU depth texture ${texture.id} must use a Shadow sampler; Naga translates regular GLSL samplers to color texture types`
+                `WebGPU depth texture ${texture.id} cannot use ${binding.type}; WGSL has no 3D depth texture type`
             );
+        }
+        if (formatInfo.isDepth && !comparison) {
+            const descriptor = createWebGPUSamplerDescriptor(texture, 1);
+            if (
+                descriptor.magFilter !== 'nearest' ||
+                descriptor.minFilter !== 'nearest' ||
+                descriptor.mipmapFilter !== 'nearest' ||
+                (descriptor.maxAnisotropy ?? 1) !== 1
+            ) {
+                throw new TypeError(
+                    `WebGPU numeric depth sampler ${binding.name} requires nearest minification, magnification and mipmap filters with anisotropy disabled`
+                );
+            }
         }
         if (!formatInfo.isDepth && comparison) {
             throw new TypeError(
                 `WebGPU Shadow sampler ${binding.name} requires a depth texture, but ${texture.id} is a color texture`
+            );
+        }
+        if (isIntegerSamplerType(binding.type)) {
+            const expectedSampleType = binding.type.startsWith('isampler') ? 'sint' : 'uint';
+            if (formatInfo.sampleType !== expectedSampleType) {
+                throw new TypeError(
+                    `Sampler ${binding.name} declares ${expectedSampleType}, but texture ${texture.id} exposes ${formatInfo.sampleType}`
+                );
+            }
+            validateIntegerSamplerDescriptor(binding, texture, 1);
+        } else if (
+            !comparison &&
+            !formatInfo.isDepth &&
+            formatInfo.sampleType !== 'float' &&
+            formatInfo.sampleType !== 'unfilterable-float'
+        ) {
+            throw new TypeError(
+                `Sampler ${binding.name} requires a floating-point color texture, but ${texture.id} exposes ${formatInfo.sampleType}`
             );
         }
         return {

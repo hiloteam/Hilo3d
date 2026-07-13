@@ -1,5 +1,4 @@
 import math from '../math/math';
-import Cache from '../utils/Cache';
 import { VERTEX_SHADER } from '../constants/webgl';
 import glType from './glType';
 import Shader from '../shader/Shader';
@@ -7,7 +6,9 @@ import UniformBuffer, { type UniformBufferRange } from './UniformBuffer';
 import { BUILT_IN_UNIFORM_BLOCK_LAYOUTS } from './ubo/BuiltInUniformBlocks';
 import { getUniformBlockBinding } from './ubo/UniformBlockBindings';
 import requireGLResource from './requireGLResource';
+import WebGLContextCache from './WebGLContextCache';
 import type WebGLState from './WebGLState';
+import type Cache from '../utils/Cache';
 import type GraphicsResourceManager from './GraphicsResourceManager';
 import type { GLContext, GLTypeInfo } from './types';
 
@@ -83,7 +84,7 @@ export interface ProgramRenderer {
     resourceManager: GraphicsResourceManager;
 }
 
-const cache = new Cache<Program>();
+const contextCaches = new WebGLContextCache<Program>();
 
 function numericParameter(value: unknown, name: string): number {
     if (typeof value !== 'number') throw new TypeError(`WebGL ${name} did not return a number`);
@@ -140,6 +141,91 @@ function isSamplerType(gl: WebGL2RenderingContext, type: GLenum): boolean {
     ]).has(type);
 }
 
+type ReflectedAttributeKind = 'converted' | 'signed-integer' | 'unsigned-integer';
+
+function reflectedAttributeKind(gl: WebGL2RenderingContext, type: GLenum): ReflectedAttributeKind {
+    switch (type) {
+        case gl.INT:
+        case gl.INT_VEC2:
+        case gl.INT_VEC3:
+        case gl.INT_VEC4:
+            return 'signed-integer';
+        case gl.UNSIGNED_INT:
+        case gl.UNSIGNED_INT_VEC2:
+        case gl.UNSIGNED_INT_VEC3:
+        case gl.UNSIGNED_INT_VEC4:
+            return 'unsigned-integer';
+        case gl.FLOAT:
+        case gl.FLOAT_VEC2:
+        case gl.FLOAT_VEC3:
+        case gl.FLOAT_VEC4:
+        case gl.FLOAT_MAT2:
+        case gl.FLOAT_MAT3:
+        case gl.FLOAT_MAT4:
+        case gl.BOOL:
+        case gl.BOOL_VEC2:
+        case gl.BOOL_VEC3:
+        case gl.BOOL_VEC4:
+            return 'converted';
+        default:
+            throw new TypeError(`Unsupported reflected vertex attribute type: ${String(type)}`);
+    }
+}
+
+function isSignedIntegerStorageType(gl: WebGL2RenderingContext, type: GLenum): boolean {
+    return type === gl.BYTE || type === gl.SHORT || type === gl.INT;
+}
+
+function isUnsignedIntegerStorageType(gl: WebGL2RenderingContext, type: GLenum): boolean {
+    return type === gl.UNSIGNED_BYTE || type === gl.UNSIGNED_SHORT || type === gl.UNSIGNED_INT;
+}
+
+function isConvertedStorageType(gl: WebGL2RenderingContext, type: GLenum): boolean {
+    return (
+        type === gl.BYTE ||
+        type === gl.UNSIGNED_BYTE ||
+        type === gl.SHORT ||
+        type === gl.UNSIGNED_SHORT ||
+        type === gl.HALF_FLOAT ||
+        type === gl.FLOAT
+    );
+}
+
+function isNormalizableStorageType(gl: WebGL2RenderingContext, type: GLenum): boolean {
+    return (
+        type === gl.BYTE ||
+        type === gl.UNSIGNED_BYTE ||
+        type === gl.SHORT ||
+        type === gl.UNSIGNED_SHORT
+    );
+}
+
+function storageTypeByteSize(gl: WebGL2RenderingContext, type: GLenum): number {
+    switch (type) {
+        case gl.BYTE:
+        case gl.UNSIGNED_BYTE:
+            return 1;
+        case gl.SHORT:
+        case gl.UNSIGNED_SHORT:
+        case gl.HALF_FLOAT:
+            return 2;
+        case gl.INT:
+        case gl.UNSIGNED_INT:
+        case gl.FLOAT:
+            return 4;
+        default:
+            throw new TypeError(`Unsupported vertex attribute storage type: ${String(type)}`);
+    }
+}
+
+function pointerComponentCount(value: GLint | undefined, fallback: number): GLint {
+    const size = value ?? fallback;
+    if (!Number.isInteger(size) || size < 1 || size > 4) {
+        throw new RangeError(`Vertex attribute component count must be an integer from 1 to 4`);
+    }
+    return size;
+}
+
 interface SamplerTypeInfo extends GLTypeInfo {
     uniform(location: WebGLUniformLocation | null, value: number): void;
     uniformArray(location: WebGLUniformLocation | null, value: readonly number[]): void;
@@ -176,15 +262,20 @@ function reflectedUniformValues(
 }
 
 class Program {
-    static get cache(): Cache<Program> {
-        return cache;
+    /** Return the program namespace owned exclusively by one WebGL2 context. */
+    static getCache(gl: GLContext): Cache<Program> {
+        return contextCaches.get(gl);
     }
 
-    static reset(_gl?: GLContext): void {
+    static reset(gl: GLContext): void {
+        const cache = contextCaches.peek(gl);
+        if (!cache) return;
         cache.each(program => program.destroy());
+        contextCaches.delete(gl);
     }
 
     static getProgram(shader: Shader, state: WebGLState): Program {
+        const cache = contextCaches.get(state.gl);
         const cached = cache.get(shader.id);
         if (cached) return cached;
 
@@ -321,6 +412,7 @@ class Program {
             const baseLocation = gl.getAttribLocation(program, name);
             const glTypeInfo = glType.get(type);
             const matrixSize = glTypeInfo.type === 'Matrix' ? Math.sqrt(glTypeInfo.size) : 1;
+            const attributeKind = reflectedAttributeKind(gl, type);
 
             const eachLocation = (callback: (location: GLint, offset: number) => void): void => {
                 for (let item = 0; item < matrixSize; item++) callback(baseLocation + item, item);
@@ -333,33 +425,72 @@ class Program {
                 size,
                 glTypeInfo,
                 pointer: parameters => {
-                    const pointerType = parameters.type ?? gl.FLOAT;
+                    const pointerType =
+                        parameters.type ??
+                        (attributeKind === 'signed-integer'
+                            ? gl.INT
+                            : attributeKind === 'unsigned-integer'
+                              ? gl.UNSIGNED_INT
+                              : gl.FLOAT);
                     const normalized = parameters.normalized ?? false;
+                    const stride = parameters.stride ?? 0;
                     const offset = parameters.offset ?? 0;
-                    if (matrixSize === 1) {
-                        gl.vertexAttribPointer(
+                    if (attributeKind !== 'converted') {
+                        if (normalized) {
+                            throw new TypeError(
+                                `Integer vertex attribute ${name} cannot use normalized storage`
+                            );
+                        }
+                        const validStorageType =
+                            attributeKind === 'signed-integer'
+                                ? isSignedIntegerStorageType(gl, pointerType)
+                                : isUnsignedIntegerStorageType(gl, pointerType);
+                        if (!validStorageType) {
+                            throw new TypeError(
+                                `${attributeKind === 'signed-integer' ? 'Signed' : 'Unsigned'} integer vertex attribute ${name} has incompatible storage type ${String(pointerType)}`
+                            );
+                        }
+                        gl.vertexAttribIPointer(
                             baseLocation,
-                            parameters.size ?? glTypeInfo.size,
+                            pointerComponentCount(parameters.size, glTypeInfo.size),
                             pointerType,
-                            normalized,
-                            parameters.stride ?? 0,
+                            stride,
                             offset
                         );
                         return;
                     }
-                    const matrixStride = glTypeInfo.byteSize;
-                    const stride =
-                        parameters.stride === undefined || parameters.stride === 0
-                            ? matrixStride
-                            : parameters.stride;
-                    const vectorByteSize = matrixSize * 4;
+                    if (!isConvertedStorageType(gl, pointerType)) {
+                        throw new TypeError(
+                            `Converted vertex attribute ${name} has incompatible storage type ${String(pointerType)}`
+                        );
+                    }
+                    if (normalized && !isNormalizableStorageType(gl, pointerType)) {
+                        throw new TypeError(
+                            `Vertex attribute ${name} can only normalize byte or short integer storage`
+                        );
+                    }
+                    if (matrixSize === 1) {
+                        gl.vertexAttribPointer(
+                            baseLocation,
+                            pointerComponentCount(parameters.size, glTypeInfo.size),
+                            pointerType,
+                            normalized,
+                            stride,
+                            offset
+                        );
+                        return;
+                    }
+                    const componentByteSize = storageTypeByteSize(gl, pointerType);
+                    const matrixStride = glTypeInfo.size * componentByteSize;
+                    const resolvedStride = stride === 0 ? matrixStride : stride;
+                    const vectorByteSize = matrixSize * componentByteSize;
                     eachLocation((location, item) => {
                         gl.vertexAttribPointer(
                             location,
                             matrixSize,
                             pointerType,
                             normalized,
-                            stride,
+                            resolvedStride,
                             offset + vectorByteSize * item
                         );
                     });
@@ -437,10 +568,16 @@ class Program {
                     return (uniformName.split('.').at(-1) ?? uniformName).replace(/\[0\]$/, '');
                 });
                 const canonicalLayout = BUILT_IN_UNIFORM_BLOCK_LAYOUTS[blockName];
+                let requiredByteLength = byteLength;
                 if (canonicalLayout) {
-                    if (Math.ceil(byteLength / 16) * 16 !== canonicalLayout.byteLength) {
+                    // WebGL reflection describes the active linked interface. Drivers may omit
+                    // unused members at the end of a block, so UNIFORM_BLOCK_DATA_SIZE can be
+                    // smaller than the source-declared std140 block. Active field names and exact
+                    // offsets/strides are the authoritative compatibility check below; bindings
+                    // still require the complete canonical buffer.
+                    if (byteLength > canonicalLayout.byteLength) {
                         throw new Error(
-                            `${blockName} is ${String(byteLength)} bytes in GLSL but the canonical ABI requires ${String(canonicalLayout.byteLength)}`
+                            `${blockName} reports ${String(byteLength)} active bytes but the canonical ABI provides ${String(canonicalLayout.byteLength)}`
                         );
                     }
                     const offsets = reflectedUniformValues(
@@ -486,13 +623,14 @@ class Program {
                             );
                         }
                     });
+                    requiredByteLength = canonicalLayout.byteLength;
                 }
                 gl.uniformBlockBinding(program, blockIndex, bindingPoint);
                 this.uniformBlocks[blockName] = {
                     name: blockName,
                     blockIndex,
                     bindingPoint,
-                    byteLength,
+                    byteLength: requiredByteLength,
                     activeUniformIndices,
                     uniformNames
                 };
@@ -511,9 +649,9 @@ class Program {
                         }
                         const range = isUniformBufferRange(value) ? value : undefined;
                         const availableByteLength = range?.byteLength ?? uniformBuffer.byteLength;
-                        if (availableByteLength < byteLength) {
+                        if (availableByteLength < requiredByteLength) {
                             throw new RangeError(
-                                `Uniform block ${blockName} requires ${String(byteLength)} bytes; binding provides ${String(availableByteLength)}`
+                                `Uniform block ${blockName} requires ${String(requiredByteLength)} bytes; binding provides ${String(availableByteLength)}`
                             );
                         }
                         uniformBuffer.bind(gl, bindingPoint, range);
@@ -595,7 +733,7 @@ class Program {
         this.uniforms = {};
         this.uniformBlocks = {};
         this.uniformValues.clear();
-        cache.removeObject(this);
+        contextCaches.peek(this.gl)?.removeObject(this);
         this._isDestroyed = true;
         return this;
     }

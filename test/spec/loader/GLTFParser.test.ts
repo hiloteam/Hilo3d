@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import type { GLTFResourceLoader } from '../../../src/loader/GLTFLoader';
+import LazyTexture from '../../../src/texture/LazyTexture';
 
 const GLTFParser = Hilo3d.GLTFParser;
 const unusedLoader: GLTFResourceLoader = {
@@ -51,6 +52,27 @@ describe('GLTFParser', () => {
         expect(parser.getImageType(2)).toBe('');
         expect(parser.getImageType(3)).toBe('');
         expect(parser.getImageType(4)).toBe('');
+    });
+
+    it('loads glTF images with the standard browser color-management path', async () => {
+        const load = vi.spyOn(LazyTexture.prototype, 'load').mockResolvedValue(undefined);
+        try {
+            const parser = new GLTFParser('', { isLoadAllTextures: true });
+            parser.json = {
+                asset: { version: '2.0' },
+                images: [{ uri: 'base-color.png' }],
+                textures: [{ source: 0 }]
+            };
+
+            await parser.loadTextures();
+
+            const texture = parser.textures['0'];
+            expect(texture).toBeInstanceOf(LazyTexture);
+            expect(texture).not.toHaveProperty('colorSpaceConversion');
+            expect(load).toHaveBeenCalledOnce();
+        } finally {
+            load.mockRestore();
+        }
     });
 
     it('parses a minimal glTF scene with an explicit completion contract', async () => {
@@ -110,6 +132,75 @@ describe('GLTFParser', () => {
             [1, 2],
             [3, 4]
         ]);
+    });
+
+    it('normalizes indexed glTF TRIANGLE_FAN primitives before exposing geometry', () => {
+        const buffer = new ArrayBuffer(52);
+        new Float32Array(buffer, 0, 12).set([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]);
+        new Uint8Array(buffer, 48, 4).set([0, 1, 2, 3]);
+        const parser = new GLTFParser();
+        parser.isUnQuantizeInShader = false;
+        parser.json = {
+            asset: { version: '2.0' },
+            buffers: [{ byteLength: buffer.byteLength }],
+            bufferViews: [
+                { buffer: 0, byteLength: 48 },
+                { buffer: 0, byteOffset: 48, byteLength: 4 }
+            ],
+            accessors: [
+                { bufferView: 0, componentType: 5126, count: 4, type: 'VEC3' },
+                { bufferView: 1, componentType: 5121, count: 4, type: 'SCALAR' }
+            ]
+        };
+        parser.buffers = { '0': buffer };
+        parser.parseBufferViews();
+
+        const geometry = parser.handlerGeometry(undefined, {
+            mode: Hilo3d.constants.TRIANGLE_FAN,
+            indices: 1,
+            attributes: { POSITION: 0 }
+        });
+
+        expect(geometry).not.toBeInstanceOf(Promise);
+        if (geometry instanceof Promise)
+            throw new Error('Fixture unexpectedly parsed asynchronously');
+        expect(geometry.mode).toBe(Hilo3d.constants.TRIANGLES);
+        expect(geometry.indices?.data).toBeInstanceOf(Uint8Array);
+        expect(Array.from(geometry.indices?.data ?? [])).toEqual([0, 1, 2, 0, 2, 3]);
+        expect(geometry.vertices?.count).toBe(4);
+        expect(geometry.getLocalBounds()).toMatchObject({
+            xMin: -1,
+            xMax: 1,
+            yMin: -1,
+            yMax: 1
+        });
+    });
+
+    it('normalizes non-indexed glTF LINE_LOOP primitives into explicit line indices', () => {
+        const buffer = new Float32Array([-1, 0, 0, 0, 1, 0, 1, 0, 0]).buffer;
+        const parser = new GLTFParser();
+        parser.isUnQuantizeInShader = false;
+        parser.json = {
+            asset: { version: '2.0' },
+            buffers: [{ byteLength: buffer.byteLength }],
+            bufferViews: [{ buffer: 0, byteLength: buffer.byteLength }],
+            accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3' }]
+        };
+        parser.buffers = { '0': buffer };
+        parser.parseBufferViews();
+
+        const geometry = parser.handlerGeometry(undefined, {
+            mode: Hilo3d.constants.LINE_LOOP,
+            attributes: { POSITION: 0 }
+        });
+
+        expect(geometry).not.toBeInstanceOf(Promise);
+        if (geometry instanceof Promise)
+            throw new Error('Fixture unexpectedly parsed asynchronously');
+        expect(geometry.mode).toBe(Hilo3d.constants.LINES);
+        expect(geometry.indices?.data).toBeInstanceOf(Uint8Array);
+        expect(Array.from(geometry.indices?.data ?? [])).toEqual([0, 1, 1, 2, 2, 0]);
+        expect(geometry.vertices?.count).toBe(3);
     });
 
     it('keeps quantized and decoded accessor caches independent', () => {

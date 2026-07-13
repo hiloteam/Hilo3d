@@ -1,9 +1,8 @@
-import Light, { type LightParameters } from './Light';
-import CubeLightShadow from './CubeLightShadow';
-import type Camera from '../camera/Camera';
-import type WebGLRenderer from '../renderer/WebGLRenderer';
+import Light, { type PointLightShadowOptions, type ShadowCastingLightParameters } from './Light';
 
-export type PointLightParameters = LightParameters;
+export type PointLightParameters = Omit<ShadowCastingLightParameters, 'shadow'> & {
+    shadow?: PointLightShadowOptions | null;
+};
 /**
  * 点光源
  */
@@ -11,7 +10,6 @@ class PointLight extends Light {
     static override readonly typeName = 'PointLight';
     override isPointLight = true;
     override className = 'PointLight';
-    lightShadow: CubeLightShadow | null = null;
     /**
      * @param params - 创建对象的属性参数。可包含此类的所有属性。
      * - `params.color`: 光颜色
@@ -21,24 +19,6 @@ class PointLight extends Light {
     constructor(params: PointLightParameters = {}) {
         super();
         Object.assign(this, params);
-    }
-    override createShadowMap(renderer: WebGLRenderer, camera: Camera): void {
-        if (!this.shadow) {
-            return;
-        }
-        if (!this.lightShadow) {
-            this.lightShadow = new CubeLightShadow({
-                light: this,
-                renderer
-            });
-            if ('minBias' in this.shadow) {
-                this.lightShadow.minBias = this.shadow.minBias;
-            }
-            if ('maxBias' in this.shadow) {
-                this.lightShadow.maxBias = this.shadow.maxBias;
-            }
-        }
-        this.lightShadow.createShadowMap(camera);
     }
 }
 export default PointLight;

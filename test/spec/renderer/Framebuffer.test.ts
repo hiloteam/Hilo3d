@@ -1,8 +1,43 @@
 import { describe, expect, it, vi } from 'vitest';
-import * as Hilo3d from '../../../src/Hilo3d';
+import Framebuffer, { type FramebufferRenderer } from '../../../src/renderer/Framebuffer';
+import WebGLState from '../../../src/renderer/WebGLState';
+import Texture from '../../../src/texture/Texture';
 import { testEnv } from '../../setup';
 
-const Framebuffer = Hilo3d.Framebuffer;
+function createNativeFramebuffer(): WebGLFramebuffer {
+    return testEnv.gl.createFramebuffer();
+}
+
+interface IsolatedFramebufferRenderer extends FramebufferRenderer {
+    readonly gl: WebGL2RenderingContext;
+    readonly state: WebGLState;
+}
+
+function createIsolatedRenderer(): IsolatedFramebufferRenderer {
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error('A WebGL2 context is required for framebuffer ownership tests.');
+    return {
+        isInit: true,
+        gl,
+        state: new WebGLState(gl),
+        width: canvas.width,
+        height: canvas.height
+    };
+}
+
+function createDepthOnlyFramebuffer(renderer: IsolatedFramebufferRenderer): Framebuffer {
+    return new Framebuffer(renderer, {
+        colorAttachmentInfos: [],
+        depthStencilAttachmentInfo: {
+            attachmentType: Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
+            attachment: renderer.gl.DEPTH_ATTACHMENT,
+            internalFormat: renderer.gl.DEPTH_COMPONENT16
+        }
+    });
+}
 
 describe('Framebuffer', () => {
     it('create', () => {
@@ -19,15 +54,30 @@ describe('Framebuffer', () => {
         expect(framebuffer.readPixels(0, 0, 2, 2)).toEqual(new Uint8Array(16));
     });
 
-    it('restores depth and cull capabilities after drawing its texture', () => {
+    it('restores framebuffer bindings when readPixels throws', () => {
         const framebuffer = new Framebuffer(testEnv.renderer);
-        testEnv.state.enable(testEnv.gl.DEPTH_TEST);
-        testEnv.state.disable(testEnv.gl.CULL_FACE);
+        framebuffer.init();
+        const previousRead = createNativeFramebuffer();
+        const previousDraw = createNativeFramebuffer();
+        testEnv.state.bindFramebuffer(testEnv.gl.READ_FRAMEBUFFER, previousRead);
+        testEnv.state.bindFramebuffer(testEnv.gl.DRAW_FRAMEBUFFER, previousDraw);
+        const readPixels = vi.spyOn(testEnv.gl, 'readPixels').mockImplementationOnce(() => {
+            throw new Error('injected readback failure');
+        });
 
-        framebuffer.render();
-
-        expect(testEnv.state.isEnabled(testEnv.gl.DEPTH_TEST)).toBe(true);
-        expect(testEnv.state.isEnabled(testEnv.gl.CULL_FACE)).toBe(false);
+        try {
+            expect(() => {
+                framebuffer.readPixels(0, 0);
+            }).toThrow(/injected readback failure/u);
+            expect(testEnv.state.currentReadFramebuffer).toBe(previousRead);
+            expect(testEnv.state.currentDrawFramebuffer).toBe(previousDraw);
+        } finally {
+            readPixels.mockRestore();
+            testEnv.state.bindSystemFramebuffer();
+            framebuffer.destroy();
+            testEnv.gl.deleteFramebuffer(previousRead);
+            testEnv.gl.deleteFramebuffer(previousDraw);
+        }
     });
 
     it('uses native drawBuffers for multiple color attachments', () => {
@@ -61,11 +111,268 @@ describe('Framebuffer', () => {
         expect(testEnv.state.currentDrawFramebuffer).toBe(previousDraw);
     });
 
+    it('rejects framebuffer copies across WebGL2 contexts before native blit', () => {
+        const firstRenderer = createIsolatedRenderer();
+        const secondRenderer = createIsolatedRenderer();
+        const source = createDepthOnlyFramebuffer(firstRenderer);
+        const destination = createDepthOnlyFramebuffer(secondRenderer);
+        source.init();
+        destination.init();
+        const blitFramebuffer = vi.spyOn(secondRenderer.gl, 'blitFramebuffer');
+
+        try {
+            expect(() => {
+                destination.copyFramebuffer(source);
+            }).toThrow(/across WebGL2 contexts/u);
+            expect(blitFramebuffer).not.toHaveBeenCalled();
+            expect(firstRenderer.gl.getError()).toBe(firstRenderer.gl.NO_ERROR);
+            expect(secondRenderer.gl.getError()).toBe(secondRenderer.gl.NO_ERROR);
+        } finally {
+            blitFramebuffer.mockRestore();
+            source.destroy();
+            destination.destroy();
+        }
+    });
+
+    it('restores independent read and draw bindings after a successful reset', () => {
+        const framebuffer = new Framebuffer(testEnv.renderer);
+        framebuffer.init();
+        const previousRead = createNativeFramebuffer();
+        const previousDraw = createNativeFramebuffer();
+        testEnv.state.bindFramebuffer(testEnv.gl.READ_FRAMEBUFFER, previousRead);
+        testEnv.state.bindFramebuffer(testEnv.gl.DRAW_FRAMEBUFFER, previousDraw);
+
+        try {
+            framebuffer.reset();
+
+            expect(testEnv.state.currentReadFramebuffer).toBe(previousRead);
+            expect(testEnv.state.currentDrawFramebuffer).toBe(previousDraw);
+            expect(framebuffer.isComplete()).toBe(true);
+            expect(testEnv.state.currentReadFramebuffer).toBe(previousRead);
+            expect(testEnv.state.currentDrawFramebuffer).toBe(previousDraw);
+        } finally {
+            testEnv.state.bindSystemFramebuffer();
+            framebuffer.destroy();
+            testEnv.gl.deleteFramebuffer(previousRead);
+            testEnv.gl.deleteFramebuffer(previousDraw);
+        }
+    });
+
+    it('keeps attachment identity while reset and resize replace native allocations', () => {
+        const framebuffer = new Framebuffer(testEnv.renderer, { width: 4, height: 5 });
+        framebuffer.init();
+        const texture = framebuffer.texture;
+        if (!(texture instanceof Texture)) {
+            throw new Error('Framebuffer did not create an engine color texture');
+        }
+        const destroyListener = vi.fn();
+        texture.on('destroy', destroyListener);
+        const firstAllocation = texture.getGLTexture(testEnv.state);
+
+        framebuffer.reset();
+
+        const resetAllocation = texture.getGLTexture(testEnv.state);
+        expect(framebuffer.texture).toBe(texture);
+        expect(framebuffer.colorAttachmentInfos[0]?.texture).toBe(texture);
+        expect(resetAllocation).not.toBe(firstAllocation);
+        expect(testEnv.gl.isTexture(firstAllocation)).toBe(false);
+        expect(testEnv.gl.isTexture(resetAllocation)).toBe(true);
+        expect(destroyListener).not.toHaveBeenCalled();
+
+        framebuffer.resize(7, 9);
+
+        const resizedAllocation = texture.getGLTexture(testEnv.state);
+        expect(framebuffer.texture).toBe(texture);
+        expect(texture.width).toBe(7);
+        expect(texture.height).toBe(9);
+        expect(resizedAllocation).not.toBe(resetAllocation);
+        expect(testEnv.gl.isTexture(resetAllocation)).toBe(false);
+        expect(testEnv.gl.isTexture(resizedAllocation)).toBe(true);
+        expect(framebuffer.isComplete()).toBe(true);
+        expect(destroyListener).not.toHaveBeenCalled();
+
+        framebuffer.destroy();
+        expect(destroyListener).toHaveBeenCalledOnce();
+        expect(Texture.getCache(testEnv.gl).get(texture.id)).toBeUndefined();
+    });
+
+    it('restores independent read and draw bindings after repeated bind and unbind calls', () => {
+        const framebuffer = new Framebuffer(testEnv.renderer);
+        framebuffer.init();
+        const previousRead = createNativeFramebuffer();
+        const previousDraw = createNativeFramebuffer();
+        testEnv.state.bindFramebuffer(testEnv.gl.READ_FRAMEBUFFER, previousRead);
+        testEnv.state.bindFramebuffer(testEnv.gl.DRAW_FRAMEBUFFER, previousDraw);
+
+        try {
+            framebuffer.bind();
+            framebuffer.bind();
+            expect(testEnv.state.currentReadFramebuffer).toBe(framebuffer.framebuffer);
+            expect(testEnv.state.currentDrawFramebuffer).toBe(framebuffer.framebuffer);
+
+            framebuffer.unbind();
+            framebuffer.unbind();
+            expect(testEnv.state.currentReadFramebuffer).toBe(previousRead);
+            expect(testEnv.state.currentDrawFramebuffer).toBe(previousDraw);
+        } finally {
+            testEnv.state.bindSystemFramebuffer();
+            framebuffer.destroy();
+            testEnv.gl.deleteFramebuffer(previousRead);
+            testEnv.gl.deleteFramebuffer(previousDraw);
+        }
+    });
+
+    it('drops saved bindings when a bound framebuffer is reset', () => {
+        const framebuffer = new Framebuffer(testEnv.renderer);
+        framebuffer.init();
+
+        try {
+            framebuffer.bind();
+            framebuffer.reset();
+            expect(testEnv.state.currentReadFramebuffer).toBe(testEnv.state.systemFramebuffer);
+            expect(testEnv.state.currentDrawFramebuffer).toBe(testEnv.state.systemFramebuffer);
+
+            framebuffer.bind();
+            framebuffer.unbind();
+            expect(testEnv.state.currentReadFramebuffer).toBe(testEnv.state.systemFramebuffer);
+            expect(testEnv.state.currentDrawFramebuffer).toBe(testEnv.state.systemFramebuffer);
+            expect(testEnv.gl.getError()).toBe(testEnv.gl.NO_ERROR);
+        } finally {
+            testEnv.state.bindSystemFramebuffer();
+            framebuffer.destroy();
+        }
+    });
+
+    it('scopes static reset and destroy to the supplied WebGL2 context', () => {
+        const firstRenderer = createIsolatedRenderer();
+        const secondRenderer = createIsolatedRenderer();
+        const first = createDepthOnlyFramebuffer(firstRenderer);
+        const second = createDepthOnlyFramebuffer(secondRenderer);
+        first.init();
+        second.init();
+        const firstAllocation = first.framebuffer;
+        const secondAllocation = second.framebuffer;
+        const secondRead = secondRenderer.gl.createFramebuffer();
+        const secondDraw = secondRenderer.gl.createFramebuffer();
+        secondRenderer.state.bindFramebuffer(secondRenderer.gl.READ_FRAMEBUFFER, secondRead);
+        secondRenderer.state.bindFramebuffer(secondRenderer.gl.DRAW_FRAMEBUFFER, secondDraw);
+
+        try {
+            Framebuffer.reset(firstRenderer.gl);
+
+            expect(first.framebuffer).not.toBe(firstAllocation);
+            expect(first.isComplete()).toBe(true);
+            expect(second.framebuffer).toBe(secondAllocation);
+            expect(second.isComplete()).toBe(true);
+            expect(secondRenderer.state.currentReadFramebuffer).toBe(secondRead);
+            expect(secondRenderer.state.currentDrawFramebuffer).toBe(secondDraw);
+
+            Framebuffer.destroy(firstRenderer.gl);
+
+            expect(first.framebuffer).toBeNull();
+            expect(Framebuffer.getCache(firstRenderer.gl).get(first.id)).toBeUndefined();
+            expect(second.framebuffer).toBe(secondAllocation);
+            expect(second.isComplete()).toBe(true);
+            expect(Framebuffer.getCache(secondRenderer.gl).get(second.id)).toBe(second);
+            expect(secondRenderer.state.currentReadFramebuffer).toBe(secondRead);
+            expect(secondRenderer.state.currentDrawFramebuffer).toBe(secondDraw);
+        } finally {
+            firstRenderer.state.bindSystemFramebuffer();
+            secondRenderer.state.bindSystemFramebuffer();
+            first.destroy();
+            second.destroy();
+            secondRenderer.gl.deleteFramebuffer(secondRead);
+            secondRenderer.gl.deleteFramebuffer(secondDraw);
+        }
+    });
+
+    it('registers a framebuffer created before its renderer initializes', () => {
+        const renderer: {
+            isInit: boolean;
+            gl: WebGL2RenderingContext | null;
+            state: WebGLState | null;
+            width: number;
+            height: number;
+        } = {
+            isInit: false,
+            gl: null,
+            state: null,
+            width: 16,
+            height: 16
+        };
+        const framebuffer = new Framebuffer(renderer, {
+            colorAttachmentInfos: [],
+            depthStencilAttachmentInfo: {
+                attachmentType: Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
+                attachment: testEnv.gl.DEPTH_ATTACHMENT,
+                internalFormat: testEnv.gl.DEPTH_COMPONENT16
+            }
+        });
+        const initialized = createIsolatedRenderer();
+        renderer.gl = initialized.gl;
+        renderer.state = initialized.state;
+        renderer.isInit = true;
+
+        framebuffer.init();
+        expect(Framebuffer.getCache(initialized.gl).get(framebuffer.id)).toBe(framebuffer);
+
+        Framebuffer.destroy(initialized.gl);
+        expect(framebuffer.framebuffer).toBeNull();
+        expect(Framebuffer.getCache(initialized.gl).get(framebuffer.id)).toBeUndefined();
+    });
+
+    it('cleans an incomplete allocation transaction and retries from an uninitialized state', () => {
+        const framebuffer = new Framebuffer(testEnv.renderer);
+        const previousRead = createNativeFramebuffer();
+        const previousDraw = createNativeFramebuffer();
+        testEnv.state.bindFramebuffer(testEnv.gl.READ_FRAMEBUFFER, previousRead);
+        testEnv.state.bindFramebuffer(testEnv.gl.DRAW_FRAMEBUFFER, previousDraw);
+        const checkFramebufferStatus = vi
+            .spyOn(testEnv.gl, 'checkFramebufferStatus')
+            .mockReturnValueOnce(testEnv.gl.FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
+        const deleteFramebuffer = vi.spyOn(testEnv.gl, 'deleteFramebuffer');
+        const deleteTexture = vi.spyOn(testEnv.gl, 'deleteTexture');
+        const deleteRenderbuffer = vi.spyOn(testEnv.gl, 'deleteRenderbuffer');
+
+        try {
+            expect(() => {
+                framebuffer.init();
+            }).toThrow(
+                `Framebuffer is incomplete (status ${String(testEnv.gl.FRAMEBUFFER_INCOMPLETE_ATTACHMENT)})`
+            );
+            expect(framebuffer.framebuffer).toBeNull();
+            const failedTexture = framebuffer.texture;
+            expect(failedTexture).not.toBeNull();
+            expect(framebuffer.renderbuffer).toBeNull();
+            expect(framebuffer.colorAttachmentInfos[0]?.texture).toBe(failedTexture);
+            expect(framebuffer.depthStencilAttachmentInfo?.renderbuffer).toBeNull();
+            expect(deleteFramebuffer).toHaveBeenCalledTimes(1);
+            expect(deleteTexture).toHaveBeenCalledTimes(1);
+            expect(deleteRenderbuffer).toHaveBeenCalledTimes(1);
+            expect(testEnv.state.currentReadFramebuffer).toBe(previousRead);
+            expect(testEnv.state.currentDrawFramebuffer).toBe(previousDraw);
+
+            expect(() => {
+                framebuffer.init();
+            }).not.toThrow();
+            expect(framebuffer.isComplete()).toBe(true);
+            expect(framebuffer.texture).toBe(failedTexture);
+            expect(checkFramebufferStatus).toHaveBeenCalledTimes(3);
+            expect(testEnv.state.currentReadFramebuffer).toBe(previousRead);
+            expect(testEnv.state.currentDrawFramebuffer).toBe(previousDraw);
+        } finally {
+            testEnv.state.bindSystemFramebuffer();
+            framebuffer.destroy();
+            testEnv.gl.deleteFramebuffer(previousRead);
+            testEnv.gl.deleteFramebuffer(previousDraw);
+        }
+    });
+
     it('cache & destroy', () => {
         const framebuffer = new Framebuffer(testEnv.renderer);
-        expect(Framebuffer.cache.get(framebuffer.id)).toBe(framebuffer);
+        expect(Framebuffer.getCache(testEnv.gl).get(framebuffer.id)).toBe(framebuffer);
         framebuffer.destroy();
-        expect(Framebuffer.cache.get(framebuffer.id)).toBeUndefined();
+        expect(Framebuffer.getCache(testEnv.gl).get(framebuffer.id)).toBeUndefined();
         expect(framebuffer.framebuffer).toBeNull();
         expect(framebuffer.texture).toBeNull();
         expect(framebuffer.renderbuffer).toBeNull();

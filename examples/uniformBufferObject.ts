@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, renderer, stage } = createExampleContext({
+const { camera, renderer, stage } = await createExampleContext({
     stage: {
         clearColor: new Hilo3d.Color(0, 0, 0, 1)
     }

@@ -13,8 +13,16 @@
 #include "./chunk/transparency.frag"
 #include "./chunk/fog.frag"
 #include "./chunk/logDepth.frag"
+#ifdef HILO_PICKING_PASS
+in vec4 v_objectIdColor;
+#endif
 
 void main(void) {
+    #ifdef HILO_PICKING_PASS
+        hilo_FragColor = v_objectIdColor;
+        return;
+    #endif
+
     vec4 diffuse = vec4(0., 0., 0., 1.);
     vec4 color = vec4(0., 0., 0., 1.);
 

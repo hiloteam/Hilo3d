@@ -4,14 +4,12 @@ import { createExampleContext } from './shared/init';
 const {
     camera,
     stage,
-    renderer,
     directionLight: defaultDirectionLight,
     ambientLight
-} = createExampleContext({
+} = await createExampleContext({
     camera: { far: 2, near: 0.1, z: 1 },
-    stage: { useFramebuffer: false, rotationX: 30 }
+    stage: { rotationX: 30 }
 });
-renderer.useInstanced = false;
 camera.lookAt(new Hilo3d.Vector3());
 defaultDirectionLight.amount = 0;
 ambientLight.amount = 0.1;

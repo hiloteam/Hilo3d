@@ -6,8 +6,8 @@ import DirectionalLight from './DirectionalLight';
 import type Light from './Light';
 import PointLight from './PointLight';
 import SpotLight from './SpotLight';
+import { getLightShadow } from './LightShadowRegistry';
 import type Camera from '../camera/Camera';
-import type WebGLRenderer from '../renderer/WebGLRenderer';
 import type Texture from '../texture/Texture';
 import type { TextureBinding } from '../texture/Texture';
 
@@ -164,20 +164,17 @@ class LightManager {
         const lightSpaceMatrix: number[] = [];
         const shadowBias: number[] = [];
         this.directionalLights.forEach((light, index) => {
+            const lightShadow = getLightShadow(this, light);
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
             light.getViewDirection(camera).toArray(infos, offset);
-            if (
-                light.shadow &&
-                light.lightShadow?.framebuffer?.texture &&
-                light.lightShadow.camera
-            ) {
-                shadowMap.push(light.lightShadow.framebuffer.texture);
-                shadowMapSize.push(light.lightShadow.width);
-                shadowMapSize.push(light.lightShadow.height);
-                shadowBias.push(light.lightShadow.minBias, light.lightShadow.maxBias);
+            if (light.shadow && lightShadow?.framebuffer?.texture && lightShadow.camera) {
+                shadowMap.push(lightShadow.framebuffer.texture);
+                shadowMapSize.push(lightShadow.width);
+                shadowMapSize.push(lightShadow.height);
+                shadowBias.push(lightShadow.minBias, lightShadow.maxBias);
                 tempMatrix4.copy(camera.worldMatrix);
-                tempMatrix4.premultiply(light.lightShadow.camera.viewProjectionMatrix);
+                tempMatrix4.premultiply(lightShadow.camera.viewProjectionMatrix);
                 tempMatrix4.toArray(lightSpaceMatrix, index * 16);
             }
         });
@@ -209,6 +206,7 @@ class LightManager {
         const shadowBias: number[] = [];
         const ranges: number[] = [];
         this.spotLights.forEach((light, index) => {
+            const lightShadow = getLightShadow(this, light);
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
             light.toInfoArray(infos, offset);
@@ -218,19 +216,12 @@ class LightManager {
             camera.getModelViewMatrix(light, tempMatrix4);
             tempMatrix4.getTranslation(tempVector3);
             tempVector3.toArray(poses, offset);
-            if (
-                light.shadow &&
-                light.lightShadow?.framebuffer?.texture &&
-                light.lightShadow.camera
-            ) {
-                shadowMap.push(light.lightShadow.framebuffer.texture);
-                shadowMapSize.push(light.lightShadow.width);
-                shadowMapSize.push(light.lightShadow.height);
-                shadowBias.push(light.lightShadow.minBias, light.lightShadow.maxBias);
-                tempMatrix4.multiply(
-                    light.lightShadow.camera.viewProjectionMatrix,
-                    camera.worldMatrix
-                );
+            if (light.shadow && lightShadow?.framebuffer?.texture && lightShadow.camera) {
+                shadowMap.push(lightShadow.framebuffer.texture);
+                shadowMapSize.push(lightShadow.width);
+                shadowMapSize.push(lightShadow.height);
+                shadowBias.push(lightShadow.minBias, lightShadow.maxBias);
+                tempMatrix4.multiply(lightShadow.camera.viewProjectionMatrix, camera.worldMatrix);
                 tempMatrix4.toArray(lightSpaceMatrix, index * 16);
             }
         });
@@ -264,6 +255,7 @@ class LightManager {
         const cameras: number[] = [];
         const ranges: number[] = [];
         this.pointLights.forEach((light, index) => {
+            const lightShadow = getLightShadow(this, light);
             const offset = index * 3;
             light.getRealColor().toRGBArray(colors, offset);
             light.toInfoArray(infos, offset);
@@ -271,17 +263,12 @@ class LightManager {
             camera.getModelViewMatrix(light, tempMatrix4);
             tempMatrix4.getTranslation(tempVector3);
             tempVector3.toArray(poses, offset);
-            if (
-                light.shadow &&
-                light.lightShadow?.framebuffer?.texture &&
-                light.lightShadow.camera
-            ) {
-                shadowMap.push(light.lightShadow.framebuffer.texture);
-                shadowBias.push(light.lightShadow.minBias, light.lightShadow.maxBias);
+            if (light.shadow && lightShadow?.framebuffer?.texture && lightShadow.camera) {
+                shadowMap.push(lightShadow.framebuffer.texture);
+                shadowBias.push(lightShadow.minBias, lightShadow.maxBias);
                 camera.worldMatrix.toArray(lightSpaceMatrix, index * 16);
-                cameras[index * 2] = light.lightShadow.camera.near;
-                cameras[index * 2 + 1] =
-                    light.lightShadow.camera.far ?? light.lightShadow.camera.near * 1000;
+                cameras[index * 2] = lightShadow.camera.near;
+                cameras[index * 2 + 1] = lightShadow.camera.far ?? lightShadow.camera.near * 1000;
             }
         });
         const result: PointLightInfo = {
@@ -434,41 +421,6 @@ class LightManager {
             count += light.shadow ? 1 : 0;
         });
         return count;
-    }
-    /**
-     * 更新光源信息
-     * @param renderer -
-     * @param lights -
-     * @param camera -
-     */
-    update(renderer: WebGLRenderer, camera: Camera, lights: readonly Light[]): void {
-        lights.forEach(light => {
-            this.addLight(light);
-        });
-        this.createShadowMap(renderer, camera);
-        this.updateInfo(camera);
-    }
-    /**
-     * 生成阴影贴图
-     * @param renderer -
-     * @param camera -
-     */
-    createShadowMap(renderer: WebGLRenderer, camera: Camera): void {
-        if (!this.shadowEnabled) {
-            return;
-        }
-        this.directionalLights.forEach(light => {
-            if (light.shadow) light.createShadowMap(renderer, camera);
-        });
-        this.spotLights.forEach(light => {
-            if (light.shadow) light.createShadowMap(renderer, camera);
-        });
-        this.pointLights.forEach(light => {
-            if (light.shadow) light.createShadowMap(renderer, camera);
-        });
-        this.areaLights.forEach(light => {
-            if (light.shadow) light.createShadowMap(renderer, camera);
-        });
     }
 }
 export default LightManager;

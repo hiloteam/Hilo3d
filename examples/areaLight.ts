@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, stage, renderer, directionLight, ambientLight } = createExampleContext();
+const { camera, stage, renderer, directionLight, ambientLight } = await createExampleContext();
 
 const box = new Hilo3d.Mesh({
     geometry: new Hilo3d.BoxGeometry(),

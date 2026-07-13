@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, stage } = createExampleContext();
+const { camera, stage } = await createExampleContext();
 
 camera.far = 5;
 const container = new Hilo3d.Node({

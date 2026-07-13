@@ -1,8 +1,10 @@
 import * as Hilo3d from '../../src/Hilo3d';
 import type { PerspectiveCameraParameters } from '../../src/camera/PerspectiveCamera';
-import type { StageParameters } from '../../src/core/Stage';
 import OrbitControls, { type OrbitControlsOptions } from './OrbitControls';
 import Stats from './stats';
+import { resolveExampleBackend } from './backend';
+
+export { resolveExampleBackend };
 
 export type QueryValues = Readonly<Record<string, string>>;
 
@@ -12,18 +14,21 @@ export interface EnvironmentMaps {
     brdfLUT: Hilo3d.Texture;
 }
 
-export interface ExampleContextOptions {
+export interface ExampleContextOptions<
+    Backend extends Hilo3d.RendererBackend = Hilo3d.RendererBackend
+> {
     container?: HTMLElement;
     camera?: PerspectiveCameraParameters;
-    stage?: Omit<StageParameters, 'camera' | 'container'>;
+    backend?: Backend;
+    stage?: Omit<Hilo3d.StageParameters<Backend>, 'backend' | 'camera' | 'container'>;
     controls?: OrbitControlsOptions;
     autoStart?: boolean;
 }
 
-export interface ExampleContext {
+export interface ExampleContext<Backend extends Hilo3d.RendererBackend = Hilo3d.RendererBackend> {
     readonly camera: Hilo3d.PerspectiveCamera;
-    readonly stage: Hilo3d.Stage;
-    readonly renderer: Hilo3d.WebGLRenderer;
+    readonly stage: Hilo3d.Stage<Backend>;
+    readonly renderer: Hilo3d.StageRenderer<Backend>;
     readonly directionLight: Hilo3d.DirectionalLight;
     readonly ambientLight: Hilo3d.AmbientLight;
     readonly ticker: Hilo3d.Ticker;
@@ -126,7 +131,16 @@ export const utils = Object.freeze({
 });
 
 /** Creates one self-contained example runtime with no global mutable state. */
-export function createExampleContext(options: ExampleContextOptions = {}): ExampleContext {
+export function createExampleContext(
+    options: ExampleContextOptions<'webgl2'> & { backend: 'webgl2' }
+): Promise<ExampleContext<'webgl2'>>;
+export function createExampleContext(
+    options: ExampleContextOptions<'webgpu'> & { backend: 'webgpu' }
+): Promise<ExampleContext<'webgpu'>>;
+export function createExampleContext(options?: ExampleContextOptions): Promise<ExampleContext>;
+export async function createExampleContext(
+    options: ExampleContextOptions = {}
+): Promise<ExampleContext> {
     const width = options.stage?.width ?? window.innerWidth;
     const height = options.stage?.height ?? window.innerHeight;
     const camera = new Hilo3d.PerspectiveCamera({
@@ -137,7 +151,9 @@ export function createExampleContext(options: ExampleContextOptions = {}): Examp
         ...options.camera
     });
     const container = options.container ?? document.getElementById('container') ?? document.body;
-    const stage = new Hilo3d.Stage({
+    const backend = options.backend ?? resolveExampleBackend();
+    const stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
+        backend,
         clearColor: new Hilo3d.Color(0.3, 0.35, 0.35),
         width,
         height,
@@ -179,12 +195,7 @@ export function createExampleContext(options: ExampleContextOptions = {}): Examp
     };
     window.addEventListener('resize', handleResize);
 
-    renderer.on('init', () => {
-        console.info('Stage uses WebGL2');
-    });
-    renderer.on('initFailed', event => {
-        console.error('Stage initialization failed', event.detail);
-    });
+    console.info(`Stage uses ${renderer.backend}`);
 
     if (options.autoStart ?? true) ticker.start();
 

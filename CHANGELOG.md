@@ -12,6 +12,28 @@
   features.
 - Add an explicit WebGPU backend without capability fallback. Applications select `webgl2` or
   `webgpu`; asynchronous WebGPU initialization is exposed through `Stage.create()` and `ready`.
+- Make `Renderer`/`RenderTarget` the backend-neutral offscreen contract for WebGL 2 and WebGPU,
+  including MRT, 1×/4× MSAA, sampleable attachments, target rendering, resize, and asynchronous
+  readback. `MeshPicker` now accepts a `Stage` and returns `Promise<Mesh[]>` from a backend-neutral
+  GPU object-ID pass with no CPU fallback.
+- Remove the public `Framebuffer`, `LightShadow`, and `CubeLightShadow` types, public light
+  `lightShadow` fields, renderer-owned `useFramebuffer`/`framebufferOption`, implicit render-target
+  creation, and backend-specific framebuffer example. Native framebuffer and shadow allocation are
+  renderer internals; the replacement example uses the shared `RenderTarget` contract.
+- Remove the WebGL-cache-specific `logGLResource()` export. Use
+  `renderer.resourceManager.getDiagnostics(rootNode?)` for stable backend-neutral ownership counts.
+- Remove the context-blind `capabilities` and `extensions` singletons. WebGL 2 callers use the
+  owning `WebGLRenderer.capabilities` and `WebGLRenderer.extensions`; low-level resource cache
+  inspection now requires `getCache(gl)` so native objects can never be mistaken for cross-context
+  resources.
+- Restrict shadow construction to directional, spot, and point lights through
+  `ShadowCastingLightParameters`. Area, ambient, and base lights reject shadow configuration before
+  backend selection instead of allowing a backend to ignore it.
+- Require low-level `WebGPUTextureManager` construction to receive an already initialized
+  `NagaShaderTranslator`; the optional resource-destroy callback moves to the third argument.
+- Narrow `KTXLoadRequest` texture overrides to the exported `KTXTextureOptions` contract. Callers
+  may set sampler, lifecycle, name, UV, and anisotropy options, but container-owned texel format,
+  extent, image, mipmap, and compression metadata can no longer be overridden.
 - Move every non-sampler shader value to the fixed std140 `FrameBlock`, `CameraBlock`, `SceneBlock`,
   `LightBlock`, `MaterialBlock`, `ModelBlock`, `GeometryBlock`, `SkinningBlock`, or `MorphBlock`
   ABI. Custom `ShaderMaterial` numeric uniforms must migrate to a registered UBO; samplers are the
@@ -21,6 +43,12 @@
 - Remove the example-only Draco adapter and assets instead of retaining its build-time UMD/CommonJS
   wrapper rewrite; future decoder integrations must provide directly consumable ESM and strict
   TypeScript declarations.
+- Remove the backend-specific `Texture.colorSpaceConversion` boolean. External images now always use
+  the browser-standard sRGB-managed path, while raw TypedArray/DataView pixels remain explicit
+  untagged values on both backends.
+- Replace `Texture.updateSubTexture(xOffset, yOffset, image)` with the sole descriptor form
+  `updateSubTexture({ mipLevel, face?, layer?, z?, x, y, width, height, depth?, image })`. The
+  positional overload has been removed.
 - Correct legacy public API spellings: `SkinedMesh` is now `SkinnedMesh`, `needBasicUnifroms` is
   `needBasicUniforms`, `ignoreTranparent` is `ignoreTransparent`, and the
   diffuse-environment/ambient-light material flag now uses its correctly spelled name.
@@ -35,8 +63,14 @@
   rules.
 - Generate bundled public declarations and API reports directly from the checked source.
 - Add repository-wide typed linting, deterministic formatting and enforced browser coverage.
-- Add Vite multi-page example builds plus Playwright coverage for every page and visual regression
-  baselines for critical rendering.
+- Add Vite multi-page example builds and an automatically collected 78-HTML Playwright matrix. All
+  pages run through WebGL 2 and WebGPU except `webxr.html`, which is explicitly WebGL 2-only while
+  browsers expose XR presentation through `XRWebGLLayer`; it is not a WebGPU fallback and is not
+  part of the current WebGPU release gate.
+- Gate the same deterministic lit PBR readback and screenshot through both backends, and exercise
+  fractional-DPR resizing, life-game and ShaderToy input, glTF Viewer load/replace/release, live
+  post-process changes, native compressed textures, and GPU mesh picking on both backends. The first
+  WebGL 2 and WebGPU frames must be byte-for-byte identical.
 - Validate the packed package with publint, Are the Types Wrong, Bundler and NodeNext consumers, and
   ESM runtime loading.
 - Generate and deploy the API documentation and examples site from TypeDoc and Vite in CI.
@@ -50,33 +84,147 @@
 - Keep GLSL ES 3.00 as the single shader source, prepare active variants as Vulkan GLSL 4.50, and
   translate them through Naga WASM to WGSL. Preparation assigns IO locations, separates texture and
   sampler bindings, maps the four WebGPU bind groups, and converts clip-space depth.
+- Route renderer-owned fullscreen presentation and WebGPU mipmap generation through that same GLSL
+  preprocessing and Naga path. Both consume translated sampler metadata and have no handwritten or
+  fallback WGSL module; the modernity gate rejects WGSL entry points in production TypeScript.
+- Express the shared std140 ABI in generated WGSL with explicit `@align`/`@size` wrappers that work
+  with WebGPU's default language features; do not request or depend on the optional
+  `uniform_buffer_standard_layout` feature.
 - Load Naga through a dynamic ESM boundary so WebGL 2 consumers do not download its JavaScript/WASM
   graph; package smoke initializes Naga and translates GLSL from the installed tarball.
 - Add WebGPU buffer, texture, uniform, bind-group, render-state, pipeline, and resource-lifecycle
   managers with device-limit validation and deterministic caches.
+- Complete the GLSL ES 3.00 texture surface across WebGL 2 and WebGPU: `sampler3D`,
+  `sampler2DArray`, `sampler2DArrayShadow`, and every signed/unsigned integer sampler family for 2D,
+  3D, cube, and 2D-array textures now pass through Naga into dimension- and sample-type-correct bind
+  groups. Managed `Texture` supports 2D, cube, 3D, and 2D-array targets plus signed/unsigned integer
+  formats. Integer textures require nearest-only sampling, anisotropy 1, and explicit complete mip
+  chains; mipmapped 3D textures also require explicit complete chains. Both backends reject
+  compressed 3D textures before allocation, while native compressed 2D-array textures remain
+  supported.
+- Preserve dynamically-uniform sampler-array indexing by lowering flattened texture/sampler pairs
+  into typed dispatch functions, including texture builtins, sampler function parameters, and
+  multiple arrays. Add ordinary-sampler numeric depth reads by specializing Naga WGSL bindings to
+  `texture_depth_*`; WebGPU enforces nearest-only non-filtering depth samplers, while WebGL 2
+  selects comparison mode from reflected sampler types.
+- Complete the shader preprocessing frontend with function-like macros, strict recursive expansion,
+  bitwise/shift/ternary conditional expressions, named interface blocks, arrays, multi-declarations,
+  reordered std140 layout qualifiers, and projective sampler operations. Reject builtins outside the
+  GLSL ES 3.00/WebGL 2 contract before backend selection, and derive depth-only Naga variants that
+  preserve discard/depth side effects without declaring dummy color outputs.
+- Support descriptor-based subresource updates for 2D, cube, 3D, and 2D-array textures across both
+  backends, including raw, external-image, and legal compressed block updates. Define cube mip
+  chains as six entries per level in canonical `+X, -X, +Y, -Y, +Z, -Z` order; add portable raw
+  depth16/depth32float and feature-gated depth32float-stencil8 uploads; reject nonportable raw depth
+  tuples before allocation; and use physical 4×4 upload extents for compressed 2×2/1×1 mip tails.
+- Cap each texture's sub-update journal at 64 entries while maintaining an exact full-content
+  checkpoint. Independently paced WebGL contexts and WebGPU devices replay the checkpoint when
+  behind and then resume incremental revisions. Route CubeTexture, DataTexture, and LazyTexture
+  construction through the base validation contract and preserve loaded LazyTexture depth/wrapR.
 - Make geometry, material, texture, and partial-upload revisions backend-local; add bounded cache
   eviction, transactional GPU resource replacement, immutable descriptor-keyed samplers, and
   destroy-during-initialization cleanup.
-- Bound backend-neutral UBO dirty history with full-upload recovery for slow consumers, atomically
-  union per-mesh resources across passes, and reclaim resources created by failed frames.
+- Scope WebGL 2 program, buffer, vertex-array, texture, framebuffer, custom uniform-buffer,
+  capability, extension, and current-binding state to the owning context. Multiple renderers no
+  longer reuse native handles or destroy each other's allocations during release or context
+  restoration; `Texture.needDestroy` invalidates old allocations across every WebGL context and
+  WebGPU device instead of being consumed by only the first backend.
+- Detect `MaterialBlock` changes from a reusable snapshot of the final std140 bytes, including
+  direct mutations of nested color/matrix and texture-derived values, without requiring manual
+  `isDirty`; unchanged bytes do not advance revisions or upload again.
+- Give raw texture uploads one backend-neutral, tightly packed row contract; WebGL 2 and WebGPU now
+  apply `flipY` to TypedArray/DataView sources in the same deterministic byte order.
+- Upload WebGPU `HTMLVideoElement` textures from decoded-frame callbacks through a private staging
+  canvas. Queue completion fences prevent the canvas from changing during a copy; source changes,
+  release, and device recovery cancel and rebuild observation without a WebGL or placeholder
+  fallback.
+- Bound backend-neutral UBO dirty history with full-upload recovery for slow consumers. Own render
+  state by `mesh → pass owner → material/shader/instancing variant`, cap each mesh at 32 variants
+  with LRU eviction, atomically union resources across passes, and reclaim failed-frame and replaced
+  identity resources without destroying shared final references.
+- Upload dynamic WebGPU interleaved attributes and Uint8/16/32 indices by precise dirty ranges,
+  including matrix columns, normalized/strided sources, discrete regions, 4-byte copy alignment,
+  primitive-restart conversion, history-expiry fallback, buffer resize, and deterministic old-buffer
+  destruction.
 - Isolate shader structural/precision cache keys per geometry and renderer; keep pending pipeline
   compilations deduplicated outside the settled LRU and allow Naga initialization to retry after a
-  transient failure.
-- Fully dispose WebGPU device/context state after device loss, and bound per-owner vertex, instance,
-  and index buffer variants under identity churn.
+  transient failure. Remove the mutable global shader header and include canonical `commonOptions`
+  snapshots in every header and shader-variant key.
+- Recover automatically after WebGPU device loss: emit `webgpuDeviceLost`, safely skip renders,
+  request a fresh equivalent adapter with the frozen initial options, revalidate the fallback policy
+  plus all required features and limits, and request a replacement device with the same effective
+  descriptor. Rebuild context/managers while preserving selected `RenderTarget` and attachment
+  identities, then emit `webgpuDeviceRestored`. Emit `webgpuDeviceRecoveryFailed` and make later
+  renders throw explicitly on failure; renderer destruction cancels in-flight or stale-generation
+  recovery.
+- Preserve engine-private, `Texture`-identity recovery backings for `isImageCanRelease` textures,
+  including immutable raw/cube/mipmap/sub-texture snapshots and private external-source references,
+  so a new WebGL 2 context allocation or WebGPU device can replay uploads without restoring access
+  to the released public image.
+- Keep `releaseGPUResources()` reusable on WebGPU by rebuilding main-canvas depth/MSAA attachments
+  immediately instead of tearing down the device. Scope shadow cameras and debug helpers per
+  renderer/light and prune them when debug, shadow, enabled, stage membership, release, recovery, or
+  destruction changes ownership.
 - Reject cross-stage UBO layout mismatches before Naga and keep generated entry-point
   post-processing correct when custom GLSL returns early.
-- Add WebGPU MRT render targets with 4× MSAA resolve, optional sampleable depth/stencil, explicit
-  ownership/presentation, resize, and 256-byte-aligned asynchronous color readback.
+- Add shared WebGL 2/WebGPU render targets with MRT, 1×/4× MSAA resolve, optional sampleable
+  depth/stencil, explicit ownership/presentation, resize, and tightly packed asynchronous color
+  readback. Attachment `Texture` identities survive resize and context/device recovery; WebGL 2
+  resize updates every draw/resolve/depth attachment transactionally. Both backends present through
+  fullscreen texture-load pipelines; WebGL 2 restores canvas and saved framebuffer state on every
+  clear/resolve failure instead of blitting into an antialiased default framebuffer. WebGPU keeps
+  its required 256-byte row alignment internal to the implementation.
+- Build post-processing ping-pong passes and asynchronous `MeshPicker` exclusively on the shared
+  render-target contract, with dual-backend interaction tests and no hidden fallback path.
+- Normalize `LINE_LOOP` and `TRIANGLE_FAN` to explicit `LINES` and `TRIANGLES` indices before upload
+  for indexed, non-indexed, and glTF-loaded geometry, so WebGL 2 and WebGPU consume the same
+  topology.
+- Add shared compressed-texture capability queries. WebGPU enables adapter-exposed BC, ETC2, and
+  ASTC device features, maps all ten WebGL 2 core ETC2/EAC formats, and explicitly rejects PVRTC
+  instead of substituting or decoding it. Both backends require an exact, dimensionally valid mip
+  chain when a mipmap filter is selected, while the KTX loader continues to accept legal base-only
+  and partial chains for non-mipmap sampling. KTX1 parsing honors container endianness for headers
+  and mip sizes, rejects truncation, and keeps container texel metadata authoritative over request
+  options.
+- Replace WebGL cache logging with backend-neutral tracked/used/pending resource diagnostics.
 - Partition WebGPU resources by update frequency: global/pass resources in group 0, material and
   texture resources in group 1, object/geometry/pose resources in group 2, and custom blocks in
   group 3. Instanced transforms use the bounded `InstanceBlock` instead of matrix vertex attributes.
-- Add Naga compilation coverage for the built-in shader feature corpus and a Playwright test that
-  creates a real Chromium WebGPU adapter/device/pipeline and exercises Basic/PBR, instancing,
-  indexed strips with partial updates, mipmapped texture replacement, three shadow-light kinds, 4×
-  MSAA/stencil, MRT, presentation, and readback through SwiftShader.
+- Add Naga compilation coverage for the built-in shader feature corpus and a dedicated Playwright
+  test that creates a real Chromium WebGPU adapter/device/pipeline and exercises Basic/PBR,
+  instancing, indexed strips with partial updates, mipmapped texture replacement, three shadow-light
+  kinds, 4× MSAA/stencil, MRT, presentation, and readback through SwiftShader. This fixture actively
+  destroys the device, verifies fresh adapter/device recovery, released-texture replay, selected
+  `RenderTarget` identity, and exact pre/post-recovery readback. It supplements the full
+  example-gallery WebGPU matrix; it is not the only WebGPU UI path.
+- Extend that real-browser WebGPU gate with managed 3D, 2D-array, integer-array, and depth-array
+  textures. It translates the extended sampler set through Naga, builds the actual bind groups and
+  pipeline, draws and submits without shader-compilation or GPU-validation errors, and requires the
+  exact `[64, 128, 200, 255]` pixel readback.
+- Require all 155 page/backend cases to observe a real WebGL draw or WebGPU canvas acquisition,
+  render-pass draw, and queue submission, with page, network, console, GPU validation, uncaptured
+  error, and unexpected device-loss failures promoted to release-gate failures. After the
+  stable-frame window, fence every observed real `GPUQueue` with `onSubmittedWorkDone()` before the
+  final instrumentation sample so delayed validation events cannot arrive after a passing result.
+  Interaction gates additionally require action-local draw/submit progress and GPU readback changes
+  for life-game attachment updates, ShaderToy pointer input, post-process kernels, and glTF Viewer
+  replacement. WebGPU color render-target allocations include `COPY_DST`, so public attachment
+  `updateSubTexture()` writes are real GPU updates rather than ignored validation errors.
+- Add an explicit optional native WebGPU Playwright project and manual self-hosted GPU workflow. It
+  requests `forceFallbackAdapter: false`, disables Chromium's software rasterizer, rejects fallback
+  and known software adapters, and reuses the production draw/recovery/readback fixture without
+  pretending that physical GPU availability is a portable PR or release requirement. WebXR remains
+  excluded from the WebGPU gate.
+- Expand WebGL 2 instanced matrix attributes into legal column locations, preserve independent read
+  and draw framebuffer bindings across reset/check/bind/unbind transactions, reject cross-context
+  framebuffer copies, and route reflected `ivec*`/`uvec*` inputs through strictly typed
+  `vertexAttribIPointer` calls. Keep point-shadow cube attachments square and complete. Refresh
+  `CameraBlock` for each of the six point-shadow faces even though the shadow camera object is
+  reused. Prepare ShaderToy derivatives in uniform control flow so the same GLSL compiles cleanly
+  through Naga and Dawn.
 - Render WebGPU directional, spot, and point-light shadows through a comparison depth atlas whose
-  rects, matrices, and bias data live in `LightBlock`.
+  rects, matrices, and bias data live in `LightBlock`. Restrict shadow parameters to those three
+  light kinds and reject Area/Ambient/base-light shadow assignment before backend selection.
 - Make package entry evaluation safe in non-browser runtimes.
 - Fix the `COPY_WRITE_BUFFER_BINDING` WebGL2 constant.
 

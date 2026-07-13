@@ -1,14 +1,15 @@
 import Buffer from './Buffer';
 import GeometryData, { type GeometryComponentSize } from '../geometry/GeometryData';
 import bufferUtil from '../utils/bufferUtil';
-import Cache from '../utils/Cache';
 import { TRIANGLES } from '../constants/webgl';
 import requireGLResource from './requireGLResource';
+import WebGLContextCache from './WebGLContextCache';
+import type Cache from '../utils/Cache';
 import type Mesh from '../core/Mesh';
 import type GraphicsResourceManager from './GraphicsResourceManager';
 import type { ManagedResource } from './GraphicsResourceManager';
 import type { ProgramAttribute } from './Program';
-import type { GLContext } from './types';
+import type { GLContext, GLTypeInfo } from './types';
 
 export interface VertexArrayObjectParameters {
     useInstanced?: boolean;
@@ -31,28 +32,45 @@ export interface VaoRenderer {
     resourceManager: GraphicsResourceManager;
 }
 
-let currentVao: VertexArrayObject | null = null;
-const cache = new Cache<VertexArrayObject>();
+const currentVaos = new WeakMap<GLContext, VertexArrayObject>();
+const contextCaches = new WebGLContextCache<VertexArrayObject>();
 
-function geometryComponentSize(size: number): GeometryComponentSize {
+interface InstancedGeometryLayout {
+    readonly size: GeometryComponentSize;
+    readonly stride: number;
+}
+
+/**
+ * Describe one logical instance value using legal WebGL2 vertex-attribute columns. Matrices are
+ * stored as one tightly packed record while ProgramAttribute expands them over consecutive
+ * locations, so no vertexAttribPointer call ever receives more than four components.
+ */
+function instancedGeometryLayout(typeInfo: GLTypeInfo): InstancedGeometryLayout {
+    const { size, type } = typeInfo;
+    if (type === 'Matrix') {
+        const columnSize = Math.sqrt(size);
+        if (
+            !Number.isInteger(columnSize) ||
+            columnSize < 2 ||
+            columnSize > 4 ||
+            typeInfo.byteSize !== size * Float32Array.BYTES_PER_ELEMENT
+        ) {
+            throw new RangeError(`Unsupported instanced matrix attribute size: ${String(size)}`);
+        }
+        return {
+            size: columnSize as 2 | 3 | 4,
+            stride: typeInfo.byteSize
+        };
+    }
     switch (size) {
         case 1:
-            return 1;
         case 2:
-            return 2;
         case 3:
-            return 3;
         case 4:
-            return 4;
-        case 16:
-            return 16;
+            return { size, stride: 0 };
         default:
             throw new RangeError(`Unsupported instanced attribute size: ${String(size)}`);
     }
-}
-
-function setCurrentVao(vao: VertexArrayObject | null): void {
-    currentVao = vao;
 }
 
 function attributeBindingKey(geometryData: GeometryData): string {
@@ -78,8 +96,8 @@ function indexBindingKey(geometryData: GeometryData): string {
 }
 
 class VertexArrayObject implements ManagedResource {
-    static get cache(): Cache<VertexArrayObject> {
-        return cache;
+    static getCache(gl: GLContext): Cache<VertexArrayObject> {
+        return contextCaches.get(gl);
     }
 
     static getVao(
@@ -87,6 +105,7 @@ class VertexArrayObject implements ManagedResource {
         id: string,
         params: VertexArrayObjectParameters = {}
     ): VertexArrayObject {
+        const cache = contextCaches.get(gl);
         let vao = cache.get(id);
         if (!vao) {
             vao = new VertexArrayObject(gl, id, params);
@@ -98,9 +117,12 @@ class VertexArrayObject implements ManagedResource {
     }
 
     static reset(gl: GLContext): void {
-        currentVao = null;
+        currentVaos.delete(gl);
         gl.bindVertexArray(null);
+        const cache = contextCaches.peek(gl);
+        if (!cache) return;
         cache.each(vao => vao.destroy());
+        contextCaches.delete(gl);
     }
 
     readonly className = 'VertexArrayObject';
@@ -131,14 +153,14 @@ class VertexArrayObject implements ManagedResource {
     }
 
     bind(): void {
-        if (currentVao === this) return;
+        if (currentVaos.get(this.gl) === this) return;
         this.gl.bindVertexArray(this.vao);
-        setCurrentVao(this);
+        currentVaos.set(this.gl, this);
     }
 
     unbind(): void {
         this.gl.bindVertexArray(null);
-        currentVao = null;
+        currentVaos.delete(this.gl);
     }
 
     draw(): void {
@@ -297,10 +319,8 @@ class VertexArrayObject implements ManagedResource {
             geometryData = existing.geometryData;
             geometryData.data = instancedData;
         } else {
-            geometryData = new GeometryData(
-                instancedData,
-                geometryComponentSize(attribute.glTypeInfo.size)
-            );
+            const layout = instancedGeometryLayout(attribute.glTypeInfo);
+            geometryData = new GeometryData(instancedData, layout.size, { stride: layout.stride });
         }
         return this.addAttribute(geometryData, attribute, this.gl.DYNAMIC_DRAW, () => {
             attribute.divisor(1);
@@ -320,6 +340,10 @@ class VertexArrayObject implements ManagedResource {
 
     destroy(): this {
         if (this._isDestroyed) return this;
+        if (currentVaos.get(this.gl) === this) {
+            this.gl.bindVertexArray(null);
+            currentVaos.delete(this.gl);
+        }
         this.gl.deleteVertexArray(this.vao);
         this.vao = null;
         this.indexBuffer = null;
@@ -328,7 +352,7 @@ class VertexArrayObject implements ManagedResource {
         this.indexBindingKey = '';
         this.attributes.length = 0;
         this.attributesByName.clear();
-        cache.removeObject(this);
+        contextCaches.peek(this.gl)?.removeObject(this);
         this._isDestroyed = true;
         return this;
     }

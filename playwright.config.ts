@@ -1,6 +1,22 @@
 import { defineConfig } from '@playwright/test';
 
 const isContinuousIntegration = process.env['CI'] === 'true';
+const swiftShaderArguments = [
+    '--enable-unsafe-swiftshader',
+    '--enable-unsafe-webgpu',
+    '--use-angle=swiftshader',
+    '--use-webgpu-adapter=swiftshader'
+];
+const nativeWebGPUArguments = [
+    '--disable-software-rasterizer',
+    '--enable-unsafe-webgpu',
+    '--ignore-gpu-blocklist',
+    process.platform === 'darwin'
+        ? '--use-angle=metal'
+        : process.platform === 'linux'
+          ? '--use-angle=vulkan'
+          : '--use-angle=default'
+];
 const loopbackHosts = ['127.0.0.1', 'localhost'];
 const noProxyHosts = new Set(
     (process.env['NO_PROXY'] ?? process.env['no_proxy'] ?? '')
@@ -17,9 +33,9 @@ export default defineConfig({
     testDir: './test/ui',
     outputDir: 'test-results',
     fullyParallel: true,
+    workers: 1,
     forbidOnly: isContinuousIntegration,
     retries: 0,
-    ...(isContinuousIntegration ? { workers: 1 } : {}),
     reporter: isContinuousIntegration
         ? [['github'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]
         : [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
@@ -49,12 +65,17 @@ export default defineConfig({
             use: {
                 browserName: 'chromium',
                 launchOptions: {
-                    args: [
-                        '--enable-unsafe-swiftshader',
-                        '--enable-unsafe-webgpu',
-                        '--use-angle=swiftshader',
-                        '--use-webgpu-adapter=swiftshader'
-                    ]
+                    args: swiftShaderArguments
+                }
+            }
+        },
+        {
+            // Explicitly selected only by `npm run test:webgpu:native`; never part of portable CI.
+            name: 'chromium-native-webgpu',
+            use: {
+                browserName: 'chromium',
+                launchOptions: {
+                    args: nativeWebGPUArguments
                 }
             }
         }

@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 
 const geometry = new Hilo3d.PlaneGeometry();
 const colors = [1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0];

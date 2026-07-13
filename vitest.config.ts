@@ -13,7 +13,7 @@ export default mergeConfig(
             unstubEnvs: true,
             unstubGlobals: true,
             setupFiles: ['./test/setup.ts'],
-            include: ['test/spec/**/*.test.ts'],
+            include: ['test/spec/**/*.test.ts', 'examples/**/*.test.ts'],
             testTimeout: 10_000,
             hookTimeout: 10_000,
             coverage: {
@@ -35,7 +35,12 @@ export default mergeConfig(
                 headless: true,
                 provider: playwright({
                     launchOptions: {
-                        args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader']
+                        args: [
+                            '--enable-unsafe-swiftshader',
+                            '--enable-unsafe-webgpu',
+                            '--use-angle=swiftshader',
+                            '--use-webgpu-adapter=swiftshader'
+                        ]
                     }
                 }),
                 instances: [{ browser: 'chromium' }]

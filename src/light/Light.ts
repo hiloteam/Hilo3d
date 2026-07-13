@@ -1,7 +1,5 @@
 import Node, { type NodeParameters } from '../core/Node';
 import Color from '../math/Color';
-import type Camera from '../camera/Camera';
-import type WebGLRenderer from '../renderer/WebGLRenderer';
 
 const tempColor = new Color();
 
@@ -23,12 +21,19 @@ export interface ShadowCameraParameters {
 }
 
 export interface LightShadowOptions {
+    /** Display the shadow camera helper; it does not draw the shadow texture over the scene. */
     debug?: boolean;
     width?: number;
     height?: number;
     maxBias?: number;
     minBias?: number;
     cameraInfo?: ShadowCameraParameters;
+}
+
+export type PointShadowCameraParameters = Pick<ShadowCameraParameters, 'near' | 'far'>;
+export interface PointLightShadowOptions extends Omit<LightShadowOptions, 'cameraInfo'> {
+    /** Point shadows keep canonical 90-degree cube faces; only clipping planes are configurable. */
+    cameraInfo?: PointShadowCameraParameters;
 }
 
 export interface LightParameters extends NodeParameters {
@@ -39,8 +44,12 @@ export interface LightParameters extends NodeParameters {
     linearAttenuation?: number;
     quadraticAttenuation?: number;
     range?: number;
-    shadow?: LightShadowOptions | null;
     isDirty?: boolean;
+}
+
+/** Parameters shared only by light kinds that implement shadows on every rendering backend. */
+export interface ShadowCastingLightParameters extends LightParameters {
+    shadow?: LightShadowOptions | null;
 }
 /**
  * 灯光基础类
@@ -110,7 +119,18 @@ class Light extends Node {
     /**
      * 阴影生成参数，默认不生成阴影
      */
-    shadow: LightShadowOptions | null = null;
+    private shadowValue: LightShadowOptions | null = null;
+
+    get shadow(): LightShadowOptions | null {
+        return this.shadowValue;
+    }
+
+    set shadow(value: LightShadowOptions | null) {
+        if (value !== null && !this.isDirectionalLight && !this.isPointLight && !this.isSpotLight) {
+            throw new TypeError(`${this.constructor.name} does not support shadow maps.`);
+        }
+        this.shadowValue = value;
+    }
     /**
      * 是否光照信息变化
      */
@@ -143,16 +163,6 @@ class Light extends Node {
      */
     getRealColor(): Color {
         return tempColor.copy(this.color).scale(this.amount);
-    }
-    /**
-     * 生成阴影贴图，支持阴影的子类需要重写
-     * @param renderer -
-     * @param camera -
-     */
-    createShadowMap(renderer: WebGLRenderer, camera: Camera): void {
-        void renderer;
-        void camera;
-        throw new Error(`${this.constructor.name} does not support shadow maps.`);
     }
 }
 export default Light;

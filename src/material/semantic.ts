@@ -2,7 +2,8 @@ import DataTexture from '../texture/DataTexture';
 import Vector3 from '../math/Vector3';
 import Matrix3 from '../math/Matrix3';
 import Matrix4 from '../math/Matrix4';
-import { UNSIGNED_BYTE } from '../constants/webgl';
+import { RGBA, UNSIGNED_BYTE } from '../constants/webgl';
+import { RGBA8 } from '../constants/webgl2';
 import Texture, { type TextureBinding } from '../texture/Texture';
 import Color from '../math/Color';
 import type Camera from '../camera/Camera';
@@ -14,12 +15,15 @@ import type LightManager from '../light/LightManager';
 import type SphericalHarmonics3 from '../math/SphericalHarmonics3';
 import type Material from './Material';
 import type { MaterialTexture, MaterialTextureValue, ProgramBindingInfo } from './Material';
+import { getMeshPickingIdentity } from '../renderer/PickingIdentity';
+import type { RendererViewport } from '../renderer/Renderer';
 
 const tempVector3 = new Vector3();
 const tempMatrix3 = new Matrix3();
 const tempMatrix4 = new Matrix4();
 const tempFloat32Array4 = new Float32Array([0.5, 0.5, 0.5, 1]);
 const tempFloat32Array2 = new Float32Array([0, 0]);
+const activeViewport = new Float32Array(4);
 const blankInfo = {
     get(
         _mesh: SemanticMesh,
@@ -33,6 +37,7 @@ const blankInfo = {
 export interface SemanticRenderer {
     width: number;
     height: number;
+    getViewport(): RendererViewport;
 }
 
 export interface SemanticMesh extends Mesh {
@@ -79,6 +84,21 @@ export interface SemanticMaterial extends Material {
 
 function nullable<Value>(value: Value | null): Value | null {
     return value;
+}
+
+function writeActiveViewport(viewport: RendererViewport): void {
+    const [x, y, width, height] = viewport;
+    if (
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+    ) {
+        throw new RangeError('Renderer viewport must contain finite x/y and positive width/height');
+    }
+    activeViewport.set(viewport);
 }
 
 function cameraPlane(camera: Camera, plane: 'near' | 'far'): number {
@@ -140,6 +160,7 @@ const semantic = {
         camera = this.camera = _camera;
         lightManager = this.lightManager = _lightManager;
         fog = this.fog = _fog;
+        writeActiveViewport(_renderer.getViewport());
     },
 
     /**
@@ -148,6 +169,11 @@ const semantic = {
      */
     setCamera(_camera: Camera): void {
         camera = this.camera = _camera;
+    },
+
+    /** Set the physical-pixel viewport used by the active camera/render pass. */
+    setViewport(viewport: RendererViewport): void {
+        writeActiveViewport(viewport);
     },
 
     /**
@@ -191,6 +217,8 @@ const semantic = {
         this._blankTexture ??= new DataTexture({
             width: 2,
             height: 2,
+            internalFormat: RGBA8,
+            format: RGBA,
             type: UNSIGNED_BYTE,
             image: new Uint8Array([
                 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128
@@ -426,6 +454,19 @@ const semantic = {
         isDependMesh: true
     },
 
+    /** Stable per-mesh rgba8unorm identity used by backend-neutral GPU picking passes. */
+    OBJECTIDCOLOR: {
+        get(
+            mesh: SemanticMesh,
+            _material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
+        ): Float32Array {
+            return getMeshPickingIdentity(mesh).color;
+        },
+        isDependMesh: true,
+        notSupportInstanced: true
+    },
+
     VIEW: {
         get(
             _mesh: SemanticMesh,
@@ -564,10 +605,16 @@ const semantic = {
         isDependMesh: true
     },
 
-    /**
-     * 还未实现，不要使用
-     */
-    VIEWPORT: undefined,
+    /** Current render-pass viewport as physical-pixel `(x, y, width, height)`. */
+    VIEWPORT: {
+        get(
+            _mesh?: SemanticMesh,
+            _material?: SemanticMaterial,
+            _programInfo?: ProgramBindingInfo
+        ): Float32Array {
+            return activeViewport;
+        }
+    },
 
     JOINTMATRIX: {
         get(

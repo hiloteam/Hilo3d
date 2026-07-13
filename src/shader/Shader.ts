@@ -19,7 +19,13 @@ import {
 
 const cache = new Cache<Shader>();
 const headerCache = new Cache<string>();
+const rendererHeaderCache = new WeakMap<ShaderPrecisionProvider, RendererHeaderSnapshot>();
 const CUSTOM_OPTION_PREFIX = 'HILO_CUSTOM_OPTION_';
+const DEFAULT_COMMON_HEADER = `
+#define HILO_MAX_PRECISION highp
+#define HILO_MAX_VERTEX_PRECISION highp
+#define HILO_MAX_FRAGMENT_PRECISION highp
+`;
 const shaderModules = import.meta.glob<string>('./**/*.{frag,glsl,vert}', {
     eager: true,
     import: 'default'
@@ -41,6 +47,12 @@ export interface ShaderPrecisionProvider {
 
 export interface ShaderRenderer extends ShaderPrecisionProvider {
     resourceManager: GraphicsResourceManager;
+}
+
+interface RendererHeaderSnapshot {
+    readonly vertexPrecision: ShaderPrecision;
+    readonly fragmentPrecision: ShaderPrecision;
+    readonly header: string;
 }
 
 interface BasicShaderMaterial extends Material {
@@ -107,6 +119,14 @@ function skeletonJointCount(mesh: Mesh): number | null {
     const count: unknown = Reflect.get(skeleton, 'jointCount');
     return typeof count === 'number' ? count : null;
 }
+
+function shaderOptionsSignature(options: Readonly<Record<string, number>>): string {
+    return JSON.stringify(
+        Object.keys(options)
+            .sort()
+            .map(name => [name, String(options[name])])
+    );
+}
 /**
  * Shader类
  */
@@ -124,7 +144,6 @@ class Shader {
      */
     fs = '';
     static commonOptions: Record<string, number> = {};
-    static commonHeader = '';
     /**
      * 内部的所有shader块字符串，可以用来拼接glsl代码
      */
@@ -134,8 +153,7 @@ class Shader {
      * @param renderer -
      */
     static init(renderer: ShaderPrecisionProvider): void {
-        const commonHeader = this.getCommonHeader(renderer);
-        this.commonHeader = commonHeader;
+        this.getRendererHeader(renderer);
     }
     /**
      * Shader 缓存
@@ -198,10 +216,14 @@ class Shader {
         fog: Fog | null,
         useLogDepth: boolean
     ): string {
-        const headerKey = this.getHeaderKey(mesh, material, lightManager, fog, useLogDepth);
+        const commonOptions = { ...this.commonOptions };
+        const headerKey = JSON.stringify([
+            this.getHeaderKey(mesh, material, lightManager, fog, useLogDepth),
+            shaderOptionsSignature(commonOptions)
+        ]);
         let header = headerCache.get(headerKey);
         if (!header || material.isDirty) {
-            const headers: Record<string, number> = { ...this.commonOptions };
+            const headers: Record<string, number> = commonOptions;
             const lightType = material.lightType;
             if (lightType && lightType !== 'NONE') {
                 lightManager.getRenderOption(headers);
@@ -360,7 +382,7 @@ class Shader {
      * @param vs - 顶点代码
      * @param fs - 片段代码
      * @param cacheKey - 如果有，会以此值缓存 shader
-     * @param useHeaderCache - 如果cacheKey和useHeaderCache同时存在，使用 cacheKey+useHeaderCache缓存 shader
+     * @param useHeaderCache - 是否使用 header-aware 缓存命名空间；实际 header 始终参与缓存键
      */
     static getCustomShader(
         vs: string,
@@ -390,8 +412,21 @@ class Shader {
     }
 
     private static getRendererHeader(renderer?: ShaderPrecisionProvider): string {
-        if (!renderer) return this.commonHeader;
-        return this.getCommonHeader(renderer);
+        if (!renderer) return DEFAULT_COMMON_HEADER;
+        const cached = rendererHeaderCache.get(renderer);
+        if (
+            cached?.vertexPrecision === renderer.vertexPrecision &&
+            cached.fragmentPrecision === renderer.fragmentPrecision
+        ) {
+            return cached.header;
+        }
+        const snapshot: RendererHeaderSnapshot = Object.freeze({
+            vertexPrecision: renderer.vertexPrecision,
+            fragmentPrecision: renderer.fragmentPrecision,
+            header: this.getCommonHeader(renderer)
+        });
+        rendererHeaderCache.set(renderer, snapshot);
+        return snapshot.header;
     }
 
     private static getCustomShaderCacheKey(
@@ -400,7 +435,7 @@ class Shader {
         header: string,
         useHeaderCache: boolean
     ): string {
-        return JSON.stringify([cacheKey, commonHeader, useHeaderCache ? header : null]);
+        return JSON.stringify([cacheKey, commonHeader, useHeaderCache, header]);
     }
 
     private static assembleGLSL300(source: string, header: string): string {

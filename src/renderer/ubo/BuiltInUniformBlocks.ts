@@ -24,7 +24,8 @@ export const cameraBlockLayout = createStd140Layout({
     u_projectionInverseMatrix: 'mat4',
     u_viewInverseNormalMatrix: 'mat3',
     u_cameraPositionNear: 'vec4',
-    u_cameraParams: 'vec4'
+    u_cameraParams: 'vec4',
+    u_viewport: 'vec4'
 });
 
 export const sceneBlockLayout = createStd140Layout({
@@ -98,7 +99,8 @@ export const materialBlockLayout = createStd140Layout({
 
 export const modelBlockLayout = createStd140Layout({
     u_modelMatrix: 'mat4',
-    u_normalWorldMatrix: 'mat3'
+    u_normalWorldMatrix: 'mat3',
+    u_objectIdColor: 'vec4'
 });
 
 export const geometryBlockLayout = createStd140Layout({
@@ -158,8 +160,21 @@ export function paddedStd140Value(
         value = elements;
     }
     if (value instanceof DataView) return null;
-    const values = Array.from(value as ArrayLike<number>, Number);
-    if (values.length === requiredLength) return values;
+    const arrayValue = value as ArrayLike<unknown>;
+    if (arrayValue.length === requiredLength) {
+        let isNumeric = true;
+        let index = 0;
+        while (index < arrayValue.length) {
+            const item = arrayValue[index];
+            if (typeof item !== 'number' && typeof item !== 'boolean') {
+                isNumeric = false;
+                break;
+            }
+            index++;
+        }
+        if (isNumeric) return arrayValue as ArrayLike<number | boolean>;
+    }
+    const values = Array.from(arrayValue, Number);
     if (values.length > requiredLength) {
         throw new RangeError(
             `${fieldName} provides ${String(values.length)} values; the fixed graphics ABI allows ${String(requiredLength)}`

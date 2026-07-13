@@ -1,7 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
+import { createTexturePreview } from './shared/ScreenMesh';
 
-const { stage, renderer } = createExampleContext();
+const { camera, stage, renderer } = await createExampleContext();
 
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([
@@ -38,22 +39,31 @@ textureBox.onUpdate = () => {
 };
 stage.addChild(textureBox);
 
-const framebuffer = new Hilo3d.Framebuffer(renderer, {
+const renderTarget = renderer.createRenderTarget({
     width: renderer.width,
-    height: renderer.height
+    height: renderer.height,
+    colorAttachments: [
+        {
+            clearValue: { r: 1, g: 1, b: 1, a: 1 }
+        }
+    ],
+    label: 'RenderTarget.preview'
 });
+const preview = createTexturePreview(
+    () => renderTarget.getColorTexture(),
+    { x: 0, y: 0.7, width: 0.3, height: 0.3 },
+    'RenderTarget.preview'
+);
+stage.addChild(preview);
 
-const clearColor = new Hilo3d.Color(1, 1, 1);
-
-renderer.on('afterRender', () => {
-    framebuffer.bind();
-    renderer.clear(clearColor);
-    textureMaterial.diffuse = texture;
-    renderer.renderList.traverse(mesh => {
-        renderer.renderMesh(mesh);
-    });
-    framebuffer.unbind();
-
-    framebuffer.render(0, 0.7, 0.3, 0.3);
-    textureMaterial.diffuse = framebuffer.texture;
-});
+stage.onUpdate = () => {
+    if (renderTarget.width !== renderer.width || renderTarget.height !== renderer.height) {
+        renderTarget.resize(renderer.width, renderer.height);
+    }
+    preview.visible = false;
+    try {
+        renderer.renderToTarget(renderTarget, stage, camera, false);
+    } finally {
+        preview.visible = true;
+    }
+};

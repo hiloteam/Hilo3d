@@ -28,6 +28,9 @@ Use `npm run dev` for engine development and `npm run examples:dev` for the exam
 - `npm run test:ui` and `npm run test:visual` run the Playwright UI and rendering suites.
 - `npm run test:webgpu` runs the real Chromium WebGPU/Naga render path; it must not be replaced by a
   mocked-device smoke test.
+- `npm run test:webgpu:native` is an optional physical-GPU check. It must run only on a machine with
+  a real GPU/driver, rejects fallback and known software adapters, and is deliberately excluded from
+  portable `validate`. The manual self-hosted workflow uses the `linux` and `gpu` runner labels.
 - `npm run docs:check` validates the TypeDoc API documentation.
 - `npm run api:check` rejects unreviewed changes to the generated public declaration report.
 - `npm run test:package` builds and tests the actual npm package contract.
@@ -76,6 +79,11 @@ be committed when a rendering change is intentional.
   consume unbounded vertex-buffer slots.
 - A shader change is complete only when WebGL 2 compile/link, Naga corpus translation, and the
   relevant real WebGPU pipeline or UI test pass.
+- UI completion waits for stable browser frames and then fences every observed `GPUQueue` with
+  `onSubmittedWorkDone()` before sampling uncaptured errors or device loss. Do not replace this with
+  a timer, DOM completion marker, or queue-submit counter.
+- WebXR is the sole explicit WebGL 2-only example boundary and is not part of WebGPU parity or the
+  optional native WebGPU lane.
 
 ## Commits and pull requests
 

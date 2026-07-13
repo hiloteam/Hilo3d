@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
+import Geometry from '../../../src/geometry/Geometry';
+import Material from '../../../src/material/Material';
 import GraphicsResourceManager, {
     type ManagedResource
 } from '../../../src/renderer/GraphicsResourceManager';
@@ -41,8 +43,6 @@ describe('GraphicsResourceManager', () => {
         const third = new Mesh();
         const shared = resource('instance-batch');
         root.addChild(first);
-        root.addChild(second);
-        root.addChild(third);
         manager.addMeshResources(first, [shared]);
         manager.addMeshResources(second, [shared]);
         manager.addMeshResources(third, [shared]);
@@ -71,8 +71,8 @@ describe('GraphicsResourceManager', () => {
         root.addChild(mesh);
 
         manager.beginFrame();
-        manager.addMeshResources(mesh, [shadow]);
-        manager.addMeshResources(mesh, [main, main]);
+        manager.addMeshResources(mesh, [shadow], { key: 'shadow' });
+        manager.addMeshResources(mesh, [main, main], { key: 'main' });
         expect(manager.getMeshResources(mesh)).toEqual([shadow, shadowNested, main]);
         manager.endFrame();
 
@@ -82,7 +82,8 @@ describe('GraphicsResourceManager', () => {
         expect(shadowNested.destroy).not.toHaveBeenCalled();
 
         manager.beginFrame();
-        manager.addMeshResources(mesh, [main]);
+        manager.addMeshResources(mesh, [main], { key: 'main' });
+        manager.removeMeshVariant(mesh, { key: 'shadow' });
         manager.endFrame();
 
         expect(manager.getMeshResources(mesh)).toEqual([main]);
@@ -90,6 +91,117 @@ describe('GraphicsResourceManager', () => {
         expect(shadow.destroy).toHaveBeenCalledOnce();
         expect(shadowNested.destroy).toHaveBeenCalledOnce();
         expect(main.destroy).not.toHaveBeenCalled();
+    });
+
+    it('reuses material and pass variants across independent consecutive render frames', () => {
+        const manager = new GraphicsResourceManager();
+        const root = new Node();
+        const mesh = new Mesh({ geometry: new Geometry(), material: new Material() });
+        const mainPass = {};
+        const auxiliaryPass = {};
+        const main = resource('main');
+        const position = resource('position');
+        const normal = resource('normal');
+        root.addChild(mesh);
+
+        manager.beginFrame();
+        manager.addMeshResources(mesh, [position], { key: 'position-shader', pass: auxiliaryPass });
+        manager.endFrame();
+        manager.destroyUnusedResource(root);
+
+        manager.beginFrame();
+        manager.addMeshResources(mesh, [main], { key: 'main-shader', pass: mainPass });
+        manager.endFrame();
+        manager.destroyUnusedResource(root);
+
+        manager.beginFrame();
+        manager.addMeshResources(mesh, [normal], { key: 'normal-shader', pass: auxiliaryPass });
+        manager.endFrame();
+        manager.destroyUnusedResource(root);
+
+        manager.beginFrame();
+        manager.addMeshResources(mesh, [position], { key: 'position-shader', pass: auxiliaryPass });
+        manager.endFrame();
+        manager.destroyUnusedResource(root);
+
+        expect(manager.getMeshResources(mesh)).toEqual([position, normal, main]);
+        expect(position.destroy).not.toHaveBeenCalled();
+        expect(normal.destroy).not.toHaveBeenCalled();
+        expect(main.destroy).not.toHaveBeenCalled();
+    });
+
+    it('releases one removed variant while preserving resources shared by a sibling variant', () => {
+        const manager = new GraphicsResourceManager();
+        const root = new Node();
+        const mesh = new Mesh({ geometry: new Geometry(), material: new Material() });
+        const pass = {};
+        const first = resource('first');
+        const second = resource('second');
+        const shared = resource('shared');
+        root.addChild(mesh);
+        manager.addMeshResources(mesh, [first, shared], { key: 'first', pass });
+        manager.addMeshResources(mesh, [second, shared], { key: 'second', pass });
+
+        manager.removeMeshVariant(mesh, { key: 'first', pass });
+        manager.destroyUnusedResource(root);
+
+        expect(first.destroy).toHaveBeenCalledOnce();
+        expect(shared.destroy).not.toHaveBeenCalled();
+        expect(second.destroy).not.toHaveBeenCalled();
+
+        manager.releasePass(pass);
+        manager.destroyUnusedResource(root);
+
+        expect(shared.destroy).toHaveBeenCalledOnce();
+        expect(second.destroy).toHaveBeenCalledOnce();
+    });
+
+    it('retires every old variant when the mesh material or geometry owner is replaced', () => {
+        const manager = new GraphicsResourceManager();
+        const root = new Node();
+        const mesh = new Mesh({ geometry: new Geometry(), material: new Material() });
+        const main = resource('main');
+        const forced = resource('forced');
+        const replacementMaterial = resource('replacement-material');
+        const replacementGeometry = resource('replacement-geometry');
+        root.addChild(mesh);
+        manager.addMeshResources(mesh, [main], { key: 'main' });
+        manager.addMeshResources(mesh, [forced], { key: 'forced' });
+
+        mesh.material = new Material();
+        manager.addMeshResources(mesh, [replacementMaterial], { key: 'main' });
+        manager.destroyUnusedResource(root);
+
+        expect(main.destroy).toHaveBeenCalledOnce();
+        expect(forced.destroy).toHaveBeenCalledOnce();
+        expect(replacementMaterial.destroy).not.toHaveBeenCalled();
+
+        mesh.geometry = new Geometry();
+        manager.addMeshResources(mesh, [replacementGeometry], { key: 'main' });
+        manager.destroyUnusedResource(root);
+
+        expect(replacementMaterial.destroy).toHaveBeenCalledOnce();
+        expect(replacementGeometry.destroy).not.toHaveBeenCalled();
+    });
+
+    it('bounds dormant variants with deterministic least-recently-used eviction', () => {
+        const manager = new GraphicsResourceManager({ maxVariantsPerMesh: 2 });
+        const root = new Node();
+        const mesh = new Mesh({ geometry: new Geometry(), material: new Material() });
+        const first = resource('first');
+        const second = resource('second');
+        const third = resource('third');
+        root.addChild(mesh);
+        manager.addMeshResources(mesh, [first], { key: 'first' });
+        manager.addMeshResources(mesh, [second], { key: 'second' });
+        manager.addMeshResources(mesh, [first], { key: 'first' });
+        manager.addMeshResources(mesh, [third], { key: 'third' });
+        manager.destroyUnusedResource(root);
+
+        expect(manager.getMeshResources(mesh)).toEqual([first, third]);
+        expect(first.destroy).not.toHaveBeenCalled();
+        expect(second.destroy).toHaveBeenCalledOnce();
+        expect(third.destroy).not.toHaveBeenCalled();
     });
 
     it('discards an aborted frame without changing the last complete snapshot', () => {
@@ -151,5 +263,38 @@ describe('GraphicsResourceManager', () => {
         expect(tracked.destroy).not.toHaveBeenCalled();
         expect(() => manager.beginFrame()).not.toThrow();
         manager.abortFrame();
+    });
+
+    it('reports backend-neutral lifecycle diagnostics for committed and active frames', () => {
+        const manager = new GraphicsResourceManager();
+        const root = new Node();
+        const visibleMesh = new Mesh();
+        const detachedMesh = new Mesh();
+        const shared = resource('shared');
+        const visible = resource('visible');
+        const pending = resource('pending');
+        root.addChild(visibleMesh);
+        manager.addMeshResources(visibleMesh, [shared, visible]);
+        manager.addMeshResources(detachedMesh, [shared]);
+        manager.destroyIfNoRef(pending);
+        manager.beginFrame();
+        manager.addMeshResources(visibleMesh, [shared]);
+
+        expect(manager.getDiagnostics(root)).toEqual({
+            trackedMeshCount: 2,
+            trackedResourceCount: 2,
+            usedResourceCount: 2,
+            pendingDestroyCount: 1,
+            frameActive: true
+        });
+
+        manager.abortFrame();
+        expect(manager.getDiagnostics()).toEqual({
+            trackedMeshCount: 2,
+            trackedResourceCount: 2,
+            usedResourceCount: 2,
+            pendingDestroyCount: 1,
+            frameActive: false
+        });
     });
 });

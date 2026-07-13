@@ -25,6 +25,22 @@ class WebGLExtensions {
     private readonly disabledExtensions = new Set<string>();
     private readonly loadedExtensions = new Map<string, ExtensionObject | null>();
 
+    constructor() {
+        const extensions: readonly (readonly [string, string?])[] = [
+            ['EXT_texture_filter_anisotropic', 'textureFilterAnisotropic'],
+            ['WEBGL_lose_context', 'loseContext'],
+            ['EXT_color_buffer_float', 'colorBufferFloat'],
+            ['WEBGL_compressed_texture_astc'],
+            ['WEBGL_compressed_texture_atc'],
+            ['WEBGL_compressed_texture_etc'],
+            ['WEBGL_compressed_texture_etc1'],
+            ['WEBGL_compressed_texture_pvrtc'],
+            ['WEBGL_compressed_texture_s3tc'],
+            ['WEBGL_compressed_texture_s3tc_srgb']
+        ];
+        for (const [name, alias] of extensions) this.use(name, alias);
+    }
+
     init(gl: GLContext): void {
         this.reset(gl);
     }
@@ -48,6 +64,9 @@ class WebGLExtensions {
 
     disable(name: string): void {
         this.disabledExtensions.add(name);
+        const alias = this.usedExtensions.get(name) ?? name;
+        this.loadedExtensions.set(alias, null);
+        this.assignAlias(alias, null);
     }
 
     enable(name: string): void {
@@ -57,7 +76,11 @@ class WebGLExtensions {
     }
 
     private loadAndAssign(name: string, alias: string): ExtensionObject | null {
-        if (this.disabledExtensions.has(name)) return null;
+        if (this.disabledExtensions.has(name)) {
+            this.loadedExtensions.set(alias, null);
+            this.assignAlias(alias, null);
+            return null;
+        }
         const extension = this.load(name);
         this.loadedExtensions.set(alias, extension);
         this.assignAlias(alias, extension);
@@ -86,11 +109,4 @@ class WebGLExtensions {
     }
 }
 
-const extensions = new WebGLExtensions();
-
-extensions.use('EXT_texture_filter_anisotropic', 'textureFilterAnisotropic');
-extensions.use('WEBGL_lose_context', 'loseContext');
-extensions.use('EXT_color_buffer_float', 'colorBufferFloat');
-
 export { WebGLExtensions };
-export default extensions;

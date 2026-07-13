@@ -843,8 +843,7 @@ class GLTFParser {
                 crossOrigin: true,
                 resType: this.getImageType(textureData.source),
                 src: uri,
-                name: textureData.name ?? name,
-                colorSpaceConversion: false
+                name: textureData.name ?? name
             });
             if (util.isBlobUrl(uri)) {
                 const release = (): void => {
@@ -1437,12 +1436,14 @@ class GLTFParser {
                 return Promise.resolve(extensionResult).then(value => {
                     const geometry = requireGeometry(value, 'Primitive extension');
                     geometry.mode = mode;
+                    geometry.normalizePrimitiveTopology();
                     return geometry;
                 });
             }
             if (extensionResult !== null && extensionResult !== undefined) {
                 const geometry = requireGeometry(extensionResult, 'Primitive extension');
                 geometry.mode = mode;
+                geometry.normalizePrimitiveTopology();
                 return geometry;
             }
         }
@@ -1466,6 +1467,7 @@ class GLTFParser {
                 assignDecodeMatrix(geometry, info.decodeMatrix, matrix);
             }
         }
+        geometry.normalizePrimitiveTopology();
         return geometry;
     }
 

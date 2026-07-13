@@ -1,7 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
+import { hashReadback } from './shared/readbackDiagnostics';
 
-const { stage, renderer, ticker } = createExampleContext();
+const { camera, stage, renderer, ticker } = await createExampleContext();
 
 const shaderToyCode = `
 
@@ -433,10 +434,8 @@ float calcAO( in vec3 pos, in vec3 nor )
 }
 
 // http://iquilezles.org/www/articles/checkerfiltering/checkerfiltering.htm
-float checkersGradBox( in vec2 p )
+float checkersGradBox( in vec2 p, in vec2 w )
 {
-    // filter kernel
-    vec2 w = fwidth(p) + 0.001;
     // analytical integral (box filter)
     vec2 i = 2.0*(abs(fract((p-0.5*w)*0.5)-0.5)-abs(fract((p+0.5*w)*0.5)-0.5))/w;
     // xor pattern
@@ -449,9 +448,12 @@ vec3 render( in vec3 ro, in vec3 rd )
     vec2 res = castRay(ro,rd);
     float t = res.x;
     float m = res.y;
+    vec3 pos = ro + t*rd;
+    // WebGPU requires derivatives to execute in uniform control flow. Compute the
+    // checker footprint for every fragment before entering the ray-hit branches.
+    vec2 checkerWidth = fwidth(5.0*pos.xz) + 0.001;
     if( m>-0.5 )
     {
-        vec3 pos = ro + t*rd;
         vec3 nor = (m<1.5) ? vec3(0.0,1.0,0.0) : calcNormal( pos );
         vec3 ref = reflect( rd, nor );
         
@@ -460,7 +462,7 @@ vec3 render( in vec3 ro, in vec3 rd )
         if( m<1.5 )
         {
             
-            float f = checkersGradBox( 5.0*pos.xz );
+            float f = checkersGradBox( 5.0*pos.xz, checkerWidth );
             col = 0.3 + f*vec3(0.1);
         }
 
@@ -550,34 +552,39 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 `;
 renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
 const pointer = { x: 0, y: 0, deltaX: 0, deltaY: 0, isDown: false };
-function eventPosition(event: Hilo3d.DispatchEvent): { x: number; y: number } | null {
-    const x = 'stageX' in event ? event.stageX : undefined;
-    const y = 'stageY' in event ? event.stageY : undefined;
-    return typeof x === 'number' && typeof y === 'number' ? { x, y } : null;
+function eventPosition(event: PointerEvent): { x: number; y: number } {
+    const bounds = stage.canvas.getBoundingClientRect();
+    return {
+        x: ((event.clientX - bounds.left) * renderer.width) / bounds.width,
+        y: ((bounds.bottom - event.clientY) * renderer.height) / bounds.height
+    };
 }
-function updatePointer(event: Hilo3d.DispatchEvent): void {
+function updatePointer(event: PointerEvent): void {
     const position = eventPosition(event);
-    if (!position) return;
     pointer.deltaX = position.x - pointer.x;
     pointer.deltaY = position.y - pointer.y;
     pointer.x = position.x;
     pointer.y = position.y;
 }
 
-stage.enableDOMEvent(['pointermove', 'pointerdown', 'pointerup', 'pointercancel']);
-stage.on('pointermove', event => {
+stage.canvas.style.touchAction = 'none';
+stage.canvas.addEventListener('pointermove', event => {
     if (pointer.isDown) updatePointer(event);
 });
-stage.on('pointerdown', event => {
+stage.canvas.addEventListener('pointerdown', event => {
     updatePointer(event);
     pointer.isDown = true;
+    stage.canvas.setPointerCapture(event.pointerId);
 });
-const endPointer = (event: Hilo3d.DispatchEvent): void => {
+const endPointer = (event: PointerEvent): void => {
     updatePointer(event);
     pointer.isDown = false;
+    if (stage.canvas.hasPointerCapture(event.pointerId)) {
+        stage.canvas.releasePointerCapture(event.pointerId);
+    }
 };
-stage.on('pointerup', endPointer);
-stage.on('pointercancel', endPointer);
+stage.canvas.addEventListener('pointerup', endPointer);
+stage.canvas.addEventListener('pointercancel', endPointer);
 
 const resolution = new Float32Array([stage.width, stage.height, 1]);
 const mouse = new Float32Array(4);
@@ -692,3 +699,70 @@ mesh.onUpdate = deltaTime => {
     shaderToyBlock.set('iChannelResolution', channelResolution);
 };
 stage.addChild(mesh);
+
+const pointerDiagnosticTarget = renderer.createRenderTarget({
+    width: 320,
+    height: 180,
+    colorAttachments: [{ format: 'rgba8unorm' }],
+    depthStencilAttachment: false,
+    label: 'ShaderToy pointer diagnostics'
+});
+
+window.__HILO3D_SHADER_TOY_DIAGNOSTICS__ = {
+    async capture(options = {}) {
+        ticker.stop();
+        let succeeded = false;
+        try {
+            mouse.set([pointer.x, pointer.y, pointer.deltaX, pointer.deltaY]);
+            shaderToyBlock.set('iMouse', mouse);
+            renderer.renderToTarget(pointerDiagnosticTarget, stage, camera, true);
+            const readback = await pointerDiagnosticTarget.readColorAttachment();
+            let coloredPixelCount = 0;
+            for (let offset = 0; offset < readback.data.byteLength; offset += 4) {
+                if (
+                    readback.data[offset] !== 0 ||
+                    readback.data[offset + 1] !== 0 ||
+                    readback.data[offset + 2] !== 0
+                ) {
+                    coloredPixelCount++;
+                }
+            }
+            succeeded = true;
+            return {
+                backend: renderer.backend,
+                hash: hashReadback(readback.data),
+                coloredPixelCount,
+                pointer: { ...pointer }
+            };
+        } finally {
+            if (!(succeeded && options.keepPaused === true)) ticker.start();
+        }
+    }
+};
+
+window.addEventListener(
+    'pagehide',
+    () => {
+        pointerDiagnosticTarget.destroy();
+    },
+    { once: true }
+);
+
+declare global {
+    interface Window {
+        __HILO3D_SHADER_TOY_DIAGNOSTICS__?: {
+            capture(options?: { readonly keepPaused?: boolean }): Promise<{
+                readonly backend: Hilo3d.RendererBackend;
+                readonly hash: string;
+                readonly coloredPixelCount: number;
+                readonly pointer: {
+                    readonly x: number;
+                    readonly y: number;
+                    readonly deltaX: number;
+                    readonly deltaY: number;
+                    readonly isDown: boolean;
+                };
+            }>;
+        };
+    }
+}

@@ -63,6 +63,15 @@ describe('Shader', () => {
 `);
     });
 
+    it('maps public light model names to legal GLSL identifiers', () => {
+        const { mesh, renderer } = testEnv;
+        const material = new Hilo3d.BasicMaterial({ lightType: 'BLINN-PHONG' });
+        const header = Shader.getHeader(mesh, material, renderer.lightManager, null, false);
+
+        expect(header).toContain('#define HILO_LIGHT_TYPE_BLINN_PHONG 1');
+        expect(header).not.toContain('BLINN-PHONG');
+    });
+
     it('separates structural geometry macros for meshes sharing one material', () => {
         const material = new Hilo3d.BasicMaterial({ lightType: 'NONE' });
         const firstGeometry = new Hilo3d.Geometry({
@@ -193,7 +202,109 @@ void main(){}`);
                 lowPrecisionRenderer
             )
         ).toBe(low);
+
+        const mutablePrecisionRenderer: ShaderRenderer = {
+            vertexPrecision: 'lowp',
+            fragmentPrecision: 'lowp',
+            resourceManager: testEnv.renderer.resourceManager
+        };
+        const beforePrecisionEdit = Shader.getCustomShader(
+            'void main(){}',
+            'void main(){}',
+            '',
+            'mutable-precision',
+            false,
+            mutablePrecisionRenderer
+        );
+        mutablePrecisionRenderer.vertexPrecision = 'mediump';
+        mutablePrecisionRenderer.fragmentPrecision = 'mediump';
+        const afterPrecisionEdit = Shader.getCustomShader(
+            'void main(){}',
+            'void main(){}',
+            '',
+            'mutable-precision',
+            false,
+            mutablePrecisionRenderer
+        );
+        expect(afterPrecisionEdit).not.toBe(beforePrecisionEdit);
+        expect(afterPrecisionEdit.vs).toContain('#define HILO_MAX_VERTEX_PRECISION mediump');
         Shader.init(testEnv.renderer);
+    });
+
+    it('keeps the implicit precision header deterministic across renderer initialization', () => {
+        const lowPrecisionRenderer: ShaderRenderer = {
+            vertexPrecision: 'lowp',
+            fragmentPrecision: 'lowp',
+            resourceManager: testEnv.renderer.resourceManager
+        };
+        const before = Shader.getCustomShader(
+            'void main(){}',
+            'void main(){}',
+            '',
+            'implicit-precision-isolation'
+        );
+
+        Shader.init(lowPrecisionRenderer);
+        const after = Shader.getCustomShader(
+            'void main(){}',
+            'void main(){}',
+            '',
+            'implicit-precision-isolation'
+        );
+
+        expect(after).toBe(before);
+        expect(after.vs).toContain('#define HILO_MAX_VERTEX_PRECISION highp');
+        expect(after.vs).not.toContain('#define HILO_MAX_VERTEX_PRECISION lowp');
+    });
+
+    it('creates fresh header and shader variants after direct common option edits', () => {
+        const feature = 'CACHE_SIGNATURE_TEST';
+        const hadPreviousValue = Object.hasOwn(Shader.commonOptions, feature);
+        const previousValue = Shader.commonOptions[feature];
+        const material = new Hilo3d.BasicMaterial({ lightType: 'NONE' });
+        const mesh = new Hilo3d.Mesh({
+            geometry: new Hilo3d.Geometry(),
+            material
+        });
+        const lightManager = testEnv.renderer.lightManager;
+
+        try {
+            Shader.commonOptions[feature] = 1;
+            const firstHeader = Shader.getHeader(mesh, material, lightManager, null, false);
+            const firstShader = Shader.getCustomShader(
+                'void main(){}',
+                'void main(){}',
+                firstHeader,
+                'common-option-variant',
+                false,
+                testEnv.renderer
+            );
+            material.isDirty = false;
+
+            Shader.commonOptions[feature] = 2;
+            const secondHeader = Shader.getHeader(mesh, material, lightManager, null, false);
+            const secondShader = Shader.getCustomShader(
+                'void main(){}',
+                'void main(){}',
+                secondHeader,
+                'common-option-variant',
+                false,
+                testEnv.renderer
+            );
+
+            expect(firstHeader).toContain('#define HILO_CACHE_SIGNATURE_TEST 1');
+            expect(secondHeader).toContain('#define HILO_CACHE_SIGNATURE_TEST 2');
+            expect(secondHeader).not.toBe(firstHeader);
+            expect(secondShader).not.toBe(firstShader);
+            expect(firstShader.vs).toContain('#define HILO_CACHE_SIGNATURE_TEST 1');
+            expect(secondShader.vs).toContain('#define HILO_CACHE_SIGNATURE_TEST 2');
+        } finally {
+            if (hadPreviousValue && previousValue !== undefined) {
+                Shader.commonOptions[feature] = previousValue;
+            } else {
+                Reflect.deleteProperty(Shader.commonOptions, feature);
+            }
+        }
     });
 
     it('cache', () => {

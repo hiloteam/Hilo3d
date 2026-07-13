@@ -17,6 +17,8 @@ describe('BasicMaterial', () => {
         });
 
         let option = material.getRenderOption();
+        expect(option['LIGHT_TYPE_BLINN_PHONG']).toBe(1);
+        expect(Object.keys(option).some(name => name.includes('-'))).toBe(false);
         expect(option['HAS_SPECULAR']).toBe(1);
         expect(option['HAS_TEXCOORD0']).toBe(1);
 

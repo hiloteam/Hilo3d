@@ -1,7 +1,22 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage, renderer } = createExampleContext();
+const { stage, renderer } = await createExampleContext();
+
+const diagnosticsPanel = document.createElement('pre');
+diagnosticsPanel.id = 'resource-diagnostics';
+diagnosticsPanel.style.cssText =
+    'position:fixed;left:1rem;top:1rem;margin:0;padding:.75rem;background:#000b;color:#fff;font:12px/1.5 monospace;z-index:2';
+document.body.append(diagnosticsPanel);
+const diagnosticsLog: string[] = [];
+
+function recordDiagnostics(label: string): void {
+    const diagnostics = renderer.resourceManager.getDiagnostics(stage);
+    const message = `${label}: ${JSON.stringify(diagnostics)}`;
+    diagnosticsLog.push(message);
+    diagnosticsPanel.textContent = diagnosticsLog.join('\n');
+    console.info(message);
+}
 
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([
@@ -37,14 +52,16 @@ colorBox2.onUpdate = () => {
 };
 stage.addChild(colorBox2.setScale(0.5));
 
+const texture = new Hilo3d.LazyTexture({
+    autoLoad: false,
+    src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
+});
 let angle = 0;
 const axis = new Hilo3d.Vector3(1, 1, 1).normalize();
 const textureBox = new Hilo3d.Mesh({
     geometry: boxGeometry,
     material: new Hilo3d.BasicMaterial({
-        diffuse: new Hilo3d.LazyTexture({
-            src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
-        })
+        diffuse: texture
     }),
     x: 1
 });
@@ -54,45 +71,48 @@ textureBox.onUpdate = () => {
 };
 stage.addChild(textureBox);
 
-const sleep = async (time: number): Promise<void> => {
+function waitForNextRender(): Promise<void> {
     return new Promise(resolve => {
-        setTimeout(resolve, time);
+        renderer.on(
+            'afterRender',
+            () => {
+                resolve();
+            },
+            true
+        );
     });
-};
+}
+
 void (async () => {
-    stage.renderer.onInit(() => {
-        stage.renderer.resourceManager.on('destroyResource', e => {
-            console.log(`%c - ${String(e.detail)}`, 'color:red');
-        });
-    });
+    await texture.load();
+    await waitForNextRender();
+    recordDiagnostics('initial');
 
-    const WAIT_TIME = 1000;
-    await sleep(WAIT_TIME);
-    Hilo3d.logGLResource();
-
-    await sleep(WAIT_TIME);
     colorBox.destroy(renderer, true);
-    console.log('\n----------------------------\ncolorBox destroy');
-    await sleep(WAIT_TIME);
-    Hilo3d.logGLResource();
+    await waitForNextRender();
+    recordDiagnostics('colorBox destroyed');
 
-    await sleep(WAIT_TIME);
     colorBox2.destroy(renderer, true);
-    console.log('\n----------------------------\ncolorBox2 destroy');
-    await sleep(WAIT_TIME);
-    Hilo3d.logGLResource();
+    await waitForNextRender();
+    recordDiagnostics('colorBox2 destroyed');
 
-    await sleep(WAIT_TIME);
     textureBox.destroy(renderer, true);
-    console.log('\n----------------------------\ntextureBox destroy');
-    await sleep(WAIT_TIME);
-    Hilo3d.logGLResource();
+    await waitForNextRender();
+    recordDiagnostics('textureBox destroyed');
 
-    console.log(`
-queryObjects(WebGLBuffer);
-queryObjects(WebGLProgram);
-queryObjects(Hilo3d.VertexArrayObject);
-`);
+    const postDestroyBox = new Hilo3d.Mesh({
+        geometry: new Hilo3d.BoxGeometry(),
+        material: new Hilo3d.BasicMaterial({
+            diffuse: new Hilo3d.Color(0.1, 0.8, 0.3),
+            lightType: 'NONE'
+        })
+    });
+    postDestroyBox.rotationX = 25;
+    postDestroyBox.rotationY = 35;
+    stage.addChild(postDestroyBox);
+    await waitForNextRender();
+    recordDiagnostics('post-destroy mesh rendered');
+    document.body.dataset['resourceDiagnosticsComplete'] = 'true';
 })().catch((error: unknown) => {
     console.error('Resource manager example failed', error);
 });

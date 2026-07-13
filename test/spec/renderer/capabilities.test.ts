@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import { testEnv } from '../../setup';
 
-const capabilities = Hilo3d.capabilities;
-
 describe('capabilities', () => {
     const gl = testEnv.gl;
+    const extensions = new Hilo3d.WebGLExtensions();
+    extensions.init(gl);
+    const capabilities = new Hilo3d.WebGLCapabilities(extensions);
 
     it('init', () => {
         capabilities.init(gl);
@@ -81,5 +82,13 @@ describe('capabilities', () => {
         expect(capabilities.get('MAX_VERTEX_TEXTURE_IMAGE_UNITS')).toBe(
             gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS)
         );
+    });
+
+    it('clears the previous anisotropy limit when the extension is unavailable', () => {
+        capabilities.MAX_TEXTURE_MAX_ANISOTROPY = 99;
+        extensions.disable('EXT_texture_filter_anisotropic');
+        capabilities.init(gl);
+        expect(capabilities.MAX_TEXTURE_MAX_ANISOTROPY).toBe(1);
+        extensions.enable('EXT_texture_filter_anisotropic');
     });
 });

@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import Texture from '../../../src/texture/Texture';
-import { DEPTH_COMPONENT16, FLOAT, LINEAR, NEAREST, RGBA } from '../../../src/constants/webgl';
-import { RGBA32F } from '../../../src/constants/webgl2';
+import {
+    BYTE,
+    DEPTH_COMPONENT,
+    DEPTH_COMPONENT16,
+    FLOAT,
+    LINEAR,
+    NEAREST,
+    RGBA,
+    UNSIGNED_BYTE,
+    UNSIGNED_SHORT
+} from '../../../src/constants/webgl';
+import { RGBA8I, RGBA8UI, RGBA32F, RGBA_INTEGER } from '../../../src/constants/webgl2';
 import type {
     TranslatedShaderPair,
     WebGPUSamplerBinding,
@@ -170,10 +180,10 @@ describe('WebGPUBindGroupManager layouts', () => {
         expect(second).toBe(first);
         expect(fake.layoutDescriptors).toHaveLength(4);
 
-        const frameBuffer = {} as GPUBuffer;
+        const frameUniformBuffer = {} as GPUBuffer;
         const materialBuffer = {} as GPUBuffer;
         const buffers = {
-            FrameBlock: { buffer: frameBuffer, offset: 0, size: 64 },
+            FrameBlock: { buffer: frameUniformBuffer, offset: 0, size: 64 },
             MaterialBlock: { buffer: materialBuffer, offset: 16, size: 48 }
         };
         const firstGroups = manager.getBindGroups(first, firstShader, buffers, []);
@@ -258,42 +268,207 @@ describe('WebGPUBindGroupManager layouts', () => {
         ).toThrow(/requires 2 sampled textures/);
     });
 
-    it('rejects translated sampler families that the texture manager cannot represent', () => {
+    const extendedSamplerAbiCases: readonly {
+        readonly type: WebGPUSamplerBinding['type'];
+        readonly dimension: WebGPUTextureResource['dimension'];
+        readonly texture: () => Texture<unknown>;
+        readonly format: GPUTextureFormat;
+        readonly sampleType: GPUTextureSampleType;
+        readonly samplerType: GPUSamplerBindingType;
+        readonly comparison?: boolean;
+    }[] = [
+        {
+            type: 'sampler3D',
+            dimension: '3d',
+            texture: () => new Texture({ width: 1, height: 1, image: null }),
+            format: 'rgba8unorm',
+            sampleType: 'float',
+            samplerType: 'filtering'
+        },
+        {
+            type: 'sampler2DArray',
+            dimension: '2d-array',
+            texture: () => new Texture({ width: 1, height: 1, image: null }),
+            format: 'rgba8unorm',
+            sampleType: 'float',
+            samplerType: 'filtering'
+        },
+        {
+            type: 'sampler2DArrayShadow',
+            dimension: '2d-array',
+            texture: () =>
+                new Texture({
+                    width: 1,
+                    height: 1,
+                    internalFormat: DEPTH_COMPONENT16,
+                    format: DEPTH_COMPONENT,
+                    type: UNSIGNED_SHORT,
+                    image: null
+                }),
+            format: 'depth16unorm',
+            sampleType: 'depth',
+            samplerType: 'comparison',
+            comparison: true
+        },
+        ...(['isampler', 'usampler'] as const).flatMap(prefix => {
+            const signed = prefix === 'isampler';
+            const texture = (): Texture<unknown> =>
+                new Texture({
+                    width: 1,
+                    height: 1,
+                    internalFormat: signed ? RGBA8I : RGBA8UI,
+                    format: RGBA_INTEGER,
+                    type: signed ? BYTE : UNSIGNED_BYTE,
+                    minFilter: NEAREST,
+                    magFilter: NEAREST,
+                    image: signed ? new Int8Array(4) : new Uint8Array(4)
+                });
+            const sampleType: GPUTextureSampleType = signed ? 'sint' : 'uint';
+            const format: GPUTextureFormat = signed ? 'rgba8sint' : 'rgba8uint';
+            return [
+                { type: `${prefix}2D`, dimension: '2d' },
+                { type: `${prefix}3D`, dimension: '3d' },
+                { type: `${prefix}Cube`, dimension: 'cube' },
+                { type: `${prefix}2DArray`, dimension: '2d-array' }
+            ].map(({ type, dimension }) => ({
+                type: type as WebGPUSamplerBinding['type'],
+                dimension: dimension as WebGPUTextureResource['dimension'],
+                texture,
+                format,
+                sampleType,
+                samplerType: 'non-filtering' as const
+            }));
+        })
+    ];
+
+    it.each(extendedSamplerAbiCases)(
+        'maps $type to its native WebGPU texture and sampler layout',
+        samplerCase => {
+            const fake = fakeDevice();
+            const resource = textureResource({
+                dimension: samplerCase.dimension,
+                format: samplerCase.format
+            });
+            const get = vi.fn(() => resource);
+            const manager = new WebGPUBindGroupManager(fake.device, { get });
+            const binding = samplerBinding({ type: samplerCase.type });
+            const resolved = manager.resolveSampler(binding, samplerCase.texture());
+
+            expect(get).toHaveBeenCalledWith(
+                resolved.texture,
+                samplerCase.comparison ? { compare: 'less-equal' } : {}
+            );
+            manager.getLayout(shader([], [binding]), [resolved]);
+
+            const entries = fake.layoutDescriptors[1]?.entries;
+            expect(entries?.[0]?.texture).toEqual({
+                sampleType: samplerCase.sampleType,
+                viewDimension: samplerCase.dimension,
+                multisampled: false
+            });
+            expect(entries?.[1]?.sampler?.type).toBe(samplerCase.samplerType);
+        }
+    );
+
+    it('rejects integer sampler format and filtering mismatches before allocation', () => {
         const fake = fakeDevice();
-        const manager = managerFor(fake.device);
-        const texture = new Texture({ width: 1, height: 1 });
+        const get = vi.fn(() => textureResource({ format: 'rgba8sint' }));
+        const manager = new WebGPUBindGroupManager(fake.device, { get });
+        const linearSigned = new Texture({
+            width: 1,
+            height: 1,
+            internalFormat: RGBA8I,
+            format: RGBA_INTEGER,
+            type: BYTE,
+            minFilter: NEAREST,
+            magFilter: NEAREST,
+            image: new Int8Array(4)
+        });
+        linearSigned.minFilter = LINEAR;
+        linearSigned.magFilter = LINEAR;
 
         expect(() =>
-            manager.resolveSampler(samplerBinding({ type: 'sampler3D' }), texture)
-        ).toThrow(/3D textures/);
+            manager.resolveSampler(samplerBinding({ type: 'isampler2D' }), linearSigned)
+        ).toThrow(/requires nearest minification, magnification and mipmap filters/);
+        expect(get).not.toHaveBeenCalled();
+
+        linearSigned.minFilter = NEAREST;
+        linearSigned.magFilter = NEAREST;
         expect(() =>
-            manager.resolveSampler(samplerBinding({ type: 'sampler2DArray' }), texture)
-        ).toThrow(/2D-array textures/);
-        expect(() =>
-            manager.resolveSampler(samplerBinding({ type: 'isampler2D' }), texture)
-        ).toThrow(/integer textures/);
+            manager.resolveSampler(samplerBinding({ type: 'usampler2D' }), linearSigned)
+        ).toThrow(/declares uint.*exposes sint/);
+        expect(() => manager.resolveSampler(samplerBinding(), linearSigned)).toThrow(
+            /requires a floating-point color texture.*exposes sint/
+        );
+        expect(get).not.toHaveBeenCalled();
     });
 
-    it('rejects depth/color sampler ABI mismatches before resolving a GPU resource', () => {
+    it('revalidates integer sampler filtering against the resolved resource mip chain', () => {
         const fake = fakeDevice();
-        const get = vi.fn();
+        const texture = new Texture({
+            width: 1,
+            height: 1,
+            internalFormat: RGBA8UI,
+            format: RGBA_INTEGER,
+            type: UNSIGNED_BYTE,
+            minFilter: NEAREST,
+            magFilter: NEAREST,
+            image: new Uint8Array(4)
+        });
+        const binding = samplerBinding({ type: 'usampler2D' });
+        const sampler = resolvedSampler(
+            texture,
+            binding,
+            textureResource({ format: 'rgba8uint', mipLevelCount: 4 })
+        );
+        const manager = managerFor(fake.device);
+
+        manager.getLayout(shader([], [binding]), [sampler]);
+        texture.minFilter = LINEAR;
+        expect(() => manager.getLayout(shader([], [binding]), [sampler])).toThrow(
+            /requires nearest minification, magnification and mipmap filters/
+        );
+    });
+
+    it('resolves numeric depth samplers and rejects comparison samplers bound to color', () => {
+        const fake = fakeDevice();
+        const get = vi.fn(() => textureResource({ format: 'depth16unorm' }));
         const manager = new WebGPUBindGroupManager(fake.device, { get });
         const depth = new Texture({
             width: 1,
             height: 1,
             internalFormat: DEPTH_COMPONENT16,
-            format: DEPTH_COMPONENT16,
-            image: null
+            format: DEPTH_COMPONENT,
+            type: UNSIGNED_SHORT,
+            image: null,
+            minFilter: NEAREST,
+            magFilter: NEAREST
         });
         const color = new Texture({ width: 1, height: 1, image: null });
 
-        expect(() => manager.resolveSampler(samplerBinding(), depth)).toThrow(
-            /depth texture .* must use a Shadow sampler/
-        );
+        const resolved = manager.resolveSampler(samplerBinding(), depth);
+        expect(resolved.resource.format).toBe('depth16unorm');
+        expect(get).toHaveBeenCalledWith(depth, {});
         expect(() =>
             manager.resolveSampler(samplerBinding({ type: 'sampler2DShadow' }), color)
         ).toThrow(/requires a depth texture/);
-        expect(get).not.toHaveBeenCalled();
+        expect(get).toHaveBeenCalledOnce();
+
+        const translated = shader([], [resolved.binding]);
+        manager.getLayout(translated, [resolved]);
+        expect(fake.layoutDescriptors[1]?.entries).toEqual([
+            {
+                binding: 1,
+                visibility: 2,
+                texture: { sampleType: 'depth', viewDimension: '2d', multisampled: false }
+            },
+            { binding: 2, visibility: 2, sampler: { type: 'non-filtering' } }
+        ]);
+
+        depth.magFilter = LINEAR;
+        expect(() => manager.resolveSampler(samplerBinding(), depth)).toThrow(
+            /numeric depth sampler .* requires nearest/u
+        );
     });
 });
 

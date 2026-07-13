@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
+import { cameraBlockLayout } from '../../../src/renderer/ubo/BuiltInUniformBlocks';
 import { testEnv } from '../../setup';
 
 const Program = Hilo3d.Program;
@@ -21,10 +22,10 @@ describe('Program', () => {
     it('getProgram & cache & destroy', () => {
         const shader = new Hilo3d.Shader({ vs: vertexShader, fs: fragmentShader });
         const program = Program.getProgram(shader, testEnv.state);
-        expect(Program.cache.get(shader.id)).toBe(program);
+        expect(Program.getCache(testEnv.gl).get(shader.id)).toBe(program);
 
         expect(program.destroy()).toBe(program);
-        expect(Program.cache.get(shader.id)).toBeUndefined();
+        expect(Program.getCache(testEnv.gl).get(shader.id)).toBeUndefined();
         expect(program.program).toBeNull();
         expect(program.uniforms).toEqual({});
         expect(program.attributes).toEqual({});
@@ -81,19 +82,44 @@ describe('Program', () => {
         const program = new Program({
             state: testEnv.state,
             vertexShader:
-                '#version 300 es\nlayout(std140) uniform CameraBlock {mat4 u_viewMatrix;mat4 u_projectionMatrix;mat4 u_viewProjectionMatrix;mat4 u_viewInverseMatrix;mat4 u_projectionInverseMatrix;mat3 u_viewInverseNormalMatrix;vec4 u_cameraPositionNear;vec4 u_cameraParams;};void main(){gl_Position=u_projectionMatrix*vec4(0.0,0.0,0.0,1.0);}',
+                '#version 300 es\nlayout(std140) uniform CameraBlock {mat4 u_viewMatrix;mat4 u_projectionMatrix;mat4 u_viewProjectionMatrix;mat4 u_viewInverseMatrix;mat4 u_projectionInverseMatrix;mat3 u_viewInverseNormalMatrix;vec4 u_cameraPositionNear;vec4 u_cameraParams;vec4 u_viewport;};void main(){gl_Position=u_projectionMatrix*vec4(0.0,0.0,0.0,1.0);}',
             fragShader: fragmentShader
         });
         const block = program.uniformBlocks['CameraBlock'];
-        const buffer = new Hilo3d.UniformBuffer(new Float32Array(100));
+        const buffer = new Hilo3d.UniformBuffer(cameraBlockLayout);
 
-        expect(block).toMatchObject({ name: 'CameraBlock', bindingPoint: 1, byteLength: 400 });
+        expect(block).toMatchObject({ name: 'CameraBlock', bindingPoint: 1, byteLength: 416 });
         expect(block?.activeUniformIndices.length).toBeGreaterThan(0);
         expect(block?.uniformNames).toContain('u_projectionMatrix');
         expect(() => {
             program.setUniformBlock('CameraBlock', buffer);
         }).not.toThrow();
         buffer.destroy();
+    });
+
+    it('accepts driver reflection that removes an inactive canonical block tail', () => {
+        const nativeQuery = testEnv.gl.getActiveUniformBlockParameter.bind(testEnv.gl);
+        const reflection = vi
+            .spyOn(testEnv.gl, 'getActiveUniformBlockParameter')
+            .mockImplementation((program, blockIndex, parameter): unknown => {
+                const value: unknown = nativeQuery(program, blockIndex, parameter);
+                return parameter === testEnv.gl.UNIFORM_BLOCK_DATA_SIZE && value === 416
+                    ? 400
+                    : value;
+            });
+
+        try {
+            const program = new Program({
+                state: testEnv.state,
+                vertexShader:
+                    '#version 300 es\nlayout(std140) uniform CameraBlock {mat4 u_viewMatrix;mat4 u_projectionMatrix;mat4 u_viewProjectionMatrix;mat4 u_viewInverseMatrix;mat4 u_projectionInverseMatrix;mat3 u_viewInverseNormalMatrix;vec4 u_cameraPositionNear;vec4 u_cameraParams;vec4 u_viewport;};void main(){gl_Position=u_projectionMatrix*vec4(0.0,0.0,0.0,1.0);}',
+                fragShader: fragmentShader
+            });
+
+            expect(program.uniformBlocks['CameraBlock']?.byteLength).toBe(416);
+        } finally {
+            reflection.mockRestore();
+        }
     });
 
     it('rejects a built-in block whose GLSL layout diverges from the canonical ABI', () => {
@@ -104,7 +130,7 @@ describe('Program', () => {
                     '#version 300 es\nlayout(std140) uniform CameraBlock {mat4 projection;};void main(){gl_Position=projection*vec4(0.0,0.0,0.0,1.0);}',
                 fragShader: fragmentShader
             });
-        }).toThrow(/canonical ABI requires 400/);
+        }).toThrow(/outside the canonical WebGL2 ABI/);
     });
 
     it('throws the public ShaderCompilationError for invalid GLSL', () => {
@@ -127,5 +153,142 @@ describe('Program', () => {
                     '#version 300 es\nprecision mediump float;in vec4 mismatch;out vec4 fragColor;void main(){fragColor=mismatch;}'
             });
         }).toThrow(Hilo3d.ProgramLinkError);
+    });
+
+    it('uses pure integer pointers for reflected ivec and uvec inputs', () => {
+        const renderer = new Hilo3d.WebGLRenderer({
+            domElement: document.createElement('canvas'),
+            width: 4,
+            height: 4,
+            antialias: false
+        });
+        renderer.initContext();
+        const gl = renderer.gl;
+        expect(gl.getError()).toBe(gl.NO_ERROR);
+
+        const program = new Program({
+            state: renderer.state,
+            vertexShader: `#version 300 es
+                in ivec2 signedValue;
+                in uvec2 unsignedValue;
+                in vec2 floatValue;
+                in mat2 matrixValue;
+                in mat3 matrix3Value;
+                in mat4 matrix4Value;
+                void main() {
+                    float combined = float(signedValue.x + signedValue.y) +
+                        float(unsignedValue.x + unsignedValue.y) +
+                        dot(floatValue, vec2(1.0)) + matrixValue[0][0] + matrixValue[1][1] +
+                        matrix3Value[0][0] + matrix3Value[1][1] + matrix3Value[2][2] +
+                        matrix4Value[0][0] + matrix4Value[1][1] + matrix4Value[2][2] + matrix4Value[3][3];
+                    gl_Position = vec4(combined * 0.000001, 0.0, 0.0, 1.0);
+                }`,
+            fragShader: fragmentShader
+        });
+        const vao = new Hilo3d.VertexArrayObject(gl, '_hiloIntegerAttributePointers', {
+            mode: gl.POINTS
+        });
+
+        try {
+            const signedAttribute = program.attributes['signedValue'];
+            const unsignedAttribute = program.attributes['unsignedValue'];
+            const floatAttribute = program.attributes['floatValue'];
+            const matrixAttribute = program.attributes['matrixValue'];
+            const matrix3Attribute = program.attributes['matrix3Value'];
+            const matrix4Attribute = program.attributes['matrix4Value'];
+            expect(signedAttribute).toBeDefined();
+            expect(unsignedAttribute).toBeDefined();
+            expect(floatAttribute).toBeDefined();
+            expect(matrixAttribute).toBeDefined();
+            if (
+                !signedAttribute ||
+                !unsignedAttribute ||
+                !floatAttribute ||
+                !matrixAttribute ||
+                !matrix3Attribute ||
+                !matrix4Attribute
+            ) {
+                throw new Error('Expected every test vertex attribute to remain active');
+            }
+
+            vao.addAttribute(
+                new Hilo3d.GeometryData(new Int32Array([1, 2]), 2),
+                signedAttribute,
+                gl.STATIC_DRAW
+            );
+            vao.addAttribute(
+                new Hilo3d.GeometryData(new Uint32Array([3, 4]), 2),
+                unsignedAttribute,
+                gl.STATIC_DRAW
+            );
+            vao.addAttribute(
+                new Hilo3d.GeometryData(new Float32Array([0.25, 0.5]), 2),
+                floatAttribute,
+                gl.STATIC_DRAW
+            );
+            vao.addAttribute(
+                new Hilo3d.GeometryData(new Float32Array([1, 0, 0, 1]), 4),
+                matrixAttribute,
+                gl.STATIC_DRAW
+            );
+            vao.addAttribute(
+                new Hilo3d.GeometryData(new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]), 9),
+                matrix3Attribute,
+                gl.STATIC_DRAW
+            );
+            vao.addAttribute(
+                new Hilo3d.GeometryData(
+                    new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+                    16
+                ),
+                matrix4Attribute,
+                gl.STATIC_DRAW
+            );
+
+            expect(
+                gl.getVertexAttrib(signedAttribute.location, gl.VERTEX_ATTRIB_ARRAY_INTEGER)
+            ).toBe(true);
+            expect(
+                gl.getVertexAttrib(unsignedAttribute.location, gl.VERTEX_ATTRIB_ARRAY_INTEGER)
+            ).toBe(true);
+            expect(
+                gl.getVertexAttrib(floatAttribute.location, gl.VERTEX_ATTRIB_ARRAY_INTEGER)
+            ).toBe(false);
+            expect(
+                gl.getVertexAttrib(matrixAttribute.location, gl.VERTEX_ATTRIB_ARRAY_INTEGER)
+            ).toBe(false);
+            expect(
+                gl.getVertexAttrib(matrix3Attribute.location + 2, gl.VERTEX_ATTRIB_ARRAY_INTEGER)
+            ).toBe(false);
+            expect(
+                gl.getVertexAttrib(matrix4Attribute.location + 3, gl.VERTEX_ATTRIB_ARRAY_INTEGER)
+            ).toBe(false);
+
+            program.useProgram();
+            vao.draw();
+            expect(gl.getError()).toBe(gl.NO_ERROR);
+
+            expect(() => {
+                signedAttribute.pointer({ type: gl.UNSIGNED_INT, size: 2 });
+            }).toThrow(/Signed integer vertex attribute/);
+            expect(() => {
+                unsignedAttribute.pointer({ type: gl.INT, size: 2 });
+            }).toThrow(/Unsigned integer vertex attribute/);
+            expect(() => {
+                signedAttribute.pointer({ type: gl.INT, size: 2, normalized: true });
+            }).toThrow(/cannot use normalized storage/);
+            expect(() => {
+                floatAttribute.pointer({ type: gl.INT, size: 2 });
+            }).toThrow(/Converted vertex attribute/);
+            expect(() => {
+                floatAttribute.pointer({ type: gl.FLOAT, size: 2, normalized: true });
+            }).toThrow(/can only normalize byte or short integer storage/);
+            expect(gl.getError()).toBe(gl.NO_ERROR);
+        } finally {
+            vao.getResources().forEach(resource => resource.destroy());
+            vao.destroy();
+            program.destroy();
+            renderer.destroy();
+        }
     });
 });

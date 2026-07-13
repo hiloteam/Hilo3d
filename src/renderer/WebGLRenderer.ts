@@ -9,9 +9,9 @@ import RenderInfo from './RenderInfo';
 import RenderList from './RenderList';
 import VertexArrayObject from './VertexArrayObject';
 import Buffer from './Buffer';
-import Framebuffer, { type FramebufferParameters } from './Framebuffer';
-import extensions from './extensions';
-import capabilities from './capabilities';
+import Framebuffer from './Framebuffer';
+import { WebGLExtensions } from './extensions';
+import { WebGLCapabilities } from './capabilities';
 import glType from './glType';
 import WebGLState from './WebGLState';
 import GraphicsResourceManager, { type ManagedResource } from './GraphicsResourceManager';
@@ -26,6 +26,8 @@ import GeometryData from '../geometry/GeometryData';
 import {
     BLEND,
     CULL_FACE,
+    DEPTH_COMPONENT,
+    DEPTH_STENCIL,
     DEPTH_TEST,
     DYNAMIC_DRAW,
     FRONT_AND_BACK,
@@ -34,12 +36,32 @@ import {
     STATIC_DRAW,
     STENCIL_TEST
 } from '../constants/webgl';
+import {
+    COMPARE_REF_TO_TEXTURE,
+    SAMPLER_2D_ARRAY_SHADOW,
+    SAMPLER_2D_SHADOW,
+    SAMPLER_CUBE_SHADOW,
+    TEXTURE_COMPARE_MODE
+} from '../constants/webgl2';
 import type Camera from '../camera/Camera';
 import type Fog from '../core/Fog';
 import type Geometry from '../geometry/Geometry';
 import type Material from '../material/Material';
 import type { GLContext, ShaderPrecision } from './types';
-import type { RendererScene } from './Renderer';
+import type { RendererScene, RendererViewport, TextureCompressionFormat } from './Renderer';
+import {
+    renderTargetFormatHasStencil,
+    type RenderTarget,
+    type RenderTargetParameters,
+    type RenderTargetSelectionOptions
+} from './RenderTarget';
+import WebGLRenderTarget from './WebGLRenderTarget';
+import {
+    registerWebGLCanvasPresenter,
+    releaseWebGLCanvasPresenter,
+    unregisterWebGLCanvasPresenter
+} from './WebGLCanvasPresenter';
+import { releaseWebGLShadowMaps, renderWebGLShadowMaps } from './WebGLShadowMapManager';
 
 export interface WebGLRendererParameters {
     width?: number;
@@ -55,8 +77,6 @@ export interface WebGLRendererParameters {
     preserveDrawingBuffer?: boolean;
     failIfMajorPerformanceCaveat?: boolean;
     powerPreference?: WebGLPowerPreference;
-    useFramebuffer?: boolean;
-    framebufferOption?: FramebufferParameters;
     useLogDepth?: boolean;
     vertexPrecision?: ShaderPrecision;
     fragmentPrecision?: ShaderPrecision;
@@ -114,12 +134,14 @@ class WebGLRenderer extends EventDispatcher {
     readonly renderList: RenderList;
     readonly lightManager: LightManager;
     readonly resourceManager: GraphicsResourceManager;
+    readonly extensions = new WebGLExtensions();
+    readonly capabilities = new WebGLCapabilities(this.extensions);
 
     width = 0;
     height = 0;
     pixelRatio = 1;
     domElement: HTMLCanvasElement | null = null;
-    useInstanced = false;
+    private _useInstanced = false;
     alpha = false;
     depth = true;
     stencil = false;
@@ -128,8 +150,6 @@ class WebGLRenderer extends EventDispatcher {
     preserveDrawingBuffer = false;
     failIfMajorPerformanceCaveat = false;
     powerPreference: WebGLPowerPreference = 'default';
-    useFramebuffer = false;
-    framebufferOption: FramebufferParameters = {};
     useLogDepth = false;
     vertexPrecision: ShaderPrecision = 'highp';
     fragmentPrecision: ShaderPrecision = 'highp';
@@ -139,7 +159,7 @@ class WebGLRenderer extends EventDispatcher {
     forceMaterial: Material | null = null;
     isInitFailed = false;
     clearColor: Color;
-    framebuffer: Framebuffer | null = null;
+    renderTarget: WebGLRenderTarget | null = null;
 
     private _gl: GLContext | null = null;
     private _state: WebGLState | null = null;
@@ -153,7 +173,21 @@ class WebGLRenderer extends EventDispatcher {
     private readonly vaoGeometryRevisions = new WeakMap<VertexArrayObject, number>();
     private readonly uniformBlockManager: BuiltInUniformBlockManager;
     private readonly uniformResources = new WeakMap<UniformBuffer, ManagedResource>();
+    private readonly usedUniformBuffers = new Set<UniformBuffer>();
     private nextUniformResourceId = 1;
+    private readonly renderTargets = new Set<WebGLRenderTarget>();
+    private ownsRenderTarget = false;
+    private autoPresentRenderTarget = false;
+    private activeViewport: RendererViewport | null = null;
+    private readonly beginCameraPass = (
+        camera: Camera,
+        viewport: RendererViewport = this.getDefaultViewport()
+    ): void => {
+        this.activeViewport = viewport;
+        semantic.setCamera(camera);
+        semantic.setViewport(viewport);
+        this.uniformBlockManager.beginPass(camera, viewport);
+    };
     readonly ready: Promise<void>;
 
     private readonly handleContextLost = (event: Event): void => {
@@ -182,17 +216,41 @@ class WebGLRenderer extends EventDispatcher {
         return !this._isDestroyed && !this.isInitFailed;
     }
 
+    get useInstanced(): boolean {
+        return this._useInstanced;
+    }
+
+    set useInstanced(value: boolean) {
+        this._useInstanced = value;
+        this.renderList.useInstanced = value;
+    }
+
     constructor(params: WebGLRendererParameters = {}) {
         super();
         this.clearColor = new Color(1, 1, 1);
-        Object.assign(this, params);
-        this.framebufferOption = { ...(params.framebufferOption ?? {}) };
         this.renderInfo = new RenderInfo();
         this.renderList = new RenderList();
+        this.renderList.useInstanced = this._useInstanced;
         this.lightManager = new LightManager();
         this.resourceManager = new GraphicsResourceManager();
+        Object.assign(this, params);
         this.uniformBlockManager = new BuiltInUniformBlockManager(this);
+        registerWebGLCanvasPresenter(this, () => {
+            this.invalidateDrawState();
+        });
         this.ready = Promise.resolve();
+    }
+
+    private invalidateDrawState(): void {
+        this._lastMaterial = null;
+        this._lastProgram = null;
+    }
+
+    private activeSurfaceHasStencil(): boolean {
+        const format = this.renderTarget?.depthStencilFormat;
+        return format === null || format === undefined
+            ? this.renderTarget === null && this.stencil
+            : renderTargetFormatHasStencil(format);
     }
 
     resize(width: number, height: number, force = false): void {
@@ -203,8 +261,145 @@ class WebGLRenderer extends EventDispatcher {
             this.domElement.width = width;
             this.domElement.height = height;
         }
-        this.framebuffer?.resize(width, height, force);
         this.viewport();
+    }
+
+    private getDefaultViewport(): RendererViewport {
+        const target = this.renderTarget;
+        if (target) return [0, 0, target.width, target.height];
+        const gl = this._gl;
+        const canvas = this.domElement;
+        return [
+            this.offsetX,
+            this.offsetY,
+            gl?.drawingBufferWidth ??
+                (this.width > 0 ? this.width : Math.max(1, canvas?.width ?? 0)),
+            gl?.drawingBufferHeight ??
+                (this.height > 0 ? this.height : Math.max(1, canvas?.height ?? 0))
+        ];
+    }
+
+    /** Return the physical-pixel viewport used by the active render pass. */
+    getViewport(): RendererViewport {
+        return this.activeViewport ?? this.getDefaultViewport();
+    }
+
+    /** Create a render target owned by this renderer's WebGL2 context. */
+    createRenderTarget(parameters: RenderTargetParameters): WebGLRenderTarget {
+        this.initContext();
+        const target = new WebGLRenderTarget(this, parameters, destroyedTarget => {
+            this.resourceManager.releasePass(destroyedTarget).destroyUnusedResource();
+            this.renderTargets.delete(destroyedTarget);
+            if (this.renderTarget === destroyedTarget) {
+                this.renderTarget = null;
+                this.ownsRenderTarget = false;
+                this.autoPresentRenderTarget = false;
+                if (this._state) {
+                    this._state.bindSystemFramebuffer();
+                    this.viewport();
+                }
+            }
+        });
+        this.renderTargets.add(target);
+        return target;
+    }
+
+    supportsTextureCompression(format: TextureCompressionFormat): boolean {
+        this.initContext();
+        switch (format) {
+            case 'bc':
+                return this.extensions.get('WEBGL_compressed_texture_s3tc') !== null;
+            case 'etc1':
+                return this.extensions.get('WEBGL_compressed_texture_etc1') !== null;
+            case 'etc2':
+                return this.extensions.get('WEBGL_compressed_texture_etc') !== null;
+            case 'astc-4x4':
+                return this.extensions.get('WEBGL_compressed_texture_astc') !== null;
+            case 'pvrtc':
+                return this.extensions.get('WEBGL_compressed_texture_pvrtc') !== null;
+        }
+    }
+
+    /** Select a target for subsequent render calls; null restores canvas rendering. */
+    setRenderTarget(target: RenderTarget | null, options: RenderTargetSelectionOptions = {}): this {
+        let resolved: WebGLRenderTarget | null = null;
+        if (target !== null) {
+            if (!(target instanceof WebGLRenderTarget)) {
+                throw new TypeError('WebGLRenderer requires a WebGL2 render target');
+            }
+            if (!this.renderTargets.has(target)) {
+                throw new TypeError('WebGL render target belongs to a different renderer');
+            }
+            if (target.isDestroyed) throw new Error('Cannot select a destroyed render target');
+            resolved = target;
+        }
+        const previous = this.renderTarget;
+        const destroyPrevious = this.ownsRenderTarget && previous !== null && previous !== resolved;
+        this.renderTarget = resolved;
+        this.invalidateDrawState();
+        this.activeViewport = null;
+        this.ownsRenderTarget = resolved !== null && options.takeOwnership === true;
+        this.autoPresentRenderTarget = resolved !== null && options.present === true;
+        if (destroyPrevious) previous.destroy();
+        if (resolved === null && this._state) {
+            this._state.bindSystemFramebuffer();
+            this.viewport();
+        }
+        return this;
+    }
+
+    /** Present the first color attachment of a renderer-owned target to the canvas. */
+    present(target: RenderTarget = this.requireRenderTarget()): void {
+        if (!(target instanceof WebGLRenderTarget)) {
+            throw new TypeError('WebGLRenderer requires a WebGL2 render target');
+        }
+        if (!this.renderTargets.has(target)) {
+            throw new TypeError('WebGL render target belongs to a different renderer');
+        }
+        if (target.isDestroyed) throw new Error('Cannot present a destroyed render target');
+        target.presentToCanvas();
+    }
+
+    /** Render one scoped pass without changing the caller's persistent target selection. */
+    renderToTarget(
+        target: RenderTarget,
+        stage: RendererScene,
+        camera: Camera,
+        fireEvent = false
+    ): void {
+        if (!(target instanceof WebGLRenderTarget)) {
+            throw new TypeError('WebGLRenderer requires a WebGL2 render target');
+        }
+        if (!this.renderTargets.has(target)) {
+            throw new TypeError('WebGL render target belongs to a different renderer');
+        }
+        if (target.isDestroyed) throw new Error('Cannot render to a destroyed render target');
+        const previousTarget = this.renderTarget;
+        const previousOwnership = this.ownsRenderTarget;
+        const previousPresentation = this.autoPresentRenderTarget;
+        this.renderTarget = target;
+        this.invalidateDrawState();
+        this.activeViewport = null;
+        this.ownsRenderTarget = false;
+        this.autoPresentRenderTarget = false;
+        try {
+            this.render(stage, camera, fireEvent);
+        } finally {
+            this.renderTarget = previousTarget?.isDestroyed === false ? previousTarget : null;
+            this.invalidateDrawState();
+            this.activeViewport = null;
+            this.ownsRenderTarget = this.renderTarget !== null && previousOwnership;
+            this.autoPresentRenderTarget = this.renderTarget !== null && previousPresentation;
+            if (this._state) {
+                this._state.bindSystemFramebuffer();
+                this.viewport();
+            }
+        }
+    }
+
+    private requireRenderTarget(): WebGLRenderTarget {
+        if (!this.renderTarget) throw new Error('No WebGL render target is selected');
+        return this.renderTarget;
     }
 
     setOffset(x: number, y: number): void {
@@ -220,14 +415,15 @@ class WebGLRenderer extends EventDispatcher {
         if (!state || !gl) return;
         const viewportX = x ?? this.offsetX;
         const viewportY = y ?? this.offsetY;
+        const viewportWidth = width ?? gl.drawingBufferWidth;
+        const viewportHeight = height ?? gl.drawingBufferHeight;
         if (x !== undefined) this.offsetX = x;
         if (y !== undefined) this.offsetY = y;
-        state.viewport(
-            viewportX,
-            viewportY,
-            width ?? gl.drawingBufferWidth,
-            height ?? gl.drawingBufferHeight
-        );
+        state.viewport(viewportX, viewportY, viewportWidth, viewportHeight);
+        const viewport: RendererViewport = [viewportX, viewportY, viewportWidth, viewportHeight];
+        this.activeViewport = viewport;
+        this.uniformBlockManager.setViewport(viewport);
+        if (semantic.renderer === this) semantic.setViewport(viewport);
     }
 
     onInit(callback: (renderer: WebGLRenderer) => void): void {
@@ -283,32 +479,25 @@ class WebGLRenderer extends EventDispatcher {
         this._gl = gl;
         gl.viewport(0, 0, this.width, this.height);
         glType.init(gl);
-        extensions.init(gl);
-        capabilities.init(gl);
+        this.extensions.init(gl);
+        this.capabilities.init(gl);
         const largestBuiltInBlock = Math.max(
             ...Object.values(BUILT_IN_UNIFORM_BLOCK_LAYOUTS).map(layout => layout.byteLength)
         );
-        if (capabilities.MAX_UNIFORM_BUFFER_BINDINGS < BUILTIN_UNIFORM_BLOCK_BINDING_COUNT) {
+        if (this.capabilities.MAX_UNIFORM_BUFFER_BINDINGS < BUILTIN_UNIFORM_BLOCK_BINDING_COUNT) {
             throw new Error(
-                `WebGL2 exposes ${String(capabilities.MAX_UNIFORM_BUFFER_BINDINGS)} UBO bindings; Hilo3d requires ${String(BUILTIN_UNIFORM_BLOCK_BINDING_COUNT)}`
+                `WebGL2 exposes ${String(this.capabilities.MAX_UNIFORM_BUFFER_BINDINGS)} UBO bindings; Hilo3d requires ${String(BUILTIN_UNIFORM_BLOCK_BINDING_COUNT)}`
             );
         }
-        if (capabilities.MAX_UNIFORM_BLOCK_SIZE < largestBuiltInBlock) {
+        if (this.capabilities.MAX_UNIFORM_BLOCK_SIZE < largestBuiltInBlock) {
             throw new Error(
-                `WebGL2 exposes ${String(capabilities.MAX_UNIFORM_BLOCK_SIZE)} bytes per UBO; Hilo3d requires ${String(largestBuiltInBlock)}`
+                `WebGL2 exposes ${String(this.capabilities.MAX_UNIFORM_BLOCK_SIZE)} bytes per UBO; Hilo3d requires ${String(largestBuiltInBlock)}`
             );
         }
         Shader.init(this);
-        this._state = new WebGLState(gl);
+        this._state = new WebGLState(gl, this.capabilities, this.extensions);
         this.renderList.useInstanced = this.useInstanced;
 
-        if (this.useFramebuffer) {
-            this.framebuffer = new Framebuffer(this, {
-                ...this.framebufferOption,
-                width: this.framebufferOption.width ?? this.width,
-                height: this.framebufferOption.height ?? this.height
-            });
-        }
         canvas.addEventListener('webglcontextlost', this.handleContextLost, false);
         canvas.addEventListener('webglcontextrestored', this.handleContextRestored, false);
     }
@@ -319,11 +508,12 @@ class WebGLRenderer extends EventDispatcher {
         const state = this._state;
         if (!gl || !state) return;
         this._isContextLost = true;
+        releaseWebGLCanvasPresenter(this, true);
         Program.reset(gl);
-        Shader.reset(gl);
         Texture.reset(gl);
         Buffer.reset(gl);
         VertexArrayObject.reset(gl);
+        this.releaseUniformBufferAllocations(gl);
         this.uniformBlockManager.destroy(gl);
         this.resourceManager.clear();
         state.reset();
@@ -336,13 +526,23 @@ class WebGLRenderer extends EventDispatcher {
         const gl = this._gl;
         const state = this._state;
         if (!gl || !state) throw new Error('WebGL context restored before renderer initialization');
+        try {
+            this.extensions.reset(gl);
+            this.capabilities.init(gl);
+            glType.init(gl);
+            Shader.init(this);
+            state.reset();
+            Framebuffer.reset(gl);
+            this.renderTargets.forEach(target => {
+                target.handleContextRestored();
+            });
+        } catch (error) {
+            this._isContextLost = true;
+            this._lastMaterial = null;
+            this._lastProgram = null;
+            throw error;
+        }
         this._isContextLost = false;
-        extensions.reset(gl);
-        capabilities.init(gl);
-        glType.init(gl);
-        Shader.init(this);
-        state.reset();
-        Framebuffer.reset(gl);
         this.fire('webglContextRestored');
     }
 
@@ -391,8 +591,11 @@ class WebGLRenderer extends EventDispatcher {
     }
 
     setupStencil(material: Material): void {
-        if (!this.stencil) return;
         const state = this.state;
+        if (!this.activeSurfaceHasStencil()) {
+            state.disable(STENCIL_TEST);
+            return;
+        }
         if (material.stencilTest) {
             state.enable(STENCIL_TEST);
             state.stencilMask(material.stencilMask);
@@ -433,12 +636,12 @@ class WebGLRenderer extends EventDispatcher {
             if (uniformData !== undefined && uniformData !== null) {
                 const firstTextureIndex = programUniform.textureIndex ?? 0;
                 if (isTextureBinding(uniformData)) {
-                    this.bindTexture(uniformData, firstTextureIndex);
+                    this.bindTexture(uniformData, firstTextureIndex, programUniform.type);
                     program.setUniform(name, firstTextureIndex);
                 } else if (Array.isArray(uniformData) && uniformData.every(isTextureBinding)) {
                     const textureIndices = uniformData.map((texture, index) => {
                         const textureIndex = firstTextureIndex + index;
-                        this.bindTexture(texture, textureIndex);
+                        this.bindTexture(texture, textureIndex, programUniform.type);
                         return textureIndex;
                     });
                     program.setUniform(name, textureIndices);
@@ -452,10 +655,28 @@ class WebGLRenderer extends EventDispatcher {
         return Object.values(uniformBlocks);
     }
 
-    private bindTexture(texture: TextureBinding, textureIndex: number): void {
+    private bindTexture(texture: TextureBinding, textureIndex: number, samplerType: GLenum): void {
         const { gl, state } = this;
+        // Texture creation and incremental uploads use the renderer's reserved upload unit.
+        // Resolve them first, then select the sampler unit so the final native binding cannot
+        // accidentally remain on the upload unit.
+        const glTexture = texture.getGLTexture(state);
         state.activeTexture(gl.TEXTURE0 + textureIndex);
-        state.bindTexture(texture.target, texture.getGLTexture(state));
+        state.bindTexture(texture.target, glTexture);
+        if (
+            texture instanceof Texture &&
+            (texture.format === DEPTH_COMPONENT || texture.format === DEPTH_STENCIL)
+        ) {
+            const comparison =
+                samplerType === SAMPLER_2D_SHADOW ||
+                samplerType === SAMPLER_2D_ARRAY_SHADOW ||
+                samplerType === SAMPLER_CUBE_SHADOW;
+            gl.texParameteri(
+                texture.target,
+                TEXTURE_COMPARE_MODE,
+                comparison ? COMPARE_REF_TO_TEXTURE : gl.NONE
+            );
+        }
     }
 
     setupVao(vao: VertexArrayObject, program: Program, mesh: Mesh): void {
@@ -521,6 +742,7 @@ class WebGLRenderer extends EventDispatcher {
 
     setupMesh(mesh: Mesh, useInstanced: boolean): MeshSetup {
         const geometry = geometryFor(mesh);
+        geometry.normalizePrimitiveTopology();
         const material = materialFor(mesh, this.forceMaterial);
         const shader = Shader.getShader(
             mesh,
@@ -549,16 +771,19 @@ class WebGLRenderer extends EventDispatcher {
             mode: geometry.mode
         });
         this.setupVao(vao, program, mesh);
-        this.resourceManager.addMeshResources(mesh, [
-            vao,
-            shader,
-            program,
-            ...uniformBuffers.map(buffer => this.getUniformResource(buffer))
-        ]);
+        this.resourceManager.addMeshResources(
+            mesh,
+            [vao, program, ...uniformBuffers.map(buffer => this.getUniformResource(buffer))],
+            {
+                key: `${material.id}:${shader.id}:${useInstanced ? 'instanced' : 'direct'}`,
+                pass: this.renderTarget ?? this
+            }
+        );
         return { vao, program, geometry };
     }
 
     private getUniformResource(buffer: UniformBuffer): ManagedResource {
+        this.usedUniformBuffers.add(buffer);
         const cached = this.uniformResources.get(buffer);
         if (cached) return cached;
         const resource: ManagedResource = {
@@ -570,11 +795,17 @@ class WebGLRenderer extends EventDispatcher {
                 } else {
                     this.uniformBlockManager.releaseBuffer(buffer);
                 }
+                this.usedUniformBuffers.delete(buffer);
                 this.uniformResources.delete(buffer);
             }
         };
         this.uniformResources.set(buffer, resource);
         return resource;
+    }
+
+    private releaseUniformBufferAllocations(gl: GLContext): void {
+        for (const buffer of this.usedUniformBuffers) buffer.destroy(gl);
+        this.usedUniformBuffers.clear();
     }
 
     addRenderInfo(faceCount: number, drawCount: number): void {
@@ -594,7 +825,10 @@ class WebGLRenderer extends EventDispatcher {
             semantic.init(this, camera, this.lightManager, this.fog);
             stage.updateMatrixWorld();
             camera.updateViewProjectionMatrix();
-            this.uniformBlockManager.beginFrame(camera);
+            const viewport = this.getDefaultViewport();
+            this.activeViewport = viewport;
+            semantic.setViewport(viewport);
+            this.uniformBlockManager.beginFrame(camera, viewport);
 
             const lights: Light[] = [];
             stage.traverse(node => {
@@ -604,14 +838,33 @@ class WebGLRenderer extends EventDispatcher {
                 return Node.TRAVERSE_STOP_NONE;
             });
             this.renderList.sort();
-            this.lightManager.update(this, camera, lights);
-            this.uniformBlockManager.beginPass(camera);
+            for (const light of lights) this.lightManager.addLight(light);
+            renderWebGLShadowMaps(this.lightManager, this, camera, this.beginCameraPass);
+            this.lightManager.updateInfo(camera);
+            this.beginCameraPass(camera);
             if (fireEvent) this.fire('beforeRender');
-            if (this.useFramebuffer) this.framebuffer?.bind();
-            this.clear();
-            if (fireEvent) this.fire('beforeRenderScene');
-            this.renderScene();
-            if (this.useFramebuffer && this.framebuffer) this.renderToScreen(this.framebuffer);
+            const target = this.renderTarget;
+            if (target) {
+                let completed = false;
+                this.invalidateDrawState();
+                try {
+                    target.beginRenderPass();
+                    if (fireEvent) this.fire('beforeRenderScene');
+                    this.renderScene();
+                    completed = true;
+                } finally {
+                    try {
+                        target.endRenderPass(completed);
+                    } finally {
+                        this.invalidateDrawState();
+                    }
+                }
+                if (this.autoPresentRenderTarget) target.presentToCanvas();
+            } else {
+                this.clear();
+                if (fireEvent) this.fire('beforeRenderScene');
+                this.renderScene();
+            }
             this.resourceManager.endFrame();
         } catch (error: unknown) {
             this.resourceManager.abortFrame();
@@ -635,8 +888,7 @@ class WebGLRenderer extends EventDispatcher {
 
     clear(clearColor: Color = this.clearColor): void {
         const { gl, state } = this;
-        this._lastMaterial = null;
-        this._lastProgram = null;
+        this.invalidateDrawState();
         gl.clearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
         state.depthMask(true);
         let clearMask = gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT;
@@ -655,11 +907,6 @@ class WebGLRenderer extends EventDispatcher {
     clearStencil(): void {
         this.state.stencilMask(0xff);
         this.state.clear(this.gl.STENCIL_BUFFER_BIT);
-    }
-
-    renderToScreen(framebuffer: Framebuffer): void {
-        this.state.bindSystemFramebuffer();
-        framebuffer.render(0, 0, 1, 1, this.clearColor);
     }
 
     renderMesh(mesh: Mesh, silent = false): void {
@@ -704,21 +951,30 @@ class WebGLRenderer extends EventDispatcher {
     releaseGPUResources(): void {
         const gl = this._gl;
         if (!gl) return;
+        releaseWebGLShadowMaps(this.lightManager);
+        this.renderTargets.forEach(target => {
+            target.destroy();
+        });
+        this.renderTargets.clear();
+        this.renderTarget = null;
+        this.ownsRenderTarget = false;
+        this.autoPresentRenderTarget = false;
+        releaseWebGLCanvasPresenter(this);
         Program.reset(gl);
-        Shader.reset(gl);
         Buffer.reset(gl);
         VertexArrayObject.reset(gl);
         this._state?.reset();
         Texture.reset(gl);
         Framebuffer.destroy(gl);
+        this.releaseUniformBufferAllocations(gl);
         this.uniformBlockManager.destroy(gl);
         this.resourceManager.clear();
-        this.framebuffer = null;
     }
 
     destroy(): void {
         if (this._isDestroyed) return;
         this.releaseGPUResources();
+        unregisterWebGLCanvasPresenter(this);
         this.domElement?.removeEventListener('webglcontextlost', this.handleContextLost, false);
         this.domElement?.removeEventListener(
             'webglcontextrestored',

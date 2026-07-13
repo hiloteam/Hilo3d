@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import packageJson from './package.json' with { type: 'json' };
-import { shaderIncludePlugin } from './vite.config';
+import { exampleManifestPlugin, shaderIncludePlugin } from './vite.config';
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -51,7 +51,7 @@ function copyExampleAssets(): Plugin {
 export default defineConfig({
     appType: 'mpa',
     base: './',
-    plugins: [shaderIncludePlugin(), copyExampleAssets()],
+    plugins: [shaderIncludePlugin(), exampleManifestPlugin(), copyExampleAssets()],
     define: {
         HILO3D_VERSION: JSON.stringify(packageJson.version),
         process: 'undefined',

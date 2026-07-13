@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 
 const planeGeometry = new Hilo3d.PlaneGeometry();
 

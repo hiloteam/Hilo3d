@@ -5,8 +5,11 @@ import {
     FRONT,
     FRONT_AND_BACK,
     ONE,
-    ONE_MINUS_SRC_ALPHA
+    ONE_MINUS_SRC_ALPHA,
+    RGBA,
+    UNSIGNED_BYTE
 } from '../../../src/constants/webgl';
+import { RGBA8 } from '../../../src/constants/webgl2';
 
 const Material = Hilo3d.Material;
 
@@ -15,6 +18,15 @@ describe('Material', () => {
         const material = new Material();
         expect(material.isMaterial).toBe(true);
         expect(material.className).toBe('Material');
+    });
+
+    it('declares the fallback sampler texture as explicit RGBA8 byte data', () => {
+        const texture = Hilo3d.semantic.getBlankTexture();
+
+        expect(texture.internalFormat).toBe(RGBA8);
+        expect(texture.format).toBe(RGBA);
+        expect(texture.type).toBe(UNSIGNED_BYTE);
+        expect(texture.image).toBeInstanceOf(Uint8Array);
     });
 
     it('publishes a monotonic revision for independent backend caches', () => {

@@ -79,10 +79,22 @@ function shapeOf(type: Std140Type): TypeShape {
     };
 }
 
-function normalizeDefinition(
-    definition: Std140Type | Std140FieldDefinition
-): Std140FieldDefinition {
-    return typeof definition === 'string' ? { type: definition } : definition;
+function normalizeDefinition(definition: unknown, fieldName: string): Std140FieldDefinition {
+    if (typeof definition === 'string') {
+        const type = definition as Std140Type;
+        shapeOf(type);
+        return { type };
+    }
+    if (
+        typeof definition !== 'object' ||
+        definition === null ||
+        typeof Reflect.get(definition, 'type') !== 'string'
+    ) {
+        throw new TypeError(
+            `std140 field ${fieldName} requires a scalar, vector or matrix type; nested structs are not part of the portable schema`
+        );
+    }
+    return definition as Std140FieldDefinition;
 }
 
 function numericValues(value: Std140Value): ArrayLike<number | boolean> {
@@ -101,7 +113,7 @@ export class Std140Layout<Schema extends Std140Schema = Std140Schema> {
         const fields: Record<string, Std140FieldLayout> = {};
         let cursor = 0;
         for (const [name, rawDefinition] of Object.entries(schema)) {
-            const definition = normalizeDefinition(rawDefinition);
+            const definition = normalizeDefinition(rawDefinition, name);
             const arrayLength = definition.arrayLength ?? 1;
             if (!Number.isSafeInteger(arrayLength) || arrayLength < 1) {
                 throw new RangeError(`std140 field ${name} has an invalid array length`);

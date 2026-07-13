@@ -49,22 +49,19 @@ export const DEFAULT_WEBGPU_BUFFER_CACHE_LIMITS: Readonly<WebGPUBufferCacheLimit
 });
 
 interface CachedVertexBuffer extends WebGPUVertexBufferBinding {
-    revisionKey: string;
     byteLength: number;
+    structureKey: string;
+    sourceRevisions: number[];
 }
 
 interface CachedIndexBuffer extends WebGPUIndexBufferBinding {
     revision: number;
     byteLength: number;
+    structureKey: string;
 }
 
 interface CachedInstanceBuffer extends WebGPUVertexBufferBinding {
     byteLength: number;
-}
-
-interface GeometryRevisionState {
-    fingerprint: string;
-    revision: number;
 }
 
 interface InputShape {
@@ -85,6 +82,19 @@ interface PreparedVertexLayout {
     readonly inputs: readonly PreparedInput[];
     readonly layout: GPUVertexBufferLayout;
     readonly signature: string;
+}
+
+interface ByteRange {
+    readonly start: number;
+    readonly end: number;
+}
+
+interface IndexFormatInfo {
+    readonly format: GPUIndexFormat;
+    readonly key: string;
+    readonly sourceByteLength: number;
+    readonly packedByteLength: number;
+    readonly primitiveRestart: boolean;
 }
 
 class OwnerCache<Value> {
@@ -188,10 +198,7 @@ function packedByteLength(count: number, arrayStride: number): number {
     return byteLength;
 }
 
-function packedGeometryData(
-    geometryData: GeometryData,
-    shape: InputShape
-): Float32Array | Int32Array | Uint32Array {
+function validateGeometryShape(geometryData: GeometryData, shape: InputShape): void {
     const components = shape.columns * shape.rows;
     if (geometryData.size !== components) {
         throw new RangeError(
@@ -201,31 +208,7 @@ function packedGeometryData(
     if (shape.scalar !== 'float' && geometryData.normalized) {
         throw new TypeError('Normalized GeometryData cannot feed an integer WebGPU shader input');
     }
-    const count = validateCount(geometryData.count, 'GeometryData');
-    const result =
-        shape.scalar === 'float'
-            ? new Float32Array(count * components)
-            : shape.scalar === 'sint'
-              ? new Int32Array(count * components)
-              : new Uint32Array(count * components);
-    const source = geometryData.data;
-    for (let vertex = 0; vertex < count; vertex++) {
-        const sourceOffset = geometryData.getOffset(vertex);
-        for (let component = 0; component < components; component++) {
-            const raw = source[sourceOffset + component];
-            if (raw === undefined) {
-                throw new RangeError('GeometryData vertex points outside its backing array');
-            }
-            const value =
-                shape.scalar === 'float'
-                    ? geometryData.normalized
-                        ? normalizedComponent(source, raw)
-                        : raw
-                    : validateIntegerComponent(raw, shape.scalar);
-            result[vertex * components + component] = value;
-        }
-    }
-    return result;
+    validateCount(geometryData.count, 'GeometryData');
 }
 
 function prepareVertexLayout(
@@ -296,27 +279,140 @@ function prepareVertexLayout(
     };
 }
 
+function packVertexRange(
+    sources: readonly WebGPUVertexBufferSource[],
+    prepared: PreparedVertexLayout,
+    firstVertex: number,
+    count: number
+): Uint8Array {
+    const arrayStride = prepared.layout.arrayStride;
+    if (!Number.isSafeInteger(firstVertex) || firstVertex < 0) {
+        throw new RangeError('Packed WebGPU vertex range must start at a non-negative integer');
+    }
+    const buffer = new ArrayBuffer(packedByteLength(count, arrayStride));
+    const output = new Uint8Array(buffer);
+    const floatValues = new Float32Array(buffer);
+    const sintValues = new Int32Array(buffer);
+    const uintValues = new Uint32Array(buffer);
+    for (const item of prepared.inputs) {
+        const source = sources[item.sourceIndex];
+        if (!source) throw new RangeError('Missing packed WebGPU vertex source');
+        const geometryData = source.geometryData;
+        validateGeometryShape(geometryData, item.shape);
+        const sourceCount = validateCount(geometryData.count, 'GeometryData');
+        if (firstVertex + count > sourceCount) {
+            throw new RangeError('Packed WebGPU vertex range exceeds its GeometryData source');
+        }
+        const components = item.shape.columns * item.shape.rows;
+        const sourceData = geometryData.data;
+        for (let vertex = 0; vertex < count; vertex++) {
+            const sourceOffset = geometryData.getOffset(firstVertex + vertex);
+            const outputOffset = (vertex * arrayStride + item.byteOffset) / 4;
+            for (let component = 0; component < components; component++) {
+                const raw = sourceData[sourceOffset + component];
+                if (raw === undefined) {
+                    throw new RangeError('GeometryData vertex points outside its backing array');
+                }
+                if (item.shape.scalar === 'float') {
+                    floatValues[outputOffset + component] = geometryData.normalized
+                        ? normalizedComponent(sourceData, raw)
+                        : raw;
+                } else if (item.shape.scalar === 'sint') {
+                    sintValues[outputOffset + component] = validateIntegerComponent(raw, 'sint');
+                } else {
+                    uintValues[outputOffset + component] = validateIntegerComponent(raw, 'uint');
+                }
+            }
+        }
+    }
+    return output;
+}
+
 function packVertexSources(
     sources: readonly WebGPUVertexBufferSource[],
     prepared: PreparedVertexLayout,
     count: number
 ): Uint8Array {
-    const arrayStride = prepared.layout.arrayStride;
-    const output = new Uint8Array(packedByteLength(count, arrayStride));
-    for (const item of prepared.inputs) {
-        const source = sources[item.sourceIndex];
-        if (!source) throw new RangeError('Missing packed WebGPU vertex source');
-        const data = packedGeometryData(source.geometryData, item.shape);
-        const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-        for (let vertex = 0; vertex < count; vertex++) {
-            const sourceOffset = vertex * item.byteLength;
-            output.set(
-                bytes.subarray(sourceOffset, sourceOffset + item.byteLength),
-                vertex * arrayStride + item.byteOffset
-            );
+    return packVertexRange(sources, prepared, 0, count);
+}
+
+function geometryStructureKey(geometryData: GeometryData): string {
+    return [
+        geometryData.size,
+        geometryData.normalized ? 1 : 0,
+        geometryData.stride,
+        geometryData.offset,
+        geometryData.type,
+        geometryData.data.byteLength,
+        geometryData.count
+    ].join(':');
+}
+
+function mergeRanges(ranges: readonly ByteRange[]): readonly ByteRange[] {
+    if (ranges.length < 2) return ranges;
+    const sorted = [...ranges].sort(
+        (left, right) => left.start - right.start || left.end - right.end
+    );
+    const merged: ByteRange[] = [];
+    for (const range of sorted) {
+        const previous = merged.at(-1);
+        if (previous && range.start <= previous.end) {
+            merged[merged.length - 1] = {
+                start: previous.start,
+                end: Math.max(previous.end, range.end)
+            };
+        } else {
+            merged.push(range);
         }
     }
-    return output;
+    return merged;
+}
+
+function affectedVertexRange(
+    geometryData: GeometryData,
+    byteOffset: number,
+    byteLength: number,
+    count: number
+): ByteRange | null {
+    if (count === 0 || byteLength === 0) return null;
+    const componentByteLength = geometryData.data.BYTES_PER_ELEMENT;
+    const attributeByteLength = geometryData.size * componentByteLength;
+    const sourceStride = geometryData.stride === 0 ? attributeByteLength : geometryData.stride;
+    const sourceOffset = geometryData.stride === 0 ? 0 : geometryData.offset;
+    const updateEnd = byteOffset + byteLength;
+    const first = Math.max(
+        0,
+        Math.floor((byteOffset - sourceOffset - attributeByteLength) / sourceStride) + 1
+    );
+    const last = Math.min(count - 1, Math.floor((updateEnd - sourceOffset - 1) / sourceStride));
+    return first > last ? null : { start: first, end: last + 1 };
+}
+
+function updatedVertexRanges(
+    sources: readonly WebGPUVertexBufferSource[],
+    uploadedRevisions: readonly number[],
+    count: number
+): readonly ByteRange[] | null {
+    const ranges: ByteRange[] = [];
+    for (let index = 0; index < sources.length; index++) {
+        const source = sources[index];
+        const uploadedRevision = uploadedRevisions[index];
+        if (!source || uploadedRevision === undefined) return null;
+        const geometryData = source.geometryData;
+        if (geometryData.revision === uploadedRevision) continue;
+        const updates = geometryData.getSubDataUpdatesSince(uploadedRevision);
+        if (updates === null) return null;
+        for (const update of updates) {
+            const range = affectedVertexRange(
+                geometryData,
+                update.byteOffset,
+                update.data.byteLength,
+                count
+            );
+            if (range) ranges.push(range);
+        }
+    }
+    return mergeRanges(ranges);
 }
 
 function packInstanceSources(
@@ -390,25 +486,32 @@ function uploadNewBuffer(
 }
 
 /** GPUQueue.writeBuffer requires both the destination offset and copied byte count to be 4-byte aligned. */
-function writeBufferData(device: GPUDevice, buffer: GPUBuffer, data: ArrayBufferView): void {
+function writeBufferData(
+    device: GPUDevice,
+    buffer: GPUBuffer,
+    data: ArrayBufferView,
+    bufferOffset = 0
+): void {
+    if (!Number.isSafeInteger(bufferOffset) || bufferOffset < 0 || bufferOffset % 4 !== 0) {
+        throw new RangeError('GPUQueue.writeBuffer destination offset must be 4-byte aligned');
+    }
     const byteLength = alignTo4(data.byteLength);
     if (byteLength === data.byteLength) {
-        device.queue.writeBuffer(buffer, 0, data.buffer, data.byteOffset, data.byteLength);
+        device.queue.writeBuffer(
+            buffer,
+            bufferOffset,
+            data.buffer,
+            data.byteOffset,
+            data.byteLength
+        );
         return;
     }
     const padded = new Uint8Array(byteLength);
     padded.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-    device.queue.writeBuffer(buffer, 0, padded.buffer, 0, padded.byteLength);
+    device.queue.writeBuffer(buffer, bufferOffset, padded.buffer, 0, padded.byteLength);
 }
 
-function packedIndexData(
-    geometryData: GeometryData,
-    primitiveRestart: boolean
-): {
-    readonly data: Uint16Array | Uint32Array;
-    readonly format: GPUIndexFormat;
-    readonly key: string;
-} {
+function indexFormatInfo(geometryData: GeometryData, primitiveRestart: boolean): IndexFormatInfo {
     if (
         geometryData.size !== 1 ||
         geometryData.stride !== 0 ||
@@ -420,22 +523,101 @@ function packedIndexData(
         );
     }
     if (geometryData.data instanceof Uint32Array) {
-        return { data: geometryData.data, format: 'uint32', key: 'uint32' };
+        return {
+            format: 'uint32',
+            key: 'uint32',
+            sourceByteLength: 4,
+            packedByteLength: 4,
+            primitiveRestart: false
+        };
     }
     if (geometryData.data instanceof Uint16Array) {
-        return { data: geometryData.data, format: 'uint16', key: 'uint16' };
+        return {
+            format: 'uint16',
+            key: 'uint16',
+            sourceByteLength: 2,
+            packedByteLength: 2,
+            primitiveRestart: false
+        };
     }
     if (geometryData.data instanceof Uint8Array || geometryData.data instanceof Uint8ClampedArray) {
-        const remapRestart = primitiveRestart;
         return {
-            data: Uint16Array.from(geometryData.data, value =>
-                remapRestart && value === 0xff ? 0xffff : value
-            ),
             format: 'uint16',
-            key: remapRestart ? 'uint8-restart' : 'uint8'
+            key: primitiveRestart ? 'uint8-restart' : 'uint8',
+            sourceByteLength: 1,
+            packedByteLength: 2,
+            primitiveRestart
         };
     }
     throw new TypeError('WebGPU index data must be an unsigned 8-, 16-, or 32-bit array');
+}
+
+function packIndexRange(
+    geometryData: GeometryData,
+    info: IndexFormatInfo,
+    firstIndex: number,
+    count: number
+): Uint16Array | Uint32Array {
+    const end = firstIndex + count;
+    if (firstIndex < 0 || count < 0 || end > geometryData.count) {
+        throw new RangeError('Packed WebGPU index range exceeds its GeometryData source');
+    }
+    const data = geometryData.data;
+    if (info.format === 'uint32') {
+        if (!(data instanceof Uint32Array)) throw new TypeError('uint32 index source changed type');
+        return data.slice(firstIndex, end);
+    }
+    if (data instanceof Uint16Array) return data.slice(firstIndex, end);
+    if (data instanceof Uint8Array || data instanceof Uint8ClampedArray) {
+        return Uint16Array.from(data.subarray(firstIndex, end), value =>
+            info.primitiveRestart && value === 0xff ? 0xffff : value
+        );
+    }
+    throw new TypeError('uint16 index source changed type');
+}
+
+function packAllIndexData(
+    geometryData: GeometryData,
+    info: IndexFormatInfo
+): Uint16Array | Uint32Array {
+    return packIndexRange(geometryData, info, 0, validateCount(geometryData.count, 'Index'));
+}
+
+function updatedIndexByteRanges(
+    geometryData: GeometryData,
+    info: IndexFormatInfo,
+    uploadedRevision: number
+): readonly ByteRange[] | null {
+    const updates = geometryData.getSubDataUpdatesSince(uploadedRevision);
+    if (updates === null) return null;
+    const allocationByteLength = alignTo4(geometryData.count * info.packedByteLength);
+    const ranges: ByteRange[] = [];
+    for (const update of updates) {
+        if (update.data.byteLength === 0) continue;
+        const firstIndex = Math.floor(update.byteOffset / info.sourceByteLength);
+        const endIndex = Math.ceil(
+            (update.byteOffset + update.data.byteLength) / info.sourceByteLength
+        );
+        ranges.push({
+            start: Math.floor((firstIndex * info.packedByteLength) / 4) * 4,
+            end: Math.min(allocationByteLength, alignTo4(endIndex * info.packedByteLength))
+        });
+    }
+    return mergeRanges(ranges);
+}
+
+function packIndexByteRange(
+    geometryData: GeometryData,
+    info: IndexFormatInfo,
+    range: ByteRange
+): Uint8Array {
+    const firstIndex = Math.floor(range.start / info.packedByteLength);
+    const endIndex = Math.min(geometryData.count, Math.ceil(range.end / info.packedByteLength));
+    const packed = packIndexRange(geometryData, info, firstIndex, endIndex - firstIndex);
+    const result = new Uint8Array(range.end - range.start);
+    const packedOffset = firstIndex * info.packedByteLength - range.start;
+    result.set(new Uint8Array(packed.buffer, packed.byteOffset, packed.byteLength), packedOffset);
+    return result;
 }
 
 /** Per-device packed vertex, instance and index allocation cache. */
@@ -445,7 +627,6 @@ export class WebGPUBufferManager {
     /** Renderer frame snapshots call releaseOwner when an index GeometryData identity is replaced. */
     private indexBuffers = new WeakMap<GeometryData, Map<string, CachedIndexBuffer>>();
     private readonly instanceBuffers = new OwnerCache<Map<string, CachedInstanceBuffer>>();
-    private geometryStates = new WeakMap<GeometryData, GeometryRevisionState>();
     private readonly objectIds = new WeakMap<object, number>();
     private nextObjectId = 1;
     private readonly ownedBuffers = new Set<GPUBuffer>();
@@ -495,28 +676,6 @@ export class WebGPUBufferManager {
         }
     }
 
-    private geometryRevision(geometryData: GeometryData): number {
-        const fingerprint = [
-            geometryData.revision,
-            geometryData.size,
-            geometryData.normalized ? 1 : 0,
-            geometryData.stride,
-            geometryData.offset,
-            geometryData.type,
-            geometryData.data.byteLength,
-            geometryData.count
-        ].join(':');
-        let state = this.geometryStates.get(geometryData);
-        if (!state) {
-            state = { fingerprint, revision: 1 };
-            this.geometryStates.set(geometryData, state);
-        } else if (state.fingerprint !== fingerprint) {
-            state.fingerprint = fingerprint;
-            state.revision++;
-        }
-        return state.revision;
-    }
-
     private objectId(object: object): number {
         let id = this.objectIds.get(object);
         if (id === undefined) {
@@ -536,12 +695,15 @@ export class WebGPUBufferManager {
             'vertex',
             this.device.limits
         );
-        const orderedSources = prepared.inputs.map(item => sources[item.sourceIndex]);
+        const orderedSources = prepared.inputs.map(item => {
+            const source = sources[item.sourceIndex];
+            if (!source) throw new RangeError('Missing packed WebGPU vertex source');
+            return source;
+        });
         const first = orderedSources[0];
         if (!first) throw new RangeError('A WebGPU vertex bundle requires a source');
         const count = validateCount(first.geometryData.count, 'Vertex bundle');
         for (const source of orderedSources) {
-            if (!source) throw new RangeError('Missing WebGPU vertex source');
             if (validateCount(source.geometryData.count, 'Vertex bundle') !== count) {
                 throw new RangeError(
                     'Every source in a WebGPU vertex bundle must have equal count'
@@ -549,17 +711,12 @@ export class WebGPUBufferManager {
             }
         }
         const cacheKey = orderedSources
-            .map(source => {
-                if (!source) throw new RangeError('Missing WebGPU vertex source');
-                return String(this.objectId(source.geometryData));
-            })
+            .map(source => String(this.objectId(source.geometryData)))
             .join(':');
-        const revisionKey = orderedSources
-            .map(source => {
-                if (!source) throw new RangeError('Missing WebGPU vertex source');
-                return String(this.geometryRevision(source.geometryData));
-            })
-            .join(':');
+        const structureKey = orderedSources
+            .map(source => geometryStructureKey(source.geometryData))
+            .join('|');
+        const sourceRevisions = orderedSources.map(source => source.geometryData.revision);
         let variants = this.vertexBuffers.get(owner);
         if (!variants) {
             variants = new Map();
@@ -567,37 +724,53 @@ export class WebGPUBufferManager {
         }
         const variantKey = `${prepared.signature}:${cacheKey}`;
         let resource = variants.get(variantKey);
-        if (resource?.revisionKey !== revisionKey) {
+        const byteLength = packedByteLength(count, prepared.layout.arrayStride);
+        if (resource?.byteLength !== byteLength) {
             const data = packVertexSources(sources, prepared, count);
-            if (resource?.byteLength !== data.byteLength) {
-                const buffer = uploadNewBuffer(
+            const buffer = uploadNewBuffer(
+                this.device,
+                `VertexBundle:${variantKey}`,
+                WebGPUBufferUsage.VERTEX | WebGPUBufferUsage.COPY_DST,
+                data
+            );
+            resource?.buffer.destroy();
+            if (resource) this.ownedBuffers.delete(resource.buffer);
+            this.ownedBuffers.add(buffer);
+            resource = {
+                buffer,
+                layout: prepared.layout,
+                count,
+                byteLength: data.byteLength,
+                structureKey,
+                sourceRevisions: [...sourceRevisions]
+            };
+            variants.set(variantKey, resource);
+        } else if (
+            resource.structureKey !== structureKey ||
+            resource.sourceRevisions.some((revision, index) => revision !== sourceRevisions[index])
+        ) {
+            const ranges =
+                resource.structureKey === structureKey
+                    ? updatedVertexRanges(orderedSources, resource.sourceRevisions, count)
+                    : null;
+            if (ranges === null) {
+                writeBufferData(
                     this.device,
-                    `VertexBundle:${variantKey}`,
-                    WebGPUBufferUsage.VERTEX | WebGPUBufferUsage.COPY_DST,
-                    data
-                );
-                resource?.buffer.destroy();
-                if (resource) this.ownedBuffers.delete(resource.buffer);
-                this.ownedBuffers.add(buffer);
-                resource = {
-                    buffer,
-                    layout: prepared.layout,
-                    count,
-                    revisionKey,
-                    byteLength: data.byteLength
-                };
-                variants.set(variantKey, resource);
-            } else {
-                this.device.queue.writeBuffer(
                     resource.buffer,
-                    0,
-                    data.buffer,
-                    data.byteOffset,
-                    data.byteLength
+                    packVertexSources(sources, prepared, count)
                 );
-                resource.revisionKey = revisionKey;
-                resource.count = count;
+            } else {
+                const patches = ranges.map(range => ({
+                    bufferOffset: range.start * prepared.layout.arrayStride,
+                    data: packVertexRange(sources, prepared, range.start, range.end - range.start)
+                }));
+                for (const patch of patches) {
+                    writeBufferData(this.device, resource.buffer, patch.data, patch.bufferOffset);
+                }
             }
+            resource.structureKey = structureKey;
+            resource.sourceRevisions = [...sourceRevisions];
+            resource.count = count;
         }
         this.touchVariant(variants, variantKey, resource);
         this.evictVariantOverflow(variants, this.cacheLimits.vertexVariantsPerOwner);
@@ -615,43 +788,57 @@ export class WebGPUBufferManager {
         geometryData: GeometryData,
         options: WebGPUIndexBufferOptions = {}
     ): WebGPUIndexBufferBinding {
-        const packed = packedIndexData(geometryData, options.primitiveRestart ?? false);
-        const revision = this.geometryRevision(geometryData);
+        const info = indexFormatInfo(geometryData, options.primitiveRestart ?? false);
+        const revision = geometryData.revision;
+        const structureKey = geometryStructureKey(geometryData);
+        const byteLength = validateCount(geometryData.count, 'Index') * info.packedByteLength;
         let variants = this.indexBuffers.get(geometryData);
         if (!variants) {
             variants = new Map();
             this.indexBuffers.set(geometryData, variants);
         }
-        let resource = variants.get(packed.key);
-        if (resource?.revision !== revision) {
-            if (
-                resource?.byteLength !== packed.data.byteLength ||
-                resource.format !== packed.format
-            ) {
-                const buffer = uploadNewBuffer(
-                    this.device,
-                    `Index:${geometryData.id}:${packed.key}`,
-                    WebGPUBufferUsage.INDEX | WebGPUBufferUsage.COPY_DST,
-                    packed.data
-                );
-                resource?.buffer.destroy();
-                if (resource) this.ownedBuffers.delete(resource.buffer);
-                this.ownedBuffers.add(buffer);
-                resource = {
-                    buffer,
-                    format: packed.format,
-                    count: geometryData.count,
-                    revision,
-                    byteLength: packed.data.byteLength
-                };
-                variants.set(packed.key, resource);
+        let resource = variants.get(info.key);
+        if (resource?.byteLength !== byteLength || resource.format !== info.format) {
+            const data = packAllIndexData(geometryData, info);
+            const buffer = uploadNewBuffer(
+                this.device,
+                `Index:${geometryData.id}:${info.key}`,
+                WebGPUBufferUsage.INDEX | WebGPUBufferUsage.COPY_DST,
+                data
+            );
+            resource?.buffer.destroy();
+            if (resource) this.ownedBuffers.delete(resource.buffer);
+            this.ownedBuffers.add(buffer);
+            resource = {
+                buffer,
+                format: info.format,
+                count: geometryData.count,
+                revision,
+                byteLength: data.byteLength,
+                structureKey
+            };
+            variants.set(info.key, resource);
+        } else if (resource.revision !== revision || resource.structureKey !== structureKey) {
+            const ranges =
+                resource.structureKey === structureKey
+                    ? updatedIndexByteRanges(geometryData, info, resource.revision)
+                    : null;
+            if (ranges === null) {
+                writeBufferData(this.device, resource.buffer, packAllIndexData(geometryData, info));
             } else {
-                writeBufferData(this.device, resource.buffer, packed.data);
-                resource.revision = revision;
-                resource.count = geometryData.count;
+                const patches = ranges.map(range => ({
+                    bufferOffset: range.start,
+                    data: packIndexByteRange(geometryData, info, range)
+                }));
+                for (const patch of patches) {
+                    writeBufferData(this.device, resource.buffer, patch.data, patch.bufferOffset);
+                }
             }
+            resource.revision = revision;
+            resource.structureKey = structureKey;
+            resource.count = geometryData.count;
         }
-        this.touchVariant(variants, packed.key, resource);
+        this.touchVariant(variants, info.key, resource);
         this.evictVariantOverflow(variants, this.cacheLimits.indexVariantsPerOwner);
         return resource;
     }
@@ -740,6 +927,5 @@ export class WebGPUBufferManager {
         this.instanceBuffers.clear();
         this.vertexBuffers.clear();
         this.indexBuffers = new WeakMap();
-        this.geometryStates = new WeakMap();
     }
 }

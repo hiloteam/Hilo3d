@@ -29,4 +29,18 @@ describe('DataTexture', () => {
         expect(texture.height).toBe(8);
         expect(texture.image?.length).toBe(128);
     });
+
+    it('validates constructor declarations before accepting data', () => {
+        expect(
+            () =>
+                new DataTexture({
+                    internalFormat: Hilo3d.constants.R8I,
+                    format: Hilo3d.constants.RED_INTEGER,
+                    type: Hilo3d.constants.BYTE,
+                    anisotropic: 2,
+                    data: new Int8Array([1])
+                })
+        ).toThrow(/Integer textures do not support anisotropic/);
+        expect(new DataTexture().target).toBe(Hilo3d.constants.TEXTURE_2D);
+    });
 });

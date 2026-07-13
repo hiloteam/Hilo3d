@@ -14,9 +14,9 @@ describe('VertexArrayObject', () => {
 
     it('cache & destroy', () => {
         const vao = VertexArrayObject.getVao(testEnv.gl, '_hiloTestVao');
-        expect(VertexArrayObject.cache.get('_hiloTestVao')).toBe(vao);
+        expect(VertexArrayObject.getCache(testEnv.gl).get('_hiloTestVao')).toBe(vao);
         expect(vao.destroy()).toBe(vao);
-        expect(VertexArrayObject.cache.get('_hiloTestVao')).toBeUndefined();
+        expect(VertexArrayObject.getCache(testEnv.gl).get('_hiloTestVao')).toBeUndefined();
         expect(vao.getResources()).toEqual([]);
         expect(vao.destroy()).toBe(vao);
     });
@@ -121,5 +121,71 @@ describe('VertexArrayObject', () => {
         expect(vao.getVertexCount()).toBe(vertices.count);
         vao.getResources().forEach(resource => resource.destroy());
         vao.destroy();
+    });
+
+    it('packs every reflected instance shape into legal WebGL2 attribute columns', () => {
+        const program = new Hilo3d.Program({
+            state: testEnv.state,
+            vertexShader: `#version 300 es
+                in float instanceScalar;
+                in vec2 instanceVec2;
+                in vec3 instanceVec3;
+                in vec4 instanceVec4;
+                in mat2 instanceMat2;
+                in mat3 instanceMat3;
+                in mat4 instanceMat4;
+                void main() {
+                    float value = instanceScalar + instanceVec2.x + instanceVec3.x +
+                        instanceVec4.x + instanceMat2[0][0] + instanceMat3[0][0] +
+                        instanceMat4[0][0];
+                    gl_Position = vec4(value * 0.000001, 0.0, 0.0, 1.0);
+                }`,
+            fragShader:
+                '#version 300 es\nprecision mediump float;out vec4 color;void main(){color=vec4(1.0);}'
+        });
+        const vao = new VertexArrayObject(testEnv.gl, '_hiloInstancedAttributeColumns');
+        const meshes = [new Hilo3d.Mesh(), new Hilo3d.Mesh()];
+        const cases = [
+            { name: 'instanceScalar', valueSize: 1, columnSize: 1, stride: 0 },
+            { name: 'instanceVec2', valueSize: 2, columnSize: 2, stride: 0 },
+            { name: 'instanceVec3', valueSize: 3, columnSize: 3, stride: 0 },
+            { name: 'instanceVec4', valueSize: 4, columnSize: 4, stride: 0 },
+            { name: 'instanceMat2', valueSize: 4, columnSize: 2, stride: 16 },
+            { name: 'instanceMat3', valueSize: 9, columnSize: 3, stride: 36 },
+            { name: 'instanceMat4', valueSize: 16, columnSize: 4, stride: 64 }
+        ] as const;
+
+        try {
+            for (const item of cases) {
+                const attribute = program.attributes[item.name];
+                expect(attribute, item.name).toBeDefined();
+                if (!attribute) continue;
+                expect(attribute.glTypeInfo.size).toBe(item.valueSize);
+                const values = Float32Array.from(
+                    { length: item.valueSize },
+                    (_, index) => index + 1
+                );
+                const result = vao.addInstancedAttribute(attribute, meshes, () => values);
+                expect(result.geometryData.size).toBe(item.columnSize);
+                expect(result.geometryData.stride).toBe(item.stride);
+                expect(result.geometryData.count).toBe(meshes.length);
+                expect(Array.from(result.geometryData.data)).toEqual([...values, ...values]);
+            }
+
+            const mat3 = program.attributes['instanceMat3'];
+            expect(mat3).toBeDefined();
+            if (mat3) {
+                const updated = Float32Array.from({ length: 9 }, (_, index) => 9 - index);
+                const result = vao.addInstancedAttribute(mat3, meshes, () => updated);
+                expect(result.geometryData.size).toBe(3);
+                expect(result.geometryData.stride).toBe(36);
+                expect(result.geometryData.count).toBe(meshes.length);
+                expect(Array.from(result.geometryData.data)).toEqual([...updated, ...updated]);
+            }
+        } finally {
+            vao.getResources().forEach(resource => resource.destroy());
+            vao.destroy();
+            program.destroy();
+        }
     });
 });

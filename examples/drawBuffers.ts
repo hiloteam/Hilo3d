@@ -1,7 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
+import { createTexturePreview } from './shared/ScreenMesh';
 
-const { camera, stage, renderer } = createExampleContext();
+const { camera, stage, renderer } = await createExampleContext();
 const diffuseTexture = new Hilo3d.LazyTexture({
     src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
 });
@@ -119,31 +120,33 @@ for (let index = 0; index < 20; index++) {
     mesh.setScale(0.2).addTo(sceneNode);
 }
 
-const framebuffer = new Hilo3d.Framebuffer(renderer, {
-    colorAttachmentInfos: Array.from({ length: 4 }, () => ({
-        attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE
-    }))
+const renderTarget = renderer.createRenderTarget({
+    width: renderer.width,
+    height: renderer.height,
+    colorAttachments: Array.from({ length: 4 }, () => ({ format: 'rgba8unorm' as const })),
+    label: 'DrawBuffers.gbuffer'
 });
 
-stage.onUpdate = () => {
-    framebuffer.bind();
-    try {
-        sceneNode.traverseUpdate(0);
-        renderer.render(sceneNode, camera);
-    } finally {
-        framebuffer.unbind();
+const previewRects = [
+    { x: 0, y: 0, width: 0.5, height: 0.5 },
+    { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+    { x: 0, y: 0.5, width: 0.5, height: 0.5 },
+    { x: 0.5, y: 0.5, width: 0.5, height: 0.5 }
+] as const;
+previewRects.forEach((rect, index) => {
+    stage.addChild(
+        createTexturePreview(
+            () => renderTarget.getColorTexture(index),
+            rect,
+            `DrawBuffers.preview.${String(index)}`
+        )
+    );
+});
+
+stage.onUpdate = deltaTime => {
+    if (renderTarget.width !== renderer.width || renderTarget.height !== renderer.height) {
+        renderTarget.resize(renderer.width, renderer.height);
     }
+    sceneNode.traverseUpdate(deltaTime);
+    renderer.renderToTarget(renderTarget, sceneNode, camera, false);
 };
-
-function attachment(index: number): Hilo3d.FramebufferTexture {
-    const texture = framebuffer.colorAttachmentInfos[index]?.texture;
-    if (!texture) throw new Error(`Draw buffer ${String(index)} has no texture attachment.`);
-    return texture;
-}
-
-renderer.on('afterRender', () => {
-    framebuffer.render(0, 0, 0.5, 0.5, null, attachment(0));
-    framebuffer.render(0.5, 0, 0.5, 0.5, null, attachment(1));
-    framebuffer.render(0, 0.5, 0.5, 0.5, null, attachment(2));
-    framebuffer.render(0.5, 0.5, 0.5, 0.5, null, attachment(3));
-});

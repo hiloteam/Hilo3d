@@ -35,6 +35,19 @@
                 background: #eee;
             }
 
+            #backendControl {
+                box-sizing: border-box;
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                padding: 6px 10px;
+                color: #fff;
+            }
+
+            #backendControl select {
+                flex: 1;
+            }
+
             #exampleList li label {
                 font-size: 12px;
                 height: 30px;
@@ -60,7 +73,13 @@
     <body>
         <div>
             <ul id="exampleList">
-                <li>WebGL 2</li>
+                <li id="backendControl">
+                    <label for="backendSelect">Backend</label>
+                    <select id="backendSelect" aria-label="Graphics backend">
+                        <option value="webgl2">WebGL 2</option>
+                        <option value="webgpu">WebGPU</option>
+                    </select>
+                </li>
             </ul>
             <iframe id="exampleFrame" name="exampleFrame" frameborder="0"></iframe>
         </div>

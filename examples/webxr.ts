@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, stage, renderer, ticker } = createExampleContext();
+const { camera, stage, renderer, ticker } = await createExampleContext({ backend: 'webgl2' });
 
 function random(min: number, max: number): number {
     return Math.random() * (max - min) + min;

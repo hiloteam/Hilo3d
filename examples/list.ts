@@ -1,4 +1,10 @@
-type ExampleEntry = string | readonly [name: string, path: string];
+import { resolveExampleBackend } from './shared/backend';
+import examplePaths from 'virtual:hilo3d-example-manifest';
+
+interface ExampleEntry {
+    readonly name: string;
+    readonly path: string;
+}
 
 type HTMLElementConstructor<ElementType extends HTMLElement> = new () => ElementType;
 
@@ -15,81 +21,21 @@ function requireElement<ElementType extends HTMLElement>(
 
 const list = requireElement('#exampleList', HTMLUListElement);
 const frame = requireElement('#exampleFrame', HTMLIFrameElement);
-const examples: readonly ExampleEntry[] = [
-    'areaLight',
-    'billboard',
-    'bloom',
-    'cameraHelper',
-    'compressed_texture',
-    'cubeTexture_HDR',
-    'custom_anim_state',
-    'depthTexture',
-    'drawBuffers',
-    'fog',
-    'MultiSampledRenderbuffers',
-    'frameBuffer',
-    'frustum_test',
-    'geometry_box',
-    'geometry_color',
-    'geometry_custom',
-    'geometry_dynamic',
-    'geometry_dynamic2',
-    'geometry_instanced',
-    'geometry_line',
-    'geometry_merge',
-    'geometry_morph',
-    'geometry_plane',
-    'geometry_sphere',
-    'geometry_triangles',
-    'animation',
-    'gltf_light',
-    'hdr',
-    'lifegame',
-    'mesh_picker',
-    'mouse_event',
-    'normal_map',
-    'pbr',
-    'pbr2',
-    'pointLight',
-    'polly',
-    'post_process',
-    'quickStart',
-    'raycast',
-    'raycast_node',
-    'refract',
-    'resourceManagerTest',
-    'sRGB',
-    'shaderToy',
-    'shader_material',
-    'shadow',
-    'skybox',
-    'snow',
-    'sphereEnvMap',
-    'sphericalHarmonics',
-    'spotLight',
-    'ssao',
-    'stencilTest',
-    'textureLod',
-    'texture_data',
-    'texture_image_release',
-    'transparent',
-    'tween_walk',
-    'uniformBufferObject',
-    'update_sub_texture',
-    'uv_map',
-    'video',
-    'webgl_support',
-    'wireframe',
-    ['physics', './physics/cannon']
-];
-
-function exampleName(entry: ExampleEntry): string {
-    return typeof entry === 'string' ? entry : entry[0];
-}
-
-function examplePath(entry: ExampleEntry): string {
-    return `${typeof entry === 'string' ? entry : entry[1]}.html`;
-}
+const backendSelect = requireElement('#backendSelect', HTMLSelectElement);
+const backend = resolveExampleBackend();
+backendSelect.value = backend;
+backendSelect.addEventListener('change', () => {
+    const nextBackend = backendSelect.value;
+    if (nextBackend !== 'webgl2' && nextBackend !== 'webgpu') {
+        throw new TypeError(`Unsupported example backend "${nextBackend}".`);
+    }
+    const target = new URL(location.href);
+    target.searchParams.set('backend', nextBackend);
+    location.assign(target);
+});
+const examples: readonly ExampleEntry[] = examplePaths
+    .filter(path => path !== 'list.html' && (backend !== 'webgpu' || path !== 'webxr.html'))
+    .map(path => ({ name: path.slice(0, -'.html'.length), path }));
 
 interface ExampleNavigationItem {
     readonly entry: ExampleEntry;
@@ -100,7 +46,7 @@ const navigation = new Map<string, ExampleNavigationItem>();
 let currentName = '';
 
 function showExample(entry: ExampleEntry, preservePageQuery = false): void {
-    const name = exampleName(entry);
+    const { name, path } = entry;
     if (name === currentName) return;
     const previous = navigation.get(currentName);
     if (previous) previous.element.classList.remove('active');
@@ -108,14 +54,21 @@ function showExample(entry: ExampleEntry, preservePageQuery = false): void {
     const pageQuery = preservePageQuery
         ? location.search
         : (frame.contentWindow?.location.search ?? '');
-    frame.src = `${examplePath(entry)}${pageQuery}`;
+    const target = new URL(path, location.href);
+    const query = new URLSearchParams(pageQuery);
+    query.set('backend', backend);
+    if (path === 'glTFViewer/index.html' && !query.has('url')) {
+        query.set('url', '/examples/models/Tmall/Tmall.gltf');
+    }
+    target.search = query.toString();
+    frame.src = target.href;
     location.hash = name;
     navigation.get(name)?.element.classList.add('active');
     currentName = name;
 }
 
 for (const entry of examples) {
-    const name = exampleName(entry);
+    const { name } = entry;
     const element = document.createElement('li');
     element.textContent = name;
     element.addEventListener('click', () => {

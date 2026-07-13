@@ -31,6 +31,8 @@ export { default as Skeleton, type SkeletonParameters } from './core/Skeleton';
 export { default as SkinnedMesh, type SkinnedMeshParameters } from './core/SkinnedMesh';
 export {
     default as Stage,
+    type StageBackendParameters,
+    type StageCommonParameters,
     type StageParameters,
     type StagePointerEvent,
     type StageRenderer
@@ -94,25 +96,9 @@ export {
 } from './geometry/SphereGeometry';
 
 export { default as Buffer, type BufferData, type BufferRenderer } from './renderer/Buffer';
-export {
-    WebGLCapabilities,
-    default as capabilities,
-    type NumericCapabilityName
-} from './renderer/capabilities';
-export { WebGLExtensions, default as extensions } from './renderer/extensions';
-export {
-    type CopyFramebufferOptions,
-    default as Framebuffer,
-    type FramebufferAttachmentInfo,
-    type FramebufferAttachmentType,
-    type FramebufferCopyRectangle,
-    type FramebufferParameters,
-    type FramebufferRenderer,
-    type ResolvedAttachmentOptions,
-    type FramebufferTexture
-} from './renderer/Framebuffer';
+export { WebGLCapabilities, type NumericCapabilityName } from './renderer/capabilities';
+export { WebGLExtensions } from './renderer/extensions';
 export { default as glType } from './renderer/glType';
-export { default as logGLResource } from './renderer/logGLResource';
 export {
     type AttributePointerParameters,
     default as Program,
@@ -126,9 +112,24 @@ export {
 } from './renderer/Program';
 export { default as RenderInfo } from './renderer/RenderInfo';
 export { default as RenderList } from './renderer/RenderList';
+export type {
+    RenderTarget,
+    RenderTargetColor,
+    RenderTargetColorAttachmentOptions,
+    RenderTargetColorAttachmentReadback,
+    RenderTargetColorFormat,
+    RenderTargetCompareFunction,
+    RenderTargetDepthStencilAttachmentOptions,
+    RenderTargetDepthStencilFormat,
+    RenderTargetLoadOp,
+    RenderTargetParameters,
+    RenderTargetReadColorAttachmentOptions,
+    RenderTargetSampleCount,
+    RenderTargetSelectionOptions,
+    RenderTargetStoreOp
+} from './renderer/RenderTarget';
 export {
     default as UniformBuffer,
-    type UniformBufferData,
     type UniformBufferDirtyRange,
     type UniformBufferRange
 } from './renderer/UniformBuffer';
@@ -165,9 +166,10 @@ export {
     type WebGLRendererParameters,
     type WebGLRendererScene
 } from './renderer/WebGLRenderer';
+export { default as WebGLRenderTarget } from './renderer/WebGLRenderTarget';
 export {
     default as WebGPURenderer,
-    type WebGPUFramebufferParameters,
+    type WebGPUDeviceRecoveryState,
     type WebGPURendererParameters
 } from './renderer/WebGPURenderer';
 export {
@@ -192,14 +194,18 @@ export {
     type TextureComponentStorage,
     type WebGPUExternalTextureOptions,
     type WebGPUTextureFormatInfo,
+    type WebGPUTextureDimension,
     type WebGPUTextureRequestOptions,
     type WebGPUTextureResource
 } from './renderer/webgpu/WebGPUTextureManager';
 export type {
     Renderer,
     RendererBackend,
+    RendererResourceDiagnostics,
     RendererResourceManager,
-    RendererScene
+    RendererScene,
+    RendererViewport,
+    TextureCompressionFormat
 } from './renderer/Renderer';
 export {
     getWebGPUUniformBlockBinding,
@@ -211,7 +217,9 @@ export {
 } from './renderer/webgpu/WebGPUBindingLayout';
 export {
     default as GraphicsResourceManager,
-    type ManagedResource
+    type GraphicsResourceManagerParameters,
+    type ManagedResource,
+    type MeshResourceVariant
 } from './renderer/GraphicsResourceManager';
 export {
     type FourParameterMethod,
@@ -229,6 +237,8 @@ export type {
     ShaderOptions,
     ShaderPrecision,
     Size,
+    TextureCubeFace,
+    TexturePixelData,
     TextureSource,
     TextureSubImage,
     TypedArray,
@@ -271,7 +281,11 @@ export type * from './loader/GLTFTypes';
 export { default as HDRLoader, type HDRLoadRequest } from './loader/HDRLoader';
 export type { LoaderTextureOptions } from './loader/textureOptions';
 export { default as parseRadianceHDR, type RadianceHDRImage } from './loader/RadianceHDRParser';
-export { default as KTXLoader, type KTXLoadRequest } from './loader/KTXLoader';
+export {
+    default as KTXLoader,
+    type KTXLoadRequest,
+    type KTXTextureOptions
+} from './loader/KTXLoader';
 export {
     default as LoadCache,
     type LoadCacheFile,
@@ -321,6 +335,7 @@ export {
     prepareGLSLForNaga,
     type GlslSamplerType,
     type GraphicsShaderStage,
+    type PrepareGLSLForNagaOptions,
     type PreparedShaderPair,
     type PreparedShaderStage,
     type TranslatedShaderPair,
@@ -370,10 +385,6 @@ export {
 export { default as AmbientLight, type AmbientLightParameters } from './light/AmbientLight';
 export { default as AreaLight, type AreaLightParameters } from './light/AreaLight';
 export {
-    default as CubeLightShadow,
-    type CubeLightShadowParameters
-} from './light/CubeLightShadow';
-export {
     default as DirectionalLight,
     type DirectionalLightParameters
 } from './light/DirectionalLight';
@@ -381,7 +392,10 @@ export {
     default as Light,
     type LightParameters,
     type LightShadowOptions,
-    type ShadowCameraParameters
+    type PointLightShadowOptions,
+    type PointShadowCameraParameters,
+    type ShadowCameraParameters,
+    type ShadowCastingLightParameters
 } from './light/Light';
 export {
     type AreaLightInfo,
@@ -393,11 +407,6 @@ export {
     type PointLightInfo,
     type SpotLightInfo
 } from './light/LightManager';
-export {
-    default as LightShadow,
-    type LightShadowParameters,
-    type ShadowCamera
-} from './light/LightShadow';
 export { default as PointLight, type PointLightParameters } from './light/PointLight';
 export { default as SpotLight, type SpotLightParameters } from './light/SpotLight';
 

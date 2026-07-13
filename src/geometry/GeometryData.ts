@@ -2,13 +2,14 @@ import math from '../math/math';
 import Vector2 from '../math/Vector2';
 import Vector3 from '../math/Vector3';
 import Vector4 from '../math/Vector4';
+import Matrix3 from '../math/Matrix3';
 import Matrix4 from '../math/Matrix4';
 import { getTypedArrayGLType, getTypedArrayClass } from '../utils/util';
 import type Buffer from '../renderer/Buffer';
 import type { TypedArray } from '../renderer/types';
 
-export type GeometryComponentSize = 1 | 2 | 3 | 4 | 16;
-export type GeometryAttributeValue = number | Vector2 | Vector3 | Vector4 | Matrix4;
+export type GeometryComponentSize = 1 | 2 | 3 | 4 | 9 | 16;
+export type GeometryAttributeValue = number | Vector2 | Vector3 | Vector4 | Matrix3 | Matrix4;
 export type GeometryDataTraverseCallback = (
     attribute: GeometryAttributeValue,
     index: number,
@@ -38,7 +39,7 @@ const MAX_RETAINED_SUB_DATA_UPDATES = 64;
 
 function createAttributeValue(
     size: Exclude<GeometryComponentSize, 1>
-): Vector2 | Vector3 | Vector4 | Matrix4 {
+): Vector2 | Vector3 | Vector4 | Matrix3 | Matrix4 {
     switch (size) {
         case 2:
             return new Vector2();
@@ -46,6 +47,8 @@ function createAttributeValue(
             return new Vector3();
         case 4:
             return new Vector4();
+        case 9:
+            return new Matrix3();
         case 16:
             return new Matrix4();
     }
@@ -75,7 +78,8 @@ class GeometryData {
      */
     readonly isGeometryData = true;
     /**
-     * The number of components per vertex attribute.Must be 1, 2, 3, or 4.
+     * Components in one logical vertex value. Matrices use 9 (`mat3`) or 16 (`mat4`);
+     * `mat2` shares the four-component representation with `vec4`.
      */
     size: GeometryComponentSize;
     /**
@@ -140,12 +144,12 @@ class GeometryData {
     }
     /**
      * @param data - 数据
-     * @param size - The number of components per vertex attribute.Must be 1, 2, 3, or 4.
+     * @param size - Components in one logical scalar, vector, or square-matrix value.
      * @param params - 初始化参数，所有params都会复制到实例上
      */
     constructor(data: TypedArray, size: GeometryComponentSize, params?: GeometryDataParameters);
     constructor(data: TypedArray, size: number, params: GeometryDataParameters = {}) {
-        if (size !== 1 && size !== 2 && size !== 3 && size !== 4 && size !== 16) {
+        if (size !== 1 && size !== 2 && size !== 3 && size !== 4 && size !== 9 && size !== 16) {
             throw new RangeError(`GeometryData size ${String(size)} is unsupported`);
         }
         /**

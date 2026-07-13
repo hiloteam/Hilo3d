@@ -6,7 +6,7 @@ import {
     parseQuery
 } from '../shared/init';
 
-const { camera, stage, ambientLight } = createExampleContext();
+const { camera, stage, ambientLight } = await createExampleContext();
 new Hilo3d.AxisHelper({ size: 1 }).addTo(stage);
 
 interface ModelInfo extends Hilo3d.GLTFLoadRequest {

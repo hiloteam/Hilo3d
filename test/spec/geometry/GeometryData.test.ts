@@ -23,6 +23,16 @@ describe('GeometryData', () => {
         expect(data.className).toBe('GeometryData');
     });
 
+    it('represents mat3 and mat4 vertex values without flattening their logical count', () => {
+        const mat3Data = new GeometryData(new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9]), 9);
+        const mat4Data = new GeometryData(new Float32Array(16).fill(1), 16);
+
+        expect(mat3Data.count).toBe(1);
+        expect(mat3Data.get(0)).toBeInstanceOf(Hilo3d.Matrix3);
+        expect(mat4Data.count).toBe(1);
+        expect(mat4Data.get(0)).toBeInstanceOf(Hilo3d.Matrix4);
+    });
+
     const testData = new GeometryData(
         new Float32Array([1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]),
         3,

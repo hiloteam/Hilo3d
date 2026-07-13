@@ -2,11 +2,13 @@ import {
     BasicLoader,
     BasicMaterial,
     BoxGeometry,
+    constants,
     EventDispatcher,
     GLTFLoader,
     HiloEvent,
     Loader,
     Mesh,
+    MeshPicker,
     PerspectiveCamera,
     Program,
     ProgramLinkError,
@@ -22,24 +24,32 @@ import {
     version,
     type BasicLoadRequest,
     type BasicMaterialParameters,
+    type AreaLightParameters,
     type DispatchEvent,
     type EventListener,
     type GLContext,
+    type KTXTextureOptions,
     type LoaderRequest,
     type MeshParameters,
     type ProgramParameters,
+    type Renderer,
     type RendererBackend,
+    type RendererResourceDiagnostics,
+    type RenderTarget,
+    type RenderTargetColorAttachmentReadback,
+    type RenderTargetParameters,
     type StageParameters,
     type StagePointerEvent,
     type StageRenderer,
+    type ShadowCastingLightParameters,
+    type TextureCompressionFormat,
+    type TextureMipmap,
+    type TexturePixelData,
     type TextureParameters,
     type TweenParameters,
     type WebGLRendererParameters,
-    type WebGPUColorAttachmentReadback,
-    type WebGPUFramebufferParameters,
-    type WebGPURendererParameters,
-    type WebGPURenderTarget,
-    type WebGPURenderTargetParameters
+    type WebGPUTextureDimension,
+    type WebGPURendererParameters
 } from 'hilo3d';
 
 const camera = new PerspectiveCamera({ aspect: 16 / 9, near: 0.1, far: 1_000, z: 4 });
@@ -59,37 +69,68 @@ const webgpuRendererParameters = {
     domElement: document.createElement('canvas'),
     width: 640,
     height: 360,
-    pixelRatio: 1,
-    useFramebuffer: true,
-    framebufferOption: {
-        sampleCount: 4,
-        colorAttachments: [{ format: 'rgba16float' }]
-    } satisfies WebGPUFramebufferParameters
+    pixelRatio: 1
 } satisfies WebGPURendererParameters;
 const webgpuRenderer = new WebGPURenderer(webgpuRendererParameters);
+type WebgpuRendererPreserveDrawingBufferIsAbsent =
+    'preserveDrawingBuffer' extends keyof WebGPURendererParameters ? false : true;
+const webgpuRendererPreserveDrawingBufferIsAbsent: WebgpuRendererPreserveDrawingBufferIsAbsent = true;
 const webgpuStageParameters = {
     backend: 'webgpu',
     camera,
     width: webgpuRendererParameters.width,
-    height: webgpuRendererParameters.height,
-    useFramebuffer: true,
-    framebufferOption: { sampleCount: 4, colorAttachments: [{ format: 'rgba8unorm' }] }
+    height: webgpuRendererParameters.height
 } satisfies StageParameters<'webgpu'>;
 const webgpuStage = new Stage(webgpuStageParameters);
+type WebgpuStagePreserveDrawingBufferValue = Exclude<
+    StageParameters<'webgpu'>['preserveDrawingBuffer'],
+    undefined
+>;
+const webgpuStagePreserveDrawingBufferIsNever: WebgpuStagePreserveDrawingBufferValue extends never
+    ? true
+    : false = true;
 const webgpuStagePromise: Promise<Stage<'webgpu'>> = Stage.create(webgpuStageParameters);
 const typedWebgpuStageRenderer: StageRenderer<'webgpu'> = webgpuStage.renderer;
 const selectedBackend: RendererBackend = webgpuRenderer.backend;
+const areaLightHasShadow: 'shadow' extends keyof AreaLightParameters ? true : false = false;
+const shadowCastingLightHasShadow: 'shadow' extends keyof ShadowCastingLightParameters
+    ? true
+    : false = true;
 const nagaTranslator = new NagaShaderTranslator();
 const cameraBlockBinding = getWebGPUUniformBlockBinding('CameraBlock');
 const renderTargetParameters = {
     width: 320,
     height: 180,
     sampleCount: 4,
-    colorAttachments: [{ format: 'rgba16float' }]
-} satisfies WebGPURenderTargetParameters;
-const renderTarget: WebGPURenderTarget = webgpuRenderer.createRenderTarget(renderTargetParameters);
-webgpuRenderer.setRenderTarget(renderTarget, { present: true, takeOwnership: true });
-const colorReadback: Promise<WebGPUColorAttachmentReadback> = renderTarget.readColorAttachment();
+    colorAttachments: [{ format: 'rgba16float' }, { format: 'rgba8unorm' }]
+} satisfies RenderTargetParameters;
+const renderers: readonly Renderer[] = [renderer, webgpuRenderer];
+const compressionFormat: TextureCompressionFormat = 'bc';
+const ktxTextureOptions = {
+    minFilter: 9729,
+    anisotropic: 2,
+    isImageCanRelease: true
+} satisfies KTXTextureOptions;
+const compressionSupport: readonly boolean[] = renderers.map(currentRenderer =>
+    currentRenderer.supportsTextureCompression(compressionFormat)
+);
+const webglRenderTarget: RenderTarget = renderer.createRenderTarget(renderTargetParameters);
+const webgpuRenderTarget: RenderTarget = webgpuRenderer.createRenderTarget(renderTargetParameters);
+renderer.setRenderTarget(webglRenderTarget, { present: true, takeOwnership: true });
+webgpuRenderer.setRenderTarget(webgpuRenderTarget, { present: true, takeOwnership: true });
+renderer.renderToTarget(webglRenderTarget, stage, camera);
+webgpuRenderer.renderToTarget(webgpuRenderTarget, webgpuStage, camera);
+renderers.forEach(currentRenderer => {
+    currentRenderer.present(
+        currentRenderer.backend === 'webgl2' ? webglRenderTarget : webgpuRenderTarget
+    );
+});
+const colorReadbacks: readonly Promise<RenderTargetColorAttachmentReadback>[] = [
+    webglRenderTarget.readColorAttachment({ attachmentIndex: 1 }),
+    webgpuRenderTarget.readColorAttachment({ attachmentIndex: 1 })
+];
+const resourceDiagnostics: RendererResourceDiagnostics =
+    webgpuRenderer.resourceManager.getDiagnostics(webgpuStage);
 
 const textureParameters = {
     uv: 0,
@@ -97,6 +138,55 @@ const textureParameters = {
     flipY: false
 } satisfies TextureParameters;
 const texture = new Texture(textureParameters);
+const rawTextureStorage: TexturePixelData = new DataView(new ArrayBuffer(16));
+const webgpuTextureDimensions = [
+    '2d',
+    'cube',
+    '2d-array',
+    '3d'
+] as const satisfies readonly WebGPUTextureDimension[];
+const volumeBasePixels = new Uint8Array(2 * 2 * 2 * 4);
+const volumeMipmaps = [
+    { width: 2, height: 2, depth: 2, data: volumeBasePixels },
+    { width: 1, height: 1, depth: 1, data: new Uint8Array(4) }
+] satisfies TextureMipmap[];
+const volumeTextureParameters = {
+    target: constants.TEXTURE_3D,
+    internalFormat: constants.RGBA8,
+    format: constants.RGBA,
+    type: constants.UNSIGNED_BYTE,
+    width: 2,
+    height: 2,
+    depth: 2,
+    image: volumeBasePixels,
+    mipmaps: volumeMipmaps,
+    magFilter: constants.NEAREST,
+    minFilter: constants.NEAREST_MIPMAP_NEAREST,
+    wrapS: constants.CLAMP_TO_EDGE,
+    wrapT: constants.CLAMP_TO_EDGE,
+    wrapR: constants.CLAMP_TO_EDGE,
+    anisotropic: 1
+} satisfies TextureParameters<Uint8Array>;
+const integerArrayBasePixels = new Uint8Array(2 * 2 * 2 * 4);
+const integerArrayMipmaps = [
+    { width: 2, height: 2, depth: 2, data: integerArrayBasePixels },
+    { width: 1, height: 1, depth: 2, data: new Uint8Array(2 * 4) }
+] satisfies TextureMipmap[];
+const integerArrayTextureParameters = {
+    target: constants.TEXTURE_2D_ARRAY,
+    internalFormat: constants.RGBA8UI,
+    format: constants.RGBA_INTEGER,
+    type: constants.UNSIGNED_BYTE,
+    width: 2,
+    height: 2,
+    depth: 2,
+    image: integerArrayBasePixels,
+    mipmaps: integerArrayMipmaps,
+    magFilter: constants.NEAREST,
+    minFilter: constants.NEAREST_MIPMAP_NEAREST,
+    wrapR: constants.CLAMP_TO_EDGE,
+    anisotropic: 1
+} satisfies TextureParameters<Uint8Array>;
 const materialParameters = {
     lightType: 'NONE',
     diffuse: texture,
@@ -110,6 +200,8 @@ const meshParameters = {
 } satisfies MeshParameters;
 const mesh = new Mesh(meshParameters);
 stage.addChild(mesh);
+const meshPicker = new MeshPicker({ stage });
+const meshSelection: Promise<Mesh[]> = meshPicker.getSelection(0, 0);
 
 const registry = new Loader();
 const transport = new BasicLoader();
@@ -168,14 +260,27 @@ version satisfies string;
 void renderer;
 void stage;
 void webgpuRenderer;
+void webgpuRendererPreserveDrawingBufferIsAbsent;
+void webgpuStagePreserveDrawingBufferIsNever;
 void webgpuStagePromise;
 void typedWebgpuStageRenderer;
 void selectedBackend;
+void areaLightHasShadow;
+void shadowCastingLightHasShadow;
 void nagaTranslator;
 void cameraBlockBinding;
-void colorReadback;
+void compressionSupport;
+void ktxTextureOptions;
+void colorReadbacks;
+void resourceDiagnostics;
+void rawTextureStorage;
+void webgpuTextureDimensions;
+void volumeTextureParameters;
+void integerArrayTextureParameters;
 void material;
 void mesh;
+void meshPicker;
+void meshSelection;
 void registryLoad;
 void textLoad;
 void modelLoad;

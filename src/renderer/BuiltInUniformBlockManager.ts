@@ -3,7 +3,7 @@ import Matrix4 from '../math/Matrix4';
 import type Camera from '../camera/Camera';
 import type Mesh from '../core/Mesh';
 import type Geometry from '../geometry/Geometry';
-import type Material from '../material/Material';
+import Material from '../material/Material';
 import type Program from './Program';
 import UniformBuffer from './UniformBuffer';
 import {
@@ -20,15 +20,27 @@ import {
     skinningBlockLayout
 } from './ubo/BuiltInUniformBlocks';
 import type { Std140Layout } from './ubo/Std140Layout';
+import { getMeshPickingIdentity } from './PickingIdentity';
+import type { RendererViewport } from './Renderer';
 
 interface RendererSize {
     width: number;
     height: number;
+    getViewport?(): RendererViewport;
 }
 
 interface RevisionCachedBuffer {
     buffer: UniformBuffer;
     revision: number;
+}
+
+interface MaterialCachedBuffer {
+    buffer: UniformBuffer;
+    /** Reused std140 candidate so material checks do not allocate a block-sized snapshot per draw. */
+    candidate: ArrayBuffer;
+    candidateBytes: Uint8Array;
+    currentBytes: Uint8Array;
+    initialized: boolean;
 }
 
 interface FrameCachedBuffer {
@@ -45,6 +57,15 @@ type OwnedBufferRegistration =
 
 const tempInverseProjection = new Matrix4();
 const tempViewNormal = new Matrix3();
+type MaterialBlockFieldName = keyof typeof materialBlockLayout.schema;
+const MATERIAL_BLOCK_FIELD_NAMES = Object.freeze(
+    (Object.keys(materialBlockLayout.fields) as MaterialBlockFieldName[]).filter(
+        fieldName => !fieldName.endsWith('Padding')
+    )
+);
+const MATERIAL_BLOCK_FIELDS = Object.freeze(
+    MATERIAL_BLOCK_FIELD_NAMES.map(fieldName => materialBlockLayout.fields[fieldName])
+);
 
 function numericCameraProperty(camera: Camera, name: string, fallback: number): number {
     const value: unknown = Reflect.get(camera, name);
@@ -59,38 +80,98 @@ function updateSemanticBlock(
 ): void {
     const layout = BUILT_IN_UNIFORM_BLOCK_LAYOUTS[blockName];
     if (!layout) return;
-    if (!(buffer.data instanceof ArrayBuffer)) {
-        throw new TypeError(`${blockName} must use an ArrayBuffer-backed std140 buffer`);
-    }
     new Uint8Array(buffer.data).fill(0);
     buffer.markDirty();
     for (const fieldName of Object.keys(layout.fields)) {
         if (fieldName.endsWith('Padding')) continue;
-        if (!Object.hasOwn(material.uniforms, fieldName)) continue;
-        const materialProperty =
-            {
-                u_diffuseColor: 'diffuse',
-                u_specularColor: 'specular',
-                u_ambientColor: 'ambient',
-                u_emissionColor: 'emission'
-            }[fieldName] ?? null;
-        let value: unknown;
-        if (materialProperty) {
-            const candidate: unknown = Reflect.get(material, materialProperty);
-            value =
-                typeof candidate === 'object' &&
-                candidate !== null &&
-                Reflect.get(candidate, 'isColor') === true
-                    ? Reflect.get(candidate, 'elements')
-                    : null;
-        } else if (fieldName === 'u_transparencyFactor') {
-            const candidate: unknown = Reflect.get(material, 'transparency');
-            value = typeof candidate === 'number' ? candidate : 1;
-        } else {
-            value = material.getUniformData(fieldName, mesh, {});
-        }
+        const value = resolveSemanticBlockField(fieldName, mesh, material);
         const padded = paddedStd140Value(layout, fieldName, value);
         if (padded !== null) buffer.set(fieldName, padded);
+    }
+}
+
+function resolveSemanticBlockField(fieldName: string, mesh: Mesh, material: Material): unknown {
+    if (fieldName === 'u_objectIdColor') return getMeshPickingIdentity(mesh).color;
+    if (!Object.hasOwn(material.uniforms, fieldName)) return undefined;
+    const materialProperty =
+        {
+            u_diffuseColor: 'diffuse',
+            u_specularColor: 'specular',
+            u_ambientColor: 'ambient',
+            u_emissionColor: 'emission'
+        }[fieldName] ?? null;
+    if (materialProperty) {
+        const candidate: unknown = Reflect.get(material, materialProperty);
+        return typeof candidate === 'object' &&
+            candidate !== null &&
+            Reflect.get(candidate, 'isColor') === true
+            ? Reflect.get(candidate, 'elements')
+            : undefined;
+    }
+    if (fieldName === 'u_transparencyFactor') {
+        const candidate: unknown = Reflect.get(material, 'transparency');
+        return typeof candidate === 'number' ? candidate : 1;
+    }
+    return material.getUniformData(fieldName, mesh, {});
+}
+
+/** Pack the canonical material ABI without mutating its live UniformBuffer. */
+function packMaterialBlock(
+    target: ArrayBuffer,
+    targetBytes: Uint8Array,
+    mesh: Mesh,
+    material: Material
+): void {
+    targetBytes.fill(0);
+    for (const fieldName of MATERIAL_BLOCK_FIELD_NAMES) {
+        const value = resolveSemanticBlockField(fieldName, mesh, material);
+        const padded = paddedStd140Value(materialBlockLayout, fieldName, value);
+        if (padded === null) continue;
+        if (typeof padded === 'boolean') {
+            throw new TypeError(`MaterialBlock field ${fieldName} must be numeric`);
+        }
+        materialBlockLayout.write(target, fieldName, padded);
+    }
+}
+
+function bytesEqual(
+    current: Uint8Array,
+    candidate: Uint8Array,
+    byteOffset: number,
+    byteLength: number
+): boolean {
+    const end = byteOffset + byteLength;
+    for (let offset = byteOffset; offset < end; offset++) {
+        if (current[offset] !== candidate[offset]) return false;
+    }
+    return true;
+}
+
+/**
+ * Commit only fields whose packed std140 bytes changed. Comparing the final ABI bytes catches
+ * scalar assignments, in-place Color/Matrix edits and texture-derived numeric values without
+ * requiring callers to manually toggle a dirty flag. Unchanged blocks keep their revision, so
+ * neither backend schedules a redundant GPU upload.
+ */
+function synchronizeMaterialBlock(cached: MaterialCachedBuffer): void {
+    if (cached.currentBytes.buffer !== cached.buffer.data) {
+        cached.currentBytes = new Uint8Array(cached.buffer.data);
+        cached.initialized = false;
+    }
+    const current = cached.currentBytes;
+    const candidate = cached.candidateBytes;
+    if (!cached.initialized) {
+        cached.buffer.write(0, candidate);
+        cached.initialized = true;
+        return;
+    }
+    for (const field of MATERIAL_BLOCK_FIELDS) {
+        if (!bytesEqual(current, candidate, field.offset, field.byteLength)) {
+            cached.buffer.write(
+                field.offset,
+                candidate.subarray(field.offset, field.offset + field.byteLength)
+            );
+        }
     }
 }
 
@@ -98,11 +179,13 @@ function updateSemanticBlock(
 class BuiltInUniformBlockManager {
     private readonly renderer: RendererSize;
     private readonly ownedBuffers = new Set<UniformBuffer>();
-    private readonly frameBuffer: UniformBuffer;
+    private readonly frameUniformBuffer: UniformBuffer;
     private readonly cameraBuffer: UniformBuffer;
     private readonly sceneBuffer: UniformBuffer;
     private readonly lightBuffer: UniformBuffer;
-    private readonly materialBuffers = new WeakMap<Material, RevisionCachedBuffer>();
+    /** Canonical semantic bindings for pass-global blocks, independent of draw order/material. */
+    private readonly globalSemanticMaterial = new Material();
+    private readonly materialBuffers = new WeakMap<Material, MaterialCachedBuffer>();
     private readonly modelBuffers = new WeakMap<Mesh, RevisionCachedBuffer>();
     private readonly geometryBuffers = new WeakMap<Geometry, RevisionCachedBuffer>();
     private readonly skinningBuffers = new WeakMap<Mesh, FrameCachedBuffer>();
@@ -116,29 +199,51 @@ class BuiltInUniformBlockManager {
 
     constructor(renderer: RendererSize) {
         this.renderer = renderer;
-        this.frameBuffer = this.createBuffer(frameBlockLayout);
+        this.frameUniformBuffer = this.createBuffer(frameBlockLayout);
         this.cameraBuffer = this.createBuffer(cameraBlockLayout);
         this.sceneBuffer = this.createBuffer(sceneBlockLayout);
         this.lightBuffer = this.createBuffer(lightBlockLayout);
     }
 
-    beginFrame(camera: Camera): void {
+    beginFrame(camera: Camera, viewport: RendererViewport = this.defaultViewport()): void {
         this.frameIndex++;
-        this.frameBuffer
+        this.frameUniformBuffer
             .set('u_rendererSize', [this.renderer.width, this.renderer.height])
             .set('u_time', (performance.now() - this.startTime) * 0.001)
             .set('u_frameIndex', this.frameIndex);
-        this.beginPass(camera);
+        this.beginPass(camera, viewport);
     }
 
     /** Start a camera/render pass without advancing animation-frame scoped buffers. */
-    beginPass(camera: Camera): void {
+    beginPass(camera: Camera, viewport: RendererViewport = this.defaultViewport()): void {
         this.sceneRevision = -1;
         this.lightRevision = -1;
-        this.updateCamera(camera);
+        this.updateCamera(camera, viewport);
     }
 
-    private updateCamera(camera: Camera): void {
+    private defaultViewport(): RendererViewport {
+        return this.renderer.getViewport?.() ?? [0, 0, this.renderer.width, this.renderer.height];
+    }
+
+    /** Update only pass viewport state when WebGL changes it between draws. */
+    setViewport(viewport: RendererViewport): void {
+        const [x, y, width, height] = viewport;
+        if (
+            !Number.isFinite(x) ||
+            !Number.isFinite(y) ||
+            !Number.isFinite(width) ||
+            !Number.isFinite(height) ||
+            width <= 0 ||
+            height <= 0
+        ) {
+            throw new RangeError(
+                'Renderer viewport must contain finite x/y and positive width/height'
+            );
+        }
+        this.cameraBuffer.set('u_viewport', viewport);
+    }
+
+    private updateCamera(camera: Camera, viewport: RendererViewport): void {
         this.camera = camera;
         this.cameraBuffer
             .set('u_viewMatrix', camera.viewMatrix.elements)
@@ -167,6 +272,7 @@ class BuiltInUniformBlockManager {
                     : 0,
                 0
             ]);
+        this.setViewport(viewport);
     }
 
     bind(
@@ -195,7 +301,11 @@ class BuiltInUniformBlockManager {
         material: Material,
         activeCamera?: Camera | null
     ): Readonly<Record<string, UniformBuffer>> {
-        if (activeCamera && activeCamera !== this.camera) this.updateCamera(activeCamera);
+        if (activeCamera && activeCamera !== this.camera) {
+            throw new Error(
+                'Camera changed without beginPass; start every camera/render pass explicitly'
+            );
+        }
         if (!this.camera) throw new Error('Uniform blocks cannot be resolved before beginFrame');
         const result: Record<string, UniformBuffer> = {};
         for (const blockName of blockNames) {
@@ -277,19 +387,22 @@ class BuiltInUniformBlockManager {
     private getMaterialBuffer(mesh: Mesh, material: Material): UniformBuffer {
         let cached = this.materialBuffers.get(material);
         if (!cached) {
+            const buffer = this.createOwnedBuffer(materialBlockLayout, {
+                kind: 'material',
+                owner: material
+            });
+            const candidate = new ArrayBuffer(materialBlockLayout.byteLength);
             cached = {
-                buffer: this.createOwnedBuffer(materialBlockLayout, {
-                    kind: 'material',
-                    owner: material
-                }),
-                revision: -1
+                buffer,
+                candidate,
+                candidateBytes: new Uint8Array(candidate),
+                currentBytes: new Uint8Array(buffer.data),
+                initialized: false
             };
             this.materialBuffers.set(material, cached);
         }
-        if (cached.revision !== material.revision) {
-            updateSemanticBlock(cached.buffer, 'MaterialBlock', mesh, material);
-            cached.revision = material.revision;
-        }
+        packMaterialBlock(cached.candidate, cached.candidateBytes, mesh, material);
+        synchronizeMaterialBlock(cached);
         return cached.buffer;
     }
 
@@ -389,18 +502,28 @@ class BuiltInUniformBlockManager {
     ): UniformBuffer | undefined {
         switch (blockName) {
             case 'FrameBlock':
-                return this.frameBuffer;
+                return this.frameUniformBuffer;
             case 'CameraBlock':
                 return this.cameraBuffer;
             case 'SceneBlock':
                 if (this.sceneRevision !== this.frameIndex) {
-                    updateSemanticBlock(this.sceneBuffer, blockName, mesh, material);
+                    updateSemanticBlock(
+                        this.sceneBuffer,
+                        blockName,
+                        mesh,
+                        this.globalSemanticMaterial
+                    );
                     this.sceneRevision = this.frameIndex;
                 }
                 return this.sceneBuffer;
             case 'LightBlock':
                 if (this.lightRevision !== this.frameIndex) {
-                    updateSemanticBlock(this.lightBuffer, blockName, mesh, material);
+                    updateSemanticBlock(
+                        this.lightBuffer,
+                        blockName,
+                        mesh,
+                        this.globalSemanticMaterial
+                    );
                     this.lightRevision = this.frameIndex;
                 }
                 return this.lightBuffer;

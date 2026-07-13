@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 
 let diffuseTexture: Hilo3d.Texture | null = null;
 const textureMaterial = new Hilo3d.ShaderMaterial({

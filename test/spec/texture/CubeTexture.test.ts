@@ -28,4 +28,9 @@ describe('CubeTexture', () => {
         expect(texture.front).toBe(images[4]);
         expect(texture.back).toBe(images[5]);
     });
+
+    it('passes all constructor parameters through the base contract', () => {
+        expect(() => new CubeTexture({ width: 1, height: 1, depth: 2 })).toThrow(/depth must be 1/);
+        expect(new CubeTexture().target).toBe(Hilo3d.constants.TEXTURE_CUBE_MAP);
+    });
 });

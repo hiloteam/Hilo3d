@@ -1,7 +1,8 @@
-import Cache from '../utils/Cache';
 import math from '../math/math';
 import { ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, STATIC_DRAW } from '../constants/webgl';
 import requireGLResource from './requireGLResource';
+import WebGLContextCache from './WebGLContextCache';
+import type Cache from '../utils/Cache';
 import type GeometryData from '../geometry/GeometryData';
 import type GraphicsResourceManager from './GraphicsResourceManager';
 import type { GLContext, TypedArray } from './types';
@@ -11,7 +12,11 @@ export interface BufferRenderer {
     resourceManager: GraphicsResourceManager;
 }
 
-const cache = new Cache<Buffer>();
+const contextCaches = new WebGLContextCache<Buffer>();
+
+function bufferCacheKey(target: GLenum, geometryData: GeometryData): string {
+    return `${String(target)}:${geometryData.bufferViewId}`;
+}
 /**
  * 缓冲
  */
@@ -19,16 +24,19 @@ class Buffer {
     /**
      * 缓存
      */
-    static get cache(): Cache<Buffer> {
-        return cache;
+    static getCache(gl: GLContext): Cache<Buffer> {
+        return contextCaches.get(gl);
     }
     /**
      * 重置缓存
      */
-    static reset(_gl?: GLContext): void {
+    static reset(gl: GLContext): void {
+        const cache = contextCaches.peek(gl);
+        if (!cache) return;
         cache.each(buffer => {
             buffer.destroy();
         });
+        contextCaches.delete(gl);
     }
     /**
      * 生成顶点缓冲
@@ -49,7 +57,8 @@ class Buffer {
         geometryData: GeometryData,
         usage: GLenum
     ): Buffer {
-        const id = geometryData.bufferViewId;
+        const cache = contextCaches.get(gl);
+        const id = bufferCacheKey(target, geometryData);
         let buffer = cache.get(id);
         if (buffer) {
             if (buffer.needsGeometryDataUpload(geometryData)) {
@@ -199,7 +208,7 @@ class Buffer {
         }
         this.gl.deleteBuffer(this.buffer);
         this.data = null;
-        cache.removeObject(this);
+        contextCaches.peek(this.gl)?.removeObject(this);
         this._isDestroyed = true;
         return this;
     }

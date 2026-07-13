@@ -2,7 +2,7 @@ import * as Hilo3d from '../src/Hilo3d';
 import { addEnvironmentSkybox } from './shared/environment';
 import { createExampleContext } from './shared/init';
 
-const { stage, orbitControls } = createExampleContext();
+const { stage, orbitControls } = await createExampleContext();
 orbitControls.isLockZ = true;
 
 async function initialize(): Promise<void> {

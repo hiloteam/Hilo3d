@@ -1,16 +1,17 @@
 import * as Hilo3d from '../../src/Hilo3d';
+import {
+    FullscreenPass,
+    type FullscreenSamplerValue,
+    type FullscreenSamplerProvider
+} from './FullscreenPass';
 
 Hilo3d.registerUniformBlockBinding('PostProcessKernelBlock');
 
 export interface PostProcessUniformGetter {
-    get(
-        mesh: Hilo3d.Mesh | null,
-        material: Hilo3d.Material | null,
-        programInfo: Hilo3d.ProgramUniform
-    ): PostProcessSamplerValue;
+    get(): PostProcessSamplerValue;
 }
 
-export type PostProcessSamplerValue = Hilo3d.TextureBinding | readonly Hilo3d.TextureBinding[];
+export type PostProcessSamplerValue = Hilo3d.Texture<unknown> | readonly Hilo3d.Texture<unknown>[];
 
 export type PostProcessUniform = PostProcessSamplerValue | PostProcessUniformGetter;
 
@@ -21,8 +22,12 @@ export interface PostProcessPass {
     uniforms?: Record<string, PostProcessUniform>;
     uniformBlocks?: Record<string, Hilo3d.UniformBuffer>;
     prepare?: () => void;
-    clearColor?: Hilo3d.Color;
     kernel?: readonly number[];
+}
+
+interface CompiledPostProcessPass {
+    readonly fullscreen: FullscreenPass;
+    source: Hilo3d.Texture<unknown> | null;
 }
 
 const kernels: Readonly<Record<string, readonly number[]>> = Object.freeze({
@@ -48,69 +53,79 @@ const kernels: Readonly<Record<string, readonly number[]>> = Object.freeze({
     emboss: [-2, -1, 0, -1, 1, 1, 0, 1, 2]
 });
 
-function requireTexture(
-    texture: Hilo3d.TextureBinding | null,
-    description: string
-): Hilo3d.TextureBinding {
-    if (!texture) throw new Error(`${description} has no texture attachment.`);
-    return texture;
+function requireTexture(value: unknown, description: string): Hilo3d.Texture<unknown> {
+    if (!(value instanceof Hilo3d.Texture)) {
+        throw new TypeError(`${description} must resolve to an engine Texture.`);
+    }
+    return value;
 }
 
-function isTextureBinding(value: unknown): value is Hilo3d.TextureBinding {
-    return (
-        typeof value === 'object' &&
-        value !== null &&
-        'target' in value &&
-        typeof value.target === 'number' &&
-        'getGLTexture' in value &&
-        typeof value.getGLTexture === 'function'
-    );
+function resolveSampler(value: PostProcessUniform, description: string): FullscreenSamplerValue {
+    const resolved = 'get' in value ? value.get() : value;
+    if (resolved instanceof Hilo3d.Texture) return resolved;
+    if (Array.isArray(resolved) && resolved.every(item => item instanceof Hilo3d.Texture)) {
+        return resolved;
+    }
+    throw new TypeError(`${description} must resolve to a Texture or Texture array.`);
 }
 
+/** Backend-neutral post-processing graph built exclusively from public render targets and draws. */
 export class PostProcess {
     readonly passes: PostProcessPass[] = [];
     readonly kernels = kernels;
 
-    private currentRenderer: Hilo3d.WebGLRenderer | null = null;
-    private currentFrontBuffer: Hilo3d.Framebuffer | null = null;
-    private currentBackBuffer: Hilo3d.Framebuffer | null = null;
+    private currentRenderer: Hilo3d.Renderer | null = null;
+    private currentFrontBuffer: Hilo3d.RenderTarget | null = null;
+    private currentBackBuffer: Hilo3d.RenderTarget | null = null;
+    private readonly compiledPasses = new Map<PostProcessPass, CompiledPostProcessPass>();
 
-    get renderer(): Hilo3d.WebGLRenderer {
+    get renderer(): Hilo3d.Renderer {
         if (!this.currentRenderer) throw new Error('PostProcess has not been initialized.');
         return this.currentRenderer;
     }
 
-    get frontBuffer(): Hilo3d.Framebuffer {
+    get frontBuffer(): Hilo3d.RenderTarget {
+        this.ensureBuffers();
         if (!this.currentFrontBuffer) throw new Error('PostProcess front buffer is not ready.');
         return this.currentFrontBuffer;
     }
 
-    get backBuffer(): Hilo3d.Framebuffer {
+    get backBuffer(): Hilo3d.RenderTarget {
+        this.ensureBuffers();
         if (!this.currentBackBuffer) throw new Error('PostProcess back buffer is not ready.');
         return this.currentBackBuffer;
     }
 
-    init(
-        renderer: Hilo3d.WebGLRenderer,
-        framebufferOptions: Hilo3d.FramebufferParameters = {}
-    ): void {
+    init(renderer: Hilo3d.Renderer): void {
         this.destroyBuffers();
+        this.destroyCompiledPasses();
         this.currentRenderer = renderer;
-        renderer.onInit(() => {
-            if (this.currentRenderer === renderer) this.createBuffers(framebufferOptions);
-        });
     }
 
-    private createBuffers(framebufferOptions: Hilo3d.FramebufferParameters): void {
-        this.destroyBuffers();
+    private ensureBuffers(): void {
+        if (this.currentFrontBuffer && this.currentBackBuffer) return;
         const renderer = this.renderer;
-        const options: Hilo3d.FramebufferParameters = {
-            width: renderer.width,
-            height: renderer.height,
-            ...framebufferOptions
+        const parameters: Hilo3d.RenderTargetParameters = {
+            width: Math.max(1, renderer.width),
+            height: Math.max(1, renderer.height),
+            colorAttachments: [{ format: 'rgba8unorm' }],
+            depthStencilAttachment: false,
+            label: 'PostProcess ping-pong'
         };
-        this.currentFrontBuffer = new Hilo3d.Framebuffer(renderer, options);
-        this.currentBackBuffer = new Hilo3d.Framebuffer(renderer, options);
+        this.currentFrontBuffer = renderer.createRenderTarget({
+            ...parameters,
+            label: 'PostProcess front'
+        });
+        try {
+            this.currentBackBuffer = renderer.createRenderTarget({
+                ...parameters,
+                label: 'PostProcess back'
+            });
+        } catch (error) {
+            this.currentFrontBuffer.destroy();
+            this.currentFrontBuffer = null;
+            throw error;
+        }
     }
 
     private destroyBuffers(): void {
@@ -120,10 +135,17 @@ export class PostProcess {
         this.currentBackBuffer = null;
     }
 
+    private destroyCompiledPasses(): void {
+        for (const compiled of this.compiledPasses.values()) compiled.fullscreen.destroy();
+        this.compiledPasses.clear();
+    }
+
     resize(): void {
-        const { width, height } = this.renderer;
-        this.frontBuffer.resize(width, height);
-        this.backBuffer.resize(width, height);
+        if (!this.currentFrontBuffer || !this.currentBackBuffer) return;
+        const width = Math.max(1, this.renderer.width);
+        const height = Math.max(1, this.renderer.height);
+        this.currentFrontBuffer.resize(width, height);
+        this.currentBackBuffer.resize(width, height);
     }
 
     addPass(params: PostProcessPass, id = Hilo3d.math.generateUUID('pass')): PostProcessPass {
@@ -139,48 +161,53 @@ export class PostProcess {
             );
         }
 
-        const renderer = this.renderer;
         const layout = Hilo3d.createStd140Layout({
             u_textureSize: 'vec2',
             u_kernel: { type: 'float', arrayLength: 9 },
             u_kernelWeight: 'float'
         });
         const materialBlock = Hilo3d.UniformBuffer.fromSchema(layout);
-        const pass: PostProcessPass = { kernel };
-
-        pass.id = id ?? Hilo3d.math.generateUUID('pass');
-        pass.frag = `#version 300 es
-                    precision highp float;
-                    in vec2 v_texcoord0;
-                    uniform sampler2D u_diffuse;
-                    layout(std140) uniform PostProcessKernelBlock {
-                        vec2 u_textureSize;
-                        float u_kernel[9];
-                        float u_kernelWeight;
-                    };
-                    layout(location = 0) out vec4 fragmentColor;
-                    void main(void) {
-                        vec2 onePixel = vec2(1.0) / u_textureSize;
-                        vec4 colorSum =
-                            texture(u_diffuse, v_texcoord0 + onePixel * vec2(-1, -1)) * u_kernel[0] +
-                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 0, -1)) * u_kernel[1] +
-                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 1, -1)) * u_kernel[2] +
-                            texture(u_diffuse, v_texcoord0 + onePixel * vec2(-1,  0)) * u_kernel[3] +
-                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 0,  0)) * u_kernel[4] +
-                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 1,  0)) * u_kernel[5] +
-                            texture(u_diffuse, v_texcoord0 + onePixel * vec2(-1,  1)) * u_kernel[6] +
-                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 0,  1)) * u_kernel[7] +
-                            texture(u_diffuse, v_texcoord0 + onePixel * vec2( 1,  1)) * u_kernel[8];
-                        fragmentColor = colorSum / u_kernelWeight;
-                    }
-                `;
-        pass.uniformBlocks = { PostProcessKernelBlock: materialBlock };
+        const pass: PostProcessPass = {
+            id: id ?? Hilo3d.math.generateUUID('pass'),
+            kernel,
+            frag: `#version 300 es
+                precision highp float;
+                in vec2 v_texcoord0;
+                uniform sampler2D u_diffuse;
+                layout(std140) uniform PostProcessKernelBlock {
+                    vec2 u_textureSize;
+                    float u_kernel[9];
+                    float u_kernelWeight;
+                };
+                layout(location = 0) out vec4 fragmentColor;
+                void main(void) {
+                    vec2 onePixel = vec2(1.0) / u_textureSize;
+                    vec4 colorSum =
+                        texture(u_diffuse, v_texcoord0 + onePixel * vec2(-1, -1)) * u_kernel[0] +
+                        texture(u_diffuse, v_texcoord0 + onePixel * vec2( 0, -1)) * u_kernel[1] +
+                        texture(u_diffuse, v_texcoord0 + onePixel * vec2( 1, -1)) * u_kernel[2] +
+                        texture(u_diffuse, v_texcoord0 + onePixel * vec2(-1,  0)) * u_kernel[3] +
+                        texture(u_diffuse, v_texcoord0 + onePixel * vec2( 0,  0)) * u_kernel[4] +
+                        texture(u_diffuse, v_texcoord0 + onePixel * vec2( 1,  0)) * u_kernel[5] +
+                        texture(u_diffuse, v_texcoord0 + onePixel * vec2(-1,  1)) * u_kernel[6] +
+                        texture(u_diffuse, v_texcoord0 + onePixel * vec2( 0,  1)) * u_kernel[7] +
+                        texture(u_diffuse, v_texcoord0 + onePixel * vec2( 1,  1)) * u_kernel[8];
+                    fragmentColor = colorSum / u_kernelWeight;
+                }
+            `,
+            uniformBlocks: { PostProcessKernelBlock: materialBlock }
+        };
         pass.prepare = () => {
             const currentKernel = pass.kernel;
             if (currentKernel?.length !== 9) {
                 throw new RangeError('Post-process kernel must contain exactly 9 values.');
             }
-            materialBlock.set('u_textureSize', [renderer.width, renderer.height]);
+            const compiled = this.compiledPasses.get(pass);
+            const source = compiled?.source;
+            materialBlock.set('u_textureSize', [
+                source?.width ?? this.renderer.width,
+                source?.height ?? this.renderer.height
+            ]);
             materialBlock.set('u_kernel', currentKernel);
             materialBlock.set(
                 'u_kernelWeight',
@@ -194,151 +221,83 @@ export class PostProcess {
         return pass;
     }
 
-    render(): void {
-        if (this.passes.length === 0) return;
+    private compile(pass: PostProcessPass): CompiledPostProcessPass {
+        const cached = this.compiledPasses.get(pass);
+        if (cached) return cached;
+        const fragmentShader = pass.frag ?? Hilo3d.Shader.shaders['screen.frag'];
+        if (!fragmentShader) throw new Error('PostProcess requires a fragment shader.');
+        let source: Hilo3d.Texture<unknown> | null = null;
+        const samplerNames = new Set(['u_diffuse', ...Object.keys(pass.uniforms ?? {})]);
+        const samplers: Record<string, FullscreenSamplerProvider> = {};
+        for (const name of samplerNames) {
+            samplers[name] = () => {
+                const explicit = pass.uniforms?.[name];
+                if (explicit !== undefined) {
+                    return resolveSampler(explicit, `Post-process sampler ${name}`);
+                }
+                if (name === 'u_diffuse' && source) return source;
+                throw new Error(`Post-process sampler ${name} has no texture source.`);
+            };
+        }
+        const fullscreen = new FullscreenPass({
+            renderer: this.renderer,
+            fragmentShader,
+            samplers,
+            ...(pass.vert === undefined ? {} : { vertexShader: pass.vert }),
+            ...(pass.uniformBlocks === undefined ? {} : { uniformBlocks: pass.uniformBlocks }),
+            ...(pass.prepare === undefined ? {} : { prepare: pass.prepare }),
+            label: pass.id ?? Hilo3d.math.generateUUID('PostProcessPass')
+        });
+        const compiled: CompiledPostProcessPass = {
+            fullscreen,
+            get source() {
+                return source;
+            },
+            set source(value: Hilo3d.Texture<unknown> | null) {
+                source = value;
+            }
+        };
+        this.compiledPasses.set(pass, compiled);
+        return compiled;
+    }
 
-        const rendererTexture = requireTexture(
-            this.renderer.framebuffer?.texture ?? null,
-            'Renderer framebuffer'
-        );
-        let sourceTexture = rendererTexture;
-        let frontBuffer = this.frontBuffer;
-        let backBuffer = this.backBuffer;
+    render(sourceTexture: unknown, outputTarget: Hilo3d.RenderTarget | null = null): void {
+        if (this.passes.length === 0) return;
+        let source = requireTexture(sourceTexture, 'Post-process source');
+        let front = this.frontBuffer;
+        let back = this.backBuffer;
 
         this.passes.forEach((pass, index) => {
             const isLastPass = index === this.passes.length - 1;
-            if (isLastPass) this.renderer.state.bindSystemFramebuffer();
-            else frontBuffer.bind();
-
-            this.draw(sourceTexture, pass);
+            this.draw(source, pass, isLastPass ? outputTarget : front);
             if (!isLastPass) {
-                sourceTexture = requireTexture(frontBuffer.texture, 'Post-process framebuffer');
-                [frontBuffer, backBuffer] = [backBuffer, frontBuffer];
+                source = front.getColorTexture();
+                [front, back] = [back, front];
             }
         });
     }
 
-    draw(texture: Hilo3d.TextureBinding | null, pass: PostProcessPass): void {
-        const renderer = this.renderer;
-        const { gl, state } = renderer;
-        const vertexShader = pass.vert ?? Hilo3d.Shader.shaders['screen.vert'];
-        const fragmentShader = pass.frag ?? Hilo3d.Shader.shaders['screen.frag'];
-        if (!vertexShader || !fragmentShader) {
-            throw new Error(
-                'PostProcess requires the built-in screen vertex and fragment shaders.'
-            );
-        }
-
-        const depthEnabled = gl.isEnabled(gl.DEPTH_TEST);
-        const cullEnabled = gl.isEnabled(gl.CULL_FACE);
-        const blendEnabled = gl.isEnabled(gl.BLEND);
-        const uniforms = { ...(pass.uniforms ?? {}) };
-        if (texture && uniforms['u_diffuse'] === undefined) {
-            uniforms['u_diffuse'] = this.uniformTextureGetter(texture);
-        }
-
+    draw(texture: unknown, pass: PostProcessPass, target: Hilo3d.RenderTarget | null = null): void {
+        const compiled = this.compile(pass);
+        compiled.source = texture === null ? null : requireTexture(texture, 'Post-process source');
+        const previousForceMaterial = this.renderer.forceMaterial;
+        this.renderer.forceMaterial = null;
         try {
-            state.disable(gl.DEPTH_TEST);
-            state.disable(gl.CULL_FACE);
-            state.disable(gl.BLEND);
-            if (pass.clearColor) {
-                const { r, g, b, a } = pass.clearColor;
-                gl.clearColor(r, g, b, a);
-                gl.clear(gl.COLOR_BUFFER_BIT);
-            }
-
-            const passId = pass.id ?? Hilo3d.math.generateUUID('pass');
-            pass.id = passId;
-            const shader = Hilo3d.Shader.getCustomShader(vertexShader, fragmentShader, '', passId);
-            const program = Hilo3d.Program.getProgram(shader, state);
-            program.useProgram();
-            pass.prepare?.();
-            for (const name of Object.keys(program.uniformBlocks)) {
-                const uniformBuffer = pass.uniformBlocks?.[name];
-                if (!uniformBuffer) {
-                    throw new Error(`Post-process pass ${passId} does not bind ${name}.`);
-                }
-                program.setUniformBlock(name, uniformBuffer);
-            }
-
-            const vao = Hilo3d.VertexArrayObject.getVao(gl, program.id, {
-                mode: gl.TRIANGLE_STRIP
-            });
-            if (vao.isDirty) {
-                vao.isDirty = false;
-                const position = program.attributes['a_position'];
-                const texcoord = program.attributes['a_texcoord0'];
-                if (!position || !texcoord) {
-                    throw new Error('Post-process shader is missing screen-space attributes.');
-                }
-                vao.addAttribute(
-                    new Hilo3d.GeometryData(new Float32Array([-1, 1, 1, 1, -1, -1, 1, -1]), 2),
-                    position,
-                    gl.STATIC_DRAW
-                );
-                vao.addAttribute(
-                    new Hilo3d.GeometryData(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2),
-                    texcoord,
-                    gl.STATIC_DRAW
-                );
-            }
-
-            for (const [name, uniform] of Object.entries(uniforms)) {
-                const programInfo = program.uniforms[name];
-                if (!programInfo) continue;
-                const value =
-                    !isTextureBinding(uniform) && !Array.isArray(uniform) && 'get' in uniform
-                        ? uniform.get(null, null, programInfo)
-                        : uniform;
-                const firstTextureIndex = programInfo.textureIndex;
-                if (firstTextureIndex === undefined) {
-                    throw new Error(`Post-process sampler ${name} has no texture-unit allocation.`);
-                }
-                if (isTextureBinding(value)) {
-                    state.activeTexture(gl.TEXTURE0 + firstTextureIndex);
-                    state.bindTexture(value.target, value.getGLTexture(state));
-                    program.setUniform(name, firstTextureIndex);
-                } else if (Array.isArray(value) && value.every(isTextureBinding)) {
-                    if (value.length !== programInfo.size) {
-                        throw new RangeError(
-                            `Post-process sampler ${name} requires ${String(programInfo.size)} textures; received ${String(value.length)}.`
-                        );
-                    }
-                    const textureUnits = value.map((samplerTexture, index) => {
-                        const textureIndex = firstTextureIndex + index;
-                        state.activeTexture(gl.TEXTURE0 + textureIndex);
-                        state.bindTexture(
-                            samplerTexture.target,
-                            samplerTexture.getGLTexture(state)
-                        );
-                        return textureIndex;
-                    });
-                    program.setUniform(name, textureUnits);
-                } else {
-                    throw new TypeError(
-                        `Post-process sampler ${name} must resolve to a Texture or Texture array.`
-                    );
-                }
-            }
-            vao.draw();
+            compiled.fullscreen.render(target);
         } finally {
-            if (depthEnabled) state.enable(gl.DEPTH_TEST);
-            else state.disable(gl.DEPTH_TEST);
-            if (cullEnabled) state.enable(gl.CULL_FACE);
-            else state.disable(gl.CULL_FACE);
-            if (blendEnabled) state.enable(gl.BLEND);
-            else state.disable(gl.BLEND);
+            this.renderer.forceMaterial = previousForceMaterial;
         }
     }
 
-    uniformTextureGetter(texture: Hilo3d.TextureBinding | null): PostProcessUniformGetter {
+    uniformTextureGetter(texture: unknown): PostProcessUniformGetter {
         return {
-            get: () => Hilo3d.semantic.handlerTexture(texture)
+            get: () => requireTexture(texture, 'Post-process uniform')
         };
     }
 
     destroy(): void {
         this.destroyBuffers();
+        this.destroyCompiledPasses();
         this.passes.length = 0;
         this.currentRenderer = null;
     }

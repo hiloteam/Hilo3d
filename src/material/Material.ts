@@ -117,6 +117,22 @@ export interface MaterialParameters {
     onBeforeCompile?: MaterialBeforeCompile | null;
 }
 
+const LIGHT_TYPE_RENDER_OPTIONS: Readonly<Record<string, string>> = Object.freeze({
+    NONE: 'LIGHT_TYPE_NONE',
+    PHONG: 'LIGHT_TYPE_PHONG',
+    'BLINN-PHONG': 'LIGHT_TYPE_BLINN_PHONG',
+    LAMBERT: 'LIGHT_TYPE_LAMBERT',
+    PBR: 'LIGHT_TYPE_PBR'
+});
+
+function lightTypeRenderOption(lightType: string): string {
+    const option = LIGHT_TYPE_RENDER_OPTIONS[lightType];
+    if (!option) {
+        throw new RangeError(`Unsupported material light type: ${lightType}`);
+    }
+    return option;
+}
+
 export interface InstancedUniform {
     name: string;
     info: MaterialBindingInfo;
@@ -555,6 +571,7 @@ class Material {
     addBasicUniforms(): void {
         this.copyBindings(this.uniforms, {
             u_modelMatrix: 'MODEL',
+            u_objectIdColor: 'OBJECTIDCOLOR',
             u_viewMatrix: 'VIEW',
             u_projectionMatrix: 'PROJECTION',
             u_modelViewMatrix: 'MODELVIEW',
@@ -650,7 +667,7 @@ class Material {
      */
     getRenderOption(option: ShaderOptions = {}): ShaderOptions {
         const lightType = this.lightType;
-        option[`LIGHT_TYPE_${lightType}`] = 1;
+        option[lightTypeRenderOption(lightType)] = 1;
         option['SIDE'] = this.side;
         if (lightType !== 'NONE') {
             option['HAS_LIGHT'] = 1;

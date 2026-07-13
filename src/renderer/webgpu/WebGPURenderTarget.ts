@@ -26,64 +26,51 @@ import {
     UNSIGNED_INT_24_8
 } from '../../constants/webgl2';
 import Texture from '../../texture/Texture';
+import type {
+    RenderTarget,
+    RenderTargetColorAttachmentOptions,
+    RenderTargetColorAttachmentReadback,
+    RenderTargetColorFormat,
+    RenderTargetDepthStencilAttachmentOptions,
+    RenderTargetDepthStencilFormat,
+    RenderTargetParameters,
+    RenderTargetReadColorAttachmentOptions
+} from '../RenderTarget';
 import { WebGPUBufferUsage, WebGPUMapMode, WebGPUTextureUsage } from './WebGPUConstants';
 import {
     createWebGPUSamplerDescriptor,
     resolveWebGPUTextureFormat,
     type default as WebGPUTextureManager,
+    type WebGPUExternalTextureRegistration,
     type WebGPUTextureFormatInfo,
     type WebGPUTextureResource
 } from './WebGPUTextureManager';
 
 export const WEBGPU_BYTES_PER_ROW_ALIGNMENT = 256;
 
-export type WebGPUColorRenderTargetFormat =
-    'rgba8unorm' | 'rgba8unorm-srgb' | 'rgba16float' | 'rgba32float';
+export type WebGPUColorRenderTargetFormat = RenderTargetColorFormat;
 
-export type WebGPUDepthStencilRenderTargetFormat =
-    | 'depth16unorm'
-    | 'depth24plus'
-    | 'depth24plus-stencil8'
-    | 'depth32float'
-    | 'depth32float-stencil8';
+export type WebGPUDepthStencilRenderTargetFormat = RenderTargetDepthStencilFormat;
 
-export interface WebGPUColorAttachmentOptions {
+export interface WebGPUColorAttachmentOptions extends RenderTargetColorAttachmentOptions {
     /** Stable engine texture identity exposed to materials; its GPU allocation becomes target-owned. */
     readonly texture?: Texture<unknown>;
     /** Native target format. It must agree with `texture` when both are supplied. */
-    readonly format?: WebGPUColorRenderTargetFormat;
-    readonly clearValue?: GPUColor;
-    readonly loadOp?: GPULoadOp;
-    readonly storeOp?: GPUStoreOp;
-    readonly label?: string;
 }
 
-export interface WebGPUDepthStencilAttachmentOptions {
+export interface WebGPUDepthStencilAttachmentOptions extends RenderTargetDepthStencilAttachmentOptions {
     /** Supplying a texture implies `sampled: true`. */
     readonly texture?: Texture<unknown>;
-    readonly format?: WebGPUDepthStencilRenderTargetFormat;
-    /** Depth sampling is opt-in and is unavailable when MSAA is enabled. */
-    readonly sampled?: boolean;
-    readonly compare?: GPUCompareFunction;
-    readonly depthClearValue?: number;
-    readonly depthLoadOp?: GPULoadOp;
-    readonly depthStoreOp?: GPUStoreOp;
-    readonly stencilClearValue?: GPUStencilValue;
-    readonly stencilLoadOp?: GPULoadOp;
-    readonly stencilStoreOp?: GPUStoreOp;
-    readonly label?: string;
 }
 
-export interface WebGPURenderTargetParameters {
-    readonly width: number;
-    readonly height: number;
+export interface WebGPURenderTargetParameters extends Omit<
+    RenderTargetParameters,
+    'colorAttachments' | 'depthStencilAttachment'
+> {
     /** Defaults to one sampleable rgba8unorm attachment; an empty array creates a depth-only target. */
     readonly colorAttachments?: readonly WebGPUColorAttachmentOptions[];
     /** Defaults to a non-sampled depth24plus-stencil8 attachment. */
     readonly depthStencilAttachment?: WebGPUDepthStencilAttachmentOptions | false;
-    /** Core WebGPU guarantees sample counts 1 and 4. */
-    readonly sampleCount?: 1 | 4;
-    readonly label?: string;
 }
 
 export interface WebGPUColorAttachmentOperations {
@@ -108,23 +95,10 @@ export interface WebGPURenderPassOptions {
     readonly label?: string;
 }
 
-export interface WebGPUReadColorAttachmentOptions {
-    readonly attachmentIndex?: number;
-    readonly x?: number;
-    readonly y?: number;
-    readonly width?: number;
-    readonly height?: number;
-}
+export type WebGPUReadColorAttachmentOptions = RenderTargetReadColorAttachmentOptions;
 
 /** Tightly packed raw texel bytes in the attachment's native format. */
-export interface WebGPUColorAttachmentReadback {
-    readonly data: Uint8Array;
-    readonly format: WebGPUColorRenderTargetFormat;
-    readonly width: number;
-    readonly height: number;
-    readonly bytesPerPixel: number;
-    readonly bytesPerRow: number;
-}
+export type WebGPUColorAttachmentReadback = RenderTargetColorAttachmentReadback;
 
 interface ColorAttachmentState {
     readonly texture: Texture<unknown>;
@@ -153,6 +127,23 @@ interface DepthStencilAttachmentState {
     readonly label: string;
     gpuTexture: GPUTexture | null;
     renderView: GPUTextureView | null;
+}
+
+interface StagedColorAttachmentResources {
+    readonly attachment: ColorAttachmentState;
+    readonly gpuTexture: GPUTexture;
+    readonly multisampleTexture: GPUTexture | null;
+    readonly multisampleView: GPUTextureView | null;
+}
+
+interface StagedDepthStencilResources {
+    readonly gpuTexture: GPUTexture;
+    readonly renderView: GPUTextureView;
+}
+
+interface StagedRenderTargetResources {
+    readonly colors: readonly StagedColorAttachmentResources[];
+    readonly depth: StagedDepthStencilResources | null;
 }
 
 const COLOR_FORMATS = new Set<GPUTextureFormat>([
@@ -446,11 +437,10 @@ function normalizeDepthStencilAttachment(
  * Device-scoped WebGPU render target with sampleable color resolves, optional depth/stencil,
  * explicit multisampling and aligned asynchronous readback.
  */
-export default class WebGPURenderTarget {
+export default class WebGPURenderTarget implements RenderTarget {
+    readonly backend = 'webgpu' as const;
     readonly className = 'WebGPURenderTarget';
     readonly isWebGPURenderTarget = true;
-    readonly device: GPUDevice;
-    readonly textureManager: WebGPUTextureManager;
     readonly sampleCount: 1 | 4;
     readonly label: string;
     readonly colorTextures: readonly Texture<unknown>[];
@@ -459,9 +449,21 @@ export default class WebGPURenderTarget {
 
     private _width: number;
     private _height: number;
+    private _device: GPUDevice;
+    private _textureManager: WebGPUTextureManager;
     private readonly colorAttachments: ColorAttachmentState[];
     private readonly depthStencilAttachment: DepthStencilAttachmentState | null;
     private destroyed = false;
+    private resourcesAvailable = false;
+    private readonly onDestroy: (target: WebGPURenderTarget) => void;
+
+    get device(): GPUDevice {
+        return this._device;
+    }
+
+    get textureManager(): WebGPUTextureManager {
+        return this._textureManager;
+    }
 
     get width(): number {
         return this._width;
@@ -486,7 +488,8 @@ export default class WebGPURenderTarget {
     constructor(
         device: GPUDevice,
         textureManager: WebGPUTextureManager,
-        parameters: WebGPURenderTargetParameters
+        parameters: WebGPURenderTargetParameters,
+        onDestroy: (target: WebGPURenderTarget) => void = () => undefined
     ) {
         if (textureManager.device !== device) {
             throw new TypeError(
@@ -497,8 +500,9 @@ export default class WebGPURenderTarget {
         assertPositiveInteger(parameters.height, 'Render-target height');
         const sampleCount: unknown = parameters.sampleCount ?? 1;
         assertSampleCount(sampleCount);
-        this.device = device;
-        this.textureManager = textureManager;
+        this._device = device;
+        this._textureManager = textureManager;
+        this.onDestroy = onDestroy;
         this.sampleCount = sampleCount;
         this.label = parameters.label ?? 'WebGPURenderTarget';
         this._width = parameters.width;
@@ -549,6 +553,13 @@ export default class WebGPURenderTarget {
         if (this.destroyed) throw new Error('WebGPURenderTarget has been destroyed');
     }
 
+    private assertResourcesAvailable(): void {
+        this.assertAlive();
+        if (!this.resourcesAvailable) {
+            throw new Error('WebGPURenderTarget GPU resources are unavailable during recovery');
+        }
+    }
+
     private validateDeviceLimits(width: number, height: number): void {
         const { limits } = this.device;
         if (width > limits.maxTextureDimension2D || height > limits.maxTextureDimension2D) {
@@ -596,6 +607,7 @@ export default class WebGPURenderTarget {
     }
 
     private createResources(): void {
+        this.resourcesAvailable = false;
         for (const attachment of this.colorAttachments) {
             attachment.texture.width = this._width;
             attachment.texture.height = this._height;
@@ -610,6 +622,7 @@ export default class WebGPURenderTarget {
                 format: attachment.format,
                 usage:
                     WebGPUTextureUsage.COPY_SRC |
+                    WebGPUTextureUsage.COPY_DST |
                     WebGPUTextureUsage.TEXTURE_BINDING |
                     WebGPUTextureUsage.RENDER_ATTACHMENT
             });
@@ -635,7 +648,10 @@ export default class WebGPURenderTarget {
         }
 
         const depth = this.depthStencilAttachment;
-        if (!depth) return;
+        if (!depth) {
+            this.resourcesAvailable = true;
+            return;
+        }
         if (depth.texture) {
             depth.texture.width = this._width;
             depth.texture.height = this._height;
@@ -670,11 +686,13 @@ export default class WebGPURenderTarget {
                 throw error;
             }
         }
+        this.resourcesAvailable = true;
     }
 
     private releaseResources(): void {
+        this.resourcesAvailable = false;
         for (const attachment of this.colorAttachments) {
-            this.textureManager.destroy(attachment.texture);
+            if (attachment.resource) this.textureManager.destroy(attachment.texture);
             attachment.resource = null;
             attachment.multisampleTexture?.destroy();
             attachment.multisampleTexture = null;
@@ -691,6 +709,118 @@ export default class WebGPURenderTarget {
         depth.renderView = null;
     }
 
+    private stageResources(width: number, height: number): StagedRenderTargetResources {
+        const colors: StagedColorAttachmentResources[] = [];
+        let depth: StagedDepthStencilResources | null = null;
+        try {
+            for (const attachment of this.colorAttachments) {
+                const gpuTexture = this.device.createTexture({
+                    label: attachment.label,
+                    size: { width, height, depthOrArrayLayers: 1 },
+                    mipLevelCount: 1,
+                    sampleCount: 1,
+                    dimension: '2d',
+                    format: attachment.format,
+                    usage:
+                        WebGPUTextureUsage.COPY_SRC |
+                        WebGPUTextureUsage.COPY_DST |
+                        WebGPUTextureUsage.TEXTURE_BINDING |
+                        WebGPUTextureUsage.RENDER_ATTACHMENT
+                });
+                let multisampleTexture: GPUTexture | null = null;
+                let multisampleView: GPUTextureView | null = null;
+                try {
+                    if (this.sampleCount > 1) {
+                        multisampleTexture = this.device.createTexture({
+                            label: `${attachment.label}.multisample`,
+                            size: { width, height, depthOrArrayLayers: 1 },
+                            mipLevelCount: 1,
+                            sampleCount: this.sampleCount,
+                            dimension: '2d',
+                            format: attachment.format,
+                            usage: WebGPUTextureUsage.RENDER_ATTACHMENT
+                        });
+                        multisampleView = multisampleTexture.createView({ dimension: '2d' });
+                    }
+                } catch (error) {
+                    gpuTexture.destroy();
+                    multisampleTexture?.destroy();
+                    throw error;
+                }
+                colors.push({
+                    attachment,
+                    gpuTexture,
+                    multisampleTexture,
+                    multisampleView
+                });
+            }
+
+            const attachment = this.depthStencilAttachment;
+            if (attachment) {
+                const gpuTexture = this.device.createTexture({
+                    label: attachment.label,
+                    size: { width, height, depthOrArrayLayers: 1 },
+                    mipLevelCount: 1,
+                    sampleCount: this.sampleCount,
+                    dimension: '2d',
+                    format: attachment.format,
+                    usage:
+                        WebGPUTextureUsage.RENDER_ATTACHMENT |
+                        (attachment.sampled ? WebGPUTextureUsage.TEXTURE_BINDING : 0)
+                });
+                try {
+                    depth = {
+                        gpuTexture,
+                        renderView: gpuTexture.createView({ dimension: '2d' })
+                    };
+                } catch (error) {
+                    gpuTexture.destroy();
+                    throw error;
+                }
+            }
+            return { colors, depth };
+        } catch (error) {
+            for (const color of colors) {
+                color.gpuTexture.destroy();
+                color.multisampleTexture?.destroy();
+            }
+            throw error;
+        }
+    }
+
+    private destroyStagedUnregisteredResources(staged: StagedRenderTargetResources): void {
+        for (const color of staged.colors) color.multisampleTexture?.destroy();
+        if (staged.depth && this.depthStencilAttachment?.texture === null) {
+            staged.depth.gpuTexture.destroy();
+        }
+    }
+
+    /** @internal Suspend native allocations while retaining the public target and textures. */
+    suspendDeviceResources(): void {
+        if (this.destroyed) return;
+        this.releaseResources();
+    }
+
+    /** @internal Recreate native allocations on a replacement WebGPU device. */
+    restoreDeviceResources(device: GPUDevice, textureManager: WebGPUTextureManager): void {
+        this.assertAlive();
+        if (textureManager.device !== device) {
+            throw new TypeError(
+                'WebGPURenderTarget and WebGPUTextureManager must use the same device'
+            );
+        }
+        this.releaseResources();
+        this._device = device;
+        this._textureManager = textureManager;
+        this.validateDeviceLimits(this._width, this._height);
+        try {
+            this.createResources();
+        } catch (error) {
+            this.releaseResources();
+            throw error;
+        }
+    }
+
     getColorTexture(index = 0): Texture<unknown> {
         this.assertAlive();
         const texture = this.colorAttachments[index]?.texture;
@@ -699,8 +829,12 @@ export default class WebGPURenderTarget {
         return texture;
     }
 
+    getDepthTexture(): Texture<unknown> | null {
+        return this.depthTexture;
+    }
+
     getColorGPUTexture(index = 0): GPUTexture {
-        this.assertAlive();
+        this.assertResourcesAvailable();
         const texture = this.colorAttachments[index]?.resource?.gpuTexture;
         if (!texture)
             throw new RangeError(`Color attachment index ${String(index)} is out of range`);
@@ -708,7 +842,7 @@ export default class WebGPURenderTarget {
     }
 
     getDepthStencilGPUTexture(): GPUTexture | null {
-        this.assertAlive();
+        this.assertResourcesAvailable();
         return this.depthStencilAttachment?.gpuTexture ?? null;
     }
 
@@ -725,7 +859,7 @@ export default class WebGPURenderTarget {
     }
 
     createRenderPassDescriptor(options: WebGPURenderPassOptions = {}): GPURenderPassDescriptor {
-        this.assertAlive();
+        this.assertResourcesAvailable();
         const colorOperations = options.colorAttachments;
         if (
             colorOperations !== undefined &&
@@ -812,22 +946,107 @@ export default class WebGPURenderTarget {
         assertPositiveInteger(height, 'Render-target height');
         this.validateDeviceLimits(width, height);
         if (width === this._width && height === this._height) return;
-        this.releaseResources();
-        this._width = width;
-        this._height = height;
+        if (!this.resourcesAvailable) {
+            this._width = width;
+            this._height = height;
+            for (const attachment of this.colorAttachments) {
+                attachment.texture.width = width;
+                attachment.texture.height = height;
+            }
+            const depthTexture = this.depthStencilAttachment?.texture;
+            if (depthTexture) {
+                depthTexture.width = width;
+                depthTexture.height = height;
+            }
+            return;
+        }
+
+        const staged = this.stageResources(width, height);
+        const previousColorDimensions = this.colorAttachments.map(attachment => ({
+            width: attachment.texture.width,
+            height: attachment.texture.height
+        }));
+        const depthTexture = this.depthStencilAttachment?.texture ?? null;
+        const previousDepthDimensions = depthTexture
+            ? { width: depthTexture.width, height: depthTexture.height }
+            : null;
+        for (const attachment of this.colorAttachments) {
+            attachment.texture.width = width;
+            attachment.texture.height = height;
+        }
+        if (depthTexture) {
+            depthTexture.width = width;
+            depthTexture.height = height;
+        }
+
+        const registrations: WebGPUExternalTextureRegistration[] = staged.colors.map(color => ({
+            texture: color.attachment.texture,
+            gpuTexture: color.gpuTexture,
+            options: { takeOwnership: true }
+        }));
+        const depth = this.depthStencilAttachment;
+        if (depth?.texture && staged.depth) {
+            registrations.push({
+                texture: depth.texture,
+                gpuTexture: staged.depth.gpuTexture,
+                options: {
+                    takeOwnership: true,
+                    compare: depth.compare,
+                    viewDescriptor: {
+                        dimension: '2d',
+                        aspect: hasStencil(depth.format) ? 'depth-only' : 'all'
+                    }
+                }
+            });
+        }
+
+        let resources: readonly WebGPUTextureResource[];
         try {
-            this.createResources();
+            resources = this.textureManager.replaceExternalBatch(registrations);
         } catch (error) {
-            this.releaseResources();
-            this.destroyed = true;
+            this.colorAttachments.forEach((attachment, index) => {
+                const dimensions = previousColorDimensions[index];
+                if (!dimensions) return;
+                attachment.texture.width = dimensions.width;
+                attachment.texture.height = dimensions.height;
+            });
+            if (depthTexture && previousDepthDimensions) {
+                depthTexture.width = previousDepthDimensions.width;
+                depthTexture.height = previousDepthDimensions.height;
+            }
+            this.destroyStagedUnregisteredResources(staged);
             throw error;
         }
+
+        const previousMultisampleTextures = this.colorAttachments.map(
+            attachment => attachment.multisampleTexture
+        );
+        const previousDepthGPUTexture = depth?.gpuTexture ?? null;
+        for (const [index, stagedColor] of staged.colors.entries()) {
+            const resource = resources[index];
+            if (!resource) {
+                throw new Error(
+                    `Atomic external-texture replacement omitted color attachment ${String(index)}`
+                );
+            }
+            stagedColor.attachment.resource = resource;
+            stagedColor.attachment.multisampleTexture = stagedColor.multisampleTexture;
+            stagedColor.attachment.multisampleView = stagedColor.multisampleView;
+        }
+        if (depth && staged.depth) {
+            depth.gpuTexture = staged.depth.gpuTexture;
+            depth.renderView = staged.depth.renderView;
+        }
+        this._width = width;
+        this._height = height;
+        for (const texture of previousMultisampleTextures) texture?.destroy();
+        if (depth?.texture === null) previousDepthGPUTexture?.destroy();
     }
 
     async readColorAttachment(
         options: WebGPUReadColorAttachmentOptions = {}
     ): Promise<WebGPUColorAttachmentReadback> {
-        this.assertAlive();
+        this.assertResourcesAvailable();
         const attachmentIndex = options.attachmentIndex ?? 0;
         if (!Number.isInteger(attachmentIndex) || attachmentIndex < 0) {
             throw new RangeError('Color attachment index must be a non-negative integer');
@@ -911,5 +1130,6 @@ export default class WebGPURenderTarget {
         if (this.destroyed) return;
         this.releaseResources();
         this.destroyed = true;
+        this.onDestroy(this);
     }
 }

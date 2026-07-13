@@ -5,7 +5,10 @@ import { CLAMP_TO_EDGE, FLOAT, NEAREST, RGBA, TEXTURE_2D } from '../constants/we
 import { RGBA32F } from '../constants/webgl2';
 import type { TypedArray, TypedArrayConstructor } from '../renderer/types';
 
-export interface DataTextureParameters extends Omit<TextureParameters<TypedArray>, 'image'> {
+export interface DataTextureParameters extends Omit<
+    TextureParameters<TypedArray>,
+    'image' | 'target'
+> {
     image?: TypedArray | null;
     data?: ArrayLike<number> | TypedArray | null;
 }
@@ -15,14 +18,6 @@ export interface DataTextureParameters extends Omit<TextureParameters<TypedArray
 class DataTexture extends Texture<TypedArray> {
     isDataTexture = true;
     override readonly className: string = 'DataTexture';
-    override target = TEXTURE_2D;
-    override internalFormat = RGBA32F;
-    override format = RGBA;
-    override type = FLOAT;
-    override magFilter = NEAREST;
-    override minFilter = NEAREST;
-    override wrapS = CLAMP_TO_EDGE;
-    override wrapT = CLAMP_TO_EDGE;
     dataLength = 0;
     private DataClass: TypedArrayConstructor = Float32Array;
 
@@ -76,8 +71,19 @@ class DataTexture extends Texture<TypedArray> {
      * - `params.data`: 数据
      */
     constructor(params: DataTextureParameters = {}) {
-        super();
-        Object.assign(this, params);
+        const { data, ...textureParameters } = params;
+        super({
+            internalFormat: RGBA32F,
+            format: RGBA,
+            type: FLOAT,
+            magFilter: NEAREST,
+            minFilter: NEAREST,
+            wrapS: CLAMP_TO_EDGE,
+            wrapT: CLAMP_TO_EDGE,
+            ...textureParameters,
+            target: TEXTURE_2D
+        });
+        if (data !== undefined) this.data = data;
     }
 }
 export default DataTexture;

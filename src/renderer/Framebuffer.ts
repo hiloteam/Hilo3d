@@ -1,30 +1,22 @@
-import Shader, { type ShaderPrecisionProvider } from '../shader/Shader';
-import screenVert from '../shader/screen.vert';
-import screenFrag from '../shader/screen.frag';
-import Cache from '../utils/Cache';
-import Program from './Program';
-import VertexArrayObject from './VertexArrayObject';
 import math from '../math/math';
 import Color from '../math/Color';
-import GeometryData from '../geometry/GeometryData';
-import Texture, { type TextureBinding } from '../texture/Texture';
+import Texture, { releaseTextureWebGLAllocation, type TextureBinding } from '../texture/Texture';
 import { getTypedArrayClass } from '../utils/util';
 import {
     CLAMP_TO_EDGE,
     COLOR_ATTACHMENT0,
     COLOR_BUFFER_BIT,
-    CULL_FACE,
     DEPTH_STENCIL_ATTACHMENT,
-    DEPTH_TEST,
     FRAMEBUFFER,
     NEAREST,
     RGBA,
     TEXTURE_2D,
-    TRIANGLE_STRIP,
     UNSIGNED_BYTE
 } from '../constants/webgl';
 import { DEPTH24_STENCIL8, DRAW_FRAMEBUFFER, READ_FRAMEBUFFER, RGBA8 } from '../constants/webgl2';
 import requireGLResource from './requireGLResource';
+import WebGLContextCache from './WebGLContextCache';
+import type Cache from '../utils/Cache';
 import type WebGLState from './WebGLState';
 import type { GLContext, TypedArray } from './types';
 
@@ -89,7 +81,7 @@ export interface CopyFramebufferOptions {
 }
 
 /** Minimal renderer contract needed to allocate a framebuffer lazily. */
-export interface FramebufferRenderer extends ShaderPrecisionProvider {
+export interface FramebufferRenderer {
     readonly isInit: boolean;
     readonly gl: GLContext | null;
     readonly state: WebGLState | null;
@@ -111,7 +103,7 @@ export interface ResolvedAttachmentOptions {
     data: TypedArray | null;
 }
 
-const cache = new Cache<Framebuffer>();
+const contextCaches = new WebGLContextCache<Framebuffer>();
 const defaultAttachmentOptions: ResolvedAttachmentOptions = {
     framebufferTarget: FRAMEBUFFER,
     attachment: COLOR_ATTACHMENT0,
@@ -131,20 +123,38 @@ class Framebuffer {
     static readonly ATTACHMENT_TYPE_TEXTURE: FramebufferAttachmentType = 'TEXTURE';
     static readonly ATTACHMENT_TYPE_RENDERBUFFER: FramebufferAttachmentType = 'RENDERBUFFER';
 
-    static get cache(): Cache<Framebuffer> {
-        return cache;
+    static getCache(gl: GLContext): Cache<Framebuffer> {
+        return contextCaches.get(gl);
     }
 
-    static reset(_gl?: GLContext): void {
+    static reset(gl: GLContext): void {
+        const cache = contextCaches.peek(gl);
+        if (!cache) return;
+        const framebuffers: Framebuffer[] = [];
         cache.each(framebuffer => {
-            framebuffer.reset();
+            framebuffers.push(framebuffer);
         });
+        const errors: unknown[] = [];
+        for (const framebuffer of framebuffers) {
+            try {
+                framebuffer.reset();
+            } catch (error) {
+                errors.push(error);
+            }
+        }
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) {
+            throw new AggregateError(errors, 'One or more WebGL framebuffers failed to reset');
+        }
     }
 
-    static destroy(_gl?: GLContext): void {
+    static destroy(gl: GLContext): void {
+        const cache = contextCaches.peek(gl);
+        if (!cache) return;
         cache.each(framebuffer => {
             framebuffer.destroy();
         });
+        contextCaches.delete(gl);
     }
 
     readonly className = 'Framebuffer';
@@ -175,7 +185,10 @@ class Framebuffer {
 
     private _isInit = false;
     private _isDestroyed = false;
-    private _preFramebuffer: WebGLFramebuffer | null = null;
+    private _preReadFramebuffer: WebGLFramebuffer | null = null;
+    private _preDrawFramebuffer: WebGLFramebuffer | null = null;
+    private _hasSavedFramebufferBindings = false;
+    private registeredContext: GLContext | null = null;
 
     get gl(): GLContext {
         const gl = this.renderer.gl;
@@ -224,31 +237,59 @@ class Framebuffer {
                 internalFormat: DEPTH24_STENCIL8
             };
         }
-        cache.add(this.id, this);
+        this.registerContext();
+    }
+
+    private registerContext(): void {
+        const gl = this.renderer.gl;
+        if (!gl || this.registeredContext === gl) return;
+        if (this.registeredContext) {
+            contextCaches.peek(this.registeredContext)?.removeObject(this);
+        }
+        contextCaches.get(gl).add(this.id, this);
+        this.registeredContext = gl;
     }
 
     init(): void {
         if (this._isDestroyed) throw new Error('Cannot initialize a destroyed framebuffer');
+        this.registerContext();
         if (!this._isInit && this.renderer.isInit) {
-            this._isInit = true;
             this.reset();
         }
     }
 
     reset(): void {
         if (!this.renderer.isInit) return;
-        this._isInit = true;
-        this.destroyResource();
-        this.framebuffer = requireGLResource(this.gl.createFramebuffer(), 'a framebuffer');
-        this.bind();
-        this.createAttachments();
-        if (!this.isComplete()) {
-            const status = this.gl.checkFramebufferStatus(this.gl.FRAMEBUFFER);
-            this.unbind();
-            this.destroyResource();
-            throw new Error(`Framebuffer is incomplete (status ${String(status)})`);
+        this.registerContext();
+        const { gl, state } = this;
+        const staleFramebuffer = this.framebuffer;
+        const previousReadFramebuffer = state.currentReadFramebuffer;
+        const previousDrawFramebuffer = state.currentDrawFramebuffer;
+        const restoreReadFramebuffer =
+            previousReadFramebuffer === staleFramebuffer
+                ? state.systemFramebuffer
+                : previousReadFramebuffer;
+        const restoreDrawFramebuffer =
+            previousDrawFramebuffer === staleFramebuffer
+                ? state.systemFramebuffer
+                : previousDrawFramebuffer;
+        this.releaseNativeResources(true);
+        try {
+            this.framebuffer = requireGLResource(gl.createFramebuffer(), 'a framebuffer');
+            state.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+            this.createAttachments();
+            const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+            if (status !== gl.FRAMEBUFFER_COMPLETE) {
+                throw new Error(`Framebuffer is incomplete (status ${String(status)})`);
+            }
+            this._isInit = true;
+        } catch (error) {
+            this.releaseNativeResources(true);
+            throw error;
+        } finally {
+            state.bindFramebuffer(gl.READ_FRAMEBUFFER, restoreReadFramebuffer);
+            state.bindFramebuffer(gl.DRAW_FRAMEBUFFER, restoreDrawFramebuffer);
         }
-        this.unbind();
     }
 
     private resolveAttachmentOptions(info: FramebufferAttachmentInfo): ResolvedAttachmentOptions {
@@ -283,7 +324,12 @@ class Framebuffer {
             );
         }
 
-        if (drawBuffers.length > 1) this.gl.drawBuffers(drawBuffers);
+        if (drawBuffers.length === 0) {
+            this.gl.drawBuffers([this.gl.NONE]);
+            this.gl.readBuffer(this.gl.NONE);
+        } else if (drawBuffers.length > 1) {
+            this.gl.drawBuffers(drawBuffers);
+        }
     }
 
     private createAttachment(info: FramebufferAttachmentInfo, attachment: GLenum): void {
@@ -330,7 +376,13 @@ class Framebuffer {
         attachment: GLenum
     ): FramebufferTexture {
         const options = this.resolveAttachmentOptions(info);
-        const texture = this.createTexture(options);
+        const texture = info.texture ?? this.createTexture(options);
+        if (texture instanceof Texture) {
+            texture.width = this.width;
+            texture.height = this.height;
+        }
+        info.texture = texture;
+        if (attachment === COLOR_ATTACHMENT0) this.texture = texture;
         const glTexture = texture.getGLTexture(this.state);
         const textureTarget =
             options.target === this.gl.TEXTURE_CUBE_MAP
@@ -343,8 +395,6 @@ class Framebuffer {
             glTexture,
             0
         );
-        info.texture = texture;
-        if (attachment === COLOR_ATTACHMENT0) this.texture = texture;
         return texture;
     }
 
@@ -354,6 +404,8 @@ class Framebuffer {
     ): WebGLRenderbuffer {
         const gl = this.gl;
         const renderbuffer = requireGLResource(gl.createRenderbuffer(), 'a renderbuffer');
+        info.renderbuffer = renderbuffer;
+        if (attachment === COLOR_ATTACHMENT0) this.renderbuffer = renderbuffer;
         gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer);
         const internalFormat = info.internalFormat ?? this.bufferInternalFormat;
         const samples = info.samples ?? 0;
@@ -374,28 +426,53 @@ class Framebuffer {
             gl.RENDERBUFFER,
             renderbuffer
         );
-        info.renderbuffer = renderbuffer;
-        if (attachment === COLOR_ATTACHMENT0) this.renderbuffer = renderbuffer;
         return renderbuffer;
     }
 
     isComplete(): boolean {
-        return (
-            this._isInit &&
-            this.gl.checkFramebufferStatus(this.gl.FRAMEBUFFER) === this.gl.FRAMEBUFFER_COMPLETE
-        );
+        if (!this._isInit || !this.framebuffer) return false;
+        const { gl, state } = this;
+        const previousReadFramebuffer = state.currentReadFramebuffer;
+        const previousDrawFramebuffer = state.currentDrawFramebuffer;
+        state.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+        try {
+            return gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+        } finally {
+            state.bindFramebuffer(gl.READ_FRAMEBUFFER, previousReadFramebuffer);
+            state.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousDrawFramebuffer);
+        }
     }
 
     bind(): void {
         this.init();
         if (!this._isInit) return;
-        this._preFramebuffer = this.state.currentFramebuffer;
-        this.state.bindFramebuffer(this.gl.FRAMEBUFFER, this.framebuffer);
+        const { gl, state } = this;
+        if (
+            state.currentReadFramebuffer === this.framebuffer &&
+            state.currentDrawFramebuffer === this.framebuffer
+        ) {
+            return;
+        }
+        if (!this._hasSavedFramebufferBindings) {
+            this._preReadFramebuffer = state.currentReadFramebuffer;
+            this._preDrawFramebuffer = state.currentDrawFramebuffer;
+            this._hasSavedFramebufferBindings = true;
+        }
+        state.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
     }
 
     unbind(): void {
+        if (!this._hasSavedFramebufferBindings) return;
         this.init();
-        if (this._isInit) this.state.bindFramebuffer(this.gl.FRAMEBUFFER, this._preFramebuffer);
+        if (!this._isInit) return;
+        const { gl, state } = this;
+        const previousReadFramebuffer = this._preReadFramebuffer;
+        const previousDrawFramebuffer = this._preDrawFramebuffer;
+        this._hasSavedFramebufferBindings = false;
+        this._preReadFramebuffer = null;
+        this._preDrawFramebuffer = null;
+        state.bindFramebuffer(gl.READ_FRAMEBUFFER, previousReadFramebuffer);
+        state.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousDrawFramebuffer);
     }
 
     /** Reattach the primary texture; cube-map subclasses use the index to select a face. */
@@ -420,91 +497,11 @@ class Framebuffer {
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     }
 
-    render(
-        x = 0,
-        y = 0,
-        width = 1,
-        height = 1,
-        clearColor: Color | null = null,
-        texture: FramebufferTexture | null = null
-    ): void {
-        this.init();
-        if (!this._isInit) return;
-        const renderTexture = texture ?? this.colorAttachmentInfos[0]?.texture;
-        if (!renderTexture) return;
-
-        const { gl, state } = this;
-        const wasDepthTestEnabled = state.isEnabled(DEPTH_TEST);
-        const wasCullFaceEnabled = state.isEnabled(CULL_FACE);
-        try {
-            state.disable(DEPTH_TEST);
-            state.disable(CULL_FACE);
-            if (clearColor) this.clear(clearColor);
-
-            const shader = Shader.getCustomShader(
-                screenVert,
-                screenFrag,
-                '',
-                'FramebufferTextureShader',
-                false,
-                this.renderer
-            );
-            const program = Program.getProgram(shader, state);
-            program.useProgram();
-            const vaoId = [x, y, width, height, program.id].map(String).join('_');
-            const vao = VertexArrayObject.getVao(gl, vaoId, {
-                useInstanced: false,
-                mode: TRIANGLE_STRIP
-            });
-            if (vao.isDirty) {
-                vao.isDirty = false;
-                const left = x * 2 - 1;
-                const top = 1 - y * 2;
-                const scaledWidth = width * 2;
-                const scaledHeight = height * 2;
-                const position = program.attributes['a_position'];
-                const texcoord = program.attributes['a_texcoord0'];
-                if (!position || !texcoord)
-                    throw new Error('Framebuffer screen shader is missing required attributes');
-                vao.addAttribute(
-                    new GeometryData(
-                        new Float32Array([
-                            left,
-                            top,
-                            left + scaledWidth,
-                            top,
-                            left,
-                            top - scaledHeight,
-                            left + scaledWidth,
-                            top - scaledHeight
-                        ]),
-                        2
-                    ),
-                    position,
-                    gl.STATIC_DRAW
-                );
-                vao.addAttribute(
-                    new GeometryData(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2),
-                    texcoord,
-                    gl.STATIC_DRAW
-                );
-            }
-            state.activeTexture(gl.TEXTURE0);
-            state.bindTexture(gl.TEXTURE_2D, renderTexture.getGLTexture(state));
-            vao.draw();
-        } finally {
-            if (wasDepthTestEnabled) state.enable(DEPTH_TEST);
-            else state.disable(DEPTH_TEST);
-            if (wasCullFaceEnabled) state.enable(CULL_FACE);
-            else state.disable(CULL_FACE);
-        }
-    }
-
     resize(width: number, height: number, force = false): void {
         if (!force && this.width === width && this.height === height) return;
         this.width = width;
         this.height = height;
-        if (this._isInit) this.reset();
+        if (this._isInit || force) this.reset();
     }
 
     readPixels(x: number, y: number, width = 1, height = 1): TypedArray {
@@ -514,12 +511,18 @@ class Framebuffer {
         if (!this._isInit) return pixels;
         const webGLY = this.height - y - height;
         this.bind();
-        this.gl.readPixels(x, webGLY, width, height, this.format, this.type, pixels);
-        this.unbind();
+        try {
+            this.gl.readPixels(x, webGLY, width, height, this.format, this.type, pixels);
+        } finally {
+            this.unbind();
+        }
         return pixels;
     }
 
     copyFramebuffer(srcFramebuffer: Framebuffer, config: CopyFramebufferOptions = {}): void {
+        if (srcFramebuffer.renderer.gl !== this.renderer.gl) {
+            throw new TypeError('Cannot copy framebuffers across WebGL2 contexts');
+        }
         this.init();
         srcFramebuffer.init();
         if (!this._isInit) return;
@@ -552,36 +555,70 @@ class Framebuffer {
     destroy(): this {
         if (this._isDestroyed) return this;
         this.destroyResource();
-        cache.removeObject(this);
+        if (this.registeredContext) {
+            contextCaches.peek(this.registeredContext)?.removeObject(this);
+            this.registeredContext = null;
+        }
         this._isDestroyed = true;
         return this;
     }
 
     destroyResource(): this {
-        if (!this._isInit || !this.renderer.gl) return this;
-        const gl = this.gl;
-        if (this.framebuffer) gl.deleteFramebuffer(this.framebuffer);
-        this.framebuffer = null;
-        this.destroyAttachmentResources(this.colorAttachmentInfos, gl);
-        if (this.depthStencilAttachmentInfo) {
-            this.destroyAttachmentResources([this.depthStencilAttachmentInfo], gl);
+        return this.releaseNativeResources(false);
+    }
+
+    private releaseNativeResources(preserveTextureAttachments: boolean): this {
+        this._isInit = false;
+        const gl = this.renderer.gl;
+        const state = this.renderer.state;
+        const staleFramebuffer = this.framebuffer;
+        this._hasSavedFramebufferBindings = false;
+        this._preReadFramebuffer = null;
+        this._preDrawFramebuffer = null;
+        if (gl && state && staleFramebuffer) {
+            if (state.currentReadFramebuffer === staleFramebuffer) {
+                state.bindFramebuffer(gl.READ_FRAMEBUFFER, state.systemFramebuffer);
+            }
+            if (state.currentDrawFramebuffer === staleFramebuffer) {
+                state.bindFramebuffer(gl.DRAW_FRAMEBUFFER, state.systemFramebuffer);
+            }
         }
-        this.texture = null;
+        if (this.framebuffer && gl) gl.deleteFramebuffer(this.framebuffer);
+        this.framebuffer = null;
+        this.releaseAttachmentResources(this.colorAttachmentInfos, gl, preserveTextureAttachments);
+        if (this.depthStencilAttachmentInfo) {
+            this.releaseAttachmentResources(
+                [this.depthStencilAttachmentInfo],
+                gl,
+                preserveTextureAttachments
+            );
+        }
+        if (!preserveTextureAttachments) this.texture = null;
         this.renderbuffer = null;
         return this;
     }
 
-    private destroyAttachmentResources(
+    private releaseAttachmentResources(
         attachmentInfos: readonly FramebufferAttachmentInfo[],
-        gl: GLContext
+        gl: GLContext | null,
+        preserveTextureAttachments: boolean
     ): void {
         for (const info of attachmentInfos) {
             const texture = info.texture;
             const renderbuffer = info.renderbuffer;
-            info.texture = null;
             info.renderbuffer = null;
-            if (texture) texture.destroy();
-            else if (renderbuffer) gl.deleteRenderbuffer(renderbuffer);
+            if (texture) {
+                if (preserveTextureAttachments) {
+                    if (gl && texture instanceof Texture) {
+                        releaseTextureWebGLAllocation(texture, gl);
+                    }
+                } else {
+                    info.texture = null;
+                    texture.destroy();
+                }
+            } else if (renderbuffer && gl) {
+                gl.deleteRenderbuffer(renderbuffer);
+            }
         }
     }
 }

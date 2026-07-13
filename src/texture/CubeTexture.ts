@@ -15,7 +15,7 @@ import { RGB8 } from '../constants/webgl2';
 
 export type CubeTextureImage = (TextureImageSource | null)[];
 
-export interface CubeTextureParameters extends TextureParameters<CubeTextureImage> {
+export interface CubeTextureParameters extends Omit<TextureParameters<CubeTextureImage>, 'target'> {
     image?: CubeTextureImage | null;
 }
 /**
@@ -53,24 +53,43 @@ export interface CubeTextureParameters extends TextureParameters<CubeTextureImag
 class CubeTexture extends Texture<CubeTextureImage> {
     isCubeTexture = true;
     override readonly className: string = 'CubeTexture';
-    override target = TEXTURE_CUBE_MAP;
-    override internalFormat = RGB8;
-    override format = RGB;
-    override magFilter = LINEAR;
-    override minFilter = LINEAR;
-    override wrapS = CLAMP_TO_EDGE;
-    override wrapT = CLAMP_TO_EDGE;
     /**
      * @param params - 初始化参数，所有params都会复制到实例上
      * - `params.image`: 图片列表，共6张
      */
     constructor(params: CubeTextureParameters = {}) {
-        super();
-        Object.assign(this, params);
-        this.image ??= [];
+        const { image, ...textureParameters } = params;
+        super({
+            internalFormat: RGB8,
+            format: RGB,
+            magFilter: LINEAR,
+            minFilter: LINEAR,
+            wrapS: CLAMP_TO_EDGE,
+            wrapT: CLAMP_TO_EDGE,
+            ...textureParameters,
+            target: TEXTURE_CUBE_MAP,
+            image: image ?? []
+        });
     }
     protected override _uploadTexture(state: TextureWebGLState): this {
-        const images = this.image;
+        const mipmaps = this.getWebGLUploadMipmaps();
+        if (this.useMipmap && mipmaps && mipmaps.length > 0) {
+            mipmaps.forEach((mipmap, entry) => {
+                const level = Math.floor(entry / 6);
+                const face = entry % 6;
+                this._glUploadTexture(
+                    state,
+                    TEXTURE_CUBE_MAP_POSITIVE_X + face,
+                    mipmap.data,
+                    level,
+                    mipmap.width,
+                    mipmap.height,
+                    1
+                );
+            });
+            return this;
+        }
+        const images = this.getWebGLUploadImage();
         if (!Array.isArray(images) || images.length !== 6) {
             throw new TypeError('CubeTexture requires exactly six image faces');
         }

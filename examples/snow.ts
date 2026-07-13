@@ -1,13 +1,11 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { renderer, stage } = createExampleContext({
+const { stage } = await createExampleContext({
     camera: { far: 20_000, near: 0.1, z: 1000 },
-    stage: { alpha: true, clearColor: new Hilo3d.Color(0, 0, 0) },
+    stage: { alpha: true, clearColor: new Hilo3d.Color(0, 0, 0), useInstanced: true },
     controls: { isLockMove: true }
 });
-
-renderer.useInstanced = true;
 
 function createSnowflakeTexture(size = 32): Hilo3d.Texture<Uint8Array> {
     const pixels = new Uint8Array(size * size * 4);

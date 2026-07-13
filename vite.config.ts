@@ -1,10 +1,39 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin, type UserConfig } from 'vite';
 import packageJson from './package.json' with { type: 'json' };
 
 const shaderPattern = /\.(?:frag|glsl|vert)$/u;
+const exampleManifestModuleId = 'virtual:hilo3d-example-manifest';
+const resolvedExampleManifestModuleId = `\0${exampleManifestModuleId}`;
+
+function collectHtmlPaths(directory: string, root: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) return collectHtmlPaths(path, root);
+        return entry.isFile() && entry.name.endsWith('.html')
+            ? [relative(root, path).split(sep).join('/')]
+            : [];
+    });
+}
+
+/** Build-time example discovery shared by the dev server and production gallery. */
+export function exampleManifestPlugin(): Plugin {
+    const examplesDirectory = fileURLToPath(new URL('./examples/', import.meta.url));
+    return {
+        name: 'hilo3d-example-manifest',
+        resolveId(id) {
+            return id === exampleManifestModuleId ? resolvedExampleManifestModuleId : null;
+        },
+        load(id) {
+            if (id !== resolvedExampleManifestModuleId) return null;
+            const paths = collectHtmlPaths(examplesDirectory, examplesDirectory).sort();
+            for (const path of paths) this.addWatchFile(resolve(examplesDirectory, path));
+            return `export default Object.freeze(${JSON.stringify(paths)});`;
+        }
+    };
+}
 
 export function shaderIncludePlugin(): Plugin {
     const includePattern = /^([\t ]*)#include\s+['"](.+?)['"][\t ]*$/gmu;
@@ -75,7 +104,7 @@ const runtimeDependencies = ['gl-matrix'] as const;
 
 export function createViteConfig(): UserConfig {
     return {
-        plugins: [shaderIncludePlugin()],
+        plugins: [shaderIncludePlugin(), exampleManifestPlugin()],
         optimizeDeps: {
             include: [...runtimeDependencies]
         },

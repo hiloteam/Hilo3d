@@ -1,7 +1,7 @@
 import * as Hilo3d from '../../../src/Hilo3d';
 import { createExampleContext } from '../../shared/init';
 
-const { camera, stage } = createExampleContext();
+const { camera, stage } = await createExampleContext();
 
 stage.addChild(new Hilo3d.AxisNetHelper({ size: 4 }));
 stage.addChild(new Hilo3d.AxisHelper());

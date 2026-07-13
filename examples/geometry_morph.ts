@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage, directionLight } = createExampleContext();
+const { stage, directionLight } = await createExampleContext();
 directionLight.direction.set(-1, -0.5, 0);
 
 function requireGeometryData(data: Hilo3d.GeometryData | null, name: string): Hilo3d.GeometryData {

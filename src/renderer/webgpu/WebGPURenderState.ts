@@ -1,4 +1,5 @@
 import type Material from '../../material/Material';
+import type { WebGPUFragmentOutput } from '../../shader/GlslToWgsl';
 import {
     ALWAYS,
     BACK,
@@ -94,6 +95,10 @@ export interface WebGPURenderStateOptions {
     /** Per-target write masks. When supplied, the length must match colorFormats exactly. */
     readonly colorMasks?: readonly WebGPUColorMask[];
     readonly depthStencilFormat?: GPUTextureFormat;
+    /** False disables material depth testing when the active surface has no requested depth buffer. */
+    readonly depthTestEnabled?: boolean;
+    /** False disables material stencil testing when the active surface has no requested stencil buffer. */
+    readonly stencilTestEnabled?: boolean;
     readonly sampleCount?: number;
     /** Required only when primitive restart is used with an indexed strip topology. */
     readonly stripIndexFormat?: GPUIndexFormat;
@@ -112,8 +117,44 @@ export interface WebGPURenderState {
     readonly depthStencil?: GPUDepthStencilState;
     readonly multisample: GPUMultisampleState;
     readonly dynamic: WebGPUDynamicRenderState;
+    /** Whether draw encoding must set the material's dynamic stencil reference. */
+    readonly usesStencil: boolean;
     /** Canonical key containing every immutable render-state field. */
     readonly cacheKey: string;
+}
+
+/**
+ * Map explicit GLSL fragment-output locations onto the active render-pass attachment slots.
+ * Unwritten attachments stay present in the pass but are null pipeline targets, so their
+ * clear/load/store operations remain authoritative without receiving shader writes.
+ */
+export function resolveWebGPUFragmentColorFormats(
+    outputs: readonly WebGPUFragmentOutput[],
+    attachmentFormats: readonly (GPUTextureFormat | null)[]
+): readonly (GPUTextureFormat | null)[] {
+    const result: (GPUTextureFormat | null)[] = attachmentFormats.map(() => null);
+    const occupiedLocations = new Set<number>();
+    for (const output of outputs) {
+        if (!Number.isSafeInteger(output.location) || output.location < 0) {
+            throw new RangeError(
+                `Fragment output ${output.name} location must be a non-negative safe integer`
+            );
+        }
+        if (occupiedLocations.has(output.location)) {
+            throw new TypeError(
+                `Fragment output location ${String(output.location)} is declared more than once`
+            );
+        }
+        const format = attachmentFormats[output.location];
+        if (format === undefined || format === null) {
+            throw new RangeError(
+                `Fragment output ${output.name} location ${String(output.location)} has no color attachment`
+            );
+        }
+        occupiedLocations.add(output.location);
+        result[output.location] = format;
+    }
+    return Object.freeze(result);
 }
 
 const depthFormats = new Set<GPUTextureFormat>([
@@ -334,8 +375,11 @@ function createColorTargets(
     );
 }
 
-function createStencilFace(material: WebGPUMaterialRenderState): GPUStencilFaceState {
-    if (!material.stencilTest) {
+function createStencilFace(
+    material: WebGPUMaterialRenderState,
+    stencilTest: boolean
+): GPUStencilFaceState {
+    if (!stencilTest) {
         return immutable({
             compare: 'always',
             failOp: 'keep',
@@ -353,10 +397,14 @@ function createStencilFace(material: WebGPUMaterialRenderState): GPUStencilFaceS
 
 function createDepthStencilState(
     material: WebGPUMaterialRenderState,
-    format: GPUTextureFormat | undefined
+    format: GPUTextureFormat | undefined,
+    depthTestEnabled: boolean,
+    stencilTestEnabled: boolean
 ): GPUDepthStencilState | undefined {
+    const depthTest = depthTestEnabled && material.depthTest;
+    const stencilTest = stencilTestEnabled && material.stencilTest;
     if (!format) {
-        if (material.depthTest || material.stencilTest) {
+        if (depthTest || stencilTest) {
             throw new Error('Enabled depth/stencil testing requires a depthStencilFormat');
         }
         return undefined;
@@ -366,28 +414,26 @@ function createDepthStencilState(
     if (!hasDepth && !hasStencil) {
         throw new TypeError(`${format} is not a WebGPU depth/stencil format`);
     }
-    if (material.depthTest && !hasDepth) {
+    if (depthTest && !hasDepth) {
         throw new Error(`Depth testing requires a depth aspect, but ${format} has none`);
     }
-    if (material.stencilTest && !hasStencil) {
+    if (stencilTest && !hasStencil) {
         throw new Error(`Stencil testing requires a stencil aspect, but ${format} has none`);
     }
 
     const result: GPUDepthStencilState = { format };
     if (hasDepth) {
-        result.depthCompare = material.depthTest
-            ? mapWebGPUCompareFunction(material.depthFunc)
-            : 'always';
-        result.depthWriteEnabled = material.depthTest && material.depthMask;
+        result.depthCompare = depthTest ? mapWebGPUCompareFunction(material.depthFunc) : 'always';
+        result.depthWriteEnabled = depthTest && material.depthMask;
     }
     if (hasStencil) {
-        const face = createStencilFace(material);
+        const face = createStencilFace(material, stencilTest);
         result.stencilFront = face;
         result.stencilBack = face;
-        result.stencilReadMask = material.stencilTest
+        result.stencilReadMask = stencilTest
             ? assertUnsigned32(material.stencilFuncMask, 'stencilFuncMask')
             : 0xffffffff;
-        result.stencilWriteMask = material.stencilTest
+        result.stencilWriteMask = stencilTest
             ? assertUnsigned32(material.stencilMask, 'stencilMask')
             : 0;
     }
@@ -435,7 +481,10 @@ function createMultisampleState(
     });
 }
 
-function createDynamicState(material: WebGPUMaterialRenderState): WebGPUDynamicRenderState {
+function createDynamicState(
+    material: WebGPUMaterialRenderState,
+    stencilTestEnabled: boolean
+): WebGPUDynamicRenderState {
     const [minDepth, maxDepth] = material.depthRange;
     if (
         !Number.isFinite(minDepth) ||
@@ -448,9 +497,10 @@ function createDynamicState(material: WebGPUMaterialRenderState): WebGPUDynamicR
     }
     return immutable({
         depthRange: immutable([minDepth, maxDepth] as const),
-        stencilReference: material.stencilTest
-            ? assertUnsigned32(material.stencilFuncRef, 'stencilFuncRef')
-            : 0
+        stencilReference:
+            stencilTestEnabled && material.stencilTest
+                ? assertUnsigned32(material.stencilFuncRef, 'stencilFuncRef')
+                : 0
     });
 }
 
@@ -480,15 +530,24 @@ export function createWebGPURenderState(
         options.colorFormats ?? [],
         options.colorMasks
     );
-    const depthStencil = createDepthStencilState(material, options.depthStencilFormat);
+    const depthTestEnabled = options.depthTestEnabled ?? true;
+    const stencilTestEnabled = options.stencilTestEnabled ?? true;
+    const depthStencil = createDepthStencilState(
+        material,
+        options.depthStencilFormat,
+        depthTestEnabled,
+        stencilTestEnabled
+    );
     const multisample = createMultisampleState(material, options.sampleCount);
-    const dynamic = createDynamicState(material);
+    const dynamic = createDynamicState(material, stencilTestEnabled);
+    const usesStencil = stencilTestEnabled && material.stencilTest;
     return immutable({
         primitive,
         colorTargets,
         ...(depthStencil === undefined ? {} : { depthStencil }),
         multisample,
         dynamic,
+        usesStencil,
         cacheKey: renderStateKey(primitive, colorTargets, depthStencil, multisample)
     });
 }

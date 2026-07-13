@@ -14,9 +14,9 @@ describe('Buffer', () => {
     it('cache & destroy', () => {
         const geometryData = new Hilo3d.GeometryData(new Float32Array(), 3);
         const buffer = Buffer.createVertexBuffer(testEnv.gl, geometryData);
-        expect(Buffer.cache.getObject(buffer)).toBe(buffer);
+        expect(Buffer.getCache(testEnv.gl).getObject(buffer)).toBe(buffer);
         buffer.destroy();
-        expect(Buffer.cache.getObject(buffer)).toBeUndefined();
+        expect(Buffer.getCache(testEnv.gl).getObject(buffer)).toBeUndefined();
     });
 
     it('tracks uploaded revisions independently for every WebGL2 allocation', () => {

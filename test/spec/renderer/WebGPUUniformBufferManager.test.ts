@@ -21,6 +21,46 @@ function createDevice() {
 }
 
 describe('WebGPUUniformBufferManager lifecycle', () => {
+    it('uploads the exact std140 ABI for arrays, matrices and booleans', () => {
+        const { device, writeBuffer } = createDevice();
+        const manager = new WebGPUUniformBufferManager(device);
+        const layout = createStd140Layout({
+            scalars: { type: 'float', arrayLength: 2 },
+            pairs: { type: 'ivec2', arrayLength: 2 },
+            matrix: 'mat2',
+            flags: { type: 'bvec2', arrayLength: 2 }
+        });
+        const block = UniformBuffer.fromSchema(layout, {
+            scalars: [1.5, 2.5],
+            pairs: [3, 4, 5, 6],
+            matrix: [7, 8, 9, 10],
+            flags: [true, false, false, true]
+        });
+
+        const binding = manager.getBinding(block);
+        const upload = writeBuffer.mock.calls[0] as [GPUBuffer, number, Uint8Array];
+        const view = new DataView(upload[2].buffer, upload[2].byteOffset, upload[2].byteLength);
+
+        expect(binding.size).toBe(layout.byteLength);
+        expect(upload[2].byteLength).toBe(layout.byteLength);
+        expect(view.getFloat32(layout.fields.scalars.offset, true)).toBe(1.5);
+        expect(
+            view.getFloat32(layout.fields.scalars.offset + layout.fields.scalars.arrayStride, true)
+        ).toBe(2.5);
+        expect(view.getInt32(layout.fields.pairs.offset + 4, true)).toBe(4);
+        expect(
+            view.getInt32(layout.fields.pairs.offset + layout.fields.pairs.arrayStride, true)
+        ).toBe(5);
+        expect(view.getFloat32(layout.fields.matrix.offset, true)).toBe(7);
+        expect(
+            view.getFloat32(layout.fields.matrix.offset + layout.fields.matrix.matrixStride, true)
+        ).toBe(9);
+        expect(view.getInt32(layout.fields.flags.offset, true)).toBe(1);
+        expect(
+            view.getInt32(layout.fields.flags.offset + layout.fields.flags.arrayStride + 4, true)
+        ).toBe(1);
+    });
+
     it('releases one logical block and recreates it without retaining destroyed buffers', () => {
         const { buffers, createBuffer, device } = createDevice();
         const manager = new WebGPUUniformBufferManager(device);

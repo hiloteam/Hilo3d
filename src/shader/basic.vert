@@ -13,6 +13,9 @@ in vec3 a_position;
 #include "./chunk/morph.vert"
 #include "./chunk/color.vert"
 #include "./chunk/logDepth.vert"
+#ifdef HILO_PICKING_PASS
+out vec4 v_objectIdColor;
+#endif
 void main(void) {
     vec4 pos = vec4(a_position, 1.0);
     #ifdef HILO_HAS_TEXCOORD0
@@ -38,6 +41,10 @@ void main(void) {
     #include "./chunk/lightFog_main.vert"
 
     gl_Position = u_viewProjectionMatrix * u_modelMatrix * pos;
+
+    #ifdef HILO_PICKING_PASS
+        v_objectIdColor = u_objectIdColor;
+    #endif
 
     #include "./chunk/logDepth_main.vert"
 }

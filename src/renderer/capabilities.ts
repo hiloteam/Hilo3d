@@ -1,4 +1,4 @@
-import extensions from './extensions';
+import type { WebGLExtensions } from './extensions';
 import type { GLContext, ShaderPrecision } from './types';
 
 export type NumericCapabilityName =
@@ -107,9 +107,15 @@ class WebGLCapabilities {
     MAX_VERTEX_UNIFORM_BLOCKS = 0;
     MAX_FRAGMENT_UNIFORM_BLOCKS = 0;
     private gl: GLContext | null = null;
+    private readonly extensions: WebGLExtensions;
+
+    constructor(contextExtensions: WebGLExtensions) {
+        this.extensions = contextExtensions;
+    }
 
     init(gl: GLContext): void {
         this.gl = gl;
+        this.MAX_TEXTURE_MAX_ANISOTROPY = 1;
 
         this.MAX_RENDERBUFFER_SIZE = this.get('MAX_RENDERBUFFER_SIZE');
         this.MAX_COMBINED_TEXTURE_IMAGE_UNITS = this.get('MAX_COMBINED_TEXTURE_IMAGE_UNITS');
@@ -140,7 +146,7 @@ class WebGLCapabilities {
             this.MAX_FRAGMENT_PRECISION,
             this.MAX_VERTEX_PRECISION
         );
-        const anisotropic = extensions.textureFilterAnisotropic;
+        const anisotropic = this.extensions.textureFilterAnisotropic;
         if (anisotropic) {
             const value: unknown = gl.getParameter(anisotropic.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
             if (typeof value === 'number') this.MAX_TEXTURE_MAX_ANISOTROPY = value;
@@ -174,7 +180,4 @@ class WebGLCapabilities {
     }
 }
 
-const capabilities = new WebGLCapabilities();
-
 export { WebGLCapabilities };
-export default capabilities;

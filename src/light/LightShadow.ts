@@ -2,7 +2,6 @@ import math from '../math/math';
 import OrthographicCamera from '../camera/OrthographicCamera';
 import PerspectiveCamera from '../camera/PerspectiveCamera';
 import Framebuffer from '../renderer/Framebuffer';
-import semantic from '../material/semantic';
 import GeometryMaterial from '../material/GeometryMaterial';
 import Color from '../math/Color';
 import Matrix4 from '../math/Matrix4';
@@ -17,6 +16,7 @@ import type DirectionalLight from './DirectionalLight';
 import type SpotLight from './SpotLight';
 import type Light from './Light';
 import type { ShadowCameraParameters } from './Light';
+import type { RendererViewport } from '../renderer/Renderer';
 
 let shadowMaterial: GeometryMaterial | null = null;
 const clearColor = new Color(1, 1, 1);
@@ -77,6 +77,7 @@ class LightShadow {
     debug = false;
     private cameraMatrixVersion = -1;
     private cameraHelper: CameraHelper | null = null;
+    protected readonly beginCameraPass: (camera: Camera, viewport?: RendererViewport) => void;
     /**
      * @param params -
      * - `params.light`:
@@ -86,9 +87,13 @@ class LightShadow {
      * - `params.height`:
      * - `params.debug`:
      */
-    constructor(params: LightShadowParameters) {
+    constructor(
+        params: LightShadowParameters,
+        beginCameraPass: (camera: Camera, viewport?: RendererViewport) => void
+    ) {
         this.light = params.light;
         this.renderer = params.renderer;
+        this.beginCameraPass = beginCameraPass;
         this.id = math.generateUUID(this.className);
         Object.assign(this, params);
     }
@@ -100,9 +105,6 @@ class LightShadow {
             width: this.width,
             height: this.height
         });
-        if (this.debug) {
-            this.showShadowMap();
-        }
     }
     updateLightCamera(currentCamera: Camera): void {
         if (isDirectionalLight(this.light)) {
@@ -218,11 +220,11 @@ class LightShadow {
             renderer.state.viewport(0, 0, this.width, this.height);
             renderer.clear(clearColor);
             camera.updateViewProjectionMatrix();
-            semantic.setCamera(camera);
+            this.beginCameraPass(camera, [0, 0, this.width, this.height]);
             this.renderShadowScene(renderer, shadowMaterial);
         } finally {
             framebuffer.unbind();
-            semantic.setCamera(currentCamera);
+            this.beginCameraPass(currentCamera);
             renderer.viewport();
         }
     }
@@ -249,11 +251,6 @@ class LightShadow {
             renderer.forceMaterial = preForceMaterial;
         }
     }
-    showShadowMap(): void {
-        this.renderer.on('afterRender', () => {
-            this.framebuffer?.render(0, 0.7, 0.3, 0.3);
-        });
-    }
     private createCameraHelper(): void {
         if (!this.debug) {
             return;
@@ -267,6 +264,16 @@ class LightShadow {
             });
             light.addChild(this.cameraHelper);
         }
+    }
+
+    /** Release this renderer-local shadow runtime and its debug helper. */
+    destroy(): void {
+        this.framebuffer?.destroy();
+        this.framebuffer = null;
+        if (this.cameraHelper) this.light.removeChild(this.cameraHelper);
+        this.cameraHelper = null;
+        if (this.camera) this.light.removeChild(this.camera);
+        this.camera = null;
     }
 }
 export default LightShadow;

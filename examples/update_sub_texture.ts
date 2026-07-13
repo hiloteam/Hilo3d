@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, stage } = createExampleContext();
+const { camera, stage } = await createExampleContext();
 
 const geometry = new Hilo3d.PlaneGeometry({
     width: 50,
@@ -34,7 +34,14 @@ const texture = new Hilo3d.Texture({
 });
 function updateSubCanvas(x: number, y: number, width: number, height: number): void {
     const glY = texture.flipY ? texture.height - y - height : y;
-    texture.updateSubTexture(x, glY, ctx.getImageData(x, y, width, height));
+    texture.updateSubTexture({
+        mipLevel: 0,
+        x,
+        y: glY,
+        width,
+        height,
+        image: ctx.getImageData(x, y, width, height)
+    });
 }
 
 const colorBox = new Hilo3d.Mesh({

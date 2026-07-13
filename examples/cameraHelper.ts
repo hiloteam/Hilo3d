@@ -1,7 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
+import { createTexturePreview } from './shared/ScreenMesh';
 
-const { stage, renderer } = createExampleContext();
+const { stage, renderer } = await createExampleContext();
 
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([
@@ -51,26 +52,32 @@ const cameraHelper = new Hilo3d.CameraHelper({
 
 stage.addChild(cameraHelper);
 
-const framebuffer = new Hilo3d.Framebuffer(renderer, {
+const cameraTarget = renderer.createRenderTarget({
     width: renderer.width,
-    height: renderer.height
+    height: renderer.height,
+    colorAttachments: [
+        {
+            clearValue: { r: 1, g: 1, b: 1, a: 1 }
+        }
+    ],
+    label: 'CameraHelper.preview'
 });
+const previewSize = 0.4;
+const preview = createTexturePreview(
+    () => cameraTarget.getColorTexture(),
+    { x: 1 - previewSize, y: 1 - previewSize, width: previewSize, height: previewSize },
+    'CameraHelper.preview'
+);
+stage.addChild(preview);
 
-const clearColor = new Hilo3d.Color(1, 1, 1);
-renderer.on('afterRender', function () {
-    const currentCamera = testCamera;
-    const stageCamera = stage.camera;
-    if (!stageCamera) throw new Error('Camera helper example requires a stage camera');
-
-    framebuffer.bind();
-    renderer.state.viewport(0, 0, framebuffer.width, framebuffer.height);
-    renderer.clear(clearColor);
-    currentCamera.updateViewProjectionMatrix();
-    Hilo3d.semantic.setCamera(currentCamera);
-    renderer.renderScene();
-    framebuffer.unbind();
-    Hilo3d.semantic.setCamera(stageCamera);
-    renderer.viewport();
-    const size = 0.4;
-    framebuffer.render(1 - size, 1 - size, size, size);
-});
+stage.onUpdate = () => {
+    if (cameraTarget.width !== renderer.width || cameraTarget.height !== renderer.height) {
+        cameraTarget.resize(renderer.width, renderer.height);
+    }
+    preview.visible = false;
+    try {
+        renderer.renderToTarget(cameraTarget, stage, testCamera, false);
+    } finally {
+        preview.visible = true;
+    }
+};

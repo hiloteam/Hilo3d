@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, stage, directionLight, ambientLight } = createExampleContext({
+const { camera, stage, directionLight, ambientLight } = await createExampleContext({
     camera: { far: 3, near: 0.01, z: 1 },
     stage: { rotationX: 30 }
 });
@@ -49,7 +49,7 @@ const spotlight0 = new Hilo3d.SpotLight({
 }).addTo(stage);
 spotlight0.onUpdate = () => {
     spotlight0.direction.rotateY(new Hilo3d.Vector3(), -0.01);
-    spotlight0.lightShadow?.updateLightCamera(camera);
+    spotlight0.isDirty = true;
 };
 
 new Hilo3d.SpotLight({

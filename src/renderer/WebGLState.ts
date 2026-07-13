@@ -1,4 +1,6 @@
 import type { GLContext } from './types';
+import { WebGLCapabilities } from './capabilities';
+import { WebGLExtensions } from './extensions';
 
 export type StateValue = number | boolean | WebGLProgram | null;
 export type OneParameterMethod =
@@ -31,6 +33,8 @@ class WebGLState {
     readonly className = 'WebGLState';
     readonly isWebGLState = true;
     readonly gl: GLContext;
+    readonly capabilities: WebGLCapabilities;
+    readonly extensions: WebGLExtensions;
     systemFramebuffer: WebGLFramebuffer | null = null;
     currentDrawFramebuffer: WebGLFramebuffer | null = null;
     currentReadFramebuffer: WebGLFramebuffer | null = null;
@@ -45,8 +49,24 @@ class WebGLState {
     private readonly textureUnits = new Map<GLenum, Map<GLenum, WebGLTexture | null>>();
     private readonly pixelStore = new Map<GLenum, number | boolean>();
 
-    constructor(gl: GLContext) {
+    constructor(
+        gl: GLContext,
+        contextCapabilities?: WebGLCapabilities,
+        contextExtensions?: WebGLExtensions
+    ) {
         this.gl = gl;
+        if (contextExtensions) {
+            this.extensions = contextExtensions;
+        } else {
+            this.extensions = new WebGLExtensions();
+            this.extensions.init(gl);
+        }
+        if (contextCapabilities) {
+            this.capabilities = contextCapabilities;
+        } else {
+            this.capabilities = new WebGLCapabilities(this.extensions);
+            this.capabilities.init(gl);
+        }
         this.reset();
     }
 

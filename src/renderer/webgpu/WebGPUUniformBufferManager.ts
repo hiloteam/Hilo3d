@@ -31,7 +31,7 @@ function changedByteRange(
     return [Math.floor(start / 4) * 4, Math.ceil(end / 4) * 4];
 }
 
-/** Transcodes logical std140 parameter blocks into WGSL natural-layout device buffers. */
+/** Uploads the shared std140 ABI consumed by portable WGSL uniform wrappers. */
 export class WebGPUUniformBufferManager {
     private readonly device: GPUDevice;
     private resources = new WeakMap<UniformBuffer, CachedUniformBuffer>();
@@ -44,11 +44,6 @@ export class WebGPUUniformBufferManager {
 
     getBinding(uniformBuffer: UniformBuffer): WebGPUUniformBufferBinding {
         const layout = uniformBuffer.layout;
-        if (!layout || !(uniformBuffer.data instanceof ArrayBuffer)) {
-            throw new TypeError(
-                'WebGPU uniform buffers require UniformBuffer.fromSchema with an ArrayBuffer-backed layout'
-            );
-        }
         let wgslLayout = this.layouts.get(layout);
         if (!wgslLayout) {
             wgslLayout = new WgslUniformLayout(layout);

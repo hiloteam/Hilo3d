@@ -12,6 +12,56 @@ const forbiddenLegacyPaths = [
     'src/core/EventMixin.ts'
 ] as const;
 const packageContractFiles = ['package.json', 'vite.config.ts', 'vite.examples.config.ts'] as const;
+const publicContractRules = [
+    {
+        path: 'src/Hilo3d.ts',
+        rules: [
+            {
+                label: 'legacy framebuffer or shadow implementation export',
+                pattern:
+                    /\b(?:[A-Za-z0-9_]*Framebuffer[A-Za-z0-9_]*|LightShadow|LightShadowParameters|CubeLightShadow|CubeLightShadowParameters|ShadowCamera)\b/u
+            }
+        ]
+    },
+    ...[
+        'src/core/Stage.ts',
+        'src/renderer/Renderer.ts',
+        'src/renderer/WebGLRenderer.ts',
+        'src/renderer/WebGPURenderer.ts'
+    ].map(path => ({
+        path,
+        rules: [
+            {
+                label: 'legacy renderer-owned framebuffer option',
+                pattern: /\b(?:useFramebuffer|framebufferOption)\b/u
+            }
+        ]
+    })),
+    ...['src/light/DirectionalLight.ts', 'src/light/SpotLight.ts', 'src/light/PointLight.ts'].map(
+        path => ({
+            path,
+            rules: [
+                {
+                    label: 'backend-internal lightShadow property',
+                    pattern: /\blightShadow\b/u
+                },
+                {
+                    label: 'WebGL-only public shadow orchestration',
+                    pattern: /\b(?:createShadowMap|WebGLRenderer)\b/u
+                }
+            ]
+        })
+    ),
+    ...['src/light/Light.ts', 'src/light/LightManager.ts'].map(path => ({
+        path,
+        rules: [
+            {
+                label: 'WebGL-only public shadow orchestration',
+                pattern: /\b(?:createShadowMap|WebGLRenderer)\b/u
+            }
+        ]
+    }))
+] as const;
 const forbiddenArtifactNamePatterns = [
     /(?:^|[-_.])cjs(?:[-_.]|$)/iu,
     /(?:^|[-_.])umd(?:[-_.]|$)/iu
@@ -53,6 +103,36 @@ const forbiddenSourceRules = [
     { label: 'CommonJS artifact', pattern: /\.cjs\b/u },
     { label: 'CommonJS package condition', pattern: /["']require["']\s*:/u },
     { label: 'UMD library format', pattern: /\bformats\s*:\s*\[[^\]]*["']umd["']/u }
+] as const;
+const forbiddenEngineSourceRules = [
+    {
+        label: 'handwritten WGSL entry point',
+        pattern: /@(?:vertex|fragment|compute)\b/u
+    }
+] as const;
+const backendNeutralExampleExclusions = new Set([
+    'examples/shared/init.ts',
+    'examples/webgl_support.ts',
+    // WebXR is explicitly scoped to XRWebGLLayer/WebGL2 until a separate WebXR migration.
+    'examples/webxr.ts'
+]);
+const forbiddenBackendSpecificExampleRules = [
+    { label: 'legacy Framebuffer API', pattern: /\bHilo3d\.Framebuffer\b/u },
+    { label: 'WebGL-only renderer type', pattern: /\bHilo3d\.WebGLRenderer\b/u },
+    {
+        label: 'WebGL renderer internals',
+        pattern:
+            /\b(?:renderer|stage\.renderer)\.(?:gl|state|framebuffer|renderMesh|renderScene|setupBlend|viewport|clear|clearDepth|clearStencil)\b/u
+    },
+    {
+        label: 'legacy renderer-owned framebuffer option',
+        pattern: /\b(?:useFramebuffer|framebufferOption)\s*:/u
+    },
+    {
+        label: 'backend branch inside an example',
+        pattern:
+            /(?:\b(?:renderer|stage\.renderer)\.backend\s*(?:===|!==)|\b(?:if|switch)\s*\([^)]*\b(?:renderer|stage\.renderer)\.backend\b)/u
+    }
 ] as const;
 const forbiddenRootEntryPatterns = [
     /^\.babelrc(?:\..+)?$/u,
@@ -97,6 +177,23 @@ async function collectLegacyArtifacts(directory: string): Promise<string[]> {
             for (const rule of forbiddenSourceRules) {
                 if (rule.pattern.test(source)) matches.push(`${relativePath} (${rule.label})`);
             }
+            if (relativePath.startsWith('src/')) {
+                for (const rule of forbiddenEngineSourceRules) {
+                    if (rule.pattern.test(source)) {
+                        matches.push(`${relativePath} (${rule.label})`);
+                    }
+                }
+            }
+            if (
+                relativePath.startsWith('examples/') &&
+                !backendNeutralExampleExclusions.has(relativePath)
+            ) {
+                for (const rule of forbiddenBackendSpecificExampleRules) {
+                    if (rule.pattern.test(source)) {
+                        matches.push(`${relativePath} (${rule.label})`);
+                    }
+                }
+            }
         }
     }
     return matches;
@@ -108,6 +205,17 @@ async function collectPackageContractViolations(): Promise<string[]> {
         const source = await readFile(resolve(projectRoot, path), 'utf8');
         for (const rule of forbiddenSourceRules) {
             if (rule.pattern.test(source)) matches.push(`${path} (${rule.label})`);
+        }
+    }
+    return matches;
+}
+
+async function collectPublicContractViolations(): Promise<string[]> {
+    const matches: string[] = [];
+    for (const contract of publicContractRules) {
+        const source = await readFile(resolve(projectRoot, contract.path), 'utf8');
+        for (const rule of contract.rules) {
+            if (rule.pattern.test(source)) matches.push(`${contract.path} (${rule.label})`);
         }
     }
     return matches;
@@ -142,7 +250,8 @@ const violations = [
         ...legacyConfiguration,
         ...legacyArtifacts,
         ...(await existingLegacyPaths()),
-        ...(await collectPackageContractViolations())
+        ...(await collectPackageContractViolations()),
+        ...(await collectPublicContractViolations())
     ])
 ].sort();
 

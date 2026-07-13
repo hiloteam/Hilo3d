@@ -2,7 +2,7 @@ import * as Hilo3d from '../../../src/Hilo3d';
 import { createExampleContext } from '../../shared/init';
 import TGALoader from './TGALoader';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([

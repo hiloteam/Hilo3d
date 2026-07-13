@@ -1,13 +1,12 @@
 import Buffer from './Buffer';
-import type {
-    Std140FieldValue,
+import {
     Std140Layout,
-    Std140Schema,
-    Std140Values
+    type Std140FieldValue,
+    type Std140Schema,
+    type Std140Values
 } from './ubo/Std140Layout';
 import type { TypedArray } from './types';
 
-export type UniformBufferData = TypedArray | ArrayBuffer;
 export interface UniformBufferRange {
     readonly uniformBuffer: UniformBuffer;
     readonly byteOffset: number;
@@ -29,31 +28,34 @@ interface ContextResource {
     revision: number;
 }
 
-function byteView(data: UniformBufferData): Uint8Array {
+function byteView(data: ArrayBuffer | TypedArray): Uint8Array {
     return data instanceof ArrayBuffer
         ? new Uint8Array(data)
         : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 }
 
-/**
- * Uniform Buffer Object
- */
+/** Portable std140 uniform block shared byte-for-byte by WebGL2 and WebGPU. */
 class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     readonly className = 'UniformBuffer';
     readonly isUniformBuffer = true;
     /**
      * data
      */
-    get data(): UniformBufferData {
+    get data(): ArrayBuffer {
         return this._data;
     }
     /**
      * data
      */
-    set data(data: UniformBufferData) {
-        if (this.layout && data.byteLength < this.layout.byteLength) {
+    set data(data: ArrayBuffer) {
+        if (!(data instanceof ArrayBuffer)) {
+            throw new TypeError(
+                'UniformBuffer data must be an ArrayBuffer packed by its std140 layout'
+            );
+        }
+        if (data.byteLength !== this.layout.byteLength) {
             throw new RangeError(
-                `Uniform buffer is ${String(data.byteLength)} bytes; std140 layout requires ${String(this.layout.byteLength)}`
+                `Uniform buffer is ${String(data.byteLength)} bytes; std140 layout requires exactly ${String(this.layout.byteLength)}`
             );
         }
         this._data = data;
@@ -62,8 +64,8 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     /**
      * data
      */
-    private _data: UniformBufferData = new ArrayBuffer(0);
-    readonly layout: Std140Layout<Schema> | null;
+    private _data: ArrayBuffer;
+    readonly layout: Std140Layout<Schema>;
     private readonly resources = new Map<WebGL2RenderingContext, ContextResource>();
     private readonly dirtyUpdates: UniformBufferDirtyRange[] = [];
     private discardedDirtyRevision = 0;
@@ -74,16 +76,20 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
         return this._revision;
     }
 
-    constructor(data: UniformBufferData, layout?: Std140Layout<Schema>) {
-        this.layout = layout ?? null;
-        this.data = data;
+    constructor(layout: Std140Layout<Schema>, values: Partial<Std140Values<Schema>> = {}) {
+        if (!(layout instanceof Std140Layout)) {
+            throw new TypeError('UniformBuffer construction requires a Std140Layout schema');
+        }
+        this.layout = layout;
+        this._data = layout.createBuffer(values);
+        this.recordDirty(0, this._data.byteLength);
     }
 
     static fromSchema<const Schema extends Std140Schema>(
         layout: Std140Layout<Schema>,
         values: Partial<Std140Values<Schema>> = {}
     ): UniformBuffer<Schema> {
-        return new UniformBuffer(layout.createBuffer(values), layout);
+        return new UniformBuffer(layout, values);
     }
 
     get byteLength(): number {
@@ -110,9 +116,6 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
         name: Name,
         value: Std140FieldValue<Schema[Name]>
     ): this {
-        if (!this.layout || !(this.data instanceof ArrayBuffer)) {
-            throw new Error('UniformBuffer.set requires an ArrayBuffer-backed std140 layout');
-        }
         const dirty = this.layout.write(this.data, name, value);
         this.recordDirty(dirty.byteOffset, dirty.byteOffset + dirty.byteLength);
         return this;

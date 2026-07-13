@@ -30,4 +30,29 @@ describe('LazyTexture', () => {
             });
         });
     });
+
+    it('validates constructor parameters and copies layered depth/wrapR from loaded textures', async () => {
+        expect(() => new LazyTexture({ depth: 2 })).toThrow(/depth must be 1/);
+        const previousLoader = LazyTexture.loader;
+        const loaded = new Hilo3d.Texture({
+            target: Hilo3d.constants.TEXTURE_3D,
+            width: 1,
+            height: 1,
+            depth: 2,
+            wrapR: Hilo3d.constants.CLAMP_TO_EDGE,
+            image: new Uint8Array(8)
+        });
+        LazyTexture.loader = {
+            load: () => Promise.resolve(loaded)
+        } as unknown as Hilo3d.Loader;
+        try {
+            const texture = new LazyTexture({ autoLoad: false, src: 'memory://volume' });
+            await texture.load();
+            expect(texture.target).toBe(Hilo3d.constants.TEXTURE_3D);
+            expect(texture.depth).toBe(2);
+            expect(texture.wrapR).toBe(Hilo3d.constants.CLAMP_TO_EDGE);
+        } finally {
+            LazyTexture.loader = previousLoader;
+        }
+    });
 });

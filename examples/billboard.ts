@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, renderer, stage } = createExampleContext();
+const { camera, renderer, stage } = await createExampleContext();
 
 const planeGeometry = new Hilo3d.PlaneGeometry();
 const billboardTexture = new Hilo3d.LazyTexture({

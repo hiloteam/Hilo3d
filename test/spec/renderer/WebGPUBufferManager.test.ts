@@ -133,6 +133,35 @@ function indexValues(fake: FakeGPU, binding: WebGPUIndexBufferBinding): number[]
 }
 
 describe('WebGPUBufferManager packed vertex buffers', () => {
+    it.each([
+        ['mat2', 2, 4],
+        ['mat3', 3, 9],
+        ['mat4', 4, 16]
+    ] as const)(
+        'packs non-instanced %s values into one vertex location per column',
+        (type, columns, components) => {
+            const fake = fakeGPU();
+            const manager = new WebGPUBufferManager(fake.device);
+            const values = new Float32Array(
+                Array.from({ length: components * 2 }, (_value, index) => index + 1)
+            );
+            const matrices = new GeometryData(values, components);
+
+            const resource = manager.getVertexBuffer(matrices, input('matrix', type, 1, columns));
+
+            expect(resource.count).toBe(2);
+            expect(resource.layout.arrayStride).toBe(components * 4);
+            expect(resource.layout.attributes).toEqual(
+                Array.from({ length: columns }, (_unused, column) => ({
+                    format: `float32x${String(columns)}`,
+                    offset: column * columns * 4,
+                    shaderLocation: 1 + column
+                }))
+            );
+            expect(bindingFloats(fake, resource)).toEqual([...values]);
+        }
+    );
+
     it('expands mat4 into four stable vertex locations with column-major bytes', () => {
         const fake = fakeGPU();
         const manager = new WebGPUBufferManager(fake.device);
@@ -202,6 +231,125 @@ describe('WebGPUBufferManager packed vertex buffers', () => {
             Math.fround(50 / 255),
             Math.fround(60 / 255)
         ]);
+    });
+
+    it('uploads only affected interleaved vertex records for retained sub-data revisions', () => {
+        const fake = fakeGPU();
+        const manager = new WebGPUBufferManager(fake.device);
+        const owner = {};
+        const positions = new GeometryData(
+            new Float32Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+            3
+        );
+        const colors = new GeometryData(
+            new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]),
+            4,
+            { normalized: true }
+        );
+        const sources = [
+            { geometryData: colors, input: input('color', 'vec4', 1) },
+            { geometryData: positions, input: input('position', 'vec3', 0) }
+        ];
+        const binding = manager.getInterleavedVertexBuffer(owner, sources);
+
+        positions.setSubData(6, new Float32Array([60, 70, 80]));
+        expect(manager.getInterleavedVertexBuffer(owner, [...sources].reverse())).toBe(binding);
+
+        expect(fake.writes).toHaveLength(1);
+        expect(fake.writes[0]).toMatchObject({
+            buffer: binding.buffer,
+            bufferOffset: 56
+        });
+        expect(fake.writes[0]?.bytes.byteLength).toBe(28);
+        expect(bindingFloats(fake, binding).slice(14, 21)).toEqual([60, 70, 80, 0, 0, 1, 1]);
+    });
+
+    it('keeps matrix patches column-packed and skips source padding-only edits', () => {
+        const fake = fakeGPU();
+        const manager = new WebGPUBufferManager(fake.device);
+        const matrices = new GeometryData(
+            new Float32Array(Array.from({ length: 18 }, (_value, index) => index + 1)),
+            9
+        );
+        const matrixBinding = manager.getVertexBuffer(matrices, input('basis', 'mat3', 0, 3));
+
+        matrices.setSubData(9, new Float32Array([90, 91, 92, 93, 94, 95, 96, 97, 98]));
+        manager.getVertexBuffer(matrices, input('basis', 'mat3', 0, 3));
+        expect(fake.writes[0]).toMatchObject({
+            buffer: matrixBinding.buffer,
+            bufferOffset: 36
+        });
+        expect(fake.writes[0]?.bytes.byteLength).toBe(36);
+        expect(bindingFloats(fake, matrixBinding).slice(9)).toEqual([
+            90, 91, 92, 93, 94, 95, 96, 97, 98
+        ]);
+
+        const strided = new GeometryData(new Float32Array([100, 1, 2, 3, 200, 4, 5, 6]), 3, {
+            stride: 16,
+            offset: 4
+        });
+        const stridedBinding = manager.getVertexBuffer(strided, input('position', 'vec3', 0));
+        strided.setSubData(4, new Float32Array([300]));
+        manager.getVertexBuffer(strided, input('position', 'vec3', 0));
+        expect(fake.writes).toHaveLength(1);
+
+        strided.setSubData(5, new Float32Array([40, 50, 60]));
+        manager.getVertexBuffer(strided, input('position', 'vec3', 0));
+        expect(fake.writes[1]).toMatchObject({
+            buffer: stridedBinding.buffer,
+            bufferOffset: 12
+        });
+        expect(fake.writes[1]?.bytes.byteLength).toBe(12);
+        expect(bindingFloats(fake, stridedBinding)).toEqual([1, 2, 3, 40, 50, 60]);
+    });
+
+    it('falls back to one full upload after dirty-range history expires and rebuilds on resize', () => {
+        const fake = fakeGPU();
+        const manager = new WebGPUBufferManager(fake.device);
+        const geometry = new GeometryData(new Float32Array([0, 1, 2, 3]), 1);
+        const vertexInput = input('value', 'float', 0);
+        const first = manager.getVertexBuffer(geometry, vertexInput);
+
+        for (let revision = 0; revision < 65; revision++) {
+            geometry.setSubData(1, new Float32Array([revision]));
+        }
+        expect(manager.getVertexBuffer(geometry, vertexInput)).toBe(first);
+        expect(fake.writes).toHaveLength(1);
+        expect(fake.writes[0]).toMatchObject({ buffer: first.buffer, bufferOffset: 0 });
+        expect(fake.writes[0]?.bytes.byteLength).toBe(16);
+
+        geometry.data = new Float32Array([4, 5, 6, 7, 8, 9]);
+        const resized = manager.getVertexBuffer(geometry, vertexInput);
+        expect(resized).not.toBe(first);
+        expect(resized.count).toBe(6);
+        expect(fake.record(first.buffer).destroyCount).toBe(1);
+        expect(fake.record(resized.buffer).descriptor.size).toBe(24);
+        expect(bindingFloats(fake, resized)).toEqual([4, 5, 6, 7, 8, 9]);
+    });
+
+    it('retains disjoint dirty ranges as separate aligned queue writes', () => {
+        const fake = fakeGPU();
+        const manager = new WebGPUBufferManager(fake.device);
+        const geometry = new GeometryData(new Float32Array([0, 1, 2, 3, 4, 5, 6, 7]), 2);
+        const vertexInput = input('position', 'vec2', 0);
+        const binding = manager.getVertexBuffer(geometry, vertexInput);
+
+        geometry.setSubData(0, new Float32Array([10, 11]));
+        geometry.setSubData(6, new Float32Array([60, 70]));
+        manager.getVertexBuffer(geometry, vertexInput);
+
+        expect(fake.writes).toHaveLength(2);
+        expect(
+            fake.writes.map(write => ({
+                buffer: write.buffer,
+                bufferOffset: write.bufferOffset,
+                byteLength: write.bytes.byteLength
+            }))
+        ).toEqual([
+            { buffer: binding.buffer, bufferOffset: 0, byteLength: 8 },
+            { buffer: binding.buffer, bufferOffset: 24, byteLength: 8 }
+        ]);
+        expect(bindingFloats(fake, binding)).toEqual([10, 11, 2, 3, 4, 5, 60, 70]);
     });
 
     it('uses one GPU buffer for nine logical inputs', () => {
@@ -386,6 +534,8 @@ describe('WebGPUBufferManager index buffers', () => {
 
         expect(updated).toBe(first);
         expect(fake.writes).toHaveLength(1);
+        expect(fake.writes[0]).toMatchObject({ buffer: first.buffer, bufferOffset: 0 });
+        expect(fake.writes[0]?.bytes.byteLength).toBe(8);
         expect(indexValues(fake, updated)).toEqual([0, 2, 1]);
 
         expect(() =>
@@ -401,6 +551,34 @@ describe('WebGPUBufferManager index buffers', () => {
                 new GeometryData(new Uint16Array([0, 1]), 1, { normalized: true })
             )
         ).toThrow(/normalized=false/);
+    });
+
+    it('increments aligned index subranges without retransmitting the complete allocation', () => {
+        const fake = fakeGPU();
+        const manager = new WebGPUBufferManager(fake.device);
+        const uint16 = new GeometryData(new Uint16Array([0, 1, 2, 3, 4, 5]), 1);
+        const restart = new GeometryData(new Uint8Array([0, 1, 2, 3, 4, 5]), 1);
+        const uint16Binding = manager.getIndexBuffer(uint16);
+        const restartBinding = manager.getIndexBuffer(restart, { primitiveRestart: true });
+
+        uint16.setSubData(2, new Uint16Array([20]));
+        restart.setSubData(4, new Uint8Array([0xff]));
+        manager.getIndexBuffer(uint16);
+        manager.getIndexBuffer(restart, { primitiveRestart: true });
+
+        expect(fake.writes).toHaveLength(2);
+        expect(fake.writes[0]).toMatchObject({
+            buffer: uint16Binding.buffer,
+            bufferOffset: 4
+        });
+        expect(fake.writes[0]?.bytes.byteLength).toBe(4);
+        expect(fake.writes[1]).toMatchObject({
+            buffer: restartBinding.buffer,
+            bufferOffset: 8
+        });
+        expect(fake.writes[1]?.bytes.byteLength).toBe(4);
+        expect(indexValues(fake, uint16Binding)).toEqual([0, 1, 20, 3, 4, 5]);
+        expect(indexValues(fake, restartBinding)).toEqual([0, 1, 2, 3, 0xffff, 5]);
     });
 
     it('pads odd uint16 update byte counts without changing the logical index count', () => {

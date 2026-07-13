@@ -87,7 +87,7 @@ function random(min: number, max: number): number {
     return Math.random() * (max - min) + min;
 }
 
-const { stage, directionLight, ambientLight, ticker } = createExampleContext();
+const { stage, directionLight, ambientLight, ticker } = await createExampleContext();
 stage.rotation.degX = 20;
 ambientLight.enabled = false;
 directionLight.amount = 10;

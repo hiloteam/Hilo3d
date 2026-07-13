@@ -5,8 +5,6 @@ import type Material from '../material/Material';
 import Framebuffer from '../renderer/Framebuffer';
 import type WebGLRenderer from '../renderer/WebGLRenderer';
 import CubeTexture from '../texture/CubeTexture';
-import capabilities from '../renderer/capabilities';
-import semantic from '../material/semantic';
 import GeometryMaterial from '../material/GeometryMaterial';
 import Color from '../math/Color';
 import Vector3 from '../math/Vector3';
@@ -21,26 +19,15 @@ import {
     TEXTURE_CUBE_MAP,
     TEXTURE_CUBE_MAP_POSITIVE_X
 } from '../constants/webgl';
+import {
+    POINT_SHADOW_DIRECTIONS,
+    POINT_SHADOW_UPS,
+    resolvePointShadowCameraPlanes
+} from './PointShadowCamera';
 
 let shadowMaterial: GeometryMaterial | null = null;
 const clearColor = new Color(0, 0, 0, 0);
 const tempVector3 = new Vector3();
-const lookAtMap = [
-    [1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1],
-    [0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1, 0, -1, 0, 0, -1, 0]
-] as const;
-
-type ClippingCamera = Camera & { near: number; far: number | null };
-
-function hasClippingPlanes(camera: Camera): camera is ClippingCamera {
-    return (
-        'near' in camera &&
-        typeof camera.near === 'number' &&
-        'far' in camera &&
-        (typeof camera.far === 'number' || camera.far === null)
-    );
-}
-
 type ShadowMesh = Mesh & { material: Material };
 
 function needsShadowRender(mesh: Mesh, camera: Camera): mesh is ShadowMesh {
@@ -67,14 +54,18 @@ class CubeShadowFramebuffer extends Framebuffer {
     }
 
     override bindTexture(index = 0): void {
+        if (!Number.isSafeInteger(index) || index < 0 || index > 5) {
+            throw new RangeError('Cube shadow face index must be an integer from 0 through 5.');
+        }
+        this.bind();
         const { gl } = this.state;
         const texture = this.texture;
-        if (!(texture instanceof CubeTexture)) {
+        if (!(texture instanceof CubeTexture) || texture.target !== TEXTURE_CUBE_MAP) {
             throw new TypeError('Cube shadow framebuffer requires a cube texture attachment.');
         }
         const glTexture = texture.getGLTexture(this.state);
-        this.state.activeTexture(TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
-        this.state.bindTexture(this.target, glTexture);
+        this.state.activeTexture(TEXTURE0 + this.state.capabilities.MAX_TEXTURE_INDEX);
+        this.state.bindTexture(TEXTURE_CUBE_MAP, glTexture);
         gl.framebufferTexture2D(
             FRAMEBUFFER,
             this.attachment,
@@ -95,6 +86,9 @@ class CubeLightShadow extends LightShadow {
 
     override createFramebuffer(): void {
         if (this.framebuffer) return;
+        if (this.width !== this.height) {
+            throw new RangeError('Point-light cube shadows require equal width and height.');
+        }
         this.framebuffer = new CubeShadowFramebuffer(this.renderer, {
             target: TEXTURE_CUBE_MAP,
             width: this.width,
@@ -103,24 +97,19 @@ class CubeLightShadow extends LightShadow {
     }
 
     override updateLightCamera(currentCamera: Camera): void {
-        if (!hasClippingPlanes(currentCamera)) {
-            throw new TypeError(
-                'Point-light shadows require numeric near and far clipping planes.'
-            );
-        }
         if (!(this.camera instanceof PerspectiveCamera)) {
             throw new TypeError('Point-light shadows require a perspective shadow camera.');
         }
+        const clipping = resolvePointShadowCameraPlanes(this.light, currentCamera);
         this.camera.fov = 90;
-        this.camera.near = currentCamera.near;
-        this.camera.far = currentCamera.far ?? currentCamera.near * 1000;
+        this.camera.near = clipping.near;
+        this.camera.far = clipping.far;
         this.camera.aspect = 1;
         this.camera.updateViewMatrix();
     }
 
     override createCamera(currentCamera: Camera): void {
-        if (this.camera) return;
-        this.camera = new PerspectiveCamera();
+        this.camera ??= new PerspectiveCamera();
         this.updateLightCamera(currentCamera);
     }
 
@@ -145,12 +134,14 @@ class CubeLightShadow extends LightShadow {
             this.light.worldMatrix.getTranslation(camera.position);
             for (let index = 0; index < 6; index++) {
                 framebuffer.bindTexture(index);
-                tempVector3.fromArray(lookAtMap[0], index * 3).add(camera.position);
-                camera.up.fromArray(lookAtMap[1], index * 3);
+                const direction = POINT_SHADOW_DIRECTIONS[index] ?? POINT_SHADOW_DIRECTIONS[0];
+                const up = POINT_SHADOW_UPS[index] ?? POINT_SHADOW_UPS[0];
+                tempVector3.set(direction[0], direction[1], direction[2]).add(camera.position);
+                camera.up.set(up[0], up[1], up[2]);
                 camera.lookAt(tempVector3);
                 camera.updateViewProjectionMatrix();
                 renderer.clear(clearColor);
-                semantic.setCamera(camera);
+                this.beginCameraPass(camera, [0, 0, framebuffer.width, framebuffer.height]);
                 renderer.forceMaterial = shadowMaterial;
                 this.renderShadowScene(renderer);
             }
@@ -159,7 +150,7 @@ class CubeLightShadow extends LightShadow {
         } finally {
             renderer.forceMaterial = previousForceMaterial;
             framebuffer.unbind();
-            semantic.setCamera(currentCamera);
+            this.beginCameraPass(currentCamera);
             renderer.viewport();
         }
     }

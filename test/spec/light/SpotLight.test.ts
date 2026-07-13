@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
+import { renderWebGLShadowMaps } from '../../../src/renderer/WebGLShadowMapManager';
 import { createHilo3dEnvironment } from '../../setup';
 
 const SpotLight = Hilo3d.SpotLight;
+const beginCameraPass = (camera: Hilo3d.Camera): void => {
+    Hilo3d.semantic.setCamera(camera);
+};
 
 describe('SpotLight', () => {
     it('create', () => {
@@ -59,8 +63,11 @@ describe('SpotLight', () => {
         });
 
         const env = createHilo3dEnvironment();
-        light.createShadowMap(env.renderer, env.camera);
-        expect(light.lightShadow?.isLightShadow).toBe(true);
+        const manager = new Hilo3d.LightManager().addLight(light);
+        renderWebGLShadowMaps(manager, env.renderer, env.camera, beginCameraPass);
+        expect(manager.getSpotInfo(env.camera).shadowMap).toHaveLength(1);
+        expect(Reflect.has(light, 'lightShadow')).toBe(false);
+        expect(Reflect.has(light, 'createShadowMap')).toBe(false);
     });
 
     it('getWorldDirection', () => {

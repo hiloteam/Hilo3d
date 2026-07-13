@@ -57,7 +57,7 @@ describe('Std140Layout', () => {
         const buffer = UniformBuffer.fromSchema(layout, { color: [1, 0, 0, 1] });
 
         buffer.set('opacity', 0.5);
-        expect(new Float32Array(buffer.data as ArrayBuffer)[4]).toBe(0.5);
+        expect(new Float32Array(buffer.data)[4]).toBe(0.5);
         expect(buffer.range(0, 16)).toEqual({
             uniformBuffer: buffer,
             byteOffset: 0,
@@ -152,6 +152,30 @@ describe('Std140Layout', () => {
         expect(() => {
             buffer.data = new ArrayBuffer(4);
         }).toThrow(/layout requires/);
+        expect(() => {
+            buffer.data = new Float32Array(layout.byteLength / 4) as unknown as ArrayBuffer;
+        }).toThrow(/must be an ArrayBuffer/);
+    });
+
+    it('requires a std140 schema at construction and allocates its exact layout size', () => {
+        const layout = createStd140Layout({ value: 'vec4' });
+        const buffer = new UniformBuffer(layout, { value: [1, 2, 3, 4] });
+
+        expect(buffer.layout).toBe(layout);
+        expect(buffer.data).toBeInstanceOf(ArrayBuffer);
+        expect(buffer.byteLength).toBe(layout.byteLength);
+        expect(Array.from(new Float32Array(buffer.data))).toEqual([1, 2, 3, 4]);
+        expect(() => {
+            new UniformBuffer(new Float32Array(4) as unknown as Std140Layout);
+        }).toThrow(/requires a Std140Layout schema/);
+    });
+
+    it('rejects nested structures that the public flat schema cannot express portably', () => {
+        expect(() => {
+            new Std140Layout({
+                nested: { fields: { value: 'vec4' } }
+            } as unknown as { nested: 'vec4' });
+        }).toThrow(/nested structs are not part of the portable schema/);
     });
 });
 

@@ -1,13 +1,13 @@
 import Node, { type NodeParameters, type NodePointerEvent, type NodeRaycastInfo } from './Node';
 import version from './version';
 import WebGLRenderer from '../renderer/WebGLRenderer';
-import WebGPURenderer, { type WebGPUFramebufferParameters } from '../renderer/WebGPURenderer';
+import WebGPURenderer from '../renderer/WebGPURenderer';
 import type { RendererBackend } from '../renderer/Renderer';
-import type { FramebufferParameters } from '../renderer/Framebuffer';
 import Ray from '../math/Ray';
 import Vector3 from '../math/Vector3';
 import type Color from '../math/Color';
 import type Camera from '../camera/Camera';
+import type Fog from './Fog';
 import log from '../utils/log';
 import { getElementRect } from '../utils/util';
 
@@ -137,33 +137,49 @@ function getDOMPointerInfo(event: Event): DOMPointerInfo {
     };
 }
 
-export interface StageParameters<
-    Backend extends RendererBackend = 'webgl2'
-> extends NodeParameters {
-    /** Graphics backend. Selection is explicit; unsupported WebGPU never falls back silently. */
-    backend?: Backend;
+export interface StageCommonParameters extends NodeParameters {
     container?: HTMLElement;
     canvas?: HTMLCanvasElement;
     camera?: Camera | null;
+    fog?: Fog | null;
     width?: number;
     height?: number;
     pixelRatio?: number;
     clearColor?: Color;
     useInstanced?: boolean;
-    useFramebuffer?: boolean;
-    framebufferOption?: Backend extends 'webgpu'
-        ? WebGPUFramebufferParameters
-        : FramebufferParameters;
     useLogDepth?: boolean;
     alpha?: boolean;
     depth?: boolean;
     stencil?: boolean;
     antialias?: boolean;
     premultipliedAlpha?: boolean;
-    preserveDrawingBuffer?: boolean;
     failIfMajorPerformanceCaveat?: boolean;
     gameMode?: boolean;
 }
+
+export type StageBackendParameters<Backend extends RendererBackend> = [RendererBackend] extends [
+    Backend
+]
+    ? {
+          backend: RendererBackend;
+          /** Dynamic backend selection is guarded at runtime when this WebGL2-only option exists. */
+          preserveDrawingBuffer?: boolean;
+      }
+    : Backend extends 'webgpu'
+      ? {
+            /** WebGPU selection is explicit and never falls back silently. */
+            backend: 'webgpu';
+            /** WebGPU has no preserved default framebuffer; use an explicit copy/readback pass. */
+            preserveDrawingBuffer?: never;
+        }
+      : {
+            backend?: 'webgl2';
+            preserveDrawingBuffer?: boolean;
+        };
+
+export type StageParameters<Backend extends RendererBackend = 'webgl2'> = StageCommonParameters & {
+    backend?: Backend;
+} & StageBackendParameters<Backend>;
 
 export type StageRenderer<Backend extends RendererBackend> = Backend extends 'webgpu'
     ? WebGPURenderer
@@ -209,6 +225,8 @@ class Stage<Backend extends RendererBackend = 'webgl2'> extends Node {
      * 摄像机
      */
     camera: Camera | null = null;
+    /** Scene fog consumed consistently by every renderer backend. */
+    fog: Fog | null = null;
     /**
      * 像素密度
      */
@@ -251,18 +269,24 @@ class Stage<Backend extends RendererBackend = 'webgl2'> extends Node {
      * - `params.height`: stage的高，默认网页高度
      * - `params.pixelRatio`: 像素密度。
      * - `params.clearColor`: 背景色。
-     * - `params.useFramebuffer`: 是否使用当前 backend 的离屏 render target。
-     * - `params.framebufferOption`: 当前 backend 的 render-target 配置，useFramebuffer 为 true 时生效。
      * - `params.useLogDepth`: 是否使用对数深度，处理深度冲突。
      * - `params.alpha`: 是否背景透明。
      * - `params.depth`: 是否需要深度缓冲区。
      * - `params.stencil`: 是否需要模版缓冲区。
      * - `params.antialias`: 是否抗锯齿。
      * - `params.premultipliedAlpha`: 是否需要 premultipliedAlpha。
-     * - `params.preserveDrawingBuffer`: 是否需要 preserveDrawingBuffer。
+     * - `params.preserveDrawingBuffer`: WebGL2-only preserved default framebuffer option.
      * - `params.failIfMajorPerformanceCaveat`: 是否需要 failIfMajorPerformanceCaveat。
      */
-    constructor(params: StageParameters<Backend> = {}) {
+    constructor(params: StageParameters<Backend> = {} as StageParameters<Backend>) {
+        if (
+            params.backend === 'webgpu' &&
+            Object.prototype.hasOwnProperty.call(params, 'preserveDrawingBuffer')
+        ) {
+            throw new TypeError(
+                'Stage preserveDrawingBuffer is WebGL2-only; WebGPU requires an explicit copy/readback pass'
+            );
+        }
         const width = params.width ?? window.innerWidth;
         const height = params.height ?? window.innerHeight;
         let pixelRatio = params.pixelRatio;
@@ -286,6 +310,7 @@ class Stage<Backend extends RendererBackend = 'webgl2'> extends Node {
                       domElement: this.canvas
                   });
         this.renderer = renderer as StageRenderer<Backend>;
+        this.canvas.dataset['hilo3dBackend'] = renderer.backend;
         this.ready = renderer.ready;
         this.resize(this.width, this.height, this.pixelRatio, true);
         log.log(`Hilo3d version: ${version}`);
@@ -293,7 +318,7 @@ class Stage<Backend extends RendererBackend = 'webgl2'> extends Node {
 
     /** Construct and await an asynchronously initialized backend. */
     static async create<Backend extends RendererBackend = 'webgl2'>(
-        params: StageParameters<Backend> = {}
+        params: StageParameters<Backend> = {} as StageParameters<Backend>
     ): Promise<Stage<Backend>> {
         const stage = new Stage(params);
         await stage.ready;
@@ -337,8 +362,8 @@ class Stage<Backend extends RendererBackend = 'webgl2'> extends Node {
             this.width = width;
             this.height = height;
             this.pixelRatio = pixelRatio;
-            this.rendererWidth = width * pixelRatio;
-            this.rendererHeight = height * pixelRatio;
+            this.rendererWidth = Math.max(1, Math.round(width * pixelRatio));
+            this.rendererHeight = Math.max(1, Math.round(height * pixelRatio));
             const canvas = this.canvas;
             const renderer = this.renderer;
             renderer.resize(this.rendererWidth, this.rendererHeight, force);

@@ -13,6 +13,42 @@ describe('WebGLRenderer', () => {
         expect(renderer.className).toBe('WebGLRenderer');
     });
 
+    it('keeps runtime instancing selection synchronized with its render list', () => {
+        const renderer = new WebGLRenderer();
+
+        renderer.useInstanced = true;
+        expect(renderer.renderList.useInstanced).toBe(true);
+        renderer.useInstanced = false;
+        expect(renderer.renderList.useInstanced).toBe(false);
+    });
+
+    it('normalizes LINE_LOOP geometry before WebGL2 shader and VAO setup', () => {
+        const renderer = new WebGLRenderer();
+        const geometry = new Hilo3d.Geometry({
+            mode: Hilo3d.constants.LINE_LOOP,
+            vertices: new Hilo3d.GeometryData(new Float32Array(9), 3),
+            indices: new Hilo3d.GeometryData(new Uint32Array([0, 1, 2]), 1)
+        });
+        const mesh = new Hilo3d.Mesh({
+            geometry,
+            material: new Hilo3d.BasicMaterial({ lightType: 'NONE' })
+        });
+        const stopAfterNormalization = new Error('stop after topology normalization');
+        const getShader = vi.spyOn(Hilo3d.Shader, 'getShader').mockImplementation(() => {
+            throw stopAfterNormalization;
+        });
+
+        try {
+            expect(() => renderer.setupMesh(mesh, false)).toThrow(stopAfterNormalization);
+        } finally {
+            getShader.mockRestore();
+        }
+
+        expect(geometry.mode).toBe(Hilo3d.constants.LINES);
+        expect(geometry.indices?.data).toBeInstanceOf(Uint32Array);
+        expect(Array.from(geometry.indices?.data ?? [])).toEqual([0, 1, 1, 2, 2, 0]);
+    });
+
     it('creates only a WebGL 2 context', () => {
         const canvas = document.createElement('canvas');
         const getContext = vi.spyOn(canvas, 'getContext');
@@ -22,6 +58,78 @@ describe('WebGLRenderer', () => {
 
         expect(getContext).toHaveBeenCalledWith('webgl2', expect.any(Object));
         expect(getContext.mock.calls.some(([contextId]) => contextId === 'webgl')).toBe(false);
+    });
+
+    it('binds a first-upload texture to the requested sampler unit after using the upload unit', () => {
+        const renderer = new WebGLRenderer({ domElement: document.createElement('canvas') });
+        renderer.initContext();
+        const texture = new Hilo3d.DataTexture({
+            width: 1,
+            height: 1,
+            data: new Uint8Array([255, 0, 0, 255]),
+            flipY: false
+        });
+        const bindTexture = (
+            renderer as unknown as {
+                bindTexture(value: Hilo3d.Texture, textureIndex: number, samplerType: GLenum): void;
+            }
+        ).bindTexture.bind(renderer);
+
+        bindTexture(texture, 0, renderer.gl.SAMPLER_2D);
+
+        expect(renderer.gl.getParameter(renderer.gl.ACTIVE_TEXTURE)).toBe(renderer.gl.TEXTURE0);
+        expect(renderer.gl.getParameter(renderer.gl.TEXTURE_BINDING_2D)).toBe(
+            texture.getGLTexture(renderer.state)
+        );
+        expect(renderer.gl.getError()).toBe(renderer.gl.NO_ERROR);
+        renderer.destroy();
+    });
+
+    it('remains fail-closed until every framebuffer recovers after context loss', () => {
+        const renderer = new WebGLRenderer({
+            domElement: document.createElement('canvas'),
+            width: 16,
+            height: 16
+        });
+        renderer.initContext();
+        const target = renderer.createRenderTarget({ width: 4, height: 4 });
+        renderer.setRenderTarget(target, { present: true });
+        renderer.render(new Hilo3d.Node(), new Hilo3d.PerspectiveCamera());
+        expect(renderer.gl.getError()).toBe(renderer.gl.NO_ERROR);
+        const attachment = target.getColorTexture();
+        const destroyListener = vi.fn();
+        attachment.on('destroy', destroyListener);
+        const lifecycle = renderer as unknown as {
+            onContextLost(event: Pick<Event, 'preventDefault'>): void;
+            onContextRestored(event: Event): void;
+        };
+        const checkFramebufferStatus = vi
+            .spyOn(renderer.gl, 'checkFramebufferStatus')
+            .mockReturnValue(renderer.gl.FRAMEBUFFER_INCOMPLETE_ATTACHMENT);
+
+        try {
+            lifecycle.onContextLost({ preventDefault: vi.fn() });
+            expect(() => {
+                lifecycle.onContextRestored(new Event('webglcontextrestored'));
+            }).toThrow(/Framebuffer is incomplete/u);
+            expect(target.getColorTexture()).toBe(attachment);
+            expect(destroyListener).not.toHaveBeenCalled();
+            expect(() => {
+                renderer.render(new Hilo3d.Node(), new Hilo3d.PerspectiveCamera());
+            }).toThrow(/context is lost/u);
+
+            checkFramebufferStatus.mockRestore();
+            lifecycle.onContextRestored(new Event('webglcontextrestored'));
+            expect(target.getColorTexture()).toBe(attachment);
+            expect(destroyListener).not.toHaveBeenCalled();
+            expect(() => {
+                renderer.render(new Hilo3d.Node(), new Hilo3d.PerspectiveCamera());
+            }).not.toThrow();
+            expect(renderer.gl.getError()).toBe(renderer.gl.NO_ERROR);
+        } finally {
+            checkFramebufferStatus.mockRestore();
+            renderer.destroy();
+        }
     });
 
     it('onInit', () => {

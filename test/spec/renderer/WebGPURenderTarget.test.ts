@@ -1,9 +1,27 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import Texture from '../../../src/texture/Texture';
-import { DEPTH_COMPONENT, LINEAR, RGBA, UNSIGNED_BYTE } from '../../../src/constants/webgl';
+import {
+    DEPTH_COMPONENT,
+    LINEAR,
+    RGBA,
+    UNSIGNED_BYTE,
+    UNSIGNED_INT
+} from '../../../src/constants/webgl';
 import { DEPTH_COMPONENT24, RGBA8 } from '../../../src/constants/webgl2';
 import WebGPURenderTarget from '../../../src/renderer/webgpu/WebGPURenderTarget';
 import WebGPUTextureManager from '../../../src/renderer/webgpu/WebGPUTextureManager';
+import { NagaShaderTranslator } from '../../../src/shader/GlslToWgsl';
+
+let translator: NagaShaderTranslator;
+
+beforeAll(async () => {
+    translator = new NagaShaderTranslator();
+    await translator.initialize();
+});
+
+function createTextureManager(device: GPUDevice): WebGPUTextureManager {
+    return new WebGPUTextureManager(device, translator);
+}
 
 interface FakeTextureRecord {
     readonly descriptor: GPUTextureDescriptor;
@@ -28,8 +46,11 @@ interface FakeWebGPU {
     readonly textures: FakeTextureRecord[];
     readonly buffers: FakeBufferRecord[];
     readonly copyTextureToBuffer: ReturnType<typeof vi.fn>;
+    readonly copyExternalImageToTexture: ReturnType<typeof vi.fn>;
     readonly submit: ReturnType<typeof vi.fn>;
     fillReadBuffer: ((bytes: Uint8Array) => void) | null;
+    failTextureCreationsAfter: number | null;
+    failViewForLabel: string | null;
 }
 
 function createFakeWebGPU(
@@ -38,14 +59,18 @@ function createFakeWebGPU(
     const textures: FakeTextureRecord[] = [];
     const buffers: FakeBufferRecord[] = [];
     const copyTextureToBuffer = vi.fn();
+    const copyExternalImageToTexture = vi.fn();
     const submit = vi.fn();
     const fake: FakeWebGPU = {
         device: null as unknown as GPUDevice,
         textures,
         buffers,
         copyTextureToBuffer,
+        copyExternalImageToTexture,
         submit,
-        fillReadBuffer: null
+        fillReadBuffer: null,
+        failTextureCreationsAfter: null,
+        failViewForLabel: null
     };
     const device = {
         features: new Set<GPUFeatureName>(),
@@ -55,12 +80,23 @@ function createFakeWebGPU(
             maxColorAttachments: options.maxColorAttachments ?? 8,
             maxColorAttachmentBytesPerSample: options.maxBytes ?? 64
         },
-        queue: { submit },
+        queue: { copyExternalImageToTexture, submit },
         createTexture: vi.fn((descriptor: GPUTextureDescriptor) => {
+            if (fake.failTextureCreationsAfter !== null) {
+                if (fake.failTextureCreationsAfter === 0) {
+                    fake.failTextureCreationsAfter = null;
+                    throw new Error('Injected WebGPU texture allocation failure');
+                }
+                fake.failTextureCreationsAfter--;
+            }
             const views: FakeTextureRecord['views'] = [];
             const destroy = vi.fn();
             const gpuTexture = {
                 createView: vi.fn((viewDescriptor: GPUTextureViewDescriptor = {}) => {
+                    if (fake.failViewForLabel === descriptor.label) {
+                        fake.failViewForLabel = null;
+                        throw new Error('Injected WebGPU texture view failure');
+                    }
                     const view = { gpuTexture, viewDescriptor } as unknown as GPUTextureView;
                     views.push({ descriptor: viewDescriptor, view });
                     return view;
@@ -100,7 +136,7 @@ function createFakeWebGPU(
 describe('WebGPURenderTarget attachments and passes', () => {
     it('creates MRT resolves, multisample surfaces and depth/stencil without hidden fallback', () => {
         const fake = createFakeWebGPU();
-        const textures = new WebGPUTextureManager(fake.device);
+        const textures = createTextureManager(fake.device);
         const target = new WebGPURenderTarget(fake.device, textures, {
             width: 64,
             height: 32,
@@ -110,6 +146,7 @@ describe('WebGPURenderTarget attachments and passes', () => {
         });
 
         expect(target.colorFormats).toEqual(['rgba8unorm', 'rgba16float']);
+        expect(target.backend).toBe('webgpu');
         expect(target.depthStencilFormat).toBe('depth24plus-stencil8');
         expect(target.colorTextures).toHaveLength(2);
         expect(target.depthTexture).toBeNull();
@@ -126,14 +163,94 @@ describe('WebGPURenderTarget attachments and passes', () => {
         expect(pass.colorAttachments[0]?.storeOp).toBe('discard');
         expect(pass.depthStencilAttachment?.stencilLoadOp).toBe('clear');
         expect(fake.textures.map(record => record.descriptor.sampleCount)).toEqual([1, 4, 1, 4, 4]);
+        expect(fake.textures[0]?.descriptor.usage).toBe(23);
+        expect(fake.textures[2]?.descriptor.usage).toBe(23);
         expect(textures.get(target.getColorTexture(1)).gpuTexture).toBe(
             target.getColorGPUTexture(1)
         );
     });
 
+    it('retains load and store operations for every pass attachment', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 4,
+            height: 4,
+            colorAttachments: [
+                { loadOp: 'load', storeOp: 'store' },
+                {
+                    clearValue: { r: 0.25, g: 0.5, b: 0.75, a: 1 },
+                    loadOp: 'clear',
+                    storeOp: 'discard'
+                },
+                { loadOp: 'load', storeOp: 'discard' }
+            ],
+            depthStencilAttachment: false
+        });
+
+        expect(
+            target.createRenderPassDescriptor().colorAttachments.map(attachment => ({
+                clearValue: attachment?.clearValue,
+                loadOp: attachment?.loadOp,
+                storeOp: attachment?.storeOp
+            }))
+        ).toEqual([
+            {
+                clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                loadOp: 'load',
+                storeOp: 'store'
+            },
+            {
+                clearValue: { r: 0.25, g: 0.5, b: 0.75, a: 1 },
+                loadOp: 'clear',
+                storeOp: 'discard'
+            },
+            {
+                clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                loadOp: 'load',
+                storeOp: 'discard'
+            }
+        ]);
+    });
+
+    it('uploads public sub-texture updates into a color attachment allocation', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 4,
+            height: 4,
+            depthStencilAttachment: false
+        });
+        const texture = target.getColorTexture();
+        const update = new ImageData(new Uint8ClampedArray([255, 0, 255, 255]), 1, 1);
+
+        texture.updateSubTexture({
+            mipLevel: 0,
+            x: 1,
+            y: 2,
+            width: 1,
+            height: 1,
+            image: update
+        });
+        textures.get(texture);
+
+        expect(fake.textures[0]?.descriptor.usage).toBe(23);
+        expect(fake.copyExternalImageToTexture).toHaveBeenCalledWith(
+            { source: update, flipY: false },
+            {
+                texture: target.getColorGPUTexture(),
+                mipLevel: 0,
+                origin: { x: 1, y: 2, z: 0 },
+                premultipliedAlpha: false,
+                colorSpace: 'srgb'
+            },
+            { width: 1, height: 1, depthOrArrayLayers: 1 }
+        );
+    });
+
     it('registers an explicitly sampleable depth/stencil texture through a depth-only view', () => {
         const fake = createFakeWebGPU();
-        const textures = new WebGPUTextureManager(fake.device);
+        const textures = createTextureManager(fake.device);
         const target = new WebGPURenderTarget(fake.device, textures, {
             width: 16,
             height: 16,
@@ -146,6 +263,7 @@ describe('WebGPURenderTarget attachments and passes', () => {
         });
 
         expect(target.depthTexture).not.toBeNull();
+        expect(target.getDepthTexture()).toBe(target.depthTexture);
         expect(target.createRenderPassDescriptor().colorAttachments).toEqual([]);
         expect(fake.textures).toHaveLength(1);
         expect(fake.textures[0]?.views.map(view => view.descriptor)).toEqual([
@@ -160,7 +278,7 @@ describe('WebGPURenderTarget attachments and passes', () => {
 
     it('keeps engine texture identities stable while resize replaces every GPU allocation', () => {
         const fake = createFakeWebGPU();
-        const textures = new WebGPUTextureManager(fake.device);
+        const textures = createTextureManager(fake.device);
         const target = new WebGPURenderTarget(fake.device, textures, {
             width: 10,
             height: 20,
@@ -188,12 +306,180 @@ describe('WebGPURenderTarget attachments and passes', () => {
         expect(resized.every(record => record.destroy.mock.calls.length === 1)).toBe(true);
         expect(() => target.createRenderPassDescriptor()).toThrow(/destroyed/);
     });
+
+    it('keeps every old allocation live when staged resize texture creation fails', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 10,
+            height: 20,
+            sampleCount: 4,
+            colorAttachments: [{}, {}]
+        });
+        const firstColorTexture = target.getColorTexture(0);
+        const secondColorTexture = target.getColorTexture(1);
+        const colorTextures = [firstColorTexture, secondColorTexture];
+        const oldGPUTextures = [target.getColorGPUTexture(0), target.getColorGPUTexture(1)];
+        const oldRecords = [...fake.textures];
+        const oldPass = target.createRenderPassDescriptor();
+        fake.failTextureCreationsAfter = 2;
+
+        expect(() => {
+            target.resize(30, 40);
+        }).toThrow(/allocation failure/);
+
+        expect(target.isDestroyed).toBe(false);
+        expect(target.width).toBe(10);
+        expect(target.height).toBe(20);
+        expect(target.getColorTexture(0)).toBe(colorTextures[0]);
+        expect(target.getColorTexture(1)).toBe(colorTextures[1]);
+        expect(colorTextures.map(texture => [texture.width, texture.height])).toEqual([
+            [10, 20],
+            [10, 20]
+        ]);
+        expect(target.getColorGPUTexture(0)).toBe(oldGPUTextures[0]);
+        expect(target.getColorGPUTexture(1)).toBe(oldGPUTextures[1]);
+        expect(textures.get(firstColorTexture).gpuTexture).toBe(oldGPUTextures[0]);
+        expect(textures.get(secondColorTexture).gpuTexture).toBe(oldGPUTextures[1]);
+        expect(
+            target.createRenderPassDescriptor().colorAttachments.map(attachment => ({
+                view: attachment?.view,
+                resolveTarget: attachment?.resolveTarget
+            }))
+        ).toEqual(
+            oldPass.colorAttachments.map(attachment => ({
+                view: attachment?.view,
+                resolveTarget: attachment?.resolveTarget
+            }))
+        );
+        expect(oldRecords.every(record => record.destroy.mock.calls.length === 0)).toBe(true);
+        expect(
+            fake.textures
+                .slice(oldRecords.length)
+                .every(record => record.destroy.mock.calls.length === 1)
+        ).toBe(true);
+
+        expect(() => {
+            target.resize(30, 40);
+        }).not.toThrow();
+        expect(target.width).toBe(30);
+        expect(target.height).toBe(40);
+        expect(oldRecords.every(record => record.destroy.mock.calls.length === 1)).toBe(true);
+    });
+
+    it('rolls back dimensions and registrations when staged resize view creation fails', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const target = new WebGPURenderTarget(fake.device, textures, {
+            width: 8,
+            height: 6,
+            label: 'transaction',
+            colorAttachments: [{}, {}],
+            depthStencilAttachment: { format: 'depth24plus', sampled: true }
+        });
+        const firstColor = target.getColorTexture(0);
+        const secondColor = target.getColorTexture(1);
+        const colors = [firstColor, secondColor];
+        const depth = target.getDepthTexture();
+        const oldRecords = [...fake.textures];
+        const oldColorGPUTextures = [target.getColorGPUTexture(0), target.getColorGPUTexture(1)];
+        const oldDepthGPUTexture = target.getDepthStencilGPUTexture();
+        fake.failViewForLabel = 'transaction.color[0]';
+
+        expect(() => {
+            target.resize(16, 12);
+        }).toThrow(/view failure/);
+
+        expect(target.isDestroyed).toBe(false);
+        expect([target.width, target.height]).toEqual([8, 6]);
+        expect(colors.map(texture => [texture.width, texture.height])).toEqual([
+            [8, 6],
+            [8, 6]
+        ]);
+        expect(depth && [depth.width, depth.height]).toEqual([8, 6]);
+        expect(target.getColorGPUTexture(0)).toBe(oldColorGPUTextures[0]);
+        expect(target.getColorGPUTexture(1)).toBe(oldColorGPUTextures[1]);
+        expect(target.getDepthStencilGPUTexture()).toBe(oldDepthGPUTexture);
+        expect(textures.get(firstColor).gpuTexture).toBe(oldColorGPUTextures[0]);
+        expect(textures.get(secondColor).gpuTexture).toBe(oldColorGPUTextures[1]);
+        expect(depth && textures.get(depth).gpuTexture).toBe(oldDepthGPUTexture);
+        expect(oldRecords.every(record => record.destroy.mock.calls.length === 0)).toBe(true);
+        expect(
+            fake.textures
+                .slice(oldRecords.length)
+                .every(record => record.destroy.mock.calls.length === 1)
+        ).toBe(true);
+        expect(() => target.createRenderPassDescriptor()).not.toThrow();
+    });
+
+    it('suspends without destruction and restores the same public attachments on a new device', async () => {
+        const first = createFakeWebGPU();
+        const second = createFakeWebGPU();
+        const firstTextures = createTextureManager(first.device);
+        const secondTextures = createTextureManager(second.device);
+        const target = new WebGPURenderTarget(first.device, firstTextures, {
+            width: 6,
+            height: 4,
+            sampleCount: 4,
+            colorAttachments: [{ format: 'rgba8unorm' }, { format: 'rgba16float' }],
+            depthStencilAttachment: { format: 'depth24plus-stencil8' }
+        });
+        const colorTextures = [target.getColorTexture(0), target.getColorTexture(1)];
+        const firstGPUTextures = [target.getColorGPUTexture(0), target.getColorGPUTexture(1)];
+
+        target.suspendDeviceResources();
+
+        expect(target.isDestroyed).toBe(false);
+        expect(target.getColorTexture(0)).toBe(colorTextures[0]);
+        expect(() => target.createRenderPassDescriptor()).toThrow(/unavailable during recovery/);
+        await expect(target.readColorAttachment()).rejects.toThrow(/unavailable during recovery/);
+        expect(first.submit).not.toHaveBeenCalled();
+
+        target.resize(12, 10);
+        expect(target.width).toBe(12);
+        expect(target.height).toBe(10);
+        target.restoreDeviceResources(second.device, secondTextures);
+
+        expect(target.device).toBe(second.device);
+        expect(target.textureManager).toBe(secondTextures);
+        expect(target.isDestroyed).toBe(false);
+        expect(target.getColorTexture(0)).toBe(colorTextures[0]);
+        expect(target.getColorTexture(1)).toBe(colorTextures[1]);
+        expect(target.getColorGPUTexture(0)).not.toBe(firstGPUTextures[0]);
+        expect(target.getColorGPUTexture(1)).not.toBe(firstGPUTextures[1]);
+        expect(target.createRenderPassDescriptor().colorAttachments).toHaveLength(2);
+        expect(second.textures.map(record => record.descriptor.size)).toEqual(
+            Array.from({ length: 5 }, () => ({
+                width: 12,
+                height: 10,
+                depthOrArrayLayers: 1
+            }))
+        );
+    });
+
+    it('publishes destruction once to renderer ownership tracking', () => {
+        const fake = createFakeWebGPU();
+        const textures = createTextureManager(fake.device);
+        const onDestroy = vi.fn();
+        const target = new WebGPURenderTarget(
+            fake.device,
+            textures,
+            { width: 2, height: 2 },
+            onDestroy
+        );
+
+        target.destroy();
+        target.destroy();
+
+        expect(onDestroy).toHaveBeenCalledOnce();
+        expect(onDestroy).toHaveBeenCalledWith(target);
+    });
 });
 
 describe('WebGPURenderTarget readback', () => {
     it('uses 256-byte GPU row alignment and returns tightly packed native texel bytes', async () => {
         const fake = createFakeWebGPU();
-        const textures = new WebGPUTextureManager(fake.device);
+        const textures = createTextureManager(fake.device);
         const target = new WebGPURenderTarget(fake.device, textures, {
             width: 3,
             height: 2,
@@ -235,7 +521,7 @@ describe('WebGPURenderTarget readback', () => {
 describe('WebGPURenderTarget validation', () => {
     it('rejects invalid limits and combinations instead of changing requested behavior', () => {
         const fake = createFakeWebGPU({ maxColorAttachments: 1, maxBytes: 8 });
-        const textures = new WebGPUTextureManager(fake.device);
+        const textures = createTextureManager(fake.device);
 
         expect(
             () =>
@@ -284,13 +570,13 @@ describe('WebGPURenderTarget validation', () => {
 
     it('rejects incompatible supplied textures and unsupported attachment operations', async () => {
         const fake = createFakeWebGPU();
-        const textures = new WebGPUTextureManager(fake.device);
+        const textures = createTextureManager(fake.device);
         const depthTexture = new Texture({
             width: 2,
             height: 2,
             internalFormat: DEPTH_COMPONENT24,
             format: DEPTH_COMPONENT,
-            type: UNSIGNED_BYTE,
+            type: UNSIGNED_INT,
             minFilter: LINEAR,
             magFilter: LINEAR,
             image: null

@@ -23,7 +23,7 @@ const tempVector = new Hilo3d.Vector3();
 
 /** Pointer Events based orbit controls shared by the examples. */
 export default class OrbitControls {
-    readonly stage: Hilo3d.Stage;
+    readonly stage: Hilo3d.Stage<Hilo3d.RendererBackend>;
     readonly canvas: HTMLCanvasElement;
     readonly model: Hilo3d.Node;
     isLockZ: boolean;
@@ -37,7 +37,10 @@ export default class OrbitControls {
     private readonly pointers = new Map<number, PointerPosition>();
     private pointerDistance = 0;
 
-    constructor(stage: Hilo3d.Stage, modelOrOptions: Hilo3d.Node | OrbitControlsOptions = {}) {
+    constructor(
+        stage: Hilo3d.Stage<Hilo3d.RendererBackend>,
+        modelOrOptions: Hilo3d.Node | OrbitControlsOptions = {}
+    ) {
         const options =
             modelOrOptions instanceof Hilo3d.Node ? { model: modelOrOptions } : modelOrOptions;
 

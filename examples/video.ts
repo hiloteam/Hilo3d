@@ -1,10 +1,29 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 const videoElement = document.querySelector<HTMLVideoElement>('#video');
 if (!videoElement) throw new Error('Video example requires #video.');
 const video: HTMLVideoElement = videoElement;
+
+async function loadVideoSource(): Promise<void> {
+    const response = await fetch(new URL('./video/sintel.mp4', import.meta.url));
+    if (!response.ok) {
+        throw new Error(`Video request failed with status ${String(response.status)}.`);
+    }
+    const sourceUrl = URL.createObjectURL(await response.blob());
+    video.src = sourceUrl;
+    video.load();
+    window.addEventListener(
+        'pagehide',
+        () => {
+            video.removeAttribute('src');
+            video.load();
+            URL.revokeObjectURL(sourceUrl);
+        },
+        { once: true }
+    );
+}
 
 async function waitForVideo(): Promise<void> {
     if (video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
@@ -65,7 +84,8 @@ function reportAsyncError(error: unknown): void {
     });
 }
 
-waitForVideo()
+loadVideoSource()
+    .then(waitForVideo)
     .then(() => {
         addVideoMesh();
     })
