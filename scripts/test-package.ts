@@ -1,9 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { TextDecoder, TextEncoder } from 'node:util';
-import { createContext, runInContext } from 'node:vm';
 
 interface PackResult {
     filename: string;
@@ -59,7 +57,8 @@ try {
             '--no-fund',
             '--no-package-lock',
             archivePath,
-            resolve(projectRoot, 'node_modules/gl-matrix')
+            resolve(projectRoot, 'node_modules/gl-matrix'),
+            resolve(projectRoot, 'node_modules/web-naga')
         ],
         { cwd: consumerDirectory, stdio: 'inherit' }
     );
@@ -67,11 +66,18 @@ try {
     await writeFile(
         join(consumerDirectory, 'esm-consumer.mjs'),
         [
-            "import { Vector3, version } from 'hilo3d';",
+            "import { NagaShaderTranslator, Vector3, version } from 'hilo3d';",
             "if (typeof Vector3 !== 'function') throw new Error('Vector3 is not exported.');",
             "if (typeof version !== 'string') throw new Error('version is not exported.');",
             'const vector = new Vector3(1, 2, 3);',
             "if (!vector) throw new Error('Vector3 could not be constructed.');",
+            'const translator = new NagaShaderTranslator();',
+            'await translator.initialize();',
+            'const shader = translator.translate(',
+            "    '#version 300 es\\nin vec3 a_position;\\nvoid main(){gl_Position=vec4(a_position,1.0);}',",
+            "    '#version 300 es\\nprecision highp float;\\nout vec4 fragColor;\\nvoid main(){fragColor=vec4(1.0);}'",
+            ');',
+            "if (!shader.vertex.wgsl || !shader.fragment.wgsl) throw new Error('Naga could not translate the packaged shader.');",
             ''
         ].join('\n'),
         'utf8'
@@ -80,54 +86,6 @@ try {
         cwd: consumerDirectory,
         stdio: 'inherit'
     });
-
-    await writeFile(
-        join(consumerDirectory, 'umd-esm-consumer.mjs'),
-        [
-            "import * as Hilo3d from 'hilo3d/umd';",
-            "if (typeof Hilo3d.Vector3 !== 'function') {",
-            "    throw new Error('The UMD compatibility subpath did not expose ESM named exports.');",
-            '}',
-            ''
-        ].join('\n'),
-        'utf8'
-    );
-    execFileSync(process.execPath, ['umd-esm-consumer.mjs'], {
-        cwd: consumerDirectory,
-        stdio: 'inherit'
-    });
-
-    await writeFile(
-        join(consumerDirectory, 'umd-cjs-consumer.cjs'),
-        [
-            "const Hilo3d = require('hilo3d/umd');",
-            "if (typeof Hilo3d.Vector3 !== 'function') {",
-            "    throw new Error('The UMD compatibility subpath did not expose CommonJS exports.');",
-            '}',
-            ''
-        ].join('\n'),
-        'utf8'
-    );
-    execFileSync(process.execPath, ['umd-cjs-consumer.cjs'], {
-        cwd: consumerDirectory,
-        stdio: 'inherit'
-    });
-
-    const umdSource = await readFile(
-        join(consumerDirectory, 'node_modules/hilo3d/dist/Hilo3d.umd.cjs'),
-        'utf8'
-    );
-    const umdContext: {
-        Hilo3d?: Record<string, unknown>;
-        console: Console;
-        TextDecoder: typeof TextDecoder;
-        TextEncoder: typeof TextEncoder;
-    } = { console, TextDecoder, TextEncoder };
-    createContext(umdContext);
-    runInContext(umdSource, umdContext, { filename: 'Hilo3d.umd.cjs' });
-    if (typeof umdContext.Hilo3d?.['Vector3'] !== 'function') {
-        throw new Error('The UMD bundle did not expose Hilo3d.Vector3.');
-    }
 } finally {
     await rm(temporaryRoot, { force: true, recursive: true });
 }

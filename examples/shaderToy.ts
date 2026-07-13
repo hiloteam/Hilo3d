@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 const { stage, renderer, ticker } = createExampleContext();
 
@@ -548,7 +548,6 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 }
 
 `;
-Hilo3d.extensions.use('OES_standard_derivatives');
 renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
 const pointer = { x: 0, y: 0, deltaX: 0, deltaY: 0, isDown: false };
 function eventPosition(event: Hilo3d.DispatchEvent): { x: number; y: number } | null {
@@ -592,13 +591,8 @@ let elapsedTime = 0;
 let timeDelta = 0;
 let frame = 0;
 
-function bindChannel(
-    texture: Hilo3d.Texture | null,
-    programInfo: Hilo3d.ProgramBindingInfo
-): number | undefined {
-    if (programInfo.textureIndex === undefined)
-        throw new Error('ShaderToy channel has no texture unit');
-    return Hilo3d.semantic.handlerTexture(texture, programInfo.textureIndex);
+function bindChannel(texture: Hilo3d.Texture | null): Hilo3d.TextureBinding {
+    return Hilo3d.semantic.handlerTexture(texture);
 }
 
 const screenVertexShader = Hilo3d.Shader.shaders['screen.vert'];
@@ -624,10 +618,10 @@ const material = new Hilo3d.ShaderMaterial({
     needBasicUniforms: false,
     needBasicAttributes: false,
     uniforms: {
-        iChannel0: { get: (_mesh, _material, info) => bindChannel(channel0, info) },
-        iChannel1: { get: (_mesh, _material, info) => bindChannel(null, info) },
-        iChannel2: { get: (_mesh, _material, info) => bindChannel(null, info) },
-        iChannel3: { get: (_mesh, _material, info) => bindChannel(null, info) }
+        iChannel0: { get: () => bindChannel(channel0) },
+        iChannel1: { get: () => bindChannel(null) },
+        iChannel2: { get: () => bindChannel(null) },
+        iChannel3: { get: () => bindChannel(null) }
     },
     uniformBlocks: { ShaderToyBlock: shaderToyBlock },
     attributes: {

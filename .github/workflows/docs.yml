@@ -8,12 +8,19 @@ on:
       - 'src/**'
       - 'examples/**'
       - 'README.md'
+      - 'README_ZH.md'
+      - 'CHANGELOG.md'
+      - 'ENGINEERING_MODERNIZATION.md'
+      - '.github/CONTRIBUTING.md'
       - 'package.json'
       - 'package-lock.json'
+      - 'api-extractor.json'
+      - 'etc/hilo3d.api.md'
       - 'tsconfig*.json'
       - 'typedoc.json'
       - 'vite.config.ts'
       - 'vite.examples.config.ts'
+      - 'scripts/build-types.ts'
       - 'scripts/build-site.ts'
   workflow_dispatch:
 
@@ -49,8 +56,8 @@ jobs:
           npm install --global npm@12.0.1
           npm ci
 
-      - name: Build documentation and examples site
-        run: npm run site:build
+      - name: Validate API contract and build documentation site
+        run: npm run api:check && npm run site:build
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6

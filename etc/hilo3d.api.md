@@ -558,6 +558,7 @@ export class Buffer {
     readonly id: string;
     // (undocumented)
     readonly isBuffer = true;
+    needsGeometryDataUpload(geometryData: GeometryData): boolean;
     static reset(_gl?: GLContext): void;
     // (undocumented)
     readonly target: GLenum;
@@ -573,7 +574,7 @@ export type BufferData = TypedArray | ArrayBuffer;
 // @public (undocumented)
 export interface BufferRenderer {
     // (undocumented)
-    resourceManager: WebGLResourceManager;
+    resourceManager: GraphicsResourceManager;
 }
 
 // @public (undocumented)
@@ -669,24 +670,6 @@ export type CameraParameters = NodeParameters;
 
 // @public (undocumented)
 export const capabilities: WebGLCapabilities;
-
-// @public (undocumented)
-export const Class: {
-    readonly create: typeof createClass;
-    readonly mix: typeof mixClass;
-};
-
-// @public (undocumented)
-export type ClassDefinition<Static extends ClassLike> = DynamicMembers & ThisType<InstanceType<Static> & DynamicMembers & {
-    constructor: Static;
-}> & {
-    Extends?: RuntimeClassLike;
-    Mixes?: object | RuntimeClassLike | readonly (object | RuntimeClassLike)[];
-    Statics?: DynamicMembers & ThisType<Static & DynamicMembers>;
-};
-
-// @public (undocumented)
-export type ClassLike = abstract new (...params: never[]) => object;
 
 // @public (undocumented)
 export function collectionEntries<Value>(collection: GLTFCollection<Value> | undefined): (readonly [string, Value])[];
@@ -1335,19 +1318,14 @@ export interface CopyFramebufferOptions {
     srcSize?: FramebufferCopyRectangle;
 }
 
-// @public
-export function createClass<Static extends ClassLike>(): (properties: ClassDefinition<Static>) => LegacyClass<Static>;
-
-// @public (undocumented)
-export function createClass<Definition extends object>(properties: Definition & DynamicMembers & ThisType<Definition & DynamicMembers & {
-    constructor: InferredClass<Definition>;
-}>): InferredClass<Definition> & DynamicMembers;
-
 // @public (undocumented)
 export function createEmptyGLTFRoot(): GLTFRoot;
 
 // @public (undocumented)
 export function createStd140Layout<const Schema extends Std140Schema>(schema: Schema): Std140Layout<Schema>;
+
+// @public
+export function createWebGPUSamplerDescriptor(texture: Texture<unknown>, mipLevelCount: number, compare?: GLenum | GPUCompareFunction): GPUSamplerDescriptor;
 
 // @public
 export class CubeLightShadow extends LightShadow {
@@ -1543,9 +1521,6 @@ const DISTANCE = "DISTANCE";
 type DOMViewport = ReturnType<typeof getElementRect>;
 
 // @public (undocumented)
-export type DynamicMembers = Record<string, unknown>;
-
-// @public (undocumented)
 export interface ElasticEaseObject extends TweenEaseObject {
     // (undocumented)
     a: number;
@@ -1651,21 +1626,6 @@ export class EventDispatcher {
 // @public (undocumented)
 type EventListener_2<Event extends DispatchEvent = DispatchEvent> = (event: Event) => void;
 export { EventListener_2 as EventListener }
-
-// @public
-export const EventMixin: EventMixinMembers;
-
-// @public (undocumented)
-export interface EventMixinMembers {
-    // (undocumented)
-    fire: EventDispatcher['fire'];
-    // (undocumented)
-    _listeners: ListenerMap | null;
-    // (undocumented)
-    off: EventDispatcher['off'];
-    // (undocumented)
-    on: EventDispatcher['on'];
-}
 
 // @public (undocumented)
 type ExtensionObject = object;
@@ -1894,7 +1854,7 @@ export interface FramebufferParameters {
 }
 
 // @public
-export interface FramebufferRenderer {
+export interface FramebufferRenderer extends ShaderPrecisionProvider {
     // (undocumented)
     readonly gl: GLContext | null;
     // (undocumented)
@@ -1962,7 +1922,9 @@ export class Geometry {
     // (undocumented)
     readonly id: string;
     indices: GeometryData | null;
-    isDirty: boolean;
+    // (undocumented)
+    get isDirty(): boolean;
+    set isDirty(value: boolean);
     // (undocumented)
     readonly isGeometry = true;
     // (undocumented)
@@ -1978,6 +1940,7 @@ export class Geometry {
     positionDecodeMat: Float32Array | number[] | null;
     raycast(ray: Ray, side: GLenum, sort?: boolean): Vector3[] | null;
     _raycast(ray: Ray, side: GLenum): Vector3[] | null;
+    get revision(): number;
     rotate(x?: number, y?: number, z?: number): this;
     scale(x?: number, y?: number, z?: number): this;
     setFaceUV(start: number, p1: Point2, p2: Point2, p3: Point2): void;
@@ -2022,11 +1985,13 @@ export class GeometryData {
     set data(data: TypedArray);
     // (undocumented)
     get data(): TypedArray;
+    get fullDataRevision(): number;
     get(index: number): GeometryAttributeValue;
     getByOffset(offset: number): GeometryAttributeValue;
     getByteLength(): number;
     getCopy(index: number): GeometryAttributeValue;
     getOffset(index: number): number;
+    getSubDataUpdatesSince(revision: number): readonly SubDataUpdate[] | null;
     glBuffer: Buffer | null;
     // (undocumented)
     readonly id: string;
@@ -2047,6 +2012,7 @@ export class GeometryData {
     offsetSize: number;
     // (undocumented)
     get realLength(): number;
+    get revision(): number;
     set(index: number, value: GeometryAttributeValue): number;
     setByOffset(offset: number, value: GeometryAttributeValue): void;
     setSubData(offset: number, data: TypedArray): void;
@@ -2178,7 +2144,13 @@ function getElementRect(elem: HTMLElement): {
 export function getUniformBlockBinding(name: string): number;
 
 // @public
+export function getWebGPUUniformBlockBinding(name: string): WebGPUResourceBinding;
+
+// @public
 export type GLContext = WebGL2RenderingContext;
+
+// @public (undocumented)
+export type GlslSamplerType = 'sampler2D' | 'sampler3D' | 'samplerCube' | 'sampler2DArray' | 'sampler2DShadow' | 'samplerCubeShadow' | 'sampler2DArrayShadow' | 'isampler2D' | 'isampler3D' | 'isamplerCube' | 'isampler2DArray' | 'usampler2D' | 'usampler3D' | 'usamplerCube' | 'usampler2DArray';
 
 // @public (undocumented)
 export interface GLTFAccessor extends GLTFProperty {
@@ -3098,6 +3070,37 @@ export interface GLTypeInfo {
     readonly type: 'Scalar' | 'Vector' | 'Matrix';
 }
 
+// @public
+export class GraphicsResourceManager extends EventDispatcher {
+    abortFrame(): this;
+    // (undocumented)
+    addMeshResources(mesh: Mesh, resources: readonly ManagedResource[]): void;
+    beginFrame(): this;
+    // (undocumented)
+    readonly className = "GraphicsResourceManager";
+    clear(): this;
+    // (undocumented)
+    destroyIfNoRef(resource: ManagedResource): this;
+    // (undocumented)
+    destroyMesh(mesh: Mesh): void;
+    // (undocumented)
+    destroyUnusedResource(rootNode?: Node_2): this;
+    endFrame(): this;
+    // (undocumented)
+    getMeshResources(mesh: Mesh, resources?: ManagedResource[]): ManagedResource[];
+    // (undocumented)
+    getUsedResources(rootNode?: Node_2): ManagedResource[];
+    // (undocumented)
+    get hasNeedDestroyResource(): boolean;
+    // (undocumented)
+    readonly isGraphicsResourceManager = true;
+    // (undocumented)
+    reset(): this;
+}
+
+// @public (undocumented)
+export type GraphicsShaderStage = 'vertex' | 'fragment';
+
 // @public (undocumented)
 export class HDRLoader {
     // (undocumented)
@@ -3130,11 +3133,6 @@ export class HiloEvent<Detail = unknown> implements DispatchEvent {
 
 // @public (undocumented)
 export type ImageCrossOrigin = boolean | '' | 'anonymous' | 'use-credentials';
-
-// @public (undocumented)
-export type InferredClass<Definition extends object> = (new (...params: readonly unknown[]) => Definition) & {
-    superclass: Definition;
-};
 
 // @public (undocumented)
 export interface InstancedUniform {
@@ -3233,11 +3231,6 @@ export interface LazyTextureParameters extends TextureParameters {
     // (undocumented)
     src?: string;
 }
-
-// @public (undocumented)
-export type LegacyClass<Static extends ClassLike> = Static & DynamicMembers & {
-    superclass: InstanceType<Static>;
-};
 
 // @public
 export class Light extends Node_2 {
@@ -3338,7 +3331,15 @@ export class LightManager {
     pointInfo: PointLightInfo | null;
     // (undocumented)
     pointLights: PointLight[];
+    // (undocumented)
+    pointShadowMatrices: Float32Array;
     reset(): void;
+    // (undocumented)
+    shadowAtlas: Texture<unknown> | null;
+    // (undocumented)
+    shadowAtlasRects: Float32Array;
+    // (undocumented)
+    shadowAtlasSize: Float32Array;
     shadowEnabled: boolean;
     // (undocumented)
     spotInfo: SpotLightInfo | null;
@@ -3713,7 +3714,8 @@ export class Material {
     // (undocumented)
     protected initializeBindings(): void;
     isDiffuseEnvAndAmbientLightWorkTogether: boolean;
-    isDirty: boolean;
+    get isDirty(): boolean;
+    set isDirty(value: boolean);
     // (undocumented)
     readonly isMaterial = true;
     lightType: string;
@@ -3729,6 +3731,7 @@ export class Material {
     set premultiplyAlpha(value: boolean);
     receiveShadows: boolean;
     renderOrder: number;
+    get revision(): number;
     sampleAlphaToCoverage: boolean;
     // (undocumented)
     setDefaultTransparentBlend(): void;
@@ -4090,7 +4093,7 @@ export class Mesh extends Node_2 {
     // (undocumented)
     className: string;
     clone(isChild?: boolean): Mesh;
-    destroy(renderer?: WebGLRenderer, needDestroyTextures?: boolean): this;
+    destroy(renderer?: Renderer, needDestroyTextures?: boolean): this;
     frustumTest: boolean;
     // (undocumented)
     geometry: Geometry | null;
@@ -4156,9 +4159,6 @@ export interface MeshSetup {
 }
 
 // @public
-export function mixClass<Target extends object>(target: Target, ...sources: readonly unknown[]): Target;
-
-// @public
 export class MorphGeometry extends Geometry {
     constructor(params?: MorphGeometryParameters);
     // (undocumented)
@@ -4202,6 +4202,25 @@ export interface MutableArrayLike<Value> {
 export type MutableNumberArray = number[] | Float32Array | Float64Array | Int8Array | Uint8Array | Uint8ClampedArray | Int16Array | Uint16Array | Int32Array | Uint32Array;
 
 // @public (undocumented)
+export class NagaShaderTranslationError extends Error {
+    constructor(stage: GraphicsShaderStage, source: string, cause: unknown);
+    // (undocumented)
+    readonly cause: unknown;
+    // (undocumented)
+    readonly source: string;
+    // (undocumented)
+    readonly stage: GraphicsShaderStage;
+}
+
+// @public
+export class NagaShaderTranslator {
+    // (undocumented)
+    initialize(): Promise<void>;
+    // (undocumented)
+    translate(vertexSource: string, fragmentSource: string, resolveUniformBlockBinding?: (name: string) => WebGPUResourceBinding): TranslatedShaderPair;
+}
+
+// @public (undocumented)
 export type NetworkResourceType = Exclude<BasicResourceType, 'img'>;
 
 // @public
@@ -4220,7 +4239,7 @@ class Node_2 extends EventDispatcher {
     className: string;
     // (undocumented)
     clone(isChild?: boolean): Node_2;
-    destroy(renderer?: WebGLRenderer, destroyTextures?: boolean): this;
+    destroy(renderer?: Renderer, destroyTextures?: boolean): this;
     _firePointerEvent(event: NodePointerEvent): void;
     getBounds(parent?: Node_2, currentMatrix?: Matrix4, bounds?: Bounds): Bounds | undefined;
     getChildByFn(fn: NodeGetChildByCallback): Node_2 | null;
@@ -4766,6 +4785,31 @@ export type PointLightParameters = LightParameters;
 const POSITION = "POSITION";
 
 // @public (undocumented)
+export interface PreparedShaderPair {
+    // (undocumented)
+    readonly fragment: PreparedShaderStage;
+    // (undocumented)
+    readonly fragmentOutputs: readonly WebGPUFragmentOutput[];
+    // (undocumented)
+    readonly samplers: readonly WebGPUSamplerBinding[];
+    // (undocumented)
+    readonly uniformBlocks: readonly WebGPUUniformBlock[];
+    // (undocumented)
+    readonly vertex: PreparedShaderStage;
+    // (undocumented)
+    readonly vertexInputs: readonly WebGPUVertexInput[];
+}
+
+// @public (undocumented)
+export interface PreparedShaderStage {
+    // (undocumented)
+    readonly glsl: string;
+}
+
+// @public
+export function prepareGLSLForNaga(vertexSource: string, fragmentSource: string, resolveUniformBlockBinding?: (name: string) => WebGPUResourceBinding): PreparedShaderPair;
+
+// @public (undocumented)
 export class Program {
     constructor(params: ProgramParameters);
     // (undocumented)
@@ -4874,7 +4918,7 @@ export interface ProgramParameters {
 // @public (undocumented)
 export interface ProgramRenderer {
     // (undocumented)
-    resourceManager: WebGLResourceManager;
+    resourceManager: GraphicsResourceManager;
 }
 
 // @public (undocumented)
@@ -5083,10 +5127,63 @@ export interface RayParameters {
 // @public
 export function registerUniformBlockBinding(name: string, bindingPoint?: number): number;
 
+// @public
+export function registerWebGPUCustomUniformBlockBinding(name: string, bindingPoint?: number): WebGPUResourceBinding;
+
 // @public (undocumented)
 type RegistryLoadMethod = {
     load(data: LoaderRequest): Promise<unknown>;
 }['load'];
+
+// @public
+export interface Renderer {
+    // (undocumented)
+    readonly backend: RendererBackend;
+    // (undocumented)
+    readonly className: string;
+    // (undocumented)
+    destroy(): void;
+    // (undocumented)
+    domElement: HTMLCanvasElement | null;
+    // (undocumented)
+    height: number;
+    // (undocumented)
+    readonly isReady: boolean;
+    // (undocumented)
+    off(type?: string, listener?: EventListener_2): this;
+    // (undocumented)
+    on(type: string, listener: EventListener_2, once?: boolean): this;
+    // (undocumented)
+    pixelRatio: number;
+    // (undocumented)
+    readonly ready: Promise<void>;
+    // (undocumented)
+    releaseGPUResources(): void;
+    // (undocumented)
+    render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    // (undocumented)
+    resize(width: number, height: number, force?: boolean): void;
+    // (undocumented)
+    readonly resourceManager: RendererResourceManager;
+    // (undocumented)
+    setOffset(x: number, y: number): void;
+    // (undocumented)
+    width: number;
+}
+
+// @public (undocumented)
+export type RendererBackend = 'webgl2' | 'webgpu';
+
+// @public
+export interface RendererResourceManager {
+    // (undocumented)
+    destroyMesh(mesh: Mesh): void;
+}
+
+// @public (undocumented)
+export type RendererScene = Node_2 & {
+    readonly fog?: Fog | null;
+};
 
 // @public
 export class RenderInfo {
@@ -5151,6 +5248,12 @@ export interface ResolvedAttachmentOptions {
     wrapT: GLenum;
 }
 
+// @public
+export function resolveWebGPUCompareFunction(compare: GLenum | GPUCompareFunction): GPUCompareFunction;
+
+// @public
+export function resolveWebGPUTextureFormat(texture: Texture<unknown>): WebGPUTextureFormatInfo;
+
 // @public (undocumented)
 export interface Resource {
     // (undocumented)
@@ -5188,30 +5291,19 @@ export interface ResourceRequestOptions {
     url: string;
 }
 
-// @public (undocumented)
-export interface RuntimeClassLike {
-    // (undocumented)
-    prototype: object;
-    // (undocumented)
-    superclass?: object;
-}
-
 // @public
 export const semantic: {
-    state: TextureWebGLState | null;
     camera: Camera | null;
     lightManager: LightManager | null;
     fog: Fog | null;
-    gl: WebGL2RenderingContext | null;
     renderer: SemanticRenderer | null;
     blankInfo: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): undefined;
     };
-    init(_renderer: SemanticRenderer, _state: TextureWebGLState, _camera: Camera, _lightManager: LightManager, _fog: Fog | null): void;
+    init(_renderer: SemanticRenderer, _camera: Camera, _lightManager: LightManager, _fog: Fog | null): void;
     setCamera(_camera: Camera): void;
-    handlerColorOrTexture(value: MaterialTextureValue, unitIndex: number): Float32Array | number | undefined;
-    handlerTexture(value: TextureBinding | null, unitIndex: number): number | undefined;
-    handlerGLTexture(target: GLenum, texture: WebGLTexture, unitIndex: number): number | undefined;
+    handlerColorOrTexture(value: MaterialTextureValue): Float32Array | TextureBinding;
+    handlerTexture(value: TextureBinding | null): TextureBinding;
     handlerUV(texture: unknown): number;
     _blankTexture: DataTexture | null;
     getBlankTexture(): DataTexture;
@@ -5356,11 +5448,23 @@ export const semantic: {
     DIRECTIONALLIGHTSCOLOR: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
+    SHADOWATLAS: {
+        get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
+    };
+    SHADOWATLASSIZE: {
+        get(): unknown;
+    };
+    SHADOWATLASRECTS: {
+        get(): unknown;
+    };
+    POINTSHADOWMATRICES: {
+        get(): unknown;
+    };
     DIRECTIONALLIGHTSINFO: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     DIRECTIONALLIGHTSSHADOWMAP: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     DIRECTIONALLIGHTSSHADOWMAPSIZE: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
@@ -5384,7 +5488,7 @@ export const semantic: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     POINTLIGHTSSHADOWMAP: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     POINTLIGHTSSHADOWBIAS: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
@@ -5414,7 +5518,7 @@ export const semantic: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     SPOTLIGHTSSHADOWMAP: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     SPOTLIGHTSSHADOWMAPSIZE: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
@@ -5438,10 +5542,10 @@ export const semantic: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     AREALIGHTSLTCTEXTURE1: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     AREALIGHTSLTCTEXTURE2: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     FOGCOLOR: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
@@ -5478,7 +5582,7 @@ export const semantic: {
         get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     DIFFUSEENVMAP: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     DIFFUSEENVINTENSITY: {
         get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
@@ -5487,10 +5591,10 @@ export const semantic: {
         get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     BRDFLUT: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     SPECULARENVMAP: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     SPECULARENVINTENSITY: {
         get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
@@ -5629,19 +5733,17 @@ export class Shader {
     destroy(): this;
     destroyIfNoRef(renderer: ShaderRenderer): this;
     fs: string;
-    static getBasicShader(material: Material, isUseInstance: boolean, header: string): Shader;
-    static getCustomShader(vs: string, fs: string, header?: string, cacheKey?: string, useHeaderCache?: boolean): Shader;
+    static getBasicShader(material: Material, isUseInstance: boolean, header: string, renderer?: ShaderPrecisionProvider): Shader;
+    static getCustomShader(vs: string, fs: string, header?: string, cacheKey?: string, useHeaderCache?: boolean, renderer?: ShaderPrecisionProvider): Shader;
     static getHeader(mesh: Mesh, material: Material, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean): string;
     static getHeaderKey(mesh: Mesh, material: Material, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean): string;
-    static getShader(mesh: Mesh, material: Material, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean): Shader | null;
+    static getShader(mesh: Mesh, material: Material, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, renderer?: ShaderPrecisionProvider): Shader | null;
     static get headerCache(): Cache_2<string>;
     // (undocumented)
     readonly id: string;
-    static init(renderer: ShaderRenderer): void;
+    static init(renderer: ShaderPrecisionProvider): void;
     // (undocumented)
     readonly isShader = true;
-    // (undocumented)
-    static renderer: ShaderRenderer | null;
     static reset(_gl?: GLContext): void;
     static shaders: {
         [k: string]: string;
@@ -5723,13 +5825,17 @@ export interface ShaderParameters {
 export type ShaderPrecision = 'highp' | 'mediump' | 'lowp';
 
 // @public (undocumented)
-export interface ShaderRenderer {
+export interface ShaderPrecisionProvider {
     // (undocumented)
     fragmentPrecision: ShaderPrecision;
     // (undocumented)
-    resourceManager: WebGLResourceManager;
-    // (undocumented)
     vertexPrecision: ShaderPrecision;
+}
+
+// @public (undocumented)
+export interface ShaderRenderer extends ShaderPrecisionProvider {
+    // (undocumented)
+    resourceManager: GraphicsResourceManager;
 }
 
 // @public (undocumented)
@@ -5965,12 +6071,13 @@ export interface SpotLightParameters extends LightParameters {
 }
 
 // @public
-export class Stage extends Node_2 {
-    constructor(params?: StageParameters);
+export class Stage<Backend extends RendererBackend = 'webgl2'> extends Node_2 {
+    constructor(params?: StageParameters<Backend>);
     camera: Camera | null;
     canvas: HTMLCanvasElement;
     // (undocumented)
     className: string;
+    static create<Backend extends RendererBackend = 'webgl2'>(params?: StageParameters<Backend>): Promise<Stage<Backend>>;
     destroy(): this;
     // Warning: (ae-forgotten-export) The symbol "DOMViewport" needs to be exported by the entry point Hilo3d.d.ts
     //
@@ -5984,8 +6091,9 @@ export class Stage extends Node_2 {
     offsetX: number;
     offsetY: number;
     pixelRatio: number;
-    releaseGLResource(): this;
-    renderer: WebGLRenderer;
+    readonly ready: Promise<void>;
+    releaseGPUResources(): this;
+    renderer: StageRenderer<Backend>;
     // (undocumented)
     rendererHeight: number;
     // (undocumented)
@@ -6001,11 +6109,12 @@ export class Stage extends Node_2 {
 }
 
 // @public (undocumented)
-export interface StageParameters extends NodeParameters {
+export interface StageParameters<Backend extends RendererBackend = 'webgl2'> extends NodeParameters {
     // (undocumented)
     alpha?: boolean;
     // (undocumented)
     antialias?: boolean;
+    backend?: Backend;
     // (undocumented)
     camera?: Camera | null;
     // (undocumented)
@@ -6019,7 +6128,7 @@ export interface StageParameters extends NodeParameters {
     // (undocumented)
     failIfMajorPerformanceCaveat?: boolean;
     // (undocumented)
-    framebufferOption?: FramebufferParameters;
+    framebufferOption?: Backend extends 'webgpu' ? WebGPUFramebufferParameters : FramebufferParameters;
     // (undocumented)
     gameMode?: boolean;
     // (undocumented)
@@ -6034,6 +6143,8 @@ export interface StageParameters extends NodeParameters {
     stencil?: boolean;
     // (undocumented)
     useFramebuffer?: boolean;
+    // (undocumented)
+    useInstanced?: boolean;
     // (undocumented)
     useLogDepth?: boolean;
     // (undocumented)
@@ -6055,6 +6166,9 @@ export interface StagePointerEvent extends NodePointerEvent {
     // (undocumented)
     stopPropagation(): void;
 }
+
+// @public (undocumented)
+export type StageRenderer<Backend extends RendererBackend> = Backend extends 'webgpu' ? WebGPURenderer : WebGLRenderer;
 
 // @public (undocumented)
 export const STATE_TYPES: Readonly<{
@@ -6154,9 +6268,11 @@ export type Std140VectorType = 'vec2' | 'vec3' | 'vec4' | 'ivec2' | 'ivec3' | 'i
 // @public (undocumented)
 export interface SubDataUpdate {
     // (undocumented)
-    byteOffset: number;
+    readonly byteOffset: number;
     // (undocumented)
-    data: TypedArray;
+    readonly data: TypedArray;
+    // (undocumented)
+    readonly revision: number;
 }
 
 // @public
@@ -6178,6 +6294,7 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     format: number;
     getGLTexture(state: TextureWebGLState): WebGLTexture;
     getSupportSize(img: ResizableTextureImage): Size;
+    getTextureUpdatesSince(revision: number): TextureUpdateSnapshot;
     protected _glUploadTexture(state: TextureWebGLState, target: GLenum, image: TextureImageSource | null, level?: number, width?: number, height?: number): this;
     // (undocumented)
     height: number;
@@ -6187,6 +6304,7 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     set image(_img: Image | null);
     internalFormat: number;
     isImageCanRelease: boolean;
+    get isImageReleased(): boolean;
     // (undocumented)
     readonly isTexture = true;
     magFilter: number;
@@ -6196,18 +6314,21 @@ export class Texture<Image = TextureImageSource> extends EventDispatcher {
     // (undocumented)
     name: string;
     needDestroy: boolean;
-    needUpdate: boolean;
+    get needUpdate(): boolean;
+    set needUpdate(value: boolean);
     get origHeight(): number;
     get origWidth(): number;
     // (undocumented)
     premultiplyAlpha: boolean;
     // (undocumented)
     protected _releaseImage(): void;
+    releaseImageIfAllowed(): boolean;
     static reset(gl: GLContext): void;
     resizeImg(img: ResizableTextureImage, width: number, height: number): ResizableTextureImage | HTMLCanvasElement;
     setGLTexture(texture: WebGLTexture, needDestroy?: boolean): this;
     target: number;
     type: number;
+    get updateRevision(): number;
     updateSubTexture(xOffset: number, yOffset: number, image: TextureSubImage['image']): void;
     updateTexture(state: TextureWebGLState, glTexture: WebGLTexture): this;
     protected _uploadTexture(state: TextureWebGLState): this;
@@ -6226,6 +6347,9 @@ export interface TextureBinding {
     // (undocumented)
     readonly target: GLenum;
 }
+
+// @public (undocumented)
+export type TextureComponentStorage = 'u8' | 'f16' | 'f32' | 'depth';
 
 // @public (undocumented)
 export type TextureImageSource = HTMLImageElement | HTMLCanvasElement | ImageBitmap | ImageData | OffscreenCanvas | HTMLVideoElement | TypedArray;
@@ -6328,6 +6452,16 @@ export interface TextureSubImage {
     yOffset: number;
 }
 
+// @public
+export interface TextureUpdateSnapshot {
+    // (undocumented)
+    readonly requiresFullUpload: boolean;
+    // (undocumented)
+    readonly revision: number;
+    // (undocumented)
+    readonly subTextures: readonly TextureSubImage[];
+}
+
 // @public (undocumented)
 export type TextureUVChannel = 0 | 1;
 
@@ -6378,6 +6512,30 @@ export class Ticker {
     set targetFPS(value: number);
     // (undocumented)
     timeout(callback: () => void, duration: number): Tickable;
+}
+
+// @public (undocumented)
+export interface TranslatedShaderPair {
+    // (undocumented)
+    readonly fragment: TranslatedShaderStage;
+    // (undocumented)
+    readonly fragmentOutputs: readonly WebGPUFragmentOutput[];
+    // (undocumented)
+    readonly samplers: readonly WebGPUSamplerBinding[];
+    // (undocumented)
+    readonly uniformBlocks: readonly WebGPUUniformBlock[];
+    // (undocumented)
+    readonly vertex: TranslatedShaderStage;
+    // (undocumented)
+    readonly vertexInputs: readonly WebGPUVertexInput[];
+}
+
+// @public (undocumented)
+export interface TranslatedShaderStage {
+    // (undocumented)
+    readonly glsl: string;
+    // (undocumented)
+    readonly wgsl: string;
 }
 
 // @public (undocumented)
@@ -6587,8 +6745,7 @@ export class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     static fromSchema<const Schema extends Std140Schema>(layout: Std140Layout<Schema>, values?: Partial<Std140Values<Schema>>): UniformBuffer<Schema>;
     // (undocumented)
     getBuffer(gl: WebGL2RenderingContext): Buffer;
-    get isDirty(): boolean;
-    set isDirty(value: boolean);
+    getDirtyRangesSince(revision: number): readonly UniformBufferDirtyRange[] | null;
     // (undocumented)
     readonly isUniformBuffer = true;
     // (undocumented)
@@ -6596,12 +6753,23 @@ export class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     markDirty(byteOffset?: number, byteLength?: number): this;
     // (undocumented)
     range(byteOffset: number, byteLength: number): UniformBufferRange;
+    get revision(): number;
     set<Name extends keyof Schema & string>(name: Name, value: Std140FieldValue<Schema[Name]>): this;
     write(byteOffset: number, data: TypedArray): this;
 }
 
 // @public (undocumented)
 export type UniformBufferData = TypedArray | ArrayBuffer;
+
+// @public
+export interface UniformBufferDirtyRange {
+    // (undocumented)
+    readonly byteLength: number;
+    // (undocumented)
+    readonly byteOffset: number;
+    // (undocumented)
+    readonly revision: number;
+}
 
 // @public (undocumented)
 export interface UniformBufferRange {
@@ -6625,7 +6793,7 @@ export type UV = readonly number[];
 // @public (undocumented)
 export interface VaoRenderer {
     // (undocumented)
-    resourceManager: WebGLResourceManager;
+    resourceManager: GraphicsResourceManager;
 }
 
 // @public
@@ -6904,6 +7072,7 @@ export class VertexArrayObject implements ManagedResource {
     getVertexCount(): number;
     // (undocumented)
     readonly gl: GLContext;
+    hasPendingGeometryDataUpdates(): boolean;
     // (undocumented)
     readonly id: string;
     // (undocumented)
@@ -6914,6 +7083,8 @@ export class VertexArrayObject implements ManagedResource {
     readonly isVertexArrayObject = true;
     // (undocumented)
     mode: GLenum;
+    // (undocumented)
+    removeIndexBuffer(): this;
     // (undocumented)
     static reset(gl: GLContext): void;
     // (undocumented)
@@ -7659,6 +7830,8 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     antialias: boolean;
     // (undocumented)
+    readonly backend: "webgl2";
+    // (undocumented)
     readonly className = "WebGLRenderer";
     // (undocumented)
     clear(clearColor?: Color): void;
@@ -7697,6 +7870,8 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     isInitFailed: boolean;
     // (undocumented)
+    get isReady(): boolean;
+    // (undocumented)
     readonly isWebGLRenderer = true;
     // (undocumented)
     readonly lightManager: LightManager;
@@ -7715,7 +7890,9 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     preserveDrawingBuffer: boolean;
     // (undocumented)
-    releaseGLResource(): void;
+    readonly ready: Promise<void>;
+    // (undocumented)
+    releaseGPUResources(): void;
     // (undocumented)
     render(stage: WebGLRendererScene, camera: Camera, fireEvent?: boolean): void;
     // (undocumented)
@@ -7735,7 +7912,7 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     resize(width: number, height: number, force?: boolean): void;
     // (undocumented)
-    readonly resourceManager: WebGLResourceManager;
+    readonly resourceManager: GraphicsResourceManager;
     // (undocumented)
     setOffset(x: number, y: number): void;
     // (undocumented)
@@ -7745,13 +7922,13 @@ export class WebGLRenderer extends EventDispatcher {
     // (undocumented)
     setupDepthTest(material: Material): void;
     // (undocumented)
-    setupMaterial(program: Program, mesh: Mesh, useInstanced: boolean, needForceUpdateUniforms?: boolean): void;
+    setupMaterial(program: Program, mesh: Mesh, useInstanced: boolean, needForceUpdateUniforms?: boolean): readonly UniformBuffer[];
     // (undocumented)
     setupMesh(mesh: Mesh, useInstanced: boolean): MeshSetup;
     // (undocumented)
     setupSampleAlphaToCoverage(material: Material): void;
     // (undocumented)
-    setupShaderBindings(program: Program, mesh: Mesh, useInstanced: boolean, force?: boolean): void;
+    setupShaderBindings(program: Program, mesh: Mesh, useInstanced: boolean, force?: boolean): readonly UniformBuffer[];
     // (undocumented)
     setupStencil(material: Material): void;
     // (undocumented)
@@ -7825,33 +8002,7 @@ export interface WebGLRendererParameters {
 }
 
 // @public (undocumented)
-export type WebGLRendererScene = Node_2 & {
-    readonly fog?: Fog | null;
-};
-
-// @public
-export class WebGLResourceManager extends EventDispatcher {
-    // (undocumented)
-    addMeshResources(mesh: Mesh, resources: readonly ManagedResource[]): void;
-    // (undocumented)
-    readonly className = "WebGLResourceManager";
-    // (undocumented)
-    destroyIfNoRef(resource: ManagedResource): this;
-    // (undocumented)
-    destroyMesh(mesh: Mesh): void;
-    // (undocumented)
-    destroyUnusedResource(rootNode?: Node_2): this;
-    // (undocumented)
-    getMeshResources(mesh: Mesh, resources?: ManagedResource[]): ManagedResource[];
-    // (undocumented)
-    getUsedResources(rootNode?: Node_2): ManagedResource[];
-    // (undocumented)
-    get hasNeedDestroyResource(): boolean;
-    // (undocumented)
-    readonly isWebGLResourceManager = true;
-    // (undocumented)
-    reset(): this;
-}
+export type WebGLRendererScene = RendererScene;
 
 // @public
 export class WebGLState {
@@ -7935,6 +8086,500 @@ export class WebGLState {
 export const WebGLSupport: {
     readonly get: () => boolean;
 };
+
+// @public (undocumented)
+export const WEBGPU_BIND_GROUP_COUNT = 4;
+
+// @public (undocumented)
+export const WEBGPU_BIND_GROUPS: Readonly<{
+    readonly GLOBAL: 0;
+    readonly MATERIAL: 1;
+    readonly OBJECT: 2;
+    readonly CUSTOM: 3;
+}>;
+
+// @public (undocumented)
+export const WEBGPU_BYTES_PER_ROW_ALIGNMENT = 256;
+
+// @public
+export const WEBGPU_UNIFORM_BLOCK_BINDINGS: Readonly<{
+    readonly FrameBlock: WebGPUResourceBinding;
+    readonly CameraBlock: WebGPUResourceBinding;
+    readonly SceneBlock: WebGPUResourceBinding;
+    readonly LightBlock: WebGPUResourceBinding;
+    readonly MaterialBlock: WebGPUResourceBinding;
+    readonly ModelBlock: WebGPUResourceBinding;
+    readonly GeometryBlock: WebGPUResourceBinding;
+    readonly SkinningBlock: WebGPUResourceBinding;
+    readonly MorphBlock: WebGPUResourceBinding;
+    readonly InstanceBlock: WebGPUResourceBinding;
+}>;
+
+// @public (undocumented)
+export interface WebGPUColorAttachmentOperations {
+    // (undocumented)
+    readonly clearValue?: GPUColor;
+    // (undocumented)
+    readonly loadOp?: GPULoadOp;
+    // (undocumented)
+    readonly storeOp?: GPUStoreOp;
+}
+
+// @public (undocumented)
+export interface WebGPUColorAttachmentOptions {
+    // (undocumented)
+    readonly clearValue?: GPUColor;
+    readonly format?: WebGPUColorRenderTargetFormat;
+    // (undocumented)
+    readonly label?: string;
+    // (undocumented)
+    readonly loadOp?: GPULoadOp;
+    // (undocumented)
+    readonly storeOp?: GPUStoreOp;
+    readonly texture?: Texture<unknown>;
+}
+
+// @public
+export interface WebGPUColorAttachmentReadback {
+    // (undocumented)
+    readonly bytesPerPixel: number;
+    // (undocumented)
+    readonly bytesPerRow: number;
+    // (undocumented)
+    readonly data: Uint8Array;
+    // (undocumented)
+    readonly format: WebGPUColorRenderTargetFormat;
+    // (undocumented)
+    readonly height: number;
+    // (undocumented)
+    readonly width: number;
+}
+
+// @public (undocumented)
+export type WebGPUColorRenderTargetFormat = 'rgba8unorm' | 'rgba8unorm-srgb' | 'rgba16float' | 'rgba32float';
+
+// @public (undocumented)
+export interface WebGPUDepthStencilAttachmentOperations {
+    // (undocumented)
+    readonly depthClearValue?: number;
+    // (undocumented)
+    readonly depthLoadOp?: GPULoadOp;
+    // (undocumented)
+    readonly depthStoreOp?: GPUStoreOp;
+    // (undocumented)
+    readonly stencilClearValue?: GPUStencilValue;
+    // (undocumented)
+    readonly stencilLoadOp?: GPULoadOp;
+    // (undocumented)
+    readonly stencilStoreOp?: GPUStoreOp;
+}
+
+// @public (undocumented)
+export interface WebGPUDepthStencilAttachmentOptions {
+    // (undocumented)
+    readonly compare?: GPUCompareFunction;
+    // (undocumented)
+    readonly depthClearValue?: number;
+    // (undocumented)
+    readonly depthLoadOp?: GPULoadOp;
+    // (undocumented)
+    readonly depthStoreOp?: GPUStoreOp;
+    // (undocumented)
+    readonly format?: WebGPUDepthStencilRenderTargetFormat;
+    // (undocumented)
+    readonly label?: string;
+    readonly sampled?: boolean;
+    // (undocumented)
+    readonly stencilClearValue?: GPUStencilValue;
+    // (undocumented)
+    readonly stencilLoadOp?: GPULoadOp;
+    // (undocumented)
+    readonly stencilStoreOp?: GPUStoreOp;
+    readonly texture?: Texture<unknown>;
+}
+
+// @public (undocumented)
+export type WebGPUDepthStencilRenderTargetFormat = 'depth16unorm' | 'depth24plus' | 'depth24plus-stencil8' | 'depth32float' | 'depth32float-stencil8';
+
+// @public (undocumented)
+export interface WebGPUExternalTextureOptions extends WebGPUTextureRequestOptions {
+    readonly takeOwnership?: boolean;
+    readonly viewDescriptor?: GPUTextureViewDescriptor;
+}
+
+// @public (undocumented)
+export interface WebGPUFragmentOutput {
+    // (undocumented)
+    readonly location: number;
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly type: string;
+}
+
+// @public (undocumented)
+export type WebGPUFramebufferParameters = Omit<WebGPURenderTargetParameters, 'width' | 'height'> & {
+    readonly width?: number;
+    readonly height?: number;
+};
+
+// @public (undocumented)
+export interface WebGPUReadColorAttachmentOptions {
+    // (undocumented)
+    readonly attachmentIndex?: number;
+    // (undocumented)
+    readonly height?: number;
+    // (undocumented)
+    readonly width?: number;
+    // (undocumented)
+    readonly x?: number;
+    // (undocumented)
+    readonly y?: number;
+}
+
+// @public
+export class WebGPURenderer extends EventDispatcher {
+    constructor(params?: WebGPURendererParameters);
+    // (undocumented)
+    alpha: boolean;
+    // (undocumented)
+    antialias: boolean;
+    // (undocumented)
+    readonly backend: "webgpu";
+    // (undocumented)
+    readonly className = "WebGPURenderer";
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    clearColor: Color;
+    // (undocumented)
+    clearDepth(): void;
+    // (undocumented)
+    clearStencil(): void;
+    createRenderTarget(parameters: WebGPURenderTargetParameters): WebGPURenderTarget;
+    // (undocumented)
+    depth: boolean;
+    // (undocumented)
+    destroy(): void;
+    // (undocumented)
+    domElement: HTMLCanvasElement | null;
+    // (undocumented)
+    failIfMajorPerformanceCaveat: boolean;
+    // (undocumented)
+    fog: Fog | null;
+    // (undocumented)
+    forceFallbackAdapter: boolean;
+    // (undocumented)
+    forceMaterial: Material | null;
+    // (undocumented)
+    fragmentPrecision: ShaderPrecision;
+    // (undocumented)
+    framebufferOption: WebGPUFramebufferParameters;
+    // (undocumented)
+    get gpuDevice(): GPUDevice;
+    // (undocumented)
+    height: number;
+    // (undocumented)
+    isInitFailed: boolean;
+    // (undocumented)
+    get isReady(): boolean;
+    // (undocumented)
+    readonly isWebGPURenderer = true;
+    // (undocumented)
+    readonly lightManager: LightManager;
+    // (undocumented)
+    offsetX: number;
+    // (undocumented)
+    offsetY: number;
+    // (undocumented)
+    pixelRatio: number;
+    // (undocumented)
+    powerPreference: GPUPowerPreference;
+    // (undocumented)
+    premultipliedAlpha: boolean;
+    present(target?: WebGPURenderTarget): void;
+    // (undocumented)
+    preserveDrawingBuffer: boolean;
+    // (undocumented)
+    readonly ready: Promise<void>;
+    // (undocumented)
+    releaseGPUResources(): void;
+    // (undocumented)
+    render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    // (undocumented)
+    readonly renderInfo: RenderInfo;
+    // (undocumented)
+    renderInstancedMeshes(meshes: readonly Mesh[], silent?: boolean): void;
+    // (undocumented)
+    readonly renderList: RenderList;
+    // (undocumented)
+    renderMesh(mesh: Mesh, silent?: boolean): void;
+    // (undocumented)
+    renderScene(): void;
+    // (undocumented)
+    renderTarget: WebGPURenderTarget | null;
+    // (undocumented)
+    requiredFeatures: readonly GPUFeatureName[];
+    // (undocumented)
+    requiredLimits: Readonly<Record<string, number>>;
+    // (undocumented)
+    resize(width: number, height: number, force?: boolean): void;
+    // (undocumented)
+    readonly resourceManager: GraphicsResourceManager;
+    // (undocumented)
+    setOffset(x: number, y: number): void;
+    setRenderTarget(target: WebGPURenderTarget | null, options?: {
+        readonly present?: boolean;
+        readonly takeOwnership?: boolean;
+    }): this;
+    // (undocumented)
+    stencil: boolean;
+    // (undocumented)
+    useFramebuffer: boolean;
+    // (undocumented)
+    useInstanced: boolean;
+    // (undocumented)
+    useLogDepth: boolean;
+    // (undocumented)
+    vertexPrecision: ShaderPrecision;
+    // (undocumented)
+    viewport(x?: number, y?: number): void;
+    // (undocumented)
+    width: number;
+}
+
+// @public (undocumented)
+export interface WebGPURendererParameters {
+    // (undocumented)
+    alpha?: boolean;
+    // (undocumented)
+    antialias?: boolean;
+    // (undocumented)
+    clearColor?: Color;
+    // (undocumented)
+    depth?: boolean;
+    // (undocumented)
+    domElement?: HTMLCanvasElement | null;
+    // (undocumented)
+    failIfMajorPerformanceCaveat?: boolean;
+    // (undocumented)
+    fog?: Fog | null;
+    // (undocumented)
+    forceFallbackAdapter?: boolean;
+    // (undocumented)
+    forceMaterial?: Material | null;
+    // (undocumented)
+    fragmentPrecision?: ShaderPrecision;
+    // (undocumented)
+    framebufferOption?: WebGPUFramebufferParameters;
+    // (undocumented)
+    height?: number;
+    // (undocumented)
+    offsetX?: number;
+    // (undocumented)
+    offsetY?: number;
+    // (undocumented)
+    pixelRatio?: number;
+    // (undocumented)
+    powerPreference?: GPUPowerPreference;
+    // (undocumented)
+    premultipliedAlpha?: boolean;
+    // (undocumented)
+    preserveDrawingBuffer?: boolean;
+    // (undocumented)
+    requiredFeatures?: readonly GPUFeatureName[];
+    // (undocumented)
+    requiredLimits?: Readonly<Record<string, number>>;
+    // (undocumented)
+    stencil?: boolean;
+    useFramebuffer?: boolean;
+    // (undocumented)
+    useInstanced?: boolean;
+    // (undocumented)
+    useLogDepth?: boolean;
+    // (undocumented)
+    vertexPrecision?: ShaderPrecision;
+    // (undocumented)
+    width?: number;
+}
+
+// @public (undocumented)
+export interface WebGPURenderPassOptions {
+    readonly colorAttachments?: readonly WebGPUColorAttachmentOperations[];
+    // (undocumented)
+    readonly depthStencilAttachment?: WebGPUDepthStencilAttachmentOperations;
+    // (undocumented)
+    readonly label?: string;
+}
+
+// @public
+export class WebGPURenderTarget {
+    constructor(device: GPUDevice, textureManager: WebGPUTextureManager, parameters: WebGPURenderTargetParameters);
+    // (undocumented)
+    readonly className = "WebGPURenderTarget";
+    // (undocumented)
+    get colorAttachmentCount(): number;
+    // (undocumented)
+    readonly colorFormats: readonly WebGPUColorRenderTargetFormat[];
+    // (undocumented)
+    readonly colorTextures: readonly Texture<unknown>[];
+    // (undocumented)
+    createRenderPassDescriptor(options?: WebGPURenderPassOptions): GPURenderPassDescriptor;
+    // (undocumented)
+    readonly depthStencilFormat: WebGPUDepthStencilRenderTargetFormat | null;
+    // (undocumented)
+    get depthTexture(): Texture<unknown> | null;
+    // (undocumented)
+    destroy(): void;
+    // (undocumented)
+    readonly device: GPUDevice;
+    // (undocumented)
+    getColorGPUTexture(index?: number): GPUTexture;
+    // (undocumented)
+    getColorTexture(index?: number): Texture<unknown>;
+    // (undocumented)
+    getDepthStencilGPUTexture(): GPUTexture | null;
+    getRenderPassLayout(): GPURenderPassLayout;
+    // (undocumented)
+    get height(): number;
+    // (undocumented)
+    get isDestroyed(): boolean;
+    // (undocumented)
+    readonly isWebGPURenderTarget = true;
+    // (undocumented)
+    readonly label: string;
+    // (undocumented)
+    readColorAttachment(options?: WebGPUReadColorAttachmentOptions): Promise<WebGPUColorAttachmentReadback>;
+    // (undocumented)
+    resize(width: number, height: number): void;
+    // (undocumented)
+    readonly sampleCount: 1 | 4;
+    // (undocumented)
+    readonly textureManager: WebGPUTextureManager;
+    // (undocumented)
+    get width(): number;
+}
+
+// @public (undocumented)
+export interface WebGPURenderTargetParameters {
+    readonly colorAttachments?: readonly WebGPUColorAttachmentOptions[];
+    readonly depthStencilAttachment?: WebGPUDepthStencilAttachmentOptions | false;
+    // (undocumented)
+    readonly height: number;
+    // (undocumented)
+    readonly label?: string;
+    readonly sampleCount?: 1 | 4;
+    // (undocumented)
+    readonly width: number;
+}
+
+// @public (undocumented)
+export interface WebGPUResourceBinding {
+    // (undocumented)
+    readonly binding: number;
+    // (undocumented)
+    readonly group: number;
+}
+
+// @public (undocumented)
+export interface WebGPUSamplerBinding {
+    // (undocumented)
+    readonly arrayIndex: number;
+    // (undocumented)
+    readonly group: number;
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly samplerBinding: number;
+    // (undocumented)
+    readonly stages: readonly GraphicsShaderStage[];
+    // (undocumented)
+    readonly textureBinding: number;
+    // (undocumented)
+    readonly type: GlslSamplerType;
+}
+
+// @public (undocumented)
+export interface WebGPUTextureFormatInfo {
+    // (undocumented)
+    readonly bytesPerPixel: number;
+    // (undocumented)
+    readonly format: GPUTextureFormat;
+    // (undocumented)
+    readonly isDepth: boolean;
+    // (undocumented)
+    readonly sampleType: GPUTextureSampleType;
+    // (undocumented)
+    readonly storage: TextureComponentStorage;
+}
+
+// @public
+export class WebGPUTextureManager {
+    constructor(device: GPUDevice, onResourceDestroyed?: () => void);
+    // (undocumented)
+    destroy(texture: Texture<unknown>): void;
+    destroyAll(): void;
+    // (undocumented)
+    readonly device: GPUDevice;
+    get(texture: Texture<unknown>, options?: WebGPUTextureRequestOptions): WebGPUTextureResource;
+    // (undocumented)
+    getGPUTexture(texture: Texture<unknown>, options?: WebGPUTextureRequestOptions): GPUTexture;
+    getResources(): readonly WebGPUTextureResource[];
+    // (undocumented)
+    getSampler(texture: Texture<unknown>, options?: WebGPUTextureRequestOptions): GPUSampler;
+    registerExternal(texture: Texture<unknown>, gpuTexture: GPUTexture, options?: WebGPUExternalTextureOptions): WebGPUTextureResource;
+    // (undocumented)
+    get resourceCount(): number;
+}
+
+// @public (undocumented)
+export interface WebGPUTextureRequestOptions {
+    readonly compare?: GLenum | GPUCompareFunction;
+}
+
+// @public (undocumented)
+export interface WebGPUTextureResource {
+    // (undocumented)
+    readonly depthOrArrayLayers: number;
+    // (undocumented)
+    readonly dimension: '2d' | 'cube';
+    // (undocumented)
+    readonly format: GPUTextureFormat;
+    // (undocumented)
+    readonly gpuTexture: GPUTexture;
+    // (undocumented)
+    readonly height: number;
+    // (undocumented)
+    readonly mipLevelCount: number;
+    // (undocumented)
+    readonly sampler: GPUSampler;
+    // (undocumented)
+    readonly textureId: string;
+    // (undocumented)
+    readonly view: GPUTextureView;
+    // (undocumented)
+    readonly width: number;
+}
+
+// @public (undocumented)
+export interface WebGPUUniformBlock extends WebGPUResourceBinding {
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly stages: readonly GraphicsShaderStage[];
+}
+
+// @public (undocumented)
+export interface WebGPUVertexInput {
+    // (undocumented)
+    readonly location: number;
+    // (undocumented)
+    readonly locationCount: number;
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly type: string;
+}
 
 // @public (undocumented)
 export interface XYZObject {

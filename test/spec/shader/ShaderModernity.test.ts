@@ -46,10 +46,8 @@ const legacySyntaxRules: readonly (readonly [string, RegExp])[] = [
     ['gl_FragColor output', /\bgl_FragColor\b/g],
     ['gl_FragData output', /\bgl_FragData\b/g],
     ['gl_FragDepthEXT output', /\bgl_FragDepthEXT\b/g],
-    [
-        'WebGL 1 shader extension',
-        /#extension\s+GL_(?:OES_standard_derivatives|EXT_shader_texture_lod|EXT_frag_depth|EXT_draw_buffers)\b/g
-    ]
+    ['non-portable point-sprite built-in', /\bgl_Point(?:Size|Coord)\b/g],
+    ['WebGL 1 shader extension', /#extension\s+GL_(?:OES|EXT|WEBGL)_[A-Za-z0-9_]+\b/g]
 ];
 
 const classicUniformDeclaration =
@@ -100,5 +98,17 @@ describe('WebGL 2 shader contract', () => {
         expect(Object.keys(engineShaderSources).some(path => path.includes('GLSL300Define'))).toBe(
             false
         );
+    });
+
+    it('renders snow as instanced billboard triangles with built-in frame and camera blocks', () => {
+        const snow = Object.entries(exampleShaderSources).find(([path]) =>
+            path.endsWith('/examples/snow.ts')
+        )?.[1];
+        expect(snow).toBeTypeOf('string');
+        expect(snow).not.toMatch(/constants\.POINTS\b/u);
+        expect(snow).toContain('renderer.useInstanced = true');
+        expect(snow).toContain('mode: Hilo3d.constants.TRIANGLES');
+        expect(snow).toContain('layout(std140) uniform FrameBlock');
+        expect(snow).toContain('layout(std140) uniform CameraBlock');
     });
 });

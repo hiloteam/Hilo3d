@@ -13,8 +13,7 @@ export default defineConfig(
         'node_modules/**',
         'playwright-report/**',
         'reports/**',
-        'test-results/**',
-        '**/*.vendor.js'
+        'test-results/**'
     ]),
     {
         files: ['**/*.{ts,tsx,mts,cts}'],

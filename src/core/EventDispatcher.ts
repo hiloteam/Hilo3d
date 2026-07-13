@@ -41,11 +41,7 @@ export class HiloEvent<Detail = unknown> implements DispatchEvent {
     }
 }
 
-/**
- * Native event base class used by engine classes. The methods intentionally
- * only depend on `_listeners`, so their prototype functions also remain usable
- * through the legacy `EventMixin` object.
- */
+/** Native event base class used by engine classes. */
 export class EventDispatcher {
     _listeners: ListenerMap | null = null;
 
@@ -103,28 +99,3 @@ export class EventDispatcher {
         return true;
     }
 }
-
-export interface EventMixinMembers {
-    _listeners: ListenerMap | null;
-    on: EventDispatcher['on'];
-    off: EventDispatcher['off'];
-    fire: EventDispatcher['fire'];
-}
-
-/** Public compatibility mixin for consumers that still use `Object.assign`. */
-const EventMixin: EventMixinMembers = {
-    _listeners: null,
-    on(type, listener, once) {
-        EventDispatcher.prototype.on.call(this, type, listener, once);
-        return this;
-    },
-    off(type, listener) {
-        EventDispatcher.prototype.off.call(this, type, listener);
-        return this;
-    },
-    fire(typeOrEvent, detail) {
-        return EventDispatcher.prototype.fire.call(this, typeOrEvent, detail);
-    }
-};
-
-export default EventMixin;

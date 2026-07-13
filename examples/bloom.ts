@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 Hilo3d.registerUniformBlockBinding('BloomBlurBlock');
 Hilo3d.registerUniformBlockBinding('BloomCompositeBlock');
@@ -25,14 +25,6 @@ interface ScreenShaderPassOptions extends RenderPassOptions {
     uniforms?: Hilo3d.MaterialBindingMap;
     uniformBlocks?: Record<string, Hilo3d.UniformBuffer>;
     prepare?: () => void;
-}
-
-function requireTextureIndex(programInfo: Hilo3d.ProgramBindingInfo): number {
-    const { textureIndex } = programInfo;
-    if (textureIndex === undefined) {
-        throw new Error(`Uniform ${programInfo.name ?? '<unnamed>'} is not a texture sampler.`);
-    }
-    return textureIndex;
 }
 
 function requireFramebufferTexture(
@@ -126,15 +118,12 @@ class ScreenShaderPass extends RenderPass {
                 side: Hilo3d.constants.FRONT_AND_BACK,
                 uniforms: {
                     u_lastTexture: {
-                        get: (_mesh, _material, programInfo) => {
+                        get: (_mesh, _material, _programInfo) => {
                             const texture = requireFramebufferTexture(
                                 this.lastPass?.framebuffer ?? null,
                                 'Previous render pass'
                             );
-                            return Hilo3d.semantic.handlerTexture(
-                                texture,
-                                requireTextureIndex(programInfo)
-                            );
+                            return Hilo3d.semantic.handlerTexture(texture);
                         }
                     },
                     ...options.uniforms
@@ -208,10 +197,9 @@ const lightPass = new ScreenShaderPass(sceneRenderer, {
     `,
     uniforms: {
         u_screen: {
-            get: (_mesh, _material, programInfo) =>
+            get: (_mesh, _material, _programInfo) =>
                 Hilo3d.semantic.handlerTexture(
-                    requireFramebufferTexture(sceneRenderer.framebuffer, 'Scene'),
-                    requireTextureIndex(programInfo)
+                    requireFramebufferTexture(sceneRenderer.framebuffer, 'Scene')
                 )
         }
     }
@@ -256,10 +244,9 @@ for (let index = 0; index < 5; index++) {
         `,
         uniforms: {
             u_lightTexture: {
-                get: (_mesh, _material, programInfo) =>
+                get: (_mesh, _material, _programInfo) =>
                     Hilo3d.semantic.handlerTexture(
-                        requireFramebufferTexture(lightPass.framebuffer, 'Light extraction pass'),
-                        requireTextureIndex(programInfo)
+                        requireFramebufferTexture(lightPass.framebuffer, 'Light extraction pass')
                     )
             }
         },
@@ -338,10 +325,9 @@ new ScreenShaderPass(sceneRenderer, {
     `,
     uniforms: {
         u_scene: {
-            get: (_mesh, _material, programInfo) =>
+            get: (_mesh, _material, _programInfo) =>
                 Hilo3d.semantic.handlerTexture(
-                    requireFramebufferTexture(sceneRenderer.framebuffer, 'Scene'),
-                    requireTextureIndex(programInfo)
+                    requireFramebufferTexture(sceneRenderer.framebuffer, 'Scene')
                 )
         },
         ...Object.fromEntries(
@@ -351,14 +337,13 @@ new ScreenShaderPass(sceneRenderer, {
                     get: (
                         _mesh: Hilo3d.Mesh,
                         _material: Hilo3d.Material,
-                        programInfo: Hilo3d.ProgramBindingInfo
+                        _programInfo: Hilo3d.ProgramBindingInfo
                     ) =>
                         Hilo3d.semantic.handlerTexture(
                             requireFramebufferTexture(
                                 pass.framebuffer,
                                 `Blur pass ${String(index)}`
-                            ),
-                            requireTextureIndex(programInfo)
+                            )
                         )
                 }
             ])

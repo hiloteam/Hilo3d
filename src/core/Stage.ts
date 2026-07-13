@@ -1,6 +1,8 @@
 import Node, { type NodeParameters, type NodePointerEvent, type NodeRaycastInfo } from './Node';
 import version from './version';
 import WebGLRenderer from '../renderer/WebGLRenderer';
+import WebGPURenderer, { type WebGPUFramebufferParameters } from '../renderer/WebGPURenderer';
+import type { RendererBackend } from '../renderer/Renderer';
 import type { FramebufferParameters } from '../renderer/Framebuffer';
 import Ray from '../math/Ray';
 import Vector3 from '../math/Vector3';
@@ -135,7 +137,11 @@ function getDOMPointerInfo(event: Event): DOMPointerInfo {
     };
 }
 
-export interface StageParameters extends NodeParameters {
+export interface StageParameters<
+    Backend extends RendererBackend = 'webgl2'
+> extends NodeParameters {
+    /** Graphics backend. Selection is explicit; unsupported WebGPU never falls back silently. */
+    backend?: Backend;
     container?: HTMLElement;
     canvas?: HTMLCanvasElement;
     camera?: Camera | null;
@@ -143,8 +149,11 @@ export interface StageParameters extends NodeParameters {
     height?: number;
     pixelRatio?: number;
     clearColor?: Color;
+    useInstanced?: boolean;
     useFramebuffer?: boolean;
-    framebufferOption?: FramebufferParameters;
+    framebufferOption?: Backend extends 'webgpu'
+        ? WebGPUFramebufferParameters
+        : FramebufferParameters;
     useLogDepth?: boolean;
     alpha?: boolean;
     depth?: boolean;
@@ -155,6 +164,10 @@ export interface StageParameters extends NodeParameters {
     failIfMajorPerformanceCaveat?: boolean;
     gameMode?: boolean;
 }
+
+export type StageRenderer<Backend extends RendererBackend> = Backend extends 'webgpu'
+    ? WebGPURenderer
+    : WebGLRenderer;
 
 export interface StagePointerEvent extends NodePointerEvent {
     stageX: number;
@@ -182,14 +195,16 @@ function containsNode(parent: Node, possibleChild: Node): boolean {
  * });
  * ```
  */
-class Stage extends Node {
+class Stage<Backend extends RendererBackend = 'webgl2'> extends Node {
     static override readonly typeName: string = 'Stage';
     isStage = true;
     override className = 'Stage';
     /**
      * 渲染器
      */
-    renderer: WebGLRenderer;
+    renderer: StageRenderer<Backend>;
+    /** Resolves when the selected graphics backend is ready for rendering. */
+    readonly ready: Promise<void>;
     /**
      * 摄像机
      */
@@ -236,8 +251,8 @@ class Stage extends Node {
      * - `params.height`: stage的高，默认网页高度
      * - `params.pixelRatio`: 像素密度。
      * - `params.clearColor`: 背景色。
-     * - `params.useFramebuffer`: 是否使用Framebuffer，有后处理需求时需要。
-     * - `params.framebufferOption`: framebufferOption Framebuffer的配置，useFramebuffer为true时生效。
+     * - `params.useFramebuffer`: 是否使用当前 backend 的离屏 render target。
+     * - `params.framebufferOption`: 当前 backend 的 render-target 配置，useFramebuffer 为 true 时生效。
      * - `params.useLogDepth`: 是否使用对数深度，处理深度冲突。
      * - `params.alpha`: 是否背景透明。
      * - `params.depth`: 是否需要深度缓冲区。
@@ -247,7 +262,7 @@ class Stage extends Node {
      * - `params.preserveDrawingBuffer`: 是否需要 preserveDrawingBuffer。
      * - `params.failIfMajorPerformanceCaveat`: 是否需要 failIfMajorPerformanceCaveat。
      */
-    constructor(params: StageParameters = {}) {
+    constructor(params: StageParameters<Backend> = {}) {
         const width = params.width ?? window.innerWidth;
         const height = params.height ?? window.innerHeight;
         let pixelRatio = params.pixelRatio;
@@ -256,19 +271,42 @@ class Stage extends Node {
             pixelRatio = Math.min(pixelRatio, 1024 / Math.max(width, height), 2);
             pixelRatio = Math.max(pixelRatio, 1);
         }
-        const resolvedParams: StageParameters = { ...params, width, height, pixelRatio };
+        const resolvedParams: StageParameters<Backend> = { ...params, width, height, pixelRatio };
         super();
         Object.assign(this, resolvedParams);
         this.canvas = this.createCanvas(resolvedParams);
-        this.renderer = new WebGLRenderer({ ...resolvedParams, domElement: this.canvas });
+        const renderer =
+            resolvedParams.backend === 'webgpu'
+                ? new WebGPURenderer({
+                      ...(resolvedParams as StageParameters<'webgpu'>),
+                      domElement: this.canvas
+                  })
+                : new WebGLRenderer({
+                      ...(resolvedParams as StageParameters),
+                      domElement: this.canvas
+                  });
+        this.renderer = renderer as StageRenderer<Backend>;
+        this.ready = renderer.ready;
         this.resize(this.width, this.height, this.pixelRatio, true);
         log.log(`Hilo3d version: ${version}`);
+    }
+
+    /** Construct and await an asynchronously initialized backend. */
+    static async create<Backend extends RendererBackend = 'webgl2'>(
+        params: StageParameters<Backend> = {}
+    ): Promise<Stage<Backend>> {
+        const stage = new Stage(params);
+        await stage.ready;
+        return stage;
     }
     /**
      * 生成canvas
      * @param params -
      */
-    private createCanvas(params: StageParameters): HTMLCanvasElement {
+    private createCanvas(params: {
+        readonly canvas?: HTMLCanvasElement;
+        readonly container?: HTMLElement;
+    }): HTMLCanvasElement {
         let canvas: HTMLCanvasElement;
         if (params.canvas) {
             canvas = params.canvas;
@@ -505,11 +543,11 @@ class Stage extends Node {
         return this._stageResultAtPoint;
     }
     /**
-     * 释放 WebGL 资源
+     * 释放当前图形后端资源。
      * @returns this
      */
-    releaseGLResource(): this {
-        this.renderer.releaseGLResource();
+    releaseGPUResources(): this {
+        this.renderer.releaseGPUResources();
         return this;
     }
     /**
@@ -520,13 +558,12 @@ class Stage extends Node {
         this.enableDOMEvent([...this._enabledDOMEvents], false);
         this._eventTargets.clear();
         super.destroy(this.renderer);
-        this.releaseGLResource();
         this.traverse(child => {
             child.off();
             child.parent = null;
         });
         this.children.length = 0;
-        this.renderer.off();
+        this.renderer.destroy();
         return this;
     }
 }

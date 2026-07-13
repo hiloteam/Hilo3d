@@ -2,7 +2,6 @@ import {
     BasicLoader,
     BasicMaterial,
     BoxGeometry,
-    Class,
     EventDispatcher,
     GLTFLoader,
     HiloEvent,
@@ -15,9 +14,11 @@ import {
     Stage,
     Texture,
     Tween,
-    Vector3,
     WebGLRenderer,
     WebGLState,
+    WebGPURenderer,
+    NagaShaderTranslator,
+    getWebGPUUniformBlockBinding,
     version,
     type BasicLoadRequest,
     type BasicMaterialParameters,
@@ -27,21 +28,19 @@ import {
     type LoaderRequest,
     type MeshParameters,
     type ProgramParameters,
+    type RendererBackend,
     type StageParameters,
     type StagePointerEvent,
+    type StageRenderer,
     type TextureParameters,
     type TweenParameters,
-    type WebGLRendererParameters
+    type WebGLRendererParameters,
+    type WebGPUColorAttachmentReadback,
+    type WebGPUFramebufferParameters,
+    type WebGPURendererParameters,
+    type WebGPURenderTarget,
+    type WebGPURenderTargetParameters
 } from 'hilo3d';
-
-const vector = new Vector3(1, 2, 3);
-const RuntimeVector = Class.create<typeof Vector3>()({
-    constructor(x = 0, y = 0, z = 0) {
-        this.elements = new Float32Array([x, y, z]);
-    }
-});
-const runtimeVector = new RuntimeVector(1, 2, 3);
-vector.copy(runtimeVector);
 
 const camera = new PerspectiveCamera({ aspect: 16 / 9, near: 0.1, far: 1_000, z: 4 });
 const rendererParameters = {
@@ -56,6 +55,41 @@ const stageParameters = {
     height: rendererParameters.height
 } satisfies StageParameters;
 const stage = new Stage(stageParameters);
+const webgpuRendererParameters = {
+    domElement: document.createElement('canvas'),
+    width: 640,
+    height: 360,
+    pixelRatio: 1,
+    useFramebuffer: true,
+    framebufferOption: {
+        sampleCount: 4,
+        colorAttachments: [{ format: 'rgba16float' }]
+    } satisfies WebGPUFramebufferParameters
+} satisfies WebGPURendererParameters;
+const webgpuRenderer = new WebGPURenderer(webgpuRendererParameters);
+const webgpuStageParameters = {
+    backend: 'webgpu',
+    camera,
+    width: webgpuRendererParameters.width,
+    height: webgpuRendererParameters.height,
+    useFramebuffer: true,
+    framebufferOption: { sampleCount: 4, colorAttachments: [{ format: 'rgba8unorm' }] }
+} satisfies StageParameters<'webgpu'>;
+const webgpuStage = new Stage(webgpuStageParameters);
+const webgpuStagePromise: Promise<Stage<'webgpu'>> = Stage.create(webgpuStageParameters);
+const typedWebgpuStageRenderer: StageRenderer<'webgpu'> = webgpuStage.renderer;
+const selectedBackend: RendererBackend = webgpuRenderer.backend;
+const nagaTranslator = new NagaShaderTranslator();
+const cameraBlockBinding = getWebGPUUniformBlockBinding('CameraBlock');
+const renderTargetParameters = {
+    width: 320,
+    height: 180,
+    sampleCount: 4,
+    colorAttachments: [{ format: 'rgba16float' }]
+} satisfies WebGPURenderTargetParameters;
+const renderTarget: WebGPURenderTarget = webgpuRenderer.createRenderTarget(renderTargetParameters);
+webgpuRenderer.setRenderTarget(renderTarget, { present: true, takeOwnership: true });
+const colorReadback: Promise<WebGPUColorAttachmentReadback> = renderTarget.readColorAttachment();
 
 const textureParameters = {
     uv: 0,
@@ -133,6 +167,13 @@ typedProgramErrors.forEach(error => {
 version satisfies string;
 void renderer;
 void stage;
+void webgpuRenderer;
+void webgpuStagePromise;
+void typedWebgpuStageRenderer;
+void selectedBackend;
+void nagaTranslator;
+void cameraBlockBinding;
+void colorReadback;
 void material;
 void mesh;
 void registryLoad;

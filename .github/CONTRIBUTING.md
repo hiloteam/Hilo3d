@@ -19,12 +19,17 @@ Use `npm run dev` for engine development and `npm run examples:dev` for the exam
 ## Required quality checks
 
 - `npm run format:check` checks the repository's canonical formatting.
+- `npm run check:modernity` rejects maintained JavaScript implementations, retired build/test
+  configuration files, TypeScript/lint/coverage suppressions, and explicit `any` escape hatches.
 - `npm run lint` runs type-aware ESLint over every maintained TypeScript file.
 - `npm run typecheck` checks the library, tests, examples, and Node tooling as isolated TypeScript
   projects.
 - `npm run test:coverage` runs browser unit tests and enforces coverage thresholds.
 - `npm run test:ui` and `npm run test:visual` run the Playwright UI and rendering suites.
+- `npm run test:webgpu` runs the real Chromium WebGPU/Naga render path; it must not be replaced by a
+  mocked-device smoke test.
 - `npm run docs:check` validates the TypeDoc API documentation.
+- `npm run api:check` rejects unreviewed changes to the generated public declaration report.
 - `npm run test:package` builds and tests the actual npm package contract.
 - `npm run validate` is the single CI and release gate.
 
@@ -37,27 +42,40 @@ be committed when a rendering change is intentional.
 - Do not use `@ts-nocheck`, `@ts-ignore`, `@ts-expect-error`, explicit `any`, broad lint disables,
   or other mechanisms that bypass a failing check.
 - Use native classes, standard ESM, explicit domain types, and type-only imports where relevant.
-- Keep compatibility behavior at a documented public boundary; do not build new internals on a
-  legacy abstraction.
+- Dependencies must expose directly consumable ESM and strict declarations. Do not read, truncate,
+  or rewrite dependency UMD/CommonJS sources in Vite or Node tooling, and do not mask invalid
+  dependency declarations with compiler suppressions.
+- Extend `EventDispatcher` and the backend-neutral renderer lifecycle directly. Do not restore the
+  dynamic class/mixin API, backend-specific lifecycle aliases, CommonJS/UMD builds, or global entry.
 - Public API changes must update tests, TypeDoc comments, the generated API report via
   `npm run api:update`, and `CHANGELOG.md`.
 
-## WebGL 2 and shader policy
+## WebGL 2, WebGPU, and shader policy
 
-- The renderer has one backend: WebGL 2 with native GLSL ES 3.00. Do not add WebGL 1 context
-  fallback, GLSL 1.00 compatibility macros, or extension wrappers for WebGL 2 core features.
-- Engine and example shaders must use `in`/`out`, `texture()`, and explicit fragment outputs.
-  `attribute`, `varying`, `texture2D`, `textureCube`, `gl_FragColor`, and WebGL 1 shader extensions
-  are rejected by the test suite.
-- Non-sampler shader data belongs in a std140 uniform block. Samplers are the only permitted classic
-  uniforms; `Program` rejects any other active classic uniform at link time.
-- Built-in bindings 0–8 are reserved for `FrameBlock`, `CameraBlock`, `SceneBlock`, `LightBlock`,
-  `MaterialBlock`, `ModelBlock`, `GeometryBlock`, `SkinningBlock`, and `MorphBlock`. Do not reorder
-  or repurpose them.
-- Register a custom block with `registerUniformBlockBinding` before linking it. Every new block must
-  document its owner and update frequency and include std140 offset, size, and dirty-update tests.
-- Instanced object data uses explicit instance attributes. Do not restore source rewriting that
-  changes a uniform into an attribute, and do not place per-instance data in a per-draw UBO.
+- Public rendering backends are exactly `webgl2` and `webgpu`. Never add WebGL 1 context fallback,
+  GLSL 1.00 compatibility macros, or extension wrappers for WebGL 2 core features. Explicit WebGPU
+  selection must reject unsupported capabilities instead of silently falling back to WebGL 2.
+- Engine and example shaders have one GLSL ES 3.00 source of truth and must use `in`/`out`,
+  `texture()`, explicit fragment outputs, and std140 blocks. `attribute`, `varying`, `texture2D`,
+  `textureCube`, `gl_FragColor`, `gl_FragData`, and WebGL 1 shader extensions are rejected.
+- WebGPU shaders must follow the fixed pipeline: resolve the active engine variant, prepare Vulkan
+  GLSL 4.50 interfaces and bindings, then translate through Naga WASM to WGSL. Do not add a parallel
+  hand-authored WGSL tree or skip engine preprocessing before Naga.
+- Non-sampler shader data belongs in a std140 uniform block. GLSL samplers are the only declarations
+  outside blocks: WebGL 2 maps them to texture units and WebGPU maps them to separate
+  texture/sampler binding pairs. Both backends reject classic numeric uniforms.
+- WebGL 2 reserves flat bindings 0–8 for `FrameBlock`, `CameraBlock`, `SceneBlock`, `LightBlock`,
+  `MaterialBlock`, `ModelBlock`, `GeometryBlock`, `SkinningBlock`, and `MorphBlock`. WebGPU maps
+  global/pass blocks to group 0, material resources to group 1, object/geometry/pose blocks to group
+  2, and custom blocks to group 3; `InstanceBlock` is group 2 binding 4.
+- Register a custom block with `registerUniformBlockBinding` before first use. Every new block must
+  document its owner and update frequency and include std140 offset, size, dirty-update, WebGPU
+  binding, and Naga corpus tests.
+- WebGL 2 instanced transforms use explicit instance attributes. WebGPU instanced transforms use the
+  fixed-size `InstanceBlock` and split larger batches; do not restore runtime source rewriting or
+  consume unbounded vertex-buffer slots.
+- A shader change is complete only when WebGL 2 compile/link, Naga corpus translation, and the
+  relevant real WebGPU pipeline or UI test pass.
 
 ## Commits and pull requests
 

@@ -73,9 +73,7 @@ const banner = `/*!\n * Hilo3d ${packageJson.version}\n * Copyright (c) 2017-pre
 
 const runtimeDependencies = ['gl-matrix'] as const;
 
-export function createViteConfig(mode: string): UserConfig {
-    const isUmdBuild = mode === 'library-umd';
-
+export function createViteConfig(): UserConfig {
     return {
         plugins: [shaderIncludePlugin()],
         optimizeDeps: {
@@ -87,15 +85,14 @@ export function createViteConfig(mode: string): UserConfig {
         build: {
             target: 'es2022',
             sourcemap: true,
-            emptyOutDir: !isUmdBuild,
+            emptyOutDir: true,
             lib: {
                 entry: fileURLToPath(new URL('./src/Hilo3d.ts', import.meta.url)),
-                name: 'Hilo3d',
-                formats: [isUmdBuild ? 'umd' : 'es'],
-                fileName: () => (isUmdBuild ? 'Hilo3d.umd.cjs' : 'Hilo3d.js')
+                formats: ['es'],
+                fileName: () => 'Hilo3d.js'
             },
             rolldownOptions: {
-                external: isUmdBuild ? [] : [...runtimeDependencies],
+                external: [...runtimeDependencies],
                 output: {
                     banner
                 }
@@ -104,4 +101,4 @@ export function createViteConfig(mode: string): UserConfig {
     };
 }
 
-export default defineConfig(({ mode }) => createViteConfig(mode));
+export default defineConfig(() => createViteConfig());

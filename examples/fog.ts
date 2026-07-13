@@ -1,6 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
-import OrbitControls from './js/OrbitControls';
-import Stats from './js/stats';
+import OrbitControls from './shared/OrbitControls';
+import Stats from './shared/stats';
 
 const container = document.getElementById('container');
 if (!container) throw new Error('Fog example requires #container');

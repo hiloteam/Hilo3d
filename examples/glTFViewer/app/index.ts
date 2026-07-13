@@ -1,8 +1,7 @@
 import * as Hilo3d from '../../../src/Hilo3d';
-import OrbitControls from '../../js/OrbitControls';
-import Stats from '../../js/stats';
-import { loadEnvironmentMaps, parseQuery } from '../../js/init';
-import '../../loader/draco/DracoLoader';
+import OrbitControls from '../../shared/OrbitControls';
+import Stats from '../../shared/stats';
+import { loadEnvironmentMaps, parseQuery } from '../../shared/init';
 
 function requireElement<ElementType extends Element>(
     element: ElementType | null,

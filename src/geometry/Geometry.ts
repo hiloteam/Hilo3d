@@ -188,7 +188,19 @@ class Geometry {
     /**
      * 是否需要更新
      */
-    isDirty = true;
+    private _isDirty = true;
+    private _revision = 0;
+    /** Monotonic geometry-state revision observed independently by every backend. */
+    get revision(): number {
+        return this._revision;
+    }
+    get isDirty(): boolean {
+        return this._isDirty;
+    }
+    set isDirty(value: boolean) {
+        if (value) this._revision++;
+        this._isDirty = value;
+    }
     /**
      * 使用 aabb 碰撞检测
      */
@@ -210,7 +222,6 @@ class Geometry {
     private _localBounds: Bounds | null = null;
     private _sphereBounds: Sphere | null = null;
     private _localSphereBounds: Sphere | null = null;
-    private _shaderKey: string | undefined;
     /**
      * @param params - 初始化参数，所有params都会复制到实例上
      */
@@ -953,20 +964,10 @@ class Geometry {
         return opt;
     }
     getShaderKey(): string {
-        if (this._shaderKey === undefined) {
-            this._shaderKey = 'geometry';
-            if (this.isMorphGeometry) {
-                this._shaderKey += `_id_${this.id}`;
-            } else {
-                if (this.colors) {
-                    this._shaderKey += '_colors';
-                }
-                if (this.positionDecodeMat) {
-                    this._shaderKey += 'positionDecodeMat';
-                }
-            }
-        }
-        return this._shaderKey;
+        const structuralOptions = Object.entries(this.getRenderOption({})).sort(([left], [right]) =>
+            left.localeCompare(right)
+        );
+        return `geometry:${JSON.stringify(structuralOptions)}`;
     }
     /**
      * 获取数据的内存大小，只处理顶点数据，单位为字节

@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext, loadEnvironmentMaps } from './js/init';
+import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 const { stage } = createExampleContext();
 

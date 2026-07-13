@@ -7,10 +7,12 @@ export interface PostProcessUniformGetter {
         mesh: Hilo3d.Mesh | null,
         material: Hilo3d.Material | null,
         programInfo: Hilo3d.ProgramUniform
-    ): unknown;
+    ): PostProcessSamplerValue;
 }
 
-export type PostProcessUniform = number | Int32Array | PostProcessUniformGetter;
+export type PostProcessSamplerValue = Hilo3d.TextureBinding | readonly Hilo3d.TextureBinding[];
+
+export type PostProcessUniform = PostProcessSamplerValue | PostProcessUniformGetter;
 
 export interface PostProcessPass {
     id?: string;
@@ -46,20 +48,23 @@ const kernels: Readonly<Record<string, readonly number[]>> = Object.freeze({
     emboss: [-2, -1, 0, -1, 1, 1, 0, 1, 2]
 });
 
-function requireTextureIndex(programInfo: Hilo3d.ProgramUniform): number {
-    const { textureIndex } = programInfo;
-    if (textureIndex === undefined) {
-        throw new Error(`Uniform ${programInfo.name} is not a texture sampler.`);
-    }
-    return textureIndex;
-}
-
 function requireTexture(
     texture: Hilo3d.TextureBinding | null,
     description: string
 ): Hilo3d.TextureBinding {
     if (!texture) throw new Error(`${description} has no texture attachment.`);
     return texture;
+}
+
+function isTextureBinding(value: unknown): value is Hilo3d.TextureBinding {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        'target' in value &&
+        typeof value.target === 'number' &&
+        'getGLTexture' in value &&
+        typeof value.getGLTexture === 'function'
+    );
 }
 
 export class PostProcess {
@@ -282,10 +287,38 @@ export class PostProcess {
                 const programInfo = program.uniforms[name];
                 if (!programInfo) continue;
                 const value =
-                    typeof uniform === 'object' && 'get' in uniform
+                    !isTextureBinding(uniform) && !Array.isArray(uniform) && 'get' in uniform
                         ? uniform.get(null, null, programInfo)
                         : uniform;
-                if (value !== undefined && value !== null) program.setUniform(name, value);
+                const firstTextureIndex = programInfo.textureIndex;
+                if (firstTextureIndex === undefined) {
+                    throw new Error(`Post-process sampler ${name} has no texture-unit allocation.`);
+                }
+                if (isTextureBinding(value)) {
+                    state.activeTexture(gl.TEXTURE0 + firstTextureIndex);
+                    state.bindTexture(value.target, value.getGLTexture(state));
+                    program.setUniform(name, firstTextureIndex);
+                } else if (Array.isArray(value) && value.every(isTextureBinding)) {
+                    if (value.length !== programInfo.size) {
+                        throw new RangeError(
+                            `Post-process sampler ${name} requires ${String(programInfo.size)} textures; received ${String(value.length)}.`
+                        );
+                    }
+                    const textureUnits = value.map((samplerTexture, index) => {
+                        const textureIndex = firstTextureIndex + index;
+                        state.activeTexture(gl.TEXTURE0 + textureIndex);
+                        state.bindTexture(
+                            samplerTexture.target,
+                            samplerTexture.getGLTexture(state)
+                        );
+                        return textureIndex;
+                    });
+                    program.setUniform(name, textureUnits);
+                } else {
+                    throw new TypeError(
+                        `Post-process sampler ${name} must resolve to a Texture or Texture array.`
+                    );
+                }
             }
             vao.draw();
         } finally {
@@ -300,8 +333,7 @@ export class PostProcess {
 
     uniformTextureGetter(texture: Hilo3d.TextureBinding | null): PostProcessUniformGetter {
         return {
-            get: (_mesh, _material, programInfo) =>
-                Hilo3d.semantic.handlerTexture(texture, requireTextureIndex(programInfo))
+            get: () => Hilo3d.semantic.handlerTexture(texture)
         };
     }
 

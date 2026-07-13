@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 const { stage } = createExampleContext();
 const videoElement = document.querySelector<HTMLVideoElement>('#video');

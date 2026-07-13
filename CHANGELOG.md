@@ -3,15 +3,24 @@
 ### Breaking changes
 
 - Require Node.js 22.22.2 and npm 12 for development and releases.
-- Publish an ES2022 ESM root entry point and a separate self-contained UMD compatibility entry.
-- Require WebGL 2 and native GLSL ES 3.00; remove WebGL 1 contexts, compatibility shader rewriting,
-  and extension adapters for WebGL 2 core features.
+- Publish a single ES2022 ESM package entry and remove CommonJS/UMD, global-script, and namespace
+  declaration variants.
+- Remove the dynamic `Class.create`/`Class.mix` and `EventMixin` APIs in favor of native classes and
+  `EventDispatcher`; use backend-neutral `releaseGPUResources()` for renderer resource lifecycles.
+- Require WebGL 2 when the WebGL backend is selected and native GLSL ES 3.00 for shader sources;
+  remove WebGL 1 contexts, compatibility shader rewriting, and extension adapters for WebGL 2 core
+  features.
+- Add an explicit WebGPU backend without capability fallback. Applications select `webgl2` or
+  `webgpu`; asynchronous WebGPU initialization is exposed through `Stage.create()` and `ready`.
 - Move every non-sampler shader value to the fixed std140 `FrameBlock`, `CameraBlock`, `SceneBlock`,
   `LightBlock`, `MaterialBlock`, `ModelBlock`, `GeometryBlock`, `SkinningBlock`, or `MorphBlock`
   ABI. Custom `ShaderMaterial` numeric uniforms must migrate to a registered UBO; samplers are the
   only classic uniform exception.
 - Remove `KHR_techniques_webgl` loading and its GLSL 1.00 sample assets because the extension's
   arbitrary classic-uniform shader interface is incompatible with the fixed WebGL 2 UBO ABI.
+- Remove the example-only Draco adapter and assets instead of retaining its build-time UMD/CommonJS
+  wrapper rewrite; future decoder integrations must provide directly consumable ESM and strict
+  TypeScript declarations.
 - Correct legacy public API spellings: `SkinedMesh` is now `SkinnedMesh`, `needBasicUnifroms` is
   `needBasicUniforms`, `ignoreTranparent` is `ignoreTransparent`, and the
   diffuse-environment/ambient-light material flag now uses its correctly spelled name.
@@ -28,14 +37,46 @@
 - Add repository-wide typed linting, deterministic formatting and enforced browser coverage.
 - Add Vite multi-page example builds plus Playwright coverage for every page and visual regression
   baselines for critical rendering.
-- Validate the packed package with publint, Are the Types Wrong, Bundler and NodeNext consumers, ESM
-  runtime loading and the UMD browser global.
+- Validate the packed package with publint, Are the Types Wrong, Bundler and NodeNext consumers, and
+  ESM runtime loading.
 - Generate and deploy the API documentation and examples site from TypeDoc and Vite in CI.
 - Run the existing engine suite in headless Chromium with real WebGL contexts.
 - Bundle the area-light LTC lookup data and skybox textures locally so rendering never depends on
   third-party runtime URLs.
+- Remove obsolete `OES_standard_derivatives` and `WEBGL_depth_texture` requests because both are
+  WebGL 2 core features, and enforce this class of WebGL 1 extension wrapper in the modernity gate.
 - Add type-safe std140 layout packing, stable global uniform-block bindings, reflected range-size
   validation, partial dirty uploads, and static/runtime rejection of legacy shader interfaces.
+- Keep GLSL ES 3.00 as the single shader source, prepare active variants as Vulkan GLSL 4.50, and
+  translate them through Naga WASM to WGSL. Preparation assigns IO locations, separates texture and
+  sampler bindings, maps the four WebGPU bind groups, and converts clip-space depth.
+- Load Naga through a dynamic ESM boundary so WebGL 2 consumers do not download its JavaScript/WASM
+  graph; package smoke initializes Naga and translates GLSL from the installed tarball.
+- Add WebGPU buffer, texture, uniform, bind-group, render-state, pipeline, and resource-lifecycle
+  managers with device-limit validation and deterministic caches.
+- Make geometry, material, texture, and partial-upload revisions backend-local; add bounded cache
+  eviction, transactional GPU resource replacement, immutable descriptor-keyed samplers, and
+  destroy-during-initialization cleanup.
+- Bound backend-neutral UBO dirty history with full-upload recovery for slow consumers, atomically
+  union per-mesh resources across passes, and reclaim resources created by failed frames.
+- Isolate shader structural/precision cache keys per geometry and renderer; keep pending pipeline
+  compilations deduplicated outside the settled LRU and allow Naga initialization to retry after a
+  transient failure.
+- Fully dispose WebGPU device/context state after device loss, and bound per-owner vertex, instance,
+  and index buffer variants under identity churn.
+- Reject cross-stage UBO layout mismatches before Naga and keep generated entry-point
+  post-processing correct when custom GLSL returns early.
+- Add WebGPU MRT render targets with 4× MSAA resolve, optional sampleable depth/stencil, explicit
+  ownership/presentation, resize, and 256-byte-aligned asynchronous color readback.
+- Partition WebGPU resources by update frequency: global/pass resources in group 0, material and
+  texture resources in group 1, object/geometry/pose resources in group 2, and custom blocks in
+  group 3. Instanced transforms use the bounded `InstanceBlock` instead of matrix vertex attributes.
+- Add Naga compilation coverage for the built-in shader feature corpus and a Playwright test that
+  creates a real Chromium WebGPU adapter/device/pipeline and exercises Basic/PBR, instancing,
+  indexed strips with partial updates, mipmapped texture replacement, three shadow-light kinds, 4×
+  MSAA/stencil, MRT, presentation, and readback through SwiftShader.
+- Render WebGPU directional, spot, and point-light shadows through a comparison depth atlas whose
+  rects, matrices, and bias data live in `LightBlock`.
 - Make package entry evaluation safe in non-browser runtimes.
 - Fix the `COPY_WRITE_BUFFER_BINDING` WebGL2 constant.
 

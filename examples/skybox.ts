@@ -1,6 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { addEnvironmentSkybox } from './js/environment';
-import { createExampleContext } from './js/init';
+import { addEnvironmentSkybox } from './shared/environment';
+import { createExampleContext } from './shared/init';
 
 const { stage, orbitControls } = createExampleContext();
 orbitControls.isLockZ = true;

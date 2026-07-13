@@ -3,6 +3,8 @@
 #define HILO_MAX_POINT_LIGHTS 16
 #define HILO_MAX_AREA_LIGHTS 8
 #define HILO_MAX_SKIN_JOINTS 128
+#define HILO_MAX_INSTANCES_PER_DRAW 128
+#define HILO_MAX_SHADOW_ATLAS_SLICES 112
 
 layout(std140) uniform FrameBlock {
     vec2 u_rendererSize;
@@ -55,6 +57,9 @@ layout(std140) uniform LightBlock {
     vec2 u_pointLightsShadowBias[HILO_MAX_POINT_LIGHTS];
     mat4 u_pointLightSpaceMatrix[HILO_MAX_POINT_LIGHTS];
     vec2 u_pointLightCamera[HILO_MAX_POINT_LIGHTS];
+    vec4 u_shadowAtlasSize;
+    vec4 u_shadowAtlasRects[HILO_MAX_SHADOW_ATLAS_SLICES];
+    mat4 u_pointShadowMatrices[HILO_MAX_POINT_LIGHTS * 6];
     vec3 u_areaLightsPos[HILO_MAX_AREA_LIGHTS];
     vec3 u_areaLightsColor[HILO_MAX_AREA_LIGHTS];
     vec3 u_areaLightsWidth[HILO_MAX_AREA_LIGHTS];
@@ -95,8 +100,17 @@ layout(std140) uniform MaterialBlock {
 
 #ifdef HILO_VERTEX_SHADER
 #ifdef HILO_INSTANCED
-    in mat4 u_modelMatrix;
-    in mat3 u_normalWorldMatrix;
+    #ifdef HILO_WEBGPU
+        layout(std140) uniform InstanceBlock {
+            mat4 u_instanceModelMatrices[HILO_MAX_INSTANCES_PER_DRAW];
+            mat4 u_instanceNormalMatrices[HILO_MAX_INSTANCES_PER_DRAW];
+        };
+        #define u_modelMatrix u_instanceModelMatrices[gl_InstanceIndex]
+        #define u_normalWorldMatrix mat3(u_instanceNormalMatrices[gl_InstanceIndex])
+    #else
+        in mat4 u_modelMatrix;
+        in mat3 u_normalWorldMatrix;
+    #endif
 #else
     layout(std140) uniform ModelBlock {
         mat4 u_modelMatrix;

@@ -29,9 +29,12 @@ export interface GeometryDataParameters {
 }
 
 export interface SubDataUpdate {
-    byteOffset: number;
-    data: TypedArray;
+    readonly revision: number;
+    readonly byteOffset: number;
+    readonly data: TypedArray;
 }
+
+const MAX_RETAINED_SUB_DATA_UPDATES = 64;
 
 function createAttributeValue(
     size: Exclude<GeometryComponentSize, 1>
@@ -85,14 +88,28 @@ class GeometryData {
     type: GLenum;
     private _isSubDirty = false;
     private _isAllDirty = false;
+    private _revision = 0;
+    private _fullDataRevision = 0;
+    private discardedSubDataRevision = 0;
+    /** Monotonic CPU-data revision used by every graphics backend resource cache. */
+    get revision(): number {
+        return this._revision;
+    }
+    /** Most recent revision that requires a complete backend upload. */
+    get fullDataRevision(): number {
+        return this._fullDataRevision;
+    }
     get isDirty(): boolean {
         return this._isSubDirty || this._isAllDirty;
     }
     set isDirty(value: boolean) {
-        this._isAllDirty = value;
-        if (!value) {
+        if (value) {
+            this._revision++;
+            this._fullDataRevision = this._revision;
             this.clearSubData();
         }
+        this._isAllDirty = value;
+        if (!value) this.clearSubData();
     }
     bufferViewId: string;
     /**
@@ -109,6 +126,17 @@ class GeometryData {
 
     get subDataUpdates(): readonly SubDataUpdate[] {
         return this.subDataList;
+    }
+
+    /**
+     * Return partial writes newer than a backend-local revision. `null` means that backend must
+     * perform a full upload because a whole-data edit occurred or bounded history was compacted.
+     */
+    getSubDataUpdatesSince(revision: number): readonly SubDataUpdate[] | null {
+        if (revision < this._fullDataRevision || revision < this.discardedSubDataRevision) {
+            return null;
+        }
+        return this.subDataList.filter(update => update.revision > revision);
     }
     /**
      * @param data - 数据
@@ -170,6 +198,9 @@ class GeometryData {
         this.stride = this._stride;
         this.offset = this._offset;
         this._isAllDirty = true;
+        this._revision++;
+        this._fullDataRevision = this._revision;
+        this.clearSubData();
     }
     get data(): TypedArray {
         return this._data;
@@ -202,18 +233,27 @@ class GeometryData {
      * @param data - 数据
      */
     setSubData(offset: number, data: TypedArray): void {
-        this._isSubDirty = true;
         this.data.set(data, offset);
-        const byteOffset = data.BYTES_PER_ELEMENT * offset;
+        this._isSubDirty = true;
+        this._revision++;
+        const byteOffset = this.data.BYTES_PER_ELEMENT * offset;
+        const snapshot = copyTypedArray(this.data.subarray(offset, offset + data.length));
         this.subDataList.push({
+            revision: this._revision,
             byteOffset,
-            data
+            data: snapshot
         });
+        if (this.subDataList.length > MAX_RETAINED_SUB_DATA_UPDATES) {
+            const discarded = this.subDataList.shift();
+            if (discarded) this.discardedSubDataRevision = discarded.revision;
+        }
     }
     /**
      * 清除 subData
      */
     clearSubData(): void {
+        const latest = this.subDataList.at(-1);
+        if (latest) this.discardedSubDataRevision = latest.revision;
         this.subDataList.length = 0;
         this._isSubDirty = false;
     }
@@ -315,6 +355,9 @@ class GeometryData {
             data[offset] = value;
         }
         this._isAllDirty = true;
+        this._revision++;
+        this._fullDataRevision = this._revision;
+        this.clearSubData();
     }
     /**
      * 按 index 遍历

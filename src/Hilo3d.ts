@@ -1,5 +1,5 @@
 /**
- * TypeScript-first public API for the Hilo3d WebGL engine.
+ * TypeScript-first public API for the Hilo3d WebGL 2 and WebGPU engine.
  *
  * @packageDocumentation
  */
@@ -9,26 +9,13 @@ import * as util from './utils/util';
 export { GLTFExtensions, util };
 
 export {
-    default as Class,
-    create as createClass,
-    type ClassDefinition,
-    type ClassLike,
-    type DynamicMembers,
-    type InferredClass,
-    mix as mixClass,
-    type RuntimeClassLike,
-    type LegacyClass
-} from './core/Class';
-export {
     type DispatchEvent,
     EventDispatcher,
     type EventListener,
-    default as EventMixin,
-    type EventMixinMembers,
     HiloEvent,
     type ListenerEntry,
     type ListenerMap
-} from './core/EventMixin';
+} from './core/EventDispatcher';
 export { default as Fog, type FogMode, type FogParameters } from './core/Fog';
 export { default as Mesh, type MeshParameters } from './core/Mesh';
 export {
@@ -42,7 +29,12 @@ export {
 } from './core/Node';
 export { default as Skeleton, type SkeletonParameters } from './core/Skeleton';
 export { default as SkinnedMesh, type SkinnedMeshParameters } from './core/SkinnedMesh';
-export { default as Stage, type StageParameters, type StagePointerEvent } from './core/Stage';
+export {
+    default as Stage,
+    type StageParameters,
+    type StagePointerEvent,
+    type StageRenderer
+} from './core/Stage';
 export {
     type BackEaseObject,
     type ElasticEaseObject,
@@ -137,6 +129,7 @@ export { default as RenderList } from './renderer/RenderList';
 export {
     default as UniformBuffer,
     type UniformBufferData,
+    type UniformBufferDirtyRange,
     type UniformBufferRange
 } from './renderer/UniformBuffer';
 export {
@@ -173,9 +166,53 @@ export {
     type WebGLRendererScene
 } from './renderer/WebGLRenderer';
 export {
-    type ManagedResource,
-    default as WebGLResourceManager
-} from './renderer/WebGLResourceManager';
+    default as WebGPURenderer,
+    type WebGPUFramebufferParameters,
+    type WebGPURendererParameters
+} from './renderer/WebGPURenderer';
+export {
+    WEBGPU_BYTES_PER_ROW_ALIGNMENT,
+    type WebGPUColorAttachmentOperations,
+    type WebGPUColorAttachmentOptions,
+    type WebGPUColorAttachmentReadback,
+    type WebGPUColorRenderTargetFormat,
+    type WebGPUDepthStencilAttachmentOperations,
+    type WebGPUDepthStencilAttachmentOptions,
+    type WebGPUDepthStencilRenderTargetFormat,
+    type WebGPUReadColorAttachmentOptions,
+    default as WebGPURenderTarget,
+    type WebGPURenderPassOptions,
+    type WebGPURenderTargetParameters
+} from './renderer/webgpu/WebGPURenderTarget';
+export {
+    createWebGPUSamplerDescriptor,
+    default as WebGPUTextureManager,
+    resolveWebGPUCompareFunction,
+    resolveWebGPUTextureFormat,
+    type TextureComponentStorage,
+    type WebGPUExternalTextureOptions,
+    type WebGPUTextureFormatInfo,
+    type WebGPUTextureRequestOptions,
+    type WebGPUTextureResource
+} from './renderer/webgpu/WebGPUTextureManager';
+export type {
+    Renderer,
+    RendererBackend,
+    RendererResourceManager,
+    RendererScene
+} from './renderer/Renderer';
+export {
+    getWebGPUUniformBlockBinding,
+    registerWebGPUCustomUniformBlockBinding,
+    WEBGPU_BIND_GROUP_COUNT,
+    WEBGPU_BIND_GROUPS,
+    type WebGPUResourceBinding,
+    WEBGPU_UNIFORM_BLOCK_BINDINGS
+} from './renderer/webgpu/WebGPUBindingLayout';
+export {
+    default as GraphicsResourceManager,
+    type ManagedResource
+} from './renderer/GraphicsResourceManager';
 export {
     type FourParameterMethod,
     type OneParameterMethod,
@@ -266,12 +303,33 @@ export {
     type TextureImageSource,
     type TextureMipmap,
     type TextureParameters,
+    type TextureUpdateSnapshot,
     type ResizableTextureImage,
     type TextureUVChannel,
     type TextureWebGLState
 } from './texture/Texture';
 
-export { default as Shader, type ShaderParameters, type ShaderRenderer } from './shader/Shader';
+export {
+    default as Shader,
+    type ShaderParameters,
+    type ShaderPrecisionProvider,
+    type ShaderRenderer
+} from './shader/Shader';
+export {
+    NagaShaderTranslationError,
+    NagaShaderTranslator,
+    prepareGLSLForNaga,
+    type GlslSamplerType,
+    type GraphicsShaderStage,
+    type PreparedShaderPair,
+    type PreparedShaderStage,
+    type TranslatedShaderPair,
+    type TranslatedShaderStage,
+    type WebGPUFragmentOutput,
+    type WebGPUSamplerBinding,
+    type WebGPUUniformBlock,
+    type WebGPUVertexInput
+} from './shader/GlslToWgsl';
 
 export {
     type BasicLightType,

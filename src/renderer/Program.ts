@@ -8,7 +8,7 @@ import { BUILT_IN_UNIFORM_BLOCK_LAYOUTS } from './ubo/BuiltInUniformBlocks';
 import { getUniformBlockBinding } from './ubo/UniformBlockBindings';
 import requireGLResource from './requireGLResource';
 import type WebGLState from './WebGLState';
-import type WebGLResourceManager from './WebGLResourceManager';
+import type GraphicsResourceManager from './GraphicsResourceManager';
 import type { GLContext, GLTypeInfo } from './types';
 
 export interface ProgramParameters {
@@ -80,7 +80,7 @@ export interface ProgramUniformBlock {
 }
 
 export interface ProgramRenderer {
-    resourceManager: WebGLResourceManager;
+    resourceManager: GraphicsResourceManager;
 }
 
 const cache = new Cache<Program>();

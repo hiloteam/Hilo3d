@@ -36,6 +36,13 @@ interface FrameCachedBuffer {
     frameIndex: number;
 }
 
+type OwnedBufferRegistration =
+    | { readonly kind: 'material'; readonly owner: Material }
+    | { readonly kind: 'model'; readonly owner: Mesh }
+    | { readonly kind: 'geometry'; readonly owner: Geometry }
+    | { readonly kind: 'skinning'; readonly owner: Mesh }
+    | { readonly kind: 'morph'; readonly owner: Mesh };
+
 const tempInverseProjection = new Matrix4();
 const tempViewNormal = new Matrix3();
 
@@ -87,7 +94,7 @@ function updateSemanticBlock(
     }
 }
 
-/** Owns the canonical WebGL2 uniform blocks and updates each one at its natural frequency. */
+/** Owns the canonical cross-backend uniform blocks and updates each at its natural frequency. */
 class BuiltInUniformBlockManager {
     private readonly renderer: RendererSize;
     private readonly ownedBuffers = new Set<UniformBuffer>();
@@ -95,11 +102,12 @@ class BuiltInUniformBlockManager {
     private readonly cameraBuffer: UniformBuffer;
     private readonly sceneBuffer: UniformBuffer;
     private readonly lightBuffer: UniformBuffer;
-    private readonly materialBuffers = new WeakMap<Material, UniformBuffer>();
+    private readonly materialBuffers = new WeakMap<Material, RevisionCachedBuffer>();
     private readonly modelBuffers = new WeakMap<Mesh, RevisionCachedBuffer>();
-    private readonly geometryBuffers = new WeakMap<Geometry, UniformBuffer>();
+    private readonly geometryBuffers = new WeakMap<Geometry, RevisionCachedBuffer>();
     private readonly skinningBuffers = new WeakMap<Mesh, FrameCachedBuffer>();
     private readonly morphBuffers = new WeakMap<Mesh, FrameCachedBuffer>();
+    private readonly bufferOwners = new WeakMap<UniformBuffer, OwnedBufferRegistration>();
     private camera: Camera | null = null;
     private frameIndex = 0;
     private readonly startTime = performance.now();
@@ -167,41 +175,132 @@ class BuiltInUniformBlockManager {
         material: Material,
         _forceMaterialUpdate: boolean,
         activeCamera?: Camera | null
-    ): void {
+    ): Readonly<Record<string, UniformBuffer>> {
+        const buffers = this.getUniformBlocks(
+            Object.keys(program.uniformBlocks),
+            mesh,
+            material,
+            activeCamera
+        );
+        for (const [blockName, buffer] of Object.entries(buffers)) {
+            program.setUniformBlock(blockName, buffer);
+        }
+        return buffers;
+    }
+
+    /** Resolve logical parameter blocks without coupling the caller to a graphics API. */
+    getUniformBlocks(
+        blockNames: readonly string[],
+        mesh: Mesh,
+        material: Material,
+        activeCamera?: Camera | null
+    ): Readonly<Record<string, UniformBuffer>> {
         if (activeCamera && activeCamera !== this.camera) this.updateCamera(activeCamera);
-        if (!this.camera) throw new Error('Uniform blocks cannot be bound before beginFrame');
-        for (const blockName of Object.keys(program.uniformBlocks)) {
+        if (!this.camera) throw new Error('Uniform blocks cannot be resolved before beginFrame');
+        const result: Record<string, UniformBuffer> = {};
+        for (const blockName of blockNames) {
             const buffer =
                 material.uniformBlocks[blockName] ??
                 this.resolveBuiltInBuffer(blockName, mesh, material);
             if (!buffer) {
                 throw new Error(`No UniformBuffer is configured for active block ${blockName}`);
             }
-            program.setUniformBlock(blockName, buffer);
+            result[blockName] = buffer;
         }
+        return result;
     }
 
     destroy(gl?: WebGL2RenderingContext): void {
         for (const buffer of this.ownedBuffers) buffer.destroy(gl);
     }
 
-    private getMaterialBuffer(mesh: Mesh, material: Material): UniformBuffer {
-        let buffer = this.materialBuffers.get(material);
-        if (!buffer) {
-            buffer = this.createBuffer(materialBlockLayout);
-            this.materialBuffers.set(material, buffer);
-            updateSemanticBlock(buffer, 'MaterialBlock', mesh, material);
-        } else if (material.isDirty) {
-            updateSemanticBlock(buffer, 'MaterialBlock', mesh, material);
+    /**
+     * Release every object-frequency block cached for an owner. Returns the number of logical
+     * buffers removed; global frame/camera/scene/light blocks are intentionally retained.
+     */
+    releaseOwner(owner: object, gl?: WebGL2RenderingContext): number {
+        const buffers = new Set<UniformBuffer>();
+        const material = this.materialBuffers.get(owner as Material);
+        const model = this.modelBuffers.get(owner as Mesh);
+        const geometry = this.geometryBuffers.get(owner as Geometry);
+        const skinning = this.skinningBuffers.get(owner as Mesh);
+        const morph = this.morphBuffers.get(owner as Mesh);
+        if (material) buffers.add(material.buffer);
+        if (model) buffers.add(model.buffer);
+        if (geometry) buffers.add(geometry.buffer);
+        if (skinning) buffers.add(skinning.buffer);
+        if (morph) buffers.add(morph.buffer);
+        let released = 0;
+        for (const buffer of buffers) {
+            if (this.releaseBuffer(buffer, gl)) released++;
         }
-        return buffer;
+        return released;
+    }
+
+    /** Release an object-frequency buffer by identity when a renderer resource loses its last ref. */
+    releaseBuffer(buffer: UniformBuffer, gl?: WebGL2RenderingContext): boolean {
+        const registration = this.bufferOwners.get(buffer);
+        if (!registration) return false;
+        switch (registration.kind) {
+            case 'material':
+                if (this.materialBuffers.get(registration.owner)?.buffer === buffer) {
+                    this.materialBuffers.delete(registration.owner);
+                }
+                break;
+            case 'model':
+                if (this.modelBuffers.get(registration.owner)?.buffer === buffer) {
+                    this.modelBuffers.delete(registration.owner);
+                }
+                break;
+            case 'geometry':
+                if (this.geometryBuffers.get(registration.owner)?.buffer === buffer) {
+                    this.geometryBuffers.delete(registration.owner);
+                }
+                break;
+            case 'skinning':
+                if (this.skinningBuffers.get(registration.owner)?.buffer === buffer) {
+                    this.skinningBuffers.delete(registration.owner);
+                }
+                break;
+            case 'morph':
+                if (this.morphBuffers.get(registration.owner)?.buffer === buffer) {
+                    this.morphBuffers.delete(registration.owner);
+                }
+                break;
+        }
+        this.bufferOwners.delete(buffer);
+        this.ownedBuffers.delete(buffer);
+        buffer.destroy(gl);
+        return true;
+    }
+
+    private getMaterialBuffer(mesh: Mesh, material: Material): UniformBuffer {
+        let cached = this.materialBuffers.get(material);
+        if (!cached) {
+            cached = {
+                buffer: this.createOwnedBuffer(materialBlockLayout, {
+                    kind: 'material',
+                    owner: material
+                }),
+                revision: -1
+            };
+            this.materialBuffers.set(material, cached);
+        }
+        if (cached.revision !== material.revision) {
+            updateSemanticBlock(cached.buffer, 'MaterialBlock', mesh, material);
+            cached.revision = material.revision;
+        }
+        return cached.buffer;
     }
 
     private getModelBuffer(mesh: Mesh, material: Material): UniformBuffer {
         let cached = this.modelBuffers.get(mesh);
         if (!cached) {
             cached = {
-                buffer: this.createBuffer(modelBlockLayout),
+                buffer: this.createOwnedBuffer(modelBlockLayout, {
+                    kind: 'model',
+                    owner: mesh
+                }),
                 revision: -1
             };
             this.modelBuffers.set(mesh, cached);
@@ -216,21 +315,34 @@ class BuiltInUniformBlockManager {
     private getGeometryBuffer(mesh: Mesh, material: Material): UniformBuffer {
         const geometry = mesh.geometry;
         if (!geometry) throw new Error(`Mesh ${mesh.id} has no Geometry for GeometryBlock`);
-        let buffer = this.geometryBuffers.get(geometry);
-        if (!buffer) {
-            buffer = this.createBuffer(geometryBlockLayout);
-            this.geometryBuffers.set(geometry, buffer);
-            updateSemanticBlock(buffer, 'GeometryBlock', mesh, material);
-        } else if (geometry.isDirty) {
-            updateSemanticBlock(buffer, 'GeometryBlock', mesh, material);
+        let cached = this.geometryBuffers.get(geometry);
+        if (!cached) {
+            cached = {
+                buffer: this.createOwnedBuffer(geometryBlockLayout, {
+                    kind: 'geometry',
+                    owner: geometry
+                }),
+                revision: -1
+            };
+            this.geometryBuffers.set(geometry, cached);
         }
-        return buffer;
+        if (cached.revision !== geometry.revision) {
+            updateSemanticBlock(cached.buffer, 'GeometryBlock', mesh, material);
+            cached.revision = geometry.revision;
+        }
+        return cached.buffer;
     }
 
     private getSkinningBuffer(mesh: Mesh, material: Material): UniformBuffer {
         let cached = this.skinningBuffers.get(mesh);
         if (!cached) {
-            cached = { buffer: this.createBuffer(skinningBlockLayout), frameIndex: -1 };
+            cached = {
+                buffer: this.createOwnedBuffer(skinningBlockLayout, {
+                    kind: 'skinning',
+                    owner: mesh
+                }),
+                frameIndex: -1
+            };
             this.skinningBuffers.set(mesh, cached);
         }
         if (cached.frameIndex !== this.frameIndex) {
@@ -243,7 +355,13 @@ class BuiltInUniformBlockManager {
     private getMorphBuffer(mesh: Mesh, material: Material): UniformBuffer {
         let cached = this.morphBuffers.get(mesh);
         if (!cached) {
-            cached = { buffer: this.createBuffer(morphBlockLayout), frameIndex: -1 };
+            cached = {
+                buffer: this.createOwnedBuffer(morphBlockLayout, {
+                    kind: 'morph',
+                    owner: mesh
+                }),
+                frameIndex: -1
+            };
             this.morphBuffers.set(mesh, cached);
         }
         if (cached.frameIndex === this.frameIndex) return cached.buffer;
@@ -304,6 +422,15 @@ class BuiltInUniformBlockManager {
     private createBuffer(layout: Std140Layout): UniformBuffer {
         const buffer = UniformBuffer.fromSchema(layout);
         this.ownedBuffers.add(buffer);
+        return buffer;
+    }
+
+    private createOwnedBuffer(
+        layout: Std140Layout,
+        registration: OwnedBufferRegistration
+    ): UniformBuffer {
+        const buffer = this.createBuffer(layout);
+        this.bufferOwners.set(buffer, registration);
         return buffer;
     }
 }

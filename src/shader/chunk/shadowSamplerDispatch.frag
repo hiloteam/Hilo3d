@@ -1,3 +1,41 @@
+#ifdef HILO_WEBGPU
+#ifdef HILO_DIRECTIONAL_LIGHTS_SMC
+float hiloDirectionalShadow(
+    int index,
+    vec2 mapSize,
+    float bias,
+    vec3 fragPosition,
+    mat4 lightSpaceMatrix
+) {
+    return getShadowAtlas(index, bias, fragPosition, lightSpaceMatrix);
+}
+#endif
+
+#ifdef HILO_SPOT_LIGHTS_SMC
+float hiloSpotShadow(
+    int index,
+    vec2 mapSize,
+    float bias,
+    vec3 fragPosition,
+    mat4 lightSpaceMatrix
+) {
+    return getShadowAtlas(HILO_MAX_DIRECTIONAL_LIGHTS + index, bias, fragPosition, lightSpaceMatrix);
+}
+#endif
+
+#ifdef HILO_POINT_LIGHTS_SMC
+float hiloPointShadow(
+    int index,
+    float bias,
+    vec3 lightPosition,
+    vec3 fragPosition,
+    vec2 cameraPlanes,
+    mat4 lightSpaceMatrix
+) {
+    return getPointShadowAtlas(index, bias, fragPosition);
+}
+#endif
+#else
 #ifdef HILO_DIRECTIONAL_LIGHTS_SMC
 float hiloDirectionalShadow(
     int index,
@@ -129,4 +167,5 @@ float hiloPointShadow(
     #endif
     return 1.0;
 }
+#endif
 #endif

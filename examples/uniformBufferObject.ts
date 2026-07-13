@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 const { camera, renderer, stage } = createExampleContext({
     stage: {
@@ -14,13 +14,6 @@ const materialLayout = Hilo3d.createStd140Layout({ color: 'vec4', u_time: 'float
 const modelUniformBuffer = Hilo3d.UniformBuffer.fromSchema(modelLayout);
 const materialUniformBuffer = Hilo3d.UniformBuffer.fromSchema(materialLayout);
 const modelViewProjection = new Hilo3d.Matrix4();
-
-function requiredTextureUnit(textureIndex: number | undefined): number {
-    if (textureIndex === undefined) {
-        throw new Error('The UBO example shader did not receive a texture unit.');
-    }
-    return textureIndex;
-}
 
 renderer.onInit(() => {
     const diffuse = new Hilo3d.LazyTexture({
@@ -40,19 +33,13 @@ renderer.onInit(() => {
         needBasicAttributes: false,
         uniforms: {
             u_diffuse: {
-                get(_mesh, _material, programInfo) {
-                    return Hilo3d.semantic.handlerTexture(
-                        diffuse,
-                        requiredTextureUnit(programInfo.textureIndex)
-                    );
+                get(_mesh, _material, _programInfo) {
+                    return Hilo3d.semantic.handlerTexture(diffuse);
                 }
             },
             u_mixTexture: {
-                get(_mesh, _material, programInfo) {
-                    return Hilo3d.semantic.handlerTexture(
-                        mixTexture,
-                        requiredTextureUnit(programInfo.textureIndex)
-                    );
+                get(_mesh, _material, _programInfo) {
+                    return Hilo3d.semantic.handlerTexture(mixTexture);
                 }
             }
         },

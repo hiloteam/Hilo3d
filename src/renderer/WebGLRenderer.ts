@@ -1,6 +1,6 @@
 import Node from '../core/Node';
 import Mesh from '../core/Mesh';
-import { EventDispatcher } from '../core/EventMixin';
+import { EventDispatcher } from '../core/EventDispatcher';
 import semantic from '../material/semantic';
 import Color from '../math/Color';
 import Shader from '../shader/Shader';
@@ -14,13 +14,14 @@ import extensions from './extensions';
 import capabilities from './capabilities';
 import glType from './glType';
 import WebGLState from './WebGLState';
-import WebGLResourceManager from './WebGLResourceManager';
+import GraphicsResourceManager, { type ManagedResource } from './GraphicsResourceManager';
 import BuiltInUniformBlockManager from './BuiltInUniformBlockManager';
+import type UniformBuffer from './UniformBuffer';
 import { BUILTIN_UNIFORM_BLOCK_BINDING_COUNT } from './ubo/UniformBlockBindings';
 import { BUILT_IN_UNIFORM_BLOCK_LAYOUTS } from './ubo/BuiltInUniformBlocks';
 import LightManager from '../light/LightManager';
 import Light from '../light/Light';
-import Texture from '../texture/Texture';
+import Texture, { type TextureBinding } from '../texture/Texture';
 import GeometryData from '../geometry/GeometryData';
 import {
     BLEND,
@@ -38,6 +39,7 @@ import type Fog from '../core/Fog';
 import type Geometry from '../geometry/Geometry';
 import type Material from '../material/Material';
 import type { GLContext, ShaderPrecision } from './types';
+import type { RendererScene } from './Renderer';
 
 export interface WebGLRendererParameters {
     width?: number;
@@ -65,7 +67,7 @@ export interface WebGLRendererParameters {
     clearColor?: Color;
 }
 
-export type WebGLRendererScene = Node & { readonly fog?: Fog | null };
+export type WebGLRendererScene = RendererScene;
 
 export interface MeshSetup {
     vao: VertexArrayObject;
@@ -94,14 +96,24 @@ function isNumericArrayLike(value: unknown): value is ArrayLike<number> {
     return true;
 }
 
+function isTextureBinding(value: unknown): value is TextureBinding {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof Reflect.get(value, 'target') === 'number' &&
+        typeof Reflect.get(value, 'getGLTexture') === 'function'
+    );
+}
+
 /** WebGL renderer with explicit state, resource and event lifecycles. */
 class WebGLRenderer extends EventDispatcher {
+    readonly backend = 'webgl2' as const;
     readonly className = 'WebGLRenderer';
     readonly isWebGLRenderer = true;
     readonly renderInfo: RenderInfo;
     readonly renderList: RenderList;
     readonly lightManager: LightManager;
-    readonly resourceManager: WebGLResourceManager;
+    readonly resourceManager: GraphicsResourceManager;
 
     width = 0;
     height = 0;
@@ -137,7 +149,12 @@ class WebGLRenderer extends EventDispatcher {
     private _initError: Error | null = null;
     private _lastMaterial: Material | null = null;
     private _lastProgram: Program | null = null;
+    private readonly materialRevisions = new WeakMap<Material, number>();
+    private readonly vaoGeometryRevisions = new WeakMap<VertexArrayObject, number>();
     private readonly uniformBlockManager: BuiltInUniformBlockManager;
+    private readonly uniformResources = new WeakMap<UniformBuffer, ManagedResource>();
+    private nextUniformResourceId = 1;
+    readonly ready: Promise<void>;
 
     private readonly handleContextLost = (event: Event): void => {
         this.onContextLost(event);
@@ -161,6 +178,10 @@ class WebGLRenderer extends EventDispatcher {
         return this._isInit && !this.isInitFailed && this._gl !== null && this._state !== null;
     }
 
+    get isReady(): boolean {
+        return !this._isDestroyed && !this.isInitFailed;
+    }
+
     constructor(params: WebGLRendererParameters = {}) {
         super();
         this.clearColor = new Color(1, 1, 1);
@@ -169,8 +190,9 @@ class WebGLRenderer extends EventDispatcher {
         this.renderInfo = new RenderInfo();
         this.renderList = new RenderList();
         this.lightManager = new LightManager();
-        this.resourceManager = new WebGLResourceManager();
+        this.resourceManager = new GraphicsResourceManager();
         this.uniformBlockManager = new BuiltInUniformBlockManager(this);
+        this.ready = Promise.resolve();
     }
 
     resize(width: number, height: number, force = false): void {
@@ -302,6 +324,8 @@ class WebGLRenderer extends EventDispatcher {
         Texture.reset(gl);
         Buffer.reset(gl);
         VertexArrayObject.reset(gl);
+        this.uniformBlockManager.destroy(gl);
+        this.resourceManager.clear();
         state.reset();
         this._lastMaterial = null;
         this._lastProgram = null;
@@ -387,24 +411,63 @@ class WebGLRenderer extends EventDispatcher {
         }
     }
 
-    setupShaderBindings(program: Program, mesh: Mesh, useInstanced: boolean, force = false): void {
+    setupShaderBindings(
+        program: Program,
+        mesh: Mesh,
+        useInstanced: boolean,
+        force = false
+    ): readonly UniformBuffer[] {
         const material = materialFor(mesh, this.forceMaterial);
-        this.uniformBlockManager.bind(program, mesh, material, force, semantic.camera);
+        const uniformBlocks = this.uniformBlockManager.bind(
+            program,
+            mesh,
+            material,
+            force,
+            semantic.camera
+        );
         for (const [name, programUniform] of Object.entries(program.uniforms)) {
             const uniformInfo = material.getUniformInfo(name);
             if (uniformInfo.isBlankInfo) continue;
             if (!force && (!uniformInfo.isDependMesh || useInstanced)) continue;
             const uniformData = uniformInfo.get(mesh, material, programUniform);
             if (uniformData !== undefined && uniformData !== null) {
-                program.setUniform(name, uniformData);
+                const firstTextureIndex = programUniform.textureIndex ?? 0;
+                if (isTextureBinding(uniformData)) {
+                    this.bindTexture(uniformData, firstTextureIndex);
+                    program.setUniform(name, firstTextureIndex);
+                } else if (Array.isArray(uniformData) && uniformData.every(isTextureBinding)) {
+                    const textureIndices = uniformData.map((texture, index) => {
+                        const textureIndex = firstTextureIndex + index;
+                        this.bindTexture(texture, textureIndex);
+                        return textureIndex;
+                    });
+                    program.setUniform(name, textureIndices);
+                } else {
+                    throw new TypeError(
+                        `Sampler ${name} must resolve to a Texture or Texture array`
+                    );
+                }
             }
         }
+        return Object.values(uniformBlocks);
+    }
+
+    private bindTexture(texture: TextureBinding, textureIndex: number): void {
+        const { gl, state } = this;
+        state.activeTexture(gl.TEXTURE0 + textureIndex);
+        state.bindTexture(texture.target, texture.getGLTexture(state));
     }
 
     setupVao(vao: VertexArrayObject, program: Program, mesh: Mesh): void {
         const geometry = geometryFor(mesh);
         const isStatic = geometry.isStatic;
-        if (vao.isDirty || !isStatic || geometry.isDirty) {
+        if (
+            vao.isDirty ||
+            !isStatic ||
+            geometry.isDirty ||
+            this.vaoGeometryRevisions.get(vao) !== geometry.revision ||
+            vao.hasPendingGeometryDataUpdates()
+        ) {
             vao.isDirty = false;
             const material = materialFor(mesh, this.forceMaterial);
             const usage = isStatic ? STATIC_DRAW : DYNAMIC_DRAW;
@@ -419,6 +482,8 @@ class WebGLRenderer extends EventDispatcher {
                 vao.addAttribute(data, programAttribute, usage);
             }
             if (geometry.indices) vao.addIndexBuffer(geometry.indices, usage);
+            else vao.removeIndexBuffer();
+            this.vaoGeometryRevisions.set(vao, geometry.revision);
             geometry.isDirty = false;
         }
     }
@@ -428,9 +493,13 @@ class WebGLRenderer extends EventDispatcher {
         mesh: Mesh,
         useInstanced: boolean,
         needForceUpdateUniforms = false
-    ): void {
+    ): readonly UniformBuffer[] {
         const material = materialFor(mesh, this.forceMaterial);
-        if (material.isDirty || this._lastMaterial !== material) {
+        const materialRevision = material.revision;
+        if (
+            this.materialRevisions.get(material) !== materialRevision ||
+            this._lastMaterial !== material
+        ) {
             this.setupDepthTest(material);
             this.setupSampleAlphaToCoverage(material);
             this.setupCullFace(material);
@@ -438,9 +507,16 @@ class WebGLRenderer extends EventDispatcher {
             this.setupStencil(material);
             needForceUpdateUniforms = true;
         }
-        this.setupShaderBindings(program, mesh, useInstanced, needForceUpdateUniforms);
+        const uniformBuffers = this.setupShaderBindings(
+            program,
+            mesh,
+            useInstanced,
+            needForceUpdateUniforms
+        );
+        this.materialRevisions.set(material, materialRevision);
         material.isDirty = false;
         this._lastMaterial = material;
+        return uniformBuffers;
     }
 
     setupMesh(mesh: Mesh, useInstanced: boolean): MeshSetup {
@@ -452,13 +528,19 @@ class WebGLRenderer extends EventDispatcher {
             useInstanced,
             this.lightManager,
             this.fog,
-            this.useLogDepth
+            this.useLogDepth,
+            this
         );
         if (!shader)
             throw new Error(`Material ${material.className} does not provide a renderable shader`);
         const program = Program.getProgram(shader, this.state);
         program.useProgram();
-        this.setupMaterial(program, mesh, useInstanced, this._lastProgram !== program);
+        const uniformBuffers = this.setupMaterial(
+            program,
+            mesh,
+            useInstanced,
+            this._lastProgram !== program
+        );
         this._lastProgram = program;
         if (material.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
 
@@ -467,8 +549,32 @@ class WebGLRenderer extends EventDispatcher {
             mode: geometry.mode
         });
         this.setupVao(vao, program, mesh);
-        this.resourceManager.addMeshResources(mesh, [vao, shader, program]);
+        this.resourceManager.addMeshResources(mesh, [
+            vao,
+            shader,
+            program,
+            ...uniformBuffers.map(buffer => this.getUniformResource(buffer))
+        ]);
         return { vao, program, geometry };
+    }
+
+    private getUniformResource(buffer: UniformBuffer): ManagedResource {
+        const cached = this.uniformResources.get(buffer);
+        if (cached) return cached;
+        const resource: ManagedResource = {
+            id: `WebGLUniform:${String(this.nextUniformResourceId++)}`,
+            destroy: () => {
+                const gl = this._gl;
+                if (gl) {
+                    if (!this.uniformBlockManager.releaseBuffer(buffer, gl)) buffer.destroy(gl);
+                } else {
+                    this.uniformBlockManager.releaseBuffer(buffer);
+                }
+                this.uniformResources.delete(buffer);
+            }
+        };
+        this.uniformResources.set(buffer, resource);
+        return resource;
     }
 
     addRenderInfo(faceCount: number, drawCount: number): void {
@@ -479,31 +585,39 @@ class WebGLRenderer extends EventDispatcher {
     render(stage: WebGLRendererScene, camera: Camera, fireEvent = false): void {
         this.initContext();
         if (this._isContextLost) throw new Error('Cannot render while the WebGL context is lost');
-        this.fog = stage.fog ?? null;
-        this.lightManager.reset();
-        this.renderInfo.reset();
-        this.renderList.reset();
-        semantic.init(this, this.state, camera, this.lightManager, this.fog);
-        stage.updateMatrixWorld();
-        camera.updateViewProjectionMatrix();
-        this.uniformBlockManager.beginFrame(camera);
+        this.resourceManager.beginFrame();
+        try {
+            this.fog = stage.fog ?? null;
+            this.lightManager.reset();
+            this.renderInfo.reset();
+            this.renderList.reset();
+            semantic.init(this, camera, this.lightManager, this.fog);
+            stage.updateMatrixWorld();
+            camera.updateViewProjectionMatrix();
+            this.uniformBlockManager.beginFrame(camera);
 
-        const lights: Light[] = [];
-        stage.traverse(node => {
-            if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
-            if (node instanceof Mesh) this.renderList.addMesh(node, camera);
-            else if (node instanceof Light) lights.push(node);
-            return Node.TRAVERSE_STOP_NONE;
-        });
-        this.renderList.sort();
-        this.lightManager.update(this, camera, lights);
-        this.uniformBlockManager.beginPass(camera);
-        if (fireEvent) this.fire('beforeRender');
-        if (this.useFramebuffer) this.framebuffer?.bind();
-        this.clear();
-        if (fireEvent) this.fire('beforeRenderScene');
-        this.renderScene();
-        if (this.useFramebuffer && this.framebuffer) this.renderToScreen(this.framebuffer);
+            const lights: Light[] = [];
+            stage.traverse(node => {
+                if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
+                if (node instanceof Mesh) this.renderList.addMesh(node, camera);
+                else if (node instanceof Light) lights.push(node);
+                return Node.TRAVERSE_STOP_NONE;
+            });
+            this.renderList.sort();
+            this.lightManager.update(this, camera, lights);
+            this.uniformBlockManager.beginPass(camera);
+            if (fireEvent) this.fire('beforeRender');
+            if (this.useFramebuffer) this.framebuffer?.bind();
+            this.clear();
+            if (fireEvent) this.fire('beforeRenderScene');
+            this.renderScene();
+            if (this.useFramebuffer && this.framebuffer) this.renderToScreen(this.framebuffer);
+            this.resourceManager.endFrame();
+        } catch (error: unknown) {
+            this.resourceManager.abortFrame();
+            this.resourceManager.destroyUnusedResource(stage);
+            throw error;
+        }
         if (fireEvent) this.fire('afterRender');
         this.resourceManager.destroyUnusedResource(stage);
     }
@@ -587,7 +701,7 @@ class WebGLRenderer extends EventDispatcher {
         });
     }
 
-    releaseGLResource(): void {
+    releaseGPUResources(): void {
         const gl = this._gl;
         if (!gl) return;
         Program.reset(gl);
@@ -598,12 +712,13 @@ class WebGLRenderer extends EventDispatcher {
         Texture.reset(gl);
         Framebuffer.destroy(gl);
         this.uniformBlockManager.destroy(gl);
+        this.resourceManager.clear();
         this.framebuffer = null;
     }
 
     destroy(): void {
         if (this._isDestroyed) return;
-        this.releaseGLResource();
+        this.releaseGPUResources();
         this.domElement?.removeEventListener('webglcontextlost', this.handleContextLost, false);
         this.domElement?.removeEventListener(
             'webglcontextrestored',

@@ -1,6 +1,6 @@
 import * as CANNON from 'cannon-es';
 import * as Hilo3d from '../../src/Hilo3d';
-import { createExampleContext } from '../js/init';
+import { createExampleContext } from '../shared/init';
 
 interface PhysicsWorldOptions {
     iterations?: number;

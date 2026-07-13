@@ -1,4 +1,4 @@
-import { EventDispatcher, type DispatchEvent } from './EventMixin';
+import { EventDispatcher, type DispatchEvent } from './EventDispatcher';
 import Matrix4 from '../math/Matrix4';
 import Matrix4Notifier from '../math/Matrix4Notifier';
 import Vector3 from '../math/Vector3';
@@ -10,7 +10,7 @@ import type Ray from '../math/Ray';
 import type Animation from '../animation/Animation';
 import Geometry, { type Bounds } from '../geometry/Geometry';
 import Skeleton from './Skeleton';
-import type WebGLRenderer from '../renderer/WebGLRenderer';
+import type { Renderer } from '../renderer/Renderer';
 import math from '../math/math';
 const defaultUp = new Vector3(0, 1, 0);
 const tempMatrix4 = new Matrix4();
@@ -983,7 +983,7 @@ class Node extends EventDispatcher {
      * @param destroyTextures - 是否销毁材质的贴图，默认不销毁
      * @returns this
      */
-    destroy(renderer?: WebGLRenderer, destroyTextures = false): this {
+    destroy(renderer?: Renderer, destroyTextures = false): this {
         const nodes = this.getChildrenByBaseClassName('Node');
         this.off();
         nodes.forEach(node => {

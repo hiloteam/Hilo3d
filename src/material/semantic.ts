@@ -3,7 +3,7 @@ import Vector3 from '../math/Vector3';
 import Matrix3 from '../math/Matrix3';
 import Matrix4 from '../math/Matrix4';
 import { UNSIGNED_BYTE } from '../constants/webgl';
-import Texture, { type TextureBinding, type TextureWebGLState } from '../texture/Texture';
+import Texture, { type TextureBinding } from '../texture/Texture';
 import Color from '../math/Color';
 import type Camera from '../camera/Camera';
 import type Fog from '../core/Fog';
@@ -14,7 +14,6 @@ import type LightManager from '../light/LightManager';
 import type SphericalHarmonics3 from '../math/SphericalHarmonics3';
 import type Material from './Material';
 import type { MaterialTexture, MaterialTextureValue, ProgramBindingInfo } from './Material';
-import type { GLContext } from '../renderer/types';
 
 const tempVector3 = new Vector3();
 const tempMatrix3 = new Matrix3();
@@ -82,10 +81,6 @@ function nullable<Value>(value: Value | null): Value | null {
     return value;
 }
 
-function textureIndex(programInfo: ProgramBindingInfo): number {
-    return programInfo.textureIndex ?? 0;
-}
-
 function cameraPlane(camera: Camera, plane: 'near' | 'far'): number {
     const value: unknown = Reflect.get(camera, plane);
     if (typeof value !== 'number')
@@ -110,9 +105,7 @@ function materialTexture(material: SemanticMaterial, name: string): Texture | nu
 }
 
 let camera: Camera;
-let gl: GLContext;
 let lightManager: LightManager;
-let state: TextureWebGLState;
 let fog: Fog | null;
 let renderer: SemanticRenderer;
 
@@ -120,42 +113,33 @@ let renderer: SemanticRenderer;
  * 语义
  */
 const semantic = {
-    state: nullable<TextureWebGLState>(null),
-
     camera: nullable<Camera>(null),
 
     lightManager: nullable<LightManager>(null),
 
     fog: nullable<Fog>(null),
 
-    gl: nullable<GLContext>(null),
-    /**
-     * WebGLRenderer
-     */
+    /** Active backend-neutral renderer dimensions. */
     renderer: nullable<SemanticRenderer>(null),
 
     blankInfo,
 
     /**
      * 初始化
-     * @param _state -
      * @param _camera -
      * @param _lightManager -
      * @param _fog -
      */
     init(
         _renderer: SemanticRenderer,
-        _state: TextureWebGLState,
         _camera: Camera,
         _lightManager: LightManager,
         _fog: Fog | null
     ): void {
         renderer = this.renderer = _renderer;
-        state = this.state = _state;
         camera = this.camera = _camera;
         lightManager = this.lightManager = _lightManager;
         fog = this.fog = _fog;
-        gl = this.gl = state.gl;
     },
 
     /**
@@ -168,14 +152,10 @@ const semantic = {
 
     /**
      * @param value -
-     * @param unitIndex - textureIndex(programInfo)
      */
-    handlerColorOrTexture(
-        value: MaterialTextureValue,
-        unitIndex: number
-    ): Float32Array | number | undefined {
+    handlerColorOrTexture(value: MaterialTextureValue): Float32Array | TextureBinding {
         if (value instanceof Texture) {
-            return this.handlerTexture(value, unitIndex);
+            return this.handlerTexture(value);
         }
 
         if (value instanceof Color) {
@@ -189,30 +169,9 @@ const semantic = {
 
     /**
      * @param value -
-     * @param unitIndex - textureIndex(programInfo)
      */
-    handlerTexture(value: TextureBinding | null, unitIndex: number): number | undefined {
-        if (value) {
-            return this.handlerGLTexture(value.target, value.getGLTexture(state), unitIndex);
-        }
-
-        const blankTexture = this.getBlankTexture();
-        return this.handlerGLTexture(
-            blankTexture.target,
-            blankTexture.getGLTexture(state),
-            unitIndex
-        );
-    },
-
-    /**
-     * @param target -
-     * @param texture -
-     * @param unitIndex - textureIndex(programInfo)
-     */
-    handlerGLTexture(target: GLenum, texture: WebGLTexture, unitIndex: number): number | undefined {
-        state.activeTexture(gl.TEXTURE0 + unitIndex);
-        state.bindTexture(target, texture);
-        return unitIndex;
+    handlerTexture(value: TextureBinding | null): TextureBinding {
+        return value ?? this.getBlankTexture();
     },
 
     /**
@@ -733,6 +692,34 @@ const semantic = {
         }
     },
 
+    SHADOWATLAS: {
+        get(
+            _mesh: SemanticMesh,
+            _material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
+        ): unknown {
+            return semantic.handlerTexture(lightManager.shadowAtlas);
+        }
+    },
+
+    SHADOWATLASSIZE: {
+        get(): unknown {
+            return lightManager.shadowAtlasSize;
+        }
+    },
+
+    SHADOWATLASRECTS: {
+        get(): unknown {
+            return lightManager.shadowAtlasRects;
+        }
+    },
+
+    POINTSHADOWMATRICES: {
+        get(): unknown {
+            return lightManager.pointShadowMatrices;
+        }
+    },
+
     DIRECTIONALLIGHTSINFO: {
         get(
             _mesh: SemanticMesh,
@@ -745,12 +732,12 @@ const semantic = {
 
     DIRECTIONALLIGHTSSHADOWMAP: {
         get(
-            mesh: SemanticMesh,
-            material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _mesh: SemanticMesh,
+            _material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            const result = lightManager.directionalInfo?.shadowMap?.map((texture, i) => {
-                return semantic.handlerTexture(texture, textureIndex(programInfo) + i);
+            const result = lightManager.directionalInfo?.shadowMap?.map(texture => {
+                return semantic.handlerTexture(texture);
             });
             return result;
         }
@@ -828,12 +815,12 @@ const semantic = {
 
     POINTLIGHTSSHADOWMAP: {
         get(
-            mesh: SemanticMesh,
-            material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _mesh: SemanticMesh,
+            _material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            const result = lightManager.pointInfo?.shadowMap?.map((texture, i) => {
-                return semantic.handlerTexture(texture, textureIndex(programInfo) + i);
+            const result = lightManager.pointInfo?.shadowMap?.map(texture => {
+                return semantic.handlerTexture(texture);
             });
             return result;
         }
@@ -931,12 +918,12 @@ const semantic = {
 
     SPOTLIGHTSSHADOWMAP: {
         get(
-            mesh: SemanticMesh,
-            material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _mesh: SemanticMesh,
+            _material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            const result = lightManager.spotInfo?.shadowMap?.map((texture, i) => {
-                return semantic.handlerTexture(texture, textureIndex(programInfo) + i);
+            const result = lightManager.spotInfo?.shadowMap?.map(texture => {
+                return semantic.handlerTexture(texture);
             });
             return result;
         }
@@ -1014,27 +1001,21 @@ const semantic = {
 
     AREALIGHTSLTCTEXTURE1: {
         get(
-            mesh: SemanticMesh,
-            material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _mesh: SemanticMesh,
+            _material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(
-                lightManager.areaInfo?.ltcTexture1 ?? null,
-                textureIndex(programInfo)
-            );
+            return semantic.handlerTexture(lightManager.areaInfo?.ltcTexture1 ?? null);
         }
     },
 
     AREALIGHTSLTCTEXTURE2: {
         get(
-            mesh: SemanticMesh,
-            material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _mesh: SemanticMesh,
+            _material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(
-                lightManager.areaInfo?.ltcTexture2 ?? null,
-                textureIndex(programInfo)
-            );
+            return semantic.handlerTexture(lightManager.areaInfo?.ltcTexture2 ?? null);
         }
     },
 
@@ -1158,11 +1139,11 @@ const semantic = {
 
     DIFFUSEENVMAP: {
         get(
-            mesh: SemanticMesh,
+            _mesh: SemanticMesh,
             material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(material.diffuseEnvMap, textureIndex(programInfo));
+            return semantic.handlerTexture(material.diffuseEnvMap);
         }
     },
     DIFFUSEENVINTENSITY: {
@@ -1191,21 +1172,21 @@ const semantic = {
 
     BRDFLUT: {
         get(
-            mesh: SemanticMesh,
+            _mesh: SemanticMesh,
             material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(material.brdfLUT, textureIndex(programInfo));
+            return semantic.handlerTexture(material.brdfLUT);
         }
     },
 
     SPECULARENVMAP: {
         get(
-            mesh: SemanticMesh,
+            _mesh: SemanticMesh,
             material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(material.specularEnvMap, textureIndex(programInfo));
+            return semantic.handlerTexture(material.specularEnvMap);
         }
     },
     SPECULARENVINTENSITY: {
@@ -1366,12 +1347,9 @@ for (const [semanticName, textureName] of colorOrTextureSemantics) {
         get(
             _mesh: SemanticMesh,
             material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerColorOrTexture(
-                materialColorOrTexture(material, textureName),
-                textureIndex(programInfo)
-            );
+            return semantic.handlerColorOrTexture(materialColorOrTexture(material, textureName));
         }
     });
 
@@ -1406,12 +1384,9 @@ for (const [semanticName, textureName] of textureSemantics) {
         get(
             _mesh: SemanticMesh,
             material: SemanticMaterial,
-            programInfo: ProgramBindingInfo
+            _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(
-                materialTexture(material, textureName),
-                textureIndex(programInfo)
-            );
+            return semantic.handlerTexture(materialTexture(material, textureName));
         }
     });
 
@@ -1428,10 +1403,14 @@ for (const [semanticName, textureName] of textureSemantics) {
 
 // TRANSPARENCY
 registerSemantic('TRANSPARENCY', {
-    get(_mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown {
+    get(
+        _mesh: SemanticMesh,
+        material: SemanticMaterial,
+        _programInfo: ProgramBindingInfo
+    ): unknown {
         const value: unknown = Reflect.get(material, 'transparency');
         if (value instanceof Texture) {
-            return semantic.handlerTexture(value, textureIndex(programInfo));
+            return semantic.handlerTexture(value);
         }
 
         if (typeof value === 'number') return value;

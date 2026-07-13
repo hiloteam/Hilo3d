@@ -1,4 +1,4 @@
-import Shader from '../shader/Shader';
+import Shader, { type ShaderPrecisionProvider } from '../shader/Shader';
 import screenVert from '../shader/screen.vert';
 import screenFrag from '../shader/screen.frag';
 import Cache from '../utils/Cache';
@@ -89,7 +89,7 @@ export interface CopyFramebufferOptions {
 }
 
 /** Minimal renderer contract needed to allocate a framebuffer lazily. */
-export interface FramebufferRenderer {
+export interface FramebufferRenderer extends ShaderPrecisionProvider {
     readonly isInit: boolean;
     readonly gl: GLContext | null;
     readonly state: WebGLState | null;
@@ -445,7 +445,9 @@ class Framebuffer {
                 screenVert,
                 screenFrag,
                 '',
-                'FramebufferTextureShader'
+                'FramebufferTextureShader',
+                false,
+                this.renderer
             );
             const program = Program.getProgram(shader, state);
             program.useProgram();

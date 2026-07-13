@@ -1,5 +1,5 @@
 import * as Hilo3d from '../../../src/Hilo3d';
-import { createExampleContext } from '../../js/init';
+import { createExampleContext } from '../../shared/init';
 
 const queriedCanvas = document.querySelector<HTMLCanvasElement>('#interface-canvas');
 if (!queriedCanvas) throw new Error('Canvas texture example requires #interface-canvas.');

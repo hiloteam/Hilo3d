@@ -46,6 +46,29 @@ describe('GeometryData', () => {
         expect(testData.type).toBe(FLOAT);
     });
 
+    it('records full and partial revisions without backend-global consumption', () => {
+        const data = new GeometryData(new Float32Array([0, 1, 2, 3]), 2);
+        const initialRevision = data.revision;
+        expect(data.fullDataRevision).toBe(initialRevision);
+
+        const partial = new Float32Array([8, 9]);
+        data.setSubData(2, partial);
+        partial.fill(0);
+        expect(data.revision).toBe(initialRevision + 1);
+        expect(data.fullDataRevision).toBe(initialRevision);
+        expect(data.getSubDataUpdatesSince(initialRevision)).toEqual([
+            expect.objectContaining({
+                revision: initialRevision + 1,
+                byteOffset: 8,
+                data: new Float32Array([8, 9])
+            })
+        ]);
+
+        data.set(0, new Hilo3d.Vector2(4, 5));
+        expect(data.fullDataRevision).toBe(data.revision);
+        expect(data.getSubDataUpdatesSince(initialRevision + 1)).toBeNull();
+    });
+
     it('length & realLength & count', () => {
         expect(testData.length).toBe(16);
         expect(testData.realLength).toBe(12);

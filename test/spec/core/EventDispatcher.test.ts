@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { EventDispatcher } from '../../../src/core/EventMixin';
+import { EventDispatcher } from '../../../src/core/EventDispatcher';
 
 describe('EventDispatcher', () => {
     let eventTarget = new EventDispatcher();

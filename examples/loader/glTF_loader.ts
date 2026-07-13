@@ -4,7 +4,7 @@ import {
     type EnvironmentMaps,
     loadEnvironmentMaps,
     parseQuery
-} from '../js/init';
+} from '../shared/init';
 
 const { camera, stage, ambientLight } = createExampleContext();
 new Hilo3d.AxisHelper({ size: 1 }).addTo(stage);

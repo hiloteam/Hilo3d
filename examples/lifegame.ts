@@ -1,6 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
-import postProcess from './js/postProcess';
+import { createExampleContext } from './shared/init';
+import postProcess from './shared/postProcess';
 
 const CELL_SCALE = 8;
 const width = Math.max(1, Math.floor(window.innerWidth / CELL_SCALE));

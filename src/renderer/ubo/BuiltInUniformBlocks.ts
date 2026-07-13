@@ -6,6 +6,9 @@ export const MAX_POINT_LIGHTS = 16;
 export const MAX_AREA_LIGHTS = 8;
 export const MAX_SKIN_JOINTS = 128;
 export const MAX_MORPH_WEIGHTS = 8;
+export const MAX_INSTANCES_PER_DRAW = 128;
+export const MAX_SHADOW_ATLAS_SLICES =
+    MAX_DIRECTIONAL_LIGHTS + MAX_SPOT_LIGHTS + MAX_POINT_LIGHTS * 6;
 
 export const frameBlockLayout = createStd140Layout({
     u_rendererSize: 'vec2',
@@ -52,6 +55,9 @@ export const lightBlockLayout = createStd140Layout({
     u_pointLightsShadowBias: { type: 'vec2', arrayLength: MAX_POINT_LIGHTS },
     u_pointLightSpaceMatrix: { type: 'mat4', arrayLength: MAX_POINT_LIGHTS },
     u_pointLightCamera: { type: 'vec2', arrayLength: MAX_POINT_LIGHTS },
+    u_shadowAtlasSize: 'vec4',
+    u_shadowAtlasRects: { type: 'vec4', arrayLength: MAX_SHADOW_ATLAS_SLICES },
+    u_pointShadowMatrices: { type: 'mat4', arrayLength: MAX_POINT_LIGHTS * 6 },
     u_areaLightsPos: { type: 'vec3', arrayLength: MAX_AREA_LIGHTS },
     u_areaLightsColor: { type: 'vec3', arrayLength: MAX_AREA_LIGHTS },
     u_areaLightsWidth: { type: 'vec3', arrayLength: MAX_AREA_LIGHTS },
@@ -111,6 +117,11 @@ export const morphBlockLayout = createStd140Layout({
     u_morphWeights1: 'vec4'
 });
 
+export const instanceBlockLayout = createStd140Layout({
+    u_instanceModelMatrices: { type: 'mat4', arrayLength: MAX_INSTANCES_PER_DRAW },
+    u_instanceNormalMatrices: { type: 'mat4', arrayLength: MAX_INSTANCES_PER_DRAW }
+});
+
 export const BUILT_IN_UNIFORM_BLOCK_LAYOUTS: Readonly<Record<string, Std140Layout>> = Object.freeze(
     {
         FrameBlock: frameBlockLayout,
@@ -121,7 +132,8 @@ export const BUILT_IN_UNIFORM_BLOCK_LAYOUTS: Readonly<Record<string, Std140Layou
         ModelBlock: modelBlockLayout,
         GeometryBlock: geometryBlockLayout,
         SkinningBlock: skinningBlockLayout,
-        MorphBlock: morphBlockLayout
+        MorphBlock: morphBlockLayout,
+        InstanceBlock: instanceBlockLayout
     }
 );
 
@@ -150,7 +162,7 @@ export function paddedStd140Value(
     if (values.length === requiredLength) return values;
     if (values.length > requiredLength) {
         throw new RangeError(
-            `${fieldName} provides ${String(values.length)} values; the fixed WebGL2 ABI allows ${String(requiredLength)}`
+            `${fieldName} provides ${String(values.length)} values; the fixed graphics ABI allows ${String(requiredLength)}`
         );
     }
     const result = new Float32Array(requiredLength);

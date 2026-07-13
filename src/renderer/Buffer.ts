@@ -3,12 +3,12 @@ import math from '../math/math';
 import { ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, STATIC_DRAW } from '../constants/webgl';
 import requireGLResource from './requireGLResource';
 import type GeometryData from '../geometry/GeometryData';
-import type WebGLResourceManager from './WebGLResourceManager';
+import type GraphicsResourceManager from './GraphicsResourceManager';
 import type { GLContext, TypedArray } from './types';
 export type BufferData = TypedArray | ArrayBuffer;
 
 export interface BufferRenderer {
-    resourceManager: WebGLResourceManager;
+    resourceManager: GraphicsResourceManager;
 }
 
 const cache = new Cache<Buffer>();
@@ -52,10 +52,13 @@ class Buffer {
         const id = geometryData.bufferViewId;
         let buffer = cache.get(id);
         if (buffer) {
+            if (buffer.needsGeometryDataUpload(geometryData)) {
+                buffer.uploadGeometryData(geometryData);
+            }
             return buffer;
         }
-        geometryData.isDirty = false;
         buffer = new Buffer(gl, target, geometryData.data, usage);
+        buffer.geometryRevisions.set(geometryData, geometryData.revision);
         cache.add(id, buffer);
         return buffer;
     }
@@ -80,6 +83,7 @@ class Buffer {
     readonly usage: GLenum;
     readonly buffer: WebGLBuffer;
     data: BufferData | null = null;
+    private readonly geometryRevisions = new WeakMap<GeometryData, number>();
     private _isDestroyed = false;
     /**
      * @param gl -
@@ -154,12 +158,10 @@ class Buffer {
      * @returns this
      */
     uploadGeometryData(geometryData: GeometryData): this {
-        const subDataList = geometryData.subDataUpdates;
-        if (
-            !this.data ||
-            this.data.byteLength < geometryData.data.byteLength ||
-            geometryData.isAllDataDirty
-        ) {
+        const uploadedRevision = this.geometryRevisions.get(geometryData) ?? -1;
+        if (uploadedRevision === geometryData.revision) return this;
+        const subDataList = geometryData.getSubDataUpdatesSince(uploadedRevision);
+        if (this.data?.byteLength !== geometryData.data.byteLength || subDataList === null) {
             this.bufferData(geometryData.data);
         } else if (subDataList.length) {
             this.bind();
@@ -169,8 +171,13 @@ class Buffer {
         } else {
             this.bufferData(geometryData.data);
         }
-        geometryData.isDirty = false;
+        this.geometryRevisions.set(geometryData, geometryData.revision);
         return this;
+    }
+
+    /** Whether this WebGL2 allocation has consumed the GeometryData's current CPU revision. */
+    needsGeometryDataUpload(geometryData: GeometryData): boolean {
+        return this.geometryRevisions.get(geometryData) !== geometryData.revision;
     }
     /**
      * 没有被引用时销毁资源

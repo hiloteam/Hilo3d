@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 const { stage, renderer } = createExampleContext();
 
@@ -31,14 +31,8 @@ function initModel(): void {
                     material.premultiplyAlpha = false;
                     material.side = Hilo3d.constants.FRONT;
                     material.uniforms['u_refractionMap'] = {
-                        get(_mesh, _material, programInfo) {
-                            if (programInfo.textureIndex === undefined) {
-                                throw new Error('u_refractionMap has no texture unit');
-                            }
-                            return Hilo3d.semantic.handlerTexture(
-                                framebuffer.texture,
-                                programInfo.textureIndex
-                            );
+                        get(_mesh, _material, _programInfo) {
+                            return Hilo3d.semantic.handlerTexture(framebuffer.texture);
                         }
                     };
                     material.onBeforeCompile = (vs, fs) => {

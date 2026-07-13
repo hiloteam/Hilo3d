@@ -1,5 +1,5 @@
 import math from '../math/math';
-import { EventDispatcher } from '../core/EventMixin';
+import { EventDispatcher } from '../core/EventDispatcher';
 import extensions from '../renderer/extensions';
 import capabilities from '../renderer/capabilities';
 import Cache from '../utils/Cache';
@@ -38,6 +38,18 @@ export interface TextureMipmap {
     data: TypedArray;
     width: number;
     height: number;
+}
+
+/** Immutable content changes that a rendering backend can acknowledge independently. */
+export interface TextureUpdateSnapshot {
+    readonly revision: number;
+    readonly requiresFullUpload: boolean;
+    readonly subTextures: readonly TextureSubImage[];
+}
+
+interface VersionedTextureSubImage {
+    readonly revision: number;
+    readonly update: TextureSubImage;
 }
 
 export interface TextureParameters<Image = TextureImageSource> {
@@ -162,12 +174,15 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
      */
     isImageCanRelease = false;
     private _isImageReleased = false;
+    private _updateRevision = 1;
+    private _fullUpdateRevision = 1;
+    private _needUpdate = true;
     private _image: Image | null = null;
     private _canvasImage: HTMLCanvasElement | null = null;
     private _canvasCtx: CanvasRenderingContext2D | null = null;
     private _originImage: ResizableTextureImage | null = null;
-    private _needUpdateSubTexture = false;
-    private readonly _subTextureList: TextureSubImage[] = [];
+    private readonly _subTextureUpdates: VersionedTextureSubImage[] = [];
+    private readonly _webGLUploadRevisions = new WeakMap<WebGLTexture, number>();
     private gl: GLContext | null = null;
     readonly id: string;
     /**
@@ -185,6 +200,7 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
     set image(_img: Image | null) {
         this._image = _img;
         this._isImageReleased = false;
+        this.markFullUpdate();
     }
     protected _releaseImage(): void {
         this._canvasImage = null;
@@ -193,6 +209,53 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         this._image = null;
         this.mipmaps = null;
         this._isImageReleased = true;
+    }
+    /** Whether the CPU image source has already been discarded after a successful upload. */
+    get isImageReleased(): boolean {
+        return this._isImageReleased;
+    }
+    /** Monotonic content version used by each rendering backend for independent synchronisation. */
+    get updateRevision(): number {
+        return this._updateRevision;
+    }
+    /**
+     * Discard the CPU image only when `isImageCanRelease` opted into that lifecycle.
+     * @returns whether an image source was released
+     */
+    releaseImageIfAllowed(): boolean {
+        if (!this.isImageCanRelease || this._isImageReleased) return false;
+        this._releaseImage();
+        return true;
+    }
+    /**
+     * Snapshot content changes newer than a backend-local revision without consuming them.
+     * Backends advance their own revision only after every upload in the snapshot succeeds.
+     */
+    getTextureUpdatesSince(revision: number): TextureUpdateSnapshot {
+        if (!Number.isSafeInteger(revision) || revision < 0 || revision > this._updateRevision) {
+            throw new RangeError(
+                `Texture update revision must be an integer in [0, ${String(this._updateRevision)}]`
+            );
+        }
+        const requiresFullUpload = revision < this._fullUpdateRevision;
+        const baseline = requiresFullUpload ? this._fullUpdateRevision : revision;
+        const subTextures = this._subTextureUpdates
+            .filter(update => update.revision > baseline)
+            .map(update => update.update);
+        return Object.freeze({
+            revision: this._updateRevision,
+            requiresFullUpload,
+            subTextures: Object.freeze(subTextures)
+        });
+    }
+    private markFullUpdate(): void {
+        this._updateRevision++;
+        this._fullUpdateRevision = this._updateRevision;
+        this._subTextureUpdates.length = 0;
+    }
+    private setPreparedImage(image: Image | null): void {
+        this._image = image;
+        this._isImageReleased = false;
     }
     /**
      * mipmaps
@@ -250,7 +313,13 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
     /**
      * 是否需要更新Texture
      */
-    needUpdate = true;
+    get needUpdate(): boolean {
+        return this._needUpdate;
+    }
+    set needUpdate(value: boolean) {
+        this._needUpdate = value;
+        if (value) this.markFullUpdate();
+    }
     /**
      * 是否需要销毁之前的Texture，Texture参数变更之后需要销毁
      */
@@ -300,6 +369,9 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         super();
         this.id = math.generateUUID(this.className);
         Object.assign(this, params);
+        // Image setters record a full content revision, while the explicit flag remains an
+        // independent compatibility hint whose final value must not depend on object key order.
+        if (params.needUpdate !== undefined) this._needUpdate = params.needUpdate;
     }
     /**
      * 获取支持的尺寸
@@ -470,9 +542,13 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
      */
     updateTexture(state: TextureWebGLState, glTexture: WebGLTexture): this {
         const gl = state.gl;
-        if (this.needUpdate || this.autoUpdate) {
+        const uploadedRevision = this._webGLUploadRevisions.get(glTexture) ?? 0;
+        const pending = this.getTextureUpdatesSince(uploadedRevision);
+        const needsFullUpload =
+            uploadedRevision === 0 || this.autoUpdate || pending.requiresFullUpload;
+        if (needsFullUpload) {
             if (this._originImage && this.image === this._canvasImage) {
-                this.image = this._originImage as Image;
+                this.setPreparedImage(this._originImage as Image);
             }
             const useMipmap = this.useMipmap;
             const currentImage: unknown = this.image;
@@ -487,7 +563,7 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
                         sizeResult.width,
                         sizeResult.height
                     );
-                    if (isTextureImageSource(resized)) this.image = resized as Image;
+                    if (isTextureImageSource(resized)) this.setPreparedImage(resized as Image);
                 }
                 const size = dimensions(this.image);
                 if (size) {
@@ -504,11 +580,6 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
                 );
             }
             this._uploadTexture(state);
-            if (useMipmap) {
-                if (!this.compressed) {
-                    gl.generateMipmap(this.target);
-                }
-            }
             gl.texParameterf(this.target, gl.TEXTURE_MAG_FILTER, this.magFilter);
             gl.texParameterf(this.target, gl.TEXTURE_MIN_FILTER, this.minFilter);
             gl.texParameterf(this.target, gl.TEXTURE_WRAP_S, this.wrapS);
@@ -521,12 +592,21 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
                     Math.min(this.anisotropic, capabilities.MAX_TEXTURE_MAX_ANISOTROPY)
                 );
             }
-            this.needUpdate = false;
+            this._needUpdate = false;
         }
-        if (this._needUpdateSubTexture) {
-            this.uploadSubTextures(state, glTexture);
-            this._needUpdateSubTexture = false;
+
+        const snapshot = this.getTextureUpdatesSince(needsFullUpload ? 0 : uploadedRevision);
+        if (snapshot.subTextures.length > 0) {
+            this.uploadSubTextures(state, glTexture, snapshot.subTextures);
         }
+        if (
+            (needsFullUpload || snapshot.subTextures.length > 0) &&
+            this.useMipmap &&
+            !this.compressed
+        ) {
+            gl.generateMipmap(this.target);
+        }
+        this._webGLUploadRevisions.set(glTexture, snapshot.revision);
         return this;
     }
     /**
@@ -534,13 +614,17 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
      * @param state -
      * @param glTexture -
      */
-    private uploadSubTextures(state: TextureWebGLState, glTexture: WebGLTexture): void {
-        if (this._subTextureList.length > 0) {
+    private uploadSubTextures(
+        state: TextureWebGLState,
+        glTexture: WebGLTexture,
+        updates: readonly TextureSubImage[]
+    ): void {
+        if (updates.length > 0) {
             const gl = state.gl;
             state.activeTexture(gl.TEXTURE0 + capabilities.MAX_TEXTURE_INDEX);
             state.bindTexture(this.target, glTexture);
             this.updatePixelStore(state);
-            this._subTextureList.forEach(subInfo => {
+            updates.forEach(subInfo => {
                 const { xOffset, yOffset, image } = subInfo;
                 if (isTypedArray(image)) {
                     gl.texSubImage2D(
@@ -566,7 +650,6 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
                     );
                 }
             });
-            this._subTextureList.length = 0;
         }
     }
     /**
@@ -576,8 +659,9 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
      * @param image -
      */
     updateSubTexture(xOffset: number, yOffset: number, image: TextureSubImage['image']): void {
-        this._subTextureList.push({ xOffset, yOffset, image });
-        this._needUpdateSubTexture = true;
+        const update = Object.freeze({ xOffset, yOffset, image });
+        this._updateRevision++;
+        this._subTextureUpdates.push({ revision: this._updateRevision, update });
     }
     /**
      * 获取 GLTexture
@@ -596,12 +680,9 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         } else {
             glTexture = requireGLResource(gl.createTexture(), 'a texture');
             cache.add(id, glTexture);
-            this.needUpdate = true;
             this.updateTexture(state, glTexture);
         }
-        if (this.isImageCanRelease) {
-            this._releaseImage();
-        }
+        this.releaseImageIfAllowed();
         return glTexture;
     }
     /**
@@ -615,6 +696,7 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
             this.destroy();
         }
         cache.add(this.id, texture);
+        this._webGLUploadRevisions.set(texture, this.needUpdate ? 0 : this.updateRevision);
         return this;
     }
     /**
@@ -627,7 +709,9 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         if (glTexture && this.gl) {
             this.gl.deleteTexture(glTexture);
             cache.remove(id);
+            this._webGLUploadRevisions.delete(glTexture);
         }
+        this.fire('destroy', this);
         return this;
     }
     /**

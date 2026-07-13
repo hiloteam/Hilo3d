@@ -413,10 +413,20 @@ class Material {
      * stencilOp zpass
      */
     stencilOpZPass = KEEP;
-    /**
-     * 当前是否需要强制更新
-     */
-    isDirty = false;
+    private _isDirty = false;
+    private _revision = 0;
+    /** Monotonic material-data revision observed independently by every backend. */
+    get revision(): number {
+        return this._revision;
+    }
+    /** 当前是否需要强制更新 */
+    get isDirty(): boolean {
+        return this._isDirty;
+    }
+    set isDirty(value: boolean) {
+        if (value) this._revision++;
+        this._isDirty = value;
+    }
     /**
      * 透明度 0~1
      */
@@ -571,6 +581,9 @@ class Material {
             u_pointLightsShadowMap: 'POINTLIGHTSSHADOWMAP',
             u_pointLightSpaceMatrix: 'POINTLIGHTSPACEMATRIX',
             u_pointLightCamera: 'POINTLIGHTCAMERA',
+            u_shadowAtlasSize: 'SHADOWATLASSIZE',
+            u_shadowAtlasRects: 'SHADOWATLASRECTS',
+            u_pointShadowMatrices: 'POINTSHADOWMATRICES',
             u_spotLightsPos: 'SPOTLIGHTSPOS',
             u_spotLightsDir: 'SPOTLIGHTSDIR',
             u_spotLightsColor: 'SPOTLIGHTSCOLOR',
@@ -615,6 +628,7 @@ class Material {
             u_emission: 'EMISSION',
             u_transparency: 'TRANSPARENCY'
         });
+        this.uniforms['u_shadowAtlas'] ??= 'SHADOWATLAS';
     }
     /**
      * 增加贴图 uniforms
@@ -755,7 +769,9 @@ class Material {
             'id',
             'textureOption',
             '_instancedUniforms',
-            'bindingsInitialized'
+            'bindingsInitialized',
+            '_isDirty',
+            '_revision'
         ]);
         for (const [key, value] of Object.entries(this)) {
             if (!internalKeys.has(key)) Reflect.set(newMaterial, key, value);

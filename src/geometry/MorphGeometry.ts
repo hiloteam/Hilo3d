@@ -31,7 +31,6 @@ class MorphGeometry extends Geometry {
      */
     targets: MorphTargets | null = null;
     private _originalMorphIndices: number[] = [];
-    private _maxMorphTargetCount = 0;
     private readonly morphTargetIndices = new Map<string, number>();
     /**
      * @param params - 创建对象的属性参数。可包含此类的所有属性。
@@ -71,11 +70,10 @@ class MorphGeometry extends Geometry {
     override getRenderOption(opt: ShaderOptions = {}): ShaderOptions {
         super.getRenderOption(opt);
         if (this.targets) {
-            if (!this._maxMorphTargetCount) {
-                this._maxMorphTargetCount = Math.floor(8 / Object.keys(this.targets).length);
-            }
+            const targetKinds = Object.keys(this.targets).length;
+            const maxMorphTargetCount = targetKinds === 0 ? 0 : Math.floor(8 / targetKinds);
             for (const [name, list] of Object.entries(this.targets)) {
-                opt['MORPH_TARGET_COUNT'] = Math.min(list.length, this._maxMorphTargetCount);
+                opt['MORPH_TARGET_COUNT'] = Math.min(list.length, maxMorphTargetCount);
                 if (name === 'vertices') {
                     opt['MORPH_HAS_POSITION'] = 1;
                 } else if (name === 'normals') {

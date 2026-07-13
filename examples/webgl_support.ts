@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 const webGL2Available = Hilo3d.WebGLSupport.get();
 const canvas = document.createElement('canvas');

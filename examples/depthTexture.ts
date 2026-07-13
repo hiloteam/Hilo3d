@@ -1,9 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 const { camera, stage, renderer } = createExampleContext();
 
-Hilo3d.extensions.use('WEBGL_depth_texture');
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([
     [0, 1],

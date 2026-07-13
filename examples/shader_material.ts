@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 const { camera, stage, renderer } = createExampleContext();
 
@@ -40,17 +40,13 @@ const mesh = new Hilo3d.Mesh({
         needBasicAttributes: false,
         uniforms: {
             u_diffuse: {
-                get(_mesh, _material, programInfo) {
-                    if (programInfo.textureIndex === undefined)
-                        throw new Error('u_diffuse has no texture unit');
-                    return Hilo3d.semantic.handlerTexture(diffuseTexture, programInfo.textureIndex);
+                get(_mesh, _material, _programInfo) {
+                    return Hilo3d.semantic.handlerTexture(diffuseTexture);
                 }
             },
             u_mixTexture: {
-                get(_mesh, _material, programInfo) {
-                    if (programInfo.textureIndex === undefined)
-                        throw new Error('u_mixTexture has no texture unit');
-                    return Hilo3d.semantic.handlerTexture(mixTexture, programInfo.textureIndex);
+                get(_mesh, _material, _programInfo) {
+                    return Hilo3d.semantic.handlerTexture(mixTexture);
                 }
             }
         },

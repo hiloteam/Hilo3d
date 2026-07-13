@@ -103,6 +103,10 @@ class LightManager {
     spotInfo: SpotLightInfo | null = null;
     areaInfo: AreaLightInfo | null = null;
     ambientInfo: Float32Array = new Float32Array(3);
+    shadowAtlas: Texture<unknown> | null = null;
+    shadowAtlasSize: Float32Array = new Float32Array(4);
+    shadowAtlasRects: Float32Array = new Float32Array(0);
+    pointShadowMatrices: Float32Array = new Float32Array(0);
     isLightManager = true;
     className = 'LightManager';
     /**
@@ -402,6 +406,10 @@ class LightManager {
         this.pointLights.length = 0;
         this.spotLights.length = 0;
         this.areaLights.length = 0;
+        this.shadowAtlas = null;
+        this.shadowAtlasSize = new Float32Array(4);
+        this.shadowAtlasRects = new Float32Array(0);
+        this.pointShadowMatrices = new Float32Array(0);
     }
     /**
      * 获取阴影贴图数量

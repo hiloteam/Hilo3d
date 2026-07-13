@@ -108,6 +108,41 @@ describe('Std140Layout', () => {
         buffer.destroy();
     });
 
+    it('fully refreshes an expired WebGL2 consumer and resumes partial uploads', () => {
+        const secondContext = document.createElement('canvas').getContext('webgl2');
+        expect(secondContext).not.toBeNull();
+        if (!secondContext) return;
+        const buffer = UniformBuffer.fromSchema(createStd140Layout({ value: 'vec4' }));
+
+        buffer.getBuffer(testEnv.gl);
+        buffer.getBuffer(secondContext);
+        const fastPartialUpload = vi.spyOn(testEnv.gl, 'bufferSubData');
+        const slowFullUpload = vi.spyOn(secondContext, 'bufferData');
+        const slowPartialUpload = vi.spyOn(secondContext, 'bufferSubData');
+        const slowRevision = buffer.revision;
+
+        for (let frame = 1; frame <= 70; frame++) {
+            buffer.set('value', [frame, 0, 0, 0]);
+            buffer.getBuffer(testEnv.gl);
+        }
+
+        expect(buffer.getDirtyRangesSince(slowRevision)).toBeNull();
+        expect(fastPartialUpload).toHaveBeenCalledTimes(70);
+        buffer.getBuffer(secondContext);
+        expect(slowFullUpload).toHaveBeenCalledOnce();
+        expect(slowPartialUpload).not.toHaveBeenCalled();
+
+        buffer.set('value', [71, 0, 0, 0]);
+        buffer.getBuffer(testEnv.gl);
+        buffer.getBuffer(secondContext);
+        expect(fastPartialUpload).toHaveBeenCalledTimes(71);
+        expect(slowFullUpload).toHaveBeenCalledOnce();
+        expect(slowPartialUpload).toHaveBeenCalledOnce();
+        expect(() => buffer.getDirtyRangesSince(-1)).toThrow(RangeError);
+        expect(() => buffer.getDirtyRangesSince(buffer.revision + 1)).toThrow(RangeError);
+        buffer.destroy();
+    });
+
     it('validates typed values and prevents replacing layout storage with a short buffer', () => {
         const layout = createStd140Layout({ count: 'uint', vector: 'vec2' });
         const buffer = UniformBuffer.fromSchema(layout);

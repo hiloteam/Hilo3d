@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 const { camera, renderer, stage } = createExampleContext();
 
@@ -60,15 +60,8 @@ function createBillboard(scale: number, x: number, y: number, z: number): Hilo3d
         needBasicAttributes: false,
         uniforms: {
             u_diffuse: {
-                get: (_mesh, _material, programInfo) => {
-                    if (programInfo.textureIndex === undefined) {
-                        throw new Error('u_diffuse is not a texture sampler.');
-                    }
-                    return Hilo3d.semantic.handlerTexture(
-                        billboardTexture,
-                        programInfo.textureIndex
-                    );
-                }
+                get: (_mesh, _material, _programInfo) =>
+                    Hilo3d.semantic.handlerTexture(billboardTexture)
             }
         },
         uniformBlocks: {

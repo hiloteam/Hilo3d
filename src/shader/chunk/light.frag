@@ -1,18 +1,24 @@
-#ifdef HILO_DIRECTIONAL_LIGHTS
-    #ifdef HILO_DIRECTIONAL_LIGHTS_SMC
-        uniform sampler2D u_directionalLightsShadowMap[HILO_DIRECTIONAL_LIGHTS_SMC];
+#ifdef HILO_WEBGPU
+    #if defined(HILO_DIRECTIONAL_LIGHTS_SMC) || defined(HILO_SPOT_LIGHTS_SMC) || defined(HILO_POINT_LIGHTS_SMC)
+        uniform sampler2DShadow u_shadowAtlas;
     #endif
-#endif
-
-#ifdef HILO_SPOT_LIGHTS
-    #ifdef HILO_SPOT_LIGHTS_SMC
-        uniform sampler2D u_spotLightsShadowMap[HILO_SPOT_LIGHTS_SMC];
+#else
+    #ifdef HILO_DIRECTIONAL_LIGHTS
+        #ifdef HILO_DIRECTIONAL_LIGHTS_SMC
+            uniform sampler2D u_directionalLightsShadowMap[HILO_DIRECTIONAL_LIGHTS_SMC];
+        #endif
     #endif
-#endif
 
-#ifdef HILO_POINT_LIGHTS
-    #ifdef HILO_POINT_LIGHTS_SMC
-        uniform samplerCube u_pointLightsShadowMap[HILO_POINT_LIGHTS_SMC];
+    #ifdef HILO_SPOT_LIGHTS
+        #ifdef HILO_SPOT_LIGHTS_SMC
+            uniform sampler2D u_spotLightsShadowMap[HILO_SPOT_LIGHTS_SMC];
+        #endif
+    #endif
+
+    #ifdef HILO_POINT_LIGHTS
+        #ifdef HILO_POINT_LIGHTS_SMC
+            uniform samplerCube u_pointLightsShadowMap[HILO_POINT_LIGHTS_SMC];
+        #endif
     #endif
 #endif
 

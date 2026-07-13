@@ -1,4 +1,4 @@
-import { EventDispatcher } from '../core/EventMixin';
+import { EventDispatcher } from '../core/EventDispatcher';
 import LoadCache from './LoadCache';
 import { getExtension } from '../utils/util';
 

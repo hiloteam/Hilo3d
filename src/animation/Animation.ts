@@ -1,5 +1,5 @@
 import math from '../math/math';
-import { EventDispatcher } from '../core/EventMixin';
+import { EventDispatcher } from '../core/EventDispatcher';
 import type Node from '../core/Node';
 import type AnimationStates from './AnimationStates';
 import { requireNumber } from '../math/numberArray';

@@ -6,5 +6,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["./package.test.ts", "./package-umd.test.ts", "./package-umd-require.test.cts"]
+  "include": ["./package.test.ts"]
 }

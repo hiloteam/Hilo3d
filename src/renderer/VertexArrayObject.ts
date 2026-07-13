@@ -5,8 +5,8 @@ import Cache from '../utils/Cache';
 import { TRIANGLES } from '../constants/webgl';
 import requireGLResource from './requireGLResource';
 import type Mesh from '../core/Mesh';
-import type WebGLResourceManager from './WebGLResourceManager';
-import type { ManagedResource } from './WebGLResourceManager';
+import type GraphicsResourceManager from './GraphicsResourceManager';
+import type { ManagedResource } from './GraphicsResourceManager';
 import type { ProgramAttribute } from './Program';
 import type { GLContext } from './types';
 
@@ -22,8 +22,13 @@ export interface AttributeObject {
     geometryData: GeometryData;
 }
 
+interface TrackedAttributeObject extends AttributeObject {
+    geometryRevision: number;
+    bindingKey: string;
+}
+
 export interface VaoRenderer {
-    resourceManager: WebGLResourceManager;
+    resourceManager: GraphicsResourceManager;
 }
 
 let currentVao: VertexArrayObject | null = null;
@@ -48,6 +53,28 @@ function geometryComponentSize(size: number): GeometryComponentSize {
 
 function setCurrentVao(vao: VertexArrayObject | null): void {
     currentVao = vao;
+}
+
+function attributeBindingKey(geometryData: GeometryData): string {
+    return [
+        geometryData.bufferViewId,
+        geometryData.size,
+        Number(geometryData.normalized),
+        geometryData.type,
+        geometryData.stride,
+        geometryData.offset,
+        geometryData.data.byteLength,
+        geometryData.count
+    ].join(':');
+}
+
+function indexBindingKey(geometryData: GeometryData): string {
+    return [
+        geometryData.bufferViewId,
+        geometryData.type,
+        geometryData.data.byteLength,
+        geometryData.length
+    ].join(':');
 }
 
 class VertexArrayObject implements ManagedResource {
@@ -87,9 +114,12 @@ class VertexArrayObject implements ManagedResource {
     indexType: GLenum;
 
     private vao: WebGLVertexArrayObject | null;
-    private readonly attributes: AttributeObject[] = [];
-    private readonly attributesByName = new Map<string, AttributeObject>();
+    private readonly attributes: TrackedAttributeObject[] = [];
+    private readonly attributesByName = new Map<string, TrackedAttributeObject>();
     private indexBuffer: Buffer | null = null;
+    private indexGeometryData: GeometryData | null = null;
+    private indexGeometryRevision = -1;
+    private indexBindingKey = '';
     private _isDestroyed = false;
 
     constructor(gl: GLContext, id: string, params: VertexArrayObjectParameters = {}) {
@@ -141,16 +171,36 @@ class VertexArrayObject implements ManagedResource {
 
     addIndexBuffer(geometryData: GeometryData, usage: GLenum): Buffer {
         this.bind();
-        this.indexType = geometryData.type;
-        if (!this.indexBuffer) {
-            this.indexBuffer = Buffer.createIndexBuffer(this.gl, geometryData, usage);
-            this.indexBuffer.bind();
-            this.vertexCount = geometryData.length;
-        } else if (geometryData.isDirty) {
-            this.indexBuffer.uploadGeometryData(geometryData);
+        const bindingKey = indexBindingKey(geometryData);
+        if (
+            !this.indexBuffer ||
+            this.indexGeometryData !== geometryData ||
+            this.indexGeometryRevision !== geometryData.revision ||
+            this.indexBindingKey !== bindingKey ||
+            this.indexBuffer.needsGeometryDataUpload(geometryData)
+        ) {
+            const buffer = Buffer.createIndexBuffer(this.gl, geometryData, usage);
+            buffer.bind();
+            this.indexBuffer = buffer;
+            this.indexGeometryData = geometryData;
+            this.indexGeometryRevision = geometryData.revision;
+            this.indexBindingKey = bindingKey;
+            this.indexType = geometryData.type;
             this.vertexCount = geometryData.length;
         }
         return this.indexBuffer;
+    }
+
+    removeIndexBuffer(): this {
+        if (!this.indexBuffer) return this;
+        this.bind();
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, null);
+        this.indexBuffer = null;
+        this.indexGeometryData = null;
+        this.indexGeometryRevision = -1;
+        this.indexBindingKey = '';
+        this.vertexCount = null;
+        return this;
     }
 
     addAttribute(
@@ -161,23 +211,64 @@ class VertexArrayObject implements ManagedResource {
     ): AttributeObject {
         this.bind();
         let attributeObject = this.attributesByName.get(attribute.name);
+        const bindingKey = attributeBindingKey(geometryData);
         if (!attributeObject) {
             const buffer = Buffer.createVertexBuffer(this.gl, geometryData, usage);
             buffer.bind();
             attribute.enable();
             attribute.pointer(geometryData);
-            attributeObject = { attribute, buffer, geometryData };
+            attributeObject = {
+                attribute,
+                buffer,
+                geometryData,
+                geometryRevision: geometryData.revision,
+                bindingKey
+            };
             this.attributes.push(attributeObject);
             this.attributesByName.set(attribute.name, attributeObject);
             onInit?.(attributeObject);
-        }
-        if (geometryData.isDirty) {
-            attributeObject.buffer.bind();
+            if (!this.indexBuffer && this.attributes[0] === attributeObject) {
+                this.vertexCount = geometryData.count;
+            }
+        } else if (
+            attributeObject.geometryData !== geometryData ||
+            attributeObject.geometryRevision !== geometryData.revision ||
+            attributeObject.bindingKey !== bindingKey ||
+            attributeObject.buffer.needsGeometryDataUpload(geometryData)
+        ) {
+            const buffer = Buffer.createVertexBuffer(this.gl, geometryData, usage);
+            buffer.bind();
             attribute.enable();
             attribute.pointer(geometryData);
-            attributeObject.buffer.uploadGeometryData(geometryData);
+            attributeObject.attribute = attribute;
+            attributeObject.buffer = buffer;
+            attributeObject.geometryData = geometryData;
+            attributeObject.geometryRevision = geometryData.revision;
+            attributeObject.bindingKey = bindingKey;
+            if (!this.indexBuffer && this.attributes[0] === attributeObject) {
+                this.vertexCount = geometryData.count;
+            }
         }
         return attributeObject;
+    }
+
+    /** True when this VAO references CPU geometry newer than its WebGL2 allocations. */
+    hasPendingGeometryDataUpdates(): boolean {
+        if (
+            this.indexBuffer &&
+            this.indexGeometryData &&
+            (this.indexGeometryRevision !== this.indexGeometryData.revision ||
+                this.indexBindingKey !== indexBindingKey(this.indexGeometryData) ||
+                this.indexBuffer.needsGeometryDataUpload(this.indexGeometryData))
+        ) {
+            return true;
+        }
+        return this.attributes.some(
+            ({ buffer, geometryData, geometryRevision, bindingKey }) =>
+                geometryRevision !== geometryData.revision ||
+                bindingKey !== attributeBindingKey(geometryData) ||
+                buffer.needsGeometryDataUpload(geometryData)
+        );
     }
 
     addInstancedAttribute(
@@ -232,6 +323,9 @@ class VertexArrayObject implements ManagedResource {
         this.gl.deleteVertexArray(this.vao);
         this.vao = null;
         this.indexBuffer = null;
+        this.indexGeometryData = null;
+        this.indexGeometryRevision = -1;
+        this.indexBindingKey = '';
         this.attributes.length = 0;
         this.attributesByName.clear();
         cache.removeObject(this);

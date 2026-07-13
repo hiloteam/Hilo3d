@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
 const { camera, stage, renderer } = createExampleContext();
 
@@ -32,12 +32,8 @@ const mesh = new Hilo3d.Mesh({
         enableTextureLod: true,
         uniforms: {
             u_diffuse: {
-                get: (_mesh, _material, programInfo) => {
-                    if (programInfo.textureIndex === undefined) {
-                        throw new Error('u_diffuse is not a texture sampler.');
-                    }
-                    return Hilo3d.semantic.handlerTexture(diffuseTexture, programInfo.textureIndex);
-                }
+                get: (_mesh, _material, _programInfo) =>
+                    Hilo3d.semantic.handlerTexture(diffuseTexture)
             }
         },
         uniformBlocks: {

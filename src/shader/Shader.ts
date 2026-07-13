@@ -1,6 +1,5 @@
 import math from '../math/math';
 import Cache from '../utils/Cache';
-import capabilities from '../renderer/capabilities';
 import basicFragCode from './basic.frag';
 import basicVertCode from './basic.vert';
 import geometryFragCode from './geometry.frag';
@@ -9,7 +8,7 @@ import type Mesh from '../core/Mesh';
 import type Fog from '../core/Fog';
 import type LightManager from '../light/LightManager';
 import type Material from '../material/Material';
-import type WebGLResourceManager from '../renderer/WebGLResourceManager';
+import type GraphicsResourceManager from '../renderer/GraphicsResourceManager';
 import type { GLContext, ShaderPrecision } from '../renderer/types';
 import {
     MAX_AREA_LIGHTS,
@@ -35,10 +34,13 @@ export interface ShaderParameters {
     alwaysUse?: boolean;
 }
 
-export interface ShaderRenderer {
+export interface ShaderPrecisionProvider {
     vertexPrecision: ShaderPrecision;
     fragmentPrecision: ShaderPrecision;
-    resourceManager: WebGLResourceManager;
+}
+
+export interface ShaderRenderer extends ShaderPrecisionProvider {
+    resourceManager: GraphicsResourceManager;
 }
 
 interface BasicShaderMaterial extends Material {
@@ -123,7 +125,6 @@ class Shader {
     fs = '';
     static commonOptions: Record<string, number> = {};
     static commonHeader = '';
-    static renderer: ShaderRenderer | null = null;
     /**
      * 内部的所有shader块字符串，可以用来拼接glsl代码
      */
@@ -132,9 +133,9 @@ class Shader {
      * 初始化
      * @param renderer -
      */
-    static init(renderer: ShaderRenderer): void {
-        this.renderer = renderer;
-        this.commonHeader = this.getCommonHeader(renderer);
+    static init(renderer: ShaderPrecisionProvider): void {
+        const commonHeader = this.getCommonHeader(renderer);
+        this.commonHeader = commonHeader;
     }
     /**
      * Shader 缓存
@@ -250,16 +251,15 @@ class Shader {
         }
         return header;
     }
-    private static getCommonHeader(renderer: ShaderRenderer): string {
-        const vertexPrecision = capabilities.getMaxPrecision(
-            capabilities.MAX_VERTEX_PRECISION,
-            renderer.vertexPrecision
-        );
-        const fragmentPrecision = capabilities.getMaxPrecision(
-            capabilities.MAX_FRAGMENT_PRECISION,
-            renderer.fragmentPrecision
-        );
-        const precision = capabilities.getMaxPrecision(vertexPrecision, fragmentPrecision);
+    private static getCommonHeader(renderer: ShaderPrecisionProvider): string {
+        const vertexPrecision = renderer.vertexPrecision;
+        const fragmentPrecision = renderer.fragmentPrecision;
+        const precision =
+            vertexPrecision === 'highp' || fragmentPrecision === 'highp'
+                ? 'highp'
+                : vertexPrecision === 'mediump' || fragmentPrecision === 'mediump'
+                  ? 'mediump'
+                  : 'lowp';
         return `
 #define HILO_MAX_PRECISION ${precision}
 #define HILO_MAX_VERTEX_PRECISION ${vertexPrecision}
@@ -281,11 +281,12 @@ class Shader {
         isUseInstance: boolean,
         lightManager: LightManager,
         fog: Fog | null,
-        useLogDepth: boolean
+        useLogDepth: boolean,
+        renderer?: ShaderPrecisionProvider
     ): Shader | null {
         const header = this.getHeader(mesh, material, lightManager, fog, useLogDepth);
         if (isBasicMaterial(material) || isPBRMaterial(material)) {
-            return this.getBasicShader(material, isUseInstance, header);
+            return this.getBasicShader(material, isUseInstance, header, renderer);
         }
         if (isCustomMaterial(material)) {
             return this.getCustomShader(
@@ -293,7 +294,8 @@ class Shader {
                 material.fs,
                 header,
                 material.shaderCacheId ?? material.id,
-                material.useHeaderCache
+                material.useHeaderCache,
+                renderer
             );
         }
         return null;
@@ -304,7 +306,12 @@ class Shader {
      * @param isUseInstance -
      * @param header - 已生成的 shader 宏定义
      */
-    static getBasicShader(material: Material, isUseInstance: boolean, header: string): Shader {
+    static getBasicShader(
+        material: Material,
+        isUseInstance: boolean,
+        header: string,
+        renderer?: ShaderPrecisionProvider
+    ): Shader {
         if (isUseInstance) {
             header += '#define HILO_INSTANCED 1\n';
         }
@@ -313,7 +320,8 @@ class Shader {
         if (compile) {
             key += `:${material.shaderCacheId ?? material.id}`;
         }
-        let shader = cache.get(key);
+        const commonHeader = this.getRendererHeader(renderer);
+        let shader = cache.get(this.getCustomShaderCacheKey(key, commonHeader, header, true));
         if (!shader) {
             let fs = '';
             let vs = basicVertCode;
@@ -331,7 +339,7 @@ class Shader {
                 fs = newCode.fs;
                 vs = newCode.vs;
             }
-            shader = this.getCustomShader(vs, fs, header, key, true);
+            shader = this.getCustomShader(vs, fs, header, key, true, renderer);
         }
         const shaderNumId = this.getNumericId(shader);
         if (shaderNumId !== null) {
@@ -359,14 +367,13 @@ class Shader {
         fs: string,
         header = '',
         cacheKey?: string,
-        useHeaderCache = false
+        useHeaderCache = false,
+        renderer?: ShaderPrecisionProvider
     ): Shader {
-        const commonHeader = this.commonHeader;
+        const commonHeader = this.getRendererHeader(renderer);
         let shader: Shader | undefined;
         if (cacheKey) {
-            if (useHeaderCache) {
-                cacheKey += `:${header}`;
-            }
+            cacheKey = this.getCustomShaderCacheKey(cacheKey, commonHeader, header, useHeaderCache);
             shader = cache.get(cacheKey);
         }
         if (!shader) {
@@ -380,6 +387,20 @@ class Shader {
             }
         }
         return shader;
+    }
+
+    private static getRendererHeader(renderer?: ShaderPrecisionProvider): string {
+        if (!renderer) return this.commonHeader;
+        return this.getCommonHeader(renderer);
+    }
+
+    private static getCustomShaderCacheKey(
+        cacheKey: string,
+        commonHeader: string,
+        header: string,
+        useHeaderCache: boolean
+    ): string {
+        return JSON.stringify([cacheKey, commonHeader, useHeaderCache ? header : null]);
     }
 
     private static assembleGLSL300(source: string, header: string): string {

@@ -1,4 +1,4 @@
-import { EventDispatcher, type DispatchEvent } from '../core/EventMixin';
+import { EventDispatcher, type DispatchEvent } from '../core/EventDispatcher';
 import BasicLoader, { type LoaderRequest } from './BasicLoader';
 import GLTFParser, { type GLTFParserParameters } from './GLTFParser';
 import Loader from './Loader';

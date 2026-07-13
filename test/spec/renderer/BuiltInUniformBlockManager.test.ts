@@ -133,4 +133,74 @@ describe('BuiltInUniformBlockManager', () => {
         expect(jointData).toHaveBeenCalledTimes(2);
         manager.destroy();
     });
+
+    it('observes material and geometry revisions independently across backend managers', () => {
+        const first = new BuiltInUniformBlockManager({ width: 320, height: 180 });
+        const second = new BuiltInUniformBlockManager({ width: 320, height: 180 });
+        const set = vi.spyOn(UniformBuffer.prototype, 'set');
+        const previousDecodeMatrix = testEnv.geometry.positionDecodeMat;
+        testEnv.geometry.positionDecodeMat = new Float32Array([
+            1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1
+        ]);
+        first.beginFrame(testEnv.camera);
+        second.beginFrame(testEnv.camera);
+        const blockNames = ['MaterialBlock', 'GeometryBlock'];
+        first.getUniformBlocks(blockNames, testEnv.mesh, testEnv.material);
+        second.getUniformBlocks(blockNames, testEnv.mesh, testEnv.material);
+        const initialMaterialWrites = fieldWriteCount(set, 'u_alphaCutoff');
+        const initialGeometryWrites = fieldWriteCount(set, 'u_positionDecodeMat');
+
+        testEnv.material.isDirty = true;
+        testEnv.geometry.isDirty = true;
+        first.getUniformBlocks(blockNames, testEnv.mesh, testEnv.material);
+        testEnv.material.isDirty = false;
+        testEnv.geometry.isDirty = false;
+        second.getUniformBlocks(blockNames, testEnv.mesh, testEnv.material);
+
+        expect(fieldWriteCount(set, 'u_alphaCutoff') - initialMaterialWrites).toBe(2);
+        expect(fieldWriteCount(set, 'u_positionDecodeMat') - initialGeometryWrites).toBe(2);
+        testEnv.geometry.positionDecodeMat = previousDecodeMatrix;
+        first.destroy();
+        second.destroy();
+    });
+
+    it('releases owner-frequency logical buffers and rebuilds them on demand', () => {
+        const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
+        const skinnedMesh = new SkinnedMesh({
+            geometry: testEnv.geometry,
+            material: testEnv.material
+        });
+        vi.spyOn(skinnedMesh, 'getJointMat').mockReturnValue(new Float32Array(16));
+        manager.beginFrame(testEnv.camera);
+        const blocks = manager.getUniformBlocks(
+            ['MaterialBlock', 'ModelBlock', 'GeometryBlock', 'MorphBlock'],
+            testEnv.mesh,
+            testEnv.material
+        );
+        const skinning = manager.getUniformBlocks(['SkinningBlock'], skinnedMesh, testEnv.material)[
+            'SkinningBlock'
+        ];
+        const destroy = vi.spyOn(UniformBuffer.prototype, 'destroy');
+
+        expect(manager.releaseOwner(testEnv.material, testEnv.gl)).toBe(1);
+        expect(manager.releaseOwner(testEnv.geometry, testEnv.gl)).toBe(1);
+        expect(manager.releaseOwner(testEnv.mesh, testEnv.gl)).toBe(2);
+        expect(manager.releaseOwner(skinnedMesh, testEnv.gl)).toBe(1);
+        expect(destroy).toHaveBeenCalledTimes(5);
+        const releasedModelBlock = blocks['ModelBlock'];
+        if (!releasedModelBlock) throw new Error('ModelBlock was not resolved');
+        expect(manager.releaseBuffer(releasedModelBlock, testEnv.gl)).toBe(false);
+
+        const rebuilt = manager.getUniformBlocks(
+            ['MaterialBlock', 'ModelBlock', 'GeometryBlock', 'MorphBlock'],
+            testEnv.mesh,
+            testEnv.material
+        );
+        expect(rebuilt['MaterialBlock']).not.toBe(blocks['MaterialBlock']);
+        expect(rebuilt['ModelBlock']).not.toBe(blocks['ModelBlock']);
+        expect(rebuilt['GeometryBlock']).not.toBe(blocks['GeometryBlock']);
+        expect(rebuilt['MorphBlock']).not.toBe(blocks['MorphBlock']);
+        expect(skinning).toBeInstanceOf(UniformBuffer);
+        manager.destroy();
+    });
 });

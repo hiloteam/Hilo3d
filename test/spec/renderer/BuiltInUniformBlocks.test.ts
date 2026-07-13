@@ -3,6 +3,7 @@ import {
     cameraBlockLayout,
     frameBlockLayout,
     geometryBlockLayout,
+    instanceBlockLayout,
     lightBlockLayout,
     materialBlockLayout,
     modelBlockLayout,
@@ -23,17 +24,19 @@ describe('built-in std140 ABI', () => {
             ModelBlock: modelBlockLayout.byteLength,
             GeometryBlock: geometryBlockLayout.byteLength,
             SkinningBlock: skinningBlockLayout.byteLength,
-            MorphBlock: morphBlockLayout.byteLength
+            MorphBlock: morphBlockLayout.byteLength,
+            InstanceBlock: instanceBlockLayout.byteLength
         }).toEqual({
             FrameBlock: 16,
             CameraBlock: 400,
             SceneBlock: 32,
-            LightBlock: 5648,
+            LightBlock: 13600,
             MaterialBlock: 480,
             ModelBlock: 112,
             GeometryBlock: 224,
             SkinningBlock: 8192,
-            MorphBlock: 32
+            MorphBlock: 32,
+            InstanceBlock: 16384
         });
     });
 
@@ -67,10 +70,14 @@ describe('built-in std140 ABI', () => {
         expect(lightBlockLayout.fields.u_directionalLightSpaceMatrix.arrayStride).toBe(64);
         expect(lightBlockLayout.fields.u_spotLightSpaceMatrix.offset).toBe(2064);
         expect(lightBlockLayout.fields.u_pointLightSpaceMatrix.offset).toBe(3856);
-        expect(lightBlockLayout.fields.u_areaLightsHeight.offset).toBe(5520);
+        expect(lightBlockLayout.fields.u_shadowAtlasSize.offset).toBe(5136);
+        expect(lightBlockLayout.fields.u_shadowAtlasRects.offset).toBe(5152);
+        expect(lightBlockLayout.fields.u_pointShadowMatrices.offset).toBe(6944);
+        expect(lightBlockLayout.fields.u_areaLightsHeight.offset).toBe(13472);
 
         expect(skinningBlockLayout.fields.u_jointMat.arrayStride).toBe(64);
         expect(morphBlockLayout.fields.u_morphWeights1.offset).toBe(16);
+        expect(instanceBlockLayout.fields.u_instanceNormalMatrices.offset).toBe(8192);
     });
 
     it('pads dynamic semantic arrays to the fixed ABI capacity and rejects overflow', () => {
@@ -79,6 +86,6 @@ describe('built-in std140 ABI', () => {
         expect(Array.from(padded as Float32Array).slice(0, 6)).toEqual([1, 2, 3, 0, 0, 0]);
         expect(() =>
             paddedStd140Value(lightBlockLayout, 'u_directionalLightsColor', new Float32Array(25))
-        ).toThrow(/fixed WebGL2 ABI/);
+        ).toThrow(/fixed graphics ABI/);
     });
 });

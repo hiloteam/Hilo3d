@@ -4,7 +4,7 @@ import Matrix4 from '../math/Matrix4';
 import type Vector3 from '../math/Vector3';
 import type Geometry from '../geometry/Geometry';
 import type Material from '../material/Material';
-import type WebGLRenderer from '../renderer/WebGLRenderer';
+import type { Renderer } from '../renderer/Renderer';
 import type { ShaderOptions } from '../renderer/types';
 const tempRay = new Ray();
 const tempMatrix4 = new Matrix4();
@@ -117,12 +117,12 @@ class Mesh extends Node {
      * @param needDestroyTextures - 是否销毁材质的贴图，默认不销毁
      * @returns this
      */
-    override destroy(renderer?: WebGLRenderer, needDestroyTextures = false): this {
+    override destroy(renderer?: Renderer, needDestroyTextures = false): this {
         if (this._isDestroyed) {
             return this;
         }
         if (!renderer) {
-            throw new Error('A WebGLRenderer is required to destroy a Mesh.');
+            throw new Error('A renderer is required to destroy a Mesh.');
         }
         this.removeFromParent();
         const resourceManager = renderer.resourceManager;

@@ -14,16 +14,19 @@ export interface UniformBufferRange {
     readonly byteLength: number;
 }
 
+/** One CPU byte-range mutation retained for backend-local incremental uploads. */
+export interface UniformBufferDirtyRange {
+    readonly revision: number;
+    readonly byteOffset: number;
+    readonly byteLength: number;
+}
+
+const MAX_RETAINED_DIRTY_RANGES = 64;
+
 interface ContextResource {
     buffer: Buffer;
     byteLength: number;
-    version: number;
-}
-
-interface DirtyUpdate {
-    version: number;
-    start: number;
-    end: number;
+    revision: number;
 }
 
 function byteView(data: UniformBufferData): Uint8Array {
@@ -38,15 +41,6 @@ function byteView(data: UniformBufferData): Uint8Array {
 class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     readonly className = 'UniformBuffer';
     readonly isUniformBuffer = true;
-    /**
-     * is dirty
-     */
-    get isDirty(): boolean {
-        return this.dirtyUpdates.length > 0;
-    }
-    set isDirty(value: boolean) {
-        if (value) this.markDirty();
-    }
     /**
      * data
      */
@@ -71,8 +65,14 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     private _data: UniformBufferData = new ArrayBuffer(0);
     readonly layout: Std140Layout<Schema> | null;
     private readonly resources = new Map<WebGL2RenderingContext, ContextResource>();
-    private readonly dirtyUpdates: DirtyUpdate[] = [];
-    private version = 0;
+    private readonly dirtyUpdates: UniformBufferDirtyRange[] = [];
+    private discardedDirtyRevision = 0;
+    private _revision = 0;
+
+    /** Monotonic CPU-data revision shared by WebGL2 and WebGPU upload caches. */
+    get revision(): number {
+        return this._revision;
+    }
 
     constructor(data: UniformBufferData, layout?: Std140Layout<Schema>) {
         this.layout = layout ?? null;
@@ -123,33 +123,45 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
         return Object.freeze({ uniformBuffer: this, byteOffset, byteLength });
     }
 
+    /**
+     * Return retained writes newer than a backend-local revision. `null` means the consumer fell
+     * behind the bounded history window and must upload the complete current buffer.
+     */
+    getDirtyRangesSince(revision: number): readonly UniformBufferDirtyRange[] | null {
+        if (!Number.isSafeInteger(revision) || revision < 0 || revision > this._revision) {
+            throw new RangeError(
+                `Uniform buffer revision must be an integer in [0, ${String(this._revision)}]`
+            );
+        }
+        if (revision < this.discardedDirtyRevision) return null;
+        return this.dirtyUpdates.filter(update => update.revision > revision);
+    }
+
     getBuffer(gl: WebGL2RenderingContext): Buffer {
         let resource = this.resources.get(gl);
         if (!resource) {
             const buffer = new Buffer(gl, gl.UNIFORM_BUFFER, this.data, gl.DYNAMIC_DRAW);
-            resource = { buffer, byteLength: this.byteLength, version: this.version };
+            resource = { buffer, byteLength: this.byteLength, revision: this._revision };
             this.resources.set(gl, resource);
-            this.pruneDirtyUpdates();
             return buffer;
         }
-        if (resource.version !== this.version) {
-            if (resource.byteLength !== this.byteLength) {
+        if (resource.revision !== this._revision) {
+            const updates = this.getDirtyRangesSince(resource.revision);
+            if (resource.byteLength !== this.byteLength || updates === null) {
                 resource.buffer.bufferData(this.data);
                 resource.byteLength = this.byteLength;
             } else {
                 let start = this.byteLength;
                 let end = 0;
-                for (const update of this.dirtyUpdates) {
-                    if (update.version <= resource.version) continue;
-                    start = Math.min(start, update.start);
-                    end = Math.max(end, update.end);
+                for (const update of updates) {
+                    start = Math.min(start, update.byteOffset);
+                    end = Math.max(end, update.byteOffset + update.byteLength);
                 }
                 if (end > start) {
                     resource.buffer.bufferSubData(start, byteView(this.data).subarray(start, end));
                 }
             }
-            resource.version = this.version;
-            this.pruneDirtyUpdates();
+            resource.revision = this._revision;
         }
         return resource.buffer;
     }
@@ -203,18 +215,15 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     }
 
     private recordDirty(start: number, end: number): void {
-        this.version++;
-        this.dirtyUpdates.push({ version: this.version, start, end });
-    }
-
-    private pruneDirtyUpdates(): void {
-        if (this.resources.size === 0) return;
-        let minimumVersion = this.version;
-        for (const resource of this.resources.values()) {
-            minimumVersion = Math.min(minimumVersion, resource.version);
-        }
-        while ((this.dirtyUpdates[0]?.version ?? Infinity) <= minimumVersion) {
-            this.dirtyUpdates.shift();
+        this._revision++;
+        this.dirtyUpdates.push({
+            revision: this._revision,
+            byteOffset: start,
+            byteLength: end - start
+        });
+        while (this.dirtyUpdates.length > MAX_RETAINED_DIRTY_RANGES) {
+            const discarded = this.dirtyUpdates.shift();
+            if (discarded) this.discardedDirtyRevision = discarded.revision;
         }
     }
 }

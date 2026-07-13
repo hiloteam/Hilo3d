@@ -6,6 +6,12 @@
   "name": "Hilo3d API",
   "includeVersion": true,
   "hostedBaseUrl": "https://hilo3d.js.org/docs/",
+  "projectDocuments": [
+    "ENGINEERING_MODERNIZATION.md",
+    "README_ZH.md",
+    "CHANGELOG.md",
+    ".github/CONTRIBUTING.md"
+  ],
   "excludeInternal": true,
   "excludePrivate": true,
   "excludeProtected": true,

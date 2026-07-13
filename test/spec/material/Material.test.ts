@@ -17,16 +17,30 @@ describe('Material', () => {
         expect(material.className).toBe('Material');
     });
 
+    it('publishes a monotonic revision for independent backend caches', () => {
+        const material = new Material();
+        expect(material.revision).toBe(0);
+
+        material.isDirty = true;
+        expect(material.revision).toBe(1);
+        material.isDirty = false;
+        expect(material.revision).toBe(1);
+        material.isDirty = true;
+        expect(material.revision).toBe(2);
+    });
+
     it('clone', () => {
         const material = new Material({
             name: 'source',
             transparent: true
         });
+        material.isDirty = true;
 
         const clonedMaterial = material.clone();
         expect(clonedMaterial).not.toBe(material);
         expect(clonedMaterial.name).toBe(material.name);
         expect(clonedMaterial.transparent).toBe(material.transparent);
+        expect(clonedMaterial.revision).toBe(0);
     });
 
     it('side & cullFace', () => {
