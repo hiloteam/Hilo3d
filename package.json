@@ -58,6 +58,7 @@
     "site:build": "npm run docs:build && npm run examples:build && jiti scripts/build-site.ts",
     "pack:check": "npm pack --dry-run --ignore-scripts",
     "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run test:types && npm run test:ui && npm run test:webgpu && npm run test:visual && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
+    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run test:types && npm run test:webgpu && npm run test:visual && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
     "prepack": "npm run build",
     "prepublishOnly": "npm run validate"
   },

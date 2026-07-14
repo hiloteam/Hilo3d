@@ -34,7 +34,9 @@ Use `npm run dev` for engine development and `npm run examples:dev` for the exam
 - `npm run docs:check` validates the TypeDoc API documentation.
 - `npm run api:check` rejects unreviewed changes to the generated public declaration report.
 - `npm run test:package` builds and tests the actual npm package contract.
-- `npm run validate` is the single CI and release gate.
+- `npm run validate` is the complete local and release gate, including the full browser GPU matrix.
+- `npm run validate:ci` runs the portable CI gate. Contributors confirm the full `npm run test:ui`
+  browser GPU matrix locally in the pull request checklist.
 
 Do not commit generated `dist/`, `dist-examples/`, `docs/`, coverage, or browser report files.
 Visual regression baselines under `test/ui/__screenshots__/` are reviewed source artifacts and must
@@ -89,4 +91,5 @@ be committed when a rendering change is intentional.
 
 Use concise Conventional Commit messages, for example `fix: handle incomplete GLTF buffers` or
 `docs: clarify renderer lifecycle`. A pull request should explain user-visible behavior, include
-appropriate automated coverage, and pass `npm run validate` from a clean checkout.
+appropriate automated coverage, pass `npm run validate` from a clean checkout, and complete the
+local browser-test checklist.
