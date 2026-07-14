@@ -1,5 +1,5 @@
 import type Material from '../../material/Material';
-import type { WebGPUFragmentOutput } from './shader/GlslToWgsl';
+import type { WebGPUFragmentOutput } from '../shader/GlslToWgsl';
 import {
     ALWAYS,
     BACK,
@@ -504,18 +504,48 @@ function createDynamicState(
     });
 }
 
-function renderStateKey(
+function stencilFaceKey(face: GPUStencilFaceState | undefined): string {
+    return face
+        ? `${face.compare ?? 'always'},${face.failOp ?? 'keep'},${face.depthFailOp ?? 'keep'},${face.passOp ?? 'keep'}`
+        : 'always,keep,keep,keep';
+}
+
+function blendComponentKey(component: GPUBlendComponent): string {
+    return `${component.operation ?? 'add'},${component.srcFactor ?? 'one'},${component.dstFactor ?? 'zero'}`;
+}
+
+/**
+ * Build the exact immutable pipeline-state signature without reflective serialization.
+ *
+ * Every string field is a closed WebGPU enum and every separator is outside that vocabulary, so
+ * the signature is collision-free for normalized descriptors. Defaults are folded exactly as the
+ * WebGPU descriptor does. The function is exported for the device-level pipeline cache, which
+ * must derive its key from the actual fields rather than trust a caller-provided cache key.
+ */
+export function getWebGPURenderStateCacheKey(
     primitive: GPUPrimitiveState,
     colorTargets: readonly (GPUColorTargetState | null)[],
     depthStencil: GPUDepthStencilState | undefined,
     multisample: GPUMultisampleState
 ): string {
-    return JSON.stringify({
-        primitive,
-        colorTargets,
-        depthStencil: depthStencil ?? null,
-        multisample
-    });
+    let key = `p:${primitive.topology ?? 'triangle-list'},${primitive.stripIndexFormat ?? '-'},${primitive.frontFace ?? 'ccw'},${primitive.cullMode ?? 'none'},${primitive.unclippedDepth === true ? '1' : '0'}|c:${String(colorTargets.length)}`;
+    for (const target of colorTargets) {
+        if (!target) {
+            key += '|-';
+            continue;
+        }
+        key += `|${target.format},${String(target.writeMask ?? WEBGPU_COLOR_WRITE.ALL)}`;
+        const blend = target.blend;
+        key += blend
+            ? `,${blendComponentKey(blend.color)},${blendComponentKey(blend.alpha)}`
+            : ',-';
+    }
+    if (depthStencil) {
+        key += `|d:${depthStencil.format},${depthStencil.depthWriteEnabled === true ? '1' : '0'},${depthStencil.depthCompare ?? 'always'},${stencilFaceKey(depthStencil.stencilFront)},${stencilFaceKey(depthStencil.stencilBack)},${String(depthStencil.stencilReadMask ?? 0xffffffff)},${String(depthStencil.stencilWriteMask ?? 0xffffffff)},${String(depthStencil.depthBias ?? 0)},${String(depthStencil.depthBiasSlopeScale ?? 0)},${String(depthStencil.depthBiasClamp ?? 0)}`;
+    } else {
+        key += '|d:-';
+    }
+    return `${key}|m:${String(multisample.count ?? 1)},${String(multisample.mask ?? 0xffffffff)},${multisample.alphaToCoverageEnabled === true ? '1' : '0'}`;
 }
 
 /** Convert Hilo3d material and geometry state into immutable WebGPU pipeline state. */
@@ -548,6 +578,6 @@ export function createWebGPURenderState(
         multisample,
         dynamic,
         usesStencil,
-        cacheKey: renderStateKey(primitive, colorTargets, depthStencil, multisample)
+        cacheKey: getWebGPURenderStateCacheKey(primitive, colorTargets, depthStencil, multisample)
     });
 }

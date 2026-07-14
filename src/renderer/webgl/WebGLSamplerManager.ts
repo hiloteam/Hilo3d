@@ -1,4 +1,6 @@
 import type Texture from '../../texture/Texture';
+import type { WebGLLegacySamplerDescriptor, WebGLRHIDevice } from '../../rhi/webgl/WebGLDevice';
+import type { WebGLRHIState } from '../../rhi/webgl/WebGLInternal';
 import requireGLResource from './requireGLResource';
 import type WebGLState from './WebGLState';
 
@@ -15,9 +17,8 @@ interface TextureSamplerKeyMemo {
     readonly wrapT: GLenum;
     readonly wrapR: GLenum;
     readonly anisotropy: number;
-    readonly baseKey: string;
-    readonly regularKey: string;
-    readonly comparisonKeys: Map<GLenum, string>;
+    readonly regularDescriptor: WebGLLegacySamplerDescriptor;
+    readonly comparisonDescriptors: Map<GLenum, WebGLLegacySamplerDescriptor>;
 }
 
 const textureCompareFunctions = new WeakMap<Texture<unknown>, GLenum>();
@@ -38,12 +39,23 @@ export function getWebGLTextureCompareFunction(texture: Texture<unknown>): GLenu
 /** Bounded immutable WebGLSampler cache owned by one WebGLState/context. */
 export class WebGLSamplerManager {
     private readonly state: WebGLState;
+    private rhiState: WebGLRHIState | null = null;
+    private rhiDevice: WebGLRHIDevice | null = null;
     private readonly cache = new Map<string, CachedSampler>();
     private readonly bindings = new Map<number, WebGLSampler | null>();
     private readonly textureKeys = new WeakMap<Texture<unknown>, TextureSamplerKeyMemo>();
 
     constructor(state: WebGLState) {
         this.state = state;
+    }
+
+    /** Attach the canonical state and device owners before the first renderer draw. @internal */
+    attachRHI(rhiState: WebGLRHIState, rhiDevice: WebGLRHIDevice): void {
+        if (this.cache.size !== 0 || this.bindings.size !== 0) {
+            throw new Error('WebGL sampler RHI owner must be attached before sampler use');
+        }
+        this.rhiState = rhiState;
+        this.rhiDevice = rhiDevice;
     }
 
     bind(
@@ -53,7 +65,9 @@ export class WebGLSamplerManager {
         compareFunction: GLenum = this.state.gl.LEQUAL
     ): WebGLSampler {
         const sampler = this.get(texture, comparison, compareFunction);
-        if (this.bindings.get(textureUnit) !== sampler) {
+        if (this.rhiState) {
+            this.rhiState.bindSampler(textureUnit, sampler);
+        } else if (this.bindings.get(textureUnit) !== sampler) {
             this.state.gl.bindSampler(textureUnit, sampler);
             this.bindings.set(textureUnit, sampler);
         }
@@ -67,7 +81,10 @@ export class WebGLSamplerManager {
         compareFunction: GLenum
     ): WebGLSampler {
         const anisotropy = this.effectiveAnisotropy(texture);
-        const key = this.resolveKey(texture, anisotropy, comparison, compareFunction);
+        const descriptor = this.resolveDescriptor(texture, anisotropy, comparison, compareFunction);
+        const rhiDevice = this.rhiDevice;
+        if (rhiDevice) return rhiDevice.createLegacySampler(descriptor);
+        const key = descriptor.cacheKey;
         const cached = this.cache.get(key);
         if (cached) {
             this.cache.delete(key);
@@ -106,6 +123,7 @@ export class WebGLSamplerManager {
     }
 
     private trimCache(): void {
+        if (this.rhiDevice) return;
         if (this.cache.size <= MAX_SAMPLERS) return;
         const boundSamplers = new Set(this.bindings.values());
         for (const [key, cached] of this.cache) {
@@ -124,12 +142,12 @@ export class WebGLSamplerManager {
         );
     }
 
-    private resolveKey(
+    private resolveDescriptor(
         texture: Texture<unknown>,
         anisotropy: number,
         comparison: boolean,
         compareFunction: GLenum
-    ): string {
+    ): WebGLLegacySamplerDescriptor {
         let memo = this.textureKeys.get(texture);
         if (
             memo?.magFilter !== texture.magFilter ||
@@ -139,7 +157,21 @@ export class WebGLSamplerManager {
             memo.wrapR !== texture.wrapR ||
             memo.anisotropy !== anisotropy
         ) {
-            const base = `${String(texture.magFilter)}:${String(texture.minFilter)}:${String(texture.wrapS)}:${String(texture.wrapT)}:${String(texture.wrapR)}:${String(anisotropy)}`;
+            const base = `legacy:${String(texture.magFilter)}:${String(texture.minFilter)}:${String(texture.wrapS)}:${String(texture.wrapT)}:${String(texture.wrapR)}:${String(anisotropy)}`;
+            const anisotropyExtension = this.state.extensions.textureFilterAnisotropic;
+            const common = {
+                magFilter: texture.magFilter,
+                minFilter: texture.minFilter,
+                wrapS: texture.wrapS,
+                wrapT: texture.wrapT,
+                wrapR: texture.wrapR,
+                anisotropy,
+                ...(anisotropyExtension
+                    ? {
+                          anisotropyParameter: anisotropyExtension.TEXTURE_MAX_ANISOTROPY_EXT
+                      }
+                    : {})
+            } as const;
             memo = {
                 magFilter: texture.magFilter,
                 minFilter: texture.minFilter,
@@ -147,23 +179,34 @@ export class WebGLSamplerManager {
                 wrapT: texture.wrapT,
                 wrapR: texture.wrapR,
                 anisotropy,
-                baseKey: base,
-                regularKey: `${base}:0`,
-                comparisonKeys: new Map<GLenum, string>()
+                regularDescriptor: {
+                    ...common,
+                    cacheKey: `${base}:0`,
+                    comparison: false,
+                    compareFunction
+                },
+                comparisonDescriptors: new Map<GLenum, WebGLLegacySamplerDescriptor>()
             };
             this.textureKeys.set(texture, memo);
         }
-        if (!comparison) return memo.regularKey;
-        let key = memo.comparisonKeys.get(compareFunction);
-        if (!key) {
-            key = `${memo.baseKey}:1:${String(compareFunction)}`;
-            memo.comparisonKeys.set(compareFunction, key);
+        if (!comparison) return memo.regularDescriptor;
+        let descriptor = memo.comparisonDescriptors.get(compareFunction);
+        if (!descriptor) {
+            descriptor = {
+                ...memo.regularDescriptor,
+                cacheKey: `${memo.regularDescriptor.cacheKey}:1:${String(compareFunction)}`,
+                comparison: true,
+                compareFunction
+            };
+            memo.comparisonDescriptors.set(compareFunction, descriptor);
         }
-        return key;
+        return descriptor;
     }
 
     destroy(): void {
-        for (const { sampler } of this.cache.values()) this.state.gl.deleteSampler(sampler);
+        if (!this.rhiDevice) {
+            for (const { sampler } of this.cache.values()) this.state.gl.deleteSampler(sampler);
+        }
         this.cache.clear();
         this.bindings.clear();
     }

@@ -24,7 +24,7 @@ import {
     NagaShaderTranslator,
     type TranslatedShaderPair,
     type WebGPUVertexInput
-} from '../../../src/renderer/webgpu/shader/GlslToWgsl';
+} from '../../../src/renderer/shader/GlslToWgsl';
 import WebGPURenderer, {
     MAX_CACHED_WEBGPU_DEPTH_SHADER_VARIANTS
 } from '../../../src/renderer/webgpu/WebGPURenderer';
@@ -75,6 +75,7 @@ interface FakeWebGPU extends FakeGPUDevice {
     readonly context: GPUCanvasContext;
     readonly configure: ReturnType<typeof vi.fn>;
     readonly unconfigure: ReturnType<typeof vi.fn>;
+    readonly getContext: ReturnType<typeof vi.fn>;
     readonly requestDevice: ReturnType<
         typeof vi.fn<(descriptor?: GPUDeviceDescriptor) => Promise<GPUDevice>>
     >;
@@ -239,9 +240,10 @@ function createFakeWebGPU(features: readonly GPUFeatureName[] = []): FakeWebGPU 
     } as unknown as GPU;
     vi.stubGlobal('navigator', { gpu });
     const canvas = document.createElement('canvas');
+    const getContext = vi.fn((contextId: string) => (contextId === 'webgpu' ? context : null));
     Object.defineProperty(canvas, 'getContext', {
         configurable: true,
-        value: vi.fn((contextId: string) => (contextId === 'webgpu' ? context : null))
+        value: getContext
     });
     return {
         canvas,
@@ -249,6 +251,7 @@ function createFakeWebGPU(features: readonly GPUFeatureName[] = []): FakeWebGPU 
         context,
         configure,
         unconfigure,
+        getContext,
         ...fakeDevice,
         requestDevice,
         requestAdapter
@@ -262,6 +265,51 @@ afterEach(() => {
 });
 
 describe('WebGPURenderer initialization lifecycle', () => {
+    it('probes adapter support without creating a device, context, or GPU resource', async () => {
+        const fake = createFakeWebGPU();
+
+        await expect(WebGPURenderer.isSupported()).resolves.toBe(true);
+
+        expect(fake.requestAdapter).toHaveBeenCalledOnce();
+        expect(fake.requestAdapter).toHaveBeenCalledWith({
+            powerPreference: 'high-performance',
+            forceFallbackAdapter: false
+        });
+        expect(fake.requestDevice).not.toHaveBeenCalled();
+        expect(fake.getContext).not.toHaveBeenCalled();
+        expect(fake.createBuffer).not.toHaveBeenCalled();
+        expect(fake.createTexture).not.toHaveBeenCalled();
+        expect(fake.createShaderModule).not.toHaveBeenCalled();
+        expect(fake.createRenderPipeline).not.toHaveBeenCalled();
+    });
+
+    it('reports unsupported adapters without allocating a device', async () => {
+        const fake = createFakeWebGPU();
+
+        await expect(
+            WebGPURenderer.isSupported({ requiredFeatures: ['timestamp-query'] })
+        ).resolves.toBe(false);
+        await expect(
+            WebGPURenderer.isSupported({ requiredLimits: { maxBindGroups: 5 } })
+        ).resolves.toBe(false);
+        expect(fake.requestDevice).not.toHaveBeenCalled();
+
+        vi.stubGlobal('navigator', {});
+        await expect(WebGPURenderer.isSupported()).resolves.toBe(false);
+    });
+
+    it('snapshots mutable support requirements before adapter discovery awaits', async () => {
+        createFakeWebGPU();
+        const requiredFeatures: GPUFeatureName[] = [];
+        const requiredLimits: Record<string, number> = {};
+        const support = WebGPURenderer.isSupported({ requiredFeatures, requiredLimits });
+
+        requiredFeatures.push('timestamp-query');
+        requiredLimits['maxBindGroups'] = 5;
+
+        await expect(support).resolves.toBe(true);
+    });
+
     it('records multiple passes into one application-frame encoder and one submission', async () => {
         const fake = createFakeWebGPU();
         const renderer = new WebGPURenderer({ domElement: fake.canvas, antialias: false });

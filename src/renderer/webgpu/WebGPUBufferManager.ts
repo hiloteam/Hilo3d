@@ -1,5 +1,6 @@
 import type GeometryData from '../../geometry/GeometryData';
-import type { WebGPUVertexInput } from './shader/GlslToWgsl';
+import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
+import type { WebGPUVertexInput } from '../shader/GlslToWgsl';
 import type { TypedArray } from '../common/types';
 import { WebGPUBufferUsage } from './WebGPUConstants';
 
@@ -457,23 +458,29 @@ function packInstanceSources(
 }
 
 function uploadNewBuffer(
-    device: GPUDevice,
+    deviceOrOwner: GPUDevice | WebGPUDevice,
     label: string,
     usage: GPUBufferUsageFlags,
     data: ArrayBufferView
 ): GPUBuffer {
+    const device =
+        deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner.nativeDevice : deviceOrOwner;
     const allocationSize = alignTo4(data.byteLength);
     if (allocationSize > device.limits.maxBufferSize) {
         throw new RangeError(
             `WebGPU buffer allocation ${String(allocationSize)} exceeds maxBufferSize ${String(device.limits.maxBufferSize)}`
         );
     }
-    const buffer = device.createBuffer({
+    const descriptor: GPUBufferDescriptor = {
         label,
         size: allocationSize,
         usage,
         mappedAtCreation: true
-    });
+    };
+    const buffer =
+        deviceOrOwner instanceof WebGPUDevice
+            ? deviceOrOwner.createNativeBuffer(descriptor)
+            : device.createBuffer(descriptor);
     try {
         new Uint8Array(buffer.getMappedRange(), 0, data.byteLength).set(
             new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
@@ -488,7 +495,7 @@ function uploadNewBuffer(
 
 /** GPUQueue.writeBuffer requires both the destination offset and copied byte count to be 4-byte aligned. */
 function writeBufferData(
-    device: GPUDevice,
+    deviceOrOwner: GPUDevice | WebGPUDevice,
     buffer: GPUBuffer,
     data: ArrayBufferView,
     bufferOffset = 0
@@ -497,19 +504,20 @@ function writeBufferData(
         throw new RangeError('GPUQueue.writeBuffer destination offset must be 4-byte aligned');
     }
     const byteLength = alignTo4(data.byteLength);
+    const write = (source: AllowSharedBufferSource, dataOffset: number, size: number): void => {
+        if (deviceOrOwner instanceof WebGPUDevice) {
+            deviceOrOwner.writeNativeBuffer(buffer, bufferOffset, source, dataOffset, size);
+        } else {
+            deviceOrOwner.queue.writeBuffer(buffer, bufferOffset, source, dataOffset, size);
+        }
+    };
     if (byteLength === data.byteLength) {
-        device.queue.writeBuffer(
-            buffer,
-            bufferOffset,
-            data.buffer,
-            data.byteOffset,
-            data.byteLength
-        );
+        write(data.buffer, data.byteOffset, data.byteLength);
         return;
     }
     const padded = new Uint8Array(byteLength);
     padded.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-    device.queue.writeBuffer(buffer, bufferOffset, padded.buffer, 0, padded.byteLength);
+    write(padded.buffer, 0, padded.byteLength);
 }
 
 function indexFormatInfo(geometryData: GeometryData, primitiveRestart: boolean): IndexFormatInfo {
@@ -623,6 +631,7 @@ function packIndexByteRange(
 
 /** Per-device packed vertex, instance and index allocation cache. */
 export class WebGPUBufferManager {
+    private readonly owner: GPUDevice | WebGPUDevice;
     private readonly device: GPUDevice;
     private readonly vertexBuffers = new OwnerCache<Map<string, CachedVertexBuffer>>();
     /** Renderer frame snapshots call releaseOwner when an index GeometryData identity is replaced. */
@@ -636,8 +645,13 @@ export class WebGPUBufferManager {
     private readonly deferredBufferDestructions = new Set<GPUBuffer>();
     readonly cacheLimits: Readonly<WebGPUBufferCacheLimits>;
 
-    constructor(device: GPUDevice, cacheLimits: Partial<WebGPUBufferCacheLimits> = {}) {
-        this.device = device;
+    constructor(
+        deviceOrOwner: GPUDevice | WebGPUDevice,
+        cacheLimits: Partial<WebGPUBufferCacheLimits> = {}
+    ) {
+        this.owner = deviceOrOwner;
+        this.device =
+            deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner.nativeDevice : deviceOrOwner;
         this.cacheLimits = Object.freeze({
             vertexVariantsPerOwner: cacheLimit(
                 cacheLimits.vertexVariantsPerOwner ??
@@ -779,7 +793,7 @@ export class WebGPUBufferManager {
         if (resource?.byteLength !== byteLength) {
             const data = packVertexSources(sources, prepared, count);
             const buffer = uploadNewBuffer(
-                this.device,
+                this.owner,
                 `VertexBundle:${variantKey}`,
                 WebGPUBufferUsage.VERTEX | WebGPUBufferUsage.COPY_DST,
                 data
@@ -805,7 +819,7 @@ export class WebGPUBufferManager {
                     : null;
             if (ranges === null) {
                 writeBufferData(
-                    this.device,
+                    this.owner,
                     resource.buffer,
                     packVertexSources(sources, prepared, count)
                 );
@@ -815,7 +829,7 @@ export class WebGPUBufferManager {
                     data: packVertexRange(sources, prepared, range.start, range.end - range.start)
                 }));
                 for (const patch of patches) {
-                    writeBufferData(this.device, resource.buffer, patch.data, patch.bufferOffset);
+                    writeBufferData(this.owner, resource.buffer, patch.data, patch.bufferOffset);
                 }
             }
             resource.structureKey = structureKey;
@@ -868,7 +882,7 @@ export class WebGPUBufferManager {
         if (resource?.byteLength !== byteLength || resource.format !== info.format) {
             const data = packAllIndexData(geometryData, info);
             const buffer = uploadNewBuffer(
-                this.device,
+                this.owner,
                 `Index:${geometryData.id}:${info.key}`,
                 WebGPUBufferUsage.INDEX | WebGPUBufferUsage.COPY_DST,
                 data
@@ -890,14 +904,14 @@ export class WebGPUBufferManager {
                     ? updatedIndexByteRanges(geometryData, info, resource.revision)
                     : null;
             if (ranges === null) {
-                writeBufferData(this.device, resource.buffer, packAllIndexData(geometryData, info));
+                writeBufferData(this.owner, resource.buffer, packAllIndexData(geometryData, info));
             } else {
                 const patches = ranges.map(range => ({
                     bufferOffset: range.start,
                     data: packIndexByteRange(geometryData, info, range)
                 }));
                 for (const patch of patches) {
-                    writeBufferData(this.device, resource.buffer, patch.data, patch.bufferOffset);
+                    writeBufferData(this.owner, resource.buffer, patch.data, patch.bufferOffset);
                 }
             }
             resource.revision = revision;
@@ -941,7 +955,7 @@ export class WebGPUBufferManager {
         }
         if (resource?.byteLength !== data.byteLength) {
             const buffer = uploadNewBuffer(
-                this.device,
+                this.owner,
                 `InstanceBundle:${typeof owner === 'string' ? owner : String(this.objectId(owner))}`,
                 WebGPUBufferUsage.VERTEX | WebGPUBufferUsage.COPY_DST,
                 data
@@ -970,11 +984,12 @@ export class WebGPUBufferManager {
                 while (end > start && resource.data[end - 1] === bytes[end - 1]) end--;
                 const alignedStart = Math.floor(start / 4) * 4;
                 const alignedEnd = Math.ceil(end / 4) * 4;
-                this.device.queue.writeBuffer(
-                    resource.buffer,
-                    alignedStart,
-                    bytes.subarray(alignedStart, alignedEnd)
-                );
+                const changedBytes = bytes.subarray(alignedStart, alignedEnd);
+                if (this.owner instanceof WebGPUDevice) {
+                    this.owner.writeNativeBuffer(resource.buffer, alignedStart, changedBytes);
+                } else {
+                    this.owner.queue.writeBuffer(resource.buffer, alignedStart, changedBytes);
+                }
                 resource.data.set(bytes);
             }
             resource.count = count;

@@ -20,7 +20,7 @@ import {
     WebGPUTextureManager
 } from '../../../src/Hilo3d';
 import WebGPUBindGroupManager from '../../../src/renderer/webgpu/WebGPUBindGroupManager';
-import { specializeWebGPUDepthSamplers } from '../../../src/renderer/webgpu/shader/GlslToWgsl';
+import { specializeWebGPUDepthSamplers } from '../../../src/renderer/shader/GlslToWgsl';
 import {
     WebGPUBufferUsage,
     WebGPUMapMode,

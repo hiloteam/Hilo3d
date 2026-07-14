@@ -1,11 +1,8 @@
 import type Mesh from '../../core/Mesh';
-import { EventDispatcher } from '../../core/EventDispatcher';
 import semantic from '../../material/semantic';
-import Color from '../../math/Color';
+import type Color from '../../math/Color';
 import Shader from '../../shader/Shader';
 import Program from './Program';
-import RenderInfo from '../common/RenderInfo';
-import RenderList from '../common/RenderList';
 import VertexArrayObject from './VertexArrayObject';
 import Buffer from './Buffer';
 import Framebuffer from './Framebuffer';
@@ -13,6 +10,7 @@ import { WebGLExtensions } from './extensions';
 import { WebGLCapabilities } from './capabilities';
 import glType from './glType';
 import WebGLState, {
+    attachWebGLStateRHI,
     bindWebGLSampler,
     destroyWebGLSamplers,
     destroyWebGLUniformBuffers,
@@ -20,12 +18,12 @@ import WebGLState, {
     getWebGLTexture,
     releaseWebGLUniformBuffer
 } from './WebGLState';
-import GraphicsResourceManager, { type ManagedResource } from '../common/GraphicsResourceManager';
+import type { ManagedResource } from '../common/GraphicsResourceManager';
 import BuiltInUniformBlockManager from '../common/BuiltInUniformBlockManager';
 import type UniformBuffer from '../common/UniformBuffer';
 import { BUILTIN_UNIFORM_BLOCK_BINDING_COUNT } from '../common/ubo/UniformBlockBindings';
 import { BUILT_IN_UNIFORM_BLOCK_LAYOUTS } from '../common/ubo/BuiltInUniformBlocks';
-import LightManager, { setLightShadowBindingProvider } from '../../light/LightManager';
+import { setLightShadowBindingProvider } from '../../light/LightManager';
 import Texture, { type TextureBinding } from '../../texture/Texture';
 import GeometryData from '../../geometry/GeometryData';
 import {
@@ -56,12 +54,12 @@ import type { GLContext } from './WebGLTypes';
 import {
     createRendererFrame,
     invokeRendererFrameCallback,
+    default as Renderer,
     type RendererFrameCallback,
     type RendererScene,
     type RendererViewport,
     type TextureCompressionFormat
 } from '../common/Renderer';
-import { RenderFramePlanner } from '../common/RenderFramePlan';
 import {
     renderTargetFormatHasStencil,
     type RenderTarget,
@@ -79,6 +77,7 @@ import {
     releaseWebGLShadowMaps,
     renderWebGLShadowMaps
 } from './WebGLShadowMapManager';
+import { WebGL2RHI, type WebGLRHIContextLifecycleEvent } from '../../rhi/webgl/WebGLRHI';
 
 export interface WebGLRendererParameters {
     width?: number;
@@ -138,44 +137,21 @@ function isTextureBinding(value: unknown): value is TextureBinding {
 }
 
 /** WebGL renderer with explicit state, resource and event lifecycles. */
-class WebGLRenderer extends EventDispatcher {
-    readonly backend = 'webgl2' as const;
-    readonly className = 'WebGLRenderer';
+class WebGLRenderer extends Renderer {
+    override readonly backend = 'webgl2' as const;
+    override readonly className = 'WebGLRenderer';
     readonly isWebGLRenderer = true;
-    readonly renderInfo: RenderInfo;
-    readonly renderList: RenderList;
-    readonly lightManager: LightManager;
-    readonly resourceManager: GraphicsResourceManager;
-    private readonly framePlanner = new RenderFramePlanner();
     readonly extensions = new WebGLExtensions();
     readonly capabilities = new WebGLCapabilities(this.extensions);
 
-    width = 0;
-    height = 0;
-    pixelRatio = 1;
-    domElement: HTMLCanvasElement | null = null;
-    private _useInstanced = false;
-    alpha = false;
-    depth = true;
-    stencil = false;
-    antialias = true;
-    premultipliedAlpha = true;
     preserveDrawingBuffer = false;
-    failIfMajorPerformanceCaveat = false;
     powerPreference: WebGLPowerPreference = 'default';
-    useLogDepth = false;
-    vertexPrecision: ShaderPrecision = 'highp';
-    fragmentPrecision: ShaderPrecision = 'highp';
-    fog: Fog | null = null;
-    offsetX = 0;
-    offsetY = 0;
-    forceMaterial: Material | null = null;
-    isInitFailed = false;
-    clearColor: Color;
-    renderTarget: WebGLRenderTarget | null = null;
+    override renderTarget: WebGLRenderTarget | null = null;
 
     private _gl: GLContext | null = null;
     private _state: WebGLState | null = null;
+    private _rhi: WebGL2RHI | null = null;
+    private releaseRhiLifecycle: (() => void) | null = null;
     private _isInit = false;
     private _isContextLost = false;
     private _isDestroyed = false;
@@ -192,6 +168,7 @@ class WebGLRenderer extends EventDispatcher {
     private autoPresentRenderTarget = false;
     private activeViewport: RendererViewport | null = null;
     private frameRecording = false;
+    private nativeSessionDepth = 0;
     private readonly beginCameraPass = (
         camera: Camera,
         viewport: RendererViewport = this.getDefaultViewport()
@@ -201,56 +178,48 @@ class WebGLRenderer extends EventDispatcher {
         semantic.setViewport(viewport);
         this.uniformBlockManager.beginPass(camera, viewport);
     };
-    readonly ready: Promise<void>;
+    override readonly ready: Promise<void>;
     private resolveReady: (() => void) | null = null;
     private rejectReady: ((reason: unknown) => void) | null = null;
 
-    private readonly handleContextLost = (event: Event): void => {
-        this.onContextLost(event);
+    private readonly handleRhiContextLifecycle = (event: WebGLRHIContextLifecycleEvent): void => {
+        if (event.type === 'lost') this.onContextLost(event.nativeEvent);
+        else this.onContextRestored(event.nativeEvent);
     };
 
-    private readonly handleContextRestored = (event: Event): void => {
-        this.onContextRestored(event);
-    };
-
+    /** @internal Use withNativeContext for explicit extension work. */
     get gl(): GLContext {
         if (!this._gl) throw new Error('WebGLRenderer has not initialized a WebGL context');
         return this._gl;
     }
 
+    /** @internal Renderer subsystems share this adapter; applications should not mutate it. */
     get state(): WebGLState {
         if (!this._state) throw new Error('WebGLRenderer has not initialized WebGL state');
         return this._state;
     }
 
     get isInit(): boolean {
-        return this._isInit && !this.isInitFailed && this._gl !== null && this._state !== null;
+        return (
+            this._isInit &&
+            !this.isInitFailed &&
+            this._gl !== null &&
+            this._state !== null &&
+            this._rhi !== null
+        );
     }
 
-    get isReady(): boolean {
-        return !this._isDestroyed && !this._isContextLost && this.isInit;
-    }
-
-    get useInstanced(): boolean {
-        return this._useInstanced;
-    }
-
-    set useInstanced(value: boolean) {
-        this._useInstanced = value;
-        this.renderList.useInstanced = value;
+    override get isReady(): boolean {
+        return (
+            !this._isDestroyed && !this._isContextLost && this.isInit && this._rhi?.isReady === true
+        );
     }
 
     constructor(params: WebGLRendererParameters = {}) {
         super();
-        this.clearColor = new Color(1, 1, 1);
-        this.renderInfo = new RenderInfo();
-        this.renderList = new RenderList();
-        this.renderList.useInstanced = this._useInstanced;
-        this.lightManager = new LightManager();
         setLightShadowBindingProvider(this.lightManager, light =>
             getWebGLLightShadowBinding(this.lightManager, light)
         );
-        this.resourceManager = new GraphicsResourceManager();
         Object.assign(this, params);
         this.uniformBlockManager = new BuiltInUniformBlockManager(this);
         registerWebGLCanvasPresenter(this, () => {
@@ -277,6 +246,44 @@ class WebGLRenderer extends EventDispatcher {
         this._lastProgram = null;
     }
 
+    /** Keep direct legacy GL calls frame-scoped while the adapter maintains canonical RHI state. */
+    private runWithNativeSession<T>(callback: () => T): T {
+        const rhi = this._rhi;
+        if (!rhi || this.nativeSessionDepth > 0) return callback();
+        this.nativeSessionDepth++;
+        try {
+            return rhi.device.runWithNativeContext(nativeContext => {
+                if (nativeContext !== this._gl) {
+                    throw new Error('WebGLRenderer and WebGLRHI context generations diverged');
+                }
+                return callback();
+            }, true);
+        } finally {
+            this.nativeSessionDepth--;
+        }
+    }
+
+    /**
+     * Execute synchronous low-frequency extension work against the renderer's context. Cached
+     * native state is invalidated on both sides so the next renderer pass re-establishes it.
+     */
+    withNativeContext<T>(callback: (gl: WebGL2RenderingContext) => T): T {
+        this.initContext();
+        const rhi = this._rhi;
+        const gl = this._gl;
+        if (!rhi || !gl) throw new Error('WebGLRenderer native context is unavailable');
+        this.invalidateDrawState();
+        this.activeViewport = null;
+        VertexArrayObject.invalidateBinding(gl);
+        try {
+            return rhi.device.runWithNativeContext(callback);
+        } finally {
+            this.invalidateDrawState();
+            this.activeViewport = null;
+            VertexArrayObject.invalidateBinding(gl);
+        }
+    }
+
     private activeSurfaceHasStencil(): boolean {
         const format = this.renderTarget?.depthStencilFormat;
         return format === null || format === undefined
@@ -284,13 +291,17 @@ class WebGLRenderer extends EventDispatcher {
             : renderTargetFormatHasStencil(format);
     }
 
-    resize(width: number, height: number, force = false): void {
+    override resize(width: number, height: number, force = false): void {
         if (!force && this.width === width && this.height === height) return;
         this.width = width;
         this.height = height;
         if (this.domElement) {
-            this.domElement.width = width;
-            this.domElement.height = height;
+            if (this._rhi?.isReady === true) {
+                this._rhi.surface.resize(Math.max(1, width), Math.max(1, height));
+            } else {
+                this.domElement.width = width;
+                this.domElement.height = height;
+            }
         }
         this.viewport();
     }
@@ -311,31 +322,33 @@ class WebGLRenderer extends EventDispatcher {
     }
 
     /** Return the physical-pixel viewport used by the active render pass. */
-    getViewport(): RendererViewport {
+    override getViewport(): RendererViewport {
         return this.activeViewport ?? this.getDefaultViewport();
     }
 
     /** Create a render target owned by this renderer's WebGL2 context. */
-    createRenderTarget(parameters: RenderTargetParameters): WebGLRenderTarget {
+    override createRenderTarget(parameters: RenderTargetParameters): WebGLRenderTarget {
         this.initContext();
-        const target = new WebGLRenderTarget(this, parameters, destroyedTarget => {
-            this.resourceManager.releasePass(destroyedTarget).destroyUnusedResource();
-            this.renderTargets.delete(destroyedTarget);
-            if (this.renderTarget === destroyedTarget) {
-                this.renderTarget = null;
-                this.ownsRenderTarget = false;
-                this.autoPresentRenderTarget = false;
-                if (this._state) {
-                    this._state.bindSystemFramebuffer();
-                    this.viewport();
+        return this.runWithNativeSession(() => {
+            const target = new WebGLRenderTarget(this, parameters, destroyedTarget => {
+                this.resourceManager.releasePass(destroyedTarget).destroyUnusedResource();
+                this.renderTargets.delete(destroyedTarget);
+                if (this.renderTarget === destroyedTarget) {
+                    this.renderTarget = null;
+                    this.ownsRenderTarget = false;
+                    this.autoPresentRenderTarget = false;
+                    if (this._state) {
+                        this._state.bindSystemFramebuffer();
+                        this.viewport();
+                    }
                 }
-            }
+            });
+            this.renderTargets.add(target);
+            return target;
         });
-        this.renderTargets.add(target);
-        return target;
     }
 
-    supportsTextureCompression(format: TextureCompressionFormat): boolean {
+    override supportsTextureCompression(format: TextureCompressionFormat): boolean {
         this.initContext();
         switch (format) {
             case 'bc':
@@ -352,80 +365,90 @@ class WebGLRenderer extends EventDispatcher {
     }
 
     /** Select a target for subsequent render calls; null restores canvas rendering. */
-    setRenderTarget(target: RenderTarget | null, options: RenderTargetSelectionOptions = {}): this {
-        let resolved: WebGLRenderTarget | null = null;
-        if (target !== null) {
+    override setRenderTarget(
+        target: RenderTarget | null,
+        options: RenderTargetSelectionOptions = {}
+    ): this {
+        return this.runWithNativeSession(() => {
+            let resolved: WebGLRenderTarget | null = null;
+            if (target !== null) {
+                if (!(target instanceof WebGLRenderTarget)) {
+                    throw new TypeError('WebGLRenderer requires a WebGL2 render target');
+                }
+                if (!this.renderTargets.has(target)) {
+                    throw new TypeError('WebGL render target belongs to a different renderer');
+                }
+                if (target.isDestroyed) throw new Error('Cannot select a destroyed render target');
+                resolved = target;
+            }
+            const previous = this.renderTarget;
+            const destroyPrevious =
+                this.ownsRenderTarget && previous !== null && previous !== resolved;
+            this.renderTarget = resolved;
+            this.invalidateDrawState();
+            this.activeViewport = null;
+            this.ownsRenderTarget = resolved !== null && options.takeOwnership === true;
+            this.autoPresentRenderTarget = resolved !== null && options.present === true;
+            if (destroyPrevious) previous.destroy();
+            if (resolved === null && this._state) {
+                this._state.bindSystemFramebuffer();
+                this.viewport();
+            }
+            return this;
+        });
+    }
+
+    /** Present the first color attachment of a renderer-owned target to the canvas. */
+    override present(target: RenderTarget = this.requireRenderTarget()): void {
+        this.runWithNativeSession(() => {
             if (!(target instanceof WebGLRenderTarget)) {
                 throw new TypeError('WebGLRenderer requires a WebGL2 render target');
             }
             if (!this.renderTargets.has(target)) {
                 throw new TypeError('WebGL render target belongs to a different renderer');
             }
-            if (target.isDestroyed) throw new Error('Cannot select a destroyed render target');
-            resolved = target;
-        }
-        const previous = this.renderTarget;
-        const destroyPrevious = this.ownsRenderTarget && previous !== null && previous !== resolved;
-        this.renderTarget = resolved;
-        this.invalidateDrawState();
-        this.activeViewport = null;
-        this.ownsRenderTarget = resolved !== null && options.takeOwnership === true;
-        this.autoPresentRenderTarget = resolved !== null && options.present === true;
-        if (destroyPrevious) previous.destroy();
-        if (resolved === null && this._state) {
-            this._state.bindSystemFramebuffer();
-            this.viewport();
-        }
-        return this;
-    }
-
-    /** Present the first color attachment of a renderer-owned target to the canvas. */
-    present(target: RenderTarget = this.requireRenderTarget()): void {
-        if (!(target instanceof WebGLRenderTarget)) {
-            throw new TypeError('WebGLRenderer requires a WebGL2 render target');
-        }
-        if (!this.renderTargets.has(target)) {
-            throw new TypeError('WebGL render target belongs to a different renderer');
-        }
-        if (target.isDestroyed) throw new Error('Cannot present a destroyed render target');
-        target.presentToCanvas();
+            if (target.isDestroyed) throw new Error('Cannot present a destroyed render target');
+            target.presentToCanvas();
+        });
     }
 
     /** Render one scoped pass without changing the caller's persistent target selection. */
-    renderToTarget(
+    override renderToTarget(
         target: RenderTarget,
         stage: RendererScene,
         camera: Camera,
         fireEvent = false
     ): void {
-        if (!(target instanceof WebGLRenderTarget)) {
-            throw new TypeError('WebGLRenderer requires a WebGL2 render target');
-        }
-        if (!this.renderTargets.has(target)) {
-            throw new TypeError('WebGL render target belongs to a different renderer');
-        }
-        if (target.isDestroyed) throw new Error('Cannot render to a destroyed render target');
-        const previousTarget = this.renderTarget;
-        const previousOwnership = this.ownsRenderTarget;
-        const previousPresentation = this.autoPresentRenderTarget;
-        this.renderTarget = target;
-        this.invalidateDrawState();
-        this.activeViewport = null;
-        this.ownsRenderTarget = false;
-        this.autoPresentRenderTarget = false;
-        try {
-            this.render(stage, camera, fireEvent);
-        } finally {
-            this.renderTarget = previousTarget?.isDestroyed === false ? previousTarget : null;
+        this.runWithNativeSession(() => {
+            if (!(target instanceof WebGLRenderTarget)) {
+                throw new TypeError('WebGLRenderer requires a WebGL2 render target');
+            }
+            if (!this.renderTargets.has(target)) {
+                throw new TypeError('WebGL render target belongs to a different renderer');
+            }
+            if (target.isDestroyed) throw new Error('Cannot render to a destroyed render target');
+            const previousTarget = this.renderTarget;
+            const previousOwnership = this.ownsRenderTarget;
+            const previousPresentation = this.autoPresentRenderTarget;
+            this.renderTarget = target;
             this.invalidateDrawState();
             this.activeViewport = null;
-            this.ownsRenderTarget = this.renderTarget !== null && previousOwnership;
-            this.autoPresentRenderTarget = this.renderTarget !== null && previousPresentation;
-            if (this._state) {
-                this._state.bindSystemFramebuffer();
-                this.viewport();
+            this.ownsRenderTarget = false;
+            this.autoPresentRenderTarget = false;
+            try {
+                this.render(stage, camera, fireEvent);
+            } finally {
+                this.renderTarget = previousTarget?.isDestroyed === false ? previousTarget : null;
+                this.invalidateDrawState();
+                this.activeViewport = null;
+                this.ownsRenderTarget = this.renderTarget !== null && previousOwnership;
+                this.autoPresentRenderTarget = this.renderTarget !== null && previousPresentation;
+                if (this._state) {
+                    this._state.bindSystemFramebuffer();
+                    this.viewport();
+                }
             }
-        }
+        });
     }
 
     private requireRenderTarget(): WebGLRenderTarget {
@@ -433,7 +456,7 @@ class WebGLRenderer extends EventDispatcher {
         return this.renderTarget;
     }
 
-    setOffset(x: number, y: number): void {
+    override setOffset(x: number, y: number): void {
         if (this.offsetX === x && this.offsetY === y) return;
         this.offsetX = x;
         this.offsetY = y;
@@ -457,7 +480,7 @@ class WebGLRenderer extends EventDispatcher {
         if (semantic.renderer === this) semantic.setViewport(viewport);
     }
 
-    onInit(callback: (renderer: WebGLRenderer) => void): void {
+    override onInit(callback: (renderer: this) => void): void {
         if (this.isInit) {
             callback(this);
             return;
@@ -485,6 +508,12 @@ class WebGLRenderer extends EventDispatcher {
             this.resolveReady = null;
             this.rejectReady = null;
         } catch (error: unknown) {
+            this.releaseRhiLifecycle?.();
+            this.releaseRhiLifecycle = null;
+            this._rhi?.destroy();
+            this._rhi = null;
+            this._gl = null;
+            this._state = null;
             const failure = error instanceof Error ? error : new Error(String(error));
             this.isInitFailed = true;
             this._initError = failure;
@@ -499,7 +528,10 @@ class WebGLRenderer extends EventDispatcher {
     private createContext(): void {
         const canvas = this.domElement;
         if (!canvas) throw new Error('WebGLRenderer requires a canvas before initialization');
-        const contextAttributes: WebGLContextAttributes = {
+        const rhi = new WebGL2RHI({
+            canvas,
+            width: Math.max(1, this.width),
+            height: Math.max(1, this.height),
             alpha: this.alpha,
             depth: this.depth,
             stencil: this.stencil,
@@ -507,14 +539,13 @@ class WebGLRenderer extends EventDispatcher {
             premultipliedAlpha: this.premultipliedAlpha,
             preserveDrawingBuffer: this.preserveDrawingBuffer,
             failIfMajorPerformanceCaveat: this.failIfMajorPerformanceCaveat,
-            powerPreference: this.powerPreference
-        };
+            ...(this.powerPreference === 'default' ? {} : { powerPreference: this.powerPreference })
+        });
+        const gl = rhi.nativeContext;
 
-        const gl = canvas.getContext('webgl2', contextAttributes);
-        if (!gl) throw new Error('This browser or device could not create a WebGL 2 context');
-
+        this._rhi = rhi;
+        this.releaseRhiLifecycle = rhi.addContextLifecycleListener(this.handleRhiContextLifecycle);
         this._gl = gl;
-        gl.viewport(0, 0, this.width, this.height);
         glType.init(gl);
         this.extensions.init(gl);
         this.capabilities.init(gl);
@@ -532,11 +563,11 @@ class WebGLRenderer extends EventDispatcher {
             );
         }
         Shader.init(this);
-        this._state = new WebGLState(gl, this.capabilities, this.extensions);
+        const state = new WebGLState(gl, this.capabilities, this.extensions);
+        attachWebGLStateRHI(state, rhi.state, rhi.device);
+        this._state = state;
+        this._state.viewport(0, 0, this.width, this.height);
         this.renderList.useInstanced = this.useInstanced;
-
-        canvas.addEventListener('webglcontextlost', this.handleContextLost, false);
-        canvas.addEventListener('webglcontextrestored', this.handleContextRestored, false);
     }
 
     private onContextLost(event: Event): void {
@@ -560,15 +591,21 @@ class WebGLRenderer extends EventDispatcher {
     }
 
     private onContextRestored(_event: Event): void {
-        const gl = this._gl;
+        const gl = this._rhi?.nativeContext ?? this._gl;
         const state = this._state;
         if (!gl || !state) throw new Error('WebGL context restored before renderer initialization');
         try {
+            this._gl = gl;
             this.extensions.reset(gl);
             this.capabilities.init(gl);
             glType.init(gl);
             Shader.init(this);
             state.reset();
+            const rhi = this._rhi;
+            if (!rhi) throw new Error('WebGL RHI is unavailable during context restoration');
+            const restoredState = new WebGLState(gl, this.capabilities, this.extensions);
+            attachWebGLStateRHI(restoredState, rhi.state, rhi.device);
+            this._state = restoredState;
             Framebuffer.reset(gl);
             this.renderTargets.forEach(target => {
                 target.handleContextRestored();
@@ -838,8 +875,14 @@ class WebGLRenderer extends EventDispatcher {
         this.renderInfo.addDrawCount(drawCount);
     }
 
-    render(stage: WebGLRendererScene, camera: Camera, fireEvent = false): void {
+    override render(stage: WebGLRendererScene, camera: Camera, fireEvent = false): void {
         this.initContext();
+        this.runWithNativeSession(() => {
+            this.renderInitialized(stage, camera, fireEvent);
+        });
+    }
+
+    private renderInitialized(stage: WebGLRendererScene, camera: Camera, fireEvent: boolean): void {
         if (this._isContextLost) throw new Error('Cannot render while the WebGL context is lost');
         this.resourceManager.beginFrame();
         try {
@@ -854,7 +897,7 @@ class WebGLRenderer extends EventDispatcher {
             if (this.frameRecording) this.uniformBlockManager.beginPass(camera, viewport);
             else this.uniformBlockManager.beginFrame(camera, viewport);
 
-            this.framePlanner.build(stage, camera, this.renderList, this.lightManager);
+            this.buildFramePlan(stage, camera);
             renderWebGLShadowMaps(this.lightManager, this, camera, this.beginCameraPass);
             this.lightManager.updateInfo(camera);
             this.beginCameraPass(camera);
@@ -892,20 +935,22 @@ class WebGLRenderer extends EventDispatcher {
     }
 
     /** Execute the shared frame API immediately while preserving one logical frame boundary. */
-    renderFrame(callback: RendererFrameCallback): void {
+    override renderFrame(callback: RendererFrameCallback): void {
         if (this.frameRecording) throw new Error('Nested renderer frames are not supported');
-        this.frameRecording = true;
-        let facadeActive = true;
-        try {
-            this.uniformBlockManager.beginApplicationFrame();
-            invokeRendererFrameCallback(
-                callback,
-                createRendererFrame(this, () => facadeActive && this.frameRecording)
-            );
-        } finally {
-            facadeActive = false;
-            this.frameRecording = false;
-        }
+        this.runWithNativeSession(() => {
+            this.frameRecording = true;
+            let facadeActive = true;
+            try {
+                this.uniformBlockManager.beginApplicationFrame();
+                invokeRendererFrameCallback(
+                    callback,
+                    createRendererFrame(this, () => facadeActive && this.frameRecording)
+                );
+            } finally {
+                facadeActive = false;
+                this.frameRecording = false;
+            }
+        });
     }
 
     renderScene(): void {
@@ -981,7 +1026,7 @@ class WebGLRenderer extends EventDispatcher {
         });
     }
 
-    releaseGPUResources(): void {
+    override releaseGPUResources(): void {
         const gl = this._gl;
         if (!gl) return;
         releaseWebGLShadowMaps(this.lightManager);
@@ -1004,16 +1049,14 @@ class WebGLRenderer extends EventDispatcher {
         this.resourceManager.clear();
     }
 
-    destroy(): void {
+    override destroy(): void {
         if (this._isDestroyed) return;
         this.releaseGPUResources();
         unregisterWebGLCanvasPresenter(this);
-        this.domElement?.removeEventListener('webglcontextlost', this.handleContextLost, false);
-        this.domElement?.removeEventListener(
-            'webglcontextrestored',
-            this.handleContextRestored,
-            false
-        );
+        this.releaseRhiLifecycle?.();
+        this.releaseRhiLifecycle = null;
+        this._rhi?.destroy();
+        this._rhi = null;
         this.off();
         this._state = null;
         this._gl = null;

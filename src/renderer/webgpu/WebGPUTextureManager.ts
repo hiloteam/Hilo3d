@@ -39,6 +39,11 @@ import {
     UNSIGNED_INT,
     UNSIGNED_SHORT
 } from '../../constants/webgl';
+import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
+import {
+    getWebGPUNativeDeviceCache,
+    type WebGPUNativeDeviceCache
+} from '../../rhi/webgpu/WebGPUNativeCache';
 import { touchBoundedLruEntry } from '../common/BoundedLruCache';
 import {
     COMPRESSED_RGBA_ASTC_4X4_KHR,
@@ -140,7 +145,7 @@ import {
     textureElementsPerPixel,
     texturePixelDataToTypedArray
 } from '../../texture/texturePixelData';
-import type { NagaShaderTranslator, TranslatedShaderPair } from './shader/GlslToWgsl';
+import type { NagaShaderTranslator, TranslatedShaderPair } from '../shader/GlslToWgsl';
 import mipmapFragmentSource from '../../shader/webgpu/mipmap.frag';
 import mipmapVertexSource from '../../shader/webgpu/mipmap.vert';
 import {
@@ -885,6 +890,11 @@ export function createWebGPUSamplerDescriptor(
     };
 }
 
+/** Canonical immutable sampler key without object reflection or JSON allocation. */
+export function getWebGPUSamplerDescriptorKey(descriptor: GPUSamplerDescriptor): string {
+    return `${descriptor.addressModeU ?? 'clamp-to-edge'}|${descriptor.addressModeV ?? 'clamp-to-edge'}|${descriptor.addressModeW ?? 'clamp-to-edge'}|${descriptor.magFilter ?? 'nearest'}|${descriptor.minFilter ?? 'nearest'}|${descriptor.mipmapFilter ?? 'nearest'}|${String(descriptor.lodMinClamp ?? 0)}|${String(descriptor.lodMaxClamp ?? 32)}|${descriptor.compare ?? '-'}|${String(descriptor.maxAnisotropy ?? 1)}`;
+}
+
 type TextureUploadArray =
     | Int8Array
     | Uint8Array
@@ -1135,6 +1145,8 @@ function calculateMipLevelCount(width: number, height: number, depth = 1): numbe
 /** Owns all WebGPU texture, view, sampler and mipmap-pipeline state for one device. */
 export default class WebGPUTextureManager {
     private _device: GPUDevice;
+    private _rhiDevice: WebGPUDevice | null;
+    private _nativeCache: WebGPUNativeDeviceCache;
     private readonly translator: NagaShaderTranslator;
     private readonly onResourceDestroyed: (() => void) | undefined;
     private resourcesByTexture = new WeakMap<Texture<unknown>, InternalTextureResource>();
@@ -1153,14 +1165,13 @@ export default class WebGPUTextureManager {
     private nativeTextures = new WeakMap<GPUTexture, NativeTextureRecord>();
     private readonly liveResources = new Set<InternalTextureResource>();
     private readonly mipmapPipelines = new Map<GPUTextureFormat, MipmapPipeline>();
-    private readonly samplers = new Map<string, GPUSampler>();
     private mipmapShader: TranslatedShaderPair | null = null;
     private submissionActive = false;
     private submissionUsedTextures = new WeakSet<GPUTexture>();
     private readonly deferredTextureDestructions = new Set<GPUTexture>();
 
     /**
-     * @param device - Device that owns every allocation created by this manager.
+     * @param device - Native device that owns every allocation created by this manager.
      * @param translator - Explicit translator whose asynchronous initialization has completed.
      * @param onResourceDestroyed - Invalidates renderer-owned bindings after resource release.
      */
@@ -1168,8 +1179,22 @@ export default class WebGPUTextureManager {
         device: GPUDevice,
         translator: NagaShaderTranslator,
         onResourceDestroyed?: () => void
+    );
+    constructor(
+        deviceOrOwner: GPUDevice | WebGPUDevice,
+        translator: NagaShaderTranslator,
+        onResourceDestroyed?: () => void,
+        rhiDevice?: WebGPUDevice
     ) {
+        const owner = deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner : (rhiDevice ?? null);
+        const device =
+            deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner.nativeDevice : deviceOrOwner;
+        if (rhiDevice && rhiDevice.nativeDevice !== device) {
+            throw new TypeError('WebGPU texture manager and RHI device must share a GPUDevice');
+        }
         this._device = device;
+        this._rhiDevice = owner;
+        this._nativeCache = owner?.nativeCache ?? getWebGPUNativeDeviceCache(device);
         this.translator = translator;
         this.onResourceDestroyed = onResourceDestroyed;
     }
@@ -1180,6 +1205,57 @@ export default class WebGPUTextureManager {
 
     get resourceCount(): number {
         return this.liveResources.size;
+    }
+
+    private createNativeTexture(descriptor: GPUTextureDescriptor): GPUTexture {
+        return (
+            this._rhiDevice?.createNativeTexture(descriptor) ??
+            this.device.createTexture(descriptor)
+        );
+    }
+
+    private createNativeShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
+        return (
+            this._rhiDevice?.createNativeShaderModule(descriptor) ??
+            this.device.createShaderModule(descriptor)
+        );
+    }
+
+    private createNativeCommandEncoder(descriptor: GPUCommandEncoderDescriptor): GPUCommandEncoder {
+        return (
+            this._rhiDevice?.createNativeCommandEncoder(descriptor) ??
+            this.device.createCommandEncoder(descriptor)
+        );
+    }
+
+    private submitNative(commandBuffers: readonly GPUCommandBuffer[]): void {
+        if (this._rhiDevice) this._rhiDevice.submitNative(commandBuffers);
+        else this.device.queue.submit(commandBuffers);
+    }
+
+    private writeNativeTexture(
+        destination: GPUTexelCopyTextureInfo,
+        data: AllowSharedBufferSource,
+        dataLayout: GPUTexelCopyBufferLayout,
+        size: GPUExtent3D
+    ): void {
+        if (this._rhiDevice) {
+            this._rhiDevice.writeNativeTexture(destination, data, dataLayout, size);
+        } else {
+            this.device.queue.writeTexture(destination, data, dataLayout, size);
+        }
+    }
+
+    private copyExternalImageToNativeTexture(
+        source: GPUCopyExternalImageSourceInfo,
+        destination: GPUCopyExternalImageDestInfo,
+        size: GPUExtent3D
+    ): void {
+        if (this._rhiDevice) {
+            this._rhiDevice.copyExternalImageToNativeTexture(source, destination, size);
+        } else {
+            this.device.queue.copyExternalImageToTexture(source, destination, size);
+        }
     }
 
     /** Resolve the comparison default registered by a renderer-owned depth attachment. */
@@ -1516,14 +1592,10 @@ export default class WebGPUTextureManager {
         ) {
             throw new TypeError('Integer WebGPU textures require nearest-only sampling');
         }
-        const key = JSON.stringify(samplerDescriptor);
-        let sampler = this.samplers.get(key);
-        if (sampler) {
-            touchBoundedLruEntry(this.samplers, key, sampler, MAX_CACHED_WEBGPU_SAMPLERS);
-        } else {
-            sampler = this.device.createSampler(samplerDescriptor);
-            touchBoundedLruEntry(this.samplers, key, sampler, MAX_CACHED_WEBGPU_SAMPLERS);
-        }
+        const key = getWebGPUSamplerDescriptorKey(samplerDescriptor);
+        const sampler =
+            this._rhiDevice?.createNativeSampler(samplerDescriptor) ??
+            this._nativeCache.createSampler(samplerDescriptor);
         return { key, sampler };
     }
 
@@ -1715,7 +1787,7 @@ export default class WebGPUTextureManager {
     ): InternalTextureResource {
         this.validateDeviceSupport(descriptor);
         const samplerRequest = this.resolveSampler(texture, descriptor, options);
-        const gpuTexture = this.device.createTexture({
+        const gpuTexture = this.createNativeTexture({
             label: texture.name || texture.id,
             size: {
                 width: descriptor.width,
@@ -1846,7 +1918,7 @@ export default class WebGPUTextureManager {
                     `Compressed mip ${String(mipLevel)} contains ${String(data.byteLength)} bytes; ${String(expectedByteLength)} are required for ${String(width)}x${String(height)} ${formatInfo.format}`
                 );
             }
-            this.device.queue.writeTexture(
+            this.writeNativeTexture(
                 {
                     texture: resource.gpuTexture,
                     mipLevel,
@@ -1874,7 +1946,7 @@ export default class WebGPUTextureManager {
         const data = texture.flipY
             ? flipTextureImageRows(pixels, elementsPerRow, height, depthOrArrayLayers)
             : pixels;
-        this.device.queue.writeTexture(
+        this.writeNativeTexture(
             {
                 texture: resource.gpuTexture,
                 mipLevel,
@@ -1909,7 +1981,7 @@ export default class WebGPUTextureManager {
             const data = texture.flipY
                 ? flipTextureImageRows(converted, width, height, depthOrArrayLayers)
                 : converted;
-            this.device.queue.writeTexture(
+            this.writeNativeTexture(
                 {
                     texture: resource.gpuTexture,
                     mipLevel,
@@ -1931,7 +2003,7 @@ export default class WebGPUTextureManager {
             const data = texture.flipY
                 ? flipTextureImageRows(converted, width, height, depthOrArrayLayers)
                 : converted;
-            this.device.queue.writeTexture(
+            this.writeNativeTexture(
                 {
                     texture: resource.gpuTexture,
                     mipLevel,
@@ -1959,7 +2031,7 @@ export default class WebGPUTextureManager {
                 depthWords[pixel] = packed[pixel * 2] ?? 0;
                 stencil[pixel] = (packed[pixel * 2 + 1] ?? 0) & 0xff;
             }
-            this.device.queue.writeTexture(
+            this.writeNativeTexture(
                 {
                     texture: resource.gpuTexture,
                     mipLevel,
@@ -1970,7 +2042,7 @@ export default class WebGPUTextureManager {
                 { offset: 0, bytesPerRow: width * 4, rowsPerImage: height },
                 { width, height, depthOrArrayLayers }
             );
-            this.device.queue.writeTexture(
+            this.writeNativeTexture(
                 {
                     texture: resource.gpuTexture,
                     mipLevel,
@@ -1999,7 +2071,7 @@ export default class WebGPUTextureManager {
         x = 0,
         y = 0
     ): void {
-        this.device.queue.copyExternalImageToTexture(
+        this.copyExternalImageToNativeTexture(
             { source, flipY: texture.flipY },
             {
                 texture: resource.gpuTexture,
@@ -2303,23 +2375,23 @@ export default class WebGPUTextureManager {
                 mipmapFragmentSource
             ));
         const resources = createWebGPUFullscreenPassResources(
-            this.device,
+            this._rhiDevice ?? this.device,
             shader,
             formatInfo.sampleType,
             `Hilo3d mipmap ${formatInfo.format}`
         );
-        const pipeline = this.device.createRenderPipeline({
+        const pipelineDescriptor: GPURenderPipelineDescriptor = {
             label: `Hilo3d mipmap ${formatInfo.format} pipeline`,
             layout: resources.pipelineLayout,
             vertex: {
-                module: this.device.createShaderModule({
+                module: this.createNativeShaderModule({
                     label: 'Hilo3d mipmap vertex shader',
                     code: shader.vertex.wgsl
                 }),
                 entryPoint: 'main'
             },
             fragment: {
-                module: this.device.createShaderModule({
+                module: this.createNativeShaderModule({
                     label: 'Hilo3d mipmap fragment shader',
                     code: shader.fragment.wgsl
                 }),
@@ -2328,7 +2400,10 @@ export default class WebGPUTextureManager {
             },
             primitive: { topology: 'triangle-list' },
             multisample: { count: 1 }
-        });
+        };
+        const pipeline =
+            this._rhiDevice?.createNativeRenderPipeline(pipelineDescriptor) ??
+            this._nativeCache.createRenderPipeline(pipelineDescriptor);
         const result = { ...resources, pipeline };
         this.mipmapPipelines.set(formatInfo.format, result);
         return result;
@@ -2340,7 +2415,7 @@ export default class WebGPUTextureManager {
     ): void {
         if (descriptor.mipLevelCount <= 1) return;
         const mipmap = this.getMipmapPipeline(descriptor.formatInfo);
-        const encoder = this.device.createCommandEncoder({
+        const encoder = this.createNativeCommandEncoder({
             label: `Hilo3d mipmap ${resource.textureId}`
         });
         for (let layer = 0; layer < descriptor.layers; layer++) {
@@ -2360,7 +2435,7 @@ export default class WebGPUTextureManager {
                     arrayLayerCount: 1
                 });
                 const bindGroup = createWebGPUFullscreenPassBindGroup(
-                    this.device,
+                    this._rhiDevice ?? this.device,
                     mipmap,
                     sourceView,
                     `Hilo3d mipmap ${resource.textureId} level ${String(level)}`
@@ -2381,7 +2456,7 @@ export default class WebGPUTextureManager {
                 pass.end();
             }
         }
-        this.device.queue.submit([encoder.finish()]);
+        this.submitNative([encoder.finish()]);
     }
 
     /** Resolve, create and synchronise a texture resource for this device. */
@@ -2754,7 +2829,6 @@ export default class WebGPUTextureManager {
         this.resourcesByTexture = new WeakMap<Texture<unknown>, InternalTextureResource>();
         this.nativeTextures = new WeakMap<GPUTexture, NativeTextureRecord>();
         this.mipmapPipelines.clear();
-        this.samplers.clear();
         if (hadResources) this.onResourceDestroyed?.();
     }
 
@@ -2765,15 +2839,22 @@ export default class WebGPUTextureManager {
     }
 
     /** @internal Rebind an empty manager to a replacement device after loss. */
-    private restoreDevice(device: GPUDevice): void {
+    private restoreDevice(deviceOrOwner: GPUDevice | WebGPUDevice, rhiDevice?: WebGPUDevice): void {
         if (this.liveResources.size > 0) {
             throw new Error('WebGPUTextureManager must be suspended before replacing its device');
         }
+        const owner = deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner : (rhiDevice ?? null);
+        const device =
+            deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner.nativeDevice : deviceOrOwner;
+        if (rhiDevice && rhiDevice.nativeDevice !== device) {
+            throw new TypeError('WebGPU texture manager and RHI device must share a GPUDevice');
+        }
         this._device = device;
+        this._rhiDevice = owner;
+        this._nativeCache = owner?.nativeCache ?? getWebGPUNativeDeviceCache(device);
         this.resourcesByTexture = new WeakMap<Texture<unknown>, InternalTextureResource>();
         this.nativeTextures = new WeakMap<GPUTexture, NativeTextureRecord>();
         this.mipmapPipelines.clear();
-        this.samplers.clear();
     }
 
     /**
@@ -2823,11 +2904,29 @@ export default class WebGPUTextureManager {
     }
 }
 
+type WebGPUTextureManagerRHIConstructor = new (
+    deviceOrOwner: GPUDevice | WebGPUDevice,
+    translator: NagaShaderTranslator,
+    onResourceDestroyed?: () => void,
+    rhiDevice?: WebGPUDevice
+) => WebGPUTextureManager;
+
+/** Create the production manager with a concrete one-hop RHI device owner. @internal */
+export function createWebGPUTextureManagerForRHI(
+    device: WebGPUDevice,
+    translator: NagaShaderTranslator,
+    onResourceDestroyed?: () => void
+): WebGPUTextureManager {
+    const InternalConstructor =
+        WebGPUTextureManager as unknown as WebGPUTextureManagerRHIConstructor;
+    return new InternalConstructor(device, translator, onResourceDestroyed);
+}
+
 interface WebGPUTextureInternalAccess {
     beginSubmission(): void;
     endSubmission(): void;
     suspendAll(): void;
-    restoreDevice(device: GPUDevice): void;
+    restoreDevice(device: GPUDevice | WebGPUDevice, rhiDevice?: WebGPUDevice): void;
     defaultCompareFor(texture: Texture<unknown>): GLenum | GPUCompareFunction | undefined;
     registerExternalResource(
         texture: Texture<unknown>,
@@ -2866,8 +2965,12 @@ export function suspendWebGPUTextures(manager: WebGPUTextureManager): void {
 }
 
 /** Rebind a suspended manager to a replacement device. @internal */
-export function restoreWebGPUTextureDevice(manager: WebGPUTextureManager, device: GPUDevice): void {
-    internalAccess(manager).restoreDevice(device);
+export function restoreWebGPUTextureDevice(
+    manager: WebGPUTextureManager,
+    device: GPUDevice | WebGPUDevice,
+    rhiDevice?: WebGPUDevice
+): void {
+    internalAccess(manager).restoreDevice(device, rhiDevice);
 }
 
 /** Resolve a renderer-owned depth attachment's comparison default. @internal */

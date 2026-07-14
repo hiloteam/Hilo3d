@@ -12,11 +12,12 @@ import {
     UNSIGNED_SHORT
 } from '../../../src/constants/webgl';
 import { RGBA8I, RGBA8UI, RGBA32F, RGBA_INTEGER } from '../../../src/constants/webgl2';
+import { getWebGPUNativeDeviceCache } from '../../../src/rhi/webgpu/WebGPUNativeCache';
 import type {
     TranslatedShaderPair,
     WebGPUSamplerBinding,
     WebGPUUniformBlock
-} from '../../../src/renderer/webgpu/shader/GlslToWgsl';
+} from '../../../src/renderer/shader/GlslToWgsl';
 import WebGPUBindGroupManager, {
     type ResolvedWebGPUSampler
 } from '../../../src/renderer/webgpu/WebGPUBindGroupManager';
@@ -125,12 +126,8 @@ describe('WebGPUBindGroupManager layouts', () => {
         const empty = manager.getLayout(shader(), []);
 
         expect(empty.bindGroupLayouts).toHaveLength(4);
-        expect(fake.layoutDescriptors.map(descriptor => descriptor.entries)).toEqual([
-            [],
-            [],
-            [],
-            []
-        ]);
+        expect(new Set(empty.bindGroupLayouts).size).toBe(1);
+        expect(fake.layoutDescriptors.map(descriptor => descriptor.entries)).toEqual([[]]);
         const emptyGroups = manager.getBindGroups(empty, shader(), {}, []);
         expect(emptyGroups).toHaveLength(4);
         expect(fake.bindGroupDescriptors.map(descriptor => descriptor.entries)).toEqual([
@@ -151,7 +148,7 @@ describe('WebGPUBindGroupManager layouts', () => {
 
         expect(populated.bindGroupLayouts).toHaveLength(4);
         expect(
-            fake.layoutDescriptors.slice(4).map(descriptor => descriptor.entries.length)
+            fake.layoutDescriptors.slice(1).map(descriptor => descriptor.entries.length)
         ).toEqual([1, 1, 1, 1]);
 
         const buffers = Object.fromEntries(
@@ -178,7 +175,9 @@ describe('WebGPUBindGroupManager layouts', () => {
         const second = manager.getLayout(secondShader, []);
 
         expect(second).toBe(first);
-        expect(fake.layoutDescriptors).toHaveLength(4);
+        expect(second.pipelineLayout).toBe(first.pipelineLayout);
+        expect(second.bindGroupLayouts).toEqual(first.bindGroupLayouts);
+        expect(fake.layoutDescriptors).toHaveLength(3);
 
         const frameUniformBuffer = {} as GPUBuffer;
         const materialBuffer = {} as GPUBuffer;
@@ -207,7 +206,7 @@ describe('WebGPUBindGroupManager layouts', () => {
         expect(secondLayout.bindGroupLayouts[1]).not.toBe(firstLayout.bindGroupLayouts[1]);
         expect(secondLayout.bindGroupLayouts[2]).toBe(firstLayout.bindGroupLayouts[2]);
         expect(secondLayout.bindGroupLayouts[3]).toBe(firstLayout.bindGroupLayouts[3]);
-        expect(fake.layoutDescriptors).toHaveLength(5);
+        expect(fake.layoutDescriptors).toHaveLength(3);
 
         const frameBuffer = {} as GPUBuffer;
         const firstGroups = manager.getBindGroups(
@@ -617,9 +616,10 @@ describe('WebGPUBindGroupManager resource identity', () => {
         expect(fake.bindGroupDescriptors).toHaveLength(8);
     });
 
-    it('clears layout and bind-group caches so rebuilt GPU identities are used', () => {
+    it('keeps immutable layouts in the RHI cache until the device cache is cleared', () => {
         const fake = fakeDevice();
         const manager = managerFor(fake.device);
+        const nativeCache = getWebGPUNativeDeviceCache(fake.device);
         const translated = shader();
         const firstLayout = manager.getLayout(translated, []);
         const firstGroups = manager.getBindGroups(firstLayout, translated, {}, []);
@@ -629,9 +629,20 @@ describe('WebGPUBindGroupManager resource identity', () => {
         const secondLayout = manager.getLayout(translated, []);
         const secondGroups = manager.getBindGroups(secondLayout, translated, {}, []);
         expect(secondLayout).not.toBe(firstLayout);
+        expect(secondLayout.pipelineLayout).toBe(firstLayout.pipelineLayout);
+        expect(secondLayout.bindGroupLayouts).toEqual(firstLayout.bindGroupLayouts);
         expect(secondGroups).not.toBe(firstGroups);
-        expect(fake.layoutDescriptors).toHaveLength(8);
+        expect(fake.layoutDescriptors).toHaveLength(1);
         expect(fake.bindGroupDescriptors).toHaveLength(8);
+
+        nativeCache.clear();
+        manager.clear();
+        const thirdLayout = manager.getLayout(translated, []);
+        manager.getBindGroups(thirdLayout, translated, {}, []);
+        expect(thirdLayout.pipelineLayout).not.toBe(secondLayout.pipelineLayout);
+        expect(thirdLayout.bindGroupLayouts[0]).not.toBe(secondLayout.bindGroupLayouts[0]);
+        expect(fake.layoutDescriptors).toHaveLength(2);
+        expect(fake.bindGroupDescriptors).toHaveLength(12);
     });
 
     it('preserves pipeline-layout identity when only resource bind groups are invalidated', () => {
@@ -646,8 +657,10 @@ describe('WebGPUBindGroupManager resource identity', () => {
         const secondLayout = manager.getLayout(translated, []);
         const secondGroups = manager.getBindGroups(secondLayout, translated, {}, []);
         expect(secondLayout).toBe(firstLayout);
+        expect(secondLayout.pipelineLayout).toBe(firstLayout.pipelineLayout);
+        expect(secondLayout.bindGroupLayouts).toEqual(firstLayout.bindGroupLayouts);
         expect(secondGroups).not.toBe(firstGroups);
-        expect(fake.layoutDescriptors).toHaveLength(4);
+        expect(fake.layoutDescriptors).toHaveLength(1);
         expect(fake.bindGroupDescriptors).toHaveLength(8);
     });
 

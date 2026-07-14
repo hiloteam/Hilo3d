@@ -125,6 +125,11 @@ class VertexArrayObject implements ManagedResource {
         contextCaches.delete(gl);
     }
 
+    /** @internal Forget the binding after explicit raw-context work without destroying VAOs. */
+    static invalidateBinding(gl: GLContext): void {
+        currentVaos.delete(gl);
+    }
+
     readonly className = 'VertexArrayObject';
     readonly isVertexArrayObject = true;
     readonly id: string;

@@ -1,8 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
+import { resolveStageBackend } from '../../../src/core/Stage';
 
 const Stage = Hilo3d.Stage;
 const WebGLRenderer = Hilo3d.WebGLRenderer;
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 describe('Stage', () => {
     it('create', () => {
@@ -61,7 +66,12 @@ describe('Stage', () => {
     });
 
     it('awaits real WebGL2 initialization and rejects unavailable contexts', async () => {
-        const stage = await Stage.create({ width: 16, height: 16, pixelRatio: 1 });
+        const stage = await Stage.create({
+            backend: 'webgl2',
+            width: 16,
+            height: 16,
+            pixelRatio: 1
+        });
         expect(stage.renderer.isInit).toBe(true);
         expect(stage.renderer.isReady).toBe(true);
         stage.renderer.destroy();
@@ -70,12 +80,79 @@ describe('Stage', () => {
         vi.spyOn(unavailableCanvas, 'getContext').mockReturnValue(null);
         await expect(
             Stage.create({
+                backend: 'webgl2',
                 canvas: unavailableCanvas,
                 width: 16,
                 height: 16,
                 pixelRatio: 1
             })
         ).rejects.toThrow(/could not create a WebGL 2 context/u);
+    });
+
+    it('resolves auto through the lightweight support probe without probing explicit backends', async () => {
+        const support = vi.spyOn(Hilo3d.WebGPURenderer, 'isSupported');
+        support.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+        await expect(resolveStageBackend()).resolves.toBe('webgpu');
+        await expect(resolveStageBackend({ backend: 'auto' })).resolves.toBe('webgl2');
+        expect(support).toHaveBeenCalledTimes(2);
+
+        support.mockClear();
+        await expect(resolveStageBackend({ backend: 'webgpu' })).resolves.toBe('webgpu');
+        await expect(resolveStageBackend({ backend: 'webgl2' })).resolves.toBe('webgl2');
+        await expect(
+            resolveStageBackend({ backend: 'auto', preserveDrawingBuffer: false })
+        ).resolves.toBe('webgl2');
+        await expect(
+            resolveStageBackend({
+                backend: 'auto',
+                alpha: true,
+                premultipliedAlpha: false
+            })
+        ).resolves.toBe('webgl2');
+        expect(support).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid runtime backend values instead of silently selecting WebGL2', async () => {
+        await expect(
+            resolveStageBackend({
+                backend: 'invalid'
+            } as unknown as Hilo3d.StageParameters<Hilo3d.StageBackend>)
+        ).rejects.toThrow(/Unsupported Stage backend invalid/u);
+    });
+
+    it('snapshots auto parameters before awaiting adapter discovery', async () => {
+        let resolveSupport: ((supported: boolean) => void) | undefined;
+        vi.spyOn(Hilo3d.WebGPURenderer, 'isSupported').mockImplementation(
+            () =>
+                new Promise<boolean>(resolve => {
+                    resolveSupport = resolve;
+                })
+        );
+        const params: Hilo3d.StageParameters<'auto'> = {
+            width: 16,
+            height: 16,
+            pixelRatio: 1
+        };
+        const pendingStage = Stage.create(params);
+        params.width = 32;
+        params.height = 32;
+        resolveSupport?.(false);
+        const stage = await pendingStage;
+
+        expect(stage.width).toBe(16);
+        expect(stage.height).toBe(16);
+        stage.renderer.destroy();
+    });
+
+    it('creates WebGL2 when the default auto probe reports WebGPU unsupported', async () => {
+        const support = vi.spyOn(Hilo3d.WebGPURenderer, 'isSupported').mockResolvedValue(false);
+        const stage = await Stage.create({ width: 16, height: 16, pixelRatio: 1 });
+
+        expect(support).toHaveBeenCalledOnce();
+        expect(stage.renderer).toBeInstanceOf(WebGLRenderer);
+        expect(stage.canvas.dataset['hilo3dBackend']).toBe('webgl2');
+        stage.renderer.destroy();
     });
 
     it('rejects the WebGL2-only preserved-framebuffer option before WebGPU initialization', () => {

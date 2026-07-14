@@ -1,6 +1,9 @@
 import type * as Naga from 'web-naga';
-import { getWebGPUUniformBlockBinding, type WebGPUResourceBinding } from '../WebGPUBindingLayout';
-import { makeWgslUniformLayoutsPortable } from '../WgslUniformLayout';
+import {
+    getWebGPUUniformBlockBinding,
+    type WebGPUResourceBinding
+} from '../webgpu/WebGPUBindingLayout';
+import { makeWgslUniformLayoutsPortable } from '../webgpu/WgslUniformLayout';
 
 export type GraphicsShaderStage = 'vertex' | 'fragment';
 

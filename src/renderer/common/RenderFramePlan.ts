@@ -11,7 +11,7 @@ import type { RendererScene } from './Renderer';
  *
  * The arrays and set intentionally retain their storage between frames. Backends may inspect the
  * plan while recording shadows and draw commands, but must not retain its contents after the next
- * call to {@link RenderFramePlanner.build}.
+ * renderer planning pass.
  */
 export interface RenderFramePlan {
     readonly meshes: readonly Mesh[];

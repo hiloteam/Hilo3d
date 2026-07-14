@@ -26,6 +26,7 @@ import {
     UNSIGNED_INT_24_8
 } from '../../constants/webgl2';
 import Texture from '../../texture/Texture';
+import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
 import type {
     RenderTarget,
     RenderTargetColorAttachmentOptions,
@@ -464,6 +465,7 @@ export default class WebGPURenderTarget implements RenderTarget {
 
     private _width: number;
     private _height: number;
+    private _owner: GPUDevice | WebGPUDevice;
     private _device: GPUDevice;
     private _textureManager: WebGPUTextureManager;
     private readonly colorAttachments: ColorAttachmentState[];
@@ -535,12 +537,43 @@ export default class WebGPURenderTarget implements RenderTarget {
         return this.destroyed;
     }
 
+    private createNativeTexture(descriptor: GPUTextureDescriptor): GPUTexture {
+        return this._owner instanceof WebGPUDevice
+            ? this._owner.createNativeTexture(descriptor)
+            : this._owner.createTexture(descriptor);
+    }
+
+    private createNativeBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
+        return this._owner instanceof WebGPUDevice
+            ? this._owner.createNativeBuffer(descriptor)
+            : this._owner.createBuffer(descriptor);
+    }
+
+    private createNativeCommandEncoder(descriptor: GPUCommandEncoderDescriptor): GPUCommandEncoder {
+        return this._owner instanceof WebGPUDevice
+            ? this._owner.createNativeCommandEncoder(descriptor)
+            : this._owner.createCommandEncoder(descriptor);
+    }
+
+    private submitNative(commandBuffers: readonly GPUCommandBuffer[]): void {
+        if (this._owner instanceof WebGPUDevice) this._owner.submitNative(commandBuffers);
+        else this._owner.queue.submit(commandBuffers);
+    }
+
     constructor(
         device: GPUDevice,
         textureManager: WebGPUTextureManager,
         parameters: WebGPURenderTargetParameters,
+        onDestroy?: (target: WebGPURenderTarget) => void
+    );
+    constructor(
+        deviceOrOwner: GPUDevice | WebGPUDevice,
+        textureManager: WebGPUTextureManager,
+        parameters: WebGPURenderTargetParameters,
         onDestroy: (target: WebGPURenderTarget) => void = () => undefined
     ) {
+        const device =
+            deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner.nativeDevice : deviceOrOwner;
         if (textureManager.device !== device) {
             throw new TypeError(
                 'WebGPURenderTarget and WebGPUTextureManager must use the same device'
@@ -550,6 +583,7 @@ export default class WebGPURenderTarget implements RenderTarget {
         assertPositiveInteger(parameters.height, 'Render-target height');
         const sampleCount: unknown = parameters.sampleCount ?? 1;
         assertSampleCount(sampleCount);
+        this._owner = deviceOrOwner;
         this._device = device;
         this._textureManager = textureManager;
         this.onDestroy = onDestroy;
@@ -759,7 +793,7 @@ export default class WebGPURenderTarget implements RenderTarget {
             attachment.texture.height = this._height;
             attachment.texture.needUpdate = false;
             attachment.texture.needDestroy = false;
-            const resolveTexture = this.device.createTexture({
+            const resolveTexture = this.createNativeTexture({
                 label: attachment.label,
                 size: { width: this._width, height: this._height, depthOrArrayLayers: 1 },
                 mipLevelCount: 1,
@@ -779,7 +813,7 @@ export default class WebGPURenderTarget implements RenderTarget {
                 { takeOwnership: true }
             );
             if (this.sampleCount > 1) {
-                attachment.multisampleTexture = this.device.createTexture({
+                attachment.multisampleTexture = this.createNativeTexture({
                     label: `${attachment.label}.multisample`,
                     size: { width: this._width, height: this._height, depthOrArrayLayers: 1 },
                     mipLevelCount: 1,
@@ -805,7 +839,7 @@ export default class WebGPURenderTarget implements RenderTarget {
             depth.texture.needUpdate = false;
             depth.texture.needDestroy = false;
         }
-        depth.gpuTexture = this.device.createTexture({
+        depth.gpuTexture = this.createNativeTexture({
             label: depth.label,
             size: { width: this._width, height: this._height, depthOrArrayLayers: 1 },
             mipLevelCount: 1,
@@ -875,7 +909,7 @@ export default class WebGPURenderTarget implements RenderTarget {
         let depth: StagedDepthStencilResources | null = null;
         try {
             for (const attachment of this.colorAttachments) {
-                const gpuTexture = this.device.createTexture({
+                const gpuTexture = this.createNativeTexture({
                     label: attachment.label,
                     size: { width, height, depthOrArrayLayers: 1 },
                     mipLevelCount: 1,
@@ -892,7 +926,7 @@ export default class WebGPURenderTarget implements RenderTarget {
                 let multisampleView: GPUTextureView | null = null;
                 try {
                     if (this.sampleCount > 1) {
-                        multisampleTexture = this.device.createTexture({
+                        multisampleTexture = this.createNativeTexture({
                             label: `${attachment.label}.multisample`,
                             size: { width, height, depthOrArrayLayers: 1 },
                             mipLevelCount: 1,
@@ -918,7 +952,7 @@ export default class WebGPURenderTarget implements RenderTarget {
 
             const attachment = this.depthStencilAttachment;
             if (attachment) {
-                const gpuTexture = this.device.createTexture({
+                const gpuTexture = this.createNativeTexture({
                     label: attachment.label,
                     size: { width, height, depthOrArrayLayers: 1 },
                     mipLevelCount: 1,
@@ -965,8 +999,13 @@ export default class WebGPURenderTarget implements RenderTarget {
     }
 
     /** @internal Recreate native allocations on a replacement WebGPU device. */
-    private restoreDeviceResources(device: GPUDevice, textureManager: WebGPUTextureManager): void {
+    private restoreDeviceResources(
+        deviceOrOwner: GPUDevice | WebGPUDevice,
+        textureManager: WebGPUTextureManager
+    ): void {
         this.assertAlive();
+        const device =
+            deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner.nativeDevice : deviceOrOwner;
         if (textureManager.device !== device) {
             throw new TypeError(
                 'WebGPURenderTarget and WebGPUTextureManager must use the same device'
@@ -974,6 +1013,7 @@ export default class WebGPURenderTarget implements RenderTarget {
         }
         this.releaseResources();
         this.unregisterAttachmentOwners();
+        this._owner = deviceOrOwner;
         this._device = device;
         this._textureManager = textureManager;
         this.deviceResourcesSuspended = false;
@@ -1244,12 +1284,12 @@ export default class WebGPURenderTarget implements RenderTarget {
         const bytesPerPixel = attachment.formatInfo.bytesPerPixel;
         const bytesPerRow = width * bytesPerPixel;
         const alignedBytesPerRow = align(bytesPerRow, WEBGPU_BYTES_PER_ROW_ALIGNMENT);
-        const readBuffer = this.device.createBuffer({
+        const readBuffer = this.createNativeBuffer({
             label: `${attachment.label}.readback`,
             size: alignedBytesPerRow * height,
             usage: WebGPUBufferUsage.COPY_DST | WebGPUBufferUsage.MAP_READ
         });
-        const encoder = this.device.createCommandEncoder({
+        const encoder = this.createNativeCommandEncoder({
             label: `${attachment.label}.readbackEncoder`
         });
         encoder.copyTextureToBuffer(
@@ -1267,7 +1307,7 @@ export default class WebGPURenderTarget implements RenderTarget {
             },
             { width, height, depthOrArrayLayers: 1 }
         );
-        this.device.queue.submit([encoder.finish()]);
+        this.submitNative([encoder.finish()]);
 
         let mapped = false;
         try {
@@ -1310,9 +1350,30 @@ export default class WebGPURenderTarget implements RenderTarget {
     }
 }
 
+type WebGPURenderTargetRHIConstructor = new (
+    deviceOrOwner: GPUDevice | WebGPUDevice,
+    textureManager: WebGPUTextureManager,
+    parameters: WebGPURenderTargetParameters,
+    onDestroy?: (target: WebGPURenderTarget) => void
+) => WebGPURenderTarget;
+
+/** Create a production render target with a concrete one-hop RHI device owner. @internal */
+export function createWebGPURenderTargetForRHI(
+    device: WebGPUDevice,
+    textureManager: WebGPUTextureManager,
+    parameters: WebGPURenderTargetParameters,
+    onDestroy?: (target: WebGPURenderTarget) => void
+): WebGPURenderTarget {
+    const InternalConstructor = WebGPURenderTarget as unknown as WebGPURenderTargetRHIConstructor;
+    return new InternalConstructor(device, textureManager, parameters, onDestroy);
+}
+
 interface WebGPURenderTargetInternalAccess {
     suspendDeviceResources(): void;
-    restoreDeviceResources(device: GPUDevice, textureManager: WebGPUTextureManager): void;
+    restoreDeviceResources(
+        device: GPUDevice | WebGPUDevice,
+        textureManager: WebGPUTextureManager
+    ): void;
 }
 
 function internalTargetAccess(target: WebGPURenderTarget): WebGPURenderTargetInternalAccess {
@@ -1327,7 +1388,7 @@ export function suspendWebGPURenderTarget(target: WebGPURenderTarget): void {
 /** Restore a suspended target on the replacement manager/device pair. @internal */
 export function restoreWebGPURenderTarget(
     target: WebGPURenderTarget,
-    device: GPUDevice,
+    device: GPUDevice | WebGPUDevice,
     textureManager: WebGPUTextureManager
 ): void {
     internalTargetAccess(target).restoreDeviceResources(device, textureManager);

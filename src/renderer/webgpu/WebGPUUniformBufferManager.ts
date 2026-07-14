@@ -1,4 +1,5 @@
 import type UniformBuffer from '../common/UniformBuffer';
+import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
 import type { Std140Layout } from '../common/ubo/Std140Layout';
 import { WgslUniformLayout } from './WgslUniformLayout';
 import { WebGPUBufferUsage } from './WebGPUConstants';
@@ -41,6 +42,7 @@ function changedByteRange(
 
 /** Uploads the shared std140 ABI consumed by portable WGSL uniform wrappers. */
 export class WebGPUUniformBufferManager {
+    private readonly owner: GPUDevice | WebGPUDevice;
     private readonly device: GPUDevice;
     private resources = new WeakMap<UniformBuffer, CachedUniformBuffer>();
     private layouts = new WeakMap<Std140Layout, WgslUniformLayout>();
@@ -48,8 +50,10 @@ export class WebGPUUniformBufferManager {
     private submissionActive = false;
     private submissionGeneration = 0;
 
-    constructor(device: GPUDevice) {
-        this.device = device;
+    constructor(deviceOrOwner: GPUDevice | WebGPUDevice) {
+        this.owner = deviceOrOwner;
+        this.device =
+            deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner.nativeDevice : deviceOrOwner;
     }
 
     /**
@@ -136,11 +140,15 @@ export class WebGPUUniformBufferManager {
             const previousBuffer = slot?.buffer;
             previousBuffer?.destroy();
             if (previousBuffer) this.ownedBuffers.delete(previousBuffer);
-            const buffer = this.device.createBuffer({
+            const descriptor: GPUBufferDescriptor = {
                 label: `Uniform:${uniformBuffer.className}:${String(slotIndex)}`,
                 size: allocationSize,
                 usage: WebGPUBufferUsage.UNIFORM | WebGPUBufferUsage.COPY_DST
-            });
+            };
+            const buffer =
+                this.owner instanceof WebGPUDevice
+                    ? this.owner.createNativeBuffer(descriptor)
+                    : this.owner.createBuffer(descriptor);
             this.ownedBuffers.add(buffer);
             slot = {
                 buffer,
@@ -151,7 +159,11 @@ export class WebGPUUniformBufferManager {
                 data: bytes.slice()
             };
             resource.slots[slotIndex] = slot;
-            this.device.queue.writeBuffer(slot.buffer, 0, bytes);
+            if (this.owner instanceof WebGPUDevice) {
+                this.owner.writeNativeBuffer(slot.buffer, 0, bytes);
+            } else {
+                this.owner.queue.writeBuffer(slot.buffer, 0, bytes);
+            }
             return slot;
         }
 
@@ -159,7 +171,12 @@ export class WebGPUUniformBufferManager {
             dirtyRanges === null ? [0, bytes.byteLength] : changedByteRange(slot.data, bytes);
         if (range && range[1] > range[0]) {
             const [start, end] = range;
-            this.device.queue.writeBuffer(slot.buffer, start, bytes.subarray(start, end));
+            const changed = bytes.subarray(start, end);
+            if (this.owner instanceof WebGPUDevice) {
+                this.owner.writeNativeBuffer(slot.buffer, start, changed);
+            } else {
+                this.owner.queue.writeBuffer(slot.buffer, start, changed);
+            }
         }
         slot.data = bytes.slice();
         slot.revision = uniformBuffer.revision;

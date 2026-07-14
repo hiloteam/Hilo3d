@@ -2,8 +2,15 @@ import type Camera from '../../camera/Camera';
 import type Fog from '../../core/Fog';
 import type Mesh from '../../core/Mesh';
 import type Node from '../../core/Node';
-import type { EventListener } from '../../core/EventDispatcher';
+import { EventDispatcher, type EventListener } from '../../core/EventDispatcher';
+import LightManager from '../../light/LightManager';
 import type Material from '../../material/Material';
+import Color from '../../math/Color';
+import type { ShaderPrecision } from './types';
+import GraphicsResourceManager from './GraphicsResourceManager';
+import RenderInfo from './RenderInfo';
+import RenderList from './RenderList';
+import { RenderFramePlanner, type RenderFramePlan } from './RenderFramePlan';
 import type {
     RenderTarget,
     RenderTargetParameters,
@@ -108,7 +115,7 @@ export function invokeRendererFrameCallback(
 }
 
 /** Public backend-neutral renderer contract used by Stage and scene resources. */
-export interface Renderer {
+export interface RendererContract {
     readonly backend: RendererBackend;
     readonly className: string;
     readonly ready: Promise<void>;
@@ -145,3 +152,88 @@ export interface Renderer {
     on(type: string, listener: EventListener, once?: boolean): this;
     off(type?: string, listener?: EventListener): this;
 }
+
+/**
+ * Shared scene-renderer foundation.
+ *
+ * This layer deliberately owns engine concepts such as meshes, lights, render lists and shader
+ * precision. The RHI below it never imports those concepts. Backend subclasses retain only the
+ * resource preparation and command submission that genuinely differs between WebGPU and WebGL 2.
+ *
+ * The frame planner keeps and reuses its arrays, so building a frame does not allocate a second
+ * command stream or add per-draw virtual dispatch.
+ */
+export abstract class Renderer extends EventDispatcher implements RendererContract {
+    readonly renderInfo = new RenderInfo();
+    readonly renderList = new RenderList();
+    readonly lightManager = new LightManager();
+    readonly resourceManager = new GraphicsResourceManager();
+
+    width = 0;
+    height = 0;
+    pixelRatio = 1;
+    domElement: HTMLCanvasElement | null = null;
+    alpha = false;
+    depth = true;
+    stencil = false;
+    antialias = true;
+    premultipliedAlpha = true;
+    failIfMajorPerformanceCaveat = false;
+    useLogDepth = false;
+    vertexPrecision: ShaderPrecision = 'highp';
+    fragmentPrecision: ShaderPrecision = 'highp';
+    fog: Fog | null = null;
+    offsetX = 0;
+    offsetY = 0;
+    forceMaterial: Material | null = null;
+    clearColor = new Color(1, 1, 1);
+    isInitFailed = false;
+
+    private _useInstanced = false;
+    private readonly framePlanner = new RenderFramePlanner();
+
+    abstract readonly backend: RendererBackend;
+    abstract readonly className: string;
+    abstract readonly ready: Promise<void>;
+    abstract readonly renderTarget: RenderTarget | null;
+
+    abstract get isReady(): boolean;
+
+    get useInstanced(): boolean {
+        return this._useInstanced;
+    }
+
+    set useInstanced(value: boolean) {
+        this._useInstanced = value;
+        this.renderList.useInstanced = value;
+    }
+
+    /** Build the allocation-reusing, backend-neutral scene plan once per camera pass. */
+    protected buildFramePlan(stage: RendererScene, camera: Camera): RenderFramePlan {
+        return this.framePlanner.build(stage, camera, this.renderList, this.lightManager);
+    }
+
+    abstract resize(width: number, height: number, force?: boolean): void;
+    abstract setOffset(x: number, y: number): void;
+    abstract getViewport(): RendererViewport;
+    abstract render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    abstract renderFrame(callback: RendererFrameCallback): void;
+    abstract supportsTextureCompression(format: TextureCompressionFormat): boolean;
+    abstract createRenderTarget(parameters: RenderTargetParameters): RenderTarget;
+    abstract setRenderTarget(
+        target: RenderTarget | null,
+        options?: RenderTargetSelectionOptions
+    ): this;
+    abstract present(target?: RenderTarget): void;
+    abstract renderToTarget(
+        target: RenderTarget,
+        stage: RendererScene,
+        camera: Camera,
+        fireEvent?: boolean
+    ): void;
+    abstract onInit(callback: (renderer: this) => void): void;
+    abstract releaseGPUResources(): void;
+    abstract destroy(): void;
+}
+
+export default Renderer;

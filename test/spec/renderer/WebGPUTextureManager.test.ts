@@ -6,6 +6,7 @@ import WebGLState, {
     getWebGLTexture,
     getWebGLTextureCache
 } from '../../../src/renderer/webgl/WebGLState';
+import { getWebGPUNativeDeviceCache } from '../../../src/rhi/webgpu/WebGPUNativeCache';
 import { WebGLTextureManager } from '../../../src/renderer/webgl/WebGLTextureManager';
 import { updateWebGLTexture } from '../../../src/renderer/webgl/WebGLTextureUploader';
 import Texture from '../../../src/texture/Texture';
@@ -101,7 +102,7 @@ import WebGPUTextureManager, {
     suspendWebGPUTextures,
     resolveWebGPUTextureFormat
 } from '../../../src/renderer/webgpu/WebGPUTextureManager';
-import { NagaShaderTranslator } from '../../../src/renderer/webgpu/shader/GlslToWgsl';
+import { NagaShaderTranslator } from '../../../src/renderer/shader/GlslToWgsl';
 
 let translator: NagaShaderTranslator;
 
@@ -1839,8 +1840,9 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
         expect(rebuiltSecond.gpuTexture).toBe(second.gpuTexture);
         expect(rebuiltSecond.view).toBe(second.view);
         expect(rebuiltSecond.sampler).not.toBe(second.sampler);
-        const samplers = Reflect.get(manager, 'samplers') as Map<string, GPUSampler>;
-        expect(samplers).toHaveLength(MAX_CACHED_WEBGPU_SAMPLERS);
+        expect(getWebGPUNativeDeviceCache(fake.device).samplerSize).toBe(
+            MAX_CACHED_WEBGPU_SAMPLERS
+        );
     });
 
     it('bounds per-texture snapshots and replaces snapshots backed by an evicted sampler', () => {

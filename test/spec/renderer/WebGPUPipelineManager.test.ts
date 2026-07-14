@@ -224,6 +224,30 @@ describe('WebGPUPipelineManager', () => {
         expect(manager.size).toBe(0);
     });
 
+    it('does not repopulate the RHI cache when a cleared async compilation resolves late', async () => {
+        const stale = deferred<GPURenderPipeline>();
+        const stalePipeline = {} as GPURenderPipeline;
+        const currentPipeline = {} as GPURenderPipeline;
+        const createRenderPipelineAsync = vi
+            .fn<() => Promise<GPURenderPipeline>>()
+            .mockReturnValueOnce(stale.promise)
+            .mockResolvedValueOnce(currentPipeline);
+        const manager = new WebGPUPipelineManager({
+            createRenderPipelineAsync
+        } as unknown as GPUDevice);
+        const request = pipelineRequest();
+
+        const pending = manager.getPipeline(request);
+        manager.clear();
+        expect(manager.size).toBe(0);
+
+        stale.resolve(stalePipeline);
+        await expect(pending).resolves.toBe(stalePipeline);
+        expect(manager.size).toBe(0);
+        await expect(manager.getPipeline(request)).resolves.toBe(currentPipeline);
+        expect(createRenderPipelineAsync).toHaveBeenCalledTimes(2);
+    });
+
     it('deduplicates pending A/B/A compilations independently of settled LRU capacity', async () => {
         const a = deferred<GPURenderPipeline>();
         const b = deferred<GPURenderPipeline>();

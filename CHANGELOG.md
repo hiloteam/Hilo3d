@@ -2,6 +2,10 @@
 
 ### Breaking changes
 
+- Replace the renderer-interface-only `Renderer` export with an abstract shared renderer base and a
+  separate `RendererContract` type. Backend implementations now inherit common frame planning,
+  render/light queues, diagnostics, and resource ownership from that base; the protected result is
+  available as the exported `RenderFramePlan` type for custom subclasses.
 - Add the required synchronous `Renderer.renderFrame(callback)` application-frame boundary. Custom
   renderer implementations must provide it; callbacks may not return a Promise or retain the frame
   facade after returning.
@@ -31,8 +35,17 @@
 - Require WebGL 2 when the WebGL backend is selected and native GLSL ES 3.00 for shader sources;
   remove WebGL 1 contexts, compatibility shader rewriting, and extension adapters for WebGL 2 core
   features.
-- Add an explicit WebGPU backend without capability fallback. Applications select `webgl2` or
-  `webgpu`; asynchronous WebGPU initialization is exposed through `Stage.create()` and `ready`.
+- Change asynchronous `Stage.create()` to default to `backend: 'auto'`. Auto selection uses the
+  public, device- and GPU-resource-free `WebGPURenderer.isSupported()` adapter probe and prefers
+  WebGPU when the fallback-adapter policy, required features/limits, and engine minimum limits are
+  satisfied; it otherwise creates WebGL 2 directly. The probe never requests a device or canvas
+  context and never initializes the shader compiler, pipelines, or resources. Supplying
+  `preserveDrawingBuffer` or requesting `alpha: true, premultipliedAlpha: false` straight-alpha
+  compositing selects WebGL 2 directly. Synchronous `new Stage()` remains WebGL 2 by default because
+  it cannot await adapter discovery.
+- Keep explicit `backend: 'webgpu'` fail-closed with no fallback. Once auto has selected WebGPU,
+  device/context creation, compiler, pipeline, and resource initialization errors also reject
+  directly instead of being reinterpreted as capability failures.
 - Make `Renderer`/`RenderTarget` the backend-neutral offscreen contract for WebGL 2 and WebGPU,
   including MRT, 1×/4× MSAA, sampleable attachments, target rendering, resize, and asynchronous
   readback. `MeshPicker` now accepts a `Stage` and returns `Promise<Mesh[]>` from a backend-neutral
@@ -78,9 +91,18 @@
 
 ### Changes
 
-- Split rendering code into explicit `renderer/common`, `renderer/webgl`, and `renderer/webgpu`
-  boundaries, move WebGL shadow allocation under its backend, and keep common frame planning free of
-  native graphics handles.
+- Add a WebGPU-shaped RHI with separate thin native WebGPU and immediate, state-cached WebGL 2
+  implementations. It covers device resources, prepared shader modules, pipeline/layout/bind-group
+  objects, render passes, command encoders, queues, surfaces, explicit features/limits, and
+  device/context recovery without importing engine scene semantics.
+- Split rendering code into explicit `renderer/common`, `renderer/shader`, `renderer/webgl`,
+  `renderer/webgpu`, `rhi/webgl`, and `rhi/webgpu` boundaries. Move GLSL-to-WGSL compilation above
+  the RHI, move WebGL shadow allocation under its renderer backend, and keep common frame planning
+  free of native graphics handles.
+- Give RHI devices bounded immutable sampler, bind-group-layout, pipeline-layout, and
+  render-pipeline caches with fixed-field keys and deterministic loss/destroy invalidation. Keep
+  material, Mesh, shader-variant, binding-set, and upload caches in Renderer; do not
+  descriptor-deduplicate buffers, textures, shader modules, or bind groups in the RHI.
 - Record resource-ready WebGPU scene, shadow, target, and presentation passes through an explicit
   application frame. One submission uses revision-snapshotted UBO slots so each camera/pass observes
   its own data; recording failures poison the frame instead of submitting partial commands.

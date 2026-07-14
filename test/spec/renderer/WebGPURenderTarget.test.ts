@@ -18,7 +18,7 @@ import WebGPURenderTarget, {
 import WebGPUTextureManager, {
     getWebGPUTextureDefaultCompare
 } from '../../../src/renderer/webgpu/WebGPUTextureManager';
-import { NagaShaderTranslator } from '../../../src/renderer/webgpu/shader/GlslToWgsl';
+import { NagaShaderTranslator } from '../../../src/renderer/shader/GlslToWgsl';
 
 let translator: NagaShaderTranslator;
 

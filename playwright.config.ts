@@ -4,8 +4,16 @@ const isContinuousIntegration = process.env['CI'] === 'true';
 const swiftShaderArguments = [
     '--enable-unsafe-swiftshader',
     '--enable-unsafe-webgpu',
+    '--use-gl=angle',
     '--use-angle=swiftshader',
-    '--use-webgpu-adapter=swiftshader'
+    '--use-webgpu-adapter=swiftshader',
+    // Headless Chromium otherwise may not initialize ANGLE early enough for Dawn to select the
+    // matching SwiftShader adapter. Chromium's own WebGPU bots use this switch for the same
+    // reason.
+    '--use-gpu-in-tests',
+    ...(process.platform === 'linux'
+        ? ['--enable-features=Vulkan', '--use-vulkan=swiftshader']
+        : [])
 ];
 const nativeWebGPUArguments = [
     '--disable-software-rasterizer',

@@ -9,6 +9,8 @@ import type Texture from '../../texture/Texture';
 import type Cache from '../../utils/Cache';
 import type UniformBuffer from '../common/UniformBuffer';
 import type { UniformBufferRange } from '../common/UniformBuffer';
+import type { WebGLRHIState } from '../../rhi/webgl/WebGLInternal';
+import type { WebGLRHIDevice } from '../../rhi/webgl/WebGLDevice';
 
 export type StateValue = number | boolean | WebGLProgram | null;
 export type OneParameterMethod =
@@ -39,6 +41,37 @@ function sameValues(
 const uniformBufferManagers = new WeakMap<WebGLState, WebGLUniformBufferManager>();
 const textureManagers = new WeakMap<WebGLState, WebGLTextureManager>();
 const samplerManagers = new WeakMap<WebGLState, WebGLSamplerManager>();
+
+let attachRHIAdapter: (
+    adapter: WebGLState,
+    rhiState: WebGLRHIState,
+    rhiDevice: WebGLRHIDevice
+) => void = () => {
+    throw new Error('WebGLState RHI attachment is unavailable before class initialization');
+};
+let adapterUsesRHI: (
+    adapter: WebGLState,
+    rhiState: WebGLRHIState,
+    rhiDevice: WebGLRHIDevice
+) => boolean = () => false;
+
+/** Attach the renderer migration adapter to its concrete RHI owner. @internal */
+export function attachWebGLStateRHI(
+    adapter: WebGLState,
+    rhiState: WebGLRHIState,
+    rhiDevice: WebGLRHIDevice
+): void {
+    attachRHIAdapter(adapter, rhiState, rhiDevice);
+}
+
+/** Test the module-private RHI attachment without exposing it on the public adapter. @internal */
+export function webGLStateUsesRHI(
+    adapter: WebGLState,
+    rhiState: WebGLRHIState,
+    rhiDevice: WebGLRHIDevice
+): boolean {
+    return adapterUsesRHI(adapter, rhiState, rhiDevice);
+}
 
 function uniformBufferManagerFor(state: WebGLState): WebGLUniformBufferManager {
     const manager = uniformBufferManagers.get(state);
@@ -126,10 +159,24 @@ class WebGLState {
     readonly gl: GLContext;
     readonly capabilities: WebGLCapabilities;
     readonly extensions: WebGLExtensions;
+    #rhiState: WebGLRHIState | null = null;
+    #rhiDevice: WebGLRHIDevice | null = null;
     systemFramebuffer: WebGLFramebuffer | null = null;
-    currentDrawFramebuffer: WebGLFramebuffer | null = null;
-    currentReadFramebuffer: WebGLFramebuffer | null = null;
-    preFramebuffer: WebGLFramebuffer | null = null;
+    private currentDrawFramebufferValue: WebGLFramebuffer | null = null;
+    private currentReadFramebufferValue: WebGLFramebuffer | null = null;
+    private preFramebufferValue: WebGLFramebuffer | null = null;
+
+    get currentDrawFramebuffer(): WebGLFramebuffer | null {
+        return this.#rhiState?.currentDrawFramebuffer ?? this.currentDrawFramebufferValue;
+    }
+
+    get currentReadFramebuffer(): WebGLFramebuffer | null {
+        return this.#rhiState?.currentReadFramebuffer ?? this.currentReadFramebufferValue;
+    }
+
+    get preFramebuffer(): WebGLFramebuffer | null {
+        return this.#rhiState?.preFramebuffer ?? this.preFramebufferValue;
+    }
 
     get currentFramebuffer(): WebGLFramebuffer | null {
         return this.currentDrawFramebuffer;
@@ -138,7 +185,25 @@ class WebGLState {
     private readonly state = new Map<string, readonly StateValue[]>();
     private activeTextureIndex: GLenum | null = null;
     private readonly textureUnits = new Map<GLenum, Map<GLenum, WebGLTexture | null>>();
+    private readonly delegatedTextureUnitView = new Map<GLenum, WebGLTexture | null>();
     private readonly pixelStore = new Map<GLenum, number | boolean>();
+
+    static {
+        attachRHIAdapter = (adapter, rhiState, rhiDevice) => {
+            if (rhiState.gl !== adapter.gl) {
+                throw new TypeError('WebGLState and WebGLRHIState must belong to the same context');
+            }
+            if (rhiDevice.gl !== adapter.gl || rhiDevice.state !== rhiState) {
+                throw new TypeError('WebGLState must use one matching WebGL RHI device and state');
+            }
+            adapter.#rhiState = rhiState;
+            adapter.#rhiDevice = rhiDevice;
+            samplerManagerFor(adapter).attachRHI(rhiState, rhiDevice);
+            adapter.reset();
+        };
+        adapterUsesRHI = (adapter, rhiState, rhiDevice) =>
+            adapter.#rhiState === rhiState && adapter.#rhiDevice === rhiDevice;
+    }
 
     constructor(
         gl: GLContext,
@@ -165,17 +230,23 @@ class WebGLState {
     }
 
     reset(): void {
+        this.#rhiState?.invalidate();
         this.state.clear();
         this.activeTextureIndex = null;
         this.textureUnits.clear();
-        this.currentDrawFramebuffer = null;
-        this.currentReadFramebuffer = null;
-        this.preFramebuffer = null;
+        this.delegatedTextureUnitView.clear();
+        this.currentDrawFramebufferValue = null;
+        this.currentReadFramebufferValue = null;
+        this.preFramebufferValue = null;
         this.pixelStore.clear();
         samplerManagerFor(this).resetBindings();
     }
 
     enable(capability: GLenum): void {
+        if (this.#rhiState) {
+            this.#rhiState.enable(capability, true);
+            return;
+        }
         const key = `capability:${String(capability)}`;
         if (this.state.get(key)?.[0] === true) return;
         this.state.set(key, [true]);
@@ -183,6 +254,10 @@ class WebGLState {
     }
 
     disable(capability: GLenum): void {
+        if (this.#rhiState) {
+            this.#rhiState.enable(capability, false);
+            return;
+        }
         const key = `capability:${String(capability)}`;
         if (this.state.get(key)?.[0] === false) return;
         this.state.set(key, [false]);
@@ -191,6 +266,7 @@ class WebGLState {
 
     /** Returns a capability value while keeping the state cache synchronized with WebGL. */
     isEnabled(capability: GLenum): boolean {
+        if (this.#rhiState) return this.#rhiState.isEnabled(capability);
         const key = `capability:${String(capability)}`;
         const cached = this.state.get(key)?.[0];
         if (typeof cached === 'boolean') return cached;
@@ -200,23 +276,27 @@ class WebGLState {
     }
 
     bindFramebuffer(target: GLenum, framebuffer: WebGLFramebuffer | null): void {
+        if (this.#rhiState) {
+            this.#rhiState.bindFramebuffer(target, framebuffer);
+            return;
+        }
         if (target === this.gl.FRAMEBUFFER) {
             if (
-                this.currentDrawFramebuffer === framebuffer &&
-                this.currentReadFramebuffer === framebuffer
+                this.currentDrawFramebufferValue === framebuffer &&
+                this.currentReadFramebufferValue === framebuffer
             ) {
                 return;
             }
-            this.preFramebuffer = this.currentDrawFramebuffer;
-            this.currentDrawFramebuffer = framebuffer;
-            this.currentReadFramebuffer = framebuffer;
+            this.preFramebufferValue = this.currentDrawFramebufferValue;
+            this.currentDrawFramebufferValue = framebuffer;
+            this.currentReadFramebufferValue = framebuffer;
         } else if (target === this.gl.DRAW_FRAMEBUFFER) {
-            if (this.currentDrawFramebuffer === framebuffer) return;
-            this.preFramebuffer = this.currentDrawFramebuffer;
-            this.currentDrawFramebuffer = framebuffer;
+            if (this.currentDrawFramebufferValue === framebuffer) return;
+            this.preFramebufferValue = this.currentDrawFramebufferValue;
+            this.currentDrawFramebufferValue = framebuffer;
         } else if (target === this.gl.READ_FRAMEBUFFER) {
-            if (this.currentReadFramebuffer === framebuffer) return;
-            this.currentReadFramebuffer = framebuffer;
+            if (this.currentReadFramebufferValue === framebuffer) return;
+            this.currentReadFramebufferValue = framebuffer;
         } else {
             throw new RangeError(`Unsupported framebuffer target: ${String(target)}`);
         }
@@ -228,14 +308,26 @@ class WebGLState {
     }
 
     useProgram(program: WebGLProgram | null): void {
+        if (this.#rhiState) {
+            this.#rhiState.useProgram(program);
+            return;
+        }
         this.set1('useProgram', program);
     }
 
     depthFunc(func: GLenum): void {
+        if (this.#rhiState) {
+            this.#rhiState.depthFunc(func);
+            return;
+        }
         this.set1('depthFunc', func);
     }
 
     depthMask(flag: boolean): void {
+        if (this.#rhiState) {
+            this.#rhiState.depthMask(flag);
+            return;
+        }
         this.set1('depthMask', flag);
     }
 
@@ -244,58 +336,114 @@ class WebGLState {
     }
 
     depthRange(zNear: number, zFar: number): void {
+        if (this.#rhiState) {
+            this.#rhiState.depthRange(zNear, zFar);
+            return;
+        }
         this.set2('depthRange', zNear, zFar);
     }
 
     stencilFunc(func: GLenum, ref: GLint, mask: GLuint): void {
+        if (this.#rhiState) {
+            this.#rhiState.stencilFunc(func, ref, mask);
+            return;
+        }
         this.set3('stencilFunc', func, ref, mask);
     }
 
     stencilMask(mask: GLuint): void {
+        if (this.#rhiState) {
+            this.#rhiState.stencilMask(mask);
+            return;
+        }
         this.set1('stencilMask', mask);
     }
 
     stencilOp(fail: GLenum, zfail: GLenum, zpass: GLenum): void {
+        if (this.#rhiState) {
+            this.#rhiState.stencilOp(fail, zfail, zpass);
+            return;
+        }
         this.set3('stencilOp', fail, zfail, zpass);
     }
 
     colorMask(red: boolean, green: boolean, blue: boolean, alpha: boolean): void {
+        if (this.#rhiState) {
+            this.#rhiState.colorMask(red, green, blue, alpha);
+            return;
+        }
         this.set4('colorMask', red, green, blue, alpha);
     }
 
     cullFace(mode: GLenum): void {
+        if (this.#rhiState) {
+            this.#rhiState.cullFace(mode);
+            return;
+        }
         this.set1('cullFace', mode);
     }
 
     frontFace(mode: GLenum): void {
+        if (this.#rhiState) {
+            this.#rhiState.frontFace(mode);
+            return;
+        }
         this.set1('frontFace', mode);
     }
 
     blendFuncSeparate(srcRGB: GLenum, dstRGB: GLenum, srcAlpha: GLenum, dstAlpha: GLenum): void {
+        if (this.#rhiState) {
+            this.#rhiState.blendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
+            return;
+        }
         this.set4('blendFuncSeparate', srcRGB, dstRGB, srcAlpha, dstAlpha);
     }
 
     blendEquationSeparate(modeRGB: GLenum, modeAlpha: GLenum): void {
+        if (this.#rhiState) {
+            this.#rhiState.blendEquationSeparate(modeRGB, modeAlpha);
+            return;
+        }
         this.set2('blendEquationSeparate', modeRGB, modeAlpha);
     }
 
     pixelStorei(pname: GLenum, param: number | boolean): void {
+        if (this.#rhiState) {
+            this.#rhiState.pixelStorei(pname, param);
+            return;
+        }
         if (this.pixelStore.get(pname) === param) return;
         this.pixelStore.set(pname, param);
         this.gl.pixelStorei(pname, param);
     }
 
     viewport(x: GLint, y: GLint, width: GLsizei, height: GLsizei): void {
+        if (this.#rhiState) {
+            this.#rhiState.viewport(x, y, width, height);
+            return;
+        }
         this.set4('viewport', x, y, width, height);
     }
 
     activeTexture(texture: GLenum): void {
+        if (this.#rhiState) {
+            const unit = texture - this.gl.TEXTURE0;
+            if (!Number.isInteger(unit) || unit < 0) {
+                throw new RangeError(`Invalid WebGL texture unit: ${String(texture)}`);
+            }
+            this.#rhiState.activeTexture(unit);
+            return;
+        }
         if (this.activeTextureIndex === texture) return;
         this.activeTextureIndex = texture;
         this.gl.activeTexture(texture);
     }
 
     bindTexture(target: GLenum, texture: WebGLTexture | null): void {
+        if (this.#rhiState) {
+            this.#rhiState.bindTexture(this.#rhiState.currentTextureUnit, target, texture);
+            return;
+        }
         const textureUnit = this.getActiveTextureUnit();
         if (textureUnit.get(target) === texture) return;
         textureUnit.set(target, texture);
@@ -303,6 +451,15 @@ class WebGLState {
     }
 
     getActiveTextureUnit(): Map<GLenum, WebGLTexture | null> {
+        if (this.#rhiState) {
+            const unit = this.#rhiState.currentTextureUnit;
+            this.delegatedTextureUnitView.clear();
+            this.addDelegatedTextureBinding(unit, this.gl.TEXTURE_2D);
+            this.addDelegatedTextureBinding(unit, this.gl.TEXTURE_CUBE_MAP);
+            this.addDelegatedTextureBinding(unit, this.gl.TEXTURE_3D);
+            this.addDelegatedTextureBinding(unit, this.gl.TEXTURE_2D_ARRAY);
+            return this.delegatedTextureUnitView;
+        }
         const activeIndex = this.activeTextureIndex ?? this.gl.TEXTURE0;
         let textureUnit = this.textureUnits.get(activeIndex);
         if (!textureUnit) {
@@ -312,7 +469,40 @@ class WebGLState {
         return textureUnit;
     }
 
+    private addDelegatedTextureBinding(unit: number, target: GLenum): void {
+        const texture = this.#rhiState?.getBoundTexture(unit, target);
+        if (texture !== undefined) this.delegatedTextureUnitView.set(target, texture);
+    }
+
     set1(name: OneParameterMethod, param: StateValue): void {
+        if (this.#rhiState) {
+            switch (name) {
+                case 'useProgram':
+                    if (param !== null && typeof param !== 'object') {
+                        throw new TypeError('useProgram requires a WebGLProgram or null');
+                    }
+                    this.#rhiState.useProgram(param);
+                    return;
+                case 'depthMask':
+                    this.#rhiState.depthMask(booleanValue(param, name));
+                    return;
+                case 'depthFunc':
+                    this.#rhiState.depthFunc(numberValue(param, name));
+                    return;
+                case 'stencilMask':
+                    this.#rhiState.stencilMask(numberValue(param, name));
+                    return;
+                case 'cullFace':
+                    this.#rhiState.cullFace(numberValue(param, name));
+                    return;
+                case 'frontFace':
+                    this.#rhiState.frontFace(numberValue(param, name));
+                    return;
+                case 'enable':
+                    this.#rhiState.enable(numberValue(param, name), true);
+                    return;
+            }
+        }
         const values = [param];
         if (sameValues(this.state.get(name), values)) return;
         this.state.set(name, values);
@@ -345,6 +535,11 @@ class WebGLState {
     }
 
     set2(name: TwoParameterMethod, param0: number, param1: number): void {
+        if (this.#rhiState) {
+            if (name === 'depthRange') this.#rhiState.depthRange(param0, param1);
+            else this.#rhiState.blendEquationSeparate(param0, param1);
+            return;
+        }
         const values = [param0, param1];
         if (sameValues(this.state.get(name), values)) return;
         this.state.set(name, values);
@@ -353,6 +548,11 @@ class WebGLState {
     }
 
     set3(name: ThreeParameterMethod, param0: number, param1: number, param2: number): void {
+        if (this.#rhiState) {
+            if (name === 'stencilFunc') this.#rhiState.stencilFunc(param0, param1, param2);
+            else this.#rhiState.stencilOp(param0, param1, param2);
+            return;
+        }
         const values = [param0, param1, param2];
         if (sameValues(this.state.get(name), values)) return;
         this.state.set(name, values);
@@ -367,6 +567,31 @@ class WebGLState {
         param2: number | boolean,
         param3: number | boolean
     ): void {
+        if (this.#rhiState) {
+            if (name === 'colorMask') {
+                this.#rhiState.colorMask(
+                    booleanValue(param0, name),
+                    booleanValue(param1, name),
+                    booleanValue(param2, name),
+                    booleanValue(param3, name)
+                );
+            } else if (name === 'blendFuncSeparate') {
+                this.#rhiState.blendFuncSeparate(
+                    numberValue(param0, name),
+                    numberValue(param1, name),
+                    numberValue(param2, name),
+                    numberValue(param3, name)
+                );
+            } else {
+                this.#rhiState.viewport(
+                    numberValue(param0, name),
+                    numberValue(param1, name),
+                    numberValue(param2, name),
+                    numberValue(param3, name)
+                );
+            }
+            return;
+        }
         const values = [param0, param1, param2, param3];
         if (sameValues(this.state.get(name), values)) return;
         this.state.set(name, values);
@@ -395,6 +620,10 @@ class WebGLState {
     }
 
     get(name: string): StateValue | readonly StateValue[] | undefined {
+        if (this.#rhiState) {
+            return this.#rhiState.getCachedState(name) as
+                StateValue | readonly StateValue[] | undefined;
+        }
         const values = this.state.get(name);
         return values?.length === 1 ? values[0] : values;
     }

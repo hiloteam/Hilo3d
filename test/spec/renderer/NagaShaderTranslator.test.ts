@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { NagaShaderTranslator } from '../../../src/renderer/webgpu/shader/GlslToWgsl';
+import { NagaShaderTranslator } from '../../../src/renderer/shader/GlslToWgsl';
 
 const naga = vi.hoisted(() => ({
     initialize: vi.fn<() => Promise<void>>()

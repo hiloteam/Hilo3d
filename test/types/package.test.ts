@@ -39,6 +39,7 @@ import {
     type RenderTargetColorAttachmentReadback,
     type RenderTargetParameters,
     type StageParameters,
+    type StageBackend,
     type StagePointerEvent,
     type StageRenderer,
     type ShadowCastingLightParameters,
@@ -49,7 +50,8 @@ import {
     type TweenParameters,
     type WebGLRendererParameters,
     type WebGPUTextureDimension,
-    type WebGPURendererParameters
+    type WebGPURendererParameters,
+    type WebGPUSupportOptions
 } from 'hilo3d';
 
 const camera = new PerspectiveCamera({ aspect: 16 / 9, near: 0.1, far: 1_000, z: 4 });
@@ -90,6 +92,20 @@ const webgpuStagePreserveDrawingBufferIsNever: WebgpuStagePreserveDrawingBufferV
     ? true
     : false = true;
 const webgpuStagePromise: Promise<Stage<'webgpu'>> = Stage.create(webgpuStageParameters);
+const autoBackend: StageBackend = 'auto';
+const autoStageParameters = {
+    backend: autoBackend,
+    requiredLimits: { maxBindGroups: 4 }
+} satisfies StageParameters<'auto'>;
+const autoStagePromise: Promise<Stage<RendererBackend>> = Stage.create(autoStageParameters);
+const defaultStagePromise: Promise<Stage<RendererBackend>> = Stage.create();
+declare const dynamicStageParameters: StageParameters<StageBackend>;
+const dynamicStagePromise: Promise<Stage<RendererBackend>> = Stage.create(dynamicStageParameters);
+const webgpuSupportOptions = {
+    powerPreference: 'high-performance',
+    requiredLimits: { maxBindGroups: 4 }
+} satisfies WebGPUSupportOptions;
+const webgpuSupportedPromise: Promise<boolean> = WebGPURenderer.isSupported(webgpuSupportOptions);
 const typedWebgpuStageRenderer: StageRenderer<'webgpu'> = webgpuStage.renderer;
 const selectedBackend: RendererBackend = webgpuRenderer.backend;
 const areaLightHasShadow: 'shadow' extends keyof AreaLightParameters ? true : false = false;
@@ -263,6 +279,10 @@ void webgpuRenderer;
 void webgpuRendererPreserveDrawingBufferIsAbsent;
 void webgpuStagePreserveDrawingBufferIsNever;
 void webgpuStagePromise;
+void autoStagePromise;
+void defaultStagePromise;
+void dynamicStagePromise;
+void webgpuSupportedPromise;
 void typedWebgpuStageRenderer;
 void selectedBackend;
 void areaLightHasShadow;

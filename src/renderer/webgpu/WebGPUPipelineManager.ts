@@ -1,3 +1,9 @@
+import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
+import {
+    DEFAULT_WEBGPU_NATIVE_CACHE_CAPACITY,
+    getWebGPUNativeDeviceCache,
+    type WebGPUNativeDeviceCache
+} from '../../rhi/webgpu/WebGPUNativeCache';
 import type { WebGPURenderState } from './WebGPURenderState';
 
 export interface WebGPUVertexPipelineStage {
@@ -22,12 +28,7 @@ export interface WebGPURenderPipelineRequest {
     readonly renderState: WebGPURenderState;
 }
 
-interface PipelinePreparation {
-    readonly descriptor: GPURenderPipelineDescriptor;
-    readonly key: string;
-}
-
-export const DEFAULT_WEBGPU_PIPELINE_CACHE_CAPACITY = 256;
+export const DEFAULT_WEBGPU_PIPELINE_CACHE_CAPACITY = DEFAULT_WEBGPU_NATIVE_CACHE_CAPACITY;
 
 function sortedConstants(
     constants: Readonly<Record<string, GPUPipelineConstantValue>> | undefined
@@ -139,94 +140,48 @@ function descriptorFromRequest(request: WebGPURenderPipelineRequest): GPURenderP
     };
 }
 
-function stageKey(
-    stage: WebGPUVertexPipelineStage | WebGPUFragmentPipelineStage,
-    objectId: (object: object) => number
-): object {
-    const constants = sortedConstants(stage.constants) ?? null;
-    const buffers = 'buffers' in stage ? (snapshotVertexBuffers(stage.buffers) ?? null) : undefined;
-    return {
-        module: objectId(stage.module),
-        entryPoint: stage.entryPoint ?? null,
-        constants,
-        ...(buffers === undefined ? {} : { buffers })
-    };
-}
-
 /**
- * Per-device render-pipeline cache. Pending compilations remain deduplicated until they settle;
- * capacity bounds only the completed pipeline LRU.
+ * Renderer-facing pipeline descriptor builder. Immutable native pipeline ownership lives in the
+ * device-scoped RHI cache, including pending compilation deduplication and the settled LRU.
  */
 export class WebGPUPipelineManager {
-    private readonly device: GPUDevice;
-    private readonly capacity: number;
-    /** Pending work is transient and must never be evicted because it is the in-flight deduplication key. */
-    private readonly pendingPipelines = new Map<string, Promise<GPURenderPipeline>>();
-    /** Map insertion order is the settled-pipeline LRU order, oldest first. */
-    private readonly settledPipelines = new Map<string, GPURenderPipeline>();
-    private readonly objectIds = new WeakMap<object, number>();
-    private nextObjectId = 1;
+    private readonly rhiDevice: WebGPUDevice | null;
+    private readonly nativeCache: WebGPUNativeDeviceCache;
 
-    constructor(device: GPUDevice, capacity = DEFAULT_WEBGPU_PIPELINE_CACHE_CAPACITY) {
-        if (!Number.isSafeInteger(capacity) || capacity < 1) {
-            throw new RangeError('WebGPU pipeline cache capacity must be a positive integer');
+    constructor(
+        deviceOrOwner: GPUDevice | WebGPUDevice,
+        rhiDeviceOrCapacity: WebGPUDevice | number = DEFAULT_WEBGPU_PIPELINE_CACHE_CAPACITY
+    ) {
+        if (deviceOrOwner instanceof WebGPUDevice) {
+            this.rhiDevice = deviceOrOwner;
+            this.nativeCache = deviceOrOwner.nativeCache;
+            return;
         }
-        this.device = device;
-        this.capacity = capacity;
+        if (typeof rhiDeviceOrCapacity === 'number') {
+            this.rhiDevice = null;
+            this.nativeCache = getWebGPUNativeDeviceCache(deviceOrOwner, {
+                renderPipelineCapacity: rhiDeviceOrCapacity
+            });
+            return;
+        }
+        if (rhiDeviceOrCapacity.nativeDevice !== deviceOrOwner) {
+            throw new TypeError('WebGPU pipeline manager and RHI device must share a GPUDevice');
+        }
+        this.rhiDevice = rhiDeviceOrCapacity;
+        this.nativeCache = rhiDeviceOrCapacity.nativeCache;
     }
 
     get size(): number {
-        return this.pendingPipelines.size + this.settledPipelines.size;
-    }
-
-    private getObjectId(object: object): number {
-        let id = this.objectIds.get(object);
-        if (id === undefined) {
-            id = this.nextObjectId++;
-            this.objectIds.set(object, id);
-        }
-        return id;
-    }
-
-    private getSettled(key: string): GPURenderPipeline | undefined {
-        const pipeline = this.settledPipelines.get(key);
-        if (!pipeline) return undefined;
-        this.settledPipelines.delete(key);
-        this.settledPipelines.set(key, pipeline);
-        return pipeline;
-    }
-
-    private settle(key: string, pipeline: GPURenderPipeline): void {
-        this.settledPipelines.delete(key);
-        this.settledPipelines.set(key, pipeline);
-        while (this.settledPipelines.size > this.capacity) {
-            const oldestKey = this.settledPipelines.keys().next().value;
-            if (oldestKey === undefined) break;
-            this.settledPipelines.delete(oldestKey);
-        }
-    }
-
-    private prepare(request: WebGPURenderPipelineRequest): PipelinePreparation {
-        const descriptor = descriptorFromRequest(request);
-        const key = JSON.stringify({
-            layout: this.getObjectId(request.layout),
-            vertex: stageKey(request.vertex, object => this.getObjectId(object)),
-            fragment: request.fragment
-                ? stageKey(request.fragment, object => this.getObjectId(object))
-                : null,
-            renderState: {
-                primitive: descriptor.primitive ?? null,
-                colorTargets: descriptor.fragment?.targets ?? [],
-                depthStencil: descriptor.depthStencil ?? null,
-                multisample: descriptor.multisample ?? null
-            }
-        });
-        return { descriptor, key };
+        return this.nativeCache.renderPipelineSize;
     }
 
     /** Exposed for diagnostics and deterministic cache tests; labels never affect the key. */
     getCacheKey(request: WebGPURenderPipelineRequest): string {
-        return this.prepare(request).key;
+        const descriptor = descriptorFromRequest(request);
+        return (
+            this.rhiDevice?.getNativeRenderPipelineCacheKey(descriptor) ??
+            this.nativeCache.getRenderPipelineCacheKey(descriptor)
+        );
     }
 
     /**
@@ -234,50 +189,23 @@ export class WebGPUPipelineManager {
      * Failed compilations are evicted so a corrected/recovered device can retry.
      */
     getPipeline(request: WebGPURenderPipelineRequest): Promise<GPURenderPipeline> {
-        const { descriptor, key } = this.prepare(request);
-        const settled = this.getSettled(key);
-        if (settled) return Promise.resolve(settled);
-
-        const cached = this.pendingPipelines.get(key);
-        if (cached) return cached;
-
-        const compilation = this.device.createRenderPipelineAsync(descriptor);
-        const pending = compilation.then(
-            pipeline => {
-                if (this.pendingPipelines.get(key) === pending) {
-                    this.pendingPipelines.delete(key);
-                    this.settle(key, pipeline);
-                }
-                return pipeline;
-            },
-            (error: unknown) => {
-                if (this.pendingPipelines.get(key) === pending) {
-                    this.pendingPipelines.delete(key);
-                }
-                throw error;
-            }
+        const descriptor = descriptorFromRequest(request);
+        return (
+            this.rhiDevice?.createNativeRenderPipelineAsync(descriptor) ??
+            this.nativeCache.createRenderPipelineAsync(descriptor)
         );
-        this.pendingPipelines.set(key, pending);
-        return pending;
     }
 
     /** Compile synchronously for an on-demand draw while retaining the same complete cache key. */
     getPipelineSync(request: WebGPURenderPipelineRequest): GPURenderPipeline {
-        const { descriptor, key } = this.prepare(request);
-        const settled = this.getSettled(key);
-        if (settled) return settled;
-        if (this.pendingPipelines.has(key)) {
-            throw new Error(
-                'Cannot synchronously compile a WebGPU pipeline while the same pipeline is compiling asynchronously'
-            );
-        }
-        const pipeline = this.device.createRenderPipeline(descriptor);
-        this.settle(key, pipeline);
-        return pipeline;
+        const descriptor = descriptorFromRequest(request);
+        return (
+            this.rhiDevice?.createNativeRenderPipeline(descriptor) ??
+            this.nativeCache.createRenderPipeline(descriptor)
+        );
     }
 
     clear(): void {
-        this.pendingPipelines.clear();
-        this.settledPipelines.clear();
+        this.nativeCache.clearRenderPipelines();
     }
 }

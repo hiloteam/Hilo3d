@@ -31,6 +31,7 @@ export { default as Skeleton, type SkeletonParameters } from './core/Skeleton';
 export { default as SkinnedMesh, type SkinnedMeshParameters } from './core/SkinnedMesh';
 export {
     default as Stage,
+    type StageBackend,
     type StageBackendParameters,
     type StageCommonParameters,
     type StageParameters,
@@ -170,7 +171,8 @@ export { default as WebGLRenderTarget } from './renderer/webgl/WebGLRenderTarget
 export {
     default as WebGPURenderer,
     type WebGPUDeviceRecoveryState,
-    type WebGPURendererParameters
+    type WebGPURendererParameters,
+    type WebGPUSupportOptions
 } from './renderer/webgpu/WebGPURenderer';
 export {
     WEBGPU_BYTES_PER_ROW_ALIGNMENT,
@@ -198,17 +200,19 @@ export {
     type WebGPUTextureRequestOptions,
     type WebGPUTextureResource
 } from './renderer/webgpu/WebGPUTextureManager';
-export type {
-    Renderer,
-    RendererBackend,
-    RendererFrame,
-    RendererFrameCallback,
-    RendererResourceDiagnostics,
-    RendererResourceManager,
-    RendererScene,
-    RendererViewport,
-    TextureCompressionFormat
+export {
+    default as Renderer,
+    type RendererBackend,
+    type RendererContract,
+    type RendererFrame,
+    type RendererFrameCallback,
+    type RendererResourceDiagnostics,
+    type RendererResourceManager,
+    type RendererScene,
+    type RendererViewport,
+    type TextureCompressionFormat
 } from './renderer/common/Renderer';
+export type { RenderFramePlan } from './renderer/common/RenderFramePlan';
 export {
     getWebGPUUniformBlockBinding,
     registerWebGPUCustomUniformBlockBinding,
@@ -343,7 +347,7 @@ export {
     type WebGPUSamplerBinding,
     type WebGPUUniformBlock,
     type WebGPUVertexInput
-} from './renderer/webgpu/shader/GlslToWgsl';
+} from './renderer/shader/GlslToWgsl';
 
 export {
     type BasicLightType,

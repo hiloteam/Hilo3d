@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import GeometryData from '../../../src/geometry/GeometryData';
-import type { WebGPUVertexInput } from '../../../src/renderer/webgpu/shader/GlslToWgsl';
+import type { WebGPUVertexInput } from '../../../src/renderer/shader/GlslToWgsl';
 import {
     WebGPUBufferManager,
     type WebGPUIndexBufferBinding,

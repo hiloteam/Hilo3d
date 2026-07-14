@@ -4,18 +4,21 @@
 
 **一个 WebGPU-first、TypeScript-first，并提供生产级 WebGL 2 兼容后端的 3D 引擎。**
 
-Hilo3d vNext 围绕显式 render pass、可复用 GPU 资源、GLSL ES
-3.00、PBR 与 glTF 设计。WebGPU 获得现代 command
-recording 路径，同时无需维护第二套 shader 语言，也不放弃 WebGL 2 覆盖范围。
+Hilo3d vNext 围绕 WebGPU-shaped RHI、显式 render pass、可复用 GPU 资源、GLSL ES
+3.00、PBR 与 glTF 设计。WebGPU 保留原生 pipeline/bind-group/command 模型；WebGL
+2 则通过带状态差分缓存的即时 GL 执行实现同一可移植子集。
 
 [![npm](https://img.shields.io/npm/v/hilo3d.svg?style=flat-square)](https://www.npmjs.com/package/hilo3d)
 [![CI](https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?style=flat-square)](https://github.com/hiloteam/Hilo3d/actions/workflows/npm_test.yml)
 [![license](https://img.shields.io/npm/l/hilo3d.svg?style=flat-square)](./LICENSE)
 
-- WebGPU 把资源已就绪的 scene、target 与 present pass 记录进一个应用 command encoder，并只提交一次。
-- WebGL 2 实现相同的 renderer、render target、shader 与资源契约。
-- GLSL ES 3.00 是唯一 shader 源码；WebGPU 通过 Naga 转译解析后的 variant。
-- 后端失败始终显式暴露，Hilo3d 不会静默切换用户请求的后端。
+- WebGPURHI 是 native WebGPU 对象与命令的薄映射，不退化成 GL 风格状态机，也不会再回放一份 JavaScript
+  command buffer。
+- WebGL2RHI 模拟 pipeline、bind group、render pass 与 command encoder 语义，编码时就通过 state-diff
+  cache 即时执行 GL；`finish()`/`submit()` 只是归属边界，不做延迟回放。
+- GLSL ES 3.00 是唯一人工编写的 shader 源码。Renderer
+  shader 编译层先解析 variant、通过 Naga 生成 WebGPU module，RHI 只消费已准备好的后端 module。
+- 后端策略始终显式：`auto` 按能力选择；显式请求 `webgpu` 或 `webgl2` 时绝不会静默切换。
 
 ## 安装
 
@@ -28,8 +31,8 @@ npm install hilo3d
 
 ## WebGPU 快速开始
 
-`Stage.create()`
-会等待 adapter、device、按需加载的 Naga 编译器和初始渲染资源，因此返回的 stage 可以直接渲染。
+`Stage.create()` 默认使用
+`backend: 'auto'`，存在兼容 adapter 时优先 WebGPU，并等待最终选中的后端完成初始化；返回的 stage 可以直接渲染。
 
 ```ts
 import * as Hilo3d from 'hilo3d';
@@ -58,10 +61,23 @@ ticker.addTick(stage);
 ticker.start();
 ```
 
-请求 `backend: 'webgpu'`
-后绝不会回退。adapter 不可用、所需 feature 或 limit 不足、shader 编译器初始化失败或 device 创建错误都会让
-`Stage.create()` reject。若应用希望把 WebGL 2 作为 fallback 策略，必须捕获错误，再显式发起一次
-`Stage.create({ backend: 'webgl2', ... })` 请求。
+省略 `backend` 等同于 `backend: 'auto'`。auto 会先调用
+`WebGPURenderer.isSupported()`：这个轻量探测只请求 adapter，并校验 fallback-adapter 策略、required
+feature、required limit 和 Hilo3d 的最低 adapter limits；不会请求 device、获取 canvas
+context、初始化 Naga、创建 pipeline 或分配 GPU 资源。adapter 兼容时选择 WebGPU，否则直接创建 WebGL
+2。传入 WebGL 2-only 的 `preserveDrawingBuffer`，或请求 `alpha: true, premultipliedAlpha: false`
+的 straight-alpha canvas 合成时，auto 也会直接选择 WebGL 2。
+
+探测选中 WebGPU 后，正式 WebGPU 初始化只执行一次。device 或 canvas
+context 创建错误、shader 编译器失败、pipeline/资源初始化错误以及之后的任何错误都会让
+`Stage.create()` reject，绝不会被捕获后当作回退理由。显式请求 `backend: 'webgpu'`
+会跳过 auto 探测，同样绝不回退。
+
+应用也可以在不创建 renderer 的情况下复用同一不创建 device 或 GPU 资源的探测：
+
+```ts
+const webgpuSupported = await Hilo3d.WebGPURenderer.isSupported();
+```
 
 ## WebGL 2 兼容
 
@@ -75,20 +91,22 @@ const stage = await Hilo3d.Stage.create({
 });
 ```
 
-省略 `backend` 时使用文档化的 `webgl2` 默认值。Hilo3d 永远不会创建 WebGL 1 上下文。
+同步 `new Stage()` 仍默认使用 WebGL 2，因为构造函数无法等待异步 adapter 探测；需要 WebGPU-first
+auto 策略时应使用 `await Stage.create()`。Hilo3d 永远不会创建 WebGL 1 上下文。
 
 ## 能力矩阵
 
-| 能力                  | WebGPU                                                        | WebGL 2                                          |
-| --------------------- | ------------------------------------------------------------- | ------------------------------------------------ |
-| Shader 输入           | GLSL ES 3.00 → Naga → WGSL                                    | 直接使用 GLSL ES 3.00                            |
-| 多 pass `renderFrame` | 资源已就绪的 renderer pass 使用一个 encoder/submit            | 按顺序立即执行                                   |
-| 原生对象复用          | Pipeline、bind group、buffer、texture、sampler、command state | Program、VAO、buffer、texture、sampler、GL state |
-| 增量上传              | UBO/geometry dirty range；texture revision                    | UBO/geometry dirty range；texture revision       |
-| Render target         | MRT、1×/4× MSAA、可采样 attachment、异步回读                  | 相同契约                                         |
-| 引擎渲染              | PBR、阴影、实例化、glTF、后处理、拾取                         | 相同契约                                         |
-| 丢失处理              | 重新获取 device 并恢复资源                                    | 恢复 context 与资源                              |
-| 后端不可用            | 显式 reject，不回退                                           | 显式 reject，不回退 WebGL 1                      |
+| 能力                  | WebGPU                                             | WebGL 2                                                  |
+| --------------------- | -------------------------------------------------- | -------------------------------------------------------- |
+| RHI 执行              | 薄封装 native encoder/pass/queue                   | encoder/pass 语义下的即时 GL 执行                        |
+| Shader module 输入    | Renderer 准备好的 WGSL                             | Renderer 准备好的 GLSL ES 3.00                           |
+| 多 pass `renderFrame` | 资源已就绪的 renderer pass 使用一个 encoder/submit | 按顺序即时执行；submit 绝不回放命令                      |
+| Device 对象复用       | 有界 pipeline、layout 与 sampler cache             | 有界 pipeline、layout、sampler、framebuffer 与 VAO cache |
+| 增量上传              | UBO/geometry dirty range；texture revision         | UBO/geometry dirty range；texture revision               |
+| Render target         | MRT、1×/4× MSAA、可采样 attachment、异步回读       | 相同引擎契约                                             |
+| RHI 不支持能力        | 通过 `features`/`limits` 声明，请求时拒绝          | compute/storage/1D/异步 buffer mapping 明确不支持        |
+| 丢失处理              | 重新获取 device 并恢复资源                         | 恢复 context 与资源                                      |
+| 后端选择              | 显式请求失败即 reject；`auto` 只做 adapter 探测    | `auto` 探测不支持时直接选择；不回退 WebGL 1              |
 
 ## 一帧，多 pass
 
@@ -120,23 +138,43 @@ target 的 resize、readback、destroy 必须在 callback 外执行；WebGPU 录
 
 ## 现代渲染架构
 
-- `src/renderer/common` 负责后端中立的 frame planning、traversal、render target 契约、std140 uniform
-  buffer 与确定性资源归属。
-- `src/renderer/webgpu` 负责 command encoding、pipeline、bind
-  group、buffer、texture、呈现与 device 生命周期。
-- `src/renderer/webgl` 负责 WebGL program、VAO、buffer/texture/sampler/UBO manager、texture
-  uploader、context state、framebuffer 集成、呈现与 context 生命周期。
+- `src/renderer/common` 负责 scene traversal、frame planning、render target 契约、std140
+  uniform 数据和确定性引擎资源归属。
+- `src/shader` 负责 GLSL 预处理和引擎 shader variant；`src/renderer/shader`
+  负责准备后端接口、反射 binding 与 GLSL→WGSL 编译；RHI 不知道 shader variant 或 material。
+- `src/renderer/webgpu` 与 `src/renderer/webgl`
+  负责把 Mesh、Material、Light、RenderTarget 等引擎语义解析为后端已准备资源。Concrete
+  RHI 统一持有 native device、context/surface 与生命周期，renderer
+  manager 在这个唯一 owner 下管理引擎资源分配。
+- `src/rhi/RHI.ts` 定义 WebGPU-shaped 的 device、resource、pipeline、bind group、render
+  pass、encoder、queue、surface、feature 与 limit 契约。
+- `src/rhi/webgpu` 直接包装 native WebGPU；`src/rhi/webgl` 包含 WebGL 2 语义模拟、state
+  cache、framebuffer/VAO 归属和 context recovery。两个 RHI 都不引用引擎 scene 类型。
+
+抽象边界刻意采用 WebGPU 模型，而不是 WebGL 状态机。WebGPU render pass 与 native pass 一对一，command
+encoder 直接持有 native encoder。WebGL2RHI 只在 pipeline 或 bind
+group 状态变化时应用 GL 状态，draw/copy 在编码期间已执行；返回的 command buffer 只是一次性 submit
+token。生产 WebGPU manager 直接使用同一个 concrete device 上的一跳 native fast path，主 draw
+loop 保留 native handle，不承担 wrapper 或虚调用开销。生产 WebGL 2 renderer 则在 frame-scoped
+session 中执行引擎语义的 Program/VAO 路径，并共享 RHI 唯一的 context、canonical state
+differential、lifecycle 与 device-owned sampler
+cache；Program、VAO、framebuffer 仍属于 Renderer 的引擎语义 cache，不会创建并行 context 或可回放命令列表。无法在 WebGL
+2 中正确实现的 compute pipeline、storage texture/buffer、1D texture、异步 buffer
+mapping、base-vertex 与 first-instance draw 会从 `features` 中缺席或以 0
+limit 暴露，请求时明确报错。RHI 契约内部会保守声明格式相关的采样、过滤、attachment、storage 和 MSAA 能力，包括 extension/tier 导致的差异。
 
 全部引擎 shader 都以 GLSL ES 3.00 为起点。WebGL 2 直接编译；WebGPU 先解析 shader
 variant，把生效接口改写成 Vulkan GLSL 4.50，再交给 Naga WASM frontend 生成 WGSL。引擎内部 utility
 pass 也使用相同路径，不维护手写 fallback WGSL shader 集。
 
 Shader variant 使用结构化、带类型与长度边界的双通道 64-bit
-hash，不生成中间序列化 key；同时保留精确字段用于碰撞检查，发生碰撞时会得到确定性的 bucket
-key，不会错误复用另一个 shader。按 device/context 隔离的 pipeline、bind group、GPU
-resource 与 command state cache 避免重复创建和绑定；后端 manager 为渲染 variant、WebGPU sampler
-descriptor、每纹理 sampler snapshot 与数值 depth
-shader 专化设置按访问顺序更新的 LRU 上限，共享 resource manager 负责资源归属与确定性释放。
+hash，不生成中间序列化 key；同时保留精确字段用于碰撞检查，发生碰撞时会得到确定性 bucket
+key，不会错误复用另一个 shader。Cache 归属只保留一层：每个 RHI device 持有有界的 immutable
+sampler、bind-group-layout、pipeline-layout 与 render-pipeline
+cache；Renderer 持有 material、Mesh、shader variant、binding set 和 upload revision
+cache。RHI 不按 descriptor 去重 buffer、texture、shader module 或 bind
+group，因为它们的 identity 与生命周期属于应用数据；label 不参与 device cache key。Device
+lost/context restore 和显式 destroy 会清空所有 device cache。
 
 Texture identity 保持后端中立：共享对象只保存 CPU 内容、不可变 update
 snapshot 与单调 revision；每个 WebGL context 和 WebGPU device 分别持有 native allocation 与 upload

@@ -1,7 +1,7 @@
 import Node, { type NodeParameters, type NodePointerEvent, type NodeRaycastInfo } from './Node';
 import version from './version';
 import WebGLRenderer from '../renderer/webgl/WebGLRenderer';
-import WebGPURenderer from '../renderer/webgpu/WebGPURenderer';
+import WebGPURenderer, { type WebGPUSupportOptions } from '../renderer/webgpu/WebGPURenderer';
 import type { RendererBackend } from '../renderer/common/Renderer';
 import Ray from '../math/Ray';
 import Vector3 from '../math/Vector3';
@@ -157,33 +157,79 @@ export interface StageCommonParameters extends NodeParameters {
     gameMode?: boolean;
 }
 
-export type StageBackendParameters<Backend extends RendererBackend> = [RendererBackend] extends [
-    Backend
-]
-    ? {
-          backend: RendererBackend;
-          /** Dynamic backend selection is guarded at runtime when this WebGL2-only option exists. */
+/** Requested backend policy. `auto` probes WebGPU first and otherwise selects WebGL 2. */
+export type StageBackend = RendererBackend | 'auto';
+
+export type StageBackendParameters<Backend extends StageBackend> = [StageBackend] extends [Backend]
+    ? WebGPUSupportOptions & {
+          backend?: StageBackend;
+          /** Supplying this WebGL2-only option makes `auto` select WebGL 2. */
           preserveDrawingBuffer?: boolean;
       }
-    : Backend extends 'webgpu'
-      ? {
-            /** WebGPU selection is explicit and never falls back silently. */
-            backend: 'webgpu';
-            /** WebGPU has no preserved default framebuffer; use an explicit copy/readback pass. */
-            preserveDrawingBuffer?: never;
-        }
-      : {
-            backend?: 'webgl2';
+    : [RendererBackend] extends [Backend]
+      ? WebGPUSupportOptions & {
+            backend: RendererBackend;
+            /** Dynamic backend selection is guarded at runtime when this WebGL2-only option exists. */
             preserveDrawingBuffer?: boolean;
-        };
+        }
+      : Backend extends 'webgpu'
+        ? WebGPUSupportOptions & {
+              /** Explicit WebGPU selection never falls back silently. */
+              backend: 'webgpu';
+              /** WebGPU has no preserved default framebuffer; use an explicit copy/readback pass. */
+              preserveDrawingBuffer?: never;
+          }
+        : Backend extends 'auto'
+          ? WebGPUSupportOptions & {
+                /** The asynchronous factory defaults to WebGPU-first automatic selection. */
+                backend?: 'auto';
+                /** Supplying this WebGL2-only option makes `auto` select WebGL 2. */
+                preserveDrawingBuffer?: boolean;
+            }
+          : {
+                backend?: 'webgl2';
+                preserveDrawingBuffer?: boolean;
+            };
 
-export type StageParameters<Backend extends RendererBackend = 'webgl2'> = StageCommonParameters & {
+export type StageParameters<Backend extends StageBackend = 'webgl2'> = StageCommonParameters & {
     backend?: Backend;
 } & StageBackendParameters<Backend>;
 
 export type StageRenderer<Backend extends RendererBackend> = Backend extends 'webgpu'
     ? WebGPURenderer
     : WebGLRenderer;
+
+function snapshotStageParameters(
+    params: StageParameters<StageBackend>
+): StageParameters<StageBackend> {
+    return {
+        ...params,
+        ...(params.requiredFeatures === undefined
+            ? {}
+            : { requiredFeatures: [...params.requiredFeatures] }),
+        ...(params.requiredLimits === undefined
+            ? {}
+            : { requiredLimits: { ...params.requiredLimits } })
+    };
+}
+
+/** @internal Resolve a requested backend without creating a device, context, or GPU resource. */
+export async function resolveStageBackend(
+    params: StageParameters<StageBackend> = {}
+): Promise<RendererBackend> {
+    const requestedBackend: unknown = params.backend ?? 'auto';
+    if (requestedBackend === 'webgpu' || requestedBackend === 'webgl2') return requestedBackend;
+    if (requestedBackend !== 'auto') {
+        throw new TypeError(`Unsupported Stage backend ${String(requestedBackend)}`);
+    }
+    if (
+        Object.prototype.hasOwnProperty.call(params, 'preserveDrawingBuffer') ||
+        (params.alpha === true && params.premultipliedAlpha === false)
+    ) {
+        return 'webgl2';
+    }
+    return (await WebGPURenderer.isSupported(params)) ? 'webgpu' : 'webgl2';
+}
 
 export interface StagePointerEvent extends NodePointerEvent {
     stageX: number;
@@ -316,11 +362,23 @@ class Stage<Backend extends RendererBackend = 'webgl2'> extends Node {
         log.log(`Hilo3d version: ${version}`);
     }
 
-    /** Construct and await an asynchronously initialized backend. */
-    static async create<Backend extends RendererBackend = 'webgl2'>(
-        params: StageParameters<Backend> = {} as StageParameters<Backend>
-    ): Promise<Stage<Backend>> {
-        const stage = new Stage(params);
+    /** Construct and await the WebGPU-first automatic backend policy. */
+    static create(params?: StageParameters<'auto'>): Promise<Stage<RendererBackend>>;
+    /** Construct and await an explicitly selected backend. */
+    static create<Backend extends RendererBackend>(
+        params: StageParameters<Backend>
+    ): Promise<Stage<Backend>>;
+    /** Construct from a runtime backend policy whose resolved backend is not known statically. */
+    static create(params: StageParameters<StageBackend>): Promise<Stage<RendererBackend>>;
+    static async create(
+        params: StageParameters<StageBackend> = {}
+    ): Promise<Stage<RendererBackend>> {
+        const parameterSnapshot = snapshotStageParameters(params);
+        const backend = await resolveStageBackend(parameterSnapshot);
+        const stage = new Stage<RendererBackend>({
+            ...parameterSnapshot,
+            backend
+        });
         await stage.ready;
         return stage;
     }

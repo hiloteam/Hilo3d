@@ -53,7 +53,7 @@
 | 示例     | 旧全局变量、vendor 脚本、远程运行时资源                 | 严格 TS 多页面应用，本地 npm 依赖与本地静态资产                        |
 | 渲染 ABI | WebGL 1/2 分支、GLSL 1.00 转译与逐项 uniform            | WebGL 2 + WebGPU、GLSL→Naga→WGSL、按频率分组的固定 std140 UBO ABI      |
 | npm 包   | 仓库内入口能运行即视为通过                              | publint、Are the Types Wrong、Bundler/NodeNext 与真实 ESM 运行时消费   |
-| CI/发布  | 老版本 Actions、Node 与零散命令                         | Node 22 最低版本 + Node 24 双矩阵，npm 12、Chromium、单一完整门禁      |
+| CI/发布  | 老版本 Actions、Node 与零散命令                         | 固定 Node 22.22.2、npm 12、Chromium 与单一完整发布门禁                 |
 | 文档站点 | 跟踪旧生成物                                            | CI 现场生成 TypeDoc 与 Vite 示例站点并部署 Pages                       |
 
 ## 语言与架构
@@ -85,8 +85,10 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 
 ### 运行时与资源
 
-- 应用通过 `backend: 'webgl2' | 'webgpu'` 选择图形后端；新代码应使用 `await Stage.create(...)`
-  等待后端完成初始化。省略字段使用文档化的 WebGL 2 默认值，但显式请求 WebGPU 后绝不会静默回退。
+- 异步 `Stage.create(...)` 接受 `backend: 'auto' | 'webgl2' | 'webgpu'`；省略字段等同
+  `auto`。auto 通过 `WebGPURenderer.isSupported()` 只执行 `requestAdapter` 与 adapter
+  policy/feature/limit 校验，兼容时正式初始化一次 WebGPU，不兼容时直接创建 WebGL 2。同步
+  `new Stage()` 无法等待 adapter 探测，因此继续默认 WebGL 2。显式请求 WebGPU 后绝不会静默回退。
 - WebGL 2 上下文创建失败会直接报告不支持，不再尝试 WebGL
   1 或扩展模拟核心能力。WebGPU 会显式申请 adapter、校验 required
   feature/limit、创建设备并初始化 Naga WASM；任一步失败都会 reject
@@ -121,23 +123,65 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 
 ## 双后端渲染与 shader ABI
 
-### 显式后端选择
+### 后端选择与轻量 auto 探测
 
-`Stage` 的公共后端类型只有 `webgl2` 与 `webgpu`。推荐统一使用异步工厂，让调用点明确表达初始化边界：
+Renderer 的实际后端仍只有 `webgl2` 与 `webgpu`；异步工厂额外接受 `auto`
+选择策略。推荐统一使用异步工厂，让调用点明确表达初始化边界：
 
 ```ts
+const autoStage = await Stage.create({ camera });
 const webglStage = await Stage.create({ backend: 'webgl2', camera });
 const webgpuStage = await Stage.create({ backend: 'webgpu', camera });
+const webgpuSupported = await WebGPURenderer.isSupported();
 ```
 
-省略 `backend` 只表示选择文档化的 WebGL
-2 默认值，不是能力探测。显式选择 WebGPU 后，浏览器不支持、adapter 不存在、feature/limit 不满足、恢复失败或 shader 编译失败都会成为可观察错误；引擎内部禁止吞掉错误后静默创建 WebGL
-2
-renderer、关闭 feature 或换一条低能力渲染路径继续运行。应用可以捕获该错误，并按自身产品策略显式发起一次独立的
-`Stage.create({ backend: 'webgl2', ... })` 请求。
+省略 `backend` 等同于 `auto`。auto 先调用公开的 `WebGPURenderer.isSupported()`：它只读取
+`navigator.gpu`、调用 `requestAdapter()`，再校验 fallback-adapter policy、required
+feature/limit 与引擎最低 adapter limits；不得调用
+`requestDevice()`、`canvas.getContext('webgpu')`，不得初始化 Naga、pipeline、manager 或任何 GPU 资源。探测返回
+`false` 时直接构造 WebGL 2；传入 `preserveDrawingBuffer` 时也直接选择 WebGL 2；请求
+`alpha: true, premultipliedAlpha: false` 的 straight-alpha canvas 合成时同样直接选择 WebGL
+2，不发起 WebGPU 探测。同步 `new Stage()` 继续以 WebGL
+2 为默认值，避免在同步构造器中伪造异步能力判断。
+
+探测返回 `true` 后只正式创建一次 WebGPU Stage。此后的 device/context 请求、shader
+compiler、pipeline 或资源初始化错误都直接 reject，不得被 catch 后切换 WebGL
+2。显式选择 WebGPU 会跳过 auto 探测；浏览器不支持、adapter 不存在、feature/limit 不满足、恢复失败或 shader 编译失败均为可观察错误。引擎内部禁止吞掉错误后关闭 feature 或换一条低能力渲染路径继续运行。
 
 WebGL 2 backend 直接使用 core API 和原生 GLSL ES 3.00；项目不创建 WebGL 1 context，不保留 WebGL 1
 extension adapter，也不接受 GLSL 1.00 自定义 shader。
+
+### WebGPU-shaped RHI 边界
+
+渲染底层以 `src/rhi/RHI.ts` 的 WebGPU-shaped 契约为边界：`device`
+创建 buffer、texture、sampler、prepared shader module、bind-group layout、pipeline layout、bind
+group 与 render pipeline；`command encoder`/`render pass`/`queue`
+表达执行与提交。RHI 目录的产品代码不引用 Mesh、Material、Stage、Light、RenderList 或 shader
+variant，也不负责 GLSL→WGSL；这些引擎语义属于上层 Renderer、`src/shader` variant层和
+`renderer/shader` 后端编译层。
+
+`WebGPURHI` 只保留必要的 identity、lifecycle、descriptor snapshot 与有界 device
+cache，resource/encoder/pass/queue 命令直接映射 native
+WebGPU，禁止引入 GL 风格全局状态机或二次 JavaScript command replay。`WebGL2RHI`
+在同一契约下模拟 pipeline、bind group、render
+pass 与 encoder，但每条 GL 命令都在编码时通过 state-diff cache 即时执行；`finish()`
+只产生单次 submit token，`submit()` 不回放命令列表。生产 fast path 与 WebGL
+RHI 的实际 draw/apply 热段不创建临时 descriptor/array/typed-array；pass
+setup 可以规范化一次 descriptor，VAO、framebuffer 和 immutable device object 使用有界缓存。
+
+生产 Renderer 不为统一接口牺牲热路径性能。WebGPU manager 持有 concrete
+`WebGPUDevice`，资源创建、主帧 encoder、surface texture 与 submit 都通过一跳 native fast
+path 完成，draw loop 继续直接使用 native handle；portable wrapper 只服务需要通用契约的路径。WebGL
+Renderer 只从 `WebGL2RHI` 获取一次 context，并在 frame-scoped、可重入的 state-managed
+session 中执行 Program/VAO 等引擎语义工作；旧 `WebGLState` adapter 委托 RHI 的 canonical state
+differential，sampler immutable cache 也归 RHI device，因而没有第二套 active state
+cache、第二个 context 或 JS command replay。
+
+可移植契约不伪造完整 WebGPU。Compute pipeline 不在当前 RHI surface 中；WebGL 2 的 storage
+buffer/texture、1D texture、异步 buffer mapping、base-vertex 和 first-instance draw 等能力通过缺失的
+`features`、0 `limits` 和创建/执行时错误明确暴露，不使用 CPU shadow 或隐藏降级来模拟。每个 texture
+format 的 sampled/filterable/renderable/storage 与 sample-count 子集在 RHI 内部按 WebGPU feature
+tier 或 WebGL extension 做保守 gate，不会误报硬件实际无法创建的组合。
 
 ### WebGPU device loss 自动恢复
 
@@ -276,9 +320,11 @@ buffer/texture/UBO 更新保留带 revision 的有界快照，上传成功后只
 history 后执行一次完整上传，再恢复 partial。资源以
 `mesh → pass owner → material/shader/instancing variant`
 保存；阴影、主画布和每个 RenderTarget 各自更新命中的 variant，不会用一次 pass 的快照覆盖其他 pass。材质/几何 identity 替换、target 销毁和 mesh 销毁会确定性释放对应状态，每个 mesh 的 variant 使用 32 项 LRU 上限；完整帧成功后才原子提交，异常帧只回收未提交的新资源。共享资源按 renderer 全局最终引用判断，不能被另一个 scene/pass 提前销毁。owner 释放会同时删除 CPU
-UBO cache 和 native wrapper。pipeline、layout、sampler 与 bind-group
-cache 都有明确的失效或容量边界；vertex/instance/index buffer variant 使用 per-owner
-LRU，WebGPU 的 immutable sampler descriptor、每纹理 resolved snapshot 与每个 base
+UBO cache 和 native wrapper。缓存归属只保留一层：RHI device 缓存 immutable sampler、bind-group
+layout、pipeline layout 与 render pipeline，Renderer 缓存 material、Mesh、shader variant、binding
+set 与 upload revision。RHI 不按 descriptor 去重 buffer、texture、shader module 或 bind
+group，label 不参与 device key；device/context 丢失、恢复和 destroy 会清除 device
+cache。vertex/instance/index buffer variant 使用 per-owner LRU，每纹理 resolved snapshot 与每个 base
 shader 的 numeric-depth 专化同样使用有界 access-order
 LRU；pipeline 把不可淘汰的 in-flight 去重层与已完成的有界 LRU 分开。UBO/texture
 identity 变化只失效 bind group，不重建稳定的 pipeline
@@ -735,8 +781,9 @@ Chromium 和 SwiftShader。同一个确定性灯光 PBR 场景分别通过 WebGL
 
 ## CI 与站点发布
 
-CI 在 Node 22.22.2 与 Node 24 两档执行，使用当前维护的 GitHub Actions、锁文件安装、固定 npm
-12.0.1 和显式 Chromium 系统依赖。PR、`dev`、`master` 与版本 tag 使用同一个
+CI 只保留项目最低版本 Node 22.22.2 这一个测试档位，使用当前维护的 GitHub
+Actions、锁文件安装、固定 npm 12.0.1 和显式 Chromium 系统依赖，避免在 Node
+22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master` 与版本 tag 使用同一个
 `npm run validate`；过期任务由 concurrency 自动取消。Chromium 同时启用确定性的 SwiftShader WebGL
 2 与 WebGPU adapter，78 页矩阵、双后端交互和双后端视觉门禁不依赖 CI
 runner 是否暴露物理 GPU。物理 GPU 项目只能由上述手动 self-hosted
@@ -779,7 +826,8 @@ translation 时拒绝漏网接口，静态规则、WebGL 2 link、Naga corpus �
 - [x] 自动清单包含 78 个 HTML；除 WebXR 显式 WebGL 2-only 例外外，全部通过 WebGL 2 +
       WebGPU 页面、请求、控制台与 GPU 错误门禁。
 - [x] 同一确定 PBR 场景和关键交互在两个后端都有 readback/截图或行为断言；WebGPU 不只依赖独立 fixture。
-- [x] `webgl2` 与 `webgpu` 后端显式选择，WebGPU 不支持时直接失败且不会静默回退。
+- [x] `Stage.create()` 默认用无 device/resource 分配的 adapter probe 实现 WebGPU-first `auto`；显式
+      `webgl2`/`webgpu` 不切换，auto 选中 WebGPU 后的真实初始化错误也不会触发回退。
 - [x] WebGPU device
       lost 会重新获取等价 adapter、复核 capability，并自动恢复 device/context/manager、released
       texture backing 与原 target identity；恢复期安全跳帧、失败后显式抛错、destroy 可取消。
@@ -815,7 +863,7 @@ translation 时拒绝漏网接口，静态规则、WebGL 2 link、Naga corpus �
 - [x] std140 offset/stride、固定 block binding、dirty-range upload 和非法 classic
       uniform 有自动测试。
 - [x] 旧构建、测试、文档生成和运行时 vendor 链路已删除。
-- [x] CI 验证最低 Node 与当前 Node，发布前复用同一完整门禁。
+- [x] CI 只验证固定的最低 Node 22.22.2 档位，发布前复用同一完整门禁。
 
 ## 后续维护规则
 

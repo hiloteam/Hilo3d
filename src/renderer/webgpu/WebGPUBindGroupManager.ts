@@ -1,6 +1,11 @@
 import type Texture from '../../texture/Texture';
+import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
+import {
+    getWebGPUNativeDeviceCache,
+    type WebGPUNativeDeviceCache
+} from '../../rhi/webgpu/WebGPUNativeCache';
 import { touchBoundedLruEntry } from '../common/BoundedLruCache';
-import type { TranslatedShaderPair, WebGPUSamplerBinding } from './shader/GlslToWgsl';
+import type { TranslatedShaderPair, WebGPUSamplerBinding } from '../shader/GlslToWgsl';
 import { WEBGPU_BIND_GROUP_COUNT } from './WebGPUBindingLayout';
 import { WebGPUShaderStage } from './WebGPUConstants';
 import {
@@ -15,7 +20,6 @@ import type { WebGPUUniformBufferBinding } from './WebGPUUniformBufferManager';
 
 const MAX_CACHED_BIND_GROUPS_PER_GROUP = 256;
 const MAX_CACHED_BIND_GROUP_SETS = 256;
-const MAX_CACHED_BIND_GROUP_LAYOUTS_PER_GROUP = 256;
 const MAX_CACHED_PIPELINE_LAYOUTS = 256;
 
 export interface ResolvedWebGPUSampler {
@@ -180,6 +184,29 @@ function sortedUniqueEntries<T extends { readonly binding: number }>(
     return entries;
 }
 
+function bindGroupLayoutSignature(entries: readonly GPUBindGroupLayoutEntry[]): string {
+    let signature = String(entries.length);
+    for (const entry of entries) {
+        signature += `|${String(entry.binding)},${String(entry.visibility)}`;
+        if (entry.buffer) {
+            signature += `,b:${entry.buffer.type ?? 'uniform'},${entry.buffer.hasDynamicOffset === true ? '1' : '0'},${String(entry.buffer.minBindingSize ?? 0)}`;
+        } else if (entry.sampler) {
+            signature += `,s:${entry.sampler.type ?? 'filtering'}`;
+        } else if (entry.texture) {
+            signature += `,t:${entry.texture.sampleType ?? 'float'},${entry.texture.viewDimension ?? '2d'},${entry.texture.multisampled === true ? '1' : '0'}`;
+        } else if (entry.storageTexture) {
+            signature += `,w:${entry.storageTexture.access ?? 'write-only'},${entry.storageTexture.format},${entry.storageTexture.viewDimension ?? '2d'}`;
+        } else if (entry.externalTexture) {
+            signature += ',e';
+        } else {
+            throw new TypeError(
+                `WebGPU bind group layout binding ${String(entry.binding)} has no resource type`
+            );
+        }
+    }
+    return signature;
+}
+
 function validateResourceLimits(
     shader: TranslatedShaderPair,
     samplers: readonly ResolvedWebGPUSampler[],
@@ -240,12 +267,10 @@ function validateResourceLimits(
 /** Owns the explicit four-group WebGPU ABI and immutable bind-group caches. */
 export default class WebGPUBindGroupManager {
     private readonly device: GPUDevice;
+    private readonly rhiDevice: WebGPUDevice | null;
+    private readonly nativeCache: WebGPUNativeDeviceCache;
     private readonly textureManager: WebGPUTextureResolver;
     private readonly layouts = new Map<string, WebGPUPipelineBindingLayout>();
-    private readonly groupLayouts = Array.from(
-        { length: WEBGPU_BIND_GROUP_COUNT },
-        () => new Map<string, GPUBindGroupLayout>()
-    );
     private readonly bindGroupsByGroup = Array.from(
         { length: WEBGPU_BIND_GROUP_COUNT },
         () => new Map<string, GPUBindGroup>()
@@ -254,8 +279,20 @@ export default class WebGPUBindGroupManager {
     private readonly objectIds = new WeakMap<object, number>();
     private nextObjectId = 1;
 
-    constructor(device: GPUDevice, textureManager: WebGPUTextureResolver) {
+    constructor(
+        deviceOrOwner: GPUDevice | WebGPUDevice,
+        textureManager: WebGPUTextureResolver,
+        rhiDevice?: WebGPUDevice
+    ) {
+        const owner = deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner : (rhiDevice ?? null);
+        const device =
+            deviceOrOwner instanceof WebGPUDevice ? deviceOrOwner.nativeDevice : deviceOrOwner;
+        if (rhiDevice && rhiDevice.nativeDevice !== device) {
+            throw new TypeError('WebGPU bind group manager and RHI device must share a GPUDevice');
+        }
         this.device = device;
+        this.rhiDevice = owner;
+        this.nativeCache = owner?.nativeCache ?? getWebGPUNativeDeviceCache(device);
         this.textureManager = textureManager;
     }
 
@@ -380,7 +417,7 @@ export default class WebGPUBindGroupManager {
         const normalizedEntries = groupEntries.map((entries, group) =>
             sortedUniqueEntries(entries, group)
         );
-        const groupSignatures = normalizedEntries.map(entries => JSON.stringify(entries));
+        const groupSignatures = normalizedEntries.map(bindGroupLayoutSignature);
         const signature = groupSignatures
             .map(groupSignature => `${String(groupSignature.length)}:${groupSignature}`)
             .join('|');
@@ -390,37 +427,27 @@ export default class WebGPUBindGroupManager {
             return cached;
         }
         const bindGroupLayouts = normalizedEntries.map((entries, group) => {
-            const cache = this.groupLayouts[group];
-            const groupSignature = groupSignatures[group];
-            if (!cache || groupSignature === undefined) {
+            if (groupSignatures[group] === undefined) {
                 throw new RangeError(`WebGPU bind group ${String(group)} is outside the ABI`);
             }
-            const cachedGroup = cache.get(groupSignature);
-            if (cachedGroup) {
-                touchBoundedLruEntry(
-                    cache,
-                    groupSignature,
-                    cachedGroup,
-                    MAX_CACHED_BIND_GROUP_LAYOUTS_PER_GROUP
-                );
-                return cachedGroup;
-            }
-            const created = this.device.createBindGroupLayout({
+            const descriptor = {
                 label: `Hilo3d bind group ${String(group)}`,
                 entries
-            });
-            touchBoundedLruEntry(
-                cache,
-                groupSignature,
-                created,
-                MAX_CACHED_BIND_GROUP_LAYOUTS_PER_GROUP
+            } satisfies GPUBindGroupLayoutDescriptor;
+            return (
+                this.rhiDevice?.createNativeBindGroupLayout(descriptor) ??
+                this.nativeCache.createBindGroupLayout(descriptor)
             );
-            return created;
         });
+        const pipelineLayoutDescriptor = {
+            bindGroupLayouts
+        } satisfies GPUPipelineLayoutDescriptor;
         const result: WebGPUPipelineBindingLayout = Object.freeze({
             signature,
             bindGroupLayouts: Object.freeze(bindGroupLayouts),
-            pipelineLayout: this.device.createPipelineLayout({ bindGroupLayouts })
+            pipelineLayout:
+                this.rhiDevice?.createNativePipelineLayout(pipelineLayoutDescriptor) ??
+                this.nativeCache.createPipelineLayout(pipelineLayoutDescriptor)
         });
         touchBoundedLruEntry(this.layouts, signature, result, MAX_CACHED_PIPELINE_LAYOUTS);
         return result;
@@ -511,11 +538,14 @@ export default class WebGPUBindGroupManager {
                 touchBoundedLruEntry(cache, key, cached, MAX_CACHED_BIND_GROUPS_PER_GROUP);
                 return cached;
             }
-            const created = this.device.createBindGroup({
+            const descriptor: GPUBindGroupDescriptor = {
                 label: `Hilo3d bind group ${String(group)}`,
                 layout: groupLayout,
                 entries: sortedUniqueEntries(entries[group] ?? [], group)
-            });
+            };
+            const created = this.rhiDevice
+                ? this.rhiDevice.createNativeBindGroup(descriptor)
+                : this.device.createBindGroup(descriptor);
             touchBoundedLruEntry(cache, key, created, MAX_CACHED_BIND_GROUPS_PER_GROUP);
             return created;
         });
@@ -534,7 +564,6 @@ export default class WebGPUBindGroupManager {
     clear(): void {
         this.clearBindGroups();
         this.layouts.clear();
-        for (const cache of this.groupLayouts) cache.clear();
     }
 
     private objectId(object: object): number {

@@ -3,12 +3,10 @@ import OrthographicCamera from '../../camera/OrthographicCamera';
 import PerspectiveCamera from '../../camera/PerspectiveCamera';
 import type Fog from '../../core/Fog';
 import type Mesh from '../../core/Mesh';
-import { EventDispatcher } from '../../core/EventDispatcher';
 import GeometryData from '../../geometry/GeometryData';
 import CameraHelper from '../../helper/CameraHelper';
 import type Light from '../../light/Light';
 import type { ShadowCameraParameters } from '../../light/Light';
-import LightManager from '../../light/LightManager';
 import type DirectionalLight from '../../light/DirectionalLight';
 import type PointLight from '../../light/PointLight';
 import type SpotLight from '../../light/SpotLight';
@@ -23,6 +21,8 @@ import semantic from '../../material/semantic';
 import Color from '../../math/Color';
 import Matrix4 from '../../math/Matrix4';
 import Vector3 from '../../math/Vector3';
+import type { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
+import { WebGPURHI } from '../../rhi/webgpu/WebGPURHI';
 import Shader from '../../shader/Shader';
 import { CollisionSafeVariantKeyRegistry } from '../../shader/VariantHash';
 import presentFragmentSource from '../../shader/present.frag';
@@ -32,7 +32,7 @@ import {
     specializeWebGPUDepthSamplers,
     type TranslatedShaderPair,
     type WebGPUVertexInput
-} from './shader/GlslToWgsl';
+} from '../shader/GlslToWgsl';
 import Texture from '../../texture/Texture';
 import { DEPTH } from '../../constants/Hilo';
 import {
@@ -46,9 +46,8 @@ import {
     UNSIGNED_INT
 } from '../../constants/webgl';
 import { DEPTH_COMPONENT24 } from '../../constants/webgl2';
-import RenderInfo from '../common/RenderInfo';
+import type { ManagedResource } from '../common/GraphicsResourceManager';
 import RenderList from '../common/RenderList';
-import GraphicsResourceManager, { type ManagedResource } from '../common/GraphicsResourceManager';
 import BuiltInUniformBlockManager from '../common/BuiltInUniformBlockManager';
 import { touchBoundedLruEntry } from '../common/BoundedLruCache';
 import UniformBuffer from '../common/UniformBuffer';
@@ -65,12 +64,12 @@ import {
 import {
     createRendererFrame,
     invokeRendererFrameCallback,
+    default as Renderer,
     type RendererFrameCallback,
     type RendererScene,
     type RendererViewport,
     type TextureCompressionFormat
 } from '../common/Renderer';
-import { RenderFramePlanner } from '../common/RenderFramePlan';
 import type {
     RenderTarget,
     RenderTargetParameters,
@@ -96,14 +95,17 @@ import {
     resolveWebGPUFragmentColorFormats,
     type WebGPURenderState
 } from './WebGPURenderState';
-import WebGPUTextureManager, {
+import {
+    type default as WebGPUTextureManager,
     beginWebGPUTextureSubmission,
+    createWebGPUTextureManagerForRHI,
     endWebGPUTextureSubmission,
     restoreWebGPUTextureDevice,
     suspendWebGPUTextures,
     resolveWebGPUTextureFormat
 } from './WebGPUTextureManager';
 import WebGPURenderTarget, {
+    createWebGPURenderTargetForRHI,
     restoreWebGPURenderTarget,
     setWebGPURenderTargetOperationGuard,
     suspendWebGPURenderTarget
@@ -147,6 +149,15 @@ export interface WebGPURendererParameters {
     clearColor?: Color;
 }
 
+/** Adapter-only options used by the lightweight WebGPU support probe. */
+export interface WebGPUSupportOptions {
+    powerPreference?: GPUPowerPreference;
+    forceFallbackAdapter?: boolean;
+    failIfMajorPerformanceCaveat?: boolean;
+    requiredFeatures?: readonly GPUFeatureName[];
+    requiredLimits?: Readonly<Record<string, number>>;
+}
+
 /**
  * Observable WebGPU device lifecycle.
  *
@@ -156,11 +167,6 @@ export interface WebGPURendererParameters {
  */
 export type WebGPUDeviceRecoveryState =
     'initializing' | 'ready' | 'recovering' | 'failed' | 'destroyed';
-
-interface EffectiveWebGPUDeviceDescriptor {
-    readonly requiredFeatures: readonly GPUFeatureName[];
-    readonly requiredLimits: Readonly<Record<string, number>>;
-}
 
 interface CompiledWebGPUShader {
     readonly translated: TranslatedShaderPair;
@@ -285,6 +291,55 @@ function adapterIsFallback(adapter: GPUAdapter): boolean {
     );
 }
 
+const LARGEST_BUILT_IN_UNIFORM_BLOCK = Math.max(
+    ...Object.values(BUILT_IN_UNIFORM_BLOCK_LAYOUTS).map(layout => layout.byteLength)
+);
+
+function validateAdapterLimit(adapter: GPUAdapter, name: string, required: number): void {
+    if (!Number.isSafeInteger(required) || required < 0) {
+        throw new RangeError(`Required WebGPU limit ${name} must be a non-negative safe integer`);
+    }
+    if (required === 0) return;
+    const supported: unknown = Reflect.get(adapter.limits, name);
+    if (typeof supported !== 'number' || !Number.isFinite(supported)) {
+        throw new Error(`WebGPU adapter does not expose required limit ${name}`);
+    }
+    const lowerIsBetter =
+        name === 'minUniformBufferOffsetAlignment' || name === 'minStorageBufferOffsetAlignment';
+    if ((lowerIsBetter && supported > required) || (!lowerIsBetter && supported < required)) {
+        throw new Error(
+            `WebGPU adapter limit ${name} is ${String(supported)}; ${String(required)} is required`
+        );
+    }
+}
+
+function validateWebGPUAdapter(adapter: GPUAdapter, options: WebGPUSupportOptions): void {
+    if (options.failIfMajorPerformanceCaveat === true && adapterIsFallback(adapter)) {
+        throw new Error('The available WebGPU adapter is a fallback/software adapter');
+    }
+    for (const feature of options.requiredFeatures ?? []) {
+        if (!adapter.features.has(feature)) {
+            throw new Error(`WebGPU adapter does not support required feature ${feature}`);
+        }
+    }
+    for (const [name, required] of Object.entries(options.requiredLimits ?? {})) {
+        validateAdapterLimit(adapter, name, required);
+    }
+    if (adapter.limits.maxBindGroups < 4) {
+        throw new Error('WebGPU adapter exposes fewer than the four required bind groups');
+    }
+    if (adapter.limits.maxUniformBufferBindingSize < LARGEST_BUILT_IN_UNIFORM_BLOCK) {
+        throw new Error(
+            `WebGPU adapter exposes ${String(adapter.limits.maxUniformBufferBindingSize)} bytes per uniform buffer binding; Hilo3d requires ${String(LARGEST_BUILT_IN_UNIFORM_BLOCK)}`
+        );
+    }
+    if (adapter.limits.maxUniformBuffersPerShaderStage < 9) {
+        throw new Error(
+            `WebGPU adapter exposes ${String(adapter.limits.maxUniformBuffersPerShaderStage)} uniform buffers per shader stage; Hilo3d built-in variants require 9`
+        );
+    }
+}
+
 function faceCount(mode: GLenum, vertexCount: number): number {
     if (mode === TRIANGLE_STRIP) return Math.max(0, vertexCount - 2);
     if (mode === LINES || mode === LINE_STRIP) return 0;
@@ -293,11 +348,6 @@ function faceCount(mode: GLenum, vertexCount: number): number {
 
 function isStripMode(mode: GLenum): boolean {
     return mode === LINE_STRIP || mode === TRIANGLE_STRIP;
-}
-
-function currentGPU(): GPU | undefined {
-    const gpu: unknown = Reflect.get(navigator, 'gpu');
-    return typeof gpu === 'object' && gpu !== null ? (gpu as GPU) : undefined;
 }
 
 type WebGPUDeviceLifecycleEventName =
@@ -351,46 +401,20 @@ const WEBGPU_TEXTURE_COMPRESSION_FEATURES: readonly GPUFeatureName[] = [
  * `Error`. Render calls made while recovery is in progress skip the frame without a
  * queue submission. Render calls after a failed recovery throw explicitly.
  */
-class WebGPURenderer extends EventDispatcher {
-    readonly backend = 'webgpu' as const;
-    readonly className = 'WebGPURenderer';
+class WebGPURenderer extends Renderer {
+    override readonly backend = 'webgpu' as const;
+    override readonly className = 'WebGPURenderer';
     readonly isWebGPURenderer = true;
-    readonly renderInfo = new RenderInfo();
-    readonly renderList = new RenderList();
-    readonly lightManager = new LightManager();
-    readonly resourceManager = new GraphicsResourceManager();
-    private readonly framePlanner = new RenderFramePlanner();
-    readonly ready: Promise<void>;
+    override readonly ready: Promise<void>;
 
-    width = 0;
-    height = 0;
-    pixelRatio = 1;
-    domElement: HTMLCanvasElement | null = null;
-    private _useInstanced = false;
-    alpha = false;
-    depth = true;
-    stencil = false;
-    antialias = true;
-    premultipliedAlpha = true;
-    failIfMajorPerformanceCaveat = false;
     powerPreference: GPUPowerPreference = 'high-performance';
     forceFallbackAdapter = false;
     requiredFeatures: readonly GPUFeatureName[] = [];
     requiredLimits: Readonly<Record<string, number>> = {};
-    useLogDepth = false;
-    vertexPrecision: ShaderPrecision = 'highp';
-    fragmentPrecision: ShaderPrecision = 'highp';
-    fog: Fog | null = null;
-    offsetX = 0;
-    offsetY = 0;
-    forceMaterial: Material | null = null;
-    clearColor = new Color(1, 1, 1);
-    renderTarget: WebGPURenderTarget | null = null;
-    isInitFailed = false;
+    override renderTarget: WebGPURenderTarget | null = null;
 
-    private adapter: GPUAdapter | null = null;
-    private adapterOptions: GPURequestAdapterOptions | null = null;
     private readonly rejectFallbackAdapter: boolean;
+    private rhi: WebGPURHI | null = null;
     private device: GPUDevice | null = null;
     private context: GPUCanvasContext | null = null;
     private canvasFormat: GPUTextureFormat = 'bgra8unorm';
@@ -456,7 +480,6 @@ class WebGPURenderer extends EventDispatcher {
     private initializationGeneration = 0;
     private deviceStateActive = false;
     private deviceLossInfo: GPUDeviceLostInfo | null = null;
-    private deviceDescriptor: EffectiveWebGPUDeviceDescriptor | null = null;
     private recoveryError: Error | null = null;
     private _recoveryState: WebGPUDeviceRecoveryState = 'initializing';
     private _recoveryPromise: Promise<void> | null = null;
@@ -469,6 +492,27 @@ class WebGPURenderer extends EventDispatcher {
         this._activePass = pass;
         if (pass) this.commandState.beginPass(pass);
         else this.commandState.endPass();
+    }
+
+    /**
+     * Probe adapter availability and the renderer's minimum limits without creating a device,
+     * context, shader compiler, pipeline, or GPU resource.
+     */
+    static async isSupported(options: WebGPUSupportOptions = {}): Promise<boolean> {
+        const snapshot: Required<WebGPUSupportOptions> = Object.freeze({
+            powerPreference: options.powerPreference ?? 'high-performance',
+            forceFallbackAdapter: options.forceFallbackAdapter ?? false,
+            failIfMajorPerformanceCaveat: options.failIfMajorPerformanceCaveat ?? false,
+            requiredFeatures: Object.freeze([...(options.requiredFeatures ?? [])]),
+            requiredLimits: Object.freeze({ ...(options.requiredLimits ?? {}) })
+        });
+        return WebGPURHI.isSupported({
+            powerPreference: snapshot.powerPreference,
+            forceFallbackAdapter: snapshot.forceFallbackAdapter,
+            adapterValidator: adapter => {
+                validateWebGPUAdapter(adapter, snapshot);
+            }
+        });
     }
 
     constructor(params: WebGPURendererParameters = {}) {
@@ -486,7 +530,7 @@ class WebGPURenderer extends EventDispatcher {
         this.ready = this.initialize(++this.initializationGeneration);
     }
 
-    get isReady(): boolean {
+    override get isReady(): boolean {
         return this.initialized && !this.destroyed && !this.isInitFailed;
     }
 
@@ -506,19 +550,16 @@ class WebGPURenderer extends EventDispatcher {
         return this._recoveryPromise;
     }
 
-    get useInstanced(): boolean {
-        return this._useInstanced;
-    }
-
-    set useInstanced(value: boolean) {
-        this._useInstanced = value;
-        this.renderList.useInstanced = value;
-    }
-
     get gpuDevice(): GPUDevice {
         if (!this.device)
             throw new Error('WebGPURenderer is not initialized; await renderer.ready');
         return this.device;
+    }
+
+    private get concreteDevice(): WebGPUDevice {
+        const rhi = this.rhi;
+        if (!rhi?.isReady) throw new Error('WebGPURenderer RHI is unavailable');
+        return rhi.device;
     }
 
     private assertInitializationActive(generation: number): void {
@@ -527,54 +568,8 @@ class WebGPURenderer extends EventDispatcher {
         }
     }
 
-    private validateAdapter(adapter: GPUAdapter, requiredFeatures: Iterable<GPUFeatureName>): void {
-        if (this.rejectFallbackAdapter && adapterIsFallback(adapter)) {
-            throw new Error('The available WebGPU adapter is a fallback/software adapter');
-        }
-        for (const feature of requiredFeatures) {
-            if (!adapter.features.has(feature)) {
-                throw new Error(`WebGPU adapter does not support required feature ${feature}`);
-            }
-        }
-        if (adapter.limits.maxBindGroups < 4) {
-            throw new Error('WebGPU adapter exposes fewer than the four required bind groups');
-        }
-        const largestBuiltInBlock = Math.max(
-            ...Object.values(BUILT_IN_UNIFORM_BLOCK_LAYOUTS).map(layout => layout.byteLength)
-        );
-        if (adapter.limits.maxUniformBufferBindingSize < largestBuiltInBlock) {
-            throw new Error(
-                `WebGPU adapter exposes ${String(adapter.limits.maxUniformBufferBindingSize)} bytes per uniform buffer binding; Hilo3d requires ${String(largestBuiltInBlock)}`
-            );
-        }
-        if (adapter.limits.maxUniformBuffersPerShaderStage < 9) {
-            throw new Error(
-                `WebGPU adapter exposes ${String(adapter.limits.maxUniformBuffersPerShaderStage)} uniform buffers per shader stage; Hilo3d built-in variants require 9`
-            );
-        }
-    }
-
-    private async requestRecoveryDevice(
-        descriptor: EffectiveWebGPUDeviceDescriptor,
-        generation: number
-    ): Promise<{ readonly adapter: GPUAdapter; readonly device: GPUDevice }> {
-        const gpu = currentGPU();
-        const adapterOptions = this.adapterOptions;
-        if (!gpu || !adapterOptions) {
-            throw new Error('WebGPURenderer recovery adapter configuration is unavailable');
-        }
-        const adapter = await gpu.requestAdapter(adapterOptions);
-        this.assertInitializationActive(generation);
-        if (!adapter) throw new Error('No WebGPU adapter satisfies the recovery preference');
-        this.validateAdapter(adapter, descriptor.requiredFeatures);
-        const device = await adapter.requestDevice({
-            requiredFeatures: [...descriptor.requiredFeatures],
-            requiredLimits: { ...descriptor.requiredLimits }
-        });
-        return { adapter, device };
-    }
-
     private async initialize(generation: number): Promise<void> {
+        let initializingRHI: WebGPURHI | null = null;
         try {
             this.assertInitializationActive(generation);
             if (this.alpha && !this.premultipliedAlpha) {
@@ -582,42 +577,39 @@ class WebGPURenderer extends EventDispatcher {
             }
             const canvas = this.domElement;
             if (!canvas) throw new Error('WebGPURenderer requires a canvas');
-            const gpu = currentGPU();
-            if (!gpu) throw new Error('WebGPU is unavailable in this browser or execution context');
-            const adapterOptions = Object.freeze({
+            initializingRHI = new WebGPURHI({
+                canvas,
+                width: this.width > 0 ? this.width : canvas.width,
+                height: this.height > 0 ? this.height : canvas.height,
                 powerPreference: this.powerPreference,
-                forceFallbackAdapter: this.forceFallbackAdapter
+                alpha: this.alpha,
+                antialias: this.antialias,
+                forceFallbackAdapter: this.forceFallbackAdapter,
+                rejectFallbackAdapter: this.rejectFallbackAdapter,
+                nativeRequiredFeatures: this.requiredFeatures,
+                nativeOptionalFeatures: [
+                    'float32-filterable',
+                    ...WEBGPU_TEXTURE_COMPRESSION_FEATURES
+                ],
+                requiredLimits: this.requiredLimits,
+                adapterValidator: adapter => {
+                    validateWebGPUAdapter(adapter, {
+                        failIfMajorPerformanceCaveat: this.rejectFallbackAdapter,
+                        requiredFeatures: this.requiredFeatures,
+                        requiredLimits: this.requiredLimits
+                    });
+                },
+                includeEmptyDeviceDescriptorFields: true
             });
-            this.adapterOptions = adapterOptions;
-            const adapter = await gpu.requestAdapter(adapterOptions);
+            this.rhi = initializingRHI;
+            await initializingRHI.ready;
             this.assertInitializationActive(generation);
-            if (!adapter) throw new Error('No WebGPU adapter satisfies the requested preference');
-            const features = new Set(this.requiredFeatures);
-            if (adapter.features.has('float32-filterable')) features.add('float32-filterable');
-            for (const feature of WEBGPU_TEXTURE_COMPRESSION_FEATURES) {
-                if (adapter.features.has(feature)) features.add(feature);
-            }
-            this.validateAdapter(adapter, features);
-            const deviceDescriptor: EffectiveWebGPUDeviceDescriptor = {
-                requiredFeatures: Object.freeze([...features]),
-                requiredLimits: Object.freeze({ ...this.requiredLimits })
-            };
-            const device = await adapter.requestDevice({
-                requiredFeatures: [...deviceDescriptor.requiredFeatures],
-                requiredLimits: { ...deviceDescriptor.requiredLimits }
-            });
-            if (this.destroyed || generation !== this.initializationGeneration) {
-                device.destroy();
-                throw new Error('WebGPURenderer initialization was cancelled');
-            }
-            this.adapter = adapter;
+            const device = initializingRHI.nativeDevice;
             this.device = device;
-            this.deviceDescriptor = deviceDescriptor;
             this.deviceStateActive = true;
-            const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
-            if (!context) throw new Error('Unable to create a WebGPU canvas context');
+            const context = initializingRHI.nativeContext;
             this.context = context;
-            this.canvasFormat = gpu.getPreferredCanvasFormat();
+            this.canvasFormat = initializingRHI.surface.format;
             this.sampleCount = this.antialias ? 4 : 1;
             this.depthStencilFormat =
                 this.depth || this.stencil
@@ -625,20 +617,22 @@ class WebGPURenderer extends EventDispatcher {
                         ? 'depth24plus-stencil8'
                         : 'depth24plus'
                     : undefined;
-            context.configure({
-                device,
-                format: this.canvasFormat,
-                alphaMode: this.alpha ? 'premultiplied' : 'opaque'
-            });
             await this.translator.initialize();
             this.assertInitializationActive(generation);
-            this.pipelineManager = new WebGPUPipelineManager(device);
-            this.bufferManager = new WebGPUBufferManager(device);
-            this.textureManager = new WebGPUTextureManager(device, this.translator, () => {
-                this.bindGroupManager?.clearBindGroups();
-            });
-            this.uniformBufferManager = new WebGPUUniformBufferManager(device);
-            this.bindGroupManager = new WebGPUBindGroupManager(device, this.textureManager);
+            this.pipelineManager = new WebGPUPipelineManager(initializingRHI.device);
+            this.bufferManager = new WebGPUBufferManager(initializingRHI.device);
+            this.textureManager = createWebGPUTextureManagerForRHI(
+                initializingRHI.device,
+                this.translator,
+                () => {
+                    this.bindGroupManager?.clearBindGroups();
+                }
+            );
+            this.uniformBufferManager = new WebGPUUniformBufferManager(initializingRHI.device);
+            this.bindGroupManager = new WebGPUBindGroupManager(
+                initializingRHI.device,
+                this.textureManager
+            );
             Shader.init(this);
             this.renderList.useInstanced = this.useInstanced;
             this.createRenderAttachments();
@@ -656,6 +650,8 @@ class WebGPURenderer extends EventDispatcher {
                   ? error
                   : new Error(String(error));
             this.disposeDeviceState();
+            initializingRHI?.destroy();
+            if (this.rhi === initializingRHI) this.rhi = null;
             if (!cancelled) {
                 this.isInitFailed = true;
                 this._recoveryState = 'failed';
@@ -666,12 +662,14 @@ class WebGPURenderer extends EventDispatcher {
         }
     }
 
-    resize(width: number, height: number, force = false): void {
+    override resize(width: number, height: number, force = false): void {
         if (!force && this.width === width && this.height === height) return;
         this.assertNoActiveFrameMutation('resize');
         this.width = width;
         this.height = height;
-        if (this.domElement) {
+        if (this.rhi?.isReady) {
+            this.rhi.surface.resize(width, height);
+        } else if (this.domElement) {
             this.domElement.width = width;
             this.domElement.height = height;
         }
@@ -681,7 +679,7 @@ class WebGPURenderer extends EventDispatcher {
         this.activeViewport = null;
     }
 
-    setOffset(x: number, y: number): void {
+    override setOffset(x: number, y: number): void {
         this.offsetX = x;
         this.offsetY = y;
         this.activeViewport = null;
@@ -700,7 +698,7 @@ class WebGPURenderer extends EventDispatcher {
     }
 
     /** Return the physical-pixel viewport used by the active render pass. */
-    getViewport(): RendererViewport {
+    override getViewport(): RendererViewport {
         return this.activeViewport ?? this.getDefaultViewport();
     }
 
@@ -715,7 +713,7 @@ class WebGPURenderer extends EventDispatcher {
     }
 
     /** Run a callback once initialization is complete, consistently with WebGLRenderer. */
-    onInit(callback: (renderer: WebGPURenderer) => void): void {
+    override onInit(callback: (renderer: this) => void): void {
         if (this.isReady) {
             callback(this);
             return;
@@ -729,7 +727,7 @@ class WebGPURenderer extends EventDispatcher {
         );
     }
 
-    render(stage: RendererScene, camera: Camera, fireEvent = false): void {
+    override render(stage: RendererScene, camera: Camera, fireEvent = false): void {
         this.assertFrameUsable();
         try {
             this.renderInternal(stage, camera, fireEvent);
@@ -750,7 +748,6 @@ class WebGPURenderer extends EventDispatcher {
         }
         if (!this.isReady)
             throw new Error('WebGPURenderer is not ready; await stage.ready before rendering');
-        const device = this.gpuDevice;
         const context = this.context;
         if (!context) throw new Error('WebGPU canvas context is unavailable');
         this.resourceManager.beginFrame();
@@ -767,17 +764,13 @@ class WebGPURenderer extends EventDispatcher {
             if (this.frameEncoder) this.uniformBlockManager.beginPass(camera, sceneViewport);
             else this.uniformBlockManager.beginFrame(camera, sceneViewport);
 
-            const framePlan = this.framePlanner.build(
-                stage,
-                camera,
-                this.renderList,
-                this.lightManager
-            );
+            const framePlan = this.buildFramePlan(stage, camera);
             this.pruneShadowOwners(framePlan.shadowLights);
             this.validateLightLimits();
             const ownsEncoder = this.frameEncoder === null;
             const encoder =
-                this.frameEncoder ?? device.createCommandEncoder({ label: 'Hilo3d frame' });
+                this.frameEncoder ??
+                this.concreteDevice.createNativeCommandEncoder({ label: 'Hilo3d frame' });
             if (ownsEncoder) {
                 this.beginResourceSubmission();
                 ownsResourceSubmission = true;
@@ -825,7 +818,7 @@ class WebGPURenderer extends EventDispatcher {
                 if (!currentTexture) throw new Error('WebGPU presentation texture is unavailable');
                 this.encodePresent(encoder, renderTarget, currentTexture);
             }
-            if (ownsEncoder) device.queue.submit([encoder.finish()]);
+            if (ownsEncoder) this.concreteDevice.submitNative([encoder.finish()]);
             else this.frameHasCommands = true;
             this.resourceManager.endFrame();
         } catch (error: unknown) {
@@ -844,7 +837,7 @@ class WebGPURenderer extends EventDispatcher {
      * Record multiple scene, offscreen and presentation passes into one command encoder and submit
      * them together. Existing renderer calls made inside the callback join the same frame.
      */
-    renderFrame(callback: RendererFrameCallback): void {
+    override renderFrame(callback: RendererFrameCallback): void {
         if (this.frameEncoder) {
             const error = new Error('Nested renderer frames are not supported');
             this.abortActiveFrame(error);
@@ -854,8 +847,9 @@ class WebGPURenderer extends EventDispatcher {
         if (!this.isReady) {
             throw new Error('WebGPURenderer is not ready; await stage.ready before rendering');
         }
-        const device = this.gpuDevice;
-        const encoder = device.createCommandEncoder({ label: 'Hilo3d application frame' });
+        const encoder = this.concreteDevice.createNativeCommandEncoder({
+            label: 'Hilo3d application frame'
+        });
         this.beginResourceSubmission();
         this.frameEncoder = encoder;
         this.frameCanvasTexture = null;
@@ -875,7 +869,7 @@ class WebGPURenderer extends EventDispatcher {
             );
             if (this.applicationFrameWasAborted()) throw this.createFrameAbortedError();
             if (this.applicationFrameHasCommands()) {
-                device.queue.submit([encoder.finish()]);
+                this.concreteDevice.submitNative([encoder.finish()]);
                 submitted = true;
             }
         } finally {
@@ -955,8 +949,13 @@ class WebGPURenderer extends EventDispatcher {
     }
 
     private getFrameCanvasTexture(context: GPUCanvasContext, ownsEncoder: boolean): GPUTexture {
-        if (ownsEncoder) return context.getCurrentTexture();
-        return (this.frameCanvasTexture ??= context.getCurrentTexture());
+        // Keep the context parameter as an ownership assertion for legacy call sites.
+        if (context !== this.context)
+            throw new TypeError('WebGPU canvas context ownership mismatch');
+        const surface = this.rhi?.surface;
+        if (!surface) throw new Error('WebGPURenderer surface is unavailable');
+        if (ownsEncoder) return surface.getCurrentNativeTexture();
+        return (this.frameCanvasTexture ??= surface.getCurrentNativeTexture());
     }
 
     renderScene(): void {
@@ -1028,9 +1027,9 @@ class WebGPURenderer extends EventDispatcher {
     }
 
     /** Create a device-compatible offscreen target without exposing renderer internals. */
-    createRenderTarget(parameters: RenderTargetParameters): WebGPURenderTarget {
-        const target = new WebGPURenderTarget(
-            this.gpuDevice,
+    override createRenderTarget(parameters: RenderTargetParameters): WebGPURenderTarget {
+        const target = createWebGPURenderTargetForRHI(
+            this.concreteDevice,
             this.requireTextureManager(),
             parameters,
             destroyedTarget => {
@@ -1050,7 +1049,7 @@ class WebGPURenderer extends EventDispatcher {
         return target;
     }
 
-    supportsTextureCompression(format: TextureCompressionFormat): boolean {
+    override supportsTextureCompression(format: TextureCompressionFormat): boolean {
         const features = this.gpuDevice.features;
         switch (format) {
             case 'bc':
@@ -1066,7 +1065,10 @@ class WebGPURenderer extends EventDispatcher {
     }
 
     /** Select an offscreen target. Explicit targets are not presented unless requested. */
-    setRenderTarget(target: RenderTarget | null, options: RenderTargetSelectionOptions = {}): this {
+    override setRenderTarget(
+        target: RenderTarget | null,
+        options: RenderTargetSelectionOptions = {}
+    ): this {
         this.assertNoActiveFrameMutation('setRenderTarget');
         let resolved: WebGPURenderTarget | null = null;
         if (target !== null) {
@@ -1098,7 +1100,7 @@ class WebGPURenderer extends EventDispatcher {
     }
 
     /** Render one scoped pass without changing the caller's persistent target selection. */
-    renderToTarget(
+    override renderToTarget(
         target: RenderTarget,
         stage: RendererScene,
         camera: Camera,
@@ -1153,7 +1155,7 @@ class WebGPURenderer extends EventDispatcher {
     }
 
     /** Present the first color attachment of a render target to the canvas. */
-    present(target: RenderTarget = this.requireRenderTarget()): void {
+    override present(target: RenderTarget = this.requireRenderTarget()): void {
         this.assertFrameUsable();
         try {
             this.presentInternal(target);
@@ -1176,9 +1178,10 @@ class WebGPURenderer extends EventDispatcher {
         if (!context) throw new Error('WebGPU canvas context is unavailable');
         const ownsEncoder = this.frameEncoder === null;
         const encoder =
-            this.frameEncoder ?? device.createCommandEncoder({ label: 'Hilo3d present' });
+            this.frameEncoder ??
+            this.concreteDevice.createNativeCommandEncoder({ label: 'Hilo3d present' });
         this.encodePresent(encoder, target, this.getFrameCanvasTexture(context, ownsEncoder));
-        if (ownsEncoder) device.queue.submit([encoder.finish()]);
+        if (ownsEncoder) this.concreteDevice.submitNative([encoder.finish()]);
         else this.frameHasCommands = true;
     }
 
@@ -1225,7 +1228,6 @@ class WebGPURenderer extends EventDispatcher {
     private getPresentPipeline(sampleType: GPUTextureSampleType): WebGPUPresentPipeline {
         const cached = this.presentPipelines.get(sampleType);
         if (cached) return cached;
-        const device = this.gpuDevice;
         const shader =
             this.presentShader ??
             (this.presentShader = this.translator.translate(
@@ -1233,20 +1235,20 @@ class WebGPURenderer extends EventDispatcher {
                 presentFragmentSource
             ));
         const resources = createWebGPUFullscreenPassResources(
-            device,
+            this.concreteDevice,
             shader,
             sampleType,
             `Hilo3d present ${sampleType}`
         );
-        const vertexModule = device.createShaderModule({
+        const vertexModule = this.concreteDevice.createNativeShaderModule({
             label: 'Hilo3d present vertex shader',
             code: shader.vertex.wgsl
         });
-        const fragmentModule = device.createShaderModule({
+        const fragmentModule = this.concreteDevice.createNativeShaderModule({
             label: 'Hilo3d present fragment shader',
             code: shader.fragment.wgsl
         });
-        const pipeline = device.createRenderPipeline({
+        const pipeline = this.concreteDevice.createNativeRenderPipeline({
             label: `Hilo3d present ${sampleType}`,
             layout: resources.pipelineLayout,
             vertex: { module: vertexModule, entryPoint: 'main' },
@@ -1271,7 +1273,7 @@ class WebGPURenderer extends EventDispatcher {
         const cached = layouts?.get(pipeline.bindGroupLayout);
         if (cached) return cached;
         const bindGroup = createWebGPUFullscreenPassBindGroup(
-            this.gpuDevice,
+            this.concreteDevice,
             pipeline,
             view,
             'Hilo3d present bind group'
@@ -1738,7 +1740,7 @@ class WebGPURenderer extends EventDispatcher {
             wrapT: CLAMP_TO_EDGE,
             needUpdate: false
         });
-        const gpuTexture = this.gpuDevice.createTexture({
+        const gpuTexture = this.concreteDevice.createNativeTexture({
             label: texture.name,
             size: { width, height, depthOrArrayLayers: 1 },
             format: 'depth24plus',
@@ -2160,15 +2162,14 @@ class WebGPURenderer extends EventDispatcher {
             undefined,
             depthOnly ? { fragmentOutputs: 'depth-only' } : undefined
         );
-        const device = this.gpuDevice;
         const variant = depthOnly ? ':depth-only' : '';
         const result: CompiledWebGPUShader = {
             translated,
-            vertexModule: device.createShaderModule({
+            vertexModule: this.concreteDevice.createNativeShaderModule({
                 label: `${shader.id}:vertex${variant}`,
                 code: translated.vertex.wgsl
             }),
-            fragmentModule: device.createShaderModule({
+            fragmentModule: this.concreteDevice.createNativeShaderModule({
                 label: `${shader.id}:fragment${variant}`,
                 code: translated.fragment.wgsl
             })
@@ -2213,14 +2214,13 @@ class WebGPURenderer extends EventDispatcher {
             return cached;
         }
         const translated = specializeWebGPUDepthSamplers(compiled.translated, depthBindings);
-        const device = this.gpuDevice;
         const result: CompiledWebGPUShader = {
             translated,
-            vertexModule: device.createShaderModule({
+            vertexModule: this.concreteDevice.createNativeShaderModule({
                 label: `${shader.id}:vertex:depth:${signature}`,
                 code: translated.vertex.wgsl
             }),
-            fragmentModule: device.createShaderModule({
+            fragmentModule: this.concreteDevice.createNativeShaderModule({
                 label: `${shader.id}:fragment:depth:${signature}`,
                 code: translated.fragment.wgsl
             })
@@ -2297,7 +2297,7 @@ class WebGPURenderer extends EventDispatcher {
             depthOrArrayLayers: 1
         };
         if (this.depthStencilFormat) {
-            this.depthTexture = device.createTexture({
+            this.depthTexture = this.concreteDevice.createNativeTexture({
                 label: 'Hilo3d depth/stencil',
                 size,
                 format: this.depthStencilFormat,
@@ -2306,7 +2306,7 @@ class WebGPURenderer extends EventDispatcher {
             });
         }
         if (this.sampleCount > 1) {
-            this.multisampleTexture = device.createTexture({
+            this.multisampleTexture = this.concreteDevice.createNativeTexture({
                 label: 'Hilo3d multisample color',
                 size,
                 format: this.canvasFormat,
@@ -2397,7 +2397,7 @@ class WebGPURenderer extends EventDispatcher {
         this.resourceManager.clear();
     }
 
-    releaseGPUResources(): void {
+    override releaseGPUResources(): void {
         this.assertNoActiveFrameMutation('releaseGPUResources');
         this.releaseDeviceResources({
             preserveRenderTargets: false,
@@ -2452,39 +2452,24 @@ class WebGPURenderer extends EventDispatcher {
         );
     }
 
-    private async recoverDevice(
-        lostDevice: GPUDevice,
-        descriptor: EffectiveWebGPUDeviceDescriptor | null,
-        generation: number
-    ): Promise<void> {
-        let replacementDevice: GPUDevice | null = null;
+    private async recoverDevice(lostDevice: GPUDevice, generation: number): Promise<void> {
         const textureManager = this.textureManager;
         this.recoveryTextureManager = textureManager;
         try {
             this.disposeDeviceState({
                 expectedDevice: lostDevice,
-                destroyDevice: false,
-                preserveRenderTargets: true
+                preserveRenderTargets: true,
+                suspendSurface: true
             });
-            if (!descriptor) {
+            const rhi = this.rhi;
+            if (!rhi) {
                 throw new Error('WebGPURenderer recovery configuration is unavailable');
             }
-            const replacement = await this.requestRecoveryDevice(descriptor, generation);
-            replacementDevice = replacement.device;
-            if (this.destroyed || generation !== this.initializationGeneration) {
-                replacementDevice.destroy();
-                replacementDevice = null;
-                throw new Error('WebGPURenderer device recovery was cancelled');
-            }
+            await rhi.recover();
+            this.assertInitializationActive(generation);
             await this.translator.initialize();
             this.assertInitializationActive(generation);
-            this.activateRecoveredDevice(
-                replacement.adapter,
-                replacementDevice,
-                generation,
-                textureManager
-            );
-            replacementDevice = null;
+            this.activateRecoveredDevice(generation, textureManager);
             this.initialized = true;
             this.isInitFailed = false;
             this.deviceLossInfo = null;
@@ -2499,15 +2484,15 @@ class WebGPURenderer extends EventDispatcher {
                     ? error
                     : new Error(`WebGPU recovery failed: ${String(error)}`);
             if (this.deviceStateActive) {
-                this.disposeDeviceState({ preserveRenderTargets: true });
-            } else {
-                replacementDevice?.destroy();
+                this.disposeDeviceState({ preserveRenderTargets: true, suspendSurface: true });
             }
             textureManager?.destroyAll();
             if (this.recoveryTextureManager === textureManager) {
                 this.recoveryTextureManager = null;
             }
             if (!cancelled) {
+                this.rhi?.destroy();
+                this.rhi = null;
                 this.initialized = false;
                 this.isInitFailed = true;
                 this.recoveryError = failure;
@@ -2519,38 +2504,34 @@ class WebGPURenderer extends EventDispatcher {
     }
 
     private activateRecoveredDevice(
-        adapter: GPUAdapter,
-        device: GPUDevice,
         generation: number,
         recoveryTextureManager: WebGPUTextureManager | null
     ): void {
-        const canvas = this.domElement;
-        if (!canvas) throw new Error('WebGPURenderer recovery requires a canvas');
-        const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
-        if (!context) throw new Error('Unable to restore the WebGPU canvas context');
-        this.adapter = adapter;
+        const rhi = this.rhi;
+        if (!rhi?.isReady) throw new Error('WebGPURenderer recovery RHI is unavailable');
+        const device = rhi.nativeDevice;
+        const context = rhi.nativeContext;
         this.device = device;
         this.context = context;
         this.deviceStateActive = true;
-        context.configure({
-            device,
-            format: this.canvasFormat,
-            alphaMode: this.alpha ? 'premultiplied' : 'opaque'
-        });
-        this.pipelineManager = new WebGPUPipelineManager(device);
-        this.bufferManager = new WebGPUBufferManager(device);
+        this.pipelineManager = new WebGPUPipelineManager(rhi.device);
+        this.bufferManager = new WebGPUBufferManager(rhi.device);
         if (recoveryTextureManager) {
-            restoreWebGPUTextureDevice(recoveryTextureManager, device);
+            restoreWebGPUTextureDevice(recoveryTextureManager, rhi.device);
             this.textureManager = recoveryTextureManager;
         } else {
-            this.textureManager = new WebGPUTextureManager(device, this.translator, () => {
-                this.bindGroupManager?.clearBindGroups();
-            });
+            this.textureManager = createWebGPUTextureManagerForRHI(
+                rhi.device,
+                this.translator,
+                () => {
+                    this.bindGroupManager?.clearBindGroups();
+                }
+            );
         }
-        this.uniformBufferManager = new WebGPUUniformBufferManager(device);
-        this.bindGroupManager = new WebGPUBindGroupManager(device, this.textureManager);
+        this.uniformBufferManager = new WebGPUUniformBufferManager(rhi.device);
+        this.bindGroupManager = new WebGPUBindGroupManager(rhi.device, this.textureManager);
         for (const target of this.renderTargets) {
-            restoreWebGPURenderTarget(target, device, this.textureManager);
+            restoreWebGPURenderTarget(target, rhi.device, this.textureManager);
         }
         Shader.init(this);
         this.renderList.useInstanced = this.useInstanced;
@@ -2566,7 +2547,6 @@ class WebGPURenderer extends EventDispatcher {
         ) {
             return;
         }
-        const descriptor = this.deviceDescriptor;
         const recoveryGeneration = ++this.initializationGeneration;
         this.initialized = false;
         this.isInitFailed = false;
@@ -2574,7 +2554,7 @@ class WebGPURenderer extends EventDispatcher {
         this.recoveryError = null;
         this._recoveryState = 'recovering';
         this.fireDeviceLifecycleEvent('webgpuDeviceLost', info);
-        const recovery = this.recoverDevice(device, descriptor, recoveryGeneration);
+        const recovery = this.recoverDevice(device, recoveryGeneration);
         this._recoveryPromise = recovery;
         void recovery.catch(() => undefined);
     }
@@ -2582,8 +2562,8 @@ class WebGPURenderer extends EventDispatcher {
     private disposeDeviceState(
         options: {
             readonly expectedDevice?: GPUDevice;
-            readonly destroyDevice?: boolean;
             readonly preserveRenderTargets?: boolean;
+            readonly suspendSurface?: boolean;
         } = {}
     ): void {
         if (options.expectedDevice && this.device !== options.expectedDevice) return;
@@ -2597,8 +2577,6 @@ class WebGPURenderer extends EventDispatcher {
             this.initialized = false;
             return;
         }
-        const context = this.context;
-        const device = this.device;
         this.deviceStateActive = false;
         try {
             this.releaseDeviceResources({
@@ -2613,20 +2591,17 @@ class WebGPURenderer extends EventDispatcher {
             this.bindGroupManager = null;
             this.context = null;
             this.device = null;
-            this.adapter = null;
             this.activePass = null;
             this.activeDrawTarget = null;
             this.activeViewport = null;
             this.initialized = false;
-            try {
-                context?.unconfigure();
-            } finally {
-                if (options.destroyDevice !== false) device?.destroy();
+            if (options.suspendSurface === true && this.rhi && !this.rhi.destroyed) {
+                this.rhi.suspendSurface();
             }
         }
     }
 
-    destroy(): void {
+    override destroy(): void {
         if (this.destroyed) return;
         this.assertNoActiveFrameMutation('destroy');
         this.destroyed = true;
@@ -2635,10 +2610,10 @@ class WebGPURenderer extends EventDispatcher {
         try {
             this.disposeDeviceState();
         } finally {
+            this.rhi?.destroy();
+            this.rhi = null;
             this.recoveryTextureManager?.destroyAll();
             this.recoveryTextureManager = null;
-            this.deviceDescriptor = null;
-            this.adapterOptions = null;
             this.off();
         }
     }

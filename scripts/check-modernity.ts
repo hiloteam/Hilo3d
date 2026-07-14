@@ -131,6 +131,45 @@ const forbiddenBackendCrossImportRules = {
         pattern: /from\s+["'][^"']*(?:\/webgl\/|\.\.\/webgl)/u
     }
 } as const;
+const forbiddenRendererDeviceOwnershipRules = [
+    {
+        label: 'renderer acquires a native graphics context instead of using its RHI owner',
+        pattern: /\.getContext\s*\(\s*["'](?:webgl2|webgpu)["']/u
+    },
+    {
+        label: 'renderer requests a WebGPU adapter instead of using its RHI owner',
+        pattern: /\.requestAdapter\s*\(/u
+    }
+] as const;
+const forbiddenRHIRules = [
+    {
+        label: 'engine semantic imported or declared by RHI',
+        pattern: /\b(?:Mesh|Material|Stage|Light|RenderList|ShaderVariant)\b/u
+    },
+    {
+        label: 'renderer or engine layer imported by RHI',
+        pattern:
+            /from\s+["'][^"']*(?:\/renderer\/|\/material\/|\/geometry\/|\/light\/|\/core\/|\/shader\/)/u
+    },
+    {
+        label: 'reflective JSON cache key in RHI hot path',
+        pattern: /\bJSON\.stringify\b/u
+    }
+] as const;
+const forbiddenWebGPURHIRules = [
+    {
+        label: 'WebGPU RHI degraded to WebGL state semantics',
+        pattern:
+            /\b(?:WebGL(?:2RenderingContext|RenderingContext|Program|Buffer|Texture)|GLenum)\b/u
+    }
+] as const;
+const forbiddenWebGLRHIRules = [
+    {
+        label: 'WebGL RHI imports native WebGPU implementation',
+        pattern:
+            /\bGPU(?:Adapter|Device|Queue|CanvasContext|CommandEncoder|RenderPassEncoder|Buffer|Texture|TextureView|Sampler|BindGroup|BindGroupLayout|PipelineLayout|RenderPipeline|ComputePipeline|ShaderModule)\b/u
+    }
+] as const;
 const forbiddenSharedResourceRules = [
     {
         label: 'shared resource model imports a backend implementation',
@@ -238,6 +277,34 @@ async function collectLegacyArtifacts(directory: string): Promise<string[]> {
             if (relativePath.startsWith('src/renderer/webgpu/')) {
                 const rule = forbiddenBackendCrossImportRules.webgpu;
                 if (rule.pattern.test(source)) matches.push(`${relativePath} (${rule.label})`);
+            }
+            if (relativePath.startsWith('src/renderer/')) {
+                for (const rule of forbiddenRendererDeviceOwnershipRules) {
+                    if (rule.pattern.test(source)) {
+                        matches.push(`${relativePath} (${rule.label})`);
+                    }
+                }
+            }
+            if (relativePath.startsWith('src/rhi/')) {
+                for (const rule of forbiddenRHIRules) {
+                    if (rule.pattern.test(source)) {
+                        matches.push(`${relativePath} (${rule.label})`);
+                    }
+                }
+            }
+            if (relativePath.startsWith('src/rhi/webgpu/')) {
+                for (const rule of forbiddenWebGPURHIRules) {
+                    if (rule.pattern.test(source)) {
+                        matches.push(`${relativePath} (${rule.label})`);
+                    }
+                }
+            }
+            if (relativePath.startsWith('src/rhi/webgl/')) {
+                for (const rule of forbiddenWebGLRHIRules) {
+                    if (rule.pattern.test(source)) {
+                        matches.push(`${relativePath} (${rule.label})`);
+                    }
+                }
             }
             if (
                 relativePath.startsWith('src/texture/') ||
