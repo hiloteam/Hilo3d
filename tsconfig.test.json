@@ -7,7 +7,7 @@
     "tsBuildInfoFile": "./.cache/tsconfig.test.tsbuildinfo",
     "types": ["node", "vite/client"]
   },
-  "include": ["test/**/*.ts"],
+  "include": ["test/**/*.ts", "scripts/npm-pack-result.ts"],
   "exclude": ["test/types/**"],
   "references": [{ "path": "./tsconfig.lib.json" }]
 }

@@ -2,28 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-
-interface PackResult {
-    filename: string;
-}
-
-function readPackResult(output: string): PackResult {
-    const parsed = JSON.parse(output) as unknown;
-    if (!Array.isArray(parsed) || parsed.length !== 1) {
-        throw new Error(`Unexpected npm pack response: ${output}`);
-    }
-
-    const firstResult = parsed[0] as unknown;
-    if (
-        typeof firstResult !== 'object' ||
-        firstResult === null ||
-        !('filename' in firstResult) ||
-        typeof firstResult.filename !== 'string'
-    ) {
-        throw new Error(`Unexpected npm pack response: ${output}`);
-    }
-    return { filename: firstResult.filename };
-}
+import { parseNpmPackResult } from './npm-pack-result';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'hilo3d-package-'));
@@ -39,7 +18,7 @@ try {
         ['pack', '--json', '--ignore-scripts', '--pack-destination', archiveDirectory],
         { cwd: projectRoot, encoding: 'utf8' }
     );
-    const packResult = readPackResult(packOutput);
+    const packResult = parseNpmPackResult(packOutput);
     const archivePath = join(archiveDirectory, packResult.filename);
 
     await writeFile(
