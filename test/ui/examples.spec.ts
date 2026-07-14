@@ -48,6 +48,7 @@ interface CompressedTextureResult {
 
 const GPU_DIAGNOSTIC_ERROR =
     /(?:webgl|webgpu|gpu(?:adapter|bindgroup|buffer|command|device|pipeline|queue|sampler|texture)|gl_invalid|validation error|framebuffer[^\n]*(?:incomplete|unsupported)|invalid (?:bind|buffer|command|pipeline|render|sampler|texture)|shader[^\n]*(?:compil|link))/iu;
+const PRESENTATION_TIMEOUT = process.env['CI'] === 'true' ? 30_000 : 15_000;
 
 function recordUnique(messages: string[], message: string): void {
     if (!messages.includes(message)) messages.push(message);
@@ -430,7 +431,7 @@ test.describe('all examples on every supported backend', () => {
                         },
                         {
                             message: `${examplePath} must present a visible non-uniform ${backend} frame`,
-                            timeout: 15_000
+                            timeout: PRESENTATION_TIMEOUT
                         }
                     )
                     .toBe(true);

@@ -7,6 +7,15 @@ function recordUnique(messages: string[], message: string): void {
     if (!messages.includes(message)) messages.push(message);
 }
 
+function isClosedDevtoolsSession(error: unknown): boolean {
+    return (
+        error instanceof Error &&
+        /(?:Target page, context or browser has been closed|Target closed|Session closed)/u.test(
+            error.message
+        )
+    );
+}
+
 export interface PageFailureSnapshot {
     readonly consoleErrors: readonly string[];
     readonly graphicsErrors: readonly string[];
@@ -95,7 +104,13 @@ export async function installPageFailureMonitor(page: Page): Promise<PageFailure
             page.off('pageerror', handlePageError);
             page.off('requestfailed', handleRequestFailed);
             page.off('response', handleResponse);
-            await devtools.detach();
+            try {
+                await devtools.detach();
+            } catch (error: unknown) {
+                // A test timeout can close the page before fixture cleanup runs. Detaching an
+                // already-closed CDP target is complete in practice; retain every other failure.
+                if (!isClosedDevtoolsSession(error)) throw error;
+            }
         }
     };
 }

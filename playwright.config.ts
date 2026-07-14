@@ -7,13 +7,14 @@ const swiftShaderArguments = [
     '--use-gl=angle',
     '--use-angle=swiftshader',
     '--use-webgpu-adapter=swiftshader',
-    // Headless Chromium otherwise may not initialize ANGLE early enough for Dawn to select the
-    // matching SwiftShader adapter. Chromium's own WebGPU bots use this switch for the same
-    // reason.
+    // Keep the portable browser project aligned with Chromium's own WebGPU SwiftShader bots.
+    // Vulkan-backed Skia is intentionally not forced here: doing so serializes software
+    // compositing with the WebGL/WebGPU workload and makes presentation readback unreliable.
+    '--enable-dawn-features=allow_unsafe_apis',
+    '--disable-dawn-features=use_dxc',
+    '--enable-webgpu-developer-features',
     '--use-gpu-in-tests',
-    ...(process.platform === 'linux'
-        ? ['--enable-features=Vulkan', '--use-vulkan=swiftshader']
-        : [])
+    '--enable-accelerated-2d-canvas'
 ];
 const nativeWebGPUArguments = [
     '--disable-software-rasterizer',
@@ -40,6 +41,7 @@ process.env['no_proxy'] = noProxy;
 export default defineConfig({
     testDir: './test/ui',
     outputDir: 'test-results',
+    timeout: isContinuousIntegration ? 60_000 : 30_000,
     fullyParallel: true,
     workers: 1,
     forbidOnly: isContinuousIntegration,
@@ -64,7 +66,9 @@ export default defineConfig({
         screenshot: 'only-on-failure',
         trace: 'retain-on-failure',
         timezoneId: 'UTC',
-        video: 'retain-on-failure',
+        // SwiftShader rendering and full-frame video encoding contend for the same CI CPU. Failure
+        // screenshots and traces retain the browser diagnostics without perturbing presentation.
+        video: isContinuousIntegration ? 'off' : 'retain-on-failure',
         viewport: { height: 720, width: 1280 }
     },
     projects: [
