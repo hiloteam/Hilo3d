@@ -40,6 +40,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Validate release
         run: npm run validate:ci
         env:
