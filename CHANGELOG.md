@@ -1,3 +1,32 @@
+# Unreleased
+
+### Breaking changes
+
+- Replace the public abstract/concrete renderer split with one public `Renderer`. Construct WebGL 2
+  synchronously with `new Renderer({ backend: 'webgl2' })`; use
+  `await Renderer.create({ backend: 'auto' })` or `await Renderer.create({ backend: 'webgpu' })`
+  when backend selection or initialization is asynchronous.
+- Remove the public `WebGLRenderer`, `WebGPURenderer`, `WebGLRenderTarget`, and `WebGPURenderTarget`
+  classes and their backend-specific parameter and lifecycle types. The sole offscreen surface
+  remains the backend-neutral `RenderTarget` returned by Renderer.
+- Replace the backend-class support probe with `Renderer.isBackendSupported('webgpu', options)`.
+  Explicit backend requests remain fail-closed; `auto` still probes WebGPU without requesting a
+  device or allocating GPU resources.
+- Move the render frontend to `src/render` and the RHI to `src/render/rhi/{webgl2,webgpu}`. Remove
+  the legacy `src/renderer` and `src/rhi` source trees and do not provide compatibility re-export
+  paths.
+
+### Changes
+
+- Add backend-neutral `Renderer.waitForIdle()` for application completion fences. Native WebGL 2 or
+  WebGPU interoperability is opt-in through `Renderer.getExtension()` instead of public `gl` or
+  `gpuDevice` fields.
+- Keep backend selection outside the draw loop and preserve the existing native fast paths, state
+  caches, prepared resources, and pass-level execution so the unified public surface adds no
+  per-draw dispatch or allocation cost.
+- Add one internal `RHIFactory` composition root for concrete RHI construction and support probes;
+  backend drivers receive the concrete RHI directly rather than a command-forwarding facade.
+
 # 2.0.0 (2026-07-14)
 
 ### Breaking changes

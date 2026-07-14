@@ -1,5 +1,5 @@
 import Material, { type MaterialParameters } from './Material';
-import type { ShaderOptions } from '../renderer/common/types';
+import type { ShaderOptions } from '../render/types';
 
 export type CustomRenderOptionProvider = (option: ShaderOptions) => ShaderOptions;
 

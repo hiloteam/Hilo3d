@@ -11,7 +11,7 @@ import {
     paddedStd140Value,
     sceneBlockLayout,
     skinningBlockLayout
-} from '../../../src/renderer/common/ubo/BuiltInUniformBlocks';
+} from '../../../src/render/ubo/BuiltInUniformBlocks';
 
 describe('built-in std140 ABI', () => {
     it('keeps every canonical block byte size stable', () => {

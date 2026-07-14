@@ -68,7 +68,7 @@ import type {
     TexturePixelData,
     TextureSubImage,
     TypedArray
-} from '../renderer/common/types';
+} from '../render/types';
 import {
     isTexturePixelData,
     textureElementsPerPixel,

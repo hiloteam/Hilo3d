@@ -7,7 +7,7 @@ import Color from '../math/Color';
 import type Matrix4 from '../math/Matrix4';
 import Texture from '../texture/Texture';
 import CubeTexture from '../texture/CubeTexture';
-import type { ShaderOptions } from '../renderer/common/types';
+import type { ShaderOptions } from '../render/types';
 
 export type BasicLightType = 'NONE' | 'PHONG' | 'BLINN-PHONG' | 'LAMBERT';
 

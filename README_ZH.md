@@ -62,7 +62,7 @@ ticker.start();
 ```
 
 省略 `backend` 等同于 `backend: 'auto'`。auto 会先调用
-`WebGPURenderer.isSupported()`：这个轻量探测只请求 adapter，并校验 fallback-adapter 策略、required
+`Renderer.isBackendSupported('webgpu', options)`：这个轻量探测只请求 adapter，并校验 fallback-adapter 策略、required
 feature、required limit 和 Hilo3d 的最低 adapter limits；不会请求 device、获取 canvas
 context、初始化 Naga、创建 pipeline 或分配 GPU 资源。adapter 兼容时选择 WebGPU，否则直接创建 WebGL
 2。传入 WebGL 2-only 的 `preserveDrawingBuffer`，或请求 `alpha: true, premultipliedAlpha: false`
@@ -76,7 +76,9 @@ context 创建错误、shader 编译器失败、pipeline/资源初始化错误�
 应用也可以在不创建 renderer 的情况下复用同一不创建 device 或 GPU 资源的探测：
 
 ```ts
-const webgpuSupported = await Hilo3d.WebGPURenderer.isSupported();
+const webgpuSupported = await Hilo3d.Renderer.isBackendSupported('webgpu', {
+    powerPreference: 'high-performance'
+});
 ```
 
 ## WebGL 2 兼容
@@ -93,6 +95,31 @@ const stage = await Hilo3d.Stage.create({
 
 同步 `new Stage()` 仍默认使用 WebGL 2，因为构造函数无法等待异步 adapter 探测；需要 WebGPU-first
 auto 策略时应使用 `await Stage.create()`。Hilo3d 永远不会创建 WebGL 1 上下文。
+
+## 直接创建 Renderer
+
+`Renderer` 是唯一公开的 renderer 类。需要同步获得 WebGL
+2 时使用构造函数；自动选择或 WebGPU 使用异步工厂：
+
+```ts
+const webglRenderer = new Hilo3d.Renderer({
+    backend: 'webgl2',
+    domElement: document.querySelector('canvas')!
+});
+
+const autoRenderer = await Hilo3d.Renderer.create({
+    backend: 'auto',
+    domElement: document.createElement('canvas')
+});
+
+const webgpuRenderer = await Hilo3d.Renderer.create({
+    backend: 'webgpu',
+    domElement: document.createElement('canvas')
+});
+```
+
+所有 Renderer 都创建同一公开 `RenderTarget` 契约。可以通过 `renderer.backend`
+观察最终后端，但 scene、material、target 与 shader API 不随之变化。
 
 ## 能力矩阵
 
@@ -138,27 +165,28 @@ target 的 resize、readback、destroy 必须在 callback 外执行；WebGPU 录
 
 ## 现代渲染架构
 
-- `src/renderer/common` 负责 scene traversal、frame planning、render target 契约、std140
-  uniform 数据和确定性引擎资源归属。
-- `src/shader` 负责 GLSL 预处理和引擎 shader variant；`src/renderer/shader`
-  负责准备后端接口、反射 binding 与 GLSL→WGSL 编译；RHI 不知道 shader variant 或 material。
-- `src/renderer/webgpu` 与 `src/renderer/webgl`
-  负责把 Mesh、Material、Light、RenderTarget 等引擎语义解析为后端已准备资源。Concrete
-  RHI 统一持有 native device、context/surface 与生命周期，renderer
-  manager 在这个唯一 owner 下管理引擎资源分配。
-- `src/rhi/RHI.ts` 定义 WebGPU-shaped 的 device、resource、pipeline、bind group、render
+- `src/render` 负责唯一公开的 Renderer、scene traversal、frame planning、render target 契约、std140
+  uniform 数据、shader 接口准备和确定性引擎资源归属。
+- `src/shader` 负责 GLSL 预处理和引擎 shader variant；`src/render/shader`
+  负责反射 binding 与 GLSL→WGSL 编译；RHI 不知道 shader variant 或 material。
+- `src/render/rhi/RHI.ts` 定义 WebGPU-shaped 的 device、resource、pipeline、bind group、render
   pass、encoder、queue、surface、feature 与 limit 契约。
-- `src/rhi/webgpu` 直接包装 native WebGPU；`src/rhi/webgl` 包含 WebGL 2 语义模拟、state
-  cache、framebuffer/VAO 归属和 context recovery。两个 RHI 都不引用引擎 scene 类型。
+- `src/render/rhi/RHIFactory.ts`
+  是唯一硬件组合根：只构造一次具体 RHI 并负责后端能力探测，不在每条 command 外再包一层 facade。
+- `src/render/rhi/webgpu` 直接包装 native WebGPU；`src/render/rhi/webgl2` 包含 WebGL
+  2 语义模拟、state cache、framebuffer/VAO 归属和 context
+  recovery。两个 RHI 都不引用引擎 scene 类型。
+- 后端准备与 native 执行全部是内部实现，不存在后端专属的公开 Renderer 或 RenderTarget 类；内部 Renderer
+  factory 只在构造时选择一次具体 driver，并直接返回该实例。
 
 抽象边界刻意采用 WebGPU 模型，而不是 WebGL 状态机。WebGPU render pass 与 native pass 一对一，command
 encoder 直接持有 native encoder。WebGL2RHI 只在 pipeline 或 bind
 group 状态变化时应用 GL 状态，draw/copy 在编码期间已执行；返回的 command buffer 只是一次性 submit
-token。生产 WebGPU manager 直接使用同一个 concrete device 上的一跳 native fast path，主 draw
-loop 保留 native handle，不承担 wrapper 或虚调用开销。生产 WebGL 2 renderer 则在 frame-scoped
-session 中执行引擎语义的 Program/VAO 路径，并共享 RHI 唯一的 context、canonical state
+token。生产 WebGPU 路径直接使用同一个 concrete device 上的一跳 native fast path，主 draw
+loop 保留 native handle，不承担逐 draw wrapper 或虚调用开销。WebGL 2 路径则在 frame-scoped
+session 中执行 Program/VAO，并共享 RHI 唯一的 context、canonical state
 differential、lifecycle 与 device-owned sampler
-cache；Program、VAO、framebuffer 仍属于 Renderer 的引擎语义 cache，不会创建并行 context 或可回放命令列表。无法在 WebGL
+cache；Program、VAO、framebuffer 仍属于 render 层 cache，不会创建并行 context 或可回放命令列表。无法在 WebGL
 2 中正确实现的 compute pipeline、storage texture/buffer、1D texture、异步 buffer
 mapping、base-vertex 与 first-instance draw 会从 `features` 中缺席或以 0
 limit 暴露，请求时明确报错。RHI 契约内部会保守声明格式相关的采样、过滤、attachment、storage 和 MSAA 能力，包括 extension/tier 导致的差异。
@@ -233,6 +261,11 @@ manager/cache，在不改变公开 target 对象 identity 的前提下恢复 ren
 `webgpuDeviceRestored`。恢复期间安全跳帧；最终失败会触发
 `webgpuDeviceRecoveryFailed`，之后的 render 显式抛错，并且绝不切换到 WebGL
 2。`releaseGPUResources()` 会清理自有 GPU 状态，但 renderer 仍可继续使用。
+
+应用需要后端中立的完成 fence 时使用 `await renderer.waitForIdle()`。Native 互操作只能显式通过
+`renderer.getExtension('webgl2-native')` 或 `renderer.getExtension('webgpu-native')`
+获取，公开 Renderer 不直接暴露 context 或 device 字段。使用前必须检查 extension 是否存在，常规渲染继续使用共享的 Renderer/RenderTarget
+API。
 
 ## 文档
 

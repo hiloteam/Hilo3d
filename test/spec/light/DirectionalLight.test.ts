@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import { getLightShadow } from '../../../src/renderer/webgl/shadow/LightShadowRegistry';
+import { getLightShadow } from '../../../src/render/internal/webgl2/shadow/LightShadowRegistry';
 import {
     releaseWebGLShadowMaps,
     renderWebGLShadowMaps
-} from '../../../src/renderer/webgl/WebGLShadowMapManager';
+} from '../../../src/render/internal/webgl2/WebGLShadowMapManager';
 import { createHilo3dEnvironment, testEnv } from '../../setup';
 
 const DirectionalLight = Hilo3d.DirectionalLight;

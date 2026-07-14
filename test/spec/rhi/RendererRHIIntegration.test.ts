@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Node from '../../../src/core/Node';
-import WebGPURenderer from '../../../src/renderer/webgpu/WebGPURenderer';
-import { NagaShaderTranslator } from '../../../src/renderer/shader/GlslToWgsl';
-import { WebGPUDevice, type WebGPURHI, WebGPUSurface } from '../../../src/rhi/webgpu/WebGPURHI';
+import WebGPUDriver from '../../../src/render/internal/webgpu/WebGPUDriver';
+import { NagaShaderTranslator } from '../../../src/render/shader/GlslToWgsl';
+import {
+    WebGPUDevice,
+    type WebGPURHI,
+    WebGPUSurface
+} from '../../../src/render/rhi/webgpu/WebGPURHI';
 import { createFakeWebGPU } from './FakeWebGPU';
 
-const renderers: WebGPURenderer[] = [];
+const renderers: WebGPUDriver[] = [];
 
 afterEach(() => {
     for (const renderer of renderers.splice(0)) renderer.destroy();
@@ -21,7 +25,7 @@ describe('Renderer RHI integration', () => {
         const submit = vi.spyOn(WebGPUDevice.prototype, 'submitNative');
         const currentTexture = vi.spyOn(WebGPUSurface.prototype, 'getCurrentNativeTexture');
         const fake = createFakeWebGPU();
-        const renderer = new WebGPURenderer({
+        const renderer = new WebGPUDriver({
             domElement: fake.canvas,
             width: 16,
             height: 8,
@@ -51,7 +55,7 @@ describe('Renderer RHI integration', () => {
     it('retains one RHI identity while replacing its native WebGPU device after loss', async () => {
         vi.spyOn(NagaShaderTranslator.prototype, 'initialize').mockResolvedValue(undefined);
         const first = createFakeWebGPU();
-        const renderer = new WebGPURenderer({
+        const renderer = new WebGPUDriver({
             domElement: first.canvas,
             width: 16,
             height: 8,

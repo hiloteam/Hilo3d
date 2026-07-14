@@ -13,14 +13,14 @@ import type Mesh from '../core/Mesh';
 import type Fog from '../core/Fog';
 import type LightManager from '../light/LightManager';
 import type Material from '../material/Material';
-import type GraphicsResourceManager from '../renderer/common/GraphicsResourceManager';
-import type { ShaderPrecision } from '../renderer/common/types';
+import type { RendererResourceManager } from '../render/RendererCore';
+import type { ShaderPrecision } from '../render/types';
 import {
     MAX_AREA_LIGHTS,
     MAX_DIRECTIONAL_LIGHTS,
     MAX_POINT_LIGHTS,
     MAX_SPOT_LIGHTS
-} from '../renderer/common/ubo/BuiltInUniformBlocks';
+} from '../render/ubo/BuiltInUniformBlocks';
 
 const cache = new Cache<Shader>();
 const headerCache = new Cache<string>();
@@ -79,7 +79,7 @@ export interface ShaderPrecisionProvider {
 }
 
 export interface ShaderRenderer extends ShaderPrecisionProvider {
-    resourceManager: GraphicsResourceManager;
+    resourceManager: RendererResourceManager;
 }
 
 interface RendererHeaderSnapshot {

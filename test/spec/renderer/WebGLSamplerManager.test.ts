@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WebGLSamplerManager } from '../../../src/renderer/webgl/WebGLSamplerManager';
-import type WebGLState from '../../../src/renderer/webgl/WebGLState';
+import { WebGLSamplerManager } from '../../../src/render/internal/webgl2/WebGLSamplerManager';
+import type WebGLState from '../../../src/render/internal/webgl2/WebGLState';
 import Texture from '../../../src/texture/Texture';
 
 function createManager(): {

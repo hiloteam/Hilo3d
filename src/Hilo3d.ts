@@ -35,8 +35,7 @@ export {
     type StageBackendParameters,
     type StageCommonParameters,
     type StageParameters,
-    type StagePointerEvent,
-    type StageRenderer
+    type StagePointerEvent
 } from './core/Stage';
 export {
     type BackEaseObject,
@@ -96,23 +95,7 @@ export {
     type SphereGeometryParameters
 } from './geometry/SphereGeometry';
 
-export { default as Buffer, type BufferData, type BufferRenderer } from './renderer/webgl/Buffer';
-export { WebGLCapabilities, type NumericCapabilityName } from './renderer/webgl/capabilities';
-export { WebGLExtensions } from './renderer/webgl/extensions';
-export { default as glType } from './renderer/webgl/glType';
-export {
-    type AttributePointerParameters,
-    default as Program,
-    type ProgramAttribute,
-    ProgramLinkError,
-    type ProgramParameters,
-    type ProgramRenderer,
-    type ProgramUniform,
-    type ProgramUniformBlock,
-    ShaderCompilationError
-} from './renderer/webgl/Program';
-export { default as RenderInfo } from './renderer/common/RenderInfo';
-export { default as RenderList } from './renderer/common/RenderList';
+export { default as RenderInfo } from './render/RenderInfo';
 export type {
     RenderTarget,
     RenderTargetColor,
@@ -128,12 +111,12 @@ export type {
     RenderTargetSampleCount,
     RenderTargetSelectionOptions,
     RenderTargetStoreOp
-} from './renderer/common/RenderTarget';
+} from './render/RenderTarget';
 export {
     default as UniformBuffer,
     type UniformBufferDirtyRange,
     type UniformBufferRange
-} from './renderer/common/UniformBuffer';
+} from './render/UniformBuffer';
 export {
     createStd140Layout,
     Std140Layout,
@@ -148,93 +131,35 @@ export {
     type Std140Value,
     type Std140Values,
     type Std140VectorType
-} from './renderer/common/ubo/Std140Layout';
+} from './render/ubo/Std140Layout';
 export {
     BUILTIN_UNIFORM_BLOCK_BINDING_COUNT,
     getUniformBlockBinding,
     registerUniformBlockBinding,
     UNIFORM_BLOCK_BINDINGS
-} from './renderer/common/ubo/UniformBlockBindings';
-export {
-    type AttributeObject,
-    default as VertexArrayObject,
-    type VertexArrayObjectParameters,
-    type VaoRenderer
-} from './renderer/webgl/VertexArrayObject';
-export {
-    type MeshSetup,
-    default as WebGLRenderer,
-    type WebGLRendererParameters,
-    type WebGLRendererScene
-} from './renderer/webgl/WebGLRenderer';
-export { default as WebGLRenderTarget } from './renderer/webgl/WebGLRenderTarget';
-export {
-    default as WebGPURenderer,
-    type WebGPUDeviceRecoveryState,
-    type WebGPURendererParameters,
-    type WebGPUSupportOptions
-} from './renderer/webgpu/WebGPURenderer';
-export {
-    WEBGPU_BYTES_PER_ROW_ALIGNMENT,
-    type WebGPUColorAttachmentOperations,
-    type WebGPUColorAttachmentOptions,
-    type WebGPUColorAttachmentReadback,
-    type WebGPUColorRenderTargetFormat,
-    type WebGPUDepthStencilAttachmentOperations,
-    type WebGPUDepthStencilAttachmentOptions,
-    type WebGPUDepthStencilRenderTargetFormat,
-    type WebGPUReadColorAttachmentOptions,
-    default as WebGPURenderTarget,
-    type WebGPURenderPassOptions,
-    type WebGPURenderTargetParameters
-} from './renderer/webgpu/WebGPURenderTarget';
-export {
-    createWebGPUSamplerDescriptor,
-    default as WebGPUTextureManager,
-    resolveWebGPUCompareFunction,
-    resolveWebGPUTextureFormat,
-    type TextureComponentStorage,
-    type WebGPUExternalTextureOptions,
-    type WebGPUTextureFormatInfo,
-    type WebGPUTextureDimension,
-    type WebGPUTextureRequestOptions,
-    type WebGPUTextureResource
-} from './renderer/webgpu/WebGPUTextureManager';
+} from './render/ubo/UniformBlockBindings';
 export {
     default as Renderer,
+    type RendererAutoOptions,
     type RendererBackend,
+    type RendererCommonOptions,
     type RendererContract,
+    type RendererCreateOptions,
+    type RendererExplicitOptions,
     type RendererFrame,
     type RendererFrameCallback,
+    type RendererOptions,
+    type RendererOptionsMap,
     type RendererResourceDiagnostics,
     type RendererResourceManager,
     type RendererScene,
+    type RendererSupportOptions,
     type RendererViewport,
+    type RendererWebGL2Options,
+    type RendererWebGPUOptions,
     type TextureCompressionFormat
-} from './renderer/common/Renderer';
-export type { RenderFramePlan } from './renderer/common/RenderFramePlan';
-export {
-    getWebGPUUniformBlockBinding,
-    registerWebGPUCustomUniformBlockBinding,
-    WEBGPU_BIND_GROUP_COUNT,
-    WEBGPU_BIND_GROUPS,
-    type WebGPUResourceBinding,
-    WEBGPU_UNIFORM_BLOCK_BINDINGS
-} from './renderer/webgpu/WebGPUBindingLayout';
-export {
-    default as GraphicsResourceManager,
-    type GraphicsResourceManagerParameters,
-    type ManagedResource,
-    type MeshResourceVariant
-} from './renderer/common/GraphicsResourceManager';
-export {
-    type FourParameterMethod,
-    type OneParameterMethod,
-    type StateValue,
-    type ThreeParameterMethod,
-    type TwoParameterMethod,
-    default as WebGLState
-} from './renderer/webgl/WebGLState';
+} from './render/Renderer';
+export type { RenderFramePlan } from './render/RenderFramePlan';
 export type {
     Resource,
     ShaderDefineValue,
@@ -247,8 +172,7 @@ export type {
     TextureSubImage,
     TypedArray,
     TypedArrayConstructor
-} from './renderer/common/types';
-export type { GLContext, GLTypeInfo, VertexAttributeInfo } from './renderer/webgl/WebGLTypes';
+} from './render/types';
 
 export {
     default as BasicLoader,
@@ -332,23 +256,6 @@ export {
     type ShaderPrecisionProvider,
     type ShaderRenderer
 } from './shader/Shader';
-export {
-    NagaShaderTranslationError,
-    NagaShaderTranslator,
-    prepareGLSLForNaga,
-    type GlslSamplerType,
-    type GraphicsShaderStage,
-    type PrepareGLSLForNagaOptions,
-    type PreparedShaderPair,
-    type PreparedShaderStage,
-    type TranslatedShaderPair,
-    type TranslatedShaderStage,
-    type WebGPUFragmentOutput,
-    type WebGPUSamplerBinding,
-    type WebGPUUniformBlock,
-    type WebGPUVertexInput
-} from './renderer/shader/GlslToWgsl';
-
 export {
     type BasicLightType,
     default as BasicMaterial,

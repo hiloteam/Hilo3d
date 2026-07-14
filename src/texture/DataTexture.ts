@@ -3,7 +3,7 @@ import Texture, { type TextureParameters } from './Texture';
 import { getTypedArrayClass } from '../utils/util';
 import { CLAMP_TO_EDGE, FLOAT, NEAREST, RGBA, TEXTURE_2D } from '../constants/webgl';
 import { RGBA32F } from '../constants/webgl2';
-import type { TypedArray, TypedArrayConstructor } from '../renderer/common/types';
+import type { TypedArray, TypedArrayConstructor } from '../render/types';
 
 export interface DataTextureParameters extends Omit<
     TextureParameters<TypedArray>,

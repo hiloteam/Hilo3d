@@ -24,7 +24,7 @@ import BasicLoader from './BasicLoader';
 import * as util from '../utils/util';
 import * as builtInExtensionHandlers from './GLTFExtensions';
 import { BACK, BLEND, CULL_FACE, DEPTH_TEST, FRONT, FRONT_AND_BACK } from '../constants/webgl';
-import type { TypedArray } from '../renderer/common/types';
+import type { TypedArray } from '../render/types';
 import type { BasicLoaderResource, GLTFResourceLoader } from './GLTFLoader';
 import {
     collectionEntries,

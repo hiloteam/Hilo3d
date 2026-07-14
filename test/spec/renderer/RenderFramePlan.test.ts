@@ -6,9 +6,9 @@ import Geometry from '../../../src/geometry/Geometry';
 import DirectionalLight from '../../../src/light/DirectionalLight';
 import LightManager from '../../../src/light/LightManager';
 import Material from '../../../src/material/Material';
-import { RenderFramePlanner } from '../../../src/renderer/common/RenderFramePlan';
-import RenderList from '../../../src/renderer/common/RenderList';
-import type { Renderer } from '../../../src/renderer/common/Renderer';
+import { RenderFramePlanner } from '../../../src/render/RenderFramePlan';
+import RenderList from '../../../src/render/RenderList';
+import type { Renderer } from '../../../src/render/Renderer';
 
 function mesh(): Mesh {
     return new Mesh({ geometry: new Geometry(), material: new Material(), frustumTest: false });

@@ -1,0 +1,72 @@
+import type Fog from '../core/Fog';
+import type Material from '../material/Material';
+import type Color from '../math/Color';
+import type { RendererBackend } from './RendererCore';
+import type { ShaderPrecision } from './types';
+
+/** Backend-independent construction options. */
+export interface RendererCommonOptions {
+    width?: number;
+    height?: number;
+    pixelRatio?: number;
+    domElement?: HTMLCanvasElement | null;
+    useInstanced?: boolean;
+    alpha?: boolean;
+    depth?: boolean;
+    stencil?: boolean;
+    antialias?: boolean;
+    premultipliedAlpha?: boolean;
+    failIfMajorPerformanceCaveat?: boolean;
+    useLogDepth?: boolean;
+    vertexPrecision?: ShaderPrecision;
+    fragmentPrecision?: ShaderPrecision;
+    fog?: Fog | null;
+    offsetX?: number;
+    offsetY?: number;
+    forceMaterial?: Material | null;
+    clearColor?: Color;
+}
+
+/** WebGPU adapter/device constraints accepted by support probes and automatic selection. */
+export interface RendererSupportOptions {
+    powerPreference?: GPUPowerPreference;
+    forceFallbackAdapter?: boolean;
+    failIfMajorPerformanceCaveat?: boolean;
+    requiredFeatures?: readonly GPUFeatureName[];
+    requiredLimits?: Readonly<Record<string, number>>;
+}
+
+/** Synchronous construction options for WebGL2. */
+export interface RendererWebGL2Options extends RendererCommonOptions {
+    backend?: 'webgl2';
+    preserveDrawingBuffer?: boolean;
+    powerPreference?: WebGLPowerPreference;
+}
+
+/** Synchronous construction options for WebGPU. */
+export interface RendererWebGPUOptions extends RendererCommonOptions, RendererSupportOptions {
+    backend: 'webgpu';
+    /** WebGPU has no preserved default framebuffer. */
+    preserveDrawingBuffer?: never;
+}
+
+export interface RendererOptionsMap {
+    readonly webgl2: RendererWebGL2Options;
+    readonly webgpu: RendererWebGPUOptions;
+}
+
+/** Options accepted by the synchronous Renderer constructor. */
+export type RendererOptions<Backend extends RendererBackend = RendererBackend> =
+    RendererOptionsMap[Backend];
+
+export type RendererExplicitOptions = RendererOptions;
+
+/** WebGPU-first asynchronous backend-selection options. */
+export interface RendererAutoOptions extends RendererCommonOptions, RendererSupportOptions {
+    backend?: 'auto';
+    /** Supplying this WebGL2-only option makes automatic selection choose WebGL2. */
+    preserveDrawingBuffer?: boolean;
+}
+
+/** Options accepted by Renderer.create. */
+export type RendererCreateOptions = RendererExplicitOptions | RendererAutoOptions;

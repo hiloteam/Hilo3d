@@ -8,7 +8,7 @@ import {
     type RHIPipelineLayout,
     type RHIRenderPipelineDescriptor,
     type RHITextureDescriptor
-} from '../../../src/rhi/RHI';
+} from '../../../src/render/rhi/RHI';
 
 function expectIndependentFlags(flags: Readonly<Record<string, number>>): void {
     const values = Object.values(flags);

@@ -10,57 +10,47 @@ import {
     Mesh,
     MeshPicker,
     PerspectiveCamera,
-    Program,
-    ProgramLinkError,
-    ShaderCompilationError,
+    Renderer,
     Stage,
     Texture,
     Tween,
-    WebGLRenderer,
-    WebGLState,
-    WebGPURenderer,
-    NagaShaderTranslator,
-    getWebGPUUniformBlockBinding,
     version,
     type BasicLoadRequest,
     type BasicMaterialParameters,
     type AreaLightParameters,
     type DispatchEvent,
     type EventListener,
-    type GLContext,
     type KTXTextureOptions,
     type LoaderRequest,
     type MeshParameters,
-    type ProgramParameters,
-    type Renderer,
     type RendererBackend,
     type RendererResourceDiagnostics,
+    type RendererSupportOptions,
+    type RendererWebGL2Options,
+    type RendererWebGPUOptions,
     type RenderTarget,
     type RenderTargetColorAttachmentReadback,
     type RenderTargetParameters,
     type StageParameters,
     type StageBackend,
     type StagePointerEvent,
-    type StageRenderer,
     type ShadowCastingLightParameters,
     type TextureCompressionFormat,
     type TextureMipmap,
     type TexturePixelData,
     type TextureParameters,
-    type TweenParameters,
-    type WebGLRendererParameters,
-    type WebGPUTextureDimension,
-    type WebGPURendererParameters,
-    type WebGPUSupportOptions
+    type TweenParameters
 } from 'hilo3d';
 
 const camera = new PerspectiveCamera({ aspect: 16 / 9, near: 0.1, far: 1_000, z: 4 });
 const rendererParameters = {
+    backend: 'webgl2',
     width: 640,
     height: 360,
     pixelRatio: 1
-} satisfies WebGLRendererParameters;
-const renderer = new WebGLRenderer(rendererParameters);
+} satisfies RendererWebGL2Options;
+const renderer = new Renderer(rendererParameters) satisfies Renderer<'webgl2'>;
+const webglRendererPromise: Promise<Renderer<'webgl2'>> = Renderer.create(rendererParameters);
 const stageParameters = {
     camera,
     width: rendererParameters.width,
@@ -68,15 +58,22 @@ const stageParameters = {
 } satisfies StageParameters;
 const stage = new Stage(stageParameters);
 const webgpuRendererParameters = {
+    backend: 'webgpu',
     domElement: document.createElement('canvas'),
     width: 640,
     height: 360,
     pixelRatio: 1
-} satisfies WebGPURendererParameters;
-const webgpuRenderer = new WebGPURenderer(webgpuRendererParameters);
-type WebgpuRendererPreserveDrawingBufferIsAbsent =
-    'preserveDrawingBuffer' extends keyof WebGPURendererParameters ? false : true;
-const webgpuRendererPreserveDrawingBufferIsAbsent: WebgpuRendererPreserveDrawingBufferIsAbsent = true;
+} satisfies RendererWebGPUOptions;
+const webgpuRenderer = new Renderer(webgpuRendererParameters) satisfies Renderer<'webgpu'>;
+const webgpuRendererPromise: Promise<Renderer<'webgpu'>> =
+    Renderer.create(webgpuRendererParameters);
+type WebgpuRendererPreserveDrawingBufferValue = Exclude<
+    RendererWebGPUOptions['preserveDrawingBuffer'],
+    undefined
+>;
+const webgpuRendererPreserveDrawingBufferIsNever: WebgpuRendererPreserveDrawingBufferValue extends never
+    ? true
+    : false = true;
 const webgpuStageParameters = {
     backend: 'webgpu',
     camera,
@@ -104,16 +101,25 @@ const dynamicStagePromise: Promise<Stage<RendererBackend>> = Stage.create(dynami
 const webgpuSupportOptions = {
     powerPreference: 'high-performance',
     requiredLimits: { maxBindGroups: 4 }
-} satisfies WebGPUSupportOptions;
-const webgpuSupportedPromise: Promise<boolean> = WebGPURenderer.isSupported(webgpuSupportOptions);
-const typedWebgpuStageRenderer: StageRenderer<'webgpu'> = webgpuStage.renderer;
+} satisfies RendererSupportOptions;
+const webgpuSupportedPromise: Promise<boolean> = Renderer.isBackendSupported(
+    'webgpu',
+    webgpuSupportOptions
+);
+const webglSupportedPromise: Promise<boolean> = Renderer.isBackendSupported(
+    'webgl2',
+    rendererParameters
+);
+const autoRendererPromise: Promise<Renderer> = Renderer.create({
+    backend: 'auto',
+    ...webgpuSupportOptions
+});
+const stageWebgpuRenderContract: Renderer<'webgpu'> = webgpuStage.renderer;
 const selectedBackend: RendererBackend = webgpuRenderer.backend;
 const areaLightHasShadow: 'shadow' extends keyof AreaLightParameters ? true : false = false;
 const shadowCastingLightHasShadow: 'shadow' extends keyof ShadowCastingLightParameters
     ? true
     : false = true;
-const nagaTranslator = new NagaShaderTranslator();
-const cameraBlockBinding = getWebGPUUniformBlockBinding('CameraBlock');
 const renderTargetParameters = {
     width: 320,
     height: 180,
@@ -147,6 +153,8 @@ const colorReadbacks: readonly Promise<RenderTargetColorAttachmentReadback>[] = 
 ];
 const resourceDiagnostics: RendererResourceDiagnostics =
     webgpuRenderer.resourceManager.getDiagnostics(webgpuStage);
+const webglIdlePromise: Promise<void> = renderer.waitForIdle();
+const webgpuIdlePromise: Promise<void> = webgpuRenderer.waitForIdle();
 
 const textureParameters = {
     uv: 0,
@@ -155,12 +163,6 @@ const textureParameters = {
 } satisfies TextureParameters;
 const texture = new Texture(textureParameters);
 const rawTextureStorage: TexturePixelData = new DataView(new ArrayBuffer(16));
-const webgpuTextureDimensions = [
-    '2d',
-    'cube',
-    '2d-array',
-    '3d'
-] as const satisfies readonly WebGPUTextureDimension[];
 const volumeBasePixels = new Uint8Array(2 * 2 * 2 * 4);
 const volumeMipmaps = [
     { width: 2, height: 2, depth: 2, data: volumeBasePixels },
@@ -249,52 +251,32 @@ const pointerListener: EventListener<StagePointerEvent> = event => {
 };
 const dispatcher = new EventDispatcher().on('ready', eventListener);
 
-declare const gl: GLContext;
-const state = new WebGLState(gl);
-const programParameters = {
-    state,
-    vertexShader: '#version 300 es\nvoid main(){gl_Position=vec4(0.0);}',
-    fragShader:
-        '#version 300 es\nprecision mediump float;layout(location=0) out vec4 fragmentColor;void main(){fragmentColor=vec4(1.0);}'
-} satisfies ProgramParameters;
-const program = new Program(programParameters);
-const compilationError = new ShaderCompilationError(
-    gl.VERTEX_SHADER,
-    'compile failed',
-    '1 invalid shader'
-);
-const linkError = new ProgramLinkError('link failed');
-const typedProgramErrors: readonly (ShaderCompilationError | ProgramLinkError)[] = [
-    compilationError,
-    linkError
-];
-typedProgramErrors.forEach(error => {
-    error satisfies Error;
-});
-
 version satisfies string;
 void renderer;
 void stage;
 void webgpuRenderer;
-void webgpuRendererPreserveDrawingBufferIsAbsent;
+void webglRendererPromise;
+void webgpuRendererPromise;
+void webgpuRendererPreserveDrawingBufferIsNever;
 void webgpuStagePreserveDrawingBufferIsNever;
 void webgpuStagePromise;
 void autoStagePromise;
 void defaultStagePromise;
 void dynamicStagePromise;
 void webgpuSupportedPromise;
-void typedWebgpuStageRenderer;
+void webglSupportedPromise;
+void autoRendererPromise;
+void stageWebgpuRenderContract;
 void selectedBackend;
 void areaLightHasShadow;
 void shadowCastingLightHasShadow;
-void nagaTranslator;
-void cameraBlockBinding;
 void compressionSupport;
 void ktxTextureOptions;
 void colorReadbacks;
 void resourceDiagnostics;
+void webglIdlePromise;
+void webgpuIdlePromise;
 void rawTextureStorage;
-void webgpuTextureDimensions;
 void volumeTextureParameters;
 void integerArrayTextureParameters;
 void material;
@@ -308,6 +290,5 @@ void tween;
 void dispatchEvent;
 void pointerListener;
 void dispatcher;
-void program;
 
 export {};

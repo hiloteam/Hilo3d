@@ -10,7 +10,7 @@ import {
     type RHIPipelineLayout,
     type RHIRenderPassDescriptor,
     type RHIShaderModuleDescriptor
-} from '../../../src/rhi/RHI';
+} from '../../../src/render/rhi/RHI';
 
 /**
  * Backend-specific state exposed to the shared RHI contract tests.

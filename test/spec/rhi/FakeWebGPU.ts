@@ -1,5 +1,5 @@
 import { vi, type Mock } from 'vitest';
-import type { RHIFeatureName } from '../../../src/rhi/RHI';
+import type { RHIFeatureName } from '../../../src/render/rhi/RHI';
 
 export interface Deferred<T> {
     readonly promise: Promise<T>;

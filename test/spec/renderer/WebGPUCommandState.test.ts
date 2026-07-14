@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import WebGPUCommandState from '../../../src/renderer/webgpu/WebGPUCommandState';
-import WebGPURenderer from '../../../src/renderer/webgpu/WebGPURenderer';
+import WebGPUCommandState from '../../../src/render/internal/webgpu/WebGPUCommandState';
+import WebGPUDriver from '../../../src/render/internal/webgpu/WebGPUDriver';
 
 interface FakeRenderPass {
     readonly pass: GPURenderPassEncoder;
@@ -174,9 +174,9 @@ describe('WebGPUCommandState', () => {
         expect(nextFake.setStencilReference).toHaveBeenCalledOnce();
     });
 
-    it('deduplicates state through WebGPURenderer.encodeDraw but preserves every draw', () => {
+    it('deduplicates state through WebGPUDriver.encodeDraw but preserves every draw', () => {
         const fake = createFakeRenderPass();
-        const renderer = Object.create(WebGPURenderer.prototype) as WebGPURenderer;
+        const renderer = Object.create(WebGPUDriver.prototype) as WebGPUDriver;
         const pipeline = {} as GPURenderPipeline;
         const bindGroup = {} as GPUBindGroup;
         const vertexBuffer = {} as GPUBuffer;

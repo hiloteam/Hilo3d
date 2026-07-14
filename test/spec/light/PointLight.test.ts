@@ -1,16 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import CubeTexture from '../../../src/texture/CubeTexture';
-import BuiltInUniformBlockManager from '../../../src/renderer/common/BuiltInUniformBlockManager';
-import { getLightShadow } from '../../../src/renderer/webgl/shadow/LightShadowRegistry';
+import BuiltInUniformBlockManager from '../../../src/render/BuiltInUniformBlockManager';
+import type WebGL2Driver from '../../../src/render/internal/webgl2/WebGL2Driver';
+import { getLightShadow } from '../../../src/render/internal/webgl2/shadow/LightShadowRegistry';
 import {
     releaseWebGLShadowMaps,
     renderWebGLShadowMaps
-} from '../../../src/renderer/webgl/WebGLShadowMapManager';
-import { getWebGLTexture, getWebGLTextureCache } from '../../../src/renderer/webgl/WebGLState';
+} from '../../../src/render/internal/webgl2/WebGLShadowMapManager';
+import {
+    getWebGLTexture,
+    getWebGLTextureCache
+} from '../../../src/render/internal/webgl2/WebGLState';
 import { createHilo3dEnvironment, testEnv } from '../../setup';
 
 const PointLight = Hilo3d.PointLight;
+
+function requireWebGL2Driver(renderer: Hilo3d.Renderer): WebGL2Driver {
+    const extension = renderer.getExtension('webgl2-native') as WebGL2Driver | null;
+    if (!extension) throw new Error('Expected a WebGL2 native renderer extension');
+    return extension;
+}
 
 describe('PointLight', () => {
     it('create', () => {
@@ -87,7 +97,7 @@ describe('PointLight', () => {
     it('creates a square native cube attachment for a non-square renderer', () => {
         const camera = new Hilo3d.PerspectiveCamera();
         const stage = new Hilo3d.Stage({ camera, width: 96, height: 64, pixelRatio: 1 });
-        const { renderer } = stage;
+        const renderer = requireWebGL2Driver(stage.renderer);
         const light = new PointLight({ shadow: {} });
         const manager = new Hilo3d.LightManager().addLight(light);
 
@@ -152,10 +162,11 @@ describe('PointLight', () => {
         stage.addChild(light).addChild(mesh);
 
         const beginPass = vi.spyOn(BuiltInUniformBlockManager.prototype, 'beginPass');
+        const renderer = requireWebGL2Driver(stage.renderer);
 
         try {
-            stage.renderer.initContext();
-            expect(stage.renderer.gl.getError()).toBe(stage.renderer.gl.NO_ERROR);
+            renderer.initContext();
+            expect(renderer.gl.getError()).toBe(renderer.gl.NO_ERROR);
             stage.tick(0);
 
             const shadowPasses = beginPass.mock.calls.filter(
@@ -167,7 +178,7 @@ describe('PointLight', () => {
             );
             expect(beginPass.mock.calls.at(-1)?.[0]).toBe(camera);
             expect(beginPass.mock.calls.at(-1)?.[1]).toEqual([0, 0, 32, 32]);
-            expect(stage.renderer.gl.getError()).toBe(stage.renderer.gl.NO_ERROR);
+            expect(renderer.gl.getError()).toBe(renderer.gl.NO_ERROR);
         } finally {
             beginPass.mockRestore();
             stage.destroy();
@@ -218,7 +229,7 @@ describe('PointLight', () => {
     it('restores renderer state when cube-shadow rendering fails', () => {
         const camera = new Hilo3d.PerspectiveCamera({ near: 0.1, far: 100, z: 4 });
         const stage = new Hilo3d.Stage({ camera, width: 32, height: 32, pixelRatio: 1 });
-        const { renderer } = stage;
+        const renderer = requireWebGL2Driver(stage.renderer);
         renderer.initContext();
         const { state } = renderer;
         const mesh = new Hilo3d.Mesh({

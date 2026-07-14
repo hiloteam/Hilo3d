@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import Material from '../../../src/material/Material';
 import { LINES, LINE_STRIP, TRIANGLES } from '../../../src/constants/webgl';
-import { WebGPUPipelineManager } from '../../../src/renderer/webgpu/WebGPUPipelineManager';
-import { createWebGPURenderState } from '../../../src/renderer/webgpu/WebGPURenderState';
+import { WebGPUPipelineManager } from '../../../src/render/internal/webgpu/WebGPUPipelineManager';
+import { createWebGPURenderState } from '../../../src/render/internal/webgpu/WebGPURenderState';
 
 interface PipelineWithDescriptor extends GPURenderPipeline {
     readonly descriptor: GPURenderPipelineDescriptor;

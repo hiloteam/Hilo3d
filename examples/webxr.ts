@@ -3,6 +3,21 @@ import { createExampleContext } from './shared/init';
 
 const { camera, stage, renderer, ticker } = await createExampleContext({ backend: 'webgl2' });
 
+interface WebGL2NativeExtension {
+    readonly gl: WebGL2RenderingContext;
+    readonly state: { bindSystemFramebuffer(): void };
+    renderScene(): void;
+    viewport(x?: number, y?: number, width?: number, height?: number): void;
+}
+
+function requireWebGL2NativeExtension(): WebGL2NativeExtension {
+    const extension = renderer.getExtension('webgl2-native') as WebGL2NativeExtension | null;
+    if (!extension) throw new Error('The WebGL2 native extension is unavailable.');
+    return extension;
+}
+
+const native = requireWebGL2NativeExtension();
+
 function random(min: number, max: number): number {
     return Math.random() * (max - min) + min;
 }
@@ -186,19 +201,19 @@ function onXRFrame(timestamp: DOMHighResTimeStamp, frame: XRFrame): void {
     if (!(layer instanceof XRWebGLLayer)) throw new Error('XR session has no WebGL base layer.');
     renderer.clearColor.set(0, 0, 0, 0);
     updateController(frame);
-    renderer.gl.bindFramebuffer(renderer.gl.FRAMEBUFFER, layer.framebuffer);
+    native.gl.bindFramebuffer(native.gl.FRAMEBUFFER, layer.framebuffer);
     const pose = frame.getViewerPose(referenceSpace);
     if (pose) {
         pose.views.forEach((view, index) => {
             const viewport = layer.getViewport(view);
             if (!viewport) throw new Error('XR view has no viewport.');
-            renderer.gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+            native.gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
             camera.matrix.fromArray(view.transform.matrix);
             camera.projectionMatrix.fromArray(view.projectionMatrix);
             camera.updateMatrixWorld();
             camera.updateViewProjectionMatrix();
             if (index === 0) stage.tick(timestamp - lastTimestamp);
-            else renderer.renderScene();
+            else native.renderScene();
         });
     }
     lastTimestamp = timestamp;
@@ -211,8 +226,8 @@ function handleSessionEnd(): void {
     camera.updateProjectionMatrix();
     camera.position.set(0, 0, 3);
     renderer.clearColor.set(0.3, 0.35, 0.35, 1);
-    renderer.state.bindSystemFramebuffer();
-    renderer.viewport();
+    native.state.bindSystemFramebuffer();
+    native.viewport();
     lastTimestamp = performance.now();
     requestAnimationFrame(onWindowFrame);
 }
@@ -226,8 +241,8 @@ async function beginXRSession(): Promise<void> {
     session.addEventListener('selectstart', handleSelectStart);
     session.addEventListener('selectend', handleSelectEnd);
     xrReferenceSpace = await session.requestReferenceSpace('local');
-    await renderer.gl.makeXRCompatible();
-    await session.updateRenderState({ baseLayer: new XRWebGLLayer(session, renderer.gl) });
+    await native.gl.makeXRCompatible();
+    await session.updateRenderState({ baseLayer: new XRWebGLLayer(session, native.gl) });
     session.requestAnimationFrame(onXRFrame);
 }
 
@@ -248,7 +263,6 @@ async function initializeXRButton(): Promise<void> {
 }
 
 ticker.removeTick(stage);
-renderer.initContext();
 lastTimestamp = performance.now();
 requestAnimationFrame(onWindowFrame);
 initializeXRButton().catch(reportAsyncError);

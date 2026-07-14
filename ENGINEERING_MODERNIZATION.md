@@ -19,7 +19,8 @@
   3.00 为唯一源码；共享材质/阴影/呈现 shader 以及 WebGPU 专用的 mipmap 等内部 pass 均严格执行“引擎预处理 →
   Vulkan GLSL 4.50 → Naga WASM → WGSL”，不存在手写 WGSL 镜像、WebGL 1、GLSL 1.00 或逐项 numeric
   uniform 路径。
-- 渲染目录按 `common/webgl/webgpu` 明确分层；`UniformBuffer` 与 frame
+- 渲染代码统一位于 `src/render`，公开层只有 `Renderer`/`RenderTarget`，后端实现收口于
+  `src/render/rhi/webgl2` 与 `src/render/rhi/webgpu`；`UniformBuffer` 与 frame
   planning 保持后端中立，WebGPU 通过同步 `renderFrame()`
   合并资源已就绪的多 pass，并以 submission 内 UBO
   revision 快照保证阴影与多相机数据不会互相覆盖。Shader variant 使用有界结构化 hash 与精确碰撞校验。
@@ -86,8 +87,8 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 ### 运行时与资源
 
 - 异步 `Stage.create(...)` 接受 `backend: 'auto' | 'webgl2' | 'webgpu'`；省略字段等同
-  `auto`。auto 通过 `WebGPURenderer.isSupported()` 只执行 `requestAdapter` 与 adapter
-  policy/feature/limit 校验，兼容时正式初始化一次 WebGPU，不兼容时直接创建 WebGL 2。同步
+  `auto`。auto 通过 `Renderer.isBackendSupported('webgpu', options)` 只执行 `requestAdapter`
+  与 adapter policy/feature/limit 校验，兼容时正式初始化一次 WebGPU，不兼容时直接创建 WebGL 2。同步
   `new Stage()` 无法等待 adapter 探测，因此继续默认 WebGL 2。显式请求 WebGPU 后绝不会静默回退。
 - WebGL 2 上下文创建失败会直接报告不支持，不再尝试 WebGL
   1 或扩展模拟核心能力。WebGPU 会显式申请 adapter、校验 required
@@ -126,18 +127,24 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 ### 后端选择与轻量 auto 探测
 
 Renderer 的实际后端仍只有 `webgl2` 与 `webgpu`；异步工厂额外接受 `auto`
-选择策略。推荐统一使用异步工厂，让调用点明确表达初始化边界：
+选择策略。同步构造函数只用于明确选择 WebGL
+2；自动选择和 WebGPU 使用异步工厂，让调用点明确表达初始化边界：
 
 ```ts
+const webglRenderer = new Renderer({ backend: 'webgl2', domElement: canvas });
+const autoRenderer = await Renderer.create({ backend: 'auto', domElement: canvas });
+const webgpuRenderer = await Renderer.create({ backend: 'webgpu', domElement: canvas });
+
 const autoStage = await Stage.create({ camera });
 const webglStage = await Stage.create({ backend: 'webgl2', camera });
 const webgpuStage = await Stage.create({ backend: 'webgpu', camera });
-const webgpuSupported = await WebGPURenderer.isSupported();
+const webgpuSupported = await Renderer.isBackendSupported('webgpu');
 ```
 
-省略 `backend` 等同于 `auto`。auto 先调用公开的 `WebGPURenderer.isSupported()`：它只读取
-`navigator.gpu`、调用 `requestAdapter()`，再校验 fallback-adapter policy、required
-feature/limit 与引擎最低 adapter limits；不得调用
+省略 `backend` 等同于 `auto`。auto 先调用公开的
+`Renderer.isBackendSupported('webgpu', options)`：它只读取 `navigator.gpu`、调用
+`requestAdapter()`，再校验 fallback-adapter policy、required feature/limit 与引擎最低 adapter
+limits；不得调用
 `requestDevice()`、`canvas.getContext('webgpu')`，不得初始化 Naga、pipeline、manager 或任何 GPU 资源。探测返回
 `false` 时直接构造 WebGL 2；传入 `preserveDrawingBuffer` 时也直接选择 WebGL 2；请求
 `alpha: true, premultipliedAlpha: false` 的 straight-alpha canvas 合成时同样直接选择 WebGL
@@ -153,12 +160,18 @@ extension adapter，也不接受 GLSL 1.00 自定义 shader。
 
 ### WebGPU-shaped RHI 边界
 
-渲染底层以 `src/rhi/RHI.ts` 的 WebGPU-shaped 契约为边界：`device`
+渲染底层以 `src/render/rhi/RHI.ts` 的 WebGPU-shaped 契约为边界：`device`
 创建 buffer、texture、sampler、prepared shader module、bind-group layout、pipeline layout、bind
 group 与 render pipeline；`command encoder`/`render pass`/`queue`
 表达执行与提交。RHI 目录的产品代码不引用 Mesh、Material、Stage、Light、RenderList 或 shader
-variant，也不负责 GLSL→WGSL；这些引擎语义属于上层 Renderer、`src/shader` variant层和
-`renderer/shader` 后端编译层。
+variant，也不负责 GLSL→WGSL；这些引擎语义属于上层 Renderer、`src/shader` variant 层和
+`src/render/shader` 编译层。`src/render/rhi/webgpu` 与 `src/render/rhi/webgl2`
+之外不实现后端设备；RHI 内部也不反向 import Renderer、RenderTarget 或 scene 类型。
+
+`src/render/rhi/RHIFactory.ts` 是唯一的硬件组合根，负责 support probe、构造具体
+`WebGL2RHI`/`WebGPURHI` 并等待 ready；它不产生逐 command 转发对象。对应的
+`src/render/internal/RendererFactory.ts` 也只在初始化时选择一次具体 driver，公开 `Renderer`
+构造完成后直接就是该 driver，因此 frame/draw 热路径没有第二层 backend dispatch。
 
 `WebGPURHI` 只保留必要的 identity、lifecycle、descriptor snapshot 与有界 device
 cache，resource/encoder/pass/queue 命令直接映射 native
@@ -169,13 +182,19 @@ pass 与 encoder，但每条 GL 命令都在编码时通过 state-diff cache 即
 RHI 的实际 draw/apply 热段不创建临时 descriptor/array/typed-array；pass
 setup 可以规范化一次 descriptor，VAO、framebuffer 和 immutable device object 使用有界缓存。
 
-生产 Renderer 不为统一接口牺牲热路径性能。WebGPU manager 持有 concrete
+生产 Renderer 不为统一接口牺牲热路径性能。WebGPU 内部 manager 持有 concrete
 `WebGPUDevice`，资源创建、主帧 encoder、surface texture 与 submit 都通过一跳 native fast
 path 完成，draw loop 继续直接使用 native handle；portable wrapper 只服务需要通用契约的路径。WebGL
-Renderer 只从 `WebGL2RHI` 获取一次 context，并在 frame-scoped、可重入的 state-managed
+2 内部路径只从 `WebGL2RHI` 获取一次 context，并在 frame-scoped、可重入的 state-managed
 session 中执行 Program/VAO 等引擎语义工作；旧 `WebGLState` adapter 委托 RHI 的 canonical state
 differential，sampler immutable cache 也归 RHI device，因而没有第二套 active state
 cache、第二个 context 或 JS command replay。
+
+公开 Renderer 不携带 `gl` 或 `gpuDevice` 字段。需要 XR、验证或第三方 native 互操作时，调用方通过
+`renderer.getExtension('webgl2-native')` 或 `renderer.getExtension('webgpu-native')`
+显式请求能力并检查返回值；常规 scene、material、render
+target 与 readback 不得依赖 extension。等待提交完成统一使用
+`await renderer.waitForIdle()`，调用方不直接访问 native queue fence。
 
 可移植契约不伪造完整 WebGPU。Compute pipeline 不在当前 RHI surface 中；WebGL 2 的 storage
 buffer/texture、1D texture、异步 buffer mapping、base-vertex 和 first-instance draw 等能力通过缺失的
@@ -185,8 +204,9 @@ tier 或 WebGL extension 做保守 gate，不会误报硬件实际无法创建�
 
 ### WebGPU device loss 自动恢复
 
-`WebGPURenderer` 公开 `initializing`/`ready`/`recovering`/`failed`/`destroyed` 恢复状态与当前
-`recoveryPromise`。活跃 device 丢失时，renderer 立即发出 `webgpuDeviceLost`，暂停 target 的 native
+统一 `Renderer` 公开 `initializing`/`ready`/`recovering`/`failed`/`destroyed` 恢复状态与当前
+`recoveryPromise`。活跃 WebGPU device 丢失时，renderer 立即发出
+`webgpuDeviceLost`，暂停 target 的 native
 resource，销毁旧设备绑定的 manager/context。初始化成功时保存并冻结 adapter options、fallback adapter
 policy 与实际生效的 device descriptor；恢复时不复用可能已经失效的旧 adapter，而是通过
 `navigator.gpu.requestAdapter()`
@@ -371,10 +391,11 @@ context 与 WebGPU device 上的旧 allocation，不能由第一个消费者吞�
 
 这一所有权边界由两个真实 WebGL 2
 context 的首次分配、reset/release 和继续渲染回归锁定，不使用单 context mock 代替。旧的根导出
-`capabilities`/`extensions` 单例已删除，因为它们无法表示“当前”多个context；调用方从所属
-`WebGLRenderer.capabilities`/`WebGLRenderer.extensions`
-读取。Program、Buffer、VAO 等仍公开的低层 cache 检查必须显式传入 `gl`，Texture native
-cache 则完全由 backend manager 私有持有。
+`capabilities`/`extensions`
+单例已删除，因为它们无法表示“当前”多个 context；需要 native互操作的调用方从所属 Renderer 的
+`getExtension('webgl2-native')` 读取 context-local capability
+snapshot。Program、Buffer、VAO 与 Texture native cache 都由 backend
+manager 私有持有，不再从根 barrel 暴露。
 
 固定 ABI 同时固定容量：最多 8 个 directional light、8 个 spot light、16 个 point light、8 个 area
 light、128 个 skin joint、8 个 morph weight 与每个 WebGPU instanced batch
@@ -462,7 +483,7 @@ resource 例外不是保留通用逐项 uniform 系统的理由。
 
 ### Render target、MRT 与 readback
 
-公共离屏契约只有后端中立的 `Renderer` 与 `RenderTarget`：两个 renderer 都实现
+公共离屏契约只有后端中立的 `Renderer` 与 `RenderTarget`：同一个 Renderer 在两个后端都提供
 `createRenderTarget()`、`setRenderTarget()` 和 `renderToTarget()`，调用方不接触原生
 `WebGLFramebuffer`、`GPUTexture` 或 backend-specific handle。统一 descriptor 支持多 color
 attachment、1×/4× MSAA resolve、可选 depth/stencil、合法情况下可采样的 color/depth
@@ -649,15 +670,15 @@ API Extractor 的 release-tag 提示按项目级固定政策关闭：Hilo3d
 2.x 的根 barrel 导出面全部视为 public，不设置 alpha/beta 分层。setter 文档提示也按固定政策关闭：访问器说明由 getter/TypeDoc 作为唯一正文来源。两项都不关闭 TypeScript 诊断、forgotten
 export、API 差异或 TypeDoc 验证，也不是待删除的迁移豁免。
 
-`WebGPURenderer`、backend-neutral `Renderer`/`RenderTarget`、`Stage<'webgpu'>`、异步
-`MeshPicker`、`ShadowCastingLightParameters`、`KTXTextureOptions`、资源诊断、压缩纹理 capability、Naga
-translator 元数据和 WebGPU binding API 都从根 barrel 导出，因而同时进入 `.d.ts`、TypeDoc 与 API
-report；不存在只在内部可用、文档手写声称支持的影子 API。包消费类型测试直接通过
+唯一的 `Renderer`、backend-neutral `RenderTarget`、`Stage<'webgpu'>`、异步
+`MeshPicker`、`ShadowCastingLightParameters`、`KTXTextureOptions`、资源诊断与压缩纹理 capability 从根 barrel 导出，因而同时进入
+`.d.ts`、TypeDoc 与 API report。Concrete backend driver、target、Naga translator、native
+manager 和 binding API 保持内部；不存在文档手写声称为公共接口的影子 API。包消费类型测试直接通过
 `Renderer`/`RenderTarget` 使用 MRT、MSAA、readback、压缩纹理查询和资源诊断，不把 backend-specific
 target 当成跨后端主契约。
 
-低层 `WebGPUTextureManager` 构造器显式接收已经完成 `await initialize()` 的
-`NagaShaderTranslator`；renderer 在 manager 创建和 device
+内部 WebGPU texture manager 显式接收已经完成 `await initialize()` 的 shader
+translator；Renderer 在 manager 创建和 device
 recovery 前都复用这个已初始化实例。这样 present/mipmap 等内部 pipeline 不可能绕过统一编译器，也不会在 manager 内隐式启动另一套初始化或 WGSL
 fallback。
 

@@ -28,7 +28,7 @@ export interface ExampleContextOptions<
 export interface ExampleContext<Backend extends Hilo3d.RendererBackend = Hilo3d.RendererBackend> {
     readonly camera: Hilo3d.PerspectiveCamera;
     readonly stage: Hilo3d.Stage<Backend>;
-    readonly renderer: Hilo3d.StageRenderer<Backend>;
+    readonly renderer: Hilo3d.Renderer<Backend>;
     readonly directionLight: Hilo3d.DirectionalLight;
     readonly ambientLight: Hilo3d.AmbientLight;
     readonly ticker: Hilo3d.Ticker;

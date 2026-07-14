@@ -58,7 +58,7 @@ import {
     resolveWebGPUFragmentColorFormats,
     resolveWebGPUColorWriteMask,
     WEBGPU_COLOR_WRITE
-} from '../../../src/renderer/webgpu/WebGPURenderState';
+} from '../../../src/render/internal/webgpu/WebGPURenderState';
 
 describe('WebGPURenderState', () => {
     it('maps sparse fragment locations without binding unwritten pass attachments', () => {

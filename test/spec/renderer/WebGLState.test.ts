@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import * as Hilo3d from '../../../src/Hilo3d';
+import WebGLState from '../../../src/render/internal/webgl2/WebGLState';
 import { testEnv } from '../../setup';
-
-const WebGLState = Hilo3d.WebGLState;
 
 describe('WebGLState', () => {
     it('create', () => {

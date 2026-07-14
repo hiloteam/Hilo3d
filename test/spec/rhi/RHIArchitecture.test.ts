@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-const sources = import.meta.glob<string>('../../../src/rhi/**/*.ts', {
+const sources = import.meta.glob<string>('../../../src/render/rhi/**/*.ts', {
     eager: true,
     query: '?raw',
     import: 'default'
 });
 
-function entriesBelow(directory: '/webgl/' | '/webgpu/'): [string, string][] {
+function entriesBelow(directory: '/webgl2/' | '/webgpu/'): [string, string][] {
     return Object.entries(sources).filter(([path]) => path.includes(directory));
 }
 
@@ -52,7 +52,7 @@ describe('RHI architecture boundaries', () => {
         expect(
             collectMatches(
                 entries,
-                /from\s+['"][^'"]*(?:core\/(?:Mesh|Stage)|material\/|light\/)/gu
+                /from\s+['"][^'"]*(?:core\/|material\/|geometry\/|light\/|shader\/|texture\/|(?:\.\.\/)+(?:Renderer(?:Core)?|RenderList|RenderTarget|internal)(?:\/|['"]))/gu
             )
         ).toEqual([]);
         expect(
@@ -71,16 +71,19 @@ describe('RHI architecture boundaries', () => {
         ).toEqual([]);
     });
 
-    it('implements both backends without importing high-level renderer managers', () => {
-        const backendSources = [...entriesBelow('/webgl/'), ...entriesBelow('/webgpu/')];
+    it('implements both backends without importing the render frontend or legacy renderer paths', () => {
+        const backendSources = [...entriesBelow('/webgl2/'), ...entriesBelow('/webgpu/')];
         expect(backendSources.length).toBeGreaterThan(1);
         expect(
-            collectMatches(backendSources, /from\s+['"][^'"]*renderer\/(?:common|webgl|webgpu)\//gu)
+            collectMatches(
+                backendSources,
+                /from\s+['"][^'"]*(?:renderer\/|\/render\/(?!rhi(?:\/|['"]))|(?:\.\.\/)+(?:Renderer(?:Core)?|RenderList|RenderTarget|internal)(?:\/|['"]))/gu
+            )
         ).toEqual([]);
     });
 
     it('keeps cache keys and command recording off allocation-heavy replay paths', () => {
-        const backendSources = [...entriesBelow('/webgl/'), ...entriesBelow('/webgpu/')];
+        const backendSources = [...entriesBelow('/webgl2/'), ...entriesBelow('/webgpu/')];
         expect(collectMatches(backendSources, /JSON\.stringify\s*\(/gu)).toEqual([]);
         expect(
             collectMatches(
@@ -90,8 +93,8 @@ describe('RHI architecture boundaries', () => {
         ).toEqual([]);
     });
 
-    it('keeps WebGL hot draw methods free of collection-copy allocations', () => {
-        const webgl = entriesBelow('/webgl/');
+    it('keeps WebGL2 hot draw methods free of collection-copy allocations', () => {
+        const webgl = entriesBelow('/webgl2/');
         const hotMethods = [
             'setBindGroup',
             'applyPipelineState',

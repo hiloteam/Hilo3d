@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     BUILTIN_UNIFORM_BLOCK_BINDING_COUNT,
     registerUniformBlockBinding
-} from '../../../src/renderer/common/ubo/UniformBlockBindings';
+} from '../../../src/render/ubo/UniformBlockBindings';
 import {
     getWebGPUMaterialTextureBinding,
     getWebGPUUniformBlockBinding,
@@ -10,7 +10,7 @@ import {
     WEBGPU_BIND_GROUP_COUNT,
     WEBGPU_BIND_GROUPS,
     WEBGPU_UNIFORM_BLOCK_BINDINGS
-} from '../../../src/renderer/webgpu/WebGPUBindingLayout';
+} from '../../../src/render/internal/webgpu/WebGPUBindingLayout';
 
 describe('WebGPUBindingLayout', () => {
     it('uses the fixed four-group ABI partitioned by update frequency', () => {

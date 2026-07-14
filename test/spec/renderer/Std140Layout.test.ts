@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import UniformBuffer from '../../../src/renderer/common/UniformBuffer';
-import { WebGLUniformBufferManager } from '../../../src/renderer/webgl/WebGLUniformBufferManager';
-import { createStd140Layout, Std140Layout } from '../../../src/renderer/common/ubo/Std140Layout';
+import UniformBuffer from '../../../src/render/UniformBuffer';
+import { WebGLUniformBufferManager } from '../../../src/render/internal/webgl2/WebGLUniformBufferManager';
+import { createStd140Layout, Std140Layout } from '../../../src/render/ubo/Std140Layout';
 import {
     getUniformBlockBinding,
     registerUniformBlockBinding,
     UNIFORM_BLOCK_BINDINGS
-} from '../../../src/renderer/common/ubo/UniformBlockBindings';
+} from '../../../src/render/ubo/UniformBlockBindings';
 import { testEnv } from '../../setup';
 
 describe('Std140Layout', () => {

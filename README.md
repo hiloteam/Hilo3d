@@ -66,13 +66,13 @@ ticker.start();
 ```
 
 Omitting `backend` is equivalent to `backend: 'auto'`. Auto selection calls
-`WebGPURenderer.isSupported()` first. This lightweight probe only requests an adapter and validates
-the fallback-adapter policy, required features, required limits, and Hilo3d's minimum adapter
-limits. It does **not** request a device, acquire a canvas context, initialize Naga, create a
-pipeline, or allocate GPU resources. A compatible adapter selects WebGPU; otherwise `Stage.create()`
-creates WebGL 2 directly. Supplying the WebGL2-only `preserveDrawingBuffer` option also makes auto
-selection choose WebGL 2 directly, as does requesting straight-alpha canvas compositing with
-`alpha: true, premultipliedAlpha: false`.
+`Renderer.isBackendSupported('webgpu', options)` first. This lightweight probe only requests an
+adapter and validates the fallback-adapter policy, required features, required limits, and Hilo3d's
+minimum adapter limits. It does **not** request a device, acquire a canvas context, initialize Naga,
+create a pipeline, or allocate GPU resources. A compatible adapter selects WebGPU; otherwise
+`Stage.create()` creates WebGL 2 directly. Supplying the WebGL2-only `preserveDrawingBuffer` option
+also makes auto selection choose WebGL 2 directly, as does requesting straight-alpha canvas
+compositing with `alpha: true, premultipliedAlpha: false`.
 
 Once the probe selects WebGPU, normal WebGPU initialization runs exactly once. A device or canvas
 context error, shader-compiler failure, pipeline/resource initialization error, or any later failure
@@ -82,7 +82,9 @@ rejects `Stage.create()` and is never caught as a reason to fall back. Requestin
 Applications can use the same device- and GPU-resource-free probe without creating a renderer:
 
 ```ts
-const webgpuSupported = await Hilo3d.WebGPURenderer.isSupported();
+const webgpuSupported = await Hilo3d.Renderer.isBackendSupported('webgpu', {
+    powerPreference: 'high-performance'
+});
 ```
 
 ## WebGL 2 compatibility
@@ -100,6 +102,31 @@ const stage = await Hilo3d.Stage.create({
 The synchronous `new Stage()` constructor still defaults to WebGL 2 because it cannot await adapter
 discovery; use `await Stage.create()` for the WebGPU-first auto policy. Hilo3d never creates a WebGL
 1 context.
+
+## Creating a renderer directly
+
+`Renderer` is the only public renderer class. Use its synchronous constructor when WebGL 2 is
+required immediately, and its asynchronous factory for automatic selection or WebGPU:
+
+```ts
+const webglRenderer = new Hilo3d.Renderer({
+    backend: 'webgl2',
+    domElement: document.querySelector('canvas')!
+});
+
+const autoRenderer = await Hilo3d.Renderer.create({
+    backend: 'auto',
+    domElement: document.createElement('canvas')
+});
+
+const webgpuRenderer = await Hilo3d.Renderer.create({
+    backend: 'webgpu',
+    domElement: document.createElement('canvas')
+});
+```
+
+Every renderer creates the same public `RenderTarget` contract. Backend selection is observable
+through `renderer.backend`; it does not change the scene, material, target, or shader API.
 
 ## Capability matrix
 
@@ -148,36 +175,37 @@ recording aborts the entire frame and prevents a partial submission.
 
 ## Modern renderer architecture
 
-- `src/renderer/common` owns scene traversal, frame planning, render-target contracts, std140
-  uniform data, and deterministic engine-resource ownership.
-- `src/shader` owns authored GLSL preprocessing and engine shader variants; `src/renderer/shader`
-  prepares backend interfaces, reflects bindings, and performs GLSL-to-WGSL compilation. RHI code
-  never knows what a shader variant or material is.
-- `src/renderer/webgpu` and `src/renderer/webgl` resolve Mesh, Material, Light, and RenderTarget
-  semantics into backend-prepared resources. Their concrete RHI owns the native device,
-  context/surface, and lifecycle; renderer managers own engine-resource allocations beneath that
-  single owner.
-- `src/rhi/RHI.ts` defines the portable WebGPU-shaped device, resource, pipeline, bind-group,
+- `src/render` owns the single public Renderer, scene traversal, frame planning, render-target
+  contracts, std140 uniform data, shader-interface preparation, and deterministic engine-resource
+  ownership.
+- `src/shader` owns authored GLSL preprocessing and engine shader variants; `src/render/shader`
+  reflects bindings and performs GLSL-to-WGSL compilation. RHI code never knows what a shader
+  variant or material is.
+- `src/render/rhi/RHI.ts` defines the portable WebGPU-shaped device, resource, pipeline, bind-group,
   render-pass, encoder, queue, surface, feature, and limit contracts.
-- `src/rhi/webgpu` directly wraps native WebGPU. `src/rhi/webgl` contains the WebGL 2 emulation,
-  state cache, framebuffer/VAO ownership, and context recovery. Neither RHI backend imports engine
-  scene types.
+- `src/render/rhi/RHIFactory.ts` is the single hardware composition root. It constructs one concrete
+  RHI and owns backend support probes; it does not wrap that RHI in a per-command facade.
+- `src/render/rhi/webgpu` directly wraps native WebGPU. `src/render/rhi/webgl2` contains the WebGL 2
+  emulation, state cache, framebuffer/VAO ownership, and context recovery. Neither RHI backend
+  imports engine scene types.
+- Backend-specific preparation and native execution remain internal implementation details; there
+  are no backend-specific public Renderer or RenderTarget classes. The internal Renderer factory
+  selects a concrete driver once during construction and returns it directly.
 
 The abstraction boundary intentionally follows WebGPU rather than the WebGL state machine. A WebGPU
 render pass maps one-for-one to its native pass, and a WebGPU command encoder owns the native
 encoder directly. WebGL2RHI applies pipeline and bind-group state only when it changes and executes
 draw/copy commands during encoding; the returned command buffer is a single-use submission token.
-Production WebGPU managers use one-hop native fast paths on that same concrete device, so the main
-draw loop keeps native handles and pays no wrapper or virtual-dispatch cost. The production WebGL 2
-renderer runs its engine-semantic Program/VAO work in a frame-scoped session backed by the RHI's
-single context, canonical state differential, lifecycle, and device-owned sampler cache. Program,
-VAO, and framebuffer caches remain renderer-semantic caches; it never creates a parallel context or
-a replayable command list. Capabilities that do not have a sound WebGL 2 implementation—including
-compute pipelines, storage textures, storage buffers, 1D textures, asynchronous buffer mapping,
-base-vertex draws, and first-instance draws—are absent from its `features` or exposed as zero limits
-and fail explicitly when requested. Inside the RHI contract, per-format sampling, filtering,
-attachment, storage, and MSAA support is reported conservatively, including extension/tier-dependent
-differences.
+Production WebGPU paths use one-hop native fast paths on that same concrete device, so the main draw
+loop keeps native handles and pays no per-draw wrapper or virtual-dispatch cost. The WebGL 2 path
+runs its Program/VAO work in a frame-scoped session backed by the RHI's single context, canonical
+state differential, lifecycle, and device-owned sampler cache. Program, VAO, and framebuffer caches
+remain render-layer caches; it never creates a parallel context or a replayable command list.
+Capabilities that do not have a sound WebGL 2 implementation—including compute pipelines, storage
+textures, storage buffers, 1D textures, asynchronous buffer mapping, base-vertex draws, and
+first-instance draws—are absent from its `features` or exposed as zero limits and fail explicitly
+when requested. Inside the RHI contract, per-format sampling, filtering, attachment, storage, and
+MSAA support is reported conservatively, including extension/tier-dependent differences.
 
 Every engine shader starts as GLSL ES 3.00. WebGL 2 compiles it directly. WebGPU resolves the shader
 variant, rewrites its active interface to Vulkan GLSL 4.50, and passes it through the Naga WASM
@@ -253,6 +281,12 @@ render-target resources without changing their public object identity, and emits
 `webgpuDeviceRestored`. Frames are skipped while recovery is active. Terminal recovery emits
 `webgpuDeviceRecoveryFailed`; later renders throw that error and the renderer never switches to
 WebGL 2. `releaseGPUResources()` clears owned GPU state while leaving the renderer reusable.
+
+Use `await renderer.waitForIdle()` when application code needs a backend-neutral completion fence.
+Native interoperability is opt-in through `renderer.getExtension('webgl2-native')` or
+`renderer.getExtension('webgpu-native')`; native contexts and devices are not fields on the public
+Renderer. Always capability-check an extension before using it, and keep normal rendering on the
+shared Renderer/RenderTarget API.
 
 ## Documentation
 

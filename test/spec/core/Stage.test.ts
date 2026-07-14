@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import { resolveStageBackend } from '../../../src/core/Stage';
+import type WebGL2Driver from '../../../src/render/internal/webgl2/WebGL2Driver';
 
 const Stage = Hilo3d.Stage;
-const WebGLRenderer = Hilo3d.WebGLRenderer;
+const Renderer = Hilo3d.Renderer;
+
+function requireWebGL2Driver(renderer: Hilo3d.Renderer): WebGL2Driver {
+    const extension = renderer.getExtension('webgl2-native') as WebGL2Driver | null;
+    if (!extension) throw new Error('Expected a WebGL2 native renderer extension');
+    return extension;
+}
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -18,7 +25,8 @@ describe('Stage', () => {
         expect(stage.height).toBe(innerHeight);
         expect(stage.pixelRatio).toBeGreaterThanOrEqual(1);
         expect(stage.pixelRatio).toBeLessThanOrEqual(2);
-        expect(stage.renderer).toBeInstanceOf(WebGLRenderer);
+        expect(stage.renderer).toBeInstanceOf(Renderer);
+        expect(stage.renderer.backend).toBe('webgl2');
     });
 
     it('resize', () => {
@@ -43,7 +51,6 @@ describe('Stage', () => {
 
         expect(stage.fog).toBe(fog);
         expect(stage.renderer.useInstanced).toBe(true);
-        expect(stage.renderer.renderList.useInstanced).toBe(true);
     });
 
     it('rounds fractional device-pixel backing dimensions once for renderer parity', () => {
@@ -72,7 +79,8 @@ describe('Stage', () => {
             height: 16,
             pixelRatio: 1
         });
-        expect(stage.renderer.isInit).toBe(true);
+        const renderer = requireWebGL2Driver(stage.renderer);
+        expect(renderer.isInit).toBe(true);
         expect(stage.renderer.isReady).toBe(true);
         stage.renderer.destroy();
 
@@ -90,7 +98,7 @@ describe('Stage', () => {
     });
 
     it('resolves auto through the lightweight support probe without probing explicit backends', async () => {
-        const support = vi.spyOn(Hilo3d.WebGPURenderer, 'isSupported');
+        const support = vi.spyOn(Renderer, 'isBackendSupported');
         support.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
         await expect(resolveStageBackend()).resolves.toBe('webgpu');
@@ -123,8 +131,8 @@ describe('Stage', () => {
 
     it('snapshots auto parameters before awaiting adapter discovery', async () => {
         let resolveSupport: ((supported: boolean) => void) | undefined;
-        vi.spyOn(Hilo3d.WebGPURenderer, 'isSupported').mockImplementation(
-            () =>
+        vi.spyOn(Renderer, 'isBackendSupported').mockImplementation(
+            async () =>
                 new Promise<boolean>(resolve => {
                     resolveSupport = resolve;
                 })
@@ -146,11 +154,12 @@ describe('Stage', () => {
     });
 
     it('creates WebGL2 when the default auto probe reports WebGPU unsupported', async () => {
-        const support = vi.spyOn(Hilo3d.WebGPURenderer, 'isSupported').mockResolvedValue(false);
+        const support = vi.spyOn(Renderer, 'isBackendSupported').mockResolvedValue(false);
         const stage = await Stage.create({ width: 16, height: 16, pixelRatio: 1 });
 
         expect(support).toHaveBeenCalledOnce();
-        expect(stage.renderer).toBeInstanceOf(WebGLRenderer);
+        expect(stage.renderer).toBeInstanceOf(Renderer);
+        expect(stage.renderer.backend).toBe('webgl2');
         expect(stage.canvas.dataset['hilo3dBackend']).toBe('webgl2');
         stage.renderer.destroy();
     });
@@ -164,9 +173,10 @@ describe('Stage', () => {
         }).toThrow(/preserveDrawingBuffer is WebGL2-only/);
 
         expect(() => {
-            new Hilo3d.WebGPURenderer({
+            new Hilo3d.Renderer({
+                backend: 'webgpu',
                 preserveDrawingBuffer: true
-            } as unknown as Hilo3d.WebGPURendererParameters);
-        }).toThrow(/does not expose preserveDrawingBuffer/);
+            } as never);
+        }).toThrow(/Renderer preserveDrawingBuffer is WebGL2-only/);
     });
 });

@@ -1,8 +1,10 @@
 import Node, { type NodeParameters, type NodePointerEvent, type NodeRaycastInfo } from './Node';
 import version from './version';
-import WebGLRenderer from '../renderer/webgl/WebGLRenderer';
-import WebGPURenderer, { type WebGPUSupportOptions } from '../renderer/webgpu/WebGPURenderer';
-import type { RendererBackend } from '../renderer/common/Renderer';
+import Renderer, {
+    type RendererBackend,
+    type RendererOptions,
+    type RendererSupportOptions
+} from '../render/Renderer';
 import Ray from '../math/Ray';
 import Vector3 from '../math/Vector3';
 import type Color from '../math/Color';
@@ -161,26 +163,26 @@ export interface StageCommonParameters extends NodeParameters {
 export type StageBackend = RendererBackend | 'auto';
 
 export type StageBackendParameters<Backend extends StageBackend> = [StageBackend] extends [Backend]
-    ? WebGPUSupportOptions & {
+    ? RendererSupportOptions & {
           backend?: StageBackend;
           /** Supplying this WebGL2-only option makes `auto` select WebGL 2. */
           preserveDrawingBuffer?: boolean;
       }
     : [RendererBackend] extends [Backend]
-      ? WebGPUSupportOptions & {
+      ? RendererSupportOptions & {
             backend: RendererBackend;
             /** Dynamic backend selection is guarded at runtime when this WebGL2-only option exists. */
             preserveDrawingBuffer?: boolean;
         }
       : Backend extends 'webgpu'
-        ? WebGPUSupportOptions & {
+        ? RendererSupportOptions & {
               /** Explicit WebGPU selection never falls back silently. */
               backend: 'webgpu';
               /** WebGPU has no preserved default framebuffer; use an explicit copy/readback pass. */
               preserveDrawingBuffer?: never;
           }
         : Backend extends 'auto'
-          ? WebGPUSupportOptions & {
+          ? RendererSupportOptions & {
                 /** The asynchronous factory defaults to WebGPU-first automatic selection. */
                 backend?: 'auto';
                 /** Supplying this WebGL2-only option makes `auto` select WebGL 2. */
@@ -194,10 +196,6 @@ export type StageBackendParameters<Backend extends StageBackend> = [StageBackend
 export type StageParameters<Backend extends StageBackend = 'webgl2'> = StageCommonParameters & {
     backend?: Backend;
 } & StageBackendParameters<Backend>;
-
-export type StageRenderer<Backend extends RendererBackend> = Backend extends 'webgpu'
-    ? WebGPURenderer
-    : WebGLRenderer;
 
 function snapshotStageParameters(
     params: StageParameters<StageBackend>
@@ -228,7 +226,7 @@ export async function resolveStageBackend(
     ) {
         return 'webgl2';
     }
-    return (await WebGPURenderer.isSupported(params)) ? 'webgpu' : 'webgl2';
+    return (await Renderer.isBackendSupported('webgpu', params)) ? 'webgpu' : 'webgl2';
 }
 
 export interface StagePointerEvent extends NodePointerEvent {
@@ -264,7 +262,7 @@ class Stage<Backend extends RendererBackend = 'webgl2'> extends Node {
     /**
      * 渲染器
      */
-    renderer: StageRenderer<Backend>;
+    renderer: Renderer<Backend>;
     /** Resolves when the selected graphics backend is ready for rendering. */
     readonly ready: Promise<void>;
     /**
@@ -345,17 +343,12 @@ class Stage<Backend extends RendererBackend = 'webgl2'> extends Node {
         super();
         Object.assign(this, resolvedParams);
         this.canvas = this.createCanvas(resolvedParams);
-        const renderer =
-            resolvedParams.backend === 'webgpu'
-                ? new WebGPURenderer({
-                      ...(resolvedParams as StageParameters<'webgpu'>),
-                      domElement: this.canvas
-                  })
-                : new WebGLRenderer({
-                      ...(resolvedParams as StageParameters),
-                      domElement: this.canvas
-                  });
-        this.renderer = renderer as StageRenderer<Backend>;
+        const renderer = new Renderer<Backend>({
+            ...resolvedParams,
+            backend: resolvedParams.backend ?? 'webgl2',
+            domElement: this.canvas
+        } as unknown as RendererOptions<Backend>);
+        this.renderer = renderer;
         this.canvas.dataset['hilo3dBackend'] = renderer.backend;
         this.ready = renderer.ready;
         this.resize(this.width, this.height, this.pixelRatio, true);

@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import type { ProgramAttribute } from '../../../src/renderer/webgl/Program';
+import Program, { type ProgramAttribute } from '../../../src/render/internal/webgl2/Program';
+import VertexArrayObject from '../../../src/render/internal/webgl2/VertexArrayObject';
 import { testEnv } from '../../setup';
-
-const VertexArrayObject = Hilo3d.VertexArrayObject;
 
 describe('VertexArrayObject', () => {
     it('create', () => {
@@ -124,7 +123,7 @@ describe('VertexArrayObject', () => {
     });
 
     it('packs every reflected instance shape into legal WebGL2 attribute columns', () => {
-        const program = new Hilo3d.Program({
+        const program = new Program({
             state: testEnv.state,
             vertexShader: `#version 300 es
                 in float instanceScalar;

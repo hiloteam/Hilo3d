@@ -1,6 +1,6 @@
 import Geometry, { type GeometryParameters } from './Geometry';
 import type GeometryData from './GeometryData';
-import type { ShaderOptions } from '../renderer/common/types';
+import type { ShaderOptions } from '../render/types';
 
 export type MorphTargets = Record<string, GeometryData[]>;
 

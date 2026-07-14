@@ -12,17 +12,17 @@ import {
     UNSIGNED_SHORT
 } from '../../../src/constants/webgl';
 import { RGBA8I, RGBA8UI, RGBA32F, RGBA_INTEGER } from '../../../src/constants/webgl2';
-import { getWebGPUNativeDeviceCache } from '../../../src/rhi/webgpu/WebGPUNativeCache';
+import { getWebGPUNativeDeviceCache } from '../../../src/render/rhi/webgpu/WebGPUNativeCache';
 import type {
     TranslatedShaderPair,
     WebGPUSamplerBinding,
     WebGPUUniformBlock
-} from '../../../src/renderer/shader/GlslToWgsl';
+} from '../../../src/render/shader/GlslToWgsl';
 import WebGPUBindGroupManager, {
     type ResolvedWebGPUSampler
-} from '../../../src/renderer/webgpu/WebGPUBindGroupManager';
-import type WebGPUTextureManager from '../../../src/renderer/webgpu/WebGPUTextureManager';
-import type { WebGPUTextureResource } from '../../../src/renderer/webgpu/WebGPUTextureManager';
+} from '../../../src/render/internal/webgpu/WebGPUBindGroupManager';
+import type WebGPUTextureManager from '../../../src/render/internal/webgpu/WebGPUTextureManager';
+import type { WebGPUTextureResource } from '../../../src/render/internal/webgpu/WebGPUTextureManager';
 
 interface FakeDevice {
     readonly device: GPUDevice;

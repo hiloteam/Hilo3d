@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import * as Hilo3d from '../../../src/Hilo3d';
+import { WebGLExtensions } from '../../../src/render/internal/webgl2/extensions';
 import { testEnv } from '../../setup';
 
 describe('extensions', () => {
-    const extensions = new Hilo3d.WebGLExtensions();
+    const extensions = new WebGLExtensions();
 
     it('init', () => {
         extensions.init(testEnv.gl);

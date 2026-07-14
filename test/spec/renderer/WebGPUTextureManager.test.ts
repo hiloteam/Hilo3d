@@ -1,14 +1,14 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import type { WebGLCapabilities } from '../../../src/renderer/webgl/capabilities';
-import type { WebGLExtensions } from '../../../src/renderer/webgl/extensions';
+import type { WebGLCapabilities } from '../../../src/render/internal/webgl2/capabilities';
+import type { WebGLExtensions } from '../../../src/render/internal/webgl2/extensions';
 import WebGLState, {
     destroyWebGLTextures,
     getWebGLTexture,
     getWebGLTextureCache
-} from '../../../src/renderer/webgl/WebGLState';
-import { getWebGPUNativeDeviceCache } from '../../../src/rhi/webgpu/WebGPUNativeCache';
-import { WebGLTextureManager } from '../../../src/renderer/webgl/WebGLTextureManager';
-import { updateWebGLTexture } from '../../../src/renderer/webgl/WebGLTextureUploader';
+} from '../../../src/render/internal/webgl2/WebGLState';
+import { getWebGPUNativeDeviceCache } from '../../../src/render/rhi/webgpu/WebGPUNativeCache';
+import { WebGLTextureManager } from '../../../src/render/internal/webgl2/WebGLTextureManager';
+import { updateWebGLTexture } from '../../../src/render/internal/webgl2/WebGLTextureUploader';
 import Texture from '../../../src/texture/Texture';
 import CubeTexture from '../../../src/texture/CubeTexture';
 import {
@@ -101,8 +101,8 @@ import WebGPUTextureManager, {
     restoreWebGPUTextureDevice,
     suspendWebGPUTextures,
     resolveWebGPUTextureFormat
-} from '../../../src/renderer/webgpu/WebGPUTextureManager';
-import { NagaShaderTranslator } from '../../../src/renderer/shader/GlslToWgsl';
+} from '../../../src/render/internal/webgpu/WebGPUTextureManager';
+import { NagaShaderTranslator } from '../../../src/render/shader/GlslToWgsl';
 
 let translator: NagaShaderTranslator;
 

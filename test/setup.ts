@@ -1,5 +1,7 @@
 import { expect, type MatcherResult } from 'vitest';
 import * as Hilo3d from '../src/Hilo3d';
+import type WebGL2Driver from '../src/render/internal/webgl2/WebGL2Driver';
+import type WebGLState from '../src/render/internal/webgl2/WebGLState';
 
 const epsilon = 1e-7;
 
@@ -65,9 +67,9 @@ declare module 'vitest' {
 export interface TestEnvironment {
     stage: Hilo3d.Stage;
     camera: Hilo3d.PerspectiveCamera;
-    renderer: Hilo3d.WebGLRenderer;
+    renderer: WebGL2Driver;
     gl: WebGL2RenderingContext;
-    state: Hilo3d.WebGLState;
+    state: WebGLState;
     geometry: Hilo3d.MorphGeometry;
     material: Hilo3d.Material;
     mesh: Hilo3d.Mesh;
@@ -82,7 +84,10 @@ export function createHilo3dEnvironment(forceNew = false): TestEnvironment {
         const stage = new Hilo3d.Stage({ camera });
         stage.tick(0);
 
-        const { renderer } = stage;
+        const renderer = stage.renderer.getExtension('webgl2-native') as WebGL2Driver | null;
+        if (!renderer) {
+            throw new Error('Expected the test Stage to expose the WebGL2 native extension');
+        }
         const { gl, state } = renderer;
         const material = new Hilo3d.Material();
         const geometry = new Hilo3d.MorphGeometry();

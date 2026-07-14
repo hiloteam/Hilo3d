@@ -4,8 +4,12 @@ import {
     RHIShaderStage,
     RHITextureUsage,
     type RHIFeatureName
-} from '../../../src/rhi/RHI';
-import { WebGPUDevice, createWebGPURHI, type WebGPURHI } from '../../../src/rhi/webgpu/WebGPURHI';
+} from '../../../src/render/rhi/RHI';
+import {
+    WebGPUDevice,
+    createWebGPURHI,
+    type WebGPURHI
+} from '../../../src/render/rhi/webgpu/WebGPURHI';
 import { createFakeWebGPU, type FakeWebGPU } from './FakeWebGPU';
 import { describeRHIContract } from './RHIContract';
 

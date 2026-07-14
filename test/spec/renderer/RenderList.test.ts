@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
+import RenderList from '../../../src/render/RenderList';
 import { testEnv } from '../../setup';
-
-const RenderList = Hilo3d.RenderList;
 
 function createMesh(transparent: boolean, options: { renderOrder?: number } = {}): Hilo3d.Mesh {
     const material = new Hilo3d.Material({

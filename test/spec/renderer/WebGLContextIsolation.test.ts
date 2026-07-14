@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import {
+import Buffer from '../../../src/render/internal/webgl2/Buffer';
+import Program from '../../../src/render/internal/webgl2/Program';
+import VertexArrayObject from '../../../src/render/internal/webgl2/VertexArrayObject';
+import WebGL2Driver from '../../../src/render/internal/webgl2/WebGL2Driver';
+import WebGLState, {
     destroyWebGLTextures,
     getWebGLTexture,
     getWebGLTextureCache,
     getWebGLUniformBuffer
-} from '../../../src/renderer/webgl/WebGLState';
+} from '../../../src/render/internal/webgl2/WebGLState';
 
 const vertexShader = `#version 300 es
 void main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }`;
@@ -23,39 +27,31 @@ function createContext(): WebGL2RenderingContext {
     return gl;
 }
 
+function managedResource(renderer: WebGL2Driver, mesh: Hilo3d.Mesh, flag: 'isProgram'): Program;
 function managedResource(
-    renderer: Hilo3d.WebGLRenderer,
-    mesh: Hilo3d.Mesh,
-    flag: 'isProgram'
-): Hilo3d.Program;
-function managedResource(
-    renderer: Hilo3d.WebGLRenderer,
+    renderer: WebGL2Driver,
     mesh: Hilo3d.Mesh,
     flag: 'isVertexArrayObject'
-): Hilo3d.VertexArrayObject;
+): VertexArrayObject;
+function managedResource(renderer: WebGL2Driver, mesh: Hilo3d.Mesh, flag: 'isBuffer'): Buffer;
 function managedResource(
-    renderer: Hilo3d.WebGLRenderer,
-    mesh: Hilo3d.Mesh,
-    flag: 'isBuffer'
-): Hilo3d.Buffer;
-function managedResource(
-    renderer: Hilo3d.WebGLRenderer,
+    renderer: WebGL2Driver,
     mesh: Hilo3d.Mesh,
     flag: 'isProgram' | 'isVertexArrayObject' | 'isBuffer'
-): Hilo3d.Program | Hilo3d.VertexArrayObject | Hilo3d.Buffer {
+): Program | VertexArrayObject | Buffer {
     const resource = renderer.resourceManager
         .getMeshResources(mesh)
         .find(candidate => Reflect.get(candidate, flag) === true);
     if (!resource) throw new Error(`Renderer has no managed ${flag} resource`);
-    return resource as Hilo3d.Program | Hilo3d.VertexArrayObject | Hilo3d.Buffer;
+    return resource as Program | VertexArrayObject | Buffer;
 }
 
 describe('WebGL2 context isolation', () => {
     it('partitions programs, buffers, VAOs, textures and current bindings by native context', () => {
         const firstGL = createContext();
         const secondGL = createContext();
-        const firstState = new Hilo3d.WebGLState(firstGL);
-        const secondState = new Hilo3d.WebGLState(secondGL);
+        const firstState = new WebGLState(firstGL);
+        const secondState = new WebGLState(secondGL);
         const shader = new Hilo3d.Shader({ vs: vertexShader, fs: fragmentShader });
         const geometryData = new Hilo3d.GeometryData(
             new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
@@ -71,12 +67,12 @@ describe('WebGL2 context isolation', () => {
         });
 
         try {
-            const firstProgram = Hilo3d.Program.getProgram(shader, firstState);
-            const secondProgram = Hilo3d.Program.getProgram(shader, secondState);
-            const firstBuffer = Hilo3d.Buffer.createVertexBuffer(firstGL, geometryData);
-            const secondBuffer = Hilo3d.Buffer.createVertexBuffer(secondGL, geometryData);
-            const firstVao = Hilo3d.VertexArrayObject.getVao(firstGL, 'shared-vao');
-            const secondVao = Hilo3d.VertexArrayObject.getVao(secondGL, 'shared-vao');
+            const firstProgram = Program.getProgram(shader, firstState);
+            const secondProgram = Program.getProgram(shader, secondState);
+            const firstBuffer = Buffer.createVertexBuffer(firstGL, geometryData);
+            const secondBuffer = Buffer.createVertexBuffer(secondGL, geometryData);
+            const firstVao = VertexArrayObject.getVao(firstGL, 'shared-vao');
+            const secondVao = VertexArrayObject.getVao(secondGL, 'shared-vao');
             const firstTexture = getWebGLTexture(firstState, texture);
             const secondTexture = getWebGLTexture(secondState, texture);
 
@@ -102,9 +98,9 @@ describe('WebGL2 context isolation', () => {
                 Reflect.get(secondVao, 'vao')
             );
 
-            Hilo3d.Program.reset(firstGL);
-            Hilo3d.Buffer.reset(firstGL);
-            Hilo3d.VertexArrayObject.reset(firstGL);
+            Program.reset(firstGL);
+            Buffer.reset(firstGL);
+            VertexArrayObject.reset(firstGL);
             destroyWebGLTextures(firstState);
 
             expect(secondProgram.program).not.toBeNull();
@@ -118,12 +114,12 @@ describe('WebGL2 context isolation', () => {
             expect(firstGL.getError()).toBe(firstGL.NO_ERROR);
             expect(secondGL.getError()).toBe(secondGL.NO_ERROR);
         } finally {
-            Hilo3d.Program.reset(firstGL);
-            Hilo3d.Program.reset(secondGL);
-            Hilo3d.Buffer.reset(firstGL);
-            Hilo3d.Buffer.reset(secondGL);
-            Hilo3d.VertexArrayObject.reset(firstGL);
-            Hilo3d.VertexArrayObject.reset(secondGL);
+            Program.reset(firstGL);
+            Program.reset(secondGL);
+            Buffer.reset(firstGL);
+            Buffer.reset(secondGL);
+            VertexArrayObject.reset(firstGL);
+            VertexArrayObject.reset(secondGL);
             destroyWebGLTextures(firstState);
             destroyWebGLTextures(secondState);
             shader.destroy();
@@ -133,12 +129,12 @@ describe('WebGL2 context isolation', () => {
     it('keeps a live renderer intact when a peer releases every GPU resource', () => {
         const firstCanvas = document.createElement('canvas');
         const secondCanvas = document.createElement('canvas');
-        const firstRenderer = new Hilo3d.WebGLRenderer({
+        const firstRenderer = new WebGL2Driver({
             domElement: firstCanvas,
             width: 16,
             height: 16
         });
-        const secondRenderer = new Hilo3d.WebGLRenderer({
+        const secondRenderer = new WebGL2Driver({
             domElement: secondCanvas,
             width: 16,
             height: 16
@@ -242,12 +238,12 @@ describe('WebGL2 context isolation', () => {
         const mesh = new Hilo3d.Mesh({ geometry, material, frustumTest: false });
         const scene = new Hilo3d.Node().addChild(mesh);
         const camera = new Hilo3d.PerspectiveCamera();
-        const firstRenderer = new Hilo3d.WebGLRenderer({
+        const firstRenderer = new WebGL2Driver({
             domElement: document.createElement('canvas'),
             width: 16,
             height: 16
         });
-        const secondRenderer = new Hilo3d.WebGLRenderer({
+        const secondRenderer = new WebGL2Driver({
             domElement: document.createElement('canvas'),
             width: 16,
             height: 16

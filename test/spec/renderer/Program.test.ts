@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import { cameraBlockLayout } from '../../../src/renderer/common/ubo/BuiltInUniformBlocks';
-import { releaseWebGLUniformBuffer } from '../../../src/renderer/webgl/WebGLState';
+import Program, {
+    ProgramLinkError,
+    ShaderCompilationError
+} from '../../../src/render/internal/webgl2/Program';
+import VertexArrayObject from '../../../src/render/internal/webgl2/VertexArrayObject';
+import WebGL2Driver from '../../../src/render/internal/webgl2/WebGL2Driver';
+import { cameraBlockLayout } from '../../../src/render/ubo/BuiltInUniformBlocks';
+import { releaseWebGLUniformBuffer } from '../../../src/render/internal/webgl2/WebGLState';
 import { testEnv } from '../../setup';
 
-const Program = Hilo3d.Program;
 const vertexShader = '#version 300 es\nvoid main(){gl_Position=vec4(0.0, 0.0, 0.0, 1.0);}';
 const fragmentShader =
     '#version 300 es\nprecision mediump float;out vec4 fragColor;void main(){fragColor=vec4(1.0);}';
@@ -141,7 +146,7 @@ describe('Program', () => {
                 vertexShader: 'this is not valid GLSL',
                 fragShader: fragmentShader
             });
-        }).toThrow(Hilo3d.ShaderCompilationError);
+        }).toThrow(ShaderCompilationError);
     });
 
     it('throws the public ProgramLinkError for incompatible shader stages', () => {
@@ -153,11 +158,11 @@ describe('Program', () => {
                 fragShader:
                     '#version 300 es\nprecision mediump float;in vec4 mismatch;out vec4 fragColor;void main(){fragColor=mismatch;}'
             });
-        }).toThrow(Hilo3d.ProgramLinkError);
+        }).toThrow(ProgramLinkError);
     });
 
     it('uses pure integer pointers for reflected ivec and uvec inputs', () => {
-        const renderer = new Hilo3d.WebGLRenderer({
+        const renderer = new WebGL2Driver({
             domElement: document.createElement('canvas'),
             width: 4,
             height: 4,
@@ -186,7 +191,7 @@ describe('Program', () => {
                 }`,
             fragShader: fragmentShader
         });
-        const vao = new Hilo3d.VertexArrayObject(gl, '_hiloIntegerAttributePointers', {
+        const vao = new VertexArrayObject(gl, '_hiloIntegerAttributePointers', {
             mode: gl.POINTS
         });
 

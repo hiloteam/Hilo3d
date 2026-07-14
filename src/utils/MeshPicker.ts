@@ -2,10 +2,10 @@ import Mesh from '../core/Mesh';
 import Node from '../core/Node';
 import type Stage from '../core/Stage';
 import BasicMaterial from '../material/BasicMaterial';
-import type { Renderer, RendererBackend } from '../renderer/common/Renderer';
-import type { RenderTarget } from '../renderer/common/RenderTarget';
-import { decodeMeshPickingId, getMeshPickingIdentity } from '../renderer/common/PickingIdentity';
-import type { ShaderOptions } from '../renderer/common/types';
+import type { Renderer, RendererBackend } from '../render/Renderer';
+import type { RenderTarget } from '../render/RenderTarget';
+import { decodeMeshPickingId, getMeshPickingIdentity } from '../render/PickingIdentity';
+import type { ShaderOptions } from '../render/types';
 
 class MeshPickerMaterial extends BasicMaterial {
     constructor() {

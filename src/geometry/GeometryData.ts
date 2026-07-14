@@ -5,7 +5,7 @@ import Vector4 from '../math/Vector4';
 import Matrix3 from '../math/Matrix3';
 import Matrix4 from '../math/Matrix4';
 import { getTypedArrayGLType, getTypedArrayClass } from '../utils/util';
-import type { TypedArray } from '../renderer/common/types';
+import type { TypedArray } from '../render/types';
 
 export type GeometryComponentSize = 1 | 2 | 3 | 4 | 9 | 16;
 export type GeometryAttributeValue = number | Vector2 | Vector3 | Vector4 | Matrix3 | Matrix4;

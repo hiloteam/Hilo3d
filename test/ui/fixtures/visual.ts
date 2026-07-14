@@ -54,9 +54,7 @@ const directionalLight = new DirectionalLight({
 stage.addChild(directionalLight);
 
 stage.tick(0);
-if (stage.renderer.backend === 'webgpu') {
-    await stage.renderer.gpuDevice.queue.onSubmittedWorkDone();
-}
+await stage.renderer.waitForIdle();
 window.__HILO3D_VISUAL_FIRST_FRAME__ = { backend: stage.renderer.backend };
 
 async function runReadbackDiagnostics(): Promise<void> {

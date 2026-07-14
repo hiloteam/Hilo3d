@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import GeometryData from '../../../src/geometry/GeometryData';
-import type { WebGPUVertexInput } from '../../../src/renderer/shader/GlslToWgsl';
+import type { WebGPUVertexInput } from '../../../src/render/shader/GlslToWgsl';
 import {
     WebGPUBufferManager,
     type WebGPUIndexBufferBinding,
     type WebGPUVertexBufferBinding
-} from '../../../src/renderer/webgpu/WebGPUBufferManager';
+} from '../../../src/render/internal/webgpu/WebGPUBufferManager';
 
 interface FakeBufferRecord {
     readonly buffer: GPUBuffer;

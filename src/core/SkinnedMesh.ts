@@ -2,7 +2,7 @@ import Mesh, { type MeshParameters } from './Mesh';
 import Matrix4 from '../math/Matrix4';
 import Vector4 from '../math/Vector4';
 import type Skeleton from './Skeleton';
-import type { ShaderOptions } from '../renderer/common/types';
+import type { ShaderOptions } from '../render/types';
 import { requireNumber } from '../math/numberArray';
 const tempMatrix1 = new Matrix4();
 const tempMatrix2 = new Matrix4();

@@ -39,6 +39,7 @@
     "format:check": "prettier --check .",
     "test": "npm run test:unit",
     "test:unit": "vitest run",
+    "test:render:architecture": "vitest run test/spec/renderer/Renderer.test.ts test/spec/renderer/RenderPerformanceArchitecture.test.ts test/spec/rhi/RHIFactory.test.ts test/spec/rhi/RHIArchitecture.test.ts test/spec/renderer/WebGPUCommandState.test.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:ui:contract": "vitest run --config test/ui/vitest-contract.config.ts",

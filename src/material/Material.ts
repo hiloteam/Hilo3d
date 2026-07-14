@@ -18,8 +18,8 @@ import Texture from '../texture/Texture';
 import type Color from '../math/Color';
 import type Matrix3 from '../math/Matrix3';
 import type Mesh from '../core/Mesh';
-import type UniformBuffer from '../renderer/common/UniformBuffer';
-import type { ShaderOptions } from '../renderer/common/types';
+import type UniformBuffer from '../render/UniformBuffer';
+import type { ShaderOptions } from '../render/types';
 export interface ProgramBindingInfo {
     textureIndex?: number;
     name?: string;

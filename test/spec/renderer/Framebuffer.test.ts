@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import Framebuffer, { type FramebufferRenderer } from '../../../src/renderer/webgl/Framebuffer';
+import Framebuffer, {
+    type FramebufferRenderer
+} from '../../../src/render/internal/webgl2/Framebuffer';
 import WebGLState, {
     getWebGLTexture,
     getWebGLTextureCache,
     releaseWebGLTexture
-} from '../../../src/renderer/webgl/WebGLState';
+} from '../../../src/render/internal/webgl2/WebGLState';
 import { TEXTURE_3D } from '../../../src/constants/webgl2';
 import Texture from '../../../src/texture/Texture';
 import { testEnv } from '../../setup';

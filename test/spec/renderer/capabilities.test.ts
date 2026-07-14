@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import * as Hilo3d from '../../../src/Hilo3d';
+import { WebGLCapabilities } from '../../../src/render/internal/webgl2/capabilities';
+import { WebGLExtensions } from '../../../src/render/internal/webgl2/extensions';
 import { testEnv } from '../../setup';
 
 describe('capabilities', () => {
     const gl = testEnv.gl;
-    const extensions = new Hilo3d.WebGLExtensions();
+    const extensions = new WebGLExtensions();
     extensions.init(gl);
-    const capabilities = new Hilo3d.WebGLCapabilities(extensions);
+    const capabilities = new WebGLCapabilities(extensions);
 
     it('init', () => {
         capabilities.init(gl);

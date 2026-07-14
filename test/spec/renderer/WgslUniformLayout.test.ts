@@ -3,11 +3,11 @@ import {
     createStd140Layout,
     type Std140MatrixType,
     type Std140Type
-} from '../../../src/renderer/common/ubo/Std140Layout';
+} from '../../../src/render/ubo/Std140Layout';
 import {
     createWgslUniformLayout,
     makeWgslUniformLayoutsPortable
-} from '../../../src/renderer/webgpu/WgslUniformLayout';
+} from '../../../src/render/internal/webgpu/WgslUniformLayout';
 
 describe('WgslUniformLayout', () => {
     it('preserves the public std140 offsets and strides for portable WGSL', () => {

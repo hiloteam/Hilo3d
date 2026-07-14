@@ -45,18 +45,12 @@ try {
     await writeFile(
         join(consumerDirectory, 'esm-consumer.mjs'),
         [
-            "import { NagaShaderTranslator, Vector3, version } from 'hilo3d';",
+            "import { Renderer, Vector3, version } from 'hilo3d';",
+            "if (typeof Renderer !== 'function') throw new Error('Renderer is not exported.');",
             "if (typeof Vector3 !== 'function') throw new Error('Vector3 is not exported.');",
             "if (typeof version !== 'string') throw new Error('version is not exported.');",
             'const vector = new Vector3(1, 2, 3);',
             "if (!vector) throw new Error('Vector3 could not be constructed.');",
-            'const translator = new NagaShaderTranslator();',
-            'await translator.initialize();',
-            'const shader = translator.translate(',
-            "    '#version 300 es\\nin vec3 a_position;\\nvoid main(){gl_Position=vec4(a_position,1.0);}',",
-            "    '#version 300 es\\nprecision highp float;\\nout vec4 fragColor;\\nvoid main(){fragColor=vec4(1.0);}'",
-            ');',
-            "if (!shader.vertex.wgsl || !shader.fragment.wgsl) throw new Error('Naga could not translate the packaged shader.');",
             ''
         ].join('\n'),
         'utf8'

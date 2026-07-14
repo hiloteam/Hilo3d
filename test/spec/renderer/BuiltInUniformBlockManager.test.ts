@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import AmbientLight from '../../../src/light/AmbientLight';
 import BasicMaterial from '../../../src/material/BasicMaterial';
-import BuiltInUniformBlockManager from '../../../src/renderer/common/BuiltInUniformBlockManager';
+import BuiltInUniformBlockManager from '../../../src/render/BuiltInUniformBlockManager';
 import Color from '../../../src/math/Color';
 import CubeTexture from '../../../src/texture/CubeTexture';
 import DirectionalLight from '../../../src/light/DirectionalLight';
@@ -11,11 +11,11 @@ import Matrix4 from '../../../src/math/Matrix4';
 import PBRMaterial from '../../../src/material/PBRMaterial';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import SkinnedMesh from '../../../src/core/SkinnedMesh';
-import type Program from '../../../src/renderer/webgl/Program';
-import UniformBuffer from '../../../src/renderer/common/UniformBuffer';
+import type Program from '../../../src/render/internal/webgl2/Program';
+import UniformBuffer from '../../../src/render/UniformBuffer';
 import Vector3 from '../../../src/math/Vector3';
 import semantic from '../../../src/material/semantic';
-import { cameraBlockLayout } from '../../../src/renderer/common/ubo/BuiltInUniformBlocks';
+import { cameraBlockLayout } from '../../../src/render/ubo/BuiltInUniformBlocks';
 import { testEnv } from '../../setup';
 
 function blockProgram(id: string, blockName: string, uniformNames: readonly string[]): Program {

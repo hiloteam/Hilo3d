@@ -8,7 +8,6 @@ import {
     Geometry,
     GeometryData,
     Mesh,
-    NagaShaderTranslator,
     PBRMaterial,
     PerspectiveCamera,
     PointLight,
@@ -16,16 +15,20 @@ import {
     SpotLight,
     Stage,
     Texture,
-    Vector3,
-    WebGPUTextureManager
+    Vector3
 } from '../../../src/Hilo3d';
-import WebGPUBindGroupManager from '../../../src/renderer/webgpu/WebGPUBindGroupManager';
-import { specializeWebGPUDepthSamplers } from '../../../src/renderer/shader/GlslToWgsl';
+import WebGPUBindGroupManager from '../../../src/render/internal/webgpu/WebGPUBindGroupManager';
+import type WebGPURenderTarget from '../../../src/render/internal/webgpu/WebGPURenderTarget';
+import WebGPUTextureManager from '../../../src/render/internal/webgpu/WebGPUTextureManager';
+import {
+    NagaShaderTranslator,
+    specializeWebGPUDepthSamplers
+} from '../../../src/render/shader/GlslToWgsl';
 import {
     WebGPUBufferUsage,
     WebGPUMapMode,
     WebGPUTextureUsage
-} from '../../../src/renderer/webgpu/WebGPUConstants';
+} from '../../../src/render/internal/webgpu/WebGPUConstants';
 
 interface ExtendedTextureSamplingResult {
     readonly samplerTypes: readonly string[];
@@ -39,6 +42,22 @@ interface ExtendedTextureSamplingResult {
 interface OffscreenStencilResult {
     readonly readback: readonly number[];
     readonly stableAcrossFrames: boolean;
+}
+
+interface RendererExtensionProvider {
+    getExtension(name: string): object | null;
+}
+
+interface WebGPUNativeExtension {
+    readonly gpuDevice: GPUDevice;
+    readonly recoveryPromise: Promise<void> | null;
+    readonly recoveryState: string;
+}
+
+function requireWebGPUNative(renderer: RendererExtensionProvider): WebGPUNativeExtension {
+    const extension = renderer.getExtension('webgpu-native') as WebGPUNativeExtension | null;
+    if (!extension) throw new Error('The WebGPU native extension is unavailable.');
+    return extension;
 }
 
 async function validateOffscreenStencil(): Promise<OffscreenStencilResult> {
@@ -119,7 +138,7 @@ async function validateOffscreenStencil(): Promise<OffscreenStencilResult> {
         new Mesh({ geometry: geometry(), material: stencilReject, frustumTest: false })
     );
 
-    const device = validationStage.renderer.gpuDevice;
+    const device = requireWebGPUNative(validationStage.renderer).gpuDevice;
     device.pushErrorScope('validation');
     try {
         validationStage.renderer.renderToTarget(target, validationStage, camera);
@@ -501,6 +520,7 @@ const stage = await Stage.create({
     useInstanced: true,
     clearColor: new Color(0.04, 0.06, 0.1)
 });
+const native = requireWebGPUNative(stage.renderer);
 let renderTarget = stage.renderer.createRenderTarget({
     width: 640,
     height: 480,
@@ -677,7 +697,7 @@ diffuseTexture.image = new Uint8Array([
     32, 96, 255, 255, 255, 72, 40, 255, 240, 220, 48, 255, 48, 255, 140, 255
 ]);
 stage.tick(0);
-await stage.renderer.gpuDevice.queue.onSubmittedWorkDone();
+await stage.renderer.waitForIdle();
 const readback = await renderTarget.readColorAttachment({ x: 320, y: 240, width: 1, height: 1 });
 stage.renderer.clearColor.set(0.12, 0.24, 0.36, 1);
 renderTarget = stage.renderer.createRenderTarget({
@@ -712,12 +732,14 @@ const mrtTarget = stage.renderer.createRenderTarget({
         stencilClearValue: 7
     }
 });
-const mrtEncoder = stage.renderer.gpuDevice.createCommandEncoder({
+const mrtEncoder = native.gpuDevice.createCommandEncoder({
     label: 'Hilo3d WebGPU UI MRT validation'
 });
-const mrtPass = mrtEncoder.beginRenderPass(mrtTarget.createRenderPassDescriptor());
+const mrtPass = mrtEncoder.beginRenderPass(
+    (mrtTarget as WebGPURenderTarget).createRenderPassDescriptor()
+);
 mrtPass.end();
-stage.renderer.gpuDevice.queue.submit([mrtEncoder.finish()]);
+native.gpuDevice.queue.submit([mrtEncoder.finish()]);
 const mrtReadbacks = await Promise.all([
     mrtTarget.readColorAttachment({ attachmentIndex: 0, width: 1, height: 1 }),
     mrtTarget.readColorAttachment({ attachmentIndex: 1, width: 1, height: 1 })
@@ -731,7 +753,7 @@ const recoveryProbeBefore = await renderTarget.readColorAttachment({
     height: 1
 });
 const recoveryTextureImageReleasedBefore = diffuseTexture.isImageReleased;
-const deviceBeforeRecovery = stage.renderer.gpuDevice;
+const deviceBeforeRecovery = native.gpuDevice;
 let deviceLostEvents = 0;
 let deviceRestoredEvents = 0;
 let restoredDeviceMatches = false;
@@ -750,7 +772,7 @@ const deviceRestored = new Promise<void>(resolve => {
         'webgpuDeviceRestored',
         event => {
             deviceRestoredEvents++;
-            restoredDeviceMatches = event.detail === stage.renderer.gpuDevice;
+            restoredDeviceMatches = event.detail === native.gpuDevice;
             resolve();
         },
         true
@@ -758,20 +780,20 @@ const deviceRestored = new Promise<void>(resolve => {
 });
 deviceBeforeRecovery.destroy();
 await deviceLost;
-const recovery = stage.renderer.recoveryPromise;
+const recovery = native.recoveryPromise;
 if (!recovery) throw new Error('WebGPU recovery did not publish a recoveryPromise');
 await recovery;
 await deviceRestored;
 const recoveryTargetIdentityPreserved = stage.renderer.renderTarget === renderTarget;
 stage.tick(0);
-await stage.renderer.gpuDevice.queue.onSubmittedWorkDone();
+await stage.renderer.waitForIdle();
 const recoveryReadback = await renderTarget.readColorAttachment({
     x: 320,
     y: 72,
     width: 1,
     height: 1
 });
-const extendedTextureSampling = await validateExtendedTextureSampling(stage.renderer.gpuDevice);
+const extendedTextureSampling = await validateExtendedTextureSampling(native.gpuDevice);
 const offscreenStencil = await validateOffscreenStencil();
 await new Promise(resolve => setTimeout(resolve, 0));
 window.__HILO3D_WEBGPU_RESULT__ = {
@@ -793,9 +815,8 @@ window.__HILO3D_WEBGPU_RESULT__ = {
     mrtAttachments: mrtReadbacks.length,
     mrtReadbacksHaveContent: mrtReadbacks.every(result => result.data.some(value => value !== 0)),
     textureRevisionAdvanced: diffuseTexture.updateRevision > initialTextureRevision,
-    recoveryState: stage.renderer.recoveryState,
-    recoveryDeviceChanged:
-        stage.renderer.gpuDevice !== deviceBeforeRecovery && restoredDeviceMatches,
+    recoveryState: native.recoveryState,
+    recoveryDeviceChanged: native.gpuDevice !== deviceBeforeRecovery && restoredDeviceMatches,
     recoveryTargetIdentityPreserved,
     recoveryTextureImageReleasedBefore,
     recoveryTextureImageReleasedAfter: diffuseTexture.isImageReleased,

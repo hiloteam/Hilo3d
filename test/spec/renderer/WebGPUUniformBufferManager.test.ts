@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import UniformBuffer from '../../../src/renderer/common/UniformBuffer';
-import BuiltInUniformBlockManager from '../../../src/renderer/common/BuiltInUniformBlockManager';
-import { createStd140Layout } from '../../../src/renderer/common/ubo/Std140Layout';
-import { WebGPUUniformBufferManager } from '../../../src/renderer/webgpu/WebGPUUniformBufferManager';
-import { WebGLUniformBufferManager } from '../../../src/renderer/webgl/WebGLUniformBufferManager';
+import UniformBuffer from '../../../src/render/UniformBuffer';
+import BuiltInUniformBlockManager from '../../../src/render/BuiltInUniformBlockManager';
+import { createStd140Layout } from '../../../src/render/ubo/Std140Layout';
+import { WebGPUUniformBufferManager } from '../../../src/render/internal/webgpu/WebGPUUniformBufferManager';
+import { WebGLUniformBufferManager } from '../../../src/render/internal/webgl2/WebGLUniformBufferManager';
 import { testEnv } from '../../setup';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';

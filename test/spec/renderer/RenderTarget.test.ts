@@ -8,25 +8,25 @@ import GeometryData from '../../../src/geometry/GeometryData';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import ShaderMaterial from '../../../src/material/ShaderMaterial';
 import Shader from '../../../src/shader/Shader';
-import Framebuffer from '../../../src/renderer/webgl/Framebuffer';
-import type WebGLRenderer from '../../../src/renderer/webgl/WebGLRenderer';
-import WebGLRenderTarget from '../../../src/renderer/webgl/WebGLRenderTarget';
+import Framebuffer from '../../../src/render/internal/webgl2/Framebuffer';
+import type WebGL2Driver from '../../../src/render/internal/webgl2/WebGL2Driver';
+import WebGLRenderTarget from '../../../src/render/internal/webgl2/WebGLRenderTarget';
 import {
     destroyWebGLTextures,
     getWebGLTexture,
     getWebGLTextureCache,
     releaseWebGLTexture
-} from '../../../src/renderer/webgl/WebGLState';
+} from '../../../src/render/internal/webgl2/WebGLState';
 import {
     normalizeRenderTargetParameters,
     type RenderTarget
-} from '../../../src/renderer/common/RenderTarget';
+} from '../../../src/render/RenderTarget';
 import type Texture from '../../../src/texture/Texture';
 import { testEnv } from '../../setup';
 
 const targets: RenderTarget[] = [];
 
-function createRenderer(): WebGLRenderer {
+function createRenderer(): WebGL2Driver {
     return testEnv.renderer;
 }
 

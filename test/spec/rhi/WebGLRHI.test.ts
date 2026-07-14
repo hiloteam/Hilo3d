@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RHIBufferUsage, RHIShaderStage, RHITextureUsage } from '../../../src/rhi/RHI';
-import { createWebGLRHI, type WebGLRHI } from '../../../src/rhi/webgl/WebGLRHI';
+import { RHIBufferUsage, RHIShaderStage, RHITextureUsage } from '../../../src/render/rhi/RHI';
+import { createWebGLRHI, type WebGLRHI } from '../../../src/render/rhi/webgl2/WebGLRHI';
 import { createFakeWebGL2, type FakeWebGL2 } from './FakeWebGL2';
 import { describeRHIContract } from './RHIContract';
 

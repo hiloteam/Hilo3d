@@ -4,8 +4,8 @@ import {
     prepareGLSLForNaga,
     specializeWebGPUDepthSamplers,
     type GlslSamplerType
-} from '../../../src/renderer/shader/GlslToWgsl';
-import { registerUniformBlockBinding } from '../../../src/renderer/common/ubo/UniformBlockBindings';
+} from '../../../src/render/shader/GlslToWgsl';
+import { registerUniformBlockBinding } from '../../../src/render/ubo/UniformBlockBindings';
 import Shader from '../../../src/shader/Shader';
 import { testEnv } from '../../setup';
 

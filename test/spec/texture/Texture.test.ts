@@ -26,11 +26,11 @@ import {
 } from '../../../src/constants/webgl2';
 import { COMPRESSED_RGB_S3TC_DXT1_EXT } from '../../../src/constants/webglExtensions';
 import { getTextureRecoveryBacking } from '../../../src/texture/Texture';
-import { WebGLTextureManager } from '../../../src/renderer/webgl/WebGLTextureManager';
+import { WebGLTextureManager } from '../../../src/render/internal/webgl2/WebGLTextureManager';
 import {
     updateWebGLTexture,
     type WebGLTextureState
-} from '../../../src/renderer/webgl/WebGLTextureUploader';
+} from '../../../src/render/internal/webgl2/WebGLTextureUploader';
 
 const Texture = Hilo3d.Texture;
 

@@ -14,11 +14,11 @@ import WebGPURenderTarget, {
     restoreWebGPURenderTarget,
     setWebGPURenderTargetOperationGuard,
     suspendWebGPURenderTarget
-} from '../../../src/renderer/webgpu/WebGPURenderTarget';
+} from '../../../src/render/internal/webgpu/WebGPURenderTarget';
 import WebGPUTextureManager, {
     getWebGPUTextureDefaultCompare
-} from '../../../src/renderer/webgpu/WebGPUTextureManager';
-import { NagaShaderTranslator } from '../../../src/renderer/shader/GlslToWgsl';
+} from '../../../src/render/internal/webgpu/WebGPUTextureManager';
+import { NagaShaderTranslator } from '../../../src/render/shader/GlslToWgsl';
 
 let translator: NagaShaderTranslator;
 
