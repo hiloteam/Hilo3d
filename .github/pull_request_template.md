@@ -4,6 +4,6 @@
 
 ## Validation
 
-<!-- The full browser GPU matrix is a required local check. -->
+<!-- The browser GPU suites are required local checks. -->
 
-- [ ] I ran `npm run test:ui` locally and all browser GPU tests passed.
+- [ ] I ran `npm run test:browser` locally and all browser GPU tests passed.

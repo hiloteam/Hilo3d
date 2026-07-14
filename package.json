@@ -48,6 +48,7 @@
     "test:webgpu": "playwright test test/ui/webgpu.spec.ts --project=chromium",
     "test:webgpu:native": "playwright test test/ui/native-webgpu.spec.ts --project=chromium-native-webgpu",
     "test:visual": "playwright test --project=chromium --grep @visual",
+    "test:browser": "npm run test:ui && npm run test:webgpu && npm run test:visual",
     "test:types": "tsc -p test/types/tsconfig.bundler.json && tsc -p test/types/tsconfig.nodenext.json",
     "test:package": "npm run build && npm run test:package:built",
     "test:package:built": "publint && attw --pack . --profile esm-only && jiti scripts/test-package.ts",
@@ -57,8 +58,8 @@
     "docs:check": "npm run build:types && typedoc --emit none",
     "site:build": "npm run docs:build && npm run examples:build && jiti scripts/build-site.ts",
     "pack:check": "npm pack --dry-run --ignore-scripts",
-    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run test:types && npm run test:ui && npm run test:webgpu && npm run test:visual && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
-    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run test:types && npm run test:webgpu && npm run test:visual && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
+    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
+    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run test:types && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
     "prepack": "npm run build",
     "prepublishOnly": "npm run validate"
   },

@@ -40,9 +40,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-
       - name: Validate release
         run: npm run validate:ci
         env:
@@ -55,7 +52,5 @@ jobs:
           name: test-reports-node-22.22.2
           path: |
             coverage
-            playwright-report
-            test-results
           if-no-files-found: ignore
           retention-days: 14
