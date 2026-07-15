@@ -15,9 +15,13 @@ it.skipIf(!nativeWebGPUAvailable)(
         }
         const device = await createWebGPUDevice({ adapter });
         const canvas = document.createElement('canvas');
+        const progress: string[] = [];
         try {
-            const result = await runRHIPhase2Conformance({ device, canvas });
+            const result = await runRHIPhase2Conformance({ device, canvas, progress });
             expectRHIPhase2Conformance(result);
+        } catch (error) {
+            const tail = progress.slice(-8).join(' -> ') || 'before the first recorded command';
+            throw new Error(`Native WebGPU conformance failed after: ${tail}`, { cause: error });
         } finally {
             device.destroy();
         }

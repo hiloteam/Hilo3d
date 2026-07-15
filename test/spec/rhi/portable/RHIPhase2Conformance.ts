@@ -26,6 +26,8 @@ type FragmentProgram = 'solid' | 'green' | 'textured-2d' | 'mrt' | 'cube';
 export interface RHIPhase2ConformanceHarness {
     readonly device: RHIDevice;
     readonly canvas: HTMLCanvasElement;
+    /** Optional caller-owned trace used to diagnose failures before a result can be returned. */
+    readonly progress?: string[];
 }
 
 export interface RHIPhase2ConformanceResult {
@@ -849,7 +851,7 @@ export async function runRHIPhase2Conformance(
     harness: RHIPhase2ConformanceHarness
 ): Promise<RHIPhase2ConformanceResult> {
     const { device, canvas } = harness;
-    const order: string[] = [];
+    const order = harness.progress ?? [];
     const offscreen = await runOffscreenScene(device, order);
     const indexedTextured = await runIndexedTexturedScene(device, order);
     const mrt = await runMRTScene(device, order);
