@@ -14,6 +14,10 @@
 - `allocationBytesPerFrame` 的 paired renderer p50 仍必须不高于 legacy，门禁不放宽。
 - MRT/WebGL2 paired smoke 已按新口径通过：RHI v2 hot maximum `1,916 B`，renderer p50
   `244,492 B`，legacy renderer p50 `669,068 B`，像素 SHA-256 完全一致。
+- PBR/WebGL2 paired smoke 也已通过：RHI v2 hot maximum `1,796 B`，renderer p50 `1,546,200 B`，legacy
+  renderer p50 `2,763,720 B`，像素 SHA-256 完全一致。
+- Dynamic geometry/texture upload WebGL2 paired smoke 已通过：RHI v2 hot maximum `80 B`，renderer
+  p50 `1,394,724 B`，legacy renderer p50 `2,648,384 B`，像素 SHA-256 完全一致。
 - TODO：完成其余功能/像素/分配矩阵后，继续消除真实 hot-path 分配，并在采样器稳定时把 2
   KiB临时预算收紧回 0。
 - 正式 Linux 物理 GPU paired A/B 证据仍缺失，legacy 删除继续 fail closed。
