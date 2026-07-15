@@ -15,6 +15,7 @@ it.skipIf(!nativeWebGPUAvailable)(
         }
         const device = await createWebGPUDevice({ adapter });
         const canvas = document.createElement('canvas');
+        document.body.append(canvas);
         const surfaceFormat = navigator.gpu.getPreferredCanvasFormat();
         if (surfaceFormat !== 'rgba8unorm' && surfaceFormat !== 'bgra8unorm') {
             throw new Error(`Unsupported preferred WebGPU canvas format: ${surfaceFormat}`);
@@ -33,6 +34,7 @@ it.skipIf(!nativeWebGPUAvailable)(
             throw new Error(`Native WebGPU conformance failed after: ${tail}`, { cause: error });
         } finally {
             device.destroy();
+            canvas.remove();
         }
     }
 );
