@@ -2,6 +2,8 @@ import { playwright } from '@vitest/browser-playwright';
 import { defineConfig, mergeConfig } from 'vitest/config';
 import { createViteConfig } from './vite.config';
 
+const coverageRun = process.argv.includes('--coverage');
+
 export default mergeConfig(
     createViteConfig(),
     defineConfig({
@@ -14,6 +16,9 @@ export default mergeConfig(
             unstubGlobals: true,
             setupFiles: ['./test/setup.ts'],
             include: ['test/spec/**/*.test.ts', 'examples/**/*.test.ts'],
+            // Native WebGPU owns an actual device and must not share the heavily instrumented
+            // coverage process. The dedicated RHI suite runs it immediately afterward.
+            exclude: coverageRun ? ['test/spec/**/*.native.test.ts'] : [],
             testTimeout: 10_000,
             hookTimeout: 10_000,
             coverage: {

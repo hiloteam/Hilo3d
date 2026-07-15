@@ -70,8 +70,8 @@
     "docs:check": "npm run build:types && typedoc --emit none",
     "site:build": "npm run docs:build && npm run examples:build && jiti scripts/build-site.ts",
     "pack:check": "npm pack --dry-run --ignore-scripts",
-    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run test:rhi-benchmark-contract && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
-    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run test:rhi-benchmark-contract && npm run test:rhi-benchmark-smoke && npm run build && npm run test:types && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
+    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run test:rhi && npm run test:rhi-benchmark-contract && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
+    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run test:rhi && npm run test:rhi-benchmark-contract && npm run test:rhi-benchmark-smoke && npm run build && npm run test:types && npm run examples:build && npm run docs:check && npm run api:check && npm run test:package:built && npm run pack:check",
     "prepack": "npm run build",
     "prepublishOnly": "npm run validate"
   },
