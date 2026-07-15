@@ -39,7 +39,7 @@
     "format:check": "prettier --check .",
     "test": "npm run test:unit",
     "test:unit": "vitest run",
-    "test:rhi": "vitest run --config vitest.rhi.config.ts test/spec/rhi/portable",
+    "test:rhi": "vitest run --config vitest.rhi.config.ts test/spec/rhi/portable && vitest run --config vitest.rhi-native.config.ts test/spec/rhi/portable/WebGPUBackend.native.test.ts",
     "test:rhi-benchmark-contract": "vitest run --config test/performance/vitest.config.ts",
     "test:rhi-benchmark-smoke": "jiti scripts/performance/smoke-rhi-production-fixture.ts",
     "benchmark:rhi:audit-environment": "jiti scripts/performance/audit-rhi-benchmark-environment.ts",

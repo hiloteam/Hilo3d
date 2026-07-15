@@ -2,25 +2,18 @@ import { playwright } from '@vitest/browser-playwright';
 import { defineConfig, mergeConfig } from 'vitest/config';
 import { createViteConfig } from './vite.config';
 
-/** RHI suites deliberately avoid the legacy WebGL-native global test fixture. */
+/** Native WebGPU runs in an isolated Chromium/GPU process after the portable RHI suite. */
 export default mergeConfig(
     createViteConfig(),
     defineConfig({
         test: {
-            name: 'rhi-browser',
+            name: 'rhi-native-webgpu',
             globals: false,
             clearMocks: true,
             restoreMocks: true,
             unstubEnvs: true,
             unstubGlobals: true,
-            include: [
-                'test/spec/rhi/portable/**/*.test.ts',
-                'test/spec/renderer/Renderer.test.ts',
-                'test/spec/renderer/RenderPerformanceArchitecture.test.ts'
-            ],
-            // The native WebGPU gate owns a dedicated Chromium/GPU process so constrained CI
-            // SwiftShader runners do not inherit the WebGL context and resource pressure here.
-            exclude: ['test/spec/rhi/portable/**/*.native.test.ts'],
+            include: ['test/spec/rhi/portable/**/*.native.test.ts'],
             testTimeout: 10_000,
             hookTimeout: 10_000,
             browser: {
