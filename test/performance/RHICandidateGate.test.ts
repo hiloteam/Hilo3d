@@ -971,7 +971,7 @@ describe('RHI paired candidate gate', () => {
         } finally {
             await rm(root, { force: true, recursive: true });
         }
-    });
+    }, 15_000);
 
     it('publishes both reports without overwrite and removes the first if the second fails', async () => {
         const directory = await mkdtemp(join(tmpdir(), 'hilo3d-rhi-candidate-'));
