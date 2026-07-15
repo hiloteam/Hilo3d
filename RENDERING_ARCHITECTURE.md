@@ -51,11 +51,11 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
 Pass；存在投影灯光时在它们之前加入 Shadow
 Pass。后处理、显式 Present、离屏渲染和 Readback 也通过同一 RenderGraph 组合，而不是绕过 RHI 走后端私有流程。
 
-相关代码：[`SharedRendererDriver.ts`](./src/render/internal/SharedRendererDriver.ts)、[`RenderFramePlan.ts`](./src/render/RenderFramePlan.ts)、[`RenderList.ts`](./src/render/RenderList.ts)、[`MeshDrawListPlanner.ts`](./src/render/renderer/MeshDrawListPlanner.ts)、[`ForwardRenderer.ts`](./src/render/renderer/ForwardRenderer.ts)。
+相关代码：[`SharedRendererDriver.ts`](./src/render/internal/SharedRendererDriver.ts)、[`RenderGraphFramePlan.ts`](./src/render/RenderGraphFramePlan.ts)、[`RenderList.ts`](./src/render/RenderList.ts)、[`MeshDrawListPlanner.ts`](./src/render/renderer/MeshDrawListPlanner.ts)、[`ForwardRenderer.ts`](./src/render/renderer/ForwardRenderer.ts)。
 
-### 1.3 RenderFrame：一帧的事务边界
+### 1.3 RenderGraphFrame：一帧的事务边界
 
-`RenderFrame` 把一帧固定为完整的同步事务：
+`RenderGraphFrame` 把一帧固定为完整的同步事务：
 
 ```text
 reset arena/uploads
@@ -78,7 +78,7 @@ reset arena/uploads
 `FrameArena`、`RHIUploadBatch`、Pass 参数、Builder/Compiler/Executor
 Workspace 都采用高水位复用：容量增长到历史峰值后，稳态帧尽量复用已有数组、对象和 TypedArray，减少 GC 压力。
 
-相关代码：[`RenderFrame.ts`](./src/render/frame/RenderFrame.ts)、[`FrameArena.ts`](./src/render/frame/FrameArena.ts)、[`RHIUploadBatch.ts`](./src/render/frame/RHIUploadBatch.ts)、[`FrameResourceUseTracker.ts`](./src/render/renderer/FrameResourceUseTracker.ts)。
+相关代码：[`RenderGraphFrame.ts`](./src/render/frame/RenderGraphFrame.ts)、[`FrameArena.ts`](./src/render/frame/FrameArena.ts)、[`RHIUploadBatch.ts`](./src/render/frame/RHIUploadBatch.ts)、[`FrameResourceUseTracker.ts`](./src/render/renderer/FrameResourceUseTracker.ts)。
 
 ## 2. RenderGraph 设计
 
@@ -316,19 +316,19 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 
 ## 8. 核心代码索引
 
-| 关注点                         | 入口                                                                                                        |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Stage 与后端策略               | [`Stage.ts`](./src/core/Stage.ts)                                                                           |
-| 公共 Renderer 与一次性后端选择 | [`Renderer.ts`](./src/render/Renderer.ts)、[`RendererFactory.ts`](./src/render/internal/RendererFactory.ts) |
-| 双后端共享渲染前端             | [`SharedRendererDriver.ts`](./src/render/internal/SharedRendererDriver.ts)                                  |
-| 场景与可见队列                 | [`RenderFramePlan.ts`](./src/render/RenderFramePlan.ts)、[`RenderList.ts`](./src/render/RenderList.ts)      |
-| 帧事务                         | [`frame/`](./src/render/frame)                                                                              |
-| RenderGraph                    | [`graph/`](./src/render/graph)                                                                              |
-| Draw/Pass/资源准备             | [`renderer/`](./src/render/renderer)                                                                        |
-| RHI Core                       | [`rhi/core/`](./src/render/rhi/core)                                                                        |
-| RHI Factory                    | [`RHIFactory.ts`](./src/render/rhi/RHIFactory.ts)                                                           |
-| WebGPU 后端                    | [`backends/webgpu/`](./src/render/rhi/backends/webgpu)                                                      |
-| WebGL 2 后端                   | [`backends/webgl2/`](./src/render/rhi/backends/webgl2)                                                      |
+| 关注点                         | 入口                                                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Stage 与后端策略               | [`Stage.ts`](./src/core/Stage.ts)                                                                                |
+| 公共 Renderer 与一次性后端选择 | [`Renderer.ts`](./src/render/Renderer.ts)、[`RendererFactory.ts`](./src/render/internal/RendererFactory.ts)      |
+| 双后端共享渲染前端             | [`SharedRendererDriver.ts`](./src/render/internal/SharedRendererDriver.ts)                                       |
+| 场景与可见队列                 | [`RenderGraphFramePlan.ts`](./src/render/RenderGraphFramePlan.ts)、[`RenderList.ts`](./src/render/RenderList.ts) |
+| 帧事务                         | [`frame/`](./src/render/frame)                                                                                   |
+| RenderGraph                    | [`graph/`](./src/render/graph)                                                                                   |
+| Draw/Pass/资源准备             | [`renderer/`](./src/render/renderer)                                                                             |
+| RHI Core                       | [`rhi/core/`](./src/render/rhi/core)                                                                             |
+| RHI Factory                    | [`RHIFactory.ts`](./src/render/rhi/RHIFactory.ts)                                                                |
+| WebGPU 后端                    | [`backends/webgpu/`](./src/render/rhi/backends/webgpu)                                                           |
+| WebGL 2 后端                   | [`backends/webgl2/`](./src/render/rhi/backends/webgl2)                                                           |
 
 ## 9. 两张配图的生成规格
 
@@ -339,10 +339,10 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 ```text
 Use case: infographic-diagram
 Asset type: Hilo3d architecture documentation diagram
-Primary request: show the current Hilo3d rendering flow from Stage through the shared renderer, RenderFrame and RenderGraph, RHI, then split into WebGPU and WebGL 2 backends and end at GPU/Canvas
+Primary request: show the current Hilo3d rendering flow from Stage through the shared renderer and RenderGraphFrame, with RenderGraph build/compile/prepare/execute phases inside it, then RHI, split into WebGPU and WebGL 2 backends, and end at GPU/Canvas
 Composition/framing: 16:9 landscape, left-to-right main flow, Pass lane above and resource-lifecycle lane below
 Style/medium: clean vector-like technical infographic, dark navy background, cyan and violet accents, crisp English technical labels
-Constraints: accurately show Stage -> Shared Renderer -> RenderFrame + RenderGraph -> RHI -> WebGPU/WebGL 2; render the label exactly as "RHI" with no version suffix; no extra architecture layers; no watermark
+Constraints: accurately show Stage -> Shared Renderer -> RenderGraphFrame -> RHI -> WebGPU/WebGL 2; show RenderGraph inside RenderGraphFrame; render the labels exactly as "RenderGraphFrame", "RenderGraph" and "RHI"; do not show any deprecated standalone frame label; no extra architecture layers; no watermark
 ```
 
 ### 渲染优势图
