@@ -10,8 +10,7 @@ import {
     type RHIDevice,
     type RHIGraphicsPipeline,
     type RHIPipelineLayout,
-    type RHIShader,
-    type RHITextureFormat
+    type RHIShader
 } from '../../../../src/render/rhi/core';
 
 const WIDTH = 4;
@@ -27,7 +26,8 @@ type FragmentProgram = 'solid' | 'green' | 'textured-2d' | 'mrt' | 'cube';
 export interface RHIPhase2ConformanceHarness {
     readonly device: RHIDevice;
     readonly canvas: HTMLCanvasElement;
-    readonly surfaceFormat?: RHITextureFormat;
+    /** Software adapters may omit presentation; a physical-GPU lane owns that capability gate. */
+    readonly surfaceMode?: 'required' | 'omit';
     /** Optional caller-owned trace used to diagnose failures before a result can be returned. */
     readonly progress?: string[];
 }
@@ -48,14 +48,14 @@ export interface RHIPhase2ConformanceResult {
         depthStencil: number;
         msaa: number | null;
         cube: number;
-        surface: number;
+        surface: number | null;
     }>;
     readonly surface: Readonly<{
-        configuredState: string;
-        acquiredState: string;
-        presentedState: string;
-        textureDestroyedAfterPresent: boolean;
-    }>;
+        readonly configuredState: string;
+        readonly acquiredState: string;
+        readonly presentedState: string;
+        readonly textureDestroyedAfterPresent: boolean;
+    }> | null;
     readonly order: readonly string[];
 }
 
@@ -250,13 +250,12 @@ function createPipeline(
     program: FragmentProgram,
     layout: RHIPipelineLayout,
     sampleCount = 1,
-    depthStencil?: Readonly<RHIDepthStencilState>,
-    colorFormat: RHITextureFormat = 'rgba8unorm'
+    depthStencil?: Readonly<RHIDepthStencilState>
 ): RHIGraphicsPipeline {
     const targets =
         program === 'mrt'
             ? ([{ format: 'rgba8unorm' }, { format: 'rgba8unorm' }] as const)
-            : ([{ format: colorFormat }] as const);
+            : ([{ format: 'rgba8unorm' }] as const);
     return device.createGraphicsPipeline({
         label,
         layout,
@@ -805,25 +804,12 @@ async function runCubeScene(device: RHIDevice, order: string[]) {
     };
 }
 
-async function runSurfaceScene(
-    device: RHIDevice,
-    canvas: HTMLCanvasElement,
-    order: string[],
-    format: RHITextureFormat
-) {
+async function runSurfaceScene(device: RHIDevice, canvas: HTMLCanvasElement, order: string[]) {
     const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
-    const pipeline = createPipeline(
-        device,
-        'phase2:surface',
-        'solid',
-        layout,
-        1,
-        undefined,
-        format
-    );
+    const pipeline = createPipeline(device, 'phase2:surface', 'solid', layout);
     const surface = device.createSurface(canvas);
     order.push('surface.configure');
-    surface.configure({ format, width: WIDTH, height: HEIGHT });
+    surface.configure({ format: 'rgba8unorm', width: WIDTH, height: HEIGHT });
     const configuredState = surface.state;
     order.push('surface.acquire');
     const texture = surface.getCurrentTexture();
@@ -874,12 +860,8 @@ export async function runRHIPhase2Conformance(
     const depthStencil = await runDepthStencilScene(device, order);
     const msaa = await runMSAAScene(device, order);
     const cube = await runCubeScene(device, order);
-    const surface = await runSurfaceScene(
-        device,
-        canvas,
-        order,
-        harness.surfaceFormat ?? 'rgba8unorm'
-    );
+    const surface =
+        harness.surfaceMode === 'omit' ? null : await runSurfaceScene(device, canvas, order);
     return Object.freeze({
         backend: device.backend,
         offscreenPixel: offscreen.pixel,
@@ -896,19 +878,22 @@ export async function runRHIPhase2Conformance(
             depthStencil: depthStencil.drawCount,
             msaa: msaa.drawCount,
             cube: cube.drawCount,
-            surface: surface.drawCount
+            surface: surface?.drawCount ?? null
         }),
-        surface: Object.freeze({
-            configuredState: surface.configuredState,
-            acquiredState: surface.acquiredState,
-            presentedState: surface.presentedState,
-            textureDestroyedAfterPresent: surface.textureDestroyedAfterPresent
-        }),
+        surface:
+            surface === null
+                ? null
+                : Object.freeze({
+                      configuredState: surface.configuredState,
+                      acquiredState: surface.acquiredState,
+                      presentedState: surface.presentedState,
+                      textureDestroyedAfterPresent: surface.textureDestroyedAfterPresent
+                  }),
         order: Object.freeze(order)
     });
 }
 
-function expectedOrder(msaaSupported: boolean): readonly string[] {
+function expectedOrder(msaaSupported: boolean, surfaceSupported: boolean): readonly string[] {
     return Object.freeze([
         'offscreen.frame.begin',
         'offscreen.pass.begin',
@@ -972,15 +957,19 @@ function expectedOrder(msaaSupported: boolean): readonly string[] {
         'cube.copy.sample',
         'cube.copy.mip',
         'cube.frame.end',
-        'surface.configure',
-        'surface.acquire',
-        'surface.frame.begin',
-        'surface.pass.begin',
-        'surface.pipeline',
-        'surface.draw',
-        'surface.pass.end',
-        'surface.frame.end',
-        'surface.present'
+        ...(surfaceSupported
+            ? [
+                  'surface.configure',
+                  'surface.acquire',
+                  'surface.frame.begin',
+                  'surface.pass.begin',
+                  'surface.pipeline',
+                  'surface.draw',
+                  'surface.pass.end',
+                  'surface.frame.end',
+                  'surface.present'
+              ]
+            : [])
     ]);
 }
 
@@ -1003,14 +992,18 @@ export function expectRHIPhase2Conformance(result: RHIPhase2ConformanceResult): 
         indexedTextured: 1,
         mrt: 1,
         depthStencil: 4,
-        cube: 1,
-        surface: 1
+        cube: 1
     });
-    expect(result.surface).toEqual({
-        configuredState: 'configured',
-        acquiredState: 'acquired',
-        presentedState: 'configured',
-        textureDestroyedAfterPresent: true
-    });
-    expect(result.order).toEqual(expectedOrder(result.msaaPixel !== null));
+    if (result.surface === null) {
+        expect(result.drawCounts.surface).toBeNull();
+    } else {
+        expect(result.surface).toEqual({
+            configuredState: 'configured',
+            acquiredState: 'acquired',
+            presentedState: 'configured',
+            textureDestroyedAfterPresent: true
+        });
+        expect(result.drawCounts.surface).toBe(1);
+    }
+    expect(result.order).toEqual(expectedOrder(result.msaaPixel !== null, result.surface !== null));
 }

@@ -6,7 +6,7 @@ import { expectRHIPhase2Conformance, runRHIPhase2Conformance } from './RHIPhase2
 const nativeWebGPUAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
 
 it.skipIf(!nativeWebGPUAvailable)(
-    'executes the shared Phase 2 scene matrix on native WebGPU',
+    'executes the shared offscreen Phase 2 scene matrix on native WebGPU',
     async testContext => {
         const adapter = await navigator.gpu.requestAdapter();
         if (adapter === null) {
@@ -15,17 +15,12 @@ it.skipIf(!nativeWebGPUAvailable)(
         }
         const device = await createWebGPUDevice({ adapter });
         const canvas = document.createElement('canvas');
-        document.body.append(canvas);
-        const surfaceFormat = navigator.gpu.getPreferredCanvasFormat();
-        if (surfaceFormat !== 'rgba8unorm' && surfaceFormat !== 'bgra8unorm') {
-            throw new Error(`Unsupported preferred WebGPU canvas format: ${surfaceFormat}`);
-        }
         const progress: string[] = [];
         try {
             const result = await runRHIPhase2Conformance({
                 device,
                 canvas,
-                surfaceFormat,
+                surfaceMode: 'omit',
                 progress
             });
             expectRHIPhase2Conformance(result);
@@ -34,7 +29,6 @@ it.skipIf(!nativeWebGPUAvailable)(
             throw new Error(`Native WebGPU conformance failed after: ${tail}`, { cause: error });
         } finally {
             device.destroy();
-            canvas.remove();
         }
     }
 );

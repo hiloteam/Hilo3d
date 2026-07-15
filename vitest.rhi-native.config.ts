@@ -2,7 +2,7 @@ import { playwright } from '@vitest/browser-playwright';
 import { defineConfig, mergeConfig } from 'vitest/config';
 import { createViteConfig } from './vite.config';
 
-/** Native WebGPU runs in an isolated Chromium/GPU process after the portable RHI suite. */
+/** SwiftShader validates native offscreen WebGPU; physical-GPU CI owns presentation coverage. */
 export default mergeConfig(
     createViteConfig(),
     defineConfig({
