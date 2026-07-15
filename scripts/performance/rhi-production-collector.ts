@@ -366,7 +366,7 @@ export async function collectRHIProductionCapture(
                             isolationIds
                         );
                     }
-                    if (results.legacy.pixelHashSha256 !== results['rhi'].pixelHashSha256) {
+                    if (results.legacy.pixelHashSha256 !== results.rhi.pixelHashSha256) {
                         collectionFailure(
                             `${scenario.id}/${backend}/round-${String(round)} pixel hashes differ between architectures`
                         );

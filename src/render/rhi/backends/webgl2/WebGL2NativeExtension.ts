@@ -31,6 +31,13 @@ function nonNegativeSafeInteger(value: number, label: string): number {
     return value;
 }
 
+function requireWebGLFramebuffer(value: unknown): WebGLFramebuffer {
+    if (value === null || typeof value !== 'object') {
+        throw new TypeError('External framebuffer must be a WebGLFramebuffer');
+    }
+    return value;
+}
+
 function currentDevice(host: RHIExecutionInteropHost): WebGL2RHIDevice {
     const device = host.executionDevice;
     if (device.backend !== 'webgl2' || !('nativePresentation' in device)) {
@@ -97,10 +104,8 @@ export class WebGL2NativePresentationState {
     ): void {
         const checkedWidth = positiveSafeInteger(width, 'External framebuffer width');
         const checkedHeight = positiveSafeInteger(height, 'External framebuffer height');
-        if (framebuffer === null || typeof framebuffer !== 'object') {
-            throw new TypeError('External framebuffer must be a WebGLFramebuffer');
-        }
-        if (!this.owner.gl.isFramebuffer(framebuffer)) {
+        const checkedFramebuffer = requireWebGLFramebuffer(framebuffer);
+        if (!this.owner.gl.isFramebuffer(checkedFramebuffer)) {
             throw new RHIValidationError(
                 'invalid-state',
                 'external framebuffer does not belong to the current WebGL2 context generation',
@@ -120,11 +125,11 @@ export class WebGL2NativePresentationState {
             minDepth: 0,
             maxDepth: 1
         });
-        this.#externalFramebuffer = framebuffer;
+        this.#externalFramebuffer = checkedFramebuffer;
         this.#externalActive = true;
         this.#viewport = viewport;
         this.owner.state.reset();
-        this.owner.state.bindFramebuffer(this.owner.gl.FRAMEBUFFER, framebuffer);
+        this.owner.state.bindFramebuffer(this.owner.gl.FRAMEBUFFER, checkedFramebuffer);
         this.owner.gl.drawBuffers(this.#externalDrawBuffers);
         this.owner.state.setViewport(0, 0, checkedWidth, checkedHeight);
         host.setPresentationViewport(viewport);
@@ -305,7 +310,11 @@ class WebGL2NativeExtensionImplementation implements WebGL2NativeExtension {
             failure = error;
         }
         device.nativePresentation.endControlledOperation(this.#host, lease);
-        if (failure !== undefined) throw failure;
+        if (failure !== undefined) {
+            throw failure instanceof Error
+                ? failure
+                : new Error('WebGL2 context compatibility failed', { cause: failure });
+        }
     }
 
     createXRWebGLLayer(session: object, init?: Readonly<Record<string, unknown>>): object {

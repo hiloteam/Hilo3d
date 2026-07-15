@@ -133,7 +133,7 @@ function snapshotRequiredWebGPUFeatures(
                 `Renderer required feature ${String(feature)} is outside the portable RHI feature set`
             );
         }
-        result[index] = feature as RHIRequestableWebGPUFeature;
+        result[index] = feature;
     }
     return Object.freeze(result);
 }
@@ -315,11 +315,15 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             presentationSurface: { enumerable: true, get: () => this.requireSurface() },
             assertPresentationMutationAllowed: {
                 enumerable: true,
-                value: (operation: string) => this.assertPresentationMutationAllowed(operation)
+                value: (operation: string) => {
+                    this.assertPresentationMutationAllowed(operation);
+                }
             },
             executeRetainedPresentation: {
                 enumerable: true,
-                value: () => this.executeRetainedPresentation()
+                value: () => {
+                    this.executeRetainedPresentation();
+                }
             },
             setPresentationViewport: {
                 enumerable: true,
@@ -519,13 +523,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
                 const pending = this.#afterSceneEvents[index];
                 if (pending !== undefined) this.fireAfterSceneEvents(pending.meshes, true);
             }
-            if (
-                this.#pendingPresentationStage !== null &&
-                this.#pendingPresentationCamera !== null
-            ) {
-                this.#lastStage = this.#pendingPresentationStage;
-                this.#lastCamera = this.#pendingPresentationCamera;
-            }
+            this.commitPendingPresentation();
             completed = true;
         } catch (error) {
             if (this.hasAttachedShadowBinding()) {
@@ -566,6 +564,14 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         if (!this.#frameRecording || this.#frameAborted) return;
         this.#frameAborted = true;
         this.#frameAbortReason = reason;
+    }
+
+    private commitPendingPresentation(): void {
+        const stage = this.#pendingPresentationStage;
+        const camera = this.#pendingPresentationCamera;
+        if (stage === null || camera === null) return;
+        this.#lastStage = stage;
+        this.#lastCamera = camera;
     }
 
     private createFrameAbortedError(): Error {

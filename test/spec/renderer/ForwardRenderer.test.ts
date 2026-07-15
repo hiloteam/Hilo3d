@@ -123,6 +123,16 @@ function configuredSurface(device: FakeRHIDevice) {
     return surface;
 }
 
+function meshProcessorStub(methods: object): MeshDrawProcessor {
+    return Object.assign(
+        {
+            sampledGraphDependencies: [],
+            beginPass: vi.fn()
+        },
+        methods
+    ) as unknown as MeshDrawProcessor;
+}
+
 async function complete(backend: FakeRHIBackend): Promise<void> {
     if (backend.executionMode === 'deferred') {
         await backend.completeNextSubmission().done;
@@ -254,11 +264,11 @@ describe.each([
         const trackSubmission = vi.fn(
             (_frameIndex: number, submission: RHISubmission) => submission.done
         );
-        const meshProcessor = {
+        const meshProcessor = meshProcessorStub({
             beginFrame,
             prepare,
             trackSubmission
-        } as unknown as MeshDrawProcessor;
+        });
 
         const result = renderer.render(context, surface, {
             meshProcessor,
@@ -338,11 +348,11 @@ describe.each([
         const trackSubmission = vi.fn(
             (_frameIndex: number, submission: RHISubmission) => submission.done
         );
-        const meshProcessor = {
+        const meshProcessor = meshProcessorStub({
             beginFrame,
             prepare,
             trackSubmission
-        } as unknown as MeshDrawProcessor;
+        });
 
         const result = renderer.render(context, surface, {
             meshProcessor,
@@ -413,12 +423,12 @@ describe.each([
         const trackSubmission = vi.fn(
             (_frameIndex: number, submission: RHISubmission) => submission.done
         );
-        const meshProcessor = {
+        const meshProcessor = meshProcessorStub({
             beginFrame,
             prepare,
             prepareInstancedBatch,
             trackSubmission
-        } as unknown as MeshDrawProcessor;
+        });
 
         const first = renderer.render(frameContext(device, 1), surface, {
             meshProcessor,
@@ -462,14 +472,14 @@ describe.each([
         const instanced = classifiedMesh('transparent-instanced', 0, true, true);
         const draw = preparedDraw(device, 'rgba8unorm', 1, undefined, 6);
         const prepareInstancedBatch = vi.fn((_owner: object, _meshes: readonly Mesh[]) => draw);
-        const meshProcessor = {
+        const meshProcessor = meshProcessorStub({
             beginFrame: vi.fn(),
             prepare: vi.fn(),
             prepareInstancedBatch,
             trackSubmission: vi.fn(
                 (_frameIndex: number, submission: RHISubmission) => submission.done
             )
-        } as unknown as MeshDrawProcessor;
+        });
 
         const result = renderer.render(frameContext(device, 3), surface, {
             meshProcessor,
@@ -498,7 +508,7 @@ describe.each([
         const renderer = new ForwardRenderer();
         const instanced = classifiedMesh('instanced', 0, false, true);
         const rollback = vi.fn();
-        const meshProcessor = {
+        const meshProcessor = meshProcessorStub({
             beginFrame: vi.fn((_context: RenderGraphFrameContext, uploads: RHIUploadBatch) => {
                 uploads.enlist({ prepareCommit: vi.fn(), commit: vi.fn(), rollback });
             }),
@@ -506,7 +516,7 @@ describe.each([
             prepareInstancedBatch: vi.fn(() => {
                 throw new Error('instance preparation failed');
             })
-        } as unknown as MeshDrawProcessor;
+        });
 
         expect(() =>
             renderer.render(frameContext(device), surface, {
@@ -537,14 +547,14 @@ describe.each([
             commit: vi.fn(),
             rollback
         };
-        const meshProcessor = {
+        const meshProcessor = meshProcessorStub({
             beginFrame: vi.fn((_context: RenderGraphFrameContext, uploads: RHIUploadBatch) => {
                 uploads.enlist(participant);
             }),
             prepare: vi.fn(() => {
                 throw new Error('mesh preparation failed');
             })
-        } as unknown as MeshDrawProcessor;
+        });
 
         expect(() =>
             renderer.render(frameContext(device), surface, {
@@ -661,11 +671,11 @@ describe('ForwardRenderer failure boundaries', () => {
             }).toThrow('active ForwardRenderer');
             return draw;
         });
-        const meshProcessor = {
+        const meshProcessor = meshProcessorStub({
             beginFrame: vi.fn(),
             prepare,
             trackSubmission: vi.fn()
-        } as unknown as MeshDrawProcessor;
+        });
 
         renderer.render(frameContext(device), surface, {
             classifiedMeshes: [value],

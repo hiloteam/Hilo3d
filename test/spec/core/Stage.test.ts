@@ -77,9 +77,10 @@ describe('Stage', () => {
             surface: { state: 'configured' },
             recoveryState: 'ready'
         });
-        expect(stage.renderer.getExtension('webgl2-native')).toMatchObject({
-            renderScene: expect.any(Function)
-        });
+        const native = stage.renderer.getExtension('webgl2-native') as {
+            readonly renderScene?: unknown;
+        } | null;
+        expect(typeof native?.renderScene).toBe('function');
         expect(stage.renderer.isReady).toBe(true);
         stage.renderer.destroy();
 

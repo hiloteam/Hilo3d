@@ -460,7 +460,12 @@ describe.each([
                 cullFace: false
             })
         });
-        const churnedMeshes = [replacement, meshes[1]!, meshes[2]!];
+        const secondMesh = meshes[1];
+        const thirdMesh = meshes[2];
+        if (secondMesh === undefined || thirdMesh === undefined) {
+            throw new Error('Shadow churn fixture requires three meshes');
+        }
+        const churnedMeshes = [replacement, secondMesh, thirdMesh];
         preparer.configure(scenePlan, churnedMeshes);
         const churnedShadow = shadowRenderer.render(
             frameContext(renderer, device, camera, lights, 2),

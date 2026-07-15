@@ -301,7 +301,7 @@ export class ForwardRenderer {
             if (!meshFrameStarted) {
                 meshProcessor.beginFrame(scope.context, scope.uploads);
             } else {
-                meshProcessor.beginPass?.(context.camera, context.viewport);
+                meshProcessor.beginPass(context.camera, context.viewport);
             }
         }
         const surfaceTexture = importSurfaceColor(scope.graph, surface);
@@ -441,7 +441,7 @@ export class ForwardRenderer {
                 });
             }
             if (meshProcessor && meshTarget) {
-                meshProcessor.beginPass?.(context.camera, context.viewport);
+                meshProcessor.beginPass(context.camera, context.viewport);
                 for (const mesh of transparentMeshes) {
                     const draw = meshProcessor.prepare(mesh, meshTarget);
                     if (meshFrameStarted) transparentPass.addDrawSnapshot(draw);
@@ -487,7 +487,7 @@ export class ForwardRenderer {
         processor: MeshDrawProcessor
     ): void {
         const dependencies = processor.sampledGraphDependencies;
-        if (!dependencies?.length) return;
+        if (dependencies.length === 0) return;
         const bridge = this.renderTargetBridge;
         if (bridge === null) {
             throw new Error(

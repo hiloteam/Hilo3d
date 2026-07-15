@@ -251,7 +251,7 @@ function mutableCandidateMetrics(
 ): Partial<Record<RHIBenchmarkMetric, number[]>> {
     const round = raw.cases[0]?.rounds[roundIndex];
     if (!round) throw new Error('candidate test fixture round is missing');
-    return round.results['rhi'].metrics as unknown as Partial<Record<RHIBenchmarkMetric, number[]>>;
+    return round.results.rhi.metrics as unknown as Partial<Record<RHIBenchmarkMetric, number[]>>;
 }
 
 function mutableArchitectureMetrics(
@@ -650,7 +650,7 @@ describe('RHI paired candidate gate', () => {
     it('records pixel and draw parity per round and rejects incomplete metric evidence', () => {
         const manifest = testManifest();
         const parityRaw = pairedRaw(manifest);
-        const firstCandidate = parityRaw.cases[0]?.rounds[0]?.results['rhi'] as
+        const firstCandidate = parityRaw.cases[0]?.rounds[0]?.results.rhi as
             { observedDrawCount: number; pixelHashSha256: string } | undefined;
         if (!firstCandidate) throw new Error('candidate parity fixture is missing');
         firstCandidate.observedDrawCount += 1;
@@ -853,11 +853,11 @@ describe('RHI paired candidate gate', () => {
         if (!firstCase || !firstRound) throw new Error('full evidence fixture is empty');
         const changedDrawCount = 0;
         const changedCandidate = {
-            ...firstRound.results['rhi'],
+            ...firstRound.results.rhi,
             observedDrawCount: changedDrawCount,
             pixelHashSha256: 'f'.repeat(64),
             metrics: {
-                ...firstRound.results['rhi'].metrics,
+                ...firstRound.results.rhi.metrics,
                 actualDrawCount: Array<number>(fixture.manifest.sampling.sampleFrames).fill(
                     changedDrawCount
                 )

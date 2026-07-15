@@ -268,12 +268,16 @@ function restoreWindowPresentation(): void {
     requestWindowFrame();
 }
 
+function restoreWindowPresentationAfterXRFailure(): void {
+    if (!webGLContextLost) restoreWindowPresentation();
+}
+
 function handleWebGLContextLost(): void {
     if (webGLContextLost) return;
     webGLContextLost = true;
     const session = xrSession;
     if (session) {
-        session.end().catch(error => {
+        session.end().catch((error: unknown) => {
             if (xrSession === session) {
                 xrSession = null;
                 xrReferenceSpace = null;
@@ -316,7 +320,7 @@ async function beginXRSession(): Promise<void> {
         } catch {
             // Preserve the initialization failure; the session may already be ending.
         }
-        if (!webGLContextLost) restoreWindowPresentation();
+        restoreWindowPresentationAfterXRFailure();
         throw error;
     }
 }

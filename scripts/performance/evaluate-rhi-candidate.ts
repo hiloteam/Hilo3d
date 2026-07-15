@@ -321,7 +321,7 @@ function parityRound(
     round: RHIBenchmarkRawRoundResult
 ): RHIBenchmarkCandidateParityRound {
     const legacy = round.results.legacy;
-    const candidate = round.results['rhi'];
+    const candidate = round.results.rhi;
     const drawCountPassed =
         legacy.observedDrawCount === expectedDrawCount &&
         candidate.observedDrawCount === expectedDrawCount &&

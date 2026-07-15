@@ -77,7 +77,7 @@ function portableRequiredFeatures(
     for (let index = 0; index < features.length; index += 1) {
         const feature = features[index];
         if (feature === undefined || !REQUESTABLE_WEBGPU_FEATURES.has(feature)) return null;
-        result[index] = feature as RHIRequestableWebGPUFeature;
+        result[index] = feature;
     }
     return result;
 }

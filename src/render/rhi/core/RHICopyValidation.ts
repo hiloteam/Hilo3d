@@ -881,9 +881,7 @@ function validateRHIWriteTextureParameters(
         'writeSize.height'
     );
     if (
-        (rhiTextureFormatHasDepth(texture.format) ||
-            rhiTextureFormatHasStencil(texture.format) ||
-            texture.sampleCount !== 1) &&
+        (rhiTextureFormatHasDepth(texture.format) || rhiTextureFormatHasStencil(texture.format)) &&
         (originX !== 0 ||
             originY !== 0 ||
             width !== mipWidth ||
@@ -893,7 +891,7 @@ function validateRHIWriteTextureParameters(
     ) {
         fail(
             'invalid-descriptor',
-            'depth/stencil and multisampled copies require complete physical subresources',
+            'depth/stencil copies require complete physical subresources',
             'destination'
         );
     }

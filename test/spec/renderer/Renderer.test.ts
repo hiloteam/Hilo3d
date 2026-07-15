@@ -36,10 +36,25 @@ vi.mock('../../../src/render/rhi/RHIFactory', async importOriginal => {
 
 const activeRenderers: Renderer[] = [];
 
+interface TestWebGL2NativeExtension {
+    readonly state: Readonly<{ bindSystemFramebuffer(): void }>;
+    makeXRCompatible(): Promise<void>;
+    createXRWebGLLayer(session: object): object;
+    bindExternalFramebuffer(framebuffer: WebGLFramebuffer): void;
+    viewport(): void;
+    renderScene(): void;
+}
+
 function rhiDevice(renderer: Renderer): RHIDevice {
     const extension = renderer.getExtension('rhi') as { readonly device?: RHIDevice } | null;
     if (extension?.device === undefined) throw new Error('Renderer RHI device is unavailable');
     return extension.device;
+}
+
+function webGL2Native(renderer: Renderer): TestWebGL2NativeExtension {
+    const extension = renderer.getExtension('webgl2-native');
+    if (extension === null) throw new Error('WebGL2 native extension is unavailable');
+    return extension as TestWebGL2NativeExtension;
 }
 
 afterEach(() => {
@@ -72,15 +87,13 @@ describe('Renderer public entry point', () => {
             surface: { state: 'configured' },
             recoveryState: 'ready'
         });
-        const native = renderer.getExtension('webgl2-native');
-        expect(native).toMatchObject({
-            state: { bindSystemFramebuffer: expect.any(Function) },
-            makeXRCompatible: expect.any(Function),
-            createXRWebGLLayer: expect.any(Function),
-            bindExternalFramebuffer: expect.any(Function),
-            viewport: expect.any(Function),
-            renderScene: expect.any(Function)
-        });
+        const native = webGL2Native(renderer);
+        expect(typeof native.state.bindSystemFramebuffer).toBe('function');
+        expect(typeof native.makeXRCompatible).toBe('function');
+        expect(typeof native.createXRWebGLLayer).toBe('function');
+        expect(typeof native.bindExternalFramebuffer).toBe('function');
+        expect(typeof native.viewport).toBe('function');
+        expect(typeof native.renderScene).toBe('function');
         expect(native).not.toHaveProperty('gl');
         expect(renderer.getExtension('webgl2-native')).toBe(native);
         expect(renderer.getExtension('webgpu-native')).toBeNull();
@@ -115,9 +128,7 @@ describe('Renderer public entry point', () => {
         expect(renderer.getExtension('rhi')).toMatchObject({
             device: { backend: 'webgl2' }
         });
-        expect(renderer.getExtension('webgl2-native')).toMatchObject({
-            renderScene: expect.any(Function)
-        });
+        expect(typeof webGL2Native(renderer).renderScene).toBe('function');
     });
 
     it('snapshots create options before an asynchronous auto probe settles', async () => {
@@ -160,11 +171,11 @@ describe('Renderer public entry point', () => {
         const afterRender = vi.fn();
         renderer.on('beforeRender', beforeRender);
         renderer.on('afterRender', afterRender);
-        const native = renderer.getExtension('webgl2-native') as {
-            renderScene(): void;
-        };
+        const native = webGL2Native(renderer);
 
-        expect(() => native.renderScene()).toThrow(/completed presentation inputs/u);
+        expect(() => {
+            native.renderScene();
+        }).toThrow(/completed presentation inputs/u);
         renderer.render(scene, camera, true);
         const sceneUpdatesAfterFirstPresentation = updateScene.mock.calls.length;
         const cameraUpdatesAfterFirstPresentation = updateCamera.mock.calls.length;
