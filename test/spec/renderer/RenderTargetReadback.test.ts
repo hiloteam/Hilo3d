@@ -1,7 +1,7 @@
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import LightManager from '../../../src/light/LightManager';
 import type RendererCore from '../../../src/render/RendererCore';
-import { createRenderFrameContext } from '../../../src/render/frame/RenderFrameContext';
+import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import { RenderTargetReadback } from '../../../src/render/renderer/RenderTargetReadback';
 import { RenderTargetResourceCache } from '../../../src/render/renderer/RenderTargetResourceCache';
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
@@ -12,10 +12,10 @@ import {
     FakeWebGPURHIBackend,
     type FakeRHIBackend,
     type FakeRHIDevice
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function frameContext(device: FakeRHIDevice, frameIndex: number) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer: {} as RendererCore,
         rhi: device,
         frameIndex,

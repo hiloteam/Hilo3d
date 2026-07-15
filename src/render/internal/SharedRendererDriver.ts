@@ -28,8 +28,11 @@ import type {
     RenderTargetReadColorAttachmentOptions,
     RenderTargetSelectionOptions
 } from '../RenderTarget';
-import { RenderFrame, type RenderFrameBuildScope } from '../frame/RenderFrame';
-import { createRenderFrameContext, type RenderFrameContext } from '../frame/RenderFrameContext';
+import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
+import {
+    createRenderGraphFrameContext,
+    type RenderGraphFrameContext
+} from '../frame/RenderGraphFrameContext';
 import {
     constructRHIDevice,
     createRHIDevice,
@@ -127,7 +130,7 @@ function snapshotRequiredWebGPUFeatures(
         const feature = features[index];
         if (feature === undefined || !REQUESTABLE_WEBGPU_FEATURES.has(feature)) {
             throw new TypeError(
-                `Renderer required feature ${String(feature)} is outside the portable RHI v2 feature set`
+                `Renderer required feature ${String(feature)} is outside the portable RHI feature set`
             );
         }
         result[index] = feature as RHIRequestableWebGPUFeature;
@@ -172,7 +175,7 @@ function reportListenerFailure(reason: unknown): void {
 }
 
 /**
- * The single production renderer frontend shared by the concrete WebGL2 and WebGPU RHI v2
+ * The single production renderer frontend shared by the concrete WebGL2 and WebGPU RHI
  * devices. Backend selection happens once during construction; scene traversal, resource
  * preparation, graph execution, events and recovery are identical afterwards.
  */
@@ -190,7 +193,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
 
     readonly #compiler = new ShaderArtifactCompiler();
     readonly #fallbackCamera = new Camera();
-    readonly #applicationFrame = new RenderFrame();
+    readonly #applicationFrame = new RenderGraphFrame();
     readonly #visibleMeshes: Mesh[] = [];
     readonly #collectVisibleMesh = (mesh: Mesh): void => {
         this.#visibleMeshes.push(mesh);
@@ -216,7 +219,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     #initialized = false;
     #destroyed = false;
     #frameRecording = false;
-    #activeFrameScope: RenderFrameBuildScope | null = null;
+    #activeFrameScope: RenderGraphFrameBuildScope | null = null;
     #activeFrameIndex: number | null = null;
     #frameAbortReason: unknown;
     #frameAborted = false;
@@ -276,14 +279,14 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             requiredFeatures,
             optionalFeatures: OPTIONAL_WEBGPU_FEATURES,
             requiredLimits: this.requiredLimits,
-            label: 'Hilo3d shared renderer WebGPU RHI v2',
+            label: 'Hilo3d shared renderer WebGPU RHI',
             ...(this.rendererDiagnosticsSink === null
                 ? {}
                 : { diagnosticsSink: this.rendererDiagnosticsSink })
         });
         this.#webGLContextOptions = Object.freeze({
             alpha: this.alpha,
-            // RHI v2 owns multisampling explicitly. An antialiased default framebuffer cannot be
+            // RHI owns multisampling explicitly. An antialiased default framebuffer cannot be
             // the destination of the WebGL multisample resolve used by ForwardRenderer.
             antialias: false,
             depth: this.depth,
@@ -571,7 +574,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         });
     }
 
-    private requireActiveFrameScope(): RenderFrameBuildScope {
+    private requireActiveFrameScope(): RenderGraphFrameBuildScope {
         const scope = this.#activeFrameScope;
         if (scope === null) throw new Error('Renderer graph build requires an active frame');
         return scope;
@@ -696,7 +699,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     }
 
     override getExtension(name: string): object | null {
-        if (name === 'rhi-v2') return this.#rhiExtension;
+        if (name === 'rhi') return this.#rhiExtension;
         return (
             this.requireDevice().resolveInteropExtension?.(name, this.#executionInteropHost) ?? null
         );
@@ -889,7 +892,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         const device = constructRHIDevice('webgl2', {
             canvas,
             context: this.#webGLContextOptions,
-            label: 'Hilo3d shared renderer WebGL2 RHI v2',
+            label: 'Hilo3d shared renderer WebGL2 RHI',
             ...(this.rendererDiagnosticsSink === null
                 ? {}
                 : { diagnosticsSink: this.rendererDiagnosticsSink })
@@ -1051,7 +1054,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             device.vertexInputCacheMetrics ?? processor.vertexInputCacheMetrics;
         const framebufferMetrics = device.framebufferCacheMetrics;
         if (framebufferMetrics === null || framebufferMetrics === undefined) {
-            throw new Error('RHI v2 device does not expose framebuffer cache diagnostics');
+            throw new Error('RHI device does not expose framebuffer cache diagnostics');
         }
         if (this.#vertexInputCacheMetrics === null) {
             this.#vertexInputCacheMetrics = new RHICacheCounterContinuation(vertexInputMetrics);
@@ -1101,7 +1104,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         return constructRHIDevice('webgl2', {
             canvas: this.requireCanvas(),
             context: this.#webGLContextOptions,
-            label: 'Hilo3d recovered shared renderer WebGL2 RHI v2',
+            label: 'Hilo3d recovered shared renderer WebGL2 RHI',
             ...(this.rendererDiagnosticsSink === null
                 ? {}
                 : { diagnosticsSink: this.rendererDiagnosticsSink })
@@ -1267,7 +1270,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
 
     private renderSceneShadows(
         resources: RenderingResources,
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         meshes: readonly Mesh[],
         defaultWidth: number,
         defaultHeight: number
@@ -1288,6 +1291,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             prepareOptions
         );
         if (plan.atlas.sliceCount === 0) {
+            resources.shadowPreparer.retireAll(this.requireActiveFrameScope().uploads);
             resources.shadowResources.detach(resources.shadowOwner);
             return 0;
         }
@@ -1355,7 +1359,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         }
     }
 
-    private ensureMeshFrame(context: RenderFrameContext): void {
+    private ensureMeshFrame(context: RenderGraphFrameContext): void {
         if (this.#meshFrameStarted) return;
         const resources = this.requireResources();
         resources.processor.beginFrame(context, this.requireActiveFrameScope().uploads);
@@ -1478,9 +1482,9 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
 
     private createContext(
         camera: Camera,
-        viewport: RenderFrameContext['viewport']
-    ): RenderFrameContext {
-        return createRenderFrameContext({
+        viewport: RenderGraphFrameContext['viewport']
+    ): RenderGraphFrameContext {
+        return createRenderGraphFrameContext({
             renderer: this,
             rhi: this.requireDevice(),
             frameIndex: this.#activeFrameIndex ?? this.allocateFrameIndex(),
@@ -1491,7 +1495,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         });
     }
 
-    private surfaceViewport(): RenderFrameContext['viewport'] {
+    private surfaceViewport(): RenderGraphFrameContext['viewport'] {
         const presentation = this.#presentationViewport;
         if (presentation !== null) return { ...presentation };
         const configuration = this.#surface?.configuration;

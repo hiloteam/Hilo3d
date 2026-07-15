@@ -255,7 +255,7 @@ export function mapRHIFloat32PositionLayout(
     return layout;
 }
 
-/** Map contiguous scalar engine indices to the two formats supported by RHI v2. */
+/** Map contiguous scalar engine indices to the two formats supported by RHI. */
 export function mapRHIIndexFormat(indices: GeometryData): RHIIndexFormat {
     if (indices.size !== 1 || indices.stride !== 0 || indices.offset !== 0 || indices.normalized) {
         throw new TypeError(
@@ -655,7 +655,7 @@ function createRHIPrimitiveState(
     });
 }
 
-/** Create the immutable RHI pipeline-state portion shared by both v2 backends. */
+/** Create the immutable RHI pipeline-state portion shared by both RHI backends. */
 export function createRHIMeshDrawPipelineState(
     material: RHIMeshDrawMaterialState,
     mode: number,

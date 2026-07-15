@@ -22,7 +22,7 @@ export interface RHISubmission extends RHIDeviceOwnedObject {
     readonly error?: unknown;
 }
 
-/** The first RHI v2 revision exposes exactly one exclusive graphics frame scope. */
+/** The first RHI revision exposes exactly one exclusive graphics frame scope. */
 export interface RHIQueue extends RHIDeviceOwnedObject {
     readonly state: RHIQueueState;
 

@@ -9,7 +9,7 @@ import {
     FakeWebGPURHIBackend,
     type FakeRHIBuffer,
     type FakeRHIDevice
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function buffer(device: FakeRHIDevice, value = 0): FakeRHIBuffer {
     return device.createBuffer({

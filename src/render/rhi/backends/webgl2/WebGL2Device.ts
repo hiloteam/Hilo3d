@@ -100,7 +100,7 @@ function emptyDiagnostics() {
     };
 }
 
-/** Concrete headless-capable WebGL2 RHI v2 device. Commands execute immediately. */
+/** Concrete headless-capable WebGL2 RHI device. Commands execute immediately. */
 export class WebGL2RHIDevice implements RHIDevice {
     readonly id = allocateRHIDeviceId();
     readonly backend = 'webgl2' as const;
@@ -134,11 +134,11 @@ export class WebGL2RHIDevice implements RHIDevice {
         const gl = isContext(source) ? source : source.getContext('webgl2', contextAttributes);
         if (gl === null) throw new Error('WebGL2 is unavailable');
         if (!(gl.canvas instanceof HTMLCanvasElement)) {
-            throw new Error('RHI v2 WebGL2 surfaces require an HTMLCanvasElement-backed context');
+            throw new Error('RHI WebGL2 surfaces require an HTMLCanvasElement-backed context');
         }
         this.gl = gl;
         this.canvas = gl.canvas;
-        this.label = label ?? 'WebGL2 RHI v2 device';
+        this.label = label ?? 'WebGL2 RHI device';
         this.#diagnosticsSink = diagnosticsSink;
         this.#objectIds = createRHIObjectIdAllocator(this.id);
         this.capabilities = new WebGL2Capabilities(gl);

@@ -11,7 +11,7 @@ import {
     type RHIBenchmarkEnvironment,
     type RHIBenchmarkManifest,
     type RHIBenchmarkRoundMetrics
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import {
     deriveRHIBenchmarkBootstrapSeed,
     rhiBenchmarkPairedOrder
@@ -26,7 +26,7 @@ import {
 
 const RAW_BYTES = new TextEncoder().encode('{"raw":"samples"}\n');
 const repositoryManifestValue = JSON.parse(
-    readFileSync(new URL('../../benchmarks/rhi-v2/manifest.json', import.meta.url), 'utf8')
+    readFileSync(new URL('../../benchmarks/rhi/manifest.json', import.meta.url), 'utf8')
 ) as unknown;
 
 function enrolledManifest(): RHIBenchmarkManifest {
@@ -129,7 +129,7 @@ function metrics(
 function validBaseline(manifest: RHIBenchmarkManifest): RHIBenchmarkBaselineResult {
     return {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         architecture: 'legacy',
         manifestSha256: manifestSha256(manifest),
         commitSha: 'a'.repeat(40),

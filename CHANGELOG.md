@@ -34,7 +34,7 @@
 - Replace the renderer-interface-only `Renderer` export with an abstract shared renderer base and a
   separate `RendererContract` type. Backend implementations now inherit common frame planning,
   render/light queues, diagnostics, and resource ownership from that base; the protected result is
-  available as the exported `RenderFramePlan` type for custom subclasses.
+  available as the exported `RenderGraphFramePlan` type for custom subclasses.
 - Add the required synchronous `Renderer.renderFrame(callback)` application-frame boundary. Custom
   renderer implementations must provide it; callbacks may not return a Promise or retain the frame
   facade after returning.

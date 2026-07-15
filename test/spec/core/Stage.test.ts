@@ -72,7 +72,7 @@ describe('Stage', () => {
             height: 16,
             pixelRatio: 1
         });
-        expect(stage.renderer.getExtension('rhi-v2')).toMatchObject({
+        expect(stage.renderer.getExtension('rhi')).toMatchObject({
             device: { backend: 'webgl2' },
             surface: { state: 'configured' },
             recoveryState: 'ready'

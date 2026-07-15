@@ -33,7 +33,7 @@ import {
     FakeWebGPURHIBackend,
     type FakeRHIBackend,
     type FakeRHIDevice
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function drawRevision(device: FakeRHIDevice, target: number): PreparedDrawRevision {
     return {

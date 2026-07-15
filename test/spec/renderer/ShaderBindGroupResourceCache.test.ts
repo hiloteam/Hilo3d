@@ -24,7 +24,7 @@ import {
     compileShaderBindingLayout,
     type ShaderBindingLayoutPlan
 } from '../../../src/render/renderer/ShaderBindingLayoutCompiler';
-import { FakeWebGLRHIBackend, type FakeRHIDevice } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGLRHIBackend, type FakeRHIDevice } from '../rhi/portable/FakeRHIBackend';
 
 const cacheSource =
     Object.values(

@@ -230,7 +230,7 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
         return this.#state === 'active';
     }
 
-    /** Enlist this stable cache in one RenderFrame/RHIUploadBatch transaction. */
+    /** Enlist this stable cache in one RenderGraphFrame/RHIUploadBatch transaction. */
     beginFrame(frameIndex: number, uploads: RHIUploadBatch): void {
         if (this.#state === 'destroyed') throw new Error('Buffer resource cache is destroyed');
         if (this.#state === 'active')

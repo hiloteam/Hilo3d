@@ -1,4 +1,4 @@
-/** RHI v2 portable core. This barrel intentionally exports no native backend implementation. */
+/** RHI portable core. This barrel intentionally exports no native backend implementation. */
 export * from './RHITypes';
 export * from './RHICacheDiagnostics';
 export * from './RHICapabilities';

@@ -29,7 +29,7 @@ import {
     type RHIBenchmarkRawMetricSamples,
     type RHIBenchmarkRoundMetrics,
     type RendererArchitecture
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import {
     buildRHICandidateGateResult,
     evaluateRHICandidateEvidence,
@@ -50,7 +50,7 @@ import {
 } from '../../scripts/performance/verify-rhi-baseline';
 
 const repositoryManifestValue = JSON.parse(
-    readFileSync(new URL('../../benchmarks/rhi-v2/manifest.json', import.meta.url), 'utf8')
+    readFileSync(new URL('../../benchmarks/rhi/manifest.json', import.meta.url), 'utf8')
 ) as unknown;
 
 function testManifest(): RHIBenchmarkManifest {
@@ -141,7 +141,7 @@ function frozenRoundMetrics(
 function frozenSummary(manifest: RHIBenchmarkManifest): RHIBenchmarkBaselineResult {
     return {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         architecture: 'legacy',
         manifestSha256: '3'.repeat(64),
         commitSha: 'a'.repeat(40),
@@ -173,13 +173,13 @@ function frozenSummary(manifest: RHIBenchmarkManifest): RHIBenchmarkBaselineResu
 function pairedRaw(manifest: RHIBenchmarkManifest): RHIBenchmarkRawCaptureResult {
     return {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         manifestSha256: '3'.repeat(64),
         commitSha: 'b'.repeat(40),
         capturedAt: '2026-07-15T12:00:00.000Z',
         environment: environment(manifest),
         productionFixture: {
-            path: 'test/performance/fixtures/rhi-v2-production.html',
+            path: 'test/performance/fixtures/rhi-production.html',
             sha256: '4'.repeat(64)
         },
         cases: manifest.scenarios.flatMap(scenario =>
@@ -204,7 +204,7 @@ function pairedRaw(manifest: RHIBenchmarkManifest): RHIBenchmarkRawCaptureResult
                                 pixelHashSha256,
                                 metrics: rawMetrics(scenario.quality.drawCount)
                             },
-                            'rhi-v2': {
+                            rhi: {
                                 observedDrawCount: scenario.quality.drawCount,
                                 pixelHashSha256,
                                 metrics: rawMetrics(scenario.quality.drawCount)
@@ -251,9 +251,7 @@ function mutableCandidateMetrics(
 ): Partial<Record<RHIBenchmarkMetric, number[]>> {
     const round = raw.cases[0]?.rounds[roundIndex];
     if (!round) throw new Error('candidate test fixture round is missing');
-    return round.results['rhi-v2'].metrics as unknown as Partial<
-        Record<RHIBenchmarkMetric, number[]>
-    >;
+    return round.results['rhi'].metrics as unknown as Partial<Record<RHIBenchmarkMetric, number[]>>;
 }
 
 function mutableArchitectureMetrics(
@@ -276,7 +274,7 @@ function setCandidateMetric(
     for (let index = 0; index < roundValues.length; index += 1) {
         const value = roundValues[index];
         if (value === undefined) throw new Error('candidate test fixture value is missing');
-        mutableArchitectureMetrics(raw, 'rhi-v2', index)[metric] = [value];
+        mutableArchitectureMetrics(raw, 'rhi', index)[metric] = [value];
     }
 }
 
@@ -347,13 +345,13 @@ function fullRawCapture(
     const candidateValue = options.candidateValue ?? legacyValue;
     return {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         manifestSha256: manifestSha256(manifest),
         commitSha: options.commitSha,
         capturedAt: '2026-07-15T12:00:00.000Z',
         environment: environment(manifest),
         productionFixture: {
-            path: 'test/performance/fixtures/rhi-v2-production.html',
+            path: 'test/performance/fixtures/rhi-production.html',
             sha256: options.fixtureSha256
         },
         cases: manifest.scenarios.flatMap(scenario =>
@@ -389,7 +387,7 @@ function fullRawCapture(
                                     pixelHashSha256,
                                     metrics: legacyMetrics
                                 },
-                                'rhi-v2': {
+                                rhi: {
                                     observedDrawCount: scenario.quality.drawCount,
                                     pixelHashSha256,
                                     metrics: candidateMetrics
@@ -456,9 +454,9 @@ function evidenceFixture(
         preflight: {
             manifest,
             environment: environment(manifest),
-            productionFixturePath: '/fixture/rhi-v2-production.html',
-            productionFixtureRelativePath: 'test/performance/fixtures/rhi-v2-production.html',
-            productionFixtureModulePath: '/fixture/rhi-v2-production.ts',
+            productionFixturePath: '/fixture/rhi-production.html',
+            productionFixtureRelativePath: 'test/performance/fixtures/rhi-production.html',
+            productionFixtureModulePath: '/fixture/rhi-production.ts',
             productionFixtureSha256: currentFixtureSha256,
             browserExecutablePath: '/fixture/chromium'
         },
@@ -543,11 +541,11 @@ describe('RHI paired candidate gate', () => {
         expect(result.passed).toBe(false);
     });
 
-    it('fails common legacy/RHI-v2 drift against frozen legacy without inventing paired significance', () => {
+    it('fails common legacy/RHI drift against frozen legacy without inventing paired significance', () => {
         const manifest = testManifest();
         const raw = pairedRaw(manifest);
         setArchitectureMetric(raw, 'legacy', 'rendererCpuMs', Array<number>(7).fill(200));
-        setArchitectureMetric(raw, 'rhi-v2', 'rendererCpuMs', Array<number>(7).fill(200));
+        setArchitectureMetric(raw, 'rhi', 'rendererCpuMs', Array<number>(7).fill(200));
 
         const result = build(raw, manifest);
         const pairedGate = result.cases[0]?.gates.find(
@@ -557,7 +555,7 @@ describe('RHI paired candidate gate', () => {
         expect(pairedGate).toMatchObject({
             reference: 'paired-legacy',
             referenceValue: 200,
-            comparison: 'rhi-v2',
+            comparison: 'rhi',
             comparisonValue: 200,
             significantRegression: false,
             passed: true
@@ -584,7 +582,7 @@ describe('RHI paired candidate gate', () => {
             expect(gate).not.toHaveProperty('pairedDifferenceConfidenceInterval');
             expect(gate).not.toHaveProperty('significantRegression');
         }
-        expect(candidateCap).toMatchObject({ comparison: 'rhi-v2' });
+        expect(candidateCap).toMatchObject({ comparison: 'rhi' });
         expect(driftCap).toMatchObject({ comparison: 'current-legacy' });
         expect(result.passed).toBe(false);
     });
@@ -602,7 +600,7 @@ describe('RHI paired candidate gate', () => {
         );
         expect(gate).toMatchObject({
             reference: 'frozen-legacy',
-            comparison: 'rhi-v2',
+            comparison: 'rhi',
             hardCapExceeded: true,
             passed: false
         });
@@ -652,7 +650,7 @@ describe('RHI paired candidate gate', () => {
     it('records pixel and draw parity per round and rejects incomplete metric evidence', () => {
         const manifest = testManifest();
         const parityRaw = pairedRaw(manifest);
-        const firstCandidate = parityRaw.cases[0]?.rounds[0]?.results['rhi-v2'] as
+        const firstCandidate = parityRaw.cases[0]?.rounds[0]?.results['rhi'] as
             { observedDrawCount: number; pixelHashSha256: string } | undefined;
         if (!firstCandidate) throw new Error('candidate parity fixture is missing');
         firstCandidate.observedDrawCount += 1;
@@ -700,7 +698,7 @@ describe('RHI paired candidate gate', () => {
         ).toMatchObject({
             reference: 'frozen-legacy',
             referenceValue: 100,
-            comparison: 'rhi-v2',
+            comparison: 'rhi',
             comparisonValue: 200,
             hardCapExceeded: true,
             passed: false
@@ -788,7 +786,7 @@ describe('RHI paired candidate gate', () => {
         const temporary = await mkdtemp(join(tmpdir(), 'hilo3d-rhi-candidate-paths-'));
         const root = await realpath(temporary);
         const profile = 'contract-rig';
-        const baselineDirectory = join(root, 'benchmarks/rhi-v2/baselines', profile);
+        const baselineDirectory = join(root, 'benchmarks/rhi/baselines', profile);
         const summaryPath = join(baselineDirectory, 'legacy.summary.json');
         const rawPath = join(baselineDirectory, 'legacy.raw.json.gz');
         const externalSummary = join(root, 'external.summary.json');
@@ -805,7 +803,7 @@ describe('RHI paired candidate gate', () => {
                 resolveRHICandidateBaselinePaths(
                     root,
                     profile,
-                    `benchmarks/rhi-v2/baselines/${profile}/legacy.summary.json`
+                    `benchmarks/rhi/baselines/${profile}/legacy.summary.json`
                 )
             ).resolves.toEqual({ summaryPath, rawPath });
             await expect(
@@ -846,7 +844,7 @@ describe('RHI paired candidate gate', () => {
         const root = await realpath(temporary);
         const baselineDirectory = join(
             root,
-            'benchmarks/rhi-v2/baselines',
+            'benchmarks/rhi/baselines',
             fixture.manifest.rig.profile
         );
         const reportsDirectory = join(root, 'reports');
@@ -855,11 +853,11 @@ describe('RHI paired candidate gate', () => {
         if (!firstCase || !firstRound) throw new Error('full evidence fixture is empty');
         const changedDrawCount = 0;
         const changedCandidate = {
-            ...firstRound.results['rhi-v2'],
+            ...firstRound.results['rhi'],
             observedDrawCount: changedDrawCount,
             pixelHashSha256: 'f'.repeat(64),
             metrics: {
-                ...firstRound.results['rhi-v2'].metrics,
+                ...firstRound.results['rhi'].metrics,
                 actualDrawCount: Array<number>(fixture.manifest.sampling.sampleFrames).fill(
                     changedDrawCount
                 )
@@ -875,7 +873,7 @@ describe('RHI paired candidate gate', () => {
                             ...firstRound,
                             results: {
                                 ...firstRound.results,
-                                'rhi-v2': changedCandidate
+                                rhi: changedCandidate
                             }
                         },
                         ...firstCase.rounds.slice(1)
@@ -913,7 +911,7 @@ describe('RHI paired candidate gate', () => {
                 manifestValue: fixture.manifest,
                 environmentValue: fixture.preflight.environment,
                 pairedRawPath: 'reports/candidate.raw.json.gz',
-                frozenSummaryPath: `benchmarks/rhi-v2/baselines/${fixture.manifest.rig.profile}/legacy.summary.json`,
+                frozenSummaryPath: `benchmarks/rhi/baselines/${fixture.manifest.rig.profile}/legacy.summary.json`,
                 jsonOutputPath: 'reports/candidate.gate.json',
                 markdownOutputPath: 'reports/candidate.gate.md'
             };

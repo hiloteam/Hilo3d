@@ -512,8 +512,8 @@ describe('WebGPUTextureManager formats and data conversion', () => {
 });
 
 describe('WebGPUTextureManager uploads and lifecycle', () => {
-    it('uploads raw depth16, depth32float, and depth32float-stencil8 storage exactly', () => {
-        const fake = createFakeWebGPU(['depth32float-stencil8']);
+    it('uploads portable raw depth storage and rejects combined depth-stencil bytes', () => {
+        const fake = createFakeWebGPU();
         const manager = createTextureManager(fake.device);
         const depth16 = new Texture({
             width: 2,
@@ -531,43 +531,27 @@ describe('WebGPUTextureManager uploads and lifecycle', () => {
             type: FLOAT,
             image: new Float32Array([0.25, 0.75])
         });
-        const packed = new Uint32Array(4);
-        new Float32Array(packed.buffer)[0] = 0.125;
-        packed[1] = 7;
-        new Float32Array(packed.buffer)[2] = 0.875;
-        packed[3] = 251;
-        const depthStencil = new Texture({
-            width: 2,
-            height: 1,
-            internalFormat: DEPTH32F_STENCIL8,
-            format: DEPTH_STENCIL,
-            type: FLOAT_32_UNSIGNED_INT_24_8_REV,
-            image: packed
-        });
+        expect(
+            () =>
+                new Texture({
+                    width: 2,
+                    height: 1,
+                    internalFormat: DEPTH32F_STENCIL8,
+                    format: DEPTH_STENCIL,
+                    type: FLOAT_32_UNSIGNED_INT_24_8_REV,
+                    image: new Uint32Array(4)
+                })
+        ).toThrow(/only DEPTH_COMPONENT16 and DEPTH_COMPONENT32F support portable raw depth/u);
 
         manager.get(depth16);
         manager.get(depth32);
-        manager.get(depthStencil);
 
-        expect(fake.queue.writeTexture).toHaveBeenCalledTimes(4);
+        expect(fake.queue.writeTexture).toHaveBeenCalledTimes(2);
         expect(fake.queue.writeTexture.mock.calls[0]?.[0]).toMatchObject({
             aspect: 'depth-only'
         });
         expect(fake.queue.writeTexture.mock.calls[1]?.[0]).toMatchObject({
             aspect: 'depth-only'
-        });
-        expect(Array.from(fake.queue.writeTexture.mock.calls[2]?.[1] as Uint32Array)).toEqual([
-            packed[0],
-            packed[2]
-        ]);
-        expect(fake.queue.writeTexture.mock.calls[2]?.[0]).toMatchObject({
-            aspect: 'depth-only'
-        });
-        expect(Array.from(fake.queue.writeTexture.mock.calls[3]?.[1] as Uint8Array)).toEqual([
-            7, 251
-        ]);
-        expect(fake.queue.writeTexture.mock.calls[3]?.[0]).toMatchObject({
-            aspect: 'stencil-only'
         });
     });
 

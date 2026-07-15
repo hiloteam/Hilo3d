@@ -15,7 +15,7 @@ import {
     type FakeRHIBuffer,
     type FakeRHIBackend,
     type FakeRHIDevice
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 interface Deferred<T> {
     readonly promise: Promise<T>;

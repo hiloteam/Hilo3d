@@ -54,8 +54,8 @@ import {
 import LightManager from '../../../src/light/LightManager';
 import type RendererCore from '../../../src/render/RendererCore';
 import { RHIUploadBatch } from '../../../src/render/frame/RHIUploadBatch';
-import { RenderFrame } from '../../../src/render/frame/RenderFrame';
-import { createRenderFrameContext } from '../../../src/render/frame/RenderFrameContext';
+import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
+import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import type { RenderPassTemplate } from '../../../src/render/graph/RenderGraphBuilder';
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
 import { TextureResourceCache } from '../../../src/render/renderer/TextureResourceCache';
@@ -77,10 +77,10 @@ import {
     type FakeRHISampler,
     type FakeRHITexture,
     type FakeRHITextureView
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function frameContext(device: FakeRHIDevice, frameIndex: number) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer: {} as RendererCore,
         rhi: device,
         frameIndex,
@@ -94,7 +94,7 @@ function frameContext(device: FakeRHIDevice, frameIndex: number) {
 type FrameFailure = 'build' | 'prepare' | 'execute' | null;
 
 function runCacheFrame(
-    frame: RenderFrame,
+    frame: RenderGraphFrame,
     device: FakeRHIDevice,
     frameIndex: number,
     cache: TextureResourceCache,
@@ -190,7 +190,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const getTextureFormatCapabilities = vi.spyOn(
             device.capabilities,
             'getTextureFormatCapabilities'
@@ -265,7 +265,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         let resource: FakeRHITexture | undefined;
         const initial = runCacheFrame(frame, device, 1, cache, () => {
@@ -306,7 +306,7 @@ describe.each([
         const firstDevice = backend.createDevice();
         const registry = new ResourceRegistry(firstDevice);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const pixels = new Uint8Array([17, 34, 51, 255]);
         const source = rgba8Texture(pixels, 1, 1);
         source.isImageCanRelease = true;
@@ -354,7 +354,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const pixels = new Uint8Array([1, 2, 3, 4]);
         const source = rgba8Texture(pixels, 1, 1);
         source.isImageCanRelease = true;
@@ -379,7 +379,7 @@ describe.each([
         const firstDevice = backend.createDevice();
         const registry = new ResourceRegistry(firstDevice);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         let handles: ReturnType<TextureResourceCache['getHandles']> | undefined;
         let firstTexture: FakeRHITexture | undefined;
@@ -425,7 +425,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new Texture({
             image: null,
             internalFormat: RGBA8,
@@ -489,7 +489,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new Texture({
             image: new Uint8Array(4 * 4 * 4).fill(7),
             internalFormat: RGBA8,
@@ -563,7 +563,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const faces = Array.from({ length: 6 }, (_unused, face) =>
             new Uint8Array(2 * 2 * 4).fill(face + 1)
         );
@@ -618,7 +618,7 @@ describe.each([
         const firstDevice = backend.createDevice();
         const registry = new ResourceRegistry(firstDevice);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new Texture({
             image: new Uint8Array(2 * 2 * 4).fill(23),
             internalFormat: RGBA8,
@@ -663,7 +663,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new Texture({
             image: null,
             internalFormat: RGBA8,
@@ -709,7 +709,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const mipmaps = ([0, 1] as const).flatMap(level =>
             ([0, 1, 2, 3, 4, 5] as const).map(face => {
                 const width = level === 0 ? 2 : 1;
@@ -787,7 +787,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const floatPixels = new Float32Array(64);
         floatPixels.set([1, 2, 3, 4]);
         const floatSource = new DataTexture({ data: floatPixels });
@@ -829,7 +829,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const image = new ImageData(new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]), 1, 2);
         const source = new Texture({
             image,
@@ -877,7 +877,7 @@ describe.each([
         installCapabilities(device, { features: ['anisotropic-filtering'] });
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         source.magFilter = LINEAR;
         source.minFilter = LINEAR;
@@ -910,7 +910,7 @@ describe.each([
         const firstDevice = backend.createDevice();
         const registry = new ResourceRegistry(firstDevice);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const canvas = document.createElement('canvas');
         canvas.width = 2;
         canvas.height = 1;
@@ -973,7 +973,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const faces = Array.from({ length: 6 }, () => {
             const canvas = document.createElement('canvas');
             canvas.width = 1;
@@ -1016,7 +1016,7 @@ describe.each([
         const firstDevice = backend.createDevice();
         const registry = new ResourceRegistry(firstDevice);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new Texture({
             image: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
             isImageCanRelease: true,
@@ -1093,7 +1093,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new Texture({
             image: new Uint8Array([1, 2, 3, 4]),
             target: TEXTURE_2D_ARRAY,
@@ -1163,7 +1163,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const signedR = new Texture({
             image: new Int8Array([-3]),
             internalFormat: R8I,
@@ -1262,7 +1262,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const createTexture = vi.spyOn(device, 'createTexture');
         const rawCombined = new Texture<unknown>({
             image: null,
@@ -1343,7 +1343,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         vi.spyOn(device, 'createTexture').mockImplementationOnce(() => {
             throw new Error('native texture allocation failure');
@@ -1363,7 +1363,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         const beginFrame = vi.spyOn(device.graphicsQueue, 'beginFrame');
 
@@ -1391,7 +1391,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         const discardUnsubmitted = registry.discardUnsubmitted.bind(registry);
         const discard = vi.spyOn(registry, 'discardUnsubmitted').mockImplementationOnce(handle => {
@@ -1426,7 +1426,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), 2, 1);
         let resource: FakeRHITexture | undefined;
         let handles: ReturnType<TextureResourceCache['getHandles']> | undefined;
@@ -1461,7 +1461,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         let firstTexture: FakeRHITexture | undefined;
         let firstView: FakeRHITextureView | undefined;
@@ -1512,7 +1512,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         let committed: ReturnType<TextureResourceCache['getHandles']> | undefined;
         runCacheFrame(frame, device, 1, cache, () => {
@@ -1563,7 +1563,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const first = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         const second = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         runCacheFrame(frame, device, 1, cache, () => {
@@ -1592,7 +1592,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
 
         runCacheFrame(frame, device, 1, cache, () => cache.prepare(source));
@@ -1625,7 +1625,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = rgba8Texture(new Uint8Array([1, 2, 3, 4]), 1, 1);
         let texture: FakeRHITexture | undefined;
         const inFlight = runCacheFrame(frame, device, 5, cache, () => {
@@ -1651,7 +1651,7 @@ describe('TextureResourceCache invalidation and lifecycle', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new DataTexture({
             internalFormat: RGBA8,
             format: RGBA,
@@ -1680,7 +1680,7 @@ describe('TextureResourceCache preflight rejection', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const createTexture = vi.spyOn(device, 'createTexture');
         const createSampler = vi.spyOn(device, 'createSampler');
         const beginFrame = vi.spyOn(device.graphicsQueue, 'beginFrame');
@@ -1774,7 +1774,7 @@ describe('TextureResourceCache preflight rejection', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const image = document.createElement('img');
         const source = new Texture({ image, width: 1, height: 1 });
         const createTexture = vi.spyOn(device, 'createTexture');
@@ -1794,7 +1794,7 @@ describe('TextureResourceCache preflight rejection', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const canvas = document.createElement('canvas');
         canvas.width = 1;
         canvas.height = 1;
@@ -1835,7 +1835,7 @@ describe('TextureResourceCache preflight rejection', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const canvas = document.createElement('canvas');
         canvas.width = 1;
         canvas.height = 1;
@@ -1883,7 +1883,7 @@ describe('TextureResourceCache preflight rejection', () => {
         });
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new Texture({
             image: new Float32Array([1, 2, 3, 4]),
             internalFormat: RGBA32F,
@@ -1920,7 +1920,7 @@ describe('TextureResourceCache preflight rejection', () => {
         });
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const createTexture = vi.spyOn(device, 'createTexture');
         const compressed = new Texture({
             image: new Uint8Array(8),
@@ -1967,7 +1967,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new Texture({
             image: new Uint8Array(8),
             compressed: true,
@@ -2004,7 +2004,7 @@ describe('TextureResourceCache compressed uploads', () => {
         });
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const mipmaps = [
             { data: new Uint8Array(8).fill(1), width: 4, height: 4 },
             { data: new Uint8Array(8).fill(2), width: 2, height: 2 },
@@ -2059,7 +2059,7 @@ describe('TextureResourceCache compressed uploads', () => {
         });
         const registry = new ResourceRegistry(device);
         const cache = new TextureResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const source = new Texture({
             image: null,
             compressed: true,

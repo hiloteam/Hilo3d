@@ -2,7 +2,7 @@ import { FrameArena } from '../../../src/render/frame/FrameArena';
 import { RHIUploadBatch } from '../../../src/render/frame/RHIUploadBatch';
 import { RHIBufferUsage, RHITextureUsage } from '../../../src/render/rhi/core';
 import { describe, expect, it, vi } from 'vitest';
-import { FakeWebGLRHIBackend } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGLRHIBackend } from '../rhi/portable/FakeRHIBackend';
 
 describe('RHIUploadBatch', () => {
     it('snapshots and merges adjacent buffer updates before flushing', async () => {

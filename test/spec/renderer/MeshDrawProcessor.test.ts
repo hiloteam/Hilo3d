@@ -22,8 +22,8 @@ import Color from '../../../src/math/Color';
 import Matrix4 from '../../../src/math/Matrix4';
 import Vector3 from '../../../src/math/Vector3';
 import type RendererCore from '../../../src/render/RendererCore';
-import { RenderFrame } from '../../../src/render/frame/RenderFrame';
-import { createRenderFrameContext } from '../../../src/render/frame/RenderFrameContext';
+import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
+import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../../../src/render/graph/RenderGraphExecutor';
 import { ForwardRenderer } from '../../../src/render/renderer/ForwardRenderer';
 import { externalTextureBindingRegistry } from '../../../src/render/renderer/ExternalTextureBindingRegistry';
@@ -61,7 +61,7 @@ import {
     type FakeRHIBuffer,
     type FakeRHIDevice,
     type FakeRHITexture
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 const VERTEX_SOURCE = `#version 300 es
 in vec3 position;
@@ -154,7 +154,7 @@ interface ProcessorFixture {
     readonly backend: FakeRHIBackend;
     readonly device: FakeRHIDevice;
     readonly renderer: RendererCore;
-    readonly frame: RenderFrame;
+    readonly frame: RenderGraphFrame;
     readonly processor: MeshDrawProcessor;
 }
 
@@ -507,7 +507,7 @@ function createContext(
     device = fixture.device,
     overrides: MeshFrameSemanticOverrides = {}
 ) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer: fixture.renderer,
         rhi: device,
         frameIndex,
@@ -523,7 +523,7 @@ async function createProcessorFixture(backend: FakeRHIBackend): Promise<Processo
     const renderer = createRenderer();
     const processor = new MeshDrawProcessor(renderer, device);
     await processor.initialize();
-    return { backend, device, renderer, frame: new RenderFrame(), processor };
+    return { backend, device, renderer, frame: new RenderGraphFrame(), processor };
 }
 
 function executeMeshFrame(
@@ -2130,13 +2130,13 @@ describe('MeshDrawProcessor concrete WebGL2 deformation path', () => {
         const calls: string[] = [];
         const device = createWebGL2RHIDevice(recordingWebGLContext(native, calls));
         const renderer = createRenderer();
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const processor = new MeshDrawProcessor(renderer, device);
         try {
             await processor.initialize();
             const { mesh } = createSkinnedMesh('uint8');
             let prepared: PreparedDraw | undefined;
-            const context = createRenderFrameContext({
+            const context = createRenderGraphFrameContext({
                 renderer,
                 rhi: device,
                 frameIndex: 1,

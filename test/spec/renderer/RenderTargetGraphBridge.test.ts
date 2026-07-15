@@ -1,8 +1,8 @@
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import LightManager from '../../../src/light/LightManager';
 import type RendererCore from '../../../src/render/RendererCore';
-import { RenderFrame } from '../../../src/render/frame/RenderFrame';
-import { createRenderFrameContext } from '../../../src/render/frame/RenderFrameContext';
+import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
+import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import { RenderGraph } from '../../../src/render/graph/RenderGraph';
 import {
     RenderTargetGraphBridge,
@@ -25,7 +25,7 @@ import {
     type FakeRHIBackend,
     type FakeRHIDevice,
     type FakeRHITexture
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function capturePassDescriptors(
     device: FakeRHIDevice,
@@ -51,7 +51,7 @@ async function finishSubmission(backend: FakeRHIBackend): Promise<void> {
 }
 
 function frameContext(device: FakeRHIDevice) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer: {} as RendererCore,
         rhi: device,
         frameIndex: 1,
@@ -788,7 +788,7 @@ describe.each([
         createTextureSpy.mockRestore();
 
         const beginFrame = vi.spyOn(device.graphicsQueue, 'beginFrame');
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         expect(() =>
             frame.execute(frameContext(device), () => {
                 resources.prepare(

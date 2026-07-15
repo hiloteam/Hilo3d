@@ -12,13 +12,13 @@ import {
     type RHIBenchmarkFixtureFrameSample,
     type RHIBenchmarkFixtureMetadata,
     type RHIBenchmarkFixtureRoundResult
-} from '../../benchmarks/rhi-v2/fixture-contract';
+} from '../../benchmarks/rhi/fixture-contract';
 import {
     RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
     RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
     type RHIBenchmarkEnvironment,
     type RHIBenchmarkManifest
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import type { RHIPhase0PreflightResult } from '../../scripts/performance/rhi-phase0-preflight';
 import {
     assembleRHIArchitectureMetrics,
@@ -52,7 +52,7 @@ import {
 
 const repositoryManifest = parseRHIBenchmarkManifest(
     JSON.parse(
-        readFileSync(new URL('../../benchmarks/rhi-v2/manifest.json', import.meta.url), 'utf8')
+        readFileSync(new URL('../../benchmarks/rhi/manifest.json', import.meta.url), 'utf8')
     ) as unknown
 );
 
@@ -186,7 +186,7 @@ function markedSamplingTree(
         samplingNode(2, '', 'markRHIAllocationFrameStart'),
         samplingNode(
             3,
-            '/test/performance/fixtures/rhi-v2-production.ts',
+            '/test/performance/fixtures/rhi-production.ts',
             'BrowserBenchmarkFixture.renderAllocationRendererBoundary',
             applicationChildren
         ),
@@ -210,7 +210,7 @@ function synchronousAllocationFrame(
     children: readonly SyntheticProfileNode[]
 ): SyntheticProfileNode {
     return profileNode(
-        '/test/performance/fixtures/rhi-v2-production.ts',
+        '/test/performance/fixtures/rhi-production.ts',
         'BrowserBenchmarkFixture.renderAllocationRendererBoundary',
         0,
         children
@@ -325,7 +325,7 @@ describe('RHI production collector', () => {
                 0,
                 0
             ]);
-        }).toThrow(/temporary 2048-byte hot-path TODO budget/u);
+        }).toThrow(/temporary 16384-byte hot-path TODO budget/u);
     });
 
     it('rejects a non-21 formal allocation request before profiler collection', () => {
@@ -358,15 +358,15 @@ describe('RHI production collector', () => {
     });
 
     it('counts complete synchronous renderer bytes but only command/draw execution as hot', () => {
-        const backend = '/src/render/rhi/backends/webgpu/WebGPUV2Commands.ts';
-        const pass = '/src/render/rhi/backends/webgpu/WebGPUV2RenderPass.ts';
+        const backend = '/src/render/rhi/backends/webgpu/WebGPUCommands.ts';
+        const pass = '/src/render/rhi/backends/webgpu/WebGPURenderPass.ts';
         const core = '/src/render/rhi/core/RHIValidation.ts';
         const profile = allocationProfile(
             profileNode('', '(root)', 0, [
                 synchronousAllocationFrame([
                     profileNode('/src/render/RendererCore.ts', 'render', 10, [
                         profileNode('/src/render/graph/RenderGraphExecutor.ts', 'execute', 11, [
-                            profileNode(backend, 'WebGPUV2Queue.beginFrame', 13, [
+                            profileNode(backend, 'WebGPUQueue.beginFrame', 13, [
                                 profileNode('', 'createCommandEncoder', 17)
                             ]),
                             profileNode(
@@ -376,7 +376,7 @@ describe('RHI production collector', () => {
                                 [
                                     profileNode(
                                         backend,
-                                        'WebGPUV2CommandContext.beginRenderPass',
+                                        'WebGPUCommandContext.beginRenderPass',
                                         23,
                                         [profileNode('', 'nativeBeginRenderPass', 29)]
                                     ),
@@ -386,24 +386,24 @@ describe('RHI production collector', () => {
                                         'PreparedDraw.execute',
                                         37,
                                         [
-                                            profileNode(pass, 'WebGPUV2RenderPass.draw', 41, [
+                                            profileNode(pass, 'WebGPURenderPass.draw', 41, [
                                                 profileNode('', 'nativeDrawHelper', 43)
                                             ])
                                         ]
                                     ),
-                                    profileNode(pass, 'WebGPUV2RenderPass.end', 47, [
+                                    profileNode(pass, 'WebGPURenderPass.end', 47, [
                                         profileNode('', 'nativePassFinalization', 53)
                                     ])
                                 ]
                             ),
-                            profileNode(backend, 'WebGPUV2Queue.endFrame', 59, [
+                            profileNode(backend, 'WebGPUQueue.endFrame', 59, [
                                 profileNode('', 'nativeEncoderFinish', 61)
                             ])
                         ]),
-                        profileNode(backend, 'WebGPUV2CommandContext.copyBufferToBuffer', 73, [
+                        profileNode(backend, 'WebGPUCommandContext.copyBufferToBuffer', 73, [
                             profileNode(core, 'validateRHICopyBufferToBuffer', 79)
                         ]),
-                        profileNode(backend, 'WebGPUV2Device.createBuffer', 83)
+                        profileNode(backend, 'WebGPUDevice.createBuffer', 83)
                     ])
                 ]),
                 profileNode(backend, 'releaseSubmissionReferences', 67, [
@@ -419,20 +419,20 @@ describe('RHI production collector', () => {
     });
 
     it('does not turn broad executor, resource, or lifecycle stacks into hot allocations', () => {
-        const backend = '/src/render/rhi/backends/webgpu/WebGPUV2Queue.ts';
+        const backend = '/src/render/rhi/backends/webgpu/WebGPUQueue.ts';
         const profile = allocationProfile(
             profileNode('', '(root)', 0, [
                 synchronousAllocationFrame([
                     profileNode('/src/render/graph/RenderGraphExecutor.ts', 'execute', 3, [
-                        profileNode(backend, 'WebGPUV2Queue.beginFrame', 5, [
+                        profileNode(backend, 'WebGPUQueue.beginFrame', 5, [
                             profileNode('', 'createCommandEncoder', 7)
                         ]),
-                        profileNode(backend, 'WebGPUV2Queue.endFrame', 11, [
+                        profileNode(backend, 'WebGPUQueue.endFrame', 11, [
                             profileNode('', 'finish', 13)
                         ]),
                         profileNode(
-                            '/src/render/rhi/backends/webgpu/WebGPUV2Resources.ts',
-                            'WebGPUV2Device.createBuffer',
+                            '/src/render/rhi/backends/webgpu/WebGPUResources.ts',
+                            'WebGPUDevice.createBuffer',
                             17
                         )
                     ])
@@ -511,7 +511,7 @@ describe('RHI production collector', () => {
 
     it('ignores hot-looking asynchronous siblings outside the synchronous fixture root', () => {
         const preparedDraw = '/src/render/renderer/PreparedDraw.ts';
-        const backend = '/src/render/rhi/backends/webgpu/WebGPUV2RenderPass.ts';
+        const backend = '/src/render/rhi/backends/webgpu/WebGPURenderPass.ts';
         const profile = allocationProfile(
             profileNode('', '(root)', 0, [
                 synchronousAllocationFrame([
@@ -522,7 +522,7 @@ describe('RHI production collector', () => {
                 profileNode(preparedDraw, 'PreparedDraw.execute', 5, [
                     profileNode('', 'asynchronousPreparedDrawHelper', 7)
                 ]),
-                profileNode(backend, 'WebGPUV2RenderPass.draw', 11, [
+                profileNode(backend, 'WebGPURenderPass.draw', 11, [
                     profileNode('', 'asynchronousNativeDraw', 13)
                 ])
             ])
@@ -1074,7 +1074,7 @@ describe('RHI production collector', () => {
                         samplingNode(2, '', 'markRHIAllocationFrameStart', [
                             samplingNode(
                                 3,
-                                '/test/performance/fixtures/rhi-v2-production.ts',
+                                '/test/performance/fixtures/rhi-production.ts',
                                 'BrowserBenchmarkFixture.renderAllocationRendererBoundary'
                             )
                         ]),
@@ -1447,9 +1447,9 @@ describe('RHI production collector', () => {
         const preflight: RHIPhase0PreflightResult = {
             manifest,
             environment: environment(manifest),
-            productionFixturePath: '/repo/test/performance/fixtures/rhi-v2-production.html',
-            productionFixtureRelativePath: 'test/performance/fixtures/rhi-v2-production.html',
-            productionFixtureModulePath: '/repo/test/performance/fixtures/rhi-v2-production.ts',
+            productionFixturePath: '/repo/test/performance/fixtures/rhi-production.html',
+            productionFixtureRelativePath: 'test/performance/fixtures/rhi-production.html',
+            productionFixtureModulePath: '/repo/test/performance/fixtures/rhi-production.ts',
             productionFixtureSha256: '2'.repeat(64),
             browserExecutablePath: '/audited/chromium'
         };

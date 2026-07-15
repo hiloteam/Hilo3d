@@ -4,7 +4,7 @@ import type WebGLState from '../src/render/internal/webgl2/WebGLState';
 
 /**
  * Explicit opt-in fixture for tests that still cover the rollback-only renderer implementation.
- * The global Vitest setup deliberately does not create this driver so RHI v2 remains the default
+ * The global Vitest setup deliberately does not create this driver so RHI remains the default
  * production and test path during the final legacy-removal phase.
  */
 export interface LegacyTestEnvironment {

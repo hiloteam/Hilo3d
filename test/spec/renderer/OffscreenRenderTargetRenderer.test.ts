@@ -5,12 +5,12 @@ import GeometryData from '../../../src/geometry/GeometryData';
 import LightManager from '../../../src/light/LightManager';
 import Material from '../../../src/material/Material';
 import type RendererCore from '../../../src/render/RendererCore';
-import { RenderFrame } from '../../../src/render/frame/RenderFrame';
+import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
 import type { RHIUploadBatch } from '../../../src/render/frame/RHIUploadBatch';
 import {
-    createRenderFrameContext,
-    type RenderFrameContext
-} from '../../../src/render/frame/RenderFrameContext';
+    createRenderGraphFrameContext,
+    type RenderGraphFrameContext
+} from '../../../src/render/frame/RenderGraphFrameContext';
 import type { MeshDrawProcessor } from '../../../src/render/renderer/MeshDrawProcessor';
 import { OffscreenRenderTargetRenderer } from '../../../src/render/renderer/OffscreenRenderTargetRenderer';
 import {
@@ -36,7 +36,7 @@ import {
     type FakeRHIBackend,
     type FakeRHIDevice,
     type FakeRHITexture
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 let nextShaderKey = 9_000;
 
@@ -47,7 +47,7 @@ function frameContext(
     width = 13,
     height = 7
 ) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer,
         rhi: device,
         frameIndex,
@@ -487,7 +487,7 @@ describe.each([
             commit: vi.fn((_submission: RHISubmission) => undefined),
             rollback: vi.fn()
         };
-        const beginFrame = vi.fn((received: RenderFrameContext, uploads: RHIUploadBatch) => {
+        const beginFrame = vi.fn((received: RenderGraphFrameContext, uploads: RHIUploadBatch) => {
             expect(received).toBe(context);
             expect(uploads).toBe(renderer.frame.uploads);
             expect(renderer.frame.active).toBe(true);
@@ -694,7 +694,7 @@ describe.each([
         const resources = new RenderTargetResourceCache(registry);
         const submissions = new SubmissionResourceTracker(registry);
         const renderer = new OffscreenRenderTargetRenderer(resources, submissions, 1);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const rendererCore = {} as RendererCore;
         const context = frameContext(device, 12, rendererCore, 4, 4);
         const producerOwner = {};
@@ -736,7 +736,7 @@ describe.each([
         } as unknown as MeshDrawProcessor;
 
         renderer.beginComposition();
-        let execution: ReturnType<RenderFrame['execute']>;
+        let execution: ReturnType<RenderGraphFrame['execute']>;
         try {
             execution = frame.execute(context, scope => {
                 renderer.build(

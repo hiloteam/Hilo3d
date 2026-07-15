@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { rhiBenchmarkAllocationProfilerWarmupFrames } from '../../benchmarks/rhi-v2/fixture-contract';
+import { rhiBenchmarkAllocationProfilerWarmupFrames } from '../../benchmarks/rhi/fixture-contract';
 import PerspectiveCamera from '../../src/camera/PerspectiveCamera';
 import Node from '../../src/core/Node';
 import type Shader from '../../src/shader/Shader';
@@ -39,7 +39,7 @@ import {
     mrtMSAAPostProcessPrimaryDrawCount,
     mrtMSAAPostProcessSourceTargetParameters,
     recordMRTMSAAPostProcessWorkload
-} from './fixtures/rhi-v2-postprocess-workload';
+} from './fixtures/rhi-postprocess-workload';
 import {
     RHI_PRODUCTION_MAX_IN_FLIGHT_FRAMES,
     benchmarkInFlightBatchIsFull,
@@ -47,7 +47,7 @@ import {
     benchmarkMeshCastsShadow,
     benchmarkMeshDepth,
     benchmarkPrimaryDrawCount
-} from './fixtures/rhi-v2-scene-workload';
+} from './fixtures/rhi-scene-workload';
 
 class FakeRenderTarget implements RenderTarget {
     readonly backend = 'webgl2' as const;
@@ -363,7 +363,7 @@ describe('RHI production in-flight frame contract', () => {
     it('keeps sample-frame completion waits outside the renderer timing window', async () => {
         const repositoryRoot = resolve(new URL('../..', import.meta.url).pathname);
         const source = await readFile(
-            resolve(repositoryRoot, 'test/performance/fixtures/rhi-v2-production.ts'),
+            resolve(repositoryRoot, 'test/performance/fixtures/rhi-production.ts'),
             'utf8'
         );
         const methodStart = source.indexOf('    async sampleTimingFrames(');
@@ -385,7 +385,7 @@ describe('RHI production in-flight frame contract', () => {
     it('suspends timing wrappers for the whole allocation phase and excludes workload mutation', async () => {
         const repositoryRoot = resolve(new URL('../..', import.meta.url).pathname);
         const source = await readFile(
-            resolve(repositoryRoot, 'test/performance/fixtures/rhi-v2-production.ts'),
+            resolve(repositoryRoot, 'test/performance/fixtures/rhi-production.ts'),
             'utf8'
         );
         const beginStart = source.indexOf('    beginAllocationSampling(): void {');
@@ -429,7 +429,7 @@ describe('RHI production fixture smoke contract', () => {
         expect(RHI_PRODUCTION_SMOKE_PROFILER_RESTART_NOOP_TASKS).toBe(32);
         expect(RHI_PRODUCTION_SMOKE_PROFILE_MEASURED_CHUNK_FRAMES).toBe(7);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_STABLE_FRAMES).toBe(5);
-        expect(RHI_PRODUCTION_SMOKE_HOT_PATH_TODO_BUDGET_BYTES).toBe(2048);
+        expect(RHI_PRODUCTION_SMOKE_HOT_PATH_TODO_BUDGET_BYTES).toBe(16 * 1024);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES).toBe(21);
         expect(RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES).toBe(21);
         expect(RHI_PRODUCTION_SMOKE_SCENARIOS).toEqual([

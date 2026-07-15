@@ -23,7 +23,7 @@ import {
     type RHIBenchmarkSamplingManifest,
     type RHIBenchmarkScenarioId,
     type RHIBenchmarkScenarioManifest
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import {
     deriveRHIBenchmarkBootstrapSeed,
     rhiBenchmarkPairedOrder
@@ -361,12 +361,12 @@ export function parseRHIBenchmarkManifest(value: unknown): RHIBenchmarkManifest 
         'manifest'
     );
     if (manifest['schemaVersion'] !== 2) failure('manifest.schemaVersion must equal 2');
-    if (manifest['suite'] !== 'rhi-v2') failure('manifest.suite must equal rhi-v2');
+    if (manifest['suite'] !== 'rhi') failure('manifest.suite must equal rhi');
     if (manifest['baselineArchitecture'] !== 'legacy') {
         failure('manifest.baselineArchitecture must equal legacy');
     }
-    if (manifest['candidateArchitecture'] !== 'rhi-v2') {
-        failure('manifest.candidateArchitecture must equal rhi-v2');
+    if (manifest['candidateArchitecture'] !== 'rhi') {
+        failure('manifest.candidateArchitecture must equal rhi');
     }
     if (!Array.isArray(manifest['backends'])) failure('manifest.backends must be an array');
     if (
@@ -387,9 +387,9 @@ export function parseRHIBenchmarkManifest(value: unknown): RHIBenchmarkManifest 
     }
     return {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         baselineArchitecture: 'legacy',
-        candidateArchitecture: 'rhi-v2',
+        candidateArchitecture: 'rhi',
         backends: RHI_BENCHMARK_BACKENDS,
         sampling: parseSampling(manifest['sampling']),
         rig: parseRig(manifest['rig']),
@@ -806,7 +806,7 @@ function parseBaseline(value: unknown, manifest: RHIBenchmarkManifest): RHIBench
         'baseline'
     );
     if (baseline['schemaVersion'] !== 2) failure('baseline.schemaVersion must equal 2');
-    if (baseline['suite'] !== 'rhi-v2') failure('baseline.suite must equal rhi-v2');
+    if (baseline['suite'] !== 'rhi') failure('baseline.suite must equal rhi');
     if (baseline['architecture'] !== manifest.baselineArchitecture) {
         failure('baseline architecture must equal legacy');
     }
@@ -822,7 +822,7 @@ function parseBaseline(value: unknown, manifest: RHIBenchmarkManifest): RHIBench
     );
     return {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         architecture: 'legacy',
         manifestSha256: sha256Value(baseline['manifestSha256'], 'baseline.manifestSha256'),
         commitSha,
@@ -892,7 +892,7 @@ async function main(): Promise<void> {
     const summaryPath = resolve(summaryArgument);
     const manifestPath = resolve(
         process.argv[3] ??
-            fileURLToPath(new URL('../../benchmarks/rhi-v2/manifest.json', import.meta.url))
+            fileURLToPath(new URL('../../benchmarks/rhi/manifest.json', import.meta.url))
     );
     const [manifestSource, summarySource] = await Promise.all([
         readFile(manifestPath, 'utf8'),

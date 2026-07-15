@@ -24,7 +24,7 @@ import {
     type RHIBenchmarkRawRoundResult,
     type RHIBenchmarkRoundMetrics,
     type RendererArchitecture
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import { auditedRHIBenchmarkCommit } from './collect-rhi-benchmark';
 import {
     aggregateRHIBenchmarkRoundValues,
@@ -143,7 +143,7 @@ function summarizePairedRound(
     round: RHIBenchmarkRawRoundResult
 ): SummarizedPairedRound {
     const summarized: Partial<Record<RendererArchitecture, RHIBenchmarkRoundMetrics>> = {};
-    for (const architecture of ['legacy', 'rhi-v2'] as const) {
+    for (const architecture of ['legacy', 'rhi'] as const) {
         const metrics: Partial<Record<RHIBenchmarkMetric, RHIBenchmarkDistribution>> = {};
         for (const metric of RHI_BENCHMARK_METRICS) {
             metrics[metric] = metricDistribution(
@@ -185,7 +185,7 @@ function pairedSignificanceGate(
         direction: result.direction,
         statistic: result.statistic,
         reference: 'paired-legacy',
-        comparison: 'rhi-v2',
+        comparison: 'rhi',
         pairCount: result.pairCount,
         referenceValue: result.baselineValue,
         comparisonValue: result.candidateValue,
@@ -249,7 +249,7 @@ function evaluatePairedSignificance(
         metric,
         statistic,
         baseline: pairedValues(rounds, 'legacy', metric, statistic),
-        candidate: pairedValues(rounds, 'rhi-v2', metric, statistic),
+        candidate: pairedValues(rounds, 'rhi', metric, statistic),
         seed: deriveRHIBenchmarkBootstrapSeed(
             manifest.sampling.bootstrapSeed,
             scenarioId,
@@ -290,7 +290,7 @@ function frozenMetric(
 function evaluateFrozenHardCap(
     id: string,
     kind: 'candidate-hard-cap' | 'legacy-drift-hard-cap',
-    comparison: 'rhi-v2' | 'current-legacy',
+    comparison: 'rhi' | 'current-legacy',
     hardCap: RHIBenchmarkHardCap,
     referenceValue: number,
     comparisonValue: number
@@ -321,7 +321,7 @@ function parityRound(
     round: RHIBenchmarkRawRoundResult
 ): RHIBenchmarkCandidateParityRound {
     const legacy = round.results.legacy;
-    const candidate = round.results['rhi-v2'];
+    const candidate = round.results['rhi'];
     const drawCountPassed =
         legacy.observedDrawCount === expectedDrawCount &&
         candidate.observedDrawCount === expectedDrawCount &&
@@ -409,10 +409,10 @@ function evaluateCase(
             evaluateFrozenHardCap(
                 hardCap.id,
                 'candidate-hard-cap',
-                'rhi-v2',
+                'rhi',
                 hardCap,
                 referenceValue,
-                aggregateMetric(summarizedRounds, 'rhi-v2', hardCap)
+                aggregateMetric(summarizedRounds, 'rhi', hardCap)
             ),
             evaluateFrozenHardCap(
                 `legacy-drift:${hardCap.id}`,
@@ -455,12 +455,12 @@ export function buildRHICandidateGateResult(
     const failedGateCount = gateCount - passedGateCount;
     const result: RHIBenchmarkCandidateGateResult = {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         kind: 'candidate-gate',
         scope: 'performance-and-pixel',
         recoveryGate: 'not-covered-requires-runtime-suite',
         baselineArchitecture: 'legacy',
-        candidateArchitecture: 'rhi-v2',
+        candidateArchitecture: 'rhi',
         manifestSha256: options.pairedRaw.manifestSha256,
         environment: options.environment,
         frozenBaseline: options.frozenBaseline,
@@ -622,7 +622,7 @@ export async function resolveRHICandidateOutputPaths(
     markdownPath: string
 ): Promise<RHICandidateOutputPaths> {
     const canonicalRepositoryRoot = await realpath(resolve(repositoryRoot));
-    const baselineRoot = resolve(canonicalRepositoryRoot, 'benchmarks/rhi-v2/baselines');
+    const baselineRoot = resolve(canonicalRepositoryRoot, 'benchmarks/rhi/baselines');
     const resolvedJson = resolveRepositoryPath(canonicalRepositoryRoot, jsonPath);
     const resolvedMarkdown = resolveRepositoryPath(canonicalRepositoryRoot, markdownPath);
     const [canonicalJson, canonicalMarkdown] = await Promise.all([
@@ -650,7 +650,7 @@ export async function resolveRHICandidateBaselinePaths(
     frozenSummaryPath: string
 ): Promise<RHICandidateBaselinePaths> {
     const canonicalRepositoryRoot = await realpath(resolve(repositoryRoot));
-    const baselineRoot = resolve(canonicalRepositoryRoot, 'benchmarks/rhi-v2/baselines');
+    const baselineRoot = resolve(canonicalRepositoryRoot, 'benchmarks/rhi/baselines');
     const baselineDirectory = resolve(baselineRoot, rigProfile);
     const child = relative(baselineRoot, baselineDirectory);
     if (child === '' || child === '..' || child.startsWith(`..${sep}`) || isAbsolute(child)) {
@@ -775,7 +775,7 @@ async function main(): Promise<void> {
         );
     }
     const repositoryRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
-    const manifestPath = resolve(repositoryRoot, 'benchmarks/rhi-v2/manifest.json');
+    const manifestPath = resolve(repositoryRoot, 'benchmarks/rhi/manifest.json');
     const [manifestSource, environmentValue] = await Promise.all([
         readFile(manifestPath, 'utf8'),
         readRHIPhase0EnvironmentFile()

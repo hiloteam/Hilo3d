@@ -1,6 +1,6 @@
 import type { RHIUploadBatch } from '../frame/RHIUploadBatch';
-import { RenderFrame, type RenderFrameBuildScope } from '../frame/RenderFrame';
-import type { RenderFrameContext } from '../frame/RenderFrameContext';
+import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
+import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
 import type { RGPassHandle } from '../graph/RenderGraphResource';
 import type { ExternalTextureGraphDependency } from './ExternalTextureBindingRegistry';
@@ -16,8 +16,8 @@ import { ShadowPassTemplate, SharedDrawPassParameters } from './passes';
 const EMPTY_DRAWS: readonly PreparedDraw[] = Object.freeze([]);
 
 export interface ShadowAtlasSlicePreparer<Owner extends object = object> {
-    /** Enlist mesh/buffer caches once in the same RenderFrame transaction. */
-    begin?(context: RenderFrameContext, uploads: RHIUploadBatch, frameStarted?: boolean): void;
+    /** Enlist mesh/buffer caches once in the same RenderGraphFrame transaction. */
+    begin?(context: RenderGraphFrameContext, uploads: RHIUploadBatch, frameStarted?: boolean): void;
     /** Return draws for this exact atlas slice. The returned storage is consumed immediately. */
     prepare(slice: Readonly<ShadowAtlasSlice<Owner>>): readonly PreparedDraw[];
     /** Current-slice public render-target inputs collected during `prepare()`. */
@@ -41,7 +41,7 @@ export interface ShadowAtlasRenderOptions<Owner extends object = object> {
  * WebGPU deferred execution the same observable pass ordering.
  */
 export class ShadowAtlasRenderer<Owner extends object = object> {
-    readonly frame: RenderFrame;
+    readonly frame: RenderGraphFrame;
     readonly resourceUses: FrameResourceUseTracker;
     readonly submissions: SubmissionResourceTracker;
     readonly #passes: SharedDrawPassParameters[] = [];
@@ -62,7 +62,7 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
         if (!Number.isSafeInteger(initialDrawCapacity) || initialDrawCapacity < 0) {
             throw new RangeError('Shadow renderer draw capacity must be a non-negative integer');
         }
-        this.frame = new RenderFrame(initialArenaCapacity);
+        this.frame = new RenderGraphFrame(initialArenaCapacity);
         this.resourceUses = new FrameResourceUseTracker(registry);
         this.submissions = new SubmissionResourceTracker(registry);
         for (let index = 0; index < initialSliceCapacity; index += 1) {
@@ -77,7 +77,7 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
     }
 
     render(
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         atlas: Readonly<ShadowAtlasResourceRecord>,
         plan: Readonly<ShadowAtlasPlan<Owner>>,
         options: Readonly<ShadowAtlasRenderOptions<Owner>> = {}
@@ -107,8 +107,8 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
 
     /** Add the complete atlas pass sequence to a caller-owned application graph. */
     build(
-        scope: RenderFrameBuildScope,
-        context: RenderFrameContext,
+        scope: RenderGraphFrameBuildScope,
+        context: RenderGraphFrameContext,
         atlas: Readonly<ShadowAtlasResourceRecord>,
         plan: Readonly<ShadowAtlasPlan<Owner>>,
         options: Readonly<ShadowAtlasRenderOptions<Owner>> = {},
@@ -206,7 +206,7 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
     }
 
     private validateInputs(
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         atlas: Readonly<ShadowAtlasResourceRecord>,
         plan: Readonly<ShadowAtlasPlan<Owner>>,
         options: Readonly<ShadowAtlasRenderOptions<Owner>>

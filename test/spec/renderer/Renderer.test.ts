@@ -37,8 +37,8 @@ vi.mock('../../../src/render/rhi/RHIFactory', async importOriginal => {
 const activeRenderers: Renderer[] = [];
 
 function rhiDevice(renderer: Renderer): RHIDevice {
-    const extension = renderer.getExtension('rhi-v2') as { readonly device?: RHIDevice } | null;
-    if (extension?.device === undefined) throw new Error('Renderer RHI v2 device is unavailable');
+    const extension = renderer.getExtension('rhi') as { readonly device?: RHIDevice } | null;
+    if (extension?.device === undefined) throw new Error('Renderer RHI device is unavailable');
     return extension.device;
 }
 
@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe('Renderer public entry point', () => {
-    it('returns the shared RHI v2 renderer directly behind the unified contract', async () => {
+    it('returns the shared RHI renderer directly behind the unified contract', async () => {
         const renderer = new Renderer<'webgl2'>({
             backend: 'webgl2',
             domElement: document.createElement('canvas'),
@@ -66,7 +66,7 @@ describe('Renderer public entry point', () => {
             className: 'Renderer',
             isReady: true
         });
-        const extension = renderer.getExtension('rhi-v2');
+        const extension = renderer.getExtension('rhi');
         expect(extension).toMatchObject({
             device: { backend: 'webgl2' },
             surface: { state: 'configured' },
@@ -112,7 +112,7 @@ describe('Renderer public entry point', () => {
 
         expect(rhiSupportControl.calls).toHaveBeenCalledOnce();
         expect(renderer.backend).toBe('webgl2');
-        expect(renderer.getExtension('rhi-v2')).toMatchObject({
+        expect(renderer.getExtension('rhi')).toMatchObject({
             device: { backend: 'webgl2' }
         });
         expect(renderer.getExtension('webgl2-native')).toMatchObject({

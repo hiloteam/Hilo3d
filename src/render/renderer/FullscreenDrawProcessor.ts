@@ -1,7 +1,7 @@
 import type Material from '../../material/Material';
 import type Shader from '../../shader/Shader';
 import type { RHIUploadBatch } from '../frame/RHIUploadBatch';
-import type { RenderFrameContext } from '../frame/RenderFrameContext';
+import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RHIBuffer, RHISampler, RHISubmission } from '../rhi/core';
 import { FrameResourceUseTracker } from './FrameResourceUseTracker';
 import { PipelineResourceCache, type PipelineResourceRecord } from './PipelineResourceCache';
@@ -118,7 +118,7 @@ export class FullscreenDrawProcessor {
         if (this.registry.deviceBackend === 'webgpu') await this.compiler.initialize();
     }
 
-    beginFrame(context: RenderFrameContext, uploads: RHIUploadBatch): void {
+    beginFrame(context: RenderGraphFrameContext, uploads: RHIUploadBatch): void {
         this.assertAlive();
         if (
             context.rhi.id !== this.registry.deviceId ||

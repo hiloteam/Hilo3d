@@ -102,7 +102,7 @@ describe('render hot-path architecture', () => {
         ).toEqual([]);
     });
 
-    it('constructs and returns the shared RHI v2 driver instead of a render facade', () => {
+    it('constructs and returns the shared RHI driver instead of a render facade', () => {
         const renderer = sourceAt('/render/Renderer.ts');
         const factory = sourceAt('/render/internal/RendererFactory.ts');
         expect(factory).toMatch(/from\s+['"]\.\/SharedRendererDriver['"]/u);
@@ -133,14 +133,14 @@ describe('render hot-path architecture', () => {
         );
     });
 
-    it('keeps the v2 factory primary and the migration factory explicitly legacy', () => {
+    it('keeps the RHI factory primary and the migration factory explicitly legacy', () => {
         const factory = sourceAt('/render/rhi/RHIFactory.ts');
         const legacyFactory = sourceAt('/render/rhi/legacy/RHIFactory.ts');
         const webglDriver = sourceAt('/render/internal/webgl2/WebGL2Driver.ts');
         const webgpuDriver = sourceAt('/render/internal/webgpu/WebGPUDriver.ts');
 
         expect(factory).toContain('createWebGL2RHIDevice(');
-        expect(factory).toContain('createWebGPUV2Device(');
+        expect(factory).toContain('createWebGPUDevice(');
         expect(factory).not.toMatch(/from\s+['"]\.\/(?:webgl2|webgpu)\//u);
         expect(factory).not.toMatch(/new\s+Proxy\s*\(/u);
 

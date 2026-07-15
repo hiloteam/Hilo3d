@@ -4520,6 +4520,9 @@ export class Renderer<Backend extends RendererBackend = RendererBackend> impleme
 }
 
 // @public
+export type RendererAdapterPowerPreference = 'low-power' | 'high-performance';
+
+// @public
 export interface RendererAutoOptions extends RendererCommonOptions, RendererSupportOptions {
     // (undocumented)
     backend?: 'auto';
@@ -4570,6 +4573,9 @@ export interface RendererCommonOptions {
     // (undocumented)
     width?: number;
 }
+
+// @public
+export type RendererContextPowerPreference = 'default' | RendererAdapterPowerPreference;
 
 // @public
 export interface RendererContract {
@@ -4641,6 +4647,9 @@ export type RendererCreateOptions = RendererExplicitOptions | RendererAutoOption
 export type RendererExplicitOptions = RendererOptions;
 
 // @public
+export type RendererFeatureName = 'texture-compression-bc' | 'texture-compression-etc2' | 'texture-compression-astc' | 'timestamp-query' | 'depth32float-stencil8' | 'float32-filterable' | 'float32-blendable';
+
+// @public
 export interface RendererFrame {
     // (undocumented)
     readonly backend: RendererBackend;
@@ -4702,9 +4711,9 @@ export interface RendererSupportOptions {
     // (undocumented)
     forceFallbackAdapter?: boolean;
     // (undocumented)
-    powerPreference?: GPUPowerPreference;
+    powerPreference?: RendererAdapterPowerPreference;
     // (undocumented)
-    requiredFeatures?: readonly GPUFeatureName[];
+    requiredFeatures?: readonly RendererFeatureName[];
     // (undocumented)
     requiredLimits?: Readonly<Record<string, number>>;
 }
@@ -4717,7 +4726,7 @@ export interface RendererWebGL2Options extends RendererCommonOptions {
     // (undocumented)
     backend?: 'webgl2';
     // (undocumented)
-    powerPreference?: WebGLPowerPreference;
+    powerPreference?: RendererContextPowerPreference;
     // (undocumented)
     preserveDrawingBuffer?: boolean;
 }
@@ -4730,7 +4739,7 @@ export interface RendererWebGPUOptions extends RendererCommonOptions, RendererSu
 }
 
 // @public
-export interface RenderFramePlan {
+export interface RenderGraphFramePlan {
     // (undocumented)
     readonly lights: readonly Light[];
     // (undocumented)

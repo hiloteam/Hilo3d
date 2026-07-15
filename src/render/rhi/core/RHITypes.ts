@@ -1,5 +1,5 @@
 /**
- * Backend-neutral scalar, flag, and value types shared by the RHI v2 core.
+ * Backend-neutral scalar, flag, and value types shared by the RHI core.
  *
  * Native WebGL and WebGPU types deliberately do not cross this boundary.
  *

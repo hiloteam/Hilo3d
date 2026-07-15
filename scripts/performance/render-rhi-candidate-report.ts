@@ -1,7 +1,7 @@
 import type {
     RHIBenchmarkCandidateGateResult,
     RHIBenchmarkCandidateMetricGate
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 
 function markdownCell(value: string): string {
     return value.replaceAll('|', '\\|').replaceAll('\n', ' ');
@@ -38,7 +38,7 @@ function pairedConfidenceCell(gate: RHIBenchmarkCandidateMetricGate): string {
 /** Render only values from a checked candidate-gate result. */
 export function renderRHICandidateGateReport(result: RHIBenchmarkCandidateGateResult): string {
     const lines = [
-        '# RHI v2 paired candidate gate report',
+        '# RHI paired candidate gate report',
         '',
         `- Result: **${result.passed ? 'PASS' : 'FAIL'}**`,
         `- Scope: \`${result.scope}\``,
@@ -53,7 +53,7 @@ export function renderRHICandidateGateReport(result: RHIBenchmarkCandidateGateRe
         `- Paired candidate commit: \`${result.pairedCandidate.commitSha}\``,
         `- Paired candidate fixture: \`${result.pairedCandidate.productionFixtureSha256}\``,
         `- Paired raw artifact: \`${result.pairedCandidate.sha256}\``,
-        '- Paired significance reference: current-run `paired-legacy` versus same-round `rhi-v2`.',
+        '- Paired significance reference: current-run `paired-legacy` versus same-round `rhi`.',
         '- Hard-cap reference: immutable `frozen-legacy`; cross-time rows make no paired CI/significance claim.',
         '',
         '## Summary',

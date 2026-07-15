@@ -2,8 +2,8 @@ import Material from '../../../src/material/Material';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import LightManager from '../../../src/light/LightManager';
 import type RendererCore from '../../../src/render/RendererCore';
-import { RenderFrame } from '../../../src/render/frame/RenderFrame';
-import { createRenderFrameContext } from '../../../src/render/frame/RenderFrameContext';
+import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
+import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import { FullscreenDrawProcessor } from '../../../src/render/renderer/FullscreenDrawProcessor';
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
 import { MainPassTemplate, SharedDrawPassParameters } from '../../../src/render/renderer/passes';
@@ -15,7 +15,7 @@ import {
     FakeWebGPURHIBackend,
     type FakeRHIBackend,
     type FakeRHIDevice
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 const vertexSource = `#version 300 es
 void main() {
@@ -32,7 +32,7 @@ void main() {
 }`;
 
 function context(device: FakeRHIDevice, frameIndex: number) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer: {} as RendererCore,
         rhi: device,
         frameIndex,
@@ -60,7 +60,7 @@ describe.each([
         const registry = new ResourceRegistry(device);
         const processor = new FullscreenDrawProcessor(registry);
         await processor.initialize();
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const shader = new Shader({ vs: vertexSource, fs: fragmentSource });
         const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
         const owner = {};
@@ -134,7 +134,7 @@ describe.each([
         const registry = new ResourceRegistry(device);
         const processor = new FullscreenDrawProcessor(registry);
         await processor.initialize();
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
         const beginFrame = vi.spyOn(device.graphicsQueue, 'beginFrame');
         const invalidShader = new Shader({

@@ -6,9 +6,9 @@ import Material from '../../../src/material/Material';
 import type RendererCore from '../../../src/render/RendererCore';
 import type { RHIUploadBatch } from '../../../src/render/frame/RHIUploadBatch';
 import {
-    createRenderFrameContext,
-    type RenderFrameContext
-} from '../../../src/render/frame/RenderFrameContext';
+    createRenderGraphFrameContext,
+    type RenderGraphFrameContext
+} from '../../../src/render/frame/RenderGraphFrameContext';
 import { ForwardRenderer } from '../../../src/render/renderer/ForwardRenderer';
 import { MeshDrawProcessor } from '../../../src/render/renderer/MeshDrawProcessor';
 import {
@@ -28,10 +28,10 @@ import {
     FakeWebGPURHIBackend,
     type FakeRHIBackend,
     type FakeRHIDevice
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function frameContext(device: FakeRHIDevice, frameIndex = 0, renderer = {} as RendererCore) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer,
         rhi: device,
         frameIndex,
@@ -227,7 +227,7 @@ describe.each([
         backend.destroy();
     });
 
-    it('prepares opaque and transparent Mesh inputs inside the RenderFrame transaction', async () => {
+    it('prepares opaque and transparent Mesh inputs inside the RenderGraphFrame transaction', async () => {
         const backend = createBackend();
         const device = backend.createDevice();
         const surface = configuredSurface(device);
@@ -238,12 +238,14 @@ describe.each([
         const opaqueDraw = preparedDraw(device, 'rgba8unorm', 4, 'depth24plus');
         const transparentDraw = preparedDraw(device, 'rgba8unorm', 4, 'depth24plus', 6);
         const calls: string[] = [];
-        const beginFrame = vi.fn((receivedContext: RenderFrameContext, uploads: RHIUploadBatch) => {
-            expect(renderer.frame.active).toBe(true);
-            expect(receivedContext).toBe(context);
-            expect(uploads).toBe(renderer.frame.uploads);
-            calls.push('begin');
-        });
+        const beginFrame = vi.fn(
+            (receivedContext: RenderGraphFrameContext, uploads: RHIUploadBatch) => {
+                expect(renderer.frame.active).toBe(true);
+                expect(receivedContext).toBe(context);
+                expect(uploads).toBe(renderer.frame.uploads);
+                calls.push('begin');
+            }
+        );
         const prepare = vi.fn((mesh: Mesh) => {
             expect(renderer.frame.active).toBe(true);
             calls.push(mesh === opaqueMesh ? 'opaque' : 'transparent');
@@ -497,7 +499,7 @@ describe.each([
         const instanced = classifiedMesh('instanced', 0, false, true);
         const rollback = vi.fn();
         const meshProcessor = {
-            beginFrame: vi.fn((_context: RenderFrameContext, uploads: RHIUploadBatch) => {
+            beginFrame: vi.fn((_context: RenderGraphFrameContext, uploads: RHIUploadBatch) => {
                 uploads.enlist({ prepareCommit: vi.fn(), commit: vi.fn(), rollback });
             }),
             prepare: vi.fn(),
@@ -536,7 +538,7 @@ describe.each([
             rollback
         };
         const meshProcessor = {
-            beginFrame: vi.fn((_context: RenderFrameContext, uploads: RHIUploadBatch) => {
+            beginFrame: vi.fn((_context: RenderGraphFrameContext, uploads: RHIUploadBatch) => {
                 uploads.enlist(participant);
             }),
             prepare: vi.fn(() => {

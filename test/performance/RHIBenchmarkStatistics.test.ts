@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RHI_BENCHMARK_HARD_CAPS } from '../../benchmarks/rhi-v2/result-schema';
+import { RHI_BENCHMARK_HARD_CAPS } from '../../benchmarks/rhi/result-schema';
 import {
     bootstrapRHIMedianConfidenceInterval,
     deriveRHIBenchmarkBootstrapSeed,
@@ -54,7 +54,7 @@ describe('RHI benchmark deterministic statistics', () => {
             rhiBenchmarkPairedOrder(9, 'case', 'webgl2', 1)
         );
         expect(new Set(rhiBenchmarkPairedOrder(9, 'case', 'webgl2', 1))).toEqual(
-            new Set(['legacy', 'rhi-v2'])
+            new Set(['legacy', 'rhi'])
         );
     });
 

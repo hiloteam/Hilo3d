@@ -2,7 +2,7 @@ import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import LightManager from '../../../src/light/LightManager';
 import Material from '../../../src/material/Material';
 import type RendererCore from '../../../src/render/RendererCore';
-import { createRenderFrameContext } from '../../../src/render/frame/RenderFrameContext';
+import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import {
     PostProcessRenderer,
     type PostProcessStep
@@ -17,7 +17,7 @@ import {
     FakeWebGPURHIBackend,
     type FakeRHIBackend,
     type FakeRHIDevice
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 const vertexSource = `#version 300 es
 out vec2 v_uv;
@@ -36,7 +36,7 @@ void main() {
 }`;
 
 function context(device: FakeRHIDevice, frameIndex: number) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer: {} as RendererCore,
         rhi: device,
         frameIndex,

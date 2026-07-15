@@ -1,8 +1,8 @@
 import type Camera from '../../camera/Camera';
 import Mesh from '../../core/Mesh';
 import Material from '../../material/Material';
-import type { RHIUploadBatch } from '../frame/RHIUploadBatch';
-import type { RenderFrameContext } from '../frame/RenderFrameContext';
+import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
+import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RHIMeshDrawTargetDescriptor } from './RHIDescriptorMapping';
 import type { PreparedDraw } from './PreparedDraw';
 import type { ShadowAtlasSceneLight, ShadowAtlasScenePlan } from './ShadowAtlasSceneAdapter';
@@ -50,12 +50,15 @@ function normalizeShadowMaterial(candidate: Material): Material {
  * Every camera/mesh pair owns a distinct draw and bind group so graph construction cannot alias
  * the final slice's CameraBlock across earlier passes.
  */
-export class ShadowAtlasMeshPreparer implements ShadowAtlasSlicePreparer<ShadowAtlasSceneLight> {
+export class ShadowAtlasMeshPreparer
+    implements ShadowAtlasSlicePreparer<ShadowAtlasSceneLight>, RHIUploadBatchParticipant
+{
     readonly #draws: PreparedDraw[] = [];
     readonly #sceneSlicesByPhysicalIndex: ShadowAtlasScenePlan['slices'][number][] = [];
     readonly #ownersByCamera = new Map<Camera, Map<Mesh, object>>();
     readonly #ownerRecords = new Map<object, ShadowOwnerRecord>();
     readonly #usedOwners = new Set<object>();
+    readonly #pendingDetachOwners = new Set<object>();
     #materials = new WeakMap<Material, ShadowMaterialRecord>();
     #plan: Readonly<ShadowAtlasScenePlan> | null = null;
     #meshes: readonly Mesh[] = Object.freeze([]);
@@ -93,7 +96,7 @@ export class ShadowAtlasMeshPreparer implements ShadowAtlasSlicePreparer<ShadowA
         });
     }
 
-    begin(context: RenderFrameContext, uploads: RHIUploadBatch, frameStarted = false): void {
+    begin(context: RenderGraphFrameContext, uploads: RHIUploadBatch, frameStarted = false): void {
         this.assertAlive();
         if (this.#active) throw new Error('Nested shadow mesh preparation is not allowed');
         if (this.#plan === null || this.#target === null) {
@@ -101,6 +104,7 @@ export class ShadowAtlasMeshPreparer implements ShadowAtlasSlicePreparer<ShadowA
         }
         this.#usedOwners.clear();
         if (!frameStarted) this.processor.beginFrame(context, uploads);
+        uploads.enlist(this);
         this.#active = true;
     }
 
@@ -120,6 +124,7 @@ export class ShadowAtlasMeshPreparer implements ShadowAtlasSlicePreparer<ShadowA
             if (!(mesh instanceof Mesh) || sourceMaterial?.castShadows !== true) continue;
             const owner = this.ownerFor(sceneSlice.camera, mesh);
             this.#usedOwners.add(owner);
+            this.#pendingDetachOwners.delete(owner);
             this.#draws.push(
                 this.processor.prepareShadow(
                     owner,
@@ -135,15 +140,36 @@ export class ShadowAtlasMeshPreparer implements ShadowAtlasSlicePreparer<ShadowA
     end(): void {
         if (!this.#active) return;
         this.#active = false;
-        for (const [owner, record] of this.#ownerRecords) {
+        for (const owner of this.#ownerRecords.keys()) {
             if (this.#usedOwners.has(owner)) continue;
-            this.processor.detachShadowDraw(owner);
-            this.#ownerRecords.delete(owner);
-            const byMesh = this.#ownersByCamera.get(record.camera);
-            byMesh?.delete(record.mesh);
-            if (byMesh?.size === 0) this.#ownersByCamera.delete(record.camera);
+            this.#pendingDetachOwners.add(owner);
         }
         this.#usedOwners.clear();
+    }
+
+    /** Stage every cached slice/mesh owner for release after the active frame commits. */
+    retireAll(uploads: RHIUploadBatch): void {
+        this.assertAlive();
+        if (this.#active) throw new Error('Cannot retire owners from an active shadow preparer');
+        if (!this.processor.active) {
+            throw new Error('Shadow owner retirement requires an active mesh frame');
+        }
+        uploads.enlist(this);
+        for (const owner of this.#ownerRecords.keys()) this.#pendingDetachOwners.add(owner);
+    }
+
+    prepareCommit(): void {
+        if (this.#active) throw new Error('Cannot commit an active shadow mesh preparer');
+    }
+
+    /** Child resource caches commit first, making processor-owned detach legal here. */
+    commit(): void {
+        this.flushPendingDetachOwners();
+    }
+
+    /** Failed frames keep prior owner records so the next frame can reuse or retire them. */
+    rollback(): void {
+        // The child caches roll back after this participant; defer cleanup to a later commit.
     }
 
     destroy(): void {
@@ -153,6 +179,7 @@ export class ShadowAtlasMeshPreparer implements ShadowAtlasSlicePreparer<ShadowA
         this.#ownerRecords.clear();
         this.#ownersByCamera.clear();
         this.#usedOwners.clear();
+        this.#pendingDetachOwners.clear();
         this.#sceneSlicesByPhysicalIndex.length = 0;
         this.#draws.length = 0;
         this.#materials = new WeakMap();
@@ -202,6 +229,32 @@ export class ShadowAtlasMeshPreparer implements ShadowAtlasSlicePreparer<ShadowA
             record.material = normalizeShadowMaterial(candidate);
         }
         return record.material;
+    }
+
+    private flushPendingDetachOwners(): void {
+        let detachError: unknown;
+        for (const owner of this.#pendingDetachOwners) {
+            const record = this.#ownerRecords.get(owner);
+            if (record === undefined) {
+                this.#pendingDetachOwners.delete(owner);
+                continue;
+            }
+            try {
+                this.processor.detachShadowDraw(owner);
+                this.#pendingDetachOwners.delete(owner);
+                this.#ownerRecords.delete(owner);
+                const byMesh = this.#ownersByCamera.get(record.camera);
+                byMesh?.delete(record.mesh);
+                if (byMesh?.size === 0) this.#ownersByCamera.delete(record.camera);
+            } catch (error) {
+                detachError ??= error;
+            }
+        }
+        if (detachError !== undefined) {
+            throw detachError instanceof Error
+                ? detachError
+                : new Error('Shadow mesh owner detach failed');
+        }
     }
 
     private assertAlive(): void {

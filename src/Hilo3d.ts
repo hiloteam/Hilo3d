@@ -162,7 +162,7 @@ export {
     type RendererWebGPUOptions,
     type TextureCompressionFormat
 } from './render/Renderer';
-export type { RenderFramePlan } from './render/RenderFramePlan';
+export type { RenderGraphFramePlan } from './render/RenderGraphFramePlan';
 export type {
     Resource,
     ShaderDefineValue,

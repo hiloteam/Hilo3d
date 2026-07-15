@@ -5,7 +5,7 @@ import {
 } from '../../../src/render/renderer/ShadowAtlasPlanner';
 import type { RHICapabilities } from '../../../src/render/rhi/core';
 import { describe, expect, it } from 'vitest';
-import { FakeWebGLRHIBackend, FakeWebGPURHIBackend } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGLRHIBackend, FakeWebGPURHIBackend } from '../rhi/portable/FakeRHIBackend';
 
 interface TestOwner {
     readonly name: string;

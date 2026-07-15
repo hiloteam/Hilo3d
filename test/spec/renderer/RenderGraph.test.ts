@@ -13,7 +13,7 @@ import {
     FakeWebGLRHIBackend,
     FakeWebGPURHIBackend,
     type FakeRHITextureView
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 interface AccessParams {
     readonly reads?: readonly RGTextureHandle[];

@@ -15,7 +15,7 @@ import {
     type RHIVertexBufferBindingRecord
 } from '../../../src/render/rhi/core';
 import { describe, expect, it, vi } from 'vitest';
-import { FakeWebGLRHIBackend, type FakeRHIDevice } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGLRHIBackend, type FakeRHIDevice } from '../rhi/portable/FakeRHIBackend';
 
 function revision(overrides: Partial<PreparedDrawRevision> = {}): PreparedDrawRevision {
     return {

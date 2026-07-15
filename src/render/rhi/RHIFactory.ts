@@ -4,11 +4,7 @@ import {
     type WebGL2RHIDevice
 } from './backends/webgl2';
 import { waitForWebGL2RHIContextRestored as waitForWebGL2BackendContextRestored } from './backends/webgl2/WebGL2Device';
-import {
-    createWebGPUV2Device,
-    isWebGPUV2RHIAvailable,
-    type WebGPUV2Device
-} from './backends/webgpu';
+import { createWebGPUDevice, isWebGPURHIAvailable, type WebGPUDevice } from './backends/webgpu';
 import type { RHIFeatureName, RHILimits } from './core/RHICapabilities';
 import type { RHIDevice } from './core/RHIResources';
 import type { RHIBackend, RHIPowerPreference } from './core/RHITypes';
@@ -68,7 +64,7 @@ export interface RHIDeviceCreateOptionsMap {
 
 export interface RHIDeviceImplementationMap {
     readonly webgl2: WebGL2RHIDevice;
-    readonly webgpu: WebGPUV2Device;
+    readonly webgpu: WebGPUDevice;
 }
 
 export type RHIDeviceForBackend<Backend extends RHIBackend> = RHIDeviceImplementationMap[Backend];
@@ -77,7 +73,7 @@ export type RHIDeviceCreateOptionsForBackend<Backend extends RHIBackend> =
 
 function assertBackend(value: string): asserts value is RHIBackend {
     if (value !== 'webgl2' && value !== 'webgpu') {
-        throw new TypeError(`Unsupported RHI v2 backend ${value}`);
+        throw new TypeError(`Unsupported RHI backend ${value}`);
     }
 }
 
@@ -133,7 +129,7 @@ export function constructRHIDevice(
     });
 }
 
-/** Create one concrete v2 device. Surface creation remains a separate explicit operation. */
+/** Create one concrete RHI device. Surface creation remains a separate explicit operation. */
 export async function createRHIDevice(
     backend: 'webgl2',
     options: WebGL2RHIDeviceCreateOptions
@@ -141,7 +137,7 @@ export async function createRHIDevice(
 export async function createRHIDevice(
     backend: 'webgpu',
     options?: WebGPURHIDeviceCreateOptions
-): Promise<WebGPUV2Device>;
+): Promise<WebGPUDevice>;
 export async function createRHIDevice(
     backend: string,
     options: WebGL2RHIDeviceCreateOptions | WebGPURHIDeviceCreateOptions = {}
@@ -154,7 +150,7 @@ export async function createRHIDevice(
         return constructRHIDevice('webgl2', options);
     }
     const snapshot = snapshotWebGPUOptions(options);
-    return createWebGPUV2Device(snapshot);
+    return createWebGPUDevice(snapshot);
 }
 
 /** Probe support without requesting a WebGPU device or creating any GPU resource. */
@@ -176,7 +172,7 @@ export async function isRHIBackendSupported(
         return isWebGL2RHIAvailable(options.canvas, { ...(options.context ?? {}) });
     }
     const snapshot = snapshotWebGPUOptions(options);
-    return isWebGPUV2RHIAvailable(snapshot);
+    return isWebGPURHIAvailable(snapshot);
 }
 
 /** Wait for a lost WebGL2 canvas context without exposing the native context to renderer code. */

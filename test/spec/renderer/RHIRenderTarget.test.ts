@@ -14,7 +14,7 @@ import {
     FakeWebGLRHIBackend,
     FakeWebGPURHIBackend,
     type FakeRHIBackend
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function createHost(backend: FakeRHIBackend) {
     const device = backend.createDevice();

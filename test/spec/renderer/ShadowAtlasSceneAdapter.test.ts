@@ -13,7 +13,7 @@ import {
     MAX_SPOT_LIGHTS
 } from '../../../src/render/ubo/BuiltInUniformBlocks';
 import { describe, expect, it, vi } from 'vitest';
-import { FakeWebGLRHIBackend, FakeWebGPURHIBackend } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGLRHIBackend, FakeWebGPURHIBackend } from '../rhi/portable/FakeRHIBackend';
 
 function mainCamera(): PerspectiveCamera {
     const camera = new PerspectiveCamera({ near: 0.1, far: 100, fov: 60, aspect: 1.5 });

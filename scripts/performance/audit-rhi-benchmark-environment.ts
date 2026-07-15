@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import type { RHIBenchmarkEnvironment } from '../../benchmarks/rhi-v2/result-schema';
+import type { RHIBenchmarkEnvironment } from '../../benchmarks/rhi/result-schema';
 import { detectedRHIBrowserGpuIdentity } from './rhi-playwright-collector';
 import {
     parseRHIBenchmarkManifest,
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
     const repositoryRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
     const manifest = parseRHIBenchmarkManifest(
         JSON.parse(
-            await readFile(resolve(repositoryRoot, 'benchmarks/rhi-v2/manifest.json'), 'utf8')
+            await readFile(resolve(repositoryRoot, 'benchmarks/rhi/manifest.json'), 'utf8')
         ) as unknown
     );
     const playwrightVersion = await installedPlaywrightVersion(repositoryRoot);

@@ -14,7 +14,7 @@ import {
     type RHIBenchmarkRawArtifact,
     type RHIBenchmarkRawCaptureResult,
     type RHIBenchmarkRoundMetrics
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import {
     deriveRHIBenchmarkBootstrapSeed,
     rhiBenchmarkPairedOrder,
@@ -129,8 +129,8 @@ export function verifyRHIRawBenchmarkCapture(
         ],
         'raw'
     );
-    if (raw['schemaVersion'] !== 2 || raw['suite'] !== 'rhi-v2') {
-        rawFailure('schemaVersion must be 2 and suite must be rhi-v2');
+    if (raw['schemaVersion'] !== 2 || raw['suite'] !== 'rhi') {
+        rawFailure('schemaVersion must be 2 and suite must be rhi');
     }
     if (sha256Value(raw['manifestSha256'], 'raw.manifestSha256') !== manifestSha256(manifest)) {
         rawFailure('manifest checksum mismatch');
@@ -144,7 +144,7 @@ export function verifyRHIRawBenchmarkCapture(
     const fixture = record(raw['productionFixture'], 'raw.productionFixture');
     exactKeys(fixture, ['path', 'sha256'], 'raw.productionFixture');
     if (fixture['path'] !== RHI_PRODUCTION_FIXTURE_PATH) {
-        rawFailure('production fixture path is not the fixed RHI-v2 fixture');
+        rawFailure('production fixture path is not the fixed RHI fixture');
     }
     sha256Value(fixture['sha256'], 'raw.productionFixture.sha256');
     if (!Array.isArray(raw['cases'])) rawFailure('raw.cases must be an array');
@@ -191,9 +191,9 @@ export function verifyRHIRawBenchmarkCapture(
                 round['order'].length !== 2 ||
                 new Set(round['order']).size !== 2 ||
                 !round['order'].includes('legacy') ||
-                !round['order'].includes('rhi-v2')
+                !round['order'].includes('rhi')
             ) {
-                rawFailure(`${roundContext}.order must contain legacy and rhi-v2 exactly once`);
+                rawFailure(`${roundContext}.order must contain legacy and rhi exactly once`);
             }
             if (
                 canonicalRHIJson(round['order']) !==
@@ -209,8 +209,8 @@ export function verifyRHIRawBenchmarkCapture(
                 rawFailure(`${roundContext}.order differs from the deterministic seeded order`);
             }
             const results = record(round['results'], `${roundContext}.results`);
-            exactKeys(results, ['legacy', 'rhi-v2'], `${roundContext}.results`);
-            for (const architecture of ['legacy', 'rhi-v2'] as const) {
+            exactKeys(results, ['legacy', 'rhi'], `${roundContext}.results`);
+            for (const architecture of ['legacy', 'rhi'] as const) {
                 const resultContext = `${roundContext}.results.${architecture}`;
                 const result = record(results[architecture], resultContext);
                 exactKeys(
@@ -283,7 +283,7 @@ export function summarizeRHIRawBenchmarkCapture(
     }
     return {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         architecture: 'legacy',
         manifestSha256: raw.manifestSha256,
         commitSha: raw.commitSha,
@@ -333,7 +333,7 @@ export function summarizeRHIRawBenchmarkCapture(
 }
 
 function outputIsBaselinePath(repositoryRoot: string, outputPath: string): boolean {
-    const baselineRoot = resolve(repositoryRoot, 'benchmarks/rhi-v2/baselines');
+    const baselineRoot = resolve(repositoryRoot, 'benchmarks/rhi/baselines');
     const child = relative(baselineRoot, resolve(outputPath));
     return child === '' || (child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child));
 }
@@ -348,7 +348,7 @@ async function main(): Promise<void> {
     if (outputIsBaselinePath(repositoryRoot, outputArgument)) {
         throw new Error('summarizer may only write temporary reports, never baseline directories');
     }
-    const manifestPath = resolve(repositoryRoot, 'benchmarks/rhi-v2/manifest.json');
+    const manifestPath = resolve(repositoryRoot, 'benchmarks/rhi/manifest.json');
     const [manifestSource, rawBytes, environmentValue] = await Promise.all([
         readFile(manifestPath, 'utf8'),
         readFile(resolve(rawArgument)),

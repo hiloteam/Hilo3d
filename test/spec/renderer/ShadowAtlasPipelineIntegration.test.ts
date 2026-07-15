@@ -15,8 +15,8 @@ import Color from '../../../src/math/Color';
 import Matrix4 from '../../../src/math/Matrix4';
 import Vector3 from '../../../src/math/Vector3';
 import type RendererCore from '../../../src/render/RendererCore';
-import { RenderFrame } from '../../../src/render/frame/RenderFrame';
-import { createRenderFrameContext } from '../../../src/render/frame/RenderFrameContext';
+import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
+import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import { ForwardRenderer } from '../../../src/render/renderer/ForwardRenderer';
 import { MeshDrawProcessor } from '../../../src/render/renderer/MeshDrawProcessor';
 import type { PreparedDraw } from '../../../src/render/renderer/PreparedDraw';
@@ -34,7 +34,7 @@ import {
     FakeWebGPURHIBackend,
     type FakeRHIBackend,
     type FakeRHIDevice
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function rendererCore(): RendererCore {
     return {
@@ -56,7 +56,7 @@ function frameContext(
     lights: LightManager,
     frameIndex: number
 ) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer,
         rhi: device,
         frameIndex,
@@ -451,11 +451,33 @@ describe.each([
             backend.executionLog.filter(command => command.startsWith('bind-group:')).length
         ).toBeGreaterThan(scenePlan.atlas.sliceCount);
 
+        const detachShadowDraw = vi.spyOn(processor, 'detachShadowDraw');
+        const replacement = new Mesh({
+            geometry: triangleGeometry(),
+            material: new BasicMaterial({
+                lightType: 'NONE',
+                castShadows: true,
+                cullFace: false
+            })
+        });
+        const churnedMeshes = [replacement, meshes[1]!, meshes[2]!];
+        preparer.configure(scenePlan, churnedMeshes);
+        const churnedShadow = shadowRenderer.render(
+            frameContext(renderer, device, camera, lights, 2),
+            atlas,
+            scenePlan.atlas,
+            { preparer }
+        );
+        expect(detachShadowDraw).toHaveBeenCalledTimes(scenePlan.atlas.sliceCount);
+        expect(processor.active).toBe(false);
+        await complete(backend, churnedShadow.submission);
+        await shadowRenderer.waitForIdle();
+
         const receiver = receiverMesh();
-        const receiverFrame = new RenderFrame();
+        const receiverFrame = new RenderGraphFrame();
         let receiverDraw: ReturnType<MeshDrawProcessor['prepare']> | undefined;
         const receiverResult = receiverFrame.execute(
-            frameContext(renderer, device, camera, lights, 2),
+            frameContext(renderer, device, camera, lights, 3),
             scope => {
                 processor.beginFrame(scope.context, scope.uploads);
                 receiverDraw = processor.prepare(receiver, {
@@ -506,9 +528,9 @@ describe.each([
         expect(stableBinding?.sampler).toBe(atlas.comparisonSampler);
 
         backend.resetExecutionLog();
-        preparer.configure(scenePlan, meshes);
+        preparer.configure(scenePlan, churnedMeshes);
         const recoveredShadow = shadowRenderer.render(
-            frameContext(renderer, device, camera, lights, 3),
+            frameContext(renderer, device, camera, lights, 4),
             atlas,
             scenePlan.atlas,
             { preparer }

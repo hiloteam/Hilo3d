@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type {
     RHIBenchmarkEnvironment,
     RHIBenchmarkManifest
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import { collectRHIRawBenchmark } from '../../scripts/performance/collect-rhi-benchmark';
 import { freezeRHIBaseline } from '../../scripts/performance/freeze-rhi-baseline';
 import {
@@ -22,7 +22,7 @@ import {
 
 const repositoryRoot = resolve(new URL('../..', import.meta.url).pathname);
 const repositoryManifestValue = JSON.parse(
-    await readFile(resolve(repositoryRoot, 'benchmarks/rhi-v2/manifest.json'), 'utf8')
+    await readFile(resolve(repositoryRoot, 'benchmarks/rhi/manifest.json'), 'utf8')
 ) as unknown;
 const BROWSER_BYTES = new TextEncoder().encode('audited chromium binary fixture');
 const BROWSER_SHA256 = sha256(BROWSER_BYTES);
@@ -119,7 +119,7 @@ describe('RHI Phase 0 mutation preflight', () => {
         const root = await temporaryRoot();
         const manifest = enrolledManifest();
         const outputPath = resolve(root, 'reports/raw.json');
-        const baselinePath = resolve(root, 'benchmarks/rhi-v2/baselines', manifest.rig.profile);
+        const baselinePath = resolve(root, 'benchmarks/rhi/baselines', manifest.rig.profile);
         let collectorCalled = false;
 
         await expect(
@@ -151,7 +151,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                     return Promise.reject(new Error('must not collect'));
                 }
             })
-        ).rejects.toThrow(/production RHI-v2 fixture is missing/u);
+        ).rejects.toThrow(/production RHI fixture is missing/u);
         expect(collectorCalled).toBe(false);
         expect(await doesNotExist(outputPath)).toBe(true);
 
@@ -166,7 +166,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                 rawBytes: new Uint8Array(),
                 destinationDirectory: baselinePath
             })
-        ).rejects.toThrow(/production RHI-v2 fixture is missing/u);
+        ).rejects.toThrow(/production RHI fixture is missing/u);
         expect(await doesNotExist(baselinePath)).toBe(true);
     });
 
@@ -257,7 +257,7 @@ describe('RHI Phase 0 mutation preflight', () => {
 
         await writeFile(
             fixturePath,
-            `<!doctype html><html ${RHI_PRODUCTION_FIXTURE_MARKER}><script type="module" src="./rhi-v2-production.ts"></script></html>`
+            `<!doctype html><html ${RHI_PRODUCTION_FIXTURE_MARKER}><script type="module" src="./rhi-production.ts"></script></html>`
         );
         const preflight = await assertRHIPhase0Preflight({
             repositoryRoot: root,
@@ -269,7 +269,7 @@ describe('RHI Phase 0 mutation preflight', () => {
         });
         expect(preflight.productionFixturePath).toBe(fixturePath);
         expect(preflight.productionFixtureSha256).toMatch(/^[a-f0-9]{64}$/u);
-        expect(await doesNotExist(resolve(root, 'benchmarks/rhi-v2/baselines'))).toBe(true);
+        expect(await doesNotExist(resolve(root, 'benchmarks/rhi/baselines'))).toBe(true);
 
         await writeFile(fixtureModulePath, 'export const revision = 2;');
         const changedFixture = await assertRHIPhase0Preflight({
@@ -305,7 +305,7 @@ describe('RHI Phase 0 mutation preflight', () => {
             )
         ]);
         expect(html).toContain(RHI_PRODUCTION_FIXTURE_MARKER);
-        expect(html).toContain('src="./rhi-v2-production.ts"');
+        expect(html).toContain('src="./rhi-production.ts"');
         expect(fixture).toContain('new WebGL2Driver');
         expect(fixture).toContain('new WebGPUDriver');
         expect(fixture).toContain('new SharedRendererDriver');

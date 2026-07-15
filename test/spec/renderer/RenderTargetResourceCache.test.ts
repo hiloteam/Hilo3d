@@ -5,7 +5,7 @@ import {
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
 import type { RHITextureDescriptor } from '../../../src/render/rhi/core';
 import { describe, expect, it, vi } from 'vitest';
-import { FakeWebGLRHIBackend, type FakeRHITexture } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGLRHIBackend, type FakeRHITexture } from '../rhi/portable/FakeRHIBackend';
 
 describe('RenderTargetResourceCache multisample lifetime', () => {
     it('selects graph ownership only when every boundary operation is clear/discard', () => {

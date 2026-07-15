@@ -11,7 +11,7 @@ import {
     type RHIBenchmarkMetric,
     type RHIBenchmarkRawCaptureResult,
     type RHIBenchmarkRawMetricSamples
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import { rhiBenchmarkPairedOrder } from '../../scripts/performance/rhi-benchmark-statistics';
 import {
     summarizeRHIRawBenchmarkCapture,
@@ -24,7 +24,7 @@ import {
 } from '../../scripts/performance/verify-rhi-baseline';
 
 const repositoryManifestValue = JSON.parse(
-    readFileSync(new URL('../../benchmarks/rhi-v2/manifest.json', import.meta.url), 'utf8')
+    readFileSync(new URL('../../benchmarks/rhi/manifest.json', import.meta.url), 'utf8')
 ) as unknown;
 const FRAME_SAMPLES = Array<number>(2000).fill(1);
 const CACHE_SAMPLES = Array<number>(2000).fill(0.9);
@@ -90,13 +90,13 @@ function rawMetrics(drawCount: number): RHIBenchmarkRawMetricSamples {
 function rawCapture(manifest: RHIBenchmarkManifest): RHIBenchmarkRawCaptureResult {
     return {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         manifestSha256: manifestSha256(manifest),
         commitSha: 'a'.repeat(40),
         capturedAt: '2026-07-15T00:00:00.000Z',
         environment: environment(manifest),
         productionFixture: {
-            path: 'test/performance/fixtures/rhi-v2-production.html',
+            path: 'test/performance/fixtures/rhi-production.html',
             sha256: '8'.repeat(64)
         },
         cases: manifest.scenarios.flatMap(scenario =>
@@ -123,7 +123,7 @@ function rawCapture(manifest: RHIBenchmarkManifest): RHIBenchmarkRawCaptureResul
                                     pixelHashSha256,
                                     metrics
                                 },
-                                'rhi-v2': {
+                                rhi: {
                                     observedDrawCount: scenario.quality.drawCount,
                                     pixelHashSha256,
                                     metrics
@@ -181,7 +181,7 @@ describe('RHI raw paired-capture contract', () => {
         const order = firstRound['order'];
         if (!Array.isArray(order)) throw new Error('raw contract order is missing');
         const first: unknown = order[0];
-        firstRound['order'] = first === 'legacy' ? ['rhi-v2', 'legacy'] : ['legacy', 'rhi-v2'];
+        firstRound['order'] = first === 'legacy' ? ['rhi', 'legacy'] : ['legacy', 'rhi'];
         expect(() => verifyRHIRawBenchmarkCapture(manifest, raw)).toThrow(
             /deterministic seeded order/u
         );
@@ -225,7 +225,7 @@ describe('RHI raw paired-capture contract', () => {
         const manifest = enrolledManifest();
         const raw = rawCapture(manifest);
         const results = mutableRecord(firstRawRound(raw)['results']);
-        const candidate = mutableRecord(results['rhi-v2']);
+        const candidate = mutableRecord(results['rhi']);
         const changedDrawCount = (candidate['observedDrawCount'] as number) + 1;
         candidate['observedDrawCount'] = changedDrawCount;
         candidate['pixelHashSha256'] = 'f'.repeat(64);

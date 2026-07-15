@@ -16,17 +16,17 @@ import {
 import type { RHIDevice } from '../../../src/render/rhi/core';
 import { externalTextureBindingRegistry } from '../../../src/render/renderer/ExternalTextureBindingRegistry';
 
-interface RHIV2Extension {
+interface RHIExtension {
     readonly device: RHIDevice;
     readonly recoveryState: string;
 }
 
 const activeRenderers: Renderer[] = [];
 
-function rhiExtension(renderer: Renderer): RHIV2Extension {
-    const extension = renderer.getExtension('rhi-v2');
-    if (extension === null) throw new Error('Shared renderer RHI v2 extension is unavailable');
-    return extension as RHIV2Extension;
+function rhiExtension(renderer: Renderer): RHIExtension {
+    const extension = renderer.getExtension('rhi');
+    if (extension === null) throw new Error('Shared renderer RHI extension is unavailable');
+    return extension as RHIExtension;
 }
 
 function observePassLabels(device: RHIDevice): {

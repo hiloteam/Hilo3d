@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import type {
     RHIBenchmarkEnvironment,
     RHIBenchmarkManifest
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import {
     parseRHIBenchmarkEnvironment,
     parseRHIBenchmarkManifest,
@@ -14,9 +14,9 @@ import {
     verifyRHIBenchmarkEnvironment
 } from './verify-rhi-baseline';
 
-export const RHI_PRODUCTION_FIXTURE_PATH = 'test/performance/fixtures/rhi-v2-production.html';
-export const RHI_PRODUCTION_FIXTURE_MODULE_PATH = 'test/performance/fixtures/rhi-v2-production.ts';
-export const RHI_PRODUCTION_FIXTURE_MARKER = 'data-hilo-rhi-benchmark="production-rhi-v2"';
+export const RHI_PRODUCTION_FIXTURE_PATH = 'test/performance/fixtures/rhi-production.html';
+export const RHI_PRODUCTION_FIXTURE_MODULE_PATH = 'test/performance/fixtures/rhi-production.ts';
+export const RHI_PRODUCTION_FIXTURE_MARKER = 'data-hilo-rhi-benchmark="production-rhi"';
 export const RHI_PHASE0_ENVIRONMENT_VARIABLE = 'HILO3D_RHI_BENCHMARK_ENVIRONMENT';
 export const RHI_PHASE0_BROWSER_EXECUTABLE_VARIABLE = 'HILO3D_RHI_BENCHMARK_BROWSER_EXECUTABLE';
 export const RHI_PHASE0_POWER_PROFILE_VARIABLE = 'HILO3D_RHI_BENCHMARK_POWER_PROFILE';
@@ -122,7 +122,7 @@ async function readInstalledPlaywrightVersion(repositoryRoot: string): Promise<s
 
 /**
  * Gate every capture/freezing mutation behind an enrolled physical Linux rig, exact Chromium
- * executable fingerprint, and the production RHI-v2 fixture. This function performs no writes.
+ * executable fingerprint, and the production RHI fixture. This function performs no writes.
  */
 export async function assertRHIPhase0Preflight(
     options: RHIPhase0PreflightOptions
@@ -193,21 +193,19 @@ export async function assertRHIPhase0Preflight(
     try {
         fixtureBytes = await readFile(productionFixturePath);
     } catch {
-        phase0Failure(`production RHI-v2 fixture is missing at ${productionFixturePath}`);
+        phase0Failure(`production RHI fixture is missing at ${productionFixturePath}`);
     }
     try {
         fixtureModuleBytes = await readFile(productionFixtureModulePath);
     } catch {
-        phase0Failure(
-            `production RHI-v2 fixture module is missing at ${productionFixtureModulePath}`
-        );
+        phase0Failure(`production RHI fixture module is missing at ${productionFixtureModulePath}`);
     }
     const fixtureSource = new TextDecoder().decode(fixtureBytes);
     if (!fixtureSource.includes(RHI_PRODUCTION_FIXTURE_MARKER)) {
-        phase0Failure('production RHI-v2 fixture marker is missing');
+        phase0Failure('production RHI fixture marker is missing');
     }
-    if (!fixtureSource.includes('src="./rhi-v2-production.ts"')) {
-        phase0Failure('production RHI-v2 fixture does not load its audited module');
+    if (!fixtureSource.includes('src="./rhi-production.ts"')) {
+        phase0Failure('production RHI fixture does not load its audited module');
     }
 
     const browserExecutablePath = resolve(
@@ -258,7 +256,7 @@ export async function readRHIPhase0EnvironmentFile(
 async function main(): Promise<void> {
     const repositoryRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
     const [manifestSource, environmentValue] = await Promise.all([
-        readFile(resolve(repositoryRoot, 'benchmarks/rhi-v2/manifest.json'), 'utf8'),
+        readFile(resolve(repositoryRoot, 'benchmarks/rhi/manifest.json'), 'utf8'),
         readRHIPhase0EnvironmentFile()
     ]);
     const result = await assertRHIPhase0Preflight({

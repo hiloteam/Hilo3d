@@ -455,14 +455,14 @@ function resolveCompressedFormat(internalFormat: number): TextureFormatInfo {
         case COMPRESSED_RGB_PVRTC_4BPPV1_IMG:
         case COMPRESSED_RGBA_PVRTC_2BPPV1_IMG:
         case COMPRESSED_RGBA_PVRTC_4BPPV1_IMG:
-            throw new TypeError('PVRTC compressed textures have no portable RHI v2 format');
+            throw new TypeError('PVRTC compressed textures have no portable RHI format');
         case COMPRESSED_RGB_ATC_WEBGL:
         case COMPRESSED_RGBA_ATC_EXPLICIT_ALPHA_WEBGL:
         case COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL:
-            throw new TypeError('ATC compressed textures have no portable RHI v2 format');
+            throw new TypeError('ATC compressed textures have no portable RHI format');
         default:
             throw new TypeError(
-                `Compressed texture format ${String(internalFormat)} has no portable RHI v2 mapping`
+                `Compressed texture format ${String(internalFormat)} has no portable RHI mapping`
             );
     }
 }
@@ -690,7 +690,7 @@ function resolveTextureFormat(source: Texture<unknown>): TextureFormatInfo {
         }
     }
     throw new TypeError(
-        `Texture storage ${String(source.internalFormat)}/${String(source.format)}/${String(source.type)} has no supported RHI v2 sampled format`
+        `Texture storage ${String(source.internalFormat)}/${String(source.format)}/${String(source.type)} has no supported RHI sampled format`
     );
 }
 
@@ -939,7 +939,7 @@ function createUploadEntry(
     const pixelData = requireUploadPixelData(payload, width, height, formatInfo);
     if (formatInfo.storage === 'opaque-depth-stencil') {
         throw new TypeError(
-            `${formatInfo.format} raw uploads have no shared WebGL2/WebGPU RHI v2 byte representation; create empty storage instead`
+            `${formatInfo.format} raw uploads have no shared WebGL2/WebGPU RHI byte representation; create empty storage instead`
         );
     }
     if (formatInfo.storage === 'compressed') {
@@ -1028,7 +1028,7 @@ function buildUploadEntries(
     }
     if (source.target === TEXTURE_CUBE_MAP) {
         if (!Array.isArray(image) || image.length !== 6) {
-            throw new TypeError('RHI v2 cube textures require exactly six image faces');
+            throw new TypeError('RHI cube textures require exactly six image faces');
         }
         for (let layer = 0; layer < 6; layer++) {
             const upload = createUploadEntry(
@@ -1187,7 +1187,7 @@ export class TextureResourceCache implements RHIUploadBatchParticipant {
         return this.#state === 'active';
     }
 
-    /** Enlist this stable cache in one RenderFrame/RHIUploadBatch transaction. */
+    /** Enlist this stable cache in one RenderGraphFrame/RHIUploadBatch transaction. */
     beginFrame(frameIndex: number, uploads: RHIUploadBatch): void {
         if (this.#state === 'destroyed') throw new Error('Texture resource cache is destroyed');
         if (this.#state === 'active') {

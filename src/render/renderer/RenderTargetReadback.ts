@@ -3,8 +3,8 @@ import type {
     RenderTargetColorFormat,
     RenderTargetReadColorAttachmentOptions
 } from '../RenderTarget';
-import { RenderFrame } from '../frame/RenderFrame';
-import type { RenderFrameContext } from '../frame/RenderFrameContext';
+import { RenderGraphFrame } from '../frame/RenderGraphFrame';
+import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGBufferHandle } from '../graph/RenderGraphResource';
 import {
     RHIBufferUsage,
@@ -54,7 +54,7 @@ function tightlyPackRows(
 
 /** Shared graph copy + asynchronous map policy for public render-target readback. */
 export class RenderTargetReadback {
-    readonly frame = new RenderFrame();
+    readonly frame = new RenderGraphFrame();
     readonly bridge: RenderTargetGraphBridge;
     #destroyed = false;
 
@@ -69,7 +69,7 @@ export class RenderTargetReadback {
     }
 
     async read(
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         target: Readonly<RenderTargetResourceRecord>,
         options: Readonly<RenderTargetReadColorAttachmentOptions> = {}
     ): Promise<RenderTargetColorAttachmentReadback> {

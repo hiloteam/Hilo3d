@@ -4,7 +4,7 @@ import { FrameResourceUseTracker } from '../../../src/render/renderer/FrameResou
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
 import { RHIBufferUsage } from '../../../src/render/rhi/core';
 import { describe, expect, it } from 'vitest';
-import { FakeWebGLRHIBackend } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGLRHIBackend } from '../rhi/portable/FakeRHIBackend';
 
 function submitEmptyFrame(
     batch: RHIUploadBatch,

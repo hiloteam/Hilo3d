@@ -13,7 +13,7 @@ import BuiltInUniformBlockManager from '../BuiltInUniformBlockManager';
 import type RendererCore from '../RendererCore';
 import type UniformBuffer from '../UniformBuffer';
 import type { RHIUploadBatch } from '../frame/RHIUploadBatch';
-import type { RenderFrameContext } from '../frame/RenderFrameContext';
+import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import { createSemanticFrameState, type SemanticFrameState } from '../frame/SemanticFrameState';
 import {
     MAX_AREA_LIGHTS,
@@ -182,7 +182,7 @@ interface MeshShaderSnapshot {
     readonly materialOptionValues: readonly unknown[];
     readonly geometryOptionValues: readonly unknown[];
     readonly colorSize: unknown;
-    readonly fog: RenderFrameContext['fog'];
+    readonly fog: RenderGraphFrameContext['fog'];
     readonly fogMode: unknown;
     readonly useLogDepth: boolean;
     readonly vertexPrecision: RendererCore['vertexPrecision'];
@@ -376,7 +376,7 @@ export class MeshDrawProcessor {
     readonly #shaderReferenceCounts = new Map<Shader, number>();
     readonly #preparedMeshes = new Set<Mesh>();
     readonly #programBindingInfo: SemanticProgramBindingInfo = {};
-    #context: RenderFrameContext | null = null;
+    #context: RenderGraphFrameContext | null = null;
     #passSemanticFrame: Readonly<SemanticFrameState> | null = null;
     #validatedLightingFrame = -1;
     #validatedLightManager: LightManager | null = null;
@@ -493,8 +493,8 @@ export class MeshDrawProcessor {
         if (this.registry.deviceBackend === 'webgpu') await this.compiler.initialize();
     }
 
-    /** Enlist recoverable buffer and texture uploads in one RenderFrame transaction. */
-    beginFrame(context: RenderFrameContext, uploads: RHIUploadBatch): void {
+    /** Enlist recoverable buffer and texture uploads in one RenderGraphFrame transaction. */
+    beginFrame(context: RenderGraphFrameContext, uploads: RHIUploadBatch): void {
         this.assertAlive();
         if (context.renderer !== this.renderer) {
             throw new Error('Mesh draw context belongs to another renderer');
@@ -525,7 +525,7 @@ export class MeshDrawProcessor {
     }
 
     /** Select the camera/viewport semantics for one pass without advancing frame-scoped state. */
-    beginPass(camera: RenderFrameContext['camera'], viewport: Readonly<RHIViewport>): void {
+    beginPass(camera: RenderGraphFrameContext['camera'], viewport: Readonly<RHIViewport>): void {
         this.assertAlive();
         const context = this.requireActiveContext();
         this.#sampledGraphDependencies.length = 0;
@@ -1249,7 +1249,7 @@ export class MeshDrawProcessor {
         mesh: Mesh,
         geometry: Geometry,
         material: Material,
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         instanced: boolean
     ): Shader {
         const canUseSnapshot =
@@ -1364,7 +1364,7 @@ export class MeshDrawProcessor {
         }
     }
 
-    private validateLighting(material: Material, context: RenderFrameContext): void {
+    private validateLighting(material: Material, context: RenderGraphFrameContext): void {
         if (material.lightType === 'NONE') return;
         const manager = context.lightManager;
         if (
@@ -1615,7 +1615,7 @@ export class MeshDrawProcessor {
         mesh: Mesh,
         material: Material,
         pipeline: Readonly<PipelineResourceRecord>,
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         instanceBlock: UniformBuffer | null
     ): readonly ResourceRegistryHandle<RHIBuffer>[] {
         const semanticFrame = this.#passSemanticFrame ?? context.semantic;
@@ -2009,7 +2009,7 @@ export class MeshDrawProcessor {
         return this.textures.detach(source) ? 1 : 0;
     }
 
-    private requireActiveContext(): RenderFrameContext {
+    private requireActiveContext(): RenderGraphFrameContext {
         const context = this.#context;
         if (!context || !this.active) {
             throw new Error('Mesh draw processor requires beginFrame before preparation');

@@ -1,7 +1,7 @@
 import Material from '../../material/Material';
 import ShaderClass from '../../shader/Shader';
-import { RenderFrame, type RenderFrameBuildScope } from '../frame/RenderFrame';
-import type { RenderFrameContext } from '../frame/RenderFrameContext';
+import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
+import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RenderGraphBuilder } from '../graph/RenderGraphBuilder';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
 import {
@@ -90,7 +90,7 @@ function surfaceHasAcquiredTexture(surface: RHISurface): boolean {
 
 /** Shared post-process chain followed by an explicit fullscreen present pass. */
 export class PostProcessRenderer {
-    readonly frame: RenderFrame;
+    readonly frame: RenderGraphFrame;
     readonly bridge: RenderTargetGraphBridge;
     readonly fullscreen: FullscreenDrawProcessor;
     readonly #passes: SharedDrawPassParameters[] = [];
@@ -127,7 +127,7 @@ export class PostProcessRenderer {
         if (!Number.isSafeInteger(initialStepCapacity) || initialStepCapacity < 0) {
             throw new RangeError('Post-process step capacity must be a non-negative integer');
         }
-        this.frame = new RenderFrame();
+        this.frame = new RenderGraphFrame();
         this.bridge = new RenderTargetGraphBridge(resources);
         this.fullscreen = new FullscreenDrawProcessor(resources.registry, compiler);
         for (let index = 0; index < initialStepCapacity; index += 1) {
@@ -163,8 +163,8 @@ export class PostProcessRenderer {
 
     /** Add a target-to-surface present pass to a caller-owned application graph. */
     buildPresent(
-        scope: RenderFrameBuildScope,
-        context: RenderFrameContext,
+        scope: RenderGraphFrameBuildScope,
+        context: RenderGraphFrameContext,
         surface: RHISurface,
         input: Readonly<RenderTargetResourceRecord>,
         options: Readonly<PostProcessFrameOptions> = {},
@@ -222,7 +222,7 @@ export class PostProcessRenderer {
     }
 
     render(
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         surface: RHISurface,
         input: Readonly<RenderTargetResourceRecord>,
         options: Readonly<PostProcessFrameOptions> = {}
@@ -520,7 +520,7 @@ export class PostProcessRenderer {
     }
 
     private validateInputs(
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         surface: RHISurface,
         input: Readonly<RenderTargetResourceRecord>,
         options: Readonly<PostProcessFrameOptions>

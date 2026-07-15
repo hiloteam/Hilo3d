@@ -7,7 +7,7 @@ import {
     type FakeRHIBuffer,
     type FakeRHIDevice,
     type FakeRHISubmission
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function submit(device: FakeRHIDevice): FakeRHISubmission {
     const frame = device.graphicsQueue.beginFrame();

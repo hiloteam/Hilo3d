@@ -19,7 +19,7 @@ import {
     type ShaderBindingLayoutPlan
 } from '../../../src/render/renderer/ShaderBindingLayoutCompiler';
 import Shader from '../../../src/shader/Shader';
-import { FakeWebGPURHIBackend } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGPURHIBackend } from '../rhi/portable/FakeRHIBackend';
 
 const WIDTH = 8;
 const HEIGHT = 8;

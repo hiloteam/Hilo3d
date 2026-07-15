@@ -3,7 +3,7 @@ import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry'
 import { ShaderArtifactCompiler } from '../../../src/render/renderer/ShaderArtifactCompiler';
 import { ShaderResourceCache } from '../../../src/render/renderer/ShaderResourceCache';
 import Shader from '../../../src/shader/Shader';
-import { FakeWebGLRHIBackend, FakeWebGPURHIBackend } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGLRHIBackend, FakeWebGPURHIBackend } from '../rhi/portable/FakeRHIBackend';
 
 const vertexSource = `#version 300 es
 in vec2 position;

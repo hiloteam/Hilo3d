@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { RHIBenchmarkBaselineResult } from '../../benchmarks/rhi-v2/result-schema';
+import type { RHIBenchmarkBaselineResult } from '../../benchmarks/rhi/result-schema';
 import {
     assertRHIPhase0Preflight,
     readRHIPhase0EnvironmentFile,
@@ -66,7 +66,7 @@ export async function freezeRHIBaseline(
     }
     const requiredDestination = resolve(
         options.repositoryRoot,
-        'benchmarks/rhi-v2/baselines',
+        'benchmarks/rhi/baselines',
         preflight.manifest.rig.profile
     );
     const destinationDirectory = resolve(options.destinationDirectory);
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     }
     const repositoryRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
     const manifestValue = JSON.parse(
-        await readFile(resolve(repositoryRoot, 'benchmarks/rhi-v2/manifest.json'), 'utf8')
+        await readFile(resolve(repositoryRoot, 'benchmarks/rhi/manifest.json'), 'utf8')
     ) as unknown;
     const [summarySource, rawBytes, environmentValue] = await Promise.all([
         readFile(resolve(summaryArgument), 'utf8'),
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
         rawBytes,
         destinationDirectory: resolve(
             repositoryRoot,
-            'benchmarks/rhi-v2/baselines',
+            'benchmarks/rhi/baselines',
             parsedManifest.rig.profile
         )
     });

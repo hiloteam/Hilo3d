@@ -12,12 +12,12 @@ import {
     type RHIBenchmarkFixtureFrameSample,
     type RHIBenchmarkFixtureMetadata,
     type RHIBenchmarkFixtureRoundResult
-} from '../../benchmarks/rhi-v2/fixture-contract';
+} from '../../benchmarks/rhi/fixture-contract';
 import {
     RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
     RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
     type RHIBenchmarkEnvironment
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import type { RHIPhase0PreflightResult } from './rhi-phase0-preflight';
 import type {
     RHIBenchmarkAllocationSample,
@@ -234,12 +234,12 @@ function isRendererDrawBoundary(url: string, functionName: string): boolean {
 function isSynchronousAllocationFrameBoundary(url: string, functionName: string): boolean {
     return (
         functionName === 'renderAllocationRendererBoundary' &&
-        url.includes('/test/performance/fixtures/rhi-v2-production.ts')
+        url.includes('/test/performance/fixtures/rhi-production.ts')
     );
 }
 
 /**
- * Classify a Chromium sampling profile using the frozen v2 allocation contract.
+ * Classify a Chromium sampling profile using the frozen RHI allocation contract.
  *
  * `rendererBytes` covers descendants of the fixture's synchronous render boundary, excluding
  * completion callbacks even if they race with the CDP stop round-trip. `rhiHotPathBytes` covers

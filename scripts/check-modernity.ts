@@ -175,35 +175,35 @@ const forbiddenRHIRules = [
 ] as const;
 const forbiddenRHICoreRules = [
     {
-        label: 'RHI v2 core imports the legacy RHI module',
+        label: 'RHI core imports the legacy RHI module',
         pattern:
             /(?:from\s+|import\s*(?:\(\s*)?)["'][^"']*(?:\/rhi)?\/RHI(?:\.(?:[cm]?[jt]s))?["']/u
     },
     {
-        label: 'RHI v2 core imports a concrete or legacy backend',
+        label: 'RHI core imports a concrete or legacy backend',
         pattern: /(?:from\s+|import\s*(?:\(\s*)?)["'][^"']*\/(?:webgl2|webgpu)(?:\/[^"']*)?["']/u
     },
     {
-        label: 'RHI v2 core imports the legacy render internal layer',
+        label: 'RHI core imports the legacy render internal layer',
         pattern:
             /(?:from\s+|import\s*(?:\(\s*)?)["'][^"']*\/(?:render\/)?internal(?:\/[^"']*)?["']/u
     },
     {
-        label: 'RHI v2 core imports an engine or renderer layer',
+        label: 'RHI core imports an engine or renderer layer',
         pattern:
             /from\s+["'][^"']*(?:\/material\/|\/geometry\/|\/light\/|\/shader\/|\/texture\/|(?:\.\.\/)+(?:core|renderer|frame|graph)(?:\/|["'])|(?:\.\.\/)+(?:Renderer(?:Core)?|RenderList|RenderTarget)(?:\/|["']))/u
     },
     {
-        label: 'engine or renderer semantic declared by RHI v2 core',
+        label: 'engine or renderer semantic declared by RHI core',
         pattern:
             /\b(?:Scene|Stage|Mesh|Geometry|Material|Light|LightManager|Camera|Renderer|RendererCore|ForwardRenderer|PreparedDraw|RenderList|RenderTarget|ShaderVariant)\b/u
     },
     {
-        label: 'native graphics type declared by RHI v2 core',
+        label: 'native graphics type declared by RHI core',
         pattern: /\b(?:WebGL[A-Z0-9][A-Za-z0-9_]*|GLenum|GPU[A-Z][A-Za-z0-9_]*)\b/u
     },
     {
-        label: 'native graphics API called by RHI v2 core',
+        label: 'native graphics API called by RHI core',
         pattern:
             /(?:\bnavigator\s*(?:\?\.|\.)\s*gpu\b|\bgl\s*(?:\?\.|\.)|\.getContext\s*\(\s*["'](?:webgl2?|webgpu)["'])/u
     }

@@ -147,7 +147,7 @@ API 的简单拷贝，而是 WebGPU 与 WebGL 2 都能可靠实现的可移植�
 RHI Core 不依赖任一具体后端，也不允许原生 `GPU*` 或 `WebGL*`
 类型跨越边界。上层只能依据统一 Descriptor、Usage Flags、Format、Capabilities 和命令合同编程。
 
-相关代码：[`core/`](./src/render/rhi/core)、[`RHIArchitecture.test.ts`](./test/spec/rhi/v2/RHIArchitecture.test.ts)。
+相关代码：[`core/`](./src/render/rhi/core)、[`RHIArchitecture.test.ts`](./test/spec/rhi/portable/RHIArchitecture.test.ts)。
 
 ### 3.2 Device 与 Surface 分离
 

@@ -90,7 +90,7 @@ function requireRange(offset: number, size: number, capacity: number, name: stri
 }
 
 /**
- * Reusable upload recorder owned by one RenderFrame. Buffer records use parallel arrays and merge
+ * Reusable upload recorder owned by one RenderGraphFrame. Buffer records use parallel arrays and merge
  * adjacent destination ranges; texture descriptor objects are retained at their high-water count.
  */
 export class RHIUploadBatch {

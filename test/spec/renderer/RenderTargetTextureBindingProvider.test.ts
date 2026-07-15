@@ -6,9 +6,9 @@ import type {
     RenderTargetColorAttachmentReadback,
     RenderTargetReadColorAttachmentOptions
 } from '../../../src/render/RenderTarget';
-import { RenderFrame } from '../../../src/render/frame/RenderFrame';
+import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
 import type { RHIUploadBatch } from '../../../src/render/frame/RHIUploadBatch';
-import { createRenderFrameContext } from '../../../src/render/frame/RenderFrameContext';
+import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import type { RenderPassTemplate } from '../../../src/render/graph/RenderGraphBuilder';
 import { RHITextureUsage, type RHISampler } from '../../../src/render/rhi/core';
 import {
@@ -29,7 +29,7 @@ import {
     type FakeRHIBackend,
     type FakeRHIDevice,
     type FakeRHITexture
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 interface Fixture {
     readonly backend: FakeRHIBackend;
@@ -37,14 +37,14 @@ interface Fixture {
     readonly registry: ResourceRegistry;
     readonly resources: RenderTargetResourceCache;
     readonly target: RHIRenderTarget;
-    readonly frame: RenderFrame;
+    readonly frame: RenderGraphFrame;
     readonly sampler: ResourceRegistryHandle<RHISampler>;
     readonly provider: RenderTargetTextureBindingProvider;
     uploads: RHIUploadBatch | null;
 }
 
 function frameContext(fixture: Fixture, frameIndex: number) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer: {} as RendererCore,
         rhi: fixture.device,
         frameIndex,
@@ -106,7 +106,7 @@ function createFixture(backend: FakeRHIBackend): Fixture {
         registry,
         resources,
         target,
-        frame: new RenderFrame(),
+        frame: new RenderGraphFrame(),
         sampler,
         provider: undefined as unknown as RenderTargetTextureBindingProvider,
         uploads: null
@@ -467,10 +467,10 @@ it('rejects full color replacement and public depth attachment updates explicitl
         height: 1,
         image: new Float32Array([0.5])
     });
-    const frame = new RenderFrame();
+    const frame = new RenderGraphFrame();
     expect(() =>
         frame.execute(
-            createRenderFrameContext({
+            createRenderGraphFrameContext({
                 renderer: {} as RendererCore,
                 rhi: device,
                 frameIndex: 1,

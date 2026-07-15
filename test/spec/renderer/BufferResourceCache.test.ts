@@ -3,8 +3,8 @@ import GeometryData from '../../../src/geometry/GeometryData';
 import LightManager from '../../../src/light/LightManager';
 import type RendererCore from '../../../src/render/RendererCore';
 import UniformBuffer from '../../../src/render/UniformBuffer';
-import { RenderFrame } from '../../../src/render/frame/RenderFrame';
-import { createRenderFrameContext } from '../../../src/render/frame/RenderFrameContext';
+import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
+import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import type { RenderPassTemplate } from '../../../src/render/graph/RenderGraphBuilder';
 import { BufferResourceCache } from '../../../src/render/renderer/BufferResourceCache';
 import {
@@ -20,10 +20,10 @@ import {
     type FakeRHIBuffer,
     type FakeRHIBackend,
     type FakeRHIDevice
-} from '../rhi/v2/FakeRHIBackend';
+} from '../rhi/portable/FakeRHIBackend';
 
 function frameContext(device: FakeRHIDevice, frameIndex: number) {
-    return createRenderFrameContext({
+    return createRenderGraphFrameContext({
         renderer: {} as RendererCore,
         rhi: device,
         frameIndex,
@@ -37,7 +37,7 @@ function frameContext(device: FakeRHIDevice, frameIndex: number) {
 type FrameFailure = 'build' | 'prepare' | 'execute' | null;
 
 function runCacheFrame(
-    frame: RenderFrame,
+    frame: RenderGraphFrame,
     device: FakeRHIDevice,
     frameIndex: number,
     cache: BufferResourceCache,
@@ -106,7 +106,7 @@ describe('BufferResourceCache resource shape', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const geometry = new GeometryData(new Uint8Array([1, 2, 3]), 1);
         const uniform = UniformBuffer.fromSchema(createStd140Layout({ value: 'vec4' }), {
             value: [1, 2, 3, 4]
@@ -149,7 +149,7 @@ describe('BufferResourceCache resource shape', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const geometry = new GeometryData(new Uint8Array([1, 2, 3, 4, 5]), 1);
         const uniform = UniformBuffer.fromSchema(createStd140Layout({ value: 'vec4' }));
         let vertex: FakeRHIBuffer | undefined;
@@ -186,7 +186,7 @@ describe('BufferResourceCache resource shape', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const geometry = new GeometryData(new Uint8Array([1, 2, 3, 4]), 1);
         let first: FakeRHIBuffer | undefined;
         runCacheFrame(frame, device, 1, cache, () => {
@@ -222,7 +222,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const backing = new Uint8Array([99, 1, 2, 0xff, 88]);
         const indices = new GeometryData(backing.subarray(1, 4), 1);
         let plain: FakeRHIBuffer | undefined;
@@ -284,7 +284,7 @@ describe('BufferResourceCache widened index recovery', () => {
         const firstDevice = backend.createDevice();
         const registry = new ResourceRegistry(firstDevice);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const indices = new GeometryData(new Uint8Array([0, 1, 0xff]), 1);
         let first: FakeRHIBuffer | undefined;
 
@@ -339,7 +339,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const geometry = new GeometryData(new Uint8Array([1, 2, 3, 4]), 1);
         let resource: FakeRHIBuffer | undefined;
         const first = runCacheFrame(frame, device, 1, cache, () => {
@@ -382,7 +382,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const { storage, position, uv } = interleavedAliases();
         let resource: FakeRHIBuffer | undefined;
 
@@ -424,7 +424,7 @@ describe.each([
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const { storage, position, uv } = interleavedAliases();
         let resource: FakeRHIBuffer | undefined;
         const initial = runCacheFrame(frame, device, 1, cache, () => {
@@ -482,7 +482,7 @@ describe('BufferResourceCache canonical alias recovery', () => {
         const firstDevice = backend.createDevice();
         const registry = new ResourceRegistry(firstDevice);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const { position, uv } = interleavedAliases();
         let first: FakeRHIBuffer | undefined;
         runCacheFrame(frame, firstDevice, 1, cache, () => {
@@ -519,7 +519,7 @@ describe('BufferResourceCache failure and recovery', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const geometry = new GeometryData(new Uint8Array([1, 2, 3, 4]), 1);
 
         expect(() => runCacheFrame(frame, device, 1, cache, () => undefined, 'build')).toThrow(
@@ -556,7 +556,7 @@ describe('BufferResourceCache failure and recovery', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const geometry = new GeometryData(new Uint8Array([1, 2, 3, 4]), 1);
         let committed: FakeRHIBuffer | undefined;
         runCacheFrame(frame, device, 1, cache, () => {
@@ -601,7 +601,7 @@ describe('BufferResourceCache failure and recovery', () => {
         const firstDevice = backend.createDevice();
         const registry = new ResourceRegistry(firstDevice);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const geometry = new GeometryData(new Uint8Array([1, 2, 3]), 1);
         let first: FakeRHIBuffer | undefined;
         runCacheFrame(frame, firstDevice, 1, cache, () => {
@@ -637,7 +637,7 @@ describe('BufferResourceCache failure and recovery', () => {
         const device = backend.createDevice();
         const registry = new ResourceRegistry(device);
         const cache = new BufferResourceCache(registry);
-        const frame = new RenderFrame();
+        const frame = new RenderGraphFrame();
         const geometry = new GeometryData(new Uint8Array([1, 2, 3, 4]), 1);
         let resource: FakeRHIBuffer | undefined;
         const initial = runCacheFrame(frame, device, 1, cache, () => {

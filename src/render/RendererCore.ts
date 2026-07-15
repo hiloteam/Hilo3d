@@ -11,7 +11,7 @@ import type { Resource, ShaderPrecision } from './types';
 import GraphicsResourceManager from './GraphicsResourceManager';
 import RenderInfo from './RenderInfo';
 import RenderList from './RenderList';
-import { RenderFramePlanner, type RenderFramePlan } from './RenderFramePlan';
+import { RenderGraphFramePlanner, type RenderGraphFramePlan } from './RenderGraphFramePlan';
 import { getRegisteredRendererDiagnostics } from './diagnostics/RendererDiagnosticsRegistry';
 import type {
     RenderTarget,
@@ -203,7 +203,7 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     isInitFailed = false;
 
     private _useInstanced = false;
-    private readonly framePlanner = new RenderFramePlanner();
+    private readonly framePlanner = new RenderGraphFramePlanner();
     private diagnosticsSink: RendererDiagnostics | null = null;
 
     abstract readonly backend: RendererBackend;
@@ -223,7 +223,7 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     }
 
     /** Build the allocation-reusing, backend-neutral scene plan once per camera pass. */
-    protected buildFramePlan(stage: RendererScene, camera: Camera): RenderFramePlan {
+    protected buildFramePlan(stage: RendererScene, camera: Camera): RenderGraphFramePlan {
         return this.framePlanner.build(stage, camera, this.renderList, this.lightManager);
     }
 

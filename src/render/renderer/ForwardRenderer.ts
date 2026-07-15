@@ -1,7 +1,7 @@
 import type Mesh from '../../core/Mesh';
 import Material from '../../material/Material';
-import { RenderFrame, type RenderFrameBuildScope } from '../frame/RenderFrame';
-import type { RenderFrameContext } from '../frame/RenderFrameContext';
+import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
+import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
 import {
     RHITextureUsage,
@@ -65,7 +65,7 @@ export interface ForwardRendererFrameOptions {
     readonly transparentDraws?: readonly PreparedDraw[];
     /**
      * Caller-owned processor used by the Mesh entry point. Mesh preparation is enlisted in this
-     * renderer's RenderFrame upload transaction. PreparedDraw and Mesh fields are mutually
+     * renderer's RenderGraphFrame upload transaction. PreparedDraw and Mesh fields are mutually
      * exclusive.
      */
     readonly meshProcessor?: MeshDrawProcessor;
@@ -99,7 +99,7 @@ export interface ForwardRendererFrameOptions {
  * boundary. Backend drivers do not participate in pass planning or draw iteration.
  */
 export class ForwardRenderer {
-    readonly frame: RenderFrame;
+    readonly frame: RenderGraphFrame;
     readonly #passSets: {
         readonly main: SharedDrawPassParameters;
         readonly transparent: SharedDrawPassParameters;
@@ -119,7 +119,7 @@ export class ForwardRenderer {
                 'Forward renderer draw capacity must be a non-negative safe integer'
             );
         }
-        this.frame = new RenderFrame(initialArenaCapacity);
+        this.frame = new RenderGraphFrame(initialArenaCapacity);
         this.#passSets.push({
             main: new SharedDrawPassParameters({
                 colorAttachments: 1,
@@ -164,7 +164,7 @@ export class ForwardRenderer {
         this.#meshDrawListPlanner.reset();
     }
 
-    /** Start one outer RenderFrame composition. Every build receives retained pass storage. */
+    /** Start one outer RenderGraphFrame composition. Every build receives retained pass storage. */
     beginComposition(): void {
         if (this.#active) throw new Error('Nested ForwardRenderer execution is not allowed');
         if (this.#destroyed) throw new Error('Cannot use a destroyed ForwardRenderer');
@@ -177,7 +177,7 @@ export class ForwardRenderer {
     }
 
     render(
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         surface: RHISurface,
         options: ForwardRendererFrameOptions
     ): RGExecutionResult {
@@ -209,8 +209,8 @@ export class ForwardRenderer {
 
     /** Add one forward scene to a caller-owned graph without executing or presenting it. */
     build(
-        scope: RenderFrameBuildScope,
-        context: RenderFrameContext,
+        scope: RenderGraphFrameBuildScope,
+        context: RenderGraphFrameContext,
         surface: RHISurface,
         options: ForwardRendererFrameOptions,
         meshFrameStarted = false
@@ -482,7 +482,7 @@ export class ForwardRenderer {
     }
 
     private addSampledTextureReads(
-        scope: RenderFrameBuildScope,
+        scope: RenderGraphFrameBuildScope,
         pass: SharedDrawPassParameters,
         processor: MeshDrawProcessor
     ): void {

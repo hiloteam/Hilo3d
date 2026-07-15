@@ -3,7 +3,7 @@ import { ShadowAtlasPlanner } from '../../../src/render/renderer/ShadowAtlasPlan
 import { ShadowAtlasResourceCache } from '../../../src/render/renderer/ShadowAtlasResourceCache';
 import { RHITextureUsage } from '../../../src/render/rhi/core';
 import { describe, expect, it } from 'vitest';
-import { FakeWebGLRHIBackend, type FakeRHITexture } from '../rhi/v2/FakeRHIBackend';
+import { FakeWebGLRHIBackend, type FakeRHITexture } from '../rhi/portable/FakeRHIBackend';
 
 describe('ShadowAtlasResourceCache', () => {
     it('reuses a logical atlas and rebuilds it on same-backend recovery', () => {

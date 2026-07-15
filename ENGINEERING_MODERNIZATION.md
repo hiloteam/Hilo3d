@@ -4,9 +4,9 @@
 
 范围：源码、示例、测试、构建、类型声明、API 文档、站点、npm 包、CI 与发布流程
 
-> RHI 与 renderer 架构部分已由 [`RHI_V2_REFACTOR_PLAN.md`](./RHI_V2_REFACTOR_PLAN.md)
+> RHI 与 renderer 架构部分已由 [`RHI_REFACTOR_PLAN.md`](./RHI_REFACTOR_PLAN.md)
 > 取代。本文记录的 portable wrapper、production driver native fast
-> path 与旧 command-buffer 语义在迁移期间仅作为 legacy A/B 基线，不再约束 RHI v2 的设计和实现。
+> path 与旧 command-buffer 语义在迁移期间仅作为 legacy A/B 基线，不再约束 RHI 的设计和实现。
 
 ## 结论
 
@@ -164,8 +164,8 @@ extension adapter，也不接受 GLSL 1.00 自定义 shader。
 
 ### WebGPU-shaped RHI 边界
 
-生产渲染底层以 `src/render/rhi/core` 的 RHI
-v2 契约为唯一硬件边界：device 创建 buffer、texture、sampler、prepared shader、bind-group
+生产渲染底层以 `src/render/rhi/core`
+的 RHI 契约为唯一硬件边界：device 创建 buffer、texture、sampler、prepared shader、bind-group
 layout、pipeline layout、bind group 与 graphics pipeline；frame-scoped command context、render
 pass、queue 和 submission 表达执行、提交与完成。RHI 产品代码不引用 Mesh、Material、Stage、Light、RenderList 或 shader
 variant，也不负责 GLSL→WGSL；这些引擎语义属于 shared Renderer、`src/shader` variant 层和
@@ -173,14 +173,14 @@ variant，也不负责 GLSL→WGSL；这些引擎语义属于 shared Renderer、
 `src/render/rhi/backends/webgpu`，RHI core 和 Render Graph 都不得反向 import
 renderer 或 scene 类型。
 
-`src/render/rhi/RHIFactory.ts` 是唯一硬件组合根，负责 support probe、构造 RHI v2
+`src/render/rhi/RHIFactory.ts` 是唯一硬件组合根，负责 support probe、构造 RHI
 device/surface 并等待 ready；它不产生逐 command 转发对象。`src/render/internal/RendererFactory.ts`
 无论后端都只构造 `SharedRendererDriver`，backend 选择仅决定其持有的 concrete RHI device。scene
 traversal、resource preparation、Render
 Graph、pass、present、readback 与恢复流程不再分叉到两个 feature driver。
 
-WebGPU v2 resource/context/pass/queue 直接持有并调用对应 native object，不使用 Proxy、二次 command
-list 或 GL 风格全局状态机。WebGL2 v2 在同一可移植契约下实现 pipeline、bind group 与 render
+WebGPU RHI resource/context/pass/queue 直接持有并调用对应 native object，不使用 Proxy、二次 command
+list 或 GL 风格全局状态机。WebGL2 RHI 在同一可移植契约下实现 pipeline、bind group 与 render
 pass，但 command context 是明确的 immediate context：GL 命令在调用时经 device-owned state-diff
 cache 即时执行，`endFrame()` 只封闭 frame
 scope 并产生 submission，不回放软件命令列表。两后端的 descriptor snapshot、resource
@@ -189,9 +189,9 @@ lifetime 与 validation 共享同一契约；VAO、framebuffer、pipeline、samp
 cache 有界且只归 device 所有。
 
 旧 `src/render/rhi/webgl2`、`src/render/rhi/webgpu` 与旧 feature driver 仅作为冻结的 legacy A/B
-benchmark/回滚路径保留，在正式基线和候选门禁通过前不得删除，也不得与 v2 在同一 frame 操作同一个 native
-context/device。生产 shared renderer 不调用 legacy manager 或 native fast path。RHI
-v2 的 draw/context 稳态热段不得创建临时 descriptor、array、iterator 或 typed-array；pass
+benchmark/回滚路径保留，在正式基线和候选门禁通过前不得删除，也不得与 RHI 在同一 frame 操作同一个 native
+context/device。生产 shared renderer 不调用 legacy manager 或 native fast
+path。RHI 的 draw/context 稳态热段不得创建临时 descriptor、array、iterator 或 typed-array；pass
 setup、shader/pipeline prepare、graph compile 与 transient allocation 必须在 execute 前完成。
 
 公开 Renderer 不携带 `gl` 或 `gpuDevice` 字段。需要 XR、验证或第三方 native 互操作时，调用方通过

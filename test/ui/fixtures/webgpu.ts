@@ -18,7 +18,7 @@ import {
     Vector3
 } from '../../../src/Hilo3d';
 import type { RHIDevice, RHISurface } from '../../../src/render/rhi/core';
-import { validateExtendedTextureSampling } from './webgpu-rhi-v2';
+import { validateExtendedTextureSampling } from './webgpu-rhi';
 
 interface OffscreenStencilResult {
     readonly readback: readonly number[];
@@ -29,22 +29,20 @@ interface RendererExtensionProvider {
     getExtension(name: string): object | null;
 }
 
-interface WebGPURHIV2Extension {
+interface WebGPURHIExtension {
     readonly device: RHIDevice;
     readonly surface: RHISurface;
     readonly recoveryState: string;
 }
 
-function requireWebGPURHIV2(renderer: RendererExtensionProvider): WebGPURHIV2Extension {
-    const extension = renderer.getExtension('rhi-v2') as WebGPURHIV2Extension | null;
-    if (!extension) throw new Error('The RHI v2 extension is unavailable.');
+function requireWebGPURHI(renderer: RendererExtensionProvider): WebGPURHIExtension {
+    const extension = renderer.getExtension('rhi') as WebGPURHIExtension | null;
+    if (!extension) throw new Error('The RHI extension is unavailable.');
     if (extension.device.backend !== 'webgpu') {
-        throw new Error(
-            `The RHI v2 extension exposed ${extension.device.backend}, expected webgpu`
-        );
+        throw new Error(`The RHI extension exposed ${extension.device.backend}, expected webgpu`);
     }
     if (extension.surface.deviceId !== extension.device.id) {
-        throw new Error('The RHI v2 extension surface and device have different owners');
+        throw new Error('The RHI extension surface and device have different owners');
     }
     return extension;
 }
@@ -128,7 +126,7 @@ async function validateOffscreenStencil(): Promise<OffscreenStencilResult> {
     );
 
     try {
-        requireWebGPURHIV2(validationStage.renderer);
+        requireWebGPURHI(validationStage.renderer);
         validationStage.renderer.renderToTarget(target, validationStage, camera);
         const first = await target.readColorAttachment({ x: 2, y: 2, width: 1, height: 1 });
         validationStage.renderer.renderToTarget(target, validationStage, camera);
@@ -160,7 +158,7 @@ const stage = await Stage.create({
     useInstanced: true,
     clearColor: new Color(0.04, 0.06, 0.1)
 });
-const rhi = requireWebGPURHIV2(stage.renderer);
+const rhi = requireWebGPURHI(stage.renderer);
 let renderTarget = stage.renderer.createRenderTarget({
     width: 640,
     height: 480,

@@ -1,5 +1,5 @@
 export * from './FrameArena';
-export * from './RenderFrame';
-export * from './RenderFrameContext';
+export * from './RenderGraphFrame';
+export * from './RenderGraphFrameContext';
 export * from './SemanticFrameState';
 export * from './RHIUploadBatch';

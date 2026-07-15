@@ -7,7 +7,7 @@ import {
     type RHIBenchmarkFixtureFrameSample,
     type RHIBenchmarkFixtureMetadata,
     type RHIBenchmarkFixtureRoundResult
-} from '../../benchmarks/rhi-v2/fixture-contract';
+} from '../../benchmarks/rhi/fixture-contract';
 import {
     RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
     type RendererArchitecture,
@@ -17,7 +17,7 @@ import {
     type RHIBenchmarkRawCaptureResult,
     type RHIBenchmarkRawMetricSamples,
     type RHIBenchmarkScenarioManifest
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import type { RHIPhase0PreflightResult } from './rhi-phase0-preflight';
 import { rhiBenchmarkPairedOrder } from './rhi-benchmark-statistics';
 import { verifyRHIRawBenchmarkCapture } from './summarize-rhi-benchmark';
@@ -366,7 +366,7 @@ export async function collectRHIProductionCapture(
                             isolationIds
                         );
                     }
-                    if (results.legacy.pixelHashSha256 !== results['rhi-v2'].pixelHashSha256) {
+                    if (results.legacy.pixelHashSha256 !== results['rhi'].pixelHashSha256) {
                         collectionFailure(
                             `${scenario.id}/${backend}/round-${String(round)} pixel hashes differ between architectures`
                         );
@@ -381,7 +381,7 @@ export async function collectRHIProductionCapture(
     }
     const raw: RHIBenchmarkRawCaptureResult = {
         schemaVersion: 2,
-        suite: 'rhi-v2',
+        suite: 'rhi',
         manifestSha256: manifestSha256(manifest),
         commitSha: options.commitSha,
         capturedAt,

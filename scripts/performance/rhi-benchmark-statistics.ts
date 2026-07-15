@@ -8,7 +8,7 @@ import {
     type RHIBenchmarkMetric,
     type RHIBenchmarkRegressionDirection,
     type RendererArchitecture
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 
 export interface RHIBenchmarkBootstrapOptions {
     readonly seed: number;
@@ -192,7 +192,7 @@ export function rhiBenchmarkPairedOrder(
 ): readonly RendererArchitecture[] {
     const legacyFirst =
         deriveRHISeed(orderSeed, scenarioId, backend, round, 'paired-order') % 2 === 0;
-    return legacyFirst ? ['legacy', 'rhi-v2'] : ['rhi-v2', 'legacy'];
+    return legacyFirst ? ['legacy', 'rhi'] : ['rhi', 'legacy'];
 }
 
 export function bootstrapRHIMedianConfidenceInterval(

@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { RHIBenchmarkRawCaptureResult } from '../../benchmarks/rhi-v2/result-schema';
+import type { RHIBenchmarkRawCaptureResult } from '../../benchmarks/rhi/result-schema';
 import {
     assertRHIPhase0Preflight,
     readRHIPhase0EnvironmentFile,
@@ -23,7 +23,7 @@ export interface RHICollectorOptions extends RHIPhase0PreflightOptions {
 }
 
 function isInsideBaselineDirectory(repositoryRoot: string, outputPath: string): boolean {
-    const baselineRoot = resolve(repositoryRoot, 'benchmarks/rhi-v2/baselines');
+    const baselineRoot = resolve(repositoryRoot, 'benchmarks/rhi/baselines');
     const child = relative(baselineRoot, resolve(outputPath));
     return (
         child === '' ||
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     }
     const repositoryRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
     const manifestValue = JSON.parse(
-        await readFile(resolve(repositoryRoot, 'benchmarks/rhi-v2/manifest.json'), 'utf8')
+        await readFile(resolve(repositoryRoot, 'benchmarks/rhi/manifest.json'), 'utf8')
     ) as unknown;
     const environmentValue = await readRHIPhase0EnvironmentFile();
     await collectRHIRawBenchmark({

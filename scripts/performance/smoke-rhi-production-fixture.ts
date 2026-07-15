@@ -11,7 +11,7 @@ import {
     type RHIBenchmarkManifest,
     type RHIBenchmarkScenarioId,
     type RHIBenchmarkScenarioManifest
-} from '../../benchmarks/rhi-v2/result-schema';
+} from '../../benchmarks/rhi/result-schema';
 import {
     RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES,
     RHI_BENCHMARK_ALLOCATION_POST_SUSPEND_WARMUP_FRAMES,
@@ -21,7 +21,7 @@ import {
     RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES
-} from '../../benchmarks/rhi-v2/fixture-contract';
+} from '../../benchmarks/rhi/fixture-contract';
 import { RHI_PRODUCTION_FIXTURE_PATH } from './rhi-phase0-preflight';
 import {
     profileRHISynchronousAllocationFrames,
@@ -46,7 +46,7 @@ export const RHI_PRODUCTION_SMOKE_SCENARIOS = Object.freeze([
     'scene-churn-10000-frame'
 ] as const satisfies readonly RHIBenchmarkScenarioId[]);
 
-const ARCHITECTURES = ['legacy', 'rhi-v2'] as const satisfies readonly RendererArchitecture[];
+const ARCHITECTURES = ['legacy', 'rhi'] as const satisfies readonly RendererArchitecture[];
 
 export const RHI_PRODUCTION_SMOKE_WARMUP_FRAMES = 30;
 export const RHI_PRODUCTION_SMOKE_DISCARDED_ALLOCATION_PROFILES =
@@ -351,7 +351,7 @@ export async function runRHIProductionFixtureSmoke(
     const repositoryRoot = resolve(options.repositoryRoot);
     const manifest = parseRHIBenchmarkManifest(
         JSON.parse(
-            await readFile(resolve(repositoryRoot, 'benchmarks/rhi-v2/manifest.json'), 'utf8')
+            await readFile(resolve(repositoryRoot, 'benchmarks/rhi/manifest.json'), 'utf8')
         ) as unknown
     );
     const scenarios = selectedScenarios(
@@ -439,7 +439,7 @@ export async function runRHIProductionFixtureSmoke(
                         `NON-EVIDENCE diagnostic ${scenario.id}/${backend}/${observation.architecture}: quiescence=[${quiescenceMatrix}], hot=[${hotVector}], renderer=[${rendererVector}], rendererMedian=${String(observation.allocation.rendererBytes)}, pixels=${observation.pixelHashSha256}\n`
                     );
                     if (
-                        observation.architecture === 'rhi-v2' &&
+                        observation.architecture === 'rhi' &&
                         observation.allocation.rhiHotPathBytes >
                             RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES
                     ) {
@@ -447,7 +447,7 @@ export async function runRHIProductionFixtureSmoke(
                             .map(frame => `${String(frame.bytes)} ${frame.frame}`)
                             .join('\n');
                         smokeFailure(
-                            `${scenario.id}/${backend} RHI-v2 hot draw/context allocation ${String(observation.allocation.rhiHotPathBytes)} exceeds the temporary ${String(RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES)}-byte TODO budget${detail.length === 0 ? '' : `:\n${detail}`}`
+                            `${scenario.id}/${backend} RHI hot draw/context allocation ${String(observation.allocation.rhiHotPathBytes)} exceeds the temporary ${String(RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES)}-byte TODO budget${detail.length === 0 ? '' : `:\n${detail}`}`
                         );
                     }
                     continue;
@@ -481,7 +481,7 @@ export async function runRHIProductionFixtureSmoke(
                     )
                     .join(',');
                 process.stdout.write(
-                    `NON-EVIDENCE smoke ${scenario.id}/${backend}: RHI-v2 quiescence=[${candidateQuiescenceMatrix}], legacy quiescence=[${legacyQuiescenceMatrix}], RHI-v2 hot=[${hotVector}], RHI-v2 renderer=[${candidateRendererVector}], legacy renderer=[${legacyRendererVector}], rendererMedian=${String(candidate.allocation.rendererBytes)}, legacyRendererMedian=${String(legacy.allocation.rendererBytes)}, pixels=${legacy.pixelHashSha256}/${candidate.pixelHashSha256}\n`
+                    `NON-EVIDENCE smoke ${scenario.id}/${backend}: RHI quiescence=[${candidateQuiescenceMatrix}], legacy quiescence=[${legacyQuiescenceMatrix}], RHI hot=[${hotVector}], RHI renderer=[${candidateRendererVector}], legacy renderer=[${legacyRendererVector}], rendererMedian=${String(candidate.allocation.rendererBytes)}, legacyRendererMedian=${String(legacy.allocation.rendererBytes)}, pixels=${legacy.pixelHashSha256}/${candidate.pixelHashSha256}\n`
                 );
                 if (
                     candidate.allocation.rhiHotPathBytes >
@@ -494,7 +494,7 @@ export async function runRHIProductionFixtureSmoke(
                         .map(frame => `${String(frame.bytes)} ${frame.frame}`)
                         .join('\n');
                     smokeFailure(
-                        `${scenario.id}/${backend} RHI-v2 hot draw/context allocation ${String(candidate.allocation.rhiHotPathBytes)} exceeds the temporary ${String(RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES)}-byte TODO budget; measured hot bytes [${samples}]${detail.length === 0 ? '' : `:\n${detail}`}`
+                        `${scenario.id}/${backend} RHI hot draw/context allocation ${String(candidate.allocation.rhiHotPathBytes)} exceeds the temporary ${String(RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES)}-byte TODO budget; measured hot bytes [${samples}]${detail.length === 0 ? '' : `:\n${detail}`}`
                     );
                 }
                 if (candidate.allocation.rendererBytes > legacy.allocation.rendererBytes) {
@@ -511,12 +511,12 @@ export async function runRHIProductionFixtureSmoke(
                         .map(frame => `${String(frame.bytes)} ${frame.frame}`)
                         .join('\n');
                     smokeFailure(
-                        `${scenario.id}/${backend} RHI-v2 renderer allocation ${String(candidate.allocation.rendererBytes)} exceeds legacy ${String(legacy.allocation.rendererBytes)}; measured RHI-v2 bytes [${candidateSamples}]; measured legacy bytes [${legacySamples}]\nRHI-v2 top frames:\n${candidateDetail}\nlegacy top frames:\n${legacyDetail}`
+                        `${scenario.id}/${backend} RHI renderer allocation ${String(candidate.allocation.rendererBytes)} exceeds legacy ${String(legacy.allocation.rendererBytes)}; measured RHI bytes [${candidateSamples}]; measured legacy bytes [${legacySamples}]\nRHI top frames:\n${candidateDetail}\nlegacy top frames:\n${legacyDetail}`
                     );
                 }
                 if (legacy.pixelHashSha256 !== candidate.pixelHashSha256) {
                     smokeFailure(
-                        `${scenario.id}/${backend} legacy and RHI-v2 pixels differ (${legacy.pixelHashSha256} versus ${candidate.pixelHashSha256})`
+                        `${scenario.id}/${backend} legacy and RHI pixels differ (${legacy.pixelHashSha256} versus ${candidate.pixelHashSha256})`
                     );
                 }
             }
@@ -550,7 +550,7 @@ async function main(): Promise<void> {
     if (
         requestedArchitecture !== undefined &&
         requestedArchitecture !== 'legacy' &&
-        requestedArchitecture !== 'rhi-v2'
+        requestedArchitecture !== 'rhi'
     ) {
         smokeFailure(`unknown architecture ${requestedArchitecture}`);
     }
@@ -559,7 +559,7 @@ async function main(): Promise<void> {
             ? parseRHIBenchmarkManifest(
                   JSON.parse(
                       await readFile(
-                          resolve(repositoryRoot, 'benchmarks/rhi-v2/manifest.json'),
+                          resolve(repositoryRoot, 'benchmarks/rhi/manifest.json'),
                           'utf8'
                       )
                   ) as unknown

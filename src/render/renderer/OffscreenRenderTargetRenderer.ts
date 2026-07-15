@@ -1,7 +1,7 @@
 import type Mesh from '../../core/Mesh';
 import Material from '../../material/Material';
-import { RenderFrame, type RenderFrameBuildScope } from '../frame/RenderFrame';
-import type { RenderFrameContext } from '../frame/RenderFrameContext';
+import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
+import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
 import type { RenderGraphBuilder } from '../graph/RenderGraphBuilder';
 import type { RGBufferHandle } from '../graph/RenderGraphResource';
@@ -227,7 +227,7 @@ function normalizeDrawInputs(
 }
 
 function validatePreparedDraw(
-    context: RenderFrameContext,
+    context: RenderGraphFrameContext,
     draw: PreparedDraw,
     target: Readonly<RenderTargetResourceDescriptor>
 ): void {
@@ -255,7 +255,7 @@ function validatePreparedDraw(
 }
 
 function validatePreparedDraws(
-    context: RenderFrameContext,
+    context: RenderGraphFrameContext,
     inputs: Readonly<NormalizedDrawInputs>,
     target: Readonly<RenderTargetResourceDescriptor>
 ): void {
@@ -264,7 +264,7 @@ function validatePreparedDraws(
 }
 
 function validateCopyDestination(
-    context: RenderFrameContext,
+    context: RenderGraphFrameContext,
     destination: RHIBuffer,
     byteLength: number
 ): void {
@@ -377,10 +377,10 @@ function markStoredTargetOutputs(
  *
  * It owns only reusable frame/pass planning state. Target resources and the submission tracker are
  * caller-owned and must share one ResourceRegistry, which also lets a MeshDrawProcessor enlist its
- * uploads and resource-use transaction in this exact RenderFrame submission.
+ * uploads and resource-use transaction in this exact RenderGraphFrame submission.
  */
 export class OffscreenRenderTargetRenderer {
-    readonly frame: RenderFrame;
+    readonly frame: RenderGraphFrame;
     readonly bridge: RenderTargetGraphBridge;
     readonly #opaquePass: SharedDrawPassParameters;
     readonly #transparentPass: SharedDrawPassParameters;
@@ -419,7 +419,7 @@ export class OffscreenRenderTargetRenderer {
                 'Offscreen target resources and submission tracker must share one registry'
             );
         }
-        this.frame = new RenderFrame(initialArenaCapacity);
+        this.frame = new RenderGraphFrame(initialArenaCapacity);
         this.bridge = new RenderTargetGraphBridge(resources);
         this.#opaquePass = new SharedDrawPassParameters({
             colorAttachments: 2,
@@ -450,7 +450,7 @@ export class OffscreenRenderTargetRenderer {
         this.#destroyed = true;
     }
 
-    /** Start a caller-owned RenderFrame composition. */
+    /** Start a caller-owned RenderGraphFrame composition. */
     beginComposition(): void {
         if (this.#active) throw new Error('Nested offscreen target execution is not allowed');
         if (this.#destroyed)
@@ -468,8 +468,8 @@ export class OffscreenRenderTargetRenderer {
      * because its result cannot be observed until the outer graph has executed.
      */
     build(
-        scope: RenderFrameBuildScope,
-        context: RenderFrameContext,
+        scope: RenderGraphFrameBuildScope,
+        context: RenderGraphFrameContext,
         owner: object,
         targetDescriptor: Readonly<RenderTargetResourceDescriptor>,
         options: Readonly<OffscreenRenderTargetFrameOptions> = {},
@@ -637,7 +637,7 @@ export class OffscreenRenderTargetRenderer {
     }
 
     render(
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         owner: object,
         targetDescriptor: Readonly<RenderTargetResourceDescriptor>,
         options: Readonly<OffscreenRenderTargetFrameOptions> = {}
@@ -938,7 +938,7 @@ export class OffscreenRenderTargetRenderer {
         return this.#meshTarget;
     }
 
-    private validateContext(context: RenderFrameContext): void {
+    private validateContext(context: RenderGraphFrameContext): void {
         const registry = this.resources.registry;
         if (registry.state !== 'active') {
             throw new Error(`Offscreen renderer resource registry is ${registry.state}`);
@@ -969,7 +969,7 @@ export class OffscreenRenderTargetRenderer {
 
     private validateMeshProcessor(
         processor: MeshDrawProcessor,
-        context: RenderFrameContext,
+        context: RenderGraphFrameContext,
         allowActive = false
     ): void {
         if (
