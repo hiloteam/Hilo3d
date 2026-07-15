@@ -1,4 +1,5 @@
 import {
+    RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL,
     RHI_BENCHMARK_DIAGNOSTIC_METRICS,
     RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION,
     RHI_BENCHMARK_NATIVE_CREATE_METRICS,
@@ -121,10 +122,7 @@ function assertMetadata(
     if (capabilities.gpuTimer !== expectedGpuTimer) {
         collectionFailure(`${request.backend} GPU timestamp queries are unavailable`);
     }
-    if (
-        capabilities.allocationProfiler !==
-        'chromium-cdp-windowed-sampling-heap-profiler-sync-render-v10'
-    ) {
+    if (capabilities.allocationProfiler !== RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL) {
         collectionFailure('one-byte allocation profiling is unavailable');
     }
     if (capabilities.preciseMemory !== 'chromium-precise-memory-v1') {

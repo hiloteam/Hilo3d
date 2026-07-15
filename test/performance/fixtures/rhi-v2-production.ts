@@ -1,5 +1,6 @@
 import manifestValue from '../../../benchmarks/rhi-v2/manifest.json';
 import {
+    RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL,
     RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION,
     type RHIBenchmarkDiagnosticSample,
     type RHIBenchmarkFixtureFrameSample,
@@ -665,8 +666,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                             backend === 'webgl2'
                                 ? 'ext-disjoint-timer-query-webgl2'
                                 : 'webgpu-timestamp-query',
-                        allocationProfiler:
-                            'chromium-cdp-windowed-sampling-heap-profiler-sync-render-v10',
+                        allocationProfiler: RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL,
                         preciseMemory: 'chromium-precise-memory-v1',
                         nativeCounters: 'renderer-diagnostics-v1'
                     }

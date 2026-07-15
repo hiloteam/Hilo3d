@@ -1,8 +1,7 @@
 # Hilo3d RHI v2 与 Render Graph 重构设计
 
-> 状态：设计提案
-> 目标版本：Hilo3d 2.x 内部渐进迁移
-> 核心约束：可以重构现有渲染实现，但功能、画面和性能不得劣化
+> 状态：设计提案目标版本：Hilo3d
+> 2.x 内部渐进迁移核心约束：可以重构现有渲染实现，但功能、画面和性能不得劣化
 
 ## 1. 结论
 
@@ -793,17 +792,17 @@ variant、纹理和灯光数量。禁止 benchmark 代码根据 backend 改变�
    interval 排除 0 时，直接判定失败；即使回归幅度小于下表 hard cap 也不能合并。
 2. Hard cap：无论统计显著性如何，只要超过下表上限就直接失败，用于拦截高噪声环境中的明显退化。
 
-| 指标                       | Hard cap                                              |
-| -------------------------- | ----------------------------------------------------- |
-| 稳态 renderer CPU p50      | 不高于 baseline 2%                                    |
-| 稳态 renderer CPU p95      | 不高于 baseline 3%                                    |
-| 10,000 draw WebGL2 CPU     | 不高于 baseline 3%                                    |
-| WebGPU encode + submit CPU | 不高于 baseline 2%                                    |
-| GPU frame time             | 不高于 baseline 2%，draw 和画质必须相同               |
-| steady-state 热路径分配    | 核心 draw/context execute 为 0；renderer 总量不得增加 |
-| retained heap              | 不高于 baseline 5%，且随帧数保持有界                  |
-| native object 创建         | 稳态不得增加；峰值不得无界增长                        |
-| 首次复杂帧 p95             | 不高于 baseline 5%，后续通过 prewarm 继续降低         |
+| 指标                       | Hard cap                                                   |
+| -------------------------- | ---------------------------------------------------------- |
+| 稳态 renderer CPU p50      | 不高于 baseline 2%                                         |
+| 稳态 renderer CPU p95      | 不高于 baseline 3%                                         |
+| 10,000 draw WebGL2 CPU     | 不高于 baseline 3%                                         |
+| WebGPU encode + submit CPU | 不高于 baseline 2%                                         |
+| GPU frame time             | 不高于 baseline 2%，draw 和画质必须相同                    |
+| steady-state 热路径分配    | 核心 draw/context 临时上限 2 KiB/帧；renderer 总量不得增加 |
+| retained heap              | 不高于 baseline 5%，且随帧数保持有界                       |
+| native object 创建         | 稳态不得增加；峰值不得无界增长                             |
+| 首次复杂帧 p95             | 不高于 baseline 5%，后续通过 prewarm 继续降低              |
 
 若浏览器噪声高于预算，必须增加样本和重复次数，不能放宽门禁。推荐每个 case：
 
@@ -1024,7 +1023,7 @@ benchmark 通过。
 - [ ] Device 与 Surface 解耦。
 - [ ] Shader 编译/variant 位于 RHI 之上。
 - [ ] WebGL pipeline/bind group/VAO 在非热路径预编译。
-- [ ] WebGL RHI context 稳态零分配且没有软件 command replay。
+- [ ] WebGL RHI context 没有软件 command replay；TODO：将临时 2 KiB/帧 hot-path 预算收紧回零分配。
 - [ ] WebGPU RHI concrete object 直接映射 native，无 Proxy 和重复 command list。
 - [ ] Render Frame 使用显式 context，不再依赖全局 semantic。
 - [ ] Render Graph 支持 imported/transient resource、依赖、裁剪、validation 和执行。

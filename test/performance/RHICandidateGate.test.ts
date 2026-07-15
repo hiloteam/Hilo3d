@@ -18,6 +18,7 @@ import {
     RHI_BENCHMARK_CACHE_HIT_METRICS,
     RHI_BENCHMARK_HARD_CAPS,
     RHI_BENCHMARK_METRICS,
+    RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
     rhiBenchmarkMetricScope,
     type RHIBenchmarkBaselineResult,
     type RHIBenchmarkDistribution,
@@ -618,10 +619,18 @@ describe('RHI paired candidate gate', () => {
         expect(result.passed).toBe(false);
     });
 
-    it('serializes a zero-baseline regression with an explicit JSON-safe unbounded marker', () => {
+    it('serializes an over-budget hot-path regression with a JSON-safe unbounded marker', () => {
         const manifest = testManifest();
         const raw = pairedRaw(manifest);
-        setCandidateMetric(raw, 'rhiHotPathAllocationBytesPerFrame', [1, 0, 0, 0, 0, 0, 0]);
+        setCandidateMetric(raw, 'rhiHotPathAllocationBytesPerFrame', [
+            RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES + 1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        ]);
 
         const result = build(raw, manifest);
         const gate = result.cases[0]?.gates.find(

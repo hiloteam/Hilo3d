@@ -1,6 +1,22 @@
 # RHI v2 重构 handoff
 
-最后更新：2026-07-15（Asia/Shanghai）
+最后更新：2026-07-16（Asia/Shanghai）
+
+## 0A. 2026-07-16 检查点与最新门禁决策
+
+本节晚于下方历史记录，冲突时以本节、当前工作树和提交历史为准。
+
+- RHI v2 主体已提交并推送：`cf52743 refactor!: migrate production renderer to RHI v2`。
+- GitHub PR #48 已按 `dev...chore/ts` 的真实差异更新描述，突出 TypeScript 工程现代化与 WebGPU/RHI
+  v2/RenderGraph 两条主线。
+- 用户明确将 draw/command 热路径严格零分配改为临时 **2
+  KiB/帧上限**；小于等于该预算的孤立 Chromium/V8 profiler tier metadata 暂不阻塞。
+- `allocationBytesPerFrame` 的 paired renderer p50 仍必须不高于 legacy，门禁不放宽。
+- MRT/WebGL2 paired smoke 已按新口径通过：RHI v2 hot maximum `1,916 B`，renderer p50
+  `244,492 B`，legacy renderer p50 `669,068 B`，像素 SHA-256 完全一致。
+- TODO：完成其余功能/像素/分配矩阵后，继续消除真实 hot-path 分配，并在采样器稳定时把 2
+  KiB临时预算收紧回 0。
+- 正式 Linux 物理 GPU paired A/B 证据仍缺失，legacy 删除继续 fail closed。
 
 ## 0. 本会话结束时的权威接续状态
 

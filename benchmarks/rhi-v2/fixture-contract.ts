@@ -5,7 +5,9 @@ import type {
     RHIBenchmarkScenarioId
 } from './result-schema';
 
-export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 10 as const;
+export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 11 as const;
+export const RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL =
+    'chromium-cdp-windowed-sampling-heap-profiler-sync-render-v11' as const;
 /** The fixed quiescence proof now ends immediately before measured samples; no duplicate discard. */
 export const RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES = 0 as const;
 
@@ -15,21 +17,21 @@ export const RHI_BENCHMARK_ALLOCATION_POST_SUSPEND_WARMUP_FRAMES = 30 as const;
 /** Exact non-retained production frames that tier draw-level and once-per-frame renderer paths. */
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_WARMUP_FRAMES = 288 as const;
 
-/** Production-boundary frames that trigger real renderer work in each retained window. */
+/** Production-boundary frame that re-enters real renderer work after each retained restart. */
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES = 1 as const;
 
 /**
  * Separate foreground Runtime calls that give pending V8 work fixed opportunities to install
- * without retaining more full frames. The observed late tier metadata appeared on marked frame 33
- * after one bulk call, so the complete fail-closed probe begins on call 34.
+ * without retaining more full frames. These follow the real render retraining so pending tier
+ * installs receive deterministic task boundaries before the marked fail-closed proof begins.
  */
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS = 32 as const;
 
 /** Fixed measured-frame chunk that bounds each one-byte retained sampling profile. */
 export const RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES = 7 as const;
 
-/** Consecutive marked zero-hot frames required immediately before the measured window. */
-export const RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_ZERO_FRAMES = 5 as const;
+/** Consecutive marked in-budget frames required immediately before the measured window. */
+export const RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES = 5 as const;
 
 /** One fixed marked probe verified from the final retained-object profile. */
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES = 21 as const;

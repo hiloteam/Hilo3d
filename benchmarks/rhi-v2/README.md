@@ -55,30 +55,25 @@ Metrics are collected in independent passes so profilers do not contaminate wall
 - Chromium CDP sampling at a one-byte interval profiles the independent 21-sample allocation pass,
   not the 2,000-frame main timing/GPU pass. Timing wrappers are suspended once for the complete
   allocation phase; 30 ordinary post-suspend frames retrain the restored production call sites
-  before sampling. The profiler then uses exactly two sessions. Stage A runs an unmarked 70,000-draw
-  tier-up budget, capped at 288 frames, without retaining collected objects; a major GC precedes its
-  stop and its deliberately unparsed profile is discarded completely. Stage B uses one new
-  retained-object session and targets 67,000 cumulative draws before the terminal five-frame zero
-  window of one fixed 21-frame marked quiescence probe. The unmarked restart is capped at 288 frames
-  and deducts only the preceding 16 fixed probe frames from that target; no observed result moves
-  the window. The probe uses the unchanged markers and classifier, and a fresh unchanged 21-frame
-  measured window follows immediately after its terminal five-frame zero proof in that same session.
-  There is no duplicate discard window. Only the final `HeapProfiler.stopSampling` result is parsed:
-  the probe must end in five consecutive zero-hot frames or the run aborts. This deliberately avoids
-  the full GC and profile translation performed by an in-session `getSamplingProfile`, which can
-  perturb later V8 tiers while the sampler remains active. No measured frame is selected from the
-  quiescence probe, and the profiler is never restarted between quiescence and measurement. For
-  512-draw cases the two unmarked budgets are 137 and 115 frames; for 256-draw cases they are 274
-  and 246. The classifier's dedicated renderer boundary excludes application-side scene mutation
-  while retaining frame construction and public RHI lifecycle shells for legacy/RHI-v2 A/B
-  comparison. The zero-allocation hot counter includes SharedDrawPass/PreparedDraw execution and
-  concrete context commands (including allocations in their helper/native descendants), while
-  frame/pass/submission shell creation and WebGPU encoder creation/finalization are lifecycle costs
-  outside that hot counter. In every marked Stage B frame, the end marker closes the synchronous
-  renderer window before `waitForIdle`; sampling remains active while that wait settles, but the
-  parser excludes work outside the marker pair. The wait completes before the next start marker, and
-  the final wait completes before `stopSampling` returns the single profile that is split into frame
-  samples;
+  before sampling. Stage A uses one non-retained sampler session for exactly 288 unmarked production
+  frames, performs a major collection, stops the sampler, and discards that profile without parsing
+  it. Stage B splits the 21 measured frames into three bounded retained-object sessions of seven
+  measured frames each. After every retained sampler restart, one unmarked production frame
+  re-enters the real renderer/draw call sites and 32 separate Runtime tasks give pending V8 tier
+  installs fixed foreground opportunities. A fixed 21-frame marked quiescence probe follows; its
+  final five frames must remain within the temporary 2 KiB-per-frame hot-path TODO budget or the run
+  aborts. Seven measured frames then execute immediately in the same sampler session. No quiescence
+  frame is selected as a measurement, the sampler is never restarted between a window's proof and
+  measurements, and all three retained profiles remain bounded. The classifier's dedicated renderer
+  boundary excludes application-side scene mutation while retaining frame construction and public
+  RHI lifecycle shells for legacy/RHI-v2 A/B comparison. The hot-path allocation counter includes
+  SharedDrawPass/PreparedDraw execution and concrete context commands (including allocations in
+  their helper/native descendants), while frame/pass/submission shell creation and WebGPU encoder
+  creation/finalization are lifecycle costs outside that hot counter. In every marked Stage B frame,
+  the end marker closes the synchronous renderer window before `waitForIdle`; sampling remains
+  active while that wait settles, but the parser excludes work outside the marker pair. The wait
+  completes before the next start marker, and the final wait completes before `stopSampling` returns
+  the single profile that is split into frame samples;
 - Chromium precise-memory data plus a CDP major collection produce high-water and retained heap;
 - renderer diagnostics produce exact native creation, command/draw/state, and cache hit/miss data.
 
@@ -92,16 +87,15 @@ artifact is opened.
 
 `npm run test:rhi-benchmark-smoke` opens fresh legacy and RHI-v2 pages for a representative
 WebGL2/WebGPU matrix. Each page runs 30 ordinary warm-up frames, suspends timing instrumentation,
-runs 30 fixed post-suspend ordinary frames, then uses the same discarded 70,000-draw exact tier-up
-session, retained-object fixed restart/probe tier target, marked quiescence proof, and fresh 21
-measured profiles as the formal collector. The smoke prints both quiescence vectors and the measured
-vectors, then requires the RHI-v2 measured hot-path maximum to be exactly zero, its
-renderer-allocation median not to exceed paired legacy, and manifest quality, observed draw counts,
-and pixel hashes to match. Pass `-- --all` to cover all ten scenarios. This command deliberately
-bypasses enrolled-rig preflight, may use a software adapter, keeps results only in memory, and never
-calls collection, freezing, verification, or the candidate wall-clock/GPU gate. It is a PR
-allocation/fixture regression gate, not an enrolled-rig performance baseline or timing claim. For
-local diagnosis, narrow the same fixed gate with
+runs 30 fixed post-suspend ordinary frames, then uses the same 288-frame discarded Stage A and three
+bounded retained Stage B windows as the formal collector. The smoke prints all quiescence vectors
+and the measured vectors, then requires the RHI-v2 measured hot-path maximum to remain within the
+temporary 2 KiB TODO budget, its renderer-allocation median not to exceed paired legacy, and
+manifest quality, observed draw counts, and pixel hashes to match. Pass `-- --all` to cover all ten
+scenarios. This command deliberately bypasses enrolled-rig preflight, may use a software adapter,
+keeps results only in memory, and never calls collection, freezing, verification, or the candidate
+wall-clock/GPU gate. It is a PR allocation/fixture regression gate, not an enrolled-rig performance
+baseline or timing claim. For local diagnosis, narrow the same fixed gate with
 `-- --scenario=pbr-lights-shadows --backend=webgl2`; this changes case selection, not its sample
 counts or budgets.
 

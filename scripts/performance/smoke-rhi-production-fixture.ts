@@ -5,6 +5,7 @@ import type { Browser, BrowserContext, CDPSession, Page } from 'playwright';
 import { createServer, type ViteDevServer } from 'vite';
 import {
     RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
+    RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
     type RendererArchitecture,
     type RHIBenchmarkBackend,
     type RHIBenchmarkManifest,
@@ -17,7 +18,7 @@ import {
     RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_WARMUP_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES,
-    RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_ZERO_FRAMES,
+    RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES
 } from '../../benchmarks/rhi-v2/fixture-contract';
@@ -60,8 +61,10 @@ export const RHI_PRODUCTION_SMOKE_PROFILER_RESTART_NOOP_TASKS =
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS;
 export const RHI_PRODUCTION_SMOKE_PROFILE_MEASURED_CHUNK_FRAMES =
     RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES;
-export const RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_ZERO_FRAMES =
-    RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_ZERO_FRAMES;
+export const RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_STABLE_FRAMES =
+    RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES;
+export const RHI_PRODUCTION_SMOKE_HOT_PATH_TODO_BUDGET_BYTES =
+    RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES;
 export const RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES =
     RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES;
 export const RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES =
@@ -437,13 +440,14 @@ export async function runRHIProductionFixtureSmoke(
                     );
                     if (
                         observation.architecture === 'rhi-v2' &&
-                        observation.allocation.rhiHotPathBytes !== 0
+                        observation.allocation.rhiHotPathBytes >
+                            RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES
                     ) {
                         const detail = observation.allocationHotFrames
                             .map(frame => `${String(frame.bytes)} ${frame.frame}`)
                             .join('\n');
                         smokeFailure(
-                            `${scenario.id}/${backend} RHI-v2 hot draw/context allocated ${String(observation.allocation.rhiHotPathBytes)} bytes${detail.length === 0 ? '' : `:\n${detail}`}`
+                            `${scenario.id}/${backend} RHI-v2 hot draw/context allocation ${String(observation.allocation.rhiHotPathBytes)} exceeds the temporary ${String(RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES)}-byte TODO budget${detail.length === 0 ? '' : `:\n${detail}`}`
                         );
                     }
                     continue;
@@ -479,7 +483,10 @@ export async function runRHIProductionFixtureSmoke(
                 process.stdout.write(
                     `NON-EVIDENCE smoke ${scenario.id}/${backend}: RHI-v2 quiescence=[${candidateQuiescenceMatrix}], legacy quiescence=[${legacyQuiescenceMatrix}], RHI-v2 hot=[${hotVector}], RHI-v2 renderer=[${candidateRendererVector}], legacy renderer=[${legacyRendererVector}], rendererMedian=${String(candidate.allocation.rendererBytes)}, legacyRendererMedian=${String(legacy.allocation.rendererBytes)}, pixels=${legacy.pixelHashSha256}/${candidate.pixelHashSha256}\n`
                 );
-                if (candidate.allocation.rhiHotPathBytes !== 0) {
+                if (
+                    candidate.allocation.rhiHotPathBytes >
+                    RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES
+                ) {
                     const samples = candidate.allocationSamples
                         .map(sample => String(sample.rhiHotPathBytes))
                         .join(', ');
@@ -487,7 +494,7 @@ export async function runRHIProductionFixtureSmoke(
                         .map(frame => `${String(frame.bytes)} ${frame.frame}`)
                         .join('\n');
                     smokeFailure(
-                        `${scenario.id}/${backend} RHI-v2 hot draw/context allocated ${String(candidate.allocation.rhiHotPathBytes)} bytes; measured hot bytes [${samples}]${detail.length === 0 ? '' : `:\n${detail}`}`
+                        `${scenario.id}/${backend} RHI-v2 hot draw/context allocation ${String(candidate.allocation.rhiHotPathBytes)} exceeds the temporary ${String(RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES)}-byte TODO budget; measured hot bytes [${samples}]${detail.length === 0 ? '' : `:\n${detail}`}`
                     );
                 }
                 if (candidate.allocation.rendererBytes > legacy.allocation.rendererBytes) {

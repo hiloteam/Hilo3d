@@ -5,7 +5,7 @@ import {
     RHI_BENCHMARK_ALLOCATION_POST_SUSPEND_WARMUP_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES,
-    RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_ZERO_FRAMES,
+    RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES,
     rhiBenchmarkAllocationProfilerWarmupFrames,
@@ -15,6 +15,7 @@ import {
 } from '../../benchmarks/rhi-v2/fixture-contract';
 import {
     RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
+    RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
     type RHIBenchmarkEnvironment
 } from '../../benchmarks/rhi-v2/result-schema';
 import type { RHIPhase0PreflightResult } from './rhi-phase0-preflight';
@@ -365,7 +366,7 @@ function rankedRHIAllocationFrames(
     );
 }
 
-/** Deterministic diagnostics for a failed zero-allocation gate; not a benchmark metric. */
+/** Deterministic diagnostics for a failed hot-path allocation gate; not a benchmark metric. */
 export function diagnoseRHIAllocationProfile(
     value: unknown,
     limit = 12
@@ -708,7 +709,7 @@ export interface RHIProfiledAllocationWindow {
     readonly frames: readonly Readonly<RHIProfiledAllocationFrame>[];
 }
 
-/** Require the fixed probe to end in the audited consecutive zero-hot window. */
+/** Require the fixed probe to end in the audited consecutive temporary-budget window. */
 export function assertRHIAllocationQuiescence(hotBytes: readonly number[]): void {
     if (hotBytes.length !== RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES) {
         throw new RangeError(
@@ -720,11 +721,16 @@ export function assertRHIAllocationQuiescence(hotBytes: readonly number[]): void
             throw new RangeError('RHI allocation quiescence vector contains invalid hot bytes');
         }
     }
-    const zeroStart = hotBytes.length - RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_ZERO_FRAMES;
-    for (let index = zeroStart; index < hotBytes.length; index += 1) {
-        if (hotBytes[index] === 0) continue;
+    const stableStart =
+        hotBytes.length - RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES;
+    for (let index = stableStart; index < hotBytes.length; index += 1) {
+        if (
+            (hotBytes[index] ?? Number.POSITIVE_INFINITY) <=
+            RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES
+        )
+            continue;
         playwrightFailure(
-            `allocation profiler fixed quiescence probe did not end in ${String(RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_ZERO_FRAMES)} zero-hot frames; observed [${hotBytes.join(',')}]`
+            `allocation profiler fixed quiescence probe did not end in ${String(RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES)} frames within the temporary ${String(RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES)}-byte hot-path TODO budget; observed [${hotBytes.join(',')}]`
         );
     }
 }
@@ -800,7 +806,7 @@ export async function profileRHISynchronousAllocationFrames(
                 includeObjectsCollectedByMinorGC: true
             });
             samplingStarted = true;
-            progress?.(`${phasePrefix}:warm-runtime-tasks`);
+            progress?.(`${phasePrefix}:warm-restart-window`);
             await warmRetainedRHIAllocationWindow(page);
             progress?.(`${phasePrefix}:render-quiescence`);
             await renderMarkedRHIAllocationFrames(page, quiescenceFrameCount);

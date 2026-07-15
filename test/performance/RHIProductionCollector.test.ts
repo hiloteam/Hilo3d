@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
     rhiBenchmarkAllocationProfilerWarmupFrames,
+    RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL,
     RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS,
@@ -14,6 +15,7 @@ import {
 } from '../../benchmarks/rhi-v2/fixture-contract';
 import {
     RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
+    RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
     type RHIBenchmarkEnvironment,
     type RHIBenchmarkManifest
 } from '../../benchmarks/rhi-v2/result-schema';
@@ -278,8 +280,7 @@ class FakeFactory implements RHIProductionCollectorSessionFactory {
                     cpuSegments: 'instrumented-production-method-boundaries-v1',
                     highResolutionClock: 'cross-origin-isolated-performance-now-v1',
                     gpuTimer: 'ext-disjoint-timer-query-webgl2',
-                    allocationProfiler:
-                        'chromium-cdp-windowed-sampling-heap-profiler-sync-render-v10',
+                    allocationProfiler: RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL,
                     preciseMemory: 'chromium-precise-memory-v1',
                     nativeCounters: 'renderer-diagnostics-v1'
                 }
@@ -298,9 +299,16 @@ class FakeFactory implements RHIProductionCollectorSessionFactory {
 }
 
 describe('RHI production collector', () => {
-    it('proves marked allocation quiescence with one fixed probe and terminal zero window', () => {
+    it('proves marked allocation quiescence with one fixed probe and a terminal TODO budget', () => {
         expect(() => {
-            assertRHIAllocationQuiescence([...Array<number>(16).fill(7), 0, 0, 0, 0, 0]);
+            assertRHIAllocationQuiescence([
+                ...Array<number>(16).fill(7),
+                RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
+                0,
+                0,
+                0,
+                0
+            ]);
         }).not.toThrow();
         expect(() => {
             assertRHIAllocationQuiescence(Array<number>(20).fill(0));
@@ -309,8 +317,15 @@ describe('RHI production collector', () => {
             assertRHIAllocationQuiescence([...Array<number>(20).fill(0), -1]);
         }).toThrow(/invalid hot bytes/u);
         expect(() => {
-            assertRHIAllocationQuiescence([...Array<number>(16).fill(0), 9, 0, 0, 0, 0]);
-        }).toThrow(/did not end in 5 zero-hot frames/u);
+            assertRHIAllocationQuiescence([
+                ...Array<number>(16).fill(0),
+                RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES + 1,
+                0,
+                0,
+                0,
+                0
+            ]);
+        }).toThrow(/temporary 2048-byte hot-path TODO budget/u);
     });
 
     it('rejects a non-21 formal allocation request before profiler collection', () => {
