@@ -15,9 +15,18 @@ it.skipIf(!nativeWebGPUAvailable)(
         }
         const device = await createWebGPUDevice({ adapter });
         const canvas = document.createElement('canvas');
+        const surfaceFormat = navigator.gpu.getPreferredCanvasFormat();
+        if (surfaceFormat !== 'rgba8unorm' && surfaceFormat !== 'bgra8unorm') {
+            throw new Error(`Unsupported preferred WebGPU canvas format: ${surfaceFormat}`);
+        }
         const progress: string[] = [];
         try {
-            const result = await runRHIPhase2Conformance({ device, canvas, progress });
+            const result = await runRHIPhase2Conformance({
+                device,
+                canvas,
+                surfaceFormat,
+                progress
+            });
             expectRHIPhase2Conformance(result);
         } catch (error) {
             const tail = progress.slice(-8).join(' -> ') || 'before the first recorded command';

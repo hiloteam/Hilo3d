@@ -10,7 +10,8 @@ import {
     type RHIDevice,
     type RHIGraphicsPipeline,
     type RHIPipelineLayout,
-    type RHIShader
+    type RHIShader,
+    type RHITextureFormat
 } from '../../../../src/render/rhi/core';
 
 const WIDTH = 4;
@@ -26,6 +27,7 @@ type FragmentProgram = 'solid' | 'green' | 'textured-2d' | 'mrt' | 'cube';
 export interface RHIPhase2ConformanceHarness {
     readonly device: RHIDevice;
     readonly canvas: HTMLCanvasElement;
+    readonly surfaceFormat?: RHITextureFormat;
     /** Optional caller-owned trace used to diagnose failures before a result can be returned. */
     readonly progress?: string[];
 }
@@ -248,12 +250,13 @@ function createPipeline(
     program: FragmentProgram,
     layout: RHIPipelineLayout,
     sampleCount = 1,
-    depthStencil?: Readonly<RHIDepthStencilState>
+    depthStencil?: Readonly<RHIDepthStencilState>,
+    colorFormat: RHITextureFormat = 'rgba8unorm'
 ): RHIGraphicsPipeline {
     const targets =
         program === 'mrt'
             ? ([{ format: 'rgba8unorm' }, { format: 'rgba8unorm' }] as const)
-            : ([{ format: 'rgba8unorm' }] as const);
+            : ([{ format: colorFormat }] as const);
     return device.createGraphicsPipeline({
         label,
         layout,
@@ -802,12 +805,25 @@ async function runCubeScene(device: RHIDevice, order: string[]) {
     };
 }
 
-async function runSurfaceScene(device: RHIDevice, canvas: HTMLCanvasElement, order: string[]) {
+async function runSurfaceScene(
+    device: RHIDevice,
+    canvas: HTMLCanvasElement,
+    order: string[],
+    format: RHITextureFormat
+) {
     const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
-    const pipeline = createPipeline(device, 'phase2:surface', 'solid', layout);
+    const pipeline = createPipeline(
+        device,
+        'phase2:surface',
+        'solid',
+        layout,
+        1,
+        undefined,
+        format
+    );
     const surface = device.createSurface(canvas);
     order.push('surface.configure');
-    surface.configure({ format: 'rgba8unorm', width: WIDTH, height: HEIGHT });
+    surface.configure({ format, width: WIDTH, height: HEIGHT });
     const configuredState = surface.state;
     order.push('surface.acquire');
     const texture = surface.getCurrentTexture();
@@ -858,7 +874,12 @@ export async function runRHIPhase2Conformance(
     const depthStencil = await runDepthStencilScene(device, order);
     const msaa = await runMSAAScene(device, order);
     const cube = await runCubeScene(device, order);
-    const surface = await runSurfaceScene(device, canvas, order);
+    const surface = await runSurfaceScene(
+        device,
+        canvas,
+        order,
+        harness.surfaceFormat ?? 'rgba8unorm'
+    );
     return Object.freeze({
         backend: device.backend,
         offscreenPixel: offscreen.pixel,
