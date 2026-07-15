@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
+import {
+    assertStableInstrumentationHealth,
+    awaitTrackedGPUQueues,
+    installRenderHealthProbe,
+    readRenderHealth,
+    waitForStableAnimationFrames
+} from './render-health';
 
 test('renders a real frame through WebGPU and Naga', async ({ page }) => {
+    await installRenderHealthProbe(page);
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
     page.on('console', message => {
@@ -16,6 +24,8 @@ test('renders a real frame through WebGPU and Naga', async ({ page }) => {
     await expect(page.locator('canvas')).toBeVisible();
     expect(await page.evaluate(() => window.__HILO3D_WEBGPU_RESULT__)).toEqual({
         backend: 'webgpu',
+        rhiExtensionBackend: 'webgpu',
+        rhiSurfaceState: 'configured',
         drawCount: 4,
         faceCount: 60,
         hasShadowAtlas: true,
@@ -54,8 +64,12 @@ test('renders a real frame through WebGPU and Naga', async ({ page }) => {
         extendedSamplerValidationError: null,
         extendedGpuSubmissionCompleted: true,
         offscreenStencilReadback: [255, 0, 0, 255],
-        offscreenStencilStableAcrossFrames: true,
-        gpuErrors: []
+        offscreenStencilStableAcrossFrames: true
+    });
+    await assertStableInstrumentationHealth('webgpu', 'portable WebGPU fixture health', {
+        waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
+        awaitTrackedGPUQueues: () => awaitTrackedGPUQueues(page),
+        readRenderHealth: () => readRenderHealth(page)
     });
 });
 

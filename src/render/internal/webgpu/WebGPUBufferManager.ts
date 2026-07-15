@@ -1,4 +1,5 @@
 import type GeometryData from '../../../geometry/GeometryData';
+import { RHICacheCounter } from '../../rhi/core';
 import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
 import type { WebGPUVertexInput } from '../../shader/GlslToWgsl';
 import type { TypedArray } from '../../types';
@@ -643,6 +644,7 @@ export class WebGPUBufferManager {
     private submissionActive = false;
     private submissionUsedBuffers = new WeakSet<GPUBuffer>();
     private readonly deferredBufferDestructions = new Set<GPUBuffer>();
+    readonly vertexInputCacheMetrics = new RHICacheCounter();
     readonly cacheLimits: Readonly<WebGPUBufferCacheLimits>;
 
     constructor(
@@ -714,14 +716,17 @@ export class WebGPUBufferManager {
     private evictVariantOverflow<Value extends { readonly buffer: GPUBuffer }>(
         variants: Map<string, Value>,
         limit: number
-    ): void {
+    ): number {
+        let evictions = 0;
         while (variants.size > limit) {
             const oldest = variants.entries().next();
-            if (oldest.done) return;
+            if (oldest.done) return evictions;
             const [key, resource] = oldest.value;
             variants.delete(key);
             this.destroyCachedBuffer(resource);
+            evictions++;
         }
+        return evictions;
     }
 
     private objectId(object: object): number {
@@ -772,6 +777,7 @@ export class WebGPUBufferManager {
         }
         const variantKey = `${prepared.signature}:${cacheKey}`;
         let resource = variants.get(variantKey);
+        const hadResource = resource !== undefined;
         const byteLength = packedByteLength(count, prepared.layout.arrayStride);
         const resourceChanged =
             resource !== undefined &&
@@ -780,6 +786,10 @@ export class WebGPUBufferManager {
                 resource.sourceRevisions.some(
                     (revision, index) => revision !== sourceRevisions[index]
                 ));
+        const allocationMiss = resource?.byteLength !== byteLength;
+        if (allocationMiss) this.vertexInputCacheMetrics.recordMiss();
+        else this.vertexInputCacheMetrics.recordHit();
+        this.syncVertexInputMetrics();
         if (
             resource !== undefined &&
             resourceChanged &&
@@ -809,6 +819,8 @@ export class WebGPUBufferManager {
                 sourceRevisions: [...sourceRevisions]
             };
             variants.set(variantKey, resource);
+            if (hadResource) this.vertexInputCacheMetrics.recordReplacement();
+            else this.vertexInputCacheMetrics.recordInsertion();
         } else if (
             resource.structureKey !== structureKey ||
             resource.sourceRevisions.some((revision, index) => revision !== sourceRevisions[index])
@@ -838,7 +850,12 @@ export class WebGPUBufferManager {
         }
         this.markSubmissionUse(resource);
         this.touchVariant(variants, variantKey, resource);
-        this.evictVariantOverflow(variants, this.cacheLimits.vertexVariantsPerOwner);
+        const evictions = this.evictVariantOverflow(
+            variants,
+            this.cacheLimits.vertexVariantsPerOwner
+        );
+        if (evictions > 0) this.vertexInputCacheMetrics.recordRemoval(evictions);
+        this.syncVertexInputMetrics();
         return resource;
     }
 
@@ -1004,10 +1021,15 @@ export class WebGPUBufferManager {
     releaseOwner(owner: WebGPUBufferOwner): void {
         const vertexVariants = this.vertexBuffers.get(owner);
         if (vertexVariants) {
+            const releasedVertexVariants = vertexVariants.size;
             for (const resource of vertexVariants.values()) {
                 this.destroyCachedBuffer(resource);
             }
             this.vertexBuffers.delete(owner);
+            if (releasedVertexVariants > 0) {
+                this.vertexInputCacheMetrics.recordRemoval(releasedVertexVariants);
+                this.syncVertexInputMetrics();
+            }
         }
         const instanceVariants = this.instanceBuffers.get(owner);
         if (instanceVariants) {
@@ -1036,5 +1058,13 @@ export class WebGPUBufferManager {
         this.instanceBuffers.clear();
         this.vertexBuffers.clear();
         this.indexBuffers = new WeakMap();
+        this.vertexInputCacheMetrics.clear();
+        this.syncVertexInputMetrics();
+    }
+
+    private syncVertexInputMetrics(): void {
+        if (this.owner instanceof WebGPUDevice) {
+            this.owner.diagnostics?.synchronizeCache('vertexArray', this.vertexInputCacheMetrics);
+        }
     }
 }

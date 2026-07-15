@@ -1080,6 +1080,17 @@ class Geometry {
             opt['HAS_COLOR'] = 1;
             opt['COLOR_SIZE'] = this.colors.size;
         }
+        const skinIndices = this.skinIndices;
+        if (
+            skinIndices &&
+            !skinIndices.normalized &&
+            (skinIndices.data instanceof Uint8Array ||
+                skinIndices.data instanceof Uint8ClampedArray ||
+                skinIndices.data instanceof Uint16Array ||
+                skinIndices.data instanceof Uint32Array)
+        ) {
+            opt['SKIN_INDICES_UINT'] = 1;
+        }
         return opt;
     }
     getShaderKey(): string {

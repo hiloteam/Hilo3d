@@ -403,13 +403,13 @@ function createCheckpointCanvas(
     width: number,
     height: number
 ): HTMLCanvasElement | OffscreenCanvas {
-    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);
     if (typeof document !== 'undefined') {
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         return canvas;
     }
+    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);
     throw new TypeError(
         'External-image sub-texture checkpoints require OffscreenCanvas or a browser document'
     );
@@ -541,6 +541,14 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         this._fullUpdateRevision = this._updateRevision;
         this._subTextureUpdates.length = 0;
     }
+    private rebaseExternalAllocationContent(): void {
+        // Renderer-owned attachments keep this public Texture identity while resize/recovery
+        // replaces the native allocation. Old partial checkpoints describe lost render-pass
+        // contents and may also have obsolete dimensions, so only the monotonic revision remains.
+        recoveryBackings.delete(this);
+        this._subTextureUpdates.length = 0;
+        this._fullUpdateRevision = this._updateRevision;
+    }
     private getUploadImage(): Image | null {
         const backing = recoveryBackings.get(this) as TextureRecoveryBacking<Image> | undefined;
         if (backing) return backing.image;
@@ -558,8 +566,8 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         const image: unknown = this.getUploadImage();
         const mipmaps = this.getTextureUploadMipmaps();
         this.validateBackendNeutralContract(mipmaps);
-        if (this.useMipmap && mipmaps && mipmaps.length > 0) {
-            this.validateExplicitMipmaps(mipmaps);
+        if (mipmaps && mipmaps.length > 0) {
+            this.validateExplicitMipmaps(mipmaps, this.useMipmap);
         }
         this.synchronizeSourceDimensions(image);
         return Object.freeze({ image, mipmaps });
@@ -639,10 +647,11 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
             if (
                 image !== null &&
                 (this.internalFormat === DEPTH_COMPONENT24 ||
-                    this.internalFormat === DEPTH24_STENCIL8)
+                    this.internalFormat === DEPTH24_STENCIL8 ||
+                    this.internalFormat === DEPTH32F_STENCIL8)
             ) {
                 throw new TypeError(
-                    'Raw DEPTH_COMPONENT24 and DEPTH24_STENCIL8 uploads have no portable WebGPU byte representation; use DEPTH_COMPONENT32F or DEPTH32F_STENCIL8'
+                    'Raw DEPTH_COMPONENT24, DEPTH24_STENCIL8, and DEPTH32F_STENCIL8 uploads have no shared WebGL2/WebGPU byte representation; only DEPTH_COMPONENT16 and DEPTH_COMPONENT32F support portable raw depth uploads'
                 );
             }
         }
@@ -682,15 +691,21 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
         }
     }
 
-    private validateExplicitMipmaps(mipmaps: readonly TextureMipmap[]): void {
+    private validateExplicitMipmaps(
+        mipmaps: readonly TextureMipmap[],
+        requireCompleteChain: boolean
+    ): void {
         const expectedCount = this.mipmapCount;
         const expectedEntries =
             this.target === TEXTURE_CUBE_MAP ? expectedCount * 6 : expectedCount;
-        if (mipmaps.length !== expectedEntries) {
+        const hasCanonicalPrefix =
+            mipmaps.length <= expectedEntries &&
+            (this.target !== TEXTURE_CUBE_MAP || mipmaps.length % 6 === 0);
+        if ((requireCompleteChain && mipmaps.length !== expectedEntries) || !hasCanonicalPrefix) {
             throw new RangeError(
                 this.target === TEXTURE_CUBE_MAP
-                    ? `Explicit cube mipmap chain has ${String(mipmaps.length)} face entries; ${String(expectedEntries)} are required`
-                    : `Explicit mipmap chain has ${String(mipmaps.length)} levels; ${String(expectedEntries)} are required`
+                    ? `Explicit cube mipmap chain has ${String(mipmaps.length)} face entries; ${requireCompleteChain ? String(expectedEntries) : `a multiple of 6 no greater than ${String(expectedEntries)}`} ${requireCompleteChain ? 'are' : 'is'} required`
+                    : `Explicit mipmap chain has ${String(mipmaps.length)} levels; ${requireCompleteChain ? String(expectedEntries) : `at most ${String(expectedEntries)}`} ${requireCompleteChain ? 'are' : 'is'} required`
             );
         }
         mipmaps.forEach((mipmap, entry) => {
@@ -1074,10 +1089,12 @@ class Texture<Image = TextureImageSource> extends EventDispatcher {
 
         if (
             isTexturePixelData(image) &&
-            (this.internalFormat === DEPTH_COMPONENT24 || this.internalFormat === DEPTH24_STENCIL8)
+            (this.internalFormat === DEPTH_COMPONENT24 ||
+                this.internalFormat === DEPTH24_STENCIL8 ||
+                this.internalFormat === DEPTH32F_STENCIL8)
         ) {
             throw new TypeError(
-                'Raw DEPTH_COMPONENT24 and DEPTH24_STENCIL8 sub-updates have no portable WebGPU byte representation'
+                'Raw DEPTH_COMPONENT24, DEPTH24_STENCIL8, and DEPTH32F_STENCIL8 sub-updates have no shared WebGL2/WebGPU byte representation; only DEPTH_COMPONENT16 and DEPTH_COMPONENT32F support portable raw depth sub-updates'
             );
         }
 
@@ -1487,6 +1504,7 @@ export default Texture;
 interface TextureBackendAccess {
     getTextureUploadMipmaps(): readonly TextureMipmap[] | null;
     prepareTextureUpload(): TextureUploadSource;
+    rebaseExternalAllocationContent(): void;
 }
 
 function backendAccess(texture: Texture<unknown>): TextureBackendAccess {
@@ -1503,4 +1521,9 @@ export function getTextureUploadMipmaps(
 /** Prepare CPU data for a backend-local allocation. @internal */
 export function prepareTextureUpload(texture: Texture<unknown>): TextureUploadSource {
     return backendAccess(texture).prepareTextureUpload();
+}
+
+/** Discard partial CPU history after a renderer-owned texture allocation is replaced. @internal */
+export function rebaseTextureExternalAllocation(texture: Texture<unknown>): void {
+    backendAccess(texture).rebaseExternalAllocationContent();
 }

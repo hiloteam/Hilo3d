@@ -4,7 +4,7 @@ import BuiltInUniformBlockManager from '../../../src/render/BuiltInUniformBlockM
 import { createStd140Layout } from '../../../src/render/ubo/Std140Layout';
 import { WebGPUUniformBufferManager } from '../../../src/render/internal/webgpu/WebGPUUniformBufferManager';
 import { WebGLUniformBufferManager } from '../../../src/render/internal/webgl2/WebGLUniformBufferManager';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';
 import Geometry from '../../../src/geometry/Geometry';
@@ -169,7 +169,7 @@ describe('WebGPUUniformBufferManager lifecycle', () => {
         const secondBinding = gpuManager.getBinding(secondBlock);
         gpuManager.endSubmission();
 
-        expect(secondBlock).toBe(firstBlock);
+        expect(secondBlock).not.toBe(firstBlock);
         expect(secondBinding.buffer).not.toBe(firstBinding.buffer);
     });
 

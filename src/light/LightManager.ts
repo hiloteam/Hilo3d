@@ -141,6 +141,7 @@ class LightManager {
         Object.assign(this, params);
     }
     getRenderOption(option: Record<string, number> = {}): Record<string, number> {
+        if (this.shadowAtlas !== null) option['SHADOW_ATLAS'] = 1;
         for (const name of lightGroupNames) {
             const count = this.lightInfo[name];
             if (!count) continue;

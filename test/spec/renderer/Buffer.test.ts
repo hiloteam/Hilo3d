@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import Buffer from '../../../src/render/internal/webgl2/Buffer';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 describe('Buffer', () => {
     it('create', () => {

@@ -207,6 +207,13 @@ describe('WebGPUBufferManager packed vertex buffers', () => {
         const second = manager.getInterleavedVertexBuffer(owner, [positionSource, colorSource]);
 
         expect(second).toBe(first);
+        expect(manager.vertexInputCacheMetrics).toMatchObject({
+            hits: 1,
+            misses: 1,
+            evictions: 0,
+            size: 1,
+            highWater: 1
+        });
         expect(fake.records).toHaveLength(1);
         expect(fake.writes).toHaveLength(0);
         expect(first.layout).toEqual({
@@ -761,6 +768,13 @@ describe('WebGPUBufferManager instance buffers and lifecycle', () => {
         manager.releaseOwner(owner);
         expect(fake.record(vertex.buffer).destroyCount).toBe(1);
         expect(fake.record(instance.buffer).destroyCount).toBe(1);
+        expect(manager.vertexInputCacheMetrics).toMatchObject({
+            hits: 0,
+            misses: 1,
+            evictions: 1,
+            size: 0,
+            highWater: 1
+        });
         manager.releaseOwner(indexOwner);
         expect(fake.record(index.buffer).destroyCount).toBe(1);
         expect(manager.getIndexBuffer(indexOwner).buffer).not.toBe(index.buffer);

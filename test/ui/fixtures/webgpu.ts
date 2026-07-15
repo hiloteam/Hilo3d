@@ -17,27 +17,8 @@ import {
     Texture,
     Vector3
 } from '../../../src/Hilo3d';
-import WebGPUBindGroupManager from '../../../src/render/internal/webgpu/WebGPUBindGroupManager';
-import type WebGPURenderTarget from '../../../src/render/internal/webgpu/WebGPURenderTarget';
-import WebGPUTextureManager from '../../../src/render/internal/webgpu/WebGPUTextureManager';
-import {
-    NagaShaderTranslator,
-    specializeWebGPUDepthSamplers
-} from '../../../src/render/shader/GlslToWgsl';
-import {
-    WebGPUBufferUsage,
-    WebGPUMapMode,
-    WebGPUTextureUsage
-} from '../../../src/render/internal/webgpu/WebGPUConstants';
-
-interface ExtendedTextureSamplingResult {
-    readonly samplerTypes: readonly string[];
-    readonly textureDimensions: readonly string[];
-    readonly readback: readonly number[];
-    readonly compilationErrors: readonly string[];
-    readonly validationError: string | null;
-    readonly submissionCompleted: boolean;
-}
+import type { RHIDevice, RHISurface } from '../../../src/render/rhi/core';
+import { validateExtendedTextureSampling } from './webgpu-rhi-v2';
 
 interface OffscreenStencilResult {
     readonly readback: readonly number[];
@@ -48,15 +29,23 @@ interface RendererExtensionProvider {
     getExtension(name: string): object | null;
 }
 
-interface WebGPUNativeExtension {
-    readonly gpuDevice: GPUDevice;
-    readonly recoveryPromise: Promise<void> | null;
+interface WebGPURHIV2Extension {
+    readonly device: RHIDevice;
+    readonly surface: RHISurface;
     readonly recoveryState: string;
 }
 
-function requireWebGPUNative(renderer: RendererExtensionProvider): WebGPUNativeExtension {
-    const extension = renderer.getExtension('webgpu-native') as WebGPUNativeExtension | null;
-    if (!extension) throw new Error('The WebGPU native extension is unavailable.');
+function requireWebGPURHIV2(renderer: RendererExtensionProvider): WebGPURHIV2Extension {
+    const extension = renderer.getExtension('rhi-v2') as WebGPURHIV2Extension | null;
+    if (!extension) throw new Error('The RHI v2 extension is unavailable.');
+    if (extension.device.backend !== 'webgpu') {
+        throw new Error(
+            `The RHI v2 extension exposed ${extension.device.backend}, expected webgpu`
+        );
+    }
+    if (extension.surface.deviceId !== extension.device.id) {
+        throw new Error('The RHI v2 extension surface and device have different owners');
+    }
     return extension;
 }
 
@@ -138,370 +127,21 @@ async function validateOffscreenStencil(): Promise<OffscreenStencilResult> {
         new Mesh({ geometry: geometry(), material: stencilReject, frustumTest: false })
     );
 
-    const device = requireWebGPUNative(validationStage.renderer).gpuDevice;
-    device.pushErrorScope('validation');
     try {
+        requireWebGPURHIV2(validationStage.renderer);
         validationStage.renderer.renderToTarget(target, validationStage, camera);
         const first = await target.readColorAttachment({ x: 2, y: 2, width: 1, height: 1 });
         validationStage.renderer.renderToTarget(target, validationStage, camera);
         const second = await target.readColorAttachment({ x: 2, y: 2, width: 1, height: 1 });
-        const validationError = await device.popErrorScope();
-        if (validationError) {
-            throw new Error(`Offscreen stencil validation failed: ${validationError.message}`);
-        }
+        await validationStage.renderer.waitForIdle();
         return {
             readback: Array.from(first.data),
             stableAcrossFrames: second.data.every((value, index) => value === first.data[index])
         };
-    } catch (error) {
-        await device.popErrorScope().catch(() => null);
-        throw error;
     } finally {
         target.destroy();
         validationStage.destroy();
     }
-}
-
-async function validateExtendedTextureSampling(
-    device: GPUDevice
-): Promise<ExtendedTextureSamplingResult> {
-    const translator = new NagaShaderTranslator();
-    await translator.initialize();
-    const textureManager = new WebGPUTextureManager(device, translator);
-    const bindGroupManager = new WebGPUBindGroupManager(device, textureManager);
-    const managedTextures: Texture<unknown>[] = [];
-    let outputTexture: GPUTexture | null = null;
-    let readbackBuffer: GPUBuffer | null = null;
-    let depthTexture: GPUTexture | null = null;
-    let numericDepthTexture: GPUTexture | null = null;
-    let materialBuffer: GPUBuffer | null = null;
-    let result: ExtendedTextureSamplingResult | null = null;
-    let executionError: unknown;
-
-    device.pushErrorScope('validation');
-    try {
-        let translated = translator.translate(
-            `#version 300 es
-void main() {
-    vec2 position = vec2(-1.0, -1.0);
-    if (gl_VertexID == 1) position = vec2(3.0, -1.0);
-    if (gl_VertexID == 2) position = vec2(-1.0, 3.0);
-    gl_Position = vec4(position, 0.0, 1.0);
-}`,
-            `#version 300 es
-precision highp float;
-precision highp int;
-uniform sampler3D volumeTexture;
-uniform sampler2DArray arrayTexture;
-uniform sampler2DArrayShadow arrayShadow;
-uniform highp usampler2DArray integerTexture;
-uniform sampler2D dynamicMaps[2];
-uniform sampler2D numericDepth;
-layout(std140) uniform MaterialBlock {
-    int dynamicMapIndex;
-};
-layout(location = 0) out vec4 color;
-void main() {
-    vec4 volumeValue = texelFetch(volumeTexture, ivec3(0, 0, 1), 0);
-    vec4 arrayValue = texelFetch(arrayTexture, ivec3(0, 0, 1), 0);
-    float shadowValue = texture(arrayShadow, vec4(0.5, 0.5, 1.0, 0.5));
-    uvec4 integerValue = texelFetch(integerTexture, ivec3(0, 0, 1), 0);
-    vec4 dynamicValue = texture(dynamicMaps[dynamicMapIndex], vec2(0.5));
-    vec4 dynamicLodValue = textureLod(dynamicMaps[dynamicMapIndex], vec2(0.5), 0.0);
-    float numericDepthValue = texture(numericDepth, vec2(0.5)).r;
-    color = vec4(
-        (volumeValue.r + dynamicValue.r + dynamicLodValue.r) / 3.0,
-        (arrayValue.g + numericDepthValue) * 0.5,
-        float(integerValue.b) / 255.0,
-        shadowValue
-    );
-}`
-        );
-
-        const volumeTexture = new Texture<Uint8Array>({
-            name: 'WebGPU UI managed 3D texture',
-            target: constants.TEXTURE_3D,
-            internalFormat: constants.RGBA8,
-            format: constants.RGBA,
-            type: constants.UNSIGNED_BYTE,
-            width: 1,
-            height: 1,
-            depth: 2,
-            image: new Uint8Array([16, 0, 0, 255, 64, 0, 0, 255]),
-            magFilter: constants.NEAREST,
-            minFilter: constants.NEAREST,
-            wrapS: constants.CLAMP_TO_EDGE,
-            wrapT: constants.CLAMP_TO_EDGE,
-            wrapR: constants.CLAMP_TO_EDGE
-        });
-        const arrayTexture = new Texture<Uint8Array>({
-            name: 'WebGPU UI managed 2D-array texture',
-            target: constants.TEXTURE_2D_ARRAY,
-            internalFormat: constants.RGBA8,
-            format: constants.RGBA,
-            type: constants.UNSIGNED_BYTE,
-            width: 1,
-            height: 1,
-            depth: 2,
-            image: new Uint8Array([0, 32, 0, 255, 0, 128, 0, 255]),
-            magFilter: constants.NEAREST,
-            minFilter: constants.NEAREST,
-            wrapS: constants.CLAMP_TO_EDGE,
-            wrapT: constants.CLAMP_TO_EDGE,
-            wrapR: constants.CLAMP_TO_EDGE
-        });
-        const integerTexture = new Texture<Uint8Array>({
-            name: 'WebGPU UI managed integer array texture',
-            target: constants.TEXTURE_2D_ARRAY,
-            internalFormat: constants.RGBA8UI,
-            format: constants.RGBA_INTEGER,
-            type: constants.UNSIGNED_BYTE,
-            width: 1,
-            height: 1,
-            depth: 2,
-            image: new Uint8Array([0, 0, 40, 1, 0, 0, 200, 1]),
-            magFilter: constants.NEAREST,
-            minFilter: constants.NEAREST,
-            wrapS: constants.CLAMP_TO_EDGE,
-            wrapT: constants.CLAMP_TO_EDGE,
-            wrapR: constants.CLAMP_TO_EDGE,
-            anisotropic: 1
-        });
-        const dynamicMaps = [16, 64].map(
-            (red, index) =>
-                new Texture<Uint8Array>({
-                    name: `WebGPU UI dynamic sampler texture ${String(index)}`,
-                    width: 1,
-                    height: 1,
-                    image: new Uint8Array([red, 0, 0, 255]),
-                    magFilter: constants.NEAREST,
-                    minFilter: constants.NEAREST,
-                    wrapS: constants.CLAMP_TO_EDGE,
-                    wrapT: constants.CLAMP_TO_EDGE
-                })
-        );
-        managedTextures.push(volumeTexture, arrayTexture, integerTexture, ...dynamicMaps);
-
-        const arrayShadow = new Texture({
-            name: 'WebGPU UI depth array texture',
-            target: constants.TEXTURE_2D_ARRAY,
-            internalFormat: constants.DEPTH_COMPONENT32F,
-            format: constants.DEPTH_COMPONENT,
-            type: constants.FLOAT,
-            width: 1,
-            height: 1,
-            depth: 2,
-            image: null,
-            magFilter: constants.NEAREST,
-            minFilter: constants.NEAREST,
-            wrapS: constants.CLAMP_TO_EDGE,
-            wrapT: constants.CLAMP_TO_EDGE,
-            wrapR: constants.CLAMP_TO_EDGE
-        });
-        const numericDepth = new Texture({
-            name: 'WebGPU UI numeric depth texture',
-            internalFormat: constants.DEPTH_COMPONENT32F,
-            format: constants.DEPTH_COMPONENT,
-            type: constants.FLOAT,
-            width: 1,
-            height: 1,
-            image: null,
-            magFilter: constants.NEAREST,
-            minFilter: constants.NEAREST,
-            wrapS: constants.CLAMP_TO_EDGE,
-            wrapT: constants.CLAMP_TO_EDGE
-        });
-        depthTexture = device.createTexture({
-            label: 'WebGPU UI native depth-array texture',
-            size: { width: 1, height: 1, depthOrArrayLayers: 2 },
-            format: 'depth32float',
-            usage: WebGPUTextureUsage.TEXTURE_BINDING | WebGPUTextureUsage.RENDER_ATTACHMENT
-        });
-        const depthEncoder = device.createCommandEncoder({
-            label: 'WebGPU UI depth-array initialization'
-        });
-        for (const [layer, depthClearValue] of [0.25, 0.75].entries()) {
-            const pass = depthEncoder.beginRenderPass({
-                colorAttachments: [],
-                depthStencilAttachment: {
-                    view: depthTexture.createView({
-                        dimension: '2d',
-                        baseArrayLayer: layer,
-                        arrayLayerCount: 1
-                    }),
-                    depthClearValue,
-                    depthLoadOp: 'clear',
-                    depthStoreOp: 'store'
-                }
-            });
-            pass.end();
-        }
-        numericDepthTexture = device.createTexture({
-            label: 'WebGPU UI native numeric depth texture',
-            size: { width: 1, height: 1 },
-            format: 'depth32float',
-            usage: WebGPUTextureUsage.TEXTURE_BINDING | WebGPUTextureUsage.RENDER_ATTACHMENT
-        });
-        const numericDepthPass = depthEncoder.beginRenderPass({
-            colorAttachments: [],
-            depthStencilAttachment: {
-                view: numericDepthTexture.createView(),
-                depthClearValue: 0.5,
-                depthLoadOp: 'clear',
-                depthStoreOp: 'store'
-            }
-        });
-        numericDepthPass.end();
-        device.queue.submit([depthEncoder.finish()]);
-        textureManager.registerExternal(arrayShadow, depthTexture, {
-            compare: 'less-equal',
-            takeOwnership: true
-        });
-        depthTexture = null;
-        textureManager.registerExternal(numericDepth, numericDepthTexture, {
-            takeOwnership: true
-        });
-        numericDepthTexture = null;
-
-        const textures = new Map<string, Texture<unknown>>([
-            ['volumeTexture', volumeTexture],
-            ['arrayTexture', arrayTexture],
-            ['arrayShadow', arrayShadow],
-            ['integerTexture', integerTexture],
-            ['numericDepth', numericDepth]
-        ]);
-        const samplers = translated.samplers.map(binding => {
-            const texture =
-                binding.name === 'dynamicMaps'
-                    ? dynamicMaps[binding.arrayIndex]
-                    : textures.get(binding.name);
-            if (!texture) throw new Error(`Missing texture for translated sampler ${binding.name}`);
-            return bindGroupManager.resolveSampler(binding, texture);
-        });
-        translated = specializeWebGPUDepthSamplers(
-            translated,
-            samplers
-                .filter(sampler => sampler.texture === numericDepth)
-                .map(sampler => sampler.binding)
-        );
-        materialBuffer = device.createBuffer({
-            label: 'WebGPU UI dynamic sampler material block',
-            size: 16,
-            usage: WebGPUBufferUsage.UNIFORM | WebGPUBufferUsage.COPY_DST
-        });
-        device.queue.writeBuffer(materialBuffer, 0, new Int32Array([1]));
-        const bindingLayout = bindGroupManager.getLayout(translated, samplers);
-        const bindGroups = bindGroupManager.getBindGroups(
-            bindingLayout,
-            translated,
-            { MaterialBlock: { buffer: materialBuffer, offset: 0, size: 16 } },
-            samplers
-        );
-        const vertexModule = device.createShaderModule({
-            label: 'WebGPU UI extended-sampler vertex shader',
-            code: translated.vertex.wgsl
-        });
-        const fragmentModule = device.createShaderModule({
-            label: 'WebGPU UI extended-sampler fragment shader',
-            code: translated.fragment.wgsl
-        });
-        const compilationInfo = await Promise.all([
-            vertexModule.getCompilationInfo(),
-            fragmentModule.getCompilationInfo()
-        ]);
-        const compilationErrors = compilationInfo.flatMap(info =>
-            [...info.messages]
-                .filter(message => message.type === 'error')
-                .map(message => message.message)
-        );
-        if (compilationErrors.length > 0) {
-            throw new Error(
-                `Extended-sampler shader compilation failed: ${compilationErrors.join('; ')}`
-            );
-        }
-        const pipeline = await device.createRenderPipelineAsync({
-            label: 'WebGPU UI extended-sampler pipeline',
-            layout: bindingLayout.pipelineLayout,
-            vertex: { module: vertexModule, entryPoint: 'main' },
-            fragment: {
-                module: fragmentModule,
-                entryPoint: 'main',
-                targets: [{ format: 'rgba8unorm' }]
-            },
-            primitive: { topology: 'triangle-list' }
-        });
-
-        outputTexture = device.createTexture({
-            label: 'WebGPU UI extended-sampler readback target',
-            size: { width: 1, height: 1 },
-            format: 'rgba8unorm',
-            usage: WebGPUTextureUsage.RENDER_ATTACHMENT | WebGPUTextureUsage.COPY_SRC
-        });
-        readbackBuffer = device.createBuffer({
-            label: 'WebGPU UI extended-sampler readback buffer',
-            size: 256,
-            usage: WebGPUBufferUsage.COPY_DST | WebGPUBufferUsage.MAP_READ
-        });
-        const encoder = device.createCommandEncoder({
-            label: 'WebGPU UI extended-sampler submission'
-        });
-        const pass = encoder.beginRenderPass({
-            colorAttachments: [
-                {
-                    view: outputTexture.createView(),
-                    clearValue: { r: 0, g: 0, b: 0, a: 0 },
-                    loadOp: 'clear',
-                    storeOp: 'store'
-                }
-            ]
-        });
-        pass.setPipeline(pipeline);
-        bindGroups.forEach((bindGroup, group) => {
-            pass.setBindGroup(group, bindGroup);
-        });
-        pass.draw(3);
-        pass.end();
-        encoder.copyTextureToBuffer(
-            { texture: outputTexture },
-            { buffer: readbackBuffer, bytesPerRow: 256, rowsPerImage: 1 },
-            { width: 1, height: 1, depthOrArrayLayers: 1 }
-        );
-        device.queue.submit([encoder.finish()]);
-        await device.queue.onSubmittedWorkDone();
-        await readbackBuffer.mapAsync(WebGPUMapMode.READ, 0, 256);
-        const readback = Array.from(new Uint8Array(readbackBuffer.getMappedRange(0, 4)));
-        readbackBuffer.unmap();
-        result = {
-            samplerTypes: translated.samplers.map(binding => binding.type),
-            textureDimensions: samplers.map(sampler => sampler.resource.dimension),
-            readback,
-            compilationErrors,
-            validationError: null,
-            submissionCompleted: true
-        };
-    } catch (error: unknown) {
-        executionError = error;
-    }
-
-    const validationError = await device.popErrorScope();
-    bindGroupManager.clear();
-    textureManager.destroyAll();
-    depthTexture?.destroy();
-    numericDepthTexture?.destroy();
-    materialBuffer?.destroy();
-    outputTexture?.destroy();
-    readbackBuffer?.destroy();
-    managedTextures.forEach(texture => texture.destroy());
-    if (executionError !== undefined) {
-        throw executionError instanceof Error
-            ? executionError
-            : new Error('Extended WebGPU texture validation failed', { cause: executionError });
-    }
-    if (validationError) {
-        throw new Error(`Extended WebGPU texture validation failed: ${validationError.message}`);
-    }
-    if (!result) throw new Error('Extended WebGPU texture validation produced no result');
-    return result;
 }
 
 const container = document.querySelector<HTMLElement>('#stage');
@@ -520,7 +160,7 @@ const stage = await Stage.create({
     useInstanced: true,
     clearColor: new Color(0.04, 0.06, 0.1)
 });
-const native = requireWebGPUNative(stage.renderer);
+const rhi = requireWebGPURHIV2(stage.renderer);
 let renderTarget = stage.renderer.createRenderTarget({
     width: 640,
     height: 480,
@@ -533,15 +173,6 @@ let renderTarget = stage.renderer.createRenderTarget({
     depthStencilAttachment: { format: 'depth24plus-stencil8' }
 });
 stage.renderer.setRenderTarget(renderTarget, { present: true, takeOwnership: true });
-const gpuErrors: string[] = [];
-stage.renderer.on('webgpuUncapturedError', event => {
-    const detail = event.detail;
-    gpuErrors.push(
-        typeof detail === 'object' && detail !== null && 'message' in detail
-            ? String(detail.message)
-            : String(detail)
-    );
-});
 const sharedGeometry = new BoxGeometry();
 const diffuseTexture = new Texture({
     image: new Uint8Array([
@@ -732,14 +363,8 @@ const mrtTarget = stage.renderer.createRenderTarget({
         stencilClearValue: 7
     }
 });
-const mrtEncoder = native.gpuDevice.createCommandEncoder({
-    label: 'Hilo3d WebGPU UI MRT validation'
-});
-const mrtPass = mrtEncoder.beginRenderPass(
-    (mrtTarget as WebGPURenderTarget).createRenderPassDescriptor()
-);
-mrtPass.end();
-native.gpuDevice.queue.submit([mrtEncoder.finish()]);
+stage.renderer.renderToTarget(mrtTarget, stage, camera);
+await stage.renderer.waitForIdle();
 const mrtReadbacks = await Promise.all([
     mrtTarget.readColorAttachment({ attachmentIndex: 0, width: 1, height: 1 }),
     mrtTarget.readColorAttachment({ attachmentIndex: 1, width: 1, height: 1 })
@@ -753,7 +378,7 @@ const recoveryProbeBefore = await renderTarget.readColorAttachment({
     height: 1
 });
 const recoveryTextureImageReleasedBefore = diffuseTexture.isImageReleased;
-const deviceBeforeRecovery = native.gpuDevice;
+const deviceBeforeRecovery = rhi.device;
 let deviceLostEvents = 0;
 let deviceRestoredEvents = 0;
 let restoredDeviceMatches = false;
@@ -772,7 +397,7 @@ const deviceRestored = new Promise<void>(resolve => {
         'webgpuDeviceRestored',
         event => {
             deviceRestoredEvents++;
-            restoredDeviceMatches = event.detail === native.gpuDevice;
+            restoredDeviceMatches = event.detail === rhi.device;
             resolve();
         },
         true
@@ -780,10 +405,7 @@ const deviceRestored = new Promise<void>(resolve => {
 });
 deviceBeforeRecovery.destroy();
 await deviceLost;
-const recovery = native.recoveryPromise;
-if (!recovery) throw new Error('WebGPU recovery did not publish a recoveryPromise');
-await recovery;
-await deviceRestored;
+await Promise.all([stage.renderer.waitForIdle(), deviceRestored]);
 const recoveryTargetIdentityPreserved = stage.renderer.renderTarget === renderTarget;
 stage.tick(0);
 await stage.renderer.waitForIdle();
@@ -793,11 +415,13 @@ const recoveryReadback = await renderTarget.readColorAttachment({
     width: 1,
     height: 1
 });
-const extendedTextureSampling = await validateExtendedTextureSampling(native.gpuDevice);
+const extendedTextureSampling = await validateExtendedTextureSampling(rhi.device);
 const offscreenStencil = await validateOffscreenStencil();
 await new Promise(resolve => setTimeout(resolve, 0));
 window.__HILO3D_WEBGPU_RESULT__ = {
     backend: stage.renderer.backend,
+    rhiExtensionBackend: rhi.device.backend,
+    rhiSurfaceState: rhi.surface.state,
     drawCount: stage.renderer.renderInfo.drawCount,
     faceCount: stage.renderer.renderInfo.faceCount,
     hasShadowAtlas: stage.renderer.lightManager.shadowAtlas !== null,
@@ -815,8 +439,8 @@ window.__HILO3D_WEBGPU_RESULT__ = {
     mrtAttachments: mrtReadbacks.length,
     mrtReadbacksHaveContent: mrtReadbacks.every(result => result.data.some(value => value !== 0)),
     textureRevisionAdvanced: diffuseTexture.updateRevision > initialTextureRevision,
-    recoveryState: native.recoveryState,
-    recoveryDeviceChanged: native.gpuDevice !== deviceBeforeRecovery && restoredDeviceMatches,
+    recoveryState: rhi.recoveryState,
+    recoveryDeviceChanged: rhi.device !== deviceBeforeRecovery && restoredDeviceMatches,
     recoveryTargetIdentityPreserved,
     recoveryTextureImageReleasedBefore,
     recoveryTextureImageReleasedAfter: diffuseTexture.isImageReleased,
@@ -836,14 +460,15 @@ window.__HILO3D_WEBGPU_RESULT__ = {
     extendedSamplerValidationError: extendedTextureSampling.validationError,
     extendedGpuSubmissionCompleted: extendedTextureSampling.submissionCompleted,
     offscreenStencilReadback: offscreenStencil.readback,
-    offscreenStencilStableAcrossFrames: offscreenStencil.stableAcrossFrames,
-    gpuErrors
+    offscreenStencilStableAcrossFrames: offscreenStencil.stableAcrossFrames
 };
 
 declare global {
     interface Window {
         __HILO3D_WEBGPU_RESULT__?: {
             backend: string;
+            rhiExtensionBackend: string;
+            rhiSurfaceState: string;
             drawCount: number;
             faceCount: number;
             hasShadowAtlas: boolean;
@@ -875,7 +500,6 @@ declare global {
             extendedGpuSubmissionCompleted: boolean;
             offscreenStencilReadback: readonly number[];
             offscreenStencilStableAcrossFrames: boolean;
-            gpuErrors: string[];
         };
     }
 }

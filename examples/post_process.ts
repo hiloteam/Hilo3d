@@ -64,6 +64,7 @@ const currentKernel = 'edgeDetect6';
 const initialKernel = postProcess.kernels[currentKernel];
 if (!initialKernel) throw new Error(`Unknown post-process kernel: ${currentKernel}`);
 const kernelPass = postProcess.addKernelPass(initialKernel);
+postProcess.prepare();
 
 const sceneTarget = renderer.createRenderTarget({
     width: Math.max(1, renderer.width),

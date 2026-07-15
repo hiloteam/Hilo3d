@@ -222,6 +222,41 @@ async function readCanvasPresentations(
     return readCompositorCanvasPresentations(page, backend);
 }
 
+function canvasPresentationsAreVisible(presentations: readonly CanvasPresentation[]): boolean {
+    return (
+        presentations.length > 0 &&
+        presentations.every(
+            presentation =>
+                presentation.width > 0 &&
+                presentation.height > 0 &&
+                presentation.visiblePixelCount > 0 &&
+                presentation.distinctColorCount > 1
+        )
+    );
+}
+
+async function expectVisibleCanvasPresentations(
+    page: Page,
+    examplePath: string,
+    backend: ExampleBackend
+): Promise<void> {
+    const deadline = Date.now() + PRESENTATION_TIMEOUT;
+    let presentations: readonly CanvasPresentation[] = [];
+    // Do not discard a valid compositor read merely because the read itself crossed the deadline.
+    // The deadline controls whether another probe may start; the enclosing Playwright timeout still
+    // bounds a stalled screenshot operation.
+    while (Date.now() < deadline) {
+        presentations = await readCanvasPresentations(page, backend);
+        if (canvasPresentationsAreVisible(presentations)) return;
+        if (Date.now() >= deadline) break;
+        await page.waitForTimeout(100);
+    }
+    expect(
+        canvasPresentationsAreVisible(presentations),
+        `${examplePath} must present a visible non-uniform ${backend} frame`
+    ).toBe(true);
+}
+
 async function assertCompletionContract(
     page: Page,
     contract: ExampleCompletionContract | null,
@@ -414,27 +449,7 @@ test.describe('all examples on every supported backend', () => {
                         readRenderHealth: () => readRenderHealth(page)
                     }
                 );
-                await expect
-                    .poll(
-                        async () => {
-                            const presentations = await readCanvasPresentations(page, backend);
-                            return (
-                                presentations.length > 0 &&
-                                presentations.every(
-                                    presentation =>
-                                        presentation.width > 0 &&
-                                        presentation.height > 0 &&
-                                        presentation.visiblePixelCount > 0 &&
-                                        presentation.distinctColorCount > 1
-                                )
-                            );
-                        },
-                        {
-                            message: `${examplePath} must present a visible non-uniform ${backend} frame`,
-                            timeout: PRESENTATION_TIMEOUT
-                        }
-                    )
-                    .toBe(true);
+                await expectVisibleCanvasPresentations(page, examplePath, backend);
             } else {
                 await waitForStableAnimationFrames(page);
             }

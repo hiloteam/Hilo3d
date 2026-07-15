@@ -10,6 +10,7 @@ import Material from '../../../src/material/Material';
 import Color from '../../../src/math/Color';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
+import type { RendererFeatureName } from '../../../src/render/RendererOptions';
 import {
     DEPTH_COMPONENT,
     DEPTH_COMPONENT16,
@@ -30,6 +31,10 @@ import WebGPUDriver, {
 } from '../../../src/render/internal/webgpu/WebGPUDriver';
 import BuiltInUniformBlockManager from '../../../src/render/BuiltInUniformBlockManager';
 import type { RendererFrame, RendererFrameCallback } from '../../../src/render/Renderer';
+import {
+    registerRendererDiagnostics,
+    unregisterRendererDiagnostics
+} from '../../../src/render/diagnostics/RendererDiagnosticsRegistry';
 import type {
     WebGPUBufferManager,
     WebGPUVertexBufferBinding
@@ -40,7 +45,7 @@ import type { WebGPUTextureResource } from '../../../src/render/internal/webgpu/
 import type { WebGPURenderPipelineRequest } from '../../../src/render/internal/webgpu/WebGPUPipelineManager';
 import type WebGPURenderTarget from '../../../src/render/internal/webgpu/WebGPURenderTarget';
 import Texture from '../../../src/texture/Texture';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 interface Deferred<T> {
     readonly promise: Promise<T>;
@@ -300,7 +305,7 @@ describe('WebGPUDriver initialization lifecycle', () => {
 
     it('snapshots mutable support requirements before adapter discovery awaits', async () => {
         createFakeWebGPU();
-        const requiredFeatures: GPUFeatureName[] = [];
+        const requiredFeatures: RendererFeatureName[] = [];
         const requiredLimits: Record<string, number> = {};
         const support = WebGPUDriver.isSupported({ requiredFeatures, requiredLimits });
 
@@ -312,6 +317,7 @@ describe('WebGPUDriver initialization lifecycle', () => {
 
     it('records multiple passes into one application-frame encoder and one submission', async () => {
         const fake = createFakeWebGPU();
+        const diagnostics = registerRendererDiagnostics(fake.canvas);
         const renderer = new WebGPUDriver({ domElement: fake.canvas, antialias: false });
         await renderer.ready;
         const target = renderer.createRenderTarget({
@@ -334,6 +340,31 @@ describe('WebGPUDriver initialization lifecycle', () => {
         expect(fake.beginRenderPass).toHaveBeenCalledTimes(2);
         expect(fake.createBindGroup).toHaveBeenCalledOnce();
         expect(fake.submit).toHaveBeenCalledOnce();
+        expect(renderer.getDiagnosticsSnapshot()?.frame).toMatchObject({
+            draws: 2,
+            passes: 2,
+            submissions: 1
+        });
+        expect(renderer.getDiagnosticsSnapshot()?.nativeObjects.commandEncoder).toMatchObject({
+            created: 1,
+            destroyed: null,
+            live: null,
+            highWater: null
+        });
+        expect(renderer.getDiagnosticsSnapshot()?.caches.bindGroup).toEqual({
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            size: 0,
+            highWater: 0
+        });
+        expect(renderer.getDiagnosticsSnapshot()?.caches.framebuffer).toEqual({
+            hits: 1,
+            misses: 1,
+            evictions: 0,
+            size: 1,
+            highWater: 1
+        });
         expect(() => {
             renderer.renderFrame(() => {
                 renderer.renderFrame(() => undefined);
@@ -344,6 +375,7 @@ describe('WebGPUDriver initialization lifecycle', () => {
             renderer.renderFrame(asyncCallback);
         }).toThrow(/must be synchronous/u);
         renderer.destroy();
+        expect(unregisterRendererDiagnostics(fake.canvas, diagnostics)).toBe(true);
     });
 
     it('aborts a poisoned application frame even when its command error is caught', async () => {

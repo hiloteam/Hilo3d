@@ -22,7 +22,7 @@ import {
     type RenderTarget
 } from '../../../src/render/RenderTarget';
 import type Texture from '../../../src/texture/Texture';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 const targets: RenderTarget[] = [];
 

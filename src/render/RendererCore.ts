@@ -6,11 +6,13 @@ import { EventDispatcher, type EventListener } from '../core/EventDispatcher';
 import LightManager from '../light/LightManager';
 import type Material from '../material/Material';
 import Color from '../math/Color';
+import type { RendererDiagnostics, RendererDiagnosticsSnapshot } from './RendererDiagnostics';
 import type { Resource, ShaderPrecision } from './types';
 import GraphicsResourceManager from './GraphicsResourceManager';
 import RenderInfo from './RenderInfo';
 import RenderList from './RenderList';
 import { RenderFramePlanner, type RenderFramePlan } from './RenderFramePlan';
+import { getRegisteredRendererDiagnostics } from './diagnostics/RendererDiagnosticsRegistry';
 import type {
     RenderTarget,
     RenderTargetParameters,
@@ -202,6 +204,7 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
 
     private _useInstanced = false;
     private readonly framePlanner = new RenderFramePlanner();
+    private diagnosticsSink: RendererDiagnostics | null = null;
 
     abstract readonly backend: RendererBackend;
     abstract readonly className: string;
@@ -222,6 +225,26 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     /** Build the allocation-reusing, backend-neutral scene plan once per camera pass. */
     protected buildFramePlan(stage: RendererScene, camera: Camera): RenderFramePlan {
         return this.framePlanner.build(stage, camera, this.renderList, this.lightManager);
+    }
+
+    /** Resolve the setup-only canvas channel once; no WeakMap lookup occurs in frame hot paths. */
+    protected attachRegisteredDiagnostics(canvas: HTMLCanvasElement | null): void {
+        this.diagnosticsSink = canvas ? getRegisteredRendererDiagnostics(canvas) : null;
+    }
+
+    /** Internal mutable sink passed directly to one concrete backend. */
+    protected get rendererDiagnosticsSink(): RendererDiagnostics | null {
+        return this.diagnosticsSink;
+    }
+
+    /** Reset only per-frame counters at the backend's actual logical frame boundary. */
+    protected resetDiagnosticsFrame(): void {
+        this.diagnosticsSink?.resetFrame();
+    }
+
+    /** @internal Snapshot opt-in counters for benchmark and renderer diagnostics tooling. */
+    getDiagnosticsSnapshot(): Readonly<RendererDiagnosticsSnapshot> | null {
+        return this.diagnosticsSink?.snapshot() ?? null;
     }
 
     abstract resize(width: number, height: number, force?: boolean): void;

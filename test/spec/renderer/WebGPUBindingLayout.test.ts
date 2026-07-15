@@ -10,7 +10,7 @@ import {
     WEBGPU_BIND_GROUP_COUNT,
     WEBGPU_BIND_GROUPS,
     WEBGPU_UNIFORM_BLOCK_BINDINGS
-} from '../../../src/render/internal/webgpu/WebGPUBindingLayout';
+} from '../../../src/render/shader/WebGPUBindingLayout';
 
 describe('WebGPUBindingLayout', () => {
     it('uses the fixed four-group ABI partitioned by update frequency', () => {

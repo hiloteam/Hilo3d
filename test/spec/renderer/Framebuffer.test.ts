@@ -9,7 +9,7 @@ import WebGLState, {
 } from '../../../src/render/internal/webgl2/WebGLState';
 import { TEXTURE_3D } from '../../../src/constants/webgl2';
 import Texture from '../../../src/texture/Texture';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 function createNativeFramebuffer(): WebGLFramebuffer {
     return testEnv.gl.createFramebuffer();

@@ -1,7 +1,7 @@
 import type UniformBuffer from '../../UniformBuffer';
 import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
+import { WgslUniformLayout } from '../../shader/WgslUniformLayout';
 import type { Std140Layout } from '../../ubo/Std140Layout';
-import { WgslUniformLayout } from './WgslUniformLayout';
 import { WebGPUBufferUsage } from './WebGPUConstants';
 
 const MAX_UNIFORM_BUFFER_SLOTS_PER_SUBMISSION = 256;

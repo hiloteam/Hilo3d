@@ -140,12 +140,15 @@ export {
 } from './render/ubo/UniformBlockBindings';
 export {
     default as Renderer,
+    type RendererAdapterPowerPreference,
     type RendererAutoOptions,
     type RendererBackend,
     type RendererCommonOptions,
     type RendererContract,
+    type RendererContextPowerPreference,
     type RendererCreateOptions,
     type RendererExplicitOptions,
+    type RendererFeatureName,
     type RendererFrame,
     type RendererFrameCallback,
     type RendererOptions,

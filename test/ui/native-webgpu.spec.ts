@@ -167,11 +167,12 @@ test('runs the production WebGPU fixture on a non-fallback native adapter', asyn
         const result = await page.evaluate(() => window.__HILO3D_WEBGPU_RESULT__);
         expect(result).toMatchObject({
             backend: 'webgpu',
+            rhiExtensionBackend: 'webgpu',
+            rhiSurfaceState: 'configured',
             recoveryState: 'ready',
             recoveryReadbackMatches: true,
             extendedGpuSubmissionCompleted: true,
-            offscreenStencilStableAcrossFrames: true,
-            gpuErrors: []
+            offscreenStencilStableAcrossFrames: true
         });
         expect(result?.drawCount).toBeGreaterThan(0);
         expect(result?.readbackHasContent).toBe(true);

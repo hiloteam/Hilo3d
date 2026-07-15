@@ -9,11 +9,13 @@
     "types": ["node"]
   },
   "include": [
+    "benchmarks/**/*.ts",
     "eslint.config.ts",
     "playwright.config.ts",
     "scripts/**/*.ts",
     "vite.config.ts",
     "vite.examples.config.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "vitest.rhi-v2.config.ts"
   ]
 }

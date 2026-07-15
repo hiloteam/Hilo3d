@@ -1,6 +1,6 @@
-#ifdef HILO_WEBGPU
+#ifdef HILO_SHADOW_ATLAS
     #if defined(HILO_DIRECTIONAL_LIGHTS_SMC) || defined(HILO_SPOT_LIGHTS_SMC) || defined(HILO_POINT_LIGHTS_SMC)
-        uniform sampler2DShadow u_shadowAtlas;
+        uniform highp sampler2DShadow u_shadowAtlas;
     #endif
 #else
     #ifdef HILO_DIRECTIONAL_LIGHTS

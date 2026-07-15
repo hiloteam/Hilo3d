@@ -85,14 +85,20 @@ export class PostProcess {
     }
 
     get frontBuffer(): Hilo3d.RenderTarget {
-        this.ensureBuffers();
-        if (!this.currentFrontBuffer) throw new Error('PostProcess front buffer is not ready.');
+        if (!this.currentFrontBuffer) {
+            throw new Error(
+                'PostProcess front buffer is not prepared. Call prepare() before rendering.'
+            );
+        }
         return this.currentFrontBuffer;
     }
 
     get backBuffer(): Hilo3d.RenderTarget {
-        this.ensureBuffers();
-        if (!this.currentBackBuffer) throw new Error('PostProcess back buffer is not ready.');
+        if (!this.currentBackBuffer) {
+            throw new Error(
+                'PostProcess back buffer is not prepared. Call prepare() before rendering.'
+            );
+        }
         return this.currentBackBuffer;
     }
 
@@ -102,8 +108,9 @@ export class PostProcess {
         this.currentRenderer = renderer;
     }
 
-    private ensureBuffers(): void {
-        if (this.currentFrontBuffer && this.currentBackBuffer) return;
+    private ensureBuffers(): boolean {
+        if (this.currentFrontBuffer && this.currentBackBuffer) return false;
+        if (this.currentFrontBuffer || this.currentBackBuffer) this.destroyBuffers();
         const renderer = this.renderer;
         const parameters: Hilo3d.RenderTargetParameters = {
             width: Math.max(1, renderer.width),
@@ -126,6 +133,7 @@ export class PostProcess {
             this.currentFrontBuffer = null;
             throw error;
         }
+        return true;
     }
 
     private destroyBuffers(): void {
@@ -138,6 +146,31 @@ export class PostProcess {
     private destroyCompiledPasses(): void {
         for (const compiled of this.compiledPasses.values()) compiled.fullscreen.destroy();
         this.compiledPasses.clear();
+    }
+
+    /**
+     * Create every persistent resource owned by the current post-process graph. Call this outside
+     * `renderer.renderFrame()` after registering passes and again after adding a new pass.
+     */
+    prepare(): void {
+        const createdBuffers = this.ensureBuffers();
+        const newlyCompiled: PostProcessPass[] = [];
+        try {
+            for (const pass of this.passes) {
+                if (this.compiledPasses.has(pass)) continue;
+                this.compile(pass);
+                newlyCompiled.push(pass);
+            }
+        } catch (error) {
+            for (const pass of newlyCompiled) {
+                const compiled = this.compiledPasses.get(pass);
+                if (!compiled) continue;
+                compiled.fullscreen.destroy();
+                this.compiledPasses.delete(pass);
+            }
+            if (createdBuffers) this.destroyBuffers();
+            throw error;
+        }
     }
 
     resize(): void {
@@ -263,6 +296,7 @@ export class PostProcess {
 
     render(sourceTexture: unknown, outputTarget: Hilo3d.RenderTarget | null = null): void {
         if (this.passes.length === 0) return;
+        for (const pass of this.passes) this.requireCompiled(pass);
         let source = requireTexture(sourceTexture, 'Post-process source');
         let front = this.frontBuffer;
         let back = this.backBuffer;
@@ -278,7 +312,7 @@ export class PostProcess {
     }
 
     draw(texture: unknown, pass: PostProcessPass, target: Hilo3d.RenderTarget | null = null): void {
-        const compiled = this.compile(pass);
+        const compiled = this.requireCompiled(pass);
         compiled.source = texture === null ? null : requireTexture(texture, 'Post-process source');
         const previousForceMaterial = this.renderer.forceMaterial;
         this.renderer.forceMaterial = null;
@@ -287,6 +321,15 @@ export class PostProcess {
         } finally {
             this.renderer.forceMaterial = previousForceMaterial;
         }
+    }
+
+    private requireCompiled(pass: PostProcessPass): CompiledPostProcessPass {
+        const compiled = this.compiledPasses.get(pass);
+        if (compiled) return compiled;
+        const label = pass.id ?? '<unnamed>';
+        throw new Error(
+            `Post-process pass ${label} is not prepared. Call prepare() outside renderer.renderFrame() after adding passes.`
+        );
     }
 
     uniformTextureGetter(texture: unknown): PostProcessUniformGetter {

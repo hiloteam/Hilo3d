@@ -3,11 +3,15 @@ import * as Hilo3d from '../../../src/Hilo3d';
 import type { ProgramAttribute } from '../../../src/render/internal/webgl2/Program';
 import type Program from '../../../src/render/internal/webgl2/Program';
 import type { RendererFrameCallback } from '../../../src/render/Renderer';
+import {
+    registerRendererDiagnostics,
+    unregisterRendererDiagnostics
+} from '../../../src/render/diagnostics/RendererDiagnosticsRegistry';
 import { getWebGLTexture, webGLStateUsesRHI } from '../../../src/render/internal/webgl2/WebGLState';
 import VertexArrayObject from '../../../src/render/internal/webgl2/VertexArrayObject';
 import WebGL2Driver from '../../../src/render/internal/webgl2/WebGL2Driver';
 import type { WebGLRHI } from '../../../src/render/rhi/webgl2/WebGLRHI';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 function rhiOwner(renderer: WebGL2Driver): WebGLRHI {
     const owner = (renderer as unknown as { _rhi: WebGLRHI | null })._rhi;
@@ -20,6 +24,34 @@ describe('WebGL2Driver', () => {
         const renderer = new WebGL2Driver();
         expect(renderer.backend).toBe('webgl2');
         expect(renderer.className).toBe('Renderer');
+        expect(renderer.getDiagnosticsSnapshot()).toBeNull();
+    });
+
+    it('attaches canvas diagnostics once and exposes only explicit frozen snapshots', async () => {
+        const canvas = document.createElement('canvas');
+        const diagnostics = registerRendererDiagnostics(canvas);
+        const renderer = new WebGL2Driver({ domElement: canvas });
+
+        await renderer.ready;
+        renderer.addRenderInfo(6, 2);
+        const snapshot = renderer.getDiagnosticsSnapshot();
+
+        expect(snapshot?.frame.draws).toBe(2);
+        expect(snapshot?.caches.program.hits).toBeNull();
+        expect(snapshot?.caches.pipeline).toEqual({
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            size: 0,
+            highWater: 0
+        });
+        expect(Object.isFrozen(snapshot)).toBe(true);
+        expect(unregisterRendererDiagnostics(canvas, diagnostics)).toBe(true);
+        renderer.addRenderInfo(3, 1);
+        expect(renderer.getDiagnosticsSnapshot()?.frame.draws).toBe(3);
+        renderer.renderFrame(() => undefined);
+        expect(renderer.getDiagnosticsSnapshot()?.frame.draws).toBe(0);
+        renderer.destroy();
     });
 
     it('keeps runtime instancing selection synchronized with its render list', () => {
@@ -187,8 +219,10 @@ describe('WebGL2Driver', () => {
         renderer.destroy();
     });
 
-    it('does not rebind unchanged native state across identical frames', () => {
-        const renderer = new WebGL2Driver({ domElement: document.createElement('canvas') });
+    it('does not rebind unchanged native state and records cache requests every frame', () => {
+        const canvas = document.createElement('canvas');
+        const diagnostics = registerRendererDiagnostics(canvas);
+        const renderer = new WebGL2Driver({ domElement: canvas });
         renderer.initContext();
         const stage = new Hilo3d.Node();
         const camera = new Hilo3d.PerspectiveCamera();
@@ -230,10 +264,32 @@ describe('WebGL2Driver', () => {
 
         renderer.render(stage, camera);
         const firstFrameCounts = spies.map(spy => spy.mock.calls.length);
+        const warm = renderer.getDiagnosticsSnapshot();
         renderer.render(stage, camera);
+        const second = renderer.getDiagnosticsSnapshot();
+        renderer.render(stage, camera);
+        const third = renderer.getDiagnosticsSnapshot();
 
         expect(spies.map(spy => spy.mock.calls.length)).toEqual(firstFrameCounts);
+        for (const kind of ['pipeline', 'bindGroup', 'framebuffer', 'vertexArray'] as const) {
+            const warmCache = warm?.caches[kind];
+            const secondCache = second?.caches[kind];
+            const thirdCache = third?.caches[kind];
+            expect(warmCache?.hits).not.toBeNull();
+            expect(warmCache?.misses).not.toBeNull();
+            expect(
+                (secondCache?.hits ?? 0) -
+                    (warmCache?.hits ?? 0) +
+                    ((secondCache?.misses ?? 0) - (warmCache?.misses ?? 0))
+            ).toBe(1);
+            expect(
+                (thirdCache?.hits ?? 0) -
+                    (secondCache?.hits ?? 0) +
+                    ((thirdCache?.misses ?? 0) - (secondCache?.misses ?? 0))
+            ).toBe(1);
+        }
         renderer.destroy();
+        expect(unregisterRendererDiagnostics(canvas, diagnostics)).toBe(true);
     });
 
     it('reattaches the renderer adapter to the restored RHI generation', async () => {

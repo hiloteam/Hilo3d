@@ -5,7 +5,7 @@ bool isOutOfRange(vec2 pos) {
     return false;
 }
 
-#ifdef HILO_WEBGPU
+#ifdef HILO_SHADOW_ATLAS
 #if defined(HILO_DIRECTIONAL_LIGHTS_SMC) || defined(HILO_SPOT_LIGHTS_SMC) || defined(HILO_POINT_LIGHTS_SMC)
 float getShadowAtlas(int sliceIndex, float bias, vec3 fragPos, mat4 lightSpaceMatrix) {
     vec4 clipPosition = lightSpaceMatrix * vec4(fragPos, 1.0);
@@ -64,6 +64,7 @@ float getPointShadowAtlas(int lightIndex, float bias, vec3 fragPos) {
 #endif
 #else
 
+#if defined(HILO_DIRECTIONAL_LIGHTS_SMC) || defined(HILO_SPOT_LIGHTS_SMC)
 float getShadow(vec2 pos, sampler2D shadowMap, float currentDepth) {
     if (isOutOfRange(pos)) {
         return 0.0;
@@ -94,7 +95,9 @@ float getShadow(sampler2D shadowMap, vec2 shadowMapSize, float bias, vec3 fragPo
 
     return 1.0 - shadow / 9.0;
 }
+#endif
 
+#ifdef HILO_POINT_LIGHTS_SMC
 float getShadow(samplerCube shadowMap, float bias, vec3 lightPos, vec3 position, vec2 camera, mat4 lightSpaceMatrix) {
     vec4 distanceVec = lightSpaceMatrix * vec4(position, 1.0) - lightSpaceMatrix * vec4(lightPos, 1.0);
     float currentDistance = length(distanceVec);
@@ -123,4 +126,5 @@ float getShadow(samplerCube shadowMap, float bias, vec3 lightPos, vec3 position,
 
     return 1.0 - shadow;
 }
+#endif
 #endif

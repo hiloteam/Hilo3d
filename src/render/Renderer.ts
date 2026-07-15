@@ -15,10 +15,13 @@ import {
     isRendererBackendSupported
 } from './internal/RendererFactory';
 import type {
+    RendererAdapterPowerPreference,
     RendererAutoOptions,
     RendererCommonOptions,
+    RendererContextPowerPreference,
     RendererCreateOptions,
     RendererExplicitOptions,
+    RendererFeatureName,
     RendererOptions,
     RendererOptionsMap,
     RendererSupportOptions,
@@ -107,10 +110,13 @@ export class Renderer<
 }
 
 export type {
+    RendererAdapterPowerPreference,
     RendererAutoOptions,
     RendererCommonOptions,
+    RendererContextPowerPreference,
     RendererCreateOptions,
     RendererExplicitOptions,
+    RendererFeatureName,
     RendererOptions,
     RendererOptionsMap,
     RendererSupportOptions,

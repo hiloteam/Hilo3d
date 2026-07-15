@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import WebGLState from '../../../src/render/internal/webgl2/WebGLState';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 describe('WebGLState', () => {
     it('create', () => {

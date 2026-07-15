@@ -1,14 +1,28 @@
 import type RendererCore from '../RendererCore';
 import type { RendererBackend } from '../RendererCore';
-import WebGL2Driver from './webgl2/WebGL2Driver';
-import WebGPUDriver, { type WebGPUDriverOptions } from './webgpu/WebGPUDriver';
+import SharedRendererDriver from './SharedRendererDriver';
 import type {
     RendererCreateOptions,
     RendererExplicitOptions,
+    RendererFeatureName,
     RendererSupportOptions,
     RendererWebGL2Options
 } from '../RendererOptions';
-import { isRHIBackendSupported } from '../rhi/RHIFactory';
+import {
+    isRHIBackendSupported,
+    type RHIRequestableWebGPUFeature,
+    type RHIWebGL2ContextOptions
+} from '../rhi/RHIFactory';
+
+const REQUESTABLE_WEBGPU_FEATURES: ReadonlySet<string> = new Set([
+    'texture-compression-bc',
+    'texture-compression-etc2',
+    'texture-compression-astc',
+    'timestamp-query',
+    'depth32float-stencil8',
+    'float32-filterable',
+    'float32-blendable'
+]);
 
 function assertBackend(value: unknown): asserts value is RendererBackend {
     if (value !== 'webgl2' && value !== 'webgpu') {
@@ -28,15 +42,7 @@ function driverOptions<Options extends { readonly backend?: unknown }>(
 export function constructRenderer(options: RendererExplicitOptions = {}): RendererCore {
     const backend: unknown = options.backend ?? 'webgl2';
     assertBackend(backend);
-    if (backend === 'webgpu') {
-        if (Object.prototype.hasOwnProperty.call(options, 'preserveDrawingBuffer')) {
-            throw new TypeError(
-                'Renderer preserveDrawingBuffer is WebGL2-only; WebGPU requires an explicit copy/readback pass'
-            );
-        }
-        return new WebGPUDriver(driverOptions(options) as WebGPUDriverOptions);
-    }
-    return new WebGL2Driver(driverOptions(options));
+    return new SharedRendererDriver(backend, driverOptions(options));
 }
 
 function webGL2SupportCanvas(options: RendererWebGL2Options): HTMLCanvasElement | null {
@@ -63,6 +69,19 @@ function autoWebGPUSupportOptions(options: RendererCreateOptions): RendererSuppo
     };
 }
 
+function portableRequiredFeatures(
+    features: readonly RendererFeatureName[] | undefined
+): readonly RHIRequestableWebGPUFeature[] | null {
+    if (features === undefined) return [];
+    const result = new Array<RHIRequestableWebGPUFeature>(features.length);
+    for (let index = 0; index < features.length; index += 1) {
+        const feature = features[index];
+        if (feature === undefined || !REQUESTABLE_WEBGPU_FEATURES.has(feature)) return null;
+        result[index] = feature as RHIRequestableWebGPUFeature;
+    }
+    return result;
+}
+
 /** Probe backend support without constructing the public Renderer facade. */
 export async function isRendererBackendSupported(
     backend: 'webgl2',
@@ -78,13 +97,30 @@ export async function isRendererBackendSupported(
 ): Promise<boolean> {
     assertBackend(backend);
     if (backend === 'webgpu') {
-        return WebGPUDriver.isSupported(options as RendererSupportOptions);
+        const webGPUOptions = options as RendererSupportOptions;
+        const requiredFeatures = portableRequiredFeatures(webGPUOptions.requiredFeatures);
+        if (requiredFeatures === null) return false;
+        return isRHIBackendSupported('webgpu', {
+            ...(webGPUOptions.powerPreference === undefined
+                ? {}
+                : { powerPreference: webGPUOptions.powerPreference }),
+            ...(webGPUOptions.forceFallbackAdapter === undefined
+                ? {}
+                : { forceFallbackAdapter: webGPUOptions.forceFallbackAdapter }),
+            ...(webGPUOptions.failIfMajorPerformanceCaveat === undefined
+                ? {}
+                : { rejectFallbackAdapter: webGPUOptions.failIfMajorPerformanceCaveat }),
+            requiredFeatures,
+            ...(webGPUOptions.requiredLimits === undefined
+                ? {}
+                : { requiredLimits: webGPUOptions.requiredLimits })
+        });
     }
     const webglOptions = options as RendererWebGL2Options;
     const canvas = webGL2SupportCanvas(webglOptions);
     if (!canvas) return false;
     try {
-        const attributes: WebGLContextAttributes = {
+        const attributes: RHIWebGL2ContextOptions = {
             ...(webglOptions.alpha === undefined ? {} : { alpha: webglOptions.alpha }),
             ...(webglOptions.depth === undefined ? {} : { depth: webglOptions.depth }),
             ...(webglOptions.stencil === undefined ? {} : { stencil: webglOptions.stencil }),
@@ -106,7 +142,7 @@ export async function isRendererBackendSupported(
         };
         return await isRHIBackendSupported('webgl2', {
             canvas,
-            contextAttributes: attributes
+            context: attributes
         });
     } catch {
         return false;
@@ -128,7 +164,7 @@ export async function resolveRendererBackend(
     ) {
         return 'webgl2';
     }
-    return (await WebGPUDriver.isSupported(autoWebGPUSupportOptions(options)))
+    return (await isRendererBackendSupported('webgpu', autoWebGPUSupportOptions(options)))
         ? 'webgpu'
         : 'webgl2';
 }

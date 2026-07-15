@@ -100,6 +100,8 @@ export interface FramebufferRenderer {
     readonly state: WebGLState | null;
     width: number;
     height: number;
+    recordFramebufferPlanLookup?(key: object, revision?: number, layer?: number): void;
+    releaseFramebufferPlan?(key: object): void;
 }
 
 export interface ResolvedAttachmentOptions {
@@ -202,6 +204,7 @@ class Framebuffer {
     private _preReadFramebuffer: WebGLFramebuffer | null = null;
     private _preDrawFramebuffer: WebGLFramebuffer | null = null;
     private _hasSavedFramebufferBindings = false;
+    private bindingRevision = 0;
     private registeredContext: GLContext | null = null;
     private readonly attachmentDestroyObservers = new Map<
         FramebufferTexture,
@@ -332,6 +335,10 @@ class Framebuffer {
                 throw new Error(`Framebuffer is incomplete (status ${String(status)})`);
             }
             this._isInit = true;
+            if (this.bindingRevision === Number.MAX_SAFE_INTEGER) {
+                throw new RangeError('Framebuffer binding revision space is exhausted');
+            }
+            this.bindingRevision++;
         } catch (error) {
             this.releaseNativeResources(true);
             this.releaseFailedTextureAllocations(state, previousTextureAllocations);
@@ -547,9 +554,12 @@ class Framebuffer {
         }
     }
 
-    bind(): void {
+    bind(recordLookup = true): void {
         this.init();
         if (!this._isInit) return;
+        if (recordLookup) {
+            this.renderer.recordFramebufferPlanLookup?.(this, this.bindingRevision, 0);
+        }
         const { gl, state } = this;
         if (
             state.currentReadFramebuffer === this.framebuffer &&
@@ -581,7 +591,8 @@ class Framebuffer {
 
     /** Reattach the primary texture; cube-map subclasses use the index to select a face. */
     bindTexture(_index = 0): void {
-        this.bind();
+        this.bind(false);
+        this.renderer.recordFramebufferPlanLookup?.(this, this.bindingRevision, _index);
         const texture = this.texture;
         if (!texture) throw new Error('Framebuffer has no primary texture attachment');
         const glTexture = getWebGLTexture(this.state, texture);
@@ -658,6 +669,7 @@ class Framebuffer {
 
     destroy(): this {
         if (this._isDestroyed) return this;
+        this.renderer.releaseFramebufferPlan?.(this);
         this.destroyResource();
         if (this.registeredContext) {
             contextCaches.peek(this.registeredContext)?.removeObject(this);

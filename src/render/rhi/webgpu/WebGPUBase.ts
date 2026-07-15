@@ -1,4 +1,10 @@
 import type { RHIBackend, RHIBindGroupLayoutEntry, RHICreateOptions, RHIFeatureName } from '../RHI';
+import { RHICacheCounterContinuation } from '../core';
+import type {
+    RHIDiagnosticCacheCounters,
+    RHIDiagnosticCacheKind,
+    RHIDiagnosticsSink
+} from '../RHIDiagnosticsSink';
 import type { WebGPUDevice } from './WebGPUDevice';
 
 const WEBGPU_BACKEND: RHIBackend = 'webgpu';
@@ -76,6 +82,7 @@ type DiagnosticCounter = keyof WebGPURHIDiagnosticsSnapshot;
 
 /** Opt-in counters intended for contract tests and renderer diagnostics. */
 export class WebGPURHIDiagnostics implements WebGPURHIDiagnosticsSnapshot {
+    readonly #sink: RHIDiagnosticsSink | null;
     bufferCreations = 0;
     textureCreations = 0;
     samplerCreations = 0;
@@ -90,10 +97,127 @@ export class WebGPURHIDiagnostics implements WebGPURHIDiagnosticsSnapshot {
     bindGroupLayoutCacheHits = 0;
     pipelineLayoutCacheHits = 0;
     renderPipelineCacheHits = 0;
+    #pipelineSource: Readonly<RHIDiagnosticCacheCounters> | null = null;
+    #pipelineContinuation: RHICacheCounterContinuation | null = null;
+    #bindGroupSource: Readonly<RHIDiagnosticCacheCounters> | null = null;
+    #bindGroupContinuation: RHICacheCounterContinuation | null = null;
+    #framebufferSource: Readonly<RHIDiagnosticCacheCounters> | null = null;
+    #framebufferContinuation: RHICacheCounterContinuation | null = null;
+    #vertexInputSource: Readonly<RHIDiagnosticCacheCounters> | null = null;
+    #vertexInputContinuation: RHICacheCounterContinuation | null = null;
+
+    constructor(sink: RHIDiagnosticsSink | null = null) {
+        this.#sink = sink;
+        if (sink) {
+            sink.markCacheUnavailable('buffer');
+            sink.markCacheUnavailable('texture');
+            sink.markCacheHitOnly('sampler');
+            sink.markCacheUnavailable('program');
+            sink.markCacheHitOnly('bindGroupLayout');
+            sink.markCacheHitOnly('pipelineLayout');
+        }
+    }
 
     /** @internal */
     record(counter: DiagnosticCounter): void {
         this[counter]++;
+        switch (counter) {
+            case 'bufferCreations':
+                this.#sink?.recordNativeObjectCreatedOnly('buffer');
+                break;
+            case 'textureCreations':
+                this.#sink?.recordNativeObjectCreatedOnly('texture');
+                break;
+            case 'samplerCreations':
+                this.#sink?.recordNativeObjectCreatedOnly('sampler');
+                break;
+            case 'shaderModuleCreations':
+                this.#sink?.recordNativeObjectCreatedOnly('shaderModule');
+                break;
+            case 'bindGroupLayoutCreations':
+                this.#sink?.recordNativeObjectCreatedOnly('bindGroupLayout');
+                break;
+            case 'pipelineLayoutCreations':
+                this.#sink?.recordNativeObjectCreatedOnly('pipelineLayout');
+                break;
+            case 'bindGroupCreations':
+                this.#sink?.recordNativeObjectCreatedOnly('bindGroup');
+                break;
+            case 'renderPipelineCreations':
+                this.#sink?.recordNativeObjectCreatedOnly('pipeline');
+                break;
+            case 'commandEncoderCreations':
+                this.#sink?.recordNativeObjectCreatedOnly('commandEncoder');
+                break;
+            case 'submissions':
+                this.#sink?.recordSubmission();
+                break;
+            case 'samplerCacheHits':
+                this.#sink?.recordCacheHit('sampler');
+                break;
+            case 'bindGroupLayoutCacheHits':
+                this.#sink?.recordCacheHit('bindGroupLayout');
+                break;
+            case 'pipelineLayoutCacheHits':
+                this.#sink?.recordCacheHit('pipelineLayout');
+                break;
+            case 'renderPipelineCacheHits':
+                this.#sink?.recordCacheHit('pipeline');
+                break;
+        }
+    }
+
+    /** @internal Native queue uploads are frame-local and have no legacy snapshot field. */
+    recordUpload(): void {
+        this.#sink?.recordUpload();
+    }
+
+    /** @internal Forward a complete logical/native cache provider without allocating a snapshot. */
+    synchronizeCache(
+        kind: RHIDiagnosticCacheKind,
+        counters: Readonly<RHIDiagnosticCacheCounters>
+    ): void {
+        if (kind === 'pipeline') {
+            if (this.#pipelineContinuation === null) {
+                this.#pipelineContinuation = new RHICacheCounterContinuation(counters);
+            } else if (this.#pipelineSource !== counters) {
+                this.#pipelineContinuation.rebind(counters);
+            }
+            this.#pipelineSource = counters;
+            this.#sink?.synchronizeCache(kind, this.#pipelineContinuation);
+            return;
+        }
+        if (kind === 'bindGroup') {
+            if (this.#bindGroupContinuation === null) {
+                this.#bindGroupContinuation = new RHICacheCounterContinuation(counters);
+            } else if (this.#bindGroupSource !== counters) {
+                this.#bindGroupContinuation.rebind(counters);
+            }
+            this.#bindGroupSource = counters;
+            this.#sink?.synchronizeCache(kind, this.#bindGroupContinuation);
+            return;
+        }
+        if (kind === 'framebuffer') {
+            if (this.#framebufferContinuation === null) {
+                this.#framebufferContinuation = new RHICacheCounterContinuation(counters);
+            } else if (this.#framebufferSource !== counters) {
+                this.#framebufferContinuation.rebind(counters);
+            }
+            this.#framebufferSource = counters;
+            this.#sink?.synchronizeCache(kind, this.#framebufferContinuation);
+            return;
+        }
+        if (kind === 'vertexArray') {
+            if (this.#vertexInputContinuation === null) {
+                this.#vertexInputContinuation = new RHICacheCounterContinuation(counters);
+            } else if (this.#vertexInputSource !== counters) {
+                this.#vertexInputContinuation.rebind(counters);
+            }
+            this.#vertexInputSource = counters;
+            this.#sink?.synchronizeCache(kind, this.#vertexInputContinuation);
+            return;
+        }
+        this.#sink?.synchronizeCache(kind, counters);
     }
 
     snapshot(): Readonly<WebGPURHIDiagnosticsSnapshot> {
@@ -119,6 +243,8 @@ export class WebGPURHIDiagnostics implements WebGPURHIDiagnosticsSnapshot {
 export interface WebGPURHICreateOptions extends RHICreateOptions {
     /** Keep disabled in production unless counters are actively consumed. */
     readonly diagnostics?: boolean;
+    /** Backend-neutral renderer sink. Supplying it enables the local counters too. @internal */
+    readonly diagnosticsSink?: RHIDiagnosticsSink;
     readonly forceFallbackAdapter?: boolean;
     readonly rejectFallbackAdapter?: boolean;
     /** Native features to enable when the selected adapter exposes them. @internal */

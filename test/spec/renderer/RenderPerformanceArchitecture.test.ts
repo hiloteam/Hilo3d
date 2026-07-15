@@ -102,17 +102,16 @@ describe('render hot-path architecture', () => {
         ).toEqual([]);
     });
 
-    it('constructs and returns the selected internal driver instead of a render facade', () => {
+    it('constructs and returns the shared RHI v2 driver instead of a render facade', () => {
         const renderer = sourceAt('/render/Renderer.ts');
         const factory = sourceAt('/render/internal/RendererFactory.ts');
-        expect(factory).toMatch(/from\s+['"]\.\/webgl2\/WebGL2Driver['"]/u);
-        expect(factory).toMatch(/from\s+['"]\.\/webgpu\/WebGPUDriver['"]/u);
+        expect(factory).toMatch(/from\s+['"]\.\/SharedRendererDriver['"]/u);
+        expect(factory).not.toMatch(/from\s+['"]\.\/(?:webgl2|webgpu)\//u);
 
         const constructor = methodBody(renderer, 'constructor');
         const constructRenderer = functionBody(factory, 'constructRenderer');
         expect(constructor).toMatch(/return\s+constructRenderer\s*\(\s*options\s*\)/u);
-        expect(constructRenderer).toMatch(/return\s+new\s+WebGL2Driver\s*\(/u);
-        expect(constructRenderer).toMatch(/return\s+new\s+WebGPUDriver\s*\(/u);
+        expect(constructRenderer).toMatch(/return\s+new\s+SharedRendererDriver\s*\(/u);
         expect(`${renderer}\n${factory}`).not.toMatch(/new\s+Proxy\s*\(/u);
         expect(renderer).not.toMatch(
             /^\s{4}(?:(?:public|private|protected|override|async)\s+)*(?:render|renderFrame|renderToTarget|present)\s*\(/mu
@@ -134,16 +133,22 @@ describe('render hot-path architecture', () => {
         );
     });
 
-    it('constructs one concrete RHI at backend initialization without a command facade', () => {
+    it('keeps the v2 factory primary and the migration factory explicitly legacy', () => {
         const factory = sourceAt('/render/rhi/RHIFactory.ts');
+        const legacyFactory = sourceAt('/render/rhi/legacy/RHIFactory.ts');
         const webglDriver = sourceAt('/render/internal/webgl2/WebGL2Driver.ts');
         const webgpuDriver = sourceAt('/render/internal/webgpu/WebGPUDriver.ts');
 
-        expect(factory).toMatch(/return\s+new\s+WebGLRHI\s*\(/u);
-        expect(factory).toMatch(/return\s+new\s+WebGPURHI\s*\(/u);
+        expect(factory).toContain('createWebGL2RHIDevice(');
+        expect(factory).toContain('createWebGPUV2Device(');
+        expect(factory).not.toMatch(/from\s+['"]\.\/(?:webgl2|webgpu)\//u);
         expect(factory).not.toMatch(/new\s+Proxy\s*\(/u);
-        expect(methodBody(webglDriver, 'createContext')).toContain("constructRHI('webgl2',");
-        expect(methodBody(webgpuDriver, 'initialize')).toContain("constructRHI('webgpu',");
+
+        expect(legacyFactory).toMatch(/return\s+new\s+WebGLRHI\s*\(/u);
+        expect(legacyFactory).toMatch(/return\s+new\s+WebGPURHI\s*\(/u);
+        expect(legacyFactory).not.toMatch(/new\s+Proxy\s*\(/u);
+        expect(methodBody(webglDriver, 'createContext')).toContain("constructLegacyRHI('webgl2',");
+        expect(methodBody(webgpuDriver, 'initialize')).toContain("constructLegacyRHI('webgpu',");
     });
 
     it('retains the WebGL2 frame-scoped native session and direct VAO draw loop', () => {
@@ -213,5 +218,20 @@ describe('render hot-path architecture', () => {
         expect(matchCount(state, /\[\s*\.\.\./gu)).toBeLessThanOrEqual(1);
         expect(matchCount(state, /\binstanceof\b/gu)).toBeLessThanOrEqual(1);
         expect(matchCount(state, /new\s+Map(?:\s*<|\s*\()/gu)).toBeLessThanOrEqual(2);
+    });
+
+    it('resolves external and shadow-atlas texture bindings without per-draw allocation', () => {
+        const externalRegistry = sourceAt('/render/renderer/ExternalTextureBindingRegistry.ts');
+        const shadowBinding = sourceAt('/render/renderer/ShadowAtlasTextureBinding.ts');
+        const externalResolve = methodBody(externalRegistry, 'resolve');
+        const shadowResolve = methodBody(shadowBinding, 'resolve');
+
+        const bindingAllocation = /Object\.freeze|return\s*\{|\.map\s*\(|\.slice\s*\(|\.\.\./u;
+        expect(externalResolve).not.toMatch(bindingAllocation);
+        expect(shadowResolve).not.toMatch(bindingAllocation);
+        expect(shadowResolve).toContain('return resources;');
+        expect(methodBody(shadowBinding, 'update')).toContain(
+            'this.#resources.textureView = resource.view'
+        );
     });
 });

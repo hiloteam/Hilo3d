@@ -105,6 +105,7 @@ interface HeaderVariantSnapshot {
     readonly fogMode: Fog['mode'] | null;
     readonly useLogDepth: boolean;
     readonly jointCount: number | null;
+    readonly unsignedSkinIndices: boolean;
     readonly shaderName: string;
     readonly lightType: string;
     readonly commonOptions: Readonly<Record<string, number>>;
@@ -188,6 +189,18 @@ function skeletonJointCount(mesh: Mesh): number | null {
     if (typeof skeleton !== 'object' || skeleton === null) return null;
     const count: unknown = Reflect.get(skeleton, 'jointCount');
     return typeof count === 'number' ? count : null;
+}
+
+function usesUnsignedSkinIndices(mesh: Mesh): boolean {
+    const skinIndices = mesh.geometry?.skinIndices;
+    if (!skinIndices || skinIndices.normalized) return false;
+    const data = skinIndices.data;
+    return (
+        data instanceof Uint8Array ||
+        data instanceof Uint8ClampedArray ||
+        data instanceof Uint16Array ||
+        data instanceof Uint32Array
+    );
 }
 
 function optionValueEqual(left: number | undefined, right: number | undefined): boolean {
@@ -334,6 +347,7 @@ class Shader {
         const lightUid = lightManager.lightInfo.uid;
         const fogMode = fog?.mode ?? null;
         const jointCount = skeletonJointCount(mesh);
+        const unsignedSkinIndices = usesUnsignedSkinIndices(mesh);
         const shaderName = material.shaderName ?? material.className;
         const lightType = material.lightType;
         const snapshots = meshHeaderSnapshots.get(mesh);
@@ -351,6 +365,7 @@ class Shader {
                     snapshot.fogMode === fogMode &&
                     snapshot.useLogDepth === useLogDepth &&
                     snapshot.jointCount === jointCount &&
+                    snapshot.unsignedSkinIndices === unsignedSkinIndices &&
                     snapshot.shaderName === shaderName &&
                     snapshot.lightType === lightType &&
                     commonOptionsEqual(snapshot.commonOptions, this.commonOptions)
@@ -441,6 +456,7 @@ class Shader {
             fogMode,
             useLogDepth,
             jointCount,
+            unsignedSkinIndices,
             shaderName,
             lightType,
             commonOptions: { ...this.commonOptions },

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import type { ShaderRenderer } from '../../../src/shader/Shader';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 const Shader = Hilo3d.Shader;
 const ShaderMaterial = Hilo3d.ShaderMaterial;
@@ -124,6 +124,27 @@ describe('Shader', () => {
         expect(secondMorphKey).not.toBe(firstMorphKey);
         expect(secondMorphKey).toContain('MORPH_HAS_NORMAL');
         expect(secondMorphKey).toContain('MORPH_TARGET_COUNT');
+    });
+
+    it('invalidates the header snapshot when skin indices switch to unsigned storage', () => {
+        const skinIndices = new Hilo3d.GeometryData(new Float32Array(4), 4);
+        const geometry = new Hilo3d.Geometry({ skinIndices });
+        const material = new Hilo3d.BasicMaterial({ lightType: 'NONE' });
+        const mesh = new Hilo3d.Mesh({ geometry, material });
+        const lightManager = testEnv.renderer.lightManager;
+
+        const floatKey = Shader.getHeaderKey(mesh, material, lightManager, null, false);
+        expect(Shader.getHeader(mesh, material, lightManager, null, false)).not.toContain(
+            'HILO_SKIN_INDICES_UINT'
+        );
+
+        skinIndices.data = new Uint8Array(4);
+        const unsignedKey = Shader.getHeaderKey(mesh, material, lightManager, null, false);
+        expect(unsignedKey).not.toBe(floatKey);
+        expect(Shader.getHeader(mesh, material, lightManager, null, false)).toContain(
+            '#define HILO_SKIN_INDICES_UINT 1'
+        );
+        expect(geometry.getShaderKey()).toContain('SKIN_INDICES_UINT');
     });
 
     it('getCustomShader', () => {

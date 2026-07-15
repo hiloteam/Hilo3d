@@ -4,6 +4,22 @@ import type Color from '../math/Color';
 import type { RendererBackend } from './RendererCore';
 import type { ShaderPrecision } from './types';
 
+/** Backend-neutral power policy used while selecting a graphics adapter. */
+export type RendererAdapterPowerPreference = 'low-power' | 'high-performance';
+
+/** Backend-neutral context power policy; `default` is accepted by WebGL2 contexts. */
+export type RendererContextPowerPreference = 'default' | RendererAdapterPowerPreference;
+
+/** Optional device capabilities that the renderer can request through the portable RHI. */
+export type RendererFeatureName =
+    | 'texture-compression-bc'
+    | 'texture-compression-etc2'
+    | 'texture-compression-astc'
+    | 'timestamp-query'
+    | 'depth32float-stencil8'
+    | 'float32-filterable'
+    | 'float32-blendable';
+
 /** Backend-independent construction options. */
 export interface RendererCommonOptions {
     width?: number;
@@ -29,10 +45,10 @@ export interface RendererCommonOptions {
 
 /** WebGPU adapter/device constraints accepted by support probes and automatic selection. */
 export interface RendererSupportOptions {
-    powerPreference?: GPUPowerPreference;
+    powerPreference?: RendererAdapterPowerPreference;
     forceFallbackAdapter?: boolean;
     failIfMajorPerformanceCaveat?: boolean;
-    requiredFeatures?: readonly GPUFeatureName[];
+    requiredFeatures?: readonly RendererFeatureName[];
     requiredLimits?: Readonly<Record<string, number>>;
 }
 
@@ -40,7 +56,7 @@ export interface RendererSupportOptions {
 export interface RendererWebGL2Options extends RendererCommonOptions {
     backend?: 'webgl2';
     preserveDrawingBuffer?: boolean;
-    powerPreference?: WebGLPowerPreference;
+    powerPreference?: RendererContextPowerPreference;
 }
 
 /** Synchronous construction options for WebGPU. */

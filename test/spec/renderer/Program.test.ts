@@ -8,7 +8,7 @@ import VertexArrayObject from '../../../src/render/internal/webgl2/VertexArrayOb
 import WebGL2Driver from '../../../src/render/internal/webgl2/WebGL2Driver';
 import { cameraBlockLayout } from '../../../src/render/ubo/BuiltInUniformBlocks';
 import { releaseWebGLUniformBuffer } from '../../../src/render/internal/webgl2/WebGLState';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 const vertexShader = '#version 300 es\nvoid main(){gl_Position=vec4(0.0, 0.0, 0.0, 1.0);}';
 const fragmentShader =
@@ -269,6 +269,30 @@ describe('Program', () => {
             expect(
                 gl.getVertexAttrib(matrix4Attribute.location + 3, gl.VERTEX_ATTRIB_ARRAY_INTEGER)
             ).toBe(false);
+            const matrixColumnState = (baseLocation: number, columnCount: number) =>
+                Array.from({ length: columnCount }, (_, column) => {
+                    const location = baseLocation + column;
+                    return {
+                        enabled: Boolean(
+                            gl.getVertexAttrib(location, gl.VERTEX_ATTRIB_ARRAY_ENABLED)
+                        ),
+                        size: Number(gl.getVertexAttrib(location, gl.VERTEX_ATTRIB_ARRAY_SIZE)),
+                        type: Number(gl.getVertexAttrib(location, gl.VERTEX_ATTRIB_ARRAY_TYPE)),
+                        stride: Number(gl.getVertexAttrib(location, gl.VERTEX_ATTRIB_ARRAY_STRIDE)),
+                        offset: gl.getVertexAttribOffset(location, gl.VERTEX_ATTRIB_ARRAY_POINTER)
+                    };
+                });
+            expect(matrixColumnState(matrix3Attribute.location, 3)).toEqual([
+                { enabled: true, size: 3, type: gl.FLOAT, stride: 36, offset: 0 },
+                { enabled: true, size: 3, type: gl.FLOAT, stride: 36, offset: 12 },
+                { enabled: true, size: 3, type: gl.FLOAT, stride: 36, offset: 24 }
+            ]);
+            expect(matrixColumnState(matrix4Attribute.location, 4)).toEqual([
+                { enabled: true, size: 4, type: gl.FLOAT, stride: 64, offset: 0 },
+                { enabled: true, size: 4, type: gl.FLOAT, stride: 64, offset: 16 },
+                { enabled: true, size: 4, type: gl.FLOAT, stride: 64, offset: 32 },
+                { enabled: true, size: 4, type: gl.FLOAT, stride: 64, offset: 48 }
+            ]);
 
             program.useProgram();
             vao.draw();

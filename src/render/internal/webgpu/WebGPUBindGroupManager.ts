@@ -1,4 +1,5 @@
 import type Texture from '../../../texture/Texture';
+import { RHICacheCounter } from '../../rhi/core';
 import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
 import {
     getWebGPUNativeDeviceCache,
@@ -6,7 +7,7 @@ import {
 } from '../../rhi/webgpu/WebGPUNativeCache';
 import { touchBoundedLruEntry } from '../../BoundedLruCache';
 import type { TranslatedShaderPair, WebGPUSamplerBinding } from '../../shader/GlslToWgsl';
-import { WEBGPU_BIND_GROUP_COUNT } from './WebGPUBindingLayout';
+import { WEBGPU_BIND_GROUP_COUNT } from '../../shader/WebGPUBindingLayout';
 import { WebGPUShaderStage } from './WebGPUConstants';
 import {
     createWebGPUSamplerDescriptor,
@@ -278,6 +279,7 @@ export default class WebGPUBindGroupManager {
     private readonly bindGroupSets = new Map<string, readonly GPUBindGroup[]>();
     private readonly objectIds = new WeakMap<object, number>();
     private nextObjectId = 1;
+    readonly bindGroupCacheMetrics = new RHICacheCounter();
 
     constructor(
         deviceOrOwner: GPUDevice | WebGPUDevice,
@@ -517,6 +519,8 @@ export default class WebGPUBindGroupManager {
         const setKey = groupKeys.join('|');
         const cachedSet = this.bindGroupSets.get(setKey);
         if (cachedSet) {
+            this.bindGroupCacheMetrics.recordHit();
+            this.syncBindGroupMetrics();
             touchBoundedLruEntry(this.bindGroupSets, setKey, cachedSet, MAX_CACHED_BIND_GROUP_SETS);
             cachedSet.forEach((bindGroup, group) => {
                 const cache = this.bindGroupsByGroup[group];
@@ -527,6 +531,8 @@ export default class WebGPUBindGroupManager {
             });
             return cachedSet;
         }
+        this.bindGroupCacheMetrics.recordMiss();
+        this.syncBindGroupMetrics();
         const groups = layout.bindGroupLayouts.map((groupLayout, group) => {
             const cache = this.bindGroupsByGroup[group];
             const key = groupKeys[group];
@@ -550,7 +556,14 @@ export default class WebGPUBindGroupManager {
             return created;
         });
         const result = Object.freeze(groups);
+        const previousSize = this.bindGroupSets.size;
         touchBoundedLruEntry(this.bindGroupSets, setKey, result, MAX_CACHED_BIND_GROUP_SETS);
+        if (this.bindGroupSets.size > previousSize) {
+            this.bindGroupCacheMetrics.recordInsertion();
+        } else {
+            this.bindGroupCacheMetrics.recordReplacement();
+        }
+        this.syncBindGroupMetrics();
         return result;
     }
 
@@ -558,6 +571,8 @@ export default class WebGPUBindGroupManager {
     clearBindGroups(): void {
         this.bindGroupSets.clear();
         for (const cache of this.bindGroupsByGroup) cache.clear();
+        this.bindGroupCacheMetrics.clear();
+        this.syncBindGroupMetrics();
     }
 
     /** Drop every device-owned cache. Intended for renderer/device teardown only. */
@@ -573,5 +588,9 @@ export default class WebGPUBindGroupManager {
             this.objectIds.set(object, id);
         }
         return id;
+    }
+
+    private syncBindGroupMetrics(): void {
+        this.rhiDevice?.diagnostics?.synchronizeCache('bindGroup', this.bindGroupCacheMetrics);
     }
 }

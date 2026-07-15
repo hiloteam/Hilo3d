@@ -22,7 +22,8 @@ import Matrix4 from '../../../math/Matrix4';
 import Vector3 from '../../../math/Vector3';
 import type { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
 import type { WebGPURHI } from '../../rhi/webgpu/WebGPURHI';
-import { constructRHI, isRHIBackendSupported } from '../../rhi/RHIFactory';
+import { RHICacheCounter } from '../../rhi/core';
+import { constructLegacyRHI, isLegacyRHIBackendSupported } from '../../rhi/legacy/RHIFactory';
 import Shader from '../../../shader/Shader';
 import { CollisionSafeVariantKeyRegistry } from '../../../shader/VariantHash';
 import presentFragmentSource from '../../../shader/present.frag';
@@ -75,7 +76,11 @@ import type {
     RenderTargetParameters,
     RenderTargetSelectionOptions
 } from '../../RenderTarget';
-import type { RendererSupportOptions, RendererWebGPUOptions } from '../../RendererOptions';
+import type {
+    RendererFeatureName,
+    RendererSupportOptions,
+    RendererWebGPUOptions
+} from '../../RendererOptions';
 import WebGPUBindGroupManager, {
     type ResolvedWebGPUSampler,
     type WebGPUPipelineBindingLayout
@@ -378,7 +383,7 @@ class WebGPUDriver extends RendererCore {
 
     powerPreference: GPUPowerPreference = 'high-performance';
     forceFallbackAdapter = false;
-    requiredFeatures: readonly GPUFeatureName[] = [];
+    requiredFeatures: readonly RendererFeatureName[] = [];
     requiredLimits: Readonly<Record<string, number>> = {};
     override renderTarget: WebGPURenderTarget | null = null;
 
@@ -405,6 +410,11 @@ class WebGPUDriver extends RendererCore {
     private recoveryTextureManager: WebGPUTextureManager | null = null;
     private uniformBufferManager: WebGPUUniformBufferManager | null = null;
     private bindGroupManager: WebGPUBindGroupManager | null = null;
+    private readonly framebufferCacheMetrics = new RHICacheCounter();
+    private lastFramebufferPlan: object | null = null;
+    private lastFramebufferWidth = -1;
+    private lastFramebufferHeight = -1;
+    private lastFramebufferVariant = -1;
     private readonly uniformBlockManager: BuiltInUniformBlockManager;
     private instanceUniformBuffers = new WeakMap<WebGPUInstanceBatchOwner, UniformBuffer>();
     private readonly instanceBatchOwners = new Map<string, WebGPUInstanceBatchOwner>();
@@ -459,8 +469,47 @@ class WebGPUDriver extends RendererCore {
 
     private set activePass(pass: GPURenderPassEncoder | null) {
         this._activePass = pass;
-        if (pass) this.commandState.beginPass(pass);
-        else this.commandState.endPass();
+        if (pass) {
+            this.rendererDiagnosticsSink?.recordPass();
+            this.commandState.beginPass(pass);
+        } else this.commandState.endPass();
+    }
+
+    private recordFramebufferPlanLookup(
+        key: object,
+        width: number,
+        height: number,
+        variant: number
+    ): void {
+        if (
+            this.lastFramebufferPlan === key &&
+            this.lastFramebufferWidth === width &&
+            this.lastFramebufferHeight === height &&
+            this.lastFramebufferVariant === variant
+        ) {
+            this.framebufferCacheMetrics.recordHit();
+        } else {
+            this.framebufferCacheMetrics.recordMiss();
+            if (this.framebufferCacheMetrics.size === 0) {
+                this.framebufferCacheMetrics.recordInsertion();
+            } else {
+                this.framebufferCacheMetrics.recordReplacement();
+            }
+            this.lastFramebufferPlan = key;
+            this.lastFramebufferWidth = width;
+            this.lastFramebufferHeight = height;
+            this.lastFramebufferVariant = variant;
+        }
+        this.rendererDiagnosticsSink?.synchronizeCache('framebuffer', this.framebufferCacheMetrics);
+    }
+
+    private clearFramebufferPlanCache(): void {
+        this.lastFramebufferPlan = null;
+        this.lastFramebufferWidth = -1;
+        this.lastFramebufferHeight = -1;
+        this.lastFramebufferVariant = -1;
+        this.framebufferCacheMetrics.clear();
+        this.rendererDiagnosticsSink?.synchronizeCache('framebuffer', this.framebufferCacheMetrics);
     }
 
     /**
@@ -475,7 +524,7 @@ class WebGPUDriver extends RendererCore {
             requiredFeatures: Object.freeze([...(options.requiredFeatures ?? [])]),
             requiredLimits: Object.freeze({ ...(options.requiredLimits ?? {}) })
         });
-        return isRHIBackendSupported('webgpu', {
+        return isLegacyRHIBackendSupported('webgpu', {
             powerPreference: snapshot.powerPreference,
             forceFallbackAdapter: snapshot.forceFallbackAdapter,
             adapterValidator: adapter => {
@@ -492,6 +541,7 @@ class WebGPUDriver extends RendererCore {
             );
         }
         Object.assign(this, params);
+        this.attachRegisteredDiagnostics(this.domElement);
         this.requiredFeatures = [...(params.requiredFeatures ?? [])];
         this.requiredLimits = { ...(params.requiredLimits ?? {}) };
         this.rejectFallbackAdapter = this.failIfMajorPerformanceCaveat;
@@ -546,7 +596,8 @@ class WebGPUDriver extends RendererCore {
             }
             const canvas = this.domElement;
             if (!canvas) throw new Error('WebGPU backend requires a canvas');
-            initializingRHI = constructRHI('webgpu', {
+            const diagnosticsSink = this.rendererDiagnosticsSink;
+            initializingRHI = constructLegacyRHI('webgpu', {
                 canvas,
                 width: this.width > 0 ? this.width : canvas.width,
                 height: this.height > 0 ? this.height : canvas.height,
@@ -568,7 +619,8 @@ class WebGPUDriver extends RendererCore {
                         requiredLimits: this.requiredLimits
                     });
                 },
-                includeEmptyDeviceDescriptorFields: true
+                includeEmptyDeviceDescriptorFields: true,
+                ...(diagnosticsSink ? { diagnosticsSink } : {})
             });
             this.rhi = initializingRHI;
             await initializingRHI.ready;
@@ -731,6 +783,7 @@ class WebGPUDriver extends RendererCore {
         }
         if (!this.isReady)
             throw new Error('WebGPU backend is not ready; await stage.ready before rendering');
+        if (!this.frameEncoder) this.resetDiagnosticsFrame();
         const context = this.context;
         if (!context) throw new Error('WebGPU canvas context is unavailable');
         this.resourceManager.beginFrame();
@@ -786,6 +839,16 @@ class WebGPUDriver extends RendererCore {
                   }
                 : this.getMainDrawTarget();
             this.activeViewport = sceneViewport;
+            const framebufferPlan = renderTarget ?? currentTexture;
+            if (!framebufferPlan) {
+                throw new Error('WebGPU render pass has no attachment plan owner');
+            }
+            this.recordFramebufferPlanLookup(
+                framebufferPlan,
+                renderTarget?.width ?? this.width,
+                renderTarget?.height ?? this.height,
+                this.activeDrawTarget.sampleCount
+            );
             const pass = encoder.beginRenderPass(passDescriptor);
             this.activePass = pass;
             try {
@@ -830,6 +893,7 @@ class WebGPUDriver extends RendererCore {
         if (!this.isReady) {
             throw new Error('WebGPU backend is not ready; await stage.ready before rendering');
         }
+        this.resetDiagnosticsFrame();
         const encoder = this.concreteDevice.createNativeCommandEncoder({
             label: 'Hilo3d application frame'
         });
@@ -1185,6 +1249,7 @@ class WebGPUDriver extends RendererCore {
         }
         const presentPipeline = this.getPresentPipeline(sampleType);
         const bindGroup = this.getPresentBindGroup(presentPipeline, resource.view);
+        this.recordFramebufferPlanLookup(currentTexture, this.width, this.height, 1);
         const pass = encoder.beginRenderPass({
             label: 'Hilo3d present pass',
             colorAttachments: [
@@ -1205,6 +1270,8 @@ class WebGPUDriver extends RendererCore {
         pass.setBindGroup(presentPipeline.bindGroupIndex, bindGroup);
         pass.setViewport(0, 0, this.width, this.height, 0, 1);
         pass.draw(3);
+        this.rendererDiagnosticsSink?.recordDraw();
+        this.rendererDiagnosticsSink?.recordPass();
         pass.end();
     }
 
@@ -1465,6 +1532,12 @@ class WebGPUDriver extends RendererCore {
     ): void {
         const atlas = this.shadowAtlasGPUTexture;
         if (!atlas) throw new Error('WebGPU shadow atlas is unavailable');
+        this.recordFramebufferPlanLookup(
+            atlas,
+            this.shadowAtlasWidth,
+            this.shadowAtlasHeight,
+            slice.physicalIndex === 0 ? 1 : 0
+        );
         const pass = encoder.beginRenderPass({
             label: `Hilo3d shadow slice ${String(slice.logicalIndex)}`,
             colorAttachments: [null],
@@ -2265,6 +2338,7 @@ class WebGPUDriver extends RendererCore {
         } else {
             pass.draw(setup.vertexCount, setup.instanceCount);
         }
+        this.rendererDiagnosticsSink?.recordDraw();
     }
 
     private createRenderAttachments(): void {
@@ -2341,6 +2415,7 @@ class WebGPUDriver extends RendererCore {
         readonly preserveRenderTargets: boolean;
         readonly preserveTextureRecoveryData: boolean;
     }): void {
+        this.clearFramebufferPlanCache();
         this.depthTexture?.destroy();
         this.multisampleTexture?.destroy();
         this.depthTexture = null;

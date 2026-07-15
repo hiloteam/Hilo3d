@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import Program, { type ProgramAttribute } from '../../../src/render/internal/webgl2/Program';
 import VertexArrayObject from '../../../src/render/internal/webgl2/VertexArrayObject';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 describe('VertexArrayObject', () => {
     it('create', () => {

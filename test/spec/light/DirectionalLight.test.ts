@@ -5,7 +5,7 @@ import {
     releaseWebGLShadowMaps,
     renderWebGLShadowMaps
 } from '../../../src/render/internal/webgl2/WebGLShadowMapManager';
-import { createHilo3dEnvironment, testEnv } from '../../setup';
+import { createHilo3dEnvironment, testEnv } from '../../legacy-setup';
 
 const DirectionalLight = Hilo3d.DirectionalLight;
 const beginCameraPass = (camera: Hilo3d.Camera): void => {

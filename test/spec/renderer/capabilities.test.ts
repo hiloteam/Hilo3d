@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { WebGLCapabilities } from '../../../src/render/internal/webgl2/capabilities';
 import { WebGLExtensions } from '../../../src/render/internal/webgl2/extensions';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 describe('capabilities', () => {
     const gl = testEnv.gl;

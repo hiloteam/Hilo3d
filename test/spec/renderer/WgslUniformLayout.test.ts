@@ -7,7 +7,7 @@ import {
 import {
     createWgslUniformLayout,
     makeWgslUniformLayoutsPortable
-} from '../../../src/render/internal/webgpu/WgslUniformLayout';
+} from '../../../src/render/shader/WgslUniformLayout';
 
 describe('WgslUniformLayout', () => {
     it('preserves the public std140 offsets and strides for portable WGSL', () => {

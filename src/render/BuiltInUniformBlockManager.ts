@@ -3,7 +3,7 @@ import Matrix4 from '../math/Matrix4';
 import type Camera from '../camera/Camera';
 import type Mesh from '../core/Mesh';
 import type Geometry from '../geometry/Geometry';
-import Material from '../material/Material';
+import Material, { type SemanticProgramBindingInfo } from '../material/Material';
 import UniformBuffer from './UniformBuffer';
 import {
     BUILT_IN_UNIFORM_BLOCK_LAYOUTS,
@@ -18,9 +18,10 @@ import {
     sceneBlockLayout,
     skinningBlockLayout
 } from './ubo/BuiltInUniformBlocks';
-import type { Std140Layout } from './ubo/Std140Layout';
+import type { Std140Layout, Std140WriteResult } from './ubo/Std140Layout';
 import { getMeshPickingIdentity } from './PickingIdentity';
 import type { RendererViewport } from './Renderer';
+import type { SemanticFrameState } from './frame/SemanticFrameState';
 
 interface RendererSize {
     width: number;
@@ -46,11 +47,22 @@ interface MaterialCachedBuffer {
     candidateBytes: Uint8Array;
     currentBytes: Uint8Array;
     initialized: boolean;
+    /** Pass in which mesh-dependence was last classified from the material's live bindings. */
+    classifiedPassEpoch: number;
+    /** Pass in which a mesh-independent candidate was already packed. */
+    packedPassEpoch: number;
+    meshDependent: boolean;
 }
 
 interface FrameCachedBuffer {
     buffer: UniformBuffer;
     frameIndex: number;
+}
+
+interface MorphFrameCachedBuffer extends FrameCachedBuffer {
+    readonly weights: Float32Array;
+    readonly weights0: Float32Array;
+    readonly weights1: Float32Array;
 }
 
 type OwnedBufferRegistration =
@@ -62,6 +74,16 @@ type OwnedBufferRegistration =
 
 const tempInverseProjection = new Matrix4();
 const tempViewNormal = new Matrix3();
+const std140WriteResult: Std140WriteResult = { byteOffset: 0, byteLength: 0 };
+const semanticBlockScratch = new WeakMap<UniformBuffer, Uint8Array>();
+const uniformBufferByteViews = new WeakMap<UniformBuffer, Uint8Array>();
+const layoutFieldNames = new WeakMap<Std140Layout, readonly string[]>();
+const EMPTY_PROGRAM_BINDING_INFO: Readonly<SemanticProgramBindingInfo> = Object.freeze({});
+const semanticProgramBindingInfos = new WeakMap<
+    SemanticFrameState,
+    Readonly<SemanticProgramBindingInfo>
+>();
+const EMPTY_NUMERIC_VALUES: readonly unknown[] = Object.freeze([]);
 type MaterialBlockFieldName = keyof typeof materialBlockLayout.schema;
 const MATERIAL_BLOCK_FIELD_NAMES = Object.freeze(
     (Object.keys(materialBlockLayout.fields) as MaterialBlockFieldName[]).filter(
@@ -72,6 +94,36 @@ const MATERIAL_BLOCK_FIELDS = Object.freeze(
     MATERIAL_BLOCK_FIELD_NAMES.map(fieldName => materialBlockLayout.fields[fieldName])
 );
 
+function fieldNamesOf(layout: Std140Layout): readonly string[] {
+    let names = layoutFieldNames.get(layout);
+    if (names === undefined) {
+        names = Object.freeze(Object.keys(layout.fields));
+        layoutFieldNames.set(layout, names);
+    }
+    return names;
+}
+
+function bytesOf(buffer: UniformBuffer): Uint8Array {
+    let bytes = uniformBufferByteViews.get(buffer);
+    if (bytes?.buffer !== buffer.data) {
+        bytes = new Uint8Array(buffer.data);
+        uniformBufferByteViews.set(buffer, bytes);
+    }
+    return bytes;
+}
+
+function programBindingInfoFor(
+    semanticFrame: SemanticFrameState | undefined
+): Readonly<SemanticProgramBindingInfo> {
+    if (semanticFrame === undefined) return EMPTY_PROGRAM_BINDING_INFO;
+    let info = semanticProgramBindingInfos.get(semanticFrame);
+    if (info === undefined) {
+        info = Object.freeze({ semanticFrame });
+        semanticProgramBindingInfos.set(semanticFrame, info);
+    }
+    return info;
+}
+
 function numericCameraProperty(camera: Camera, name: string, fallback: number): number {
     const value: unknown = Reflect.get(camera, name);
     return typeof value === 'number' ? value : fallback;
@@ -81,30 +133,64 @@ function updateSemanticBlock(
     buffer: UniformBuffer,
     blockName: string,
     mesh: Mesh,
-    material: Material
+    material: Material,
+    semanticFrame?: SemanticFrameState
 ): void {
     const layout = BUILT_IN_UNIFORM_BLOCK_LAYOUTS[blockName];
     if (!layout) return;
-    new Uint8Array(buffer.data).fill(0);
-    buffer.markDirty();
-    for (const fieldName of Object.keys(layout.fields)) {
-        if (fieldName.endsWith('Padding')) continue;
-        const value = resolveSemanticBlockField(fieldName, mesh, material);
-        const padded = paddedStd140Value(layout, fieldName, value);
-        if (padded !== null) buffer.set(fieldName, padded);
+    const fieldNames = fieldNamesOf(layout);
+    let candidate = semanticBlockScratch.get(buffer);
+    if (candidate?.byteLength !== layout.byteLength) {
+        candidate = new Uint8Array(layout.byteLength);
+        semanticBlockScratch.set(buffer, candidate);
+    } else {
+        candidate.fill(0);
     }
+    const candidateBuffer = candidate.buffer;
+    if (!(candidateBuffer instanceof ArrayBuffer)) {
+        throw new TypeError('Semantic block scratch storage must use an ArrayBuffer');
+    }
+    for (const fieldName of fieldNames) {
+        if (fieldName.endsWith('Padding')) continue;
+        const value = resolveSemanticBlockField(fieldName, mesh, material, semanticFrame);
+        const padded = paddedStd140Value(layout, fieldName, value);
+        if (padded !== null) {
+            layout.writeInto(candidateBuffer, fieldName, padded, std140WriteResult);
+        }
+    }
+    // A pass boundary is not necessarily a data boundary. Preserve the logical source revision
+    // when the packed ABI is identical so one shared buffer can be referenced by several graph
+    // passes without violating the upload cache's immutable-within-frame contract.
+    if (bytesEqual(bytesOf(buffer), candidate, 0, candidate.byteLength)) return;
+    buffer.write(0, candidate);
 }
 
-function resolveSemanticBlockField(fieldName: string, mesh: Mesh, material: Material): unknown {
+function resolveSemanticBlockField(
+    fieldName: string,
+    mesh: Mesh,
+    material: Material,
+    semanticFrame?: SemanticFrameState
+): unknown {
     if (fieldName === 'u_objectIdColor') return getMeshPickingIdentity(mesh).color;
     if (!Object.hasOwn(material.uniforms, fieldName)) return undefined;
-    const materialProperty =
-        {
-            u_diffuseColor: 'diffuse',
-            u_specularColor: 'specular',
-            u_ambientColor: 'ambient',
-            u_emissionColor: 'emission'
-        }[fieldName] ?? null;
+    let materialProperty: 'diffuse' | 'specular' | 'ambient' | 'emission' | null;
+    switch (fieldName) {
+        case 'u_diffuseColor':
+            materialProperty = 'diffuse';
+            break;
+        case 'u_specularColor':
+            materialProperty = 'specular';
+            break;
+        case 'u_ambientColor':
+            materialProperty = 'ambient';
+            break;
+        case 'u_emissionColor':
+            materialProperty = 'emission';
+            break;
+        default:
+            materialProperty = null;
+            break;
+    }
     if (materialProperty) {
         const candidate: unknown = Reflect.get(material, materialProperty);
         return typeof candidate === 'object' &&
@@ -117,7 +203,29 @@ function resolveSemanticBlockField(fieldName: string, mesh: Mesh, material: Mate
         const candidate: unknown = Reflect.get(material, 'transparency');
         return typeof candidate === 'number' ? candidate : 1;
     }
-    return material.getUniformData(fieldName, mesh, {});
+    return material.getUniformData(fieldName, mesh, programBindingInfoFor(semanticFrame));
+}
+
+/** Whether packing a canonical MaterialBlock must resolve fields separately for every mesh. */
+function materialBlockDependsOnMesh(material: Material): boolean {
+    let index = 0;
+    while (index < MATERIAL_BLOCK_FIELD_NAMES.length) {
+        const fieldName = MATERIAL_BLOCK_FIELD_NAMES[index];
+        index += 1;
+        if (fieldName === undefined) continue;
+        if (!Object.hasOwn(material.uniforms, fieldName)) continue;
+        switch (fieldName) {
+            case 'u_diffuseColor':
+            case 'u_specularColor':
+            case 'u_ambientColor':
+            case 'u_emissionColor':
+            case 'u_transparencyFactor':
+                continue;
+            default:
+                if (material.getUniformInfo(fieldName).isDependMesh === true) return true;
+        }
+    }
+    return false;
 }
 
 /** Pack the canonical material ABI without mutating its live UniformBuffer. */
@@ -125,17 +233,22 @@ function packMaterialBlock(
     target: ArrayBuffer,
     targetBytes: Uint8Array,
     mesh: Mesh,
-    material: Material
+    material: Material,
+    semanticFrame?: SemanticFrameState
 ): void {
     targetBytes.fill(0);
-    for (const fieldName of MATERIAL_BLOCK_FIELD_NAMES) {
-        const value = resolveSemanticBlockField(fieldName, mesh, material);
+    let index = 0;
+    while (index < MATERIAL_BLOCK_FIELD_NAMES.length) {
+        const fieldName = MATERIAL_BLOCK_FIELD_NAMES[index];
+        index += 1;
+        if (fieldName === undefined) continue;
+        const value = resolveSemanticBlockField(fieldName, mesh, material, semanticFrame);
         const padded = paddedStd140Value(materialBlockLayout, fieldName, value);
         if (padded === null) continue;
         if (typeof padded === 'boolean') {
             throw new TypeError(`MaterialBlock field ${fieldName} must be numeric`);
         }
-        materialBlockLayout.write(target, fieldName, padded);
+        materialBlockLayout.writeInto(target, fieldName, padded, std140WriteResult);
     }
 }
 
@@ -170,7 +283,11 @@ function synchronizeMaterialBlock(cached: MaterialCachedBuffer): void {
         cached.initialized = true;
         return;
     }
-    for (const field of MATERIAL_BLOCK_FIELDS) {
+    let index = 0;
+    while (index < MATERIAL_BLOCK_FIELDS.length) {
+        const field = MATERIAL_BLOCK_FIELDS[index];
+        index += 1;
+        if (field === undefined) continue;
         if (!bytesEqual(current, candidate, field.offset, field.byteLength)) {
             cached.buffer.write(
                 field.offset,
@@ -186,17 +303,33 @@ class BuiltInUniformBlockManager {
     private readonly ownedBuffers = new Set<UniformBuffer>();
     private readonly frameUniformBuffer: UniformBuffer;
     private readonly cameraBuffer: UniformBuffer;
+    private activeCameraBuffer: UniformBuffer;
+    private readonly cameraBuffers = new WeakMap<Camera, UniformBuffer>();
+    private defaultCameraBufferAssigned = false;
     private readonly sceneBuffer: UniformBuffer;
     private readonly lightBuffer: UniformBuffer;
+    private activeSceneBuffer: UniformBuffer;
+    private activeLightBuffer: UniformBuffer;
+    private readonly semanticPassBuffers: {
+        readonly camera: UniformBuffer;
+        readonly scene: UniformBuffer;
+        readonly light: UniformBuffer;
+    }[] = [];
+    private semanticPassCursor = 0;
+    private materialPassEpoch = 0;
+    private readonly rendererSizeScratch = new Float32Array(2);
+    private readonly cameraPositionNearScratch = new Float32Array(4);
+    private readonly cameraParamsScratch = new Float32Array(4);
     /** Canonical semantic bindings for pass-global blocks, independent of draw order/material. */
     private readonly globalSemanticMaterial = new Material();
     private readonly materialBuffers = new WeakMap<Material, MaterialCachedBuffer>();
     private readonly modelBuffers = new WeakMap<Mesh, RevisionCachedBuffer>();
     private readonly geometryBuffers = new WeakMap<Geometry, RevisionCachedBuffer>();
     private readonly skinningBuffers = new WeakMap<Mesh, FrameCachedBuffer>();
-    private readonly morphBuffers = new WeakMap<Mesh, FrameCachedBuffer>();
+    private readonly morphBuffers = new WeakMap<Mesh, MorphFrameCachedBuffer>();
     private readonly bufferOwners = new WeakMap<UniformBuffer, OwnedBufferRegistration>();
     private camera: Camera | null = null;
+    private semanticFrame: SemanticFrameState | null = null;
     private frameIndex = 0;
     private readonly startTime = performance.now();
     private sceneRevision = -1;
@@ -206,29 +339,73 @@ class BuiltInUniformBlockManager {
         this.renderer = renderer;
         this.frameUniformBuffer = this.createBuffer(frameBlockLayout);
         this.cameraBuffer = this.createBuffer(cameraBlockLayout);
+        this.activeCameraBuffer = this.cameraBuffer;
         this.sceneBuffer = this.createBuffer(sceneBlockLayout);
         this.lightBuffer = this.createBuffer(lightBlockLayout);
+        this.activeSceneBuffer = this.sceneBuffer;
+        this.activeLightBuffer = this.lightBuffer;
+        this.semanticPassBuffers.push({
+            camera: this.cameraBuffer,
+            scene: this.sceneBuffer,
+            light: this.lightBuffer
+        });
     }
 
     beginFrame(camera: Camera, viewport: RendererViewport = this.defaultViewport()): void {
+        this.semanticFrame = null;
         this.beginApplicationFrame();
         this.beginPass(camera, viewport);
+    }
+
+    /** Begin one shared-renderer frame with explicit semantic ownership. */
+    beginSemanticFrame(frame: SemanticFrameState): void {
+        this.semanticFrame = frame;
+        this.beginApplicationFrame();
+        this.beginSemanticPass(frame);
     }
 
     /** Advance frame-frequency semantics once, independently of the number of render passes. */
     beginApplicationFrame(): void {
         this.frameIndex++;
+        this.semanticPassCursor = 0;
+        this.rendererSizeScratch[0] = this.renderer.width;
+        this.rendererSizeScratch[1] = this.renderer.height;
         this.frameUniformBuffer
-            .set('u_rendererSize', [this.renderer.width, this.renderer.height])
+            .set('u_rendererSize', this.rendererSizeScratch)
             .set('u_time', (performance.now() - this.startTime) * 0.001)
             .set('u_frameIndex', this.frameIndex);
     }
 
     /** Start a camera/render pass without advancing animation-frame scoped buffers. */
     beginPass(camera: Camera, viewport: RendererViewport = this.defaultViewport()): void {
+        this.materialPassEpoch += 1;
+        this.semanticFrame = null;
+        this.activeSceneBuffer = this.sceneBuffer;
+        this.activeLightBuffer = this.lightBuffer;
         this.sceneRevision = -1;
         this.lightRevision = -1;
         this.updateCamera(camera, viewport);
+    }
+
+    /** Change camera/pass context without advancing frame-frequency data. */
+    beginSemanticPass(frame: SemanticFrameState): void {
+        this.materialPassEpoch += 1;
+        this.semanticFrame = frame;
+        let buffers = this.semanticPassBuffers[this.semanticPassCursor++];
+        if (buffers === undefined) {
+            buffers = {
+                camera: this.createBuffer(cameraBlockLayout),
+                scene: this.createBuffer(sceneBlockLayout),
+                light: this.createBuffer(lightBlockLayout)
+            };
+            this.semanticPassBuffers.push(buffers);
+        }
+        this.activeCameraBuffer = buffers.camera;
+        this.activeSceneBuffer = buffers.scene;
+        this.activeLightBuffer = buffers.light;
+        this.sceneRevision = -1;
+        this.lightRevision = -1;
+        this.updateCamera(frame.camera, frame.viewport, true);
     }
 
     private defaultViewport(): RendererViewport {
@@ -250,12 +427,42 @@ class BuiltInUniformBlockManager {
                 'Renderer viewport must contain finite x/y and positive width/height'
             );
         }
-        this.cameraBuffer.set('u_viewport', viewport);
+        this.activeCameraBuffer.set('u_viewport', viewport);
     }
 
-    private updateCamera(camera: Camera, viewport: RendererViewport): void {
+    private updateCamera(
+        camera: Camera,
+        viewport: RendererViewport,
+        useActiveBuffer = false
+    ): void {
         this.camera = camera;
-        this.cameraBuffer
+        let cameraBuffer = this.activeCameraBuffer;
+        if (!useActiveBuffer) {
+            const cached = this.cameraBuffers.get(camera);
+            if (cached === undefined) {
+                if (!this.defaultCameraBufferAssigned) {
+                    cameraBuffer = this.cameraBuffer;
+                    this.defaultCameraBufferAssigned = true;
+                } else {
+                    cameraBuffer = this.createBuffer(cameraBlockLayout);
+                }
+                this.cameraBuffers.set(camera, cameraBuffer);
+            } else {
+                cameraBuffer = cached;
+            }
+        }
+        this.activeCameraBuffer = cameraBuffer;
+        this.cameraPositionNearScratch[0] = camera.worldMatrix.elements[12];
+        this.cameraPositionNearScratch[1] = camera.worldMatrix.elements[13];
+        this.cameraPositionNearScratch[2] = camera.worldMatrix.elements[14];
+        this.cameraPositionNearScratch[3] = numericCameraProperty(camera, 'near', 0);
+        this.cameraParamsScratch[0] = numericCameraProperty(camera, 'far', 0);
+        this.cameraParamsScratch[1] = camera.isPerspectiveCamera ? 1 : 0;
+        this.cameraParamsScratch[2] = camera.isPerspectiveCamera
+            ? 2 / Math.log2(numericCameraProperty(camera, 'far', 1) + 1)
+            : 0;
+        this.cameraParamsScratch[3] = 0;
+        cameraBuffer
             .set('u_viewMatrix', camera.viewMatrix.elements)
             .set('u_projectionMatrix', camera.projectionMatrix.elements)
             .set('u_viewProjectionMatrix', camera.viewProjectionMatrix.elements)
@@ -268,20 +475,8 @@ class BuiltInUniformBlockManager {
                 'u_viewInverseNormalMatrix',
                 tempViewNormal.normalFromMat4(camera.worldMatrix).elements
             )
-            .set('u_cameraPositionNear', [
-                camera.worldMatrix.elements[12],
-                camera.worldMatrix.elements[13],
-                camera.worldMatrix.elements[14],
-                numericCameraProperty(camera, 'near', 0)
-            ])
-            .set('u_cameraParams', [
-                numericCameraProperty(camera, 'far', 0),
-                camera.isPerspectiveCamera ? 1 : 0,
-                camera.isPerspectiveCamera
-                    ? 2 / Math.log2(numericCameraProperty(camera, 'far', 1) + 1)
-                    : 0,
-                0
-            ]);
+            .set('u_cameraPositionNear', this.cameraPositionNearScratch)
+            .set('u_cameraParams', this.cameraParamsScratch);
         this.setViewport(viewport);
     }
 
@@ -309,25 +504,43 @@ class BuiltInUniformBlockManager {
         blockNames: readonly string[],
         mesh: Mesh,
         material: Material,
-        activeCamera?: Camera | null
+        activeCamera?: Camera | null,
+        semanticFrame: SemanticFrameState | null = this.semanticFrame
     ): Readonly<Record<string, UniformBuffer>> {
+        const result: Record<string, UniformBuffer> = {};
+        for (const blockName of blockNames) {
+            result[blockName] = this.resolveUniformBlock(
+                blockName,
+                mesh,
+                material,
+                activeCamera,
+                semanticFrame
+            );
+        }
+        return result;
+    }
+
+    /** Resolve one block without allocating an aggregate Record for sampler-free draw loops. */
+    resolveUniformBlock(
+        blockName: string,
+        mesh: Mesh,
+        material: Material,
+        activeCamera?: Camera | null,
+        semanticFrame: SemanticFrameState | null = this.semanticFrame
+    ): UniformBuffer {
         if (activeCamera && activeCamera !== this.camera) {
             throw new Error(
                 'Camera changed without beginPass; start every camera/render pass explicitly'
             );
         }
         if (!this.camera) throw new Error('Uniform blocks cannot be resolved before beginFrame');
-        const result: Record<string, UniformBuffer> = {};
-        for (const blockName of blockNames) {
-            const buffer =
-                material.uniformBlocks[blockName] ??
-                this.resolveBuiltInBuffer(blockName, mesh, material);
-            if (!buffer) {
-                throw new Error(`No UniformBuffer is configured for active block ${blockName}`);
-            }
-            result[blockName] = buffer;
+        const buffer =
+            material.uniformBlocks[blockName] ??
+            this.resolveBuiltInBuffer(blockName, mesh, material, semanticFrame ?? undefined);
+        if (!buffer) {
+            throw new Error(`No UniformBuffer is configured for active block ${blockName}`);
         }
-        return result;
+        return buffer;
     }
 
     /**
@@ -335,6 +548,14 @@ class BuiltInUniformBlockManager {
      * buffers removed; global frame/camera/scene/light blocks are intentionally retained.
      */
     releaseOwner(owner: object): number {
+        return this.releaseOwnerBuffers(owner).length;
+    }
+
+    /**
+     * Release and return the exact CPU blocks formerly owned by an engine object. Shared renderer
+     * resource caches use these identities to release the matching recoverable GPU buffers.
+     */
+    releaseOwnerBuffers(owner: object): readonly UniformBuffer[] {
         const buffers = new Set<UniformBuffer>();
         const material = this.materialBuffers.get(owner as Material);
         const model = this.modelBuffers.get(owner as Mesh);
@@ -346,11 +567,11 @@ class BuiltInUniformBlockManager {
         if (geometry) buffers.add(geometry.buffer);
         if (skinning) buffers.add(skinning.buffer);
         if (morph) buffers.add(morph.buffer);
-        let released = 0;
+        const released: UniformBuffer[] = [];
         for (const buffer of buffers) {
-            if (this.releaseBuffer(buffer)) released++;
+            if (this.releaseBuffer(buffer)) released.push(buffer);
         }
-        return released;
+        return Object.freeze(released);
     }
 
     /** Release an object-frequency buffer by identity when a renderer resource loses its last ref. */
@@ -389,7 +610,11 @@ class BuiltInUniformBlockManager {
         return true;
     }
 
-    private getMaterialBuffer(mesh: Mesh, material: Material): UniformBuffer {
+    private getMaterialBuffer(
+        mesh: Mesh,
+        material: Material,
+        semanticFrame?: SemanticFrameState
+    ): UniformBuffer {
         let cached = this.materialBuffers.get(material);
         if (!cached) {
             const buffer = this.createOwnedBuffer(materialBlockLayout, {
@@ -402,16 +627,31 @@ class BuiltInUniformBlockManager {
                 candidate,
                 candidateBytes: new Uint8Array(candidate),
                 currentBytes: new Uint8Array(buffer.data),
-                initialized: false
+                initialized: false,
+                classifiedPassEpoch: -1,
+                packedPassEpoch: -1,
+                meshDependent: true
             };
             this.materialBuffers.set(material, cached);
         }
-        packMaterialBlock(cached.candidate, cached.candidateBytes, mesh, material);
+        if (cached.classifiedPassEpoch !== this.materialPassEpoch) {
+            cached.meshDependent = materialBlockDependsOnMesh(material);
+            cached.classifiedPassEpoch = this.materialPassEpoch;
+        }
+        if (!cached.meshDependent && cached.packedPassEpoch === this.materialPassEpoch) {
+            return cached.buffer;
+        }
+        packMaterialBlock(cached.candidate, cached.candidateBytes, mesh, material, semanticFrame);
         synchronizeMaterialBlock(cached);
+        cached.packedPassEpoch = this.materialPassEpoch;
         return cached.buffer;
     }
 
-    private getModelBuffer(mesh: Mesh, material: Material): UniformBuffer {
+    private getModelBuffer(
+        mesh: Mesh,
+        material: Material,
+        semanticFrame?: SemanticFrameState
+    ): UniformBuffer {
         let cached = this.modelBuffers.get(mesh);
         if (!cached) {
             cached = {
@@ -424,13 +664,17 @@ class BuiltInUniformBlockManager {
             this.modelBuffers.set(mesh, cached);
         }
         if (cached.revision !== mesh.worldMatrixVersion) {
-            updateSemanticBlock(cached.buffer, 'ModelBlock', mesh, material);
+            updateSemanticBlock(cached.buffer, 'ModelBlock', mesh, material, semanticFrame);
             cached.revision = mesh.worldMatrixVersion;
         }
         return cached.buffer;
     }
 
-    private getGeometryBuffer(mesh: Mesh, material: Material): UniformBuffer {
+    private getGeometryBuffer(
+        mesh: Mesh,
+        material: Material,
+        semanticFrame?: SemanticFrameState
+    ): UniformBuffer {
         const geometry = mesh.geometry;
         if (!geometry) throw new Error(`Mesh ${mesh.id} has no Geometry for GeometryBlock`);
         let cached = this.geometryBuffers.get(geometry);
@@ -445,13 +689,17 @@ class BuiltInUniformBlockManager {
             this.geometryBuffers.set(geometry, cached);
         }
         if (cached.revision !== geometry.revision) {
-            updateSemanticBlock(cached.buffer, 'GeometryBlock', mesh, material);
+            updateSemanticBlock(cached.buffer, 'GeometryBlock', mesh, material, semanticFrame);
             cached.revision = geometry.revision;
         }
         return cached.buffer;
     }
 
-    private getSkinningBuffer(mesh: Mesh, material: Material): UniformBuffer {
+    private getSkinningBuffer(
+        mesh: Mesh,
+        material: Material,
+        semanticFrame?: SemanticFrameState
+    ): UniformBuffer {
         let cached = this.skinningBuffers.get(mesh);
         if (!cached) {
             cached = {
@@ -464,38 +712,56 @@ class BuiltInUniformBlockManager {
             this.skinningBuffers.set(mesh, cached);
         }
         if (cached.frameIndex !== this.frameIndex) {
-            updateSemanticBlock(cached.buffer, 'SkinningBlock', mesh, material);
+            updateSemanticBlock(cached.buffer, 'SkinningBlock', mesh, material, semanticFrame);
             cached.frameIndex = this.frameIndex;
         }
         return cached.buffer;
     }
 
-    private getMorphBuffer(mesh: Mesh, material: Material): UniformBuffer {
+    private getMorphBuffer(
+        mesh: Mesh,
+        material: Material,
+        semanticFrame?: SemanticFrameState
+    ): UniformBuffer {
         let cached = this.morphBuffers.get(mesh);
         if (!cached) {
+            const weights = new Float32Array(8);
             cached = {
                 buffer: this.createOwnedBuffer(morphBlockLayout, {
                     kind: 'morph',
                     owner: mesh
                 }),
-                frameIndex: -1
+                frameIndex: -1,
+                weights,
+                weights0: weights.subarray(0, 4),
+                weights1: weights.subarray(4, 8)
             };
             this.morphBuffers.set(mesh, cached);
         }
         if (cached.frameIndex === this.frameIndex) return cached.buffer;
-        const weights = material.getUniformData('u_morphWeights', mesh, {});
-        const values =
+        const weights = material.getUniformData(
+            'u_morphWeights',
+            mesh,
+            programBindingInfoFor(semanticFrame)
+        );
+        const values: ArrayLike<unknown> =
             Array.isArray(weights) ||
             (ArrayBuffer.isView(weights) && !(weights instanceof DataView))
-                ? Array.from(weights as ArrayLike<number>)
-                : [];
-        if (values.length > 8) {
+                ? (weights as ArrayLike<unknown>)
+                : EMPTY_NUMERIC_VALUES;
+        if (values.length > cached.weights.length) {
             throw new RangeError('MorphBlock supports at most 8 morph weights');
         }
-        const padded = new Float32Array(8);
-        padded.set(values);
-        cached.buffer.set('u_morphWeights0', padded.subarray(0, 4));
-        cached.buffer.set('u_morphWeights1', padded.subarray(4, 8));
+        cached.weights.fill(0);
+        for (let index = 0; index < values.length; index += 1) {
+            const value = values[index];
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+                throw new TypeError(`Morph weight ${String(index)} must be finite`);
+            }
+            cached.weights[index] = value;
+        }
+        cached.buffer.set('u_morphWeights0', cached.weights0);
+        cached.buffer.set('u_morphWeights1', cached.weights1);
         cached.frameIndex = this.frameIndex;
         return cached.buffer;
     }
@@ -503,45 +769,48 @@ class BuiltInUniformBlockManager {
     private resolveBuiltInBuffer(
         blockName: string,
         mesh: Mesh,
-        material: Material
+        material: Material,
+        semanticFrame?: SemanticFrameState
     ): UniformBuffer | undefined {
         switch (blockName) {
             case 'FrameBlock':
                 return this.frameUniformBuffer;
             case 'CameraBlock':
-                return this.cameraBuffer;
+                return this.activeCameraBuffer;
             case 'SceneBlock':
                 if (this.sceneRevision !== this.frameIndex) {
                     updateSemanticBlock(
-                        this.sceneBuffer,
+                        this.activeSceneBuffer,
                         blockName,
                         mesh,
-                        this.globalSemanticMaterial
+                        this.globalSemanticMaterial,
+                        semanticFrame
                     );
                     this.sceneRevision = this.frameIndex;
                 }
-                return this.sceneBuffer;
+                return this.activeSceneBuffer;
             case 'LightBlock':
                 if (this.lightRevision !== this.frameIndex) {
                     updateSemanticBlock(
-                        this.lightBuffer,
+                        this.activeLightBuffer,
                         blockName,
                         mesh,
-                        this.globalSemanticMaterial
+                        this.globalSemanticMaterial,
+                        semanticFrame
                     );
                     this.lightRevision = this.frameIndex;
                 }
-                return this.lightBuffer;
+                return this.activeLightBuffer;
             case 'MaterialBlock':
-                return this.getMaterialBuffer(mesh, material);
+                return this.getMaterialBuffer(mesh, material, semanticFrame);
             case 'ModelBlock':
-                return this.getModelBuffer(mesh, material);
+                return this.getModelBuffer(mesh, material, semanticFrame);
             case 'GeometryBlock':
-                return this.getGeometryBuffer(mesh, material);
+                return this.getGeometryBuffer(mesh, material, semanticFrame);
             case 'SkinningBlock':
-                return this.getSkinningBuffer(mesh, material);
+                return this.getSkinningBuffer(mesh, material, semanticFrame);
             case 'MorphBlock':
-                return this.getMorphBuffer(mesh, material);
+                return this.getMorphBuffer(mesh, material, semanticFrame);
             default:
                 return undefined;
         }

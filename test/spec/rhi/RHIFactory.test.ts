@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { constructRHI, createRHI, isRHIBackendSupported } from '../../../src/render/rhi/RHIFactory';
+import {
+    constructLegacyRHI,
+    createLegacyRHI,
+    isLegacyRHIBackendSupported
+} from '../../../src/render/rhi/legacy/RHIFactory';
 import { WebGLRHI } from '../../../src/render/rhi/webgl2/WebGLRHI';
 import { WebGPURHI } from '../../../src/render/rhi/webgpu/WebGPURHI';
 import { createFakeWebGL2 } from './FakeWebGL2';
@@ -27,7 +31,7 @@ describe('RHIFactory', () => {
         const initialSize = [fake.canvas.width, fake.canvas.height];
 
         await expect(
-            isRHIBackendSupported('webgl2', {
+            isLegacyRHIBackendSupported('webgl2', {
                 canvas: fake.canvas,
                 contextAttributes
             })
@@ -57,7 +61,7 @@ describe('RHIFactory', () => {
 
     it('constructs and returns each concrete backend directly', async () => {
         const webgl = createFakeWebGL2();
-        const webglRhi = constructRHI('webgl2', {
+        const webglRhi = constructLegacyRHI('webgl2', {
             canvas: webgl.canvas,
             width: 16,
             height: 8
@@ -68,7 +72,7 @@ describe('RHIFactory', () => {
         expect(webglRhi.backend).toBe('webgl2');
 
         const webgpu = createFakeWebGPU();
-        const webgpuRhi = constructRHI('webgpu', {
+        const webgpuRhi = constructLegacyRHI('webgpu', {
             canvas: webgpu.canvas,
             width: 16,
             height: 8
@@ -85,7 +89,7 @@ describe('RHIFactory', () => {
         const deviceRequest = deferred<GPUDevice>();
         fake.requestDevice.mockReturnValueOnce(deviceRequest.promise);
 
-        const result = createRHI('webgpu', {
+        const result = createLegacyRHI('webgpu', {
             canvas: fake.canvas,
             width: 32,
             height: 18
@@ -115,7 +119,7 @@ describe('RHIFactory', () => {
         const adapterValidator = vi.fn();
 
         await expect(
-            isRHIBackendSupported('webgpu', {
+            isLegacyRHIBackendSupported('webgpu', {
                 powerPreference: 'high-performance',
                 adapterValidator
             })

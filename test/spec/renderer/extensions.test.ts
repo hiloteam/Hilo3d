@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WebGLExtensions } from '../../../src/render/internal/webgl2/extensions';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 describe('extensions', () => {
     const extensions = new WebGLExtensions();

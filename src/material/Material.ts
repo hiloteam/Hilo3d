@@ -1,5 +1,5 @@
 import math from '../math/math';
-import semantic from './semantic';
+import semantic, { resolveSemanticBinding } from './semantic';
 import {
     ALWAYS,
     BACK,
@@ -20,9 +20,15 @@ import type Matrix3 from '../math/Matrix3';
 import type Mesh from '../core/Mesh';
 import type UniformBuffer from '../render/UniformBuffer';
 import type { ShaderOptions } from '../render/types';
+import type { SemanticFrameState } from '../render/frame/SemanticFrameState';
 export interface ProgramBindingInfo {
     textureIndex?: number;
     name?: string;
+}
+
+/** @internal Explicit pass/frame semantic source used only by the shared renderer. */
+export interface SemanticProgramBindingInfo extends ProgramBindingInfo {
+    semanticFrame?: SemanticFrameState;
 }
 
 export interface MaterialBindingInfo {
@@ -755,13 +761,17 @@ class Material {
         const dataDict = this[dataType];
         let info = dataDict[name];
         if (typeof info === 'string') {
-            const semanticInfo: unknown = Reflect.get(semantic, info);
+            const semanticName = info;
+            const semanticInfo: unknown = Reflect.get(semantic, semanticName);
             if (!isBindingInfo(semanticInfo)) {
                 throw new Error(
-                    `Material ${dataType} binding ${name} references unknown semantic ${info}`
+                    `Material ${dataType} binding ${name} references unknown semantic ${semanticName}`
                 );
             }
-            info = semanticInfo;
+            info =
+                semanticInfo.get.length === 0
+                    ? resolveSemanticBinding(semanticName, semanticInfo)
+                    : semanticInfo;
         }
         if (!isBindingInfo(info)) {
             throw new Error(`Material has no ${dataType} binding named ${name}`);

@@ -124,12 +124,18 @@ const forbiddenEngineSourceRules = [
 const forbiddenCommonRendererRules = [
     {
         label: 'backend implementation imported by the shared render layer',
-        pattern: /(?:from\s+["'][^"']*(?:\/webgl2\/|\/webgpu\/|\.\.\/webgl2|\.\.\/webgpu))/u
+        pattern:
+            /(?:from\s+|import\s*(?:\(\s*)?)["'][^"']*(?:\/(?:internal\/(?:webgl2|webgpu)|rhi\/(?:backends\/)?(?:webgl2|webgpu)))(?:\/[^"']*)?["']/u
     },
     {
         label: 'native graphics handle declared by the shared render layer',
         pattern:
-            /\b(?:GPU(?:Adapter|Device|Queue|CanvasContext|CommandEncoder|RenderPassEncoder|Buffer|Texture|TextureView|Sampler|BindGroup|BindGroupLayout|PipelineLayout|RenderPipeline|ComputePipeline|ShaderModule)|WebGL(?:RenderingContext|2RenderingContext|Buffer|Program|Texture|Sampler|Framebuffer|Renderbuffer|UniformLocation|VertexArrayObject))\b/u
+            /\b(?:GPU[A-Z][A-Za-z0-9_]*|WebGL(?:2[A-Z][A-Za-z0-9_]*|[A-Z][A-Za-z0-9_]*)|GL(?:bitfield|boolean|char|enum|float|int|intptr|sizei|sizeiptr|uint))\b/u
+    },
+    {
+        label: 'native graphics API called by the shared render layer',
+        pattern:
+            /(?:\bnavigator\s*(?:\?\.|\.)\s*gpu\b|\bgl\s*(?:\?\.|\.)|\.getContext\s*\(\s*["'](?:webgl2?|webgpu)["'])/u
     }
 ] as const;
 const forbiddenBackendCrossImportRules = {
@@ -160,25 +166,59 @@ const forbiddenRHIRules = [
     {
         label: 'render frontend or engine layer imported by RHI',
         pattern:
-            /from\s+["'][^"']*(?:\/material\/|\/geometry\/|\/light\/|\/core\/|\/shader\/|\/texture\/|(?:\.\.\/)+(?:Renderer(?:Core)?|RenderList|RenderTarget|internal)(?:\/|["']))/u
+            /from\s+["'][^"']*(?:\/material\/|\/geometry\/|\/light\/|\/shader\/|\/texture\/|(?:\.\.\/){3,}core\/|(?:\.\.\/)+(?:Renderer(?:Core)?|RenderList|RenderTarget|internal)(?:\/|["']))/u
     },
     {
         label: 'reflective JSON cache key in RHI hot path',
         pattern: /\bJSON\.stringify\b/u
     }
 ] as const;
+const forbiddenRHICoreRules = [
+    {
+        label: 'RHI v2 core imports the legacy RHI module',
+        pattern:
+            /(?:from\s+|import\s*(?:\(\s*)?)["'][^"']*(?:\/rhi)?\/RHI(?:\.(?:[cm]?[jt]s))?["']/u
+    },
+    {
+        label: 'RHI v2 core imports a concrete or legacy backend',
+        pattern: /(?:from\s+|import\s*(?:\(\s*)?)["'][^"']*\/(?:webgl2|webgpu)(?:\/[^"']*)?["']/u
+    },
+    {
+        label: 'RHI v2 core imports the legacy render internal layer',
+        pattern:
+            /(?:from\s+|import\s*(?:\(\s*)?)["'][^"']*\/(?:render\/)?internal(?:\/[^"']*)?["']/u
+    },
+    {
+        label: 'RHI v2 core imports an engine or renderer layer',
+        pattern:
+            /from\s+["'][^"']*(?:\/material\/|\/geometry\/|\/light\/|\/shader\/|\/texture\/|(?:\.\.\/)+(?:core|renderer|frame|graph)(?:\/|["'])|(?:\.\.\/)+(?:Renderer(?:Core)?|RenderList|RenderTarget)(?:\/|["']))/u
+    },
+    {
+        label: 'engine or renderer semantic declared by RHI v2 core',
+        pattern:
+            /\b(?:Scene|Stage|Mesh|Geometry|Material|Light|LightManager|Camera|Renderer|RendererCore|ForwardRenderer|PreparedDraw|RenderList|RenderTarget|ShaderVariant)\b/u
+    },
+    {
+        label: 'native graphics type declared by RHI v2 core',
+        pattern: /\b(?:WebGL[A-Z0-9][A-Za-z0-9_]*|GLenum|GPU[A-Z][A-Za-z0-9_]*)\b/u
+    },
+    {
+        label: 'native graphics API called by RHI v2 core',
+        pattern:
+            /(?:\bnavigator\s*(?:\?\.|\.)\s*gpu\b|\bgl\s*(?:\?\.|\.)|\.getContext\s*\(\s*["'](?:webgl2?|webgpu)["'])/u
+    }
+] as const;
 const forbiddenWebGPURHIRules = [
     {
         label: 'WebGPU RHI degraded to WebGL state semantics',
         pattern:
-            /\b(?:WebGL(?:2RenderingContext|RenderingContext|Program|Buffer|Texture)|GLenum)\b/u
+            /\b(?:WebGL(?:2[A-Z][A-Za-z0-9_]*|[A-Z][A-Za-z0-9_]*)|GL(?:bitfield|boolean|char|enum|float|int|intptr|sizei|sizeiptr|uint))\b|\bgl\s*(?:\?\.)?\s*\.|\.getContext\s*\(\s*["']webgl2?["']/u
     }
 ] as const;
 const forbiddenWebGLRHIRules = [
     {
         label: 'WebGL RHI imports native WebGPU implementation',
-        pattern:
-            /\bGPU(?:Adapter|Device|Queue|CanvasContext|CommandEncoder|RenderPassEncoder|Buffer|Texture|TextureView|Sampler|BindGroup|BindGroupLayout|PipelineLayout|RenderPipeline|ComputePipeline|ShaderModule)\b/u
+        pattern: /\bGPU[A-Z][A-Za-z0-9_]*\b|\bnavigator\s*(?:\?\.)?\s*gpu\b/u
     }
 ] as const;
 const forbiddenSharedResourceRules = [
@@ -235,6 +275,15 @@ function projectPath(absolutePath: string): string {
     return relative(projectRoot, absolutePath);
 }
 
+function isSharedRenderSource(path: string): boolean {
+    return (
+        path.startsWith('src/render/') &&
+        !path.startsWith('src/render/internal/webgl2/') &&
+        !path.startsWith('src/render/internal/webgpu/') &&
+        !path.startsWith('src/render/rhi/')
+    );
+}
+
 function matchesForbiddenArtifactName(name: string): boolean {
     return forbiddenArtifactNamePatterns.some(pattern => pattern.test(name));
 }
@@ -277,7 +326,7 @@ async function collectLegacyArtifacts(directory: string): Promise<string[]> {
                     }
                 }
             }
-            if (/^src\/render\/(?:[^/]+\.(?:ts|tsx|mts|cts)|ubo\/)/u.test(relativePath)) {
+            if (isSharedRenderSource(relativePath)) {
                 for (const rule of forbiddenCommonRendererRules) {
                     if (rule.pattern.test(source)) {
                         matches.push(`${relativePath} (${rule.label})`);
@@ -286,14 +335,16 @@ async function collectLegacyArtifacts(directory: string): Promise<string[]> {
             }
             if (
                 relativePath.startsWith('src/render/rhi/webgl2/') ||
-                relativePath.startsWith('src/render/internal/webgl2/')
+                relativePath.startsWith('src/render/internal/webgl2/') ||
+                relativePath.startsWith('src/render/rhi/backends/webgl2/')
             ) {
                 const rule = forbiddenBackendCrossImportRules.webgl2;
                 if (rule.pattern.test(source)) matches.push(`${relativePath} (${rule.label})`);
             }
             if (
                 relativePath.startsWith('src/render/rhi/webgpu/') ||
-                relativePath.startsWith('src/render/internal/webgpu/')
+                relativePath.startsWith('src/render/internal/webgpu/') ||
+                relativePath.startsWith('src/render/rhi/backends/webgpu/')
             ) {
                 const rule = forbiddenBackendCrossImportRules.webgpu;
                 if (rule.pattern.test(source)) matches.push(`${relativePath} (${rule.label})`);
@@ -315,14 +366,27 @@ async function collectLegacyArtifacts(directory: string): Promise<string[]> {
                     }
                 }
             }
-            if (relativePath.startsWith('src/render/rhi/webgpu/')) {
+            if (relativePath.startsWith('src/render/rhi/core/')) {
+                for (const rule of forbiddenRHICoreRules) {
+                    if (rule.pattern.test(source)) {
+                        matches.push(`${relativePath} (${rule.label})`);
+                    }
+                }
+            }
+            if (
+                relativePath.startsWith('src/render/rhi/webgpu/') ||
+                relativePath.startsWith('src/render/rhi/backends/webgpu/')
+            ) {
                 for (const rule of forbiddenWebGPURHIRules) {
                     if (rule.pattern.test(source)) {
                         matches.push(`${relativePath} (${rule.label})`);
                     }
                 }
             }
-            if (relativePath.startsWith('src/render/rhi/webgl2/')) {
+            if (
+                relativePath.startsWith('src/render/rhi/webgl2/') ||
+                relativePath.startsWith('src/render/rhi/backends/webgl2/')
+            ) {
                 for (const rule of forbiddenWebGLRHIRules) {
                     if (rule.pattern.test(source)) {
                         matches.push(`${relativePath} (${rule.label})`);

@@ -81,6 +81,10 @@ class GraphicsResourceManager extends EventDispatcher {
     }
 
     destroyMesh(mesh: Mesh): void {
+        // Shared renderer resource caches are not represented by legacy ManagedResource wrappers.
+        // Publish the same explicit mesh lifetime boundary so they can detach their logical RHI
+        // recipes without teaching this backend-neutral manager about either implementation.
+        this.fire('destroyMesh', mesh);
         const resources = new Set<ManagedResource>();
         this.addStateResources(this.meshResources.get(mesh.id), resources);
         this.addStateResources(this.frameResources?.get(mesh.id), resources);

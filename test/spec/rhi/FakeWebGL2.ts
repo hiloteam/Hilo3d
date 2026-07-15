@@ -232,6 +232,8 @@ const methodNames = [
     'clearStencil',
     'colorMask',
     'compileShader',
+    'compressedTexSubImage2D',
+    'compressedTexSubImage3D',
     'copyBufferSubData',
     'copyTexSubImage2D',
     'copyTexSubImage3D',

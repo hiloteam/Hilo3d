@@ -209,6 +209,7 @@ class WebGLRenderTarget implements RenderTarget {
     private readonly drawFramebuffer: Framebuffer;
     private resolveFramebuffers: Framebuffer[];
     private destroyed = false;
+    private planRevision = 1;
     private readonly onDestroy: (target: WebGLRenderTarget) => void;
 
     get width(): number {
@@ -366,7 +367,8 @@ class WebGLRenderTarget implements RenderTarget {
     beginRenderPass(): void {
         this.assertAlive();
         const { gl, state } = this.owner;
-        this.drawFramebuffer.bind();
+        this.owner.recordFramebufferPlanLookup(this, this.planRevision, 0);
+        this.drawFramebuffer.bind(false);
         state.viewport(0, 0, this.width, this.height);
         if (this.parameters.colorAttachments.some(attachment => attachment.loadOp === 'clear')) {
             state.colorMask(true, true, true, true);
@@ -579,6 +581,9 @@ class WebGLRenderTarget implements RenderTarget {
     resize(width: number, height: number): void {
         this.assertAlive();
         if (width === this.width && height === this.height) return;
+        if (this.planRevision === Number.MAX_SAFE_INTEGER) {
+            throw new RangeError('Render-target plan revision space is exhausted');
+        }
         const depth = this.parameters.depthStencilAttachment;
         const normalized = normalizeRenderTargetParameters({
             width,
@@ -613,6 +618,7 @@ class WebGLRenderTarget implements RenderTarget {
             });
             this.parameters = normalized;
             this.configureSampledDepth();
+            this.planRevision++;
         } catch (error) {
             this.parameters = previousParameters;
             const rollbackErrors: unknown[] = [];
@@ -645,6 +651,7 @@ class WebGLRenderTarget implements RenderTarget {
     destroy(): void {
         if (this.destroyed) return;
         this.destroyed = true;
+        this.owner.releaseFramebufferPlan(this);
         this.drawFramebuffer.destroy();
         this.resolveFramebuffers.forEach(resolve => resolve.destroy());
         this.resolveFramebuffers = [];

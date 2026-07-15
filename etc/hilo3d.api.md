@@ -533,6 +533,8 @@ class Cache_2<Value = unknown> {
     removeAll(): void;
     // (undocumented)
     removeObject(object: object): void;
+    // @internal
+    get size(): number;
 }
 export { Cache_2 as Cache }
 
@@ -5901,6 +5903,14 @@ export class Std140Layout<Schema extends Std140Schema = Std140Schema> {
         byteOffset: number;
         byteLength: number;
     };
+    // @internal
+    writeInto<Name extends keyof Schema & string>(target: ArrayBuffer, name: Name, value: Std140FieldValue<Schema[Name]>, result: {
+        byteOffset: number;
+        byteLength: number;
+    }): {
+        byteOffset: number;
+        byteLength: number;
+    };
 }
 
 // @public (undocumented)
@@ -6357,6 +6367,11 @@ export class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
     // (undocumented)
     static fromSchema<const Schema extends Std140Schema>(layout: Std140Layout<Schema>, values?: Partial<Std140Values<Schema>>): UniformBuffer<Schema>;
     getDirtyRangesSince(revision: number): readonly UniformBufferDirtyRange[] | null;
+    // @internal
+    getDirtySpanSince(revision: number, result: {
+        byteOffset: number;
+        byteLength: number;
+    }): boolean;
     // (undocumented)
     readonly isUniformBuffer = true;
     // (undocumented)

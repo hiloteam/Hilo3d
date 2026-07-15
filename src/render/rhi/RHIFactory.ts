@@ -1,101 +1,188 @@
-import type { RHI, RHIBackend } from './RHI';
-import { WebGLRHI, type WebGLRHICreateOptions } from './webgl2/WebGLRHI';
 import {
-    WebGPURHI,
-    type WebGPUAdapterProbeOptions,
-    type WebGPURHICreateOptions
-} from './webgpu/WebGPURHI';
+    createWebGL2RHIDevice,
+    isWebGL2RHIAvailable,
+    type WebGL2RHIDevice
+} from './backends/webgl2';
+import { waitForWebGL2RHIContextRestored as waitForWebGL2BackendContextRestored } from './backends/webgl2/WebGL2Device';
+import {
+    createWebGPUV2Device,
+    isWebGPUV2RHIAvailable,
+    type WebGPUV2Device
+} from './backends/webgpu';
+import type { RHIFeatureName, RHILimits } from './core/RHICapabilities';
+import type { RHIDevice } from './core/RHIResources';
+import type { RHIBackend, RHIPowerPreference } from './core/RHITypes';
+import type { RHIDiagnosticsSink } from './RHIDiagnosticsSink';
 
-export interface RHICreateOptionsMap {
-    readonly webgl2: WebGLRHICreateOptions;
-    readonly webgpu: WebGPURHICreateOptions;
+/** WebGL context policy expressed without exposing a native context or handle. */
+export interface RHIWebGL2ContextOptions {
+    readonly alpha?: boolean;
+    readonly antialias?: boolean;
+    readonly depth?: boolean;
+    readonly desynchronized?: boolean;
+    readonly failIfMajorPerformanceCaveat?: boolean;
+    readonly powerPreference?: 'default' | RHIPowerPreference;
+    readonly premultipliedAlpha?: boolean;
+    readonly preserveDrawingBuffer?: boolean;
+    readonly stencil?: boolean;
 }
 
-export interface RHIImplementationMap {
-    readonly webgl2: WebGLRHI;
-    readonly webgpu: WebGPURHI;
-}
-
-export interface WebGL2RHISupportOptions {
+export interface WebGL2RHIDeviceCreateOptions {
     readonly canvas: HTMLCanvasElement;
-    readonly contextAttributes?: WebGLContextAttributes;
+    readonly context?: RHIWebGL2ContextOptions;
+    readonly label?: string;
+    /** @internal Allocation-free renderer diagnostics channel. */
+    readonly diagnosticsSink?: RHIDiagnosticsSink;
 }
 
-export interface RHISupportOptionsMap {
-    readonly webgl2: WebGL2RHISupportOptions;
-    readonly webgpu: WebGPUAdapterProbeOptions;
+/** Only features that WebGPU adapters expose as requestable native capabilities. */
+export type RHIRequestableWebGPUFeature = Extract<
+    RHIFeatureName,
+    | 'texture-compression-bc'
+    | 'texture-compression-etc2'
+    | 'texture-compression-astc'
+    | 'timestamp-query'
+    | 'depth32float-stencil8'
+    | 'float32-filterable'
+    | 'float32-blendable'
+>;
+
+export interface WebGPURHIDeviceCreateOptions {
+    readonly powerPreference?: RHIPowerPreference;
+    readonly forceFallbackAdapter?: boolean;
+    /** Reject an adapter reported as fallback instead of silently accepting a caveat. */
+    readonly rejectFallbackAdapter?: boolean;
+    readonly requiredFeatures?: readonly RHIRequestableWebGPUFeature[];
+    /** Request supported accelerators without making them a device-creation requirement. */
+    readonly optionalFeatures?: readonly RHIRequestableWebGPUFeature[];
+    readonly requiredLimits?: Readonly<Partial<RHILimits>>;
+    readonly label?: string;
+    /** @internal Allocation-free renderer diagnostics channel. */
+    readonly diagnosticsSink?: RHIDiagnosticsSink;
 }
 
-export type RHIForBackend<Backend extends RHIBackend> = RHIImplementationMap[Backend];
-export type RHICreateOptionsForBackend<Backend extends RHIBackend> = RHICreateOptionsMap[Backend];
-export type RHISupportOptionsForBackend<Backend extends RHIBackend> = RHISupportOptionsMap[Backend];
+export interface RHIDeviceCreateOptionsMap {
+    readonly webgl2: WebGL2RHIDeviceCreateOptions;
+    readonly webgpu: WebGPURHIDeviceCreateOptions;
+}
 
-/**
- * Construct one concrete RHI without introducing a runtime facade.
- *
- * WebGL2 is ready synchronously; WebGPU starts asynchronous initialization and exposes it through
- * `ready`. Call `createRHI` when the caller needs an already-ready device.
- */
-export function constructRHI(backend: 'webgl2', options: WebGLRHICreateOptions): WebGLRHI;
-export function constructRHI(backend: 'webgpu', options: WebGPURHICreateOptions): WebGPURHI;
-export function constructRHI(
-    backend: string,
-    options: WebGLRHICreateOptions | WebGPURHICreateOptions
-): RHI {
-    if (backend === 'webgl2') {
-        return new WebGLRHI(options);
+export interface RHIDeviceImplementationMap {
+    readonly webgl2: WebGL2RHIDevice;
+    readonly webgpu: WebGPUV2Device;
+}
+
+export type RHIDeviceForBackend<Backend extends RHIBackend> = RHIDeviceImplementationMap[Backend];
+export type RHIDeviceCreateOptionsForBackend<Backend extends RHIBackend> =
+    RHIDeviceCreateOptionsMap[Backend];
+
+function assertBackend(value: string): asserts value is RHIBackend {
+    if (value !== 'webgl2' && value !== 'webgpu') {
+        throw new TypeError(`Unsupported RHI v2 backend ${value}`);
     }
-    if (backend === 'webgpu') {
-        return new WebGPURHI(options);
-    }
-    throw new TypeError(`Unsupported RHI backend ${backend}`);
 }
 
-/** Construct one concrete RHI and wait until its device and surface are ready. */
-export async function createRHI(
+function snapshotWebGPUOptions(
+    options: WebGPURHIDeviceCreateOptions
+): WebGPURHIDeviceCreateOptions {
+    return Object.freeze({
+        ...(options.powerPreference === undefined
+            ? {}
+            : { powerPreference: options.powerPreference }),
+        ...(options.forceFallbackAdapter === undefined
+            ? {}
+            : { forceFallbackAdapter: options.forceFallbackAdapter }),
+        ...(options.rejectFallbackAdapter === undefined
+            ? {}
+            : { rejectFallbackAdapter: options.rejectFallbackAdapter }),
+        ...(options.requiredFeatures === undefined
+            ? {}
+            : { requiredFeatures: Object.freeze([...options.requiredFeatures]) }),
+        ...(options.optionalFeatures === undefined
+            ? {}
+            : { optionalFeatures: Object.freeze([...options.optionalFeatures]) }),
+        ...(options.requiredLimits === undefined
+            ? {}
+            : { requiredLimits: Object.freeze({ ...options.requiredLimits }) }),
+        ...(options.label === undefined ? {} : { label: options.label }),
+        ...(options.diagnosticsSink === undefined
+            ? {}
+            : { diagnosticsSink: options.diagnosticsSink })
+    });
+}
+
+/** Synchronous construction exists only for WebGL2; WebGPU adapter/device selection is async. */
+export function constructRHIDevice(
     backend: 'webgl2',
-    options: WebGLRHICreateOptions
-): Promise<WebGLRHI>;
-export async function createRHI(
-    backend: 'webgpu',
-    options: WebGPURHICreateOptions
-): Promise<WebGPURHI>;
-export async function createRHI(
-    backend: RHIBackend,
-    options: WebGLRHICreateOptions | WebGPURHICreateOptions
-): Promise<RHI> {
-    const rhi =
-        backend === 'webgl2' ? constructRHI('webgl2', options) : constructRHI('webgpu', options);
-    try {
-        await rhi.ready;
-        return rhi;
-    } catch (error: unknown) {
-        rhi.destroy();
-        throw error;
+    options: WebGL2RHIDeviceCreateOptions
+): WebGL2RHIDevice;
+export function constructRHIDevice(
+    backend: string,
+    options: WebGL2RHIDeviceCreateOptions
+): WebGL2RHIDevice {
+    assertBackend(backend);
+    if (backend !== 'webgl2') {
+        throw new TypeError('WebGPU RHI construction is asynchronous; use createRHIDevice()');
     }
+    const context = { ...(options.context ?? {}) };
+    return createWebGL2RHIDevice(options.canvas, {
+        ...context,
+        ...(options.label === undefined ? {} : { label: options.label }),
+        ...(options.diagnosticsSink === undefined
+            ? {}
+            : { diagnosticsSink: options.diagnosticsSink })
+    });
 }
 
-/** Probe backend availability without creating a renderer or GPU resource. */
+/** Create one concrete v2 device. Surface creation remains a separate explicit operation. */
+export async function createRHIDevice(
+    backend: 'webgl2',
+    options: WebGL2RHIDeviceCreateOptions
+): Promise<WebGL2RHIDevice>;
+export async function createRHIDevice(
+    backend: 'webgpu',
+    options?: WebGPURHIDeviceCreateOptions
+): Promise<WebGPUV2Device>;
+export async function createRHIDevice(
+    backend: string,
+    options: WebGL2RHIDeviceCreateOptions | WebGPURHIDeviceCreateOptions = {}
+): Promise<RHIDevice> {
+    assertBackend(backend);
+    if (backend === 'webgl2') {
+        if (!('canvas' in options)) {
+            throw new TypeError('WebGL2 RHI device creation requires a canvas');
+        }
+        return constructRHIDevice('webgl2', options);
+    }
+    const snapshot = snapshotWebGPUOptions(options);
+    return createWebGPUV2Device(snapshot);
+}
+
+/** Probe support without requesting a WebGPU device or creating any GPU resource. */
 export function isRHIBackendSupported(
     backend: 'webgl2',
-    options: WebGL2RHISupportOptions
+    options: WebGL2RHIDeviceCreateOptions
 ): Promise<boolean>;
 export function isRHIBackendSupported(
     backend: 'webgpu',
-    options?: WebGPUAdapterProbeOptions
+    options?: WebGPURHIDeviceCreateOptions
 ): Promise<boolean>;
 export async function isRHIBackendSupported(
     backend: string,
-    options: WebGL2RHISupportOptions | WebGPUAdapterProbeOptions = {}
+    options: WebGL2RHIDeviceCreateOptions | WebGPURHIDeviceCreateOptions = {}
 ): Promise<boolean> {
-    if (backend === 'webgpu') {
-        return WebGPURHI.isSupported(options as WebGPUAdapterProbeOptions);
+    assertBackend(backend);
+    if (backend === 'webgl2') {
+        if (!('canvas' in options)) return false;
+        return isWebGL2RHIAvailable(options.canvas, { ...(options.context ?? {}) });
     }
-    if (backend !== 'webgl2') throw new TypeError(`Unsupported RHI backend ${backend}`);
-    const { canvas, contextAttributes } = options as WebGL2RHISupportOptions;
-    try {
-        return canvas.getContext('webgl2', contextAttributes) !== null;
-    } catch {
-        return false;
-    }
+    const snapshot = snapshotWebGPUOptions(options);
+    return isWebGPUV2RHIAvailable(snapshot);
+}
+
+/** Wait for a lost WebGL2 canvas context without exposing the native context to renderer code. */
+export function waitForWebGL2RHIContextRestored(
+    canvas: HTMLCanvasElement,
+    options: RHIWebGL2ContextOptions = {}
+): Promise<void> {
+    return waitForWebGL2BackendContextRestored(canvas, { ...options });
 }

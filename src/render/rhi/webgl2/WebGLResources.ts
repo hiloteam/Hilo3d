@@ -151,7 +151,7 @@ export class WebGLRHIBuffer
                 this.mappedOffset,
                 destination
             );
-            if (this.device.diagnostics) this.device.diagnostics.bufferUploads++;
+            this.device.diagnostics?.recordBufferUpload();
         }
         this.clearMap();
     }

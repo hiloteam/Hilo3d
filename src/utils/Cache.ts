@@ -3,6 +3,11 @@ class Cache<Value = unknown> {
     private readonly entries = new Map<string, Value>();
     private objectIds = new WeakMap<object, string>();
 
+    /** @internal Renderer diagnostics only; not part of the public cache contract. */
+    get size(): number {
+        return this.entries.size;
+    }
+
     get(id: string): Value | undefined {
         return this.entries.get(id);
     }

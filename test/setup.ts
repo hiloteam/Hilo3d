@@ -1,7 +1,4 @@
 import { expect, type MatcherResult } from 'vitest';
-import * as Hilo3d from '../src/Hilo3d';
-import type WebGL2Driver from '../src/render/internal/webgl2/WebGL2Driver';
-import type WebGLState from '../src/render/internal/webgl2/WebGLState';
 
 const epsilon = 1e-7;
 
@@ -64,55 +61,6 @@ declare module 'vitest' {
     }
 }
 
-export interface TestEnvironment {
-    stage: Hilo3d.Stage;
-    camera: Hilo3d.PerspectiveCamera;
-    renderer: WebGL2Driver;
-    gl: WebGL2RenderingContext;
-    state: WebGLState;
-    geometry: Hilo3d.MorphGeometry;
-    material: Hilo3d.Material;
-    mesh: Hilo3d.Mesh;
-    fog: Hilo3d.Fog;
-}
-
-let environment: TestEnvironment | undefined;
-
-export function createHilo3dEnvironment(forceNew = false): TestEnvironment {
-    if (!environment || forceNew) {
-        const camera = new Hilo3d.PerspectiveCamera();
-        const stage = new Hilo3d.Stage({ camera });
-        stage.tick(0);
-
-        const renderer = stage.renderer.getExtension('webgl2-native') as WebGL2Driver | null;
-        if (!renderer) {
-            throw new Error('Expected the test Stage to expose the WebGL2 native extension');
-        }
-        const { gl, state } = renderer;
-        const material = new Hilo3d.Material();
-        const geometry = new Hilo3d.MorphGeometry();
-        const mesh = new Hilo3d.Mesh({ material, geometry });
-        const fog = new Hilo3d.Fog();
-        stage.addChild(mesh);
-
-        environment = {
-            stage,
-            camera,
-            renderer,
-            gl,
-            state,
-            geometry,
-            material,
-            mesh,
-            fog
-        };
-    }
-
-    return environment;
-}
-
 const stageElement = document.createElement('div');
 stageElement.id = 'stage';
 document.body.append(stageElement);
-
-export const testEnv = createHilo3dEnvironment();

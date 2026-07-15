@@ -4,6 +4,10 @@
 
 范围：源码、示例、测试、构建、类型声明、API 文档、站点、npm 包、CI 与发布流程
 
+> RHI 与 renderer 架构部分已由 [`RHI_V2_REFACTOR_PLAN.md`](./RHI_V2_REFACTOR_PLAN.md)
+> 取代。本文记录的 portable wrapper、production driver native fast
+> path 与旧 command-buffer 语义在迁移期间仅作为 legacy A/B 基线，不再约束 RHI v2 的设计和实现。
+
 ## 结论
 
 本仓库已经从“JavaScript 文件改名为 TypeScript、但主体仍按旧工程运行”的过渡状态，改造成一套单一、严格、可复现的现代前端库工程。
@@ -160,35 +164,35 @@ extension adapter，也不接受 GLSL 1.00 自定义 shader。
 
 ### WebGPU-shaped RHI 边界
 
-渲染底层以 `src/render/rhi/RHI.ts` 的 WebGPU-shaped 契约为边界：`device`
-创建 buffer、texture、sampler、prepared shader module、bind-group layout、pipeline layout、bind
-group 与 render pipeline；`command encoder`/`render pass`/`queue`
-表达执行与提交。RHI 目录的产品代码不引用 Mesh、Material、Stage、Light、RenderList 或 shader
-variant，也不负责 GLSL→WGSL；这些引擎语义属于上层 Renderer、`src/shader` variant 层和
-`src/render/shader` 编译层。`src/render/rhi/webgpu` 与 `src/render/rhi/webgl2`
-之外不实现后端设备；RHI 内部也不反向 import Renderer、RenderTarget 或 scene 类型。
+生产渲染底层以 `src/render/rhi/core` 的 RHI
+v2 契约为唯一硬件边界：device 创建 buffer、texture、sampler、prepared shader、bind-group
+layout、pipeline layout、bind group 与 graphics pipeline；frame-scoped command context、render
+pass、queue 和 submission 表达执行、提交与完成。RHI 产品代码不引用 Mesh、Material、Stage、Light、RenderList 或 shader
+variant，也不负责 GLSL→WGSL；这些引擎语义属于 shared Renderer、`src/shader` variant 层和
+`src/render/shader` 编译层。具体设备只允许位于 `src/render/rhi/backends/webgl2` 与
+`src/render/rhi/backends/webgpu`，RHI core 和 Render Graph 都不得反向 import
+renderer 或 scene 类型。
 
-`src/render/rhi/RHIFactory.ts` 是唯一的硬件组合根，负责 support probe、构造具体
-`WebGL2RHI`/`WebGPURHI` 并等待 ready；它不产生逐 command 转发对象。对应的
-`src/render/internal/RendererFactory.ts` 也只在初始化时选择一次具体 driver，公开 `Renderer`
-构造完成后直接就是该 driver，因此 frame/draw 热路径没有第二层 backend dispatch。
+`src/render/rhi/RHIFactory.ts` 是唯一硬件组合根，负责 support probe、构造 RHI v2
+device/surface 并等待 ready；它不产生逐 command 转发对象。`src/render/internal/RendererFactory.ts`
+无论后端都只构造 `SharedRendererDriver`，backend 选择仅决定其持有的 concrete RHI device。scene
+traversal、resource preparation、Render
+Graph、pass、present、readback 与恢复流程不再分叉到两个 feature driver。
 
-`WebGPURHI` 只保留必要的 identity、lifecycle、descriptor snapshot 与有界 device
-cache，resource/encoder/pass/queue 命令直接映射 native
-WebGPU，禁止引入 GL 风格全局状态机或二次 JavaScript command replay。`WebGL2RHI`
-在同一契约下模拟 pipeline、bind group、render
-pass 与 encoder，但每条 GL 命令都在编码时通过 state-diff cache 即时执行；`finish()`
-只产生单次 submit token，`submit()` 不回放命令列表。生产 fast path 与 WebGL
-RHI 的实际 draw/apply 热段不创建临时 descriptor/array/typed-array；pass
-setup 可以规范化一次 descriptor，VAO、framebuffer 和 immutable device object 使用有界缓存。
+WebGPU v2 resource/context/pass/queue 直接持有并调用对应 native object，不使用 Proxy、二次 command
+list 或 GL 风格全局状态机。WebGL2 v2 在同一可移植契约下实现 pipeline、bind group 与 render
+pass，但 command context 是明确的 immediate context：GL 命令在调用时经 device-owned state-diff
+cache 即时执行，`endFrame()` 只封闭 frame
+scope 并产生 submission，不回放软件命令列表。两后端的 descriptor snapshot、resource
+generation、in-flight
+lifetime 与 validation 共享同一契约；VAO、framebuffer、pipeline、sampler 和 immutable layout
+cache 有界且只归 device 所有。
 
-生产 Renderer 不为统一接口牺牲热路径性能。WebGPU 内部 manager 持有 concrete
-`WebGPUDevice`，资源创建、主帧 encoder、surface texture 与 submit 都通过一跳 native fast
-path 完成，draw loop 继续直接使用 native handle；portable wrapper 只服务需要通用契约的路径。WebGL
-2 内部路径只从 `WebGL2RHI` 获取一次 context，并在 frame-scoped、可重入的 state-managed
-session 中执行 Program/VAO 等引擎语义工作；旧 `WebGLState` adapter 委托 RHI 的 canonical state
-differential，sampler immutable cache 也归 RHI device，因而没有第二套 active state
-cache、第二个 context 或 JS command replay。
+旧 `src/render/rhi/webgl2`、`src/render/rhi/webgpu` 与旧 feature driver 仅作为冻结的 legacy A/B
+benchmark/回滚路径保留，在正式基线和候选门禁通过前不得删除，也不得与 v2 在同一 frame 操作同一个 native
+context/device。生产 shared renderer 不调用 legacy manager 或 native fast path。RHI
+v2 的 draw/context 稳态热段不得创建临时 descriptor、array、iterator 或 typed-array；pass
+setup、shader/pipeline prepare、graph compile 与 transient allocation 必须在 execute 前完成。
 
 公开 Renderer 不携带 `gl` 或 `gpuDevice` 字段。需要 XR、验证或第三方 native 互操作时，调用方通过
 `renderer.getExtension('webgl2-native')` 或 `renderer.getExtension('webgpu-native')`
@@ -495,6 +499,19 @@ WebGPU MRT pipeline target 与 attachment location 一一对应，支持中间�
 slot；depth-only target 不声明颜色输出。resize 在新 color/depth/MSAA
 allocation 全部成功后才提交，失败会销毁新资源并保留旧 target
 identity、尺寸和可用 allocation，不存在部分替换。
+
+shared RenderTarget cache 明确区分 persistent resolve/readable 纹理与 graph-transient MSAA render
+source。仅当 4× MSAA 的全部相关 color/depth/stencil attachment 都是首 pass clear、末 pass
+discard 时，cache 才不创建持久 multisample source/depth handle，由 Render
+Graph 在 execution 前分配并在 submission 完成后回收；任一 load/store 需要跨 graph 保留内容就原子切回 persistent
+policy。opaque 与 transparent pass 在同一 graph 中共用同一个 source，resize、recovery 与 partial
+allocation failure 保持该 lifetime
+policy 的事务语义，不允许同时保留 persistent 和 transient 两份 MSAA backing。
+
+材质采样公共 RenderTarget texture 时必须声明显式 graph
+read。若本 graph 没有 writer，它读取跨帧保留的 persistent 内容；若存在 opaque/transparent 等一个或多个 writer，compiler 保留完整 writer 链，并让 pure
+consumer 依赖最后 writer，即使 consumer 先被插入也一样。同 pass feedback 继续作为 duplicate
+access 拒绝，普通 imported texture 不改变原有插入顺序语义。
 
 两个实现返回相同的紧凑 top-to-bottom texel 结果。WebGPU 内部遵守每行 256-byte copy
 alignment 后再压紧，WebGL 2 内部处理 framebuffer

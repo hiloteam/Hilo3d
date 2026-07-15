@@ -14,9 +14,16 @@ import MorphGeometry from '../geometry/MorphGeometry';
 import type LightManager from '../light/LightManager';
 import type SphericalHarmonics3 from '../math/SphericalHarmonics3';
 import type Material from './Material';
-import type { MaterialTexture, MaterialTextureValue, ProgramBindingInfo } from './Material';
+import type {
+    MaterialBindingInfo,
+    MaterialTexture,
+    MaterialTextureValue,
+    ProgramBindingInfo,
+    SemanticProgramBindingInfo
+} from './Material';
 import { getMeshPickingIdentity } from '../render/PickingIdentity';
 import type { RendererViewport } from '../render/Renderer';
+import type { SemanticFrameState } from '../render/frame/SemanticFrameState';
 
 const tempVector3 = new Vector3();
 const tempMatrix3 = new Matrix3();
@@ -24,6 +31,7 @@ const tempMatrix4 = new Matrix4();
 const tempFloat32Array4 = new Float32Array([0.5, 0.5, 0.5, 1]);
 const tempFloat32Array2 = new Float32Array([0, 0]);
 const activeViewport = new Float32Array(4);
+const legacyViewport: [number, number, number, number] = [0, 0, 0, 0];
 const blankInfo = {
     get(
         _mesh: SemanticMesh,
@@ -99,6 +107,10 @@ function writeActiveViewport(viewport: RendererViewport): void {
         throw new RangeError('Renderer viewport must contain finite x/y and positive width/height');
     }
     activeViewport.set(viewport);
+    legacyViewport[0] = x;
+    legacyViewport[1] = y;
+    legacyViewport[2] = width;
+    legacyViewport[3] = height;
 }
 
 function cameraPlane(camera: Camera, plane: 'near' | 'far'): number {
@@ -124,10 +136,46 @@ function materialTexture(material: SemanticMaterial, name: string): Texture | nu
     return value instanceof Texture ? value : null;
 }
 
-let camera: Camera;
-let lightManager: LightManager;
-let fog: Fog | null;
-let renderer: SemanticRenderer;
+const legacySemanticFrame: {
+    renderer: SemanticRenderer | null;
+    camera: Camera | null;
+    lightManager: LightManager | null;
+    fog: Fog | null;
+    readonly viewport: RendererViewport;
+    readonly viewportData: Float32Array;
+} = {
+    renderer: null,
+    camera: null,
+    lightManager: null,
+    fog: null,
+    viewport: legacyViewport,
+    viewportData: activeViewport
+};
+
+function semanticFrameFor(programInfo: ProgramBindingInfo | undefined): SemanticFrameState {
+    const internalInfo = programInfo as SemanticProgramBindingInfo | undefined;
+    if (internalInfo?.semanticFrame) return internalInfo.semanticFrame;
+    if (
+        legacySemanticFrame.renderer === null ||
+        legacySemanticFrame.camera === null ||
+        legacySemanticFrame.lightManager === null
+    ) {
+        throw new Error('Material semantic resolution requires an explicit SemanticFrameState');
+    }
+    return legacySemanticFrame as SemanticFrameState;
+}
+
+function semanticCamera(programInfo: ProgramBindingInfo | undefined): Camera {
+    return semanticFrameFor(programInfo).camera;
+}
+
+function semanticLights(programInfo: ProgramBindingInfo | undefined): LightManager {
+    return semanticFrameFor(programInfo).lightManager;
+}
+
+function semanticRenderer(programInfo: ProgramBindingInfo | undefined): SemanticRenderer {
+    return semanticFrameFor(programInfo).renderer;
+}
 
 /**
  * 语义
@@ -156,10 +204,10 @@ const semantic = {
         _lightManager: LightManager,
         _fog: Fog | null
     ): void {
-        renderer = this.renderer = _renderer;
-        camera = this.camera = _camera;
-        lightManager = this.lightManager = _lightManager;
-        fog = this.fog = _fog;
+        legacySemanticFrame.renderer = this.renderer = _renderer;
+        legacySemanticFrame.camera = this.camera = _camera;
+        legacySemanticFrame.lightManager = this.lightManager = _lightManager;
+        legacySemanticFrame.fog = this.fog = _fog;
         writeActiveViewport(_renderer.getViewport());
     },
 
@@ -168,7 +216,7 @@ const semantic = {
      * @param _camera -
      */
     setCamera(_camera: Camera): void {
-        camera = this.camera = _camera;
+        legacySemanticFrame.camera = this.camera = _camera;
     },
 
     /** Set the physical-pixel viewport used by the active camera/render pass. */
@@ -322,6 +370,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
+            const camera = semanticCamera(_programInfo);
             if (camera.isPerspectiveCamera) {
                 return cameraPlane(camera, 'far');
             }
@@ -335,6 +384,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
+            const camera = semanticCamera(_programInfo);
             if (camera.isPerspectiveCamera) {
                 return cameraPlane(camera, 'near');
             }
@@ -348,7 +398,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            if (camera.isPerspectiveCamera) {
+            if (semanticCamera(_programInfo).isPerspectiveCamera) {
                 return 1;
             }
             return 0;
@@ -361,7 +411,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return camera.worldMatrix.getTranslation(tempVector3).elements;
+            return semanticCamera(_programInfo).worldMatrix.getTranslation(tempVector3).elements;
         }
     },
 
@@ -426,6 +476,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
+            const renderer = semanticRenderer(_programInfo);
             tempFloat32Array2[0] = renderer.width;
             tempFloat32Array2[1] = renderer.height;
             return tempFloat32Array2;
@@ -473,7 +524,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return camera.viewMatrix.elements;
+            return semanticCamera(_programInfo).viewMatrix.elements;
         }
     },
 
@@ -483,7 +534,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return camera.projectionMatrix.elements;
+            return semanticCamera(_programInfo).projectionMatrix.elements;
         }
     },
 
@@ -493,7 +544,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return camera.viewProjectionMatrix.elements;
+            return semanticCamera(_programInfo).viewProjectionMatrix.elements;
         }
     },
 
@@ -503,7 +554,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return camera.getModelViewMatrix(mesh, tempMatrix4).elements;
+            return semanticCamera(_programInfo).getModelViewMatrix(mesh, tempMatrix4).elements;
         },
         isDependMesh: true
     },
@@ -514,7 +565,8 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return camera.getModelProjectionMatrix(mesh, tempMatrix4).elements;
+            return semanticCamera(_programInfo).getModelProjectionMatrix(mesh, tempMatrix4)
+                .elements;
         },
         isDependMesh: true
     },
@@ -536,7 +588,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return camera.worldMatrix.elements;
+            return semanticCamera(_programInfo).worldMatrix.elements;
         }
     },
 
@@ -546,7 +598,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return tempMatrix3.normalFromMat4(camera.worldMatrix).elements;
+            return tempMatrix3.normalFromMat4(semanticCamera(_programInfo).worldMatrix).elements;
         }
     },
 
@@ -556,7 +608,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return tempMatrix4.invert(camera.projectionMatrix).elements;
+            return tempMatrix4.invert(semanticCamera(_programInfo).projectionMatrix).elements;
         }
     },
 
@@ -566,7 +618,9 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return tempMatrix4.invert(camera.getModelViewMatrix(mesh, tempMatrix4)).elements;
+            return tempMatrix4.invert(
+                semanticCamera(_programInfo).getModelViewMatrix(mesh, tempMatrix4)
+            ).elements;
         },
         isDependMesh: true
     },
@@ -577,7 +631,9 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return tempMatrix4.invert(camera.getModelProjectionMatrix(mesh, tempMatrix4)).elements;
+            return tempMatrix4.invert(
+                semanticCamera(_programInfo).getModelProjectionMatrix(mesh, tempMatrix4)
+            ).elements;
         },
         isDependMesh: true
     },
@@ -599,8 +655,9 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return tempMatrix3.normalFromMat4(camera.getModelViewMatrix(mesh, tempMatrix4))
-                .elements;
+            return tempMatrix3.normalFromMat4(
+                semanticCamera(_programInfo).getModelViewMatrix(mesh, tempMatrix4)
+            ).elements;
         },
         isDependMesh: true
     },
@@ -612,7 +669,7 @@ const semantic = {
             _material?: SemanticMaterial,
             _programInfo?: ProgramBindingInfo
         ): Float32Array {
-            return activeViewport;
+            return semanticFrameFor(_programInfo).viewportData;
         }
     },
 
@@ -713,6 +770,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
+            const camera = semanticCamera(_programInfo);
             return 2.0 / (Math.log(cameraPlane(camera, 'far') + 1.0) / Math.LN2);
         }
     },
@@ -725,7 +783,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.ambientInfo;
+            return semanticLights(_programInfo).ambientInfo;
         }
     },
 
@@ -735,7 +793,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.directionalInfo?.colors;
+            return semanticLights(_programInfo).directionalInfo?.colors;
         }
     },
 
@@ -745,25 +803,25 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(lightManager.shadowAtlas);
+            return semantic.handlerTexture(semanticLights(_programInfo).shadowAtlas);
         }
     },
 
     SHADOWATLASSIZE: {
         get(): unknown {
-            return lightManager.shadowAtlasSize;
+            return semanticLights(undefined).shadowAtlasSize;
         }
     },
 
     SHADOWATLASRECTS: {
         get(): unknown {
-            return lightManager.shadowAtlasRects;
+            return semanticLights(undefined).shadowAtlasRects;
         }
     },
 
     POINTSHADOWMATRICES: {
         get(): unknown {
-            return lightManager.pointShadowMatrices;
+            return semanticLights(undefined).pointShadowMatrices;
         }
     },
 
@@ -773,7 +831,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.directionalInfo?.infos;
+            return semanticLights(_programInfo).directionalInfo?.infos;
         }
     },
 
@@ -783,7 +841,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            const result = lightManager.directionalInfo?.shadowMap?.map(texture => {
+            const result = semanticLights(_programInfo).directionalInfo?.shadowMap?.map(texture => {
                 return semantic.handlerTexture(texture);
             });
             return result;
@@ -796,7 +854,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.directionalInfo?.shadowMapSize;
+            return semanticLights(_programInfo).directionalInfo?.shadowMapSize;
         }
     },
 
@@ -806,7 +864,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.directionalInfo?.shadowBias;
+            return semanticLights(_programInfo).directionalInfo?.shadowBias;
         }
     },
 
@@ -816,7 +874,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.directionalInfo?.lightSpaceMatrix;
+            return semanticLights(_programInfo).directionalInfo?.lightSpaceMatrix;
         }
     },
 
@@ -826,7 +884,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.pointInfo?.poses;
+            return semanticLights(_programInfo).pointInfo?.poses;
         }
     },
 
@@ -836,7 +894,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.pointInfo?.colors;
+            return semanticLights(_programInfo).pointInfo?.colors;
         }
     },
 
@@ -846,7 +904,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.pointInfo?.infos;
+            return semanticLights(_programInfo).pointInfo?.infos;
         }
     },
 
@@ -856,7 +914,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.pointInfo?.ranges;
+            return semanticLights(_programInfo).pointInfo?.ranges;
         }
     },
 
@@ -866,7 +924,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            const result = lightManager.pointInfo?.shadowMap?.map(texture => {
+            const result = semanticLights(_programInfo).pointInfo?.shadowMap?.map(texture => {
                 return semantic.handlerTexture(texture);
             });
             return result;
@@ -879,7 +937,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.pointInfo?.shadowBias;
+            return semanticLights(_programInfo).pointInfo?.shadowBias;
         }
     },
 
@@ -889,7 +947,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.pointInfo?.lightSpaceMatrix;
+            return semanticLights(_programInfo).pointInfo?.lightSpaceMatrix;
         }
     },
 
@@ -899,7 +957,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.pointInfo?.cameras;
+            return semanticLights(_programInfo).pointInfo?.cameras;
         }
     },
 
@@ -909,7 +967,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.spotInfo?.poses;
+            return semanticLights(_programInfo).spotInfo?.poses;
         }
     },
 
@@ -919,7 +977,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.spotInfo?.dirs;
+            return semanticLights(_programInfo).spotInfo?.dirs;
         }
     },
 
@@ -929,7 +987,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.spotInfo?.colors;
+            return semanticLights(_programInfo).spotInfo?.colors;
         }
     },
 
@@ -939,7 +997,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.spotInfo?.cutoffs;
+            return semanticLights(_programInfo).spotInfo?.cutoffs;
         }
     },
 
@@ -949,7 +1007,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.spotInfo?.infos;
+            return semanticLights(_programInfo).spotInfo?.infos;
         }
     },
 
@@ -959,7 +1017,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.spotInfo?.ranges;
+            return semanticLights(_programInfo).spotInfo?.ranges;
         }
     },
 
@@ -969,7 +1027,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            const result = lightManager.spotInfo?.shadowMap?.map(texture => {
+            const result = semanticLights(_programInfo).spotInfo?.shadowMap?.map(texture => {
                 return semantic.handlerTexture(texture);
             });
             return result;
@@ -982,7 +1040,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.spotInfo?.shadowMapSize;
+            return semanticLights(_programInfo).spotInfo?.shadowMapSize;
         }
     },
 
@@ -992,7 +1050,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.spotInfo?.shadowBias;
+            return semanticLights(_programInfo).spotInfo?.shadowBias;
         }
     },
 
@@ -1002,7 +1060,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.spotInfo?.lightSpaceMatrix;
+            return semanticLights(_programInfo).spotInfo?.lightSpaceMatrix;
         }
     },
 
@@ -1012,7 +1070,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.areaInfo?.colors;
+            return semanticLights(_programInfo).areaInfo?.colors;
         }
     },
 
@@ -1022,7 +1080,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.areaInfo?.poses;
+            return semanticLights(_programInfo).areaInfo?.poses;
         }
     },
 
@@ -1032,7 +1090,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.areaInfo?.width;
+            return semanticLights(_programInfo).areaInfo?.width;
         }
     },
 
@@ -1042,7 +1100,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return lightManager.areaInfo?.height;
+            return semanticLights(_programInfo).areaInfo?.height;
         }
     },
 
@@ -1052,7 +1110,9 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(lightManager.areaInfo?.ltcTexture1 ?? null);
+            return semantic.handlerTexture(
+                semanticLights(_programInfo).areaInfo?.ltcTexture1 ?? null
+            );
         }
     },
 
@@ -1062,7 +1122,9 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(lightManager.areaInfo?.ltcTexture2 ?? null);
+            return semantic.handlerTexture(
+                semanticLights(_programInfo).areaInfo?.ltcTexture2 ?? null
+            );
         }
     },
 
@@ -1074,6 +1136,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
+            const fog = semanticFrameFor(_programInfo).fog;
             if (fog) {
                 return fog.color.elements;
             }
@@ -1087,6 +1150,7 @@ const semantic = {
             _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
+            const fog = semanticFrameFor(_programInfo).fog;
             if (fog) {
                 return fog.getInfo();
             }
@@ -1336,6 +1400,41 @@ const semantic = {
         }
     }
 };
+
+const invocationScopedBindings = new Map<string, MaterialBindingInfo>([
+    [
+        'SHADOWATLASSIZE',
+        {
+            get(_mesh, _material, programInfo): unknown {
+                return semanticLights(programInfo).shadowAtlasSize;
+            }
+        }
+    ],
+    [
+        'SHADOWATLASRECTS',
+        {
+            get(_mesh, _material, programInfo): unknown {
+                return semanticLights(programInfo).shadowAtlasRects;
+            }
+        }
+    ],
+    [
+        'POINTSHADOWMATRICES',
+        {
+            get(_mesh, _material, programInfo): unknown {
+                return semanticLights(programInfo).pointShadowMatrices;
+            }
+        }
+    ]
+]);
+
+/** @internal Resolve legacy zero-argument semantic entries for an invocation-scoped frame. */
+export function resolveSemanticBinding(
+    name: string,
+    publicBinding: MaterialBindingInfo
+): MaterialBindingInfo {
+    return invocationScopedBindings.get(name) ?? publicBinding;
+}
 
 function registerSemantic(name: string, entry: SemanticEntry): void {
     Reflect.set(semantic, name, entry);

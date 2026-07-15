@@ -1,4 +1,5 @@
 import { WebGPUDevice } from '../../rhi/webgpu/WebGPUDevice';
+import type { RHICacheCounters } from '../../rhi/core';
 import {
     DEFAULT_WEBGPU_NATIVE_CACHE_CAPACITY,
     getWebGPUNativeDeviceCache,
@@ -173,6 +174,11 @@ export class WebGPUPipelineManager {
 
     get size(): number {
         return this.nativeCache.renderPipelineSize;
+    }
+
+    /** Exact native render-pipeline cache outcomes for renderer diagnostics and contract tests. */
+    get cacheMetrics(): Readonly<RHICacheCounters> {
+        return this.nativeCache.renderPipelineCacheMetrics;
     }
 
     /** Exposed for diagnostics and deterministic cache tests; labels never affect the key. */

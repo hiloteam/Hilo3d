@@ -189,6 +189,13 @@ describe('WebGPUBindGroupManager layouts', () => {
         const secondGroups = manager.getBindGroups(second, secondShader, buffers, []);
         expect(secondGroups).toBe(firstGroups);
         expect(fake.bindGroupDescriptors).toHaveLength(4);
+        expect(manager.bindGroupCacheMetrics).toMatchObject({
+            hits: 1,
+            misses: 1,
+            evictions: 0,
+            size: 1,
+            highWater: 1
+        });
     });
 
     it('reuses unchanged group layouts and bind groups across pipeline-layout variants', () => {
@@ -696,5 +703,12 @@ describe('WebGPUBindGroupManager resource identity', () => {
         );
         expect(recreated).not.toBe(first);
         expect(manager.bindGroupCacheSize).toBe(256);
+        expect(manager.bindGroupCacheMetrics).toMatchObject({
+            hits: 0,
+            misses: 258,
+            evictions: 2,
+            size: 256,
+            highWater: 256
+        });
     });
 });

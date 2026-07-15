@@ -425,11 +425,13 @@ export class WebGPUDevice extends WebGPUDestroyableObject implements RHIDevice {
     /** One-hop renderer fast paths. These retain native handles and never allocate RHI wrappers. */
     createNativeBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
         this.assertAlive('WebGPU device');
+        this.#diagnostics?.record('bufferCreations');
         return this.#nativeHandle.createBuffer(descriptor);
     }
 
     createNativeTexture(descriptor: GPUTextureDescriptor): GPUTexture {
         this.assertAlive('WebGPU device');
+        this.#diagnostics?.record('textureCreations');
         return this.#nativeHandle.createTexture(descriptor);
     }
 
@@ -440,6 +442,7 @@ export class WebGPUDevice extends WebGPUDestroyableObject implements RHIDevice {
 
     createNativeShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
         this.assertAlive('WebGPU device');
+        this.#diagnostics?.record('shaderModuleCreations');
         return this.#nativeHandle.createShaderModule(descriptor);
     }
 
@@ -455,6 +458,7 @@ export class WebGPUDevice extends WebGPUDestroyableObject implements RHIDevice {
 
     createNativeBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup {
         this.assertAlive('WebGPU device');
+        this.#diagnostics?.record('bindGroupCreations');
         return this.#nativeHandle.createBindGroup(descriptor);
     }
 
@@ -477,12 +481,14 @@ export class WebGPUDevice extends WebGPUDestroyableObject implements RHIDevice {
 
     createNativeCommandEncoder(descriptor: GPUCommandEncoderDescriptor = {}): GPUCommandEncoder {
         this.assertAlive('WebGPU device');
+        this.#diagnostics?.record('commandEncoderCreations');
         return this.#nativeHandle.createCommandEncoder(descriptor);
     }
 
     submitNative(commandBuffers: readonly GPUCommandBuffer[]): void {
         this.assertAlive('WebGPU device');
         this.#nativeHandle.queue.submit(commandBuffers);
+        this.#diagnostics?.record('submissions');
     }
 
     writeNativeBuffer(
@@ -494,6 +500,7 @@ export class WebGPUDevice extends WebGPUDestroyableObject implements RHIDevice {
     ): void {
         this.assertAlive('WebGPU device');
         this.#nativeHandle.queue.writeBuffer(buffer, bufferOffset, data, dataOffset, size);
+        this.#diagnostics?.recordUpload();
     }
 
     writeNativeTexture(
@@ -504,6 +511,7 @@ export class WebGPUDevice extends WebGPUDestroyableObject implements RHIDevice {
     ): void {
         this.assertAlive('WebGPU device');
         this.#nativeHandle.queue.writeTexture(destination, data, dataLayout, size);
+        this.#diagnostics?.recordUpload();
     }
 
     copyExternalImageToNativeTexture(
@@ -513,6 +521,7 @@ export class WebGPUDevice extends WebGPUDestroyableObject implements RHIDevice {
     ): void {
         this.assertAlive('WebGPU device');
         this.#nativeHandle.queue.copyExternalImageToTexture(source, destination, copySize);
+        this.#diagnostics?.recordUpload();
     }
 
     onNativeSubmittedWorkDone(): Promise<void> {

@@ -1,4 +1,4 @@
-export * from './RHI';
+export * from './core';
 export * from './RHIFactory';
-export * from './webgl2';
-export * from './webgpu';
+export * from './backends/webgl2';
+export * from './backends/webgpu';

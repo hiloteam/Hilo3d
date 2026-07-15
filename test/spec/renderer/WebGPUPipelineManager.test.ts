@@ -345,6 +345,22 @@ describe('WebGPUPipelineManager', () => {
         expect(manager.getPipelineSync(lines)).not.toBe(linePipeline);
         expect(createRenderPipeline).toHaveBeenCalledTimes(4);
         expect(manager.size).toBe(2);
+        expect(manager.cacheMetrics).toMatchObject({
+            hits: 2,
+            misses: 4,
+            evictions: 2,
+            size: 2,
+            highWater: 2
+        });
+
+        manager.clear();
+        expect(manager.cacheMetrics).toMatchObject({
+            hits: 2,
+            misses: 4,
+            evictions: 4,
+            size: 0,
+            highWater: 2
+        });
     });
 
     it('rejects an invalid cache capacity', () => {

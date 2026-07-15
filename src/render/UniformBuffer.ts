@@ -2,6 +2,7 @@ import {
     Std140Layout,
     type Std140FieldValue,
     type Std140Schema,
+    type Std140WriteResult,
     type Std140Values
 } from './ubo/Std140Layout';
 import type { TypedArray } from './types';
@@ -17,6 +18,12 @@ export interface UniformBufferDirtyRange {
     readonly revision: number;
     readonly byteOffset: number;
     readonly byteLength: number;
+}
+
+/** @internal Caller-owned scratch result for allocation-free backend uploads. */
+export interface UniformBufferDirtySpan {
+    byteOffset: number;
+    byteLength: number;
 }
 
 const MAX_RETAINED_DIRTY_RANGES = 64;
@@ -59,6 +66,7 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
      */
     private _data: ArrayBuffer;
     readonly layout: Std140Layout<Schema>;
+    readonly #writeResult: Std140WriteResult = { byteOffset: 0, byteLength: 0 };
     private readonly dirtyUpdates: UniformBufferDirtyRange[] = [];
     private discardedDirtyRevision = 0;
     private _revision = 0;
@@ -115,7 +123,7 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
         name: Name,
         value: Std140FieldValue<Schema[Name]>
     ): this {
-        const dirty = this.layout.write(this.data, name, value);
+        const dirty = this.layout.writeInto(this.data, name, value, this.#writeResult);
         if (dirty.byteLength > 0) {
             this.recordDirty(dirty.byteOffset, dirty.byteOffset + dirty.byteLength);
         }
@@ -132,13 +140,38 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
      * behind the bounded history window and must upload the complete current buffer.
      */
     getDirtyRangesSince(revision: number): readonly UniformBufferDirtyRange[] | null {
-        if (!Number.isSafeInteger(revision) || revision < 0 || revision > this._revision) {
-            throw new RangeError(
-                `Uniform buffer revision must be an integer in [0, ${String(this._revision)}]`
-            );
-        }
+        this.assertRevision(revision);
         if (revision < this.discardedDirtyRevision) return null;
         return this.dirtyUpdates.filter(update => update.revision > revision);
+    }
+
+    /**
+     * Merge retained writes into caller-owned storage without allocating an array. `false` means
+     * the requested revision fell outside the bounded history and requires a full upload.
+     *
+     * @internal
+     */
+    getDirtySpanSince(
+        revision: number,
+        result: { byteOffset: number; byteLength: number }
+    ): boolean {
+        this.assertRevision(revision);
+        result.byteOffset = 0;
+        result.byteLength = 0;
+        if (revision < this.discardedDirtyRevision) return false;
+        let start = this.byteLength;
+        let end = 0;
+        for (const update of this.dirtyUpdates) {
+            if (update.revision <= revision) continue;
+            if (update.byteOffset < start) start = update.byteOffset;
+            const updateEnd = update.byteOffset + update.byteLength;
+            if (updateEnd > end) end = updateEnd;
+        }
+        if (end > start) {
+            result.byteOffset = start;
+            result.byteLength = end - start;
+        }
+        return true;
     }
 
     private assertRange(byteOffset: number, byteLength: number): void {
@@ -151,6 +184,14 @@ class UniformBuffer<Schema extends Std140Schema = Std140Schema> {
         ) {
             throw new RangeError(
                 `Uniform buffer byte range [${String(byteOffset)}, ${String(byteOffset + byteLength)}) is invalid`
+            );
+        }
+    }
+
+    private assertRevision(revision: number): void {
+        if (!Number.isSafeInteger(revision) || revision < 0 || revision > this._revision) {
+            throw new RangeError(
+                `Uniform buffer revision must be an integer in [0, ${String(this._revision)}]`
             );
         }
     }

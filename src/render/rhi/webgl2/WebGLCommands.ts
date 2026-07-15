@@ -98,7 +98,7 @@ export class WebGLRHIRenderPassEncoder implements RHIRenderPassEncoder {
         this.descriptor = snapshot;
         this.label = labelOf(snapshot.label);
         this.target = encoder.device.beginRenderPass(snapshot);
-        if (encoder.device.diagnostics) encoder.device.diagnostics.renderPasses++;
+        encoder.device.diagnostics?.recordRenderPass();
         this.clearAttachments();
         const { state, gl } = encoder.device;
         state.enable(gl.SCISSOR_TEST, false);
@@ -276,7 +276,7 @@ export class WebGLRHIRenderPassEncoder implements RHIRenderPassEncoder {
         const gl = this.encoder.device.gl;
         if (instanceCount === 1) gl.drawArrays(pipeline.topology, firstVertex, vertexCount);
         else gl.drawArraysInstanced(pipeline.topology, firstVertex, vertexCount, instanceCount);
-        if (this.encoder.device.diagnostics) this.encoder.device.diagnostics.drawCalls++;
+        this.encoder.device.diagnostics?.recordDraw();
     }
 
     drawIndexed(
@@ -316,7 +316,7 @@ export class WebGLRHIRenderPassEncoder implements RHIRenderPassEncoder {
                 byteOffset,
                 instanceCount
             );
-        if (this.encoder.device.diagnostics) this.encoder.device.diagnostics.drawCalls++;
+        this.encoder.device.diagnostics?.recordDraw();
     }
 
     end(): void {
@@ -459,7 +459,7 @@ export class WebGLRHICommandBuffer extends WebGLObjectBase implements RHICommand
     constructor(device: WebGLRHIDevice, label?: string) {
         super(label);
         this.device = device;
-        if (device.diagnostics) device.diagnostics.commandBuffers++;
+        device.diagnostics?.recordCommandBuffer();
     }
 }
 
@@ -472,7 +472,7 @@ export class WebGLRHICommandEncoder implements RHICommandEncoder {
     constructor(device: WebGLRHIDevice, label?: string) {
         this.device = device;
         this.label = labelOf(label);
-        if (device.diagnostics) device.diagnostics.commandEncoders++;
+        device.diagnostics?.recordCommandEncoder();
     }
 
     beginRenderPass(descriptor: RHIRenderPassDescriptor): WebGLRHIRenderPassEncoder {

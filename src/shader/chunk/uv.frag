@@ -10,10 +10,8 @@
     #if defined(HILO_HAS_TEXCOORD0) && defined(HILO_HAS_TEXCOORD1)
         #define HILO_TEXTURE_2D(SAMPLER, UV_SET) hiloTexture2D(SAMPLER, UV_SET)
         vec4 hiloTexture2D(sampler2D sourceTexture, int uvSet) {
-            if (uvSet == 0) {
-                return texture(sourceTexture, v_texcoord0);
-            }
-            return texture(sourceTexture, v_texcoord1);
+            vec2 uv = uvSet == 0 ? v_texcoord0 : v_texcoord1;
+            return texture(sourceTexture, uv);
         }
     #else
         #ifdef HILO_HAS_TEXCOORD1

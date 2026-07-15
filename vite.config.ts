@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin, type UserConfig } from 'vite';
 import packageJson from './package.json' with { type: 'json' };
 
-const shaderPattern = /\.(?:frag|glsl|vert)$/u;
+const shaderPattern = /\.(?:frag|glsl|vert|wgsl)$/u;
 const exampleManifestModuleId = 'virtual:hilo3d-example-manifest';
 const resolvedExampleManifestModuleId = `\0${exampleManifestModuleId}`;
 
@@ -50,7 +50,9 @@ export function shaderIncludePlugin(): Plugin {
                 throw new Error(`Circular GLSL import: ${[...stack, dependency].join(' -> ')}`);
             }
             if (!shaderPattern.test(dependency)) {
-                throw new Error(`Shader include must use .glsl, .vert, or .frag: ${dependency}`);
+                throw new Error(
+                    `Shader include must use .glsl, .vert, .frag, or .wgsl: ${dependency}`
+                );
             }
             onDependency(dependency);
             const imported = inlineImports(

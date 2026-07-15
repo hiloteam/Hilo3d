@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -77,6 +77,20 @@ describe('example release matrix contract', () => {
         expect(
             Object.keys(EXAMPLE_COMPLETION_CONTRACTS).every(path => examplePaths.includes(path))
         ).toBe(true);
+    });
+
+    it('keeps WebXR native access controlled and recovers failed or lost sessions', () => {
+        const source = readFileSync(join(examplesDirectory, 'webxr.ts'), 'utf8');
+
+        expect(source).not.toMatch(/native\s*\.\s*gl/u);
+        expect(source).toMatch(/native\.makeXRCompatible\(\)/u);
+        expect(source).toMatch(/native\.createXRWebGLLayer\(/u);
+        expect(source).toMatch(/renderer\.on\('webglContextLost'/u);
+        expect(source).toMatch(/renderer\.on\('webglContextRestored'/u);
+        expect(source).toMatch(/function handleWebGLContextLost[\s\S]*?session\.end\(\)\.catch/u);
+        expect(source).toMatch(/ignoredSessionEnds\.add\(session\)/u);
+        expect(source).toMatch(/await session\.end\(\)/u);
+        expect(source).toMatch(/if \(!webGLContextLost\) restoreWindowPresentation\(\)/u);
     });
 
     it('requires native draw calls instead of accepting clears or queue submissions', () => {

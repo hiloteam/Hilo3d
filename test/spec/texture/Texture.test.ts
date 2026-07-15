@@ -414,17 +414,71 @@ describe('Texture', () => {
     });
 
     it('rejects managed raw depth declarations that cannot be reconstructed on WebGPU', () => {
+        const unsupported = [
+            {
+                internalFormat: Hilo3d.constants.DEPTH_COMPONENT24,
+                format: DEPTH_COMPONENT,
+                type: Hilo3d.constants.UNSIGNED_INT,
+                image: new Uint32Array([0xffffff])
+            },
+            {
+                internalFormat: Hilo3d.constants.DEPTH24_STENCIL8,
+                format: Hilo3d.constants.DEPTH_STENCIL,
+                type: Hilo3d.constants.UNSIGNED_INT_24_8,
+                image: new Uint32Array([0xffffff00])
+            },
+            {
+                internalFormat: Hilo3d.constants.DEPTH32F_STENCIL8,
+                format: Hilo3d.constants.DEPTH_STENCIL,
+                type: Hilo3d.constants.FLOAT_32_UNSIGNED_INT_24_8_REV,
+                image: new Uint32Array([0x3f800000, 7])
+            }
+        ] as const;
+        for (const declaration of unsupported) {
+            expect(
+                () =>
+                    new Texture({
+                        width: 1,
+                        height: 1,
+                        ...declaration
+                    })
+            ).toThrow(
+                /only DEPTH_COMPONENT16 and DEPTH_COMPONENT32F support portable raw depth uploads/u
+            );
+            const empty = new Texture({
+                width: 1,
+                height: 1,
+                image: null,
+                internalFormat: declaration.internalFormat,
+                format: declaration.format,
+                type: declaration.type
+            });
+            expect(empty.image).toBeNull();
+            expect(() => {
+                empty.updateSubTexture({
+                    mipLevel: 0,
+                    x: 0,
+                    y: 0,
+                    width: 1,
+                    height: 1,
+                    image: declaration.image
+                });
+            }).toThrow(
+                /only DEPTH_COMPONENT16 and DEPTH_COMPONENT32F support portable raw depth sub-updates/u
+            );
+        }
+
         expect(
             () =>
                 new Texture({
                     width: 1,
                     height: 1,
-                    internalFormat: Hilo3d.constants.DEPTH_COMPONENT24,
+                    internalFormat: Hilo3d.constants.DEPTH_COMPONENT32F,
                     format: DEPTH_COMPONENT,
-                    type: Hilo3d.constants.UNSIGNED_INT,
-                    image: new Uint32Array([0xffffff])
+                    type: Hilo3d.constants.FLOAT,
+                    image: new Float32Array([0.5])
                 })
-        ).toThrow(/no portable WebGPU byte representation/);
+        ).not.toThrow();
         expect(
             () =>
                 new Texture({

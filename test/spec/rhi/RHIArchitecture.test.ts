@@ -52,7 +52,7 @@ describe('RHI architecture boundaries', () => {
         expect(
             collectMatches(
                 entries,
-                /from\s+['"][^'"]*(?:core\/|material\/|geometry\/|light\/|shader\/|texture\/|(?:\.\.\/)+(?:Renderer(?:Core)?|RenderList|RenderTarget|internal)(?:\/|['"]))/gu
+                /from\s+['"][^'"]*(?:material\/|geometry\/|light\/|shader\/|texture\/|(?:\.\.\/){3,}core\/|(?:\.\.\/)+(?:Renderer(?:Core)?|RenderList|RenderTarget|internal)(?:\/|['"]))/gu
             )
         ).toEqual([]);
         expect(

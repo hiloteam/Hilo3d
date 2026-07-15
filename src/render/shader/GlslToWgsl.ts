@@ -1,9 +1,6 @@
 import type * as Naga from 'web-naga';
-import {
-    getWebGPUUniformBlockBinding,
-    type WebGPUResourceBinding
-} from '../internal/webgpu/WebGPUBindingLayout';
-import { makeWgslUniformLayoutsPortable } from '../internal/webgpu/WgslUniformLayout';
+import { getWebGPUUniformBlockBinding, type WebGPUResourceBinding } from './WebGPUBindingLayout';
+import { makeWgslUniformLayoutsPortable } from './WgslUniformLayout';
 
 export type GraphicsShaderStage = 'vertex' | 'fragment';
 
@@ -192,6 +189,8 @@ export interface PreparedShaderPair {
 export interface PrepareGLSLForNagaOptions {
     /** Keep fragment execution/discard/depth writes while omitting color outputs. */
     readonly fragmentOutputs?: 'color' | 'depth-only';
+    /** Inject the WebGPU backend macro while normalizing. Defaults to true. */
+    readonly defineWebGPU?: boolean;
 }
 
 interface ConditionalFrame {
@@ -1782,9 +1781,9 @@ function rewriteStageIo(
     };
 }
 
-function normalizeForNaga(source: string): string {
+function normalizeForNaga(source: string, defineWebGPU: boolean): string {
     const version = /^\s*#version\s+300\s+es\s*/u;
-    return `#version 450\n#define HILO_WEBGPU 1\n${source
+    return `#version 450\n${defineWebGPU ? '#define HILO_WEBGPU 1\n' : ''}${source
         .replace(version, '')
         // These macros only feed GLSL ES precision declarations. Naga's
         // preprocessor does not accept precision keywords as macro values,
@@ -2777,6 +2776,32 @@ function mergeUniformBlocks(
     }));
 }
 
+/**
+ * Preserve fragment execution, discard, and depth writes while turning active color outputs into
+ * private globals. The returned source remains GLSL ES 3.00 and is therefore suitable for the
+ * WebGL2 depth-only pipeline; the Naga path performs the equivalent rewrite during stage-IO
+ * normalization below.
+ */
+export function prepareGLSLDepthOnlyFragment(fragmentSource: string): string {
+    const baseAnalysis = analyzePreprocessor(fragmentSource);
+    assertGlslEs300BuiltinSet(fragmentSource, 'fragment', baseAnalysis);
+    const normalized = normalizeStageInterfaceBlocks(fragmentSource, 'fragment', baseAnalysis);
+    const analysis = analyzePreprocessor(normalized);
+    const outputs = collectStageIo(normalized, 'fragment', analysis).filter(
+        declaration => declaration.direction === 'out'
+    );
+    return replaceSourceRanges(
+        normalized,
+        outputs.map(declaration => ({
+            start: declaration.start,
+            end: declaration.end,
+            value: `${declaration.type} ${declaration.name}${
+                declaration.arrayLength === 1 ? '' : `[${String(declaration.arrayLength)}]`
+            };`
+        }))
+    );
+}
+
 /** Convert assembled GLSL ES 3.00 into the Vulkan-flavoured GLSL accepted by Naga. */
 export function prepareGLSLForNaga(
     vertexSource: string,
@@ -2787,8 +2812,9 @@ export function prepareGLSLForNaga(
     options: PrepareGLSLForNagaOptions = {}
 ): PreparedShaderPair {
     const fragmentOutputMode = options.fragmentOutputs ?? 'color';
-    const normalizedVertexBase = normalizeForNaga(vertexSource);
-    const normalizedFragmentBase = normalizeForNaga(fragmentSource);
+    const defineWebGPU = options.defineWebGPU ?? true;
+    const normalizedVertexBase = normalizeForNaga(vertexSource, defineWebGPU);
+    const normalizedFragmentBase = normalizeForNaga(fragmentSource, defineWebGPU);
     const normalizedVertexBaseAnalysis = analyzePreprocessor(normalizedVertexBase);
     const normalizedFragmentBaseAnalysis = analyzePreprocessor(normalizedFragmentBase);
     assertGlslEs300BuiltinSet(normalizedVertexBase, 'vertex', normalizedVertexBaseAnalysis);

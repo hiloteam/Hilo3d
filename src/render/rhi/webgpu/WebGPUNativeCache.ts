@@ -1,3 +1,5 @@
+import { RHICacheCounter, type RHICacheCounters } from '../core';
+
 export const DEFAULT_WEBGPU_NATIVE_CACHE_CAPACITY = 256;
 
 export type WebGPUNativeCacheCounter =
@@ -12,6 +14,7 @@ export type WebGPUNativeCacheCounter =
 
 export interface WebGPUNativeCacheDiagnostics {
     record(counter: WebGPUNativeCacheCounter): void;
+    synchronizeCache?(kind: 'pipeline', counters: Readonly<RHICacheCounters>): void;
 }
 
 interface WebGPUNativeDeviceCacheOptions {
@@ -42,14 +45,17 @@ class BoundedCache<Value> {
         return value;
     }
 
-    set(key: string, value: Value): void {
+    set(key: string, value: Value): number {
         this.#values.delete(key);
         this.#values.set(key, value);
+        let evictions = 0;
         while (this.#values.size > this.#capacity) {
             const oldestKey = this.#values.keys().next().value;
             if (oldestKey === undefined) break;
             this.#values.delete(oldestKey);
+            evictions++;
         }
+        return evictions;
     }
 
     clear(): void {
@@ -279,6 +285,7 @@ export class WebGPUNativeDeviceCache {
     #nextObjectId = 1;
     #renderPipelineGeneration = 0;
     #diagnostics: WebGPUNativeCacheDiagnostics | null;
+    readonly renderPipelineCacheMetrics = new RHICacheCounter();
 
     constructor(device: GPUDevice, options: WebGPUNativeDeviceCacheOptions = {}) {
         this.#device = device;
@@ -373,6 +380,8 @@ export class WebGPUNativeDeviceCache {
         const cached = this.#renderPipelines.get(key);
         if (cached) {
             this.#diagnostics?.record('renderPipelineCacheHits');
+            this.renderPipelineCacheMetrics.recordHit();
+            this.syncRenderPipelineMetrics();
             return cached;
         }
         if (this.#pendingRenderPipelines.has(key)) {
@@ -380,9 +389,14 @@ export class WebGPUNativeDeviceCache {
                 'Cannot synchronously create a WebGPU pipeline while the same pipeline is compiling asynchronously'
             );
         }
+        this.renderPipelineCacheMetrics.recordMiss();
+        this.syncRenderPipelineMetrics();
         this.#diagnostics?.record('renderPipelineCreations');
         const pipeline = this.#device.createRenderPipeline(descriptor);
-        this.#renderPipelines.set(key, pipeline);
+        const evictions = this.#renderPipelines.set(key, pipeline);
+        if (evictions > 0) this.renderPipelineCacheMetrics.recordReplacement(evictions);
+        else this.renderPipelineCacheMetrics.recordInsertion();
+        this.syncRenderPipelineMetrics();
         return pipeline;
     }
 
@@ -391,13 +405,19 @@ export class WebGPUNativeDeviceCache {
         const cached = this.#renderPipelines.get(key);
         if (cached) {
             this.#diagnostics?.record('renderPipelineCacheHits');
+            this.renderPipelineCacheMetrics.recordHit();
+            this.syncRenderPipelineMetrics();
             return Promise.resolve(cached);
         }
         const pending = this.#pendingRenderPipelines.get(key);
         if (pending) {
             this.#diagnostics?.record('renderPipelineCacheHits');
+            this.renderPipelineCacheMetrics.recordHit();
+            this.syncRenderPipelineMetrics();
             return pending;
         }
+        this.renderPipelineCacheMetrics.recordMiss();
+        this.syncRenderPipelineMetrics();
         this.#diagnostics?.record('renderPipelineCreations');
         const generation = this.#renderPipelineGeneration;
         const compilation = this.#device.createRenderPipelineAsync(descriptor).then(
@@ -407,18 +427,26 @@ export class WebGPUNativeDeviceCache {
                     this.#pendingRenderPipelines.get(key) === compilation
                 ) {
                     this.#pendingRenderPipelines.delete(key);
-                    this.#renderPipelines.set(key, pipeline);
+                    const evictions = this.#renderPipelines.set(key, pipeline);
+                    if (evictions > 0) {
+                        this.renderPipelineCacheMetrics.recordRemoval(evictions);
+                    }
+                    this.syncRenderPipelineMetrics();
                 }
                 return pipeline;
             },
             (error: unknown) => {
                 if (this.#pendingRenderPipelines.get(key) === compilation) {
                     this.#pendingRenderPipelines.delete(key);
+                    this.renderPipelineCacheMetrics.recordRemoval();
+                    this.syncRenderPipelineMetrics();
                 }
                 throw error;
             }
         );
         this.#pendingRenderPipelines.set(key, compilation);
+        this.renderPipelineCacheMetrics.recordInsertion();
+        this.syncRenderPipelineMetrics();
         return compilation;
     }
 
@@ -426,6 +454,8 @@ export class WebGPUNativeDeviceCache {
         this.#renderPipelineGeneration++;
         this.#pendingRenderPipelines.clear();
         this.#renderPipelines.clear();
+        this.renderPipelineCacheMetrics.clear();
+        this.syncRenderPipelineMetrics();
     }
 
     clear(): void {
@@ -433,6 +463,10 @@ export class WebGPUNativeDeviceCache {
         this.#bindGroupLayouts.clear();
         this.#pipelineLayouts.clear();
         this.clearRenderPipelines();
+    }
+
+    private syncRenderPipelineMetrics(): void {
+        this.#diagnostics?.synchronizeCache?.('pipeline', this.renderPipelineCacheMetrics);
     }
 }
 

@@ -76,7 +76,8 @@ import {
     releaseWebGLShadowMaps,
     renderWebGLShadowMaps
 } from './WebGLShadowMapManager';
-import { constructRHI } from '../../rhi/RHIFactory';
+import { constructLegacyRHI } from '../../rhi/legacy/RHIFactory';
+import { RHICacheCounter } from '../../rhi/core';
 import type { WebGLRHI, WebGLRHIContextLifecycleEvent } from '../../rhi/webgl2/WebGLRHI';
 
 export type WebGL2DriverOptions = Omit<RendererWebGL2Options, 'backend'>;
@@ -137,6 +138,18 @@ class WebGL2Driver extends RendererCore {
     private _lastProgram: Program | null = null;
     private readonly materialRevisions = new WeakMap<Material, number>();
     private readonly vaoGeometryRevisions = new WeakMap<VertexArrayObject, number>();
+    private readonly pipelineCacheMetrics = new RHICacheCounter();
+    private readonly bindGroupCacheMetrics = new RHICacheCounter();
+    private readonly vertexInputCacheMetrics = new RHICacheCounter();
+    private readonly framebufferCacheMetrics = new RHICacheCounter();
+    private lastBindingMeshId: string | null = null;
+    private lastBindingMaterialId: string | null = null;
+    private lastBindingProgramId: string | null = null;
+    private lastBindingMaterialRevision = -1;
+    private lastBindingUseInstanced = false;
+    private lastFramebufferPlan: object | null = null;
+    private lastFramebufferRevision = -1;
+    private lastFramebufferLayer = -1;
     private readonly uniformBlockManager: BuiltInUniformBlockManager;
     private readonly uniformResources = new WeakMap<UniformBuffer, ManagedResource>();
     private nextUniformResourceId = 1;
@@ -198,6 +211,7 @@ class WebGL2Driver extends RendererCore {
             getWebGLLightShadowBinding(this.lightManager, light)
         );
         Object.assign(this, params);
+        this.attachRegisteredDiagnostics(this.domElement);
         this.uniformBlockManager = new BuiltInUniformBlockManager(this);
         registerWebGLCanvasPresenter(this, () => {
             this.invalidateDrawState();
@@ -221,6 +235,61 @@ class WebGL2Driver extends RendererCore {
     private invalidateDrawState(): void {
         this._lastMaterial = null;
         this._lastProgram = null;
+        this.lastBindingMeshId = null;
+        this.lastBindingMaterialId = null;
+        this.lastBindingProgramId = null;
+        this.lastBindingMaterialRevision = -1;
+        this.lastBindingUseInstanced = false;
+        this.bindGroupCacheMetrics.clear();
+    }
+
+    /** @internal Record one exact attachment/subresource plan lookup from framebuffer owners. */
+    recordFramebufferPlanLookup(key: object, revision = 0, layer = 0): void {
+        if (
+            this.lastFramebufferPlan === key &&
+            this.lastFramebufferRevision === revision &&
+            this.lastFramebufferLayer === layer
+        ) {
+            this.framebufferCacheMetrics.recordHit();
+        } else {
+            this.framebufferCacheMetrics.recordMiss();
+            if (this.framebufferCacheMetrics.size === 0) {
+                this.framebufferCacheMetrics.recordInsertion();
+            } else {
+                this.framebufferCacheMetrics.recordReplacement();
+            }
+            this.lastFramebufferPlan = key;
+            this.lastFramebufferRevision = revision;
+            this.lastFramebufferLayer = layer;
+        }
+        this.rendererDiagnosticsSink?.synchronizeCache('framebuffer', this.framebufferCacheMetrics);
+    }
+
+    /** @internal Release the single retained framebuffer plan without retaining a dead owner. */
+    releaseFramebufferPlan(key: object): void {
+        if (this.lastFramebufferPlan !== key) return;
+        this.lastFramebufferPlan = null;
+        this.lastFramebufferRevision = -1;
+        this.lastFramebufferLayer = -1;
+        this.framebufferCacheMetrics.clear();
+        this.rendererDiagnosticsSink?.synchronizeCache('framebuffer', this.framebufferCacheMetrics);
+    }
+
+    private reconcileCacheSize(counter: RHICacheCounter, size: number): void {
+        if (size < counter.size) counter.recordRemoval(counter.size - size);
+        else if (size > counter.size) counter.recordInsertion(size - counter.size);
+    }
+
+    private synchronizeLegacyCacheDiagnostics(): void {
+        const sink = this.rendererDiagnosticsSink;
+        const gl = this._gl;
+        if (sink === null || gl === null) return;
+        this.reconcileCacheSize(this.pipelineCacheMetrics, Program.getCache(gl).size);
+        this.reconcileCacheSize(this.vertexInputCacheMetrics, VertexArrayObject.getCache(gl).size);
+        sink.synchronizeCache('pipeline', this.pipelineCacheMetrics);
+        sink.synchronizeCache('bindGroup', this.bindGroupCacheMetrics);
+        sink.synchronizeCache('vertexArray', this.vertexInputCacheMetrics);
+        sink.synchronizeCache('framebuffer', this.framebufferCacheMetrics);
     }
 
     /** Keep direct legacy GL calls frame-scoped while the adapter maintains canonical RHI state. */
@@ -517,7 +586,8 @@ class WebGL2Driver extends RendererCore {
     private createContext(): void {
         const canvas = this.domElement;
         if (!canvas) throw new Error('WebGL2 backend requires a canvas before initialization');
-        const rhi = constructRHI('webgl2', {
+        const diagnosticsSink = this.rendererDiagnosticsSink;
+        const rhi = constructLegacyRHI('webgl2', {
             canvas,
             width: Math.max(1, this.width),
             height: Math.max(1, this.height),
@@ -528,6 +598,7 @@ class WebGL2Driver extends RendererCore {
             premultipliedAlpha: this.premultipliedAlpha,
             preserveDrawingBuffer: this.preserveDrawingBuffer,
             failIfMajorPerformanceCaveat: this.failIfMajorPerformanceCaveat,
+            ...(diagnosticsSink ? { diagnosticsSink } : {}),
             ...(this.powerPreference === 'default' ? {} : { powerPreference: this.powerPreference })
         });
         const gl = rhi.nativeContext;
@@ -574,8 +645,13 @@ class WebGL2Driver extends RendererCore {
         destroyWebGLUniformBuffers(state);
         this.resourceManager.clear();
         state.reset();
-        this._lastMaterial = null;
-        this._lastProgram = null;
+        this.invalidateDrawState();
+        this.pipelineCacheMetrics.clear();
+        this.vertexInputCacheMetrics.clear();
+        this.framebufferCacheMetrics.clear();
+        this.lastFramebufferPlan = null;
+        this.lastFramebufferRevision = -1;
+        this.lastFramebufferLayer = -1;
         this.fire('webglContextLost');
     }
 
@@ -601,8 +677,7 @@ class WebGL2Driver extends RendererCore {
             });
         } catch (error) {
             this._isContextLost = true;
-            this._lastMaterial = null;
-            this._lastProgram = null;
+            this.invalidateDrawState();
             throw error;
         }
         this._isContextLost = false;
@@ -817,21 +892,54 @@ class WebGL2Driver extends RendererCore {
         );
         if (!shader)
             throw new Error(`Material ${material.className} does not provide a renderable shader`);
+        const programCache = Program.getCache(this.gl);
+        this.reconcileCacheSize(this.pipelineCacheMetrics, programCache.size);
+        const programHit = programCache.get(shader.id) !== undefined;
+        if (programHit) this.pipelineCacheMetrics.recordHit();
+        else this.pipelineCacheMetrics.recordMiss();
         const program = Program.getProgram(shader, this.state);
+        this.reconcileCacheSize(this.pipelineCacheMetrics, programCache.size);
         program.useProgram();
+        const bindingHit =
+            this.lastBindingMeshId === mesh.id &&
+            this.lastBindingMaterialId === material.id &&
+            this.lastBindingProgramId === program.id &&
+            this.lastBindingMaterialRevision === material.revision &&
+            this.lastBindingUseInstanced === useInstanced;
+        if (bindingHit) this.bindGroupCacheMetrics.recordHit();
+        else this.bindGroupCacheMetrics.recordMiss();
         const uniformBuffers = this.setupMaterial(
             program,
             mesh,
             useInstanced,
             this._lastProgram !== program
         );
+        if (!bindingHit) {
+            if (this.bindGroupCacheMetrics.size === 0) {
+                this.bindGroupCacheMetrics.recordInsertion();
+            } else {
+                this.bindGroupCacheMetrics.recordReplacement();
+            }
+            this.lastBindingMeshId = mesh.id;
+            this.lastBindingMaterialId = material.id;
+            this.lastBindingProgramId = program.id;
+            this.lastBindingMaterialRevision = material.revision;
+            this.lastBindingUseInstanced = useInstanced;
+        }
         this._lastProgram = program;
         if (material.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
 
-        const vao = VertexArrayObject.getVao(this.gl, geometry.id + program.id, {
+        const vaoCache = VertexArrayObject.getCache(this.gl);
+        this.reconcileCacheSize(this.vertexInputCacheMetrics, vaoCache.size);
+        const vaoKey = geometry.id + program.id;
+        const vertexInputHit = vaoCache.get(vaoKey) !== undefined;
+        if (vertexInputHit) this.vertexInputCacheMetrics.recordHit();
+        else this.vertexInputCacheMetrics.recordMiss();
+        const vao = VertexArrayObject.getVao(this.gl, vaoKey, {
             useInstanced,
             mode: geometry.mode
         });
+        this.reconcileCacheSize(this.vertexInputCacheMetrics, vaoCache.size);
         this.setupVao(vao, program, mesh);
         this.resourceManager.addMeshResources(
             mesh,
@@ -862,6 +970,7 @@ class WebGL2Driver extends RendererCore {
     addRenderInfo(faceCount: number, drawCount: number): void {
         this.renderInfo.addFaceCount(faceCount);
         this.renderInfo.addDrawCount(drawCount);
+        if (drawCount > 0) this.rendererDiagnosticsSink?.recordDraw(drawCount);
     }
 
     override render(stage: WebGL2DriverScene, camera: Camera, fireEvent = false): void {
@@ -873,6 +982,7 @@ class WebGL2Driver extends RendererCore {
 
     private renderInitialized(stage: WebGL2DriverScene, camera: Camera, fireEvent: boolean): void {
         if (this._isContextLost) throw new Error('Cannot render while the WebGL context is lost');
+        if (!this.frameRecording) this.resetDiagnosticsFrame();
         this.resourceManager.beginFrame();
         try {
             this.fog = stage.fog ?? null;
@@ -909,6 +1019,7 @@ class WebGL2Driver extends RendererCore {
                 }
                 if (this.autoPresentRenderTarget) target.presentToCanvas();
             } else {
+                this.recordFramebufferPlanLookup(this, this.width, this.height);
                 this.clear();
                 if (fireEvent) this.fire('beforeRenderScene');
                 this.renderScene();
@@ -921,11 +1032,13 @@ class WebGL2Driver extends RendererCore {
         }
         if (fireEvent) this.fire('afterRender');
         this.resourceManager.destroyUnusedResource(stage);
+        this.synchronizeLegacyCacheDiagnostics();
     }
 
     /** Execute the shared frame API immediately while preserving one logical frame boundary. */
     override renderFrame(callback: RendererFrameCallback): void {
         if (this.frameRecording) throw new Error('Nested renderer frames are not supported');
+        this.resetDiagnosticsFrame();
         this.runWithNativeSession(() => {
             this.frameRecording = true;
             let facadeActive = true;

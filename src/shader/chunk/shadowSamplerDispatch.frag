@@ -1,4 +1,4 @@
-#ifdef HILO_WEBGPU
+#ifdef HILO_SHADOW_ATLAS
 #ifdef HILO_DIRECTIONAL_LIGHTS_SMC
 float hiloDirectionalShadow(
     int index,

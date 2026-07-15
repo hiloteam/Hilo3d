@@ -1,4 +1,4 @@
-import type { Std140FieldLayout, Std140Layout, Std140Schema } from '../../ubo/Std140Layout';
+import type { Std140FieldLayout, Std140Layout, Std140Schema } from '../ubo/Std140Layout';
 
 export type WgslUniformFieldLayout = Std140FieldLayout;
 

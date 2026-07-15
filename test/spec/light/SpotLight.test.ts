@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import { renderWebGLShadowMaps } from '../../../src/render/internal/webgl2/WebGLShadowMapManager';
-import { createHilo3dEnvironment } from '../../setup';
+import { createHilo3dEnvironment } from '../../legacy-setup';
 
 const SpotLight = Hilo3d.SpotLight;
 const beginCameraPass = (camera: Hilo3d.Camera): void => {

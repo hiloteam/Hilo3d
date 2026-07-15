@@ -1,11 +1,23 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, stage, renderer, ticker } = await createExampleContext({ backend: 'webgl2' });
+const XR_LAYER_OPTIONS = Object.freeze({
+    alpha: true,
+    antialias: false,
+    depth: true,
+    stencil: false
+});
+
+const { camera, stage, renderer, ticker } = await createExampleContext({
+    backend: 'webgl2',
+    stage: XR_LAYER_OPTIONS
+});
 
 interface WebGL2NativeExtension {
-    readonly gl: WebGL2RenderingContext;
     readonly state: { bindSystemFramebuffer(): void };
+    makeXRCompatible(): Promise<void>;
+    createXRWebGLLayer(session: XRSession, init?: XRWebGLLayerInit): XRWebGLLayer;
+    bindExternalFramebuffer(framebuffer: WebGLFramebuffer, width: number, height: number): void;
     renderScene(): void;
     viewport(x?: number, y?: number, width?: number, height?: number): void;
 }
@@ -133,6 +145,9 @@ function hitTest(): XRHit[] {
 let xrSession: XRSession | null = null;
 let xrReferenceSpace: XRReferenceSpace | null = null;
 let lastTimestamp = 0;
+let webGLContextLost = false;
+let windowFrameRequested = false;
+const ignoredSessionEnds = new WeakSet<XRSession>();
 
 function updateController(frame: XRFrame): void {
     const referenceSpace = xrReferenceSpace;
@@ -186,28 +201,39 @@ function reportAsyncError(error: unknown): void {
 }
 
 function onWindowFrame(timestamp: DOMHighResTimeStamp): void {
-    if (xrSession) return;
+    windowFrameRequested = false;
+    if (xrSession || webGLContextLost) return;
     stage.tick(timestamp - lastTimestamp);
     lastTimestamp = timestamp;
+    requestWindowFrame();
+}
+
+function requestWindowFrame(): void {
+    if (windowFrameRequested || xrSession || webGLContextLost) return;
+    windowFrameRequested = true;
     requestAnimationFrame(onWindowFrame);
 }
 
 function onXRFrame(timestamp: DOMHighResTimeStamp, frame: XRFrame): void {
     const session = xrSession;
     const referenceSpace = xrReferenceSpace;
-    if (!session || !referenceSpace) return;
+    if (!session || !referenceSpace || webGLContextLost) return;
 
     const layer = session.renderState.baseLayer;
     if (!(layer instanceof XRWebGLLayer)) throw new Error('XR session has no WebGL base layer.');
     renderer.clearColor.set(0, 0, 0, 0);
     updateController(frame);
-    native.gl.bindFramebuffer(native.gl.FRAMEBUFFER, layer.framebuffer);
+    native.bindExternalFramebuffer(
+        layer.framebuffer,
+        layer.framebufferWidth,
+        layer.framebufferHeight
+    );
     const pose = frame.getViewerPose(referenceSpace);
     if (pose) {
         pose.views.forEach((view, index) => {
             const viewport = layer.getViewport(view);
             if (!viewport) throw new Error('XR view has no viewport.');
-            native.gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+            native.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
             camera.matrix.fromArray(view.transform.matrix);
             camera.projectionMatrix.fromArray(view.projectionMatrix);
             camera.updateMatrixWorld();
@@ -220,19 +246,51 @@ function onXRFrame(timestamp: DOMHighResTimeStamp, frame: XRFrame): void {
     session.requestAnimationFrame(onXRFrame);
 }
 
-function handleSessionEnd(): void {
+function handleSessionEnd(event: Event): void {
+    const endedSession = event.currentTarget as XRSession | null;
+    if (endedSession !== null && ignoredSessionEnds.has(endedSession)) {
+        ignoredSessionEnds.delete(endedSession);
+        return;
+    }
     xrSession = null;
     xrReferenceSpace = null;
+    if (webGLContextLost) return;
+    restoreWindowPresentation();
+}
+
+function restoreWindowPresentation(): void {
     camera.updateProjectionMatrix();
     camera.position.set(0, 0, 3);
     renderer.clearColor.set(0.3, 0.35, 0.35, 1);
     native.state.bindSystemFramebuffer();
     native.viewport();
     lastTimestamp = performance.now();
-    requestAnimationFrame(onWindowFrame);
+    requestWindowFrame();
+}
+
+function handleWebGLContextLost(): void {
+    if (webGLContextLost) return;
+    webGLContextLost = true;
+    const session = xrSession;
+    if (session) {
+        session.end().catch(error => {
+            if (xrSession === session) {
+                xrSession = null;
+                xrReferenceSpace = null;
+            }
+            if (!webGLContextLost) restoreWindowPresentation();
+            reportAsyncError(error);
+        });
+    }
+}
+
+function handleWebGLContextRestored(): void {
+    webGLContextLost = false;
+    if (xrSession === null) restoreWindowPresentation();
 }
 
 async function beginXRSession(): Promise<void> {
+    if (webGLContextLost) throw new Error('WebGL2 context recovery is in progress.');
     const xr = navigator.xr;
     if (!xr) throw new Error('WebXR is not available in this browser.');
     const session = await xr.requestSession('immersive-ar');
@@ -240,10 +298,27 @@ async function beginXRSession(): Promise<void> {
     session.addEventListener('end', handleSessionEnd, { once: true });
     session.addEventListener('selectstart', handleSelectStart);
     session.addEventListener('selectend', handleSelectEnd);
-    xrReferenceSpace = await session.requestReferenceSpace('local');
-    await native.gl.makeXRCompatible();
-    await session.updateRenderState({ baseLayer: new XRWebGLLayer(session, native.gl) });
-    session.requestAnimationFrame(onXRFrame);
+    try {
+        xrReferenceSpace = await session.requestReferenceSpace('local');
+        await native.makeXRCompatible();
+        await session.updateRenderState({
+            baseLayer: native.createXRWebGLLayer(session, XR_LAYER_OPTIONS)
+        });
+        session.requestAnimationFrame(onXRFrame);
+    } catch (error) {
+        ignoredSessionEnds.add(session);
+        if (xrSession === session) {
+            xrSession = null;
+            xrReferenceSpace = null;
+        }
+        try {
+            await session.end();
+        } catch {
+            // Preserve the initialization failure; the session may already be ending.
+        }
+        if (!webGLContextLost) restoreWindowPresentation();
+        throw error;
+    }
 }
 
 async function initializeXRButton(): Promise<void> {
@@ -263,6 +338,8 @@ async function initializeXRButton(): Promise<void> {
 }
 
 ticker.removeTick(stage);
+renderer.on('webglContextLost', handleWebGLContextLost);
+renderer.on('webglContextRestored', handleWebGLContextRestored);
 lastTimestamp = performance.now();
-requestAnimationFrame(onWindowFrame);
+requestWindowFrame();
 initializeXRButton().catch(reportAsyncError);

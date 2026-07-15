@@ -7,7 +7,7 @@ import {
 } from '../../../src/render/shader/GlslToWgsl';
 import { registerUniformBlockBinding } from '../../../src/render/ubo/UniformBlockBindings';
 import Shader from '../../../src/shader/Shader';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 function builtInShaderSource(name: string): string {
     const source = Shader.shaders[name];
@@ -56,9 +56,13 @@ async function validateWgslOnDevice(label: string, source: string): Promise<void
     }
     const module = wgslValidationDevice.createShaderModule({ label, code: source });
     const diagnostics = await module.getCompilationInfo();
+    const lines = source.split('\n');
     const errors = diagnostics.messages
         .filter(message => message.type === 'error')
-        .map(message => `${String(message.lineNum)}:${String(message.linePos)} ${message.message}`);
+        .map(
+            message =>
+                `${String(message.lineNum)}:${String(message.linePos)} ${message.message}: ${lines[message.lineNum - 1]?.trim() ?? ''}`
+        );
     expect(errors, `${label} WGSL diagnostics`).toEqual([]);
 }
 
@@ -967,6 +971,7 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
             HILO_SIDE: 1028,
             HILO_HAS_LIGHT: 1,
             HILO_HAS_NORMAL: 1,
+            HILO_SHADOW_ATLAS: 1,
             HILO_DIRECTIONAL_LIGHTS: 3,
             HILO_DIRECTIONAL_LIGHTS_SMC: 2,
             HILO_SPOT_LIGHTS: 2,

@@ -1,8 +1,11 @@
 import type { RHIBufferSource, RHICreateOptions } from '../RHI';
+import type { RHIDiagnosticsSink } from '../RHIDiagnosticsSink';
 
 export interface WebGLRHICreateOptions extends RHICreateOptions {
     /** Enables counters used by diagnostics and contract tests. Disabled by default. */
     readonly diagnostics?: boolean;
+    /** Backend-neutral renderer sink. Supplying it enables the local counters too. @internal */
+    readonly diagnosticsSink?: RHIDiagnosticsSink;
     readonly depth?: boolean;
     readonly stencil?: boolean;
     readonly premultipliedAlpha?: boolean;
@@ -43,6 +46,7 @@ type DiagnosticResource =
 /** Low-overhead optional counters. No GL query is performed when diagnostics are disabled. */
 export class WebGLRHIDiagnostics {
     readonly enabled: boolean;
+    private readonly sink: RHIDiagnosticsSink | null;
     resourceCreations = 0;
     buffersCreated = 0;
     texturesCreated = 0;
@@ -61,8 +65,17 @@ export class WebGLRHIDiagnostics {
     commandBuffers = 0;
     submissions = 0;
 
-    constructor(enabled = false) {
+    constructor(enabled = false, sink: RHIDiagnosticsSink | null = null) {
         this.enabled = enabled;
+        this.sink = sink;
+        if (sink) {
+            sink.markCacheUnavailable('buffer');
+            sink.markCacheUnavailable('texture');
+            sink.markCacheUnavailable('sampler');
+            sink.markCacheUnavailable('program');
+            sink.markCacheUnavailable('bindGroupLayout');
+            sink.markCacheUnavailable('pipelineLayout');
+        }
     }
 
     recordResource(kind: DiagnosticResource): void {
@@ -71,29 +84,83 @@ export class WebGLRHIDiagnostics {
         switch (kind) {
             case 'buffer':
                 this.buffersCreated++;
+                this.sink?.recordNativeObjectCreatedOnly('buffer');
                 break;
             case 'texture':
                 this.texturesCreated++;
+                this.sink?.recordNativeObjectCreatedOnly('texture');
                 break;
             case 'sampler':
                 this.samplersCreated++;
+                this.sink?.recordNativeObjectCreatedOnly('sampler');
                 break;
             case 'shaderModule':
                 this.shaderModulesCreated++;
+                this.sink?.recordNativeObjectCreatedOnly('shaderModule');
                 break;
             case 'pipeline':
                 this.pipelinesCreated++;
+                // WebGL has a native program, not a native pipeline object.
+                this.sink?.recordNativeObjectCreatedOnly('program');
                 break;
             case 'bindGroup':
                 this.bindGroupsCreated++;
                 break;
             case 'framebuffer':
                 this.framebuffersCreated++;
+                this.sink?.recordNativeObjectCreatedOnly('framebuffer');
                 break;
             case 'vertexArray':
                 this.vertexArraysCreated++;
+                this.sink?.recordNativeObjectCreatedOnly('vertexArray');
                 break;
         }
+    }
+
+    recordStateChange(): void {
+        if (!this.enabled) return;
+        this.stateChanges++;
+        this.sink?.recordStateChange();
+    }
+
+    recordBufferUpload(): void {
+        if (!this.enabled) return;
+        this.bufferUploads++;
+        this.sink?.recordUpload();
+    }
+
+    recordTextureUpload(): void {
+        if (!this.enabled) return;
+        this.textureUploads++;
+        this.sink?.recordUpload();
+    }
+
+    recordDraw(): void {
+        if (!this.enabled) return;
+        this.drawCalls++;
+        this.sink?.recordDraw();
+    }
+
+    recordRenderPass(): void {
+        if (!this.enabled) return;
+        this.renderPasses++;
+        this.sink?.recordPass();
+    }
+
+    recordCommandEncoder(): void {
+        if (!this.enabled) return;
+        this.commandEncoders++;
+    }
+
+    recordCommandBuffer(): void {
+        if (!this.enabled) return;
+        this.commandBuffers++;
+    }
+
+    recordSubmission(): void {
+        if (!this.enabled) return;
+        this.submissions++;
+        this.sink?.recordSubmission();
     }
 
     reset(): void {
@@ -377,7 +444,7 @@ export class WebGLRHIState {
     }
 
     private changed(): void {
-        if (this.diagnostics) this.diagnostics.stateChanges++;
+        this.diagnostics?.recordStateChange();
     }
 
     invalidate(): void {

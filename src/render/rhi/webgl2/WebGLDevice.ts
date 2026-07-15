@@ -204,7 +204,7 @@ export class WebGLRHIQueue extends WebGLObjectBase implements RHIQueue {
             (commandBuffer as WebGLRHICommandBuffer).submitted = true;
         }
         // Encoding already executed the GL calls. submit is deliberately a non-replaying ownership boundary.
-        if (this.device.diagnostics) this.device.diagnostics.submissions++;
+        this.device.diagnostics?.recordSubmission();
     }
 
     writeBuffer(
@@ -227,7 +227,7 @@ export class WebGLRHIQueue extends WebGLObjectBase implements RHIQueue {
         requireRange(bufferOffset, bytes.byteLength, concrete.size, 'Buffer write');
         this.device.state.bindBuffer(this.device.gl.COPY_WRITE_BUFFER, concrete.native);
         this.device.gl.bufferSubData(this.device.gl.COPY_WRITE_BUFFER, bufferOffset, bytes);
-        if (this.device.diagnostics) this.device.diagnostics.bufferUploads++;
+        this.device.diagnostics?.recordBufferUpload();
     }
 
     writeTexture(
@@ -1023,7 +1023,7 @@ export class WebGLRHIDevice extends WebGLDestroyableBase implements RHIDevice {
         this.state.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
         this.state.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 0);
         this.state.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
-        if (this.diagnostics) this.diagnostics.textureUploads++;
+        this.diagnostics?.recordTextureUpload();
     }
 
     copyTextureToTexture(
@@ -1239,7 +1239,7 @@ export class WebGLRHIDevice extends WebGLDestroyableBase implements RHIDevice {
         }
         this.state.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
         this.state.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 0);
-        if (this.diagnostics) this.diagnostics.textureUploads++;
+        this.diagnostics?.recordTextureUpload();
     }
 
     copyExternalImageToTexture(
@@ -1298,7 +1298,7 @@ export class WebGLRHIDevice extends WebGLDestroyableBase implements RHIDevice {
             texture.formatInfo.type,
             source.source
         );
-        if (this.diagnostics) this.diagnostics.textureUploads++;
+        this.diagnostics?.recordTextureUpload();
     }
 
     destroy(): void {
@@ -1819,7 +1819,10 @@ export class WebGLRHI extends WebGLDestroyableBase implements RHI {
         const gl = options.canvas.getContext('webgl2', this.contextAttributes);
         if (!gl) throw new Error('could not create a WebGL 2 context');
         this._gl = gl;
-        this.diagnostics = options.diagnostics === true ? new WebGLRHIDiagnostics(true) : null;
+        this.diagnostics =
+            options.diagnostics === true || options.diagnosticsSink
+                ? new WebGLRHIDiagnostics(true, options.diagnosticsSink ?? null)
+                : null;
         this._device = new WebGLRHIDevice(gl, options, this.diagnostics);
         this._surface = new WebGLRHISurface(
             this._device,

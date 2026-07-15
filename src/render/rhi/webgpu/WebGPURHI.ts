@@ -257,7 +257,10 @@ export class WebGPURHI extends WebGPUDestroyableObject implements RHI {
         this.#adapterValidator = options.adapterValidator;
         this.#includeEmptyDeviceDescriptorFields =
             options.includeEmptyDeviceDescriptorFields ?? false;
-        this.#diagnostics = options.diagnostics ? new WebGPURHIDiagnostics() : null;
+        this.#diagnostics =
+            options.diagnostics || options.diagnosticsSink
+                ? new WebGPURHIDiagnostics(options.diagnosticsSink ?? null)
+                : null;
         options.canvas.width = options.width;
         options.canvas.height = options.height;
         this.ready = this.initialize();

@@ -7,7 +7,7 @@ import {
     registerUniformBlockBinding,
     UNIFORM_BLOCK_BINDINGS
 } from '../../../src/render/ubo/UniformBlockBindings';
-import { testEnv } from '../../setup';
+import { testEnv } from '../../legacy-setup';
 
 describe('Std140Layout', () => {
     it('calculates scalar, vector, matrix and array layout using std140 rules', () => {
@@ -70,6 +70,19 @@ describe('Std140Layout', () => {
         expect(() => buffer.range(1, buffer.byteLength)).toThrow(RangeError);
     });
 
+    it('supports a caller-owned write result for allocation-free stable field updates', () => {
+        const layout = createStd140Layout({ color: 'vec4', opacity: 'float' });
+        const target = layout.createBuffer();
+        const result = { byteOffset: -1, byteLength: -1 };
+
+        expect(layout.writeInto(target, 'opacity', 0.5, result)).toBe(result);
+        expect(result).toEqual({ byteOffset: 16, byteLength: 4 });
+        expect(layout.writeInto(target, 'opacity', 0.5, result)).toBe(result);
+        expect(result).toEqual({ byteOffset: 16, byteLength: 0 });
+        expect(layout.writeInto(target, 'color', [1, 0, 0, 1], result)).toBe(result);
+        expect(result).toEqual({ byteOffset: 0, byteLength: 16 });
+    });
+
     it('uses bufferSubData for dirty bytes and supports range binding', () => {
         const layout = createStd140Layout({ color: 'vec4', opacity: 'float' });
         const buffer = UniformBuffer.fromSchema(layout);
@@ -95,6 +108,21 @@ describe('Std140Layout', () => {
             16
         );
         manager.destroy();
+    });
+
+    it('merges retained dirty writes into caller-owned span storage', () => {
+        const buffer = UniformBuffer.fromSchema(
+            createStd140Layout({ first: 'vec4', second: 'vec4', third: 'vec4' })
+        );
+        const baseline = buffer.revision;
+        const span = { byteOffset: -1, byteLength: -1 };
+
+        buffer.set('first', [1, 0, 0, 0]);
+        buffer.set('third', [0, 0, 0, 1]);
+        expect(buffer.getDirtySpanSince(baseline, span)).toBe(true);
+        expect(span).toEqual({ byteOffset: 0, byteLength: 48 });
+        expect(buffer.getDirtySpanSince(buffer.revision, span)).toBe(true);
+        expect(span).toEqual({ byteOffset: 0, byteLength: 0 });
     });
 
     it('keeps independent GPU allocations for each WebGL2 context', () => {

@@ -1,16 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import { resolveStageBackend } from '../../../src/core/Stage';
-import type WebGL2Driver from '../../../src/render/internal/webgl2/WebGL2Driver';
 
 const Stage = Hilo3d.Stage;
 const Renderer = Hilo3d.Renderer;
-
-function requireWebGL2Driver(renderer: Hilo3d.Renderer): WebGL2Driver {
-    const extension = renderer.getExtension('webgl2-native') as WebGL2Driver | null;
-    if (!extension) throw new Error('Expected a WebGL2 native renderer extension');
-    return extension;
-}
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -79,8 +72,14 @@ describe('Stage', () => {
             height: 16,
             pixelRatio: 1
         });
-        const renderer = requireWebGL2Driver(stage.renderer);
-        expect(renderer.isInit).toBe(true);
+        expect(stage.renderer.getExtension('rhi-v2')).toMatchObject({
+            device: { backend: 'webgl2' },
+            surface: { state: 'configured' },
+            recoveryState: 'ready'
+        });
+        expect(stage.renderer.getExtension('webgl2-native')).toMatchObject({
+            renderScene: expect.any(Function)
+        });
         expect(stage.renderer.isReady).toBe(true);
         stage.renderer.destroy();
 
@@ -94,7 +93,7 @@ describe('Stage', () => {
                 height: 16,
                 pixelRatio: 1
             })
-        ).rejects.toThrow(/could not create a WebGL 2 context/u);
+        ).rejects.toThrow(/WebGL2 is unavailable/u);
     });
 
     it('resolves auto through the lightweight support probe without probing explicit backends', async () => {
