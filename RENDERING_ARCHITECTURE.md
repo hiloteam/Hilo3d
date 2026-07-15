@@ -1,17 +1,17 @@
-# Hilo3d 当前渲染架构：Stage、RenderGraph、RHI v2 与双后端
+# Hilo3d 当前渲染架构：Stage、RenderGraph、RHI 与双后端
 
 > 本文基于当前仓库生产代码整理，描述已经落地的运行时链路，而不是重构规划中的目标状态。
 
 ## 结论先行
 
-Hilo3d 当前采用的是“**一套共享渲染前端 + 一套后端无关的 RenderGraph + 一套 WebGPU 风格的可移植 RHI
-v2 + WebGPU/WebGL 2 两个具体后端**”架构。
+Hilo3d 当前采用的是“**一套共享渲染前端 + 一套后端无关的 RenderGraph + 一套 WebGPU 风格的可移植 RHI，以及 WebGPU/WebGL
+2 两个具体后端**”架构。
 
 它的关键价值不是简单地把 WebGL
 API 换成另一组接口，而是把场景遍历、可见性判断、排序与实例化、Pass 组织、资源上传、Shader/Draw 准备、生命周期和恢复都放在共享层；后端只负责把同一份 RHI 资源与命令合同翻译成原生 WebGPU 或 WebGL
 2 行为。因此，大多数渲染功能只需实现一次，双后端差异被限制在明确边界内。
 
-![Hilo3d 当前渲染流程](./architecture-assets/hilo3d-rendering-pipeline-v2.png)
+![Hilo3d 当前渲染流程](./architecture-assets/hilo3d-rendering-pipeline.png)
 
 ## 1. 一帧是怎样完成的
 
@@ -137,12 +137,11 @@ Executor 的顺序是：
 
 相关代码：[`RenderGraphExecutor.ts`](./src/render/graph/RenderGraphExecutor.ts)、[`RenderGraph.ts`](./src/render/graph/RenderGraph.ts)。
 
-## 3. RHI v2 设计
+## 3. RHI 设计
 
 ### 3.1 WebGPU 风格、可移植子集
 
-RHI
-v2 的对象模型接近 WebGPU：`Device / Queue / CommandContext / RenderPass / Surface / Buffer / Texture / Sampler / Shader / BindGroup / Pipeline`。但它不是 WebGPU
+RHI 的对象模型接近 WebGPU：`Device / Queue / CommandContext / RenderPass / Surface / Buffer / Texture / Sampler / Shader / BindGroup / Pipeline`。但它不是 WebGPU
 API 的简单拷贝，而是 WebGPU 与 WebGL 2 都能可靠实现的可移植图形子集。
 
 RHI Core 不依赖任一具体后端，也不允许原生 `GPU*` 或 `WebGL*`
@@ -166,7 +165,7 @@ Device 负责资源、Pipeline、Queue、能力和丢失状态；Surface 负责 
 
 ### 3.3 显式 Queue 与帧状态机
 
-第一版 RHI v2 暴露一个互斥 Graphics Frame Scope：
+当前 RHI 暴露一个互斥 Graphics Frame Scope：
 
 ```text
 queue.beginFrame()
@@ -230,9 +229,9 @@ WebGPU 后端基本把 RHI 对象映射到原生 WebGPU 对象，并显式保留
 Tracker、VAO、Framebuffer、Sampler 等缓存把状态机 API 适配为同一个显式合同。
 
 两者的差异只存在于 [`backends/webgpu/`](./src/render/rhi/backends/webgpu) 和
-[`backends/webgl2/`](./src/render/rhi/backends/webgl2) 内。生产工厂只从这两个 RHI
-v2 目录创建设备；仓库里仍保留的旧 RHI/Driver 代码属于迁移兼容路径，不是 `SharedRendererDriver`
-的主渲染路径。
+[`backends/webgl2/`](./src/render/rhi/backends/webgl2)
+内。生产工厂只从这两个 RHI 后端目录创建设备；仓库里仍保留的旧 RHI/Driver 代码属于迁移兼容路径，不是
+`SharedRendererDriver` 的主渲染路径。
 
 ## 5. 资源、缓存与恢复
 
@@ -303,7 +302,7 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 
 ## 7. 当前边界与使用注意
 
-- RHI v2 当前公开的是互斥 Graphics Frame
+- RHI 当前公开的是互斥 Graphics Frame
   Scope；虽然能力模型包含部分存储/计算相关 Feature 名称，但尚未提供 Compute
   Pipeline/Dispatch 命令合同。
 - RenderGraph 每帧重新 Build/Compile，依靠高水位存储复用降低成本；当前没有跨帧复用完整的 Compiled
@@ -326,8 +325,8 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 | 帧事务                         | [`frame/`](./src/render/frame)                                                                              |
 | RenderGraph                    | [`graph/`](./src/render/graph)                                                                              |
 | Draw/Pass/资源准备             | [`renderer/`](./src/render/renderer)                                                                        |
-| RHI v2 Core                    | [`rhi/core/`](./src/render/rhi/core)                                                                        |
-| RHI v2 Factory                 | [`RHIFactory.ts`](./src/render/rhi/RHIFactory.ts)                                                           |
+| RHI Core                       | [`rhi/core/`](./src/render/rhi/core)                                                                        |
+| RHI Factory                    | [`RHIFactory.ts`](./src/render/rhi/RHIFactory.ts)                                                           |
 | WebGPU 后端                    | [`backends/webgpu/`](./src/render/rhi/backends/webgpu)                                                      |
 | WebGL 2 后端                   | [`backends/webgl2/`](./src/render/rhi/backends/webgl2)                                                      |
 
@@ -340,10 +339,10 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 ```text
 Use case: infographic-diagram
 Asset type: Hilo3d architecture documentation diagram
-Primary request: show the current Hilo3d rendering flow from Stage through the shared renderer, RenderFrame and RenderGraph, RHI v2, then split into WebGPU and WebGL 2 backends and end at GPU/Canvas
+Primary request: show the current Hilo3d rendering flow from Stage through the shared renderer, RenderFrame and RenderGraph, RHI, then split into WebGPU and WebGL 2 backends and end at GPU/Canvas
 Composition/framing: 16:9 landscape, left-to-right main flow, Pass lane above and resource-lifecycle lane below
 Style/medium: clean vector-like technical infographic, dark navy background, cyan and violet accents, crisp English technical labels
-Constraints: accurately show Stage -> Shared Renderer -> RenderFrame + RenderGraph -> RHI v2 -> WebGPU/WebGL 2; no extra architecture layers; no watermark
+Constraints: accurately show Stage -> Shared Renderer -> RenderFrame + RenderGraph -> RHI -> WebGPU/WebGL 2; render the label exactly as "RHI" with no version suffix; no extra architecture layers; no watermark
 ```
 
 ### 渲染优势图
