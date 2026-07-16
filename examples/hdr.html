@@ -1,48 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-    <title>Hilo3d hdr image loader Demo</title>
-    <link rel="stylesheet" type="text/css" href="./example.css">
-</head>
-<body>
-    <div id="container"></div>
-    <script src="../build/Hilo3d.js"></script>
-    <script src="./js/stats.js"></script>
-    <script src="./js/OrbitControls.js"></script>
-    <script src="./js/init.js"></script>
-    <script>
-        camera.z = 0;
-        camera.fov = 90;
-        const hdrLoader = new Hilo3d.HDRLoader();
-        hdrLoader.load({
-            src: '//g.alicdn.com/eva-assets/bf1ccbac4fc81cd77f007111766a5a58/0.0.1/christmas_photo_studio_01/1k.hdr'
-        }).then(hdrTexture => {
-            const material = new Hilo3d.BasicMaterial({
-                lightType:'NONE',
-                diffuse: hdrTexture,
-                useHDR: true,
-                exposure:2,
-                side: Hilo3d.constants.BACK,
-            });
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+        />
+        <title>Hilo3d hdr image loader Demo</title>
+        <link rel="stylesheet" type="text/css" href="./example.css" />
+    </head>
+    <body>
+        <div id="container"></div>
 
-            const sphereMesh = new Hilo3d.Mesh({
-                material: material,
-                geometry: new Hilo3d.SphereGeometry(),
-                onUpdate() {
-                    this.rotationY -= 0.1;
-                }
-            }).addTo(stage);
-
-            Hilo3d.Tween.to(material, {
-                exposure:10
-            }, {
-                duration:2000,
-                reverse:true,
-                loop:true
-            })
-        })
-    </script>
-</body>
+        <script type="module" src="./hdr.ts"></script>
+    </body>
 </html>

@@ -1,6 +1,6 @@
-#pragma glslify: import('../method/textureEnvMap.glsl');
-#pragma glslify: import('../method/encoding.glsl');
-#pragma glslify: import('./fixMathCrash.glsl');
+#include "../method/textureEnvMap.glsl"
+#include "../method/encoding.glsl"
+#include "./fixMathCrash.glsl"
 
 uniform vec4 u_baseColor;
 uniform vec4 u_emissionFactor;

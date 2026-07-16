@@ -1,128 +1,124 @@
+# Hilo3d
+
 English | [简体中文](./README_ZH.md)
 
-<p align="center"><img src="https://gw.alicdn.com/tfs/TB1znqbquT2gK0jSZFvXXXnFXXa-569-143.svg" alt="omi" width="500"/></p>
-<h3 align="center">A 3D WebGL Rendering Engine</h3>
+A TypeScript-first WebGL 3D rendering engine with physically based rendering and glTF support.
 
----
-[Installation](#Installation) • [Documentation](#Documentation) • [Development](#Development) • [Showcase](#Showcase) • [Examples](#Examples) • [Authors](#Authors) • [License](#License)
+[![npm](https://img.shields.io/npm/v/hilo3d.svg?style=flat-square)](https://www.npmjs.com/package/hilo3d)
+[![CI](https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?style=flat-square)](https://github.com/hiloteam/Hilo3d/actions/workflows/npm_test.yml)
+[![license](https://img.shields.io/npm/l/hilo3d.svg?style=flat-square)](./LICENSE)
 
-[![npm][npm-image]][npm-url] [![ci][ci-image]][ci-url] [![size][size-image]][cdn-url] [![gitter.im][gitter-image]][gitter-url]
+## Install
 
-### Features
-* Compatible for multiple mobile and desktop browsers.
-* Lightweight, only `110kb` after gzip.
-* Physically-based rendering support.
-* Perfect support for glTF models.
+```sh
+npm install hilo3d
+```
 
-### Installation
-* use npm
+Hilo3d 2.x uses ESM as its primary package entry:
 
-	```
-	$ npm install hilo3d
-	```
-* use script tag from a [cdn][cdn-url]
+```ts
+import {
+    AmbientLight,
+    BoxGeometry,
+    Color,
+    DirectionalLight,
+    Mesh,
+    PBRMaterial,
+    PerspectiveCamera,
+    Stage,
+    Ticker,
+    Vector3
+} from 'hilo3d';
 
-	```
-	<script src='//cdn.jsdelivr.net/npm/hilo3d@1.19.0/build/Hilo3d.js'></script>
-	```
+const camera = new PerspectiveCamera({
+    aspect: innerWidth / innerHeight,
+    z: 4
+});
 
-### Documentation
-* [API documentation](https://hilo3d.js.org/docs/index.html)
-* [Tutorial](https://github.com/hiloteam/article/issues?q=is%3Aissue+is%3Aopen+label%3AHilo3d)
+const stage = new Stage({
+    container: document.querySelector('#app')!,
+    camera,
+    width: innerWidth,
+    height: innerHeight
+});
 
-### Development
-* run `npm run dev` to dev.
-* run `npm run release` release the code.
-* run `npm run doc` to build API documentation.
-* run `npm run test` to run tests.
+const mesh = new Mesh({
+    geometry: new BoxGeometry(),
+    material: new PBRMaterial({
+        baseColor: new Color(0.832, 0.119, 0.093)
+    })
+}).addTo(stage);
 
-### Showcase
-* 淘宝人生
-  
-  ![淘宝人生](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/tbrs.gif)
+mesh.onUpdate = () => {
+    mesh.rotationX += 1;
+    mesh.rotationY += 1;
+};
 
-* 堆堆乐
-  
-  ![堆堆乐](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/ddl.gif)
+stage.addChild(new AmbientLight({ amount: 0.5 })).addChild(
+    new DirectionalLight({
+        amount: 5,
+        direction: new Vector3(-1.3, -0.8, 0)
+    })
+);
 
-* 天天惠星球
+const ticker = new Ticker(60);
+ticker.addTick(stage);
+ticker.start();
+```
 
-  ![天天惠星球](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/tthxq.gif)
- 
-* More cases can be found here: 
-  [![](https://gw.alicdn.com/tfs/TB1rngb0pT7gK0jSZFpXXaTkpXa-2048-1009.jpg)](https://seinjs.com/cn/production)
+For a browser `<script>` without a bundler, the self-contained UMD artifact exposes
+`globalThis.Hilo3d`:
 
-### Examples
+```html
+<script src="https://cdn.jsdelivr.net/npm/hilo3d@2/dist/Hilo3d.umd.cjs"></script>
+```
 
-  * [Index.html](https://hilo3d.js.org/docs/index.html)
-  * glTF
-    * [glTF Feature Test](https://cx20.github.io/gltf-test/?engines=Hilo3d)
-	* [glTF Viewer](https://hilo3d.js.org/examples/glTFViewer/index.html)
+The root package export is ESM-only. The `hilo3d/umd` compatibility subpath resolves to the modern
+ESM build for `import` and to the self-contained UMD build for `require`; direct browser scripts use
+the UMD file shown above.
 
-  * loader
-    * [gltf_loader](https://hilo3d.js.org/examples/loader/glTF_loader.html)
-    * [gltf_clone](https://hilo3d.js.org/examples/loader/glTF_clone.html)
-    * [osg](https://hilo3d.js.org/examples/loader/osg/osg_loader.html)
-    * [smd](https://hilo3d.js.org/examples/loader/smd/smd_loader.html)
-    * [tga](https://hilo3d.js.org/examples/loader/tga/tga_loader.html)
-    * [khc](https://hilo3d.js.org/examples/loader/khc/khc.html)
-    * [shader](https://hilo3d.js.org/examples/loader/shader/shader_loader.html)
-    * [draco](https://hilo3d.js.org/examples/loader/draco/draco_loader.html)
-  * [compressed_texture](https://hilo3d.js.org/examples/compressed_texture.html)
-  * [fog](https://hilo3d.js.org/examples/fog.html)
-  * [mesh_picker](https://hilo3d.js.org/examples/mesh_picker.html)
-  * [mouse_event](https://hilo3d.js.org/examples/mouse_event.html)
-  * [video](https://hilo3d.js.org/examples/video.html)
-  * [hdr](https://hilo3d.js.org/examples/hdr.html)
-  * [lifegame](https://hilo3d.js.org/examples/lifegame.html)
-  * [normal_map](https://hilo3d.js.org/examples/normal_map.html)
-  * [pbr](https://hilo3d.js.org/examples/pbr.html)
-  * [pbr2](https://hilo3d.js.org/examples/pbr2.html)
-  * [polly](https://hilo3d.js.org/examples/polly.html)
-  * [post_process](https://hilo3d.js.org/examples/post_process.html)
-  * [raycast](https://hilo3d.js.org/examples/raycast.html)
-  * [raycast_node](https://hilo3d.js.org/examples/raycast_node.html)
-  * [shader_material](https://hilo3d.js.org/examples/shader_material.html)
-  * [shadow](https://hilo3d.js.org/examples/shadow.html)
-  * [skybox](https://hilo3d.js.org/examples/skybox.html)
-  * [sphereEnvMap](https://hilo3d.js.org/examples/sphereEnvMap.html)
-  * [spotLight](https://hilo3d.js.org/examples/spotLight.html)
-  * [ssao](https://hilo3d.js.org/examples/ssao.html)
-  * [texture_data](https://hilo3d.js.org/examples/texture_data.html)
-  * [transparent](https://hilo3d.js.org/examples/transparent.html)
-  * [webgl_support](https://hilo3d.js.org/examples/webgl_support.html)
-  * [wireframe](https://hilo3d.js.org/examples/wireframe.html)
-  * [geometry_box](https://hilo3d.js.org/examples/geometry_box.html)
-  * [geometry_color](https://hilo3d.js.org/examples/geometry_color.html)
-  * [geometry_custom](https://hilo3d.js.org/examples/geometry_custom.html)
-  * [geometry_dynamic](https://hilo3d.js.org/examples/geometry_dynamic.html)
-  * [geometry_dynamic2](https://hilo3d.js.org/examples/geometry_dynamic2.html)
-  * [geometry_instanced](https://hilo3d.js.org/examples/geometry_instanced.html)
-  * [geometry_merge](https://hilo3d.js.org/examples/geometry_merge.html)
-  * [geometry_morph](https://hilo3d.js.org/examples/geometry_morph.html)
-  * [geometry_sphere](https://hilo3d.js.org/examples/geometry_sphere.html)
+## Documentation and examples
 
+- [API documentation](https://hilo3d.js.org/docs/)
+- [Example gallery](https://hilo3d.js.org/examples/list.html)
+- [glTF viewer](https://hilo3d.js.org/examples/glTFViewer/index.html)
+- [Engineering modernization record](./ENGINEERING_MODERNIZATION.md)
+- [Changelog](./CHANGELOG.md)
 
+API pages are generated from the checked TypeScript source with TypeDoc. The committed API report in
+[`etc/hilo3d.api.md`](./etc/hilo3d.api.md) locks the public declaration surface for review.
 
-### Authors
+## Development
 
- * [06wj](https://github.com/06wj)
- * [steel1990](https://github.com/steel1990)
- * [picacure](https://github.com/picacure)
+Development requires Node.js 22.22.2 or newer and npm 12.0.1. The versions are recorded in
+`.node-version` and `package.json`.
 
-### Contact us
-  * [![gitter.im][gitter-image]][gitter-url]
-  * QQ Group:372765886
+```sh
+npm install --global npm@12.0.1
+npm ci
+npx playwright install chromium
+npm run validate
+```
 
-### License
+Focused commands:
 
-[MIT License](http://en.wikipedia.org/wiki/MIT_License)
+- `npm run dev` starts library development.
+- `npm run examples:dev` serves the complete example gallery.
+- `npm run typecheck`, `npm run lint`, and `npm run format:check` run static gates.
+- `npm run test:coverage` runs browser unit tests and enforces full-source coverage thresholds.
+- `npm run test:ui` loads every example and rejects page, console, request, and WebGL errors.
+- `npm run test:visual` compares deterministic rendering screenshots.
+- `npm run docs:build` generates the API reference; `npm run site:build` assembles the public site.
+- `npm run test:package` validates the built and packed npm contract.
+- `npm run validate` runs the complete CI and pre-publish gate.
 
-[gitter-image]: https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square
-[gitter-url]: https://gitter.im/hiloteam/Hilo3d?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
-[npm-image]: https://img.shields.io/npm/v/hilo3d.svg?style=flat-square
-[npm-url]: https://www.npmjs.com/package/hilo3d
-[size-image]:https://img.shields.io/bundlephobia/minzip/hilo3d?style=flat-square&label=zipped%20size
-[ci-url]:https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev
-[ci-image]:https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?branch=dev
-[cdn-url]: https://cdn.jsdelivr.net/npm/hilo3d@1.19.0/build/Hilo3d.js
+The ESM build targets ES2022 and keeps the runtime dependency external. The UMD build is
+self-contained for direct browser use. Declarations and source maps are generated from `src/`, and
+the real tarball is checked with publint, Are the Types Wrong, Bundler and NodeNext consumers, ESM
+runtime loading, and the UMD browser global.
+
+See [Contributing](./.github/CONTRIBUTING.md) for the TypeScript, API, testing, and review policy.
+
+## License
+
+[MIT](./LICENSE)

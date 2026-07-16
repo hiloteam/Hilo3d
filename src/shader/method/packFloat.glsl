@@ -11,5 +11,3 @@ vec4 packFloat(float depth) {
     return res;
 }
 
-#pragma glslify: export(packFloat)
-

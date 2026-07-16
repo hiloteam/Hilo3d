@@ -1,0 +1,163 @@
+import Node, { type NodeParameters } from '../core/Node';
+import Matrix4 from '../math/Matrix4';
+import Frustum from '../math/Frustum';
+import Sphere from '../math/Sphere';
+import type Vector3 from '../math/Vector3';
+import Geometry from '../geometry/Geometry';
+import type Mesh from '../core/Mesh';
+const tempMatrix4 = new Matrix4();
+const tempSphere = new Sphere();
+
+export type CameraParameters = NodeParameters;
+/**
+ * 摄像机
+ */
+class Camera extends Node {
+    static override readonly typeName: string = 'Camera';
+    readonly viewMatrix = new Matrix4();
+    readonly projectionMatrix = new Matrix4();
+    readonly viewProjectionMatrix = new Matrix4();
+    protected readonly _frustum = new Frustum();
+    protected _geometry: Geometry | null = null;
+    override isCamera = true;
+    isPerspectiveCamera = false;
+    isOrthographicCamera = false;
+    override className = 'Camera';
+    /**
+     * 是否需要更新投影矩阵
+     */
+    protected _needUpdateProjectionMatrix = true;
+    protected _isGeometryDirty = false;
+    /**
+     * @param params - 创建对象的属性参数。可包含此类的所有属性。
+     */
+    constructor(params: CameraParameters = {}) {
+        super();
+        Object.assign(this, params);
+    }
+    /**
+     * 更新viewMatrix
+     * @returns this
+     */
+    updateViewMatrix(): this {
+        this.updateMatrixWorld(true);
+        this.viewMatrix.invert(this.worldMatrix);
+        return this;
+    }
+    /**
+     * 更新投影矩阵，子类必须重载这个方法
+     */
+    updateProjectionMatrix(): void {
+        this.projectionMatrix.identity();
+    }
+    /**
+     * 获取几何体，子类必须重写
+     * @param forceUpdate - 是否强制更新
+     */
+    getGeometry(forceUpdate = false): Geometry {
+        if (forceUpdate || !this._geometry) this._geometry = new Geometry();
+        return this._geometry;
+    }
+    /**
+     * 更新viewProjectionMatrix
+     * @returns this
+     */
+    updateViewProjectionMatrix(): this {
+        if (this._needUpdateProjectionMatrix) {
+            this.updateProjectionMatrix();
+            this._needUpdateProjectionMatrix = false;
+        }
+        this.updateViewMatrix();
+        this.viewProjectionMatrix.multiply(this.projectionMatrix, this.viewMatrix);
+        this.updateFrustum(this.viewProjectionMatrix);
+        return this;
+    }
+    /**
+     * 获取元素相对于当前Camera的矩阵
+     * @param node - 目标元素
+     * @param out - 传递将在这个矩阵上做计算，不传将创建一个新的 Matrix4
+     * @returns 返回获取的矩阵
+     */
+    getModelViewMatrix(node: Node, out?: Matrix4): Matrix4 {
+        out ??= new Matrix4();
+        out.multiply(this.viewMatrix, node.worldMatrix);
+        return out;
+    }
+    /**
+     * 获取元素的投影矩阵
+     * @param node - 目标元素
+     * @param out - 传递将在这个矩阵上做计算，不传将创建一个新的 Matrix4
+     * @returns 返回获取的矩阵
+     */
+    getModelProjectionMatrix(node: Node, out?: Matrix4): Matrix4 {
+        out ??= new Matrix4();
+        out.multiply(this.viewProjectionMatrix, node.worldMatrix);
+        return out;
+    }
+    /**
+     * 获取世界坐标系(三维)中一个点在画布(二维)上的位置
+     * @param vector - 点坐标
+     * @param width - 画布宽，不传的话返回-1~1
+     * @param height - 画布高，不传的话返回-1~1
+     * @returns 返回获取的坐标位置，如 `{ x: 0, y: 0 }`
+     */
+    projectVector(vector: Vector3, width?: number, height?: number): Vector3 {
+        const result = vector.clone();
+        result.transformMat4(this.viewProjectionMatrix);
+        if (width && height) {
+            result.x = ((result.x + 1) / 2) * width;
+            result.y = height - ((result.y + 1) / 2) * height;
+        }
+        return result;
+    }
+    /**
+     * 屏幕坐标转换世界坐标系
+     * @param vector - 点坐标
+     * @param width - 画布宽，传的话vector会认为是屏幕坐标
+     * @param height - 画布高，传的话vector会认为是屏幕坐标
+     * @returns 返回世界坐标系(三维)中一个点
+     */
+    unprojectVector(vector: Vector3, width?: number, height?: number): Vector3 {
+        const result = vector.clone();
+        if (width && height) {
+            result.x = (result.x / width) * 2 - 1;
+            result.y = 1 - (result.y / height) * 2;
+        }
+        tempMatrix4.invert(this.viewProjectionMatrix);
+        result.transformMat4(tempMatrix4);
+        return result;
+    }
+    /**
+     * point是否摄像机可见
+     * @param point -
+     */
+    isPointVisible(point: Vector3): boolean {
+        tempSphere.center.copy(point);
+        tempSphere.radius = 0;
+        return this._frustum.intersectsSphere(tempSphere);
+    }
+    /**
+     * mesh 是否摄像机可见
+     * @param mesh -
+     */
+    isMeshVisible(mesh: Mesh): boolean {
+        const geometry = mesh.geometry;
+        if (geometry) {
+            const sphere = geometry.getSphereBounds(mesh.worldMatrix);
+            if (this._frustum.intersectsSphere(sphere)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    /**
+     * 更新 frustum
+     * @param matrix -
+     * @returns this
+     */
+    updateFrustum(matrix: Matrix4): this {
+        this._frustum.fromMatrix(matrix);
+        return this;
+    }
+}
+export default Camera;

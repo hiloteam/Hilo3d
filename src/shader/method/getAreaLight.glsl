@@ -1,6 +1,6 @@
 // modified from https://github.com/mrdoob/three.js/blob/dev/src/renderers/shaders/ShaderChunk/lights_physical_pars_fragment.glsl#L26
 
-#pragma glslify: import('../method/transpose.glsl');
+#include "../method/transpose.glsl"
 
 vec2 LTC_Uv(const in vec3 N, const in vec3 V, const in float roughness) {
     const float LUT_SIZE = 64.0;
@@ -74,5 +74,3 @@ vec3 getAreaLight(const in vec3 diffuseColor, const in vec3 specularColor, const
     color += ((lightColor * diffuseColor) * LTC_Evaluate(normal, viewDir, position, mat3(1.0), rectCoords));
     return color;
 }
-
-#pragma glslify: export(getAreaLight)

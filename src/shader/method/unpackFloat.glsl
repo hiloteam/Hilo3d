@@ -3,5 +3,3 @@ float unpackFloat(vec4 rgbaDepth) {
     float depth = dot(rgbaDepth, bitShift);
     return depth;
 }
-
-#pragma glslify: export(unpackFloat)

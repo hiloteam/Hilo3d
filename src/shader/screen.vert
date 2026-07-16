@@ -1,6 +1,6 @@
-#pragma glslify: import('./chunk/extensions.vert');
-#pragma glslify: import('./chunk/baseDefine.glsl');
-#pragma glslify: import('./chunk/precision.vert');
+#include "./chunk/extensions.vert"
+#include "./chunk/baseDefine.glsl"
+#include "./chunk/precision.vert"
 
 attribute vec2 a_position;
 attribute vec2 a_texcoord0;

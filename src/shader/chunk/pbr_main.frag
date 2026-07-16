@@ -15,7 +15,7 @@ vec3 emissionColor = u_emissionFactor.rgb;
 
 color.a = baseColor.a;
 
-#pragma glslify: import('./transparency_main.frag');
+#include "./transparency_main.frag"
 
 #ifdef HILO_HAS_LIGHT
     vec3 viewPos = vec3(0, 0, 0);

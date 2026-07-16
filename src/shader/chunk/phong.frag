@@ -1,5 +1,5 @@
-#pragma glslify: import('../method/textureEnvMap.glsl');
-#pragma glslify: import('./fixMathCrash.glsl');
+#include "../method/textureEnvMap.glsl"
+#include "./fixMathCrash.glsl"
 
 #ifdef HILO_HAS_LIGHT
     #ifdef HILO_HAS_SPECULAR

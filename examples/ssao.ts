@@ -1,0 +1,227 @@
+import * as Hilo3d from '../src/Hilo3d';
+import { createExampleContext } from './js/init';
+import postProcess from './js/postProcess';
+
+const { camera, stage, renderer } = createExampleContext();
+
+const framebufferOption: Hilo3d.FramebufferParameters = {
+    type: Hilo3d.constants.FLOAT
+};
+renderer.framebufferOption = framebufferOption;
+renderer.clearColor = new Hilo3d.Color(0, 0, 0, 0);
+postProcess.init(renderer, framebufferOption);
+renderer.useFramebuffer = false;
+renderer.useInstanced = true;
+
+initScene();
+
+function initSSAO(): void {
+    const num = 32;
+    const ssaoKernel = new Float32Array(num * 3);
+    for (let i = 0; i < num; i++) {
+        const index = i * 3;
+        const scale = Math.random() * 0.9 + 0.1;
+        ssaoKernel[index] = (Math.random() * 2 - 1) * scale;
+        ssaoKernel[index + 1] = (Math.random() * 2 - 1) * scale;
+        ssaoKernel[index + 2] = Math.random() * scale;
+    }
+    const writeOriginData = true;
+    const positionFramebuffer = new Hilo3d.Framebuffer(renderer, {
+        type: Hilo3d.constants.FLOAT
+    });
+    positionFramebuffer.init();
+    const positionMaterial = new Hilo3d.GeometryMaterial({
+        vertexType: Hilo3d.constants.POSITION,
+        writeOriginData
+    });
+
+    const normalFramebuffer = new Hilo3d.Framebuffer(renderer, {
+        type: Hilo3d.constants.FLOAT
+    });
+    normalFramebuffer.init();
+    const normalMaterial = new Hilo3d.GeometryMaterial({
+        vertexType: Hilo3d.constants.NORMAL,
+        writeOriginData
+    });
+
+    const depthFramebuffer = new Hilo3d.Framebuffer(renderer);
+    depthFramebuffer.init();
+    const depthMaterial = new Hilo3d.GeometryMaterial({
+        vertexType: Hilo3d.constants.DEPTH,
+        writeOriginData: false
+    });
+
+    const ssaoFramebuffer = new Hilo3d.Framebuffer(renderer, {
+        type: Hilo3d.constants.FLOAT
+    });
+    ssaoFramebuffer.init();
+
+    const noiseData = new Float32Array(48);
+    for (let i = 0; i < 48; i++) {
+        noiseData[i] = Math.random() * 2 - 1;
+    }
+    const noiseTexture = new Hilo3d.DataTexture({
+        data: noiseData,
+        wrapS: Hilo3d.constants.REPEAT,
+        wrapT: Hilo3d.constants.REPEAT
+    });
+    const textureSize = new Float32Array([renderer.width, renderer.height]);
+    const noiseScale = new Float32Array([renderer.width / 4, renderer.height / 4]);
+
+    const ssaoPass = postProcess.addPass({
+        frag: `
+            precision HILO_MAX_FRAGMENT_PRECISION float;
+            varying vec2 v_texcoord0;
+            uniform sampler2D u_normal;
+            uniform sampler2D u_position;
+            uniform sampler2D u_depth;
+            uniform sampler2D u_noise;
+            uniform vec3 u_kernel[32];
+            uniform mat4 u_projection;
+            uniform vec2 u_noiseScale;
+            uniform float u_radius;
+            uniform float u_cameraFar;
+            uniform float u_cameraNear;
+
+            float unpackFloat(vec4 rgbaDepth) {
+                const vec4 bitShift = vec4(1.0 / (256.0 * 256.0 * 256.0), 1.0 / (256.0 * 256.0), 1.0 / 256.0, 1.0);
+                float depth = dot(rgbaDepth, bitShift);
+                return depth;
+            }
+
+            void main(void) {
+                vec4 fragPosAll = texture2D(u_position, v_texcoord0);
+                if(fragPosAll.a < 1.0){
+                    discard;
+                }
+                vec3 fragPos = fragPosAll.xyz;
+                vec3 normal = texture2D(u_normal, v_texcoord0).xyz;
+                vec3 randomVec = texture2D(u_noise, v_texcoord0 * u_noiseScale).xyz;
+                vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
+                vec3 bitangent = cross(normal, tangent);
+                mat3 TBN = mat3(tangent, bitangent, normal);
+                
+                float occlusion = 0.0;
+                for(int i = 0; i < 32; ++i)
+                {
+                    // 获取样本位置
+                    vec3 samplePos = TBN * u_kernel[i]; // 切线->观察空间
+                    samplePos = fragPos + samplePos * u_radius; 
+
+                    vec4 offset = vec4(samplePos, 1.0);
+                    offset = u_projection * offset; // 观察->裁剪空间
+                    offset.xyz /= offset.w; // 透视划分
+                    offset.xyz = offset.xyz * 0.5 + 0.5; // 变换到0.0 - 1.0的值域
+                    
+                    float sampleDepth = unpackFloat(texture2D(u_depth, offset.xy));
+                    sampleDepth = sampleDepth * 2.0 - 1.0;
+                    sampleDepth = (-2.0 * u_cameraNear * u_cameraFar) / (u_cameraFar + u_cameraNear - sampleDepth * (u_cameraFar - u_cameraNear));
+                    float rangeCheck = smoothstep(0.0, 1.0, u_radius / abs(fragPos.z - sampleDepth));
+                    occlusion += (sampleDepth >= samplePos.z ? 1.0 : 0.0) * rangeCheck;    
+                }
+                occlusion = 1.0 - (occlusion / 32.0);
+                gl_FragColor = vec4(vec3(occlusion), 1.0);
+            }`,
+        uniforms: {
+            u_position: postProcess.uniformTextureGetter(positionFramebuffer.texture),
+            u_normal: postProcess.uniformTextureGetter(normalFramebuffer.texture),
+            u_depth: postProcess.uniformTextureGetter(depthFramebuffer.texture),
+            u_noise: postProcess.uniformTextureGetter(noiseTexture),
+            u_kernel: ssaoKernel,
+            u_radius: 0.1,
+            u_noiseScale: noiseScale,
+            u_projection: {
+                get() {
+                    return camera.projectionMatrix.elements;
+                }
+            },
+            u_cameraFar: {
+                get() {
+                    return camera.far;
+                }
+            },
+            u_cameraNear: {
+                get() {
+                    return camera.near;
+                }
+            }
+        }
+    });
+
+    const blurPass = postProcess.addPass({
+        frag: `
+                precision HILO_MAX_FRAGMENT_PRECISION float;
+                varying vec2 v_texcoord0;
+                uniform sampler2D u_ssao;
+                uniform vec2 u_textureSize;
+                void main(void) {
+                    vec2 texelSize = 1.0 / u_textureSize;
+                    float result = 0.0;
+                    for (int x = -2; x < 2; ++x) 
+                    {
+                        for (int y = -2; y < 2; ++y) 
+                        {
+                            vec2 offset = vec2(float(x), float(y)) * texelSize;
+                            result += texture2D(u_ssao, v_texcoord0 + offset).r;
+                        }
+                    }
+                    gl_FragColor = vec4(vec3(result / (4.0 * 4.0)), 1.0);
+                }
+            `,
+        uniforms: {
+            u_ssao: postProcess.uniformTextureGetter(ssaoFramebuffer.texture),
+            u_textureSize: textureSize
+        }
+    });
+
+    renderer.forceMaterial = depthMaterial;
+
+    const renderGeometryBuffer = (
+        framebuffer: Hilo3d.Framebuffer,
+        material: Hilo3d.Material
+    ): void => {
+        framebuffer.bind();
+        framebuffer.clear();
+        renderer.forceMaterial = material;
+        renderer.renderScene();
+    };
+
+    renderer.on('afterRender', () => {
+        const previousMaterial = renderer.forceMaterial;
+        try {
+            renderGeometryBuffer(positionFramebuffer, positionMaterial);
+            renderGeometryBuffer(normalFramebuffer, normalMaterial);
+            renderGeometryBuffer(depthFramebuffer, depthMaterial);
+        } finally {
+            renderer.forceMaterial = previousMaterial;
+        }
+
+        ssaoFramebuffer.bind();
+        ssaoFramebuffer.clear();
+        postProcess.draw(null, ssaoPass);
+
+        renderer.state.bindSystemFramebuffer();
+        postProcess.draw(null, blurPass);
+    });
+}
+
+renderer.onInit(() => {
+    initSSAO();
+});
+
+function initScene(): void {
+    const loader = new Hilo3d.GLTFLoader();
+    loader
+        .load({
+            src: './models/dragon/dragon.gltf'
+        })
+        .then(model => {
+            model.node.setScale(0.1);
+            stage.addChild(model.node);
+        })
+        .catch((error: unknown) => {
+            queueMicrotask(() => {
+                throw error;
+            });
+        });
+}
