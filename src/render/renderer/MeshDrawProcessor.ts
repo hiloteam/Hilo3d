@@ -541,12 +541,16 @@ export class MeshDrawProcessor {
         this.#passSemanticFrame = semanticFrame;
     }
 
-    prepare(mesh: Mesh, target: RHIMeshDrawTargetDescriptor): PreparedDraw {
+    prepare(
+        mesh: Mesh,
+        target: RHIMeshDrawTargetDescriptor,
+        materialOverride: Material | null = null
+    ): PreparedDraw {
         this.assertAlive();
         const context = this.requireActiveContext();
         if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
         const geometry = mesh.geometry;
-        const material = context.renderer.forceMaterial ?? mesh.material;
+        const material = materialOverride ?? context.renderer.forceMaterial ?? mesh.material;
         if (!geometry || !material) {
             throw new Error(`Mesh ${mesh.id} requires geometry and material`);
         }
@@ -851,7 +855,8 @@ export class MeshDrawProcessor {
     prepareInstancedBatch(
         owner: object,
         meshes: readonly Mesh[],
-        target: RHIMeshDrawTargetDescriptor
+        target: RHIMeshDrawTargetDescriptor,
+        materialOverride: Material | null = null
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireActiveContext();
@@ -866,7 +871,7 @@ export class MeshDrawProcessor {
         }
         const geometry = representative.geometry;
         const sourceMaterial = representative.material;
-        const forcedMaterial = context.renderer.forceMaterial;
+        const forcedMaterial = materialOverride ?? context.renderer.forceMaterial;
         const material = forcedMaterial ?? sourceMaterial;
         if (!geometry || !material) {
             throw new Error(`Mesh ${representative.id} requires geometry and material`);

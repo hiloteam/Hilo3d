@@ -1,4 +1,4 @@
-import type { RHIBuffer, RHITexture } from '../rhi/core';
+import type { RHIBuffer, RHITexture, RHITextureUsageFlags } from '../rhi/core';
 import type { RGPassContext, RGPrepareContext } from './RenderGraphExecutor';
 import type {
     RGBufferDescriptor,
@@ -794,6 +794,24 @@ export class RenderGraphBuilder {
             );
         }
         (resource as { readFromLastGraphWriter: boolean }).readFromLastGraphWriter = true;
+    }
+
+    /** @internal Aggregate declaration-derived usage for a transient texture. */
+    addTextureUsage(handle: RGTextureHandle, usage: RHITextureUsageFlags): void {
+        const resource = this.requireResource(handle, 'texture');
+        if (!Number.isSafeInteger(usage) || usage <= 0) {
+            renderGraphFailure('invalid-descriptor', 'texture usage must be a positive bit mask');
+        }
+        const descriptor = resource.descriptor as { usage: RHITextureUsageFlags };
+        const missing = usage & ~descriptor.usage;
+        if (missing === 0) return;
+        if (resource.origin !== 'transient') {
+            renderGraphFailure(
+                'invalid-descriptor',
+                `imported texture ${resource.name} lacks usage ${String(missing)}`
+            );
+        }
+        descriptor.usage |= usage;
     }
 
     addPass<P>(template: RenderPassTemplate<P>, params: P): RGPassHandle {

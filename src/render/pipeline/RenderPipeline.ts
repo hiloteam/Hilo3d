@@ -1,0 +1,152 @@
+import type Camera from '../../camera/Camera';
+import type { RendererFeatureName } from '../RendererOptions';
+import type { RendererScene, RendererViewport } from '../RendererCore';
+import type {
+    RenderTargetColor,
+    RenderTargetColorFormat,
+    RenderTargetDepthStencilFormat,
+    RenderTargetSampleCount
+} from '../RenderTarget';
+import type { RenderPassParameterPool } from './RenderPassParameterPool';
+import type {
+    CullingOptions,
+    CullingResultsHandle,
+    RendererListDescriptor,
+    RendererListHandle
+} from './RendererList';
+import type { ScriptableRenderGraph } from './ScriptableRenderGraph';
+
+/** Future engine capabilities that require a complete SRP/RHI vertical implementation. */
+export type RenderPipelineCapabilityName = 'storage-buffer' | 'storage-texture' | 'compute-pass';
+
+/** Portable texture roles available to creation-time requirement validation. */
+export type RenderPipelineTextureUse =
+    | 'sampled'
+    | 'filterable-sampled'
+    | 'color-attachment'
+    | 'depth-stencil-attachment'
+    | 'copy-source'
+    | 'copy-destination';
+
+/** Public limits that a pipeline may inspect without observing native backend types. */
+export interface RenderPipelineLimits {
+    /** Maximum width or height of a two-dimensional texture. */
+    readonly maxTextureDimension2D: number;
+    /** Maximum simultaneous color attachments in one raster pass. */
+    readonly maxColorAttachments: number;
+    /** Maximum sampled textures visible to one shader stage. */
+    readonly maxSampledTexturesPerShaderStage: number;
+}
+
+/** Frozen effective capabilities for one renderer device generation. */
+export interface RenderPipelineCapabilities {
+    /** Backend-neutral limit snapshot. */
+    readonly limits: Readonly<RenderPipelineLimits>;
+    /** Return whether an optional pipeline capability is fully implemented end to end. */
+    supportsCapability(capability: RenderPipelineCapabilityName): boolean;
+    /** Return whether a texture format supports a portable role and sample count. */
+    supportsTextureFormat(
+        format: RenderTargetColorFormat | RenderTargetDepthStencilFormat,
+        use: RenderPipelineTextureUse,
+        sampleCount?: RenderTargetSampleCount
+    ): boolean;
+}
+
+/** One texture-format constraint validated before the pipeline runtime is created. */
+export interface RenderPipelineTextureRequirement {
+    /** Required portable format. */
+    readonly format: RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+    /** Required graph or pass role. */
+    readonly use: RenderPipelineTextureUse;
+    /** Required sample count, defaulting to one. */
+    readonly sampleCount?: RenderTargetSampleCount;
+}
+
+/** Static renderer/device constraints declared before asynchronous backend selection. */
+export interface RenderPipelineRequirements {
+    /** Required public renderer device features. */
+    readonly requiredFeatures?: readonly RendererFeatureName[];
+    /** Required SRP capabilities; unsupported capabilities fail instead of degrading. */
+    readonly requiredCapabilities?: readonly RenderPipelineCapabilityName[];
+    /** Minimum values for named fields in {@link RenderPipelineLimits}. */
+    readonly requiredLimits?: Readonly<Record<string, number>>;
+    /** Required texture-format roles. */
+    readonly requiredTextureFormats?: readonly Readonly<RenderPipelineTextureRequirement>[];
+}
+
+/** Immutable creation inputs for one renderer-local pipeline runtime. */
+export interface RenderPipelineCreateContext {
+    /** Capabilities for the selected device generation. */
+    readonly capabilities: RenderPipelineCapabilities;
+}
+
+/** Physical output metadata for one pipeline invocation. */
+export interface RenderPipelineOutput {
+    /** Whether this invocation renders to the configured surface or a RenderTarget. */
+    readonly kind: 'surface' | 'render-target';
+    /** Output width in physical pixels. */
+    readonly width: number;
+    /** Output height in physical pixels. */
+    readonly height: number;
+    /** Output raster sample count. */
+    readonly sampleCount: RenderTargetSampleCount;
+    /** Number of continuous output color attachments. */
+    readonly colorAttachmentCount: number;
+    /** Output depth/stencil format, or null when no depth attachment exists. */
+    readonly depthStencilFormat: RenderTargetDepthStencilFormat | null;
+    /** Return the format for one output color attachment. */
+    colorFormat(index: number): RenderTargetColorFormat;
+}
+
+/** Frame-scoped recording context; retaining it after record() returns is an error. */
+export interface RenderPipelineContext {
+    /** Monotonic application frame index. */
+    readonly frameIndex: number;
+    /** Scene supplied to the current renderer invocation. */
+    readonly scene: RendererScene;
+    /** Camera supplied to the current renderer invocation. */
+    readonly camera: Camera;
+    /** Active viewport in physical pixels. */
+    readonly viewport: RendererViewport;
+    /** Renderer clear color snapshotted for this synchronous invocation. */
+    readonly clearColor: Readonly<RenderTargetColor>;
+    /** Physical output metadata. */
+    readonly output: RenderPipelineOutput;
+    /** Effective capabilities for the current device generation. */
+    readonly capabilities: RenderPipelineCapabilities;
+    /** Backend-neutral graph facade for this invocation. */
+    readonly graph: ScriptableRenderGraph;
+
+    /** Collect camera-visible scene meshes and lights into a frame-scoped handle. */
+    cull(options?: Readonly<CullingOptions>): CullingResultsHandle;
+    /** Select and sort a reusable draw list from current-frame culling results. */
+    createRendererList(descriptor: Readonly<RendererListDescriptor>): RendererListHandle;
+    /** Record the shared directional, spot, and point-light shadow atlas for these results. */
+    recordShadows(cullingResults: CullingResultsHandle): void;
+    /** Acquire one runtime-owned, high-water reusable parameter slot. */
+    acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P;
+}
+
+/** Renderer-local runtime created exactly once by a RenderPipelineFactory. */
+export interface RenderPipeline {
+    /** Human-readable runtime name used in diagnostics. */
+    readonly name: string;
+    /**
+     * Record one invocation synchronously into the active application Render Graph.
+     *
+     * @returns An ignored synchronous value. Promise-like values are rejected before RHI execution.
+     */
+    record(context: RenderPipelineContext): unknown;
+    /** Release runtime-owned state exactly once during Renderer destruction. */
+    destroy(): void;
+}
+
+/** Reusable pipeline configuration; create() must return a new runtime for every Renderer. */
+export interface RenderPipelineFactory {
+    /** Human-readable factory name used in selection and initialization diagnostics. */
+    readonly name: string;
+    /** Static constraints snapshotted before asynchronous renderer creation. */
+    readonly requirements?: Readonly<RenderPipelineRequirements>;
+    /** Create independent state for one Renderer. */
+    create(context: RenderPipelineCreateContext): RenderPipeline | Promise<RenderPipeline>;
+}

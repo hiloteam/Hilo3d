@@ -13,6 +13,8 @@ import {
     type RHIRequestableWebGPUFeature,
     type RHIWebGL2ContextOptions
 } from '../rhi/RHIFactory';
+import { defaultForwardRenderPipelineFactory } from '../pipeline/ForwardRenderPipeline';
+import { snapshotRenderPipelineFactory } from '../pipeline/RenderPipelineFactory';
 
 const REQUESTABLE_WEBGPU_FEATURES: ReadonlySet<string> = new Set([
     'texture-compression-bc',
@@ -170,12 +172,25 @@ export async function resolveRendererBackend(
 }
 
 function snapshotCreateOptions(options: RendererCreateOptions): RendererCreateOptions {
-    const requiredFeatures = 'requiredFeatures' in options ? options.requiredFeatures : undefined;
-    const requiredLimits = 'requiredLimits' in options ? options.requiredLimits : undefined;
+    const renderPipeline = snapshotRenderPipelineFactory(
+        options.renderPipeline ?? defaultForwardRenderPipelineFactory
+    );
+    const optionFeatures = 'requiredFeatures' in options ? options.requiredFeatures : undefined;
+    const featureSet = new Set<RendererFeatureName>(optionFeatures ?? []);
+    for (const feature of renderPipeline.requirements?.requiredFeatures ?? []) {
+        featureSet.add(feature);
+    }
+    const requiredFeatures = [...featureSet];
+    const optionLimits = 'requiredLimits' in options ? options.requiredLimits : undefined;
+    const requiredLimits: Record<string, number> = { ...(optionLimits ?? {}) };
+    for (const [name, value] of Object.entries(renderPipeline.requirements?.requiredLimits ?? {})) {
+        requiredLimits[name] = Math.max(requiredLimits[name] ?? 0, value);
+    }
     return {
         ...options,
-        ...(requiredFeatures === undefined ? {} : { requiredFeatures: [...requiredFeatures] }),
-        ...(requiredLimits === undefined ? {} : { requiredLimits: { ...requiredLimits } })
+        renderPipeline,
+        ...(requiredFeatures.length === 0 ? {} : { requiredFeatures }),
+        ...(Object.keys(requiredLimits).length === 0 ? {} : { requiredLimits })
     };
 }
 
@@ -191,7 +206,21 @@ export async function createRenderer(options: RendererCreateOptions = {}): Promi
         await renderer.ready;
         return renderer;
     } catch (error: unknown) {
-        renderer.destroy();
+        let cleanupFailed = false;
+        let cleanupFailure: unknown;
+        try {
+            renderer.destroy();
+        } catch (cleanupError) {
+            cleanupFailed = true;
+            cleanupFailure = cleanupError;
+        }
+        if (cleanupFailed) {
+            throw new AggregateError(
+                [error, cleanupFailure],
+                'Renderer initialization and cleanup both failed',
+                { cause: error }
+            );
+        }
         throw error;
     }
 }

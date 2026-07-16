@@ -135,14 +135,8 @@ export class FullscreenDrawProcessor {
         if (!this.active) {
             throw new Error('Fullscreen draw processor requires beginFrame before preparation');
         }
-        const compiled = this.compiler.compile(options.shader, this.registry.deviceBackend);
-        if (compiled.metadata.vertexInputs.length !== 0) {
-            throw new TypeError('Fullscreen shaders must not declare vertex inputs');
-        }
-        this.validateFragmentOutputs(compiled.metadata.fragmentOutputs, options.target);
-        const pipeline = this.pipelines.prepare(
+        const pipeline = this.prepareGraphPipeline(
             options.shader,
-            EMPTY_VERTEX_LAYOUTS,
             options.material,
             options.target
         );
@@ -176,12 +170,31 @@ export class FullscreenDrawProcessor {
             pipeline,
             bindings
         });
-        this.resourceUses.use(pipeline.pipeline);
         for (const group of bindings.activeGroupIndices) {
             const handle = bindings.groupHandles[group];
             if (handle !== null && handle !== undefined) this.resourceUses.use(handle);
         }
         return draw;
+    }
+
+    /** @internal Prepare reusable shader/pipeline state before graph resources are resolved. */
+    prepareGraphPipeline(
+        shader: Shader,
+        material: Material,
+        target: RHIMeshDrawTargetDescriptor
+    ): Readonly<PipelineResourceRecord> {
+        this.assertAlive();
+        if (!this.active) {
+            throw new Error('Fullscreen draw processor requires beginFrame before preparation');
+        }
+        const compiled = this.compiler.compile(shader, this.registry.deviceBackend);
+        if (compiled.metadata.vertexInputs.length !== 0) {
+            throw new TypeError('Fullscreen shaders must not declare vertex inputs');
+        }
+        this.validateFragmentOutputs(compiled.metadata.fragmentOutputs, target);
+        const pipeline = this.pipelines.prepare(shader, EMPTY_VERTEX_LAYOUTS, material, target);
+        this.resourceUses.use(pipeline.pipeline);
+        return pipeline;
     }
 
     trackSubmission(frameIndex: number, submission: RHISubmission): Promise<void> {

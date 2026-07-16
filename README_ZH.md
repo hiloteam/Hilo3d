@@ -162,6 +162,24 @@ facade。进入 callback 前应确定 scene transform、material、`GeometryData
 mipmap 准备和显式 readback 属于独立 GPU 工作，不计入应用 pass 的单次提交承诺。renderer 的 resize、`setRenderTarget()`、资源释放/销毁，以及 render
 target 的 resize、readback、destroy 必须在 callback 外执行；WebGPU 录制期间尝试这些操作会中止整帧，且不会提交部分 command。
 
+## 可脚本化渲染管线
+
+可以在 `Renderer.create()` 或 `Stage.create()` 中传入可复用的 `renderPipeline`
+factory 来完整替换帧编排，也可以通过 `ForwardRenderPipelineFactory`
+feature 在 shadow、opaque、transparent、post-process 和 output 阶段之间注入工作。每个 Renderer 都获得独立 pipeline/feature
+runtime；record 保持同步，并与普通 renderer 命令写入同一个事务化 Render
+Graph。默认空 feature 集继续走原有 direct forward 快路径，不创建中间 scene target，也不增加 present
+pass。
+
+图采样与纹理 copy 使用不同声明：fullscreen 输入必须支持线性过滤；copy
+pass 必须声明精确的 source/destination pair，并在 backend frame 开始前验证解析后的 RHI texture。
+
+[可脚本化管线示例](./examples/scriptable_pipeline.html)展示了使用 retained fullscreen
+feature 采样 scene color；
+[SRP 架构文档](./documentation/SCRIPTABLE_RENDER_PIPELINE_PLAN.md)说明资源所有权、失败回滚、性能门禁，以及 storage
+buffer/compute 的 capability-gated 扩展路线。当前 compute/storage
+capability 会明确失败，不会在 WebGL 2 上提供不完整模拟。
+
 ## 现代渲染架构
 
 - `src/render` 负责唯一公开的 Renderer、scene traversal、frame planning、render target 契约、std140

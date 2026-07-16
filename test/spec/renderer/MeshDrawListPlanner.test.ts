@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';
 import Geometry from '../../../src/geometry/Geometry';
 import Material from '../../../src/material/Material';
+import Vector3 from '../../../src/math/Vector3';
 import {
     MeshDrawListPlanner,
     type MeshDrawListPlan
@@ -339,6 +341,24 @@ describe('MeshDrawListPlanner', () => {
         expect(plan.opaqueMeshes).toEqual([direct]);
         expect(plan.transparentMeshes).toEqual([]);
         expect(plan.instancedBatches[0]?.transparent).toBe(false);
+    });
+
+    it('recomputes back-to-front depth when an override changes opaque meshes to transparent', () => {
+        const planner = new MeshDrawListPlanner();
+        const source = material('source');
+        const sharedGeometry = geometry('override-depth');
+        const near = mesh('near', source, sharedGeometry);
+        const far = mesh('far', source, sharedGeometry);
+        near.setPosition(0, 0, -2).updateMatrixWorld(true);
+        far.setPosition(0, 0, -10).updateMatrixWorld(true);
+        const camera = new PerspectiveCamera({ near: 0.1, far: 100, aspect: 1 });
+        camera.setPosition(0, 0, 0).lookAt(new Vector3(0, 0, -1));
+        camera.updateViewProjectionMatrix();
+        const transparentOverride = material('transparent-override', 0, true);
+
+        const plan = planner.build([near, far], transparentOverride, true, camera);
+
+        expect(plan.transparentMeshes).toEqual([far, near]);
     });
 
     it('detaches owners, prunes omitted meshes, and resets without replacing the result', () => {

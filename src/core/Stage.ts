@@ -12,6 +12,8 @@ import type Camera from '../camera/Camera';
 import type Fog from './Fog';
 import log from '../utils/log';
 import { getElementRect } from '../utils/util';
+import type { RenderPipelineFactory } from '../render/pipeline/RenderPipeline';
+import { snapshotRenderPipelineFactory } from '../render/pipeline/RenderPipelineFactory';
 
 type DOMViewport = ReturnType<typeof getElementRect>;
 const STAGE_CONSTRUCTION_TOKEN = Symbol('Stage construction');
@@ -158,6 +160,8 @@ export interface StageCommonParameters extends NodeParameters {
     premultipliedAlpha?: boolean;
     failIfMajorPerformanceCaveat?: boolean;
     gameMode?: boolean;
+    /** Renderer-local scriptable pipeline factory snapshotted during Stage.create(). */
+    renderPipeline?: RenderPipelineFactory;
 }
 
 /** Requested backend policy. `auto` probes WebGPU first and otherwise selects WebGL 2. */
@@ -201,14 +205,25 @@ export type StageParameters<Backend extends StageBackend = 'auto'> = StageCommon
 function snapshotStageParameters(
     params: StageParameters<StageBackend>
 ): StageParameters<StageBackend> {
+    const renderPipeline =
+        params.renderPipeline === undefined
+            ? undefined
+            : snapshotRenderPipelineFactory(params.renderPipeline);
+    const requiredFeatureSet = new Set(params.requiredFeatures ?? []);
+    for (const feature of renderPipeline?.requirements?.requiredFeatures ?? []) {
+        requiredFeatureSet.add(feature);
+    }
+    const requiredLimits: Record<string, number> = { ...(params.requiredLimits ?? {}) };
+    for (const [name, value] of Object.entries(
+        renderPipeline?.requirements?.requiredLimits ?? {}
+    )) {
+        requiredLimits[name] = Math.max(requiredLimits[name] ?? 0, value);
+    }
     return {
         ...params,
-        ...(params.requiredFeatures === undefined
-            ? {}
-            : { requiredFeatures: [...params.requiredFeatures] }),
-        ...(params.requiredLimits === undefined
-            ? {}
-            : { requiredLimits: { ...params.requiredLimits } })
+        ...(renderPipeline === undefined ? {} : { renderPipeline }),
+        ...(requiredFeatureSet.size === 0 ? {} : { requiredFeatures: [...requiredFeatureSet] }),
+        ...(Object.keys(requiredLimits).length === 0 ? {} : { requiredLimits })
     };
 }
 

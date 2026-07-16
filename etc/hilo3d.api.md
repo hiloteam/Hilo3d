@@ -1302,6 +1302,20 @@ export interface CubeTextureParameters extends Omit<TextureParameters<CubeTextur
     image?: CubeTextureImage | null;
 }
 
+// @public
+export interface CullingOptions {
+    readonly camera?: Camera;
+    readonly frustumCulling?: boolean;
+}
+
+// @public
+export type CullingResultsHandle = number & {
+    readonly [cullingResultsHandleBrand]: true;
+};
+
+// @public (undocumented)
+const cullingResultsHandleBrand: unique symbol;
+
 // @public (undocumented)
 export type CustomRenderOptionProvider = (option: ShaderOptions) => ShaderOptions;
 
@@ -1533,6 +1547,56 @@ export interface FogParameters {
 }
 
 // @public
+export interface ForwardRenderFeatureContext {
+    readonly pipeline: RenderPipelineContext;
+    readonly resources: ForwardRenderPipelineResources;
+}
+
+// @public
+export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirements {
+    readonly sampledDepth: boolean;
+    readonly sampledSceneColor: boolean;
+}
+
+// @public
+export type ForwardRenderInjectionPoint = 'before-shadow' | 'after-shadow' | 'before-opaque' | 'after-opaque' | 'before-transparent' | 'after-transparent' | 'before-post-process' | 'after-post-process' | 'before-output';
+
+// @public
+export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
+    constructor(options?: ForwardRenderPipelineFactoryOptions);
+    create(context: RenderPipelineCreateContext): RenderPipeline;
+    readonly features: readonly ForwardRenderPipelineFeature[];
+    readonly name = "forward";
+    readonly requirements: Readonly<RenderPipelineRequirements>;
+}
+
+// @public
+export interface ForwardRenderPipelineFactoryOptions {
+    readonly features?: readonly ForwardRenderPipelineFeature[];
+}
+
+// @public
+export interface ForwardRenderPipelineFeature {
+    create(context: RenderPipelineCreateContext): ForwardRenderPipelineFeatureRuntime;
+    readonly injectionPoint: ForwardRenderInjectionPoint;
+    readonly name: string;
+    readonly requirements: Readonly<ForwardRenderFeatureRequirements>;
+}
+
+// @public
+export interface ForwardRenderPipelineFeatureRuntime {
+    destroy(): void;
+    record(context: ForwardRenderFeatureContext): unknown;
+}
+
+// @public
+export interface ForwardRenderPipelineResources {
+    readonly color: RenderGraphTextureHandle | null;
+    readonly depth: RenderGraphTextureHandle | null;
+    replaceColor(texture: RenderGraphTextureHandle): void;
+}
+
+// @public
 export class Frustum {
     constructor();
     className: string;
@@ -1544,6 +1608,35 @@ export class Frustum {
     isFrustum: boolean;
     // (undocumented)
     planes: [Plane, Plane, Plane, Plane, Plane, Plane];
+}
+
+// @public
+export class FullscreenRenderPass implements ScriptableRenderPass<FullscreenRenderPassParameters> {
+    constructor(options: Readonly<FullscreenRenderPassOptions>);
+    execute(context: ScriptableRenderPassContext, parameters: FullscreenRenderPassParameters): void;
+    readonly material: Material;
+    readonly name: string;
+    setup(builder: ScriptableRenderPassBuilder, parameters: FullscreenRenderPassParameters): void;
+    readonly shader: Shader;
+    readonly uniformBuffers: readonly UniformBuffer[];
+}
+
+// @public
+export interface FullscreenRenderPassOptions {
+    readonly material: Material;
+    readonly name?: string;
+    readonly shader: Shader;
+    readonly uniformBuffers?: readonly UniformBuffer[];
+}
+
+// @public
+export interface FullscreenRenderPassParameters {
+    readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
+    readonly depthStencilAttachment?: Readonly<RenderPipelineDepthStencilAttachment>;
+    readonly inputTextures: readonly RenderGraphTextureHandle[];
+    readonly scissor?: RendererViewport;
+    readonly stencilReference?: number;
+    readonly viewport?: RendererViewport;
 }
 
 // @public
@@ -4251,6 +4344,11 @@ export type PointShadowCameraParameters = Pick<ShadowCameraParameters, 'near' | 
 // @public (undocumented)
 const POSITION = "POSITION";
 
+// @public
+export class PresentRenderPass extends FullscreenRenderPass {
+    constructor(name?: string);
+}
+
 // @public (undocumented)
 export interface ProgramBindingInfo {
     // (undocumented)
@@ -4561,6 +4659,7 @@ export interface RendererCommonOptions {
     pixelRatio?: number;
     // (undocumented)
     premultipliedAlpha?: boolean;
+    renderPipeline?: RenderPipelineFactory;
     // (undocumented)
     stencil?: boolean;
     // (undocumented)
@@ -4664,6 +4763,29 @@ export interface RendererFrame {
 export type RendererFrameCallback = (frame: RendererFrame) => unknown;
 
 // @public
+export interface RendererListDescriptor {
+    readonly castShadowsOnly?: boolean;
+    readonly cullingResults: CullingResultsHandle;
+    readonly overrideMaterial?: Material;
+    readonly queue: RendererListQueue;
+    readonly sorting: RendererListSorting;
+}
+
+// @public
+export type RendererListHandle = number & {
+    readonly [rendererListHandleBrand]: true;
+};
+
+// @public (undocumented)
+const rendererListHandleBrand: unique symbol;
+
+// @public
+export type RendererListQueue = 'opaque' | 'transparent' | 'all';
+
+// @public
+export type RendererListSorting = 'material-front-to-back' | 'back-to-front' | 'none';
+
+// @public
 export type RendererOptions<Backend extends RendererBackend = RendererBackend> = RendererOptionsMap[Backend];
 
 // @public (undocumented)
@@ -4748,6 +4870,22 @@ export interface RenderGraphFramePlan {
 }
 
 // @public
+export type RenderGraphPassHandle = number & {
+    readonly [renderGraphPassHandleBrand]: true;
+};
+
+// @public (undocumented)
+const renderGraphPassHandleBrand: unique symbol;
+
+// @public
+export type RenderGraphTextureHandle = number & {
+    readonly [renderGraphTextureHandleBrand]: true;
+};
+
+// @public (undocumented)
+const renderGraphTextureHandleBrand: unique symbol;
+
+// @public
 export class RenderInfo {
     constructor();
     addDrawCount(num: number): void;
@@ -4762,6 +4900,164 @@ export class RenderInfo {
     readonly isRenderInfo = true;
     reset(): void;
 }
+
+// @public
+export type RenderPassParameterFactory<P extends object> = () => P;
+
+// @public
+export class RenderPassParameterPool<P extends object> {
+    constructor(
+    factory: RenderPassParameterFactory<P>,
+    reset?: RenderPassParameterReset<P>);
+    get capacity(): number;
+}
+
+// @public
+export type RenderPassParameterReset<P extends object> = (parameters: P) => void;
+
+// @public
+export interface RenderPipeline {
+    destroy(): void;
+    readonly name: string;
+    record(context: RenderPipelineContext): unknown;
+}
+
+// @public
+export interface RenderPipelineCapabilities {
+    readonly limits: Readonly<RenderPipelineLimits>;
+    supportsCapability(capability: RenderPipelineCapabilityName): boolean;
+    supportsTextureFormat(format: RenderTargetColorFormat | RenderTargetDepthStencilFormat, use: RenderPipelineTextureUse, sampleCount?: RenderTargetSampleCount): boolean;
+}
+
+// @public
+export type RenderPipelineCapabilityName = 'storage-buffer' | 'storage-texture' | 'compute-pass';
+
+// @public
+export interface RenderPipelineColorAttachment {
+    readonly clearValue?: RenderTargetColor;
+    readonly loadOp: RenderTargetLoadOp;
+    readonly resolveTarget?: RenderGraphTextureHandle;
+    readonly storeOp: RenderTargetStoreOp;
+    readonly texture: RenderGraphTextureHandle;
+}
+
+// @public
+export interface RenderPipelineContext {
+    acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P;
+    readonly camera: Camera;
+    readonly capabilities: RenderPipelineCapabilities;
+    readonly clearColor: Readonly<RenderTargetColor>;
+    createRendererList(descriptor: Readonly<RendererListDescriptor>): RendererListHandle;
+    cull(options?: Readonly<CullingOptions>): CullingResultsHandle;
+    readonly frameIndex: number;
+    readonly graph: ScriptableRenderGraph;
+    readonly output: RenderPipelineOutput;
+    recordShadows(cullingResults: CullingResultsHandle): void;
+    readonly scene: RendererScene;
+    readonly viewport: RendererViewport;
+}
+
+// @public
+export interface RenderPipelineCreateContext {
+    readonly capabilities: RenderPipelineCapabilities;
+}
+
+// @public
+export interface RenderPipelineDepthStencilAttachment {
+    readonly depthClearValue?: number;
+    readonly depthLoadOp?: RenderTargetLoadOp;
+    readonly depthReadOnly?: boolean;
+    readonly depthStoreOp?: RenderTargetStoreOp;
+    readonly stencilClearValue?: number;
+    readonly stencilLoadOp?: RenderTargetLoadOp;
+    readonly stencilReadOnly?: boolean;
+    readonly stencilStoreOp?: RenderTargetStoreOp;
+    readonly texture: RenderGraphTextureHandle;
+}
+
+// @public
+export type RenderPipelineExtent = Readonly<{
+    width: number;
+    height: number;
+}> | Readonly<{
+    relativeTo: 'output';
+    scale: number;
+    minWidth?: number;
+    minHeight?: number;
+}>;
+
+// @public
+export interface RenderPipelineFactory {
+    create(context: RenderPipelineCreateContext): RenderPipeline | Promise<RenderPipeline>;
+    readonly name: string;
+    readonly requirements?: Readonly<RenderPipelineRequirements>;
+}
+
+// @public
+export interface RenderPipelineLimits {
+    readonly maxColorAttachments: number;
+    readonly maxSampledTexturesPerShaderStage: number;
+    readonly maxTextureDimension2D: number;
+}
+
+// @public
+export interface RenderPipelineOutput {
+    readonly colorAttachmentCount: number;
+    colorFormat(index: number): RenderTargetColorFormat;
+    readonly depthStencilFormat: RenderTargetDepthStencilFormat | null;
+    readonly height: number;
+    readonly kind: 'surface' | 'render-target';
+    readonly sampleCount: RenderTargetSampleCount;
+    readonly width: number;
+}
+
+// @public
+export type RenderPipelineOutputResources = RenderPipelineTargetResources;
+
+// @public
+export interface RenderPipelinePersistentTargetDescriptor {
+    readonly colorFormats: readonly RenderTargetColorFormat[];
+    readonly depthStencilFormat?: RenderTargetDepthStencilFormat;
+    readonly extent: RenderPipelineExtent;
+    readonly label?: string;
+    readonly sampleCount?: RenderTargetSampleCount;
+}
+
+// @public
+export interface RenderPipelineRequirements {
+    readonly requiredCapabilities?: readonly RenderPipelineCapabilityName[];
+    readonly requiredFeatures?: readonly RendererFeatureName[];
+    readonly requiredLimits?: Readonly<Record<string, number>>;
+    readonly requiredTextureFormats?: readonly Readonly<RenderPipelineTextureRequirement>[];
+}
+
+// @public
+export interface RenderPipelineTargetResources {
+    color(index: number): RenderGraphTextureHandle;
+    readonly colorAttachmentCount: number;
+    readonly depthStencil: RenderGraphTextureHandle | null;
+    readonly height: number;
+    readonly sampleCount: RenderTargetSampleCount;
+    readonly width: number;
+}
+
+// @public
+export interface RenderPipelineTextureDescriptor {
+    readonly extent: RenderPipelineExtent;
+    readonly format: RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+    readonly mipLevelCount?: number;
+    readonly sampleCount?: RenderTargetSampleCount;
+}
+
+// @public
+export interface RenderPipelineTextureRequirement {
+    readonly format: RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+    readonly sampleCount?: RenderTargetSampleCount;
+    readonly use: RenderPipelineTextureUse;
+}
+
+// @public
+export type RenderPipelineTextureUse = 'sampled' | 'filterable-sampled' | 'color-attachment' | 'depth-stencil-attachment' | 'copy-source' | 'copy-destination';
 
 // @public
 export interface RenderTarget {
@@ -4946,6 +5242,71 @@ export interface ResourceRequestOptions {
     type?: NetworkResourceType;
     // (undocumented)
     url: string;
+}
+
+// @public
+export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassParameters> {
+    constructor(name?: string);
+    execute(context: ScriptableRenderPassContext, parameters: SceneRenderPassParameters): void;
+    readonly name: string;
+    setup(builder: ScriptableRenderPassBuilder, parameters: SceneRenderPassParameters): void;
+}
+
+// @public
+export interface SceneRenderPassParameters {
+    readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
+    readonly depthStencilAttachment?: Readonly<RenderPipelineDepthStencilAttachment>;
+    readonly rendererList: RendererListHandle;
+    readonly scissor?: RendererViewport;
+    readonly stencilReference?: number;
+    readonly viewport?: RendererViewport;
+}
+
+// @public
+export interface ScriptableRenderCommands {
+    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
+    drawRendererList(list: RendererListHandle): void;
+    setScissor(rect: RendererViewport): void;
+    setStencilReference(reference: number): void;
+    setViewport(viewport: RendererViewport): void;
+}
+
+// @public
+export interface ScriptableRenderGraph {
+    acquirePersistentTarget(key: object, descriptor: Readonly<RenderPipelinePersistentTargetDescriptor>): RenderPipelineTargetResources;
+    addPass<P extends object>(pass: ScriptableRenderPass<P>, parameters: P): RenderGraphPassHandle;
+    createTexture(name: string, descriptor: Readonly<RenderPipelineTextureDescriptor>): RenderGraphTextureHandle;
+    importOutput(): RenderPipelineOutputResources;
+    importRenderTarget(target: RenderTarget): RenderPipelineTargetResources;
+}
+
+// @public
+export interface ScriptableRenderPass<P extends object> {
+    execute(context: ScriptableRenderPassContext, parameters: P): unknown;
+    readonly name: string;
+    prepare?(context: ScriptableRenderPrepareContext, parameters: P): unknown;
+    setup(builder: ScriptableRenderPassBuilder, parameters: P): unknown;
+}
+
+// @public
+export interface ScriptableRenderPassBuilder {
+    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
+    dependsOn(pass: RenderGraphPassHandle): void;
+    markSideEffect(): void;
+    readTexture(texture: RenderGraphTextureHandle): void;
+    useColorAttachment(options: Readonly<RenderPipelineColorAttachment>): void;
+    useDepthStencilAttachment(options: Readonly<RenderPipelineDepthStencilAttachment>): void;
+    useRendererList(list: RendererListHandle): void;
+}
+
+// @public
+export interface ScriptableRenderPassContext {
+    readonly commands: ScriptableRenderCommands;
+}
+
+// @public
+export interface ScriptableRenderPrepareContext {
+    readonly capabilities: RenderPipelineCapabilities;
 }
 
 // @public
@@ -5542,6 +5903,18 @@ interface ShadowInfo {
     shadowMapSize?: Float32Array;
 }
 
+// @public
+export class ShadowRenderPass {
+    constructor(name?: string);
+    readonly name: string;
+    record(context: RenderPipelineContext, parameters: Readonly<ShadowRenderPassParameters>): void;
+}
+
+// @public
+export interface ShadowRenderPassParameters {
+    readonly cullingResults: CullingResultsHandle;
+}
+
 // @public (undocumented)
 export interface Size {
     // (undocumented)
@@ -5812,6 +6185,7 @@ export interface StageCommonParameters extends NodeParameters {
     pixelRatio?: number;
     // (undocumented)
     premultipliedAlpha?: boolean;
+    renderPipeline?: RenderPipelineFactory;
     // (undocumented)
     stencil?: boolean;
     // (undocumented)
@@ -6016,6 +6390,20 @@ export type TextureBinding = Texture<unknown>;
 
 // @public
 export type TextureCompressionFormat = 'bc' | 'etc1' | 'etc2' | 'astc-4x4' | 'pvrtc';
+
+// @public
+export class TextureCopyPass implements ScriptableRenderPass<TextureCopyPassParameters> {
+    constructor(name?: string);
+    execute(context: ScriptableRenderPassContext, parameters: TextureCopyPassParameters): void;
+    readonly name: string;
+    setup(builder: ScriptableRenderPassBuilder, parameters: TextureCopyPassParameters): void;
+}
+
+// @public
+export interface TextureCopyPassParameters {
+    readonly destination: RenderGraphTextureHandle;
+    readonly source: RenderGraphTextureHandle;
+}
 
 // @public
 export type TextureCubeFace = 0 | 1 | 2 | 3 | 4 | 5;

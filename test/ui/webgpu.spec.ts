@@ -75,6 +75,40 @@ test('renders a real frame through WebGPU and Naga', async ({ page }) => {
 });
 
 for (const backend of ['webgl2', 'webgpu'] as const) {
+    test(`runs the same scriptable forward feature through ${backend}`, async ({ page }) => {
+        const consoleErrors: string[] = [];
+        const pageErrors: string[] = [];
+        const gpuValidationErrors: string[] = [];
+        const devtools = await page.context().newCDPSession(page);
+        await devtools.send('Log.enable');
+        devtools.on('Log.entryAdded', ({ entry }) => {
+            if (entry.level === 'error' && entry.source === 'rendering') {
+                gpuValidationErrors.push(entry.text);
+            }
+        });
+        page.on('console', message => {
+            if (message.type() === 'error') consoleErrors.push(message.text());
+        });
+        page.on('pageerror', error => pageErrors.push(error.message));
+
+        await page.goto(`/examples/scriptable_pipeline.html?backend=${backend}`, {
+            waitUntil: 'load'
+        });
+        await page.waitForFunction(
+            () => window.__HILO3D_SCRIPTABLE_PIPELINE_RESULT__ !== undefined
+        );
+
+        const result = await page.evaluate(() => window.__HILO3D_SCRIPTABLE_PIPELINE_RESULT__);
+        await devtools.detach();
+        expect(pageErrors).toEqual([]);
+        expect(consoleErrors).toEqual([]);
+        expect(gpuValidationErrors).toEqual([]);
+        expect(result?.backend).toBe(backend);
+        expect(result?.drawCount).toBeGreaterThanOrEqual(4);
+        expect(result?.faceCount).toBeGreaterThan(0);
+        expect(result?.hasShadowAtlas).toBe(true);
+    });
+
     test(`renders native compressed KTX textures through ${backend}`, async ({ page }) => {
         const consoleErrors: string[] = [];
         const pageErrors: string[] = [];
@@ -136,6 +170,12 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
 
 declare global {
     interface Window {
+        __HILO3D_SCRIPTABLE_PIPELINE_RESULT__?: {
+            readonly backend: 'webgl2' | 'webgpu';
+            readonly drawCount: number;
+            readonly faceCount: number;
+            readonly hasShadowAtlas: boolean;
+        };
         __HILO3D_COMPRESSED_TEXTURE_RESULT__?: {
             readonly backend: 'webgl2' | 'webgpu';
             readonly supportedSources: readonly string[];

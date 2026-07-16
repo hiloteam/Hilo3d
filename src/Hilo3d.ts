@@ -163,6 +163,7 @@ export {
     type TextureCompressionFormat
 } from './render/Renderer';
 export type { RenderGraphFramePlan } from './render/RenderGraphFramePlan';
+export * from './render/pipeline';
 export type {
     Resource,
     ShaderDefineValue,

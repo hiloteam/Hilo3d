@@ -1,6 +1,8 @@
+import type Camera from '../../camera/Camera';
 import Mesh from '../../core/Mesh';
 import type Geometry from '../../geometry/Geometry';
 import type Material from '../../material/Material';
+import Vector3 from '../../math/Vector3';
 import { MAX_INSTANCES_PER_DRAW } from '../ubo/BuiltInUniformBlocks';
 
 /** A reusable instanced draw group. Its contents are valid until the planner is rebuilt. */
@@ -57,6 +59,7 @@ interface OwnerRecord {
     inputIndex: number;
     renderOrder: number;
     transparent: boolean;
+    transparentDepth: number;
     identityOrder: number;
     slotIndex: number;
 }
@@ -101,10 +104,10 @@ function requireRecordValue<T>(value: T | null, name: string): T {
  * Shared, backend-neutral Mesh classification and ordering for the prepared-draw path.
  *
  * Opaque items are clustered deterministically by material and geometry identity after
- * `renderOrder`. Transparent items preserve caller order when `renderOrder` is equal so an
- * upstream camera/depth planner can provide the required back-to-front order. Explicitly
- * instanced meshes, including transparent ones, are grouped by exact material/geometry object
- * identity and removed from both direct queues.
+ * `renderOrder`. Transparent items use an optional camera to recompute effective-material depth,
+ * otherwise preserving caller order so an upstream camera/depth planner can provide the required
+ * back-to-front order. Explicitly instanced meshes, including transparent ones, are grouped by
+ * exact material/geometry object identity and removed from both direct queues.
  */
 export class MeshDrawListPlanner {
     readonly #input: Mesh[] = [];
@@ -118,6 +121,7 @@ export class MeshDrawListPlanner {
     readonly #geometryGroups = new Map<Geometry, Map<Material, MutableMeshDrawInstanceBatch>>();
     readonly #geometryGroupPool: Map<Material, MutableMeshDrawInstanceBatch>[] = [];
     readonly #batchPool: MutableMeshDrawInstanceBatch[] = [];
+    readonly #transparentPosition = new Vector3();
     readonly #diagnosticState: MutableDiagnostics = {
         activeOwnerCount: 0,
         activeInstancedBatchCount: 0,
@@ -135,6 +139,7 @@ export class MeshDrawListPlanner {
     #epoch = 0;
     #nextOwnerIdentityOrder = 0;
     #nextBatchIdentityOrder = 0;
+    #transparentSortCamera: Camera | null = null;
 
     readonly #compareOpaque = (a: Mesh, b: Mesh): number => {
         const recordA = this.requireOwnerRecord(a);
@@ -159,6 +164,12 @@ export class MeshDrawListPlanner {
         const recordB = this.requireOwnerRecord(b);
         if (recordA.renderOrder !== recordB.renderOrder) {
             return recordA.renderOrder - recordB.renderOrder;
+        }
+        if (
+            this.#transparentSortCamera !== null &&
+            recordA.transparentDepth !== recordB.transparentDepth
+        ) {
+            return recordB.transparentDepth - recordA.transparentDepth;
         }
         return recordA.inputIndex - recordB.inputIndex;
     };
@@ -218,9 +229,12 @@ export class MeshDrawListPlanner {
 
     build(
         meshes: readonly Mesh[],
-        materialOverride: Material | null = null
+        materialOverride: Material | null = null,
+        sort = true,
+        transparentSortCamera: Camera | null = null
     ): Readonly<MeshDrawListPlan> {
         this.stageInput(meshes, materialOverride);
+        this.#transparentSortCamera = transparentSortCamera;
         try {
             this.advanceEpoch();
             this.clearActivePlan();
@@ -233,12 +247,15 @@ export class MeshDrawListPlanner {
                 this.commitMesh(mesh, index, materialOverride);
             }
 
-            this.#opaqueMeshes.sort(this.#compareOpaque);
-            this.#transparentMeshes.sort(this.#compareTransparent);
-            this.#instancedBatches.sort(this.#compareInstanced);
+            if (sort) {
+                this.#opaqueMeshes.sort(this.#compareOpaque);
+                this.#transparentMeshes.sort(this.#compareTransparent);
+                this.#instancedBatches.sort(this.#compareInstanced);
+            }
             this.updateDiagnostics();
             return this.#plan;
         } finally {
+            this.#transparentSortCamera = null;
             this.#seenMeshes.clear();
         }
     }
@@ -339,6 +356,14 @@ export class MeshDrawListPlanner {
         record.material = material;
         record.renderOrder = material.renderOrder;
         record.transparent = material.transparent;
+        record.transparentDepth = 0;
+        if (material.transparent && this.#transparentSortCamera !== null) {
+            mesh.worldMatrix.getTranslation(this.#transparentPosition);
+            this.#transparentPosition.transformMat4(
+                this.#transparentSortCamera.viewProjectionMatrix
+            );
+            record.transparentDepth = this.#transparentPosition.z;
+        }
 
         let batch = record.batch;
         const batchMatches =
@@ -389,6 +414,7 @@ export class MeshDrawListPlanner {
                 inputIndex: 0,
                 renderOrder: 0,
                 transparent: false,
+                transparentDepth: 0,
                 identityOrder: 0,
                 slotIndex: 0
             };
@@ -403,6 +429,7 @@ export class MeshDrawListPlanner {
         record.inputIndex = 0;
         record.renderOrder = 0;
         record.transparent = false;
+        record.transparentDepth = 0;
         record.identityOrder = ++this.#nextOwnerIdentityOrder;
         record.slotIndex = this.#ownerSlots.length;
         this.#owners.set(mesh, record);
@@ -541,6 +568,7 @@ export class MeshDrawListPlanner {
         record.inputIndex = 0;
         record.renderOrder = 0;
         record.transparent = false;
+        record.transparentDepth = 0;
         record.slotIndex = -1;
         this.#ownerPool.push(record);
     }

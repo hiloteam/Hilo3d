@@ -1191,16 +1191,16 @@ function regionsOverlap(
     );
 }
 
-/** Validate a portable texture-to-texture copy before backend execution. */
-export function validateRHICopyTextureToTexture(
-    context: RHICommandContext,
+/**
+ * Validate portable texture-to-texture copy parameters without requiring an open command context.
+ *
+ * @internal
+ */
+export function validateRHITextureToTextureCopyParameters(
     source: RHIImageCopyTexture,
     destination: RHIImageCopyTexture,
     copySize: RHIExtent3D
 ): void {
-    assertRHICommandContextOpen(context);
-    assertRHIObjectOwnedByContext(context, source.texture, 'source.texture');
-    assertRHIObjectOwnedByContext(context, destination.texture, 'destination.texture');
     requireTextureUsage(source.texture, RHITextureUsage.COPY_SRC, 'source.texture');
     requireTextureUsage(destination.texture, RHITextureUsage.COPY_DST, 'destination.texture');
     const extent = normalizeCopyExtent(copySize);
@@ -1231,4 +1231,17 @@ export function validateRHICopyTextureToTexture(
     ) {
         fail('invalid-descriptor', 'source and destination texture regions overlap', 'copy');
     }
+}
+
+/** Validate a portable texture-to-texture copy before backend execution. */
+export function validateRHICopyTextureToTexture(
+    context: RHICommandContext,
+    source: RHIImageCopyTexture,
+    destination: RHIImageCopyTexture,
+    copySize: RHIExtent3D
+): void {
+    assertRHICommandContextOpen(context);
+    assertRHIObjectOwnedByContext(context, source.texture, 'source.texture');
+    assertRHIObjectOwnedByContext(context, destination.texture, 'destination.texture');
+    validateRHITextureToTextureCopyParameters(source, destination, copySize);
 }

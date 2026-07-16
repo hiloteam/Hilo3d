@@ -2,6 +2,7 @@ import type Fog from '../core/Fog';
 import type Material from '../material/Material';
 import type Color from '../math/Color';
 import type { RendererBackend } from './RendererCore';
+import type { RenderPipelineFactory } from './pipeline/RenderPipeline';
 import type { ShaderPrecision } from './types';
 
 /** Backend-neutral power policy used while selecting a graphics adapter. */
@@ -41,6 +42,8 @@ export interface RendererCommonOptions {
     offsetY?: number;
     forceMaterial?: Material | null;
     clearColor?: Color;
+    /** Renderer-local scriptable pipeline factory. Defaults to ForwardRenderPipelineFactory. */
+    renderPipeline?: RenderPipelineFactory;
 }
 
 /** WebGPU adapter/device constraints accepted by support probes and automatic selection. */

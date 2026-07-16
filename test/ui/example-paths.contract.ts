@@ -42,11 +42,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(78);
+        expect(examplePaths).toHaveLength(79);
     });
 
-    it('expands 78 pages into the complete 155-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(155);
+    it('expands 79 pages into the complete 157-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(157);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );

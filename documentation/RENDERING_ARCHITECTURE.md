@@ -4,7 +4,7 @@
 
 ## 结论先行
 
-Hilo3d 当前采用的是“**一套共享渲染前端 + 一套后端无关的 RenderGraph + 一套 WebGPU 风格的可移植 RHI，以及 WebGPU/WebGL
+Hilo3d 当前采用的是“**一套共享渲染前端 + 一个可脚本化 PipelineHost + 一套后端无关的 RenderGraph + 一套 WebGPU 风格的可移植 RHI，以及 WebGPU/WebGL
 2 两个具体后端**”架构。
 
 它的关键价值不是简单地把 WebGL
@@ -52,7 +52,39 @@ Pass。后处理、显式 Present、离屏渲染和 Readback 也通过同一 Ren
 
 相关代码：[`SharedRendererDriver.ts`](../src/render/internal/SharedRendererDriver.ts)、[`RenderGraphFramePlan.ts`](../src/render/RenderGraphFramePlan.ts)、[`RenderList.ts`](../src/render/RenderList.ts)、[`MeshDrawListPlanner.ts`](../src/render/renderer/MeshDrawListPlanner.ts)、[`ForwardRenderer.ts`](../src/render/renderer/ForwardRenderer.ts)。
 
-### 1.3 RenderGraphFrame：一帧的事务边界
+### 1.3 RenderPipelineHost：默认快路径与可脚本化编排
+
+每个 Renderer 拥有一个 `RenderPipelineHost` 和一个 renderer-local `RenderPipeline`
+runtime。创建时未传 `renderPipeline` 时，进程级 `ForwardRenderPipelineFactory` 创建一个 direct
+runtime marker；host 识别它并直接调用原有
+`ForwardRenderer`/offscreen 路径，不创建公共 context、中间 scene color 或额外 present
+pass，因此默认逐 Draw 热路径不经过 feature facade。
+
+显式传入 factory 时，runtime 的同步 `record()` 获得 frame-scoped `RenderPipelineContext`：
+
+- `cull()` 与 `createRendererList()` 复用 shared renderer 的场景收集、排序、instancing 和 mesh
+  processor；
+- `recordShadows()` 复用同一 Shadow Atlas、LightBlock、resource owner 和恢复链路；
+- `ScriptableRenderGraph` 可创建 transient texture、导入 output/RenderTarget、获取 recovery-aware
+  persistent target，并添加 scene/fullscreen/copy pass；
+- sampled 与 copy usage 分离；copy 在 setup 声明确切 source/destination pair，并在
+  `queue.beginFrame()` 前用实际 RHI texture descriptor 完成验证；
+- fullscreen 输入使用固定线性 sampler，因此 capability 明确区分 sampleable 与 `filterable-sampled`；
+- fullscreen bind-group descriptor/entry 使用高水位复用，但绑定 graph-transient view 的 native bind
+  group 保持 frame lifetime，并由 submission fence 后确定性销毁；
+- setup/prepare/execute 都必须同步，返回 Promise-like 或在回调外使用 context/handle 会中止并回滚整帧；
+- 每个 scriptable invocation 开始时先解除上一 invocation 的 shadow scene binding，省略
+  `recordShadows()` 不会复活旧 atlas/LightBlock；
+- factory 可异步创建 runtime，但每个 Renderer 必须获得独立 runtime；同一个 runtime 不能附着到两个 Renderer。
+
+带 feature 的 `ForwardRenderPipelineFactory` 在构造时快照配置并合并静态 capabilities/limits/format
+requirements；每个 feature 配置在 Renderer 创建时产生独立 runtime。只有 feature 声明需要采样 scene
+color/depth 时才创建中间资源；无 feature 的默认 factory 始终保留 direct
+recorder。设备恢复必须保留 runtime 创建时可见的完整公共 capability 超集，包括 limits 和全部公共 format/use/sample-count 查询；能力缩减会使恢复明确失败，而不是让旧 runtime 在后续 pass 中延迟出错。
+
+相关代码：[`RenderPipelineHost.ts`](../src/render/internal/RenderPipelineHost.ts)、[`pipeline/`](../src/render/pipeline)、[`ScriptableRenderPipelineContext.ts`](../src/render/internal/ScriptableRenderPipelineContext.ts)。
+
+### 1.4 RenderGraphFrame：一帧的事务边界
 
 `RenderGraphFrame` 把一帧固定为完整的同步事务：
 
@@ -259,6 +291,10 @@ WebGL Context Lost 或 WebGPU Device Lost 后，`RHIRecoveryCoordinator`
 会关闭资源访问闸门、创建同后端替代 Device、按 Recipe 重建资源、重新创建并配置 Surface，再同步 Texture/Buffer/Fullscreen/RenderTarget 等缓存。恢复前的 Device
 Generation 会让旧对象确定性失效，避免误用陈旧原生资源。
 
+替代 Device 在接管 registry 前会重新验证 pipeline 静态 requirements 和创建时可见的公共能力下限；能力缩减会让恢复明确失败，而不是带着不兼容 runtime 继续执行。显式
+`releaseGPUResources()` 会清除 pipeline persistent target 记录，后续帧再按同一 backend-neutral
+recipe 重建。
+
 相关代码：[`ResourceRegistry.ts`](../src/render/renderer/ResourceRegistry.ts)、[`SubmissionResourceTracker.ts`](../src/render/renderer/SubmissionResourceTracker.ts)、[`RHIRecoveryCoordinator.ts`](../src/render/renderer/RHIRecoveryCoordinator.ts)。
 
 ## 6. 当前渲染架构的优势
@@ -304,6 +340,9 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 - RHI 当前公开的是互斥 Graphics Frame
   Scope；虽然能力模型包含部分存储/计算相关 Feature 名称，但尚未提供 Compute
   Pipeline/Dispatch 命令合同。
+- 公共 SRP 已预留 `storage-buffer`、`storage-texture`、`compute-pass`
+  capability 名称，但当前全部为 false。声明为 required 会在 runtime 创建前失败；完整扩展路线见
+  [`SCRIPTABLE_RENDER_PIPELINE_PLAN.md`](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md#20-ssbostorage-texture-与-compute-的后续扩展路线)。
 - RenderGraph 每帧重新 Build/Compile，依靠高水位存储复用降低成本；当前没有跨帧复用完整的 Compiled
   Graph。
 - 已有 Pass 裁剪、资源生命周期区间和跨帧瞬态资源池，但没有宣称同帧物理内存别名复用。
@@ -320,6 +359,7 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 | Stage 与后端策略               | [`Stage.ts`](../src/core/Stage.ts)                                                                                 |
 | 公共 Renderer 与一次性后端选择 | [`Renderer.ts`](../src/render/Renderer.ts)、[`RendererFactory.ts`](../src/render/internal/RendererFactory.ts)      |
 | 双后端共享渲染前端             | [`SharedRendererDriver.ts`](../src/render/internal/SharedRendererDriver.ts)                                        |
+| PipelineHost 与公共 SRP        | [`RenderPipelineHost.ts`](../src/render/internal/RenderPipelineHost.ts)、[`pipeline/`](../src/render/pipeline)     |
 | 场景与可见队列                 | [`RenderGraphFramePlan.ts`](../src/render/RenderGraphFramePlan.ts)、[`RenderList.ts`](../src/render/RenderList.ts) |
 | 帧事务                         | [`frame/`](../src/render/frame)                                                                                    |
 | RenderGraph                    | [`graph/`](../src/render/graph)                                                                                    |
@@ -338,10 +378,10 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 ```text
 Use case: infographic-diagram
 Asset type: Hilo3d architecture documentation diagram
-Primary request: show the current Hilo3d rendering flow from Stage through the shared renderer and RenderGraphFrame, with RenderGraph build/compile/prepare/execute phases inside it, then RHI, split into WebGPU and WebGL 2 backends, and end at GPU/Canvas
-Composition/framing: 16:9 landscape, left-to-right main flow, Pass lane above and resource-lifecycle lane below
+Primary request: show the current Hilo3d rendering flow from Stage through Shared Renderer, RenderPipelineHost and RenderGraphFrame, then portable RHI, WebGPU/WebGL 2 and GPU/Canvas
+Composition/framing: 16:9 landscape, left-to-right main flow; pipeline-composed Pass lane above; shared frame/resource lifecycle lane below
 Style/medium: clean vector-like technical infographic, dark navy background, cyan and violet accents, crisp English technical labels
-Constraints: accurately show Stage -> Shared Renderer -> RenderGraphFrame -> RHI -> WebGPU/WebGL 2; show RenderGraph inside RenderGraphFrame; render the labels exactly as "RenderGraphFrame", "RenderGraph" and "RHI"; do not show any deprecated standalone frame label; no extra architecture layers; no watermark
+Constraints: accurately show Stage -> Shared Renderer -> RenderPipelineHost -> RenderGraphFrame -> RHI -> WebGPU/WebGL 2; show "Default Forward / Direct Fast Path" and "Scriptable Pipeline / Forward Features / Custom Pipeline" as two host paths converging into one RenderGraphFrame; show RenderGraph inside RenderGraphFrame; include Persistent Targets in the shared lifecycle lane; render the labels exactly as "RenderPipelineHost", "RenderGraphFrame", "RenderGraph" and "RHI"; do not show a second graph, backend-specific SRP branches or any deprecated standalone frame label; no watermark
 ```
 
 ### 渲染优势图

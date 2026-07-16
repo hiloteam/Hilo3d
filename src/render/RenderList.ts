@@ -96,11 +96,11 @@ class RenderList {
      * @param mesh -
      * @param camera -
      */
-    addMesh(mesh: Mesh, camera: Camera): void {
+    addMesh(mesh: Mesh, camera: Camera, frustumCulling = true): void {
         const material = mesh.material;
         const geometry = mesh.geometry;
         if (material && geometry) {
-            if (mesh.frustumTest && !camera.isMeshVisible(mesh)) {
+            if (frustumCulling && mesh.frustumTest && !camera.isMeshVisible(mesh)) {
                 return;
             }
             // `Mesh.useInstanced` is an explicit opt-in to batching, including the ordering

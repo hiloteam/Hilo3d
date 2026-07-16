@@ -2,6 +2,8 @@ import type {
     RHIBackend,
     RHIBuffer,
     RHIBufferDescriptor,
+    RHIBindGroup,
+    RHIBindGroupDescriptor,
     RHICapabilities,
     RHIDevice,
     RHIDeviceOwnedDestroyable,
@@ -195,6 +197,15 @@ export class ResourceRegistry {
             ...(descriptor.label === undefined ? {} : { label: descriptor.label }),
             create: device => device.createSampler(snapshot)
         });
+    }
+
+    /** @internal Create one submission-fenced resource that deliberately has no recovery recipe. */
+    createFrameBindGroup(descriptor: RHIBindGroupDescriptor): RHIBindGroup {
+        this.assertActive();
+        if (descriptor.lifetime !== 'frame') {
+            throw new Error('Frame bind groups require frame resource lifetime');
+        }
+        return this.#device.createBindGroup(descriptor);
     }
 
     resolve<T extends RHIDeviceOwnedDestroyable>(handle: ResourceRegistryHandle<T>): T {

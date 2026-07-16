@@ -172,6 +172,26 @@ resize/`setRenderTarget()`/resource release/destruction and render-target
 resize/readback/destruction outside the callback; attempting those operations while WebGPU is
 recording aborts the entire frame and prevents a partial submission.
 
+## Scriptable render pipelines
+
+Pass a reusable `renderPipeline` factory to `Renderer.create()` or `Stage.create()` to replace frame
+composition, or use `ForwardRenderPipelineFactory` features to inject work around shadows, opaque,
+transparent, post-process, and output stages. Each Renderer receives independent pipeline and
+feature runtimes; recording stays synchronous and writes into the same transactional Render Graph as
+ordinary renderer commands. The empty default feature set keeps the original direct forward path,
+without an intermediate scene target or an extra present pass.
+
+Graph sampling and texture copies use distinct declarations: fullscreen inputs must be
+linear-filterable, while copy passes declare an exact source/destination pair and validate the
+resolved RHI textures before a backend frame begins.
+
+The [scriptable pipeline example](./examples/scriptable_pipeline.html) samples scene color through a
+retained fullscreen feature. The
+[SRP architecture document](./documentation/SCRIPTABLE_RENDER_PIPELINE_PLAN.md) covers ownership,
+failure handling, performance gates, and the capability-gated route to storage buffers and compute.
+Those compute/storage capability names are currently fail-closed rather than partially emulated on
+WebGL 2.
+
 ## Modern renderer architecture
 
 - `src/render` owns the single public Renderer, scene traversal, frame planning, render-target

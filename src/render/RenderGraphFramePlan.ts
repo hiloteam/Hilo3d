@@ -34,7 +34,8 @@ export class RenderGraphFramePlanner {
         stage: RendererScene,
         camera: Camera,
         renderList: RenderList,
-        lightManager: LightManager
+        lightManager: LightManager,
+        frustumCulling = true
     ): RenderGraphFramePlan {
         this.meshes.length = 0;
         this.lights.length = 0;
@@ -52,7 +53,7 @@ export class RenderGraphFramePlanner {
             return Node.TRAVERSE_STOP_NONE;
         });
 
-        for (const mesh of this.meshes) renderList.addMesh(mesh, camera);
+        for (const mesh of this.meshes) renderList.addMesh(mesh, camera, frustumCulling);
         renderList.sort();
         for (const light of this.lights) {
             lightManager.addLight(light);
@@ -61,5 +62,12 @@ export class RenderGraphFramePlanner {
             }
         }
         return this.plan;
+    }
+
+    /** Drop frame-owned object references while retaining array and Set capacity. */
+    reset(): void {
+        this.meshes.length = 0;
+        this.lights.length = 0;
+        this.shadowLights.clear();
     }
 }

@@ -15,6 +15,7 @@ import {
     type RHILoadOp,
     type RHIRect,
     type RHIRenderPassDescriptor,
+    type RHIRenderPassEncoder,
     type RHIStoreOp,
     type RHITexture,
     type RHITextureView,
@@ -676,6 +677,60 @@ export class SharedDrawPassParameters {
             );
             previousDraw = draw;
         }
+        pass.end();
+        this.prepared = false;
+    }
+
+    /** @internal Begin a prepared raster pass for a scriptable command facade. */
+    beginExecute(context: RGPassContext): RHIRenderPassEncoder {
+        if (!this.prepared) throw UNPREPARED_PASS_ERROR;
+        const pass = context.commandContext.beginRenderPass(
+            this.descriptor as unknown as RHIRenderPassDescriptor
+        );
+        if (this.hasViewport) {
+            pass.setViewportRecord(this.viewport);
+            this.drawViewportState.minDepth = this.viewport.minDepth;
+            this.drawViewportState.maxDepth = this.viewport.maxDepth;
+        }
+        if (this.hasScissor) pass.setScissorRectRecord(this.scissor);
+        return pass;
+    }
+
+    /** @internal Execute one setup-declared renderer-list range without allocating. */
+    executeDrawRange(
+        pass: RHIRenderPassEncoder,
+        start: number,
+        count: number,
+        previousDraw: PreparedDraw | null
+    ): PreparedDraw | null {
+        if (!this.prepared) throw UNPREPARED_PASS_ERROR;
+        if (
+            !Number.isSafeInteger(start) ||
+            !Number.isSafeInteger(count) ||
+            start < 0 ||
+            count < 0 ||
+            start + count > this.activeDrawCount
+        ) {
+            throw new RangeError('Draw range is outside the active pass draws');
+        }
+        const end = start + count;
+        for (let index = start; index < end; index += 1) {
+            const draw = this.draws[index];
+            if (!draw) throw MISSING_DRAW_ERROR;
+            draw.execute(
+                pass,
+                this.hasViewport ? this.viewport : undefined,
+                this.hasViewport ? this.drawViewportState : undefined,
+                previousDraw
+            );
+            previousDraw = draw;
+        }
+        return previousDraw;
+    }
+
+    /** @internal End a scriptable raster command scope and consume its prepared state. */
+    endExecute(pass: RHIRenderPassEncoder): void {
+        if (!this.prepared) throw UNPREPARED_PASS_ERROR;
         pass.end();
         this.prepared = false;
     }

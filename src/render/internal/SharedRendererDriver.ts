@@ -20,6 +20,12 @@ import type {
     RendererWebGL2Options,
     RendererWebGPUOptions
 } from '../RendererOptions';
+import { defaultForwardRenderPipelineFactory } from '../pipeline/ForwardRenderPipeline';
+import type {
+    RenderPipelineCapabilities,
+    RenderPipelineContext,
+    RenderPipelineFactory
+} from '../pipeline/RenderPipeline';
 import type {
     RenderTarget,
     RenderTargetColorAttachmentReadback,
@@ -28,11 +34,11 @@ import type {
     RenderTargetReadColorAttachmentOptions,
     RenderTargetSelectionOptions
 } from '../RenderTarget';
-import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import {
     createRenderGraphFrameContext,
     type RenderGraphFrameContext
 } from '../frame/RenderGraphFrameContext';
+import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
 import {
     constructRHIDevice,
     createRHIDevice,
@@ -53,6 +59,7 @@ import {
 } from '../rhi/core';
 import { externalTextureBindingRegistry } from '../renderer/ExternalTextureBindingRegistry';
 import { ForwardRenderer } from '../renderer/ForwardRenderer';
+import type { FullscreenDrawProcessor } from '../renderer/FullscreenDrawProcessor';
 import { MeshDrawProcessor } from '../renderer/MeshDrawProcessor';
 import { OffscreenRenderTargetRenderer } from '../renderer/OffscreenRenderTargetRenderer';
 import { PostProcessRenderer } from '../renderer/PostProcessRenderer';
@@ -62,6 +69,7 @@ import {
 } from '../renderer/RHIRecoveryCoordinator';
 import { RHIRenderTarget, type RHIRenderTargetHost } from '../renderer/RHIRenderTarget';
 import { RenderTargetReadback } from '../renderer/RenderTargetReadback';
+import type { RenderTargetGraphBridge } from '../renderer/RenderTargetGraphBridge';
 import {
     RenderTargetResourceCache,
     type RenderTargetResourceRecord
@@ -74,6 +82,12 @@ import { ShadowAtlasRenderer } from '../renderer/ShadowAtlasRenderer';
 import { ShadowAtlasResourceCache } from '../renderer/ShadowAtlasResourceCache';
 import { ShadowAtlasSceneAdapter } from '../renderer/ShadowAtlasSceneAdapter';
 import { ShadowAtlasTextureBinding } from '../renderer/ShadowAtlasTextureBinding';
+import { RenderPipelineHost, type RenderPipelineHostLifecycle } from './RenderPipelineHost';
+import {
+    ScriptableRenderPipelineContextImpl,
+    ScriptableRenderPipelineResources,
+    type ScriptableRenderPipelineServices
+} from './ScriptableRenderPipelineContext';
 
 type SharedRendererOptions =
     Omit<RendererWebGL2Options, 'backend'> | Omit<RendererWebGPUOptions, 'backend'>;
@@ -179,7 +193,10 @@ function reportListenerFailure(reason: unknown): void {
  * devices. Backend selection happens once during construction; scene traversal, resource
  * preparation, graph execution, events and recovery are identical afterwards.
  */
-class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
+class SharedRendererDriver
+    extends RendererCore
+    implements RHIRenderTargetHost, RenderPipelineHostLifecycle, ScriptableRenderPipelineServices
+{
     override readonly className = 'Renderer' as const;
     override readonly backend: RendererBackend;
     override readonly ready: Promise<void>;
@@ -190,17 +207,20 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     forceFallbackAdapter = false;
     requiredFeatures: readonly RendererFeatureName[] = Object.freeze([]);
     requiredLimits: Readonly<Record<string, number>> = Object.freeze({});
+    renderPipeline: RenderPipelineFactory = defaultForwardRenderPipelineFactory;
 
     readonly #compiler = new ShaderArtifactCompiler();
     readonly #fallbackCamera = new Camera();
-    readonly #applicationFrame = new RenderGraphFrame();
+    readonly #pipelineHost = new RenderPipelineHost(this);
+    readonly #scriptablePipelineResources = new ScriptableRenderPipelineResources();
+    readonly #scriptablePipelineContexts: ScriptableRenderPipelineContextImpl[] = [];
     readonly #visibleMeshes: Mesh[] = [];
     readonly #collectVisibleMesh = (mesh: Mesh): void => {
         this.#visibleMeshes.push(mesh);
     };
     readonly #renderTargets = new Set<RHIRenderTarget>();
     readonly #renderTargetTextureBindings = new Set<RenderTargetTextureBindingProvider>();
-    readonly #getActiveUploadBatch = () => this.requireActiveFrameScope().uploads;
+    readonly #getActiveUploadBatch = () => this.#pipelineHost.requireActiveScope().uploads;
     readonly #retiredResourceCleanups = new Set<Promise<void>>();
     readonly #webGPUDeviceOptions: Readonly<WebGPURHIDeviceCreateOptions>;
     readonly #webGLContextOptions: Readonly<NonNullable<RendererWebGL2Options>>;
@@ -215,14 +235,8 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     #pendingPresentationStage: RendererScene | null = null;
     #pendingPresentationCamera: Camera | null = null;
     #presentationViewport: Readonly<RHIViewport> | null = null;
-    #frameIndex = 0;
     #initialized = false;
     #destroyed = false;
-    #frameRecording = false;
-    #activeFrameScope: RenderGraphFrameBuildScope | null = null;
-    #activeFrameIndex: number | null = null;
-    #frameAbortReason: unknown;
-    #frameAborted = false;
     #meshFrameStarted = false;
     #fullscreenFrameStarted = false;
     #surfaceRequested = false;
@@ -231,6 +245,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     #applicationFaceCount = 0;
     readonly #usedTargets: RenderTargetResourceRecord[] = [];
     readonly #afterSceneEvents: { readonly meshes: Mesh[] }[] = [];
+    readonly #frameCleanupFailures: unknown[] = [];
     #afterSceneEventCount = 0;
     #ownsRenderTarget = false;
     #autoPresentRenderTarget = false;
@@ -238,6 +253,9 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     #bindGroupCacheMetrics: RHICacheCounterContinuation | null = null;
     #vertexInputCacheMetrics: RHICacheCounterContinuation | null = null;
     #framebufferCacheMetrics: RHICacheCounterContinuation | null = null;
+    #scriptablePipelineContextCursor = 0;
+    #activeScriptablePipelineContext: ScriptableRenderPipelineContextImpl | null = null;
+    #scriptableResourcesFrameStarted = false;
 
     readonly #handleManagedMeshDestroy = (event: DispatchEvent): void => {
         const mesh = event.detail;
@@ -334,25 +352,13 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         });
         this.#executionInteropHost = Object.freeze(executionInteropHost) as RHIExecutionInteropHost;
 
-        if (backend === 'webgl2') {
-            try {
-                this.initializeWebGL2();
-                this.ready = Promise.resolve();
-                queueMicrotask(() => {
-                    if (!this.#destroyed && this.#initialized) this.fire('init');
-                });
-            } catch (reason) {
-                const failure = this.publishInitializationFailure(reason);
-                this.ready = Promise.reject(failure);
-            }
-        } else {
-            this.ready = this.initializeWebGPU();
-        }
+        this.ready = backend === 'webgl2' ? this.initializeWebGL2() : this.initializeWebGPU();
     }
 
     override get isReady(): boolean {
         return (
             this.#initialized &&
+            this.#pipelineHost.initialized &&
             !this.#destroyed &&
             this.#device?.destroyed === false &&
             this.#resources?.recovery.state === 'ready'
@@ -412,28 +418,21 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     override render(stage: RendererScene, camera: Camera, fireEvent = false): void {
         this.recordFrameCommand(() => {
             const selected = this.renderTarget;
-            if (selected !== null) {
-                this.renderSceneToTarget(selected, stage, camera, fireEvent);
-                if (this.#autoPresentRenderTarget) this.presentInternal(selected);
-                return;
+            this.#pipelineHost.recordPipeline(stage, camera, selected, fireEvent);
+            if (selected !== null && this.#autoPresentRenderTarget) {
+                this.presentInternal(selected);
             }
-            this.renderSceneToSurface(stage, camera, fireEvent);
         });
     }
 
     override renderFrame(callback: RendererFrameCallback): void {
         this.assertReadyForRender();
-        if (this.#frameRecording) {
-            const error = new Error('Nested renderer frames are not supported');
-            this.abortApplicationFrame(error);
-            throw error;
-        }
-        this.executeApplicationFrame(() => {
+        this.#pipelineHost.execute(() => {
             let facadeActive = true;
             try {
                 invokeRendererFrameCallback(
                     callback,
-                    createRendererFrame(this, () => facadeActive && this.#frameRecording)
+                    createRendererFrame(this, () => facadeActive && this.#pipelineHost.recording)
                 );
             } finally {
                 facadeActive = false;
@@ -443,29 +442,20 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
 
     private recordFrameCommand(command: () => void): void {
         this.assertReadyForRender();
-        if (!this.#frameRecording) {
-            this.executeApplicationFrame(command);
-            return;
-        }
-        if (this.#frameAborted) throw this.createFrameAbortedError();
-        try {
-            command();
-        } catch (error) {
-            this.abortApplicationFrame(error);
-            throw error;
-        }
+        this.#pipelineHost.recordCommand(command);
     }
 
-    private executeApplicationFrame(record: () => void): void {
-        this.assertReadyForRender();
-        if (this.#frameRecording) throw new Error('Nested renderer frames are not supported');
+    createFrameContext(frameIndex: number): RenderGraphFrameContext {
+        return this.createContext(
+            this.#lastCamera ?? this.#fallbackCamera,
+            this.surfaceViewport(),
+            frameIndex
+        );
+    }
+
+    beginFrame(_frameIndex: number): void {
         const resources = this.requireResources();
-        const frameIndex = this.allocateFrameIndex();
         this.resetDiagnosticsFrame();
-        this.#frameRecording = true;
-        this.#activeFrameIndex = frameIndex;
-        this.#frameAborted = false;
-        this.#frameAbortReason = undefined;
         this.#meshFrameStarted = false;
         this.#fullscreenFrameStarted = false;
         this.#surfaceRequested = false;
@@ -475,95 +465,281 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         this.#pendingPresentationStage = null;
         this.#pendingPresentationCamera = null;
         this.#usedTargets.length = 0;
+        this.#scriptablePipelineContextCursor = 0;
+        this.#activeScriptablePipelineContext = null;
+        this.#scriptableResourcesFrameStarted = false;
         this.clearAfterSceneEvents();
         resources.forward.beginComposition();
         resources.offscreen.beginComposition();
         resources.shadowRenderer.beginComposition();
         resources.postProcess.beginComposition();
-        const context = this.createContext(
-            this.#lastCamera ?? this.#fallbackCamera,
-            this.surfaceViewport()
+    }
+
+    completeFrame(frameIndex: number, execution: RGExecutionResult, uploadCount: number): void {
+        const resources = this.requireResources();
+        for (const target of this.#usedTargets) {
+            resources.targets.markUsed(target, frameIndex);
+        }
+        void resources.processor.submissions.track(frameIndex, execution.submission);
+        if (this.hasFullscreenFrameWork()) {
+            void resources.postProcess.fullscreen.trackSubmission(frameIndex, execution.submission);
+        }
+        if (this.hasSurfaceWork() && this.requireSurface().state === 'acquired') {
+            this.requireSurface().present();
+        }
+        if (this.#applicationFaceCount > 0) {
+            this.renderInfo.addFaceCount(this.#applicationFaceCount);
+        }
+        if (execution.diagnostics.drawCount > 0) {
+            this.renderInfo.addDrawCount(execution.diagnostics.drawCount);
+        }
+        this.recordExecutionDiagnostics(
+            execution.diagnostics,
+            this.#applicationPassCount,
+            uploadCount
         );
-        let completed = false;
-        try {
-            const execution = this.#applicationFrame.execute(context, scope => {
-                this.#activeFrameScope = scope;
-                try {
-                    record();
-                    if (this.#frameAborted) throw this.createFrameAbortedError();
-                } finally {
-                    this.#activeFrameScope = null;
-                }
-            });
-            for (const target of this.#usedTargets) {
-                resources.targets.markUsed(target, frameIndex);
+        for (let index = 0; index < this.#afterSceneEventCount; index += 1) {
+            const pending = this.#afterSceneEvents[index];
+            if (pending !== undefined) this.fireAfterSceneEvents(pending.meshes, true);
+        }
+        this.commitPendingPresentation();
+    }
+
+    failFrame(_error: unknown): void {
+        const resources = this.requireResources();
+        if (this.hasAttachedShadowBinding()) {
+            resources.shadowBinding.detach(this.lightManager);
+        }
+        const surface = this.#surface;
+        if (surface?.state === 'acquired') {
+            try {
+                surface.present();
+            } catch {
+                // Preserve the graph build/prepare/execute error.
             }
-            void resources.processor.submissions.track(frameIndex, execution.submission);
-            if (this.hasFullscreenFrameWork()) {
-                void resources.postProcess.fullscreen.trackSubmission(
-                    frameIndex,
-                    execution.submission
-                );
-            }
-            if (this.hasSurfaceWork() && this.requireSurface().state === 'acquired') {
-                this.requireSurface().present();
-            }
-            if (this.#applicationFaceCount > 0) {
-                this.renderInfo.addFaceCount(this.#applicationFaceCount);
-            }
-            if (execution.diagnostics.drawCount > 0) {
-                this.renderInfo.addDrawCount(execution.diagnostics.drawCount);
-            }
-            this.recordExecutionDiagnostics(
-                execution.diagnostics,
-                this.#applicationPassCount,
-                this.#applicationFrame.uploads.pendingCount
-            );
-            for (let index = 0; index < this.#afterSceneEventCount; index += 1) {
-                const pending = this.#afterSceneEvents[index];
-                if (pending !== undefined) this.fireAfterSceneEvents(pending.meshes, true);
-            }
-            this.commitPendingPresentation();
-            completed = true;
-        } catch (error) {
-            if (this.hasAttachedShadowBinding()) {
-                resources.shadowBinding.detach(this.lightManager);
-            }
-            const surface = this.#surface;
-            if (surface?.state === 'acquired') {
-                try {
-                    surface.present();
-                } catch {
-                    // Preserve the graph build/prepare/execute error.
-                }
-            }
-            throw error;
-        } finally {
-            this.#activeFrameScope = null;
-            resources.postProcess.endComposition();
-            resources.shadowRenderer.endComposition();
-            resources.offscreen.endComposition();
-            resources.forward.endComposition();
-            this.clearAfterSceneEvents();
-            this.#usedTargets.length = 0;
-            this.#frameRecording = false;
-            this.#activeFrameIndex = null;
-            this.#frameAborted = false;
-            this.#frameAbortReason = undefined;
-            this.#meshFrameStarted = false;
-            this.#fullscreenFrameStarted = false;
-            this.#surfaceRequested = false;
-            this.#shadowBindingAttachedThisFrame = false;
-            this.#pendingPresentationStage = null;
-            this.#pendingPresentationCamera = null;
-            if (!completed) this.synchronizeCacheDiagnosticsAfterFailure();
         }
     }
 
-    private abortApplicationFrame(reason: unknown): void {
-        if (!this.#frameRecording || this.#frameAborted) return;
-        this.#frameAborted = true;
-        this.#frameAbortReason = reason;
+    endFrame(submitted: boolean): void {
+        const resources = this.requireResources();
+        const failures = this.#frameCleanupFailures;
+        failures.length = 0;
+        for (let index = 0; index < this.#scriptablePipelineContextCursor; index += 1) {
+            const context = this.#scriptablePipelineContexts[index];
+            if (context === undefined) continue;
+            try {
+                context.releaseFrameReferences();
+            } catch (error) {
+                failures.push(error);
+            }
+        }
+        if (this.#scriptableResourcesFrameStarted) {
+            try {
+                this.#scriptablePipelineResources.endFrame(resources.targets, submitted);
+            } catch (error) {
+                failures.push(error);
+            }
+        }
+        try {
+            resources.postProcess.endComposition();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            resources.shadowRenderer.endComposition();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            resources.offscreen.endComposition();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            resources.forward.endComposition();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.clearAfterSceneEvents();
+        } catch (error) {
+            failures.push(error);
+        }
+        this.#usedTargets.length = 0;
+        this.#meshFrameStarted = false;
+        this.#fullscreenFrameStarted = false;
+        this.#surfaceRequested = false;
+        this.#shadowBindingAttachedThisFrame = false;
+        this.#pendingPresentationStage = null;
+        this.#pendingPresentationCamera = null;
+        this.#activeScriptablePipelineContext = null;
+        this.#scriptableResourcesFrameStarted = false;
+        if (!submitted) {
+            try {
+                this.synchronizeCacheDiagnosticsAfterFailure();
+            } catch (error) {
+                failures.push(error);
+            }
+        }
+        if (failures.length !== 0) {
+            const failure = new AggregateError(failures, 'Renderer frame cleanup failed', {
+                cause: failures[0]
+            });
+            failures.length = 0;
+            throw failure;
+        }
+    }
+
+    recordDefaultPipeline(
+        scene: RendererScene,
+        camera: Camera,
+        target: RenderTarget | null,
+        fireEvent: boolean
+    ): void {
+        if (target === null) {
+            this.renderSceneToSurface(scene, camera, fireEvent);
+            return;
+        }
+        this.renderSceneToTarget(this.requireOwnedTarget(target), scene, camera, fireEvent);
+    }
+
+    createPipelineContext(
+        scene: RendererScene,
+        camera: Camera,
+        target: RenderTarget | null,
+        fireEvent: boolean,
+        capabilities: RenderPipelineCapabilities,
+        runtimeOwner: object
+    ): RenderPipelineContext {
+        const resources = this.requireResources();
+        if (!this.#scriptableResourcesFrameStarted) {
+            const frameIndex = this.#pipelineHost.activeFrameIndex;
+            if (frameIndex === null) {
+                throw new Error('Scriptable pipeline resources require an active frame');
+            }
+            this.#scriptablePipelineResources.beginFrame(frameIndex);
+            this.#scriptableResourcesFrameStarted = true;
+        }
+        resources.shadowBinding.detach(this.lightManager);
+        this.#shadowBindingAttachedThisFrame = false;
+        this.renderInfo.reset();
+        let context = this.#scriptablePipelineContexts[this.#scriptablePipelineContextCursor++];
+        if (context === undefined) {
+            context = new ScriptableRenderPipelineContextImpl(
+                this,
+                this.#scriptablePipelineResources
+            );
+            this.#scriptablePipelineContexts.push(context);
+        }
+        this.#activeScriptablePipelineContext = context;
+        return context.begin(
+            scene,
+            camera,
+            target,
+            fireEvent,
+            capabilities,
+            runtimeOwner,
+            this.#pipelineHost.requireActiveScope()
+        );
+    }
+
+    endPipelineInvocation(completed: boolean): void {
+        const context = this.#activeScriptablePipelineContext;
+        this.#activeScriptablePipelineContext = null;
+        context?.end(completed);
+    }
+
+    get renderer(): RendererCore {
+        return this;
+    }
+
+    getScriptableSurface(): RHISurface {
+        return this.requireSurface();
+    }
+
+    getScriptableMeshProcessor(): MeshDrawProcessor {
+        return this.requireResources().processor;
+    }
+
+    getScriptableFullscreenProcessor(): FullscreenDrawProcessor {
+        return this.requireResources().postProcess.fullscreen;
+    }
+
+    getScriptableTargetResources(): RenderTargetResourceCache {
+        return this.requireResources().targets;
+    }
+
+    getScriptableTargetBridge(): RenderTargetGraphBridge {
+        return this.requireResources().offscreen.bridge;
+    }
+
+    resolveScriptableRenderTarget(target: RenderTarget): RHIRenderTarget {
+        return this.requireOwnedTarget(target);
+    }
+
+    createScriptableFrameContext(
+        camera: Camera,
+        viewport: Readonly<RHIViewport>,
+        frameIndex: number
+    ): RenderGraphFrameContext {
+        return this.createContext(camera, viewport, frameIndex);
+    }
+
+    beginScriptableMeshPass(context: RenderGraphFrameContext): void {
+        if (!this.#meshFrameStarted) {
+            this.ensureMeshFrame(context);
+            return;
+        }
+        this.requireResources().processor.beginPass(context.camera, context.viewport);
+    }
+
+    beginScriptableFullscreenPass(context: RenderGraphFrameContext): void {
+        if (this.#fullscreenFrameStarted) return;
+        this.requireResources().postProcess.fullscreen.beginFrame(
+            context,
+            this.#pipelineHost.requireActiveScope().uploads
+        );
+        this.#fullscreenFrameStarted = true;
+    }
+
+    prepareScriptableCullingScene(scene: RendererScene, camera: Camera): void {
+        this.fog = scene.fog ?? null;
+        scene.updateMatrixWorld();
+        camera.updateViewProjectionMatrix();
+    }
+
+    markScriptableTargetUsed(record: Readonly<RenderTargetResourceRecord>): void {
+        this.#usedTargets.push(record);
+    }
+
+    markScriptableSurfaceRequested(): void {
+        this.#surfaceRequested = true;
+    }
+
+    fireScriptableBeforeScene(meshes: readonly Mesh[], enabled: boolean): void {
+        this.fireBeforeSceneEvents(meshes, enabled);
+    }
+
+    recordScriptableShadows(
+        meshes: readonly Mesh[],
+        camera: Camera,
+        viewport: Readonly<RHIViewport>,
+        width: number,
+        height: number
+    ): number {
+        const resources = this.requireResources();
+        const context = this.createContext(camera, viewport);
+        this.ensureMeshFrame(context);
+        return this.renderSceneShadows(resources, context, meshes, width, height);
+    }
+
+    recordScriptableScene(meshes: readonly Mesh[], fireEvent: boolean, passCount: number): void {
+        this.recordSceneBuild(meshes, fireEvent, 0, passCount);
+    }
+
+    retainScriptablePresentation(scene: RendererScene, camera: Camera): void {
+        this.#pendingPresentationStage = scene;
+        this.#pendingPresentationCamera = camera;
     }
 
     private commitPendingPresentation(): void {
@@ -572,18 +748,6 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         if (stage === null || camera === null) return;
         this.#lastStage = stage;
         this.#lastCamera = camera;
-    }
-
-    private createFrameAbortedError(): Error {
-        return new Error('Renderer frame recording was aborted after a command failed', {
-            cause: this.#frameAbortReason
-        });
-    }
-
-    private requireActiveFrameScope(): RenderGraphFrameBuildScope {
-        const scope = this.#activeFrameScope;
-        if (scope === null) throw new Error('Renderer graph build requires an active frame');
-        return scope;
     }
 
     private synchronizeCacheDiagnosticsAfterFailure(): void {
@@ -647,7 +811,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             this.surfaceViewport()
         );
         resources.postProcess.buildPresent(
-            this.requireActiveFrameScope(),
+            this.#pipelineHost.requireActiveScope(),
             context,
             this.requireSurface(),
             resolved.resourceRecord,
@@ -722,17 +886,34 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     override destroy(): void {
         if (this.#destroyed) return;
         this.#destroyed = true;
-        this.destroyAllRenderTargets();
-        this.retireRenderingResources();
-        this.#surface?.destroy();
+        const failures: unknown[] = [];
+        const attempt = (operation: () => void): void => {
+            try {
+                operation();
+            } catch (error) {
+                failures.push(error);
+            }
+        };
+        attempt(() => {
+            this.destroyAllRenderTargets();
+        });
+        attempt(() => {
+            this.#pipelineHost.destroy();
+        });
+        attempt(() => {
+            this.retireRenderingResources();
+        });
+        attempt(() => this.#surface?.destroy());
         this.#surface = null;
-        this.#device?.destroy();
+        attempt(() => this.#device?.destroy());
         this.#device = null;
-        this.#applicationFrame.destroy();
         this.#initialized = false;
-        this.resourceManager.off('destroyMesh', this.#handleManagedMeshDestroy);
-        this.resourceManager.clear();
-        this.off();
+        attempt(() => this.resourceManager.off('destroyMesh', this.#handleManagedMeshDestroy));
+        attempt(() => this.resourceManager.clear());
+        attempt(() => this.off());
+        if (failures.length > 0) {
+            throw new AggregateError(failures, 'Renderer failed while destroying owned resources');
+        }
     }
 
     registerRenderTargetColorTexture(
@@ -893,17 +1074,23 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         this.#autoPresentRenderTarget = false;
     }
 
-    private initializeWebGL2(): void {
-        const canvas = this.requireCanvas();
-        const device = constructRHIDevice('webgl2', {
-            canvas,
-            context: this.#webGLContextOptions,
-            label: 'Hilo3d shared renderer WebGL2 RHI',
-            ...(this.rendererDiagnosticsSink === null
-                ? {}
-                : { diagnosticsSink: this.rendererDiagnosticsSink })
-        });
-        this.adoptInitialDevice(device);
+    private async initializeWebGL2(): Promise<void> {
+        try {
+            const canvas = this.requireCanvas();
+            const device = constructRHIDevice('webgl2', {
+                canvas,
+                context: this.#webGLContextOptions,
+                label: 'Hilo3d shared renderer WebGL2 RHI',
+                ...(this.rendererDiagnosticsSink === null
+                    ? {}
+                    : { diagnosticsSink: this.rendererDiagnosticsSink })
+            });
+            this.adoptInitialDevice(device);
+            await this.initializeRenderPipeline(device);
+            this.fire('init');
+        } catch (reason) {
+            throw this.publishInitializationFailure(reason);
+        }
     }
 
     private async initializeWebGPU(): Promise<void> {
@@ -922,6 +1109,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
                 throw new Error('Renderer initialization was cancelled');
             }
             this.adoptInitialDevice(device);
+            await this.initializeRenderPipeline(device);
             this.fire('init');
         } catch (reason) {
             throw this.publishInitializationFailure(reason);
@@ -937,8 +1125,6 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             this.configureSurface(surface);
             Shader.init(this);
             this.createRenderingResources(device);
-            this.#initialized = true;
-            this.isInitFailed = false;
         } catch (error) {
             surface?.destroy();
             device.destroy();
@@ -946,6 +1132,19 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             this.#device = null;
             throw error;
         }
+    }
+
+    private async initializeRenderPipeline(device: RHIDevice): Promise<void> {
+        await this.requireResources().postProcess.initialize();
+        if (this.rendererWasDestroyed()) {
+            throw new Error('Renderer initialization was cancelled');
+        }
+        await this.#pipelineHost.initialize(this.renderPipeline, device.capabilities);
+        if (this.rendererWasDestroyed()) {
+            throw new Error('Renderer initialization was cancelled');
+        }
+        this.#initialized = true;
+        this.isInitFailed = false;
     }
 
     private createRenderingResources(device: RHIDevice): void {
@@ -957,9 +1156,6 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         const offscreen = new OffscreenRenderTargetRenderer(targets, processor.submissions);
         const forward = new ForwardRenderer(0, undefined, offscreen.bridge);
         const postProcess = new PostProcessRenderer(targets, 0, this.#compiler);
-        // The shared compiler was initialized before a WebGPU device was adopted. WebGL does not
-        // require translator initialization, so this call has no synchronous prerequisite.
-        void postProcess.initialize();
         const readback = new RenderTargetReadback(targets, processor.submissions);
         const shadowScene = new ShadowAtlasSceneAdapter();
         const shadowResources = new ShadowAtlasResourceCache(processor.registry);
@@ -1074,15 +1270,44 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         const resources = this.#resources;
         if (resources === null) return;
         this.#resources = null;
-        resources.recovery.destroy();
-        resources.forward.destroy();
-        resources.offscreen.destroy();
-        resources.readback.destroy();
-        resources.targets.destroy();
-        resources.shadowBinding.destroy();
-        resources.shadowPreparer.destroy();
-        resources.shadowResources.destroy();
-        resources.shadowScene.destroy();
+        const failures: unknown[] = [];
+        const attempt = (operation: () => void): void => {
+            try {
+                operation();
+            } catch (error) {
+                failures.push(error);
+            }
+        };
+        attempt(() => {
+            resources.recovery.destroy();
+        });
+        attempt(() => {
+            resources.forward.destroy();
+        });
+        attempt(() => {
+            resources.offscreen.destroy();
+        });
+        attempt(() => {
+            resources.readback.destroy();
+        });
+        attempt(() => {
+            this.#scriptablePipelineResources.releasePersistentTargets(resources.targets);
+        });
+        attempt(() => {
+            resources.targets.destroy();
+        });
+        attempt(() => {
+            resources.shadowBinding.destroy();
+        });
+        attempt(() => {
+            resources.shadowPreparer.destroy();
+        });
+        attempt(() => {
+            resources.shadowResources.destroy();
+        });
+        attempt(() => {
+            resources.shadowScene.destroy();
+        });
         const cleanup = (async (): Promise<void> => {
             await Promise.allSettled([
                 resources.processor.submissions.waitForIdle(),
@@ -1098,23 +1323,37 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             () => this.#retiredResourceCleanups.delete(cleanup),
             () => this.#retiredResourceCleanups.delete(cleanup)
         );
+        if (failures.length !== 0) {
+            throw new AggregateError(failures, 'Renderer resources failed while being retired', {
+                cause: failures[0]
+            });
+        }
     }
 
     private async createReplacementDevice(): Promise<RHIDevice> {
         if (this.rendererWasDestroyed()) throw new Error('Renderer recovery was cancelled');
+        let replacement: RHIDevice;
         if (this.backend === 'webgpu') {
-            return createRHIDevice('webgpu', this.#webGPUDeviceOptions);
+            replacement = await createRHIDevice('webgpu', this.#webGPUDeviceOptions);
+        } else {
+            await this.waitForWebGLContextRestored();
+            if (this.rendererWasDestroyed()) throw new Error('Renderer recovery was cancelled');
+            replacement = constructRHIDevice('webgl2', {
+                canvas: this.requireCanvas(),
+                context: this.#webGLContextOptions,
+                label: 'Hilo3d recovered shared renderer WebGL2 RHI',
+                ...(this.rendererDiagnosticsSink === null
+                    ? {}
+                    : { diagnosticsSink: this.rendererDiagnosticsSink })
+            });
         }
-        await this.waitForWebGLContextRestored();
-        if (this.rendererWasDestroyed()) throw new Error('Renderer recovery was cancelled');
-        return constructRHIDevice('webgl2', {
-            canvas: this.requireCanvas(),
-            context: this.#webGLContextOptions,
-            label: 'Hilo3d recovered shared renderer WebGL2 RHI',
-            ...(this.rendererDiagnosticsSink === null
-                ? {}
-                : { diagnosticsSink: this.rendererDiagnosticsSink })
-        });
+        try {
+            this.#pipelineHost.validateReplacementDevice(replacement.capabilities);
+            return replacement;
+        } catch (error) {
+            replacement.destroy();
+            throw error;
+        }
     }
 
     private waitForWebGLContextRestored(): Promise<void> {
@@ -1128,6 +1367,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         const surface = device.createSurface(this.requireCanvas());
         try {
             this.configureSurface(surface);
+            this.#pipelineHost.adoptReplacementDevice(device.capabilities);
         } catch (error) {
             surface.destroy();
             throw error;
@@ -1188,7 +1428,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         );
         this.fireBeforeSceneEvents(visible, fireEvent);
         resources.forward.build(
-            this.requireActiveFrameScope(),
+            this.#pipelineHost.requireActiveScope(),
             context,
             this.requireSurface(),
             {
@@ -1241,7 +1481,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         const depth = normalized.depthStencilAttachment;
         this.fireBeforeSceneEvents(visible, fireEvent);
         const record = resources.offscreen.build(
-            this.requireActiveFrameScope(),
+            this.#pipelineHost.requireActiveScope(),
             context,
             target,
             {
@@ -1297,7 +1537,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             prepareOptions
         );
         if (plan.atlas.sliceCount === 0) {
-            resources.shadowPreparer.retireAll(this.requireActiveFrameScope().uploads);
+            resources.shadowPreparer.retireAll(this.#pipelineHost.requireActiveScope().uploads);
             resources.shadowResources.detach(resources.shadowOwner);
             return 0;
         }
@@ -1308,7 +1548,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
         viewport.width = atlas.width;
         viewport.height = atlas.height;
         const passCount = resources.shadowRenderer.build(
-            this.requireActiveFrameScope(),
+            this.#pipelineHost.requireActiveScope(),
             context,
             atlas,
             plan.atlas,
@@ -1323,7 +1563,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     }
 
     private prepareScene(stage: RendererScene, camera: Camera): readonly Mesh[] {
-        if (!this.#frameRecording) this.resetDiagnosticsFrame();
+        if (!this.#pipelineHost.recording) this.resetDiagnosticsFrame();
         this.fog = stage.fog ?? null;
         this.renderInfo.reset();
         stage.updateMatrixWorld();
@@ -1360,7 +1600,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     }
 
     private assertPresentationMutationAllowed(operation: string): void {
-        if (this.#frameRecording) {
+        if (this.#pipelineHost.recording) {
             throw new Error(`Cannot ${operation} during an active frame`);
         }
     }
@@ -1368,14 +1608,15 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     private ensureMeshFrame(context: RenderGraphFrameContext): void {
         if (this.#meshFrameStarted) return;
         const resources = this.requireResources();
-        resources.processor.beginFrame(context, this.requireActiveFrameScope().uploads);
+        resources.processor.beginFrame(context, this.#pipelineHost.requireActiveScope().uploads);
         this.#meshFrameStarted = true;
     }
 
     private recordSceneBuild(
         meshes: readonly Mesh[],
         fireEvent: boolean,
-        shadowPassCount: number
+        shadowPassCount: number,
+        passCountOverride?: number
     ): void {
         let faces = 0;
         let hasTransparent = false;
@@ -1384,7 +1625,8 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             if (mesh.material?.transparent === true) hasTransparent = true;
         }
         this.#applicationFaceCount += faces;
-        this.#applicationPassCount += shadowPassCount + (hasTransparent ? 2 : 1);
+        this.#applicationPassCount +=
+            passCountOverride ?? shadowPassCount + (hasTransparent ? 2 : 1);
         if (!fireEvent) return;
         let pending = this.#afterSceneEvents[this.#afterSceneEventCount];
         if (pending === undefined) {
@@ -1488,12 +1730,13 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
 
     private createContext(
         camera: Camera,
-        viewport: RenderGraphFrameContext['viewport']
+        viewport: RenderGraphFrameContext['viewport'],
+        frameIndex = this.#pipelineHost.activeFrameIndex ?? this.#pipelineHost.allocateFrameIndex()
     ): RenderGraphFrameContext {
         return createRenderGraphFrameContext({
             renderer: this,
             rhi: this.requireDevice(),
-            frameIndex: this.#activeFrameIndex ?? this.allocateFrameIndex(),
+            frameIndex,
             camera,
             lightManager: this.lightManager,
             fog: this.fog,
@@ -1517,13 +1760,6 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             minDepth: 0,
             maxDepth: 1
         };
-    }
-
-    private allocateFrameIndex(): number {
-        if (this.#frameIndex === Number.MAX_SAFE_INTEGER) {
-            throw new RangeError('Renderer frame index space is exhausted');
-        }
-        return this.#frameIndex++;
     }
 
     private configureSurface(surface: RHISurface): void {
@@ -1613,7 +1849,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
     private assertNoFrameMutation(operation: string): void {
         const resources = this.#resources;
         if (
-            this.#frameRecording ||
+            this.#pipelineHost.recording ||
             resources?.forward.active === true ||
             resources?.offscreen.active === true ||
             resources?.shadowRenderer.active === true ||
@@ -1621,7 +1857,7 @@ class SharedRendererDriver extends RendererCore implements RHIRenderTargetHost {
             resources?.readback.frame.active === true
         ) {
             const error = new Error(`Renderer ${operation} cannot run while a frame is active`);
-            this.abortApplicationFrame(error);
+            this.#pipelineHost.abort(error);
             throw error;
         }
     }

@@ -17,9 +17,23 @@
 
 ### Changes
 
+- Add renderer-local scriptable render pipelines through `RendererCommonOptions.renderPipeline`,
+  reusable `RenderPipelineFactory` configurations, frame-scoped culling/renderer-list handles, a
+  narrow `ScriptableRenderGraph`, retained pass-parameter pools, recovery-aware persistent targets,
+  and shared scene, shadow, fullscreen, copy, and present pass primitives.
+- Add `ForwardRenderPipelineFactory` feature injection with per-Renderer feature runtimes and
+  creation-time capability/limit/format requirements. The empty default feature set retains the
+  existing direct forward recorder with no intermediate scene target or public-facade draw cost;
+  storage-buffer, storage-texture, and compute capability names remain fail-closed until their full
+  shader/Render Graph/RHI/backend implementations land.
 - Add backend-neutral `Renderer.waitForIdle()` for application completion fences. Native WebGL 2 or
   WebGPU interoperability is opt-in through `Renderer.getExtension()` instead of public `gl` or
   `gpuDevice` fields.
+- Harden scriptable rendering with role-specific sampled/copy texture usage, pre-frame exact-copy
+  validation, explicit resolve terminal tracking, per-invocation shadow binding isolation,
+  effective-material transparent depth sorting, filterable fullscreen capability checks, complete
+  recovery capability-superset validation, frozen scoped facades, and an internal-only pass-pool
+  acquisition path.
 - Keep backend selection outside the draw loop and preserve the existing native fast paths, state
   caches, prepared resources, and pass-level execution so the unified public surface adds no
   per-draw dispatch or allocation cost.

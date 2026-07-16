@@ -157,4 +157,26 @@ describe('render hot-path architecture', () => {
             'this.#resources.textureView = resource.view'
         );
     });
+
+    it('keeps default pipeline dispatch ahead of facade creation and draw execution allocation-free', () => {
+        const hostRecord = methodBody(
+            sourceAt('/render/internal/RenderPipelineHost.ts'),
+            'recordPipeline'
+        );
+        const drawExecute = methodBody(
+            sourceAt('/render/renderer/passes/SharedDrawPass.ts'),
+            'execute'
+        );
+
+        expect(hostRecord).toMatch(
+            /if\s*\(this\.#directForward\)\s*\{\s*this\.lifecycle\.recordDefaultPipeline\([\s\S]*?\);\s*return;\s*\}/u
+        );
+        expect(hostRecord.indexOf('recordDefaultPipeline')).toBeLessThan(
+            hostRecord.indexOf('createPipelineContext')
+        );
+        expect(drawExecute).toContain('draw.execute(');
+        expect(drawExecute).not.toMatch(
+            /\bnew\s+|Object\.freeze|\.(?:map|filter|flatMap|forEach|slice)\s*\(|\.\.\./u
+        );
+    });
 });

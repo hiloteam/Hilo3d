@@ -53,6 +53,55 @@ describe('Stage', () => {
         stage.destroy();
     });
 
+    it('forwards a scriptable pipeline factory through asynchronous Stage creation', async () => {
+        const pass = new Hilo3d.SceneRenderPass('Stage pipeline clear');
+        let recordCount = 0;
+        let destroyCount = 0;
+        const create = vi.fn(
+            (_context: Hilo3d.RenderPipelineCreateContext): Hilo3d.RenderPipeline => ({
+                name: 'stage-pipeline',
+                record(context: Hilo3d.RenderPipelineContext): void {
+                    const culling = context.cull();
+                    const list = context.createRendererList({
+                        cullingResults: culling,
+                        queue: 'all',
+                        sorting: 'none'
+                    });
+                    const output = context.graph.importOutput();
+                    context.graph.addPass(pass, {
+                        rendererList: list,
+                        colorAttachments: [
+                            {
+                                texture: output.color(0),
+                                loadOp: 'clear',
+                                storeOp: 'store',
+                                clearValue: context.clearColor
+                            }
+                        ]
+                    });
+                    recordCount++;
+                },
+                destroy(): void {
+                    destroyCount++;
+                }
+            })
+        );
+        const stage = await Stage.create({
+            backend: 'webgl2',
+            width: 8,
+            height: 8,
+            pixelRatio: 1,
+            renderPipeline: { name: 'stage-pipeline', create }
+        });
+
+        stage.renderer.render(stage, new Hilo3d.PerspectiveCamera());
+
+        expect(create).toHaveBeenCalledOnce();
+        expect(recordCount).toBe(1);
+        stage.destroy();
+        expect(destroyCount).toBe(1);
+    });
+
     it('rounds fractional device-pixel backing dimensions once for renderer parity', async () => {
         const stage = await Stage.create({
             backend: 'webgl2',
