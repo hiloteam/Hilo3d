@@ -54,7 +54,7 @@ ticker.addTick(stage);
 ticker.addTick(Hilo3d.Tween);
 ticker.addTick(Hilo3d.Animation);
 ticker.start();
-const stats = new Stats(ticker, stage.renderer.renderInfo);
+const stats = new Stats(ticker, stage.renderer);
 const orbitControls = new OrbitControls(stage, { isLockMove: true, isLockZ: true });
 const loader = new Hilo3d.GLTFLoader();
 const diagnosticTarget = stage.renderer.createRenderTarget({

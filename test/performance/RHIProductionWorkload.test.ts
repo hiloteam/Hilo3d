@@ -15,6 +15,7 @@ import type {
 import { ShaderArtifactCompiler } from '../../src/render/renderer/ShaderArtifactCompiler';
 import { prepareGLSLForNaga } from '../../src/render/shader/GlslToWgsl';
 import {
+    RHI_PRODUCTION_SMOKE_BACKENDS,
     RHI_PRODUCTION_SMOKE_DISCARDED_ALLOCATION_PROFILES,
     RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES,
     RHI_PRODUCTION_SMOKE_POST_SUSPEND_WARMUP_FRAMES,
@@ -432,12 +433,8 @@ describe('RHI production fixture smoke contract', () => {
         expect(RHI_PRODUCTION_SMOKE_HOT_PATH_TODO_BUDGET_BYTES).toBe(16 * 1024);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES).toBe(21);
         expect(RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES).toBe(21);
-        expect(RHI_PRODUCTION_SMOKE_SCENARIOS).toEqual([
-            'pbr-lights-shadows',
-            'mrt-msaa-postprocess',
-            'dynamic-geometry-texture-upload',
-            'scene-churn-10000-frame'
-        ]);
+        expect(RHI_PRODUCTION_SMOKE_SCENARIOS).toEqual(['static-unlit-single-draw']);
+        expect(RHI_PRODUCTION_SMOKE_BACKENDS).toEqual(['webgpu', 'webgl2']);
         expect(
             summarizeRHIProductionSmokeAllocations([
                 { rendererBytes: 90, rhiHotPathBytes: 0 },
@@ -467,8 +464,39 @@ describe('RHI production fixture smoke contract', () => {
         expect(source).not.toContain('collectRHIProductionCapture');
         expect(source).not.toContain('freezeRHIBaseline');
         expect(source).not.toContain('writeFile');
+        expect(source).toContain(
+            'const browserSession = await launchSmokeBrowser(options, scenario, backend)'
+        );
+        expect(source).toContain('await closeSmokeBrowser(browserSession)');
+        expect(source).toContain(
+            "backend === 'webgpu' && scenario.id === 'static-unlit-single-draw'"
+        );
+        expect(source).toContain('browser: await chromium.launch({');
+        expect(source).toContain("adapterPolicy: 'swiftshader'");
+        const fixtureSource = await readFile(
+            resolve(repositoryRoot, 'test/performance/fixtures/rhi-production.ts'),
+            'utf8'
+        );
+        expect(fixtureSource).toContain("adapterPolicy === 'physical'");
+        expect(fixtureSource).toContain("{ requiredFeatures: ['timestamp-query'] as const }");
+        expect(fixtureSource).toContain("'disabled-non-evidence'");
         expect(packageSource).toContain(
             '"test:rhi-benchmark-smoke": "jiti scripts/performance/smoke-rhi-production-fixture.ts"'
+        );
+        expect(packageSource).toContain(
+            '"test:rhi-benchmark-smoke:ci": "npm run test:rhi-benchmark-smoke -- --backend=webgl2"'
+        );
+        const packageJson = JSON.parse(packageSource) as {
+            readonly scripts?: Readonly<Record<string, unknown>>;
+        };
+        const validateCI = packageJson.scripts?.['validate:ci'];
+        expect(validateCI).toBeTypeOf('string');
+        if (typeof validateCI !== 'string') throw new TypeError('validate:ci must be a string');
+        expect(validateCI.indexOf('npm run test:rhi-benchmark-smoke:ci')).toBeGreaterThan(
+            validateCI.indexOf('npm run test:rhi-benchmark-contract')
+        );
+        expect(validateCI.indexOf('npm run test:rhi-benchmark-smoke:ci')).toBeLessThan(
+            validateCI.indexOf('npm run test:coverage')
         );
     });
 });

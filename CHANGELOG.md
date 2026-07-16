@@ -17,6 +17,9 @@
 
 ### Changes
 
+- Redesign the examples gallery with categorized metadata, search, responsive navigation, accessible
+  controls, isolated per-example query parameters, source/direct links, loading states, and a shared
+  renderer statistics panel that reports the active WebGL 2 or WebGPU backend.
 - Add renderer-local scriptable render pipelines through `RendererCommonOptions.renderPipeline`,
   reusable `RenderPipelineFactory` configurations, frame-scoped culling/renderer-list handles, a
   narrow `ScriptableRenderGraph`, retained pass-parameter pools, recovery-aware persistent targets,
@@ -52,6 +55,18 @@
 
 ### Fixes
 
+- Keep the full WebGL2/WebGPU Playwright matrix in local/release validation, while GitHub hosted CI
+  runs the stable WebGL2 UI/visual matrix and the native/offscreen WebGPU RHI lane instead of
+  pretending its SwiftShader environment supports reliable canvas presentation.
+- Route ShaderToy's two backend cases through its dedicated offscreen pixel/hash interaction gate
+  instead of loading the same continuous ray-march page again in the generic gate, while retaining
+  native draw/submit, GPU health, page, network, console, DevTools graphics, and stable-frame
+  checks.
+- Keep the portable RHI benchmark smoke bounded to a single-draw production scenario and isolate
+  every scenario/backend in fresh Chromium. PR CI runs the stable WebGL 2 production smoke while
+  WebGPU remains covered by dedicated RHI/browser lanes and the enrolled physical-GPU benchmark;
+  local non-evidence WebGPU smoke avoids the physical-rig-only timestamp-query feature and uses the
+  stable Playwright transport.
 - Clear handled old-generation submission-fence failures across every renderer submission tracker
   only after successful device recovery, so a recovered renderer's `waitForIdle()` observes new
   failures without hiding tracker/collection errors.

@@ -1,10 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
+import { createExampleCatalog, examplesForBackend } from '../../examples/shared/catalog';
 import {
     completionContractForExample,
     exampleCases,
     examplePaths,
     exampleRequestUrl,
     exampleRequiresRendering,
+    exampleUsesDedicatedReleaseTest,
     type ExampleBackend,
     type ExampleCompletionContract
 } from './example-paths';
@@ -328,26 +330,69 @@ async function assertObservableRender(
 for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`example gallery discovers every ${backend} page @${backend}`, async ({ page }) => {
         await page.goto(`/examples/list.html?backend=${backend}`, { waitUntil: 'networkidle' });
-        const expected = examplePaths
-            .filter(path => path !== 'list.html' && (backend !== 'webgpu' || path !== 'webxr.html'))
-            .map(path => path.slice(0, -'.html'.length));
+        const expected = examplesForBackend(createExampleCatalog(examplePaths), backend);
+        const navigationItems = page.locator('#exampleNavigation .exampleButton');
         expect(
-            await page.locator('#exampleList > li:not(#backendControl)').allTextContents()
-        ).toEqual(expected);
-        await expect(page.locator('#exampleFrame')).toHaveAttribute(
+            await navigationItems.evaluateAll(items => items.map(item => item.textContent))
+        ).toEqual(expected.map(entry => entry.title));
+        expect(
+            await navigationItems.evaluateAll(items =>
+                items.map(item => (item as HTMLElement).dataset['examplePath'])
+            )
+        ).toEqual(expected.map(entry => entry.path));
+
+        const exampleFrame = page.locator('#exampleFrame');
+        await expect(page.locator('#currentTitle')).toHaveText('Quick Start');
+        await expect(exampleFrame).toHaveAttribute(
             'src',
             new RegExp(`[?&]backend=${backend}(?:&|$)`, 'u')
         );
+
+        await page.locator('#exampleSearch').fill('Geometry Box');
+        await expect(navigationItems).toHaveCount(1);
+        await page.locator('[data-example-path="geometry_box.html"]').click();
+        await expect(page.frameLocator('#exampleFrame').locator('.hilo3dStats')).toContainText(
+            `renderBackend: ${backend === 'webgl2' ? 'WebGL 2' : 'WebGPU'}`
+        );
+
+        await page.locator('#exampleSearch').fill('glTF Viewer');
+        await expect(navigationItems).toHaveCount(1);
+        await page.locator('[data-example-path="glTFViewer/index.html"]').click();
+        const gltfSource = await exampleFrame.getAttribute('src');
+        if (!gltfSource) throw new Error('glTF Viewer navigation did not set an iframe source.');
+        expect(new URL(gltfSource).searchParams.get('url')).toBe(
+            '/examples/models/Tmall/Tmall.gltf'
+        );
+
+        await page.locator('#exampleSearch').fill('Quick Start');
+        await expect(navigationItems).toHaveCount(1);
+        await page.locator('[data-example-path="quickStart.html"]').click();
+        const quickStartSource = await exampleFrame.getAttribute('src');
+        if (!quickStartSource)
+            throw new Error('Quick Start navigation did not set an iframe source.');
+        const quickStartUrl = new URL(quickStartSource);
+        expect(quickStartUrl.searchParams.get('backend')).toBe(backend);
+        expect(quickStartUrl.searchParams.has('url')).toBe(false);
+
+        await page.setViewportSize({ width: 600, height: 720 });
+        const sidebarToggle = page.locator('#sidebarToggle');
+        await expect(sidebarToggle).toBeVisible();
+        await sidebarToggle.click();
+        await expect(page.locator('body')).toHaveClass(/sidebarOpen/u);
+        await page.locator('#sidebarBackdrop').click({ position: { x: 590, y: 300 } });
+        await expect(page.locator('body')).not.toHaveClass(/sidebarOpen/u);
     });
 }
 
-test.describe('all examples on every supported backend', () => {
+test.describe('examples using the generic release gate', () => {
     // Default mode gives every case an independent result; unlike serial mode, one failure cannot
-    // skip the remainder of the 155-case release matrix.
+    // skip the remainder of the generic release matrix. Heavy examples may use a dedicated gate
+    // that preserves the same failure monitoring while asserting stronger example-specific output.
     test.describe.configure({ mode: 'default' });
 
     for (const exampleCase of exampleCases) {
         const { path: examplePath, backend } = exampleCase;
+        if (exampleUsesDedicatedReleaseTest(examplePath)) continue;
         test(`${examplePath} renders through ${backend} @${backend}`, async ({ page }) => {
             await installRenderHealthProbe(page);
 

@@ -1,7 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Browser, BrowserContext, CDPSession, Page } from 'playwright';
+import {
+    chromium,
+    type Browser,
+    type BrowserContext,
+    type CDPSession,
+    type Page
+} from 'playwright';
 import { createServer, type ViteDevServer } from 'vite';
 import {
     RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
@@ -40,13 +46,29 @@ export const RHI_PRODUCTION_SMOKE_NON_EVIDENCE_NOTICE =
     'NON-EVIDENCE: fixture smoke never collects, freezes, or verifies wall-clock/GPU baseline data.';
 
 export const RHI_PRODUCTION_SMOKE_SCENARIOS = Object.freeze([
-    'pbr-lights-shadows',
-    'mrt-msaa-postprocess',
-    'dynamic-geometry-texture-upload',
-    'scene-churn-10000-frame'
+    'static-unlit-single-draw'
 ] as const satisfies readonly RHIBenchmarkScenarioId[]);
 
+export const RHI_PRODUCTION_SMOKE_BACKENDS = Object.freeze([
+    'webgpu',
+    'webgl2'
+] as const satisfies readonly RHIBenchmarkBackend[]);
+
 const ARCHITECTURES = ['rhi'] as const satisfies readonly RendererArchitecture[];
+
+const SWIFTSHADER_BROWSER_ARGUMENTS = Object.freeze([
+    '--enable-precise-memory-info',
+    '--enable-unsafe-swiftshader',
+    '--enable-unsafe-webgpu',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--use-webgpu-adapter=swiftshader',
+    '--enable-dawn-features=allow_unsafe_apis',
+    '--disable-dawn-features=use_dxc',
+    '--enable-webgpu-developer-features',
+    '--use-gpu-in-tests',
+    '--enable-accelerated-2d-canvas'
+] as const);
 
 export const RHI_PRODUCTION_SMOKE_WARMUP_FRAMES = 30;
 export const RHI_PRODUCTION_SMOKE_DISCARDED_ALLOCATION_PROFILES =
@@ -161,6 +183,51 @@ function pageTargetId(value: unknown): string {
         smokeFailure('benchmark page target id is unavailable');
     }
     return targetId;
+}
+
+interface SmokeBrowserSession {
+    readonly browser: Browser;
+    readonly ownedBrowser: RHIOwnedChromium | null;
+}
+
+async function launchSmokeBrowser(
+    options: RHIProductionFixtureSmokeOptions,
+    scenario: RHIBenchmarkScenarioManifest,
+    backend: RHIBenchmarkBackend
+): Promise<SmokeBrowserSession> {
+    if (options.launchBrowser) {
+        return {
+            browser: await options.launchBrowser(),
+            ownedBrowser: null
+        };
+    }
+    if (backend === 'webgpu' && scenario.id === 'static-unlit-single-draw') {
+        return {
+            // Match the stable portable WebGPU test lanes. The bounded single-draw heap profile
+            // remains small enough for Playwright CDP; expanded diagnostics retain the raw pipe.
+            browser: await chromium.launch({
+                headless: true,
+                args: [...SWIFTSHADER_BROWSER_ARGUMENTS]
+            }),
+            ownedBrowser: null
+        };
+    }
+    const ownedBrowser = await launchRHIOwnedChromium({
+        // Keep the non-evidence runner aligned with the portable Playwright GPU project.
+        args: SWIFTSHADER_BROWSER_ARGUMENTS
+    });
+    return {
+        browser: ownedBrowser.browser,
+        ownedBrowser
+    };
+}
+
+async function closeSmokeBrowser(session: SmokeBrowserSession): Promise<void> {
+    if (session.ownedBrowser) {
+        await session.ownedBrowser.close();
+        return;
+    }
+    await session.browser.close();
 }
 
 async function fixtureReady(page: Page): Promise<void> {
@@ -354,7 +421,7 @@ export async function runRHIProductionFixtureSmoke(
         manifest,
         options.scenarioIds ?? RHI_PRODUCTION_SMOKE_SCENARIOS
     );
-    const backends = options.backends ?? manifest.backends;
+    const backends = options.backends ?? RHI_PRODUCTION_SMOKE_BACKENDS;
     const architectures = options.architectures ?? ARCHITECTURES;
     if (architectures.length !== 1 || architectures[0] !== 'rhi') {
         smokeFailure('architecture selector must contain only rhi');
@@ -372,43 +439,27 @@ export async function runRHIProductionFixtureSmoke(
             }
         }
     });
-    let browser: Browser | null = null;
-    let ownedBrowser: RHIOwnedChromium | null = null;
     try {
         await server.listen();
         const localOrigin = server.resolvedUrls?.local[0];
         if (!localOrigin) smokeFailure('Vite did not publish a loopback origin');
         const origin = localOrigin.replace(/\/$/u, '');
-        if (options.launchBrowser) browser = await options.launchBrowser();
-        else {
-            ownedBrowser = await launchRHIOwnedChromium({
-                // Keep the non-evidence runner aligned with the portable Playwright GPU project.
-                args: [
-                    '--enable-precise-memory-info',
-                    '--enable-unsafe-swiftshader',
-                    '--enable-unsafe-webgpu',
-                    '--use-gl=angle',
-                    '--use-angle=swiftshader',
-                    '--use-webgpu-adapter=swiftshader',
-                    '--enable-dawn-features=allow_unsafe_apis',
-                    '--disable-dawn-features=use_dxc',
-                    '--enable-webgpu-developer-features',
-                    '--use-gpu-in-tests',
-                    '--enable-accelerated-2d-canvas'
-                ]
-            });
-            browser = ownedBrowser.browser;
-        }
         for (const scenario of scenarios) {
             for (const backend of backends) {
-                const observation = await observeFixture(
-                    browser,
-                    origin,
-                    scenario,
-                    backend,
-                    architectures[0],
-                    ownedBrowser
-                );
+                const browserSession = await launchSmokeBrowser(options, scenario, backend);
+                let observation: SmokeObservation;
+                try {
+                    observation = await observeFixture(
+                        browserSession.browser,
+                        origin,
+                        scenario,
+                        backend,
+                        architectures[0],
+                        browserSession.ownedBrowser
+                    );
+                } finally {
+                    await closeSmokeBrowser(browserSession);
+                }
                 const quiescenceMatrix = observation.allocationQuiescenceWindows
                     .map(
                         windowSamples =>
@@ -443,8 +494,6 @@ export async function runRHIProductionFixtureSmoke(
             }
         }
     } finally {
-        if (ownedBrowser) await ownedBrowser.close();
-        else await browser?.close();
         await server.close();
     }
 }

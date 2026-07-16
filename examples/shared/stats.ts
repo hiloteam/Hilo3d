@@ -1,3 +1,4 @@
+import type Renderer from '../../src/render/Renderer';
 import type RenderInfo from '../../src/render/RenderInfo';
 import type Ticker from '../../src/utils/Ticker';
 
@@ -10,33 +11,38 @@ interface PerformanceWithMemory extends Performance {
     memory?: PerformanceMemory;
 }
 
+const RENDER_BACKEND_LABELS: Readonly<Record<Renderer['backend'], string>> = Object.freeze({
+    webgl2: 'WebGL 2',
+    webgpu: 'WebGPU'
+});
+
 /** Lightweight renderer statistics overlay used by the examples. */
 class Stats {
     readonly ticker: Ticker;
+    readonly renderer: Renderer;
     readonly renderInfo: RenderInfo;
     readonly container: HTMLElement;
     private intervalId: number | undefined;
 
-    constructor(ticker: Ticker, renderInfo: RenderInfo, container?: HTMLElement) {
+    constructor(ticker: Ticker, renderer: Renderer, container?: HTMLElement) {
         this.ticker = ticker;
-        this.renderInfo = renderInfo;
+        this.renderer = renderer;
+        this.renderInfo = renderer.renderInfo;
         this.container = container ?? this.createContainer();
+        this.container.classList.add('hilo3dStats');
+        this.container.setAttribute('role', 'group');
+        this.container.setAttribute('aria-label', 'Renderer statistics');
         this.start();
     }
 
     private createContainer(): HTMLElement {
         const container = document.createElement('div');
-        container.className = 'hilo3dStats';
-        container.style.cssText = [
-            'position:absolute',
-            'left:5px',
-            'top:5px',
-            'color:#000',
-            'font-size:12px',
-            'z-index:999999'
-        ].join(';');
         document.body.appendChild(container);
         return container;
+    }
+
+    getRenderBackendInfo(): string {
+        return `renderBackend: ${RENDER_BACKEND_LABELS[this.renderer.backend]}`;
     }
 
     getFpsInfo(): string {
@@ -51,22 +57,29 @@ class Stats {
         return `drawCount: ${String(this.renderInfo.drawCount)}`;
     }
 
-    getMemoryInfo(): string {
+    getMemoryInfo(): string | null {
         const memory = (window.performance as PerformanceWithMemory).memory;
-        if (!memory) return 'memory: NaN';
+        if (!memory) return null;
         const percentage = (memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100;
         return `memory: ${percentage.toFixed(2)}%`;
     }
 
+    private update(): void {
+        const memory = this.getMemoryInfo();
+        this.container.textContent = [
+            this.getRenderBackendInfo(),
+            this.getFpsInfo(),
+            this.getFaceCountInfo(),
+            this.getDrawCountInfo(),
+            ...(memory ? [memory] : [])
+        ].join('\n');
+    }
+
     start(): void {
         if (this.intervalId !== undefined) window.clearInterval(this.intervalId);
+        this.update();
         this.intervalId = window.setInterval(() => {
-            this.container.innerHTML = [
-                this.getFpsInfo(),
-                this.getFaceCountInfo(),
-                this.getDrawCountInfo(),
-                this.getMemoryInfo()
-            ].join('<br>');
+            this.update();
         }, 1000);
     }
 

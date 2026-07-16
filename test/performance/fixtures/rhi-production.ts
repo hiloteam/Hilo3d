@@ -502,7 +502,9 @@ function createRenderer(
         : new SharedRendererDriver(backend, {
               ...common,
               forceFallbackAdapter: adapterPolicy === 'swiftshader',
-              requiredFeatures: ['timestamp-query']
+              ...(adapterPolicy === 'physical'
+                  ? { requiredFeatures: ['timestamp-query'] as const }
+                  : {})
           });
 }
 
@@ -635,7 +637,9 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                         gpuTimer:
                             backend === 'webgl2'
                                 ? 'ext-disjoint-timer-query-webgl2'
-                                : 'webgpu-timestamp-query',
+                                : adapterPolicy === 'physical'
+                                  ? 'webgpu-timestamp-query'
+                                  : 'disabled-non-evidence',
                         allocationProfiler: RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL,
                         preciseMemory: 'chromium-precise-memory-v1',
                         nativeCounters: 'renderer-diagnostics-v1'

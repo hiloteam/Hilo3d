@@ -1,8 +1,14 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+    createExampleCatalog,
+    EXAMPLE_CATEGORIES,
+    examplesForBackend
+} from '../../examples/shared/catalog';
+import {
+    DEDICATED_RELEASE_TEST_EXAMPLE_PATHS,
     EXAMPLE_COMPLETION_CONTRACTS,
     EXAMPLE_QUERY_PARAMETERS,
     NON_RENDERING_EXAMPLE_PATHS,
@@ -10,7 +16,8 @@ import {
     backendsForExample,
     exampleCases,
     examplePaths,
-    exampleRequestUrl
+    exampleRequestUrl,
+    exampleUsesDedicatedReleaseTest
 } from './example-paths';
 import {
     assertStableInstrumentationHealth,
@@ -23,6 +30,15 @@ import {
 } from './render-health';
 
 const examplesDirectory = fileURLToPath(new URL('../../examples/', import.meta.url));
+const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
+const genericReleaseTestSource = readFileSync(
+    fileURLToPath(new URL('./examples.spec.ts', import.meta.url)),
+    'utf8'
+);
+const dedicatedReleaseTestSource = readFileSync(
+    fileURLToPath(new URL('./runtime-parity.spec.ts', import.meta.url)),
+    'utf8'
+);
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -60,9 +76,58 @@ describe('example release matrix contract', () => {
         }
     });
 
+    it('builds complete, categorized gallery metadata with valid source links', () => {
+        const catalog = createExampleCatalog(examplePaths);
+        expect(catalog).toHaveLength(78);
+        expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
+        expect(new Set(catalog.map(entry => entry.path))).toEqual(
+            new Set(examplePaths.filter(path => path !== 'list.html'))
+        );
+        expect(new Set(catalog.map(entry => entry.category))).toEqual(
+            new Set(EXAMPLE_CATEGORIES.map(category => category.id))
+        );
+        expect(catalog[0]?.id).toBe('quickStart');
+        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(78);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(77);
+        expect(
+            examplesForBackend(catalog, 'webgpu').some(entry => entry.path === 'webxr.html')
+        ).toBe(false);
+
+        for (const entry of catalog) {
+            expect(entry.title.length, `${entry.path} title`).toBeGreaterThan(0);
+            expect(entry.description.length, `${entry.path} description`).toBeGreaterThan(0);
+            expect(
+                existsSync(join(examplesDirectory, entry.sourcePath)),
+                `${entry.path} source ${entry.sourcePath}`
+            ).toBe(true);
+        }
+    });
+
     it('keeps renderer and completion exceptions explicit and minimal', () => {
         expect(WEBGL2_ONLY_EXAMPLE_PATHS).toEqual(['webxr.html']);
         expect(NON_RENDERING_EXAMPLE_PATHS).toEqual(['math.html']);
+        expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual(['shaderToy.html']);
+        expect(exampleUsesDedicatedReleaseTest('shaderToy.html')).toBe(true);
+        expect(exampleUsesDedicatedReleaseTest('quickStart.html')).toBe(false);
+        const genericCases = exampleCases.filter(
+            item => !exampleUsesDedicatedReleaseTest(item.path)
+        );
+        const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
+            backendsForExample(path).map(backend => ({ path, backend }))
+        );
+        expect(genericCases).toHaveLength(155);
+        expect(
+            [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
+        ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());
+        expect(genericReleaseTestSource).toContain(
+            'if (exampleUsesDedicatedReleaseTest(examplePath)) continue;'
+        );
+        expect(dedicatedReleaseTestSource).toContain(
+            "for (const backend of ['webgl2', 'webgpu'] as const)"
+        );
+        expect(dedicatedReleaseTestSource).toContain(
+            'ShaderToy pointer input stays screen-space on ${backend}'
+        );
         expect(EXAMPLE_COMPLETION_CONTRACTS).toEqual({
             'compressed_texture.html': 'compressed-textures',
             'glTFViewer/index.html': 'gltf-viewer',
@@ -77,6 +142,29 @@ describe('example release matrix contract', () => {
         expect(
             Object.keys(EXAMPLE_COMPLETION_CONTRACTS).every(path => examplePaths.includes(path))
         ).toBe(true);
+    });
+
+    it('separates the full local browser matrix from hosted CI presentation coverage', () => {
+        const packageJson = JSON.parse(
+            readFileSync(join(repositoryRoot, 'package.json'), 'utf8')
+        ) as {
+            readonly scripts?: Readonly<Record<string, unknown>>;
+        };
+        expect(packageJson.scripts?.['test:browser']).toBe(
+            'npm run test:webgpu && npm run test:ui && npm run test:visual'
+        );
+        expect(packageJson.scripts?.['test:browser:ci']).toBe(
+            'npm run test:ui:webgl2 && npm run test:visual:webgl2'
+        );
+        expect(packageJson.scripts?.['test:visual:webgl2']).toBe(
+            'playwright test test/ui/visual.spec.ts --project=chromium --grep "through webgl2"'
+        );
+        const validateCI = packageJson.scripts?.['validate:ci'];
+        expect(validateCI).toBeTypeOf('string');
+        if (typeof validateCI !== 'string') throw new TypeError('validate:ci must be a string');
+        expect(validateCI).toContain('npm run test:rhi');
+        expect(validateCI).toContain('npm run test:browser:ci');
+        expect(validateCI).not.toMatch(/npm run test:browser(?:\s|&&|$)/u);
     });
 
     it('keeps WebXR native access controlled and recovers failed or lost sessions', () => {

@@ -29,14 +29,14 @@
   合并资源已就绪的多 pass，并以 submission 内 UBO
   revision 快照保证阴影与多相机数据不会互相覆盖。Shader variant 使用有界结构化 hash 与精确碰撞校验。
 - Vite 负责库与多页面示例构建，Vitest Browser
-  Mode 在真实 Chromium 环境中运行单元测试；Playwright 从示例目录自动收集 78 个 HTML，除明确限定为 WebGL
+  Mode 在真实 Chromium 环境中运行单元测试；Playwright 从示例目录自动收集 79 个 HTML，除明确限定为 WebGL
   2 的 WebXR 页面外，逐页执行 WebGL 2 +
   WebGPU 双后端，并对两个后端执行确定性视觉、交互、后处理与拾取门禁；真实 WebGPU
   adapter/device/pipeline fixture 作为额外的深度验收，而不是 WebGPU 唯一覆盖。
 - 类型声明、TypeDoc API 页面和 API Extractor 签名报告全部从同一份已检查源码生成。
-- npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；本地/发布使用
-  `npm run validate`，默认 CI 使用包含同一完整浏览器矩阵并额外执行 portable benchmark smoke 的
-  `npm run validate:ci`。
+- npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；本地/发布使用 `npm run validate`
+  执行完整双后端浏览器矩阵。默认 hosted CI 使用 `npm run validate:ci`，执行 WebGL 2
+  presentation/UI/视觉矩阵、WebGPU native/offscreen RHI 门禁并额外执行 portable benchmark smoke。
 - 旧 Gulp、Webpack、Babel、Mocha、JSDoc、手写声明、旧 `build/`、已提交的旧
   `docs/`、旧测试页、运行时 vendor 脚本和远程 CDN 依赖已经退出活跃工程。
 
@@ -54,7 +54,7 @@
 | 类型发布 | 手工维护的 namespace/CommonJS 声明                      | `tsc` 从源码 emit，声明 rollup 后由 Bundler/NodeNext 消费配置校验      |
 | API 契约 | JSDoc 静态产物，与源码和包入口脱节                      | TypeDoc 零警告文档 + API Extractor 签名基线                            |
 | 单元测试 | 旧断言、旧 mock、浏览器错误不一定失败                   | Vitest 原生 `expect`/`vi`，Chromium Browser Mode，错误门禁与 V8 覆盖率 |
-| UI 测试  | 少量代表页面 smoke test                                 | 78 个 HTML 自动清单；除 WebXR 外全部执行 WebGL 2 + WebGPU              |
+| UI 测试  | 少量代表页面 smoke test                                 | 79 个 HTML 自动清单；除 WebXR 外全部执行 WebGL 2 + WebGPU              |
 | 视觉测试 | 截图比较为空实现                                        | 两个后端共用确定场景、readback 断言、截图基线与像素差异阈值            |
 | 示例     | 旧全局变量、vendor 脚本、远程运行时资源                 | 严格 TS 多页面应用，本地 npm 依赖与本地静态资产                        |
 | 渲染 ABI | WebGL 1/2 分支、GLSL 1.00 转译与逐项 uniform            | WebGL 2 + WebGPU、GLSL→Naga→WGSL、按频率分组的固定 std140 UBO ABI      |
@@ -116,7 +116,7 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 - 删除 AMC 专有扩展；相关演示资产转换为标准 glTF。
 - WebXR 使用标准 WebXR 类型与浏览器 API；当前呈现层是 `XRWebGLLayer`，因此 `webxr.html`
   被明确声明为 WebGL 2-only。它暂不计入 WebGPU 上线门槛，也不会先请求 WebGPU、失败后再回退 WebGL
-  2；其余 77 个 HTML 示例均进入双后端门禁。
+  2；其余 78 个 HTML 示例均进入双后端门禁。
 - 资源观测统一为 `renderer.resourceManager.getDiagnostics(rootNode?)`
   返回的后端中立快照，包括已跟踪 mesh/resource、当前使用、待销毁数量和 frame 状态。会读取 WebGL 私有 cache 并产生日志副作用的
   `logGLResource()` 已从公共入口和源码删除。
@@ -737,13 +737,13 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 78 个 HTML 的双后端 UI 矩阵
+### 79 个 HTML 的双后端 UI 矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前清单固定为 78 个 HTML：其中 77 个页面分别以
+自动生成页面清单，不维护容易漏项的手工白名单。当前清单固定为 79 个 HTML：其中 78 个页面分别以
 `?backend=webgl2` 和 `?backend=webgpu` 运行，`webxr.html` 因浏览器 WebXR 当前使用 `XRWebGLLayer`
 而只运行 WebGL
-2，共形成 155 个 page/backend 组合。WebXR 例外是显式产品边界，暂不计入 WebGPU 上线门槛；它不是 WebGPU 初始化失败后的回退。
+2，共形成 157 个 page/backend 组合。WebXR 例外是显式产品边界，暂不计入 WebGPU 上线门槛；它不是 WebGPU 初始化失败后的回退。
 
 每个组合都必须通过以下检查：
 
@@ -775,15 +775,23 @@ validation 或 decoder-backing 上传错误。`renderTarget`、bloom、SSAO、li
 1.25/1.5 下验证取整后的 backing size、真实 draw 和相同终态错误门禁，避免非整数尺寸进入 GPU
 descriptor。CI 使用单 worker控制 SwiftShader GPU/内存峰值；没有重试或吞错来掩盖失败。
 
+ShaderToy 的专用交互门禁会暂停 ticker，通过 320×180 offscreen
+target 做两次显式 readback，断言彩色像素、pointer 坐标、输出 hash 变化和新的 native
+draw/submit；普通示例门禁因此不再重复加载同一重型 ray-march 页面。这个唯一例外仍在两个后端保留 GPU
+health、页面、网络、console、DevTools graphics 与终态稳定帧门禁，并由
+`DEDICATED_RELEASE_TEST_EXAMPLE_PATHS`
+契约锁定；通用门禁与专用门禁合计仍覆盖完整的 157 个 page/backend 组合。
+
 ### WebGPU 深度运行时测试
 
-`npm run test:webgpu` 在 Chromium 中启用 SwiftShader WebGPU adapter，创建真实
-`GPUAdapter`、`GPUDevice`、canvas context、Naga shader module、bind group、render
-pipeline 与 command encoder，在同一帧覆盖 Basic/PBR、`InstanceBlock` 批处理、带 primitive
-restart 和局部更新的 Uint8 indexed strip、mipmap 2D
-texture 替换、directional/spot/point 三类阴影、4× MSAA/stencil offscreen target、双 attachment
-MRT、fullscreen present 与对齐 readback。测试同时断言 backend、draw count、face
-count、attachment/sample count、texture revision、非零像素、GPU validation
+`npm run test:webgpu` 在 Chromium 中以最小 ANGLE/WebGPU 参数启用 SwiftShader
+adapter。它属于本地/发布完整浏览器门禁；GitHub hosted Linux 的 SwiftShader 无法稳定完成 canvas
+presentation，因此 hosted CI 不伪装执行这条通道。测试创建真实 `GPUAdapter`、`GPUDevice`、canvas
+context、Naga shader module、bind group、render pipeline 与 command
+encoder，在同一帧覆盖 Basic/PBR、`InstanceBlock` 批处理、带 primitive restart 和局部更新的 Uint8
+indexed strip、mipmap 2D texture 替换、directional/spot/point 三类阴影、4× MSAA/stencil offscreen
+target、双 attachment MRT、fullscreen present 与对齐 readback。测试同时断言 backend、draw
+count、face count、attachment/sample count、texture revision、非零像素、GPU validation
 error、页面异常和控制台错误；它不是只检查 `navigator.gpu`、只 mock device 或只测试 WGSL 字符串。
 
 同一真实浏览器闭环还通过 managed `Texture` 创建 3D、2D-array、unsigned-integer
@@ -794,7 +802,7 @@ pipeline，执行 draw、queue submit 和 buffer map。门禁要求 shader compi
 validation error 均为空，全部纹理解析出的 dimension 正确，并且 1×1 输出像素精确为
 `[64, 128, 200, 255]`；这证明能力不是只在 translator 或 fake-device 单测中存在。
 
-这项专用 fixture 是 77 个普通示例 WebGPU 页面之外的深度能力测试，不是唯一的 WebGPU UI 覆盖。同一套
+这项专用 fixture 是 78 个普通示例 WebGPU 页面之外的深度能力测试，不是唯一的 WebGPU UI 覆盖。同一套
 `test:webgpu`
 还让压缩纹理示例分别通过两个后端渲染各自声明支持的 source，确认 WebGPU 原生 BC/ETC2/ASTC 路径且明确跳过 PVRTC，并让异步 GPU
 `MeshPicker` 在两个后端选择同一 mesh。
@@ -813,27 +821,39 @@ recovery、纹理重放与 readback 全部成功。
 
 物理 GPU 是否暴露给 Chromium 取决于 runner 驱动和宿主环境，因此这条命令不属于可移植的
 `npm run validate`，也不会伪装成普通 GitHub-hosted CI 的必跑门禁。`.github/workflows/native_gpu.yml`
-只支持手动触发，并要求带 `self-hosted`、`linux`、`gpu`
-标签的 runner；默认 CI 仍以 SwiftShader 提供确定性、可复现的完整矩阵。WebXR 明确不属于该 WebGPU 通道。
+只支持手动触发，并要求带 `self-hosted`、`linux`、`gpu` 标签的 runner；默认 hosted
+CI 通过 SwiftShader native/offscreen RHI 测试覆盖 WebGPU 核心，不声称具有 WebGPU
+presentation 能力。WebXR 明确不属于该 WebGPU 通道。
 
 ### 视觉回归
 
-视觉套件使用固定 viewport、UTC、英文 locale、固定 device scale、禁用动画的 Linux
-Chromium 和 SwiftShader。同一个确定性灯光 PBR 场景分别通过 WebGL
+视觉套件使用固定 viewport、UTC、英文 locale、固定 device
+scale、禁用动画的 Chromium 和 SwiftShader。同一个确定性灯光 PBR 场景分别通过 WebGL
 2 与 WebGPU 渲染；除截图外还断言 readback 背景像素、变换后像素数、方向光覆盖和前景颜色数量，并在运行时要求两个后端的首帧截图逐字节相同。两个后端仍各自保存
 `test/ui/__screenshots__/`
-基线以定位单后端回归；失败时保留 screenshot 与 trace，本地运行还会保留 video，CI 为避免 SwiftShader 与视频编码争抢 CPU 而关闭 video。
+基线以定位单后端回归；失败时保留 screenshot 与 trace，本地运行还会保留 video。GitHub hosted
+CI 只运行稳定的 WebGL 2 visual baseline，完整双后端视觉与像素 parity 属于本地/发布或物理 GPU 验证。
 
 ## CI 与站点发布
 
 CI 只保留项目最低版本 Node 22.22.2 这一个测试档位，使用当前维护的 GitHub
 Actions、锁文件安装、固定 npm 12.0.1 和显式 Chromium 系统依赖，避免在 Node
 22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master` 与版本 tag 使用
-`npm run validate:ci`，其功能、包和完整浏览器门禁与 release validate 一致，并额外执行 portable RHI
-benchmark smoke；过期任务由 concurrency 自动取消。Chromium 同时启用确定性的 SwiftShader WebGL
-2 与 WebGPU adapter，78 页矩阵、双后端交互和双后端视觉门禁不依赖 CI
-runner 是否暴露物理 GPU。物理 GPU 项目只能由上述手动 self-hosted
-workflow 显式运行，不改变发布门禁的可移植性。
+`npm run validate:ci`，其功能、包和 API 门禁与 release validate 一致，并额外执行 portable RHI
+benchmark smoke；浏览器部分使用 `test:browser:ci` 跑完整 WebGL
+2 页面、交互与视觉矩阵。WebGPU 由同一 run 中的 `test:rhi` native/offscreen SwiftShader
+lane 验证 adapter、device、pipeline、draw、submit、readback 与 backend contract。GitHub hosted
+Linux 不稳定的 WebGPU canvas presentation 不作为虚假的合并门禁；完整双后端页面/视觉矩阵仍由本地
+`npm run validate` 与手动 physical-GPU workflow 负责。过期任务由 concurrency 自动取消。
+
+Portable RHI benchmark smoke 只以单 draw 生产场景验证 fixture、allocation
+profiler、readback 和当前 RHI 路径。GitHub hosted Linux 的 SwiftShader WebGPU production
+fixture 会在首帧前丢失 fallback device，因此 PR CI 只运行 WebGL 2 production smoke；WebGPU 仍由独立
+`test:rhi` native lane、本地完整 UI/视觉矩阵和 enrolled physical-GPU
+benchmark 覆盖。脚本直接运行时默认按 WebGPU、WebGL
+2 顺序为每个 scenario/backend 启动独立 Chromium，且非证据 SwiftShader 用例不申请正式 rig 才需要的 WebGPU
+`timestamp-query`。smoke 始终标记为 non-evidence，不替代物理 GPU 多场景冻结基线；需要扩展诊断时显式使用
+`--all` 入口。
 
 站点发布工作流同样从干净 checkout 执行 `npm ci` 和
 `npm run site:build`，再部署生成 artifact。仓库不再跟踪旧 API 生成物，也不会从开发者本机的残留目录发布。
@@ -848,7 +868,7 @@ npm run validate
 
 `validate` 按顺序执行：清理生成物、旧 JavaScript/旧工具配置门禁、格式检查、typed
 lint、全部 TypeScript project
-references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、78 个 HTML 双后端 UI 矩阵（仅 WebXR 显式 WebGL
+references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、79 个 HTML 双后端 UI 矩阵（仅 WebXR 显式 WebGL
 2-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
 
 其中 shader 静态门禁会扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00
@@ -871,7 +891,7 @@ pipeline 互为补充。
 - [x] 公共声明从源码生成，API 文档与 API report 同源。
 - [x] 单一 ESM 入口、类型、source map、package exports 与真实 tarball 一致。
 - [x] 浏览器单测执行完整源码覆盖率门禁，阈值面向 `src/**/*.ts`，不排除 renderer 或 WebGPU 核心目录。
-- [x] 自动清单包含 78 个 HTML；除 WebXR 显式 WebGL 2-only 例外外，全部通过 WebGL 2 +
+- [x] 自动清单包含 79 个 HTML；除 WebXR 显式 WebGL 2-only 例外外，全部通过 WebGL 2 +
       WebGPU 页面、请求、控制台与 GPU 错误门禁。
 - [x] 同一确定 PBR 场景和关键交互在两个后端都有 readback/截图或行为断言；WebGPU 不只依赖独立 fixture。
 - [x] `Stage.create()` 默认用无 device/resource 分配的 adapter probe 实现 WebGPU-first `auto`；显式

@@ -9,6 +9,7 @@
   },
   "include": [
     "benchmarks/**/*.ts",
+    "examples/shared/catalog.ts",
     "test/**/*.ts",
     "scripts/npm-pack-result.ts",
     "scripts/performance/**/*.ts"

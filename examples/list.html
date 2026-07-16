@@ -2,87 +2,126 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>Hilo3d examples</title>
-        <style>
-            body,
-            ul,
-            li {
-                margin: 0px;
-                padding: 0px;
-            }
-
-            #exampleList {
-                position: absolute;
-                list-style: none;
-                background: #aaa;
-                width: 220px;
-                height: 100%;
-                overflow: scroll;
-            }
-
-            #exampleList li {
-                font-size: 16px;
-                line-height: 30px;
-                height: 30px;
-                margin: 1px 1px;
-                background: #999;
-                cursor: pointer;
-                text-align: center;
-                color: #fff;
-            }
-
-            #exampleList form {
-                background: #eee;
-            }
-
-            #backendControl {
-                box-sizing: border-box;
-                display: flex;
-                gap: 8px;
-                align-items: center;
-                padding: 6px 10px;
-                color: #fff;
-            }
-
-            #backendControl select {
-                flex: 1;
-            }
-
-            #exampleList li label {
-                font-size: 12px;
-                height: 30px;
-                line-height: 30px;
-                color: #333;
-                display: inline-block;
-                cursor: pointer;
-            }
-
-            #exampleList .active {
-                background: #3a383e;
-            }
-
-            #exampleFrame {
-                position: absolute;
-                right: 0px;
-                top: 0px;
-                border: 1px solid #333;
-                overflow: hidden;
-            }
-        </style>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta
+            name="description"
+            content="Browse Hilo3D examples running on the WebGL 2 and WebGPU rendering backends."
+        />
+        <title>Hilo3D Examples</title>
+        <link rel="stylesheet" href="./list.css" />
     </head>
     <body>
-        <div>
-            <ul id="exampleList">
-                <li id="backendControl">
-                    <label for="backendSelect">Backend</label>
+        <header class="galleryHeader">
+            <div class="brand">
+                <button
+                    class="sidebarToggle"
+                    id="sidebarToggle"
+                    type="button"
+                    aria-label="Open example navigation"
+                    aria-controls="gallerySidebar"
+                    aria-expanded="false"
+                >
+                    ☰
+                </button>
+                <div class="brandMark" aria-hidden="true">H3</div>
+                <div class="brandText">
+                    <h1 class="brandTitle">Hilo3D Examples</h1>
+                    <p class="brandSubtitle">One renderer, two portable backends</p>
+                </div>
+            </div>
+            <div class="headerActions">
+                <label class="backendControl" for="backendSelect">
+                    <span>Graphics backend</span>
                     <select id="backendSelect" aria-label="Graphics backend">
                         <option value="webgl2">WebGL 2</option>
                         <option value="webgpu">WebGPU</option>
                     </select>
-                </li>
-            </ul>
-            <iframe id="exampleFrame" name="exampleFrame" frameborder="0"></iframe>
-        </div>
+                </label>
+                <a
+                    class="repositoryLink"
+                    href="https://github.com/hiloteam/Hilo3d"
+                    target="_blank"
+                    rel="noreferrer"
+                >
+                    GitHub
+                </a>
+            </div>
+        </header>
+
+        <main class="galleryLayout">
+            <aside class="gallerySidebar" id="gallerySidebar" aria-label="Example navigation">
+                <div class="sidebarInner">
+                    <div class="searchArea">
+                        <label class="searchLabel" for="exampleSearch">Find an example</label>
+                        <input
+                            class="searchInput"
+                            id="exampleSearch"
+                            type="search"
+                            placeholder="Geometry, PBR, loader…"
+                            autocomplete="off"
+                        />
+                        <div class="searchMeta">
+                            <span id="exampleCount"></span>
+                            <span><kbd>/</kbd> to search</span>
+                        </div>
+                    </div>
+                    <nav
+                        class="exampleNavigation"
+                        id="exampleNavigation"
+                        aria-label="Examples"
+                    ></nav>
+                </div>
+            </aside>
+
+            <section class="viewer" aria-labelledby="currentTitle">
+                <div class="viewerToolbar">
+                    <div class="viewerIdentity">
+                        <div class="viewerMeta">
+                            <span class="viewerCategory" id="currentCategory"></span>
+                            <span class="viewerBackend" id="currentBackend"></span>
+                        </div>
+                        <h2 class="viewerTitle" id="currentTitle">Loading example…</h2>
+                        <p class="viewerDescription" id="currentDescription"></p>
+                    </div>
+                    <div class="viewerActions">
+                        <a
+                            class="viewerAction viewerActionSource"
+                            id="viewSource"
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            Source
+                        </a>
+                        <a class="viewerAction" id="openExample" target="_blank" rel="noreferrer">
+                            Open
+                        </a>
+                    </div>
+                </div>
+                <div class="frameViewport">
+                    <iframe
+                        class="exampleFrame"
+                        id="exampleFrame"
+                        name="exampleFrame"
+                        title="Hilo3D example"
+                    ></iframe>
+                    <div
+                        class="frameStatus"
+                        id="frameStatus"
+                        data-state="loading"
+                        aria-live="polite"
+                    >
+                        <span class="loadingIndicator" id="frameStatusText">Loading example…</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <button
+            class="sidebarBackdrop"
+            id="sidebarBackdrop"
+            type="button"
+            aria-label="Close example navigation"
+        ></button>
         <script type="module" src="./list.ts"></script>
     </body>
 </html>

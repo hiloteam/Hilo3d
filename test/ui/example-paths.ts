@@ -15,6 +15,7 @@ export type ExampleCompletionContract =
 export const EXAMPLE_BACKENDS = ['webgl2', 'webgpu'] as const;
 export const WEBGL2_ONLY_EXAMPLE_PATHS = ['webxr.html'] as const;
 export const NON_RENDERING_EXAMPLE_PATHS = ['math.html'] as const;
+export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = ['shaderToy.html'] as const;
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     Partial<Record<string, Readonly<Record<string, string>>>>
 > = {
@@ -30,6 +31,7 @@ export const EXAMPLE_COMPLETION_CONTRACTS: Readonly<
 
 const webgl2OnlyExamples = new Set<string>(WEBGL2_ONLY_EXAMPLE_PATHS);
 const nonRenderingExamples = new Set<string>(NON_RENDERING_EXAMPLE_PATHS);
+const dedicatedReleaseTestExamples = new Set<string>(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS);
 const examplesDirectory = fileURLToPath(new URL('../../examples/', import.meta.url));
 
 function collectHtmlFiles(directory: string): string[] {
@@ -52,6 +54,10 @@ export function backendsForExample(examplePath: string): readonly ExampleBackend
 
 export function exampleRequiresRendering(examplePath: string): boolean {
     return !nonRenderingExamples.has(examplePath);
+}
+
+export function exampleUsesDedicatedReleaseTest(examplePath: string): boolean {
+    return dedicatedReleaseTestExamples.has(examplePath);
 }
 
 export function exampleRequestUrl(examplePath: string, backend: ExampleBackend): string {

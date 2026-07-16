@@ -33,7 +33,7 @@ ticker.addTick(stage);
 ticker.addTick(Hilo3d.Tween);
 ticker.start();
 
-new Stats(ticker, stage.renderer.renderInfo);
+new Stats(ticker, stage.renderer);
 new OrbitControls(stage);
 
 function randInt(min: number, max: number): number {

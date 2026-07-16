@@ -4,17 +4,8 @@ const isContinuousIntegration = process.env['CI'] === 'true';
 const swiftShaderArguments = [
     '--enable-unsafe-swiftshader',
     '--enable-unsafe-webgpu',
-    '--use-gl=angle',
     '--use-angle=swiftshader',
-    '--use-webgpu-adapter=swiftshader',
-    // Keep the portable browser project aligned with Chromium's own WebGPU SwiftShader bots.
-    // Vulkan-backed Skia is intentionally not forced here: doing so serializes software
-    // compositing with the WebGL/WebGPU workload and makes presentation readback unreliable.
-    '--enable-dawn-features=allow_unsafe_apis',
-    '--disable-dawn-features=use_dxc',
-    '--enable-webgpu-developer-features',
-    '--use-gpu-in-tests',
-    '--enable-accelerated-2d-canvas'
+    '--use-webgpu-adapter=swiftshader'
 ];
 const nativeWebGPUArguments = [
     '--disable-software-rasterizer',

@@ -182,7 +182,7 @@ export async function createExampleContext(
     ticker.addTick(stage);
     ticker.addTick(Hilo3d.Tween);
     ticker.addTick(Hilo3d.Animation);
-    const stats = new Stats(ticker, renderer.renderInfo);
+    const stats = new Stats(ticker, renderer);
     const orbitControls = new OrbitControls(stage, {
         isLockMove: true,
         isLockZ: true,
