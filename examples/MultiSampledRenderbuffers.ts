@@ -1,9 +1,9 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
+import { createTexturePreview } from './shared/ScreenMesh';
 
-const { camera, stage, renderer, ticker } = createExampleContext();
+const { camera, stage, renderer, ticker } = await createExampleContext();
 
-renderer.preferWebGL2 = true;
 ticker.targetFPS = 1;
 renderer.clearColor = new Hilo3d.Color(0.9, 0.6, 0.3);
 
@@ -30,90 +30,44 @@ mesh.onUpdate = () => {
 };
 sceneNode.addChild(mesh);
 
-const framebufferWidth = renderer.width / 32;
-const framebufferHeight = renderer.height / 32;
+const framebufferWidth = Math.max(1, Math.floor(renderer.width / 32));
+const framebufferHeight = Math.max(1, Math.floor(renderer.height / 32));
 
-const framebuffers = [0, 2, 4].map(samples => {
-    const multiSampledFramebuffer = new Hilo3d.Framebuffer(renderer, {
+const sampleCounts = [1, 4] as const;
+const renderTargets = sampleCounts.map(sampleCount =>
+    renderer.createRenderTarget({
         width: framebufferWidth,
         height: framebufferHeight,
-        colorAttachmentInfos: [
+        sampleCount,
+        colorAttachments: [
             {
-                attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
-                internalFormat: Hilo3d.constants.RGBA8,
-                samples
+                clearValue: { r: 0.9, g: 0.6, b: 0.3, a: 1 }
             }
         ],
-        depthStencilAttachmentInfo: {
-            attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_RENDERBUFFER,
-            internalFormat: Hilo3d.constants.DEPTH_COMPONENT24,
-            attachment: Hilo3d.constants.DEPTH_ATTACHMENT,
-            samples
-        }
-    });
+        depthStencilAttachment: { format: 'depth24plus' },
+        label: `Multisample.${String(sampleCount)}x`
+    })
+);
 
-    const copyFramebuffer = new Hilo3d.Framebuffer(renderer, {
-        width: framebufferWidth,
-        height: framebufferHeight,
-        colorAttachmentInfos: [
-            {
-                attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE
-            }
-        ]
-    });
-
-    return {
-        multiSampledFramebuffer,
-        copyFramebuffer
-    };
+const viewports = [
+    { x: 0.025, y: 0.25, width: 0.45, height: 0.5 },
+    { x: 0.525, y: 0.25, width: 0.45, height: 0.5 }
+] as const;
+renderTargets.forEach((target, index) => {
+    const viewport = viewports[index];
+    if (!viewport) throw new Error('Missing multisample preview viewport.');
+    stage.addChild(
+        createTexturePreview(
+            () => target.getColorTexture(),
+            viewport,
+            `Multisample.${String(sampleCounts[index])}x.preview`
+        )
+    );
 });
 
-const singleFramebuffer = new Hilo3d.Framebuffer(renderer, {
-    width: framebufferWidth,
-    height: framebufferHeight,
-    colorAttachmentInfos: [
-        {
-            attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE
-        }
-    ]
-});
-
-stage.onUpdate = function () {
-    const preWidth = renderer.width;
-    const preHeight = renderer.height;
-
-    sceneNode.traverseUpdate(0);
-    renderer.width = framebufferWidth;
-    renderer.height = framebufferHeight;
-    renderer.viewport(0, 0, framebufferWidth, framebufferHeight);
-
-    framebuffers.forEach(framebuffer => {
-        const { multiSampledFramebuffer, copyFramebuffer } = framebuffer;
-
-        multiSampledFramebuffer.bind();
-        stage.renderer.render(sceneNode, camera);
-
-        copyFramebuffer.copyFramebuffer(multiSampledFramebuffer);
+stage.onUpdate = function (deltaTime) {
+    sceneNode.traverseUpdate(deltaTime);
+    renderTargets.forEach(target => {
+        renderer.renderToTarget(target, sceneNode, camera, false);
     });
-
-    singleFramebuffer.bind();
-    stage.renderer.render(sceneNode, camera);
-
-    renderer.state.bindSystemFramebuffer();
-    renderer.width = preWidth;
-    renderer.height = preHeight;
-    renderer.viewport();
 };
-
-renderer.on('afterRender', () => {
-    singleFramebuffer.render(0.025, 0.025, 0.45, 0.45);
-    const viewports = [
-        [0.525, 0.025, 0.45, 0.45],
-        [0.025, 0.525, 0.45, 0.45],
-        [0.525, 0.525, 0.45, 0.45]
-    ] as const;
-    framebuffers.forEach(({ copyFramebuffer }, index) => {
-        const viewport = viewports[index];
-        if (viewport) copyFramebuffer.render(...viewport);
-    });
-});

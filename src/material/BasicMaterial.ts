@@ -7,7 +7,7 @@ import Color from '../math/Color';
 import type Matrix4 from '../math/Matrix4';
 import Texture from '../texture/Texture';
 import CubeTexture from '../texture/CubeTexture';
-import type { ShaderOptions } from '../renderer/types';
+import type { ShaderOptions } from '../render/types';
 
 export type BasicLightType = 'NONE' | 'PHONG' | 'BLINN-PHONG' | 'LAMBERT';
 
@@ -109,9 +109,9 @@ class BasicMaterial extends Material {
     protected initializeBasicMaterialBindings(): void {
         this.initializeBindings();
         Object.assign(this.uniforms, {
-            u_diffuse: 'DIFFUSE',
-            u_specular: 'SPECULAR',
-            u_ambient: 'AMBIENT',
+            u_diffuseColor: 'DIFFUSE',
+            u_specularColor: 'SPECULAR',
+            u_ambientColor: 'AMBIENT',
             u_shininess: 'SHININESS',
             u_reflectivity: 'REFLECTIVITY',
             u_refractRatio: 'REFRACTRATIO',

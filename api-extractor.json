@@ -1,5 +1,6 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
+  "newlineKind": "lf",
   "mainEntryPointFilePath": "<projectFolder>/dist/Hilo3d.d.ts",
   "compiler": {
     "tsconfigFilePath": "<projectFolder>/tsconfig.lib.json"

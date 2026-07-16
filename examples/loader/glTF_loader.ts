@@ -4,9 +4,9 @@ import {
     type EnvironmentMaps,
     loadEnvironmentMaps,
     parseQuery
-} from '../js/init';
+} from '../shared/init';
 
-const { camera, stage, ambientLight } = createExampleContext();
+const { camera, stage, ambientLight } = await createExampleContext();
 new Hilo3d.AxisHelper({ size: 1 }).addTo(stage);
 
 interface ModelInfo extends Hilo3d.GLTFLoadRequest {
@@ -55,12 +55,6 @@ const models: Readonly<Record<string, ModelInfo>> = {
         scale: 0.3,
         src: '../models/AlphaBlendModeTest/AlphaBlendModeTest.gltf',
         ambient: 0.8
-    },
-    SampleTechniques: {
-        name: 'SampleTechniques',
-        scale: 0.5,
-        src: '../models/SampleTechniques/SampleTechniques.gltf',
-        isProgressive: true
     }
 };
 

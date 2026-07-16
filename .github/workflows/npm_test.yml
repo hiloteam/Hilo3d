@@ -17,13 +17,9 @@ permissions:
 
 jobs:
   validate:
-    name: Node ${{ matrix.node-version }}
+    name: Node 22.22.2
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [22.22.2, 24.x]
+    timeout-minutes: 360
 
     steps:
       - name: Check out repository
@@ -32,19 +28,23 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version-file: .node-version
           cache: npm
 
-      - name: Install dependencies
+      - name: Set up npm
         run: |
-          npm install --global npm@12.0.1
-          npm ci
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Validate release
-        run: npm run validate
+        run: npm run validate:ci
         env:
           CI: 'true'
 
@@ -52,10 +52,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test-reports-node-${{ matrix.node-version }}
+          name: test-reports-node-22.22.2
           path: |
             coverage
-            playwright-report
-            test-results
           if-no-files-found: ignore
           retention-days: 14

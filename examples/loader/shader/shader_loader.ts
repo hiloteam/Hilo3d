@@ -1,7 +1,7 @@
 import * as Hilo3d from '../../../src/Hilo3d';
-import { createExampleContext } from '../../js/init';
+import { createExampleContext } from '../../shared/init';
 
-const { stage } = createExampleContext();
+const { camera, stage } = await createExampleContext();
 
 stage.addChild(new Hilo3d.AxisNetHelper({ size: 4 }));
 stage.addChild(new Hilo3d.AxisHelper());
@@ -22,6 +22,10 @@ const loader = new Hilo3d.ShaderMaterialLoader();
 const diffuseTexture = new Hilo3d.LazyTexture({
     src: new URL('../../image/UV_Grid_Sm.jpg', import.meta.url).href
 });
+Hilo3d.registerUniformBlockBinding('ShaderLoaderBlock');
+const shaderLayout = Hilo3d.createStd140Layout({ u_mat: 'mat4', u_diff: 'float' });
+const shaderBlock = Hilo3d.UniformBuffer.fromSchema(shaderLayout);
+const modelViewProjection = new Hilo3d.Matrix4();
 void loader
     .load({
         fs: './test.frag',
@@ -31,21 +35,12 @@ void loader
             a_uv: 'TEXCOORD_0'
         },
         uniforms: {
-            u_mat: 'MODELVIEWPROJECTION',
             u_diffuse: {
-                get: (_mesh, _material, programInfo) => {
-                    if (programInfo.textureIndex === undefined) {
-                        throw new Error('u_diffuse is not a texture sampler.');
-                    }
-                    return Hilo3d.semantic.handlerTexture(diffuseTexture, programInfo.textureIndex);
-                }
-            },
-            u_diff: {
-                get() {
-                    return animationState.difference;
-                }
+                get: (_mesh, _material, _programInfo) =>
+                    Hilo3d.semantic.handlerTexture(diffuseTexture)
             }
         },
+        uniformBlocks: { ShaderLoaderBlock: shaderBlock },
         // cullFace: true,
         wireframe: true
     })
@@ -58,6 +53,11 @@ void loader
             // rotationX: -90,
             material,
             geometry
+        });
+        plane.on('beforeRender', () => {
+            camera.getModelProjectionMatrix(plane, modelViewProjection);
+            shaderBlock.set('u_mat', modelViewProjection.elements);
+            shaderBlock.set('u_diff', animationState.difference);
         });
         stage.addChild(plane);
     })

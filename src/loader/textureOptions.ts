@@ -25,9 +25,6 @@ export function textureOptions<Image>(
             ? { premultiplyAlpha: source.premultiplyAlpha }
             : {}),
         ...(source.flipY !== undefined ? { flipY: source.flipY } : {}),
-        ...(source.colorSpaceConversion !== undefined
-            ? { colorSpaceConversion: source.colorSpaceConversion }
-            : {}),
         ...(source.compressed !== undefined ? { compressed: source.compressed } : {}),
         ...(source.needUpdate !== undefined ? { needUpdate: source.needUpdate } : {}),
         ...(source.needDestroy !== undefined ? { needDestroy: source.needDestroy } : {}),

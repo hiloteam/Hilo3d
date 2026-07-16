@@ -1,7 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
+import { hashReadback } from './shared/readbackDiagnostics';
 
-const { stage, renderer, ticker } = createExampleContext();
+const { camera, stage, renderer, ticker } = await createExampleContext();
 
 const shaderToyCode = `
 
@@ -433,10 +434,8 @@ float calcAO( in vec3 pos, in vec3 nor )
 }
 
 // http://iquilezles.org/www/articles/checkerfiltering/checkerfiltering.htm
-float checkersGradBox( in vec2 p )
+float checkersGradBox( in vec2 p, in vec2 w )
 {
-    // filter kernel
-    vec2 w = fwidth(p) + 0.001;
     // analytical integral (box filter)
     vec2 i = 2.0*(abs(fract((p-0.5*w)*0.5)-0.5)-abs(fract((p+0.5*w)*0.5)-0.5))/w;
     // xor pattern
@@ -449,9 +448,12 @@ vec3 render( in vec3 ro, in vec3 rd )
     vec2 res = castRay(ro,rd);
     float t = res.x;
     float m = res.y;
+    vec3 pos = ro + t*rd;
+    // WebGPU requires derivatives to execute in uniform control flow. Compute the
+    // checker footprint for every fragment before entering the ray-hit branches.
+    vec2 checkerWidth = fwidth(5.0*pos.xz) + 0.001;
     if( m>-0.5 )
     {
-        vec3 pos = ro + t*rd;
         vec3 nor = (m<1.5) ? vec3(0.0,1.0,0.0) : calcNormal( pos );
         vec3 ref = reflect( rd, nor );
         
@@ -460,7 +462,7 @@ vec3 render( in vec3 ro, in vec3 rd )
         if( m<1.5 )
         {
             
-            float f = checkersGradBox( 5.0*pos.xz );
+            float f = checkersGradBox( 5.0*pos.xz, checkerWidth );
             col = 0.3 + f*vec3(0.1);
         }
 
@@ -548,37 +550,41 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 }
 
 `;
-Hilo3d.extensions.use('OES_standard_derivatives');
 renderer.clearColor = new Hilo3d.Color(0, 0, 0, 1);
 const pointer = { x: 0, y: 0, deltaX: 0, deltaY: 0, isDown: false };
-function eventPosition(event: Hilo3d.DispatchEvent): { x: number; y: number } | null {
-    const x = 'stageX' in event ? event.stageX : undefined;
-    const y = 'stageY' in event ? event.stageY : undefined;
-    return typeof x === 'number' && typeof y === 'number' ? { x, y } : null;
+function eventPosition(event: PointerEvent): { x: number; y: number } {
+    const bounds = stage.canvas.getBoundingClientRect();
+    return {
+        x: ((event.clientX - bounds.left) * renderer.width) / bounds.width,
+        y: ((bounds.bottom - event.clientY) * renderer.height) / bounds.height
+    };
 }
-function updatePointer(event: Hilo3d.DispatchEvent): void {
+function updatePointer(event: PointerEvent): void {
     const position = eventPosition(event);
-    if (!position) return;
     pointer.deltaX = position.x - pointer.x;
     pointer.deltaY = position.y - pointer.y;
     pointer.x = position.x;
     pointer.y = position.y;
 }
 
-stage.enableDOMEvent(['pointermove', 'pointerdown', 'pointerup', 'pointercancel']);
-stage.on('pointermove', event => {
+stage.canvas.style.touchAction = 'none';
+stage.canvas.addEventListener('pointermove', event => {
     if (pointer.isDown) updatePointer(event);
 });
-stage.on('pointerdown', event => {
+stage.canvas.addEventListener('pointerdown', event => {
     updatePointer(event);
     pointer.isDown = true;
+    stage.canvas.setPointerCapture(event.pointerId);
 });
-const endPointer = (event: Hilo3d.DispatchEvent): void => {
+const endPointer = (event: PointerEvent): void => {
     updatePointer(event);
     pointer.isDown = false;
+    if (stage.canvas.hasPointerCapture(event.pointerId)) {
+        stage.canvas.releasePointerCapture(event.pointerId);
+    }
 };
-stage.on('pointerup', endPointer);
-stage.on('pointercancel', endPointer);
+stage.canvas.addEventListener('pointerup', endPointer);
+stage.canvas.addEventListener('pointercancel', endPointer);
 
 const resolution = new Float32Array([stage.width, stage.height, 1]);
 const mouse = new Float32Array(4);
@@ -592,66 +598,67 @@ let elapsedTime = 0;
 let timeDelta = 0;
 let frame = 0;
 
-function bindChannel(
-    texture: Hilo3d.Texture | null,
-    programInfo: Hilo3d.ProgramBindingInfo
-): number | undefined {
-    if (programInfo.textureIndex === undefined)
-        throw new Error('ShaderToy channel has no texture unit');
-    return Hilo3d.semantic.handlerTexture(texture, programInfo.textureIndex);
+function bindChannel(texture: Hilo3d.Texture | null): Hilo3d.TextureBinding {
+    return Hilo3d.semantic.handlerTexture(texture);
 }
 
 const screenVertexShader = Hilo3d.Shader.shaders['screen.vert'];
 if (screenVertexShader === undefined)
     throw new Error('ShaderToy screen vertex shader is unavailable');
+Hilo3d.registerUniformBlockBinding('ShaderToyBlock');
+const shaderToyLayout = Hilo3d.createStd140Layout({
+    iResolution: 'vec3',
+    iTime: 'float',
+    iTimeDelta: 'float',
+    iFrame: 'int',
+    iFrameRate: 'float',
+    iChannelTime: { type: 'float', arrayLength: 4 },
+    iMouse: 'vec4',
+    iDate: 'vec4',
+    iSampleRate: 'float',
+    iChannelResolution: { type: 'vec3', arrayLength: 4 }
+});
+const shaderToyBlock = Hilo3d.UniformBuffer.fromSchema(shaderToyLayout);
 const material = new Hilo3d.ShaderMaterial({
     depthTest: false,
     side: Hilo3d.constants.FRONT_AND_BACK,
-    needBasicUnifroms: false,
+    needBasicUniforms: false,
     needBasicAttributes: false,
     uniforms: {
-        iResolution: { get: () => resolution },
-        iTime: { get: () => elapsedTime },
-        iTimeDelta: { get: () => timeDelta },
-        iFrame: { get: () => frame },
-        iFrameRate: { get: () => ticker.getMeasuredFPS() },
-        iChannelTime: { get: () => channelTime },
-        iMouse: { get: () => mouse },
-        iDate: { get: () => date },
-        iSampleRate: { get: () => 0 },
-        iChannelResolution: { get: () => channelResolution },
-        iChannel0: { get: (_mesh, _material, info) => bindChannel(channel0, info) },
-        iChannel1: { get: (_mesh, _material, info) => bindChannel(null, info) },
-        iChannel2: { get: (_mesh, _material, info) => bindChannel(null, info) },
-        iChannel3: { get: (_mesh, _material, info) => bindChannel(null, info) }
+        iChannel0: { get: () => bindChannel(channel0) },
+        iChannel1: { get: () => bindChannel(null) },
+        iChannel2: { get: () => bindChannel(null) },
+        iChannel3: { get: () => bindChannel(null) }
     },
+    uniformBlocks: { ShaderToyBlock: shaderToyBlock },
     attributes: {
         a_position: 'POSITION',
         a_texcoord0: 'TEXCOORD_0'
     },
-    fs: `
-        #extension GL_OES_standard_derivatives: enable
-        #define texture texture2D
-        precision HILO_MAX_FRAGMENT_PRECISION float;
-        uniform vec3 iResolution;
-        uniform float iTime;
-        uniform float iTimeDelta;
-        uniform int iFrame;
-        uniform float iFrameRate;
-        uniform float iChannelTime[4];
-        uniform vec4 iMouse;
-        uniform vec4 iDate;
-        uniform float iSampleRate;
-        uniform vec3 iChannelResolution[4];
+    fs: `#version 300 es
+        precision highp float;
+        layout(std140) uniform ShaderToyBlock {
+            vec3 iResolution;
+            float iTime;
+            float iTimeDelta;
+            int iFrame;
+            float iFrameRate;
+            float iChannelTime[4];
+            vec4 iMouse;
+            vec4 iDate;
+            float iSampleRate;
+            vec3 iChannelResolution[4];
+        };
         uniform sampler2D iChannel0;
         uniform sampler2D iChannel1;
         uniform sampler2D iChannel2;
         uniform sampler2D iChannel3;
+        layout(location = 0) out vec4 fragmentColor;
         ${shaderToyCode}
         void main(void) {
             vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
             mainImage(color, gl_FragCoord.xy);
-            gl_FragColor = color;
+            fragmentColor = color;
         }
     `,
     vs: screenVertexShader
@@ -680,5 +687,82 @@ mesh.onUpdate = deltaTime => {
         now.getSeconds() +
         now.getMilliseconds() / 1000;
     mouse.set([pointer.x, pointer.y, pointer.deltaX, pointer.deltaY]);
+    shaderToyBlock.set('iResolution', resolution);
+    shaderToyBlock.set('iTime', elapsedTime);
+    shaderToyBlock.set('iTimeDelta', timeDelta);
+    shaderToyBlock.set('iFrame', frame);
+    shaderToyBlock.set('iFrameRate', ticker.getMeasuredFPS());
+    shaderToyBlock.set('iChannelTime', channelTime);
+    shaderToyBlock.set('iMouse', mouse);
+    shaderToyBlock.set('iDate', date);
+    shaderToyBlock.set('iSampleRate', 0);
+    shaderToyBlock.set('iChannelResolution', channelResolution);
 };
 stage.addChild(mesh);
+
+const pointerDiagnosticTarget = renderer.createRenderTarget({
+    width: 320,
+    height: 180,
+    colorAttachments: [{ format: 'rgba8unorm' }],
+    depthStencilAttachment: false,
+    label: 'ShaderToy pointer diagnostics'
+});
+
+window.__HILO3D_SHADER_TOY_DIAGNOSTICS__ = {
+    async capture(options = {}) {
+        ticker.stop();
+        let succeeded = false;
+        try {
+            mouse.set([pointer.x, pointer.y, pointer.deltaX, pointer.deltaY]);
+            shaderToyBlock.set('iMouse', mouse);
+            renderer.renderToTarget(pointerDiagnosticTarget, stage, camera, true);
+            const readback = await pointerDiagnosticTarget.readColorAttachment();
+            let coloredPixelCount = 0;
+            for (let offset = 0; offset < readback.data.byteLength; offset += 4) {
+                if (
+                    readback.data[offset] !== 0 ||
+                    readback.data[offset + 1] !== 0 ||
+                    readback.data[offset + 2] !== 0
+                ) {
+                    coloredPixelCount++;
+                }
+            }
+            succeeded = true;
+            return {
+                backend: renderer.backend,
+                hash: hashReadback(readback.data),
+                coloredPixelCount,
+                pointer: { ...pointer }
+            };
+        } finally {
+            if (!(succeeded && options.keepPaused === true)) ticker.start();
+        }
+    }
+};
+
+window.addEventListener(
+    'pagehide',
+    () => {
+        pointerDiagnosticTarget.destroy();
+    },
+    { once: true }
+);
+
+declare global {
+    interface Window {
+        __HILO3D_SHADER_TOY_DIAGNOSTICS__?: {
+            capture(options?: { readonly keepPaused?: boolean }): Promise<{
+                readonly backend: Hilo3d.RendererBackend;
+                readonly hash: string;
+                readonly coloredPixelCount: number;
+                readonly pointer: {
+                    readonly x: number;
+                    readonly y: number;
+                    readonly deltaX: number;
+                    readonly deltaY: number;
+                    readonly isDown: boolean;
+                };
+            }>;
+        };
+    }
+}

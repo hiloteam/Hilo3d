@@ -1,15 +1,20 @@
 import Node, { type NodeParameters, type NodePointerEvent, type NodeRaycastInfo } from './Node';
 import version from './version';
-import WebGLRenderer from '../renderer/WebGLRenderer';
-import type { FramebufferParameters } from '../renderer/Framebuffer';
+import Renderer, {
+    type RendererBackend,
+    type RendererOptions,
+    type RendererSupportOptions
+} from '../render/Renderer';
 import Ray from '../math/Ray';
 import Vector3 from '../math/Vector3';
 import type Color from '../math/Color';
 import type Camera from '../camera/Camera';
+import type Fog from './Fog';
 import log from '../utils/log';
 import { getElementRect } from '../utils/util';
 
 type DOMViewport = ReturnType<typeof getElementRect>;
+const STAGE_CONSTRUCTION_TOKEN = Symbol('Stage construction');
 
 interface DOMPointerInfo {
     pageX: number;
@@ -135,26 +140,103 @@ function getDOMPointerInfo(event: Event): DOMPointerInfo {
     };
 }
 
-export interface StageParameters extends NodeParameters {
+export interface StageCommonParameters extends NodeParameters {
     container?: HTMLElement;
     canvas?: HTMLCanvasElement;
     camera?: Camera | null;
+    fog?: Fog | null;
     width?: number;
     height?: number;
     pixelRatio?: number;
     clearColor?: Color;
-    preferWebGL2?: boolean;
-    useFramebuffer?: boolean;
-    framebufferOption?: FramebufferParameters;
+    useInstanced?: boolean;
     useLogDepth?: boolean;
     alpha?: boolean;
     depth?: boolean;
     stencil?: boolean;
     antialias?: boolean;
     premultipliedAlpha?: boolean;
-    preserveDrawingBuffer?: boolean;
     failIfMajorPerformanceCaveat?: boolean;
     gameMode?: boolean;
+}
+
+/** Requested backend policy. `auto` probes WebGPU first and otherwise selects WebGL 2. */
+export type StageBackend = RendererBackend | 'auto';
+
+export type StageBackendParameters<Backend extends StageBackend> = [StageBackend] extends [Backend]
+    ? RendererSupportOptions & {
+          backend?: StageBackend;
+          /** Supplying this WebGL2-only option makes `auto` select WebGL 2. */
+          preserveDrawingBuffer?: boolean;
+      }
+    : [RendererBackend] extends [Backend]
+      ? RendererSupportOptions & {
+            backend: RendererBackend;
+            /** Dynamic backend selection is guarded at runtime when this WebGL2-only option exists. */
+            preserveDrawingBuffer?: boolean;
+        }
+      : Backend extends 'webgpu'
+        ? RendererSupportOptions & {
+              /** Explicit WebGPU selection never falls back silently. */
+              backend: 'webgpu';
+              /** WebGPU has no preserved default framebuffer; use an explicit copy/readback pass. */
+              preserveDrawingBuffer?: never;
+          }
+        : Backend extends 'auto'
+          ? RendererSupportOptions & {
+                /** The asynchronous factory defaults to WebGPU-first automatic selection. */
+                backend?: 'auto';
+                /** Supplying this WebGL2-only option makes `auto` select WebGL 2. */
+                preserveDrawingBuffer?: boolean;
+            }
+          : {
+                backend?: 'webgl2';
+                preserveDrawingBuffer?: boolean;
+            };
+
+export type StageParameters<Backend extends StageBackend = 'auto'> = StageCommonParameters & {
+    backend?: Backend;
+} & StageBackendParameters<Backend>;
+
+function snapshotStageParameters(
+    params: StageParameters<StageBackend>
+): StageParameters<StageBackend> {
+    return {
+        ...params,
+        ...(params.requiredFeatures === undefined
+            ? {}
+            : { requiredFeatures: [...params.requiredFeatures] }),
+        ...(params.requiredLimits === undefined
+            ? {}
+            : { requiredLimits: { ...params.requiredLimits } })
+    };
+}
+
+function createStageCanvas(params: {
+    readonly canvas?: HTMLCanvasElement;
+    readonly container?: HTMLElement;
+}): HTMLCanvasElement {
+    const canvas = params.canvas ?? document.createElement('canvas');
+    if (params.container) params.container.appendChild(canvas);
+    return canvas;
+}
+
+/** @internal Resolve a requested backend without creating a device, context, or GPU resource. */
+export async function resolveStageBackend(
+    params: StageParameters<StageBackend> = {}
+): Promise<RendererBackend> {
+    const requestedBackend: unknown = params.backend ?? 'auto';
+    if (requestedBackend === 'webgpu' || requestedBackend === 'webgl2') return requestedBackend;
+    if (requestedBackend !== 'auto') {
+        throw new TypeError(`Unsupported Stage backend ${String(requestedBackend)}`);
+    }
+    if (
+        Object.prototype.hasOwnProperty.call(params, 'preserveDrawingBuffer') ||
+        (params.alpha === true && params.premultipliedAlpha === false)
+    ) {
+        return 'webgl2';
+    }
+    return (await Renderer.isBackendSupported('webgpu', params)) ? 'webgpu' : 'webgl2';
 }
 
 export interface StagePointerEvent extends NodePointerEvent {
@@ -174,27 +256,33 @@ function containsNode(parent: Node, possibleChild: Node): boolean {
 }
 /**
  * 舞台类
+ * Create stages asynchronously with `Stage.create()`.
+ *
  * @example
  * ```ts
- * const stage = new Hilo3d.Stage({
+ * const stage = await Hilo3d.Stage.create({
  *     container:document.body,
  *     width:innerWidth,
  *     height:innerHeight
  * });
  * ```
  */
-class Stage extends Node {
+class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
     static override readonly typeName: string = 'Stage';
     isStage = true;
     override className = 'Stage';
     /**
      * 渲染器
      */
-    renderer: WebGLRenderer;
+    renderer: Renderer<Backend>;
+    /** Resolves when the selected graphics backend is ready for rendering. */
+    readonly ready: Promise<void>;
     /**
      * 摄像机
      */
     camera: Camera | null = null;
+    /** Scene fog consumed consistently by every renderer backend. */
+    fog: Fog | null = null;
     /**
      * 像素密度
      */
@@ -237,50 +325,67 @@ class Stage extends Node {
      * - `params.height`: stage的高，默认网页高度
      * - `params.pixelRatio`: 像素密度。
      * - `params.clearColor`: 背景色。
-     * - `params.preferWebGL2`: 是否优先使用 WebGL2
-     * - `params.useFramebuffer`: 是否使用Framebuffer，有后处理需求时需要。
-     * - `params.framebufferOption`: framebufferOption Framebuffer的配置，useFramebuffer为true时生效。
      * - `params.useLogDepth`: 是否使用对数深度，处理深度冲突。
      * - `params.alpha`: 是否背景透明。
      * - `params.depth`: 是否需要深度缓冲区。
      * - `params.stencil`: 是否需要模版缓冲区。
      * - `params.antialias`: 是否抗锯齿。
      * - `params.premultipliedAlpha`: 是否需要 premultipliedAlpha。
-     * - `params.preserveDrawingBuffer`: 是否需要 preserveDrawingBuffer。
+     * - `params.preserveDrawingBuffer`: WebGL2-only preserved default framebuffer option.
      * - `params.failIfMajorPerformanceCaveat`: 是否需要 failIfMajorPerformanceCaveat。
      */
-    constructor(params: StageParameters = {}) {
-        const width = params.width ?? window.innerWidth;
-        const height = params.height ?? window.innerHeight;
-        let pixelRatio = params.pixelRatio;
+    private constructor(
+        params: StageParameters<Backend>,
+        canvas: HTMLCanvasElement,
+        renderer: Renderer<Backend>,
+        token: typeof STAGE_CONSTRUCTION_TOKEN
+    ) {
+        super();
+        if (token !== STAGE_CONSTRUCTION_TOKEN) {
+            throw new TypeError('Stage cannot be constructed directly; use await Stage.create()');
+        }
+        Object.assign(this, params);
+        this.canvas = canvas;
+        this.renderer = renderer;
+        this.canvas.dataset['hilo3dBackend'] = renderer.backend;
+        this.ready = renderer.ready;
+        this.resize(this.width, this.height, this.pixelRatio, true);
+        log.log(`Hilo3d version: ${version}`);
+    }
+
+    /** Construct and await the WebGPU-first automatic backend policy. */
+    static create(params?: StageParameters): Promise<Stage>;
+    /** Construct and await an explicitly selected backend. */
+    static create<Backend extends RendererBackend>(
+        params: StageParameters<Backend>
+    ): Promise<Stage<Backend>>;
+    /** Construct from a runtime backend policy whose resolved backend is not known statically. */
+    static create(params: StageParameters<StageBackend>): Promise<Stage>;
+    static async create(params: StageParameters<StageBackend> = {}): Promise<Stage> {
+        const parameterSnapshot = snapshotStageParameters(params);
+        const backend = await resolveStageBackend(parameterSnapshot);
+        const width = parameterSnapshot.width ?? window.innerWidth;
+        const height = parameterSnapshot.height ?? window.innerHeight;
+        let pixelRatio = parameterSnapshot.pixelRatio;
         if (!pixelRatio) {
             pixelRatio = window.devicePixelRatio || 1;
             pixelRatio = Math.min(pixelRatio, 1024 / Math.max(width, height), 2);
             pixelRatio = Math.max(pixelRatio, 1);
         }
-        const resolvedParams: StageParameters = { ...params, width, height, pixelRatio };
-        super();
-        Object.assign(this, resolvedParams);
-        this.canvas = this.createCanvas(resolvedParams);
-        this.renderer = new WebGLRenderer({ ...resolvedParams, domElement: this.canvas });
-        this.resize(this.width, this.height, this.pixelRatio, true);
-        log.log(`Hilo3d version: ${version}`);
-    }
-    /**
-     * 生成canvas
-     * @param params -
-     */
-    private createCanvas(params: StageParameters): HTMLCanvasElement {
-        let canvas: HTMLCanvasElement;
-        if (params.canvas) {
-            canvas = params.canvas;
-        } else {
-            canvas = document.createElement('canvas');
-        }
-        if (params.container) {
-            params.container.appendChild(canvas);
-        }
-        return canvas;
+        const resolvedParams: StageParameters<RendererBackend> = {
+            ...parameterSnapshot,
+            backend,
+            width,
+            height,
+            pixelRatio
+        };
+        const canvas = createStageCanvas(resolvedParams);
+        const renderer = await Renderer.create({
+            ...resolvedParams,
+            backend,
+            domElement: canvas
+        } as RendererOptions);
+        return new Stage(resolvedParams, canvas, renderer, STAGE_CONSTRUCTION_TOKEN);
     }
     /**
      * 缩放舞台
@@ -301,8 +406,8 @@ class Stage extends Node {
             this.width = width;
             this.height = height;
             this.pixelRatio = pixelRatio;
-            this.rendererWidth = width * pixelRatio;
-            this.rendererHeight = height * pixelRatio;
+            this.rendererWidth = Math.max(1, Math.round(width * pixelRatio));
+            this.rendererHeight = Math.max(1, Math.round(height * pixelRatio));
             const canvas = this.canvas;
             const renderer = this.renderer;
             renderer.resize(this.rendererWidth, this.rendererHeight, force);
@@ -507,11 +612,11 @@ class Stage extends Node {
         return this._stageResultAtPoint;
     }
     /**
-     * 释放 WebGL 资源
+     * 释放当前图形后端资源。
      * @returns this
      */
-    releaseGLResource(): this {
-        this.renderer.releaseGLResource();
+    releaseGPUResources(): this {
+        this.renderer.releaseGPUResources();
         return this;
     }
     /**
@@ -522,13 +627,12 @@ class Stage extends Node {
         this.enableDOMEvent([...this._enabledDOMEvents], false);
         this._eventTargets.clear();
         super.destroy(this.renderer);
-        this.releaseGLResource();
         this.traverse(child => {
             child.off();
             child.parent = null;
         });
         this.children.length = 0;
-        this.renderer.off();
+        this.renderer.destroy();
         return this;
     }
 }

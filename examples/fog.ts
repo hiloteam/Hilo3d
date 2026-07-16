@@ -1,6 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
-import OrbitControls from './js/OrbitControls';
-import Stats from './js/stats';
+import OrbitControls from './shared/OrbitControls';
+import { resolveExampleBackend } from './shared/init';
+import Stats from './shared/stats';
 
 const container = document.getElementById('container');
 if (!container) throw new Error('Fog example requires #container');
@@ -10,21 +11,22 @@ const camera = new Hilo3d.PerspectiveCamera({
     z: 10
 });
 const backgroundColor = new Hilo3d.Color(0.6, 0.8, 0.9);
-const stage = new Hilo3d.Stage({
+const stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
+    backend: resolveExampleBackend(),
     container,
     camera,
     width: innerWidth,
     height: innerHeight,
-    clearColor: backgroundColor
+    clearColor: backgroundColor,
+    useInstanced: true,
+    fog: new Hilo3d.Fog({
+        mode: 'EXP2',
+        start: 5,
+        end: 15,
+        density: 0.1,
+        color: backgroundColor
+    })
 });
-stage.renderer.fog = new Hilo3d.Fog({
-    mode: 'EXP2',
-    start: 5,
-    end: 15,
-    density: 0.1,
-    color: backgroundColor
-});
-stage.renderer.useInstanced = true;
 
 const ticker = new Hilo3d.Ticker(60);
 ticker.addTick(stage);

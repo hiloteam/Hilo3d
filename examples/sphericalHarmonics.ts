@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
-const { stage, ambientLight } = createExampleContext();
+const { stage, ambientLight } = await createExampleContext();
 
 initModel();
 initLight();

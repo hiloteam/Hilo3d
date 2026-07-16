@@ -1,19 +1,6 @@
 import Light, { type LightParameters } from './Light';
-import Loader from '../loader/Loader';
 import DataTexture from '../texture/DataTexture';
-
-interface LtcTexturePayload {
-    ltcTexture1: readonly number[];
-    ltcTexture2: readonly number[];
-}
-
-function isLtcTexturePayload(value: unknown): value is LtcTexturePayload {
-    if (value === null || typeof value !== 'object') return false;
-    return (
-        Array.isArray(Reflect.get(value, 'ltcTexture1')) &&
-        Array.isArray(Reflect.get(value, 'ltcTexture2'))
-    );
-}
+import ltcTextureData from './assets/ltcTexture.json';
 
 export interface AreaLightParameters extends LightParameters {
     width?: number;
@@ -37,41 +24,13 @@ class AreaLight extends Light {
      */
     static ltcTextureReady = false;
     /**
-     * ltcTexture 地址
-     */
-    static ltcTextureUrl = '//g.alicdn.com/tmapp/static/4.0.63/ltcTexture.js';
-    private static ltcTexturePromise: Promise<void> | null = null;
-    /**
      * 初始化 ltcTexture
      */
-    static loadLtcTexture(): Promise<void> {
-        if (this.ltcTextureReady) return Promise.resolve();
-        if (this.ltcTexturePromise) return this.ltcTexturePromise;
-
-        const loader = new Loader();
-        const promise = loader
-            .load({
-                type: 'json',
-                src: this.ltcTextureUrl
-            })
-            .then(data => {
-                if (!isLtcTexturePayload(data)) {
-                    throw new TypeError('AreaLight LTC texture response has an invalid shape.');
-                }
-                this.ltcTexture1 = new DataTexture({
-                    data: data.ltcTexture1
-                });
-                this.ltcTexture2 = new DataTexture({
-                    data: data.ltcTexture2
-                });
-                this.ltcTextureReady = true;
-            })
-            .catch((error: unknown) => {
-                this.ltcTexturePromise = null;
-                throw error;
-            });
-        this.ltcTexturePromise = promise;
-        return promise;
+    static initializeLtcTexture(): void {
+        if (this.ltcTextureReady) return;
+        this.ltcTexture1 = new DataTexture({ data: ltcTextureData.ltcTexture1 });
+        this.ltcTexture2 = new DataTexture({ data: ltcTextureData.ltcTexture2 });
+        this.ltcTextureReady = true;
     }
     override isAreaLight = true;
     override className = 'AreaLight';
@@ -95,7 +54,7 @@ class AreaLight extends Light {
     constructor(params: AreaLightParameters = {}) {
         super();
         Object.assign(this, params);
-        void AreaLight.loadLtcTexture().catch(() => undefined);
+        AreaLight.initializeLtcTexture();
     }
     /**
      * ltcTexture1

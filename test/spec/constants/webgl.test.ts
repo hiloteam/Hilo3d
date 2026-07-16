@@ -3,9 +3,9 @@ import * as webgl from '../../../src/constants/webgl';
 import * as webgl2 from '../../../src/constants/webgl2';
 
 describe('constants/webgl', () => {
-    it('matches WebGL context constants', () => {
-        const gl = document.createElement('canvas').getContext('webgl');
-        if (!gl) throw new Error('Expected the test browser to provide WebGL');
+    it('matches WebGL 2 context constants', () => {
+        const gl = document.createElement('canvas').getContext('webgl2');
+        if (!gl) throw new Error('Expected the test browser to provide WebGL 2');
 
         for (const [name, value] of Object.entries(webgl)) {
             const contextValue: unknown = Reflect.get(gl, name);
@@ -15,11 +15,13 @@ describe('constants/webgl', () => {
         }
     });
 
-    it('matches WebGL2 copy-buffer binding constants', () => {
+    it('matches WebGL 2 constants', () => {
         const gl = document.createElement('canvas').getContext('webgl2');
-        if (!gl) return;
+        if (!gl) throw new Error('Expected the test browser to provide WebGL 2');
 
-        expect(webgl2.COPY_READ_BUFFER_BINDING).toBe(gl.COPY_READ_BUFFER_BINDING);
-        expect(webgl2.COPY_WRITE_BUFFER_BINDING).toBe(gl.COPY_WRITE_BUFFER_BINDING);
+        for (const [name, value] of Object.entries(webgl2)) {
+            const contextValue: unknown = Reflect.get(gl, name);
+            if (typeof contextValue === 'number') expect(value, name).toBe(contextValue);
+        }
     });
 });

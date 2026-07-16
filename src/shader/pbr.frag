@@ -1,6 +1,7 @@
 #include "./chunk/extensions.frag"
 #include "./chunk/baseDefine.glsl"
 #include "./chunk/precision.frag"
+#include "./chunk/uniformBlocks.glsl"
 
 #include "./chunk/color.frag"
 #include "./chunk/uv.frag"

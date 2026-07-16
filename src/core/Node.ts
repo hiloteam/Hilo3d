@@ -1,4 +1,4 @@
-import { EventDispatcher, type DispatchEvent } from './EventMixin';
+import { EventDispatcher, type DispatchEvent } from './EventDispatcher';
 import Matrix4 from '../math/Matrix4';
 import Matrix4Notifier from '../math/Matrix4Notifier';
 import Vector3 from '../math/Vector3';
@@ -10,7 +10,7 @@ import type Ray from '../math/Ray';
 import type Animation from '../animation/Animation';
 import Geometry, { type Bounds } from '../geometry/Geometry';
 import Skeleton from './Skeleton';
-import type WebGLRenderer from '../renderer/WebGLRenderer';
+import type { Renderer } from '../render/Renderer';
 import math from '../math/math';
 const defaultUp = new Vector3(0, 1, 0);
 const tempMatrix4 = new Matrix4();
@@ -78,7 +78,7 @@ function hasGeometry(node: Node): node is GeometryNode {
 }
 function isSkinnedNode(node: Node): node is SkinnedNode {
     const skeleton: unknown = Reflect.get(node, 'skeleton');
-    return node.isSkinedMesh && (skeleton === null || skeleton instanceof Skeleton);
+    return node.isSkinnedMesh && (skeleton === null || skeleton instanceof Skeleton);
 }
 export interface NodeParameters {
     name?: string;
@@ -155,7 +155,7 @@ class Node extends EventDispatcher {
     isNode = true;
     isCamera = false;
     isMesh = false;
-    isSkinedMesh = false;
+    isSkinnedMesh = false;
     className = 'Node';
     /**
      * Node 的名字，可以通过 getChildByName 查找
@@ -279,7 +279,7 @@ class Node extends EventDispatcher {
             if (this.anim) {
                 node.anim = this.anim.clone(node);
             }
-            node.resetSkinedMeshRootNode();
+            node.resetSkinnedMeshRootNode();
         }
         return node;
     }
@@ -294,9 +294,9 @@ class Node extends EventDispatcher {
         return this;
     }
     /**
-     * 重置子孙元素中 SkinedMesh 的根节点为当前元素
+     * 重置子孙元素中 SkinnedMesh 的根节点为当前元素
      */
-    resetSkinedMeshRootNode(): void {
+    resetSkinnedMeshRootNode(): void {
         this.traverse(mesh => {
             if (isSkinnedNode(mesh) && mesh.skeleton) {
                 mesh.skeleton.rootNode = this;
@@ -983,7 +983,7 @@ class Node extends EventDispatcher {
      * @param destroyTextures - 是否销毁材质的贴图，默认不销毁
      * @returns this
      */
-    destroy(renderer?: WebGLRenderer, destroyTextures = false): this {
+    destroy(renderer?: Renderer, destroyTextures = false): this {
         const nodes = this.getChildrenByBaseClassName('Node');
         this.off();
         nodes.forEach(node => {

@@ -1,5 +1,5 @@
 /**
- * TypeScript-first public API for the Hilo3d WebGL engine.
+ * TypeScript-first public API for the Hilo3d WebGL 2 and WebGPU engine.
  *
  * @packageDocumentation
  */
@@ -9,26 +9,13 @@ import * as util from './utils/util';
 export { GLTFExtensions, util };
 
 export {
-    default as Class,
-    create as createClass,
-    type ClassDefinition,
-    type ClassLike,
-    type DynamicMembers,
-    type InferredClass,
-    mix as mixClass,
-    type RuntimeClassLike,
-    type LegacyClass
-} from './core/Class';
-export {
     type DispatchEvent,
     EventDispatcher,
     type EventListener,
-    default as EventMixin,
-    type EventMixinMembers,
     HiloEvent,
     type ListenerEntry,
     type ListenerMap
-} from './core/EventMixin';
+} from './core/EventDispatcher';
 export { default as Fog, type FogMode, type FogParameters } from './core/Fog';
 export { default as Mesh, type MeshParameters } from './core/Mesh';
 export {
@@ -41,8 +28,15 @@ export {
     type NodeTraverseResult
 } from './core/Node';
 export { default as Skeleton, type SkeletonParameters } from './core/Skeleton';
-export { default as SkinedMesh, type SkinedMeshParameters } from './core/SkinedMesh';
-export { default as Stage, type StageParameters, type StagePointerEvent } from './core/Stage';
+export { default as SkinnedMesh, type SkinnedMeshParameters } from './core/SkinnedMesh';
+export {
+    default as Stage,
+    type StageBackend,
+    type StageBackendParameters,
+    type StageCommonParameters,
+    type StageParameters,
+    type StagePointerEvent
+} from './core/Stage';
 export {
     type BackEaseObject,
     type ElasticEaseObject,
@@ -101,89 +95,87 @@ export {
     type SphereGeometryParameters
 } from './geometry/SphereGeometry';
 
-export { default as Buffer, type BufferData, type BufferRenderer } from './renderer/Buffer';
-export {
-    WebGLCapabilities,
-    default as capabilities,
-    type NumericCapabilityName
-} from './renderer/capabilities';
-export {
-    type DrawBuffersExtension,
-    type InstancedArraysExtension,
-    type VertexArrayObjectExtension,
-    WebGLExtensions,
-    default as extensions
-} from './renderer/extensions';
-export {
-    type CopyFramebufferOptions,
-    default as Framebuffer,
-    type FramebufferAttachmentInfo,
-    type FramebufferAttachmentType,
-    type FramebufferCopyRectangle,
-    type FramebufferParameters,
-    type FramebufferRenderer,
-    type ResolvedAttachmentOptions,
-    type FramebufferTexture
-} from './renderer/Framebuffer';
-export { default as glType } from './renderer/glType';
-export { default as logGLResource } from './renderer/logGLResource';
-export {
-    type AttributePointerParameters,
-    default as Program,
-    type ProgramAttribute,
-    ProgramLinkError,
-    type ProgramParameters,
-    type ProgramRenderer,
-    type ProgramUniform,
-    type ProgramUniformBlock,
-    ShaderCompilationError
-} from './renderer/Program';
-export { default as RenderInfo } from './renderer/RenderInfo';
-export { default as RenderList } from './renderer/RenderList';
-export { default as UniformBuffer, type UniformBufferData } from './renderer/UniformBuffer';
-export {
-    type AttributeObject,
-    default as VertexArrayObject,
-    type VertexArrayObjectParameters,
-    type VaoRenderer
-} from './renderer/VertexArrayObject';
-export {
-    type MeshSetup,
-    default as WebGLRenderer,
-    type WebGLRendererParameters,
-    type WebGLRendererScene
-} from './renderer/WebGLRenderer';
-export {
-    type ManagedResource,
-    default as WebGLResourceManager
-} from './renderer/WebGLResourceManager';
-export {
-    type FourParameterMethod,
-    type OneParameterMethod,
-    type StateValue,
-    type ThreeParameterMethod,
-    type TwoParameterMethod,
-    default as WebGLState
-} from './renderer/WebGLState';
+export { default as RenderInfo } from './render/RenderInfo';
 export type {
-    GLContext,
-    GLTypeInfo,
+    RenderTarget,
+    RenderTargetColor,
+    RenderTargetColorAttachmentOptions,
+    RenderTargetColorAttachmentReadback,
+    RenderTargetColorFormat,
+    RenderTargetCompareFunction,
+    RenderTargetDepthStencilAttachmentOptions,
+    RenderTargetDepthStencilFormat,
+    RenderTargetLoadOp,
+    RenderTargetParameters,
+    RenderTargetReadColorAttachmentOptions,
+    RenderTargetSampleCount,
+    RenderTargetSelectionOptions,
+    RenderTargetStoreOp
+} from './render/RenderTarget';
+export {
+    default as UniformBuffer,
+    type UniformBufferDirtyRange,
+    type UniformBufferRange
+} from './render/UniformBuffer';
+export {
+    createStd140Layout,
+    Std140Layout,
+    type Std140ArrayValue,
+    type Std140FieldDefinition,
+    type Std140FieldLayout,
+    type Std140FieldValue,
+    type Std140MatrixType,
+    type Std140ScalarType,
+    type Std140Schema,
+    type Std140Type,
+    type Std140Value,
+    type Std140Values,
+    type Std140VectorType
+} from './render/ubo/Std140Layout';
+export {
+    BUILTIN_UNIFORM_BLOCK_BINDING_COUNT,
+    getUniformBlockBinding,
+    registerUniformBlockBinding,
+    UNIFORM_BLOCK_BINDINGS
+} from './render/ubo/UniformBlockBindings';
+export {
+    default as Renderer,
+    type RendererAdapterPowerPreference,
+    type RendererAutoOptions,
+    type RendererBackend,
+    type RendererCommonOptions,
+    type RendererContract,
+    type RendererContextPowerPreference,
+    type RendererCreateOptions,
+    type RendererExplicitOptions,
+    type RendererFeatureName,
+    type RendererFrame,
+    type RendererFrameCallback,
+    type RendererOptions,
+    type RendererOptionsMap,
+    type RendererResourceDiagnostics,
+    type RendererResourceManager,
+    type RendererScene,
+    type RendererSupportOptions,
+    type RendererViewport,
+    type RendererWebGL2Options,
+    type RendererWebGPUOptions,
+    type TextureCompressionFormat
+} from './render/Renderer';
+export type { RenderGraphFramePlan } from './render/RenderGraphFramePlan';
+export type {
     Resource,
     ShaderDefineValue,
     ShaderOptions,
     ShaderPrecision,
     Size,
+    TextureCubeFace,
+    TexturePixelData,
     TextureSource,
     TextureSubImage,
     TypedArray,
-    TypedArrayConstructor,
-    UniformArray,
-    UniformBlockInfo,
-    UniformInfo,
-    UniformScalar,
-    UniformValue,
-    VertexAttributeInfo
-} from './renderer/types';
+    TypedArrayConstructor
+} from './render/types';
 
 export {
     default as BasicLoader,
@@ -220,7 +212,11 @@ export type * from './loader/GLTFTypes';
 export { default as HDRLoader, type HDRLoadRequest } from './loader/HDRLoader';
 export type { LoaderTextureOptions } from './loader/textureOptions';
 export { default as parseRadianceHDR, type RadianceHDRImage } from './loader/RadianceHDRParser';
-export { default as KTXLoader, type KTXLoadRequest } from './loader/KTXLoader';
+export {
+    default as KTXLoader,
+    type KTXLoadRequest,
+    type KTXTextureOptions
+} from './loader/KTXLoader';
 export {
     default as LoadCache,
     type LoadCacheFile,
@@ -252,13 +248,17 @@ export {
     type TextureImageSource,
     type TextureMipmap,
     type TextureParameters,
+    type TextureUpdateSnapshot,
     type ResizableTextureImage,
-    type TextureUVChannel,
-    type TextureWebGLState
+    type TextureUVChannel
 } from './texture/Texture';
 
-export { default as Shader, type ShaderParameters, type ShaderRenderer } from './shader/Shader';
-
+export {
+    default as Shader,
+    type ShaderParameters,
+    type ShaderPrecisionProvider,
+    type ShaderRenderer
+} from './shader/Shader';
 export {
     type BasicLightType,
     default as BasicMaterial,
@@ -298,10 +298,6 @@ export {
 export { default as AmbientLight, type AmbientLightParameters } from './light/AmbientLight';
 export { default as AreaLight, type AreaLightParameters } from './light/AreaLight';
 export {
-    default as CubeLightShadow,
-    type CubeLightShadowParameters
-} from './light/CubeLightShadow';
-export {
     default as DirectionalLight,
     type DirectionalLightParameters
 } from './light/DirectionalLight';
@@ -309,7 +305,10 @@ export {
     default as Light,
     type LightParameters,
     type LightShadowOptions,
-    type ShadowCameraParameters
+    type PointLightShadowOptions,
+    type PointShadowCameraParameters,
+    type ShadowCameraParameters,
+    type ShadowCastingLightParameters
 } from './light/Light';
 export {
     type AreaLightInfo,
@@ -321,11 +320,6 @@ export {
     type PointLightInfo,
     type SpotLightInfo
 } from './light/LightManager';
-export {
-    default as LightShadow,
-    type LightShadowParameters,
-    type ShadowCamera
-} from './light/LightShadow';
 export { default as PointLight, type PointLightParameters } from './light/PointLight';
 export { default as SpotLight, type SpotLightParameters } from './light/SpotLight';
 

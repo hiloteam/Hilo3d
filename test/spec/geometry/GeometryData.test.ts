@@ -23,6 +23,16 @@ describe('GeometryData', () => {
         expect(data.className).toBe('GeometryData');
     });
 
+    it('represents mat3 and mat4 vertex values without flattening their logical count', () => {
+        const mat3Data = new GeometryData(new Float32Array([1, 2, 3, 4, 5, 6, 7, 8, 9]), 9);
+        const mat4Data = new GeometryData(new Float32Array(16).fill(1), 16);
+
+        expect(mat3Data.count).toBe(1);
+        expect(mat3Data.get(0)).toBeInstanceOf(Hilo3d.Matrix3);
+        expect(mat4Data.count).toBe(1);
+        expect(mat4Data.get(0)).toBeInstanceOf(Hilo3d.Matrix4);
+    });
+
     const testData = new GeometryData(
         new Float32Array([1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]),
         3,
@@ -44,6 +54,29 @@ describe('GeometryData', () => {
 
     it('data', () => {
         expect(testData.type).toBe(FLOAT);
+    });
+
+    it('records full and partial revisions without backend-global consumption', () => {
+        const data = new GeometryData(new Float32Array([0, 1, 2, 3]), 2);
+        const initialRevision = data.revision;
+        expect(data.fullDataRevision).toBe(initialRevision);
+
+        const partial = new Float32Array([8, 9]);
+        data.setSubData(2, partial);
+        partial.fill(0);
+        expect(data.revision).toBe(initialRevision + 1);
+        expect(data.fullDataRevision).toBe(initialRevision);
+        expect(data.getSubDataUpdatesSince(initialRevision)).toEqual([
+            expect.objectContaining({
+                revision: initialRevision + 1,
+                byteOffset: 8,
+                data: new Float32Array([8, 9])
+            })
+        ]);
+
+        data.set(0, new Hilo3d.Vector2(4, 5));
+        expect(data.fullDataRevision).toBe(data.revision);
+        expect(data.getSubDataUpdatesSince(initialRevision + 1)).toBeNull();
     });
 
     it('length & realLength & count', () => {

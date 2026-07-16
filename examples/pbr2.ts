@@ -1,8 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { addEnvironmentSkybox } from './js/environment';
-import { createExampleContext, loadEnvironmentMaps } from './js/init';
+import { addEnvironmentSkybox } from './shared/environment';
+import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
-const { stage, ambientLight } = createExampleContext();
+const { stage, ambientLight } = await createExampleContext();
 
 async function initializeMaterials(): Promise<void> {
     const environment = await loadEnvironmentMaps();

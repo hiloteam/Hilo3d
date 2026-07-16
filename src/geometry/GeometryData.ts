@@ -2,13 +2,13 @@ import math from '../math/math';
 import Vector2 from '../math/Vector2';
 import Vector3 from '../math/Vector3';
 import Vector4 from '../math/Vector4';
+import Matrix3 from '../math/Matrix3';
 import Matrix4 from '../math/Matrix4';
 import { getTypedArrayGLType, getTypedArrayClass } from '../utils/util';
-import type Buffer from '../renderer/Buffer';
-import type { TypedArray } from '../renderer/types';
+import type { TypedArray } from '../render/types';
 
-export type GeometryComponentSize = 1 | 2 | 3 | 4 | 16;
-export type GeometryAttributeValue = number | Vector2 | Vector3 | Vector4 | Matrix4;
+export type GeometryComponentSize = 1 | 2 | 3 | 4 | 9 | 16;
+export type GeometryAttributeValue = number | Vector2 | Vector3 | Vector4 | Matrix3 | Matrix4;
 export type GeometryDataTraverseCallback = (
     attribute: GeometryAttributeValue,
     index: number,
@@ -29,13 +29,16 @@ export interface GeometryDataParameters {
 }
 
 export interface SubDataUpdate {
-    byteOffset: number;
-    data: TypedArray;
+    readonly revision: number;
+    readonly byteOffset: number;
+    readonly data: TypedArray;
 }
+
+const MAX_RETAINED_SUB_DATA_UPDATES = 64;
 
 function createAttributeValue(
     size: Exclude<GeometryComponentSize, 1>
-): Vector2 | Vector3 | Vector4 | Matrix4 {
+): Vector2 | Vector3 | Vector4 | Matrix3 | Matrix4 {
     switch (size) {
         case 2:
             return new Vector2();
@@ -43,6 +46,8 @@ function createAttributeValue(
             return new Vector3();
         case 4:
             return new Vector4();
+        case 9:
+            return new Matrix3();
         case 16:
             return new Matrix4();
     }
@@ -72,7 +77,8 @@ class GeometryData {
      */
     readonly isGeometryData = true;
     /**
-     * The number of components per vertex attribute.Must be 1, 2, 3, or 4.
+     * Components in one logical vertex value. Matrices use 9 (`mat3`) or 16 (`mat4`);
+     * `mat2` shares the four-component representation with `vec4`.
      */
     size: GeometryComponentSize;
     /**
@@ -85,20 +91,30 @@ class GeometryData {
     type: GLenum;
     private _isSubDirty = false;
     private _isAllDirty = false;
+    private _revision = 0;
+    private _fullDataRevision = 0;
+    private discardedSubDataRevision = 0;
+    /** Monotonic CPU-data revision used by every graphics backend resource cache. */
+    get revision(): number {
+        return this._revision;
+    }
+    /** Most recent revision that requires a complete backend upload. */
+    get fullDataRevision(): number {
+        return this._fullDataRevision;
+    }
     get isDirty(): boolean {
         return this._isSubDirty || this._isAllDirty;
     }
     set isDirty(value: boolean) {
-        this._isAllDirty = value;
-        if (!value) {
+        if (value) {
+            this._revision++;
+            this._fullDataRevision = this._revision;
             this.clearSubData();
         }
+        this._isAllDirty = value;
+        if (!value) this.clearSubData();
     }
     bufferViewId: string;
-    /**
-     * glBuffer
-     */
-    glBuffer: Buffer | null = null;
     readonly id: string;
     private _data: TypedArray;
     private readonly subDataList: SubDataUpdate[] = [];
@@ -110,14 +126,25 @@ class GeometryData {
     get subDataUpdates(): readonly SubDataUpdate[] {
         return this.subDataList;
     }
+
+    /**
+     * Return partial writes newer than a backend-local revision. `null` means that backend must
+     * perform a full upload because a whole-data edit occurred or bounded history was compacted.
+     */
+    getSubDataUpdatesSince(revision: number): readonly SubDataUpdate[] | null {
+        if (revision < this._fullDataRevision || revision < this.discardedSubDataRevision) {
+            return null;
+        }
+        return this.subDataList.filter(update => update.revision > revision);
+    }
     /**
      * @param data - 数据
-     * @param size - The number of components per vertex attribute.Must be 1, 2, 3, or 4.
+     * @param size - Components in one logical scalar, vector, or square-matrix value.
      * @param params - 初始化参数，所有params都会复制到实例上
      */
     constructor(data: TypedArray, size: GeometryComponentSize, params?: GeometryDataParameters);
     constructor(data: TypedArray, size: number, params: GeometryDataParameters = {}) {
-        if (size !== 1 && size !== 2 && size !== 3 && size !== 4 && size !== 16) {
+        if (size !== 1 && size !== 2 && size !== 3 && size !== 4 && size !== 9 && size !== 16) {
             throw new RangeError(`GeometryData size ${String(size)} is unsupported`);
         }
         /**
@@ -170,6 +197,9 @@ class GeometryData {
         this.stride = this._stride;
         this.offset = this._offset;
         this._isAllDirty = true;
+        this._revision++;
+        this._fullDataRevision = this._revision;
+        this.clearSubData();
     }
     get data(): TypedArray {
         return this._data;
@@ -202,18 +232,27 @@ class GeometryData {
      * @param data - 数据
      */
     setSubData(offset: number, data: TypedArray): void {
-        this._isSubDirty = true;
         this.data.set(data, offset);
-        const byteOffset = data.BYTES_PER_ELEMENT * offset;
+        this._isSubDirty = true;
+        this._revision++;
+        const byteOffset = this.data.BYTES_PER_ELEMENT * offset;
+        const snapshot = copyTypedArray(this.data.subarray(offset, offset + data.length));
         this.subDataList.push({
+            revision: this._revision,
             byteOffset,
-            data
+            data: snapshot
         });
+        if (this.subDataList.length > MAX_RETAINED_SUB_DATA_UPDATES) {
+            const discarded = this.subDataList.shift();
+            if (discarded) this.discardedSubDataRevision = discarded.revision;
+        }
     }
     /**
      * 清除 subData
      */
     clearSubData(): void {
+        const latest = this.subDataList.at(-1);
+        if (latest) this.discardedSubDataRevision = latest.revision;
         this.subDataList.length = 0;
         this._isSubDirty = false;
     }
@@ -315,6 +354,9 @@ class GeometryData {
             data[offset] = value;
         }
         this._isAllDirty = true;
+        this._revision++;
+        this._fullDataRevision = this._revision;
+        this.clearSubData();
     }
     /**
      * 按 index 遍历

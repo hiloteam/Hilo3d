@@ -1,4 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
+import { resolveExampleBackend } from './shared/init';
 
 const camera = new Hilo3d.PerspectiveCamera({
     aspect: innerWidth / innerHeight,
@@ -7,7 +8,8 @@ const camera = new Hilo3d.PerspectiveCamera({
 const container = document.querySelector<HTMLElement>('#container');
 if (!container) throw new Error('Quick start example requires #container');
 
-const stage = new Hilo3d.Stage({
+const stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
+    backend: resolveExampleBackend(),
     container,
     camera,
     width: innerWidth,

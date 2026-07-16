@@ -11,5 +11,5 @@
     "tsBuildInfoFile": "./.cache/tsconfig.lib.tsbuildinfo",
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.json"]
 }

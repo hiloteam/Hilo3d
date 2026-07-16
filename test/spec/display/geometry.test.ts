@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 
 const container = document.querySelector<HTMLElement>('#stage');
@@ -11,22 +11,30 @@ describe('display:geometry', () => {
         near: 0.1,
         z: 3
     });
-    const stage = new Hilo3d.Stage({
-        container,
-        camera,
-        clearColor: new Hilo3d.Color(1, 1, 1),
-        width: innerWidth,
-        height: innerHeight
-    });
+    let stage: Hilo3d.Stage<'webgl2'>;
     const material = new Hilo3d.BasicMaterial();
     const mesh = new Hilo3d.Mesh({ material, rotationX: -60, rotationY: 30 });
 
-    new Hilo3d.DirectionalLight({
-        color: new Hilo3d.Color(1, 1, 1),
-        direction: new Hilo3d.Vector3(0.7, -1, -0.5)
-    }).addTo(stage);
-    new Hilo3d.AmbientLight({ color: new Hilo3d.Color(1, 1, 1), amount: 0.5 }).addTo(stage);
-    stage.addChild(mesh);
+    beforeAll(async () => {
+        stage = await Hilo3d.Stage.create({
+            backend: 'webgl2',
+            container,
+            camera,
+            clearColor: new Hilo3d.Color(1, 1, 1),
+            width: innerWidth,
+            height: innerHeight
+        });
+        new Hilo3d.DirectionalLight({
+            color: new Hilo3d.Color(1, 1, 1),
+            direction: new Hilo3d.Vector3(0.7, -1, -0.5)
+        }).addTo(stage);
+        new Hilo3d.AmbientLight({ color: new Hilo3d.Color(1, 1, 1), amount: 0.5 }).addTo(stage);
+        stage.addChild(mesh);
+    });
+
+    afterAll(() => {
+        stage.destroy();
+    });
 
     beforeEach(() => {
         material.diffuse = new Hilo3d.Color(0.3, 0.6, 0.9);

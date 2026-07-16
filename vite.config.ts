@@ -1,10 +1,39 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin, type UserConfig } from 'vite';
 import packageJson from './package.json' with { type: 'json' };
 
-const shaderPattern = /\.(?:frag|glsl|vert)$/u;
+const shaderPattern = /\.(?:frag|glsl|vert|wgsl)$/u;
+const exampleManifestModuleId = 'virtual:hilo3d-example-manifest';
+const resolvedExampleManifestModuleId = `\0${exampleManifestModuleId}`;
+
+function collectHtmlPaths(directory: string, root: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) return collectHtmlPaths(path, root);
+        return entry.isFile() && entry.name.endsWith('.html')
+            ? [relative(root, path).split(sep).join('/')]
+            : [];
+    });
+}
+
+/** Build-time example discovery shared by the dev server and production gallery. */
+export function exampleManifestPlugin(): Plugin {
+    const examplesDirectory = fileURLToPath(new URL('./examples/', import.meta.url));
+    return {
+        name: 'hilo3d-example-manifest',
+        resolveId(id) {
+            return id === exampleManifestModuleId ? resolvedExampleManifestModuleId : null;
+        },
+        load(id) {
+            if (id !== resolvedExampleManifestModuleId) return null;
+            const paths = collectHtmlPaths(examplesDirectory, examplesDirectory).sort();
+            for (const path of paths) this.addWatchFile(resolve(examplesDirectory, path));
+            return `export default Object.freeze(${JSON.stringify(paths)});`;
+        }
+    };
+}
 
 export function shaderIncludePlugin(): Plugin {
     const includePattern = /^([\t ]*)#include\s+['"](.+?)['"][\t ]*$/gmu;
@@ -21,7 +50,9 @@ export function shaderIncludePlugin(): Plugin {
                 throw new Error(`Circular GLSL import: ${[...stack, dependency].join(' -> ')}`);
             }
             if (!shaderPattern.test(dependency)) {
-                throw new Error(`Shader include must use .glsl, .vert, or .frag: ${dependency}`);
+                throw new Error(
+                    `Shader include must use .glsl, .vert, .frag, or .wgsl: ${dependency}`
+                );
             }
             onDependency(dependency);
             const imported = inlineImports(
@@ -73,11 +104,9 @@ const banner = `/*!\n * Hilo3d ${packageJson.version}\n * Copyright (c) 2017-pre
 
 const runtimeDependencies = ['gl-matrix'] as const;
 
-export function createViteConfig(mode: string): UserConfig {
-    const isUmdBuild = mode === 'library-umd';
-
+export function createViteConfig(): UserConfig {
     return {
-        plugins: [shaderIncludePlugin()],
+        plugins: [shaderIncludePlugin(), exampleManifestPlugin()],
         optimizeDeps: {
             include: [...runtimeDependencies]
         },
@@ -87,15 +116,14 @@ export function createViteConfig(mode: string): UserConfig {
         build: {
             target: 'es2022',
             sourcemap: true,
-            emptyOutDir: !isUmdBuild,
+            emptyOutDir: true,
             lib: {
                 entry: fileURLToPath(new URL('./src/Hilo3d.ts', import.meta.url)),
-                name: 'Hilo3d',
-                formats: [isUmdBuild ? 'umd' : 'es'],
-                fileName: () => (isUmdBuild ? 'Hilo3d.umd.cjs' : 'Hilo3d.js')
+                formats: ['es'],
+                fileName: () => 'Hilo3d.js'
             },
             rolldownOptions: {
-                external: isUmdBuild ? [] : [...runtimeDependencies],
+                external: [...runtimeDependencies],
                 output: {
                     banner
                 }
@@ -104,4 +132,4 @@ export function createViteConfig(mode: string): UserConfig {
     };
 }
 
-export default defineConfig(({ mode }) => createViteConfig(mode));
+export default defineConfig(() => createViteConfig());

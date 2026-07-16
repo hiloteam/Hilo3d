@@ -3,6 +3,7 @@ import BasicLoader, { type BasicLoadRequest } from './BasicLoader';
 import Texture from '../texture/Texture';
 import Loader from './Loader';
 import { CLAMP_TO_EDGE, FLOAT, NEAREST, RGBA } from '../constants/webgl';
+import { RGBA32F } from '../constants/webgl2';
 import { textureOptions, type LoaderTextureOptions } from './textureOptions';
 
 export type HDRLoadRequest = BasicLoadRequest &
@@ -29,7 +30,7 @@ class HDRLoader {
             minFilter: NEAREST,
             wrapS: CLAMP_TO_EDGE,
             wrapT: CLAMP_TO_EDGE,
-            internalFormat: RGBA,
+            internalFormat: RGBA32F,
             format: RGBA,
             ...textureOptions(params)
         });

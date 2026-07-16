@@ -1,5 +1,5 @@
 import * as Hilo3d from '../../../src/Hilo3d';
-import { createExampleContext } from '../../js/init';
+import { createExampleContext } from '../../shared/init';
 
 const queriedCanvas = document.querySelector<HTMLCanvasElement>('#interface-canvas');
 if (!queriedCanvas) throw new Error('Canvas texture example requires #interface-canvas.');
@@ -8,7 +8,7 @@ const queriedContext = canvas.getContext('2d');
 if (!queriedContext) throw new Error('Canvas texture example requires a 2D rendering context.');
 const context: CanvasRenderingContext2D = queriedContext;
 
-const { stage } = createExampleContext({
+const { stage } = await createExampleContext({
     camera: { z: 4 },
     controls: { isLockMove: false, isLockZ: false }
 });

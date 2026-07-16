@@ -1,6 +1,6 @@
 import BasicMaterial, { type BasicMaterialParameters } from './BasicMaterial';
 import { DEPTH, DISTANCE, NORMAL, POSITION } from '../constants/Hilo';
-import type { ShaderOptions } from '../renderer/types';
+import type { ShaderOptions } from '../render/types';
 
 export type GeometryVertexType = typeof POSITION | typeof NORMAL | typeof DEPTH | typeof DISTANCE;
 

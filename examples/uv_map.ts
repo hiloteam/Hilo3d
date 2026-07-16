@@ -1,35 +1,29 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
-const { stage } = createExampleContext();
-const fragmentPrecision = Hilo3d.Shader.shaders['chunk/precision.frag'];
-if (!fragmentPrecision) throw new Error('Fragment precision shader chunk is unavailable.');
+const { stage } = await createExampleContext();
 
-let diffuseTexture: Hilo3d.Texture | null = null;
+let diffuseTexture: Hilo3d.Texture<unknown> | null = null;
 const textureMaterial = new Hilo3d.ShaderMaterial({
-    vs: `
-        attribute vec3 a_position;
-        attribute vec2 a_texcoord0;
-        varying vec2 v_uv;
+    vs: `#version 300 es
+        in vec3 a_position;
+        in vec2 a_texcoord0;
+        out vec2 v_uv;
         void main(void) {
             v_uv = a_texcoord0;
             gl_Position = vec4(a_position * 2.0, 1.0);
         }`,
-    fs: `
-        ${fragmentPrecision}
+    fs: `#version 300 es
+        precision highp float;
         uniform sampler2D u_diffuse;
-        varying vec2 v_uv;
+        in vec2 v_uv;
+        layout(location = 0) out vec4 fragmentColor;
         void main(void) {
-            gl_FragColor = texture2D(u_diffuse, v_uv);
+            fragmentColor = texture(u_diffuse, v_uv);
         }`,
     uniforms: {
         u_diffuse: {
-            get: (_mesh, _material, programInfo) => {
-                if (programInfo.textureIndex === undefined) {
-                    throw new Error('u_diffuse is not a sampler uniform.');
-                }
-                return Hilo3d.semantic.handlerTexture(diffuseTexture, programInfo.textureIndex);
-            }
+            get: (_mesh, _material, _programInfo) => Hilo3d.semantic.handlerTexture(diffuseTexture)
         }
     }
 });
@@ -40,18 +34,19 @@ const texMesh = new Hilo3d.Mesh({
 
 const uvMaterial = new Hilo3d.ShaderMaterial({
     wireframe: true,
-    vs: `
-                attribute vec2 a_texcoord0;
-                varying vec2 v_uv;
+    vs: `#version 300 es
+                in vec2 a_texcoord0;
+                out vec2 v_uv;
                 void main(void) {
                     v_uv = a_texcoord0;
                     gl_Position = vec4(a_texcoord0 * 2.0 - 1.0, 0.0, 1.0);
                 }`,
-    fs: `
-                ${fragmentPrecision}
-                varying vec2 v_uv;
+    fs: `#version 300 es
+                precision highp float;
+                in vec2 v_uv;
+                layout(location = 0) out vec4 fragmentColor;
                 void main(void) {
-                    gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0);
+                    fragmentColor = vec4(0.0, 1.0, 0.0, 1.0);
                 }`
 });
 const loader = new Hilo3d.GLTFLoader();

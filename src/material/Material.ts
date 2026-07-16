@@ -1,5 +1,5 @@
 import math from '../math/math';
-import semantic from './semantic';
+import semantic, { resolveSemanticBinding } from './semantic';
 import {
     ALWAYS,
     BACK,
@@ -14,20 +14,21 @@ import {
     SRC_ALPHA,
     ZERO
 } from '../constants/webgl';
-import capabilities from '../renderer/capabilities';
-import Texture, { type TextureBinding } from '../texture/Texture';
+import Texture from '../texture/Texture';
 import type Color from '../math/Color';
 import type Matrix3 from '../math/Matrix3';
 import type Mesh from '../core/Mesh';
-import type UniformBuffer from '../renderer/UniformBuffer';
-import type { GLTypeInfo, ShaderOptions } from '../renderer/types';
+import type UniformBuffer from '../render/UniformBuffer';
+import type { ShaderOptions } from '../render/types';
+import type { SemanticFrameState } from '../render/frame/SemanticFrameState';
 export interface ProgramBindingInfo {
     textureIndex?: number;
     name?: string;
-    location?: GLint | WebGLUniformLocation | null;
-    type?: GLenum;
-    size?: GLint;
-    glTypeInfo?: GLTypeInfo;
+}
+
+/** @internal Explicit pass/frame semantic source used only by the shared renderer. */
+export interface SemanticProgramBindingInfo extends ProgramBindingInfo {
+    semanticFrame?: SemanticFrameState;
 }
 
 export interface MaterialBindingInfo {
@@ -44,10 +45,7 @@ export interface MaterialShaderSource {
     fs: string;
 }
 export type MaterialBeforeCompile = (vs: string, fs: string) => MaterialShaderSource;
-export interface MaterialTexture extends TextureBinding {
-    readonly mipmapCount: number;
-    destroy(): void;
-}
+export type MaterialTexture = Texture<unknown>;
 export type MaterialTextureValue = MaterialTexture | Color | null;
 
 export interface MaterialParameters {
@@ -69,10 +67,10 @@ export interface MaterialParameters {
     parallaxMap?: Texture | null;
     emission?: MaterialTextureValue;
     normalMapScale?: number;
-    ignoreTranparent?: boolean;
+    ignoreTransparent?: boolean;
     gammaCorrection?: boolean;
     usePhysicsLight?: boolean;
-    isDiffuesEnvAndAmbientLightWorkTogether?: boolean;
+    isDiffuseEnvAndAmbientLightWorkTogether?: boolean;
     userData?: unknown;
     renderOrder?: number;
     premultiplyAlpha?: boolean;
@@ -104,12 +102,34 @@ export interface MaterialParameters {
     exposure?: number;
     enableTextureLod?: boolean;
     enableDrawBuffers?: boolean;
-    needBasicUnifroms?: boolean;
+    needBasicUniforms?: boolean;
     needBasicAttributes?: boolean;
+    /**
+     * Semantic resolvers used by canonical UBO packing and standalone sampler bindings.
+     * Application-defined classic uniforms must be sampler types; put every numeric value in
+     * `uniformBlocks`.
+     */
     uniforms?: MaterialBindingMap;
     attributes?: MaterialBindingMap;
+    /** Registered std140 blocks keyed by their globally stable GLSL block name. */
     uniformBlocks?: Record<string, UniformBuffer>;
     onBeforeCompile?: MaterialBeforeCompile | null;
+}
+
+const LIGHT_TYPE_RENDER_OPTIONS: Readonly<Record<string, string>> = Object.freeze({
+    NONE: 'LIGHT_TYPE_NONE',
+    PHONG: 'LIGHT_TYPE_PHONG',
+    'BLINN-PHONG': 'LIGHT_TYPE_BLINN_PHONG',
+    LAMBERT: 'LIGHT_TYPE_LAMBERT',
+    PBR: 'LIGHT_TYPE_PBR'
+});
+
+function lightTypeRenderOption(lightType: string): string {
+    const option = LIGHT_TYPE_RENDER_OPTIONS[lightType];
+    if (!option) {
+        throw new RangeError(`Unsupported material light type: ${lightType}`);
+    }
+    return option;
 }
 
 export interface InstancedUniform {
@@ -229,7 +249,7 @@ class Material {
     /**
      * 是否忽略透明度
      */
-    ignoreTranparent = false;
+    ignoreTransparent = false;
     /**
      * 是否开启 gamma 矫正
      */
@@ -241,7 +261,7 @@ class Material {
     /**
      * 是否环境贴图和环境光同时生效
      */
-    isDiffuesEnvAndAmbientLightWorkTogether = false;
+    isDiffuseEnvAndAmbientLightWorkTogether = false;
     /**
      * 用户数据
      */
@@ -408,10 +428,20 @@ class Material {
      * stencilOp zpass
      */
     stencilOpZPass = KEEP;
-    /**
-     * 当前是否需要强制更新
-     */
-    isDirty = false;
+    private _isDirty = false;
+    private _revision = 0;
+    /** Monotonic material-data revision observed independently by every backend. */
+    get revision(): number {
+        return this._revision;
+    }
+    /** 当前是否需要强制更新 */
+    get isDirty(): boolean {
+        return this._isDirty;
+    }
+    set isDirty(value: boolean) {
+        if (value) this._revision++;
+        this._isDirty = value;
+    }
     /**
      * 透明度 0~1
      */
@@ -475,14 +505,19 @@ class Material {
     /**
      * 是否需要加基础 uniforms
      */
-    needBasicUnifroms = true;
+    needBasicUniforms = true;
     /**
      * 是否需要加基础 attributes
      */
     needBasicAttributes = true;
     readonly id: string;
+    /**
+     * Semantic resolvers for canonical block fields and sampler bindings. Program linking rejects
+     * every active classic uniform that is not an opaque sampler.
+     */
     uniforms: MaterialBindingMap = {};
     attributes: MaterialBindingMap = {};
+    /** Registered std140 blocks keyed by GLSL block name. */
     uniformBlocks: Record<string, UniformBuffer> = {};
     protected readonly textureOption = new TextureOptionBuilder();
     private _instancedUniforms: InstancedUniform[] | null = null;
@@ -502,7 +537,7 @@ class Material {
         if (this.needBasicAttributes) {
             this.addBasicAttributes();
         }
-        if (this.needBasicUnifroms) {
+        if (this.needBasicUniforms) {
             this.addBasicUniforms();
         }
     }
@@ -535,6 +570,7 @@ class Material {
     addBasicUniforms(): void {
         this.copyBindings(this.uniforms, {
             u_modelMatrix: 'MODEL',
+            u_objectIdColor: 'OBJECTIDCOLOR',
             u_viewMatrix: 'VIEW',
             u_projectionMatrix: 'PROJECTION',
             u_modelViewMatrix: 'MODELVIEW',
@@ -561,6 +597,9 @@ class Material {
             u_pointLightsShadowMap: 'POINTLIGHTSSHADOWMAP',
             u_pointLightSpaceMatrix: 'POINTLIGHTSPACEMATRIX',
             u_pointLightCamera: 'POINTLIGHTCAMERA',
+            u_shadowAtlasSize: 'SHADOWATLASSIZE',
+            u_shadowAtlasRects: 'SHADOWATLASRECTS',
+            u_pointShadowMatrices: 'POINTSHADOWMATRICES',
             u_spotLightsPos: 'SPOTLIGHTSPOS',
             u_spotLightsDir: 'SPOTLIGHTSDIR',
             u_spotLightsColor: 'SPOTLIGHTSCOLOR',
@@ -579,8 +618,6 @@ class Material {
             u_areaLightsLtcTexture2: 'AREALIGHTSLTCTEXTURE2',
             // joint
             u_jointMat: 'JOINTMATRIX',
-            u_jointMatTexture: 'JOINTMATRIXTEXTURE',
-            u_jointMatTextureSize: 'JOINTMATRIXTEXTURESIZE',
             // quantization
             u_positionDecodeMat: 'POSITIONDECODEMAT',
             u_normalDecodeMat: 'NORMALDECODEMAT',
@@ -589,8 +626,8 @@ class Material {
             // morph
             u_morphWeights: 'MORPHWEIGHTS',
             u_normalMapScale: 'NORMALMAPSCALE',
-            u_emission: 'EMISSION',
-            u_transparency: 'TRANSPARENCY',
+            u_emissionColor: 'EMISSION',
+            u_transparencyFactor: 'TRANSPARENCY',
             // uv matrix
             u_uvMatrix: 'UVMATRIX_0',
             u_uvMatrix1: 'UVMATRIX_1',
@@ -607,6 +644,7 @@ class Material {
             u_emission: 'EMISSION',
             u_transparency: 'TRANSPARENCY'
         });
+        this.uniforms['u_shadowAtlas'] ??= 'SHADOWATLAS';
     }
     /**
      * 增加贴图 uniforms
@@ -628,7 +666,7 @@ class Material {
      */
     getRenderOption(option: ShaderOptions = {}): ShaderOptions {
         const lightType = this.lightType;
-        option[`LIGHT_TYPE_${lightType}`] = 1;
+        option[lightTypeRenderOption(lightType)] = 1;
         option['SIDE'] = this.side;
         if (lightType !== 'NONE') {
             option['HAS_LIGHT'] = 1;
@@ -636,10 +674,10 @@ class Material {
         if (this.premultiplyAlpha) {
             option['PREMULTIPLY_ALPHA'] = 1;
         }
-        if (capabilities.SHADER_TEXTURE_LOD && this.enableTextureLod) {
+        if (this.enableTextureLod) {
             option['USE_SHADER_TEXTURE_LOD'] = 1;
         }
-        if (capabilities.DRAW_BUFFERS && this.enableDrawBuffers) {
+        if (this.enableDrawBuffers) {
             option['USE_DRAW_BUFFERS'] = 1;
         }
         const textureOption = this.textureOption.reset(option);
@@ -654,7 +692,7 @@ class Material {
         textureOption.add(this.parallaxMap, 'PARALLAX_MAP');
         textureOption.add(this.emission, 'EMISSION_MAP');
         textureOption.add(this.transparency, 'TRANSPARENCY_MAP');
-        if (this.ignoreTranparent) {
+        if (this.ignoreTransparent) {
             option['IGNORE_TRANSPARENT'] = 1;
         }
         if (this.alphaCutoff > 0) {
@@ -681,8 +719,8 @@ class Material {
         if (this.usePhysicsLight) {
             option['USE_PHYSICS_LIGHT'] = 1;
         }
-        if (this.isDiffuesEnvAndAmbientLightWorkTogether) {
-            option['IS_DIFFUESENV_AND_AMBIENTLIGHT_WORK_TOGETHER'] = 1;
+        if (this.isDiffuseEnvAndAmbientLightWorkTogether) {
+            option['IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER'] = 1;
         }
         textureOption.update();
         return option;
@@ -723,13 +761,17 @@ class Material {
         const dataDict = this[dataType];
         let info = dataDict[name];
         if (typeof info === 'string') {
-            const semanticInfo: unknown = Reflect.get(semantic, info);
+            const semanticName = info;
+            const semanticInfo: unknown = Reflect.get(semantic, semanticName);
             if (!isBindingInfo(semanticInfo)) {
                 throw new Error(
-                    `Material ${dataType} binding ${name} references unknown semantic ${info}`
+                    `Material ${dataType} binding ${name} references unknown semantic ${semanticName}`
                 );
             }
-            info = semanticInfo;
+            info =
+                semanticInfo.get.length === 0
+                    ? resolveSemanticBinding(semanticName, semanticInfo)
+                    : semanticInfo;
         }
         if (!isBindingInfo(info)) {
             throw new Error(`Material has no ${dataType} binding named ${name}`);
@@ -747,7 +789,9 @@ class Material {
             'id',
             'textureOption',
             '_instancedUniforms',
-            'bindingsInitialized'
+            'bindingsInitialized',
+            '_isDirty',
+            '_revision'
         ]);
         for (const [key, value] of Object.entries(this)) {
             if (!internalKeys.has(key)) Reflect.set(newMaterial, key, value);

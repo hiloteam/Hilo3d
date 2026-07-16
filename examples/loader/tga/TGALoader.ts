@@ -1,7 +1,8 @@
 import BasicLoader, { type LoaderRequest } from '../../../src/loader/BasicLoader';
 import Loader from '../../../src/loader/Loader';
 import DataTexture from '../../../src/texture/DataTexture';
-import { UNSIGNED_BYTE } from '../../../src/constants/webgl';
+import { RGBA, UNSIGNED_BYTE } from '../../../src/constants/webgl';
+import { RGBA8 } from '../../../src/constants/webgl2';
 
 const TGA_HEADER_SIZE = 18;
 const TRUE_COLOR = 2;
@@ -180,6 +181,8 @@ class TGALoader {
             height: header.height,
             flipY: (header.imageDescriptor & 0x20) === 0,
             image: pixels,
+            internalFormat: RGBA8,
+            format: RGBA,
             type: UNSIGNED_BYTE
         });
     }

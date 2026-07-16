@@ -2,8 +2,10 @@ import { playwright } from '@vitest/browser-playwright';
 import { defineConfig, mergeConfig } from 'vitest/config';
 import { createViteConfig } from './vite.config';
 
+const coverageRun = process.argv.includes('--coverage');
+
 export default mergeConfig(
-    createViteConfig('test'),
+    createViteConfig(),
     defineConfig({
         test: {
             name: 'browser',
@@ -13,7 +15,10 @@ export default mergeConfig(
             unstubEnvs: true,
             unstubGlobals: true,
             setupFiles: ['./test/setup.ts'],
-            include: ['test/spec/**/*.test.ts'],
+            include: ['test/spec/**/*.test.ts', 'examples/**/*.test.ts'],
+            // Native WebGPU owns an actual device and must not share the heavily instrumented
+            // coverage process. The dedicated RHI suite runs it immediately afterward.
+            exclude: coverageRun ? ['test/spec/**/*.native.test.ts'] : [],
             testTimeout: 10_000,
             hookTimeout: 10_000,
             coverage: {
@@ -35,7 +40,12 @@ export default mergeConfig(
                 headless: true,
                 provider: playwright({
                     launchOptions: {
-                        args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader']
+                        args: [
+                            '--enable-unsafe-swiftshader',
+                            '--enable-unsafe-webgpu',
+                            '--use-angle=swiftshader',
+                            '--use-webgpu-adapter=swiftshader'
+                        ]
                     }
                 }),
                 instances: [{ browser: 'chromium' }]

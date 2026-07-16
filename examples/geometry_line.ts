@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 
 const material = new Hilo3d.BasicMaterial({
     diffuse: new Hilo3d.Color(1, 0, 0),

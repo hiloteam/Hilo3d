@@ -1,9 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
-const { stage } = createExampleContext();
-
-stage.renderer.stencil = true;
+const { stage } = await createExampleContext({ stage: { stencil: true } });
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([
     [0, 1],

@@ -9,7 +9,7 @@ import Node from '../../../src/core/Node';
 import LazyTexture from '../../../src/texture/LazyTexture';
 import { TRIANGLES, TRIANGLE_STRIP } from '../../../src/constants/webgl';
 import { getRelativePath } from '../../../src/utils/util';
-import type { TypedArray } from '../../../src/renderer/types';
+import type { TypedArray } from '../../../src/render/types';
 
 type JsonObject = Record<string, unknown>;
 type OSGArray = Float32Array | Int32Array | Uint16Array | Uint32Array;

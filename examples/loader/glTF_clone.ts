@@ -1,9 +1,7 @@
 import * as Hilo3d from '../../src/Hilo3d';
-import { createExampleContext } from '../js/init';
+import { createExampleContext } from '../shared/init';
 
-const { stage, renderer } = createExampleContext();
-
-renderer.useInstanced = true;
+const { stage } = await createExampleContext({ stage: { useInstanced: true } });
 const loader = new Hilo3d.GLTFLoader();
 void loader
     .load({

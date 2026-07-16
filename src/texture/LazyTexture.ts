@@ -39,10 +39,22 @@ class LazyTexture extends Texture {
     }
 
     constructor(params: LazyTextureParameters = {}) {
-        super();
-        const { src, ...parametersWithoutSource } = params;
-        Object.assign(this, parametersWithoutSource);
-        this.image = this.placeHolder ?? placeHolder;
+        const {
+            src,
+            crossOrigin,
+            autoLoad,
+            resType,
+            placeHolder: customPlaceHolder,
+            ...texture
+        } = params;
+        super(texture);
+        if (crossOrigin !== undefined) this.crossOrigin = crossOrigin;
+        if (autoLoad !== undefined) this.autoLoad = autoLoad;
+        if (resType !== undefined) this.resType = resType;
+        if (customPlaceHolder !== undefined) this.placeHolder = customPlaceHolder;
+        const initialImage = this.image;
+        const initialOrPlaceholder = this.placeHolder ?? initialImage ?? placeHolder;
+        if (initialOrPlaceholder !== initialImage) this.image = initialOrPlaceholder;
         if (src !== undefined) this.src = src;
     }
 
@@ -90,14 +102,15 @@ class LazyTexture extends Texture {
         this.type = texture.type;
         this.width = texture.width;
         this.height = texture.height;
+        this.depth = texture.depth;
         this.magFilter = texture.magFilter;
         this.minFilter = texture.minFilter;
         this.wrapS = texture.wrapS;
         this.wrapT = texture.wrapT;
+        this.wrapR = texture.wrapR;
         this.name = texture.name;
         this.premultiplyAlpha = texture.premultiplyAlpha;
         this.flipY = texture.flipY;
-        this.colorSpaceConversion = texture.colorSpaceConversion;
         this.compressed = texture.compressed;
         this.autoUpdate = texture.autoUpdate;
         this.uv = texture.uv;

@@ -1,9 +1,9 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
+import { createScreenMesh } from './shared/ScreenMesh';
 
-const { camera, stage, renderer } = createExampleContext();
+const { camera, stage, renderer } = await createExampleContext();
 
-Hilo3d.extensions.use('WEBGL_depth_texture');
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([
     [0, 1],
@@ -38,24 +38,50 @@ for (let i = 0; i < 20; i++) {
     depthNode.addChild(mesh).setScale(0.1);
 }
 
-const framebuffer = new Hilo3d.Framebuffer(renderer, {
-    colorAttachmentInfos: [],
-    depthStencilAttachmentInfo: {
-        attachmentType: Hilo3d.Framebuffer.ATTACHMENT_TYPE_TEXTURE,
-        attachment: Hilo3d.constants.DEPTH_ATTACHMENT,
-        format: Hilo3d.constants.DEPTH_COMPONENT,
-        internalFormat: Hilo3d.constants.DEPTH_COMPONENT16,
-        type: Hilo3d.constants.UNSIGNED_SHORT
-    }
+const depthTarget = renderer.createRenderTarget({
+    width: renderer.width,
+    height: renderer.height,
+    colorAttachments: [
+        {
+            format: 'rgba8unorm',
+            storeOp: 'discard'
+        }
+    ],
+    depthStencilAttachment: {
+        format: 'depth24plus',
+        sampled: true,
+        compare: 'less-equal'
+    },
+    label: 'DepthTexture.scene'
 });
-stage.onUpdate = function () {
-    framebuffer.bind();
-    depthNode.traverseUpdate(0);
-    stage.renderer.render(depthNode, camera);
-    framebuffer.unbind();
-};
+const sampledDepthTexture = depthTarget.getDepthTexture();
+if (!sampledDepthTexture) throw new Error('Depth target has no sampleable attachment.');
+sampledDepthTexture.minFilter = Hilo3d.constants.NEAREST;
+sampledDepthTexture.magFilter = Hilo3d.constants.NEAREST;
 
-renderer.on('afterRender', () => {
-    const depthTexture = framebuffer.depthStencilAttachmentInfo?.texture;
-    if (depthTexture) framebuffer.render(0, 0, 1, 1, null, depthTexture);
-});
+stage.addChild(
+    createScreenMesh({
+        label: 'DepthTexture.preview',
+        samplers: {
+            u_depth: () => sampledDepthTexture
+        },
+        fragmentShader: `#version 300 es
+            precision highp float;
+            in vec2 v_texcoord0;
+            uniform highp sampler2D u_depth;
+            layout(location = 0) out vec4 fragmentColor;
+            void main(void) {
+                float depth = texture(u_depth, v_texcoord0).r;
+                fragmentColor = vec4(vec3(depth), 1.0);
+            }
+        `
+    })
+);
+
+stage.onUpdate = function (deltaTime) {
+    if (depthTarget.width !== renderer.width || depthTarget.height !== renderer.height) {
+        depthTarget.resize(renderer.width, renderer.height);
+    }
+    depthNode.traverseUpdate(deltaTime);
+    renderer.renderToTarget(depthTarget, depthNode, camera, false);
+};

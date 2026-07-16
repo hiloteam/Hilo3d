@@ -1,5 +1,5 @@
 import Material, { type MaterialParameters } from './Material';
-import type { ShaderOptions } from '../renderer/types';
+import type { ShaderOptions } from '../render/types';
 
 export type CustomRenderOptionProvider = (option: ShaderOptions) => ShaderOptions;
 
@@ -10,39 +10,51 @@ export interface ShaderMaterialParameters extends MaterialParameters {
     getCustomRenderOption?: CustomRenderOptionProvider | null;
 }
 /**
- * Shader材质
+ * Native GLSL ES 3.00 shader material.
+ *
+ * Numeric, vector and matrix data must be supplied through registered std140 uniform blocks.
+ * Opaque sampler types are the only uniforms permitted outside a block.
+ *
  * @example
  * ```ts
- * const material = new Hilo3d.ShaderMaterial({
- *     attributes:{
- *         a_pos: 'POSITION'
- *     },
- *     uniforms:{
- *         u_mat:'MODELVIEWPROJECTION',
- *         u_color_b:{
- *             get:function(mesh, material, programInfo){
- *                 return Math.random();
- *             }
- *         }
- *     },
- *     vs:`
- *         precision HILO_MAX_VERTEX_PRECISION float;
- *         attribute vec3 a_pos;
- *         uniform mat4 u_mat;
- *
- *         void main(void) {
- *             gl_Position = u_mat * vec4(a_pos, 1.0);
- *         }
- *     `,
- *     fs:`
- *         precision HILO_MAX_FRAGMENT_PRECISION float;
- *         uniform float u_color_b;
- *
- *         void main(void) {
- *             gl_FragColor = vec4(0.6, 0.8, u_color_b, 1);
- *         }
- *     `
+ * Hilo3d.registerUniformBlockBinding('EffectBlock');
+ * const effectLayout = Hilo3d.createStd140Layout({
+ *     effectColor: 'vec4',
+ *     strength: 'float'
  * });
+ * const effectBlock = Hilo3d.UniformBuffer.fromSchema(effectLayout, {
+ *     effectColor: [0.6, 0.8, 1, 1],
+ *     strength: 0.75
+ * });
+ *
+ * const material = new Hilo3d.ShaderMaterial({
+ *     attributes: { a_position: 'POSITION' },
+ *     uniformBlocks: { EffectBlock: effectBlock },
+ *     vs: `#version 300 es
+ *         layout(std140) uniform EffectBlock {
+ *             vec4 effectColor;
+ *             float strength;
+ *         };
+ *         in vec3 a_position;
+ *         out vec4 v_color;
+ *         void main() {
+ *             v_color = vec4(effectColor.rgb * strength, effectColor.a);
+ *             gl_Position = vec4(a_position, 1.0);
+ *         }`,
+ *     fs: `#version 300 es
+ *         precision highp float;
+ *         layout(std140) uniform EffectBlock {
+ *             vec4 effectColor;
+ *             float strength;
+ *         };
+ *         in vec4 v_color;
+ *         layout(location = 0) out vec4 outColor;
+ *         void main() {
+ *             outColor = v_color;
+ *         }`
+ * });
+ *
+ * effectBlock.set('strength', 1);
  * ```
  */
 class ShaderMaterial extends Material {
@@ -71,9 +83,9 @@ class ShaderMaterial extends Material {
     override getRenderOption(option: ShaderOptions = {}): ShaderOptions {
         super.getRenderOption(option);
         if (this.getCustomRenderOption) {
-            const custumOption = this.getCustomRenderOption({});
-            for (const [name, value] of Object.entries(custumOption)) {
-                option[`HILO_CUSTUM_OPTION_${name}`] = value;
+            const customOption = this.getCustomRenderOption({});
+            for (const [name, value] of Object.entries(customOption)) {
+                option[`HILO_CUSTOM_OPTION_${name}`] = value;
             }
         }
         return option;

@@ -4,7 +4,7 @@
     vec3 viewPos = vec3(0, 0, 0);
 
     #ifdef HILO_AMBIENT_MAP
-        lightAmbient = HILO_TEXTURE_2D(u_ambient).rgb;
+        lightAmbient = HILO_TEXTURE_2D(u_ambient, HILO_AMBIENT_MAP).rgb;
     #else
         lightAmbient = diffuse.rgb;
     #endif
@@ -12,16 +12,16 @@
     #ifdef HILO_HAS_SPECULAR
         vec3 lightSpecular = vec3(0, 0, 0);
         #ifdef HILO_SPECULAR_MAP
-            vec4 specular = HILO_TEXTURE_2D(u_specular);
+            vec4 specular = HILO_TEXTURE_2D(u_specular, HILO_SPECULAR_MAP);
         #else
-            vec4 specular = u_specular;
+            vec4 specular = u_specularColor;
         #endif
     #endif
     
     #ifdef HILO_EMISSION_MAP
-        vec4 emission = HILO_TEXTURE_2D(u_emission);
+        vec4 emission = HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP);
     #else
-        vec4 emission = u_emission;
+        vec4 emission = u_emissionColor;
     #endif
 
     #ifdef HILO_DIRECTIONAL_LIGHTS
@@ -32,7 +32,7 @@
             #ifdef HILO_DIRECTIONAL_LIGHTS_SMC
                 if (i < HILO_DIRECTIONAL_LIGHTS_SMC) {
                     float bias = HILO_MAX(u_directionalLightsShadowBias[i][1] * (1.0 - dot(normal, lightDir)), u_directionalLightsShadowBias[i][0]);
-                    shadow = getShadow(u_directionalLightsShadowMap[i], u_directionalLightsShadowMapSize[i], bias, v_fragPos, u_directionalLightSpaceMatrix[i]);
+                    shadow = hiloDirectionalShadow(i, u_directionalLightsShadowMapSize[i], bias, v_fragPos, u_directionalLightSpaceMatrix[i]);
                 }
             #endif
 
@@ -55,7 +55,7 @@
             #ifdef HILO_SPOT_LIGHTS_SMC
                 if (i < HILO_SPOT_LIGHTS_SMC) {
                     float bias = HILO_MAX(u_spotLightsShadowBias[i][1] * (1.0 - dot(normal, lightDir)), u_spotLightsShadowBias[i][0]);
-                    shadow = getShadow(u_spotLightsShadowMap[i], u_spotLightsShadowMapSize[i], bias, v_fragPos, u_spotLightSpaceMatrix[i]);
+                    shadow = hiloSpotShadow(i, u_spotLightsShadowMapSize[i], bias, v_fragPos, u_spotLightSpaceMatrix[i]);
                 }
             #endif
             
@@ -83,7 +83,7 @@
             #ifdef HILO_POINT_LIGHTS_SMC
                 if (i < HILO_POINT_LIGHTS_SMC) {
                     float bias = HILO_MAX(u_pointLightsShadowBias[i][1] * (1.0 - dot(normal, lightDir)), u_pointLightsShadowBias[i][0]);
-                    shadow = getShadow(u_pointLightsShadowMap[i], bias, u_pointLightsPos[i], v_fragPos, u_pointLightCamera[i], u_pointLightSpaceMatrix[i]);
+                    shadow = hiloPointShadow(i, bias, u_pointLightsPos[i], v_fragPos, u_pointLightCamera[i], u_pointLightSpaceMatrix[i]);
                 }
             #endif
             

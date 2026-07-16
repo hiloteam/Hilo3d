@@ -1,4 +1,4 @@
-import { EventDispatcher } from '../core/EventMixin';
+import { EventDispatcher } from '../core/EventDispatcher';
 
 export const LoadState = {
     PENDING: 1,

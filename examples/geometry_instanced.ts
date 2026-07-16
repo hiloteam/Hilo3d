@@ -1,10 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
-const { stage, renderer } = createExampleContext();
-
-renderer.useInstanced = true;
-renderer.useVao = true;
+const { stage } = await createExampleContext({ stage: { useInstanced: true } });
 
 function rand(min: number, max: number): number {
     return Math.random() * (max - min) + min;

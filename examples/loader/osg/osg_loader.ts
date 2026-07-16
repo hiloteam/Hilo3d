@@ -1,7 +1,7 @@
-import { createExampleContext } from '../../js/init';
+import { createExampleContext } from '../../shared/init';
 import OSGLoader from './OSGLoader';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 
 const loader = new OSGLoader();
 void loader

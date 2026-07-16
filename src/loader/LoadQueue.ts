@@ -1,4 +1,4 @@
-import { EventDispatcher } from '../core/EventMixin';
+import { EventDispatcher } from '../core/EventDispatcher';
 import Loader from './Loader';
 import type { LoaderRequest } from './BasicLoader';
 

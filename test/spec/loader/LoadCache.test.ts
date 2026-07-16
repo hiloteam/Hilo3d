@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import type { DispatchEvent } from '../../../src/core/EventMixin';
+import type { DispatchEvent } from '../../../src/core/EventDispatcher';
 
 const LoadCache = Hilo3d.LoadCache;
 

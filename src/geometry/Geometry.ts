@@ -13,8 +13,17 @@ import GeometryData, {
     type GeometryComponentSize
 } from './GeometryData';
 import { copyArrayData } from '../utils/util';
-import { BACK, FRONT, FRONT_AND_BACK, LINES, TRIANGLES, TRIANGLE_STRIP } from '../constants/webgl';
-import type { ShaderOptions, TypedArrayConstructor } from '../renderer/types';
+import {
+    BACK,
+    FRONT,
+    FRONT_AND_BACK,
+    LINES,
+    LINE_LOOP,
+    TRIANGLES,
+    TRIANGLE_FAN,
+    TRIANGLE_STRIP
+} from '../constants/webgl';
+import type { ShaderOptions, TypedArrayConstructor } from '../render/types';
 const tempVector31 = new Vector3();
 const tempVector32 = new Vector3();
 const tempVector33 = new Vector3();
@@ -68,6 +77,7 @@ type GeometryDataKey =
     'vertices' | 'uvs' | 'uvs1' | 'colors' | 'indices' | 'skinIndices' | 'skinWeights';
 
 type TangentKey = '_tangents' | '_tangents1';
+type UnsignedIndexArray = Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array;
 export type Point3 = readonly number[];
 export type Point2 = readonly number[];
 type GeometryConstructor = new (params?: GeometryParameters) => Geometry;
@@ -92,6 +102,56 @@ function readIndex(indices: ArrayLike<number>, index: number): number {
     if (value === undefined)
         throw new RangeError(`Geometry index ${String(index)} is out of bounds`);
     return value;
+}
+
+function requireUnsignedIndexArray(indices: GeometryData): UnsignedIndexArray {
+    if (indices.size !== 1 || indices.stride !== 0 || indices.offset !== 0 || indices.normalized) {
+        throw new TypeError(
+            'Primitive topology conversion requires contiguous, non-normalized scalar index data'
+        );
+    }
+    const data = indices.data;
+    if (
+        data instanceof Uint8Array ||
+        data instanceof Uint8ClampedArray ||
+        data instanceof Uint16Array ||
+        data instanceof Uint32Array
+    ) {
+        return data;
+    }
+    throw new TypeError(
+        'Primitive topology conversion requires unsigned 8-, 16-, or 32-bit indices'
+    );
+}
+
+function createUnsignedIndexArray(
+    source: UnsignedIndexArray | null,
+    vertexCount: number,
+    length: number
+): UnsignedIndexArray {
+    if (!Number.isSafeInteger(vertexCount) || vertexCount < 0) {
+        throw new RangeError('Primitive topology vertex count must be a non-negative safe integer');
+    }
+    if (!Number.isSafeInteger(length) || length < 0) {
+        throw new RangeError('Primitive topology index count exceeds JavaScript safe integers');
+    }
+    if (source instanceof Uint32Array || (!source && vertexCount > 0x10000)) {
+        return new Uint32Array(length);
+    }
+    if (source instanceof Uint16Array || (!source && vertexCount > 0x100)) {
+        return new Uint16Array(length);
+    }
+    if (source instanceof Uint8ClampedArray) return new Uint8ClampedArray(length);
+    return new Uint8Array(length);
+}
+
+function normalizedTopologyIndexCount(mode: GLenum, sourceCount: number): number {
+    if (!Number.isSafeInteger(sourceCount) || sourceCount < 0) {
+        throw new RangeError('Primitive topology source count must be a non-negative safe integer');
+    }
+    if (mode === LINE_LOOP) return sourceCount < 2 ? 0 : sourceCount * 2;
+    if (mode === TRIANGLE_FAN) return sourceCount < 3 ? 0 : (sourceCount - 2) * 3;
+    throw new Error(`Draw mode ${String(mode)} does not require primitive topology conversion`);
 }
 
 function forEachTriangle(
@@ -188,7 +248,19 @@ class Geometry {
     /**
      * 是否需要更新
      */
-    isDirty = true;
+    private _isDirty = true;
+    private _revision = 0;
+    /** Monotonic geometry-state revision observed independently by every backend. */
+    get revision(): number {
+        return this._revision;
+    }
+    get isDirty(): boolean {
+        return this._isDirty;
+    }
+    set isDirty(value: boolean) {
+        if (value) this._revision++;
+        this._isDirty = value;
+    }
     /**
      * 使用 aabb 碰撞检测
      */
@@ -210,7 +282,6 @@ class Geometry {
     private _localBounds: Bounds | null = null;
     private _sphereBounds: Sphere | null = null;
     private _localSphereBounds: Sphere | null = null;
-    private _shaderKey: string | undefined;
     /**
      * @param params - 初始化参数，所有params都会复制到实例上
      */
@@ -362,6 +433,54 @@ class Geometry {
         this.isDirty = true;
     }
     /**
+     * Converts primitive modes that WebGPU cannot represent into explicit indexed lists.
+     *
+     * Both rendering backends call this method before creating backend resources, so LINE_LOOP
+     * and TRIANGLE_FAN have one canonical CPU representation and identical draw semantics.
+     * Existing unsigned index width is preserved; non-indexed geometry receives the smallest
+     * unsigned index type that can address all of its vertices.
+     *
+     * @returns Whether the geometry topology was converted.
+     */
+    normalizePrimitiveTopology(): boolean {
+        const sourceMode = this.mode;
+        if (sourceMode !== LINE_LOOP && sourceMode !== TRIANGLE_FAN) return false;
+
+        const sourceIndices = this.indices ? requireUnsignedIndexArray(this.indices) : null;
+        const sourceCount = sourceIndices?.length ?? this.vertices?.count ?? 0;
+        const outputLength = normalizedTopologyIndexCount(sourceMode, sourceCount);
+        const output = createUnsignedIndexArray(sourceIndices, sourceCount, outputLength);
+        const sourceIndex = (index: number): number =>
+            sourceIndices ? readIndex(sourceIndices, index) : index;
+
+        if (sourceMode === LINE_LOOP && sourceCount >= 2) {
+            let outputIndex = 0;
+            for (let index = 0; index + 1 < sourceCount; index++) {
+                output[outputIndex++] = sourceIndex(index);
+                output[outputIndex++] = sourceIndex(index + 1);
+            }
+            output[outputIndex++] = sourceIndex(sourceCount - 1);
+            output[outputIndex] = sourceIndex(0);
+            this.mode = LINES;
+        } else if (sourceMode === TRIANGLE_FAN && sourceCount >= 3) {
+            const center = sourceIndex(0);
+            let outputIndex = 0;
+            for (let index = 1; index + 1 < sourceCount; index++) {
+                output[outputIndex++] = center;
+                output[outputIndex++] = sourceIndex(index);
+                output[outputIndex++] = sourceIndex(index + 1);
+            }
+            this.mode = TRIANGLES;
+        } else {
+            this.mode = sourceMode === LINE_LOOP ? LINES : TRIANGLES;
+        }
+
+        this.indices = new GeometryData(output, 1);
+        this.currentIndicesCount = output.length;
+        this.isDirty = true;
+        return true;
+    }
+    /**
      * 将三角形模式转换为线框模式，即 Material 中的 wireframe
      */
     convertToLinesMode(): void {
@@ -371,21 +490,33 @@ class Geometry {
         if (!this.indices) {
             throw new Error('Geometry.convertToLinesMode requires index data');
         }
-        const newIndices = new Uint16Array(this.indices.length * 2);
-        const data = this.indices.data;
+        const data = requireUnsignedIndexArray(this.indices);
+        if (data.length % 3 !== 0) {
+            throw new RangeError(
+                `Geometry.convertToLinesMode requires complete index triples; received ${String(data.length)} indices`
+            );
+        }
+        const newIndices = createUnsignedIndexArray(
+            data,
+            this.vertices?.count ?? 0,
+            data.length * 2
+        );
+        let outputIndex = 0;
         for (let i = 0; i < data.length; i += 3) {
             const a = readIndex(data, i);
             const b = readIndex(data, i + 1);
             const c = readIndex(data, i + 2);
-            newIndices[i * 2] = a;
-            newIndices[i * 2 + 1] = b;
-            newIndices[i * 2 + 2] = b;
-            newIndices[i * 2 + 3] = c;
-            newIndices[i * 2 + 4] = c;
-            newIndices[i * 2 + 5] = a;
+            newIndices[outputIndex++] = a;
+            newIndices[outputIndex++] = b;
+            newIndices[outputIndex++] = b;
+            newIndices[outputIndex++] = c;
+            newIndices[outputIndex++] = c;
+            newIndices[outputIndex++] = a;
         }
         this.indices.data = newIndices;
+        this.currentIndicesCount = newIndices.length;
         this.mode = LINES;
+        this.isDirty = true;
     }
     /**
      * 平移
@@ -857,7 +988,6 @@ class Geometry {
      * @param side -
      */
     _raycast(ray: Ray, side: GLenum): Vector3[] | null {
-        // TODO:optimize
         const vertices = this.vertices;
         if (!vertices) {
             return null;
@@ -950,23 +1080,24 @@ class Geometry {
             opt['HAS_COLOR'] = 1;
             opt['COLOR_SIZE'] = this.colors.size;
         }
+        const skinIndices = this.skinIndices;
+        if (
+            skinIndices &&
+            !skinIndices.normalized &&
+            (skinIndices.data instanceof Uint8Array ||
+                skinIndices.data instanceof Uint8ClampedArray ||
+                skinIndices.data instanceof Uint16Array ||
+                skinIndices.data instanceof Uint32Array)
+        ) {
+            opt['SKIN_INDICES_UINT'] = 1;
+        }
         return opt;
     }
     getShaderKey(): string {
-        if (this._shaderKey === undefined) {
-            this._shaderKey = 'geometry';
-            if (this.isMorphGeometry) {
-                this._shaderKey += `_id_${this.id}`;
-            } else {
-                if (this.colors) {
-                    this._shaderKey += '_colors';
-                }
-                if (this.positionDecodeMat) {
-                    this._shaderKey += 'positionDecodeMat';
-                }
-            }
-        }
-        return this._shaderKey;
+        const structuralOptions = Object.entries(this.getRenderOption({})).sort(([left], [right]) =>
+            left.localeCompare(right)
+        );
+        return `geometry:${JSON.stringify(structuralOptions)}`;
     }
     /**
      * 获取数据的内存大小，只处理顶点数据，单位为字节

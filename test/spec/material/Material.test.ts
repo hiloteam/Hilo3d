@@ -5,8 +5,11 @@ import {
     FRONT,
     FRONT_AND_BACK,
     ONE,
-    ONE_MINUS_SRC_ALPHA
+    ONE_MINUS_SRC_ALPHA,
+    RGBA,
+    UNSIGNED_BYTE
 } from '../../../src/constants/webgl';
+import { RGBA8 } from '../../../src/constants/webgl2';
 
 const Material = Hilo3d.Material;
 
@@ -17,16 +20,39 @@ describe('Material', () => {
         expect(material.className).toBe('Material');
     });
 
+    it('declares the fallback sampler texture as explicit RGBA8 byte data', () => {
+        const texture = Hilo3d.semantic.getBlankTexture();
+
+        expect(texture.internalFormat).toBe(RGBA8);
+        expect(texture.format).toBe(RGBA);
+        expect(texture.type).toBe(UNSIGNED_BYTE);
+        expect(texture.image).toBeInstanceOf(Uint8Array);
+    });
+
+    it('publishes a monotonic revision for independent backend caches', () => {
+        const material = new Material();
+        expect(material.revision).toBe(0);
+
+        material.isDirty = true;
+        expect(material.revision).toBe(1);
+        material.isDirty = false;
+        expect(material.revision).toBe(1);
+        material.isDirty = true;
+        expect(material.revision).toBe(2);
+    });
+
     it('clone', () => {
         const material = new Material({
             name: 'source',
             transparent: true
         });
+        material.isDirty = true;
 
         const clonedMaterial = material.clone();
         expect(clonedMaterial).not.toBe(material);
         expect(clonedMaterial.name).toBe(material.name);
         expect(clonedMaterial.transparent).toBe(material.transparent);
+        expect(clonedMaterial.revision).toBe(0);
     });
 
     it('side & cullFace', () => {

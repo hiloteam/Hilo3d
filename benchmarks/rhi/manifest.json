@@ -1,0 +1,241 @@
+{
+  "schemaVersion": 3,
+  "suite": "rhi",
+  "architecture": "rhi",
+  "backends": ["webgl2", "webgpu"],
+  "sampling": {
+    "warmupFrames": 300,
+    "sampleFrames": 2000,
+    "allocationSampleFrames": 21,
+    "rounds": 7,
+    "bootstrapSeed": 844188002,
+    "bootstrapIterations": 10000,
+    "confidenceLevel": 0.95
+  },
+  "rig": {
+    "profile": "hilo3d-rhi-perf-linux-gpu",
+    "requiredRunnerTags": ["self-hosted", "linux", "gpu", "rhi-perf"],
+    "osPlatform": "linux",
+    "browserName": "chromium",
+    "playwrightVersion": "1.61.1",
+    "nodeVersion": "22.22.2",
+    "powerProfile": "fixed-performance",
+    "requireNonFallbackAdapter": true,
+    "requireGpuTimer": true,
+    "requireAllocationProfiler": true,
+    "requirePreciseMemory": true,
+    "acceptedFingerprintSha256": []
+  },
+  "scenarios": [
+    {
+      "id": "static-unlit-single-draw",
+      "purpose": "Fixed renderer and empty-graph overhead",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 1,
+        "instanceCount": 1,
+        "shaderVariantCount": 1,
+        "textureCount": 0,
+        "lightCount": 0,
+        "shadowMapSize": 0,
+        "mrtColorAttachments": 1,
+        "msaaSampleCount": 1,
+        "postProcessPassCount": 0,
+        "dynamicUploadBytesPerFrame": 0,
+        "churnFrames": 0
+      }
+    },
+    {
+      "id": "shared-pipeline-1000-draw",
+      "purpose": "Command issue and state deduplication at 1,000 draws",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 1000,
+        "instanceCount": 1,
+        "shaderVariantCount": 1,
+        "textureCount": 1,
+        "lightCount": 0,
+        "shadowMapSize": 0,
+        "mrtColorAttachments": 1,
+        "msaaSampleCount": 1,
+        "postProcessPassCount": 0,
+        "dynamicUploadBytesPerFrame": 0,
+        "churnFrames": 0
+      }
+    },
+    {
+      "id": "shared-pipeline-10000-draw",
+      "purpose": "WebGL2 immediate-context and JavaScript hot-path cost",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 10000,
+        "instanceCount": 1,
+        "shaderVariantCount": 1,
+        "textureCount": 1,
+        "lightCount": 0,
+        "shadowMapSize": 0,
+        "mrtColorAttachments": 1,
+        "msaaSampleCount": 1,
+        "postProcessPassCount": 0,
+        "dynamicUploadBytesPerFrame": 0,
+        "churnFrames": 0
+      }
+    },
+    {
+      "id": "state-switch-2000-draw",
+      "purpose": "Pipeline, bind-group, and texture switching",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 2000,
+        "instanceCount": 1,
+        "shaderVariantCount": 32,
+        "textureCount": 32,
+        "lightCount": 0,
+        "shadowMapSize": 0,
+        "mrtColorAttachments": 1,
+        "msaaSampleCount": 1,
+        "postProcessPassCount": 0,
+        "dynamicUploadBytesPerFrame": 0,
+        "churnFrames": 0
+      }
+    },
+    {
+      "id": "large-instancing",
+      "purpose": "Instance upload and indexed instanced drawing",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 79,
+        "instanceCount": 10000,
+        "shaderVariantCount": 1,
+        "textureCount": 1,
+        "lightCount": 1,
+        "shadowMapSize": 0,
+        "mrtColorAttachments": 1,
+        "msaaSampleCount": 1,
+        "postProcessPassCount": 0,
+        "dynamicUploadBytesPerFrame": 640000,
+        "churnFrames": 0
+      }
+    },
+    {
+      "id": "pbr-lights-shadows",
+      "purpose": "Representative renderer CPU and GPU workload",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 512,
+        "instanceCount": 1,
+        "shaderVariantCount": 8,
+        "textureCount": 24,
+        "lightCount": 9,
+        "shadowMapSize": 2048,
+        "mrtColorAttachments": 1,
+        "msaaSampleCount": 1,
+        "postProcessPassCount": 0,
+        "dynamicUploadBytesPerFrame": 0,
+        "churnFrames": 0
+      }
+    },
+    {
+      "id": "mrt-msaa-postprocess",
+      "purpose": "Render Graph attachments, resolve, and transient resources",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 256,
+        "instanceCount": 1,
+        "shaderVariantCount": 6,
+        "textureCount": 12,
+        "lightCount": 3,
+        "shadowMapSize": 0,
+        "mrtColorAttachments": 4,
+        "msaaSampleCount": 4,
+        "postProcessPassCount": 3,
+        "dynamicUploadBytesPerFrame": 0,
+        "churnFrames": 0
+      }
+    },
+    {
+      "id": "dynamic-geometry-texture-upload",
+      "purpose": "Upload batching, staging, typed-array, and external-image resource updates",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 512,
+        "instanceCount": 1,
+        "shaderVariantCount": 2,
+        "textureCount": 8,
+        "lightCount": 1,
+        "shadowMapSize": 0,
+        "mrtColorAttachments": 1,
+        "msaaSampleCount": 1,
+        "postProcessPassCount": 0,
+        "dynamicUploadBytesPerFrame": 4194304,
+        "churnFrames": 0
+      }
+    },
+    {
+      "id": "first-complex-frame",
+      "purpose": "Shader and pipeline preparation hitch",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 512,
+        "instanceCount": 1,
+        "shaderVariantCount": 64,
+        "textureCount": 24,
+        "lightCount": 9,
+        "shadowMapSize": 2048,
+        "mrtColorAttachments": 4,
+        "msaaSampleCount": 4,
+        "postProcessPassCount": 3,
+        "dynamicUploadBytesPerFrame": 4194304,
+        "churnFrames": 0
+      }
+    },
+    {
+      "id": "scene-churn-10000-frame",
+      "purpose": "Cache bounds, resource release, and retained-heap stability",
+      "quality": {
+        "width": 1280,
+        "height": 720,
+        "devicePixelRatio": 1,
+        "cameraId": "fixed-perspective-v1",
+        "drawCount": 256,
+        "instanceCount": 1,
+        "shaderVariantCount": 16,
+        "textureCount": 32,
+        "lightCount": 5,
+        "shadowMapSize": 1024,
+        "mrtColorAttachments": 1,
+        "msaaSampleCount": 1,
+        "postProcessPassCount": 0,
+        "dynamicUploadBytesPerFrame": 1048576,
+        "churnFrames": 10000
+      }
+    }
+  ]
+}

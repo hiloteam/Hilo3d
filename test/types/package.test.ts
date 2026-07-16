@@ -2,61 +2,159 @@ import {
     BasicLoader,
     BasicMaterial,
     BoxGeometry,
-    Class,
+    constants,
     EventDispatcher,
     GLTFLoader,
     HiloEvent,
     Loader,
     Mesh,
+    MeshPicker,
     PerspectiveCamera,
-    Program,
-    ProgramLinkError,
-    ShaderCompilationError,
+    Renderer,
     Stage,
     Texture,
     Tween,
-    Vector3,
-    WebGLRenderer,
-    WebGLState,
     version,
     type BasicLoadRequest,
     type BasicMaterialParameters,
+    type AreaLightParameters,
     type DispatchEvent,
     type EventListener,
-    type GLContext,
+    type KTXTextureOptions,
     type LoaderRequest,
     type MeshParameters,
-    type ProgramParameters,
+    type RendererBackend,
+    type RendererResourceDiagnostics,
+    type RendererSupportOptions,
+    type RendererWebGL2Options,
+    type RendererWebGPUOptions,
+    type RenderTarget,
+    type RenderTargetColorAttachmentReadback,
+    type RenderTargetParameters,
     type StageParameters,
+    type StageBackend,
     type StagePointerEvent,
+    type ShadowCastingLightParameters,
+    type TextureCompressionFormat,
+    type TextureMipmap,
+    type TexturePixelData,
     type TextureParameters,
-    type TweenParameters,
-    type WebGLRendererParameters
+    type TweenParameters
 } from 'hilo3d';
-
-const vector = new Vector3(1, 2, 3);
-const RuntimeVector = Class.create<typeof Vector3>()({
-    constructor(x = 0, y = 0, z = 0) {
-        this.elements = new Float32Array([x, y, z]);
-    }
-});
-const runtimeVector = new RuntimeVector(1, 2, 3);
-vector.copy(runtimeVector);
 
 const camera = new PerspectiveCamera({ aspect: 16 / 9, near: 0.1, far: 1_000, z: 4 });
 const rendererParameters = {
+    backend: 'webgl2',
     width: 640,
     height: 360,
-    pixelRatio: 1,
-    preferWebGL2: true
-} satisfies WebGLRendererParameters;
-const renderer = new WebGLRenderer(rendererParameters);
+    pixelRatio: 1
+} satisfies RendererWebGL2Options;
+const webglRendererPromise: Promise<Renderer<'webgl2'>> = Renderer.create(rendererParameters);
+const renderer = await webglRendererPromise;
 const stageParameters = {
     camera,
     width: rendererParameters.width,
     height: rendererParameters.height
 } satisfies StageParameters;
-const stage = new Stage(stageParameters);
+const stage = await Stage.create(stageParameters);
+const webgpuRendererParameters = {
+    backend: 'webgpu',
+    domElement: document.createElement('canvas'),
+    width: 640,
+    height: 360,
+    pixelRatio: 1
+} satisfies RendererWebGPUOptions;
+const webgpuRendererPromise: Promise<Renderer<'webgpu'>> =
+    Renderer.create(webgpuRendererParameters);
+const webgpuRenderer = await webgpuRendererPromise;
+type WebgpuRendererPreserveDrawingBufferValue = Exclude<
+    RendererWebGPUOptions['preserveDrawingBuffer'],
+    undefined
+>;
+const webgpuRendererPreserveDrawingBufferIsNever: WebgpuRendererPreserveDrawingBufferValue extends never
+    ? true
+    : false = true;
+const webgpuStageParameters = {
+    backend: 'webgpu',
+    camera,
+    width: webgpuRendererParameters.width,
+    height: webgpuRendererParameters.height
+} satisfies StageParameters<'webgpu'>;
+const webgpuStage = await Stage.create(webgpuStageParameters);
+type WebgpuStagePreserveDrawingBufferValue = Exclude<
+    StageParameters<'webgpu'>['preserveDrawingBuffer'],
+    undefined
+>;
+const webgpuStagePreserveDrawingBufferIsNever: WebgpuStagePreserveDrawingBufferValue extends never
+    ? true
+    : false = true;
+const webgpuStagePromise: Promise<Stage<'webgpu'>> = Stage.create(webgpuStageParameters);
+const autoBackend: StageBackend = 'auto';
+const autoStageParameters = {
+    backend: autoBackend,
+    requiredLimits: { maxBindGroups: 4 }
+} satisfies StageParameters;
+const autoStagePromise: Promise<Stage> = Stage.create(autoStageParameters);
+const defaultStagePromise: Promise<Stage> = Stage.create();
+declare const dynamicStageParameters: StageParameters<StageBackend>;
+const dynamicStagePromise: Promise<Stage> = Stage.create(dynamicStageParameters);
+const webgpuSupportOptions = {
+    powerPreference: 'high-performance',
+    requiredLimits: { maxBindGroups: 4 }
+} satisfies RendererSupportOptions;
+const webgpuSupportedPromise: Promise<boolean> = Renderer.isBackendSupported(
+    'webgpu',
+    webgpuSupportOptions
+);
+const webglSupportedPromise: Promise<boolean> = Renderer.isBackendSupported(
+    'webgl2',
+    rendererParameters
+);
+const autoRendererPromise: Promise<Renderer> = Renderer.create({
+    backend: 'auto',
+    ...webgpuSupportOptions
+});
+const stageWebgpuRenderContract: Renderer<'webgpu'> = webgpuStage.renderer;
+const selectedBackend: RendererBackend = webgpuRenderer.backend;
+const areaLightHasShadow: 'shadow' extends keyof AreaLightParameters ? true : false = false;
+const shadowCastingLightHasShadow: 'shadow' extends keyof ShadowCastingLightParameters
+    ? true
+    : false = true;
+const renderTargetParameters = {
+    width: 320,
+    height: 180,
+    sampleCount: 4,
+    colorAttachments: [{ format: 'rgba16float' }, { format: 'rgba8unorm' }]
+} satisfies RenderTargetParameters;
+const renderers: readonly Renderer[] = [renderer, webgpuRenderer];
+const compressionFormat: TextureCompressionFormat = 'bc';
+const ktxTextureOptions = {
+    minFilter: 9729,
+    anisotropic: 2,
+    isImageCanRelease: true
+} satisfies KTXTextureOptions;
+const compressionSupport: readonly boolean[] = renderers.map(currentRenderer =>
+    currentRenderer.supportsTextureCompression(compressionFormat)
+);
+const webglRenderTarget: RenderTarget = renderer.createRenderTarget(renderTargetParameters);
+const webgpuRenderTarget: RenderTarget = webgpuRenderer.createRenderTarget(renderTargetParameters);
+renderer.setRenderTarget(webglRenderTarget, { present: true, takeOwnership: true });
+webgpuRenderer.setRenderTarget(webgpuRenderTarget, { present: true, takeOwnership: true });
+renderer.renderToTarget(webglRenderTarget, stage, camera);
+webgpuRenderer.renderToTarget(webgpuRenderTarget, webgpuStage, camera);
+renderers.forEach(currentRenderer => {
+    currentRenderer.present(
+        currentRenderer.backend === 'webgl2' ? webglRenderTarget : webgpuRenderTarget
+    );
+});
+const colorReadbacks: readonly Promise<RenderTargetColorAttachmentReadback>[] = [
+    webglRenderTarget.readColorAttachment({ attachmentIndex: 1 }),
+    webgpuRenderTarget.readColorAttachment({ attachmentIndex: 1 })
+];
+const resourceDiagnostics: RendererResourceDiagnostics =
+    webgpuRenderer.resourceManager.getDiagnostics(webgpuStage);
+const webglIdlePromise: Promise<void> = renderer.waitForIdle();
+const webgpuIdlePromise: Promise<void> = webgpuRenderer.waitForIdle();
 
 const textureParameters = {
     uv: 0,
@@ -64,6 +162,49 @@ const textureParameters = {
     flipY: false
 } satisfies TextureParameters;
 const texture = new Texture(textureParameters);
+const rawTextureStorage: TexturePixelData = new DataView(new ArrayBuffer(16));
+const volumeBasePixels = new Uint8Array(2 * 2 * 2 * 4);
+const volumeMipmaps = [
+    { width: 2, height: 2, depth: 2, data: volumeBasePixels },
+    { width: 1, height: 1, depth: 1, data: new Uint8Array(4) }
+] satisfies TextureMipmap[];
+const volumeTextureParameters = {
+    target: constants.TEXTURE_3D,
+    internalFormat: constants.RGBA8,
+    format: constants.RGBA,
+    type: constants.UNSIGNED_BYTE,
+    width: 2,
+    height: 2,
+    depth: 2,
+    image: volumeBasePixels,
+    mipmaps: volumeMipmaps,
+    magFilter: constants.NEAREST,
+    minFilter: constants.NEAREST_MIPMAP_NEAREST,
+    wrapS: constants.CLAMP_TO_EDGE,
+    wrapT: constants.CLAMP_TO_EDGE,
+    wrapR: constants.CLAMP_TO_EDGE,
+    anisotropic: 1
+} satisfies TextureParameters<Uint8Array>;
+const integerArrayBasePixels = new Uint8Array(2 * 2 * 2 * 4);
+const integerArrayMipmaps = [
+    { width: 2, height: 2, depth: 2, data: integerArrayBasePixels },
+    { width: 1, height: 1, depth: 2, data: new Uint8Array(2 * 4) }
+] satisfies TextureMipmap[];
+const integerArrayTextureParameters = {
+    target: constants.TEXTURE_2D_ARRAY,
+    internalFormat: constants.RGBA8UI,
+    format: constants.RGBA_INTEGER,
+    type: constants.UNSIGNED_BYTE,
+    width: 2,
+    height: 2,
+    depth: 2,
+    image: integerArrayBasePixels,
+    mipmaps: integerArrayMipmaps,
+    magFilter: constants.NEAREST,
+    minFilter: constants.NEAREST_MIPMAP_NEAREST,
+    wrapR: constants.CLAMP_TO_EDGE,
+    anisotropic: 1
+} satisfies TextureParameters<Uint8Array>;
 const materialParameters = {
     lightType: 'NONE',
     diffuse: texture,
@@ -77,6 +218,8 @@ const meshParameters = {
 } satisfies MeshParameters;
 const mesh = new Mesh(meshParameters);
 stage.addChild(mesh);
+const meshPicker = new MeshPicker({ stage });
+const meshSelection: Promise<Mesh[]> = meshPicker.getSelection(0, 0);
 
 const registry = new Loader();
 const transport = new BasicLoader();
@@ -108,33 +251,38 @@ const pointerListener: EventListener<StagePointerEvent> = event => {
 };
 const dispatcher = new EventDispatcher().on('ready', eventListener);
 
-declare const gl: GLContext;
-const state = new WebGLState(gl);
-const programParameters = {
-    state,
-    vertexShader: 'void main(){gl_Position=vec4(0.0);}',
-    fragShader: 'precision mediump float;void main(){gl_FragColor=vec4(1.0);}'
-} satisfies ProgramParameters;
-const program = new Program(programParameters);
-const compilationError = new ShaderCompilationError(
-    gl.VERTEX_SHADER,
-    'compile failed',
-    '1 invalid shader'
-);
-const linkError = new ProgramLinkError('link failed');
-const typedProgramErrors: readonly (ShaderCompilationError | ProgramLinkError)[] = [
-    compilationError,
-    linkError
-];
-typedProgramErrors.forEach(error => {
-    error satisfies Error;
-});
-
 version satisfies string;
 void renderer;
 void stage;
+void webgpuRenderer;
+void webglRendererPromise;
+void webgpuRendererPromise;
+void webgpuRendererPreserveDrawingBufferIsNever;
+void webgpuStagePreserveDrawingBufferIsNever;
+void webgpuStagePromise;
+void autoStagePromise;
+void defaultStagePromise;
+void dynamicStagePromise;
+void webgpuSupportedPromise;
+void webglSupportedPromise;
+void autoRendererPromise;
+void stageWebgpuRenderContract;
+void selectedBackend;
+void areaLightHasShadow;
+void shadowCastingLightHasShadow;
+void compressionSupport;
+void ktxTextureOptions;
+void colorReadbacks;
+void resourceDiagnostics;
+void webglIdlePromise;
+void webgpuIdlePromise;
+void rawTextureStorage;
+void volumeTextureParameters;
+void integerArrayTextureParameters;
 void material;
 void mesh;
+void meshPicker;
+void meshSelection;
 void registryLoad;
 void textLoad;
 void modelLoad;
@@ -142,6 +290,5 @@ void tween;
 void dispatchEvent;
 void pointerListener;
 void dispatcher;
-void program;
 
 export {};

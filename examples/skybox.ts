@@ -1,20 +1,20 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { addEnvironmentSkybox } from './js/environment';
-import { createExampleContext } from './js/init';
+import { addEnvironmentSkybox } from './shared/environment';
+import { createExampleContext } from './shared/init';
 
-const { stage, orbitControls } = createExampleContext();
+const { stage, orbitControls } = await createExampleContext();
 orbitControls.isLockZ = true;
 
 async function initialize(): Promise<void> {
     const [skyboxMap, model] = await Promise.all([
         new Hilo3d.CubeTextureLoader().load({
             images: [
-                '//gw.alicdn.com/tfs/TB1Ss.ORpXXXXcNXVXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1YhUDRpXXXXcyaXXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1Y1MORpXXXXcpXVXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1ZgAqRpXXXXa0aFXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1IVZNRpXXXXaNXFXXXXXXXXXX-2048-2048.jpg_960x960.jpg',
-                '//gw.alicdn.com/tfs/TB1M3gyRpXXXXb9apXXXXXXXXXX-2048-2048.jpg_960x960.jpg'
+                new URL('./image/px.jpg', import.meta.url).href,
+                new URL('./image/nx.jpg', import.meta.url).href,
+                new URL('./image/py.jpg', import.meta.url).href,
+                new URL('./image/ny.jpg', import.meta.url).href,
+                new URL('./image/pz.jpg', import.meta.url).href,
+                new URL('./image/nz.jpg', import.meta.url).href
             ]
         }),
         new Hilo3d.GLTFLoader().load({ src: './models/Tmall/Tmall.gltf' })

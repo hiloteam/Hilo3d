@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
-const { camera, stage } = createExampleContext();
+const { camera, stage } = await createExampleContext();
 
 const geometry = new Hilo3d.PlaneGeometry({
     width: 50,

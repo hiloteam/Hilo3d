@@ -1,5 +1,5 @@
 import * as Hilo3d from '../../../src/Hilo3d';
-import { createExampleContext } from '../../js/init';
+import { createExampleContext } from '../../shared/init';
 import './SMDLoader';
 
 interface ExampleLoadRequest extends Hilo3d.LoaderRequest {
@@ -33,7 +33,7 @@ function requireSelectElement(id: string): HTMLSelectElement {
 
 const selectElement = requireSelectElement('animSelect');
 
-const { camera, stage, renderer } = createExampleContext();
+const { camera, stage, renderer } = await createExampleContext();
 stage.rotationX = 30;
 camera.far = 5;
 renderer.clearColor.set(0, 0, 0, 1);

@@ -322,7 +322,6 @@ class BoxGeometry extends Geometry {
         return this;
     }
     override _raycast(ray: Ray, side: GLenum): Vector3[] | null {
-        // TODO:optimize
         return super._raycast(ray, side);
     }
 }

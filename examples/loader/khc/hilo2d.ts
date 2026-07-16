@@ -1,5 +1,5 @@
 import * as Hilo3d from '../../../src/Hilo3d';
-import { createExampleContext } from '../../js/init';
+import { createExampleContext } from '../../shared/init';
 
 interface Fish {
     x: number;
@@ -16,7 +16,7 @@ const queriedContext = canvas.getContext('2d');
 if (!queriedContext) throw new Error('Canvas animation example requires a 2D rendering context.');
 const context: CanvasRenderingContext2D = queriedContext;
 
-const { stage } = createExampleContext({ camera: { z: 4 } });
+const { stage } = await createExampleContext({ camera: { z: 4 } });
 const fish: Fish[] = Array.from({ length: 12 }, (_, index) => ({
     x: (index / 12) * canvas.width,
     y: 90 + ((index * 97) % (canvas.height - 180)),

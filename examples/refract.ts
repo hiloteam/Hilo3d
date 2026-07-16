@@ -1,7 +1,38 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './js/init';
+import { createExampleContext } from './shared/init';
 
-const { stage, renderer } = createExampleContext();
+const { stage, renderer } = await createExampleContext();
+
+const refractionTarget = renderer.createRenderTarget({
+    width: renderer.width,
+    height: renderer.height,
+    colorAttachments: [
+        {
+            clearValue: { r: 0, g: 0, b: 0, a: 0 }
+        }
+    ],
+    label: 'Refraction.backfaces'
+});
+const backfaceMaterial = new Hilo3d.BasicMaterial({
+    lightType: 'NONE',
+    side: Hilo3d.constants.BACK,
+    diffuse: new Hilo3d.Color(0.75, 0.85, 1)
+});
+
+stage.onUpdate = () => {
+    if (refractionTarget.width !== renderer.width || refractionTarget.height !== renderer.height) {
+        refractionTarget.resize(renderer.width, renderer.height);
+    }
+    const previousMaterial = renderer.forceMaterial;
+    renderer.forceMaterial = backfaceMaterial;
+    try {
+        const camera = stage.camera;
+        if (!camera) throw new Error('Refraction example requires a camera.');
+        renderer.renderToTarget(refractionTarget, stage, camera, false);
+    } finally {
+        renderer.forceMaterial = previousMaterial;
+    }
+};
 
 initModel();
 
@@ -12,49 +43,26 @@ function initModel(): void {
             src: gltfURL
         })
         .then(model => {
-            const framebuffer = new Hilo3d.Framebuffer(renderer);
-            renderer.on('beforeRender', function () {
-                model.materials.forEach(function (material) {
-                    material.transparent = true;
-                    material.side = Hilo3d.constants.BACK;
-                    material.onBeforeCompile = null;
-                    material.isDirty = true;
-                });
-                framebuffer.bind();
-                renderer.viewport();
-                renderer.clear(new Hilo3d.Color(0, 0, 0, 0));
-                renderer.renderScene();
-                framebuffer.unbind();
-
-                model.materials.forEach(function (material) {
-                    material.transparent = false;
-                    material.premultiplyAlpha = false;
-                    material.side = Hilo3d.constants.FRONT;
-                    material.uniforms['u_refractionMap'] = {
-                        get(_mesh, _material, programInfo) {
-                            if (programInfo.textureIndex === undefined) {
-                                throw new Error('u_refractionMap has no texture unit');
-                            }
-                            return Hilo3d.semantic.handlerTexture(
-                                framebuffer.texture,
-                                programInfo.textureIndex
-                            );
-                        }
-                    };
-                    material.onBeforeCompile = (vs, fs) => {
-                        let fragmentSource = fs.replace(
-                            /(void\s+main\s*\()/,
-                            `
-                            uniform vec2 u_rendererSize;
+            model.materials.forEach(material => {
+                material.transparent = false;
+                material.premultiplyAlpha = false;
+                material.side = Hilo3d.constants.FRONT;
+                material.uniforms['u_refractionMap'] = {
+                    get: () => refractionTarget.getColorTexture()
+                };
+                material.onBeforeCompile = (vs, fs) => {
+                    let fragmentSource = fs.replace(
+                        /(void\s+main\s*\()/,
+                        `
                             uniform sampler2D u_refractionMap;
                             $1`
-                        );
-                        fragmentSource = fragmentSource.replace(
-                            /(#ifdef HILO_IGNORE_TRANSPARENT)/,
-                            `
+                    );
+                    fragmentSource = fragmentSource.replace(
+                        /(#ifdef HILO_IGNORE_TRANSPARENT)/,
+                        `
                         vec2 screenUV = gl_FragCoord.xy/u_rendererSize;
                         vec2 bump = normal.xy;
-                        vec4 screenColor = texture2D(u_refractionMap, screenUV - bump*vec2(0.03, 0.01)).rgba;
+                        vec4 screenColor = texture(u_refractionMap, screenUV - bump*vec2(0.03, 0.01)).rgba;
 
                         if (color.a <= 0.9 && screenColor.a > 0.5) {
                             color.rgb *= color.a;
@@ -62,18 +70,16 @@ function initModel(): void {
                         }
                         $1
                         `
-                        );
-                        return {
-                            vs,
-                            fs: fragmentSource
-                        };
+                    );
+                    return {
+                        vs,
+                        fs: fragmentSource
                     };
-                    material.isDirty = true;
-                });
+                };
+                material.isDirty = true;
             });
 
             model.node.setScale(0.002);
-            // model.node.y =;
             stage.addChild(model.node);
         })
         .catch((error: unknown) => {

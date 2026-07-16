@@ -1,8 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { addEnvironmentSkybox, applyEnvironmentMaps } from './js/environment';
-import { createExampleContext, loadEnvironmentMaps } from './js/init';
+import { addEnvironmentSkybox, applyEnvironmentMaps } from './shared/environment';
+import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
-const { stage } = createExampleContext();
+const { stage } = await createExampleContext();
 
 async function initialize(): Promise<void> {
     const [model, environment] = await Promise.all([
