@@ -14,7 +14,9 @@ import type {
     RenderTarget,
     RenderTargetColor,
     RenderTargetColorFormat,
-    RenderTargetDepthStencilFormat
+    RenderTargetDepthStencilFormat,
+    RenderTargetLoadOp,
+    RenderTargetStoreOp
 } from '../RenderTarget';
 import type { RendererCore, RendererScene, RendererViewport } from '../RendererCore';
 import {
@@ -42,7 +44,9 @@ import type {
 import type {
     RenderPipelineCapabilities,
     RenderPipelineContext,
-    RenderPipelineOutput
+    RenderPipelineOutput,
+    RenderPipelineOutputColorAttachment,
+    RenderPipelineOutputDepthStencilAttachment
 } from '../pipeline/RenderPipeline';
 import {
     acquireRenderPassParameters,
@@ -86,7 +90,8 @@ import { importSurfaceColor, importSurfaceDepthStencil } from '../renderer/Surfa
 import { SharedDrawPassParameters } from '../renderer/passes/SharedDrawPass';
 import { refreshShadowAtlasSceneBinding } from '../renderer/ShadowAtlasTextureBinding';
 
-type TextureAccess = 'attachment' | 'sampled' | 'copy-source' | 'copy-destination';
+type TextureAccess =
+    'attachment' | 'resolve-target' | 'sampled' | 'copy-source' | 'copy-destination';
 type PipelineTextureFormat = RenderTargetColorFormat | RenderTargetDepthStencilFormat;
 type MutableRHIViewport = { -readonly [Key in keyof RHIViewport]: RHIViewport[Key] };
 type MutableRenderTargetColor = {
@@ -101,6 +106,21 @@ interface MutablePipelineOutputState {
     sampleCount: 1 | 4;
     colorAttachmentCount: number;
     depthStencilFormat: RenderPipelineOutput['depthStencilFormat'];
+}
+
+interface MutablePipelineOutputColorAttachmentState {
+    readonly clearValue: MutableRenderTargetColor;
+    loadOp: RenderTargetLoadOp;
+    storeOp: RenderTargetStoreOp;
+}
+
+interface MutablePipelineOutputDepthStencilAttachmentState {
+    depthClearValue: number;
+    depthLoadOp: RenderTargetLoadOp;
+    depthStoreOp: RenderTargetStoreOp;
+    stencilClearValue: number;
+    stencilLoadOp: RenderTargetLoadOp;
+    stencilStoreOp: RenderTargetStoreOp;
 }
 
 interface MutableTextureGraphDescriptor {
@@ -182,12 +202,15 @@ interface FrameBindGroupScratch {
 }
 
 interface PersistentTargetState {
+    readonly key: object;
     currentOwner: object | null;
     currentDescriptor: Readonly<RenderTargetResourceDescriptor> | null;
     currentRecord: Readonly<RenderTargetResourceRecord> | null;
     pendingOwner: object | null;
     pendingDescriptor: Readonly<RenderTargetResourceDescriptor> | null;
     pendingRecord: Readonly<RenderTargetResourceRecord> | null;
+    lastAcquiredFrameIndex: number;
+    pendingRelease: boolean;
 }
 
 /** @internal Renderer services deliberately narrower than either Renderer or the portable RHI. */
@@ -211,7 +234,11 @@ export interface ScriptableRenderPipelineServices {
     prepareScriptableCullingScene(scene: RendererScene, camera: Camera): void;
     markScriptableTargetUsed(record: Readonly<RenderTargetResourceRecord>): void;
     markScriptableSurfaceRequested(): void;
-    fireScriptableBeforeScene(meshes: readonly Mesh[], enabled: boolean): void;
+    fireScriptableBeforeScene(
+        meshes: readonly Mesh[],
+        enabled: boolean,
+        fireRendererEvents: boolean
+    ): void;
     recordScriptableShadows(
         meshes: readonly Mesh[],
         camera: Camera,
@@ -219,7 +246,9 @@ export interface ScriptableRenderPipelineServices {
         width: number,
         height: number
     ): number;
-    recordScriptableScene(meshes: readonly Mesh[], fireEvent: boolean, passCount: number): void;
+    recordScriptablePass(passCount: number): void;
+    recordScriptableFaces(meshes: readonly Mesh[]): void;
+    queueScriptableAfterScene(meshes: readonly Mesh[], enabled: boolean): void;
     retainScriptablePresentation(scene: RendererScene, camera: Camera): void;
 }
 
@@ -228,9 +257,18 @@ export class ScriptableRenderPipelineResources {
     #runtimeOwner: object | null = null;
     #persistentByKey = new WeakMap<object, PersistentTargetState>();
     readonly #persistentStates = new Set<PersistentTargetState>();
+    readonly #deferredPersistentCleanupOwners = new Set<object>();
     readonly #frameBindGroups = new Set<RHIBindGroup>();
     readonly #cleanupFailures: unknown[] = [];
     #activeFrameIndex = -1;
+    #nextHandle = 1;
+
+    allocateHandle(): number {
+        if (!Number.isSafeInteger(this.#nextHandle)) {
+            throw new RangeError('Scriptable render handle identity space is exhausted');
+        }
+        return this.#nextHandle++;
+    }
 
     preparePersistentTarget(
         runtimeOwner: object,
@@ -252,15 +290,21 @@ export class ScriptableRenderPipelineResources {
         let state = this.#persistentByKey.get(key);
         if (state === undefined) {
             state = {
+                key,
                 currentOwner: null,
                 currentDescriptor: null,
                 currentRecord: null,
                 pendingOwner: null,
                 pendingDescriptor: null,
-                pendingRecord: null
+                pendingRecord: null,
+                lastAcquiredFrameIndex: -1,
+                pendingRelease: false
             };
             this.#persistentByKey.set(key, state);
             this.#persistentStates.add(state);
+        }
+        if (state.pendingRelease) {
+            throw new Error('Cannot acquire a persistent target pending release in this frame');
         }
         if (state.pendingOwner !== null) {
             if (!samePersistentTargetDescriptor(state.pendingDescriptor, descriptor)) {
@@ -270,6 +314,7 @@ export class ScriptableRenderPipelineResources {
             }
             const pending = state.pendingRecord;
             if (pending === null) throw new Error('Persistent target staging is incomplete');
+            state.lastAcquiredFrameIndex = frameIndex;
             return pending;
         }
         if (
@@ -278,15 +323,43 @@ export class ScriptableRenderPipelineResources {
         ) {
             const current = state.currentRecord;
             if (current === null) throw new Error('Persistent target state is incomplete');
+            state.lastAcquiredFrameIndex = frameIndex;
             return current;
         }
         const owner = Object.freeze({});
         const snapshot = snapshotPersistentTargetDescriptor(descriptor);
-        const record = cache.prepare(owner, snapshot);
+        let record: Readonly<RenderTargetResourceRecord>;
+        try {
+            record = cache.prepare(owner, snapshot);
+        } catch (error) {
+            this.removeEmptyPersistentState(state);
+            throw error;
+        }
         state.pendingOwner = owner;
         state.pendingDescriptor = snapshot;
         state.pendingRecord = record;
+        state.lastAcquiredFrameIndex = frameIndex;
         return record;
+    }
+
+    releasePersistentTarget(runtimeOwner: object, key: unknown): boolean {
+        if ((typeof key !== 'object' && typeof key !== 'function') || key === null) {
+            throw new TypeError('Persistent render target key must be an object');
+        }
+        if (this.#runtimeOwner === null) return false;
+        if (this.#runtimeOwner !== runtimeOwner) {
+            throw new Error('Scriptable render resources belong to another pipeline runtime');
+        }
+        const state = this.#persistentByKey.get(key);
+        if (state === undefined) return false;
+        if (
+            state.pendingOwner !== null ||
+            state.lastAcquiredFrameIndex === this.#activeFrameIndex
+        ) {
+            throw new Error('Cannot release a persistent target used by the active frame');
+        }
+        state.pendingRelease = true;
+        return true;
     }
 
     beginFrame(frameIndex: number): void {
@@ -321,24 +394,40 @@ export class ScriptableRenderPipelineResources {
             }
         }
         this.#frameBindGroups.clear();
+        this.retryDeferredPersistentCleanup(cache, failures);
         for (const state of this.#persistentStates) {
             const pendingOwner = state.pendingOwner;
-            if (pendingOwner === null) continue;
-            try {
+            if (pendingOwner !== null) {
                 if (submitted) {
                     const previousOwner = state.currentOwner;
                     state.currentOwner = pendingOwner;
                     state.currentDescriptor = state.pendingDescriptor;
                     state.currentRecord = state.pendingRecord;
-                    if (previousOwner !== null) cache.release(previousOwner);
-                } else cache.release(pendingOwner);
-            } catch (error) {
-                failures.push(error);
-            } finally {
+                    if (previousOwner !== null) {
+                        this.releasePersistentOwner(cache, previousOwner, failures);
+                    }
+                } else {
+                    this.releasePersistentOwner(cache, pendingOwner, failures);
+                }
                 state.pendingOwner = null;
                 state.pendingDescriptor = null;
                 state.pendingRecord = null;
             }
+            if (state.pendingRelease) {
+                if (!submitted) {
+                    state.pendingRelease = false;
+                } else {
+                    const owner = state.currentOwner;
+                    if (owner !== null) {
+                        this.releasePersistentOwner(cache, owner, failures);
+                    }
+                    state.currentOwner = null;
+                    state.currentDescriptor = null;
+                    state.currentRecord = null;
+                    state.pendingRelease = false;
+                }
+            }
+            this.removeEmptyPersistentState(state);
         }
         this.#activeFrameIndex = -1;
         if (failures.length !== 0) {
@@ -360,15 +449,15 @@ export class ScriptableRenderPipelineResources {
         }
         const failures = this.#cleanupFailures;
         failures.length = 0;
+        this.retryDeferredPersistentCleanup(cache, failures);
         for (const state of this.#persistentStates) {
-            const owners = [state.pendingOwner, state.currentOwner];
-            for (const owner of owners) {
-                if (owner === null) continue;
-                try {
-                    cache.release(owner);
-                } catch (error) {
-                    failures.push(error);
-                }
+            const pendingOwner = state.pendingOwner;
+            if (pendingOwner !== null) {
+                this.releasePersistentOwner(cache, pendingOwner, failures);
+            }
+            const currentOwner = state.currentOwner;
+            if (currentOwner !== null) {
+                this.releasePersistentOwner(cache, currentOwner, failures);
             }
             state.currentOwner = null;
             state.currentDescriptor = null;
@@ -376,6 +465,8 @@ export class ScriptableRenderPipelineResources {
             state.pendingOwner = null;
             state.pendingDescriptor = null;
             state.pendingRecord = null;
+            state.lastAcquiredFrameIndex = -1;
+            state.pendingRelease = false;
         }
         this.#persistentStates.clear();
         this.#persistentByKey = new WeakMap();
@@ -388,6 +479,43 @@ export class ScriptableRenderPipelineResources {
             failures.length = 0;
             throw failure;
         }
+    }
+
+    private releasePersistentOwner(
+        cache: RenderTargetResourceCache,
+        owner: object,
+        failures: unknown[]
+    ): void {
+        try {
+            cache.release(owner);
+            this.#deferredPersistentCleanupOwners.delete(owner);
+        } catch (error) {
+            this.#deferredPersistentCleanupOwners.add(owner);
+            failures.push(error);
+        }
+    }
+
+    private retryDeferredPersistentCleanup(
+        cache: RenderTargetResourceCache,
+        failures: unknown[]
+    ): void {
+        for (const owner of this.#deferredPersistentCleanupOwners) {
+            try {
+                cache.release(owner);
+                this.#deferredPersistentCleanupOwners.delete(owner);
+            } catch (error) {
+                failures.push(error);
+            }
+        }
+    }
+
+    private removeEmptyPersistentState(state: PersistentTargetState): void {
+        if (state.currentOwner !== null || state.pendingOwner !== null || state.pendingRelease) {
+            return;
+        }
+        state.lastAcquiredFrameIndex = -1;
+        this.#persistentByKey.delete(state.key);
+        this.#persistentStates.delete(state);
     }
 }
 
@@ -514,7 +642,6 @@ class CullingSlot {
     scene: RendererScene | null = null;
     lights: readonly Light[] = EMPTY_LIGHTS;
     used = false;
-    beforeEventsFired = false;
 
     build(
         handle: CullingResultsHandle,
@@ -530,7 +657,6 @@ class CullingSlot {
         this.camera = camera;
         this.scene = scene;
         this.used = false;
-        this.beforeEventsFired = false;
         this.renderList.useInstanced = useInstanced;
         const plan = this.planner.build(
             scene,
@@ -566,7 +692,6 @@ class CullingSlot {
         this.lights = EMPTY_LIGHTS;
         this.frameIndex = -1;
         this.used = false;
-        this.beforeEventsFired = false;
     }
 }
 
@@ -639,82 +764,89 @@ class RendererListSlot {
     }
 }
 
-class TargetResourcesFacade implements RenderPipelineTargetResources {
+type PipelineInvocationLease = object;
+
+class TargetResourcesSlot {
     readonly #colors: RenderGraphTextureHandle[] = [];
-    #owner: ScriptableRenderPipelineContextImpl | null = null;
-    #generation = -1;
-    #width = 1;
-    #height = 1;
-    #sampleCount: 1 | 4 = 1;
-    #colorAttachmentCount = 0;
-    #depthStencil: RenderGraphTextureHandle | null = null;
-
-    constructor() {
-        Object.freeze(this);
-    }
-
-    get width(): number {
-        this.assertActive();
-        return this.#width;
-    }
-
-    get height(): number {
-        this.assertActive();
-        return this.#height;
-    }
-
-    get sampleCount(): 1 | 4 {
-        this.assertActive();
-        return this.#sampleCount;
-    }
-
-    get colorAttachmentCount(): number {
-        this.assertActive();
-        return this.#colorAttachmentCount;
-    }
-
-    get depthStencil(): RenderGraphTextureHandle | null {
-        this.assertActive();
-        return this.#depthStencil;
-    }
+    width = 1;
+    height = 1;
+    sampleCount: 1 | 4 = 1;
+    colorAttachmentCount = 0;
+    depthStencil: RenderGraphTextureHandle | null = null;
 
     configure(
-        owner: ScriptableRenderPipelineContextImpl,
-        generation: number,
         width: number,
         height: number,
         sampleCount: 1 | 4,
         colors: readonly RenderGraphTextureHandle[],
         depthStencil: RenderGraphTextureHandle | null
     ): void {
-        this.#owner = owner;
-        this.#generation = generation;
-        this.#width = width;
-        this.#height = height;
-        this.#sampleCount = sampleCount;
-        this.#colorAttachmentCount = colors.length;
+        this.width = width;
+        this.height = height;
+        this.sampleCount = sampleCount;
+        this.colorAttachmentCount = colors.length;
         this.#colors.length = colors.length;
         for (let index = 0; index < colors.length; index += 1) {
             const handle = colors[index];
             if (handle !== undefined) this.#colors[index] = handle;
         }
-        this.#depthStencil = depthStencil;
+        this.depthStencil = depthStencil;
     }
 
     color(index: number): RenderGraphTextureHandle {
-        this.assertActive();
-        if (!Number.isSafeInteger(index) || index < 0 || index >= this.#colorAttachmentCount) {
+        if (!Number.isSafeInteger(index) || index < 0 || index >= this.colorAttachmentCount) {
             throw new RangeError(`Color attachment ${String(index)} does not exist`);
         }
         const handle = this.#colors[index];
         if (handle === undefined) throw new Error('Target color attachment handle is incomplete');
         return handle;
     }
+}
 
-    private assertActive(): void {
-        const owner = this.#owner;
-        if (owner === null) throw new Error('Scriptable target resources are not configured');
-        owner.assertGenerationActive(this.#generation);
+class TargetResourcesFacade implements RenderPipelineTargetResources {
+    readonly #owner: ScriptableRenderPipelineContextImpl;
+    readonly #lease: PipelineInvocationLease;
+    readonly #slot: TargetResourcesSlot;
+
+    constructor(
+        owner: ScriptableRenderPipelineContextImpl,
+        lease: PipelineInvocationLease,
+        slot: TargetResourcesSlot
+    ) {
+        this.#owner = owner;
+        this.#lease = lease;
+        this.#slot = slot;
+        Object.freeze(this);
+    }
+
+    get width(): number {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#slot.width;
+    }
+
+    get height(): number {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#slot.height;
+    }
+
+    get sampleCount(): 1 | 4 {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#slot.sampleCount;
+    }
+
+    get colorAttachmentCount(): number {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#slot.colorAttachmentCount;
+    }
+
+    get depthStencil(): RenderGraphTextureHandle | null {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#slot.depthStencil;
+    }
+
+    color(index: number): RenderGraphTextureHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#slot.color(index);
     }
 }
 
@@ -900,14 +1032,121 @@ class ScriptableFullscreenDraw {
     }
 }
 
+type ScriptablePassCallbackLease = object;
+
+class ScriptableRenderPassBuilderLease implements ScriptableRenderPassBuilder {
+    readonly #slot: ScriptablePassSlot;
+    readonly #lease: ScriptablePassCallbackLease;
+
+    constructor(slot: ScriptablePassSlot, lease: ScriptablePassCallbackLease) {
+        this.#slot = slot;
+        this.#lease = lease;
+        Object.freeze(this);
+    }
+
+    readTexture(texture: RenderGraphTextureHandle): void {
+        this.#slot.readTextureFromSetup(this.#lease, texture);
+    }
+
+    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void {
+        this.#slot.copyTextureFromSetup(this.#lease, source, destination);
+    }
+
+    useColorAttachment(options: Readonly<RenderPipelineColorAttachment>): void {
+        this.#slot.useColorAttachmentFromSetup(this.#lease, options);
+    }
+
+    useDepthStencilAttachment(options: Readonly<RenderPipelineDepthStencilAttachment>): void {
+        this.#slot.useDepthStencilAttachmentFromSetup(this.#lease, options);
+    }
+
+    useRendererList(list: RendererListHandle): void {
+        this.#slot.useRendererListFromSetup(this.#lease, list);
+    }
+
+    dependsOn(pass: RenderGraphPassHandle): void {
+        this.#slot.dependsOnFromSetup(this.#lease, pass);
+    }
+
+    markSideEffect(): void {
+        this.#slot.markSideEffectFromSetup(this.#lease);
+    }
+}
+
+class ScriptableRenderPrepareContextLease implements ScriptableRenderPrepareContext {
+    readonly #slot: ScriptablePassSlot;
+    readonly #lease: ScriptablePassCallbackLease;
+
+    constructor(slot: ScriptablePassSlot, lease: ScriptablePassCallbackLease) {
+        this.#slot = slot;
+        this.#lease = lease;
+        Object.freeze(this);
+    }
+
+    get capabilities(): RenderPipelineCapabilities {
+        return this.#slot.capabilitiesFromPrepare(this.#lease);
+    }
+}
+
+class ScriptableRenderCommandsLease implements ScriptableRenderCommands {
+    readonly #slot: ScriptablePassSlot;
+    readonly #lease: ScriptablePassCallbackLease;
+
+    constructor(slot: ScriptablePassSlot, lease: ScriptablePassCallbackLease) {
+        this.#slot = slot;
+        this.#lease = lease;
+        Object.freeze(this);
+    }
+
+    setViewport(viewport: RendererViewport): void {
+        this.#slot.setViewportFromExecute(this.#lease, viewport);
+    }
+
+    setScissor(rect: RendererViewport): void {
+        this.#slot.setScissorFromExecute(this.#lease, rect);
+    }
+
+    setStencilReference(reference: number): void {
+        this.#slot.setStencilReferenceFromExecute(this.#lease, reference);
+    }
+
+    drawRendererList(list: RendererListHandle): void {
+        this.#slot.drawRendererListFromExecute(this.#lease, list);
+    }
+
+    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void {
+        this.#slot.copyTextureFromExecute(this.#lease, source, destination);
+    }
+}
+
+class ScriptableRenderPassContextLease implements ScriptableRenderPassContext {
+    readonly #commands: ScriptableRenderCommands;
+    readonly #slot: ScriptablePassSlot;
+    readonly #lease: ScriptablePassCallbackLease;
+
+    constructor(slot: ScriptablePassSlot, lease: ScriptablePassCallbackLease) {
+        this.#slot = slot;
+        this.#lease = lease;
+        this.#commands = new ScriptableRenderCommandsLease(slot, lease);
+        Object.freeze(this);
+    }
+
+    get commands(): ScriptableRenderCommands {
+        this.#slot.assertExecuteLeaseActive(this.#lease);
+        return this.#commands;
+    }
+}
+
 class ScriptablePassSlot {
     readonly draw = new SharedDrawPassParameters();
     readonly ranges: RendererListRange[] = [];
     readonly sampledHandles = new Set<RenderGraphTextureHandle>();
-    readonly copySourceHandles = new Set<RenderGraphTextureHandle>();
-    readonly copyDestinationHandles = new Set<RenderGraphTextureHandle>();
     readonly sampledInternals = new Map<RenderGraphTextureHandle, RGTextureHandle>();
     readonly attachmentHandles = new Set<RenderGraphTextureHandle>();
+    readonly sampledInternalHandles = new Set<RGTextureHandle>();
+    readonly copySourceInternalHandles = new Set<RGTextureHandle>();
+    readonly copyDestinationInternalHandles = new Set<RGTextureHandle>();
+    readonly attachmentInternalHandles = new Set<RGTextureHandle>();
     readonly rendererListHandles = new Set<RendererListHandle>();
     readonly colorFormats: (RHITextureFormat | null)[] = [];
     readonly targetDescriptor: RHIMeshDrawTargetDescriptor = {
@@ -926,10 +1165,6 @@ class ScriptablePassSlot {
     readonly executionScissor = { x: 0, y: 0, width: 1, height: 1 };
     readonly copyCommands: MutableCopyCommand[] = [];
     readonly #executionFailures: unknown[] = [];
-    readonly builder: ScriptableRenderPassBuilder;
-    readonly commands: ScriptableRenderCommands;
-    readonly passContext: ScriptableRenderPassContext;
-    readonly prepareContext: ScriptableRenderPrepareContext;
     readonly template: RenderPassTemplate<ScriptablePassSlot>;
 
     #owner: ScriptableRenderPipelineContextImpl | null = null;
@@ -946,6 +1181,9 @@ class ScriptablePassSlot {
     #fullscreenDraw: ScriptableFullscreenDraw | null = null;
     #activeFullscreenDraw = false;
     #capabilities: RenderPipelineCapabilities | null = null;
+    #activeSetupLease: ScriptablePassCallbackLease | null = null;
+    #activePrepareLease: ScriptablePassCallbackLease | null = null;
+    #activeExecuteLease: ScriptablePassCallbackLease | null = null;
     readonly #prepareFullscreenDraw = (context: RGPrepareContext): void => {
         const fullscreenDraw = this.#fullscreenDraw;
         if (!this.#activeFullscreenDraw || fullscreenDraw === null) return;
@@ -958,65 +1196,6 @@ class ScriptablePassSlot {
     };
 
     constructor() {
-        this.builder = Object.freeze({
-            readTexture: (texture: RenderGraphTextureHandle): void => {
-                this.readTexture(texture);
-            },
-            copyTexture: (
-                source: RenderGraphTextureHandle,
-                destination: RenderGraphTextureHandle
-            ): void => {
-                this.declareTextureCopy(source, destination);
-            },
-            useColorAttachment: (options: Readonly<RenderPipelineColorAttachment>): void => {
-                this.useColorAttachment(options);
-            },
-            useDepthStencilAttachment: (
-                options: Readonly<RenderPipelineDepthStencilAttachment>
-            ): void => {
-                this.useDepthStencilAttachment(options);
-            },
-            useRendererList: (list: RendererListHandle): void => {
-                this.useRendererList(list);
-            },
-            dependsOn: (pass: RenderGraphPassHandle): void => {
-                this.dependsOn(pass);
-            },
-            markSideEffect: (): void => {
-                this.markSideEffect();
-            }
-        });
-        this.commands = Object.freeze({
-            setViewport: (viewport: RendererViewport): void => {
-                this.setViewport(viewport);
-            },
-            setScissor: (rect: RendererViewport): void => {
-                this.setScissor(rect);
-            },
-            setStencilReference: (reference: number): void => {
-                this.setStencilReference(reference);
-            },
-            drawRendererList: (list: RendererListHandle): void => {
-                this.drawRendererList(list);
-            },
-            copyTexture: (
-                source: RenderGraphTextureHandle,
-                destination: RenderGraphTextureHandle
-            ): void => {
-                this.copyTexture(source, destination);
-            }
-        });
-        this.passContext = Object.freeze({ commands: this.commands });
-        const getCapabilities = (): RenderPipelineCapabilities => {
-            const capabilities = this.#capabilities;
-            if (capabilities === null) throw new Error('Scriptable pass is not configured');
-            return capabilities;
-        };
-        this.prepareContext = Object.freeze({
-            get capabilities(): RenderPipelineCapabilities {
-                return getCapabilities();
-            }
-        });
         const getPassName = (): string => this.#pass?.name ?? '<scriptable-pass>';
         this.template = Object.freeze({
             get name(): string {
@@ -1050,10 +1229,12 @@ class ScriptablePassSlot {
         this.#activeFullscreenDraw = false;
         this.#copyDeclarationCount = 0;
         this.sampledHandles.clear();
-        this.copySourceHandles.clear();
-        this.copyDestinationHandles.clear();
         this.sampledInternals.clear();
         this.attachmentHandles.clear();
+        this.sampledInternalHandles.clear();
+        this.copySourceInternalHandles.clear();
+        this.copyDestinationInternalHandles.clear();
+        this.attachmentInternalHandles.clear();
         this.rendererListHandles.clear();
         this.colorFormats.length = 0;
         (
@@ -1086,17 +1267,27 @@ class ScriptablePassSlot {
             this.#rangeCount = 0;
             this.#activeFullscreenDraw = false;
             this.#capabilities = null;
+            this.#activeSetupLease = null;
+            this.#activePrepareLease = null;
+            this.#activeExecuteLease = null;
         }
     }
 
     private setup(builder: RGPassBuilder): void {
         const pass = this.requirePass();
         const parameters = this.requireParameters();
+        const lease = Object.freeze({});
         this.#setupBuilder = builder;
+        this.#activeSetupLease = lease;
         try {
-            assertSynchronousResult(`${pass.name}.setup()`, pass.setup(this.builder, parameters));
+            assertSynchronousResult(
+                `${pass.name}.setup()`,
+                pass.setup(new ScriptableRenderPassBuilderLease(this, lease), parameters)
+            );
+            this.#activeSetupLease = null;
             this.finishSetup(builder);
         } finally {
+            this.#activeSetupLease = null;
             this.#setupBuilder = null;
         }
     }
@@ -1143,7 +1334,7 @@ class ScriptablePassSlot {
         const dimensions = owner.passAttachmentDimensions(this.attachmentHandles);
         const viewport = owner.rhiViewport;
         const useInvocationViewport =
-            dimensions.width === owner.output.width && dimensions.height === owner.output.height;
+            dimensions.width === owner.outputWidth && dimensions.height === owner.outputHeight;
         this.executionViewport.x = useInvocationViewport ? viewport.x : 0;
         this.executionViewport.y = useInvocationViewport ? viewport.y : 0;
         this.executionViewport.width = dimensions.width;
@@ -1161,12 +1352,19 @@ class ScriptablePassSlot {
     private prepare(context: RGPrepareContext): void {
         const pass = this.requirePass();
         const parameters = this.requireParameters();
+        this.requireOwner().services.recordScriptablePass(1);
         this.prepareTextureCopies(context);
         if (pass.prepare !== undefined) {
-            assertSynchronousResult(
-                `${pass.name}.prepare()`,
-                pass.prepare(this.prepareContext, parameters)
-            );
+            const lease = Object.freeze({});
+            this.#activePrepareLease = lease;
+            try {
+                assertSynchronousResult(
+                    `${pass.name}.prepare()`,
+                    pass.prepare(new ScriptableRenderPrepareContextLease(this, lease), parameters)
+                );
+            } finally {
+                this.#activePrepareLease = null;
+            }
         }
         if (this.#hasRasterAttachments) this.draw.prepareForExecute(context, pass.name);
     }
@@ -1179,11 +1377,17 @@ class ScriptablePassSlot {
         this.#encoder = this.#hasRasterAttachments ? this.draw.beginExecute(context) : null;
         const failures = this.#executionFailures;
         failures.length = 0;
+        const lease = Object.freeze({});
+        this.#activeExecuteLease = lease;
         try {
-            assertSynchronousResult(
-                `${pass.name}.execute()`,
-                pass.execute(this.passContext, parameters)
-            );
+            try {
+                assertSynchronousResult(
+                    `${pass.name}.execute()`,
+                    pass.execute(new ScriptableRenderPassContextLease(this, lease), parameters)
+                );
+            } finally {
+                this.#activeExecuteLease = null;
+            }
             if (this.#activeFullscreenDraw) {
                 const encoder = this.requireRasterEncoder();
                 this.#previousDraw = this.draw.executeDrawRange(
@@ -1232,13 +1436,119 @@ class ScriptablePassSlot {
         }
     }
 
+    readTextureFromSetup(
+        lease: ScriptablePassCallbackLease,
+        texture: RenderGraphTextureHandle
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.readTexture(texture);
+    }
+
+    copyTextureFromSetup(
+        lease: ScriptablePassCallbackLease,
+        source: RenderGraphTextureHandle,
+        destination: RenderGraphTextureHandle
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.declareTextureCopy(source, destination);
+    }
+
+    useColorAttachmentFromSetup(
+        lease: ScriptablePassCallbackLease,
+        options: Readonly<RenderPipelineColorAttachment>
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.useColorAttachment(options);
+    }
+
+    useDepthStencilAttachmentFromSetup(
+        lease: ScriptablePassCallbackLease,
+        options: Readonly<RenderPipelineDepthStencilAttachment>
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.useDepthStencilAttachment(options);
+    }
+
+    useRendererListFromSetup(lease: ScriptablePassCallbackLease, list: RendererListHandle): void {
+        this.assertSetupLeaseActive(lease);
+        this.useRendererList(list);
+    }
+
+    dependsOnFromSetup(lease: ScriptablePassCallbackLease, pass: RenderGraphPassHandle): void {
+        this.assertSetupLeaseActive(lease);
+        this.dependsOn(pass);
+    }
+
+    markSideEffectFromSetup(lease: ScriptablePassCallbackLease): void {
+        this.assertSetupLeaseActive(lease);
+        this.markSideEffect();
+    }
+
+    capabilitiesFromPrepare(lease: ScriptablePassCallbackLease): RenderPipelineCapabilities {
+        if (this.#activePrepareLease !== lease) {
+            throw new Error(
+                'Scriptable prepare context is valid only during its prepare() callback'
+            );
+        }
+        const capabilities = this.#capabilities;
+        if (capabilities === null) throw new Error('Scriptable pass is not configured');
+        return capabilities;
+    }
+
+    setViewportFromExecute(lease: ScriptablePassCallbackLease, viewport: RendererViewport): void {
+        this.assertExecuteLeaseActive(lease);
+        this.setViewport(viewport);
+    }
+
+    setScissorFromExecute(lease: ScriptablePassCallbackLease, rect: RendererViewport): void {
+        this.assertExecuteLeaseActive(lease);
+        this.setScissor(rect);
+    }
+
+    setStencilReferenceFromExecute(lease: ScriptablePassCallbackLease, reference: number): void {
+        this.assertExecuteLeaseActive(lease);
+        this.setStencilReference(reference);
+    }
+
+    drawRendererListFromExecute(
+        lease: ScriptablePassCallbackLease,
+        list: RendererListHandle
+    ): void {
+        this.assertExecuteLeaseActive(lease);
+        this.drawRendererList(list);
+    }
+
+    copyTextureFromExecute(
+        lease: ScriptablePassCallbackLease,
+        source: RenderGraphTextureHandle,
+        destination: RenderGraphTextureHandle
+    ): void {
+        this.assertExecuteLeaseActive(lease);
+        this.copyTexture(source, destination);
+    }
+
+    assertExecuteLeaseActive(lease: ScriptablePassCallbackLease): void {
+        if (this.#activeExecuteLease !== lease) {
+            throw new Error('Scriptable pass context is valid only during its execute() callback');
+        }
+    }
+
+    private assertSetupLeaseActive(lease: ScriptablePassCallbackLease): void {
+        if (this.#activeSetupLease !== lease) {
+            throw new Error('Scriptable pass builder is valid only during its setup() callback');
+        }
+    }
+
     private readTexture(handle: RenderGraphTextureHandle): void {
         this.requireSetupBuilder();
-        this.assertReadableAccess(handle);
         if (this.sampledHandles.has(handle)) return;
-        const alreadyRead = this.copySourceHandles.has(handle);
-        this.sampledHandles.add(handle);
         const internal = this.requireOwner().resolveTexture(handle, 'sampled');
+        this.assertReadableInternalAccess(internal);
+        const alreadyRead =
+            this.sampledInternalHandles.has(internal) ||
+            this.copySourceInternalHandles.has(internal);
+        this.sampledHandles.add(handle);
+        this.sampledInternalHandles.add(internal);
         this.sampledInternals.set(handle, internal);
         if (!alreadyRead) this.draw.addReadTexture(internal);
     }
@@ -1251,8 +1561,6 @@ class ScriptablePassSlot {
         if (sourceHandle === destinationHandle) {
             throw new Error('Texture copy source and destination must be distinct');
         }
-        this.assertReadableAccess(sourceHandle);
-        this.assertWritableAccess(destinationHandle);
         const owner = this.requireOwner();
         const sourceRecord = owner.requireTexture(sourceHandle);
         const destinationRecord = owner.requireTexture(destinationHandle);
@@ -1271,12 +1579,18 @@ class ScriptablePassSlot {
         ) {
             throw new Error('Texture copy requires single-mip source and destination textures');
         }
-        const sourceAlreadyRead =
-            this.sampledHandles.has(sourceHandle) || this.copySourceHandles.has(sourceHandle);
-        this.copySourceHandles.add(sourceHandle);
-        this.copyDestinationHandles.add(destinationHandle);
         const sourceInternal = owner.resolveTexture(sourceHandle, 'copy-source');
         const destinationInternal = owner.resolveTexture(destinationHandle, 'copy-destination');
+        if (sourceInternal === destinationInternal) {
+            throw new Error('Texture copy source and destination must be distinct');
+        }
+        this.assertReadableInternalAccess(sourceInternal);
+        this.assertWritableInternalAccess(destinationInternal);
+        const sourceAlreadyRead =
+            this.sampledInternalHandles.has(sourceInternal) ||
+            this.copySourceInternalHandles.has(sourceInternal);
+        this.copySourceInternalHandles.add(sourceInternal);
+        this.copyDestinationInternalHandles.add(destinationInternal);
         if (!sourceAlreadyRead) this.draw.addReadTexture(sourceInternal);
         this.draw.addWriteTexture(destinationInternal);
         owner.noteTextureWrite(destinationHandle);
@@ -1296,21 +1610,27 @@ class ScriptablePassSlot {
 
     private useColorAttachment(options: Readonly<RenderPipelineColorAttachment>): void {
         this.requireSetupBuilder();
-        this.assertAttachmentAccess(options.texture);
         const owner = this.requireOwner();
         const record = owner.requireTexture(options.texture);
         const texture = owner.resolveTexture(options.texture, 'attachment');
+        this.assertAttachmentInternalAccess(texture);
+        this.attachmentHandles.add(options.texture);
+        this.attachmentInternalHandles.add(texture);
         let resolveTarget: RGTextureHandle | undefined;
         if (options.resolveTarget !== undefined) {
             if (options.resolveTarget === options.texture) {
                 throw new Error('Color attachment resolve target must be distinct');
             }
-            this.assertAttachmentAccess(options.resolveTarget);
-            resolveTarget = owner.resolveTexture(options.resolveTarget, 'attachment');
+            resolveTarget = owner.resolveTexture(options.resolveTarget, 'resolve-target');
+            this.assertAttachmentInternalAccess(resolveTarget);
             this.attachmentHandles.add(options.resolveTarget);
+            this.attachmentInternalHandles.add(resolveTarget);
             owner.noteTextureWrite(options.resolveTarget);
-        } else if (record.resolveTarget !== null) resolveTarget = record.resolveTarget;
-        this.attachmentHandles.add(options.texture);
+        } else if (record.resolveTarget !== null) {
+            resolveTarget = record.resolveTarget;
+            this.assertAttachmentInternalAccess(resolveTarget);
+            this.attachmentInternalHandles.add(resolveTarget);
+        }
         this.#hasRasterAttachments = true;
         this.colorFormats.push(record.format);
         this.mergeTargetShape(record);
@@ -1321,24 +1641,28 @@ class ScriptablePassSlot {
             storeOp: options.storeOp,
             ...(options.clearValue === undefined ? {} : { clearValue: options.clearValue })
         });
-        owner.noteTextureWrite(options.texture);
+        if (record.resolveTarget === null || options.resolveTarget === undefined) {
+            owner.noteTextureWrite(options.texture);
+        }
     }
 
     private useDepthStencilAttachment(
         options: Readonly<RenderPipelineDepthStencilAttachment>
     ): void {
         this.requireSetupBuilder();
-        this.assertAttachmentAccess(options.texture);
         const owner = this.requireOwner();
         const record = owner.requireTexture(options.texture);
+        const texture = owner.resolveTexture(options.texture, 'attachment');
+        this.assertAttachmentInternalAccess(texture);
         this.attachmentHandles.add(options.texture);
+        this.attachmentInternalHandles.add(texture);
         this.#hasRasterAttachments = true;
         (
             this.targetDescriptor as { depthStencilFormat: RHITextureFormat | null }
         ).depthStencilFormat = record.format;
         this.mergeTargetShape(record);
         this.draw.setDepthStencilAttachment({
-            texture: owner.resolveTexture(options.texture, 'attachment'),
+            texture,
             ...(options.depthLoadOp === undefined ? {} : { depthLoadOp: options.depthLoadOp }),
             ...(options.depthStoreOp === undefined ? {} : { depthStoreOp: options.depthStoreOp }),
             ...(options.depthClearValue === undefined
@@ -1458,6 +1782,7 @@ class ScriptablePassSlot {
                 range.count,
                 this.#previousDraw
             );
+            this.requireOwner().recordRendererListDraw(handle);
             return;
         }
         throw new Error('Renderer list was not declared by this pass setup');
@@ -1535,29 +1860,32 @@ class ScriptablePassSlot {
         }
     }
 
-    private assertReadableAccess(handle: RenderGraphTextureHandle): void {
-        if (this.copyDestinationHandles.has(handle) || this.attachmentHandles.has(handle)) {
-            throw new Error('Same-pass texture feedback is not portable');
-        }
-    }
-
-    private assertWritableAccess(handle: RenderGraphTextureHandle): void {
+    private assertReadableInternalAccess(handle: RGTextureHandle): void {
         if (
-            this.sampledHandles.has(handle) ||
-            this.copySourceHandles.has(handle) ||
-            this.copyDestinationHandles.has(handle) ||
-            this.attachmentHandles.has(handle)
+            this.copyDestinationInternalHandles.has(handle) ||
+            this.attachmentInternalHandles.has(handle)
         ) {
             throw new Error('Same-pass texture feedback is not portable');
         }
     }
 
-    private assertAttachmentAccess(handle: RenderGraphTextureHandle): void {
+    private assertWritableInternalAccess(handle: RGTextureHandle): void {
         if (
-            this.sampledHandles.has(handle) ||
-            this.copySourceHandles.has(handle) ||
-            this.copyDestinationHandles.has(handle) ||
-            this.attachmentHandles.has(handle)
+            this.sampledInternalHandles.has(handle) ||
+            this.copySourceInternalHandles.has(handle) ||
+            this.copyDestinationInternalHandles.has(handle) ||
+            this.attachmentInternalHandles.has(handle)
+        ) {
+            throw new Error('Same-pass texture feedback is not portable');
+        }
+    }
+
+    private assertAttachmentInternalAccess(handle: RGTextureHandle): void {
+        if (
+            this.sampledInternalHandles.has(handle) ||
+            this.copySourceInternalHandles.has(handle) ||
+            this.copyDestinationInternalHandles.has(handle) ||
+            this.attachmentInternalHandles.has(handle)
         ) {
             throw new Error('Same-pass texture feedback is not portable');
         }
@@ -1600,13 +1928,314 @@ class ScriptablePassSlot {
     }
 }
 
-/** @internal Retained implementation of the public frame-scoped pipeline facade. */
-export class ScriptableRenderPipelineContextImpl
-    implements RenderPipelineContext, ScriptableRenderGraph
-{
-    readonly graph: ScriptableRenderGraph = this;
+class PipelineClearColorFacade implements Readonly<RenderTargetColor> {
+    readonly #owner: ScriptableRenderPipelineContextImpl;
+    readonly #lease: PipelineInvocationLease;
+
+    constructor(owner: ScriptableRenderPipelineContextImpl, lease: PipelineInvocationLease) {
+        this.#owner = owner;
+        this.#lease = lease;
+        Object.freeze(this);
+    }
+
+    get r(): number {
+        return this.#owner.readClearColorState(this.#lease).r;
+    }
+
+    get g(): number {
+        return this.#owner.readClearColorState(this.#lease).g;
+    }
+
+    get b(): number {
+        return this.#owner.readClearColorState(this.#lease).b;
+    }
+
+    get a(): number {
+        return this.#owner.readClearColorState(this.#lease).a;
+    }
+}
+
+class PipelineOutputAttachmentClearColorFacade implements Readonly<RenderTargetColor> {
+    readonly #owner: ScriptableRenderPipelineContextImpl;
+    readonly #lease: PipelineInvocationLease;
+    readonly #index: number;
+
+    constructor(
+        owner: ScriptableRenderPipelineContextImpl,
+        lease: PipelineInvocationLease,
+        index: number
+    ) {
+        this.#owner = owner;
+        this.#lease = lease;
+        this.#index = index;
+        Object.freeze(this);
+    }
+
+    get r(): number {
+        return this.#owner.readOutputColorAttachmentState(this.#lease, this.#index).clearValue.r;
+    }
+
+    get g(): number {
+        return this.#owner.readOutputColorAttachmentState(this.#lease, this.#index).clearValue.g;
+    }
+
+    get b(): number {
+        return this.#owner.readOutputColorAttachmentState(this.#lease, this.#index).clearValue.b;
+    }
+
+    get a(): number {
+        return this.#owner.readOutputColorAttachmentState(this.#lease, this.#index).clearValue.a;
+    }
+}
+
+class PipelineOutputColorAttachmentFacade implements Readonly<RenderPipelineOutputColorAttachment> {
+    readonly #clearValue: Readonly<RenderTargetColor>;
+    readonly #owner: ScriptableRenderPipelineContextImpl;
+    readonly #lease: PipelineInvocationLease;
+    readonly #index: number;
+
+    constructor(
+        owner: ScriptableRenderPipelineContextImpl,
+        lease: PipelineInvocationLease,
+        index: number
+    ) {
+        this.#owner = owner;
+        this.#lease = lease;
+        this.#index = index;
+        this.#clearValue = new PipelineOutputAttachmentClearColorFacade(owner, lease, index);
+        Object.freeze(this);
+    }
+
+    get clearValue(): Readonly<RenderTargetColor> {
+        void this.#owner.readOutputColorAttachmentState(this.#lease, this.#index);
+        return this.#clearValue;
+    }
+
+    get loadOp(): RenderTargetLoadOp {
+        return this.#owner.readOutputColorAttachmentState(this.#lease, this.#index).loadOp;
+    }
+
+    get storeOp(): RenderTargetStoreOp {
+        return this.#owner.readOutputColorAttachmentState(this.#lease, this.#index).storeOp;
+    }
+}
+
+class PipelineOutputDepthStencilAttachmentFacade implements Readonly<RenderPipelineOutputDepthStencilAttachment> {
+    readonly #owner: ScriptableRenderPipelineContextImpl;
+    readonly #lease: PipelineInvocationLease;
+
+    constructor(owner: ScriptableRenderPipelineContextImpl, lease: PipelineInvocationLease) {
+        this.#owner = owner;
+        this.#lease = lease;
+        Object.freeze(this);
+    }
+
+    get depthClearValue(): number {
+        return this.#owner.readOutputDepthStencilState(this.#lease).depthClearValue;
+    }
+
+    get depthLoadOp(): RenderTargetLoadOp {
+        return this.#owner.readOutputDepthStencilState(this.#lease).depthLoadOp;
+    }
+
+    get depthStoreOp(): RenderTargetStoreOp {
+        return this.#owner.readOutputDepthStencilState(this.#lease).depthStoreOp;
+    }
+
+    get stencilClearValue(): number {
+        return this.#owner.readOutputDepthStencilState(this.#lease).stencilClearValue;
+    }
+
+    get stencilLoadOp(): RenderTargetLoadOp {
+        return this.#owner.readOutputDepthStencilState(this.#lease).stencilLoadOp;
+    }
+
+    get stencilStoreOp(): RenderTargetStoreOp {
+        return this.#owner.readOutputDepthStencilState(this.#lease).stencilStoreOp;
+    }
+}
+
+class PipelineOutputFacade implements RenderPipelineOutput {
+    readonly #colorAttachments: PipelineOutputColorAttachmentFacade[] = [];
+    readonly #depthStencilAttachment: Readonly<RenderPipelineOutputDepthStencilAttachment>;
+    readonly #owner: ScriptableRenderPipelineContextImpl;
+    readonly #lease: PipelineInvocationLease;
+
+    constructor(owner: ScriptableRenderPipelineContextImpl, lease: PipelineInvocationLease) {
+        this.#owner = owner;
+        this.#lease = lease;
+        this.#depthStencilAttachment = new PipelineOutputDepthStencilAttachmentFacade(owner, lease);
+        Object.freeze(this);
+    }
+
+    get kind(): RenderPipelineOutput['kind'] {
+        return this.#owner.readOutputState(this.#lease).kind;
+    }
+
+    get width(): number {
+        return this.#owner.readOutputState(this.#lease).width;
+    }
+
+    get height(): number {
+        return this.#owner.readOutputState(this.#lease).height;
+    }
+
+    get sampleCount(): 1 | 4 {
+        return this.#owner.readOutputState(this.#lease).sampleCount;
+    }
+
+    get colorAttachmentCount(): number {
+        return this.#owner.readOutputState(this.#lease).colorAttachmentCount;
+    }
+
+    get depthStencilFormat(): RenderPipelineOutput['depthStencilFormat'] {
+        return this.#owner.readOutputState(this.#lease).depthStencilFormat;
+    }
+
+    get depthStencilAttachment(): Readonly<RenderPipelineOutputDepthStencilAttachment> | null {
+        return this.#owner.readOutputState(this.#lease).depthStencilFormat === null
+            ? null
+            : this.#depthStencilAttachment;
+    }
+
+    colorFormat(index: number): RenderTargetColorFormat {
+        return this.#owner.readOutputColorFormat(this.#lease, index);
+    }
+
+    colorAttachment(index: number): Readonly<RenderPipelineOutputColorAttachment> {
+        void this.#owner.readOutputColorAttachmentState(this.#lease, index);
+        let facade = this.#colorAttachments[index];
+        if (facade === undefined) {
+            facade = new PipelineOutputColorAttachmentFacade(this.#owner, this.#lease, index);
+            this.#colorAttachments[index] = facade;
+        }
+        return facade;
+    }
+}
+
+class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRenderGraph {
+    readonly #viewport: RendererViewport;
+    readonly #clearColor: Readonly<RenderTargetColor>;
+    readonly #output: RenderPipelineOutput;
+    readonly #owner: ScriptableRenderPipelineContextImpl;
+    readonly #lease: PipelineInvocationLease;
+
+    constructor(owner: ScriptableRenderPipelineContextImpl, lease: PipelineInvocationLease) {
+        this.#owner = owner;
+        this.#lease = lease;
+        const viewport: number[] = [];
+        for (let index = 0; index < 4; index += 1) {
+            Object.defineProperty(viewport, index, {
+                enumerable: true,
+                get: (): number => this.#owner.readViewportComponent(this.#lease, index)
+            });
+        }
+        this.#viewport = Object.freeze(viewport) as unknown as RendererViewport;
+        this.#clearColor = new PipelineClearColorFacade(owner, lease);
+        this.#output = new PipelineOutputFacade(owner, lease);
+        Object.freeze(this);
+    }
+
+    get frameIndex(): number {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.frameIndex;
+    }
+
+    get scene(): RendererScene {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.scene;
+    }
+
+    get camera(): Camera {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.camera;
+    }
+
+    get viewport(): RendererViewport {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#viewport;
+    }
+
+    get clearColor(): Readonly<RenderTargetColor> {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#clearColor;
+    }
+
+    get output(): RenderPipelineOutput {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#output;
+    }
+
+    get capabilities(): RenderPipelineCapabilities {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.capabilities;
+    }
+
+    get graph(): ScriptableRenderGraph {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this;
+    }
+
+    cull(options?: Readonly<CullingOptions>): CullingResultsHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.cull(options);
+    }
+
+    createRendererList(descriptor: Readonly<RendererListDescriptor>): RendererListHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.createRendererList(descriptor);
+    }
+
+    recordShadows(cullingResults: CullingResultsHandle): void {
+        this.#owner.assertLeaseActive(this.#lease);
+        this.#owner.recordShadows(cullingResults);
+    }
+
+    acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.acquirePassParameters(pool);
+    }
+
+    createTexture(
+        name: string,
+        descriptor: Readonly<RenderPipelineTextureDescriptor>
+    ): RenderGraphTextureHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.createTexture(name, descriptor);
+    }
+
+    importOutput(): RenderPipelineTargetResources {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.importOutput();
+    }
+
+    importRenderTarget(target: RenderTarget): RenderPipelineTargetResources {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.importRenderTarget(target);
+    }
+
+    acquirePersistentTarget(
+        key: object,
+        descriptor: Readonly<RenderPipelinePersistentTargetDescriptor>
+    ): RenderPipelineTargetResources {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.acquirePersistentTarget(key, descriptor);
+    }
+
+    releasePersistentTarget(key: object): boolean {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.releasePersistentTarget(key);
+    }
+
+    addPass<P extends object>(pass: ScriptableRenderPass<P>, parameters: P): RenderGraphPassHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.addPass(pass, parameters);
+    }
+}
+
+/** @internal High-water storage behind per-invocation public pipeline leases. */
+export class ScriptableRenderPipelineContextImpl {
     readonly #viewportState: [number, number, number, number] = [0, 0, 1, 1];
-    readonly #viewportFacade: RendererViewport;
     readonly rhiViewport: MutableRHIViewport = {
         x: 0,
         y: 0,
@@ -1623,9 +2252,16 @@ export class ScriptableRenderPipelineContextImpl
         colorAttachmentCount: 1,
         depthStencilFormat: null
     };
-    readonly output: RenderPipelineOutput;
+    readonly #outputColorAttachmentStates: MutablePipelineOutputColorAttachmentState[] = [];
+    readonly #outputDepthStencilState: MutablePipelineOutputDepthStencilAttachmentState = {
+        depthClearValue: 1,
+        depthLoadOp: 'clear',
+        depthStoreOp: 'discard',
+        stencilClearValue: 0,
+        stencilLoadOp: 'clear',
+        stencilStoreOp: 'discard'
+    };
     readonly #clearColorState: MutableRenderTargetColor = { r: 0, g: 0, b: 0, a: 1 };
-    readonly clearColor: Readonly<RenderTargetColor>;
 
     readonly #cullingSlots: CullingSlot[] = [];
     readonly #cullingByHandle = new Map<CullingResultsHandle, CullingSlot>();
@@ -1633,7 +2269,7 @@ export class ScriptableRenderPipelineContextImpl
     readonly #rendererListByHandle = new Map<RendererListHandle, RendererListSlot>();
     readonly #textureRecords: TextureRecord[] = [];
     readonly #textureByHandle = new Map<RenderGraphTextureHandle, TextureRecord>();
-    readonly #targetFacades: TargetResourcesFacade[] = [];
+    readonly #targetSlots: TargetResourcesSlot[] = [];
     readonly #passSlots: ScriptablePassSlot[] = [];
     readonly #passByHandle = new Map<RenderGraphPassHandle, RGPassHandle>();
     readonly #targetColorScratch: RenderGraphTextureHandle[] = [];
@@ -1641,6 +2277,10 @@ export class ScriptableRenderPipelineContextImpl
     readonly #fullscreenUniformScratch: ResourceRegistryHandle<RHIBuffer>[] = [];
     readonly #outputColorFormats: RenderTargetColorFormat[] = [];
     readonly #persistentTargetDescriptors: MutablePersistentTargetResourceDescriptor[] = [];
+    readonly #beforeEventMeshSet = new Set<Mesh>();
+    readonly #beforeEventMeshScratch: Mesh[] = [];
+    readonly #eventMeshes: Mesh[] = [];
+    readonly #eventMeshSet = new Set<Mesh>();
     readonly #cleanupFailures: unknown[] = [];
 
     #scope: RenderGraphFrameBuildScope | null = null;
@@ -1650,15 +2290,13 @@ export class ScriptableRenderPipelineContextImpl
     #fireEvent = false;
     #capabilities: RenderPipelineCapabilities | null = null;
     #runtimeOwner: object | null = null;
-    #generation = 0;
-    #nextHandle = 1;
+    #activeLease: PipelineInvocationLease | null = null;
     #cullingCursor = 0;
     #rendererListCursor = 0;
     #textureCursor = 0;
-    #targetFacadeCursor = 0;
+    #targetSlotCursor = 0;
     #passCursor = 0;
     #persistentTargetDescriptorCursor = 0;
-    #passCount = 0;
     #shadowPassCount = 0;
     #shadowsRecorded = false;
     #shadowCulling: CullingSlot | null = null;
@@ -1670,60 +2308,6 @@ export class ScriptableRenderPipelineContextImpl
         readonly services: ScriptableRenderPipelineServices,
         readonly resources: ScriptableRenderPipelineResources
     ) {
-        const getOutputState = (): Readonly<MutablePipelineOutputState> =>
-            this.requireOutputState();
-        const getClearColorState = (): Readonly<MutableRenderTargetColor> =>
-            this.requireClearColorState();
-        const viewport: number[] = [];
-        for (let index = 0; index < 4; index += 1) {
-            Object.defineProperty(viewport, index, {
-                enumerable: true,
-                get: (): number => {
-                    this.assertActive();
-                    const value = this.#viewportState[index];
-                    if (value === undefined) {
-                        throw new Error('Scriptable viewport storage is incomplete');
-                    }
-                    return value;
-                }
-            });
-        }
-        this.#viewportFacade = Object.freeze(viewport) as unknown as RendererViewport;
-        this.output = Object.freeze({
-            get kind(): RenderPipelineOutput['kind'] {
-                return getOutputState().kind;
-            },
-            get width(): number {
-                return getOutputState().width;
-            },
-            get height(): number {
-                return getOutputState().height;
-            },
-            get sampleCount(): 1 | 4 {
-                return getOutputState().sampleCount;
-            },
-            get colorAttachmentCount(): number {
-                return getOutputState().colorAttachmentCount;
-            },
-            get depthStencilFormat(): RenderPipelineOutput['depthStencilFormat'] {
-                return getOutputState().depthStencilFormat;
-            },
-            colorFormat: (index: number): RenderTargetColorFormat => this.outputColorFormat(index)
-        });
-        this.clearColor = Object.freeze({
-            get r(): number {
-                return getClearColorState().r;
-            },
-            get g(): number {
-                return getClearColorState().g;
-            },
-            get b(): number {
-                return getClearColorState().b;
-            },
-            get a(): number {
-                return getClearColorState().a;
-            }
-        });
         Object.freeze(this);
     }
 
@@ -1741,9 +2325,14 @@ export class ScriptableRenderPipelineContextImpl
         return this.requireCamera();
     }
 
-    get viewport(): RendererViewport {
+    get outputWidth(): number {
         this.assertActive();
-        return this.#viewportFacade;
+        return this.#outputState.width;
+    }
+
+    get outputHeight(): number {
+        this.assertActive();
+        return this.#outputState.height;
     }
 
     get capabilities(): RenderPipelineCapabilities {
@@ -1761,7 +2350,6 @@ export class ScriptableRenderPipelineContextImpl
         scope: RenderGraphFrameBuildScope
     ): RenderPipelineContext {
         if (this.#active) throw new Error('Scriptable pipeline context is already active');
-        this.advanceGeneration();
         this.#scope = scope;
         this.#scene = scene;
         this.#camera = camera;
@@ -1772,15 +2360,18 @@ export class ScriptableRenderPipelineContextImpl
         this.#cullingCursor = 0;
         this.#rendererListCursor = 0;
         this.#textureCursor = 0;
-        this.#targetFacadeCursor = 0;
+        this.#targetSlotCursor = 0;
         this.#passCursor = 0;
         this.#persistentTargetDescriptorCursor = 0;
-        this.#passCount = 0;
         this.#shadowPassCount = 0;
         this.#shadowsRecorded = false;
         this.#shadowCulling = null;
         this.#hasTerminalWork = false;
         this.#outputFacade = null;
+        this.#beforeEventMeshSet.clear();
+        this.#beforeEventMeshScratch.length = 0;
+        this.#eventMeshes.length = 0;
+        this.#eventMeshSet.clear();
         this.#cullingByHandle.clear();
         this.#rendererListByHandle.clear();
         this.#textureByHandle.clear();
@@ -1802,6 +2393,19 @@ export class ScriptableRenderPipelineContextImpl
             this.#outputState.depthStencilFormat = pipelineDepthFormat(
                 configuration.depthStencilFormat
             );
+            this.configureOutputColorAttachment(0, this.#clearColorState, 'clear', 'store');
+            this.configureOutputDepthStencilAttachment(
+                this.#outputState.depthStencilFormat === null
+                    ? null
+                    : {
+                          depthClearValue: 1,
+                          depthLoadOp: 'clear',
+                          depthStoreOp: 'discard',
+                          stencilClearValue: 0,
+                          stencilLoadOp: 'clear',
+                          stencilStoreOp: 'discard'
+                      }
+            );
             this.setViewport(
                 this.services.renderer.offsetX,
                 this.services.renderer.offsetY,
@@ -1816,19 +2420,40 @@ export class ScriptableRenderPipelineContextImpl
             this.#outputState.sampleCount = resolved.sampleCount;
             this.#outputState.colorAttachmentCount = resolved.colorAttachmentCount;
             this.#outputColorFormats.length = resolved.colorFormats.length;
+            const normalized = resolved.normalizedParameters;
             for (let index = 0; index < resolved.colorFormats.length; index += 1) {
                 const format = resolved.colorFormats[index];
                 if (format !== undefined) this.#outputColorFormats[index] = format;
+                const attachment = normalized.colorAttachments[index];
+                if (attachment === undefined) {
+                    throw new Error('Render-target color attachment policy is unavailable');
+                }
+                this.configureOutputColorAttachment(
+                    index,
+                    attachment.clearValue,
+                    attachment.loadOp,
+                    attachment.storeOp
+                );
             }
             this.#outputState.depthStencilFormat = resolved.depthStencilFormat;
+            this.configureOutputDepthStencilAttachment(normalized.depthStencilAttachment);
             this.setViewport(0, 0, resolved.width, resolved.height);
         }
+        const lease = Object.freeze({});
+        this.#activeLease = lease;
         this.#active = true;
-        return this;
+        try {
+            this.services.fireScriptableBeforeScene([], this.#fireEvent, true);
+            return new RenderPipelineContextLease(this, lease);
+        } catch (error) {
+            this.end(false);
+            throw error;
+        }
     }
 
     end(completed: boolean): void {
         if (!this.#active) return;
+        this.#activeLease = null;
         try {
             if (!completed) return;
             if (!this.#hasTerminalWork) {
@@ -1836,21 +2461,10 @@ export class ScriptableRenderPipelineContextImpl
                     'Render pipeline must write an output/persistent target or declare a side effect'
                 );
             }
-            let recordedScene = false;
-            const passCount = this.#passCount + this.#shadowPassCount;
-            for (let index = 0; index < this.#cullingCursor; index += 1) {
-                const culling = this.#cullingSlots[index];
-                if (!culling?.used) continue;
-                this.services.recordScriptableScene(
-                    culling.visibleMeshes,
-                    this.#fireEvent,
-                    recordedScene ? 0 : passCount
-                );
-                recordedScene = true;
+            if (this.#shadowPassCount > 0) {
+                this.services.recordScriptablePass(this.#shadowPassCount);
             }
-            if (!recordedScene && passCount > 0) {
-                this.services.recordScriptableScene([], false, passCount);
-            }
+            this.services.queueScriptableAfterScene(this.#eventMeshes, this.#fireEvent);
             if (this.#target === null) {
                 this.services.retainScriptablePresentation(
                     this.requireScene(),
@@ -1863,9 +2477,9 @@ export class ScriptableRenderPipelineContextImpl
             this.#scene = null;
             this.#camera = null;
             this.#target = null;
-            this.#fireEvent = false;
             this.#capabilities = null;
             this.#runtimeOwner = null;
+            this.#activeLease = null;
         }
     }
 
@@ -1890,6 +2504,11 @@ export class ScriptableRenderPipelineContextImpl
         this.#textureByHandle.clear();
         this.#passByHandle.clear();
         this.#outputFacade = null;
+        this.#beforeEventMeshSet.clear();
+        this.#beforeEventMeshScratch.length = 0;
+        this.#eventMeshes.length = 0;
+        this.#eventMeshSet.clear();
+        this.#fireEvent = false;
         if (failures.length !== 0) {
             const failure = new AggregateError(
                 failures,
@@ -1960,8 +2579,8 @@ export class ScriptableRenderPipelineContextImpl
             culling.visibleMeshes,
             camera,
             this.rhiViewport,
-            this.output.width,
-            this.output.height
+            this.#outputState.width,
+            this.#outputState.height
         );
     }
 
@@ -2065,6 +2684,13 @@ export class ScriptableRenderPipelineContextImpl
         return this.importTargetRecord(record);
     }
 
+    releasePersistentTarget(key: object): boolean {
+        this.assertActive();
+        const runtimeOwner = this.#runtimeOwner;
+        if (runtimeOwner === null) throw new Error('Pipeline runtime owner is unavailable');
+        return this.resources.releasePersistentTarget(runtimeOwner, key);
+    }
+
     addPass<P extends object>(pass: ScriptableRenderPass<P>, parameters: P): RenderGraphPassHandle {
         this.assertActive();
         const passCandidate: unknown = pass;
@@ -2096,14 +2722,12 @@ export class ScriptableRenderPipelineContextImpl
         slot.begin(this, pass, parameters, this.capabilities);
         const internal = this.requireScope().graph.addPass(slot.template, slot);
         this.#passByHandle.set(publicHandle, internal);
-        this.#passCount++;
         return publicHandle;
     }
 
-    assertGenerationActive(generation: number): void {
-        this.assertActive();
-        if (generation !== this.#generation) {
-            throw new Error('Scriptable render resource belongs to another invocation');
+    assertLeaseActive(lease: PipelineInvocationLease): void {
+        if (!this.#active || this.#activeLease !== lease) {
+            throw new Error('RenderPipelineContext is valid only during synchronous record()');
         }
     }
 
@@ -2134,7 +2758,7 @@ export class ScriptableRenderPipelineContextImpl
     resolveTexture(handle: RenderGraphTextureHandle, access: TextureAccess): RGTextureHandle {
         const record = this.requireTexture(handle);
         const usage =
-            access === 'attachment'
+            access === 'attachment' || access === 'resolve-target'
                 ? RHITextureUsage.RENDER_ATTACHMENT
                 : access === 'sampled'
                   ? RHITextureUsage.TEXTURE_BINDING
@@ -2161,9 +2785,9 @@ export class ScriptableRenderPipelineContextImpl
             descriptor.format = record.format;
             descriptor.usage = usage;
             internal = this.requireScope().graph.createTexture(record.name, descriptor);
-            record.attachment = internal;
-            record.readable = internal;
-            record.writable = internal;
+            record.attachment ??= internal;
+            record.readable ??= internal;
+            record.writable ??= internal;
         } else this.requireScope().graph.addTextureUsage(internal, usage);
         return internal;
     }
@@ -2208,10 +2832,16 @@ export class ScriptableRenderPipelineContextImpl
         }
         const camera = culling.activate(this.services);
         culling.used = true;
-        if (!culling.beforeEventsFired) {
-            this.services.fireScriptableBeforeScene(culling.visibleMeshes, this.#fireEvent);
-            culling.beforeEventsFired = true;
+        const beforeEventMeshes = this.#beforeEventMeshScratch;
+        beforeEventMeshes.length = 0;
+        if (this.#fireEvent) {
+            for (const mesh of list.selectedMeshes) {
+                if (this.#beforeEventMeshSet.has(mesh)) continue;
+                this.#beforeEventMeshSet.add(mesh);
+                beforeEventMeshes.push(mesh);
+            }
         }
+        this.services.fireScriptableBeforeScene(beforeEventMeshes, this.#fireEvent, false);
         const context = this.services.createScriptableFrameContext(
             camera,
             this.rhiViewport,
@@ -2244,6 +2874,20 @@ export class ScriptableRenderPipelineContextImpl
                 drawPass,
                 processor.sampledGraphDependencies
             );
+    }
+
+    recordRendererListDraw(handle: RendererListHandle): void {
+        const list = this.#rendererListByHandle.get(handle);
+        if (list === undefined) {
+            throw new Error(`Renderer list handle ${String(handle)} is stale or invalid`);
+        }
+        this.services.recordScriptableFaces(list.selectedMeshes);
+        for (const mesh of list.selectedMeshes) {
+            if (this.#fireEvent && !this.#eventMeshSet.has(mesh)) {
+                this.#eventMeshSet.add(mesh);
+                this.#eventMeshes.push(mesh);
+            }
+        }
     }
 
     configureFullscreenDraw(
@@ -2312,7 +2956,7 @@ export class ScriptableRenderPipelineContextImpl
         graph.markOutput(surfaceColor);
         const colors = this.#targetColorScratch;
         colors.length = 1;
-        if (this.output.sampleCount === 4) {
+        if (this.#outputState.sampleCount === 4) {
             const color = this.acquireTextureRecord({
                 name: 'scriptable multisampled surface color',
                 format: pipelineColorFormat(configuration.format),
@@ -2345,7 +2989,7 @@ export class ScriptableRenderPipelineContextImpl
         let depth: RenderGraphTextureHandle | null = null;
         const depthFormat = configuration.depthStencilFormat;
         if (depthFormat !== null) {
-            if (this.output.sampleCount === 4) {
+            if (this.#outputState.sampleCount === 4) {
                 depth = this.createTexture('scriptable multisampled surface depth-stencil', {
                     format: pipelineDepthFormat(depthFormat) ?? 'depth24plus',
                     extent: { width: configuration.width, height: configuration.height },
@@ -2371,16 +3015,15 @@ export class ScriptableRenderPipelineContextImpl
                 ).handle;
             }
         }
-        const facade = this.acquireTargetFacade();
-        facade.configure(
-            this,
-            this.#generation,
+        const slot = this.acquireTargetSlot();
+        slot.configure(
             configuration.width,
             configuration.height,
-            this.output.sampleCount,
+            this.#outputState.sampleCount,
             colors,
             depth
         );
+        const facade = new TargetResourcesFacade(this, this.requireActiveLease(), slot);
         this.services.markScriptableSurfaceRequested();
         return facade;
     }
@@ -2434,17 +3077,9 @@ export class ScriptableRenderPipelineContextImpl
                 internal
             ).handle;
         }
-        const facade = this.acquireTargetFacade();
-        facade.configure(
-            this,
-            this.#generation,
-            imported.width,
-            imported.height,
-            imported.sampleCount,
-            colors,
-            depth
-        );
-        return facade;
+        const slot = this.acquireTargetSlot();
+        slot.configure(imported.width, imported.height, imported.sampleCount, colors, depth);
+        return new TargetResourcesFacade(this, this.requireActiveLease(), slot);
     }
 
     private acquireImportedTextureRecord(
@@ -2515,13 +3150,13 @@ export class ScriptableRenderPipelineContextImpl
         return record;
     }
 
-    private acquireTargetFacade(): TargetResourcesFacade {
-        let facade = this.#targetFacades[this.#targetFacadeCursor++];
-        if (facade === undefined) {
-            facade = new TargetResourcesFacade();
-            this.#targetFacades.push(facade);
+    private acquireTargetSlot(): TargetResourcesSlot {
+        let slot = this.#targetSlots[this.#targetSlotCursor++];
+        if (slot === undefined) {
+            slot = new TargetResourcesSlot();
+            this.#targetSlots.push(slot);
         }
-        return facade;
+        return slot;
     }
 
     private requireCulling(handle: CullingResultsHandle): CullingSlot {
@@ -2544,8 +3179,8 @@ export class ScriptableRenderPipelineContextImpl
             const minWidth = positiveInteger(extent.minWidth ?? 1, 'Texture minimum width');
             const minHeight = positiveInteger(extent.minHeight ?? 1, 'Texture minimum height');
             return {
-                width: Math.max(minWidth, Math.floor(this.output.width * extent.scale)),
-                height: Math.max(minHeight, Math.floor(this.output.height * extent.scale))
+                width: Math.max(minWidth, Math.floor(this.#outputState.width * extent.scale)),
+                height: Math.max(minHeight, Math.floor(this.#outputState.height * extent.scale))
             };
         }
         return {
@@ -2568,17 +3203,7 @@ export class ScriptableRenderPipelineContextImpl
     }
 
     private allocateHandle(): number {
-        if (!Number.isSafeInteger(this.#nextHandle)) {
-            throw new RangeError('Scriptable render handle identity space is exhausted');
-        }
-        return this.#nextHandle++;
-    }
-
-    private advanceGeneration(): void {
-        if (this.#generation === Number.MAX_SAFE_INTEGER) {
-            throw new RangeError('Scriptable render invocation generation space is exhausted');
-        }
-        this.#generation++;
+        return this.resources.allocateHandle();
     }
 
     private requireScope(): RenderGraphFrameBuildScope {
@@ -2596,6 +3221,53 @@ export class ScriptableRenderPipelineContextImpl
         return this.#camera;
     }
 
+    private requireActiveLease(): PipelineInvocationLease {
+        const lease = this.#activeLease;
+        if (lease === null) {
+            throw new Error('RenderPipelineContext is valid only during synchronous record()');
+        }
+        return lease;
+    }
+
+    readViewportComponent(lease: PipelineInvocationLease, index: number): number {
+        this.assertLeaseActive(lease);
+        const value = this.#viewportState[index];
+        if (value === undefined) {
+            throw new Error('Scriptable viewport storage is incomplete');
+        }
+        return value;
+    }
+
+    readClearColorState(lease: PipelineInvocationLease): Readonly<MutableRenderTargetColor> {
+        this.assertLeaseActive(lease);
+        return this.#clearColorState;
+    }
+
+    readOutputState(lease: PipelineInvocationLease): Readonly<MutablePipelineOutputState> {
+        this.assertLeaseActive(lease);
+        return this.#outputState;
+    }
+
+    readOutputColorFormat(lease: PipelineInvocationLease, index: number): RenderTargetColorFormat {
+        this.assertLeaseActive(lease);
+        return this.outputColorFormat(index);
+    }
+
+    readOutputColorAttachmentState(
+        lease: PipelineInvocationLease,
+        index: number
+    ): Readonly<MutablePipelineOutputColorAttachmentState> {
+        this.assertLeaseActive(lease);
+        return this.requireOutputColorAttachmentState(index);
+    }
+
+    readOutputDepthStencilState(
+        lease: PipelineInvocationLease
+    ): Readonly<MutablePipelineOutputDepthStencilAttachmentState> {
+        this.assertLeaseActive(lease);
+        return this.requireOutputDepthStencilState();
+    }
+
     private outputColorFormat(index: number): RenderTargetColorFormat {
         this.assertActive();
         if (
@@ -2610,14 +3282,57 @@ export class ScriptableRenderPipelineContextImpl
         return format;
     }
 
-    private requireOutputState(): Readonly<MutablePipelineOutputState> {
-        this.assertActive();
-        return this.#outputState;
+    private configureOutputColorAttachment(
+        index: number,
+        clearValue: Readonly<RenderTargetColor>,
+        loadOp: RenderTargetLoadOp,
+        storeOp: RenderTargetStoreOp
+    ): void {
+        let state = this.#outputColorAttachmentStates[index];
+        if (state === undefined) {
+            state = {
+                clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                loadOp: 'clear',
+                storeOp: 'store'
+            };
+            this.#outputColorAttachmentStates[index] = state;
+        }
+        state.clearValue.r = clearValue.r;
+        state.clearValue.g = clearValue.g;
+        state.clearValue.b = clearValue.b;
+        state.clearValue.a = clearValue.a;
+        state.loadOp = loadOp;
+        state.storeOp = storeOp;
     }
 
-    private requireClearColorState(): Readonly<MutableRenderTargetColor> {
+    private configureOutputDepthStencilAttachment(
+        attachment: Readonly<MutablePipelineOutputDepthStencilAttachmentState> | null
+    ): void {
+        if (attachment === null) return;
+        const state = this.#outputDepthStencilState;
+        state.depthClearValue = attachment.depthClearValue;
+        state.depthLoadOp = attachment.depthLoadOp;
+        state.depthStoreOp = attachment.depthStoreOp;
+        state.stencilClearValue = attachment.stencilClearValue;
+        state.stencilLoadOp = attachment.stencilLoadOp;
+        state.stencilStoreOp = attachment.stencilStoreOp;
+    }
+
+    private requireOutputColorAttachmentState(
+        index: number
+    ): Readonly<MutablePipelineOutputColorAttachmentState> {
+        this.outputColorFormat(index);
+        const state = this.#outputColorAttachmentStates[index];
+        if (state === undefined) throw new Error('Output color attachment policy is unavailable');
+        return state;
+    }
+
+    private requireOutputDepthStencilState(): Readonly<MutablePipelineOutputDepthStencilAttachmentState> {
         this.assertActive();
-        return this.#clearColorState;
+        if (this.#outputState.depthStencilFormat === null) {
+            throw new Error('Output depth/stencil attachment does not exist');
+        }
+        return this.#outputDepthStencilState;
     }
 
     private assertActive(): void {

@@ -280,6 +280,12 @@ export interface RHIShaderArtifactInput extends RHIShaderArtifactBase {
     readonly preparedBindings?: RHIWebGL2PreparedShaderBindings;
 }
 
+/** Prepared vertex/fragment artifacts supplied to an RHI-owned internal graphics utility. */
+export interface RHIGraphicsShaderArtifactInput {
+    readonly vertex: Readonly<RHIShaderArtifactInput>;
+    readonly fragment: Readonly<RHIShaderArtifactInput>;
+}
+
 export interface RHIWebGL2ShaderArtifact extends RHIShaderArtifactBase {
     readonly backend: 'webgl2';
     readonly code: string;

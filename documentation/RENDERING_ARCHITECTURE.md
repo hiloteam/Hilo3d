@@ -66,21 +66,41 @@ pass，因此默认逐 Draw 热路径不经过 feature facade。
   processor；
 - `recordShadows()` 复用同一 Shadow Atlas、LightBlock、resource owner 和恢复链路；
 - `ScriptableRenderGraph` 可创建 transient texture、导入 output/RenderTarget、获取 recovery-aware
-  persistent target，并添加 scene/fullscreen/copy pass；
+  persistent target、按 stable key 释放单个 persistent target，并添加 scene/fullscreen/copy
+  pass；单 key release 仅在有效 submission 后提交，失败帧会回滚；
 - sampled 与 copy usage 分离；copy 在 setup 声明确切 source/destination pair，并在
   `queue.beginFrame()` 前用实际 RHI texture descriptor 完成验证；
 - fullscreen 输入使用固定线性 sampler，因此 capability 明确区分 sampleable 与 `filterable-sampled`；
 - fullscreen bind-group descriptor/entry 使用高水位复用，但绑定 graph-transient view 的 native bind
   group 保持 frame lifetime，并由 submission fence 后确定性销毁；
-- setup/prepare/execute 都必须同步，返回 Promise-like 或在回调外使用 context/handle 会中止并回滚整帧；
+- pipeline invocation 与 feature/setup/prepare/execute callback 的公开 facade 都绑定不可复用 lease
+  shell；内部高水位 storage 可跨帧复用，但旧引用不会在后续 callback 重新有效。各阶段必须同步，返回 Promise-like 或在回调外使用 context/handle 会中止并回滚整帧；
+- renderer-list 的 Mesh `beforeRender` 在首个声明该 Mesh 的 list 准备 draw
+  snapshot 前触发，保证矩阵、材质和 UBO 修改作用于当前帧；Mesh `afterRender` 与公共 face
+  count 以 execute 中实际 draw 为准，被 graph
+  culling 删除或条件跳过的 list 不产生成功事件/face，重复 depth/override/color
+  draw 不重复累计公共 face；
 - 每个 scriptable invocation 开始时先解除上一 invocation 的 shadow scene binding，省略
   `recordShadows()` 不会复活旧 atlas/LightBlock；
 - factory 可异步创建 runtime，但每个 Renderer 必须获得独立 runtime；同一个 runtime 不能附着到两个 Renderer。
 
 带 feature 的 `ForwardRenderPipelineFactory` 在构造时快照配置并合并静态 capabilities/limits/format
-requirements；每个 feature 配置在 Renderer 创建时产生独立 runtime。只有 feature 声明需要采样 scene
-color/depth 时才创建中间资源；无 feature 的默认 factory 始终保留 direct
-recorder。设备恢复必须保留 runtime 创建时可见的完整公共 capability 超集，包括 limits 和全部公共 format/use/sample-count 查询；能力缩减会使恢复明确失败，而不是让旧 runtime 在后续 pass 中延迟出错。
+requirements；每个 feature 配置在 Renderer 创建时产生独立且只能附着一次的 runtime。feature
+context 暴露内置 forward/shadow 共用的 `cullingResults`，因此附加 Scene
+Pass 无需重新 cull，也不会与 Shadow Atlas 的场景 identity 分叉。只有 feature 声明需要采样 scene
+color/depth 时才创建中间资源；其中 scene color 使用公共 fullscreen 线性采样 ABI，因此要求
+`filterable-sampled` format；无 feature 的默认 factory 始终保留 direct recorder。
+
+scriptable output 同时暴露只读、后端无关的 color/depth/stencil load/store/clear
+policy。带 feature 的 Forward pipeline 把该 policy 分配到首个和末个 Scene
+Pass；中间队列 Pass 强制 store/load 以保持内容。当 filterable sampled scene
+color 需要中间纹理且 output 选择 `load`
+时，先把旧 output 搬入中间纹理；若中间 color 无法无损搬运 multisample/non-filterable 内容，则在 RHI
+frame 开始前明确失败。scene color sampling 只允许在 opaque writer 之后；`sampledDepth`
+在公共 non-filtering depth binding ABI 完成前保持 fail-closed，而不是暴露一个无法消费的 graph
+handle。
+
+设备恢复必须保留 runtime 创建时可见的完整公共 capability 超集，包括 limits 和全部公共 format/use/sample-count 查询；能力缩减会使恢复明确失败，而不是让旧 runtime 在后续 pass 中延迟出错。
 
 相关代码：[`RenderPipelineHost.ts`](../src/render/internal/RenderPipelineHost.ts)、[`pipeline/`](../src/render/pipeline)、[`ScriptableRenderPipelineContext.ts`](../src/render/internal/ScriptableRenderPipelineContext.ts)。
 
@@ -220,7 +240,8 @@ queue.beginFrame()
 
 - 资源 Usage、尺寸、对齐和格式能力。
 - BindGroup/Pipeline Layout 兼容性。
-- Attachment、Copy、Mipmap 和 Map 约束。
+- Attachment 子资源、load/store、read-only
+  aspect 与 Pipeline 写入兼容性，以及 Copy、Mipmap 和 Map 约束。
 - Device Ownership、Device Generation、Destroyed 状态。
 
 因此，上层不会用“先调用后端，再从原生错误猜能力”的方式分支；同一非法输入在两套后端上尽量得到同一类
@@ -238,6 +259,14 @@ queue.beginFrame()
 
 RHI 只接收已经带后端判别、代码、入口、Reflection 和 Cache Key 的 Shader
 Artifact。这样 Shader 语言差异不会污染 RenderGraph 或 RHI 命令层。
+
+WebGPU mipmap utility 同样在设备创建前从 GLSL ES 3.00 经 Naga 准备为 Shader
+Artifact，再注入具体设备。共享 Renderer 复用已初始化的材质 compiler；低层 `RHIFactory`
+不反向启动 shader 编译，而是把 mipmap Artifact 作为 WebGPU device create
+options 的必填依赖，使该能力在类型和运行时合同中都显式可见。Shader
+module、layout 和 sampler 在设备创建阶段建立，按 format 复用的 pipeline 与逐 mip/layer view、bind
+group 在 texture allocation 阶段准备；`generateMipmaps()` 的 execute 路径只编码 render
+pass，不创建这些原生对象。
 
 相关代码：[`ShaderArtifactCompiler.ts`](../src/render/renderer/ShaderArtifactCompiler.ts)、[`GlslToWgsl.ts`](../src/render/shader/GlslToWgsl.ts)。
 
@@ -281,7 +310,11 @@ Switch、Native State Call 和 Transient Allocation。
 
 `ResourceRegistry`
 保存逻辑资源 Handle 和可重建 Recipe，不把原生 Handle 暴露给业务层。`SubmissionResourceTracker`
-只在连续的已提交帧完成后回收零引用资源；失败的提交也会结束原生所有权，但错误仍通过公开 Promise 传播。
+只在连续的已提交帧完成后回收零引用资源；失败的提交也会结束原生所有权，但错误仍通过公开 Promise 传播。device
+loss 恢复成功且全部稳定 cache 已同步后，recovery
+coordinator 会在 renderer 共用的 mesh、fullscreen 和 shadow submission
+tracker 全部到达 idle 边界后，确认并清除这次旧 generation 已经处理的 submission-fence 失败；tracker/collection 内部失败不会被清除，后续
+`waitForIdle()` 也只观察恢复后的新 fence 失败。
 
 这解决了典型的 GPU 异步生命周期问题：CPU 已经不再引用某资源，不代表 GPU 已经执行完使用它的命令。
 

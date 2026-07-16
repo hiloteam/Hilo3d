@@ -20,6 +20,7 @@ import {
     RHIValidationError,
     createRHIRenderPassDescriptorSnapshotStorage,
     snapshotRHIRenderPassDescriptorInto,
+    validateRHIRenderPassPipelineDepthStencilAccess,
     type RHIRenderPassDescriptorSnapshotStorage
 } from '../../core/RHIValidation';
 import {
@@ -223,7 +224,14 @@ export class WebGPURenderPass extends WebGPUObject implements RHIRenderPassEncod
                 'vertexBuffer.buffer'
             );
         }
-        assertBufferRange(nativeBuffer.size, offset, size, 'vertexBuffer');
+        assertBufferRange(
+            nativeBuffer.size,
+            offset,
+            size,
+            'vertexBuffer',
+            'vertexBuffer.offset',
+            'vertexBuffer.size'
+        );
         if (offset % 4 !== 0) {
             validationFailure(
                 'invalid-descriptor',
@@ -267,7 +275,14 @@ export class WebGPURenderPass extends WebGPUObject implements RHIRenderPassEncod
                 'vertexBuffer.buffer'
             );
         }
-        assertBufferRange(nativeBuffer.size, offset, size, 'vertexBuffer');
+        assertBufferRange(
+            nativeBuffer.size,
+            offset,
+            size,
+            'vertexBuffer',
+            'vertexBuffer.offset',
+            'vertexBuffer.size'
+        );
         if (offset % 4 !== 0) {
             validationFailure(
                 'invalid-descriptor',
@@ -308,7 +323,14 @@ export class WebGPURenderPass extends WebGPUObject implements RHIRenderPassEncod
                 'indexBuffer.buffer'
             );
         }
-        assertBufferRange(nativeBuffer.size, offset, size, 'indexBuffer');
+        assertBufferRange(
+            nativeBuffer.size,
+            offset,
+            size,
+            'indexBuffer',
+            'indexBuffer.offset',
+            'indexBuffer.size'
+        );
         const alignment = format === 'uint16' ? 2 : 4;
         if (offset % alignment !== 0 || size % alignment !== 0) {
             validationFailure(
@@ -349,7 +371,14 @@ export class WebGPURenderPass extends WebGPUObject implements RHIRenderPassEncod
                 'indexBuffer.buffer'
             );
         }
-        assertBufferRange(nativeBuffer.size, offset, size, 'indexBuffer');
+        assertBufferRange(
+            nativeBuffer.size,
+            offset,
+            size,
+            'indexBuffer',
+            'indexBuffer.offset',
+            'indexBuffer.size'
+        );
         const alignment = format === 'uint16' ? 2 : 4;
         if (offset % alignment !== 0 || size % alignment !== 0) {
             validationFailure(
@@ -724,6 +753,7 @@ export class WebGPURenderPass extends WebGPUObject implements RHIRenderPassEncod
                 );
             }
         }
+        validateRHIRenderPassPipelineDepthStencilAccess(this.#descriptor, pipeline.descriptor);
     }
 
     private validateBindGroupLayout(

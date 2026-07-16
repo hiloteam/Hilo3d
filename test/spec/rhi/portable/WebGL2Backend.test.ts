@@ -7,7 +7,9 @@ import {
     RHITextureUsage,
     type RHIBuffer,
     type RHIExecutionInteropHost,
+    type RHIDepthStencilState,
     type RHIGraphicsPipeline,
+    type RHIRenderPassDepthStencilAttachment,
     type RHISurface,
     type RHITexture
 } from '../../../../src/render/rhi/core';
@@ -16,6 +18,7 @@ import {
     type WebGL2NativeExtension,
     createWebGL2RHIDevice
 } from '../../../../src/render/rhi/backends/webgl2';
+import { createFakeWebGL2 } from '../FakeWebGL2';
 
 function prepareIndexedPipeline(pipeline: RHIGraphicsPipeline, buffer: RHIBuffer): void {
     pipeline.prepareVertexInput({
@@ -67,8 +70,9 @@ function recordingContext(
 function createSolidPipeline(
     device: WebGL2RHIDevice,
     sampleCount = 1,
-    depthFormat?: 'depth24plus',
-    inactiveColorTarget = false
+    depthFormat?: 'depth24plus' | 'depth24plus-stencil8',
+    inactiveColorTarget = false,
+    depthStencilOverrides: Omit<RHIDepthStencilState, 'format'> = {}
 ): RHIGraphicsPipeline {
     const vertex = device.createShader({
         artifact: {
@@ -111,7 +115,13 @@ void main() { color = vec4(1.0, 0.0, 0.0, 1.0); }`,
         primitive: { topology: 'triangle-list' },
         ...(depthFormat === undefined
             ? {}
-            : { depthStencil: { format: depthFormat, depthWriteEnabled: true } }),
+            : {
+                  depthStencil: {
+                      format: depthFormat,
+                      depthWriteEnabled: true,
+                      ...depthStencilOverrides
+                  }
+              }),
         multisample: { count: sampleCount }
     });
 }
@@ -352,6 +362,34 @@ async function readTexturePixel(
     readback.unmap();
     readback.destroy();
     return pixel;
+}
+
+async function readTexturePixels(
+    device: WebGL2RHIDevice,
+    texture: RHITexture,
+    arrayLayer = 0
+): Promise<number[]> {
+    const bytesPerRow = 256;
+    const readback = device.createBuffer({
+        size: texture.height * bytesPerRow,
+        usage: RHIBufferUsage.COPY_DST | RHIBufferUsage.MAP_READ
+    });
+    const frame = device.graphicsQueue.beginFrame();
+    frame.copyTextureToBuffer(
+        { texture, origin: { z: arrayLayer } },
+        { buffer: readback, bytesPerRow },
+        { width: texture.width, height: texture.height }
+    );
+    await device.graphicsQueue.endFrame(frame).done;
+    await readback.mapAsync('read');
+    const bytes = new Uint8Array(readback.getMappedRange());
+    const pixels: number[] = [];
+    for (let row = 0; row < texture.height; row += 1) {
+        pixels.push(...bytes.slice(row * bytesPerRow, row * bytesPerRow + texture.width * 4));
+    }
+    readback.unmap();
+    readback.destroy();
+    return pixels;
 }
 
 describe('RHI WebGL2 immediate backend', () => {
@@ -767,6 +805,103 @@ describe('RHI WebGL2 immediate backend', () => {
         device.destroy();
     });
 
+    it('rejects unavailable depth/stencil access before native state', () => {
+        const canvas = document.createElement('canvas');
+        const native = canvas.getContext('webgl2');
+        if (native === null) return;
+        const control: RecordingControl = { calls: [], failDraw: false };
+        const device = createWebGL2RHIDevice(recordingContext(native, control));
+        const color = device.createTexture({
+            size: { width: 2, height: 2 },
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        const depthStencil = device.createTexture({
+            size: { width: 2, height: 2 },
+            format: 'depth24plus-stencil8',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        const depthWriter = createSolidPipeline(device, 1, 'depth24plus-stencil8');
+        const depthReader = createSolidPipeline(device, 1, 'depth24plus-stencil8', false, {
+            depthWriteEnabled: false,
+            depthCompare: 'less'
+        });
+        const stencilWriter = createSolidPipeline(device, 1, 'depth24plus-stencil8', false, {
+            depthWriteEnabled: false,
+            stencilFront: { passOp: 'replace' }
+        });
+        const stencilReader = createSolidPipeline(device, 1, 'depth24plus-stencil8', false, {
+            depthWriteEnabled: false,
+            stencilFront: { compare: 'less' }
+        });
+        const maskedStencilWriter = createSolidPipeline(device, 1, 'depth24plus-stencil8', false, {
+            depthWriteEnabled: false,
+            stencilFront: { passOp: 'replace' },
+            stencilWriteMask: 0
+        });
+
+        const setPipeline = (
+            attachment: Omit<RHIRenderPassDepthStencilAttachment, 'view'>,
+            pipeline: RHIGraphicsPipeline,
+            rejection: RegExp | null
+        ): void => {
+            const frame = device.graphicsQueue.beginFrame();
+            const pass = frame.beginRenderPass({
+                colorAttachments: [
+                    {
+                        view: color.createView(),
+                        loadOp: 'load',
+                        storeOp: 'store'
+                    }
+                ],
+                depthStencilAttachment: {
+                    view: depthStencil.createView(),
+                    ...attachment
+                }
+            });
+            control.calls.length = 0;
+            if (rejection !== null) {
+                expect(() => {
+                    pass.setPipeline(pipeline);
+                }).toThrow(rejection);
+                expect(control.calls).toEqual([]);
+            } else {
+                expect(() => {
+                    pass.setPipeline(pipeline);
+                }).not.toThrow();
+            }
+            pass.end();
+            device.graphicsQueue.endFrame(frame);
+        };
+        const writableDepth = {
+            depthLoadOp: 'load',
+            depthStoreOp: 'store'
+        } as const;
+        const writableStencil = {
+            stencilLoadOp: 'load',
+            stencilStoreOp: 'store'
+        } as const;
+
+        setPipeline(writableStencil, depthWriter, /writes a read-only or unused/u);
+        setPipeline(
+            { depthReadOnly: true, ...writableStencil },
+            depthWriter,
+            /writes a read-only or unused/u
+        );
+        setPipeline(writableStencil, depthReader, /reads an unavailable or unused/u);
+        setPipeline({ depthReadOnly: true }, depthReader, null);
+        setPipeline(writableDepth, stencilWriter, /writes a read-only or unused/u);
+        setPipeline(
+            { ...writableDepth, stencilReadOnly: true },
+            stencilWriter,
+            /writes a read-only or unused/u
+        );
+        setPipeline(writableDepth, stencilReader, /reads an unavailable or unused/u);
+        setPipeline({ stencilReadOnly: true }, stencilReader, null);
+        setPipeline(writableDepth, maskedStencilWriter, null);
+        device.destroy();
+    });
+
     it('reuses native upload and copy objects across frames and snapshots direct inputs', async () => {
         const canvas = document.createElement('canvas');
         const native = canvas.getContext('webgl2');
@@ -836,6 +971,295 @@ describe('RHI WebGL2 immediate backend', () => {
         device.destroy();
         expect(diagnostics.snapshot().nativeObjects.buffer.live).toBe(0);
         expect(diagnostics.snapshot().nativeObjects.framebuffer.live).toBe(0);
+    });
+
+    it('allocates the declared buffer size before uploading shorter initial data', async () => {
+        const canvas = document.createElement('canvas');
+        const native = canvas.getContext('webgl2');
+        if (native === null) return;
+        const device = createWebGL2RHIDevice(native);
+        const buffer = device.createBuffer({
+            size: 16,
+            usage: RHIBufferUsage.COPY_DST | RHIBufferUsage.MAP_READ,
+            initialData: new Uint8Array([1, 2, 3, 4])
+        });
+
+        const frame = device.graphicsQueue.beginFrame();
+        frame.writeBuffer(buffer, 8, new Uint8Array([9, 10, 11, 12]));
+        await device.graphicsQueue.endFrame(frame).done;
+        await buffer.mapAsync('read');
+        expect([...new Uint8Array(buffer.getMappedRange())]).toEqual([
+            1, 2, 3, 4, 0, 0, 0, 0, 9, 10, 11, 12, 0, 0, 0, 0
+        ]);
+        buffer.unmap();
+        device.destroy();
+    });
+
+    it('preserves portable top-to-bottom rows for padded 2D, cube, and array uploads', async () => {
+        const canvas = document.createElement('canvas');
+        const native = canvas.getContext('webgl2');
+        if (native === null) return;
+        const device = createWebGL2RHIDevice(native);
+        const usage = RHITextureUsage.COPY_DST | RHITextureUsage.COPY_SRC;
+
+        const texture2D = device.createTexture({
+            size: { width: 2, height: 4 },
+            format: 'rgba8unorm',
+            usage
+        });
+        const pixels2D = new Uint8Array(28);
+        pixels2D.set([255, 0, 0, 255, 0, 255, 0, 255], 4);
+        pixels2D.set([0, 0, 255, 255, 255, 255, 255, 255], 20);
+
+        const cube = device.createTexture({
+            size: { width: 2, height: 2, depthOrArrayLayers: 6 },
+            viewDimension: 'cube',
+            format: 'rgba8unorm',
+            usage
+        });
+        const cubePixels = new Uint8Array(60);
+        cubePixels.set([255, 0, 0, 255, 0, 255, 0, 255], 4);
+        cubePixels.set([0, 0, 255, 255, 255, 255, 255, 255], 16);
+        cubePixels.set([255, 255, 0, 255, 0, 255, 255, 255], 40);
+        cubePixels.set([255, 0, 255, 255, 0, 0, 0, 255], 52);
+
+        const array = device.createTexture({
+            size: { width: 2, height: 2, depthOrArrayLayers: 2 },
+            viewDimension: '2d-array',
+            format: 'rgba8unorm',
+            usage
+        });
+        const arrayPixels = new Uint8Array(1036);
+        arrayPixels.set([16, 32, 48, 255, 64, 80, 96, 255], 4);
+        arrayPixels.set([112, 128, 144, 255, 160, 176, 192, 255], 260);
+        arrayPixels.set([208, 224, 240, 255, 9, 18, 27, 255], 772);
+        arrayPixels.set([36, 45, 54, 255, 63, 72, 81, 255], 1028);
+        const arraySource = device.createBuffer({
+            size: arrayPixels.byteLength,
+            usage: RHIBufferUsage.COPY_SRC,
+            initialData: arrayPixels
+        });
+
+        const frame = device.graphicsQueue.beginFrame();
+        frame.writeTexture(
+            { texture: texture2D, origin: { y: 1 } },
+            pixels2D,
+            { offset: 4, bytesPerRow: 16 },
+            { width: 2, height: 2 }
+        );
+        frame.writeTexture(
+            { texture: cube, origin: { z: 2 } },
+            cubePixels,
+            { offset: 4, bytesPerRow: 12, rowsPerImage: 3 },
+            { width: 2, height: 2, depthOrArrayLayers: 2 }
+        );
+        frame.copyBufferToTexture(
+            { buffer: arraySource, offset: 4, bytesPerRow: 256, rowsPerImage: 3 },
+            { texture: array },
+            { width: 2, height: 2, depthOrArrayLayers: 2 }
+        );
+        await device.graphicsQueue.endFrame(frame).done;
+
+        await expect(readTexturePixels(device, texture2D)).resolves.toEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255,
+            255, 0, 0, 0, 0, 0, 0, 0, 0
+        ]);
+        await expect(readTexturePixels(device, cube, 2)).resolves.toEqual([
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255
+        ]);
+        await expect(readTexturePixels(device, cube, 3)).resolves.toEqual([
+            255, 255, 0, 255, 0, 255, 255, 255, 255, 0, 255, 255, 0, 0, 0, 255
+        ]);
+        await expect(readTexturePixels(device, array, 0)).resolves.toEqual([
+            16, 32, 48, 255, 64, 80, 96, 255, 112, 128, 144, 255, 160, 176, 192, 255
+        ]);
+        await expect(readTexturePixels(device, array, 1)).resolves.toEqual([
+            208, 224, 240, 255, 9, 18, 27, 255, 36, 45, 54, 255, 63, 72, 81, 255
+        ]);
+        device.destroy();
+    });
+
+    it('rejects individual combined depth-stencil buffer copies before native commands', () => {
+        const canvas = document.createElement('canvas');
+        const native = canvas.getContext('webgl2');
+        if (native === null) return;
+        const control: RecordingControl = { calls: [], failDraw: false };
+        const device = createWebGL2RHIDevice(recordingContext(native, control));
+        const cases = [
+            {
+                format: 'depth24plus-stencil8' as const,
+                aspect: 'stencil-only' as const,
+                bytesPerTexel: 1
+            },
+            {
+                format: 'depth32float-stencil8' as const,
+                aspect: 'depth-only' as const,
+                bytesPerTexel: 4
+            },
+            {
+                format: 'depth32float-stencil8' as const,
+                aspect: 'stencil-only' as const,
+                bytesPerTexel: 1
+            }
+        ];
+
+        for (const testCase of cases) {
+            const texture = device.createTexture({
+                size: { width: 2, height: 2 },
+                format: testCase.format,
+                usage: RHITextureUsage.COPY_SRC | RHITextureUsage.COPY_DST
+            });
+            const tightBytesPerRow = 2 * testCase.bytesPerTexel;
+            const copyBufferSize = 256 + tightBytesPerRow;
+            const source = device.createBuffer({
+                size: copyBufferSize,
+                usage: RHIBufferUsage.COPY_SRC
+            });
+            const destination = device.createBuffer({
+                size: copyBufferSize,
+                usage: RHIBufferUsage.COPY_DST
+            });
+            const frame = device.graphicsQueue.beginFrame();
+            control.calls.length = 0;
+
+            expect(() => {
+                frame.writeTexture(
+                    { texture, aspect: testCase.aspect },
+                    new Uint8Array(tightBytesPerRow * 2),
+                    { bytesPerRow: tightBytesPerRow },
+                    { width: 2, height: 2 }
+                );
+            }).toThrow(/cannot copy the .* aspect/u);
+            expect(() => {
+                frame.copyBufferToTexture(
+                    { buffer: source, bytesPerRow: 256 },
+                    { texture, aspect: testCase.aspect },
+                    { width: 2, height: 2 }
+                );
+            }).toThrow(/cannot copy the .* aspect/u);
+            expect(() => {
+                frame.copyTextureToBuffer(
+                    { texture, aspect: testCase.aspect },
+                    { buffer: destination, bytesPerRow: 256 },
+                    { width: 2, height: 2 }
+                );
+            }).toThrow(/cannot copy the .* aspect/u);
+            expect(frame.diagnostics.commandCount).toBe(0);
+            expect(control.calls).toEqual([]);
+
+            device.graphicsQueue.endFrame(frame);
+            texture.destroy();
+            source.destroy();
+            destination.destroy();
+        }
+        device.destroy();
+    });
+
+    it('rejects unsupported standalone depth/stencil transfers before native commands', () => {
+        const fake = createFakeWebGL2();
+        const device = createWebGL2RHIDevice(fake.gl);
+        const depthCases = [
+            { format: 'depth16unorm' as const, bytesPerTexel: 2 },
+            { format: 'depth32float' as const, bytesPerTexel: 4 }
+        ];
+
+        for (const testCase of depthCases) {
+            const texture = device.createTexture({
+                size: { width: 2, height: 1 },
+                format: testCase.format,
+                usage: RHITextureUsage.COPY_SRC | RHITextureUsage.COPY_DST
+            });
+            const byteLength = 2 * testCase.bytesPerTexel;
+            const source = device.createBuffer({
+                size: byteLength,
+                usage: RHIBufferUsage.COPY_SRC
+            });
+            const destination = device.createBuffer({
+                size: byteLength,
+                usage: RHIBufferUsage.COPY_DST
+            });
+
+            const upload = device.graphicsQueue.beginFrame();
+            expect(() => {
+                upload.writeTexture({ texture }, new Uint8Array(byteLength), {}, { width: 2 });
+                upload.copyBufferToTexture(
+                    { buffer: source },
+                    { texture },
+                    { width: 2, height: 1 }
+                );
+            }).not.toThrow();
+            expect(upload.diagnostics.commandCount).toBe(2);
+            device.graphicsQueue.endFrame(upload);
+
+            fake.call('readPixels').mockClear();
+            fake.call('framebufferTexture2D').mockClear();
+            const readback = device.graphicsQueue.beginFrame();
+            expect(() => {
+                readback.copyTextureToBuffer(
+                    { texture },
+                    { buffer: destination },
+                    { width: 2, height: 1 }
+                );
+            }).toThrow(/cannot copy the .* aspect/u);
+            expect(readback.diagnostics.commandCount).toBe(0);
+            expect(fake.call('readPixels')).not.toHaveBeenCalled();
+            expect(fake.call('framebufferTexture2D')).not.toHaveBeenCalled();
+            device.graphicsQueue.endFrame(readback);
+
+            texture.destroy();
+            source.destroy();
+            destination.destroy();
+        }
+
+        const stencil = device.createTexture({
+            size: { width: 2, height: 1 },
+            format: 'stencil8',
+            usage: RHITextureUsage.COPY_SRC | RHITextureUsage.COPY_DST
+        });
+        const stencilSource = device.createBuffer({
+            size: 2,
+            usage: RHIBufferUsage.COPY_SRC
+        });
+        const stencilDestination = device.createBuffer({
+            size: 2,
+            usage: RHIBufferUsage.COPY_DST
+        });
+        const stencilFrame = device.graphicsQueue.beginFrame();
+        fake.call('bufferSubData').mockClear();
+        fake.call('texSubImage2D').mockClear();
+        fake.call('texSubImage3D').mockClear();
+        fake.call('readPixels').mockClear();
+        fake.call('framebufferTexture2D').mockClear();
+
+        expect(() => {
+            stencilFrame.writeTexture({ texture: stencil }, new Uint8Array(2), {}, { width: 2 });
+        }).toThrow(/cannot copy the .* aspect/u);
+        expect(() => {
+            stencilFrame.copyBufferToTexture(
+                { buffer: stencilSource },
+                { texture: stencil },
+                { width: 2, height: 1 }
+            );
+        }).toThrow(/cannot copy the .* aspect/u);
+        expect(() => {
+            stencilFrame.copyTextureToBuffer(
+                { texture: stencil },
+                { buffer: stencilDestination },
+                { width: 2, height: 1 }
+            );
+        }).toThrow(/cannot copy the .* aspect/u);
+        expect(stencilFrame.diagnostics.commandCount).toBe(0);
+        expect(fake.call('bufferSubData')).not.toHaveBeenCalled();
+        expect(fake.call('texSubImage2D')).not.toHaveBeenCalled();
+        expect(fake.call('texSubImage3D')).not.toHaveBeenCalled();
+        expect(fake.call('readPixels')).not.toHaveBeenCalled();
+        expect(fake.call('framebufferTexture2D')).not.toHaveBeenCalled();
+        device.graphicsQueue.endFrame(stencilFrame);
+
+        stencil.destroy();
+        stencilSource.destroy();
+        stencilDestination.destroy();
+        device.destroy();
     });
 
     it('keeps an explicit one-layer 2D-array view on the native array texture target', async () => {
@@ -972,6 +1396,7 @@ describe('RHI WebGL2 immediate backend', () => {
         device.state.setPixelStore(native.UNPACK_ALIGNMENT, 2);
         device.state.setPixelStore(native.UNPACK_ROW_LENGTH, 0);
         device.state.setPixelStore(native.UNPACK_FLIP_Y_WEBGL, 0);
+        device.state.setPixelStore(native.UNPACK_COLORSPACE_CONVERSION_WEBGL, native.NONE);
         control.calls.length = 0;
         callArguments.length = 0;
 
@@ -995,7 +1420,7 @@ describe('RHI WebGL2 immediate backend', () => {
             native.TEXTURE_2D,
             0,
             0,
-            0,
+            1,
             3,
             2,
             native.RGBA,
@@ -1018,13 +1443,26 @@ describe('RHI WebGL2 immediate backend', () => {
             name: 'pixelStorei',
             args: [native.UNPACK_FLIP_Y_WEBGL, 1]
         });
+        expect(
+            callArguments
+                .filter(
+                    call =>
+                        call.name === 'pixelStorei' && call.args[0] === native.UNPACK_FLIP_Y_WEBGL
+                )
+                .map(call => call.args[1])
+        ).toEqual([1, 0]);
         expect(callArguments).toContainEqual({
             name: 'pixelStorei',
             args: [native.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1]
         });
+        expect(callArguments).toContainEqual({
+            name: 'pixelStorei',
+            args: [native.UNPACK_COLORSPACE_CONVERSION_WEBGL, native.BROWSER_DEFAULT_WEBGL]
+        });
         expect(native.getParameter(native.UNPACK_ALIGNMENT)).toBe(2);
         expect(native.getParameter(native.UNPACK_ROW_LENGTH)).toBe(0);
         expect(native.getParameter(native.UNPACK_FLIP_Y_WEBGL)).toBe(false);
+        expect(native.getParameter(native.UNPACK_COLORSPACE_CONVERSION_WEBGL)).toBe(native.NONE);
         expect(native.getParameter(native.PIXEL_UNPACK_BUFFER_BINDING)).toBe(previousUnpackBuffer);
         expect(native.getParameter(native.ACTIVE_TEXTURE)).toBe(native.TEXTURE3);
         native.activeTexture(native.TEXTURE0);
@@ -1033,6 +1471,102 @@ describe('RHI WebGL2 immediate backend', () => {
 
         native.deleteBuffer(previousUnpackBuffer);
         native.deleteTexture(previousTexture);
+        device.destroy();
+    });
+
+    it('preserves external-image top-left rows, flipY, and destination origins', async () => {
+        const canvas = document.createElement('canvas');
+        const native = canvas.getContext('webgl2');
+        if (native === null) return;
+        const device = createWebGL2RHIDevice(native);
+        const source = document.createElement('canvas');
+        source.width = 1;
+        source.height = 4;
+        const sourceContext = source.getContext('2d');
+        if (sourceContext === null) {
+            device.destroy();
+            return;
+        }
+        sourceContext.fillStyle = 'rgb(255, 255, 0)';
+        sourceContext.fillRect(0, 0, 1, 1);
+        sourceContext.fillStyle = 'rgb(255, 0, 0)';
+        sourceContext.fillRect(0, 1, 1, 1);
+        sourceContext.fillStyle = 'rgb(0, 0, 255)';
+        sourceContext.fillRect(0, 2, 1, 1);
+        sourceContext.fillStyle = 'rgb(0, 255, 0)';
+        sourceContext.fillRect(0, 3, 1, 1);
+        const usage =
+            RHITextureUsage.COPY_DST | RHITextureUsage.COPY_SRC | RHITextureUsage.RENDER_ATTACHMENT;
+        const unflipped = device.createTexture({
+            size: { width: 1, height: 4 },
+            format: 'rgba8unorm',
+            usage
+        });
+        const flipped = device.createTexture({
+            size: { width: 1, height: 4 },
+            format: 'rgba8unorm',
+            usage
+        });
+
+        const frame = device.graphicsQueue.beginFrame();
+        frame.copyExternalImageToTexture(
+            { source, origin: { y: 1 } },
+            { texture: unflipped, origin: { y: 1 } },
+            { width: 1, height: 2 }
+        );
+        frame.copyExternalImageToTexture(
+            { source, origin: { y: 1 }, flipY: true },
+            { texture: flipped, origin: { y: 1 } },
+            { width: 1, height: 2 }
+        );
+        await device.graphicsQueue.endFrame(frame).done;
+
+        await expect(readTexturePixels(device, unflipped)).resolves.toEqual([
+            0, 0, 0, 0, 255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 0, 0
+        ]);
+        await expect(readTexturePixels(device, flipped)).resolves.toEqual([
+            0, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 255, 0, 0, 0, 0
+        ]);
+        device.destroy();
+    });
+
+    it('converts top-left origins on both sides of texture-to-texture blits', async () => {
+        const canvas = document.createElement('canvas');
+        const native = canvas.getContext('webgl2');
+        if (native === null) return;
+        const device = createWebGL2RHIDevice(native);
+        const usage = RHITextureUsage.COPY_DST | RHITextureUsage.COPY_SRC;
+        const source = device.createTexture({
+            size: { width: 1, height: 4 },
+            format: 'rgba8unorm',
+            usage
+        });
+        const destination = device.createTexture({
+            size: { width: 1, height: 5 },
+            format: 'rgba8unorm',
+            usage
+        });
+        const sourcePixels = new Uint8Array([
+            255, 255, 255, 255, 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255
+        ]);
+
+        const frame = device.graphicsQueue.beginFrame();
+        frame.writeTexture(
+            { texture: source },
+            sourcePixels,
+            { bytesPerRow: 4 },
+            { width: 1, height: 4 }
+        );
+        frame.copyTextureToTexture(
+            { texture: source, origin: { y: 1 } },
+            { texture: destination, origin: { y: 2 } },
+            { width: 1, height: 2 }
+        );
+        await device.graphicsQueue.endFrame(frame).done;
+
+        await expect(readTexturePixels(device, destination)).resolves.toEqual([
+            0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 0, 0
+        ]);
         device.destroy();
     });
 

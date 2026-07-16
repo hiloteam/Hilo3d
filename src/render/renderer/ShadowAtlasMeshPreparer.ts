@@ -104,6 +104,7 @@ export class ShadowAtlasMeshPreparer
         }
         this.#usedOwners.clear();
         if (!frameStarted) this.processor.beginFrame(context, uploads);
+        else this.processor.beginContextPass(context);
         uploads.enlist(this);
         this.#active = true;
     }

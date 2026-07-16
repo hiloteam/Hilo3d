@@ -282,6 +282,7 @@ describe('WebGPU RHI render-pass hot-path architecture', () => {
         const source = Object.values(webGPUV2RenderPassSource)[0];
         expect(source).toBeDefined();
         const renderPassSource = source ?? '';
+        const baseSource = Object.values(webGPUV2BaseSource)[0] ?? '';
         const steadyStateMethods = [
             'setPipeline',
             'setBindGroup',
@@ -321,6 +322,7 @@ describe('WebGPU RHI render-pass hot-path architecture', () => {
         expect(methodBody(renderPassSource, 'setIndexBuffer')).not.toMatch(
             /#indexBuffer\s*=\s*\{/u
         );
+        expect(functionBody(baseSource, 'assertBufferRange')).not.toMatch(/`[^`]*\$\{/gu);
     });
 
     it('keeps stable record methods direct instead of forwarding through scalar commands', () => {

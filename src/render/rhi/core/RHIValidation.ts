@@ -14,6 +14,7 @@ import type {
     RHIBufferBinding,
     RHIGraphicsPipelineDescriptor,
     RHIPipelineLayoutDescriptor,
+    RHIStencilFaceState,
     RHITextureSampleType
 } from './RHIPipeline';
 import type {
@@ -2015,8 +2016,15 @@ export function snapshotRHIGraphicsPipelineDescriptor(
 }
 
 function validateAttachmentView(view: RHITextureView, path: string): void {
-    if (view.dimension !== '2d' || view.descriptor.arrayLayerCount !== 1) {
-        fail('invalid-descriptor', 'attachment view must select one 2D layer', path);
+    if (
+        view.dimension !== '2d' ||
+        view.descriptor.mipLevelCount !== 1 ||
+        view.descriptor.arrayLayerCount !== 1
+    ) {
+        fail('invalid-descriptor', 'attachment view must select one 2D mip and layer', path);
+    }
+    if (view.aspect !== 'all') {
+        fail('invalid-descriptor', 'attachment view must select every texture aspect', path);
     }
 }
 
@@ -2058,11 +2066,217 @@ function validateRenderPassColorAttachmentView(
     index: number,
     suffix: string
 ): void {
-    if (view.dimension !== '2d' || view.descriptor.arrayLayerCount !== 1) {
+    if (
+        view.dimension !== '2d' ||
+        view.descriptor.mipLevelCount !== 1 ||
+        view.descriptor.arrayLayerCount !== 1
+    ) {
         fail(
             'invalid-descriptor',
-            'attachment view must select one 2D layer',
+            'attachment view must select one 2D mip and layer',
             renderPassColorPath(index, suffix)
+        );
+    }
+    if (view.aspect !== 'all') {
+        fail(
+            'invalid-descriptor',
+            'attachment view must select every texture aspect',
+            renderPassColorPath(index, suffix)
+        );
+    }
+}
+
+function validateRHIRenderPassLoadOp(value: unknown, path: string): asserts value is RHILoadOp {
+    if (value !== 'load' && value !== 'clear') {
+        fail('invalid-descriptor', 'must be load or clear', path);
+    }
+}
+
+function validateRHIRenderPassStoreOp(value: unknown, path: string): asserts value is RHIStoreOp {
+    if (value !== 'store' && value !== 'discard') {
+        fail('invalid-descriptor', 'must be store or discard', path);
+    }
+}
+
+function validateRHIRenderPassDepthStencilAspect(options: {
+    readonly rootPath: string;
+    readonly label: 'depth' | 'stencil';
+    readonly hasAspect: boolean;
+    readonly clearValue: unknown;
+    readonly loadOp: unknown;
+    readonly storeOp: unknown;
+    readonly readOnly: unknown;
+}): void {
+    const { rootPath, label, hasAspect, clearValue, loadOp, storeOp, readOnly } = options;
+    const used =
+        clearValue !== undefined ||
+        loadOp !== undefined ||
+        storeOp !== undefined ||
+        readOnly !== undefined;
+    if (!hasAspect) {
+        if (used) {
+            fail(
+                'invalid-descriptor',
+                `${label} operations do not match the attachment format`,
+                rootPath
+            );
+        }
+        return;
+    }
+    if (readOnly !== undefined && typeof readOnly !== 'boolean') {
+        fail('invalid-descriptor', 'must be a boolean', `${rootPath}.${label}ReadOnly`);
+    }
+    if (loadOp !== undefined) {
+        validateRHIRenderPassLoadOp(loadOp, `${rootPath}.${label}LoadOp`);
+    }
+    if (storeOp !== undefined) {
+        validateRHIRenderPassStoreOp(storeOp, `${rootPath}.${label}StoreOp`);
+    }
+    if (readOnly === true) {
+        if (clearValue !== undefined || loadOp !== undefined || storeOp !== undefined) {
+            fail(
+                'invalid-descriptor',
+                `read-only ${label} cannot declare clear, load, or store operations`,
+                rootPath
+            );
+        }
+        return;
+    }
+    if (!used) return;
+    if (loadOp === undefined || storeOp === undefined) {
+        fail(
+            'invalid-descriptor',
+            `writable ${label} requires explicit load and store operations`,
+            rootPath
+        );
+    }
+}
+
+function rhiStencilFaceWrites(face: Readonly<RHIStencilFaceState> | undefined): boolean {
+    return (
+        (face?.failOp ?? 'keep') !== 'keep' ||
+        (face?.depthFailOp ?? 'keep') !== 'keep' ||
+        (face?.passOp ?? 'keep') !== 'keep'
+    );
+}
+
+function rhiStencilFaceReads(face: Readonly<RHIStencilFaceState> | undefined): boolean {
+    return (face?.compare ?? 'always') !== 'always';
+}
+
+function rhiGraphicsPipelineReadsDepth(
+    descriptor: Readonly<RHIGraphicsPipelineDescriptor>
+): boolean {
+    const depthStencil = descriptor.depthStencil;
+    return (
+        depthStencil !== undefined &&
+        rhiTextureFormatHasDepth(depthStencil.format) &&
+        (depthStencil.depthCompare ?? 'always') !== 'always'
+    );
+}
+
+function rhiGraphicsPipelineReadsStencil(
+    descriptor: Readonly<RHIGraphicsPipelineDescriptor>
+): boolean {
+    const depthStencil = descriptor.depthStencil;
+    if (depthStencil === undefined || !rhiTextureFormatHasStencil(depthStencil.format)) {
+        return false;
+    }
+    const cullMode = descriptor.primitive.cullMode ?? 'none';
+    return (
+        (cullMode !== 'front' && rhiStencilFaceReads(depthStencil.stencilFront)) ||
+        (cullMode !== 'back' && rhiStencilFaceReads(depthStencil.stencilBack))
+    );
+}
+
+function rhiGraphicsPipelineWritesStencil(
+    descriptor: Readonly<RHIGraphicsPipelineDescriptor>
+): boolean {
+    const depthStencil = descriptor.depthStencil;
+    if (depthStencil === undefined || (depthStencil.stencilWriteMask ?? 0xffffffff) === 0) {
+        return false;
+    }
+    const cullMode = descriptor.primitive.cullMode ?? 'none';
+    return (
+        (cullMode !== 'front' && rhiStencilFaceWrites(depthStencil.stencilFront)) ||
+        (cullMode !== 'back' && rhiStencilFaceWrites(depthStencil.stencilBack))
+    );
+}
+
+function rhiRenderPassDepthAspectUnused(
+    attachment: Readonly<RHIRenderPassDepthStencilAttachment>
+): boolean {
+    return (
+        attachment.depthClearValue === undefined &&
+        attachment.depthLoadOp === undefined &&
+        attachment.depthStoreOp === undefined &&
+        attachment.depthReadOnly === undefined
+    );
+}
+
+function rhiRenderPassStencilAspectUnused(
+    attachment: Readonly<RHIRenderPassDepthStencilAttachment>
+): boolean {
+    return (
+        attachment.stencilClearValue === undefined &&
+        attachment.stencilLoadOp === undefined &&
+        attachment.stencilStoreOp === undefined &&
+        attachment.stencilReadOnly === undefined
+    );
+}
+
+/**
+ * Reject reads from unavailable aspects and writes to unavailable or read-only aspects.
+ *
+ * @internal Render-pass descriptors and pipeline descriptors must already be validated.
+ */
+export function validateRHIRenderPassPipelineDepthStencilAccess(
+    renderPass: Readonly<RHIRenderPassDescriptor>,
+    pipeline: Readonly<RHIGraphicsPipelineDescriptor>
+): void {
+    const pipelineDepthStencil = pipeline.depthStencil;
+    const attachment = renderPass.depthStencilAttachment;
+    if (pipelineDepthStencil === undefined) return;
+    if (pipelineDepthStencil.format !== attachment?.view.format) return;
+
+    const depthAspectUnavailable =
+        !rhiTextureFormatHasDepth(attachment.view.format) ||
+        rhiRenderPassDepthAspectUnused(attachment);
+    if (
+        pipelineDepthStencil.depthWriteEnabled === true &&
+        (depthAspectUnavailable || attachment.depthReadOnly === true)
+    ) {
+        fail(
+            'incompatible-layout',
+            'pipeline writes a read-only or unused render-pass depth aspect',
+            'pipeline.depthStencil.depthWriteEnabled'
+        );
+    }
+    if (rhiGraphicsPipelineReadsDepth(pipeline) && depthAspectUnavailable) {
+        fail(
+            'incompatible-layout',
+            'pipeline reads an unavailable or unused render-pass depth aspect',
+            'pipeline.depthStencil.depthCompare'
+        );
+    }
+    const stencilAspectUnavailable =
+        !rhiTextureFormatHasStencil(attachment.view.format) ||
+        rhiRenderPassStencilAspectUnused(attachment);
+    if (
+        rhiGraphicsPipelineWritesStencil(pipeline) &&
+        (stencilAspectUnavailable || attachment.stencilReadOnly === true)
+    ) {
+        fail(
+            'incompatible-layout',
+            'pipeline writes a read-only or unused render-pass stencil aspect',
+            'pipeline.depthStencil'
+        );
+    }
+    if (rhiGraphicsPipelineReadsStencil(pipeline) && stencilAspectUnavailable) {
+        fail(
+            'incompatible-layout',
+            'pipeline reads an unavailable or unused render-pass stencil aspect',
+            'pipeline.depthStencil'
         );
     }
 }
@@ -2129,6 +2343,14 @@ export function validateRHIRenderPassDescriptor(
         attachmentHeight = height;
         attachmentSampleCount = texture.sampleCount;
         hasAttachmentSize = true;
+        validateRHIRenderPassLoadOp(
+            attachment.loadOp,
+            `renderPass.colorAttachments[${String(index)}].loadOp`
+        );
+        validateRHIRenderPassStoreOp(
+            attachment.storeOp,
+            `renderPass.colorAttachments[${String(index)}].storeOp`
+        );
         if (attachment.loadOp === 'clear' && attachment.clearValue === undefined) {
             fail(
                 'invalid-descriptor',
@@ -2253,6 +2475,27 @@ export function validateRHIRenderPassDescriptor(
                 'renderPass'
             );
         }
+        const depthStencilPath = 'renderPass.depthStencilAttachment';
+        const hasDepth = rhiTextureFormatHasDepth(depthStencil.view.format);
+        const hasStencil = rhiTextureFormatHasStencil(depthStencil.view.format);
+        validateRHIRenderPassDepthStencilAspect({
+            rootPath: depthStencilPath,
+            label: 'depth',
+            hasAspect: hasDepth,
+            clearValue: depthStencil.depthClearValue,
+            loadOp: depthStencil.depthLoadOp,
+            storeOp: depthStencil.depthStoreOp,
+            readOnly: depthStencil.depthReadOnly
+        });
+        validateRHIRenderPassDepthStencilAspect({
+            rootPath: depthStencilPath,
+            label: 'stencil',
+            hasAspect: hasStencil,
+            clearValue: depthStencil.stencilClearValue,
+            loadOp: depthStencil.stencilLoadOp,
+            storeOp: depthStencil.stencilStoreOp,
+            readOnly: depthStencil.stencilReadOnly
+        });
         if (depthStencil.depthLoadOp === 'clear' && depthStencil.depthClearValue === undefined) {
             fail(
                 'invalid-descriptor',

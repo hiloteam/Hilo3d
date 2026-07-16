@@ -413,6 +413,155 @@ describe('RenderGraph compile', () => {
         backend.destroy();
     });
 
+    it('keeps a final discarded output writer live without making its contents readable', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const log: string[] = [];
+        const color = builder.createTexture('discarded output', {
+            size: { width: 4, height: 4 },
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        builder.addPass(
+            {
+                name: 'discard final color',
+                setup(pass) {
+                    pass.useColorAttachment({
+                        texture: color,
+                        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                        loadOp: 'clear',
+                        storeOp: 'discard'
+                    });
+                },
+                execute() {
+                    log.push('discard final color');
+                }
+            },
+            undefined
+        );
+        builder.markOutput(color);
+
+        const compiled = graph.compile(builder, device.capabilities);
+        expect(compiled.passes).toHaveLength(1);
+        expect(() => graph.execute(compiled, device)).not.toThrow();
+        expect(log).toEqual(['discard final color']);
+        graph.destroy();
+        backend.destroy();
+    });
+
+    it('still rejects an uninitialized transient output without a writer', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const color = builder.createTexture('uninitialized output', {
+            size: { width: 4, height: 4 },
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        builder.markOutput(color);
+
+        expect(() => graph.compile(builder, device.capabilities)).toThrow(
+            expect.objectContaining<Partial<RenderGraphError>>({ code: 'uninitialized-read' })
+        );
+        graph.destroy();
+        backend.destroy();
+    });
+
+    it('rejects extracting a texture whose final writer discards its contents', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const color = builder.createTexture('discarded extraction', {
+            size: { width: 4, height: 4 },
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        builder.addPass(
+            {
+                name: 'discard extracted color',
+                setup(pass) {
+                    pass.useColorAttachment({
+                        texture: color,
+                        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                        loadOp: 'clear',
+                        storeOp: 'discard'
+                    });
+                },
+                execute() {
+                    // Compile-time extraction validation is under test.
+                }
+            },
+            undefined
+        );
+        builder.extractTexture(color);
+
+        expect(() => graph.compile(builder, device.capabilities)).toThrow(
+            expect.objectContaining<Partial<RenderGraphError>>({ code: 'uninitialized-read' })
+        );
+        graph.destroy();
+        backend.destroy();
+    });
+
+    it('tracks depth and stencil attachment availability independently', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const depthStencil = builder.createTexture('mixed depth stencil', {
+            size: { width: 4, height: 4 },
+            format: 'depth24plus-stencil8',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        builder.addPass(
+            {
+                name: 'initialize depth discard stencil',
+                setup(pass) {
+                    pass.useDepthStencilAttachment({
+                        texture: depthStencil,
+                        depthClearValue: 1,
+                        depthLoadOp: 'clear',
+                        depthStoreOp: 'store',
+                        stencilClearValue: 0,
+                        stencilLoadOp: 'clear',
+                        stencilStoreOp: 'discard'
+                    });
+                },
+                execute() {
+                    // Attachment availability is validated during compilation.
+                }
+            },
+            undefined
+        );
+        builder.addPass(
+            {
+                name: 'load preserved depth',
+                setup(pass) {
+                    pass.useDepthStencilAttachment({
+                        texture: depthStencil,
+                        depthLoadOp: 'load',
+                        depthStoreOp: 'store',
+                        stencilClearValue: 1,
+                        stencilLoadOp: 'clear',
+                        stencilStoreOp: 'discard'
+                    });
+                },
+                execute() {
+                    // Attachment availability is validated during compilation.
+                }
+            },
+            undefined
+        );
+        builder.markOutput(depthStencil);
+
+        expect(graph.compile(builder, device.capabilities).passes).toHaveLength(2);
+        graph.destroy();
+        backend.destroy();
+    });
+
     it('rejects attachment declarations without RENDER_ATTACHMENT usage', () => {
         const backend = new FakeWebGLRHIBackend();
         const device = backend.createDevice();

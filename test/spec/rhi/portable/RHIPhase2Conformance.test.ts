@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createWebGL2RHIDevice } from '../../../../src/render/rhi/backends/webgl2';
 import { WebGPUDevice } from '../../../../src/render/rhi/backends/webgpu';
+import { ShaderArtifactCompiler } from '../../../../src/render/renderer/ShaderArtifactCompiler';
+import { prepareWebGPUMipmapShaderArtifacts } from '../../../../src/render/renderer/WebGPUMipmapShader';
 import { expectRHIPhase2Conformance, runRHIPhase2Conformance } from './RHIPhase2Conformance';
 import { createStructuredWebGPUMock } from './StructuredWebGPUMock';
 
@@ -20,7 +22,13 @@ describe('RHI Phase 2 shared concrete conformance', () => {
 
     it('executes the same scene matrix and readback assertions on structured WebGPU', async () => {
         const native = createStructuredWebGPUMock();
-        const device = new WebGPUDevice(native.device);
+        const compiler = new ShaderArtifactCompiler();
+        await compiler.initialize();
+        const device = new WebGPUDevice(
+            native.device,
+            null,
+            prepareWebGPUMipmapShaderArtifacts(compiler)
+        );
         try {
             const result = await runRHIPhase2Conformance({ device, canvas: native.canvas });
             expectRHIPhase2Conformance(result);

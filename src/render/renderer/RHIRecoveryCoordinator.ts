@@ -119,6 +119,7 @@ export class RHIRecoveryCoordinator {
     readonly registry: ResourceRegistry;
     readonly submissions: SubmissionResourceTracker;
     readonly #createReplacementDevice: RHIReplacementDeviceFactory;
+    readonly #submissionTrackers = new Set<SubmissionResourceTracker>();
     readonly #synchronizers = new Set<RHIRecoverySynchronizer>();
     readonly #listeners = new Set<RHIRecoveryCoordinatorListener>();
     readonly #attemptControls = new Set<RecoveryAttemptControl>();
@@ -160,6 +161,7 @@ export class RHIRecoveryCoordinator {
         this.#device = device;
         this.registry = registry;
         this.submissions = submissions;
+        this.#submissionTrackers.add(submissions);
         this.#createReplacementDevice = createReplacementDevice;
         const observation = this.observeDevice(device);
         this.#currentObservationToken = observation.token;
@@ -207,6 +209,20 @@ export class RHIRecoveryCoordinator {
         };
     }
 
+    registerSubmissionTracker(tracker: SubmissionResourceTracker): () => void {
+        this.assertNotDestroyed();
+        if (tracker.registry !== this.registry) {
+            throw new Error('Recovery submission trackers must share one ResourceRegistry');
+        }
+        this.#submissionTrackers.add(tracker);
+        let registered = true;
+        return () => {
+            if (!registered) return;
+            registered = false;
+            if (tracker !== this.submissions) this.#submissionTrackers.delete(tracker);
+        };
+    }
+
     addListener(listener: RHIRecoveryCoordinatorListener): () => void {
         this.assertNotDestroyed();
         if (typeof listener !== 'function') {
@@ -242,6 +258,7 @@ export class RHIRecoveryCoordinator {
         this.emit();
         this.#listeners.clear();
         this.#synchronizers.clear();
+        this.#submissionTrackers.clear();
     }
 
     private observeDevice(device: RHIDevice): DeviceObservation {
@@ -417,7 +434,7 @@ export class RHIRecoveryCoordinator {
                 if (candidateValue.generation !== candidateGeneration) {
                     throw new Error('Replacement RHI device was lost before registry recovery');
                 }
-                if (this.submissions.pendingSubmissionCount === 0) break;
+                if (this.submissionTrackersIdle()) break;
             }
 
             const observation = this.observeDevice(candidateValue);
@@ -431,7 +448,7 @@ export class RHIRecoveryCoordinator {
 
             // Submission fences settled while the registry was gated, so their zero-reference
             // resources could not be retired. Collect them immediately on the rebuilt generation.
-            this.submissions.flush();
+            this.flushSubmissionTrackers();
 
             const synchronizers = [...this.#synchronizers];
             for (const synchronizer of synchronizers) {
@@ -439,6 +456,10 @@ export class RHIRecoveryCoordinator {
                 this.throwIfCancelled(control);
             }
 
+            // Rejected old-generation fences are an expected device-loss boundary once the
+            // replacement and every stable cache have recovered. Do not let that handled failure
+            // poison future application waitForIdle() calls; tracker/collection failures remain.
+            this.acknowledgeSubmissionFailures(job.lostDevice.id, job.loss.generation);
             this.#successfulRecoveryCount++;
             this.#failure = null;
             this.#state = 'ready';
@@ -449,22 +470,44 @@ export class RHIRecoveryCoordinator {
     }
 
     private async waitForSubmissionBoundary(control: RecoveryAttemptControl): Promise<void> {
-        try {
-            await this.awaitCancellable(this.submissions.waitForIdle(), control);
-        } catch (reason) {
-            if (control.cancelled) {
-                throw control.cancellationError ?? new RHIRecoveryCancelledError();
-            }
-            // Device loss commonly rejects pending fences. Once every fence settled, that failure
-            // is evidence of the boundary rather than a reason to abandon resource reconstruction.
-            if (this.submissions.pendingSubmissionCount !== 0) {
-                throw asError(reason, 'Submission boundary failed');
+        for (const tracker of this.#submissionTrackers) {
+            try {
+                await this.awaitCancellable(tracker.waitForIdle(), control);
+            } catch (reason) {
+                if (control.cancelled) {
+                    throw control.cancellationError ?? new RHIRecoveryCancelledError();
+                }
+                // Device loss commonly rejects pending fences. Once every fence settled, that
+                // failure is evidence of the boundary rather than a reason to abandon recovery.
+                if (tracker.pendingSubmissionCount !== 0) {
+                    throw asError(reason, 'Submission boundary failed');
+                }
             }
         }
-        if (this.submissions.pendingSubmissionCount !== 0) {
+        if (!this.submissionTrackersIdle()) {
             throw new Error('Submission boundary remained active during RHI recovery');
         }
-        this.submissions.flush();
+        this.flushSubmissionTrackers();
+    }
+
+    private submissionTrackersIdle(): boolean {
+        for (const tracker of this.#submissionTrackers) {
+            if (tracker.pendingSubmissionCount !== 0) return false;
+        }
+        return true;
+    }
+
+    private flushSubmissionTrackers(): void {
+        for (const tracker of this.#submissionTrackers) tracker.flush();
+    }
+
+    private acknowledgeSubmissionFailures(deviceId: number, deviceGeneration: number): void {
+        if (!this.submissionTrackersIdle()) {
+            throw new Error('Cannot acknowledge submission failures before the recovery boundary');
+        }
+        for (const tracker of this.#submissionTrackers) {
+            tracker.acknowledgeSubmissionFailures(deviceId, deviceGeneration);
+        }
     }
 
     private probeSettledLoss(device: RHIDevice): Promise<Readonly<RHIDeviceLostInfo> | null> {

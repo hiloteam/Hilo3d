@@ -4,8 +4,15 @@ import {
     RHIShaderStage,
     RHITextureUsage
 } from '../../../../src/render/rhi/core/RHITypes';
+import type { RHIRenderPassDepthStencilAttachment } from '../../../../src/render/rhi/core/RHICommands';
+import type {
+    RHIDepthStencilState,
+    RHIGraphicsPipeline
+} from '../../../../src/render/rhi/core/RHIPipeline';
 import { RHIValidationError } from '../../../../src/render/rhi/core/RHIValidation';
 import { RendererDiagnostics } from '../../../../src/render/RendererDiagnostics';
+import { ShaderArtifactCompiler } from '../../../../src/render/renderer/ShaderArtifactCompiler';
+import { prepareWebGPUMipmapShaderArtifacts } from '../../../../src/render/renderer/WebGPUMipmapShader';
 import {
     WebGPUBuffer,
     WebGPUDevice,
@@ -73,6 +80,7 @@ interface NativeHarness {
     readonly surfaceConfigurations: GPUCanvasConfiguration[];
     readonly textureCopyExtents: GPUExtent3D[];
     readonly textureCopySources: GPUTexelCopyBufferInfo[];
+    readonly textureCopyDestinations: GPUTexelCopyTextureInfo[];
     readonly canvas: HTMLCanvasElement;
     readonly externalCopies: readonly [
         GPUCopyExternalImageSourceInfo,
@@ -108,6 +116,7 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
     const surfaceConfigurations: GPUCanvasConfiguration[] = [];
     const textureCopyExtents: GPUExtent3D[] = [];
     const textureCopySources: GPUTexelCopyBufferInfo[] = [];
+    const textureCopyDestinations: GPUTexelCopyTextureInfo[] = [];
     const externalCopies: [
         GPUCopyExternalImageSourceInfo,
         GPUCopyExternalImageDestInfo,
@@ -257,6 +266,7 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
                 copySize: GPUExtent3D
             ) => {
                 textureCopySources.push(source);
+                textureCopyDestinations.push(destination);
                 textureCopyExtents.push(copySize);
                 log.push(
                     `encoder.copyBufferToTexture:${source.buffer.label}->${destination.texture.label}`
@@ -435,6 +445,7 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
         surfaceConfigurations,
         textureCopyExtents,
         textureCopySources,
+        textureCopyDestinations,
         canvas,
         externalCopies,
         submittedCommandBufferLists,
@@ -662,6 +673,181 @@ describe('WebGPU RHI native backend', () => {
         harness.resolveWork();
         await Promise.all([firstSubmission.done, steadySubmission.done]);
         expect(harness.log).toContain('texture.destroy:offscreen color');
+        device.destroy();
+    });
+
+    it('marks an unused combined depth-stencil sibling aspect read-only natively', () => {
+        const harness = createNativeHarness();
+        const device = new WebGPUDevice(harness.device);
+        const texture = device.createTexture({
+            label: 'combined depth stencil',
+            size: { width: 4, height: 4 },
+            format: 'depth24plus-stencil8',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        const view = texture.createView();
+
+        const depthFrame = device.graphicsQueue.beginFrame();
+        depthFrame
+            .beginRenderPass({
+                colorAttachments: [],
+                depthStencilAttachment: {
+                    view,
+                    depthClearValue: 1,
+                    depthLoadOp: 'clear',
+                    depthStoreOp: 'store'
+                }
+            })
+            .end();
+        device.graphicsQueue.endFrame(depthFrame);
+        expect(harness.renderPassDescriptors.at(-1)?.depthStencilAttachment).toMatchObject({
+            depthLoadOp: 'clear',
+            depthStoreOp: 'store',
+            stencilReadOnly: true
+        });
+        expect(
+            harness.renderPassDescriptors.at(-1)?.depthStencilAttachment?.depthReadOnly
+        ).toBeUndefined();
+
+        const stencilFrame = device.graphicsQueue.beginFrame();
+        stencilFrame
+            .beginRenderPass({
+                colorAttachments: [],
+                depthStencilAttachment: {
+                    view,
+                    stencilClearValue: 0,
+                    stencilLoadOp: 'clear',
+                    stencilStoreOp: 'store'
+                }
+            })
+            .end();
+        device.graphicsQueue.endFrame(stencilFrame);
+        expect(harness.renderPassDescriptors.at(-1)?.depthStencilAttachment).toMatchObject({
+            depthReadOnly: true,
+            stencilLoadOp: 'clear',
+            stencilStoreOp: 'store'
+        });
+        expect(
+            harness.renderPassDescriptors.at(-1)?.depthStencilAttachment?.stencilReadOnly
+        ).toBeUndefined();
+
+        texture.destroy();
+        device.destroy();
+    });
+
+    it('rejects unavailable depth/stencil access before native encoding', () => {
+        const harness = createNativeHarness();
+        const device = new WebGPUDevice(harness.device);
+        const vertex = createShader(device, 'vertex');
+        const fragment = createShader(device, 'fragment');
+        const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
+        const color = device.createTexture({
+            label: 'read-only validation color',
+            size: { width: 4, height: 4 },
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        const depthStencil = device.createTexture({
+            label: 'read-only validation depth stencil',
+            size: { width: 4, height: 4 },
+            format: 'depth24plus-stencil8',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        const createPipeline = (descriptor: RHIDepthStencilState): RHIGraphicsPipeline =>
+            device.createGraphicsPipeline({
+                layout,
+                vertex: { shader: vertex },
+                fragment: { shader: fragment, targets: [{ format: 'rgba8unorm' }] },
+                primitive: {},
+                depthStencil: descriptor
+            });
+        const depthWriter = createPipeline({
+            format: 'depth24plus-stencil8',
+            depthWriteEnabled: true,
+            depthCompare: 'always'
+        });
+        const depthReader = createPipeline({
+            format: 'depth24plus-stencil8',
+            depthWriteEnabled: false,
+            depthCompare: 'less'
+        });
+        const stencilWriter = createPipeline({
+            format: 'depth24plus-stencil8',
+            depthWriteEnabled: false,
+            stencilFront: { passOp: 'replace' }
+        });
+        const stencilReader = createPipeline({
+            format: 'depth24plus-stencil8',
+            depthWriteEnabled: false,
+            stencilFront: { compare: 'less' }
+        });
+        const maskedStencilWriter = createPipeline({
+            format: 'depth24plus-stencil8',
+            depthWriteEnabled: false,
+            stencilFront: { passOp: 'replace' },
+            stencilWriteMask: 0
+        });
+
+        const setPipeline = (
+            attachment: Omit<RHIRenderPassDepthStencilAttachment, 'view'>,
+            pipeline: RHIGraphicsPipeline,
+            rejection: RegExp | null
+        ): void => {
+            const frame = device.graphicsQueue.beginFrame();
+            const pass = frame.beginRenderPass({
+                colorAttachments: [
+                    {
+                        view: color.createView(),
+                        loadOp: 'load',
+                        storeOp: 'store'
+                    }
+                ],
+                depthStencilAttachment: {
+                    view: depthStencil.createView(),
+                    ...attachment
+                }
+            });
+            harness.log.length = 0;
+            if (rejection !== null) {
+                expect(() => {
+                    pass.setPipeline(pipeline);
+                }).toThrow(rejection);
+                expect(harness.log).not.toContain('pass.setPipeline');
+            } else {
+                expect(() => {
+                    pass.setPipeline(pipeline);
+                }).not.toThrow();
+                expect(harness.log).toContain('pass.setPipeline');
+            }
+            pass.end();
+            device.graphicsQueue.endFrame(frame);
+        };
+        const writableDepth = {
+            depthLoadOp: 'load',
+            depthStoreOp: 'store'
+        } as const;
+        const writableStencil = {
+            stencilLoadOp: 'load',
+            stencilStoreOp: 'store'
+        } as const;
+
+        setPipeline(writableStencil, depthWriter, /writes a read-only or unused/u);
+        setPipeline(
+            { depthReadOnly: true, ...writableStencil },
+            depthWriter,
+            /writes a read-only or unused/u
+        );
+        setPipeline(writableStencil, depthReader, /reads an unavailable or unused/u);
+        setPipeline({ depthReadOnly: true }, depthReader, null);
+        setPipeline(writableDepth, stencilWriter, /writes a read-only or unused/u);
+        setPipeline(
+            { ...writableDepth, stencilReadOnly: true },
+            stencilWriter,
+            /writes a read-only or unused/u
+        );
+        setPipeline(writableDepth, stencilReader, /reads an unavailable or unused/u);
+        setPipeline({ stencilReadOnly: true }, stencilReader, null);
+        setPipeline(writableDepth, maskedStencilWriter, null);
         device.destroy();
     });
 
@@ -1264,9 +1450,40 @@ describe('WebGPU RHI native backend', () => {
         device.destroy();
     });
 
-    it('encodes 2D and cube mip generation into the current frame submission', async () => {
+    it('allows manual multi-mip allocation but rejects generation without prepared artifacts', () => {
         const harness = createNativeHarness();
         const device = new WebGPUDevice(harness.device);
+
+        const texture = device.createTexture({
+            label: 'unprepared generated texture',
+            size: { width: 4, height: 4 },
+            mipLevelCount: 3,
+            format: 'rgba8unorm',
+            usage:
+                RHITextureUsage.TEXTURE_BINDING |
+                RHITextureUsage.RENDER_ATTACHMENT |
+                RHITextureUsage.COPY_DST
+        });
+        const frame = device.graphicsQueue.beginFrame();
+        expect(() => {
+            frame.generateMipmaps(texture);
+        }).toThrow(/GLSL\/Naga-prepared shader artifacts/u);
+        device.graphicsQueue.abortFrame(frame);
+        expect(harness.log).not.toContain('createCommandEncoder');
+
+        texture.destroy();
+        device.destroy();
+    });
+
+    it('encodes 2D and cube mip generation into the current frame submission', async () => {
+        const harness = createNativeHarness();
+        const compiler = new ShaderArtifactCompiler();
+        await compiler.initialize();
+        const device = new WebGPUDevice(
+            harness.device,
+            null,
+            prepareWebGPUMipmapShaderArtifacts(compiler)
+        );
         const usage =
             RHITextureUsage.COPY_DST |
             RHITextureUsage.TEXTURE_BINDING |
@@ -1278,6 +1495,12 @@ describe('WebGPU RHI native backend', () => {
             format: 'rgba8unorm',
             usage
         });
+        expect(harness.log.filter(entry => entry === 'createShaderModule')).toHaveLength(2);
+        expect(harness.log.filter(entry => entry === 'createRenderPipeline')).toHaveLength(1);
+        expect(harness.log.filter(entry => entry.startsWith('texture.createView:'))).toHaveLength(
+            4
+        );
+        expect(harness.log.filter(entry => entry === 'createBindGroup')).toHaveLength(2);
         harness.log.length = 0;
         const context = device.graphicsQueue.beginFrame();
         context.writeTexture(
@@ -1294,6 +1517,14 @@ describe('WebGPU RHI native backend', () => {
         expect(harness.log.filter(entry => entry === 'encoder.beginRenderPass')).toHaveLength(2);
         expect(harness.log.filter(entry => entry === 'pass.draw')).toHaveLength(2);
         expect(harness.log.filter(entry => entry === 'queue.submit')).toHaveLength(1);
+        expect(harness.log.filter(entry => entry.startsWith('texture.createView:'))).toHaveLength(
+            0
+        );
+        expect(harness.log.filter(entry => entry === 'createBindGroup')).toHaveLength(0);
+        expect(harness.log.filter(entry => entry === 'createRenderPipeline')).toHaveLength(0);
+        expect(harness.log.filter(entry => entry === 'createShaderModule')).toHaveLength(0);
+        expect(harness.log.filter(entry => entry === 'createBindGroupLayout')).toHaveLength(0);
+        expect(harness.log.filter(entry => entry === 'createPipelineLayout')).toHaveLength(0);
         expect(harness.pipelineDescriptors.at(-1)?.fragment?.targets).toEqual([
             { format: 'rgba8unorm' }
         ]);
@@ -1312,6 +1543,7 @@ describe('WebGPU RHI native backend', () => {
         expect(harness.log.filter(entry => entry === 'createPipelineLayout')).toHaveLength(0);
         expect(harness.log.filter(entry => entry === 'encoder.beginRenderPass')).toHaveLength(2);
 
+        harness.textureViewDescriptors.length = 0;
         const cube = device.createTexture({
             label: 'generated cube',
             size: { width: 4, height: 4, depthOrArrayLayers: 6 },
@@ -1320,12 +1552,17 @@ describe('WebGPU RHI native backend', () => {
             format: 'rgba8unorm',
             usage
         });
+        expect(harness.textureViewDescriptors).toHaveLength(24);
         harness.log.length = 0;
-        harness.textureViewDescriptors.length = 0;
         const cubeContext = device.graphicsQueue.beginFrame();
         cubeContext.generateMipmaps(cube);
         const cubeSubmission = device.graphicsQueue.endFrame(cubeContext);
         expect(harness.log.filter(entry => entry === 'encoder.beginRenderPass')).toHaveLength(12);
+        expect(harness.log.filter(entry => entry.startsWith('texture.createView:'))).toHaveLength(
+            0
+        );
+        expect(harness.log.filter(entry => entry === 'createBindGroup')).toHaveLength(0);
+        expect(harness.log.filter(entry => entry === 'createRenderPipeline')).toHaveLength(0);
         expect(harness.textureViewDescriptors).toHaveLength(24);
         for (const descriptor of harness.textureViewDescriptors) {
             expect(descriptor).toMatchObject({
@@ -2020,6 +2257,33 @@ describe('WebGPU RHI native backend', () => {
 
         expect(harness.textureCopyExtents).toEqual([
             { width: 4, height: 4, depthOrArrayLayers: 1 }
+        ]);
+        harness.resolveWork();
+    });
+
+    it('preserves block-aligned partial compressed writes at their portable origin', () => {
+        const harness = createNativeHarness();
+        (harness.device.features as unknown as Set<string>).add('texture-compression-bc');
+        const device = new WebGPUDevice(harness.device);
+        const texture = device.createTexture({
+            label: 'compressed partial texture',
+            size: { width: 8, height: 16 },
+            format: 'bc1-rgba-unorm',
+            usage: RHITextureUsage.COPY_DST | RHITextureUsage.TEXTURE_BINDING
+        });
+        const context = device.graphicsQueue.beginFrame();
+
+        context.writeTexture(
+            { texture, origin: { y: 4 } },
+            new Uint8Array(32),
+            { bytesPerRow: 16, rowsPerImage: 2 },
+            { width: 8, height: 8 }
+        );
+        device.graphicsQueue.endFrame(context);
+
+        expect(harness.textureCopyDestinations[0]?.origin).toEqual({ x: 0, y: 4, z: 0 });
+        expect(harness.textureCopyExtents).toEqual([
+            { width: 8, height: 8, depthOrArrayLayers: 1 }
         ]);
         harness.resolveWork();
     });

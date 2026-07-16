@@ -301,7 +301,7 @@ export class ForwardRenderer {
             if (!meshFrameStarted) {
                 meshProcessor.beginFrame(scope.context, scope.uploads);
             } else {
-                meshProcessor.beginPass(context.camera, context.viewport);
+                meshProcessor.beginContextPass(context);
             }
         }
         const surfaceTexture = importSurfaceColor(scope.graph, surface);

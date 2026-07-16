@@ -120,8 +120,10 @@ export class WebGL2Buffer extends WebGL2ResourceBase implements RHIBuffer {
                 : snapshotRHIDataSource(descriptor.initialData);
         const nativeUsage =
             (this.usage & RHIBufferUsage.COPY_DST) !== 0 ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW;
-        if (data === null) gl.bufferData(allocationTarget, this.size, nativeUsage);
-        else gl.bufferData(allocationTarget, data, nativeUsage);
+        gl.bufferData(allocationTarget, this.size, nativeUsage);
+        if (data !== null && data.byteLength > 0) {
+            gl.bufferSubData(allocationTarget, 0, data);
+        }
         // Mutations use a copy target so they never alter a VAO-local element-array binding.
         this.nativeTarget = isIndexBuffer ? gl.COPY_WRITE_BUFFER : allocationTarget;
         if (normalized.mappedAtCreation) {

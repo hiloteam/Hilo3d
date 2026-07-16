@@ -1,4 +1,6 @@
 import { RHIBufferUsage, RHITextureUsage } from '../../../../src/render/rhi/core';
+import { ShaderArtifactCompiler } from '../../../../src/render/renderer/ShaderArtifactCompiler';
+import { prepareWebGPUMipmapShaderArtifacts } from '../../../../src/render/renderer/WebGPUMipmapShader';
 import { expect, it } from 'vitest';
 import { createWebGPUDevice } from '../../../../src/render/rhi/backends/webgpu';
 import { expectRHIPhase2Conformance, runRHIPhase2Conformance } from './RHIPhase2Conformance';
@@ -13,7 +15,12 @@ it.skipIf(!nativeWebGPUAvailable)(
             testContext.skip();
             return;
         }
-        const device = await createWebGPUDevice({ adapter });
+        const compiler = new ShaderArtifactCompiler();
+        await compiler.initialize();
+        const device = await createWebGPUDevice({
+            adapter,
+            mipmapShaderArtifacts: prepareWebGPUMipmapShaderArtifacts(compiler)
+        });
         const canvas = document.createElement('canvas');
         const progress: string[] = [];
         try {
@@ -41,7 +48,12 @@ it.skipIf(!nativeWebGPUAvailable)(
             testContext.skip();
             return;
         }
-        const device = await createWebGPUDevice({ adapter });
+        const compiler = new ShaderArtifactCompiler();
+        await compiler.initialize();
+        const device = await createWebGPUDevice({
+            adapter,
+            mipmapShaderArtifacts: prepareWebGPUMipmapShaderArtifacts(compiler)
+        });
         const textureUsage =
             RHITextureUsage.COPY_DST |
             RHITextureUsage.COPY_SRC |

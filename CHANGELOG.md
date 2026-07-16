@@ -26,19 +26,53 @@
   existing direct forward recorder with no intermediate scene target or public-facade draw cost;
   storage-buffer, storage-texture, and compute capability names remain fail-closed until their full
   shader/Render Graph/RHI/backend implementations land.
+- Expose the built-in forward culling results to features, reject feature runtimes shared across
+  Renderers, and preserve selected RenderTarget color/depth/stencil clear/load/store operations
+  across feature-enabled scene, intermediate-color, and output passes.
+- Reject pre-opaque scene-color sampling and keep forward `sampledDepth` fail-closed until a
+  portable non-filtering public binding path exists.
 - Add backend-neutral `Renderer.waitForIdle()` for application completion fences. Native WebGL 2 or
   WebGPU interoperability is opt-in through `Renderer.getExtension()` instead of public `gl` or
   `gpuDevice` fields.
 - Harden scriptable rendering with role-specific sampled/copy texture usage, pre-frame exact-copy
   validation, explicit resolve terminal tracking, per-invocation shadow binding isolation,
   effective-material transparent depth sorting, filterable fullscreen capability checks, complete
-  recovery capability-superset validation, frozen scoped facades, and an internal-only pass-pool
-  acquisition path.
+  recovery capability-superset validation, non-revivable per-invocation/per-callback lease facades
+  over reusable internal storage, and an internal-only pass-pool acquisition path.
+- Route `renderToTarget()` through the configured pipeline, make public graph handles unique across
+  invocations, reject nested rendering through record/prepare/execute, add transactional per-key
+  persistent-target release, preserve pre-draw Mesh event mutation before draw preparation, and
+  align after-scene events/face counts with every renderer-list occurrence actually drawn by live
+  graph passes.
 - Keep backend selection outside the draw loop and preserve the existing native fast paths, state
   caches, prepared resources, and pass-level execution so the unified public surface adds no
   per-draw dispatch or allocation cost.
 - Add one internal `RHIFactory` composition root for concrete RHI construction and support probes;
   backend drivers receive the concrete RHI directly rather than a command-forwarding facade.
+
+### Fixes
+
+- Clear handled old-generation submission-fence failures across every renderer submission tracker
+  only after successful device recovery, so a recovered renderer's `waitForIdle()` observes new
+  failures without hiding tracker/collection errors.
+- Restore the full portable Playwright UI, WebGPU, and visual matrix to `validate:ci`; the
+  physical-GPU lane remains a separate manual workflow.
+- Remove the production handwritten WebGPU mipmap WGSL module. Renderer initialization reuses its
+  compiler and supplies required GLSL/Naga artifacts through the WebGPU RHI creation contract, while
+  native shader, pipeline, view, and bind-group creation completes before frame execution.
+- Preserve WebGL2 buffer capacity and portable texture-copy orientation, restore browser-managed
+  external-image color conversion, reject unsupported WebGL2 stencil uploads and depth/stencil
+  readbacks before native commands, validate render-attachment subresources and depth/stencil
+  operations before backend execution, mark unused WebGPU combined depth/stencil sibling aspects
+  read-only, reject pipelines that read an unavailable aspect or write a read-only/unused aspect,
+  and reject partial WebGL2 compressed buffer uploads whose opaque blocks cannot preserve the
+  portable top-left row contract without format-specific recompression.
+- Make render-target release, replacement, and destroy cleanup resumable per handle so a cleanup
+  failure retains its owner/record, never double-releases completed handles, and never leaks a
+  staged replacement allocation.
+- Elide unchanged vertex-buffer bindings between adjacent prepared draws and keep WebGPU
+  buffer-range validation paths static, removing draw-count-amplified hot-path allocations without
+  weakening the backend validation contract.
 
 # 2.0.0 (2026-07-14)
 

@@ -126,6 +126,21 @@ interface NormalizedTargetDescriptor {
 interface StagedTargetAllocation {
     readonly colors: readonly RenderTargetColorResource[];
     readonly depth: RenderTargetDepthStencilResource | null;
+    readonly handles: readonly ResourceRegistryHandle<RHIDeviceOwnedDestroyable>[];
+}
+
+interface PendingTargetReplacement {
+    readonly descriptor: Readonly<NormalizedTargetDescriptor>;
+    readonly allocation: Readonly<StagedTargetAllocation>;
+    discardHandleIndex: number;
+}
+
+/** Resumable retirement keeps a staged replacement alive until old-handle cleanup commits. */
+interface PendingTargetTransition {
+    disposition: 'replace' | 'release';
+    readonly handles: readonly ResourceRegistryHandle<RHIDeviceOwnedDestroyable>[];
+    releasedHandleCount: number;
+    readonly replacement: PendingTargetReplacement | null;
 }
 
 export interface ResolvedRenderTargetResources {
@@ -213,6 +228,28 @@ function sameDescriptor(
     return true;
 }
 
+function sameNormalizedDescriptor(
+    first: Readonly<NormalizedTargetDescriptor>,
+    second: Readonly<NormalizedTargetDescriptor>
+): boolean {
+    if (
+        first.label !== second.label ||
+        first.width !== second.width ||
+        first.height !== second.height ||
+        first.sampleCount !== second.sampleCount ||
+        first.multisampleAttachmentLifetime !== second.multisampleAttachmentLifetime ||
+        first.depthStencilFormat !== second.depthStencilFormat ||
+        first.depthStencilSampled !== second.depthStencilSampled ||
+        first.colorFormats.length !== second.colorFormats.length
+    ) {
+        return false;
+    }
+    for (let index = 0; index < first.colorFormats.length; index += 1) {
+        if (first.colorFormats[index] !== second.colorFormats[index]) return false;
+    }
+    return true;
+}
+
 function discardUnsubmittedHandles(
     registry: ResourceRegistry,
     handles: readonly ResourceRegistryHandle<RHIDeviceOwnedDestroyable>[]
@@ -223,23 +260,24 @@ function discardUnsubmittedHandles(
     }
 }
 
-function releaseRecordHandles(
-    registry: ResourceRegistry,
+function collectRecordHandles(
     record: Readonly<RenderTargetResourceRecord>
-): void {
+): readonly ResourceRegistryHandle<RHIDeviceOwnedDestroyable>[] {
+    const handles: ResourceRegistryHandle<RHIDeviceOwnedDestroyable>[] = [];
     for (const color of record.colorAttachments) {
-        registry.release(color.readableView);
-        if (color.texture !== null) registry.release(color.texture);
-        if (color.resolveTarget !== null) registry.release(color.resolveTarget);
+        handles.push(color.readableView);
+        if (color.texture !== null) handles.push(color.texture);
+        if (color.resolveTarget !== null) handles.push(color.resolveTarget);
     }
     if (record.depthStencilAttachment !== null) {
         if (record.depthStencilAttachment.sampledView !== null) {
-            registry.release(record.depthStencilAttachment.sampledView);
+            handles.push(record.depthStencilAttachment.sampledView);
         }
         if (record.depthStencilAttachment.texture !== null) {
-            registry.release(record.depthStencilAttachment.texture);
+            handles.push(record.depthStencilAttachment.texture);
         }
     }
+    return Object.freeze(handles);
 }
 
 /**
@@ -254,6 +292,10 @@ export class RenderTargetResourceCache {
     readonly metrics = new RHICacheCounter();
     #recordsByOwner = new WeakMap<object, MutableRenderTargetResourceRecord>();
     readonly #records = new Set<MutableRenderTargetResourceRecord>();
+    readonly #pendingTransitions = new WeakMap<
+        MutableRenderTargetResourceRecord,
+        PendingTargetTransition
+    >();
     #destroyed = false;
 
     constructor(readonly registry: ResourceRegistry) {}
@@ -267,16 +309,8 @@ export class RenderTargetResourceCache {
         const current = this.#recordsByOwner.get(owner);
         const token = current?.token ?? allocateRenderTargetToken();
         const descriptor = this.normalizeDescriptor(source, token, multisampleAttachmentLifetime);
-        if (current !== undefined && sameDescriptor(current, descriptor)) {
-            this.metrics.recordHit();
-            return current;
-        }
-        if (current?.revision === Number.MAX_SAFE_INTEGER) {
-            throw new RangeError('Render target revision space is exhausted');
-        }
-
-        const staged = this.stageAllocation(token, (current?.revision ?? 0) + 1, descriptor);
         if (current === undefined) {
+            const staged = this.stageAllocation(token, 1, descriptor);
             const record: MutableRenderTargetResourceRecord = Object.seal({
                 owner,
                 token,
@@ -297,15 +331,57 @@ export class RenderTargetResourceCache {
             return record;
         }
 
-        releaseRecordHandles(this.registry, current);
+        let transition = this.#pendingTransitions.get(current);
+        if (transition === undefined) {
+            if (sameDescriptor(current, descriptor)) {
+                this.metrics.recordHit();
+                return current;
+            }
+            if (current.revision === Number.MAX_SAFE_INTEGER) {
+                throw new RangeError('Render target revision space is exhausted');
+            }
+            const staged = this.stageAllocation(token, current.revision + 1, descriptor);
+            transition = {
+                disposition: 'replace',
+                handles: collectRecordHandles(current),
+                releasedHandleCount: 0,
+                replacement: {
+                    descriptor,
+                    allocation: staged,
+                    discardHandleIndex: staged.handles.length - 1
+                }
+            };
+            this.#pendingTransitions.set(current, transition);
+        } else {
+            if (transition.disposition === 'release') {
+                throw new Error('Render target owner is pending release');
+            }
+            const pendingDescriptor = transition.replacement?.descriptor;
+            if (
+                pendingDescriptor === undefined ||
+                !sameNormalizedDescriptor(pendingDescriptor, descriptor)
+            ) {
+                throw new Error(
+                    'Render target replacement must retry with the same descriptor after cleanup failure'
+                );
+            }
+        }
+        this.releaseTransitionHandles(transition);
+        const replacement = transition.replacement;
+        if (replacement === null) {
+            throw new Error('Render target replacement state is incomplete');
+        }
+        const staged = replacement.allocation;
+        const committedDescriptor = replacement.descriptor;
         current.revision++;
-        current.label = descriptor.label;
-        current.width = descriptor.width;
-        current.height = descriptor.height;
-        current.sampleCount = descriptor.sampleCount;
-        current.multisampleAttachmentLifetime = descriptor.multisampleAttachmentLifetime;
+        current.label = committedDescriptor.label;
+        current.width = committedDescriptor.width;
+        current.height = committedDescriptor.height;
+        current.sampleCount = committedDescriptor.sampleCount;
+        current.multisampleAttachmentLifetime = committedDescriptor.multisampleAttachmentLifetime;
         current.colorAttachments = staged.colors;
         current.depthStencilAttachment = staged.depth;
+        this.#pendingTransitions.delete(current);
         this.metrics.recordMiss();
         this.metrics.recordReplacement();
         return current;
@@ -375,28 +451,44 @@ export class RenderTargetResourceCache {
     }
 
     owns(record: Readonly<RenderTargetResourceRecord>): boolean {
-        return this.#records.has(record);
+        const current = record as MutableRenderTargetResourceRecord;
+        return this.#records.has(current) && !this.#pendingTransitions.has(current);
     }
 
     release(owner: object): boolean {
         this.assertAlive();
         const record = this.#recordsByOwner.get(owner);
         if (record === undefined) return false;
+        this.releaseRecord(record);
         this.#recordsByOwner.delete(owner);
         this.#records.delete(record);
-        releaseRecordHandles(this.registry, record);
+        this.#pendingTransitions.delete(record);
         this.metrics.recordRemoval();
         return true;
     }
 
     destroy(): void {
         if (this.#destroyed) return;
+        let firstFailure: Error | null = null;
         for (const record of this.#records) {
-            releaseRecordHandles(this.registry, record);
+            try {
+                this.releaseRecord(record);
+                this.#recordsByOwner.delete(record.owner);
+                this.#records.delete(record);
+                this.#pendingTransitions.delete(record);
+                this.metrics.recordRemoval();
+            } catch (error) {
+                firstFailure ??=
+                    error instanceof Error
+                        ? error
+                        : new Error(`Render target cleanup failed: ${String(error)}`);
+            }
         }
-        this.#records.clear();
+        if (firstFailure !== null) throw firstFailure;
+        if (this.#records.size !== 0) {
+            throw new Error('Render target resources failed during cleanup');
+        }
         this.#recordsByOwner = new WeakMap();
-        this.metrics.clear();
         this.#destroyed = true;
     }
 
@@ -631,7 +723,8 @@ export class RenderTargetResourceCache {
         }
         return Object.freeze({
             colors: Object.freeze(colors),
-            depth
+            depth,
+            handles: Object.freeze(handles)
         });
     }
 
@@ -692,10 +785,50 @@ export class RenderTargetResourceCache {
         if (!this.#records.has(current) || this.#recordsByOwner.get(current.owner) !== current) {
             throw new Error('Render target record is stale or belongs to another cache');
         }
+        if (this.#pendingTransitions.has(current)) {
+            throw new Error('Render target record is pending replacement or release');
+        }
         if (current.backend !== this.registry.deviceBackend) {
             throw new Error('Render target record belongs to another RHI backend');
         }
         return current;
+    }
+
+    private releaseRecord(record: MutableRenderTargetResourceRecord): void {
+        let transition = this.#pendingTransitions.get(record);
+        if (transition === undefined) {
+            transition = {
+                disposition: 'release',
+                handles: collectRecordHandles(record),
+                releasedHandleCount: 0,
+                replacement: null
+            };
+            this.#pendingTransitions.set(record, transition);
+        } else {
+            transition.disposition = 'release';
+        }
+        this.releaseTransitionHandles(transition);
+        const replacement = transition.replacement;
+        if (replacement === null) return;
+        while (replacement.discardHandleIndex >= 0) {
+            const handle = replacement.allocation.handles[replacement.discardHandleIndex];
+            if (handle === undefined) {
+                throw new Error('Render target staged cleanup state is incomplete');
+            }
+            this.registry.discardUnsubmitted(handle);
+            replacement.discardHandleIndex--;
+        }
+    }
+
+    private releaseTransitionHandles(transition: PendingTargetTransition): void {
+        while (transition.releasedHandleCount < transition.handles.length) {
+            const handle = transition.handles[transition.releasedHandleCount];
+            if (handle === undefined) {
+                throw new Error('Render target cleanup state is incomplete');
+            }
+            this.registry.release(handle);
+            transition.releasedHandleCount++;
+        }
     }
 
     private assertAlive(): void {

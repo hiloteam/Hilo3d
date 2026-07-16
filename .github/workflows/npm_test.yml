@@ -55,5 +55,7 @@ jobs:
           name: test-reports-node-22.22.2
           path: |
             coverage
+            playwright-report
+            test-results
           if-no-files-found: ignore
           retention-days: 14

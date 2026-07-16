@@ -457,13 +457,21 @@ export class PreparedDraw {
                 else pass.setBindGroup(index, bindGroup);
             }
         }
+        const previousVertexBuffers = previousDraw?.vertexBuffers;
         for (let slot = 0; slot < this.vertexBufferHighWater; slot += 1) {
             const binding = this.vertexBuffers[slot];
             const buffer = binding?.buffer;
             if (binding !== undefined && buffer) {
-                pass.setVertexBufferRecord(
-                    binding as unknown as Readonly<RHIVertexBufferBindingRecord>
-                );
+                const previousBinding = previousVertexBuffers?.[slot];
+                if (
+                    previousBinding?.buffer !== buffer ||
+                    previousBinding.offset !== binding.offset ||
+                    previousBinding.size !== binding.size
+                ) {
+                    pass.setVertexBufferRecord(
+                        binding as unknown as Readonly<RHIVertexBufferBindingRecord>
+                    );
+                }
             }
         }
         if (this.indexed) {

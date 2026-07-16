@@ -34,8 +34,9 @@
   WebGPU 双后端，并对两个后端执行确定性视觉、交互、后处理与拾取门禁；真实 WebGPU
   adapter/device/pipeline fixture 作为额外的深度验收，而不是 WebGPU 唯一覆盖。
 - 类型声明、TypeDoc API 页面和 API Extractor 签名报告全部从同一份已检查源码生成。
-- npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；CI 和发布共用唯一的 `npm run validate`
-  门禁。
+- npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；本地/发布使用
+  `npm run validate`，默认 CI 使用包含同一完整浏览器矩阵并额外执行 portable benchmark smoke 的
+  `npm run validate:ci`。
 - 旧 Gulp、Webpack、Babel、Mocha、JSDoc、手写声明、旧 `build/`、已提交的旧
   `docs/`、旧测试页、运行时 vendor 脚本和远程 CDN 依赖已经退出活跃工程。
 
@@ -445,8 +446,12 @@ image 与 depth mipmap filter 同样拒绝。
 
 compressed sub-update 只接受 raw
 block 数据；origin 必须按 block 对齐，width/height 只有到达逻辑 mip 边缘时才允许不是 block 整数倍，payload 必须与 block 数精确相符。WebGPU 对 2×2、1×1 等 mip
-tail 使用底层格式要求的物理 4×4 copy extent，因此完整 8→4→2→1
-chain 可正常上传。Texture 每次局部更新都会同步维护准确的完整 CPU
+tail 使用底层格式要求的物理 4×4 copy extent，因此完整 8→4→2→1 chain 可正常上传。WebGL2 的 compressed
+buffer upload 只保留完整 mip slice；partial region 无法在不解析、重编码 BC/ETC2/ASTC opaque block
+payload 的前提下满足 portable top-left row 契约，因此必须在 native command 前以
+`unsupported-feature` 失败。array/cube 的单 layer/face 完整 mip
+slice 仍然支持，WebGPU 的 block-aligned partial
+update 契约不变。Texture 每次局部更新都会同步维护准确的完整 CPU
 checkpoint，同时只保留最多 64 条增量历史。每个 WebGL context/WebGPU
 device 独立确认 revision；消费者落后于 checkpoint 边界时，
 `TextureUpdateSnapshot.requiresFullUpload` 为
@@ -692,10 +697,13 @@ manager 和 binding API 保持内部；不存在文档手写声称为公共接�
 `Renderer`/`RenderTarget` 使用 MRT、MSAA、readback、压缩纹理查询和资源诊断，不把 backend-specific
 target 当成跨后端主契约。
 
-内部 WebGPU texture manager 显式接收已经完成 `await initialize()` 的 shader
-translator；Renderer 在 manager 创建和 device
-recovery 前都复用这个已初始化实例。这样 present/mipmap 等内部 pipeline 不可能绕过统一编译器，也不会在 manager 内隐式启动另一套初始化或 WGSL
-fallback。
+Renderer 在首次 WebGPU device 创建和 device recovery 前复用已经完成 `await initialize()` 的
+`ShaderArtifactCompiler`，把 mipmap GLSL utility 准备为 vertex/fragment Shader
+Artifact 后显式注入具体设备。内部 `RHIFactory` 把 mipmap Artifact 定义为 WebGPU device create
+options 的必填依赖，并在运行时再次校验；它和 WebGPU backend 都不反向 import
+renderer/GLSL、不隐式启动 Naga，也没有 WGSL fallback。shader
+module/layout/sampler 在 device 创建时建立，按 format 复用的 pipeline 与逐 mip/layer view、bind
+group 在 texture allocation 时准备，因此 command execute 只编码 mipmap render pass。
 
 `npm run site:build` 将 TypeDoc 输出放入 `/docs/`，将完整 Vite 示例构建放入
 `/examples/`，再生成站点根跳转与 `CNAME`。生成目录不提交到主工作树，由 Pages 工作流每次重新构建。
@@ -813,14 +821,16 @@ recovery、纹理重放与 readback 全部成功。
 视觉套件使用固定 viewport、UTC、英文 locale、固定 device scale、禁用动画的 Linux
 Chromium 和 SwiftShader。同一个确定性灯光 PBR 场景分别通过 WebGL
 2 与 WebGPU 渲染；除截图外还断言 readback 背景像素、变换后像素数、方向光覆盖和前景颜色数量，并在运行时要求两个后端的首帧截图逐字节相同。两个后端仍各自保存
-`test/ui/__screenshots__/` 基线以定位单后端回归；失败时保留 screenshot、trace 与 video。
+`test/ui/__screenshots__/`
+基线以定位单后端回归；失败时保留 screenshot 与 trace，本地运行还会保留 video，CI 为避免 SwiftShader 与视频编码争抢 CPU 而关闭 video。
 
 ## CI 与站点发布
 
 CI 只保留项目最低版本 Node 22.22.2 这一个测试档位，使用当前维护的 GitHub
 Actions、锁文件安装、固定 npm 12.0.1 和显式 Chromium 系统依赖，避免在 Node
-22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master` 与版本 tag 使用同一个
-`npm run validate`；过期任务由 concurrency 自动取消。Chromium 同时启用确定性的 SwiftShader WebGL
+22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master` 与版本 tag 使用
+`npm run validate:ci`，其功能、包和完整浏览器门禁与 release validate 一致，并额外执行 portable RHI
+benchmark smoke；过期任务由 concurrency 自动取消。Chromium 同时启用确定性的 SwiftShader WebGL
 2 与 WebGPU adapter，78 页矩阵、双后端交互和双后端视觉门禁不依赖 CI
 runner 是否暴露物理 GPU。物理 GPU 项目只能由上述手动 self-hosted
 workflow 显式运行，不改变发布门禁的可移植性。
@@ -844,8 +854,10 @@ references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费�
 其中 shader 静态门禁会扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00
 `attribute`/`varying`、`texture2D`/`textureCube`、`gl_FragColor`/`gl_FragData`、WebGL 1 shader
 extensions，以及 block 外的 non-sampler `uniform`；现代性门禁还会扫描全部生产 TypeScript，禁止
-`@vertex`/`@fragment`/`@compute` 手写 WGSL entry point。运行时门禁会再次在 program link 或 Naga
-translation 时拒绝漏网接口，静态规则、WebGL 2 link、Naga corpus 与真实 WebGPU pipeline 互为补充。
+`@vertex`/`@fragment`/`@compute` 手写 WGSL entry point；扫描范围同时覆盖生产
+`.vert`/`.frag`/`.glsl`/`.wgsl` 源文件，不允许通过非 TypeScript 扩展绕过。运行时门禁会再次在 program
+link 或 Naga translation 时拒绝漏网接口，静态规则、WebGL 2 link、Naga corpus 与真实 WebGPU
+pipeline 互为补充。
 
 ## 验收清单
 

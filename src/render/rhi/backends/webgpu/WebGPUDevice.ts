@@ -15,6 +15,7 @@ import type {
     RHIDevice,
     RHIDeviceLostInfo,
     RHIDeviceOwnedObject,
+    RHIGraphicsShaderArtifactInput,
     RHISamplerDescriptor,
     RHIShaderDescriptor,
     RHITextureDescriptor
@@ -70,11 +71,13 @@ export interface CreateWebGPUDeviceOptions {
     readonly label?: string;
     /** @internal Allocation-free renderer diagnostics channel. */
     readonly diagnosticsSink?: RHIDiagnosticsSink;
+    /** @internal Prepared above the RHI through the engine GLSL/Naga compiler. */
+    readonly mipmapShaderArtifacts?: Readonly<RHIGraphicsShaderArtifactInput>;
 }
 
 export type WebGPUSupportOptions = Omit<
     CreateWebGPUDeviceOptions,
-    'adapter' | 'label' | 'diagnosticsSink'
+    'adapter' | 'label' | 'diagnosticsSink' | 'mipmapShaderArtifacts'
 >;
 
 function webGPUAdapterIsFallback(adapter: GPUAdapter): boolean {
@@ -110,7 +113,11 @@ export class WebGPUDevice implements RHIDevice, WebGPUObjectOwner {
     readonly #lostSignal: WebGPUDeferred<RHIDeviceLostInfo>;
     readonly #diagnosticsSink: RHIDiagnosticsSink | null;
 
-    constructor(nativeHandle: GPUDevice, diagnosticsSink: RHIDiagnosticsSink | null = null) {
+    constructor(
+        nativeHandle: GPUDevice,
+        diagnosticsSink: RHIDiagnosticsSink | null = null,
+        mipmapShaderArtifacts: Readonly<RHIGraphicsShaderArtifactInput> | null = null
+    ) {
         this.#nativeHandle = nativeHandle;
         this.#diagnosticsSink = diagnosticsSink;
         this.#objectIds = createRHIObjectIdAllocator(this.id);
@@ -120,7 +127,7 @@ export class WebGPUDevice implements RHIDevice, WebGPUObjectOwner {
         this.lost = this.#lostSignal.promise;
         this.graphicsQueue = new WebGPUQueue(this, nativeHandle.queue);
         this.framebufferCache = new WebGPUFramebufferCache(this, this.framebufferCacheMetrics);
-        this.mipmapGenerator = new WebGPUMipmapGenerator(this);
+        this.mipmapGenerator = new WebGPUMipmapGenerator(this, mipmapShaderArtifacts);
         void nativeHandle.lost.then(info => {
             this.handleNativeLoss(info);
         });
@@ -246,7 +253,14 @@ export class WebGPUDevice implements RHIDevice, WebGPUObjectOwner {
         const nativeTexture = this.#nativeHandle.createTexture(
             nativeWebGPUTextureDescriptor(normalized)
         );
-        return new WebGPUTexture(this, nativeTexture, normalized);
+        const texture = new WebGPUTexture(this, nativeTexture, normalized);
+        try {
+            this.mipmapGenerator.prepare(texture);
+            return texture;
+        } catch (error) {
+            texture.destroy();
+            throw error;
+        }
     }
 
     createSampler(descriptor: RHISamplerDescriptor = {}): WebGPUSampler {
@@ -446,7 +460,16 @@ export async function createWebGPUDevice(
         ...(requestedFeatures.size === 0 ? {} : { requiredFeatures: [...requestedFeatures] }),
         ...(options.requiredLimits === undefined ? {} : { requiredLimits: options.requiredLimits })
     });
-    return new WebGPUDevice(nativeDevice, options.diagnosticsSink ?? null);
+    try {
+        return new WebGPUDevice(
+            nativeDevice,
+            options.diagnosticsSink ?? null,
+            options.mipmapShaderArtifacts ?? null
+        );
+    } catch (error) {
+        nativeDevice.destroy();
+        throw error;
+    }
 }
 
 /** Probe adapter features and limits without requesting a device or creating native resources. */

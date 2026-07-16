@@ -526,6 +526,8 @@ export interface RGExecutionOptions {
     readonly frameIndex?: number;
     readonly diagnostics?: RHIFrameDiagnostics;
     readonly prePassCommands?: { flush(context: RHICommandContext): void };
+    /** @internal Frame-owner cancellation gate checked before submission and between callbacks. */
+    readonly abortSignal?: { throwIfAborted(): void };
 }
 
 export interface RGPassContext {
@@ -799,6 +801,7 @@ export class RenderGraphExecutor {
             for (const pass of graph.passes) {
                 prepareContext.setPass(pass);
                 pass.template.prepare?.(prepareContext, pass.params);
+                options.abortSignal?.throwIfAborted();
             }
             prepareContext.setPass(null);
         } catch (error) {
@@ -811,6 +814,7 @@ export class RenderGraphExecutor {
         const queue = device.graphicsQueue;
         let context: RHICommandContext;
         try {
+            options.abortSignal?.throwIfAborted();
             context = queue.beginFrame({
                 label: 'Render Graph frame',
                 ...(options.frameIndex === undefined ? {} : { frameIndex: options.frameIndex }),
@@ -829,11 +833,14 @@ export class RenderGraphExecutor {
         const passContext = new RGPassContextImpl(context, preparedByHandle);
         try {
             options.prePassCommands?.flush(context);
+            options.abortSignal?.throwIfAborted();
             for (const pass of graph.passes) {
                 passContext.setPass(pass);
                 pass.template.execute(passContext, pass.params);
+                options.abortSignal?.throwIfAborted();
             }
             passContext.setPass(null);
+            options.abortSignal?.throwIfAborted();
             const submission = queue.endFrame(context);
             let extracted: Map<RGResourceHandle, ExtractedRGResource> | null = null;
             for (const resource of preparedList) {

@@ -20,9 +20,11 @@ import {
     type AreaLightParameters,
     type DispatchEvent,
     type EventListener,
+    type ForwardRenderFeatureContext,
     type KTXTextureOptions,
     type LoaderRequest,
     type MeshParameters,
+    type CullingResultsHandle,
     type RendererBackend,
     type RendererResourceDiagnostics,
     type RendererSupportOptions,
@@ -31,6 +33,10 @@ import {
     type RenderTarget,
     type RenderTargetColorAttachmentReadback,
     type RenderTargetParameters,
+    type RenderPipelineOutput,
+    type RenderPipelineOutputColorAttachment,
+    type RenderPipelineOutputDepthStencilAttachment,
+    type ScriptableRenderGraph,
     type StageParameters,
     type StageBackend,
     type StagePointerEvent,
@@ -155,6 +161,17 @@ const resourceDiagnostics: RendererResourceDiagnostics =
     webgpuRenderer.resourceManager.getDiagnostics(webgpuStage);
 const webglIdlePromise: Promise<void> = renderer.waitForIdle();
 const webgpuIdlePromise: Promise<void> = webgpuRenderer.waitForIdle();
+declare const scriptableGraph: ScriptableRenderGraph;
+declare const forwardFeatureContext: ForwardRenderFeatureContext;
+declare const pipelineOutput: RenderPipelineOutput;
+const persistentTargetReleased: boolean = scriptableGraph.releasePersistentTarget(
+    Object.freeze({})
+);
+const featureCullingResults: CullingResultsHandle = forwardFeatureContext.cullingResults;
+const outputColorPolicy: Readonly<RenderPipelineOutputColorAttachment> =
+    pipelineOutput.colorAttachment(0);
+const outputDepthStencilPolicy: Readonly<RenderPipelineOutputDepthStencilAttachment> | null =
+    pipelineOutput.depthStencilAttachment;
 
 const textureParameters = {
     uv: 0,
@@ -276,6 +293,10 @@ void colorReadbacks;
 void resourceDiagnostics;
 void webglIdlePromise;
 void webgpuIdlePromise;
+void persistentTargetReleased;
+void featureCullingResults;
+void outputColorPolicy;
+void outputDepthStencilPolicy;
 void rawTextureStorage;
 void volumeTextureParameters;
 void integerArrayTextureParameters;

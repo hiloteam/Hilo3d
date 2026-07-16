@@ -9,6 +9,10 @@ import {
     createRHIObjectIdAllocator,
     type RHIBackend,
     type RHIBindGroupLayoutEntry,
+    type RHIDepthStencilState,
+    type RHIGraphicsPipeline,
+    type RHIPrimitiveState,
+    type RHIRenderPassDepthStencilAttachment,
     type RHIShader,
     type RHIShaderArtifact,
     type RHIShaderArtifactInput,
@@ -374,11 +378,13 @@ describe('RHI validation', () => {
         });
         const cubeFace = cube.createView({
             dimension: '2d',
+            mipLevelCount: 1,
             baseArrayLayer: 3,
             arrayLayerCount: 1
         });
         expect(cubeFace.descriptor).toMatchObject({
             dimension: '2d',
+            mipLevelCount: 1,
             baseArrayLayer: 3,
             arrayLayerCount: 1
         });
@@ -1428,6 +1434,193 @@ describe('RHI validation', () => {
         );
     });
 
+    it('matches pipeline depth/stencil access to available render-pass aspects', () => {
+        for (const backend of ['webgl2', 'webgpu'] as const) {
+            const device = createDevice(backend);
+            const texture = device.createTexture({
+                size: { width: 4, height: 4 },
+                format: 'depth24plus-stencil8',
+                usage: RHITextureUsage.RENDER_ATTACHMENT
+            });
+            const view = texture.createView();
+            const layout = device.createPipelineLayout({ bindGroupLayouts: [] });
+            const vertex = createShader(device, 'vertex');
+            const createPipeline = (
+                depthStencil: RHIDepthStencilState,
+                primitive: RHIPrimitiveState = {}
+            ): RHIGraphicsPipeline =>
+                device.createGraphicsPipeline({
+                    layout,
+                    vertex: { shader: vertex },
+                    primitive,
+                    depthStencil
+                });
+            const depthWriter = createPipeline({
+                format: 'depth24plus-stencil8',
+                depthWriteEnabled: true,
+                depthCompare: 'always'
+            });
+            const depthReader = createPipeline({
+                format: 'depth24plus-stencil8',
+                depthWriteEnabled: false,
+                depthCompare: 'less'
+            });
+            const frontStencilWriter = createPipeline({
+                format: 'depth24plus-stencil8',
+                depthWriteEnabled: false,
+                stencilFront: { passOp: 'replace' }
+            });
+            const maskedFrontStencilWriter = createPipeline({
+                format: 'depth24plus-stencil8',
+                depthWriteEnabled: false,
+                stencilFront: { passOp: 'replace' },
+                stencilWriteMask: 0
+            });
+            const culledFrontStencilWriter = createPipeline(
+                {
+                    format: 'depth24plus-stencil8',
+                    depthWriteEnabled: false,
+                    stencilFront: { passOp: 'replace' }
+                },
+                { cullMode: 'front' }
+            );
+            const activeFrontStencilWriter = createPipeline(
+                {
+                    format: 'depth24plus-stencil8',
+                    depthWriteEnabled: false,
+                    stencilFront: { passOp: 'replace' }
+                },
+                { cullMode: 'back' }
+            );
+            const culledBackStencilWriter = createPipeline(
+                {
+                    format: 'depth24plus-stencil8',
+                    depthWriteEnabled: false,
+                    stencilBack: { depthFailOp: 'increment-clamp' }
+                },
+                { cullMode: 'back' }
+            );
+            const activeBackStencilWriter = createPipeline(
+                {
+                    format: 'depth24plus-stencil8',
+                    depthWriteEnabled: false,
+                    stencilBack: { failOp: 'invert' }
+                },
+                { cullMode: 'front' }
+            );
+            const frontStencilReader = createPipeline({
+                format: 'depth24plus-stencil8',
+                depthWriteEnabled: false,
+                stencilFront: { compare: 'less' }
+            });
+            const maskedFrontStencilReaderWriter = createPipeline({
+                format: 'depth24plus-stencil8',
+                depthWriteEnabled: false,
+                stencilFront: { compare: 'less', passOp: 'replace' },
+                stencilWriteMask: 0
+            });
+            const culledFrontStencilReader = createPipeline(
+                {
+                    format: 'depth24plus-stencil8',
+                    depthWriteEnabled: false,
+                    stencilFront: { compare: 'less' }
+                },
+                { cullMode: 'front' }
+            );
+            const activeFrontStencilReader = createPipeline(
+                {
+                    format: 'depth24plus-stencil8',
+                    depthWriteEnabled: false,
+                    stencilFront: { compare: 'less' }
+                },
+                { cullMode: 'back' }
+            );
+            const culledBackStencilReader = createPipeline(
+                {
+                    format: 'depth24plus-stencil8',
+                    depthWriteEnabled: false,
+                    stencilBack: { compare: 'not-equal' }
+                },
+                { cullMode: 'back' }
+            );
+            const activeBackStencilReader = createPipeline(
+                {
+                    format: 'depth24plus-stencil8',
+                    depthWriteEnabled: false,
+                    stencilBack: { compare: 'not-equal' }
+                },
+                { cullMode: 'front' }
+            );
+
+            const setPipeline = (
+                attachment: Omit<RHIRenderPassDepthStencilAttachment, 'view'>,
+                pipeline: RHIGraphicsPipeline,
+                expectedPath: string | null
+            ): void => {
+                const context = device.graphicsQueue.beginFrame();
+                const pass = context.beginRenderPass({
+                    colorAttachments: [],
+                    depthStencilAttachment: { view, ...attachment }
+                });
+                if (expectedPath === null) {
+                    expect(() => {
+                        pass.setPipeline(pipeline);
+                    }).not.toThrow();
+                } else {
+                    expectValidation(
+                        () => {
+                            pass.setPipeline(pipeline);
+                        },
+                        'incompatible-layout',
+                        expectedPath
+                    );
+                }
+                pass.end();
+                device.graphicsQueue.endFrame(context);
+            };
+            const writableDepth = {
+                depthLoadOp: 'load',
+                depthStoreOp: 'store'
+            } as const;
+            const writableStencil = {
+                stencilLoadOp: 'load',
+                stencilStoreOp: 'store'
+            } as const;
+
+            setPipeline(writableStencil, depthWriter, 'pipeline.depthStencil.depthWriteEnabled');
+            setPipeline(
+                { depthReadOnly: true, ...writableStencil },
+                depthWriter,
+                'pipeline.depthStencil.depthWriteEnabled'
+            );
+            setPipeline(writableDepth, depthWriter, null);
+            setPipeline(writableStencil, depthReader, 'pipeline.depthStencil.depthCompare');
+            setPipeline({ depthReadOnly: true }, depthReader, null);
+            setPipeline(writableDepth, depthReader, null);
+            setPipeline(writableDepth, frontStencilWriter, 'pipeline.depthStencil');
+            setPipeline(
+                { ...writableDepth, stencilReadOnly: true },
+                frontStencilWriter,
+                'pipeline.depthStencil'
+            );
+            setPipeline(writableDepth, maskedFrontStencilWriter, null);
+            setPipeline(writableDepth, culledFrontStencilWriter, null);
+            setPipeline(writableDepth, activeFrontStencilWriter, 'pipeline.depthStencil');
+            setPipeline(writableDepth, culledBackStencilWriter, null);
+            setPipeline(writableDepth, activeBackStencilWriter, 'pipeline.depthStencil');
+            setPipeline({ depthReadOnly: true, ...writableStencil }, frontStencilWriter, null);
+            setPipeline(writableDepth, frontStencilReader, 'pipeline.depthStencil');
+            setPipeline({ stencilReadOnly: true }, frontStencilReader, null);
+            setPipeline(writableDepth, maskedFrontStencilReaderWriter, 'pipeline.depthStencil');
+            setPipeline({ stencilReadOnly: true }, maskedFrontStencilReaderWriter, null);
+            setPipeline(writableDepth, culledFrontStencilReader, null);
+            setPipeline(writableDepth, activeFrontStencilReader, 'pipeline.depthStencil');
+            setPipeline(writableDepth, culledBackStencilReader, null);
+            setPipeline(writableDepth, activeBackStencilReader, 'pipeline.depthStencil');
+            setPipeline({ depthReadOnly: true, ...writableStencil }, frontStencilReader, null);
+        }
+    });
+
     it('rejects invalid render-pass resolve sources, formats, and extents', () => {
         const device = createDevice('webgpu');
         const singleSampled = device.createTexture({
@@ -1524,9 +1717,20 @@ describe('RHI validation', () => {
             format: 'rgba8unorm',
             usage: RHITextureUsage.RENDER_ATTACHMENT
         });
+        const mipmappedColor = device.createTexture({
+            size: { width: 8, height: 8 },
+            mipLevelCount: 2,
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
         const depth = device.createTexture({
             size: { width: 8, height: 8 },
             format: 'depth24plus',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        const depthStencil = device.createTexture({
+            size: { width: 8, height: 8 },
+            format: 'depth24plus-stencil8',
             usage: RHITextureUsage.RENDER_ATTACHMENT
         });
         const context = device.graphicsQueue.beginFrame();
@@ -1563,6 +1767,20 @@ describe('RHI validation', () => {
             () =>
                 context.beginRenderPass({
                     colorAttachments: [
+                        {
+                            view: mipmappedColor.createView(),
+                            loadOp: 'load',
+                            storeOp: 'store'
+                        }
+                    ]
+                }),
+            'invalid-descriptor',
+            'renderPass.colorAttachments[0].view'
+        );
+        expectValidation(
+            () =>
+                context.beginRenderPass({
+                    colorAttachments: [
                         { view: color.createView(), loadOp: 'clear', storeOp: 'store' }
                     ]
                 }),
@@ -1579,6 +1797,70 @@ describe('RHI validation', () => {
             'invalid-descriptor',
             'renderPass.colorAttachments[0].view.format'
         );
+        expectValidation(
+            () =>
+                context.beginRenderPass({
+                    colorAttachments: [],
+                    depthStencilAttachment: {
+                        view: depthStencil.createView({ aspect: 'depth-only' }),
+                        depthLoadOp: 'load',
+                        depthStoreOp: 'store'
+                    }
+                }),
+            'invalid-descriptor',
+            'renderPass.depthStencilAttachment.view'
+        );
+        expectValidation(
+            () =>
+                context.beginRenderPass({
+                    colorAttachments: [],
+                    depthStencilAttachment: {
+                        view: depth.createView(),
+                        depthLoadOp: 'load'
+                    }
+                }),
+            'invalid-descriptor',
+            'renderPass.depthStencilAttachment'
+        );
+        expectValidation(
+            () =>
+                context.beginRenderPass({
+                    colorAttachments: [],
+                    depthStencilAttachment: {
+                        view: depth.createView(),
+                        depthReadOnly: true,
+                        depthLoadOp: 'load',
+                        depthStoreOp: 'store'
+                    }
+                }),
+            'invalid-descriptor',
+            'renderPass.depthStencilAttachment'
+        );
+        expectValidation(
+            () =>
+                context.beginRenderPass({
+                    colorAttachments: [],
+                    depthStencilAttachment: {
+                        view: depth.createView(),
+                        stencilLoadOp: 'load',
+                        stencilStoreOp: 'store'
+                    }
+                }),
+            'invalid-descriptor',
+            'renderPass.depthStencilAttachment'
+        );
+        expect(() => {
+            context
+                .beginRenderPass({
+                    colorAttachments: [],
+                    depthStencilAttachment: {
+                        view: depthStencil.createView(),
+                        depthLoadOp: 'load',
+                        depthStoreOp: 'store'
+                    }
+                })
+                .end();
+        }).not.toThrow();
 
         device.graphicsQueue.abortFrame(context);
     });

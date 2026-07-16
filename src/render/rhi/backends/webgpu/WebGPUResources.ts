@@ -168,6 +168,7 @@ export class WebGPUTexture
     }
 
     protected override releaseNative(): void {
+        this.owner.mipmapGenerator.release(this);
         if (this.#ownsNativeAllocation) this.#nativeHandle.destroy();
     }
 }

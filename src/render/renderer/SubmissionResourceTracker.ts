@@ -4,12 +4,21 @@ import type { ResourceRegistry } from './ResourceRegistry';
 interface TrackedSubmission {
     readonly frameIndex: number;
     readonly order: number;
+    readonly deviceId: number;
+    readonly deviceGeneration: number;
     settled: boolean;
 }
 
 interface IdleWaiter {
     resolve(): void;
     reject(reason: unknown): void;
+}
+
+interface TrackedFailure {
+    readonly order: number;
+    readonly deviceId: number;
+    readonly deviceGeneration: number;
+    readonly reason: unknown;
 }
 
 export interface SubmissionResourceTrackerDiagnostics {
@@ -42,9 +51,8 @@ export class SubmissionResourceTracker {
     #completedFrame = -1;
     #pendingSubmissionCount = 0;
     #collectedResourceCount = 0;
-    #firstFailure: unknown;
-    #hasFailure = false;
-    #firstFailureOrder = Number.MAX_SAFE_INTEGER;
+    #submissionFailure: TrackedFailure | null = null;
+    #internalFailure: TrackedFailure | null = null;
     #destroyed = false;
 
     constructor(readonly registry: ResourceRegistry) {
@@ -90,6 +98,8 @@ export class SubmissionResourceTracker {
         const tracked: TrackedSubmission = {
             frameIndex,
             order: this.#nextOrder++,
+            deviceId: submission.deviceId,
+            deviceGeneration: submission.deviceGeneration,
             settled: false
         };
         this.#lastTrackedFrame = frameIndex;
@@ -107,7 +117,7 @@ export class SubmissionResourceTracker {
         // The observer is internal and must never surface an unhandled rejection. The original
         // submission.done promise is returned unchanged, so callers still observe its rejection.
         void observer.catch((reason: unknown) => {
-            this.recordFailure(tracked.order, reason);
+            this.recordInternalFailure(tracked, reason);
             this.finishIdleWaitersIfReady();
         });
         return submission.done;
@@ -127,7 +137,29 @@ export class SubmissionResourceTracker {
             });
             return;
         }
-        if (this.#hasFailure) throw this.#firstFailure;
+        const failure = this.currentFailure();
+        if (failure !== null) throw failure.reason;
+    }
+
+    /**
+     * Acknowledge submission-fence failures handled at the current idle boundary.
+     *
+     * Recovery uses this only after it has rebuilt the device and synchronized every stable cache.
+     * Tracker/collection failures are intentionally retained and continue to reject waitForIdle().
+     */
+    acknowledgeSubmissionFailures(deviceId: number, deviceGeneration: number): boolean {
+        if (this.#destroyed) throw new Error('Submission resource tracker is destroyed');
+        if (this.#pendingSubmissionCount !== 0) {
+            throw new Error('Cannot acknowledge submission failures while fences are pending');
+        }
+        const failure = this.#submissionFailure;
+        const acknowledged =
+            failure !== null &&
+            failure.deviceId === deviceId &&
+            failure.deviceGeneration === deviceGeneration;
+        if (!acknowledged) return false;
+        this.#submissionFailure = null;
+        return true;
     }
 
     diagnostics(): Readonly<SubmissionResourceTrackerDiagnostics> {
@@ -147,13 +179,13 @@ export class SubmissionResourceTracker {
         if (tracked.settled) return;
         tracked.settled = true;
         this.#pendingSubmissionCount--;
-        if (failed) this.recordFailure(tracked.order, failure);
+        if (failed) this.recordSubmissionFailure(tracked, failure);
         try {
             if (this.advanceCompletedFrame() && !this.#destroyed) {
                 this.collectCompletedResources();
             }
         } catch (error) {
-            this.recordFailure(tracked.order, error);
+            this.recordInternalFailure(tracked, error);
         }
         this.finishIdleWaitersIfReady();
     }
@@ -187,20 +219,44 @@ export class SubmissionResourceTracker {
         return collected;
     }
 
-    private recordFailure(order: number, reason: unknown): void {
-        if (order >= this.#firstFailureOrder) return;
-        this.#firstFailureOrder = order;
-        this.#firstFailure = reason;
-        this.#hasFailure = true;
+    private recordSubmissionFailure(tracked: TrackedSubmission, reason: unknown): void {
+        if (this.#submissionFailure !== null && tracked.order >= this.#submissionFailure.order) {
+            return;
+        }
+        this.#submissionFailure = {
+            order: tracked.order,
+            deviceId: tracked.deviceId,
+            deviceGeneration: tracked.deviceGeneration,
+            reason
+        };
+    }
+
+    private recordInternalFailure(tracked: TrackedSubmission, reason: unknown): void {
+        if (this.#internalFailure !== null && tracked.order >= this.#internalFailure.order) return;
+        this.#internalFailure = {
+            order: tracked.order,
+            deviceId: tracked.deviceId,
+            deviceGeneration: tracked.deviceGeneration,
+            reason
+        };
+    }
+
+    private currentFailure(): TrackedFailure | null {
+        if (this.#submissionFailure === null) return this.#internalFailure;
+        if (this.#internalFailure === null) return this.#submissionFailure;
+        return this.#submissionFailure.order <= this.#internalFailure.order
+            ? this.#submissionFailure
+            : this.#internalFailure;
     }
 
     private finishIdleWaitersIfReady(): void {
         if (this.#pendingSubmissionCount !== 0 || this.#idleWaiters.length === 0) return;
         const waiters = this.#idleWaiters.splice(0);
-        if (!this.#hasFailure) {
+        const failure = this.currentFailure();
+        if (failure === null) {
             for (const waiter of waiters) waiter.resolve();
         } else {
-            for (const waiter of waiters) waiter.reject(this.#firstFailure);
+            for (const waiter of waiters) waiter.reject(failure.reason);
         }
     }
 }

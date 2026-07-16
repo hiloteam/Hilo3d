@@ -261,6 +261,80 @@ describe('RHIRecoveryCoordinator submission and cancellation boundaries', () => 
         cleanup(coordinator, submissions, registry, backend);
     });
 
+    it('consumes a rejected old-device fence only after successful recovery', async () => {
+        const backend = new FakeWebGPURHIBackend();
+        const firstDevice = backend.createDevice();
+        const replacement = backend.createDevice();
+        const registry = new ResourceRegistry(firstDevice);
+        const submissions = new SubmissionResourceTracker(registry);
+        const auxiliarySubmissions = new SubmissionResourceTracker(registry);
+        const failedSubmission = new FakeRHISubmission(firstDevice.graphicsQueue, 21, []);
+        const deviceLossFailure = new Error('old device queue was lost');
+        const failedTracking = submissions.track(21, failedSubmission);
+        const auxiliaryFailedTracking = auxiliarySubmissions.track(21, failedSubmission);
+        const coordinator = new RHIRecoveryCoordinator({
+            device: firstDevice,
+            registry,
+            submissions,
+            createReplacementDevice: () => replacement
+        });
+        coordinator.registerSubmissionTracker(auxiliarySubmissions);
+
+        firstDevice.advanceGeneration();
+        await waitForRecoveryStart(coordinator);
+        const recovery = requireRecoveryPromise(coordinator);
+        failedSubmission.fail(deviceLossFailure);
+        await expect(failedTracking).rejects.toBe(deviceLossFailure);
+        await expect(auxiliaryFailedTracking).rejects.toBe(deviceLossFailure);
+        await recovery;
+
+        expect(coordinator.state).toBe('ready');
+        await expect(submissions.waitForIdle()).resolves.toBeUndefined();
+        await expect(auxiliarySubmissions.waitForIdle()).resolves.toBeUndefined();
+
+        const laterSubmission = new FakeRHISubmission(replacement.graphicsQueue, 22, []);
+        const laterFailure = new Error('replacement device fence failed');
+        const laterTracking = submissions.track(22, laterSubmission);
+        const auxiliaryLaterTracking = auxiliarySubmissions.track(22, laterSubmission);
+        laterSubmission.fail(laterFailure);
+        await expect(laterTracking).rejects.toBe(laterFailure);
+        await expect(auxiliaryLaterTracking).rejects.toBe(laterFailure);
+        await expect(submissions.waitForIdle()).rejects.toBe(laterFailure);
+        await expect(auxiliarySubmissions.waitForIdle()).rejects.toBe(laterFailure);
+
+        auxiliarySubmissions.destroy();
+        cleanup(coordinator, submissions, registry, backend);
+    });
+
+    it('retains a rejected old-device fence when recovery fails', async () => {
+        const backend = new FakeWebGPURHIBackend();
+        const firstDevice = backend.createDevice();
+        const registry = new ResourceRegistry(firstDevice);
+        const submissions = new SubmissionResourceTracker(registry);
+        const failedSubmission = new FakeRHISubmission(firstDevice.graphicsQueue, 23, []);
+        const deviceLossFailure = new Error('old device queue was lost before failed recovery');
+        const replacementFailure = new Error('replacement provisioning failed');
+        const failedTracking = submissions.track(23, failedSubmission);
+        const coordinator = new RHIRecoveryCoordinator({
+            device: firstDevice,
+            registry,
+            submissions,
+            createReplacementDevice: () => Promise.reject(replacementFailure)
+        });
+
+        firstDevice.advanceGeneration();
+        await waitForRecoveryStart(coordinator);
+        const recovery = requireRecoveryPromise(coordinator);
+        failedSubmission.fail(deviceLossFailure);
+        await expect(failedTracking).rejects.toBe(deviceLossFailure);
+        await expect(recovery).rejects.toBe(replacementFailure);
+
+        expect(coordinator.state).toBe('failed');
+        await expect(submissions.waitForIdle()).rejects.toBe(deviceLossFailure);
+
+        cleanup(coordinator, submissions, registry, backend);
+    });
+
     it('cancels immediately on destroy and disposes a late unadopted factory result', async () => {
         const backend = new FakeWebGPURHIBackend();
         const firstDevice = backend.createDevice();

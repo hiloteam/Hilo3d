@@ -726,6 +726,9 @@ describe.each([
             beginFrame: vi.fn(() => {
                 dependencies = Object.freeze([]);
             }),
+            beginContextPass: vi.fn(() => {
+                dependencies = Object.freeze([]);
+            }),
             beginPass: vi.fn(() => {
                 dependencies = Object.freeze([]);
             }),

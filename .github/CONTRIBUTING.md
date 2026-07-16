@@ -25,7 +25,8 @@ Use `npm run dev` for engine development and `npm run examples:dev` for the exam
 - `npm run typecheck` checks the library, tests, examples, and Node tooling as isolated TypeScript
   projects.
 - `npm run test:coverage` runs browser unit tests and enforces coverage thresholds.
-- `npm run test:browser` runs the full Playwright UI, WebGPU, and visual rendering suites locally.
+- `npm run test:browser` runs the full portable Playwright UI, WebGPU, and visual rendering suites
+  locally and in default CI.
 - `npm run test:webgpu` runs the real Chromium WebGPU/Naga render path; it must not be replaced by a
   mocked-device smoke test.
 - `npm run test:webgpu:native` is an optional physical-GPU check. It must run only on a machine with
@@ -35,8 +36,8 @@ Use `npm run dev` for engine development and `npm run examples:dev` for the exam
 - `npm run api:check` rejects unreviewed changes to the generated public declaration report.
 - `npm run test:package` builds and tests the actual npm package contract.
 - `npm run validate` is the complete local and release gate, including the full browser GPU matrix.
-- `npm run validate:ci` runs the portable CI gate. Contributors confirm `npm run test:browser`
-  locally in the pull request checklist.
+- `npm run validate:ci` runs the portable CI gate, including `npm run test:browser`; only the
+  physical-GPU `npm run test:webgpu:native` lane remains separate.
 
 Do not commit generated `dist/`, `dist-examples/`, `docs/`, coverage, or browser report files.
 Visual regression baselines under `test/ui/__screenshots__/` are reviewed source artifacts and must

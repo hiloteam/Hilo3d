@@ -126,6 +126,40 @@ describe('SubmissionResourceTracker', () => {
         backend.destroy();
     });
 
+    it('acknowledges only an idle submission-failure boundary and reports later failures', async () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const tracker = new SubmissionResourceTracker(registry);
+        const firstSubmission = submit(device);
+        const firstFailure = new Error('handled device-loss fence failure');
+        const firstTracked = tracker.track(1, firstSubmission);
+
+        expect(() => tracker.acknowledgeSubmissionFailures(device.id, device.generation)).toThrow(
+            /fences are pending/u
+        );
+        firstSubmission.fail(firstFailure);
+        await expect(firstTracked).rejects.toBe(firstFailure);
+        await expect(tracker.waitForIdle()).rejects.toBe(firstFailure);
+
+        expect(tracker.acknowledgeSubmissionFailures(device.id + 1, device.generation)).toBe(false);
+        expect(tracker.acknowledgeSubmissionFailures(device.id, device.generation + 1)).toBe(false);
+        expect(tracker.acknowledgeSubmissionFailures(device.id, device.generation)).toBe(true);
+        expect(tracker.acknowledgeSubmissionFailures(device.id, device.generation)).toBe(false);
+        await expect(tracker.waitForIdle()).resolves.toBeUndefined();
+
+        const secondSubmission = submit(device);
+        const secondFailure = new Error('new submission failure');
+        const secondTracked = tracker.track(2, secondSubmission);
+        secondSubmission.fail(secondFailure);
+        await expect(secondTracked).rejects.toBe(secondFailure);
+        await expect(tracker.waitForIdle()).rejects.toBe(secondFailure);
+
+        tracker.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
+
     it('pauses collection during failed recovery and flushes after recovery succeeds', async () => {
         const backend = new FakeWebGPURHIBackend();
         const firstDevice = backend.createDevice();

@@ -24,6 +24,7 @@ import type {
     RenderGraphTextureHandle,
     RenderPipelineColorAttachment,
     RenderPipelineTargetResources,
+    ScriptableRenderCommands,
     ScriptableRenderPass,
     ScriptableRenderPassBuilder,
     ScriptableRenderPassContext,
@@ -33,6 +34,7 @@ import { SceneRenderPass } from '../../../src/render/pipeline/passes/SceneRender
 import { TextureCopyPass } from '../../../src/render/pipeline/passes/TextureCopyPass';
 import { PresentRenderPass } from '../../../src/render/pipeline/passes/FullscreenRenderPass';
 import type { RenderTargetResourceCache } from '../../../src/render/renderer/RenderTargetResourceCache';
+import type { RHIQueue, RHIRenderPassDescriptor } from '../../../src/render/rhi/core';
 
 class TestPipeline implements RenderPipeline {
     readonly name = 'test-pipeline';
@@ -136,6 +138,76 @@ class TextureReadSideEffectPass implements ScriptableRenderPass<TextureReadParam
 
     execute(): void {
         // Dependency-only test pass.
+    }
+}
+
+interface TextureCopySideEffectParameters {
+    readonly source: RenderGraphTextureHandle;
+    readonly destination: RenderGraphTextureHandle;
+}
+
+class TextureCopySideEffectPass implements ScriptableRenderPass<TextureCopySideEffectParameters> {
+    readonly name = 'Texture copy side effect';
+
+    setup(builder: ScriptableRenderPassBuilder, parameters: TextureCopySideEffectParameters): void {
+        builder.copyTexture(parameters.source, parameters.destination);
+        builder.markSideEffect();
+    }
+
+    execute(
+        context: ScriptableRenderPassContext,
+        parameters: TextureCopySideEffectParameters
+    ): void {
+        context.commands.copyTexture(parameters.source, parameters.destination);
+    }
+}
+
+type MsaaOutputFollowupMode = 'sampled' | 'copy-source';
+
+class MsaaOutputFollowupPipeline implements RenderPipeline {
+    readonly name = 'msaa-output-followup';
+    readonly clearPass = new SceneRenderPass('MSAA output clear');
+    readonly readPass = new TextureReadSideEffectPass();
+    readonly copyPass = new TextureCopySideEffectPass();
+
+    constructor(readonly mode: MsaaOutputFollowupMode) {}
+
+    record(context: RenderPipelineContext): void {
+        const output = context.graph.importOutput();
+        const outputColor = output.color(0);
+        const culling = context.cull();
+        const emptyList = context.createRendererList({
+            cullingResults: culling,
+            queue: 'all',
+            sorting: 'none'
+        });
+        context.graph.addPass(this.clearPass, {
+            rendererList: emptyList,
+            colorAttachments: [
+                {
+                    texture: outputColor,
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                    clearValue: context.clearColor
+                }
+            ]
+        });
+        if (this.mode === 'sampled') {
+            context.graph.addPass(this.readPass, { texture: outputColor });
+            return;
+        }
+        const destination = context.graph.createTexture('MSAA output copy destination', {
+            format: context.output.colorFormat(0),
+            extent: { relativeTo: 'output', scale: 1 }
+        });
+        context.graph.addPass(this.copyPass, {
+            source: outputColor,
+            destination
+        });
+    }
+
+    destroy(): void {
+        // No renderer-local resources.
     }
 }
 
@@ -497,6 +569,82 @@ class PromisePassPipeline implements RenderPipeline {
     }
 }
 
+interface FacadeLeaseParameters {
+    readonly attachment: Readonly<RenderPipelineColorAttachment>;
+}
+
+class FacadeLeasePass implements ScriptableRenderPass<FacadeLeaseParameters> {
+    readonly name = 'Facade lease pass';
+    retainedBuilder: ScriptableRenderPassBuilder | null = null;
+    retainedPrepareContext: ScriptableRenderPrepareContext | null = null;
+    retainedPassContext: ScriptableRenderPassContext | null = null;
+    retainedCommands: ScriptableRenderCommands | null = null;
+    setupLeaseChecks = 0;
+    prepareLeaseChecks = 0;
+    executeLeaseChecks = 0;
+
+    setup(builder: ScriptableRenderPassBuilder, parameters: FacadeLeaseParameters): void {
+        const retained = this.retainedBuilder;
+        if (retained !== null) {
+            expect(builder).not.toBe(retained);
+            expect(() => {
+                retained.markSideEffect();
+            }).toThrow(/setup\(\) callback/u);
+            this.setupLeaseChecks++;
+        }
+        this.retainedBuilder = builder;
+        builder.useColorAttachment(parameters.attachment);
+    }
+
+    prepare(context: ScriptableRenderPrepareContext): void {
+        const retained = this.retainedPrepareContext;
+        if (retained !== null) {
+            expect(context).not.toBe(retained);
+            expect(() => retained.capabilities).toThrow(/prepare\(\) callback/u);
+            this.prepareLeaseChecks++;
+        }
+        this.retainedPrepareContext = context;
+    }
+
+    execute(context: ScriptableRenderPassContext): void {
+        const commands = context.commands;
+        const retainedContext = this.retainedPassContext;
+        const retainedCommands = this.retainedCommands;
+        if (retainedContext !== null && retainedCommands !== null) {
+            expect(context).not.toBe(retainedContext);
+            expect(commands).not.toBe(retainedCommands);
+            expect(() => retainedContext.commands).toThrow(/execute\(\) callback/u);
+            expect(() => {
+                retainedCommands.setStencilReference(0);
+            }).toThrow(/execute\(\) callback/u);
+            this.executeLeaseChecks++;
+        }
+        this.retainedPassContext = context;
+        this.retainedCommands = commands;
+    }
+}
+
+class FacadeLeasePipeline implements RenderPipeline {
+    readonly name = 'facade-lease';
+    readonly pass = new FacadeLeasePass();
+
+    record(context: RenderPipelineContext): void {
+        const output = context.graph.importOutput();
+        context.graph.addPass(this.pass, {
+            attachment: {
+                texture: output.color(0),
+                loadOp: 'clear',
+                storeOp: 'store',
+                clearValue: context.clearColor
+            }
+        });
+    }
+
+    destroy(): void {
+        // No renderer-local resources.
+    }
+}
+
 class TestPipelineFactory implements RenderPipelineFactory {
     readonly name = 'test-pipeline';
     runtime: TestPipeline | null = null;
@@ -581,6 +729,90 @@ class SampledColorFeature implements ForwardRenderPipelineFeature {
         this.runtime = new SampledColorFeatureRuntime();
         return this.runtime;
     }
+}
+
+class SharedCullingForwardFeatureRuntime implements ForwardRenderPipelineFeatureRuntime {
+    readonly pass = new SceneRenderPass('Forward shared culling feature');
+    retainedContext: ForwardRenderFeatureContext | null = null;
+    recordCount = 0;
+    destroyCount = 0;
+
+    record(context: ForwardRenderFeatureContext): void {
+        const color = context.resources.color;
+        if (color === null) throw new Error('Expected forward scene color');
+        const rendererList = context.pipeline.createRendererList({
+            cullingResults: context.cullingResults,
+            queue: 'all',
+            sorting: 'material-front-to-back'
+        });
+        context.pipeline.graph.addPass(this.pass, {
+            rendererList,
+            colorAttachments: [
+                {
+                    texture: color,
+                    loadOp: 'load',
+                    storeOp: 'store'
+                }
+            ]
+        });
+        this.retainedContext = context;
+        this.recordCount++;
+    }
+
+    destroy(): void {
+        this.destroyCount++;
+    }
+}
+
+class SharedCullingForwardFeature implements ForwardRenderPipelineFeature {
+    readonly name = 'shared-culling-feature';
+    readonly injectionPoint = 'after-transparent' as const;
+    readonly requirements = Object.freeze({
+        sampledSceneColor: false,
+        sampledDepth: false
+    });
+    runtime: SharedCullingForwardFeatureRuntime | null = null;
+
+    create(_context: RenderPipelineCreateContext): ForwardRenderPipelineFeatureRuntime {
+        this.runtime = new SharedCullingForwardFeatureRuntime();
+        return this.runtime;
+    }
+}
+
+function captureRenderPassDescriptors(
+    renderer: Renderer,
+    descriptors: RHIRenderPassDescriptor[]
+): void {
+    const extension = renderer.getExtension('rhi') as {
+        readonly device?: { readonly graphicsQueue: RHIQueue };
+    } | null;
+    if (extension?.device === undefined) throw new Error('Expected an RHI extension');
+    const queue = extension.device.graphicsQueue;
+    const beginFrame = queue.beginFrame.bind(queue);
+    vi.spyOn(queue, 'beginFrame').mockImplementation(frameDescriptor => {
+        const commands = beginFrame(frameDescriptor);
+        const beginRenderPass = commands.beginRenderPass.bind(commands);
+        vi.spyOn(commands, 'beginRenderPass').mockImplementation(descriptor => {
+            descriptors.push({
+                ...descriptor,
+                colorAttachments: descriptor.colorAttachments.map(attachment => {
+                    if (attachment === null) return null;
+                    return attachment.clearValue === undefined
+                        ? { ...attachment }
+                        : { ...attachment, clearValue: { ...attachment.clearValue } };
+                }),
+                ...(descriptor.depthStencilAttachment === undefined
+                    ? {}
+                    : {
+                          depthStencilAttachment: {
+                              ...descriptor.depthStencilAttachment
+                          }
+                      })
+            });
+            return beginRenderPass(descriptor);
+        });
+        return commands;
+    });
 }
 
 const activeRenderers: Renderer[] = [];
@@ -711,7 +943,7 @@ describe('Scriptable render pipeline', () => {
             domElement: document.createElement('canvas'),
             width: 8,
             height: 4,
-            antialias: false,
+            antialias: true,
             renderPipeline: new FixedRuntimeFactory(new ExplicitResolvePipeline())
         });
         activeRenderers.push(renderer);
@@ -721,6 +953,25 @@ describe('Scriptable render pipeline', () => {
         }).not.toThrow();
         expect(renderer.renderInfo.drawCount).toBe(0);
     });
+
+    it.each(['sampled', 'copy-source'] as const)(
+        'keeps the MSAA surface resolve identity for a later %s access',
+        async mode => {
+            const renderer = await Renderer.create({
+                backend: 'webgl2',
+                domElement: document.createElement('canvas'),
+                width: 8,
+                height: 4,
+                antialias: true,
+                renderPipeline: new FixedRuntimeFactory(new MsaaOutputFollowupPipeline(mode))
+            });
+            activeRenderers.push(renderer);
+
+            expect(() => {
+                renderer.render(new Node(), new PerspectiveCamera());
+            }).toThrow(/imported texture scriptable surface color lacks usage/u);
+        }
+    );
 
     it('does not count a read-only depth-only attachment as terminal work', async () => {
         const renderer = await Renderer.create({
@@ -776,6 +1027,34 @@ describe('Scriptable render pipeline', () => {
             })
         ).rejects.toThrow(/already attached/u);
         expect(runtime.destroyCount).toBe(0);
+        first.render(new Node(), new PerspectiveCamera());
+    });
+
+    it('checks runtime ownership before validating or cleaning up an attached singleton', async () => {
+        const runtime = new SurfaceClearPipeline();
+        const factory = new FixedRuntimeFactory(runtime);
+        const first = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 4,
+            height: 4,
+            renderPipeline: factory
+        });
+        activeRenderers.push(first);
+        Reflect.set(runtime, 'record', null);
+
+        await expect(
+            Renderer.create({
+                backend: 'webgl2',
+                domElement: document.createElement('canvas'),
+                width: 4,
+                height: 4,
+                renderPipeline: factory
+            })
+        ).rejects.toThrow(/already attached/u);
+        expect(runtime.destroyCount).toBe(0);
+
+        Reflect.deleteProperty(runtime, 'record');
         first.render(new Node(), new PerspectiveCamera());
     });
 
@@ -977,17 +1256,70 @@ describe('Scriptable render pipeline', () => {
     it('invalidates a retained context as soon as record returns', async () => {
         let retained: RenderPipelineContext | null = null;
         let retainedOutput: RenderPipelineContext['output'] | null = null;
+        let retainedGraph: RenderPipelineContext['graph'] | null = null;
         let retainedClearColor: RenderPipelineContext['clearColor'] | null = null;
         let retainedViewport: RenderPipelineContext['viewport'] | null = null;
         let retainedTarget: RenderPipelineTargetResources | null = null;
+        let retainedOutputColor: ReturnType<
+            RenderPipelineContext['output']['colorAttachment']
+        > | null = null;
+        let retainedOutputClearColor: Readonly<
+            ReturnType<RenderPipelineContext['output']['colorAttachment']>['clearValue']
+        > | null = null;
+        let retainedOutputDepth: NonNullable<
+            RenderPipelineContext['output']['depthStencilAttachment']
+        > | null = null;
+        let checkedDuringNextInvocation = false;
         const runtime = new SurfaceClearPipeline();
         const record = runtime.record.bind(runtime);
         runtime.record = (context: RenderPipelineContext): void => {
-            retained = context;
-            retainedOutput = context.output;
-            retainedClearColor = context.clearColor;
-            retainedViewport = context.viewport;
-            retainedTarget = context.graph.importOutput();
+            if (retained === null) {
+                retained = context;
+                retainedOutput = context.output;
+                retainedGraph = context.graph;
+                retainedClearColor = context.clearColor;
+                retainedViewport = context.viewport;
+                retainedTarget = context.graph.importOutput();
+                retainedOutputColor = context.output.colorAttachment(0);
+                retainedOutputClearColor = retainedOutputColor.clearValue;
+                retainedOutputDepth = context.output.depthStencilAttachment;
+            } else {
+                checkedDuringNextInvocation = true;
+                expect(context).not.toBe(retained);
+                expect(context.output).not.toBe(retainedOutput);
+                expect(context.graph).not.toBe(retainedGraph);
+                expect(context.clearColor).not.toBe(retainedClearColor);
+                expect(Object.is(context.viewport, retainedViewport)).toBe(false);
+                expect(context.graph.importOutput()).not.toBe(retainedTarget);
+                expect(() => retained?.cull()).toThrow(/valid only during synchronous record/u);
+                expect(() => retainedOutput?.width).toThrow(
+                    /valid only during synchronous record/u
+                );
+                expect(() =>
+                    retainedGraph?.createTexture('stale texture', {
+                        format: 'rgba8unorm',
+                        extent: { width: 1, height: 1 }
+                    })
+                ).toThrow(/valid only during synchronous record/u);
+                expect(() => retainedClearColor?.r).toThrow(
+                    /valid only during synchronous record/u
+                );
+                expect(() => retainedViewport?.[0]).toThrow(
+                    /valid only during synchronous record/u
+                );
+                expect(() => retainedTarget?.width).toThrow(
+                    /valid only during synchronous record/u
+                );
+                expect(() => retainedOutputColor?.loadOp).toThrow(
+                    /valid only during synchronous record/u
+                );
+                expect(() => retainedOutputClearColor?.r).toThrow(
+                    /valid only during synchronous record/u
+                );
+                expect(() => retainedOutputDepth?.depthLoadOp).toThrow(
+                    /valid only during synchronous record/u
+                );
+            }
             record(context);
         };
         const renderer = await Renderer.create({
@@ -1009,21 +1341,104 @@ describe('Scriptable render pipeline', () => {
             /valid only during synchronous record/u
         );
         const output = retainedOutput as RenderPipelineContext['output'] | null;
+        const graph = retainedGraph as RenderPipelineContext['graph'] | null;
         const clearColor = retainedClearColor as RenderPipelineContext['clearColor'] | null;
         const viewport = retainedViewport as RenderPipelineContext['viewport'] | null;
         const target = retainedTarget as RenderPipelineTargetResources | null;
-        if (output === null || clearColor === null || viewport === null || target === null) {
+        const outputColor = retainedOutputColor as ReturnType<
+            RenderPipelineContext['output']['colorAttachment']
+        > | null;
+        const outputClearColor = retainedOutputClearColor as Readonly<
+            ReturnType<RenderPipelineContext['output']['colorAttachment']>['clearValue']
+        > | null;
+        const outputDepth = retainedOutputDepth as NonNullable<
+            RenderPipelineContext['output']['depthStencilAttachment']
+        > | null;
+        if (
+            output === null ||
+            graph === null ||
+            clearColor === null ||
+            viewport === null ||
+            target === null ||
+            outputColor === null ||
+            outputClearColor === null ||
+            outputDepth === null
+        ) {
             throw new Error('Expected retained nested pipeline facades');
         }
         expect(() => output.width).toThrow(/valid only during synchronous record/u);
+        expect(() =>
+            graph.createTexture('stale texture', {
+                format: 'rgba8unorm',
+                extent: { width: 1, height: 1 }
+            })
+        ).toThrow(/valid only during synchronous record/u);
+        expect(() => output.colorAttachment(0)).toThrow(/valid only during synchronous record/u);
+        expect(() => outputColor.loadOp).toThrow(/valid only during synchronous record/u);
+        expect(() => outputColor.clearValue.r).toThrow(/valid only during synchronous record/u);
+        expect(() => outputDepth.depthLoadOp).toThrow(/valid only during synchronous record/u);
         expect(() => clearColor.r).toThrow(/valid only during synchronous record/u);
         expect(() => viewport[0]).toThrow(/valid only during synchronous record/u);
         expect(() => target.width).toThrow(/valid only during synchronous record/u);
         expect(Object.isFrozen(output)).toBe(true);
+        expect(Object.isFrozen(graph)).toBe(true);
+        expect(Object.isFrozen(outputColor)).toBe(true);
+        expect(Object.isFrozen(outputClearColor)).toBe(true);
+        expect(Object.isFrozen(outputDepth)).toBe(true);
         expect(Object.isFrozen(clearColor)).toBe(true);
         expect(Object.isFrozen(viewport)).toBe(true);
         expect(Object.isFrozen(target)).toBe(true);
         expect(Reflect.set(output, 'width', 99)).toBe(false);
+
+        renderer.render(new Node(), new PerspectiveCamera());
+        expect(checkedDuringNextInvocation).toBe(true);
+    });
+
+    it('does not revive retained pass callback facades when a slot is reused', async () => {
+        const runtime = new FacadeLeasePipeline();
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 4,
+            height: 4,
+            renderPipeline: new FixedRuntimeFactory(runtime)
+        });
+        activeRenderers.push(renderer);
+        const scene = new Node();
+        const camera = new PerspectiveCamera();
+
+        renderer.render(scene, camera);
+
+        const builder = runtime.pass.retainedBuilder;
+        const prepareContext = runtime.pass.retainedPrepareContext;
+        const passContext = runtime.pass.retainedPassContext;
+        const commands = runtime.pass.retainedCommands;
+        if (
+            builder === null ||
+            prepareContext === null ||
+            passContext === null ||
+            commands === null
+        ) {
+            throw new Error('Expected retained scriptable pass callback facades');
+        }
+        expect(() => {
+            builder.markSideEffect();
+        }).toThrow(/setup\(\) callback/u);
+        expect(() => prepareContext.capabilities).toThrow(/prepare\(\) callback/u);
+        expect(() => passContext.commands).toThrow(/execute\(\) callback/u);
+        expect(() => {
+            commands.setStencilReference(0);
+        }).toThrow(/execute\(\) callback/u);
+        expect(Object.isFrozen(builder)).toBe(true);
+        expect(Object.isFrozen(prepareContext)).toBe(true);
+        expect(Object.isFrozen(passContext)).toBe(true);
+        expect(Object.isFrozen(commands)).toBe(true);
+
+        renderer.render(scene, camera);
+
+        expect(runtime.pass.setupLeaseChecks).toBe(1);
+        expect(runtime.pass.prepareLeaseChecks).toBe(1);
+        expect(runtime.pass.executeLeaseChecks).toBe(1);
     });
 
     it('validates future compute requirements before invoking the factory', async () => {
@@ -1134,6 +1549,120 @@ describe('Scriptable render pipeline', () => {
         expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
     });
 
+    it('preserves selected RenderTarget color, depth and stencil attachment operations', async () => {
+        const feature = new CountingForwardFeature();
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 8,
+            antialias: false,
+            renderPipeline: new ForwardRenderPipelineFactory({ features: [feature] })
+        });
+        activeRenderers.push(renderer);
+        const target = renderer.createRenderTarget({
+            width: 8,
+            height: 8,
+            colorAttachments: [
+                {
+                    clearValue: { r: 0.125, g: 0.25, b: 0.5, a: 1 },
+                    loadOp: 'clear',
+                    storeOp: 'store'
+                },
+                {
+                    clearValue: { r: 0.75, g: 0.5, b: 0.25, a: 1 },
+                    loadOp: 'load',
+                    storeOp: 'discard'
+                }
+            ],
+            depthStencilAttachment: {
+                format: 'depth24plus-stencil8',
+                depthClearValue: 0.375,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'discard',
+                stencilClearValue: 9,
+                stencilLoadOp: 'load',
+                stencilStoreOp: 'store'
+            }
+        });
+        const descriptors: RHIRenderPassDescriptor[] = [];
+        captureRenderPassDescriptors(renderer, descriptors);
+        renderer.setRenderTarget(target);
+
+        renderer.render(new Node(), new PerspectiveCamera());
+
+        const descriptor = descriptors.find(candidate => candidate.label === 'Forward scene');
+        expect(descriptor?.colorAttachments[0]).toMatchObject({
+            clearValue: { r: 0.125, g: 0.25, b: 0.5, a: 1 },
+            loadOp: 'clear',
+            storeOp: 'store'
+        });
+        expect(descriptor?.colorAttachments[1]).toMatchObject({
+            loadOp: 'load',
+            storeOp: 'discard'
+        });
+        expect(descriptor?.colorAttachments[1]?.clearValue).toBeUndefined();
+        expect(descriptor?.depthStencilAttachment).toMatchObject({
+            depthClearValue: 0.375,
+            depthLoadOp: 'clear',
+            depthStoreOp: 'discard',
+            stencilClearValue: 9,
+            stencilLoadOp: 'load',
+            stencilStoreOp: 'store'
+        });
+
+        renderer.setRenderTarget(null);
+        target.destroy();
+    });
+
+    it('loads selected RenderTarget color into an intermediate sampled scene color', async () => {
+        const feature = new SampledColorFeature();
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 8,
+            antialias: false,
+            renderPipeline: new ForwardRenderPipelineFactory({ features: [feature] })
+        });
+        activeRenderers.push(renderer);
+        const target = renderer.createRenderTarget({
+            width: 8,
+            height: 8,
+            colorAttachments: [{ loadOp: 'load', storeOp: 'store' }],
+            depthStencilAttachment: false
+        });
+        const descriptors: RHIRenderPassDescriptor[] = [];
+        captureRenderPassDescriptors(renderer, descriptors);
+        renderer.setRenderTarget(target);
+
+        renderer.render(new Node(), new PerspectiveCamera());
+
+        const loadIndex = descriptors.findIndex(
+            descriptor => descriptor.label === 'Forward output load'
+        );
+        const sceneIndex = descriptors.findIndex(
+            descriptor => descriptor.label === 'Forward scene'
+        );
+        const outputIndex = descriptors.findIndex(
+            descriptor => descriptor.label === 'Forward output'
+        );
+        expect(loadIndex).toBeGreaterThanOrEqual(0);
+        expect(sceneIndex).toBeGreaterThan(loadIndex);
+        expect(outputIndex).toBeGreaterThan(sceneIndex);
+        expect(descriptors[sceneIndex]?.colorAttachments[0]).toMatchObject({
+            loadOp: 'load',
+            storeOp: 'store'
+        });
+        expect(descriptors[outputIndex]?.colorAttachments[0]).toMatchObject({
+            loadOp: 'load',
+            storeOp: 'store'
+        });
+
+        renderer.setRenderTarget(null);
+        target.destroy();
+    });
+
     it('reuses the shared shadow atlas and restores its LightBlock before scene draws', async () => {
         const feature = new CountingForwardFeature();
         const renderer = await Renderer.create({
@@ -1165,6 +1694,128 @@ describe('Scriptable render pipeline', () => {
 
         expect(renderer.lightManager.shadowAtlas).not.toBeNull();
         expect(renderer.renderInfo.drawCount).toBeGreaterThanOrEqual(2);
+    });
+
+    it('lets a feature create scene passes from the exact built-in shadow culling results', async () => {
+        const feature = new SharedCullingForwardFeature();
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 16,
+            height: 8,
+            antialias: false,
+            renderPipeline: new ForwardRenderPipelineFactory({ features: [feature] })
+        });
+        activeRenderers.push(renderer);
+        const scene = new Node();
+        scene.addChild(
+            new Mesh({
+                geometry: new BoxGeometry(),
+                material: new BasicMaterial({ depthTest: false }),
+                frustumTest: false
+            })
+        );
+        const target = new Vector3(0, 0, 0);
+        const light = new DirectionalLight({ shadow: { width: 8, height: 8 } });
+        light.setPosition(2, 4, 3).lookAt(target);
+        scene.addChild(light);
+        const camera = new PerspectiveCamera({ near: 0.1, far: 100, aspect: 2 });
+        camera.setPosition(0, 1, 5).lookAt(target);
+        const descriptors: RHIRenderPassDescriptor[] = [];
+        captureRenderPassDescriptors(renderer, descriptors);
+
+        expect(() => {
+            renderer.render(scene, camera);
+        }).not.toThrow();
+        expect(feature.runtime?.recordCount).toBe(1);
+        expect(
+            descriptors.some(descriptor => descriptor.label === 'Forward shared culling feature')
+        ).toBe(true);
+        const retained = feature.runtime?.retainedContext;
+        if (retained === null || retained === undefined) {
+            throw new Error('Expected retained forward feature context');
+        }
+        expect(() => retained.cullingResults).toThrow(/valid only during synchronous record/u);
+    });
+
+    it('does not revive a retained forward feature facade in a later callback', async () => {
+        let retainedContext: ForwardRenderFeatureContext | null = null;
+        let retainedResources: ForwardRenderFeatureContext['resources'] | null = null;
+        let checkCount = 0;
+        const requirements = Object.freeze({
+            sampledSceneColor: false,
+            sampledDepth: false
+        });
+        const retainingFeature: ForwardRenderPipelineFeature = {
+            name: 'retaining-forward-facade',
+            injectionPoint: 'after-transparent',
+            requirements,
+            create(): ForwardRenderPipelineFeatureRuntime {
+                return {
+                    record(context: ForwardRenderFeatureContext): void {
+                        retainedContext ??= context;
+                        retainedResources ??= context.resources;
+                    },
+                    destroy(): void {
+                        // No renderer-local resources.
+                    }
+                };
+            }
+        };
+        const checkingFeature: ForwardRenderPipelineFeature = {
+            name: 'checking-forward-facade',
+            injectionPoint: 'after-transparent',
+            requirements,
+            create(): ForwardRenderPipelineFeatureRuntime {
+                return {
+                    record(context: ForwardRenderFeatureContext): void {
+                        const retained = retainedContext;
+                        const resources = retainedResources;
+                        if (retained === null || resources === null) {
+                            throw new Error('Expected a retained forward feature facade');
+                        }
+                        expect(context).not.toBe(retained);
+                        expect(context.resources).not.toBe(resources);
+                        expect(() => retained.pipeline).toThrow(
+                            /valid only during synchronous record/u
+                        );
+                        expect(() => retained.cullingResults).toThrow(
+                            /valid only during synchronous record/u
+                        );
+                        expect(() => retained.resources).toThrow(
+                            /valid only during synchronous record/u
+                        );
+                        expect(() => resources.color).toThrow(
+                            /valid only during synchronous record/u
+                        );
+                        checkCount++;
+                    },
+                    destroy(): void {
+                        // No renderer-local resources.
+                    }
+                };
+            }
+        };
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 4,
+            antialias: false,
+            renderPipeline: new ForwardRenderPipelineFactory({
+                features: [retainingFeature, checkingFeature]
+            })
+        });
+        activeRenderers.push(renderer);
+        const scene = new Node();
+        const camera = new PerspectiveCamera();
+
+        renderer.render(scene, camera);
+        renderer.render(scene, camera);
+
+        expect(checkCount).toBe(2);
+        expect(Object.isFrozen(retainedContext)).toBe(true);
+        expect(Object.isFrozen(retainedResources)).toBe(true);
     });
 
     it('detaches the previous shared shadow atlas when a later invocation omits shadows', async () => {
@@ -1232,6 +1883,42 @@ describe('Scriptable render pipeline', () => {
         }
     );
 
+    it('rejects sampled depth requirements until the public binding path supports them', () => {
+        const runtime = new CountingForwardFeatureRuntime();
+        const feature: ForwardRenderPipelineFeature = {
+            name: 'sampled-depth-feature',
+            injectionPoint: 'after-transparent',
+            requirements: {
+                sampledSceneColor: false,
+                sampledDepth: true
+            },
+            create(): ForwardRenderPipelineFeatureRuntime {
+                return runtime;
+            }
+        };
+        expect(() => {
+            new ForwardRenderPipelineFactory({ features: [feature] });
+        }).toThrow(/sampledDepth is not implemented end to end/u);
+    });
+
+    it('rejects scene-color sampling before opaque rendering initializes it', () => {
+        const feature: ForwardRenderPipelineFeature = {
+            name: 'early-scene-color-feature',
+            injectionPoint: 'before-opaque',
+            requirements: {
+                sampledSceneColor: true,
+                sampledDepth: false
+            },
+            create(): ForwardRenderPipelineFeatureRuntime {
+                return new CountingForwardFeatureRuntime();
+            }
+        };
+
+        expect(() => {
+            new ForwardRenderPipelineFactory({ features: [feature] });
+        }).toThrow(/cannot sample scene color before opaque rendering/u);
+    });
+
     it('creates and destroys independent forward feature runtimes per Renderer', async () => {
         const feature = new CountingForwardFeature();
         const factory = new ForwardRenderPipelineFactory({ features: [feature] });
@@ -1259,6 +1946,43 @@ describe('Scriptable render pipeline', () => {
         second.destroy();
         activeRenderers.splice(activeRenderers.indexOf(second), 1);
         expect(feature.runtimes[1]?.destroyCount).toBe(1);
+    });
+
+    it('rejects sharing one forward feature runtime between Renderers without destroying its owner', async () => {
+        const runtime = new CountingForwardFeatureRuntime();
+        const feature: ForwardRenderPipelineFeature = {
+            name: 'singleton-feature-runtime',
+            injectionPoint: 'after-transparent',
+            requirements: {
+                sampledSceneColor: false,
+                sampledDepth: false
+            },
+            create(): ForwardRenderPipelineFeatureRuntime {
+                return runtime;
+            }
+        };
+        const factory = new ForwardRenderPipelineFactory({ features: [feature] });
+        const first = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 4,
+            height: 4,
+            renderPipeline: factory
+        });
+        activeRenderers.push(first);
+
+        await expect(
+            Renderer.create({
+                backend: 'webgl2',
+                domElement: document.createElement('canvas'),
+                width: 4,
+                height: 4,
+                renderPipeline: factory
+            })
+        ).rejects.toThrow(/runtime is already attached to another Renderer/u);
+        expect(runtime.destroyCount).toBe(0);
+        first.render(new Node(), new PerspectiveCamera());
+        expect(runtime.recordCount).toBe(1);
     });
 
     it('snapshots feature create callbacks when the forward factory is constructed', async () => {

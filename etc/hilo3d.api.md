@@ -1548,6 +1548,7 @@ export interface FogParameters {
 
 // @public
 export interface ForwardRenderFeatureContext {
+    readonly cullingResults: CullingResultsHandle;
     readonly pipeline: RenderPipelineContext;
     readonly resources: ForwardRenderPipelineResources;
 }
@@ -5002,13 +5003,32 @@ export interface RenderPipelineLimits {
 
 // @public
 export interface RenderPipelineOutput {
+    colorAttachment(index: number): Readonly<RenderPipelineOutputColorAttachment>;
     readonly colorAttachmentCount: number;
     colorFormat(index: number): RenderTargetColorFormat;
+    readonly depthStencilAttachment: Readonly<RenderPipelineOutputDepthStencilAttachment> | null;
     readonly depthStencilFormat: RenderTargetDepthStencilFormat | null;
     readonly height: number;
     readonly kind: 'surface' | 'render-target';
     readonly sampleCount: RenderTargetSampleCount;
     readonly width: number;
+}
+
+// @public
+export interface RenderPipelineOutputColorAttachment {
+    readonly clearValue: Readonly<RenderTargetColor>;
+    readonly loadOp: RenderTargetLoadOp;
+    readonly storeOp: RenderTargetStoreOp;
+}
+
+// @public
+export interface RenderPipelineOutputDepthStencilAttachment {
+    readonly depthClearValue: number;
+    readonly depthLoadOp: RenderTargetLoadOp;
+    readonly depthStoreOp: RenderTargetStoreOp;
+    readonly stencilClearValue: number;
+    readonly stencilLoadOp: RenderTargetLoadOp;
+    readonly stencilStoreOp: RenderTargetStoreOp;
 }
 
 // @public
@@ -5278,6 +5298,7 @@ export interface ScriptableRenderGraph {
     createTexture(name: string, descriptor: Readonly<RenderPipelineTextureDescriptor>): RenderGraphTextureHandle;
     importOutput(): RenderPipelineOutputResources;
     importRenderTarget(target: RenderTarget): RenderPipelineTargetResources;
+    releasePersistentTarget(key: object): boolean;
 }
 
 // @public

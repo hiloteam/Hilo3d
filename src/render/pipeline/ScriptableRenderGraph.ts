@@ -199,6 +199,16 @@ export interface ScriptableRenderGraph {
         key: object,
         descriptor: Readonly<RenderPipelinePersistentTargetDescriptor>
     ): RenderPipelineTargetResources;
+    /**
+     * Release one persistent target by runtime-owned key.
+     *
+     * Release is committed only after the active frame submits successfully and is rolled back on
+     * recording, compilation, preparation, or execution failure. The target cannot be released
+     * after it has been acquired by the active frame.
+     *
+     * @returns Whether a target was associated with the key.
+     */
+    releasePersistentTarget(key: object): boolean;
     /** Add one stable pass with frame-retained parameters. */
     addPass<P extends object>(pass: ScriptableRenderPass<P>, parameters: P): RenderGraphPassHandle;
 }

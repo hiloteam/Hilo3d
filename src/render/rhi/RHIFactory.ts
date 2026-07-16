@@ -6,7 +6,7 @@ import {
 import { waitForWebGL2RHIContextRestored as waitForWebGL2BackendContextRestored } from './backends/webgl2/WebGL2Device';
 import { createWebGPUDevice, isWebGPURHIAvailable, type WebGPUDevice } from './backends/webgpu';
 import type { RHIFeatureName, RHILimits } from './core/RHICapabilities';
-import type { RHIDevice } from './core/RHIResources';
+import type { RHIDevice, RHIGraphicsShaderArtifactInput } from './core/RHIResources';
 import type { RHIBackend, RHIPowerPreference } from './core/RHITypes';
 import type { RHIDiagnosticsSink } from './RHIDiagnosticsSink';
 
@@ -55,7 +55,14 @@ export interface WebGPURHIDeviceCreateOptions {
     readonly label?: string;
     /** @internal Allocation-free renderer diagnostics channel. */
     readonly diagnosticsSink?: RHIDiagnosticsSink;
+    /** @internal Required GLSL/Naga-prepared artifacts for the backend-owned mipmap utility. */
+    readonly mipmapShaderArtifacts: Readonly<RHIGraphicsShaderArtifactInput>;
 }
+
+export type WebGPURHISupportOptions = Omit<
+    WebGPURHIDeviceCreateOptions,
+    'diagnosticsSink' | 'label' | 'mipmapShaderArtifacts'
+>;
 
 export interface RHIDeviceCreateOptionsMap {
     readonly webgl2: WebGL2RHIDeviceCreateOptions;
@@ -75,6 +82,14 @@ function assertBackend(value: string): asserts value is RHIBackend {
     if (value !== 'webgl2' && value !== 'webgpu') {
         throw new TypeError(`Unsupported RHI backend ${value}`);
     }
+}
+
+function hasMipmapShaderArtifacts(value: unknown): value is WebGPURHIDeviceCreateOptions {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        Reflect.get(value, 'mipmapShaderArtifacts') !== undefined
+    );
 }
 
 function snapshotWebGPUOptions(
@@ -102,7 +117,31 @@ function snapshotWebGPUOptions(
         ...(options.label === undefined ? {} : { label: options.label }),
         ...(options.diagnosticsSink === undefined
             ? {}
-            : { diagnosticsSink: options.diagnosticsSink })
+            : { diagnosticsSink: options.diagnosticsSink }),
+        mipmapShaderArtifacts: options.mipmapShaderArtifacts
+    });
+}
+
+function snapshotWebGPUSupportOptions(options: WebGPURHISupportOptions): WebGPURHISupportOptions {
+    return Object.freeze({
+        ...(options.powerPreference === undefined
+            ? {}
+            : { powerPreference: options.powerPreference }),
+        ...(options.forceFallbackAdapter === undefined
+            ? {}
+            : { forceFallbackAdapter: options.forceFallbackAdapter }),
+        ...(options.rejectFallbackAdapter === undefined
+            ? {}
+            : { rejectFallbackAdapter: options.rejectFallbackAdapter }),
+        ...(options.requiredFeatures === undefined
+            ? {}
+            : { requiredFeatures: Object.freeze([...options.requiredFeatures]) }),
+        ...(options.optionalFeatures === undefined
+            ? {}
+            : { optionalFeatures: Object.freeze([...options.optionalFeatures]) }),
+        ...(options.requiredLimits === undefined
+            ? {}
+            : { requiredLimits: Object.freeze({ ...options.requiredLimits }) })
     });
 }
 
@@ -136,18 +175,23 @@ export async function createRHIDevice(
 ): Promise<WebGL2RHIDevice>;
 export async function createRHIDevice(
     backend: 'webgpu',
-    options?: WebGPURHIDeviceCreateOptions
+    options: WebGPURHIDeviceCreateOptions
 ): Promise<WebGPUDevice>;
 export async function createRHIDevice(
     backend: string,
-    options: WebGL2RHIDeviceCreateOptions | WebGPURHIDeviceCreateOptions = {}
+    options?: WebGL2RHIDeviceCreateOptions | WebGPURHIDeviceCreateOptions
 ): Promise<RHIDevice> {
     assertBackend(backend);
     if (backend === 'webgl2') {
-        if (!('canvas' in options)) {
+        if (options === undefined || !('canvas' in options)) {
             throw new TypeError('WebGL2 RHI device creation requires a canvas');
         }
         return constructRHIDevice('webgl2', options);
+    }
+    if (!hasMipmapShaderArtifacts(options)) {
+        throw new TypeError(
+            'WebGPU RHI device creation requires GLSL/Naga-prepared mipmap shader artifacts'
+        );
     }
     const snapshot = snapshotWebGPUOptions(options);
     return createWebGPUDevice(snapshot);
@@ -160,18 +204,19 @@ export function isRHIBackendSupported(
 ): Promise<boolean>;
 export function isRHIBackendSupported(
     backend: 'webgpu',
-    options?: WebGPURHIDeviceCreateOptions
+    options?: WebGPURHISupportOptions
 ): Promise<boolean>;
 export async function isRHIBackendSupported(
     backend: string,
-    options: WebGL2RHIDeviceCreateOptions | WebGPURHIDeviceCreateOptions = {}
+    options: WebGL2RHIDeviceCreateOptions | WebGPURHISupportOptions = {}
 ): Promise<boolean> {
     assertBackend(backend);
     if (backend === 'webgl2') {
         if (!('canvas' in options)) return false;
         return isWebGL2RHIAvailable(options.canvas, { ...(options.context ?? {}) });
     }
-    const snapshot = snapshotWebGPUOptions(options);
+    if ('canvas' in options) return false;
+    const snapshot = snapshotWebGPUSupportOptions(options);
     return isWebGPURHIAvailable(snapshot);
 }
 

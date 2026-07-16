@@ -205,4 +205,123 @@ describe('RenderTargetResourceCache multisample lifetime', () => {
         registry.destroy();
         backend.destroy();
     });
+
+    it('resumes a failed replacement without leaking staged handles or releasing old handles twice', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const createTexture = vi.spyOn(device, 'createTexture');
+        const registry = new ResourceRegistry(device);
+        const resources = new RenderTargetResourceCache(registry);
+        const owner = {};
+        const descriptor = {
+            label: 'retryable replacement',
+            width: 4,
+            height: 4,
+            colorFormats: ['rgba8unorm'] as const
+        };
+        const record = resources.prepare(owner, descriptor);
+        const registryRelease = registry.release.bind(registry);
+        let releaseCallCount = 0;
+        const release = vi.spyOn(registry, 'release').mockImplementation(handle => {
+            releaseCallCount++;
+            if (releaseCallCount === 2) {
+                throw new Error('injected old-target handle release failure');
+            }
+            registryRelease(handle);
+        });
+
+        expect(() => {
+            resources.prepare(owner, { ...descriptor, width: 8 });
+        }).toThrow('injected old-target handle release failure');
+        expect(record).toMatchObject({ revision: 1, width: 4 });
+        expect(resources.owns(record)).toBe(false);
+        expect(() => resources.resolve(record)).toThrow(/pending replacement or release/u);
+        expect(resources.metrics).toMatchObject({
+            misses: 1,
+            evictions: 0,
+            size: 1
+        });
+        expect(registry.diagnostics()).toMatchObject({
+            trackedResourceCount: 4,
+            pendingReleaseCount: 1
+        });
+        expect(createTexture).toHaveBeenCalledTimes(2);
+
+        expect(resources.prepare(owner, { ...descriptor, width: 8 })).toBe(record);
+        expect(releaseCallCount).toBe(3);
+        expect(createTexture).toHaveBeenCalledTimes(2);
+        expect(record).toMatchObject({ revision: 2, width: 8 });
+        expect(resources.owns(record)).toBe(true);
+        expect(resources.metrics).toMatchObject({
+            misses: 2,
+            evictions: 1,
+            size: 1
+        });
+        expect(registry.collect(0)).toBe(2);
+        expect(registry.diagnostics()).toMatchObject({
+            trackedResourceCount: 2,
+            pendingReleaseCount: 0
+        });
+
+        release.mockRestore();
+        expect(resources.release(owner)).toBe(true);
+        expect(resources.metrics.size).toBe(0);
+        expect(registry.collect(0)).toBe(2);
+        resources.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
+
+    it('abandons a staged replacement safely when destroy retries old-handle cleanup', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const resources = new RenderTargetResourceCache(registry);
+        const owner = {};
+        resources.prepare(owner, {
+            label: 'destroyed replacement',
+            width: 4,
+            height: 4,
+            colorFormats: ['rgba8unorm']
+        });
+        const registryRelease = registry.release.bind(registry);
+        let releaseCallCount = 0;
+        const release = vi.spyOn(registry, 'release').mockImplementation(handle => {
+            releaseCallCount++;
+            if (releaseCallCount === 2) {
+                throw new Error('injected replacement cleanup failure before destroy');
+            }
+            registryRelease(handle);
+        });
+
+        expect(() => {
+            resources.prepare(owner, {
+                label: 'destroyed replacement',
+                width: 8,
+                height: 4,
+                colorFormats: ['rgba8unorm']
+            });
+        }).toThrow('injected replacement cleanup failure before destroy');
+        expect(registry.diagnostics()).toMatchObject({
+            trackedResourceCount: 4,
+            pendingReleaseCount: 1
+        });
+
+        expect(() => {
+            resources.destroy();
+        }).not.toThrow();
+        expect(releaseCallCount).toBe(3);
+        expect(resources.metrics.size).toBe(0);
+        expect(() => resources.release(owner)).toThrow(/resource cache is destroyed/u);
+        expect(registry.diagnostics()).toMatchObject({
+            trackedResourceCount: 2,
+            pendingReleaseCount: 1
+        });
+        expect(registry.collect(0)).toBe(2);
+        expect(registry.diagnostics().trackedResourceCount).toBe(0);
+
+        release.mockRestore();
+        registry.destroy();
+        backend.destroy();
+    });
 });

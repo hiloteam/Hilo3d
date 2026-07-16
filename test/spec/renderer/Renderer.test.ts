@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
+import Fog from '../../../src/core/Fog';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
@@ -8,10 +9,11 @@ import Renderer, { type RendererFrame } from '../../../src/render/Renderer';
 import type * as RHIFactoryExports from '../../../src/render/rhi/RHIFactory';
 import type {
     WebGL2RHIDeviceCreateOptions,
-    WebGPURHIDeviceCreateOptions
+    WebGPURHISupportOptions
 } from '../../../src/render/rhi/RHIFactory';
 import type { RHIDevice } from '../../../src/render/rhi/core';
 import { externalTextureBindingRegistry } from '../../../src/render/renderer/ExternalTextureBindingRegistry';
+import Shader from '../../../src/shader/Shader';
 
 const rhiSupportControl = vi.hoisted(() => ({
     calls: vi.fn(),
@@ -29,7 +31,7 @@ vi.mock('../../../src/render/rhi/RHIFactory', async importOriginal => {
             }
             return backend === 'webgl2'
                 ? actual.isRHIBackendSupported('webgl2', options as WebGL2RHIDeviceCreateOptions)
-                : actual.isRHIBackendSupported('webgpu', options as WebGPURHIDeviceCreateOptions);
+                : actual.isRHIBackendSupported('webgpu', options as WebGPURHISupportOptions);
         }
     };
 });
@@ -299,6 +301,64 @@ describe('Renderer public entry point', () => {
         expect(beginFrame).toHaveBeenCalledOnce();
         expect(endFrame).toHaveBeenCalledOnce();
         expect(pipelineFormats).toEqual(['rgba8unorm', 'rgba16float', 'rgba8unorm', 'rgba8unorm']);
+        firstTarget.destroy();
+        secondTarget.destroy();
+    });
+
+    it('switches scene fog semantics between render invocations in one application frame', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 8,
+            antialias: false
+        });
+        activeRenderers.push(renderer);
+        const firstTarget = renderer.createRenderTarget({
+            width: 8,
+            height: 8,
+            depthStencilAttachment: false
+        });
+        const secondTarget = renderer.createRenderTarget({
+            width: 8,
+            height: 8,
+            depthStencilAttachment: false
+        });
+        const firstMesh = new Mesh({
+            geometry: new BoxGeometry(),
+            material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+            frustumTest: false
+        });
+        const secondMesh = new Mesh({
+            geometry: new BoxGeometry(),
+            material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+            frustumTest: false
+        });
+        const firstScene = Object.assign(new Node(), {
+            fog: new Fog({ mode: 'LINEAR', start: 1, end: 4 })
+        });
+        const secondScene = Object.assign(new Node(), {
+            fog: new Fog({ mode: 'EXP2', density: 0.25 })
+        });
+        firstScene.addChild(firstMesh);
+        secondScene.addChild(secondMesh);
+        const shaderSources = new Map<Mesh, string>();
+        const getShader = Shader.getShader.bind(Shader);
+        vi.spyOn(Shader, 'getShader').mockImplementation(
+            (...parameters: Parameters<typeof Shader.getShader>) => {
+                const shader = getShader(...parameters);
+                if (shader !== null) shaderSources.set(parameters[0], shader.fs);
+                return shader;
+            }
+        );
+
+        renderer.renderFrame(frame => {
+            frame.renderToTarget(firstTarget, firstScene, new PerspectiveCamera());
+            frame.renderToTarget(secondTarget, secondScene, new PerspectiveCamera());
+        });
+
+        expect(shaderSources.get(firstMesh)).toContain('#define HILO_FOG_LINEAR 1');
+        expect(shaderSources.get(secondMesh)).toContain('#define HILO_FOG_EXP2 1');
         firstTarget.destroy();
         secondTarget.destroy();
     });

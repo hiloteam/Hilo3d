@@ -5,6 +5,8 @@ import type {
     RenderTargetColor,
     RenderTargetColorFormat,
     RenderTargetDepthStencilFormat,
+    RenderTargetLoadOp,
+    RenderTargetStoreOp,
     RenderTargetSampleCount
 } from '../RenderTarget';
 import type { RenderPassParameterPool } from './RenderPassParameterPool';
@@ -80,6 +82,37 @@ export interface RenderPipelineCreateContext {
     readonly capabilities: RenderPipelineCapabilities;
 }
 
+/** Attachment operations selected for one physical output color attachment. */
+export interface RenderPipelineOutputColorAttachment {
+    /** Clear value used when {@link RenderPipelineOutputColorAttachment.loadOp} is `clear`. */
+    readonly clearValue: Readonly<RenderTargetColor>;
+    /** Whether the invocation loads or clears the attachment's existing contents. */
+    readonly loadOp: RenderTargetLoadOp;
+    /** Whether the invocation preserves or discards the attachment's resulting contents. */
+    readonly storeOp: RenderTargetStoreOp;
+}
+
+/**
+ * Attachment operations selected for one physical output depth/stencil attachment.
+ *
+ * Stencil fields are ignored when {@link RenderPipelineOutput.depthStencilFormat} has no stencil
+ * aspect.
+ */
+export interface RenderPipelineOutputDepthStencilAttachment {
+    /** Depth clear value used when depthLoadOp is `clear`. */
+    readonly depthClearValue: number;
+    /** Whether the invocation loads or clears existing depth contents. */
+    readonly depthLoadOp: RenderTargetLoadOp;
+    /** Whether the invocation preserves or discards resulting depth contents. */
+    readonly depthStoreOp: RenderTargetStoreOp;
+    /** Stencil clear value used when stencilLoadOp is `clear`. */
+    readonly stencilClearValue: number;
+    /** Whether the invocation loads or clears existing stencil contents. */
+    readonly stencilLoadOp: RenderTargetLoadOp;
+    /** Whether the invocation preserves or discards resulting stencil contents. */
+    readonly stencilStoreOp: RenderTargetStoreOp;
+}
+
 /** Physical output metadata for one pipeline invocation. */
 export interface RenderPipelineOutput {
     /** Whether this invocation renders to the configured surface or a RenderTarget. */
@@ -94,8 +127,12 @@ export interface RenderPipelineOutput {
     readonly colorAttachmentCount: number;
     /** Output depth/stencil format, or null when no depth attachment exists. */
     readonly depthStencilFormat: RenderTargetDepthStencilFormat | null;
+    /** Selected depth/stencil operations, or null when no depth attachment exists. */
+    readonly depthStencilAttachment: Readonly<RenderPipelineOutputDepthStencilAttachment> | null;
     /** Return the format for one output color attachment. */
     colorFormat(index: number): RenderTargetColorFormat;
+    /** Return the selected load, store, and clear policy for one output color attachment. */
+    colorAttachment(index: number): Readonly<RenderPipelineOutputColorAttachment>;
 }
 
 /** Frame-scoped recording context; retaining it after record() returns is an error. */

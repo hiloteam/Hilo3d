@@ -4,7 +4,16 @@ import { extname, join, relative, resolve } from 'node:path';
 const projectRoot = resolve(import.meta.dirname, '..');
 const maintainedRoots = ['src', 'examples', 'test', 'scripts'] as const;
 const forbiddenImplementationExtensions = new Set(['.js', '.jsx', '.mjs', '.cjs', '.cts']);
-const sourceExtensions = new Set(['.ts', '.tsx', '.mts', '.cts']);
+const sourceExtensions = new Set([
+    '.ts',
+    '.tsx',
+    '.mts',
+    '.cts',
+    '.frag',
+    '.glsl',
+    '.vert',
+    '.wgsl'
+]);
 const forbiddenLegacyPaths = [
     'examples/js',
     'examples/glTFViewer/js',
@@ -161,7 +170,7 @@ const forbiddenRHIRules = [
     {
         label: 'render frontend or engine layer imported by RHI',
         pattern:
-            /from\s+["'][^"']*(?:\/material\/|\/geometry\/|\/light\/|\/shader\/|\/texture\/|(?:\.\.\/){3,}core\/|(?:\.\.\/)+(?:Renderer(?:Core)?|RenderList|RenderTarget|internal)(?:\/|["']))/u
+            /from\s+["'][^"']*(?:\/material\/|\/geometry\/|\/light\/|\/shader\/|\/texture\/|(?:\.\.\/){3,}core\/|(?:\.\.\/)+(?:renderer|Renderer(?:Core)?|RenderList|RenderTarget|internal)(?:\/|["']))/u
     },
     {
         label: 'reflective JSON cache key in RHI hot path',
@@ -292,6 +301,12 @@ async function collectLegacyArtifacts(directory: string): Promise<string[]> {
         if (!entry.isFile()) continue;
 
         const extension = extname(entry.name);
+        if (
+            extension === '.wgsl' &&
+            (relativePath.startsWith('src/') || relativePath.startsWith('examples/'))
+        ) {
+            matches.push(`${relativePath} (handwritten WGSL source file)`);
+        }
         if (
             forbiddenImplementationExtensions.has(extension) ||
             matchesForbiddenArtifactName(entry.name)

@@ -534,7 +534,7 @@ export class OffscreenRenderTargetRenderer {
         const passes = this.acquireCompositionPassSet();
         if (inputs.meshProcessor !== null) {
             if (!meshFrameStarted) inputs.meshProcessor.beginFrame(context, scope.uploads);
-            else inputs.meshProcessor.beginPass(context.camera, context.viewport);
+            else inputs.meshProcessor.beginContextPass(context);
         }
         const imported = this.bridge.import(scope.graph, target);
         const opaquePass = passes.opaque;

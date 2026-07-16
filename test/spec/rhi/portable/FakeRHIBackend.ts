@@ -111,6 +111,7 @@ import {
     snapshotRHIGraphicsPipelineDescriptor,
     snapshotRHIPipelineLayoutDescriptor,
     snapshotRHIRenderPassDescriptor,
+    validateRHIRenderPassPipelineDepthStencilAccess,
     type RHIValidationErrorCode
 } from '../../../../src/render/rhi/core/RHIValidation';
 
@@ -1570,6 +1571,7 @@ class FakeRHIRenderPass extends FakeDeviceObject implements RHIRenderPassEncoder
                 );
             }
         }
+        validateRHIRenderPassPipelineDepthStencilAccess(this.descriptor, pipeline.descriptor);
     }
 
     private validateBindGroupLayout(

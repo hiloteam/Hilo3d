@@ -53,6 +53,11 @@ export interface RenderPipelineHostLifecycle {
  */
 export class RenderPipelineHost {
     readonly #frame = new RenderGraphFrame();
+    readonly #abortSignal = Object.freeze({
+        throwIfAborted: (): void => {
+            if (this.#aborted) throw this.createAbortedError();
+        }
+    });
     readonly #buildFrame = (scope: RenderGraphFrameBuildScope): void => {
         this.#activeScope = scope;
         try {
@@ -78,6 +83,7 @@ export class RenderPipelineHost {
     #minimumCapabilities: RenderPipelineCapabilities | null = null;
     #requirements: Readonly<RenderPipelineRequirements> | null = null;
     #directForward = false;
+    #pipelineInvocationActive = false;
     readonly #runtimeOwner = Object.freeze({});
 
     constructor(readonly lifecycle: RenderPipelineHostLifecycle) {}
@@ -108,6 +114,13 @@ export class RenderPipelineHost {
         const requirements = factory.requirements ?? {};
         validateRenderPipelineRequirements(requirements, capabilities, deviceCapabilities);
         const candidate: unknown = await factory.create(Object.freeze({ capabilities }));
+        if (
+            ((typeof candidate === 'object' && candidate !== null) ||
+                typeof candidate === 'function') &&
+            attachedPipelineRuntimes.has(candidate)
+        ) {
+            throw new Error('Render pipeline runtime is already attached to another Renderer');
+        }
         let runtime: RenderPipeline;
         try {
             if (
@@ -155,9 +168,6 @@ export class RenderPipelineHost {
             }
             throw validationError;
         }
-        if (attachedPipelineRuntimes.has(runtime)) {
-            throw new Error('Render pipeline runtime is already attached to another Renderer');
-        }
         attachedPipelineRuntimes.add(runtime);
         this.#runtime = runtime;
         this.#capabilities = capabilities;
@@ -187,6 +197,13 @@ export class RenderPipelineHost {
             return;
         }
         if (this.#aborted) throw this.createAbortedError();
+        if (this.#activeScope === null) {
+            const error = new Error(
+                'Renderer commands are not supported during Render Graph prepare or execute'
+            );
+            this.abort(error);
+            throw error;
+        }
         try {
             command();
         } catch (error) {
@@ -205,25 +222,35 @@ export class RenderPipelineHost {
             throw new Error('Render pipeline recording requires an active application frame');
         }
         if (this.#aborted) throw this.createAbortedError();
+        if (this.#pipelineInvocationActive) {
+            const error = new Error(
+                'Nested renderer.render() calls from an active render pipeline invocation are not supported'
+            );
+            this.abort(error);
+            throw error;
+        }
         const runtime = this.#runtime;
         const capabilities = this.#capabilities;
         if (runtime === null || capabilities === null) {
             throw new Error('Render pipeline runtime is not initialized');
         }
-        if (this.#directForward) {
-            this.lifecycle.recordDefaultPipeline(scene, camera, target, fireEvent);
-            return;
-        }
-        const context = this.lifecycle.createPipelineContext(
-            scene,
-            camera,
-            target,
-            fireEvent,
-            capabilities,
-            this.#runtimeOwner
-        );
+        this.#pipelineInvocationActive = true;
         let completed = false;
+        let contextCreated = false;
         try {
+            if (this.#directForward) {
+                this.lifecycle.recordDefaultPipeline(scene, camera, target, fireEvent);
+                return;
+            }
+            const context = this.lifecycle.createPipelineContext(
+                scene,
+                camera,
+                target,
+                fireEvent,
+                capabilities,
+                this.#runtimeOwner
+            );
+            contextCreated = true;
             const result: unknown = runtime.record(context);
             if (
                 ((typeof result === 'object' && result !== null) || typeof result === 'function') &&
@@ -233,7 +260,11 @@ export class RenderPipelineHost {
             }
             completed = true;
         } finally {
-            this.lifecycle.endPipelineInvocation(completed);
+            try {
+                if (contextCreated) this.lifecycle.endPipelineInvocation(completed);
+            } finally {
+                this.#pipelineInvocationActive = false;
+            }
         }
     }
 
@@ -260,7 +291,7 @@ export class RenderPipelineHost {
             lifecycleStarted = true;
             this.lifecycle.beginFrame(frameIndex);
             const context = this.lifecycle.createFrameContext(frameIndex);
-            const execution = this.#frame.execute(context, this.#buildFrame);
+            const execution = this.#frame.execute(context, this.#buildFrame, this.#abortSignal);
             submitted = true;
             this.lifecycle.completeFrame(frameIndex, execution, this.#frame.uploads.pendingCount);
         } catch (error) {
@@ -326,6 +357,7 @@ export class RenderPipelineHost {
         this.#capabilities = null;
         this.#minimumCapabilities = null;
         this.#requirements = null;
+        this.#pipelineInvocationActive = false;
         const failures: unknown[] = [];
         try {
             runtime?.destroy();

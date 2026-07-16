@@ -496,32 +496,28 @@ export class MeshDrawProcessor {
     /** Enlist recoverable buffer and texture uploads in one RenderGraphFrame transaction. */
     beginFrame(context: RenderGraphFrameContext, uploads: RHIUploadBatch): void {
         this.assertAlive();
-        if (context.renderer !== this.renderer) {
-            throw new Error('Mesh draw context belongs to another renderer');
+        if (this.active) {
+            throw new Error('Mesh draw processor frame is already active');
         }
-        if (
-            context.rhi.id !== this.registry.deviceId ||
-            context.rhi.backend !== this.registry.deviceBackend ||
-            context.rhi.generation !== this.registry.deviceGeneration
-        ) {
-            throw new Error('Mesh draw context belongs to another RHI device generation');
-        }
-        if (!(context.lightManager instanceof LightManager)) {
-            throw new TypeError('Mesh draw lighting requires a real LightManager instance');
-        }
-        context.lightManager.updateInfo(context.camera);
-        refreshShadowAtlasSceneBinding(context.lightManager);
-        this.#validatedLightingFrame = -1;
-        this.#validatedLightManager = null;
-        this.#hasShadowSamplerDependency = false;
-        this.#sampledGraphDependencies.length = 0;
-        this.uniformBlocks.beginSemanticFrame(context.semantic);
+        this.validateContext(context);
+        this.activateContext(context, true);
         this.buffers.beginFrame(context.frameIndex, uploads);
         this.textures.beginFrame(context.frameIndex, uploads);
         this.resourceUses.beginFrame(context.frameIndex, uploads);
-        this.#programBindingInfo.semanticFrame = context.semantic;
-        this.#passSemanticFrame = context.semantic;
-        this.#context = context;
+    }
+
+    /**
+     * Switch scene-owned semantics inside the current application frame without restarting its
+     * resource/upload transaction.
+     */
+    beginContextPass(context: RenderGraphFrameContext): void {
+        this.assertAlive();
+        const activeContext = this.requireActiveContext();
+        this.validateContext(context);
+        if (context.frameIndex !== activeContext.frameIndex) {
+            throw new Error('Mesh draw context pass belongs to another application frame');
+        }
+        this.activateContext(context, false);
     }
 
     /** Select the camera/viewport semantics for one pass without advancing frame-scoped state. */
@@ -539,6 +535,36 @@ export class MeshDrawProcessor {
         this.uniformBlocks.beginSemanticPass(semanticFrame);
         this.#programBindingInfo.semanticFrame = semanticFrame;
         this.#passSemanticFrame = semanticFrame;
+    }
+
+    private validateContext(context: RenderGraphFrameContext): void {
+        if (context.renderer !== this.renderer) {
+            throw new Error('Mesh draw context belongs to another renderer');
+        }
+        if (
+            context.rhi.id !== this.registry.deviceId ||
+            context.rhi.backend !== this.registry.deviceBackend ||
+            context.rhi.generation !== this.registry.deviceGeneration
+        ) {
+            throw new Error('Mesh draw context belongs to another RHI device generation');
+        }
+        if (!(context.lightManager instanceof LightManager)) {
+            throw new TypeError('Mesh draw lighting requires a real LightManager instance');
+        }
+    }
+
+    private activateContext(context: RenderGraphFrameContext, applicationFrame: boolean): void {
+        context.lightManager.updateInfo(context.camera);
+        refreshShadowAtlasSceneBinding(context.lightManager);
+        this.#validatedLightingFrame = -1;
+        this.#validatedLightManager = null;
+        this.#hasShadowSamplerDependency = false;
+        this.#sampledGraphDependencies.length = 0;
+        if (applicationFrame) this.uniformBlocks.beginSemanticFrame(context.semantic);
+        else this.uniformBlocks.beginSemanticPass(context.semantic);
+        this.#programBindingInfo.semanticFrame = context.semantic;
+        this.#passSemanticFrame = context.semantic;
+        this.#context = context;
     }
 
     prepare(

@@ -12,6 +12,7 @@ import {
     validateRHICopyBufferToTexture,
     validateRHICopyTextureToBuffer,
     validateRHICopyTextureToTexture,
+    validateRHIRenderPassPipelineDepthStencilAccess,
     snapshotRHIRenderPassDescriptorInto,
     type RHIBindGroup,
     type RHIBuffer,
@@ -98,6 +99,57 @@ function normalizedExtent(size: RHIExtent3D): Required<RHIExtent3D> {
         height: size.height ?? 1,
         depthOrArrayLayers: size.depthOrArrayLayers ?? 1
     };
+}
+
+function assertWebGL2BufferToTextureAspectCopySupported(
+    texture: WebGL2Texture,
+    aspect: RHITextureAspect,
+    path: string
+): void {
+    const category = texture.formatInfo.category;
+    if (category !== 'stencil' && category !== 'depth-stencil') return;
+    throw new RHIValidationError(
+        'unsupported-feature',
+        `WebGL2 cannot copy the ${aspect} aspect of ${texture.format} from a buffer`,
+        path
+    );
+}
+
+function assertWebGL2CompressedBufferToTextureCopySupported(
+    texture: WebGL2Texture,
+    destination: RHIImageCopyTexture,
+    size: RHIExtent3D
+): void {
+    if (texture.formatInfo.category !== 'compressed') return;
+    const mipLevel = destination.mipLevel ?? 0;
+    const mipWidth = Math.max(1, Math.floor(texture.width / 2 ** mipLevel));
+    const mipHeight = Math.max(1, Math.floor(texture.height / 2 ** mipLevel));
+    const originX = destination.origin?.x ?? 0;
+    const originY = destination.origin?.y ?? 0;
+    const width = size.width;
+    const height = size.height ?? 1;
+    if (originX === 0 && originY === 0 && width === mipWidth && height === mipHeight) {
+        return;
+    }
+    throw new RHIValidationError(
+        'unsupported-feature',
+        'WebGL2 compressed buffer uploads support complete mip slices only; partial regions cannot preserve the portable top-left row contract',
+        'destination'
+    );
+}
+
+function assertWebGL2TextureToBufferAspectCopySupported(
+    texture: WebGL2Texture,
+    aspect: RHITextureAspect,
+    path: string
+): void {
+    const category = texture.formatInfo.category;
+    if (category !== 'depth' && category !== 'stencil' && category !== 'depth-stencil') return;
+    throw new RHIValidationError(
+        'unsupported-feature',
+        `WebGL2 cannot copy the ${aspect} aspect of ${texture.format} to a buffer`,
+        path
+    );
 }
 
 type WebGL2ExternalImageUploadContext = WebGL2RenderingContext & {
@@ -1046,6 +1098,12 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         this.requireOpen();
         validateRHIWriteTexture(this.owner, destination, data, dataLayout, writeSize);
         const texture = this.owner.requireTexture(destination.texture);
+        assertWebGL2BufferToTextureAspectCopySupported(
+            texture,
+            destination.aspect ?? 'all',
+            'destination.aspect'
+        );
+        assertWebGL2CompressedBufferToTextureCopySupported(texture, destination, writeSize);
         this.closeExternalImageUploadPhase();
         try {
             const gl = this.owner.gl;
@@ -1188,6 +1246,12 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         validateRHICopyBufferToTexture(this, source, destination, copySize);
         const src = this.owner.requireBuffer(source.buffer);
         const dst = this.owner.requireTexture(destination.texture);
+        assertWebGL2BufferToTextureAspectCopySupported(
+            dst,
+            destination.aspect ?? 'all',
+            'destination.aspect'
+        );
+        assertWebGL2CompressedBufferToTextureCopySupported(dst, destination, copySize);
         this.closeExternalImageUploadPhase();
         try {
             this.copyBufferToTextureNative(src, source, dst, destination, copySize);
@@ -1206,6 +1270,11 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         validateRHICopyTextureToBuffer(this, source, destination, copySize);
         const src = this.owner.requireTexture(source.texture);
         const dst = this.owner.requireBuffer(destination.buffer);
+        assertWebGL2TextureToBufferAspectCopySupported(
+            src,
+            source.aspect ?? 'all',
+            'source.aspect'
+        );
         this.closeExternalImageUploadPhase();
         try {
             this.copyTextureToBufferNative(src, source, dst, destination, copySize);
@@ -1318,6 +1387,8 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         const destinationY = destination.origin?.y ?? 0;
         const destinationZ = destination.origin?.z ?? 0;
         const mipLevel = destination.mipLevel ?? 0;
+        const mipHeight = Math.max(1, Math.floor(destinationTexture.height / 2 ** mipLevel));
+        const nativeDestinationY = mipHeight - destinationY - height;
         const info = destinationTexture.formatInfo;
         const externalGL = gl as WebGL2ExternalImageUploadContext;
         try {
@@ -1333,12 +1404,14 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
             state.setPixelStore(gl.UNPACK_SKIP_PIXELS, source.origin?.x ?? 0);
             state.setPixelStore(gl.UNPACK_SKIP_ROWS, source.origin?.y ?? 0);
             state.setPixelStore(gl.UNPACK_SKIP_IMAGES, 0);
-            state.setPixelStore(gl.UNPACK_FLIP_Y_WEBGL, source.flipY === true ? 1 : 0);
+            // DOM uploads place the source's first row at WebGL's bottom row. Invert the native
+            // flag so the public RHI contract retains top-left rows unless flipY is requested.
+            state.setPixelStore(gl.UNPACK_FLIP_Y_WEBGL, source.flipY === true ? 0 : 1);
             state.setPixelStore(
                 gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,
                 destination.premultipliedAlpha === true ? 1 : 0
             );
-            state.setPixelStore(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+            state.setPixelStore(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.BROWSER_DEFAULT_WEBGL);
             if (
                 destinationTexture.target === gl.TEXTURE_2D ||
                 destinationTexture.target === gl.TEXTURE_CUBE_MAP
@@ -1351,7 +1424,7 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
                     target,
                     mipLevel,
                     destinationX,
-                    destinationY,
+                    nativeDestinationY,
                     width,
                     height,
                     info.format,
@@ -1363,7 +1436,7 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
                     destinationTexture.target,
                     mipLevel,
                     destinationX,
-                    destinationY,
+                    nativeDestinationY,
                     destinationZ,
                     width,
                     height,
@@ -1425,6 +1498,7 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         const originY = destination.origin?.y ?? 0;
         const originZ = destination.origin?.z ?? 0;
         const mip = destination.mipLevel ?? 0;
+        const mipHeight = Math.max(1, Math.floor(destinationTexture.height / 2 ** mip));
         const info = destinationTexture.formatInfo;
         const blockColumns = Math.ceil(width / info.blockWidth);
         const blockRows = Math.ceil(height / info.blockHeight);
@@ -1487,41 +1561,48 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
             return;
         }
         this.owner.state.setPixelStore(gl.UNPACK_ROW_LENGTH, bytesPerRow / info.bytesPerTexel);
+        // PBO and typed-array uploads cannot use the DOM-source flip flag. Address each source
+        // row directly so portable top-to-bottom order reaches WebGL's bottom-left texture space
+        // without allocating a vertically flipped staging image.
         for (let layer = 0; layer < depthOrArrayLayers; layer += 1) {
-            const offset = (source.offset ?? 0) + layer * rowsPerImage * bytesPerRow;
-            if (
-                destinationTexture.target === gl.TEXTURE_2D ||
-                destinationTexture.target === gl.TEXTURE_CUBE_MAP
-            ) {
-                const target =
+            const layerOffset = (source.offset ?? 0) + layer * rowsPerImage * bytesPerRow;
+            for (let row = 0; row < height; row += 1) {
+                const offset = layerOffset + row * bytesPerRow;
+                const destinationY = mipHeight - originY - 1 - row;
+                if (
+                    destinationTexture.target === gl.TEXTURE_2D ||
                     destinationTexture.target === gl.TEXTURE_CUBE_MAP
-                        ? gl.TEXTURE_CUBE_MAP_POSITIVE_X + originZ + layer
-                        : destinationTexture.target;
-                gl.texSubImage2D(
-                    target,
-                    mip,
-                    originX,
-                    originY,
-                    width,
-                    height,
-                    info.format,
-                    info.type,
-                    offset
-                );
-            } else {
-                gl.texSubImage3D(
-                    destinationTexture.target,
-                    mip,
-                    originX,
-                    originY,
-                    originZ + layer,
-                    width,
-                    height,
-                    1,
-                    info.format,
-                    info.type,
-                    offset
-                );
+                ) {
+                    const target =
+                        destinationTexture.target === gl.TEXTURE_CUBE_MAP
+                            ? gl.TEXTURE_CUBE_MAP_POSITIVE_X + originZ + layer
+                            : destinationTexture.target;
+                    gl.texSubImage2D(
+                        target,
+                        mip,
+                        originX,
+                        destinationY,
+                        width,
+                        1,
+                        info.format,
+                        info.type,
+                        offset
+                    );
+                } else {
+                    gl.texSubImage3D(
+                        destinationTexture.target,
+                        mip,
+                        originX,
+                        destinationY,
+                        originZ + layer,
+                        width,
+                        1,
+                        1,
+                        info.format,
+                        info.type,
+                        offset
+                    );
+                }
             }
         }
         this.owner.state.setPixelStore(gl.UNPACK_ROW_LENGTH, 0);
@@ -1612,6 +1693,15 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
             y: destination.origin?.y ?? 0,
             z: destination.origin?.z ?? 0
         };
+        const sourceMipLevel = source.mipLevel ?? 0;
+        const destinationMipLevel = destination.mipLevel ?? 0;
+        const sourceMipHeight = Math.max(1, Math.floor(sourceTexture.height / 2 ** sourceMipLevel));
+        const destinationMipHeight = Math.max(
+            1,
+            Math.floor(destinationTexture.height / 2 ** destinationMipLevel)
+        );
+        const sourceY = sourceMipHeight - sourceOrigin.y - extent.height;
+        const destinationY = destinationMipHeight - destinationOrigin.y - extent.height;
         const read = this.queue.copyReadFramebuffer();
         const draw = this.queue.copyDrawFramebuffer();
         this.owner.state.bindFramebuffer(gl.READ_FRAMEBUFFER, read);
@@ -1629,26 +1719,26 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
             this.attachTextureLayer(
                 gl.READ_FRAMEBUFFER,
                 sourceTexture,
-                source.mipLevel ?? 0,
+                sourceMipLevel,
                 sourceOrigin.z + layer,
                 aspect
             );
             this.attachTextureLayer(
                 gl.DRAW_FRAMEBUFFER,
                 destinationTexture,
-                destination.mipLevel ?? 0,
+                destinationMipLevel,
                 destinationOrigin.z + layer,
                 destination.aspect ?? 'all'
             );
             gl.blitFramebuffer(
                 sourceOrigin.x,
-                sourceOrigin.y,
+                sourceY,
                 sourceOrigin.x + extent.width,
-                sourceOrigin.y + extent.height,
+                sourceY + extent.height,
                 destinationOrigin.x,
-                destinationOrigin.y,
+                destinationY,
                 destinationOrigin.x + extent.width,
-                destinationOrigin.y + extent.height,
+                destinationY + extent.height,
                 mask,
                 gl.NEAREST
             );
@@ -2782,6 +2872,7 @@ export class WebGL2RenderPass
                 'pipeline sample count does not match pass',
                 'renderPass.pipeline'
             );
+        validateRHIRenderPassPipelineDepthStencilAccess(this.#descriptor, pipeline.descriptor);
     }
 
     private endNative(): void {

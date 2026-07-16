@@ -15,6 +15,10 @@ export interface RenderGraphFrameBuildScope {
 
 export type RenderGraphFrameBuildCallback = (scope: RenderGraphFrameBuildScope) => unknown;
 
+export interface RenderGraphFrameAbortSignal {
+    throwIfAborted(): void;
+}
+
 function isPromiseLike(value: unknown): boolean {
     if ((typeof value !== 'object' || value === null) && typeof value !== 'function') {
         return false;
@@ -64,7 +68,8 @@ export class RenderGraphFrame {
 
     execute(
         context: RenderGraphFrameContext,
-        build: RenderGraphFrameBuildCallback
+        build: RenderGraphFrameBuildCallback,
+        abortSignal?: RenderGraphFrameAbortSignal
     ): RGExecutionResult {
         if (this.#active)
             throw new Error('Nested execution on the same RenderGraphFrame is not allowed');
@@ -87,7 +92,8 @@ export class RenderGraphFrame {
             const execution = this.#renderGraph.execute(compiled, context.rhi, {
                 frameIndex: context.frameIndex,
                 diagnostics: this.diagnostics,
-                prePassCommands: this.uploads
+                prePassCommands: this.uploads,
+                ...(abortSignal === undefined ? {} : { abortSignal })
             });
             this.uploads.commit(execution.submission);
             execution.diagnostics.frameArenaGrowths = this.arena.growthCount - growthsBeforeBuild;

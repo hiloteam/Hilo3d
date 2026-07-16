@@ -82,6 +82,7 @@ import { ShadowAtlasRenderer } from '../renderer/ShadowAtlasRenderer';
 import { ShadowAtlasResourceCache } from '../renderer/ShadowAtlasResourceCache';
 import { ShadowAtlasSceneAdapter } from '../renderer/ShadowAtlasSceneAdapter';
 import { ShadowAtlasTextureBinding } from '../renderer/ShadowAtlasTextureBinding';
+import { prepareWebGPUMipmapShaderArtifacts } from '../renderer/WebGPUMipmapShader';
 import { RenderPipelineHost, type RenderPipelineHostLifecycle } from './RenderPipelineHost';
 import {
     ScriptableRenderPipelineContextImpl,
@@ -119,6 +120,11 @@ interface RenderingResources {
         maxDepth: number;
     };
     readonly recovery: RHIRecoveryCoordinator;
+}
+
+interface PendingAfterSceneEvent {
+    readonly meshes: Mesh[];
+    source: readonly Mesh[] | null;
 }
 
 const OPTIONAL_WEBGPU_FEATURES: readonly RHIRequestableWebGPUFeature[] = Object.freeze([
@@ -222,12 +228,16 @@ class SharedRendererDriver
     readonly #renderTargetTextureBindings = new Set<RenderTargetTextureBindingProvider>();
     readonly #getActiveUploadBatch = () => this.#pipelineHost.requireActiveScope().uploads;
     readonly #retiredResourceCleanups = new Set<Promise<void>>();
-    readonly #webGPUDeviceOptions: Readonly<WebGPURHIDeviceCreateOptions>;
+    readonly #webGPUDeviceOptions: Readonly<
+        Omit<WebGPURHIDeviceCreateOptions, 'mipmapShaderArtifacts'>
+    >;
     readonly #webGLContextOptions: Readonly<NonNullable<RendererWebGL2Options>>;
     readonly #rhiExtension: object;
     readonly #executionInteropHost: RHIExecutionInteropHost;
 
     #device: RHIDevice | null = null;
+    #webGPUMipmapShaderArtifacts: ReturnType<typeof prepareWebGPUMipmapShaderArtifacts> | null =
+        null;
     #surface: RHISurface | null = null;
     #resources: RenderingResources | null = null;
     #lastStage: RendererScene | null = null;
@@ -244,7 +254,7 @@ class SharedRendererDriver
     #applicationPassCount = 0;
     #applicationFaceCount = 0;
     readonly #usedTargets: RenderTargetResourceRecord[] = [];
-    readonly #afterSceneEvents: { readonly meshes: Mesh[] }[] = [];
+    readonly #afterSceneEvents: PendingAfterSceneEvent[] = [];
     readonly #frameCleanupFailures: unknown[] = [];
     #afterSceneEventCount = 0;
     #ownsRenderTarget = false;
@@ -500,7 +510,9 @@ class SharedRendererDriver
         );
         for (let index = 0; index < this.#afterSceneEventCount; index += 1) {
             const pending = this.#afterSceneEvents[index];
-            if (pending !== undefined) this.fireAfterSceneEvents(pending.meshes, true);
+            if (pending !== undefined) {
+                this.fireAfterSceneEvents(pending.source ?? pending.meshes, true);
+            }
         }
         this.commitPendingPresentation();
     }
@@ -686,11 +698,7 @@ class SharedRendererDriver
     }
 
     beginScriptableMeshPass(context: RenderGraphFrameContext): void {
-        if (!this.#meshFrameStarted) {
-            this.ensureMeshFrame(context);
-            return;
-        }
-        this.requireResources().processor.beginPass(context.camera, context.viewport);
+        this.ensureMeshFrame(context);
     }
 
     beginScriptableFullscreenPass(context: RenderGraphFrameContext): void {
@@ -716,8 +724,17 @@ class SharedRendererDriver
         this.#surfaceRequested = true;
     }
 
-    fireScriptableBeforeScene(meshes: readonly Mesh[], enabled: boolean): void {
-        this.fireBeforeSceneEvents(meshes, enabled);
+    fireScriptableBeforeScene(
+        meshes: readonly Mesh[],
+        enabled: boolean,
+        fireRendererEvents: boolean
+    ): void {
+        if (!enabled) return;
+        if (fireRendererEvents) {
+            this.fire('beforeRender');
+            this.fire('beforeRenderScene');
+        }
+        for (const mesh of meshes) mesh.fire('beforeRender', mesh);
     }
 
     recordScriptableShadows(
@@ -733,8 +750,16 @@ class SharedRendererDriver
         return this.renderSceneShadows(resources, context, meshes, width, height);
     }
 
-    recordScriptableScene(meshes: readonly Mesh[], fireEvent: boolean, passCount: number): void {
-        this.recordSceneBuild(meshes, fireEvent, 0, passCount);
+    recordScriptablePass(passCount: number): void {
+        this.recordSceneBuild([], false, 0, passCount);
+    }
+
+    recordScriptableFaces(meshes: readonly Mesh[]): void {
+        this.recordSceneBuild(meshes, false, 0, 0);
+    }
+
+    queueScriptableAfterScene(meshes: readonly Mesh[], enabled: boolean): void {
+        if (enabled) this.queueAfterSceneEvents(meshes, true);
     }
 
     retainScriptablePresentation(scene: RendererScene, camera: Camera): void {
@@ -831,7 +856,12 @@ class SharedRendererDriver
         fireEvent = false
     ): void {
         this.recordFrameCommand(() => {
-            this.renderSceneToTarget(this.requireOwnedTarget(target), stage, camera, fireEvent);
+            this.#pipelineHost.recordPipeline(
+                stage,
+                camera,
+                this.requireOwnedTarget(target),
+                fireEvent
+            );
         });
     }
 
@@ -1103,7 +1133,7 @@ class SharedRendererDriver
             if (this.rendererWasDestroyed()) {
                 throw new Error('Renderer initialization was cancelled');
             }
-            const device = await createRHIDevice('webgpu', this.#webGPUDeviceOptions);
+            const device = await createRHIDevice('webgpu', this.webGPUDeviceCreateOptions());
             if (this.rendererWasDestroyed()) {
                 device.destroy();
                 throw new Error('Renderer initialization was cancelled');
@@ -1188,6 +1218,8 @@ class SharedRendererDriver
             submissions: processor.submissions,
             createReplacementDevice: () => this.createReplacementDevice()
         });
+        recovery.registerSubmissionTracker(postProcess.fullscreen.submissions);
+        recovery.registerSubmissionTracker(shadowRenderer.submissions);
         recovery.registerSynchronizer(processor.buffers);
         recovery.registerSynchronizer(processor.textures);
         recovery.registerSynchronizer(postProcess.fullscreen);
@@ -1334,7 +1366,7 @@ class SharedRendererDriver
         if (this.rendererWasDestroyed()) throw new Error('Renderer recovery was cancelled');
         let replacement: RHIDevice;
         if (this.backend === 'webgpu') {
-            replacement = await createRHIDevice('webgpu', this.#webGPUDeviceOptions);
+            replacement = await createRHIDevice('webgpu', this.webGPUDeviceCreateOptions());
         } else {
             await this.waitForWebGLContextRestored();
             if (this.rendererWasDestroyed()) throw new Error('Renderer recovery was cancelled');
@@ -1358,6 +1390,14 @@ class SharedRendererDriver
 
     private waitForWebGLContextRestored(): Promise<void> {
         return waitForWebGL2RHIContextRestored(this.requireCanvas(), this.#webGLContextOptions);
+    }
+
+    private webGPUDeviceCreateOptions(): Readonly<WebGPURHIDeviceCreateOptions> {
+        this.#webGPUMipmapShaderArtifacts ??= prepareWebGPUMipmapShaderArtifacts(this.#compiler);
+        return Object.freeze({
+            ...this.#webGPUDeviceOptions,
+            mipmapShaderArtifacts: this.#webGPUMipmapShaderArtifacts
+        });
     }
 
     private adoptRecoveredDevice(device: RHIDevice): void {
@@ -1606,8 +1646,11 @@ class SharedRendererDriver
     }
 
     private ensureMeshFrame(context: RenderGraphFrameContext): void {
-        if (this.#meshFrameStarted) return;
         const resources = this.requireResources();
+        if (this.#meshFrameStarted) {
+            resources.processor.beginContextPass(context);
+            return;
+        }
         resources.processor.beginFrame(context, this.#pipelineHost.requireActiveScope().uploads);
         this.#meshFrameStarted = true;
     }
@@ -1628,16 +1671,24 @@ class SharedRendererDriver
         this.#applicationPassCount +=
             passCountOverride ?? shadowPassCount + (hasTransparent ? 2 : 1);
         if (!fireEvent) return;
+        this.queueAfterSceneEvents(meshes);
+    }
+
+    private queueAfterSceneEvents(meshes: readonly Mesh[], retainReference = false): void {
         let pending = this.#afterSceneEvents[this.#afterSceneEventCount];
         if (pending === undefined) {
-            pending = { meshes: [] };
+            pending = { meshes: [], source: null };
             this.#afterSceneEvents.push(pending);
         }
         const snapshot = pending.meshes;
-        snapshot.length = meshes.length;
-        for (let index = 0; index < meshes.length; index += 1) {
-            const mesh = meshes[index];
-            if (mesh !== undefined) snapshot[index] = mesh;
+        pending.source = retainReference ? meshes : null;
+        if (retainReference) snapshot.length = 0;
+        else {
+            snapshot.length = meshes.length;
+            for (let index = 0; index < meshes.length; index += 1) {
+                const mesh = meshes[index];
+                if (mesh !== undefined) snapshot[index] = mesh;
+            }
         }
         this.#afterSceneEventCount++;
     }
@@ -1645,7 +1696,10 @@ class SharedRendererDriver
     private clearAfterSceneEvents(): void {
         for (let index = 0; index < this.#afterSceneEventCount; index += 1) {
             const pending = this.#afterSceneEvents[index];
-            if (pending !== undefined) pending.meshes.length = 0;
+            if (pending !== undefined) {
+                pending.meshes.length = 0;
+                pending.source = null;
+            }
         }
         this.#afterSceneEventCount = 0;
     }

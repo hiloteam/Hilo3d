@@ -1,4 +1,6 @@
 import {
+    rhiTextureFormatHasDepth,
+    rhiTextureFormatHasStencil,
     type RHICacheCounter,
     RHIValidationError,
     snapshotRHIRenderPassDescriptor
@@ -98,6 +100,28 @@ function requireTextureView(device: WebGPUDevice, value: unknown, path: string):
     return value;
 }
 
+function depthAspectUnused(
+    attachment: NonNullable<RHIRenderPassDescriptor['depthStencilAttachment']>
+): boolean {
+    return (
+        attachment.depthClearValue === undefined &&
+        attachment.depthLoadOp === undefined &&
+        attachment.depthStoreOp === undefined &&
+        attachment.depthReadOnly === undefined
+    );
+}
+
+function stencilAspectUnused(
+    attachment: NonNullable<RHIRenderPassDescriptor['depthStencilAttachment']>
+): boolean {
+    return (
+        attachment.stencilClearValue === undefined &&
+        attachment.stencilLoadOp === undefined &&
+        attachment.stencilStoreOp === undefined &&
+        attachment.stencilReadOnly === undefined
+    );
+}
+
 function nativeRenderPassDescriptor(
     device: WebGPUDevice,
     descriptor: Readonly<RHIRenderPassDescriptor>
@@ -134,12 +158,18 @@ function nativeRenderPassDescriptor(
             : {
                   depthStencilAttachment: (() => {
                       const attachment = descriptor.depthStencilAttachment;
+                      const view = requireTextureView(
+                          device,
+                          attachment.view,
+                          'renderPass.depthStencilAttachment.view'
+                      );
+                      const unusedDepth =
+                          rhiTextureFormatHasDepth(view.format) && depthAspectUnused(attachment);
+                      const unusedStencil =
+                          rhiTextureFormatHasStencil(view.format) &&
+                          stencilAspectUnused(attachment);
                       return {
-                          view: requireTextureView(
-                              device,
-                              attachment.view,
-                              'renderPass.depthStencilAttachment.view'
-                          ).nativeHandle,
+                          view: view.nativeHandle,
                           ...(attachment.depthClearValue === undefined
                               ? {}
                               : { depthClearValue: attachment.depthClearValue }),
@@ -149,9 +179,11 @@ function nativeRenderPassDescriptor(
                           ...(attachment.depthStoreOp === undefined
                               ? {}
                               : { depthStoreOp: attachment.depthStoreOp }),
-                          ...(attachment.depthReadOnly === undefined
-                              ? {}
-                              : { depthReadOnly: attachment.depthReadOnly }),
+                          ...(unusedDepth
+                              ? { depthReadOnly: true }
+                              : attachment.depthReadOnly === undefined
+                                ? {}
+                                : { depthReadOnly: attachment.depthReadOnly }),
                           ...(attachment.stencilClearValue === undefined
                               ? {}
                               : { stencilClearValue: attachment.stencilClearValue }),
@@ -161,9 +193,11 @@ function nativeRenderPassDescriptor(
                           ...(attachment.stencilStoreOp === undefined
                               ? {}
                               : { stencilStoreOp: attachment.stencilStoreOp }),
-                          ...(attachment.stencilReadOnly === undefined
-                              ? {}
-                              : { stencilReadOnly: attachment.stencilReadOnly })
+                          ...(unusedStencil
+                              ? { stencilReadOnly: true }
+                              : attachment.stencilReadOnly === undefined
+                                ? {}
+                                : { stencilReadOnly: attachment.stencilReadOnly })
                       };
                   })()
               })

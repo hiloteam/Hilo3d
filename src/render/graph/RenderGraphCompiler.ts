@@ -119,6 +119,8 @@ class RenderGraphCompilerWorkspace {
     readonly lastWriter = new Map<RGResourceHandle, number>();
     readonly readersSinceWrite = new Map<RGResourceHandle, Set<number>>();
     readonly contentAvailable = new Map<RGResourceHandle, boolean>();
+    readonly depthContentAvailable = new Map<RGResourceHandle, boolean>();
+    readonly stencilContentAvailable = new Map<RGResourceHandle, boolean>();
     readonly passIndexByHandle = new Map<RGPassHandle, number>();
     readonly outgoing: Set<number>[] = [];
     readonly incoming: Set<number>[] = [];
@@ -151,6 +153,8 @@ class RenderGraphCompilerWorkspace {
         this.lastWriter.clear();
         this.readersSinceWrite.clear();
         this.contentAvailable.clear();
+        this.depthContentAvailable.clear();
+        this.stencilContentAvailable.clear();
         this.passIndexByHandle.clear();
         this.roots.clear();
         this.scratchReadSet.clear();
@@ -212,6 +216,8 @@ class RenderGraphCompilerWorkspace {
         this.lastWriter.clear();
         this.readersSinceWrite.clear();
         this.contentAvailable.clear();
+        this.depthContentAvailable.clear();
+        this.stencilContentAvailable.clear();
         this.passIndexByHandle.clear();
         this.roots.clear();
         this.scratchReadSet.clear();
@@ -472,10 +478,10 @@ function validateColorAttachment(
 }
 
 interface DepthStencilAccess {
-    readonly requiresLoad: boolean;
-    readonly writes: boolean;
-    readonly stores: boolean;
-    readonly coversAllAspects: boolean;
+    readonly hasDepth: boolean;
+    readonly hasStencil: boolean;
+    readonly depth: DepthStencilAspectAccess;
+    readonly stencil: DepthStencilAspectAccess;
 }
 
 interface DepthStencilAspectAccess {
@@ -593,10 +599,10 @@ function validateDepthStencilAttachment(
     return {
         resource,
         access: {
-            requiresLoad: depth.requiresLoad || stencil.requiresLoad,
-            writes: depth.writes || stencil.writes,
-            stores: (!depth.writes || depth.stores) && (!stencil.writes || stencil.stores),
-            coversAllAspects: (!hasDepth || depth.used) && (!hasStencil || stencil.used)
+            hasDepth,
+            hasStencil,
+            depth,
+            stencil
         }
     };
 }
@@ -638,6 +644,8 @@ export class RenderGraphCompiler {
         const lastWriter = workspace.lastWriter;
         const readersSinceWrite = workspace.readersSinceWrite;
         const contentAvailable = workspace.contentAvailable;
+        const depthContentAvailable = workspace.depthContentAvailable;
+        const stencilContentAvailable = workspace.stencilContentAvailable;
         const passIndexByHandle = workspace.passIndexByHandle;
         const outgoing = workspace.outgoing;
         const incoming = workspace.incoming;
@@ -645,7 +653,16 @@ export class RenderGraphCompiler {
             const normalized = normalizedResource(resource, capabilities);
             normalizedResources.push(normalized);
             resourceByHandle.set(normalized.handle, normalized);
-            contentAvailable.set(normalized.handle, normalized.origin === 'imported');
+            const imported = normalized.origin === 'imported';
+            contentAvailable.set(normalized.handle, imported);
+            if (normalized.kind === 'texture') {
+                if (rhiTextureFormatHasDepth(normalized.descriptor.format)) {
+                    depthContentAvailable.set(normalized.handle, imported);
+                }
+                if (rhiTextureFormatHasStencil(normalized.descriptor.format)) {
+                    stencilContentAvailable.set(normalized.handle, imported);
+                }
+            }
         }
         for (const pass of snapshot.passes) passIndexByHandle.set(pass.handle, pass.index);
 
@@ -670,7 +687,9 @@ export class RenderGraphCompiler {
                     resourceByHandle,
                     pass.name
                 );
-                if (access.writes) capturePreferredWriter(resource.handle, pass);
+                if (access.depth.writes || access.stencil.writes) {
+                    capturePreferredWriter(resource.handle, pass);
+                }
             }
         }
 
@@ -685,7 +704,7 @@ export class RenderGraphCompiler {
             }
             return resource;
         };
-        const readResource = (
+        const readResourceDependency = (
             handle: RGResourceHandle,
             pass: RGPassNode,
             preferLastGraphWriter = false
@@ -701,21 +720,43 @@ export class RenderGraphCompiler {
                     return;
                 }
             }
-            if (contentAvailable.get(handle) !== true) {
-                renderGraphFailure(
-                    'uninitialized-read',
-                    `reads resource ${resource.name} before initialization or after discard`,
-                    pass.name
-                );
-            }
             const writer = lastWriter.get(handle);
             if (writer !== undefined) addEdge(outgoing, incoming, writer, pass.index);
             let readers = readersSinceWrite.get(handle);
             readers ??= workspace.acquireReaderSet(handle);
             readers.add(pass.index);
         };
-        const writeResource = (handle: RGResourceHandle, pass: RGPassNode): void => {
-            requireResource(handle, pass);
+        const genericContentAvailable = (resource: CompiledRGResource): boolean =>
+            contentAvailable.get(resource.handle) === true;
+        const readResource = (
+            handle: RGResourceHandle,
+            pass: RGPassNode,
+            preferLastGraphWriter = false
+        ): void => {
+            const resource = requireResource(handle, pass);
+            if (
+                preferLastGraphWriter &&
+                resource.kind === 'texture' &&
+                resource.readFromLastGraphWriter &&
+                lastPreferredGraphWriter.has(handle)
+            ) {
+                readResourceDependency(handle, pass, true);
+                return;
+            }
+            if (!genericContentAvailable(resource)) {
+                renderGraphFailure(
+                    'uninitialized-read',
+                    `reads resource ${resource.name} before initialization or after discard`,
+                    pass.name
+                );
+            }
+            readResourceDependency(handle, pass, preferLastGraphWriter);
+        };
+        const writeResourceDependency = (
+            handle: RGResourceHandle,
+            pass: RGPassNode
+        ): CompiledRGResource => {
+            const resource = requireResource(handle, pass);
             const writer = lastWriter.get(handle);
             if (writer !== undefined) addEdge(outgoing, incoming, writer, pass.index);
             for (const reader of readersSinceWrite.get(handle) ?? []) {
@@ -724,7 +765,19 @@ export class RenderGraphCompiler {
             workspace.acquireReaderSet(handle).clear();
             lastWriter.set(handle, pass.index);
             resourceWriters.set(handle, pass.index);
+            return resource;
+        };
+        const writeResource = (handle: RGResourceHandle, pass: RGPassNode): void => {
+            const resource = writeResourceDependency(handle, pass);
             contentAvailable.set(handle, true);
+            if (resource.kind === 'texture') {
+                if (rhiTextureFormatHasDepth(resource.descriptor.format)) {
+                    depthContentAvailable.set(handle, true);
+                }
+                if (rhiTextureFormatHasStencil(resource.descriptor.format)) {
+                    stencilContentAvailable.set(handle, true);
+                }
+            }
         };
 
         for (const pass of snapshot.passes) {
@@ -799,21 +852,50 @@ export class RenderGraphCompiler {
                         `${pass.name}.depthStencilAttachment`
                     );
                 }
-                const availableBefore = contentAvailable.get(resource.handle) === true;
-                if (access.requiresLoad) readResource(resource.handle, pass);
-                if (access.writes) {
-                    writeResource(resource.handle, pass);
+                if (
+                    access.depth.requiresLoad &&
+                    depthContentAvailable.get(resource.handle) !== true
+                ) {
+                    renderGraphFailure(
+                        'uninitialized-read',
+                        `loads depth from ${resource.name} before initialization or after discard`,
+                        pass.name
+                    );
+                }
+                if (
+                    access.stencil.requiresLoad &&
+                    stencilContentAvailable.get(resource.handle) !== true
+                ) {
+                    renderGraphFailure(
+                        'uninitialized-read',
+                        `loads stencil from ${resource.name} before initialization or after discard`,
+                        pass.name
+                    );
+                }
+                if (access.depth.requiresLoad || access.stencil.requiresLoad) {
+                    readResourceDependency(resource.handle, pass);
+                }
+                if (access.depth.writes || access.stencil.writes) {
+                    writeResourceDependency(resource.handle, pass);
+                    if (access.depth.writes) {
+                        depthContentAvailable.set(resource.handle, access.depth.stores);
+                    }
+                    if (access.stencil.writes) {
+                        stencilContentAvailable.set(resource.handle, access.stencil.stores);
+                    }
                     contentAvailable.set(
                         resource.handle,
-                        access.stores && (access.coversAllAspects || availableBefore)
+                        (!access.hasDepth || depthContentAvailable.get(resource.handle) === true) &&
+                            (!access.hasStencil ||
+                                stencilContentAvailable.get(resource.handle) === true)
                     );
                 }
             }
         }
 
         for (const handle of preferredGraphWriterReads) {
-            if (contentAvailable.get(handle) === true) continue;
             const resource = resourceByHandle.get(handle);
+            if (resource !== undefined && genericContentAvailable(resource)) continue;
             renderGraphFailure(
                 'uninitialized-read',
                 `reads resource ${resource?.name ?? String(handle)} after its last graph writer discarded the contents`
@@ -837,7 +919,10 @@ export class RenderGraphCompiler {
                 );
             }
             const writer = resourceWriters.get(output);
-            if (contentAvailable.get(output) !== true) {
+            if (
+                contentAvailable.get(output) !== true &&
+                (writer === undefined || resource.extracted)
+            ) {
                 renderGraphFailure(
                     'uninitialized-read',
                     `output resource ${resource.name} is uninitialized or was discarded`
@@ -873,7 +958,9 @@ export class RenderGraphCompiler {
                     resourceByHandle,
                     pass.name
                 );
-                (access.writes ? writes : reads).add(resource.handle);
+                (access.depth.writes || access.stencil.writes ? writes : reads).add(
+                    resource.handle
+                );
             }
             for (const handle of reads) {
                 if (!firstUse.has(handle)) firstUse.set(handle, order);

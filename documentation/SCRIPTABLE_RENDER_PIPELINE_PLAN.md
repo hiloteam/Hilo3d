@@ -279,8 +279,10 @@ API。
 - pass/参数/attachment/renderer-list storage 使用高水位复用；扩容只允许发生在容量首次不足时。
 - 默认 draw execute 不经过公共 facade wrapper；facade 在 build 阶段直接生成现有 internal pass 参数。
 - generation/作用域检查发生在 pipeline API 调用或 pass 边界，不进入 `PreparedDraw` 迭代。
-- 禁止在稳态 record/prepare/execute 中使用 descriptor
-  clone、spread、`.map()`、`.filter()`、闭包、字符串 cache key 或临时 typed array。
+- 禁止在稳态 record/prepare/execute 中按 Draw 使用 descriptor
+  clone、spread、`.map()`、`.filter()`、闭包、字符串 cache key 或临时 typed
+  array；为不可复活 facade 创建的 callback-scoped lease
+  shell/accessor 是显式、可计量的 pass 级成本。
 
 ## 7. 公共 API 设计
 
@@ -423,16 +425,37 @@ export interface RenderPipelineOutput {
     readonly sampleCount: RenderTargetSampleCount;
     readonly colorAttachmentCount: number;
     readonly depthStencilFormat: RenderTargetDepthStencilFormat | null;
+    readonly depthStencilAttachment: Readonly<RenderPipelineOutputDepthStencilAttachment> | null;
+    colorFormat(index: number): RenderTargetColorFormat;
+    colorAttachment(index: number): Readonly<RenderPipelineOutputColorAttachment>;
+}
+
+export interface RenderPipelineOutputColorAttachment {
+    readonly clearValue: Readonly<RenderTargetColor>;
+    readonly loadOp: RenderTargetLoadOp;
+    readonly storeOp: RenderTargetStoreOp;
+}
+
+export interface RenderPipelineOutputDepthStencilAttachment {
+    readonly depthClearValue: number;
+    readonly depthLoadOp: RenderTargetLoadOp;
+    readonly depthStoreOp: RenderTargetStoreOp;
+    readonly stencilClearValue: number;
+    readonly stencilLoadOp: RenderTargetLoadOp;
+    readonly stencilStoreOp: RenderTargetStoreOp;
 }
 ```
 
-`RenderPipelineContext` 是 Renderer 每个 invocation slot 复用的只读 facade：
+`RenderPipelineContext` 是绑定到单次 invocation lease 的只读 facade，背后的 Renderer 高水位 storage
+slot 仍可复用：
 
 - `scene/camera/output/viewport` 在 `record()`
   前更新，返回后失效；嵌套 facade 使用冻结 accessor，在动态作用域外读取或写入都会失败；
 - 不能从 `record()` 中保存 context 并在之后使用；
-- facade identity 可由高水位 slot 复用，不能把对象 identity 当作跨 invocation 生命周期 token；
+- 每次 invocation 创建绑定不可复用 token 的公开 shell；旧 shell 不会在 storage
+  slot 被后续 invocation 复用时重新变为有效；
 - 同一个 `renderFrame()` 中每次 `frame.render*()` 获得独立 invocation generation 和高水位 slot；
+- output attachment policy 来自当前 surface 或所选 RenderTarget，保持 clear/load/store 的原始值；
 - context 不提供 `render()`、`resize()`、`setRenderTarget()`、`destroy()` 或 queue submit；
 - pipeline 必须至少产生一个最终 output writer 或显式 side-effect，否则 graph 可裁掉全部工作；
 - public `RendererFrame` 继续只组合应用级 render/target/present 请求，不直接暴露内部 graph。
@@ -543,6 +566,7 @@ export interface ScriptableRenderGraph {
         key: object,
         descriptor: Readonly<RenderPipelinePersistentTargetDescriptor>
     ): RenderPipelineTargetResources;
+    releasePersistentTarget(key: object): boolean;
     addPass<P extends object>(pass: ScriptableRenderPass<P>, parameters: P): RenderGraphPassHandle;
 }
 ```
@@ -553,11 +577,15 @@ export interface ScriptableRenderGraph {
   usage。
 - extent 在 record 阶段用物理像素 viewport 确定性解析；取整规则统一，不允许 backend 各自取整。
 - `importOutput()` 只建立延迟 provider；graph culling 后确有存活 writer 才获取 surface texture。
-- target resource facade 由 invocation slot 复用，使用 `color(index)` 避免为 attachment
-  handle 每帧创建数组。
+- target resource 的内部 attachment storage 由 invocation slot 高水位复用，公开 facade
+  shell 则绑定当前 invocation token；使用 `color(index)` 避免为 attachment handle 创建公开数组。
 - public RenderTarget attachment 保持原 identity、load/store、MSAA 和跨帧内容规则。
+- selected output 的最终 writer 即使选择 `storeOp: 'discard'`
+  也保持存活；其内容不可再读，但不会因 Render Graph culling 而跳过本次明确请求的 render。
 - persistent target 以 runtime owner + stable key + descriptor recipe 缓存；descriptor
   revision 变化时事务 resize。
+- `releasePersistentTarget(key)` 提供单 key 确定性释放；release 只在当前 application
+  frame 有效提交后 commit，record/compile/prepare/execute 失败时 rollback，且不能释放本帧已 acquire 的 target。
 - persistent resource 在 device/context
   recovery 后按 recipe 原位重建；pipeline 不接收 generation-specific handle。
 - transient resource 在 submission 完成后归还池；第一版不宣称同帧 alias。
@@ -718,6 +746,7 @@ export interface ForwardRenderPipelineResources {
 
 export interface ForwardRenderFeatureContext {
     readonly pipeline: RenderPipelineContext;
+    readonly cullingResults: CullingResultsHandle;
     readonly resources: ForwardRenderPipelineResources;
 }
 ```
@@ -725,18 +754,27 @@ export interface ForwardRenderFeatureContext {
 规则：
 
 - feature 配置数组在 factory 构造时快照并验证；每个配置为每个 Renderer 创建独立 feature
-  runtime，避免跨 Renderer 共享可变状态或重复销毁。
+  runtime，已经附着的 singleton runtime 再次返回时明确失败，避免跨 Renderer 共享可变状态或重复销毁。
 - feature runtime 创建后按 injection point + 插入顺序稳定编排一次，销毁时按创建逆序释放并聚合错误。
+- 每次 feature `record()` callback 获得独立 lease shell；内部 forward resource state 跨 injection
+  point 复用，但前一个 callback 保留的 context/resources 不会在后续 callback 或帧中重新有效。
+- `cullingResults` 是内置 Shadow Pass、opaque/transparent Scene
+  Pass 使用的同一个 handle；feature 创建额外 RendererList 时应复用它，而不是再次 `cull()`。
 - 静态 requirements 只声明是否需要 sampled scene color/depth 或中间 target；不根据 backend 改变。
 - feature 可同时声明 `requiredFeatures`、`requiredCapabilities`、`requiredLimits` 和 texture format
   requirements；factory 在 backend 选择前合并这些约束。
 - 无 feature 的默认 factory 预绑定 direct recorder，不进入 feature loop，不创建中间 scene
   color，不增加 present pass。
-- 需要 sampled scene color 的 feature 才把主场景改写到 transient/persistent
-  target，再执行 feature 和 output pass。
-- `sampledDepth` 保证 feature 获得单采样可采样深度；受可移植 depth
-  resolve 限制，它可能改用内部 depth，而不保留所选 output
-  target 的 depth。两种结果都需要时使用完整自定义 pipeline 明确安排资源。
+- 需要 sampled scene color 的 feature 才把主场景改写到 `filterable-sampled` transient/persistent
+  target，再执行 feature 和 output pass；单采样、可过滤 output 使用 `load`
+  时先把已有颜色搬入中间 target，无法无损搬运的组合在 RHI frame 前失败。
+- 首个 Scene Pass 使用 selected output 的 clear/load
+  policy，队列之间固定 store/load，末个直接 output writer 或最终 output pass 使用 selected store
+  policy。
+- `sampledSceneColor` 只允许 `after-opaque` 及更晚的 injection point，避免 feature 在 scene
+  writer 之前读取未初始化资源。
+- `sampledDepth` 当前保持 fail-closed；公共 fullscreen binding ABI 尚未完成 non-filtering depth
+  sampling 的双后端垂直实现，声明 `true` 会在 factory 构造时明确失败。
 - feature 未产生 terminal output 时，由默认 pipeline 继续写入原 output；重复 terminal
   writer 或悬空 output 由 graph validation 拒绝。
 - 动态禁用 feature 时其 pass 可被 graph culling 删除；feature set 和 attachment
@@ -762,12 +800,15 @@ renderer.renderFrame(frame => {
 ### 7.10 事件与统计
 
 - Renderer 的 `beforeRender` / `beforeRenderScene` 在一次 scene invocation 开始时触发。
-- Mesh `beforeRender` 在 Mesh 首次进入本 invocation 的实际 renderer
-  list 时触发；相同 Mesh 被多个 pass 使用时用 frame stamp 去重，不分配临时 Set。
+- Mesh `beforeRender` 在 Mesh 首次进入本 invocation 的已声明 renderer list、且 draw
+  snapshot 尚未准备时触发；相同 Mesh 被多个 pass 使用时去重，确保事件修改参与当前帧资源准备。
 - Mesh 和 Renderer `afterRender` 只在整个 graph 获得有效 submission 后触发；失败帧不触发成功事件。
+- `useRendererList()` 声明可能的 draw，因此 graph 后续裁掉或 execute 条件跳过的 list 可能已触发
+  `beforeRender`，但不会触发 Mesh `afterRender`，也不计入公共 face
+  count；后两者以 execute 中实际调用 `drawRendererList()` 为准。
 - 默认 pipeline 的事件集合和顺序必须与当前行为一致。
 - face count 按实际提交的 scene draw 语义统计，不能因 depth/override
-  pass 重复计为公共场景面数；pass/draw/command 诊断从 graph/RHI 实际执行结果取得。
+  pass 重复计为公共场景面数；同一 invocation 内相同 Mesh 只计一次，pass/draw/command 诊断仍从 graph/RHI 实际执行结果取得。
 - 自定义 pipeline 若故意重复绘制同一 renderer list，额外 draw 进入 draw/pass 诊断，但公共 face
   count 规则必须在 API 文档中保持确定。
 
@@ -775,8 +816,9 @@ renderer.renderFrame(frame => {
 
 - `record/setup/prepare/execute` 返回 Promise-like 值均抛出带阶段和 pipeline/pass name 的
   `TypeError`；只有 factory create 属于可等待的初始化边界。
-- context、graph、builder、parameter slot 和 handle 返回作用域后使用，抛出 deterministic
-  invalid-state/generation error。
+- context、graph、builder、prepare/execute context、command facade、parameter
+  slot 和 handle 返回作用域后使用，抛出 deterministic invalid-state/generation error；公开 callback
+  shell 使用不可复用 lease token，底层高水位 slot 再次活跃也不会让旧引用复活。
 - pipeline record 中调用 resize、target resize/readback/destroy、resource release、Renderer
   destroy 或嵌套 render，会 poison 当前 application frame。
 - graph compile 前失败不得 acquire surface、begin RHI frame 或创建 transient GPU resource。
@@ -890,8 +932,10 @@ recorder 与 feature recorder 在 runtime 创建时预先选择，不在逐 draw
 - 为保持时间数字减少 draw、阴影、MSAA、材质精度或输出质量。
 
 用户自定义 pass 的业务成本不计入默认路径保证，但 SRP
-framework 自身在高水位稳定后必须做到零额外稳态分配，且只产生 O(cull + pass +
-feature) 的编排开销，不能产生 O(draw) 的额外 callback/dispatch。
+framework 自身只允许为每次 invocation 和公开 feature/setup/prepare/execute
+callback 创建不可复用 lease
+shell；其余内部 storage 在高水位稳定后必须零额外稳态分配。编排开销保持 O(cull + pass +
+feature)，不能产生 O(draw) 的额外 callback/dispatch。
 
 ### 10.2 结构性性能约束
 
@@ -900,7 +944,8 @@ feature) 的编排开销，不能产生 O(draw) 的额外 callback/dispatch。
 2. 默认 runtime 创建时绑定 direct recorder；空 feature 列表不循环、不排序、不分配。
 3. `ForwardRenderer`、`MeshDrawProcessor`、`PreparedDraw` 和 RHI execute loop 保持原类型与直接调用。
 4. 公共 graph facade 只在 build 阶段写入内部 builder，不产生镜像 graph 或 replay list。
-5. culling、renderer list、invocation、pass params 和 attachment 使用 cursor + high-water storage。
+5. culling、renderer list、invocation state、pass params 和 attachment 使用 cursor + high-water
+   storage；公开 invocation/callback shell 绑定唯一 lease，不进入 storage pool。
 6. renderer-list 过滤和排序使用结构化枚举，不调用每 Mesh 用户函数。
 7. pipeline persistent descriptor 只在 revision 变化时规范化和比较。
 8. feature requirements、sampler slot、injection order 和 pass shape 在 runtime 创建时预编译。
@@ -967,7 +1012,7 @@ npm run benchmark:srp:report
 | retained heap                   | 10,000 帧后不高于 baseline 5%，并随帧数有界                          |
 | cache hit rate                  | 不低于 baseline；key/cardinality 有界                                |
 | 首次复杂帧 p95                  | hard cap +5%，不得把成本推迟成后续随机 hitch                         |
-| no-op feature                   | 无 GPU pass/resource/command；steady-state framework allocation 为 0 |
+| no-op feature                   | 无 GPU pass/resource/command；仅允许 O(feature) callback lease shell |
 
 “hard cap 内”不代表自动通过。只要至少 7 轮 paired A/B 的 95% confidence
 interval 排除 0 且显示回归，就必须修复。环境噪声过大时增加样本，不放宽预算。
@@ -1128,8 +1173,8 @@ gate 通过；旧私有编排方法删除而不是保留开关。
 - 禁止 public native/RHI escape。
 
 退出条件：自定义 graph contract
-tests 通过；compile 前零 GPU 副作用；高水位稳定后 framework 分配为零；architecture
-test 证明无镜像 graph。
+tests 通过；compile 前零 GPU 副作用；高水位稳定后内部 storage 不再增长、公开 lease
+shell 分配保持 O(callback)；architecture test 证明无镜像 graph。
 
 ### Phase 5：Persistent resource 与恢复
 
@@ -1306,7 +1351,8 @@ compatibility layer 掩盖。
 - [ ] 默认 steady-state JS allocation 相对 baseline 增量为 0。
 - [ ] 默认 CPU/GPU 无统计显著回归且所有 hard cap 通过。
 - [ ] 无 feature direct recorder 不循环 feature、不创建中间纹理或额外 output pass。
-- [ ] 高水位稳定后 culling/list/pass/graph facade 不增长 storage。
+- [ ] 高水位稳定后 culling/list/pass/graph 内部 storage 不增长；公开 lease
+      shell 只按 callback 数量线性创建。
 - [ ] 默认 draw execute 无新增 facade、Proxy、backend branch 或逐 draw 虚调用。
 - [ ] 10,000 帧 churn 后 retained heap 和 persistent recipe/cardinality 有界。
 

@@ -196,10 +196,12 @@ export function assertBufferRange(
     size: number,
     offset: number,
     rangeSize: number,
-    path: string
+    path: string,
+    offsetPath: string,
+    sizePath: string
 ): void {
-    assertNonNegativeSafeInteger(offset, `${path}.offset`);
-    assertPositiveSafeInteger(rangeSize, `${path}.size`);
+    assertNonNegativeSafeInteger(offset, offsetPath);
+    assertPositiveSafeInteger(rangeSize, sizePath);
     if (offset > size || rangeSize > size - offset) {
         throw new RHIValidationError('out-of-bounds', 'range exceeds buffer size', path);
     }

@@ -336,14 +336,13 @@ describe('PreparedDrawCache', () => {
         expect(setVertexBuffer).not.toHaveBeenCalled();
         expect(setIndexBuffer).not.toHaveBeenCalled();
         expect(drawIndexed).not.toHaveBeenCalled();
-        expect(vertexBufferRecords).toHaveLength(3);
+        expect(vertexBufferRecords).toHaveLength(2);
         expect(indexBufferRecords).toHaveLength(2);
         expect(drawIndexedRecords).toHaveLength(3);
-        expect(vertexBufferRecords[0]).toBe(vertexBufferRecords[2]);
+        expect(vertexBufferRecords[0]).toBe(vertexBufferRecords[1]);
         expect(indexBufferRecords[0]).toBe(indexBufferRecords[1]);
         expect(drawIndexedRecords[0]).toBe(drawIndexedRecords[2]);
         expect(vertexBufferSnapshots).toEqual([
-            { slot: 0, buffer: firstVertex, offset: 4, size: 12 },
             { slot: 0, buffer: firstVertex, offset: 4, size: 12 },
             { slot: 0, buffer: firstVertex, offset: 4, size: 12 }
         ]);

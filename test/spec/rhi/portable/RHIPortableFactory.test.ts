@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RHIGraphicsShaderArtifactInput } from '../../../../src/render/rhi/core';
 
 const backend = vi.hoisted(() => ({
     webglDevice: { backend: 'webgl2', createSurface: vi.fn() },
@@ -8,6 +9,33 @@ const backend = vi.hoisted(() => ({
     probeWebGL2: vi.fn(),
     probeWebGPU: vi.fn()
 }));
+const mipmapShaderArtifacts = vi.hoisted(
+    () =>
+        Object.freeze({
+            vertex: Object.freeze({
+                backend: 'webgpu',
+                stage: 'vertex',
+                code: '',
+                entryPoint: 'main',
+                reflection: Object.freeze({
+                    bindings: Object.freeze([]),
+                    vertexInputs: Object.freeze([])
+                }),
+                cacheKey: 1
+            }),
+            fragment: Object.freeze({
+                backend: 'webgpu',
+                stage: 'fragment',
+                code: '',
+                entryPoint: 'main',
+                reflection: Object.freeze({
+                    bindings: Object.freeze([]),
+                    fragmentOutputs: Object.freeze([])
+                }),
+                cacheKey: 2
+            })
+        }) satisfies Readonly<RHIGraphicsShaderArtifactInput>
+);
 
 vi.mock('../../../../src/render/rhi/backends/webgl2', () => ({
     createWebGL2RHIDevice: backend.createWebGL2,
@@ -22,7 +50,8 @@ vi.mock('../../../../src/render/rhi/backends/webgpu', () => ({
 import {
     constructRHIDevice,
     createRHIDevice,
-    isRHIBackendSupported
+    isRHIBackendSupported,
+    type WebGPURHIDeviceCreateOptions
 } from '../../../../src/render/rhi/RHIFactory';
 
 describe('RHI factory', () => {
@@ -59,7 +88,8 @@ describe('RHI factory', () => {
             powerPreference: 'high-performance',
             requiredFeatures,
             requiredLimits,
-            label: 'portable device'
+            label: 'portable device',
+            mipmapShaderArtifacts
         });
         requiredLimits.maxTextureDimension2D = 1;
 
@@ -68,9 +98,17 @@ describe('RHI factory', () => {
             powerPreference: 'high-performance',
             requiredFeatures: ['timestamp-query'],
             requiredLimits: { maxTextureDimension2D: 4096 },
-            label: 'portable device'
+            label: 'portable device',
+            mipmapShaderArtifacts
         });
         expect(backend.webgpuDevice.createSurface).not.toHaveBeenCalled();
+    });
+
+    it('rejects WebGPU creation without the required mipmap artifacts', async () => {
+        await expect(createRHIDevice('webgpu', {} as WebGPURHIDeviceCreateOptions)).rejects.toThrow(
+            /requires GLSL\/Naga-prepared mipmap shader artifacts/u
+        );
+        expect(backend.createWebGPU).not.toHaveBeenCalled();
     });
 
     it('keeps support probes resource-free and rejects unknown backends', async () => {
@@ -88,8 +126,8 @@ describe('RHI factory', () => {
         });
         expect(backend.createWebGL2).not.toHaveBeenCalled();
         expect(backend.createWebGPU).not.toHaveBeenCalled();
-        await expect(createRHIDevice('invalid' as 'webgpu', {})).rejects.toThrow(
-            /Unsupported RHI backend/u
-        );
+        await expect(
+            createRHIDevice('invalid' as 'webgpu', { mipmapShaderArtifacts })
+        ).rejects.toThrow(/Unsupported RHI backend/u);
     });
 });
