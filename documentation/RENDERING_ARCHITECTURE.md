@@ -375,6 +375,7 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
   Pipeline/Dispatch 命令合同。
 - 公共 SRP 已预留 `storage-buffer`、`storage-texture`、`compute-pass`
   capability 名称，但当前全部为 false。声明为 required 会在 runtime 创建前失败；完整扩展路线见
+  [`COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md`](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)。SRP 初始设计中的历史扩展摘要保留在
   [`SCRIPTABLE_RENDER_PIPELINE_PLAN.md`](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md#20-ssbostorage-texture-与-compute-的后续扩展路线)。
 - RenderGraph 每帧重新 Build/Compile，依靠高水位存储复用降低成本；当前没有跨帧复用完整的 Compiled
   Graph。

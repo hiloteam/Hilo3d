@@ -1415,100 +1415,39 @@ TypeScript、ESM、测试可运行和单一资源 ownership；禁止用类型逃
 ## 20. SSBO、storage texture 与 compute 的后续扩展路线
 
 当前 SRP 对这类能力的扩展性是足够的，但**当前版本没有声称已经支持**。公共
-`RenderPipelineCapabilityName` 预留了 `storage-buffer`、`storage-texture` 和
-`compute-pass`；能力快照目前对三者都返回
-`false`，factory/feature 一旦声明为 required，会在 runtime 创建和 RHI frame 开始前失败。
+`RenderPipelineCapabilityName` 预留的 `storage-buffer`、`storage-texture` 和 `compute-pass`
+目前全部返回 `false`；factory/feature 一旦声明为 required，会在 runtime 创建和 RHI
+frame 开始前失败。
 
-这条边界是有意设计的。WebGL 2 没有原生 SSBO 或 compute shader，GLSL ES 3.00 也不能表达 storage
-block/compute stage。把 buffer 偷换成 texture
-emulation 后仍对外称为 SSBO，会造成布局、原子操作、barrier 和性能语义不一致，因此不能作为默认兼容实现。首个真实实现应允许 WebGPU
-capability 为 true、WebGL 2 明确拒绝；需要双后端算法时，由 feature 提供独立的 graphics
-fallback，而不是在逐 dispatch/draw 热路径查询 backend。
+完整目标设计、API、hazard、Direct WGSL、GPU-driven raster、恢复、性能和发布门禁已经独立维护在
+[`COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md`](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)。该文件取代本节早期“compute
+GLSL 转换”和“先公开部分 storage binding”的实施顺序；本节只保留与已落地 SRP 的衔接摘要。
 
-### 20.1 公共资源合同
+固定衔接原则：
 
-按独立增量增加以下类型，不改变现有 texture/pass handle：
-
-```ts
-type RenderGraphBufferHandle = number & {/* opaque brand */};
-
-interface RenderPipelineBufferDescriptor {
-    readonly byteLength: number;
-    readonly usage: 'storage' | 'read-only-storage' | 'indirect' | 'copy';
-}
-
-interface ScriptableRenderPassBuilder {
-    readBuffer(buffer: RenderGraphBufferHandle, use: 'storage' | 'indirect' | 'copy'): void;
-    writeBuffer(buffer: RenderGraphBufferHandle, use: 'storage' | 'copy'): void;
-}
-```
-
-- transient/imported/persistent buffer 都继续由 Render Graph 和 Renderer recipe
-  registry 管理，公共 handle 仍只在同步 record invocation 内有效。
-- `UniformBuffer` 保持 std140 与 numeric uniform block 语义；新增 `StorageBuffer`
-  使用独立 std430/structured layout、revision 和 dirty-range 合同，不能复用或弱化 UBO ABI。
-- graph 从声明推导 `STORAGE/COPY/INDIRECT`
-  usage，并在 compile 阶段拒绝同 pass 非可移植反馈、未初始化读取和错误对齐。
-- storage bind group、pipeline layout 和 buffer allocation 继续进入现有 registry/cache、device
-  generation、submission fence 和 recovery recipe。
-
-### 20.2 Shader 与 RHI 垂直切片
-
-支持 SSBO/compute 时必须在同一变更中完成：
-
-1. 为 engine shader compiler 增加受版本控制的 storage block 与 compute-stage GLSL source
-   contract；仍经 engine preprocessing、Vulkan GLSL 4.50 和 Naga 生成 WGSL，不新增手写 WGSL 树。
-2. 在反射结果中加入 storage block、read/write access、workgroup size 和 binding
-   group/binding；布局冲突在 pipeline prepare 前失败。
-3. RHI Core 增加 `RHIComputePipeline`、`RHIComputePassEncoder`、`dispatchWorkgroups` 和可选
-   `dispatchWorkgroupsIndirect`，不暴露原生 `GPUCompute*`。
-4. WebGPU backend 一跳映射 compute pipeline/pass/dispatch；WebGL 2
-   capability 保持 false，不创建伪 compute command list。
-5. Render Graph executor 根据存活 pass 准备 compute pipeline/bind
-   group，并让 raster、copy、compute 对同一 buffer/texture 的 RAW/WAR/WAW 边进入统一拓扑排序。
-6. storage texture 只有在 format capability、单采样、access mode 和 shader format 全部匹配时才启用。
-
-### 20.3 公共 compute pass 形态
-
-compute 应作为稳定高层 pass，而不是向用户泄露 command encoder：
-
-```ts
-interface ComputeRenderPassParameters {
-    readonly groupsX: number;
-    readonly groupsY?: number;
-    readonly groupsZ?: number;
-    readonly buffers: readonly RenderGraphBufferHandle[];
-    readonly textures: readonly RenderGraphTextureHandle[];
-}
-
-class ComputeRenderPass implements ScriptableRenderPass<ComputeRenderPassParameters> {
-    // setup 声明 access；prepare 创建/复用 pipeline 与 bind group；execute 只 dispatch
-}
-```
-
-固定 shader、layout 和 binding
-shape 在 pass 构造/runtime 创建时确定；每帧只更新 handle、offset、range 和 dispatch 数字。参数继续来自
-`RenderPassParameterPool`，稳态不得创建 descriptor tree、字符串 binding map 或 backend 分支。
-
-### 20.4 能力选择与降级策略
-
-- 需要 compute/storage 的 factory 或 feature 必须在静态 requirements 中声明；不能先创建 runtime 再探测。
-- `auto` 的候选筛选必须把 required capability 纳入 support
-  probe。WebGPU 不可用时返回“无兼容 backend”，不能静默创建 WebGL 2 后跳过 pass。
-- 可选效果应由应用在创建前选择“compute factory”或“graphics fallback
-  factory”，或由一个冷路径 policy 选择两个预编译 feature 配置；录制和 draw/dispatch 内部不查询
-  `renderer.backend`。
-- capability 从 false 改为 true 之前，API report、CHANGELOG、类型消费、真实 WebGPU
-  pipeline、device-loss recovery 和负向 WebGL 2 测试必须同版本落地。
-
-### 20.5 推荐实施顺序
-
-1. 先公开 graph buffer + copy/read-only graphics storage
-   binding，验证资源 ownership、hazard 和恢复，不加入 dispatch。
-2. 再加入 compute shader compiler/RHI/WebGPU encoder 的完整垂直切片，并启用 `compute-pass`。
-3. 最后加入 storage texture 和 indirect dispatch；根据真实需求再评估原子操作、workgroup
-   memory 和 timestamp profiling。
+1. WebGPU-only Compute 使用受控 Direct WGSL，并经 Naga WGSL frontend、显式 binding ABI、portable RHI
+   validation 和真实 WebGPU pipeline 验证；现有双后端 raster shader 继续使用 GLSL ES 3.00。
+2. Forward+、高斯泼溅和 GPU 粒子所需的 graphics-stage readonly storage 使用专用 WebGPU-only GLSL ES
+   3.10 storage source contract，经统一预处理和 Naga 生成 WGSL；不新增 graphics WGSL 镜像。
+3. Compute 不继承 `Material`；公开
+   `ComputeShader`、`ComputeKernel`、`ComputeRenderPass`。Compute-driven
+   raster 继续组合普通 Material 表达 raster state，并通过 `GPUDrivenRenderPass` 消费 graph
+   storage/vertex/index/indirect buffer。
+4. `UniformBuffer` 保持 std140；StorageBuffer 使用独立 WGSL host-shareable
+   layout、revision、dirty-range、readback 和 recovery policy。
+5. raster、copy、compute 共用同一 Render Graph。Buffer
+   read/write/read-write、clear、vertex/index/indirect access 和 storage texture
+   access 全部进入统一 RAW/WAR/WAW、初始化、culling 和 lifetime 分析。
+6. RHI 增加 compute pipeline/pass、direct/indirect dispatch、buffer clear 和 indirect
+   draw，不公开原生 `GPU*` 对象；WebGPU 一跳映射，WebGL
+   2 明确 fail-closed，不做 texture/CPU/transform-feedback 模拟。
+7. required compute/storage/indirect capability 必须在 Renderer 创建前参与 `auto`
+   候选筛选。WebGPU 不可用时返回“无兼容 backend”，不能创建 WebGL 2 后静默跳过 pass。
+8. 内部实现可以拆分评审，但公共 capability、根导出、示例和文档只在 StorageBuffer、storage
+   texture、direct/indirect dispatch/draw、graph hazard、readback、device-loss
+   recovery、真实 WebGPU 和负向 WebGL 2 证据全部完成后原子开放。
 
 这样扩展不会重写 SRP：factory requirements、renderer-local runtime、同步 record、graph
-handle、三阶段 pass、persistent recipe 和 submission 生命周期全部复用；新增的是资源种类和 pass
-encoder，而不是第二套 Renderer 或 backend-specific feature stack。
+handle、三阶段 pass、persistent
+recipe 和 submission 生命周期全部复用；新增的是 compute/storage/GPU-driven
+resource 与 pass 种类，而不是第二套 Renderer 或 backend-specific feature stack。
