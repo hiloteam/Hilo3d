@@ -94,13 +94,16 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'uniformBufferObject.html': 'Uniform Buffer Objects',
     'update_sub_texture.html': 'Update Sub-texture',
     'webgl_support.html': 'Graphics Backend Support',
-    'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering'
+    'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
+    'compute_particles.html': 'Hilo3D Compute Particle Field'
 });
 
 const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'glTFViewer/index.html': 'Load glTF 2.0 models from a URL, files, or a dropped folder.',
     'compute_gpu_driven.html':
         'See Forward+, Gaussian splats, and a curl-noise Hilo3D GPU particle wordmark stay on the public Render Graph.',
+    'compute_particles.html':
+        'Drive 65,536 GPU bodies through aurora, stars, cyber dunes, meteor-wake force fields, boundary collisions, and indirect glow rendering.',
     'pbr.html': 'Render a glTF asset with physically based materials and environment lighting.',
     'quickStart.html': 'Create a stage, camera, lights, and an animated PBR mesh.',
     'scriptable_pipeline.html':
@@ -133,7 +136,7 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'textures';
     }
     if (
-        /(?:post_process|bloom|ssao|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|compute_gpu_driven)/u.test(
+        /(?:post_process|bloom|ssao|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|compute_gpu_driven|compute_particles)/u.test(
             normalized
         )
     ) {
@@ -204,7 +207,7 @@ function createEntry(path: string): ExampleCatalogEntry {
     const supportedBackends =
         path === 'webxr.html'
             ? WEBGL2_ONLY
-            : path === 'compute_gpu_driven.html'
+            : path === 'compute_gpu_driven.html' || path === 'compute_particles.html'
               ? WEBGPU_ONLY
               : BOTH_BACKENDS;
     const defaultQuery =

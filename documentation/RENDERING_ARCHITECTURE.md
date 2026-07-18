@@ -165,7 +165,7 @@ implementation：在任何 native GL compute/storage 模拟之前失败，不使
 feedback、fragment compute 或 CPU fallback。完整公共合同、目标场景组合方式与首发边界见
 [`COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md`](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)。
 
-相关代码：[`compute/`](../src/render/compute)、[`StorageBuffer.ts`](../src/render/StorageBuffer.ts)、[`storage/`](../src/render/storage)、[`ComputeRenderPass.ts`](../src/render/pipeline/passes/ComputeRenderPass.ts)、[`GPUDrivenRenderPass.ts`](../src/render/pipeline/passes/GPUDrivenRenderPass.ts)、[`ScriptableComputeDispatch.ts`](../src/render/renderer/ScriptableComputeDispatch.ts)、[`ScriptableGPUDrivenDraw.ts`](../src/render/renderer/ScriptableGPUDrivenDraw.ts)、[`compute_gpu_driven.ts`](../examples/compute_gpu_driven.ts)。
+相关代码：[`compute/`](../src/render/compute)、[`StorageBuffer.ts`](../src/render/StorageBuffer.ts)、[`storage/`](../src/render/storage)、[`ComputeRenderPass.ts`](../src/render/pipeline/passes/ComputeRenderPass.ts)、[`GPUDrivenRenderPass.ts`](../src/render/pipeline/passes/GPUDrivenRenderPass.ts)、[`ScriptableComputeDispatch.ts`](../src/render/renderer/ScriptableComputeDispatch.ts)、[`ScriptableGPUDrivenDraw.ts`](../src/render/renderer/ScriptableGPUDrivenDraw.ts)、[`compute_gpu_driven.ts`](../examples/compute_gpu_driven.ts)、[`compute_particles.ts`](../examples/compute_particles.ts)。
 
 ### 1.5 RenderGraphFrame：一帧的事务边界
 
@@ -483,6 +483,12 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
   cull → Scene group-3 storage、Gaussian cull/reorder/indirect draw，以及 1024 粒子 Hilo3D
   wordmark 的 fractal value/curl noise、呼吸、涡旋、回归、compact、GPU indirect additive
   glow。Forward+/Gaussian 算法仍是 acceptance-scale，整个页面也不是生产性能 baseline。
+- 独立交互式粒子页面使用 65,536 个持久 storage body，其中 4096 个组成连续可读的 Hilo3D word
+  lattice，61,440 个组成独立的分层星空、极光/星云与 cyber-dune deep field；std140
+  pointer/time 控制块、三 octave value/curl
+  noise、回归/轨道/鼠标力场、低频流星头部碰撞和尾迹力场与边界碰撞共用一次 compute。compute 同帧生成两组 draw
+  arguments，deep field、velocity halo 和 luminous core 由 Render Graph 中三次 storage-aware
+  indirect `GPUDrivenRenderPass` 完成，不走原生 WebGPU bypass 或粒子状态 readback。
 - Direct WGSL `f16` 当前因 Naga validation 路径限制而 fail-closed；workgroup
   memory、barrier、atomic 与受验证的 scalar override 仍可直接使用。
 - compute/storage buffer 的 `minBindingSize` 是显式 ABI

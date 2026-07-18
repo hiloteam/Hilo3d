@@ -49,6 +49,13 @@
   return motion, compaction, GPU-generated indirect draw, and additive glow. GPU-produced counts,
   indices, and draw arguments remain GPU-only. The Forward+/Gaussian algorithms are acceptance-scale
   proofs, and the page is not a production performance baseline.
+- Add a standalone interactive WebGPU compute-physics showcase with 65,536 persistent GPU bodies
+  split between a readable Hilo3D word lattice and an independent deep-field collision layer of
+  size-tiered stars, drifting aurora/nebula particles, and cyber-dune grains. Three-octave
+  value/curl noise, magnetic/shockwave/vortex pointer fields, meteor-head collisions and wake
+  forces, boundary physics, GPU-authored indirect arguments, and three particle raster layers stay
+  on the public Render Graph/RHI path. Its deterministic test mode drives real pointer input without
+  reading particle state back to the CPU.
 - Keep first-release compute textures limited to complete 2D graph resources, with transient
   write-only storage textures and no persistent storage-texture or layer/mip-view API. Persistent
   state uses externally owned renderer `StorageBuffer` objects imported per frame; each Renderer

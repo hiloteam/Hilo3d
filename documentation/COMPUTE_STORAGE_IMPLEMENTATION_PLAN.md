@@ -16,19 +16,19 @@
 本文保留设计决策和实施轨迹，但本节描述的是当前公开合同。验证证据只记录实际运行过的门禁；未运行的物理 GPU、完整 release
 matrix 或不可覆盖性能 baseline 不会被写成通过。
 
-| 切片                               | 当前状态 | 已落地事实                                                                                                                                                                      |
-| ---------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Storage 数据与 renderer-owned 资源 | 已完成   | WGSL host-shareable `StorageLayout`、`StorageBuffer`、aligned range/partial write、readback、destroy、恢复策略                                                                  |
-| 公共 Render Graph buffer           | 已完成   | transient/import、storage/vertex/index/copy/indirect access、read-write、copy、clear、storage texture write                                                                     |
-| Shader source contracts            | 已完成   | Direct WGSL compute 必经 Naga；readonly storage graphics 使用受控 GLSL ES 3.10 → Vulkan GLSL 4.50 → Naga                                                                        |
-| Portable RHI / WebGPU              | 已完成   | compute stage/pipeline/pass、direct/indirect dispatch、clear、indirect draw、limits、validation、diagnostics                                                                    |
-| WebGL 2 policy                     | 已完成   | compute/storage/indirect 在 native GL 模拟前 fail-closed；没有 texture/TF/fragment/CPU fallback                                                                                 |
-| 创建前 requirements                | 已完成   | compute/storage/indirect capability、storage format 与 limits 把候选限定为 WebGPU；冲突在创建阶段失败                                                                           |
-| SRP compute runtime                | 已完成   | `ComputeKernel`/`ComputeRenderPass`、显式 binding、cache/registry、direct/indirect dispatch 已接入 shared frame                                                                 |
-| GPU-driven raster                  | 已完成   | `GPUDrivenRenderPass`、readonly storage/sampled/uniform/sampler、vertex/index input、direct/indirect draw 已接入 shared frame                                                   |
-| Scene storage integration          | 已完成   | `SceneRenderPass` group 3 pass-global readonly storage；复用 culling/sorting/material/geometry/UBO，instancing 确定性 direct fallback                                           |
-| Forward+/高斯/粒子 example/验收    | 已完成   | depth prepass/sampled-depth/Scene storage、高斯 cull/reorder、1024 粒子 noise/simulate/compact、GPU indirect additive draw；Forward+/高斯为 acceptance-scale，不是性能 baseline |
-| 公共 API 与 requirements           | 已完成   | 根导出、TSDoc、类型消费、创建前 WebGPU 选择、capability/limit/format 检查和 WebGL 2 fail-closed 同版本交付                                                                      |
+| 切片                               | 当前状态 | 已落地事实                                                                                                                                                  |
+| ---------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage 数据与 renderer-owned 资源 | 已完成   | WGSL host-shareable `StorageLayout`、`StorageBuffer`、aligned range/partial write、readback、destroy、恢复策略                                              |
+| 公共 Render Graph buffer           | 已完成   | transient/import、storage/vertex/index/copy/indirect access、read-write、copy、clear、storage texture write                                                 |
+| Shader source contracts            | 已完成   | Direct WGSL compute 必经 Naga；readonly storage graphics 使用受控 GLSL ES 3.10 → Vulkan GLSL 4.50 → Naga                                                    |
+| Portable RHI / WebGPU              | 已完成   | compute stage/pipeline/pass、direct/indirect dispatch、clear、indirect draw、limits、validation、diagnostics                                                |
+| WebGL 2 policy                     | 已完成   | compute/storage/indirect 在 native GL 模拟前 fail-closed；没有 texture/TF/fragment/CPU fallback                                                             |
+| 创建前 requirements                | 已完成   | compute/storage/indirect capability、storage format 与 limits 把候选限定为 WebGPU；冲突在创建阶段失败                                                       |
+| SRP compute runtime                | 已完成   | `ComputeKernel`/`ComputeRenderPass`、显式 binding、cache/registry、direct/indirect dispatch 已接入 shared frame                                             |
+| GPU-driven raster                  | 已完成   | `GPUDrivenRenderPass`、readonly storage/sampled/uniform/sampler、vertex/index input、direct/indirect draw 已接入 shared frame                               |
+| Scene storage integration          | 已完成   | `SceneRenderPass` group 3 pass-global readonly storage；复用 culling/sorting/material/geometry/UBO，instancing 确定性 direct fallback                       |
+| Forward+/高斯/粒子 example/验收    | 已完成   | 组合页覆盖 depth/Scene storage、高斯与 1024 粒子；独立页覆盖 65,536 GPU body 的 noise/力场/碰撞与三层 GPU indirect raster；Forward+/高斯为 acceptance-scale |
+| 公共 API 与 requirements           | 已完成   | 根导出、TSDoc、类型消费、创建前 WebGPU 选择、capability/limit/format 检查和 WebGL 2 fail-closed 同版本交付                                                  |
 
 `storage-buffer`、`storage-texture`、`compute-pass`、`indirect-draw`
 仍按同一个公开 release 单元维护，但 capability 结果也必须满足实际设备 feature、format 和 limit；“已发布”不会把不兼容设备伪装成支持。
@@ -1175,6 +1175,15 @@ glow。为保证 reload/device-loss 后可从同一 CPU seed 重建，示例资�
 `cpu-shadow`；这会恢复初始 wordmark bytes，不保留 loss 前 GPU simulation 状态。需要延续 GPU-only
 simulation 的产品实现应使用 `reinitialize` 并在恢复后先提交完整 deterministic initializer。
 
+独立展示页把同一架构扩展到 65,536 个 GPU body：4096 个粒子组成连续 Hilo3D word
+lattice，61,440 个粒子组成分层星空、极光/星云与 cyber-dune deep
+field。pointer/time 只通过一个 64-byte std140 block 上传，Direct WGSL compute 执行三 octave
+value/curl
+noise、分层回归、轨道力场、鼠标磁吸/shockwave/vortex、三个低频流星头部碰撞与尾迹力场、pointer
+collider 与边界反弹，并直接写入两组 indirect draw arguments；storage-aware raster 用三次 indirect
+draw 叠加 deep
+field、additive 速度 halo 与 alpha-blended 发光 core。测试模式冻结步进，只 readback 最终颜色来验证字形覆盖、背景层、交互坐标和确定性；生产循环不读取粒子状态。
+
 ### 15.4 “合理实现”的判定
 
 三个场景都必须满足：
@@ -1257,20 +1266,20 @@ policy 一起开放。
 
 ## 17. 主要代码落点
 
-| 领域                  | 主要文件/目录                                                                                                                 |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| RHI types/capability  | `src/render/rhi/core/RHITypes.ts`、`RHICapabilities.ts`、`RHIResources.ts`                                                    |
-| RHI pipeline/commands | `src/render/rhi/core/RHIPipeline.ts`、`RHICommands.ts`、`RHIValidation.ts`                                                    |
-| WebGPU                | `src/render/rhi/backends/webgpu/` 下 capabilities、device、pipeline、commands、queue                                          |
-| WebGL 2 negative path | `src/render/rhi/backends/webgl2/` 下 capabilities、device、validation-facing methods                                          |
-| Graph                 | `src/render/graph/RenderGraphResource.ts`、builder、compiler、executor、transient pool                                        |
-| Public SRP            | `src/render/pipeline/RenderPipeline.ts`、`ScriptableRenderGraph.ts`、compute/GPU-driven `passes/`                             |
-| SRP implementation    | `src/render/internal/ScriptableRenderPipelineContext.ts`、`RenderPipelineHost.ts`                                             |
-| Shader                | 新 ComputeShader/compiler、StorageGraphicsShader/compiler；现有 `GlslToWgsl.ts` 共享 Naga/GLSL 基础但不承载 compute GLSL 转换 |
-| Caches                | `src/render/renderer/` 下 storage buffer、compute shader/binding/pipeline/readback caches                                     |
-| Backend selection     | `src/render/internal/RendererFactory.ts`、`SharedRendererDriver.ts`                                                           |
-| Public exports        | `src/Hilo3d.ts`、render/pipeline barrels、API report                                                                          |
-| Tests                 | `test/spec/rhi/portable/`、renderer/SRP specs、`test/ui/compute-effects.spec.ts`、native WebGPU lane                          |
+| 领域                  | 主要文件/目录                                                                                                                             |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| RHI types/capability  | `src/render/rhi/core/RHITypes.ts`、`RHICapabilities.ts`、`RHIResources.ts`                                                                |
+| RHI pipeline/commands | `src/render/rhi/core/RHIPipeline.ts`、`RHICommands.ts`、`RHIValidation.ts`                                                                |
+| WebGPU                | `src/render/rhi/backends/webgpu/` 下 capabilities、device、pipeline、commands、queue                                                      |
+| WebGL 2 negative path | `src/render/rhi/backends/webgl2/` 下 capabilities、device、validation-facing methods                                                      |
+| Graph                 | `src/render/graph/RenderGraphResource.ts`、builder、compiler、executor、transient pool                                                    |
+| Public SRP            | `src/render/pipeline/RenderPipeline.ts`、`ScriptableRenderGraph.ts`、compute/GPU-driven `passes/`                                         |
+| SRP implementation    | `src/render/internal/ScriptableRenderPipelineContext.ts`、`RenderPipelineHost.ts`                                                         |
+| Shader                | 新 ComputeShader/compiler、StorageGraphicsShader/compiler；现有 `GlslToWgsl.ts` 共享 Naga/GLSL 基础但不承载 compute GLSL 转换             |
+| Caches                | `src/render/renderer/` 下 storage buffer、compute shader/binding/pipeline/readback caches                                                 |
+| Backend selection     | `src/render/internal/RendererFactory.ts`、`SharedRendererDriver.ts`                                                                       |
+| Public exports        | `src/Hilo3d.ts`、render/pipeline barrels、API report                                                                                      |
+| Tests                 | `test/spec/rhi/portable/`、renderer/SRP specs、`test/ui/compute-effects.spec.ts`、`test/ui/compute-particles.spec.ts`、native WebGPU lane |
 
 实现时应优先新增职责清晰的小模块，而不是继续扩大 `GlslToWgsl.ts`、
 `ScriptableRenderPipelineContext.ts` 或 `WebGPUCommands.ts`
