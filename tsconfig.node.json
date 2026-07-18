@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "tsBuildInfoFile": "./.cache/tsconfig.node.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": [
+    "benchmarks/**/*.ts",
+    "eslint.config.ts",
+    "playwright.config.ts",
+    "scripts/**/*.ts",
+    "vite.config.ts",
+    "vite.examples.config.ts",
+    "vitest.config.ts",
+    "vitest.rhi.config.ts",
+    "vitest.rhi-native.config.ts"
+  ]
+}

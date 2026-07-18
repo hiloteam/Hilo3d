@@ -1,7 +1,6 @@
 #ifdef HILO_USE_LOG_DEPTH
     #ifdef HILO_USE_FRAG_DEPTH
-        varying float v_fragDepth;
+        out float v_fragDepth;
     #else
-        uniform float u_logDepth;
     #endif
 #endif

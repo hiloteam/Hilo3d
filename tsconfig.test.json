@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "tsBuildInfoFile": "./.cache/tsconfig.test.tsbuildinfo",
+    "types": ["node", "vite/client"]
+  },
+  "include": [
+    "benchmarks/**/*.ts",
+    "examples/shared/catalog.ts",
+    "test/**/*.ts",
+    "scripts/npm-pack-result.ts",
+    "scripts/shader-modernity.ts",
+    "scripts/performance/**/*.ts"
+  ],
+  "exclude": ["test/types/**"],
+  "references": [{ "path": "./tsconfig.lib.json" }]
+}

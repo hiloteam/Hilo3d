@@ -12,5 +12,3 @@ float getLightAttenuation(vec3 distanceVec, vec3 info, float range){
 
     return attenuation;
 }
-
-#pragma glslify: export(getLightAttenuation)

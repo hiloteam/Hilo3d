@@ -1,10 +1,10 @@
 #if defined(HILO_DIFFUSE_MAP)
-    diffuse = HILO_TEXTURE_2D(u_diffuse);
+    diffuse = HILO_TEXTURE_2D(u_diffuse, HILO_DIFFUSE_MAP);
 #elif defined(HILO_DIFFUSE_CUBE_MAP)
-    diffuse = textureCube(u_diffuse, v_position);
+    diffuse = texture(u_diffuse, v_position);
 #elif defined(HILO_HAS_COLOR)
     diffuse = v_color;
 #else
-    diffuse = u_diffuse;
+    diffuse = u_diffuseColor;
 #endif
 color.a = diffuse.a;

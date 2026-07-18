@@ -1,36 +1,30 @@
-#pragma glslify: import('../method/textureEnvMap.glsl');
-#pragma glslify: import('../method/encoding.glsl');
-#pragma glslify: import('./fixMathCrash.glsl');
+#include "../method/textureEnvMap.glsl"
+#include "../method/encoding.glsl"
+#include "./fixMathCrash.glsl"
 
-uniform vec4 u_baseColor;
-uniform vec4 u_emissionFactor;
 
 #ifdef HILO_BASE_COLOR_MAP
-    uniform HILO_SAMPLER_2D u_baseColorMap;
+    uniform sampler2D u_baseColorMap;
 #endif
 
 #ifdef HILO_NEED_WORLD_NORMAL
-    uniform mat3 u_viewInverseNormalMatrix;
 #endif
 
 #ifdef HILO_HAS_LIGHT
-    uniform float u_metallic;
     #ifdef HILO_METALLIC_MAP
-        uniform HILO_SAMPLER_2D u_metallicMap;
+        uniform sampler2D u_metallicMap;
     #endif
-        uniform float u_roughness;
     #ifdef HILO_ROUGHNESS_MAP
-        uniform HILO_SAMPLER_2D u_roughnessMap;
+        uniform sampler2D u_roughnessMap;
     #endif
     #ifdef HILO_METALLIC_ROUGHNESS_MAP
-        uniform HILO_SAMPLER_2D u_metallicRoughnessMap;
+        uniform sampler2D u_metallicRoughnessMap;
     #endif
     #ifdef HILO_OCCLUSION_MAP
-        uniform HILO_SAMPLER_2D u_occlusionMap;
+        uniform sampler2D u_occlusionMap;
     #endif
 
     #ifdef HILO_OCCLUSION_STRENGTH
-        uniform float u_occlusionStrength;
     #endif
 
     #ifdef HILO_DIFFUSE_ENV_MAP
@@ -39,10 +33,7 @@ uniform vec4 u_emissionFactor;
         #else
             uniform sampler2D u_diffuseEnvMap;
         #endif
-        uniform float u_diffuseEnvIntensity;
     #elif defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)
-        uniform vec3 u_diffuseEnvSphereHarmonics3[9];
-        uniform float u_diffuseEnvIntensity;
     #endif
     #ifdef HILO_SPECULAR_ENV_MAP
         uniform sampler2D u_brdfLUT;
@@ -51,36 +42,30 @@ uniform vec4 u_emissionFactor;
         #else
             uniform sampler2D u_specularEnvMap;
         #endif
-        uniform float u_specularEnvIntensity;
 
-        uniform float u_specularEnvMapMipCount;
     #endif
 
     #ifdef HILO_EMISSION_MAP
-        uniform HILO_SAMPLER_2D u_emission;
+        uniform sampler2D u_emission;
     #endif
 
     #ifdef HILO_PBR_SPECULAR_GLOSSINESS
-        uniform vec4 u_specular;
-        uniform float u_glossiness;
         #ifdef HILO_SPECULAR_GLOSSINESS_MAP
-            uniform HILO_SAMPLER_2D u_specularGlossinessMap;
+            uniform sampler2D u_specularGlossinessMap;
         #endif
     #endif
 
     #ifdef HILO_LIGHT_MAP
-        uniform HILO_SAMPLER_2D u_lightMap;
+        uniform sampler2D u_lightMap;
     #endif
 
     #ifdef HILO_HAS_CLEARCOAT
-        uniform float u_clearcoatFactor;
         #ifdef HILO_CLEARCOAT_MAP
-            uniform HILO_SAMPLER_2D u_clearcoatMap;
+            uniform sampler2D u_clearcoatMap;
         #endif
 
-        uniform float u_clearcoatRoughnessFactor;
         #ifdef HILO_CLEARCOAT_ROUGHNESS_MAP
-            uniform HILO_SAMPLER_2D u_clearcoatRoughnessMap;
+            uniform sampler2D u_clearcoatRoughnessMap;
         #endif
     #endif
 
@@ -142,7 +127,7 @@ uniform vec4 u_emissionFactor;
         vec3 color = vec3(.0, .0, .0);
         #ifdef HILO_SPECULAR_ENV_MAP
             vec3 R = -normalize(reflect(V, N));
-            vec3 brdf = texture2D(u_brdfLUT, vec2(NdotV, 1.0 - perceptualRoughness)).rgb;
+            vec3 brdf = texture(u_brdfLUT, vec2(NdotV, 1.0 - perceptualRoughness)).rgb;
             #ifdef HILO_IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS
                 float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
                 vec4 specularEnvMap = textureEnvMapIncludeMipmapsLod(u_specularEnvMap, R, lod);
@@ -184,7 +169,7 @@ uniform vec4 u_emissionFactor;
 
         #ifdef HILO_SPECULAR_ENV_MAP
             vec3 R = -normalize(reflect(V, N));
-            vec3 brdf = texture2D(u_brdfLUT, vec2(NdotV, 1.0 - perceptualRoughness)).rgb;
+            vec3 brdf = texture(u_brdfLUT, vec2(NdotV, 1.0 - perceptualRoughness)).rgb;
             #ifdef HILO_IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS
                 float lod = clamp(perceptualRoughness * u_specularEnvMapMipCount, 0.0, u_specularEnvMapMipCount);
                 vec4 specularEnvMap = textureEnvMapIncludeMipmapsLod(u_specularEnvMap, R, lod);

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/Hilo3d.ts"],
+  "tsconfig": "tsconfig.lib.json",
+  "out": "docs",
+  "name": "Hilo3d API",
+  "includeVersion": true,
+  "hostedBaseUrl": "https://hilo3d.js.org/docs/",
+  "projectDocuments": [
+    "documentation/ENGINEERING_MODERNIZATION.md",
+    "README_ZH.md",
+    "CHANGELOG.md",
+    ".github/CONTRIBUTING.md"
+  ],
+  "excludeInternal": true,
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "navigationLinks": {
+    "Home": "https://hilo3d.js.org/",
+    "Examples": "https://hilo3d.js.org/examples/list.html",
+    "Repository": "https://github.com/hiloteam/Hilo3d"
+  },
+  "treatWarningsAsErrors": true,
+  "validation": {
+    "invalidLink": true,
+    "notExported": true
+  }
+}

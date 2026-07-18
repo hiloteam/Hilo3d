@@ -1,13 +1,1 @@
-#ifndef HILO_IS_WEBGL2
-    #ifdef HILO_USE_SHADER_TEXTURE_LOD
-        #extension GL_EXT_shader_texture_lod: enable
-    #endif
-
-    #ifdef HILO_USE_FRAG_DEPTH
-        #extension GL_EXT_frag_depth: enable
-    #endif
-
-    #ifdef HILO_USE_DRAW_BUFFERS
-        #extension GL_EXT_draw_buffers: enable
-    #endif
-#endif
+layout(location = 0) out highp vec4 hilo_FragColor;

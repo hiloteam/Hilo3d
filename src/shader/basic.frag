@@ -1,27 +1,36 @@
-#pragma glslify: import('./chunk/extensions.frag');
-#pragma glslify: import('./chunk/baseDefine.glsl');
-#pragma glslify: import('./chunk/precision.frag');
+#include "./chunk/extensions.frag"
+#include "./chunk/baseDefine.glsl"
+#include "./chunk/precision.frag"
+#include "./chunk/uniformBlocks.glsl"
 
-#pragma glslify: import('./chunk/color.frag');
-#pragma glslify: import('./chunk/uv.frag');
-#pragma glslify: import('./chunk/normal.frag');
-#pragma glslify: import('./chunk/lightFog.frag');
-#pragma glslify: import('./chunk/diffuse.frag');
-#pragma glslify: import('./chunk/light.frag');
-#pragma glslify: import('./chunk/phong.frag');
-#pragma glslify: import('./chunk/transparency.frag');
-#pragma glslify: import('./chunk/fog.frag');
-#pragma glslify: import('./chunk/logDepth.frag');
+#include "./chunk/color.frag"
+#include "./chunk/uv.frag"
+#include "./chunk/normal.frag"
+#include "./chunk/lightFog.frag"
+#include "./chunk/diffuse.frag"
+#include "./chunk/light.frag"
+#include "./chunk/phong.frag"
+#include "./chunk/transparency.frag"
+#include "./chunk/fog.frag"
+#include "./chunk/logDepth.frag"
+#ifdef HILO_PICKING_PASS
+in vec4 v_objectIdColor;
+#endif
 
 void main(void) {
+    #ifdef HILO_PICKING_PASS
+        hilo_FragColor = v_objectIdColor;
+        return;
+    #endif
+
     vec4 diffuse = vec4(0., 0., 0., 1.);
     vec4 color = vec4(0., 0., 0., 1.);
 
-    #pragma glslify: import('./chunk/normal_main.frag');
-    #pragma glslify: import('./chunk/lightFog_main.frag');
-    #pragma glslify: import('./chunk/diffuse_main.frag');
-    #pragma glslify: import('./chunk/phong_main.frag');
-    #pragma glslify: import('./chunk/transparency_main.frag');
-    #pragma glslify: import('./chunk/frag_color.frag');
-    #pragma glslify: import('./chunk/logDepth_main.frag');
+    #include "./chunk/normal_main.frag"
+    #include "./chunk/lightFog_main.frag"
+    #include "./chunk/diffuse_main.frag"
+    #include "./chunk/phong_main.frag"
+    #include "./chunk/transparency_main.frag"
+    #include "./chunk/frag_color.frag"
+    #include "./chunk/logDepth_main.frag"
 }

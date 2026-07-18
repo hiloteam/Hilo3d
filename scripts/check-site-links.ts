@@ -1,0 +1,112 @@
+import { opendir, readFile, stat } from 'node:fs/promises';
+import { dirname, relative, resolve, sep } from 'node:path';
+
+const projectRoot = resolve(import.meta.dirname, '..');
+const siteDirectory = resolve(projectRoot, 'site');
+const externalReferencePattern = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i;
+const htmlReferencePattern = /\b(?:href|src|poster)=["']([^"']+)["']/g;
+const cssReferencePattern = /url\(\s*(["']?)([^"')]+)\1\s*\)/g;
+
+interface SiteFile {
+    path: string;
+    type: 'css' | 'html';
+}
+
+interface LinkIssue {
+    reference: string;
+    source: string;
+    type: 'absolute' | 'escape' | 'invalid' | 'missing';
+}
+
+async function collectSiteFiles(directory: string): Promise<SiteFile[]> {
+    const files: SiteFile[] = [];
+    const entries = await opendir(directory);
+
+    for await (const entry of entries) {
+        const path = resolve(directory, entry.name);
+        if (entry.isDirectory()) {
+            files.push(...(await collectSiteFiles(path)));
+        } else if (entry.isFile() && entry.name.endsWith('.html')) {
+            files.push({ path, type: 'html' });
+        } else if (entry.isFile() && entry.name.endsWith('.css')) {
+            files.push({ path, type: 'css' });
+        }
+    }
+
+    return files;
+}
+
+async function resolveTarget(reference: string, sourcePath: string): Promise<string> {
+    const pathWithQuery = reference.split('#', 1)[0] ?? '';
+    const encodedPath = pathWithQuery.split('?', 1)[0] ?? '';
+    const decodedPath = decodeURIComponent(encodedPath);
+    let target = decodedPath.startsWith('/')
+        ? resolve(siteDirectory, `.${decodedPath}`)
+        : resolve(dirname(sourcePath), decodedPath || '.');
+
+    const targetStats = await stat(target).catch(() => null);
+    if (target === siteDirectory || targetStats?.isDirectory()) {
+        target = resolve(target, 'index.html');
+    }
+
+    return target;
+}
+
+function extractReferences(file: SiteFile, contents: string): string[] {
+    const pattern = file.type === 'html' ? htmlReferencePattern : cssReferencePattern;
+    return [...contents.matchAll(pattern)].map(match => {
+        const valueIndex = file.type === 'html' ? 1 : 2;
+        return (match[valueIndex] ?? '').replaceAll('&amp;', '&').trim();
+    });
+}
+
+const siteFiles = await collectSiteFiles(siteDirectory);
+const issues: LinkIssue[] = [];
+let checkedReferences = 0;
+
+for (const file of siteFiles) {
+    const contents = await readFile(file.path, 'utf8');
+    for (const reference of extractReferences(file, contents)) {
+        if (!reference || reference.startsWith('#') || externalReferencePattern.test(reference)) {
+            continue;
+        }
+
+        checkedReferences += 1;
+        const source = relative(siteDirectory, file.path);
+        if (reference.startsWith('/')) {
+            issues.push({ reference, source, type: 'absolute' });
+            continue;
+        }
+
+        let target: string;
+        try {
+            target = await resolveTarget(reference, file.path);
+        } catch {
+            issues.push({ reference, source, type: 'invalid' });
+            continue;
+        }
+
+        if (target !== siteDirectory && !target.startsWith(`${siteDirectory}${sep}`)) {
+            issues.push({ reference, source, type: 'escape' });
+            continue;
+        }
+
+        const targetStats = await stat(target).catch(() => null);
+        if (!targetStats?.isFile()) {
+            issues.push({ reference, source, type: 'missing' });
+        }
+    }
+}
+
+if (issues.length > 0) {
+    const details = issues
+        .map(issue => `- ${issue.type}: ${issue.source} -> ${issue.reference}`)
+        .join('\n');
+    throw new Error(
+        `Site link validation failed with ${String(issues.length)} issue(s):\n${details}`
+    );
+}
+
+console.log(
+    `Validated ${String(checkedReferences)} internal references across ${String(siteFiles.length)} HTML/CSS files.`
+);

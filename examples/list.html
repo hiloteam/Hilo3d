@@ -1,236 +1,132 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Hilo3d examples</title>
-    <style>
-        body,ul,li{
-            margin:0px;
-            padding:0px;
-        }
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta
+            name="description"
+            content="Browse Hilo3D examples running on the WebGL 2 and WebGPU rendering backends."
+        />
+        <title>Hilo3D Examples</title>
+        <link rel="stylesheet" href="./list.css" />
+    </head>
+    <body>
+        <header class="galleryHeader">
+            <div class="brand">
+                <button
+                    class="sidebarToggle"
+                    id="sidebarToggle"
+                    type="button"
+                    aria-label="Open example navigation"
+                    aria-controls="gallerySidebar"
+                    aria-expanded="false"
+                >
+                    ☰
+                </button>
+                <div class="brandMark" aria-hidden="true">H3</div>
+                <div class="brandText">
+                    <h1 class="brandTitle">Hilo3D Examples</h1>
+                    <p class="brandSubtitle">One renderer, two portable backends</p>
+                </div>
+            </div>
+            <div class="headerActions">
+                <nav class="siteLinks" aria-label="Site navigation">
+                    <a href="../">Home</a>
+                    <a href="../docs/">Docs</a>
+                    <a href="../docs/modules/Hilo3d.html">API</a>
+                </nav>
+                <label class="backendControl" for="backendSelect">
+                    <span>Graphics backend</span>
+                    <select id="backendSelect" aria-label="Graphics backend">
+                        <option value="webgl2">WebGL 2</option>
+                        <option value="webgpu">WebGPU</option>
+                    </select>
+                </label>
+                <a
+                    class="repositoryLink"
+                    href="https://github.com/hiloteam/Hilo3d"
+                    target="_blank"
+                    rel="noreferrer"
+                >
+                    GitHub
+                </a>
+            </div>
+        </header>
 
-        #exampleList{
-            position: absolute;
-            list-style: none;
-            background: #aaa;
-            width:220px;
-            height: 100%;
-            overflow: scroll;
-        }
+        <main class="galleryLayout">
+            <aside class="gallerySidebar" id="gallerySidebar" aria-label="Example navigation">
+                <div class="sidebarInner">
+                    <div class="searchArea">
+                        <label class="searchLabel" for="exampleSearch">Find an example</label>
+                        <input
+                            class="searchInput"
+                            id="exampleSearch"
+                            type="search"
+                            placeholder="Geometry, PBR, loader…"
+                            autocomplete="off"
+                        />
+                        <div class="searchMeta">
+                            <span id="exampleCount"></span>
+                            <span><kbd>/</kbd> to search</span>
+                        </div>
+                    </div>
+                    <nav
+                        class="exampleNavigation"
+                        id="exampleNavigation"
+                        aria-label="Examples"
+                    ></nav>
+                </div>
+            </aside>
 
-        #exampleList li{
-            font-size: 16px;
-            line-height: 30px;
-            height: 30px;
-            margin: 1px 1px;
-            background: #999;
-            cursor: pointer;
-            text-align: center;
-            color: #fff;
-        }
+            <section class="viewer" aria-labelledby="currentTitle">
+                <div class="viewerToolbar">
+                    <div class="viewerIdentity">
+                        <div class="viewerMeta">
+                            <span class="viewerCategory" id="currentCategory"></span>
+                            <span class="viewerBackend" id="currentBackend"></span>
+                        </div>
+                        <h2 class="viewerTitle" id="currentTitle">Loading example…</h2>
+                        <p class="viewerDescription" id="currentDescription"></p>
+                    </div>
+                    <div class="viewerActions">
+                        <a
+                            class="viewerAction viewerActionSource"
+                            id="viewSource"
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            Source
+                        </a>
+                        <a class="viewerAction" id="openExample" target="_blank" rel="noreferrer">
+                            Open
+                        </a>
+                    </div>
+                </div>
+                <div class="frameViewport">
+                    <iframe
+                        class="exampleFrame"
+                        id="exampleFrame"
+                        name="exampleFrame"
+                        title="Hilo3D example"
+                    ></iframe>
+                    <div
+                        class="frameStatus"
+                        id="frameStatus"
+                        data-state="loading"
+                        aria-live="polite"
+                    >
+                        <span class="loadingIndicator" id="frameStatusText">Loading example…</span>
+                    </div>
+                </div>
+            </section>
+        </main>
 
-        #exampleList form{
-            background: #eee;
-        }
-
-        #exampleList li label{
-            font-size: 12px;
-            height: 30px;
-            line-height: 30px;
-            color: #333;
-            display: inline-block;
-            cursor: pointer;
-        }
-
-        #exampleList .active{
-            background: #3a383e;
-        }
-
-        #exampleFrame{
-            position: absolute;
-            right:0px;
-            top:0px;
-            border:1px solid #333;
-            overflow: hidden;
-        }
-    </style>
-</head>
-<body>
-    <div>
-        <ul id='exampleList'>
-            <li>
-                <form id="webglVersionForm" onchange="javascript:console.log(1)">
-                    <input type="radio" id="webglVersion1" name="webglVersion" value="webgl">
-                    <label for="webglVersion1">WebGL</label>
-                    <input type="radio" id="webglVersion2" name="webglVersion" value="webgl2">
-                    <label for="webglVersion2">WebGL2</label>
-                </form>
-            </li>
-        </ul>
-        <iframe  id='exampleFrame' name='exampleFrame' frameborder="0"></iframe>
-    </div>
-    <script>
-        var listElem = document.getElementById('exampleList');
-        var iframeElem = document.getElementById('exampleFrame');
-        var examples = [
-            'areaLight',
-            'billboard',
-            'bloom',
-            'cameraHelper',
-            'compressed_texture',
-            'cubeTexture_HDR',
-            'custom_anim_state',
-            'depthTexture',
-            'drawBuffers',
-            'fog',
-            'MultiSampledRenderbuffers',
-            'frameBuffer',
-            'frustum_test',
-            'geometry_box',
-            'geometry_color',
-            'geometry_custom',
-            'geometry_dynamic',
-            'geometry_dynamic2',
-            'geometry_instanced',
-            'geometry_line',
-            'geometry_merge',
-            'geometry_morph',
-            'geometry_plane',
-            'geometry_sphere',
-            'geometry_triangles',
-            'animation',
-            'gltf_light',
-            'hdr',
-            'lifegame',
-            'mesh_picker',
-            'mouse_event',
-            'normal_map',
-            'pbr',
-            'pbr2',
-            'pointLight',
-            'polly',
-            'post_process',
-            'quickStart',
-            'raycast',
-            'raycast_node',
-            'refract',
-            'resourceManagerTest',
-            'sRGB',
-            'shaderToy',
-            'shader_material',
-            'shadow',
-            'skybox',
-            'snow',
-            'sphereEnvMap',
-            'sphericalHarmonics',
-            'spotLight',
-            'ssao',
-            'stencilTest',
-            'textureLod',
-            'texture_data',
-            'texture_image_release',
-            'transparent',
-            'tween_walk',
-            'uniformBufferObject',
-            'update_sub_texture',
-            'uv_map',
-            'video',
-            'webgl_support',
-            'wireframe',
-            ['physics','./physics/cannon'],
-        ];
-
-        function getExampleName(name){
-            if(Object.prototype.toString.call(name) === '[object Array]'){
-                return name[0];
-            }
-            else{
-                return name;
-            }
-        }
-
-        function getExamplePath(name){
-            if(Object.prototype.toString.call(name) === '[object Array]'){
-                return name[1] + '.html';
-            }
-            else{
-                return name + '.html';
-            }
-        }
-
-        var examplesDict = {};
-        for(var i = 0;i < examples.length;i ++){
-            (function(originName, i){
-                var name = getExampleName(originName);
-                var elem = document.createElement('li');
-                examplesDict[name] = {
-                    elem:elem,
-                    originName:originName
-                };
-                elem.innerHTML = name;
-                listElem.appendChild(elem);
-                elem.onclick = function(){
-                    setDemo(originName);
-                };
-            })(examples[i], i);
-        }
-
-        var winWidth = window.innerWidth || document.documentElement.clientWidth;
-        var winHeight = window.innerHeight || document.documentElement.clientHeight;
-        
-        iframeElem.width = winWidth - 220;
-        iframeElem.height = winHeight;
-        var iframeWindow = iframeElem.contentWindow;
-
-        var hashName = location.hash.slice(1);
-        var currentName = '';
-        function setDemo(originName, first){
-            var name = getExampleName(originName);
-            var path = getExamplePath(originName);
-            if(name !== currentName){
-                location.hash = name;
-                iframeElem.src = path + (first?location.search:iframeWindow.location.search);
-                if(examplesDict[currentName]){
-                    examplesDict[currentName].elem.className = '';
-                }
-                examplesDict[name].elem.className = 'active';
-                currentName = name;
-            }
-        }
-
-        setDemo(examplesDict[hashName]?examplesDict[hashName].originName:examples[0], true);
-
-        window.onkeydown = function(e){
-            var index = examples.indexOf(examplesDict[currentName].originName);
-            switch(e.keyCode){
-                case 38://up
-                case 87://w
-                    index --;
-                    break;
-                case 40://down
-                case 83://s
-                    index ++;
-                    break;
-            }
-            if(index < 0){
-                index = examples.length - 1;
-            }
-            else if(index > examples.length - 1){
-                index = 0;
-            }
-
-            setDemo(examples[index]);
-        };
-
-        document.getElementById('webglVersionForm').onchange = function(event) {
-            location.search = event.target.id === 'webglVersion1' ? '?webgl1=true' : '?webgl2=true';
-        }
-
-        if (location.search.indexOf('webgl2') > -1) {
-            document.getElementById('webglVersion2').checked = true;
-        } else {
-            document.getElementById('webglVersion1').checked = true;
-        }
-    </script>
-</body>
+        <button
+            class="sidebarBackdrop"
+            id="sidebarBackdrop"
+            type="button"
+            aria-label="Close example navigation"
+        ></button>
+        <script type="module" src="./list.ts"></script>
+    </body>
 </html>

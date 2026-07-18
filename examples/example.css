@@ -1,4 +1,4 @@
-html{
+html {
     width: 100%;
     height: 100%;
 }
@@ -8,7 +8,9 @@ body {
     width: 100%;
 }
 
-html,body,div{
+html,
+body,
+div {
     padding: 0;
     margin: 0;
 }
@@ -22,5 +24,21 @@ html,body,div{
 }
 
 .hilo3dStats {
-    color: #fff !important;
+    position: fixed;
+    z-index: 999999;
+    top: 12px;
+    left: 12px;
+    min-width: 154px;
+    padding: 9px 11px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    background: rgba(8, 11, 18, 0.74);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+    color: #f5f7fb !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.55;
+    pointer-events: none;
+    white-space: pre;
+    backdrop-filter: blur(10px);
 }

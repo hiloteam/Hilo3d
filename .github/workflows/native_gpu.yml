@@ -1,0 +1,53 @@
+name: Native WebGPU (optional)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: native-webgpu-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  native-webgpu:
+    name: Physical GPU WebGPU
+    runs-on: [self-hosted, linux, gpu]
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Set up npm
+        run: |
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install chromium
+
+      - name: Validate native WebGPU
+        run: npm run test:webgpu:native
+
+      - name: Upload browser report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-webgpu-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14

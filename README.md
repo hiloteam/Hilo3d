@@ -1,128 +1,320 @@
+# Hilo3d
+
 English | [简体中文](./README_ZH.md)
 
-<p align="center"><img src="https://gw.alicdn.com/tfs/TB1znqbquT2gK0jSZFvXXXnFXXa-569-143.svg" alt="omi" width="500"/></p>
-<h3 align="center">A 3D WebGL Rendering Engine</h3>
+**A WebGPU-first, TypeScript-first 3D engine with a production WebGL 2 compatibility backend.**
 
----
-[Installation](#Installation) • [Documentation](#Documentation) • [Development](#Development) • [Showcase](#Showcase) • [Examples](#Examples) • [Authors](#Authors) • [License](#License)
+Hilo3d vNext is designed around a WebGPU-shaped rendering hardware interface (RHI), explicit render
+passes, reusable GPU resources, GLSL ES 3.00, physically based rendering, and glTF. WebGPU keeps its
+native pipeline/bind-group/command model, while WebGL 2 implements the same portable subset through
+immediate, state-cached GL execution.
 
-[![npm][npm-image]][npm-url] [![ci][ci-image]][ci-url] [![size][size-image]][cdn-url] [![gitter.im][gitter-image]][gitter-url]
+[![npm](https://img.shields.io/npm/v/hilo3d.svg?style=flat-square)](https://www.npmjs.com/package/hilo3d)
+[![CI](https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?style=flat-square)](https://github.com/hiloteam/Hilo3d/actions/workflows/npm_test.yml)
+[![license](https://img.shields.io/npm/l/hilo3d.svg?style=flat-square)](https://github.com/hiloteam/Hilo3d/blob/dev/LICENSE)
 
-### Features
-* Compatible for multiple mobile and desktop browsers.
-* Lightweight, only `110kb` after gzip.
-* Physically-based rendering support.
-* Perfect support for glTF models.
+- WebGPURHI is a thin mapping to native WebGPU objects and commands; it does not become a GL-style
+  state machine and does not replay a second JavaScript command buffer.
+- WebGL2RHI emulates pipeline, bind-group, render-pass, and command-encoder semantics while issuing
+  GL calls immediately through a state-diff cache. `finish()`/`submit()` are ownership boundaries,
+  not a deferred replay path.
+- GLSL ES 3.00 is the only authored shader source. The Renderer shader compiler resolves variants
+  and translates WebGPU modules through Naga before the RHI sees them.
+- Backend policy is explicit: `auto` performs a capability-based choice, while an explicit `webgpu`
+  or `webgl2` request is never changed silently.
 
-### Installation
-* use npm
+## Install
 
-	```
-	$ npm install hilo3d
-	```
-* use script tag from a [cdn][cdn-url]
+```sh
+npm install hilo3d
+```
 
-	```
-	<script src='//cdn.jsdelivr.net/npm/hilo3d@1.19.0/build/Hilo3d.js'></script>
-	```
+The package has one ESM entry point for modern bundlers and native browser ESM. WebGL 1, CommonJS,
+UMD, and global-script builds are not part of the vNext contract.
 
-### Documentation
-* [API documentation](https://hilo3d.js.org/docs/index.html)
-* [Tutorial](https://github.com/hiloteam/article/issues?q=is%3Aissue+is%3Aopen+label%3AHilo3d)
+## WebGPU quick start
 
-### Development
-* run `npm run dev` to dev.
-* run `npm run release` release the code.
-* run `npm run doc` to build API documentation.
-* run `npm run test` to run tests.
+`Stage.create()` defaults to `backend: 'auto'`, prefers WebGPU when a compatible adapter is
+available, and waits for the selected backend to become ready. The returned stage is ready to
+render.
 
-### Showcase
-* 淘宝人生
-  
-  ![淘宝人生](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/tbrs.gif)
+```ts
+import * as Hilo3d from 'hilo3d';
 
-* 堆堆乐
-  
-  ![堆堆乐](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/ddl.gif)
+const camera = new Hilo3d.PerspectiveCamera({ aspect: innerWidth / innerHeight, z: 4 });
 
-* 天天惠星球
+const stage = await Hilo3d.Stage.create({
+    backend: 'webgpu',
+    container: document.querySelector('#app')!,
+    camera,
+    width: innerWidth,
+    height: innerHeight
+});
 
-  ![天天惠星球](https://raw.githubusercontent.com/06wj/06wj.github.com/master/images/hilo3d/tthxq.gif)
- 
-* More cases can be found here: 
-  [![](https://gw.alicdn.com/tfs/TB1rngb0pT7gK0jSZFpXXaTkpXa-2048-1009.jpg)](https://seinjs.com/cn/production)
+const box = new Hilo3d.Mesh({
+    geometry: new Hilo3d.BoxGeometry(),
+    material: new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.832, 0.119, 0.093)
+    })
+}).addTo(stage);
 
-### Examples
+stage.addChild(new Hilo3d.AmbientLight({ amount: 1 }));
 
-  * [Index.html](https://hilo3d.js.org/docs/index.html)
-  * glTF
-    * [glTF Feature Test](https://cx20.github.io/gltf-test/?engines=Hilo3d)
-	* [glTF Viewer](https://hilo3d.js.org/examples/glTFViewer/index.html)
+const ticker = new Hilo3d.Ticker(60);
+ticker.addTick(stage);
+ticker.start();
+```
 
-  * loader
-    * [gltf_loader](https://hilo3d.js.org/examples/loader/glTF_loader.html)
-    * [gltf_clone](https://hilo3d.js.org/examples/loader/glTF_clone.html)
-    * [osg](https://hilo3d.js.org/examples/loader/osg/osg_loader.html)
-    * [smd](https://hilo3d.js.org/examples/loader/smd/smd_loader.html)
-    * [tga](https://hilo3d.js.org/examples/loader/tga/tga_loader.html)
-    * [khc](https://hilo3d.js.org/examples/loader/khc/khc.html)
-    * [shader](https://hilo3d.js.org/examples/loader/shader/shader_loader.html)
-    * [draco](https://hilo3d.js.org/examples/loader/draco/draco_loader.html)
-  * [compressed_texture](https://hilo3d.js.org/examples/compressed_texture.html)
-  * [fog](https://hilo3d.js.org/examples/fog.html)
-  * [mesh_picker](https://hilo3d.js.org/examples/mesh_picker.html)
-  * [mouse_event](https://hilo3d.js.org/examples/mouse_event.html)
-  * [video](https://hilo3d.js.org/examples/video.html)
-  * [hdr](https://hilo3d.js.org/examples/hdr.html)
-  * [lifegame](https://hilo3d.js.org/examples/lifegame.html)
-  * [normal_map](https://hilo3d.js.org/examples/normal_map.html)
-  * [pbr](https://hilo3d.js.org/examples/pbr.html)
-  * [pbr2](https://hilo3d.js.org/examples/pbr2.html)
-  * [polly](https://hilo3d.js.org/examples/polly.html)
-  * [post_process](https://hilo3d.js.org/examples/post_process.html)
-  * [raycast](https://hilo3d.js.org/examples/raycast.html)
-  * [raycast_node](https://hilo3d.js.org/examples/raycast_node.html)
-  * [shader_material](https://hilo3d.js.org/examples/shader_material.html)
-  * [shadow](https://hilo3d.js.org/examples/shadow.html)
-  * [skybox](https://hilo3d.js.org/examples/skybox.html)
-  * [sphereEnvMap](https://hilo3d.js.org/examples/sphereEnvMap.html)
-  * [spotLight](https://hilo3d.js.org/examples/spotLight.html)
-  * [ssao](https://hilo3d.js.org/examples/ssao.html)
-  * [texture_data](https://hilo3d.js.org/examples/texture_data.html)
-  * [transparent](https://hilo3d.js.org/examples/transparent.html)
-  * [webgl_support](https://hilo3d.js.org/examples/webgl_support.html)
-  * [wireframe](https://hilo3d.js.org/examples/wireframe.html)
-  * [geometry_box](https://hilo3d.js.org/examples/geometry_box.html)
-  * [geometry_color](https://hilo3d.js.org/examples/geometry_color.html)
-  * [geometry_custom](https://hilo3d.js.org/examples/geometry_custom.html)
-  * [geometry_dynamic](https://hilo3d.js.org/examples/geometry_dynamic.html)
-  * [geometry_dynamic2](https://hilo3d.js.org/examples/geometry_dynamic2.html)
-  * [geometry_instanced](https://hilo3d.js.org/examples/geometry_instanced.html)
-  * [geometry_merge](https://hilo3d.js.org/examples/geometry_merge.html)
-  * [geometry_morph](https://hilo3d.js.org/examples/geometry_morph.html)
-  * [geometry_sphere](https://hilo3d.js.org/examples/geometry_sphere.html)
+Omitting `backend` is equivalent to `backend: 'auto'`. Auto selection calls
+`Renderer.isBackendSupported('webgpu', options)` first. This lightweight probe only requests an
+adapter and validates the fallback-adapter policy, required features, required limits, and Hilo3d's
+minimum adapter limits. It does **not** request a device, acquire a canvas context, initialize Naga,
+create a pipeline, or allocate GPU resources. A compatible adapter selects WebGPU; otherwise
+`Stage.create()` creates WebGL 2 directly. Supplying the WebGL2-only `preserveDrawingBuffer` option
+also makes auto selection choose WebGL 2 directly, as does requesting straight-alpha canvas
+compositing with `alpha: true, premultipliedAlpha: false`.
 
+Once the probe selects WebGPU, normal WebGPU initialization runs exactly once. A device or canvas
+context error, shader-compiler failure, pipeline/resource initialization error, or any later failure
+rejects `Stage.create()` and is never caught as a reason to fall back. Requesting
+`backend: 'webgpu'` skips the auto probe and likewise never falls back.
 
+Applications can use the same device- and GPU-resource-free probe without creating a renderer:
 
-### Authors
+```ts
+const webgpuSupported = await Hilo3d.Renderer.isBackendSupported('webgpu', {
+    powerPreference: 'high-performance'
+});
+```
 
- * [06wj](https://github.com/06wj)
- * [steel1990](https://github.com/steel1990)
- * [picacure](https://github.com/picacure)
+## WebGL 2 compatibility
 
-### Contact us
-  * [![gitter.im][gitter-image]][gitter-url]
-  * QQ Group:372765886
+Use the compatibility backend without changing scene, material, render-target, or GLSL code:
 
-### License
+```ts
+const stage = await Hilo3d.Stage.create({
+    backend: 'webgl2',
+    container: document.querySelector('#app')!,
+    camera
+});
+```
 
-[MIT License](http://en.wikipedia.org/wiki/MIT_License)
+`Stage` is created only through the asynchronous `Stage.create()` factory, including when WebGL 2 is
+selected explicitly. Hilo3d never creates a WebGL 1 context.
 
-[gitter-image]: https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square
-[gitter-url]: https://gitter.im/hiloteam/Hilo3d?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
-[npm-image]: https://img.shields.io/npm/v/hilo3d.svg?style=flat-square
-[npm-url]: https://www.npmjs.com/package/hilo3d
-[size-image]:https://img.shields.io/bundlephobia/minzip/hilo3d?style=flat-square&label=zipped%20size
-[ci-url]:https://github.com/hiloteam/Hilo3d/actions?query=workflow%3A%22npm+test%22+branch%3Adev
-[ci-image]:https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?branch=dev
-[cdn-url]: https://cdn.jsdelivr.net/npm/hilo3d@1.19.0/build/Hilo3d.js
+## Creating a renderer directly
+
+`Renderer` is the only public renderer class and is created exclusively through the asynchronous
+`Renderer.create()` factory:
+
+```ts
+const webglRenderer = await Hilo3d.Renderer.create({
+    backend: 'webgl2',
+    domElement: document.querySelector('canvas')!
+});
+
+const autoRenderer = await Hilo3d.Renderer.create({
+    backend: 'auto',
+    domElement: document.createElement('canvas')
+});
+
+const webgpuRenderer = await Hilo3d.Renderer.create({
+    backend: 'webgpu',
+    domElement: document.createElement('canvas')
+});
+```
+
+Every renderer creates the same public `RenderTarget` contract. Backend selection is observable
+through `renderer.backend`; it does not change the scene, material, target, or shader API.
+
+## Capability matrix
+
+| Capability               | WebGPU                                                        | WebGL 2                                                        |
+| ------------------------ | ------------------------------------------------------------- | -------------------------------------------------------------- |
+| RHI execution            | Thin native encoder/pass/queue mapping                        | Immediate GL execution behind encoder/pass semantics           |
+| Shader module input      | Renderer-prepared WGSL                                        | Renderer-prepared GLSL ES 3.00                                 |
+| Multi-pass `renderFrame` | One encoder/submit for resource-ready renderer passes         | Ordered immediate execution; submit never replays commands     |
+| Device-object reuse      | Bounded pipeline, layout, and sampler caches                  | Bounded pipeline, layout, sampler, framebuffer, and VAO caches |
+| Incremental uploads      | UBO/geometry dirty ranges; texture revisions                  | UBO/geometry dirty ranges; texture revisions                   |
+| Render targets           | MRT, 1×/4× MSAA, sampled attachments, async readback          | Same engine contract                                           |
+| Unsupported RHI features | Reported through `features`/`limits`; rejected when requested | Compute/storage/1D/async buffer mapping report unsupported     |
+| Loss handling            | Device reacquisition and resource recovery                    | Context restoration and resource recovery                      |
+| Backend selection        | Explicit requests reject; `auto` uses an adapter-only probe   | Selected directly when the `auto` probe is unsupported         |
+
+## One frame, multiple passes
+
+Use `renderFrame()` for an application-owned frame graph. On WebGPU, resource-ready scene, target,
+and present calls in the callback share one application command encoder and finish with at most one
+application submission. WebGL 2 executes the same commands in order through the same backend-neutral
+facade.
+
+```ts
+const reflectionTarget = renderer.createRenderTarget({
+    width: renderer.width,
+    height: renderer.height
+});
+const sceneTarget = renderer.createRenderTarget({ width: renderer.width, height: renderer.height });
+
+renderer.renderFrame(frame => {
+    frame.renderToTarget(reflectionTarget, stage, reflectionCamera);
+    frame.renderToTarget(sceneTarget, stage, camera, true);
+    frame.present(sceneTarget);
+});
+```
+
+Resize application-owned targets when the renderer size changes. Use this frame callback from a
+custom tick instead of also letting `Stage` perform its default render. The callback is synchronous:
+do not return a Promise or retain its `frame` facade. Settle scene transforms, material values,
+`GeometryData`, and texture updates before entering it; geometry and texture content cannot change
+after first use in the same frame. Cold texture mipmap preparation and explicit readback are
+separate GPU work and are not counted as application-pass submission. Run renderer
+resize/`setRenderTarget()`/resource release/destruction and render-target
+resize/readback/destruction outside the callback; attempting those operations while WebGPU is
+recording aborts the entire frame and prevents a partial submission.
+
+## Scriptable render pipelines
+
+Pass a reusable `renderPipeline` factory to `Renderer.create()` or `Stage.create()` to replace frame
+composition, or use `ForwardRenderPipelineFactory` features to inject work around shadows, opaque,
+transparent, post-process, and output stages. Each Renderer receives independent pipeline and
+feature runtimes; recording stays synchronous and writes into the same transactional Render Graph as
+ordinary renderer commands. The empty default feature set keeps the original direct forward path,
+without an intermediate scene target or an extra present pass.
+
+Graph sampling and texture copies use distinct declarations: fullscreen inputs must be
+linear-filterable, while copy passes declare an exact source/destination pair and validate the
+resolved RHI textures before a backend frame begins.
+
+The [scriptable pipeline example](https://hilo3d.js.org/examples/scriptable_pipeline.html) samples
+scene color through a retained fullscreen feature. The
+[SRP architecture document](./documentation/SCRIPTABLE_RENDER_PIPELINE_PLAN.md) covers ownership,
+failure handling, performance gates, and the capability-gated route to storage buffers and compute.
+Those compute/storage capability names are currently fail-closed rather than partially emulated on
+WebGL 2.
+
+## Modern renderer architecture
+
+- `src/render` owns the single public Renderer, scene traversal, frame planning, render-target
+  contracts, std140 uniform data, shader-interface preparation, and deterministic engine-resource
+  ownership.
+- `src/shader` owns authored GLSL preprocessing and engine shader variants; `src/render/shader`
+  reflects bindings and performs GLSL-to-WGSL compilation. RHI code never knows what a shader
+  variant or material is.
+- `src/render/rhi/RHI.ts` defines the portable WebGPU-shaped device, resource, pipeline, bind-group,
+  render-pass, encoder, queue, surface, feature, and limit contracts.
+- `src/render/rhi/RHIFactory.ts` is the single hardware composition root. It constructs one concrete
+  RHI and owns backend support probes; it does not wrap that RHI in a per-command facade.
+- `src/render/rhi/backends/webgpu` directly wraps native WebGPU. `src/render/rhi/backends/webgl2`
+  contains the WebGL 2 emulation, state cache, framebuffer/VAO ownership, and context recovery.
+  Neither RHI backend imports engine scene types.
+- Backend-specific preparation and native execution remain internal implementation details; there
+  are no backend-specific public Renderer or RenderTarget classes. The internal Renderer factory
+  selects a concrete driver once during construction and returns it directly.
+
+The abstraction boundary intentionally follows WebGPU rather than the WebGL state machine. A WebGPU
+render pass maps one-for-one to its native pass, and a WebGPU command encoder owns the native
+encoder directly. WebGL2RHI applies pipeline and bind-group state only when it changes and executes
+draw/copy commands during encoding; the returned command buffer is a single-use submission token.
+Production WebGPU paths use one-hop native fast paths on that same concrete device, so the main draw
+loop keeps native handles and pays no per-draw wrapper or virtual-dispatch cost. The WebGL 2 path
+runs its Program/VAO work in a frame-scoped session backed by the RHI's single context, canonical
+state differential, lifecycle, and device-owned sampler cache. Program, VAO, and framebuffer caches
+remain render-layer caches; it never creates a parallel context or a replayable command list.
+Capabilities that do not have a sound WebGL 2 implementation—including compute pipelines, storage
+textures, storage buffers, 1D textures, asynchronous buffer mapping, base-vertex draws, and
+first-instance draws—are absent from its `features` or exposed as zero limits and fail explicitly
+when requested. Inside the RHI contract, per-format sampling, filtering, attachment, storage, and
+MSAA support is reported conservatively, including extension/tier-dependent differences.
+
+Every engine shader starts as GLSL ES 3.00. WebGL 2 compiles it directly. WebGPU resolves the shader
+variant, rewrites its active interface to Vulkan GLSL 4.50, and passes it through the Naga WASM
+frontend to produce WGSL. Engine utility passes use the same path; there is no handwritten fallback
+WGSL shader set.
+
+Shader variants use a structured, type- and length-delimited dual-lane 64-bit hash without an
+intermediate serialized key. Exact fields are retained for collision checks, so a collision receives
+a deterministic bucket key instead of aliasing another shader. Cache ownership is deliberately
+single-layered: each RHI device owns bounded immutable sampler, bind-group-layout, pipeline-layout,
+and render-pipeline caches; the Renderer owns material, Mesh, shader-variant, binding-set, and
+upload revision caches. Buffers, textures, shader modules, and bind groups are never
+descriptor-deduplicated by the RHI because their identity and lifetime are application data. Labels
+do not participate in device cache keys. Device loss/context restoration and explicit destruction
+clear every device cache.
+
+Texture identity is backend-neutral: the shared object stores CPU content, immutable update
+snapshots, and monotonic revisions only. Each WebGL context and WebGPU device owns its native
+allocations and upload cursor. WebGL descriptor snapshots preserve stable native objects across
+framebuffer resize/reset; WebGPU defers destruction of buffers and textures referenced by a pending
+submission. Internal lifecycle observers release every backend allocation before cancellable public
+events run, including device/context loss and explicit resource release. WebGL sampler variants are
+immutable, bounded, and bound per texture unit, so one depth texture can be read numerically and
+through a comparison sampler in the same draw without mutating global texture state.
+
+Render-target owners track attachment allocation generations on both backends. Texture target
+changes, failed uploads, and explicit attachment destruction invalidate the previous allocation; the
+target rebuilds or reattaches before reuse and rejects stale native handles.
+
+Uniform buffers, dynamic geometry, and textures carry backend-local revisions. Both backends upload
+only merged UBO and geometry dirty ranges when allocation shape is stable, while textures replay
+immutable subresource-update snapshots from the required revision. WebGPU command-state caching also
+suppresses repeated pipeline, bind-group, vertex/index buffer, viewport, and stencil commands within
+a pass.
+
+## Custom GLSL and UBO contract
+
+Numeric shader data belongs in registered std140 blocks. Samplers are the only uniforms allowed
+outside blocks.
+
+```ts
+Hilo3d.registerUniformBlockBinding('EffectBlock');
+const effectLayout = Hilo3d.createStd140Layout({ tint: 'vec4' });
+const effectBlock = Hilo3d.UniformBuffer.fromSchema(effectLayout, {
+    tint: [0.6, 0.8, 1, 1]
+});
+
+const material = new Hilo3d.ShaderMaterial({
+    attributes: { a_position: 'POSITION' },
+    uniformBlocks: { EffectBlock: effectBlock },
+    vs: `#version 300 es
+layout(std140) uniform EffectBlock { vec4 tint; };
+in vec3 a_position; out vec4 v_tint;
+void main() { v_tint = tint; gl_Position = vec4(a_position, 1.0); }`,
+    fs: `#version 300 es
+precision highp float;
+in vec4 v_tint; layout(location = 0) out vec4 outColor;
+void main() { outColor = v_tint; }`
+});
+
+effectBlock.set('tint', [1, 0.5, 0.2, 1]);
+```
+
+Use `in`/`out`, `texture()`, and explicit fragment outputs. Register each custom block before first
+use, keep same-name block layouts identical across stages, and use flat schemas of scalars, vectors,
+matrices, or fixed arrays.
+
+## Device and resource lifecycle
+
+WebGPU device loss emits `webgpuDeviceLost`, reacquires an equivalent adapter/device with the frozen
+requirements, revalidates features and limits, rebuilds device-owned managers and caches, restores
+render-target resources without changing their public object identity, and emits
+`webgpuDeviceRestored`. Frames are skipped while recovery is active. Terminal recovery emits
+`webgpuDeviceRecoveryFailed`; later renders throw that error and the renderer never switches to
+WebGL 2. `releaseGPUResources()` clears owned GPU state while leaving the renderer reusable.
+
+Use `await renderer.waitForIdle()` when application code needs a backend-neutral completion fence.
+Native interoperability is opt-in through `renderer.getExtension('webgl2-native')` or
+`renderer.getExtension('webgpu-native')`; native contexts and devices are not fields on the public
+Renderer. Always capability-check an extension before using it, and keep normal rendering on the
+shared Renderer/RenderTarget API.
+
+## Documentation
+
+- [API documentation](https://hilo3d.js.org/docs/)
+- [Example gallery](https://hilo3d.js.org/examples/list.html)
+- [glTF viewer](https://hilo3d.js.org/examples/glTFViewer/index.html)
+- [Engineering documentation index](./documentation/README.md)
+- [Current rendering architecture](./documentation/RENDERING_ARCHITECTURE.md)
+- [vNext renderer engineering record](./documentation/ENGINEERING_MODERNIZATION.md#双后端渲染与-shader-abi)
+- [ShaderMaterial migration guide](./documentation/ENGINEERING_MODERNIZATION.md#shadermaterial-迁移)
+- [Breaking changes](./CHANGELOG.md#breaking-changes)
+- [Contributing](./.github/CONTRIBUTING.md)
