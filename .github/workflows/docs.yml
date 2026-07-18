@@ -2,9 +2,11 @@ name: API documentation
 
 on:
   push:
-    branches: [master]
+    branches: [dev]
     paths:
       - '.github/workflows/docs.yml'
+      - '.node-version'
+      - 'CNAME'
       - 'src/**'
       - 'examples/**'
       - 'README.md'
@@ -22,6 +24,8 @@ on:
       - 'vite.examples.config.ts'
       - 'scripts/build-types.ts'
       - 'scripts/build-site.ts'
+      - 'scripts/check-site-links.ts'
+      - 'website/**'
   workflow_dispatch:
 
 concurrency:
@@ -63,7 +67,7 @@ jobs:
       - name: Build declarations once
         run: npm run build:types
 
-      - name: Validate API contract and build documentation site
+      - name: Validate API contract, links, and build documentation site
         run: npm run api:check:built && npm run site:build:built
 
       - name: Configure GitHub Pages

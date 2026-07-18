@@ -10,7 +10,7 @@ Hilo3d vNext 围绕 WebGPU-shaped RHI、显式 render pass、可复用 GPU 资�
 
 [![npm](https://img.shields.io/npm/v/hilo3d.svg?style=flat-square)](https://www.npmjs.com/package/hilo3d)
 [![CI](https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?style=flat-square)](https://github.com/hiloteam/Hilo3d/actions/workflows/npm_test.yml)
-[![license](https://img.shields.io/npm/l/hilo3d.svg?style=flat-square)](./LICENSE)
+[![license](https://img.shields.io/npm/l/hilo3d.svg?style=flat-square)](https://github.com/hiloteam/Hilo3d/blob/dev/LICENSE)
 
 - WebGPURHI 是 native WebGPU 对象与命令的薄映射，不退化成 GL 风格状态机，也不会再回放一份 JavaScript
   command buffer。
@@ -174,8 +174,8 @@ pass。
 图采样与纹理 copy 使用不同声明：fullscreen 输入必须支持线性过滤；copy
 pass 必须声明精确的 source/destination pair，并在 backend frame 开始前验证解析后的 RHI texture。
 
-[可脚本化管线示例](./examples/scriptable_pipeline.html)展示了使用 retained fullscreen
-feature 采样 scene color；
+[可脚本化管线示例](https://hilo3d.js.org/examples/scriptable_pipeline.html)展示了使用 retained
+fullscreen feature 采样 scene color；
 [SRP 架构文档](./documentation/SCRIPTABLE_RENDER_PIPELINE_PLAN.md)说明资源所有权、失败回滚、性能门禁，以及 storage
 buffer/compute 的 capability-gated 扩展路线。当前 compute/storage
 capability 会明确失败，不会在 WebGL 2 上提供不完整模拟。

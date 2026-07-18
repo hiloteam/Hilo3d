@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta
+            name="description"
+            content="Hilo3D is a WebGPU-first, TypeScript-first 3D engine with one shared renderer and a production WebGL 2 backend."
+        />
+        <meta name="theme-color" content="#070a10" />
+        <meta property="og:title" content="Hilo3D — One renderer. Two modern backends." />
+        <meta
+            property="og:description"
+            content="Build high-performance 3D experiences for the modern web with WebGPU and WebGL 2."
+        />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://hilo3d.js.org/" />
+        <meta property="og:image" content="https://hilo3d.js.org/og.png" />
+        <meta property="og:image:width" content="1729" />
+        <meta property="og:image:height" content="910" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Hilo3D — One renderer. Two modern backends." />
+        <meta
+            name="twitter:description"
+            content="Build high-performance 3D experiences for the modern web with WebGPU and WebGL 2."
+        />
+        <meta name="twitter:image" content="https://hilo3d.js.org/og.png" />
+        <title>Hilo3D — WebGPU-first 3D engine</title>
+        <link rel="stylesheet" href="./styles.css" />
+    </head>
+    <body>
+        <a class="skipLink" href="#main">Skip to content</a>
+        <div class="ambientGrid" aria-hidden="true"></div>
+        <div class="ambientGlow ambientGlowMint" aria-hidden="true"></div>
+        <div class="ambientGlow ambientGlowBlue" aria-hidden="true"></div>
+
+        <header class="siteHeader">
+            <div class="headerInner sectionShell">
+                <a class="brand" href="./" aria-label="Hilo3D home">
+                    <span class="brandSymbol" aria-hidden="true">
+                        <img src="./assets/hilo3d-logo.png" alt="" width="2400" height="640" />
+                    </span>
+                    <span class="brandName">Hilo3D</span>
+                </a>
+                <nav class="mainNavigation" aria-label="Main navigation">
+                    <a href="#why">Architecture</a>
+                    <a href="#showcase">Showcase</a>
+                    <a href="./docs/">Docs</a>
+                    <a href="./docs/modules/Hilo3d.html">API</a>
+                    <a href="./examples/list.html">Examples</a>
+                </nav>
+                <a
+                    class="headerAction"
+                    href="https://github.com/hiloteam/Hilo3d"
+                    target="_blank"
+                    rel="noreferrer"
+                >
+                    GitHub <span aria-hidden="true">↗</span>
+                </a>
+            </div>
+        </header>
+
+        <main id="main">
+            <section class="hero sectionShell">
+                <div class="heroCopy">
+                    <p class="eyebrow"><span></span> Modern graphics rendering engine</p>
+                    <h1>
+                        <span>Modern graphics.</span>
+                        <em>One unified engine.</em>
+                    </h1>
+                    <p class="heroDescription">
+                        Build production 3D experiences on a portable RHI for WebGPU and WebGL 2, a
+                        validated Render Graph, and a fully scriptable render pipeline.
+                    </p>
+                    <div class="heroActions">
+                        <a class="button buttonPrimary" href="./docs/">
+                            Start building <span aria-hidden="true">→</span>
+                        </a>
+                        <a class="button buttonSecondary" href="./examples/list.html">
+                            Explore 81 examples
+                        </a>
+                    </div>
+                    <div class="installLine" aria-label="Install Hilo3D with npm">
+                        <span aria-hidden="true">$</span>
+                        <code>npm install hilo3d</code>
+                        <small>ESM · strict TypeScript</small>
+                    </div>
+                </div>
+
+                <div class="heroArtwork">
+                    <div class="artworkHeader" aria-hidden="true">
+                        <span><i></i> Shared renderer</span>
+                        <span>Portable RHI</span>
+                    </div>
+                    <div class="artworkScene">
+                        <img
+                            src="./assets/hero-renderer.png"
+                            alt="Abstract rendering pipeline flowing from a shared core into two graphics backends"
+                            width="1568"
+                            height="1003"
+                            decoding="async"
+                            fetchpriority="high"
+                        />
+                        <span class="artworkBadge artworkBadgeScene">Scene</span>
+                        <span class="artworkBadge artworkBadgeGraph">Render Graph</span>
+                        <span class="artworkBadge artworkBadgeWebgpu"><i></i> WebGPU</span>
+                        <span class="artworkBadge artworkBadgeWebgl"><i></i> WebGL 2</span>
+                    </div>
+                    <div class="artworkFooter">
+                        <span>Scene</span><i>→</i><span>Renderer</span><i>→</i><span>RHI</span>
+                        <strong>Backend neutral</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="proofBar sectionShell" aria-label="Hilo3D project highlights">
+                <div><strong>RHI</strong><span>WebGPU + WebGL 2</span></div>
+                <div><strong>Graph</strong><span>validated render scheduling</span></div>
+                <div><strong>SRP</strong><span>scriptable render pipeline</span></div>
+                <div><strong>TS</strong><span>strict TypeScript API</span></div>
+            </section>
+
+            <section class="why sectionShell" id="why">
+                <div class="sectionIntro">
+                    <p class="eyebrow"><span></span> Rendering architecture</p>
+                    <h2>The architecture behind every frame.</h2>
+                    <p>
+                        One shared rendering frontend connects portable hardware access, validated
+                        scheduling and a pipeline you can shape for production.
+                    </p>
+                </div>
+
+                <div class="advantageGrid">
+                    <article class="advantageCard advantageCardPrimary">
+                        <span class="cardNumber">01</span>
+                        <div class="miniPipeline" aria-hidden="true">
+                            <div class="miniPipelineSource">
+                                <small>Shared frontend</small>
+                                <span>Renderer</span>
+                                <b>Scene · Passes</b>
+                            </div>
+                            <i>→</i>
+                            <div class="miniPipelineCore">
+                                <small>Unified contract</small>
+                                <span>Portable RHI</span>
+                                <b>Resources · Pipelines · Commands</b>
+                            </div>
+                            <i>→</i>
+                            <div class="miniOutputs">
+                                <small>Native backends</small>
+                                <span><b></b>WebGPU</span>
+                                <span><b></b>WebGL 2</span>
+                            </div>
+                        </div>
+                        <div class="advantageCopy">
+                            <p class="cardKicker">01 · Unified graphics interface</p>
+                            <h3>One RHI. WebGPU and WebGL 2.</h3>
+                            <p>
+                                A backend-neutral resource, pipeline and command contract keeps the
+                                renderer portable while each backend stays native to its API.
+                            </p>
+                        </div>
+                    </article>
+
+                    <article class="advantageCard">
+                        <span class="cardNumber">02</span>
+                        <div class="graphGraphic" aria-hidden="true">
+                            <span><b>01</b>Setup</span><i>→</i><span><b>02</b>Compile</span><i>→</i
+                            ><span><b>03</b>Prepare</span><i>→</i><span><b>04</b>Execute</span>
+                        </div>
+                        <div class="advantageCardCopy">
+                            <p class="cardKicker">02 · Validated Render Graph</p>
+                            <h3>Declare first.<br />Execute with confidence.</h3>
+                            <p>
+                                Resource dependencies, descriptors and pass ordering are validated
+                                before the RHI frame begins, with explicit setup, prepare and
+                                execute phases.
+                            </p>
+                        </div>
+                    </article>
+
+                    <article class="advantageCard">
+                        <span class="cardNumber">03</span>
+                        <div class="scriptPipelineGraphic" aria-hidden="true">
+                            <div>
+                                <span><b>Default</b> Forward Pipeline</span>
+                                <small>Production path</small>
+                            </div>
+                            <div>
+                                <span><b>Custom</b> Your Pipeline</span>
+                                <small>Scriptable features</small>
+                            </div>
+                        </div>
+                        <div class="advantageCardCopy">
+                            <p class="cardKicker">03 · Scriptable Render Pipeline</p>
+                            <h3>Own the pipeline.<br />Keep the engine.</h3>
+                            <p>
+                                Extend or replace render sequencing through the public pipeline
+                                contract without bypassing the Render Graph or portable RHI.
+                            </p>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="production sectionShell" id="showcase">
+                <div class="sectionIntro sectionIntroSplit">
+                    <div>
+                        <p class="eyebrow"><span></span> Production showcase</p>
+                        <h2>Built for more than demos.</h2>
+                    </div>
+                    <p>
+                        Hilo3D has powered character worlds, social games, and interactive 3D
+                        products at real consumer scale.
+                    </p>
+                </div>
+
+                <div class="productionGrid">
+                    <article class="productionCard productionCardTaobao">
+                        <div class="productVisual">
+                            <video
+                                autoplay
+                                muted
+                                loop
+                                playsinline
+                                preload="metadata"
+                                poster="./assets/showcase-taobao-life.png"
+                                aria-label="淘宝人生 product showcase animation"
+                            >
+                                <source
+                                    src="./assets/showcase-taobao-life.mp4"
+                                    type="video/mp4"
+                                    media="(prefers-reduced-motion: no-preference)"
+                                />
+                            </video>
+                        </div>
+                        <div class="productInfo">
+                            <span class="productIndex">01</span>
+                            <span class="productType">Virtual identity</span>
+                            <h3>淘宝人生</h3>
+                            <p>Character creation and an immersive personal 3D world.</p>
+                        </div>
+                    </article>
+
+                    <article class="productionCard productionCardDuidui">
+                        <div class="productVisual">
+                            <video
+                                autoplay
+                                muted
+                                loop
+                                playsinline
+                                preload="metadata"
+                                poster="./assets/showcase-duidui.png"
+                                aria-label="堆堆乐 product showcase animation"
+                            >
+                                <source
+                                    src="./assets/showcase-duidui.mp4"
+                                    type="video/mp4"
+                                    media="(prefers-reduced-motion: no-preference)"
+                                />
+                            </video>
+                        </div>
+                        <div class="productInfo">
+                            <span class="productIndex">02</span>
+                            <span class="productType">Casual game</span>
+                            <h3>堆堆乐</h3>
+                            <p>A playful physics-driven stacking experience built for mobile.</p>
+                        </div>
+                    </article>
+
+                    <article class="productionCard productionCardPlanet">
+                        <div class="productVisual">
+                            <video
+                                autoplay
+                                muted
+                                loop
+                                playsinline
+                                preload="metadata"
+                                poster="./assets/showcase-tiantian-planet.png"
+                                aria-label="天天惠星球 product showcase animation"
+                            >
+                                <source
+                                    src="./assets/showcase-tiantian-planet.mp4"
+                                    type="video/mp4"
+                                    media="(prefers-reduced-motion: no-preference)"
+                                />
+                            </video>
+                        </div>
+                        <div class="productInfo">
+                            <span class="productIndex">03</span>
+                            <span class="productType">3D world</span>
+                            <h3>天天惠星球</h3>
+                            <p>A colorful isometric planet filled with interactive 3D spaces.</p>
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="examples sectionShell" id="examples">
+                <div class="sectionIntro sectionIntroRow">
+                    <div>
+                        <p class="eyebrow"><span></span> Explore the engine</p>
+                        <h2>From first triangle<br />to GPU-driven scenes.</h2>
+                    </div>
+                    <a class="textLink" href="./examples/list.html">Browse all 81 examples →</a>
+                </div>
+
+                <div class="exampleGrid">
+                    <a
+                        class="exampleCard exampleCardCompute"
+                        href="./examples/compute_particles.html?backend=webgpu"
+                    >
+                        <div class="computeVisual" aria-hidden="true">
+                            <span></span><span></span><span></span><span></span><span></span>
+                            <span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                        <div class="exampleCopy">
+                            <span>WebGPU · Compute</span>
+                            <h3>65K GPU particles</h3>
+                            <p>
+                                Persistent simulation, indirect draws and interactive force fields.
+                            </p>
+                        </div>
+                        <b aria-hidden="true">↗</b>
+                    </a>
+
+                    <a
+                        class="exampleCard exampleCardPbr"
+                        href="./examples/pbr2.html?backend=webgl2"
+                    >
+                        <div class="pbrVisual" aria-hidden="true">
+                            <span></span><span></span><span></span><span></span><span></span>
+                            <span></span><span></span><span></span><span></span>
+                        </div>
+                        <div class="exampleCopy">
+                            <span>WebGPU · WebGL 2</span>
+                            <h3>Physically based rendering</h3>
+                            <p>Metallic, roughness and image-based lighting on both backends.</p>
+                        </div>
+                        <b aria-hidden="true">↗</b>
+                    </a>
+
+                    <a class="exampleCard exampleCardGltf" href="./examples/glTFViewer/index.html">
+                        <div class="gltfVisual" aria-hidden="true">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <div class="exampleCopy">
+                            <span>glTF · Loader</span>
+                            <h3>Production glTF viewer</h3>
+                            <p>Load, inspect and render modern 3D assets in the browser.</p>
+                        </div>
+                        <b aria-hidden="true">↗</b>
+                    </a>
+                </div>
+            </section>
+
+            <section class="quickStart sectionShell">
+                <div class="quickStartCopy">
+                    <p class="eyebrow"><span></span> Start building</p>
+                    <h2>From install to<br />first frame.</h2>
+                    <p>
+                        Create one asynchronous stage. Auto mode selects a compatible WebGPU adapter
+                        first and uses WebGL 2 when WebGPU is unavailable.
+                    </p>
+                    <div class="resourceLinks">
+                        <a href="./docs/">Documentation <span>→</span></a>
+                        <a href="./docs/modules/Hilo3d.html">API reference <span>→</span></a>
+                        <a href="./examples/list.html">Examples gallery <span>→</span></a>
+                        <a href="./docs/documents/README_ZH.html">中文文档 <span>→</span></a>
+                        <a href="./docs/documents/CHANGELOG.html"
+                            >Breaking changes <span>→</span></a
+                        >
+                    </div>
+                </div>
+
+                <div class="codeWindow">
+                    <div class="codeHeader">
+                        <span><i></i><i></i><i></i></span>
+                        <span>main.ts</span>
+                        <span>TypeScript</span>
+                    </div>
+                    <pre><code><span class="codePurple">import</span> * <span class="codePurple">as</span> Hilo3d <span class="codePurple">from</span> <span class="codeGreen">'hilo3d'</span>;
+
+<span class="codePurple">const</span> stage = <span class="codePurple">await</span> Hilo3d.Stage.create({
+    backend: <span class="codeGreen">'auto'</span>,
+    container,
+    camera
+});
+
+<span class="codePurple">new</span> Hilo3d.Mesh({
+    geometry: <span class="codePurple">new</span> Hilo3d.BoxGeometry(),
+    material: <span class="codePurple">new</span> Hilo3d.PBRMaterial()
+}).addTo(stage);</code></pre>
+                    <div class="codeFooter">
+                        <span><i></i> Ready</span>
+                        <span>webgpu → webgl2</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="finalCta sectionShell">
+                <div>
+                    <p class="eyebrow"><span></span> Open source · MIT</p>
+                    <h2>Ship your next<br />3D experience.</h2>
+                </div>
+                <div class="finalActions">
+                    <a class="button buttonPrimary" href="./docs/">Read the docs →</a>
+                    <a
+                        class="button buttonSecondary"
+                        href="https://github.com/hiloteam/Hilo3d"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        View on GitHub
+                    </a>
+                </div>
+            </section>
+        </main>
+
+        <footer class="siteFooter sectionShell">
+            <a class="brand" href="./" aria-label="Hilo3D home">
+                <span class="brandSymbol" aria-hidden="true">
+                    <img src="./assets/hilo3d-logo.png" alt="" width="2400" height="640" />
+                </span>
+                <span class="brandName">Hilo3D</span>
+            </a>
+            <p>One renderer. Two modern backends.</p>
+            <nav aria-label="Footer navigation">
+                <a href="./docs/">Docs</a>
+                <a href="./docs/modules/Hilo3d.html">API</a>
+                <a href="./examples/list.html">Examples</a>
+                <a href="https://github.com/hiloteam/Hilo3d">GitHub</a>
+            </nav>
+        </footer>
+    </body>
+</html>

@@ -721,8 +721,12 @@ renderer/GLSL、不隐式启动 Naga，也没有 WGSL fallback。shader
 module/layout/sampler 在 device 创建时建立，按 format 复用的 pipeline 与逐 mip/layer view、bind
 group 在 texture allocation 时准备，因此 command execute 只编码 mipmap render pass。
 
-`npm run site:build` 将 TypeDoc 输出放入 `/docs/`，将完整 Vite 示例构建放入
-`/examples/`，再生成站点根跳转与 `CNAME`。生成目录不提交到主工作树，由 Pages 工作流每次重新构建。
+`npm run site:build` 将维护的静态首页放在站点根路径，将 TypeDoc 输出放入
+`/docs/`，将完整 Vite 示例构建放入 `/examples/`，并复制
+`CNAME`。首页、文档和案例页互相提供导航入口。生成目录不提交到主工作树，由 Pages 工作流在 `dev`
+分支更新后重新构建并通过 GitHub
+Actions 部署。站点构建完成后还会扫描生成的 HTML/CSS，拒绝缺失的内部资源和依赖站点根路径的内部链接，确保自定义域名与 GitHub
+Pages 子路径部署使用同一份产物。
 
 ## 测试体系
 

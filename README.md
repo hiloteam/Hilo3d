@@ -11,7 +11,7 @@ immediate, state-cached GL execution.
 
 [![npm](https://img.shields.io/npm/v/hilo3d.svg?style=flat-square)](https://www.npmjs.com/package/hilo3d)
 [![CI](https://img.shields.io/github/actions/workflow/status/hiloteam/Hilo3d/npm_test.yml?style=flat-square)](https://github.com/hiloteam/Hilo3d/actions/workflows/npm_test.yml)
-[![license](https://img.shields.io/npm/l/hilo3d.svg?style=flat-square)](./LICENSE)
+[![license](https://img.shields.io/npm/l/hilo3d.svg?style=flat-square)](https://github.com/hiloteam/Hilo3d/blob/dev/LICENSE)
 
 - WebGPURHI is a thin mapping to native WebGPU objects and commands; it does not become a GL-style
   state machine and does not replay a second JavaScript command buffer.
@@ -185,8 +185,8 @@ Graph sampling and texture copies use distinct declarations: fullscreen inputs m
 linear-filterable, while copy passes declare an exact source/destination pair and validate the
 resolved RHI textures before a backend frame begins.
 
-The [scriptable pipeline example](./examples/scriptable_pipeline.html) samples scene color through a
-retained fullscreen feature. The
+The [scriptable pipeline example](https://hilo3d.js.org/examples/scriptable_pipeline.html) samples
+scene color through a retained fullscreen feature. The
 [SRP architecture document](./documentation/SCRIPTABLE_RENDER_PIPELINE_PLAN.md) covers ownership,
 failure handling, performance gates, and the capability-gated route to storage buffers and compute.
 Those compute/storage capability names are currently fail-closed rather than partially emulated on

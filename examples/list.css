@@ -112,10 +112,28 @@ select:focus-visible {
 
 .headerActions,
 .backendControl,
-.viewerActions {
+.viewerActions,
+.siteLinks {
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+.siteLinks {
+    gap: 18px;
+    margin-right: 6px;
+}
+
+.siteLinks a {
+    color: var(--gallery-muted);
+    font-size: 12px;
+    font-weight: 650;
+    text-decoration: none;
+    transition: color 140ms ease;
+}
+
+.siteLinks a:hover {
+    color: var(--gallery-accent);
 }
 
 .backendControl {

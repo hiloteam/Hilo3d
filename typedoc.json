@@ -16,6 +16,7 @@
   "excludePrivate": true,
   "excludeProtected": true,
   "navigationLinks": {
+    "Home": "https://hilo3d.js.org/",
     "Examples": "https://hilo3d.js.org/examples/list.html",
     "Repository": "https://github.com/hiloteam/Hilo3d"
   },
