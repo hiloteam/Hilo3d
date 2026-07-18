@@ -3,10 +3,14 @@ import { defineConfig, mergeConfig } from 'vitest/config';
 import { createViteConfig } from './vite.config';
 
 const coverageRun = process.argv.includes('--coverage');
+const githubActionsCoverageRun = coverageRun && process.env['GITHUB_ACTIONS'] === 'true';
 
 export default mergeConfig(
     createViteConfig(),
     defineConfig({
+        define: {
+            __HILO3D_GITHUB_ACTIONS_COVERAGE__: JSON.stringify(githubActionsCoverageRun)
+        },
         test: {
             name: 'browser',
             globals: false,

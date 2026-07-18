@@ -46,6 +46,8 @@ import type { RenderTargetResourceCache } from '../../../src/render/renderer/Ren
 import { MeshDrawProcessor } from '../../../src/render/renderer/MeshDrawProcessor';
 import type { RHIQueue, RHIRenderPassDescriptor } from '../../../src/render/rhi/core';
 
+declare const __HILO3D_GITHUB_ACTIONS_COVERAGE__: boolean;
+
 class TestPipeline implements RenderPipeline {
     readonly name = 'test-pipeline';
     readonly pass = new SceneRenderPass('Test scene pass');
@@ -1124,77 +1126,83 @@ describe('Scriptable render pipeline', () => {
         expect(factory.runtime?.destroyCount).toBe(1);
     });
 
-    it('expands planner-owned instanced batches into ordered direct storage scene draws', async () => {
-        const runtime = new InstancedStorageScenePipeline();
-        const renderer = await Renderer.create({
-            backend: 'webgpu',
-            domElement: document.createElement('canvas'),
-            width: 16,
-            height: 8,
-            antialias: false,
-            renderPipeline: new FixedRuntimeFactory(runtime)
-        });
-        activeRenderers.push(renderer);
-        runtime.buffer = renderer.createStorageBuffer({
-            label: 'instanced storage scene values',
-            byteLength: 16,
-            usage: ['storage'],
-            initialData: new Float32Array([1, 0.25, 0, 1])
-        });
-        const geometry = new BoxGeometry();
-        const material = new BasicMaterial({
-            lightType: 'NONE',
-            depthTest: false,
-            depthMask: false,
-            cullFace: false
-        });
-        const first = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
-        const second = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
-        first.setPosition(-0.25, 0, 0);
-        second.setPosition(0.25, 0, 0);
-        const transparentGeometry = new BoxGeometry();
-        const transparentMaterial = new BasicMaterial({
-            lightType: 'NONE',
-            transparent: true,
-            depthTest: false,
-            depthMask: false,
-            cullFace: false
-        });
-        const transparentFirst = new Mesh({
-            geometry: transparentGeometry,
-            material: transparentMaterial,
-            useInstanced: true,
-            frustumTest: false
-        });
-        const transparentSecond = new Mesh({
-            geometry: transparentGeometry,
-            material: transparentMaterial,
-            useInstanced: true,
-            frustumTest: false
-        });
-        const scene = new Node();
-        scene.addChild(first);
-        scene.addChild(second);
-        scene.addChild(transparentFirst);
-        scene.addChild(transparentSecond);
-        const prepareStorageScene = vi.spyOn(MeshDrawProcessor.prototype, 'prepareStorageScene');
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'expands planner-owned instanced batches into ordered direct storage scene draws',
+        async () => {
+            const runtime = new InstancedStorageScenePipeline();
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: document.createElement('canvas'),
+                width: 16,
+                height: 8,
+                antialias: false,
+                renderPipeline: new FixedRuntimeFactory(runtime)
+            });
+            activeRenderers.push(renderer);
+            runtime.buffer = renderer.createStorageBuffer({
+                label: 'instanced storage scene values',
+                byteLength: 16,
+                usage: ['storage'],
+                initialData: new Float32Array([1, 0.25, 0, 1])
+            });
+            const geometry = new BoxGeometry();
+            const material = new BasicMaterial({
+                lightType: 'NONE',
+                depthTest: false,
+                depthMask: false,
+                cullFace: false
+            });
+            const first = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
+            const second = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
+            first.setPosition(-0.25, 0, 0);
+            second.setPosition(0.25, 0, 0);
+            const transparentGeometry = new BoxGeometry();
+            const transparentMaterial = new BasicMaterial({
+                lightType: 'NONE',
+                transparent: true,
+                depthTest: false,
+                depthMask: false,
+                cullFace: false
+            });
+            const transparentFirst = new Mesh({
+                geometry: transparentGeometry,
+                material: transparentMaterial,
+                useInstanced: true,
+                frustumTest: false
+            });
+            const transparentSecond = new Mesh({
+                geometry: transparentGeometry,
+                material: transparentMaterial,
+                useInstanced: true,
+                frustumTest: false
+            });
+            const scene = new Node();
+            scene.addChild(first);
+            scene.addChild(second);
+            scene.addChild(transparentFirst);
+            scene.addChild(transparentSecond);
+            const prepareStorageScene = vi.spyOn(
+                MeshDrawProcessor.prototype,
+                'prepareStorageScene'
+            );
 
-        renderer.render(scene, new PerspectiveCamera());
-        renderer.render(scene, new PerspectiveCamera());
-        await renderer.waitForIdle();
+            renderer.render(scene, new PerspectiveCamera());
+            renderer.render(scene, new PerspectiveCamera());
+            await renderer.waitForIdle();
 
-        expect(prepareStorageScene).toHaveBeenCalledTimes(8);
-        expect(prepareStorageScene.mock.calls.slice(4).map(call => call[0])).toEqual([
-            first,
-            second,
-            transparentFirst,
-            transparentSecond
-        ]);
-        expect(prepareStorageScene.mock.calls.every(call => call[6] === true)).toBe(true);
-        expect(renderer.renderInfo.drawCount).toBe(4);
-        expect(renderer.renderInfo.faceCount).toBeGreaterThan(0);
-        prepareStorageScene.mockRestore();
-    });
+            expect(prepareStorageScene).toHaveBeenCalledTimes(8);
+            expect(prepareStorageScene.mock.calls.slice(4).map(call => call[0])).toEqual([
+                first,
+                second,
+                transparentFirst,
+                transparentSecond
+            ]);
+            expect(prepareStorageScene.mock.calls.every(call => call[6] === true)).toBe(true);
+            expect(renderer.renderInfo.drawCount).toBe(4);
+            expect(renderer.renderInfo.faceCount).toBeGreaterThan(0);
+            prepareStorageScene.mockRestore();
+        }
+    );
 
     it('resolves texture-copy handles during setup and emits only the declared copy in execute', async () => {
         const renderer = await Renderer.create({
