@@ -801,7 +801,9 @@ target 做两次显式 readback，断言彩色像素、pointer 坐标、输出 h
 draw/submit；普通示例门禁因此不再重复加载同一重型 ray-march 页面。这个唯一例外仍在两个后端保留 GPU
 health、页面、网络、console、DevTools graphics 与终态稳定帧门禁，并由
 `DEDICATED_RELEASE_TEST_EXAMPLE_PATHS`
-契约锁定；通用门禁与专用门禁合计仍覆盖完整的 159 个 page/backend 组合。
+契约锁定；通用门禁与专用门禁合计仍覆盖完整的 159 个 page/backend 组合。由于该 ray-march 交互在 GitHub
+hosted runner 上成本过高，GitHub
+Actions 明确跳过这一个专用用例；本地与发布前完整 Playwright 门禁仍会执行它。
 
 ### WebGPU 深度运行时测试
 
@@ -877,8 +879,10 @@ Actions、锁文件安装、固定 npm 12.0.1 和显式 Chromium 系统依赖，
 与版本 tag 先执行 modernity、格式、声明、lint、TypeScript project
 references 和示例目录合同预检；预检成功后并行执行两个 Vitest
 coverage 分片、RHI/架构、包/API/文档，以及四个 Playwright WebGL 2 页面/交互/视觉分片。每个 GPU
-job 内仍只使用一个 worker，不在同一 SwiftShader 进程并发争用设备；跨 runner 分片完成后分别合并 coverage 和 Playwright 报告，并由稳定的
-`Required CI` 聚合门禁统一给 branch protection 使用。
+job 内仍只使用一个 worker，不在同一 SwiftShader 进程并发争用设备；coverage 模式因此关闭 Vitest 文件并行，同时保留跨 runner 的两个分片。coverage
+artifact 保留上传时的仓库相对目录，汇总 job 从其嵌套 `reports/vitest` 目录只读取 blob
+report；跨 runner 分片完成后分别合并 coverage 和 Playwright 报告，并由稳定的 `Required CI`
+聚合门禁统一给 branch protection 使用。
 
 WebGPU 由独立 RHI job 中的 native/offscreen SwiftShader
 lane 验证 adapter、device、pipeline、draw、submit、readback 与 backend contract。GitHub hosted

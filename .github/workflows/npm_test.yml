@@ -137,12 +137,14 @@ jobs:
       - name: Download coverage shards
         uses: actions/download-artifact@v8
         with:
-          path: reports/vitest
+          path: reports/coverage-shards
           pattern: vitest-coverage-*
           merge-multiple: true
 
       - name: Merge coverage and enforce global thresholds
-        run: npx vitest --merge-reports=reports/vitest --coverage --reporter=default
+        run: >-
+          npx vitest --merge-reports=reports/coverage-shards/reports/vitest --coverage
+          --reporter=default
 
       - name: Upload merged coverage
         if: ${{ !cancelled() }}

@@ -19,6 +19,10 @@ export default mergeConfig(
             // Native WebGPU owns an actual device and must not share the heavily instrumented
             // coverage process. The dedicated RHI suite runs it immediately afterward.
             exclude: coverageRun ? ['test/spec/**/*.native.test.ts'] : [],
+            // Coverage instrumentation already adds substantial Chromium/SwiftShader pressure.
+            // Keep one browser file active at a time so WebGPU devices are not lost to parallel
+            // software-adapter workloads on hosted CI runners.
+            fileParallelism: !coverageRun,
             testTimeout: 10_000,
             hookTimeout: 10_000,
             coverage: {

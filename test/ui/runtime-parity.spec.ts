@@ -63,6 +63,10 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`ShaderToy pointer input stays screen-space on ${backend} @${backend}`, async ({
         browser
     }) => {
+        test.skip(
+            process.env['GITHUB_ACTIONS'] === 'true',
+            'ShaderToy is performance-intensive and is covered by local UI runs.'
+        );
         const page = await createPage(browser);
         await installRenderHealthProbe(page);
         const failures = await installPageFailureMonitor(page);
