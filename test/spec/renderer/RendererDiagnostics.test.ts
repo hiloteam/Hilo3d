@@ -184,18 +184,30 @@ describe('RendererDiagnostics', () => {
         diagnostics.recordCacheHit('vertexArray');
         diagnostics.setCacheSize('vertexArray', 2);
         diagnostics.recordDraw(8);
+        diagnostics.recordIndirectDraw(2);
+        diagnostics.recordDispatch(4);
+        diagnostics.recordDispatchedWorkgroup(96);
+        diagnostics.recordBufferClear(3);
         diagnostics.recordCommand(12);
         diagnostics.recordPass(3);
         diagnostics.recordStateChange(5);
+        diagnostics.recordComputePipelineSwitch(2);
+        diagnostics.recordComputeBindGroupSwitch(3);
         diagnostics.recordUpload(2);
         diagnostics.recordSubmission();
         diagnostics.recordArenaGrowth(2);
 
         expect(diagnostics.snapshot().frame).toEqual({
             draws: 8,
+            indirectDraws: 2,
+            dispatches: 4,
+            dispatchedWorkgroups: 96,
+            bufferClears: 3,
             commands: 12,
             passes: 3,
             stateChanges: 5,
+            computePipelineSwitches: 2,
+            computeBindGroupSwitches: 3,
             uploads: 2,
             submissions: 1,
             arenaGrowths: 2
@@ -206,9 +218,15 @@ describe('RendererDiagnostics', () => {
         const snapshot = diagnostics.snapshot();
         expect(snapshot.frame).toEqual({
             draws: 0,
+            indirectDraws: 0,
+            dispatches: 0,
+            dispatchedWorkgroups: 0,
+            bufferClears: 0,
             commands: 0,
             passes: 0,
             stateChanges: 0,
+            computePipelineSwitches: 0,
+            computeBindGroupSwitches: 0,
             uploads: 0,
             submissions: 0,
             arenaGrowths: 0

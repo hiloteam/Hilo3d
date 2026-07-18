@@ -73,8 +73,8 @@ describe('RenderGraphFrame', () => {
             const copy: RenderPassTemplate<undefined> = {
                 name: 'frame copy',
                 setup(pass) {
-                    pass.readBuffer(source);
-                    pass.writeBuffer(destination);
+                    pass.readBuffer(source, 'copy-source');
+                    pass.writeBuffer(destination, 'copy-destination');
                 },
                 execute(context) {
                     context.commandContext.copyBufferToBuffer(

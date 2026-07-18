@@ -41,6 +41,14 @@ const webGPUV2RenderPassSource = import.meta.glob<string>(
     '../../../../src/render/rhi/backends/webgpu/WebGPURenderPass.ts',
     { eager: true, query: '?raw', import: 'default' }
 );
+const webGPUComputePassSource = import.meta.glob<string>(
+    '../../../../src/render/rhi/backends/webgpu/WebGPUComputePass.ts',
+    { eager: true, query: '?raw', import: 'default' }
+);
+const rhiCommandValidationSource = import.meta.glob<string>(
+    '../../../../src/render/rhi/core/RHICommandValidation.ts',
+    { eager: true, query: '?raw', import: 'default' }
+);
 const rhiCopyValidationSource = import.meta.glob<string>(
     '../../../../src/render/rhi/core/RHICopyValidation.ts',
     { eager: true, query: '?raw', import: 'default' }
@@ -137,6 +145,7 @@ describe('RHI core architecture', () => {
             'RHISurface.ts',
             'RHIValidation.ts',
             'RHICopyValidation.ts',
+            'RHICommandValidation.ts',
             'index.ts'
         ]) {
             expect(
@@ -157,7 +166,7 @@ describe('RHI core architecture', () => {
     it('contains no native graphics API types or calls', () => {
         expect(
             collectMatches(
-                /\b(?:WebGL2RenderingContext|WebGLRenderingContext|GPU(?:Adapter|BindGroup|Buffer|CanvasContext|CommandEncoder|Device|Queue|RenderPassEncoder|RenderPipeline|Sampler|ShaderModule|Texture|TextureView))\b|\bgl\s*\.|navigator\s*\.\s*gpu/gu
+                /\b(?:WebGL2RenderingContext|WebGLRenderingContext|GPU(?:Adapter|BindGroup|Buffer|CanvasContext|CommandEncoder|ComputePassEncoder|ComputePipeline|Device|Queue|RenderPassEncoder|RenderPipeline|Sampler|ShaderModule|Texture|TextureView))\b|\bgl\s*\.|navigator\s*\.\s*gpu/gu
             )
         ).toEqual([]);
     });
@@ -177,7 +186,7 @@ describe('RHI core architecture', () => {
 describe('RHI hardware boundary', () => {
     it('keeps shared renderer, frame and graph code free of native graphics APIs', () => {
         const violations = collectMatches(
-            /\b(?:GPU[A-Z][A-Za-z0-9_]*|WebGL(?:2[A-Z][A-Za-z0-9_]*|[A-Z][A-Za-z0-9_]*)|GL(?:bitfield|boolean|char|enum|float|int|intptr|sizei|sizeiptr|uint))\b|\bnavigator\s*(?:\?\.|\.)\s*gpu\b|\bgl\s*(?:\?\.|\.)|\.getContext\s*\(\s*['"](?:webgl2?|webgpu)['"]/gu,
+            /\b(?:GPU(?!Driven)[A-Z][A-Za-z0-9_]*|WebGL(?:2[A-Z][A-Za-z0-9_]*|[A-Z][A-Za-z0-9_]*)|GL(?:bitfield|boolean|char|enum|float|int|intptr|sizei|sizeiptr|uint))\b|\bnavigator\s*(?:\?\.|\.)\s*gpu\b|\bgl\s*(?:\?\.|\.)|\.getContext\s*\(\s*['"](?:webgl2?|webgpu)['"]/gu,
             sharedRenderSources
         );
         expect(violations).toEqual([]);
@@ -343,6 +352,36 @@ describe('WebGPU RHI render-pass hot-path architecture', () => {
                     new RegExp(`\\bthis\\.${scalarMethod}\\s*\\(`, 'u')
                 );
             }
+        }
+    });
+});
+
+describe('WebGPU RHI compute hot-path architecture', () => {
+    it('keeps dispatch, binding, and indirect validation allocation-free', () => {
+        const source = Object.values(webGPUComputePassSource)[0] ?? '';
+        const forbiddenAllocation =
+            /(?:\bnew\s+|\.(?:map|filter|slice|flatMap|find|every|reduce)\s*\(|Array\.(?:from|of)\s*\(|Object\.(?:entries|keys|values)\s*\(|\.\.\.|=>)/gu;
+        for (const methodName of [
+            'setPipeline',
+            'setBindGroup',
+            'dispatchWorkgroups',
+            'dispatchWorkgroupsIndirect',
+            'validateBindGroupLayout',
+            'validateDynamicOffsets',
+            'assertPipelineAndBindings'
+        ]) {
+            expect(methodBody(source, methodName), methodName).not.toMatch(forbiddenAllocation);
+        }
+
+        const commandValidation = Object.values(rhiCommandValidationSource)[0] ?? '';
+        for (const functionName of [
+            'validateRHIDispatchWorkgroups',
+            'validateRHIDispatchWorkgroupsIndirect',
+            'validateRHIDrawIndirect'
+        ]) {
+            expect(functionBody(commandValidation, functionName), functionName).not.toMatch(
+                forbiddenAllocation
+            );
         }
     });
 });

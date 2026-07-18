@@ -8,15 +8,22 @@ import type {
     RenderTargetStoreOp
 } from '../RenderTarget';
 import type { RendererViewport } from '../RendererCore';
+import type { StorageBuffer } from '../StorageBuffer';
 import type { RenderPipelineCapabilities } from './RenderPipeline';
 import type { RendererListHandle } from './RendererList';
 
 declare const renderGraphTextureHandleBrand: unique symbol;
+declare const renderGraphBufferHandleBrand: unique symbol;
 declare const renderGraphPassHandleBrand: unique symbol;
 
 /** Opaque texture identity scoped to one scriptable frame. */
 export type RenderGraphTextureHandle = number & {
     readonly [renderGraphTextureHandleBrand]: true;
+};
+
+/** Opaque buffer identity scoped to one scriptable frame. */
+export type RenderGraphBufferHandle = number & {
+    readonly [renderGraphBufferHandleBrand]: true;
 };
 
 /** Opaque pass identity scoped to one scriptable frame. */
@@ -45,6 +52,20 @@ export interface RenderPipelineTextureDescriptor {
     /** Mip count, defaulting to one; multisampled textures require one mip. */
     readonly mipLevelCount?: number;
 }
+
+/** Backend-neutral transient buffer descriptor. Usage is inferred from pass declarations. */
+export interface RenderPipelineBufferDescriptor {
+    /** Optional diagnostic label, defaulting to the graph resource name. */
+    readonly label?: string;
+    /** Allocation size in bytes. */
+    readonly byteLength: number;
+}
+
+/** Portable roles that consume initialized graph-buffer contents. */
+export type RenderGraphBufferReadUse = 'storage' | 'vertex' | 'index' | 'copy-source' | 'indirect';
+
+/** Portable roles that completely replace graph-buffer contents. */
+export type RenderGraphBufferWriteUse = 'storage' | 'copy-destination';
 
 /** Frame-scoped graph handles representing one imported or persistent render target. */
 export interface RenderPipelineTargetResources {
@@ -119,8 +140,23 @@ export interface RenderPipelineDepthStencilAttachment {
 export interface ScriptableRenderPassBuilder {
     /** Declare a sampled texture read. */
     readTexture(texture: RenderGraphTextureHandle): void;
+    /**
+     * Declare a write-only storage-texture binding that completely replaces its subresource.
+     * Partial in-place texture updates are intentionally outside the first public compute ABI.
+     */
+    writeStorageTexture(texture: RenderGraphTextureHandle): void;
     /** Declare one complete texture copy and its exact source/destination dependency pair. */
     copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
+    /** Declare one initialized buffer read for the given portable role. */
+    readBuffer(buffer: RenderGraphBufferHandle, use: RenderGraphBufferReadUse): void;
+    /** Declare a complete buffer replacement for the given portable role. */
+    writeBuffer(buffer: RenderGraphBufferHandle, use: RenderGraphBufferWriteUse): void;
+    /** Declare a storage binding that reads and writes the same initialized buffer. */
+    readWriteBuffer(buffer: RenderGraphBufferHandle): void;
+    /** Declare one complete buffer copy and its exact source/destination dependency pair. */
+    copyBuffer(source: RenderGraphBufferHandle, destination: RenderGraphBufferHandle): void;
+    /** Declare one WebGPU clear and its exact destination byte range. */
+    clearBuffer(buffer: RenderGraphBufferHandle, byteOffset?: number, byteLength?: number): void;
     /** Declare a color attachment. */
     useColorAttachment(options: Readonly<RenderPipelineColorAttachment>): void;
     /** Declare a depth/stencil attachment. */
@@ -145,6 +181,10 @@ export interface ScriptableRenderCommands {
     drawRendererList(list: RendererListHandle): void;
     /** Copy the complete single-sample source texture into the destination. */
     copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
+    /** Copy one complete buffer using a source/destination pair declared during setup. */
+    copyBuffer(source: RenderGraphBufferHandle, destination: RenderGraphBufferHandle): void;
+    /** Clear the exact destination byte range declared during setup. */
+    clearBuffer(buffer: RenderGraphBufferHandle, byteOffset?: number, byteLength?: number): void;
 }
 
 /** Execute-phase inputs for one scriptable pass. */
@@ -190,6 +230,13 @@ export interface ScriptableRenderGraph {
         name: string,
         descriptor: Readonly<RenderPipelineTextureDescriptor>
     ): RenderGraphTextureHandle;
+    /** Create a logical transient buffer whose usage is inferred from live passes. */
+    createBuffer(
+        name: string,
+        descriptor: Readonly<RenderPipelineBufferDescriptor>
+    ): RenderGraphBufferHandle;
+    /** Import one renderer-owned persistent StorageBuffer into the active graph. */
+    importStorageBuffer(buffer: StorageBuffer): RenderGraphBufferHandle;
     /** Import the current surface or selected RenderTarget output. */
     importOutput(): RenderPipelineOutputResources;
     /** Import a RenderTarget owned by the current Renderer. */

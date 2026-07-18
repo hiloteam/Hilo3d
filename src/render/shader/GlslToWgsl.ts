@@ -1,6 +1,12 @@
 import type * as Naga from 'web-naga';
 import { getWebGPUUniformBlockBinding, type WebGPUResourceBinding } from './WebGPUBindingLayout';
 import { makeWgslUniformLayoutsPortable } from './WgslUniformLayout';
+import {
+    getInitializedNagaModule,
+    initializeNagaModule,
+    useNagaResource,
+    useNagaShaderModule
+} from './NagaModule';
 
 export type GraphicsShaderStage = 'vertex' | 'fragment';
 
@@ -30,6 +36,12 @@ export interface WebGPUSamplerBinding {
     readonly textureBinding: number;
     readonly samplerBinding: number;
     readonly stages: readonly GraphicsShaderStage[];
+}
+
+export interface WebGPUSamplerResourceBinding {
+    readonly group: number;
+    readonly textureBinding: number;
+    readonly samplerBinding: number;
 }
 
 export interface TranslatedShaderStage {
@@ -191,6 +203,11 @@ export interface PrepareGLSLForNagaOptions {
     readonly fragmentOutputs?: 'color' | 'depth-only';
     /** Inject the WebGPU backend macro while normalizing. Defaults to true. */
     readonly defineWebGPU?: boolean;
+    /** Override generated separate texture/sampler locations for an explicit graphics ABI. */
+    readonly resolveSamplerBinding?: (
+        name: string,
+        arrayIndex: number
+    ) => WebGPUSamplerResourceBinding;
 }
 
 interface ConditionalFrame {
@@ -347,33 +364,7 @@ const samplerTypes = new Set<GlslSamplerType>([
     'usampler2DArray'
 ]);
 
-type NagaModule = typeof Naga;
 type NagaShaderStage = Naga.ShaderStage;
-
-let nagaModule: NagaModule | null = null;
-let nagaInitialization: Promise<NagaModule> | null = null;
-
-function initializeNagaModule(): Promise<NagaModule> {
-    if (nagaModule) return Promise.resolve(nagaModule);
-    if (nagaInitialization) return nagaInitialization;
-
-    const loading = import('web-naga').then(async module => {
-        await module.default();
-        return module;
-    });
-    const initialization: Promise<NagaModule> = loading.then(
-        module => {
-            if (nagaInitialization === initialization) nagaModule = module;
-            return module;
-        },
-        (error: unknown) => {
-            if (nagaInitialization === initialization) nagaInitialization = null;
-            throw error;
-        }
-    );
-    nagaInitialization = initialization;
-    return initialization;
-}
 
 function lineAtOffset(source: string, offset: number): number {
     let line = 0;
@@ -2051,7 +2042,10 @@ function collectSamplerDeclarations(
     return declarations;
 }
 
-function createSamplerResources(declarations: readonly SamplerDeclaration[]): SamplerResource[] {
+function createSamplerResources(
+    declarations: readonly SamplerDeclaration[],
+    resolveBinding?: (name: string, arrayIndex: number) => WebGPUSamplerResourceBinding
+): SamplerResource[] {
     const signatures = new Map<string, string>();
     const stages = new Map<string, Set<GraphicsShaderStage>>();
     const order: string[] = [];
@@ -2077,13 +2071,17 @@ function createSamplerResources(declarations: readonly SamplerDeclaration[]): Sa
         const typeInfo = samplerTypeInfo(declaration.type);
         for (let arrayIndex = 0; arrayIndex < declaration.arrayLength; arrayIndex++) {
             const suffix = declaration.arrayLength === 1 ? '' : `_${String(arrayIndex)}`;
+            const resolved = resolveBinding?.(name, arrayIndex);
+            const group = resolved?.group ?? 1;
+            const textureBinding = resolved?.textureBinding ?? binding++;
+            const samplerBinding = resolved?.samplerBinding ?? binding++;
             resources.push({
                 name,
                 arrayIndex,
                 type: declaration.type,
-                group: 1,
-                textureBinding: binding++,
-                samplerBinding: binding++,
+                group,
+                textureBinding,
+                samplerBinding,
                 stages: Object.freeze([...(stages.get(name) ?? [])]),
                 textureType: typeInfo.textureType,
                 samplerType: typeInfo.samplerType,
@@ -2869,7 +2867,10 @@ export function prepareGLSLForNaga(
         ...collectSamplerDeclarations(rewrittenVertex.source, 'vertex', vertexAfterIoAnalysis),
         ...collectSamplerDeclarations(rewrittenFragment.source, 'fragment', fragmentAfterIoAnalysis)
     ];
-    const samplerResources = createSamplerResources(samplerDeclarations);
+    const samplerResources = createSamplerResources(
+        samplerDeclarations,
+        options.resolveSamplerBinding
+    );
     const blockOccurrences = [
         ...collectUniformBlocks(rewrittenVertex.source, 'vertex', vertexAfterIoAnalysis),
         ...collectUniformBlocks(rewrittenFragment.source, 'fragment', fragmentAfterIoAnalysis)
@@ -2967,7 +2968,7 @@ export class NagaShaderTranslator {
         resolveUniformBlockBinding?: (name: string) => WebGPUResourceBinding,
         options: PrepareGLSLForNagaOptions = {}
     ): TranslatedShaderPair {
-        const compiler = nagaModule;
+        const compiler = getInitializedNagaModule();
         if (!compiler) {
             throw new Error(
                 'Naga is not initialized; await translator.initialize() before translating'
@@ -2984,21 +2985,16 @@ export class NagaShaderTranslator {
             source: string,
             nagaStage: NagaShaderStage
         ): TranslatedShaderStage => {
-            const frontend = compiler.GlslFrontend.new();
             try {
-                const module = frontend.parse(source, nagaStage);
-                try {
-                    return {
+                return useNagaResource(compiler.GlslFrontend.new(), frontend => {
+                    const module = frontend.parse(source, nagaStage);
+                    return useNagaShaderModule(module, activeModule => ({
                         glsl: source,
-                        wgsl: makeWgslUniformLayoutsPortable(module.to_wgsl())
-                    };
-                } finally {
-                    module.free();
-                }
+                        wgsl: makeWgslUniformLayoutsPortable(activeModule.to_wgsl())
+                    }));
+                });
             } catch (error: unknown) {
                 throw new NagaShaderTranslationError(stage, source, error);
-            } finally {
-                frontend.free();
             }
         };
         return {

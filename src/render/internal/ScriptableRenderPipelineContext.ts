@@ -7,7 +7,7 @@ import type { RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGPassBuilder, RenderPassTemplate } from '../graph/RenderGraphBuilder';
 import type { RGPassContext, RGPrepareContext } from '../graph/RenderGraphExecutor';
-import type { RGPassHandle, RGTextureHandle } from '../graph/RenderGraphResource';
+import type { RGBufferHandle, RGPassHandle, RGTextureHandle } from '../graph/RenderGraphResource';
 import RenderList from '../RenderList';
 import { RenderGraphFramePlanner } from '../RenderGraphFramePlan';
 import type {
@@ -20,6 +20,7 @@ import type {
 } from '../RenderTarget';
 import type { RendererCore, RendererScene, RendererViewport } from '../RendererCore';
 import {
+    RHIBufferUsage,
     RHITextureUsage,
     rhiTextureFormatHasDepth,
     rhiTextureFormatHasStencil,
@@ -35,6 +36,7 @@ import {
     type RHITextureFormat,
     type RHIViewport
 } from '../rhi/core';
+import type { RendererStorageBuffer, StorageBuffer } from '../StorageBuffer';
 import type {
     CullingOptions,
     CullingResultsHandle,
@@ -56,9 +58,27 @@ import {
     FullscreenRenderPass,
     type FullscreenRenderPassParameters
 } from '../pipeline/passes/FullscreenRenderPass';
+import {
+    ComputeRenderPass,
+    type ComputeRenderPassParameters
+} from '../pipeline/passes/ComputeRenderPass';
+import {
+    GPUDrivenRenderPass,
+    type GPUDrivenRenderPassParameters
+} from '../pipeline/passes/GPUDrivenRenderPass';
+import {
+    SCENE_STORAGE_BIND_GROUP,
+    SceneRenderPass,
+    type SceneRenderPassParameters,
+    type SceneStorageShaderVariant
+} from '../pipeline/passes/SceneRenderPass';
 import type {
+    RenderGraphBufferHandle,
+    RenderGraphBufferReadUse,
+    RenderGraphBufferWriteUse,
     RenderGraphPassHandle,
     RenderGraphTextureHandle,
+    RenderPipelineBufferDescriptor,
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     RenderPipelineExtent,
@@ -74,7 +94,13 @@ import type {
 } from '../pipeline/ScriptableRenderGraph';
 import { MeshDrawListPlanner, type MeshDrawListPlan } from '../renderer/MeshDrawListPlanner';
 import type { FullscreenDrawProcessor } from '../renderer/FullscreenDrawProcessor';
-import type { MeshDrawProcessor } from '../renderer/MeshDrawProcessor';
+import type {
+    MeshDrawProcessor,
+    StorageScenePreparationState
+} from '../renderer/MeshDrawProcessor';
+import type { ComputePipelineResourceCache } from '../renderer/ComputePipelineResourceCache';
+import type { ComputeSamplerResourceCache } from '../renderer/ComputeSamplerResourceCache';
+import type { GPUDrivenPipelineResourceCache } from '../renderer/GPUDrivenPipelineResourceCache';
 import { PreparedDraw } from '../renderer/PreparedDraw';
 import type { PipelineResourceRecord } from '../renderer/PipelineResourceCache';
 import type { RenderTargetGraphBridge } from '../renderer/RenderTargetGraphBridge';
@@ -86,18 +112,37 @@ import type {
 import type { RHIMeshDrawTargetDescriptor } from '../renderer/RHIDescriptorMapping';
 import type { ResourceRegistryHandle } from '../renderer/ResourceRegistry';
 import type { RHIRenderTarget } from '../renderer/RHIRenderTarget';
+import type { StorageBufferResourceCache } from '../renderer/StorageBufferResourceCache';
+import {
+    ScriptableComputeDispatch,
+    type ScriptableComputeDispatchServices,
+    type ScriptableComputeGraphResolver
+} from '../renderer/ScriptableComputeDispatch';
+import {
+    ScriptableGPUDrivenDraw,
+    type ScriptableGPUDrivenDrawServices
+} from '../renderer/ScriptableGPUDrivenDraw';
 import { importSurfaceColor, importSurfaceDepthStencil } from '../renderer/SurfaceGraphBridge';
 import { SharedDrawPassParameters } from '../renderer/passes/SharedDrawPass';
 import { refreshShadowAtlasSceneBinding } from '../renderer/ShadowAtlasTextureBinding';
 
 type TextureAccess =
-    'attachment' | 'resolve-target' | 'sampled' | 'copy-source' | 'copy-destination';
+    | 'attachment'
+    | 'resolve-target'
+    | 'sampled'
+    | 'storage-write'
+    | 'copy-source'
+    | 'copy-destination';
 type PipelineTextureFormat = RenderTargetColorFormat | RenderTargetDepthStencilFormat;
 type MutableRHIViewport = { -readonly [Key in keyof RHIViewport]: RHIViewport[Key] };
 type MutableRenderTargetColor = {
     -readonly [Key in keyof RenderTargetColor]: RenderTargetColor[Key];
 };
 const EMPTY_LIGHTS: readonly Light[] = Object.freeze([]);
+
+function requireRuntimeArray(value: unknown, path: string): void {
+    if (!Array.isArray(value)) throw new TypeError(`${path} must be an array`);
+}
 
 interface MutablePipelineOutputState {
     kind: 'surface' | 'render-target';
@@ -134,6 +179,12 @@ interface MutableTextureGraphDescriptor {
     usage: number;
 }
 
+interface MutableBufferGraphDescriptor {
+    label: string;
+    size: number;
+    usage: number;
+}
+
 interface MutablePersistentTargetResourceDescriptor extends RenderTargetResourceDescriptor {
     label?: string;
     width: number;
@@ -162,6 +213,17 @@ interface TextureRecord {
     readonly graphDescriptor: MutableTextureGraphDescriptor;
 }
 
+interface BufferRecord {
+    handle: RenderGraphBufferHandle;
+    name: string;
+    byteLength: number;
+    internal: RGBufferHandle | null;
+    source: RendererStorageBuffer | null;
+    transient: boolean;
+    initialized: boolean;
+    readonly graphDescriptor: MutableBufferGraphDescriptor;
+}
+
 interface RendererListRange {
     handle: RendererListHandle;
     start: number;
@@ -178,6 +240,24 @@ interface MutableCopyCommand {
     readonly size: { width: number; height: number; depthOrArrayLayers: number };
 }
 
+interface MutableBufferCopyCommand {
+    sourceHandle: RenderGraphBufferHandle;
+    destinationHandle: RenderGraphBufferHandle;
+    sourceInternal: RGBufferHandle;
+    destinationInternal: RGBufferHandle;
+    source: RHIBuffer | null;
+    destination: RHIBuffer | null;
+    byteLength: number;
+}
+
+interface MutableBufferClearCommand {
+    handle: RenderGraphBufferHandle;
+    internal: RGBufferHandle;
+    buffer: RHIBuffer | null;
+    byteOffset: number;
+    byteLength: number;
+}
+
 interface MutableFrameBindGroupEntry {
     binding: number;
     resource: RHIBindingResource | null;
@@ -185,6 +265,19 @@ interface MutableFrameBindGroupEntry {
 
 interface MutableFrameBufferBinding {
     buffer: RHIBuffer | null;
+}
+
+interface MutableSceneStorageBindingPlan {
+    binding: number;
+    handle: RGBufferHandle | null;
+    byteOffset: number;
+    byteLength: number;
+    readonly resource: {
+        buffer: RHIBuffer | null;
+        offset?: number;
+        size?: number;
+    };
+    readonly entry: MutableFrameBindGroupEntry;
 }
 
 interface FrameBindGroupScratch {
@@ -222,8 +315,13 @@ export interface ScriptableRenderPipelineServices {
     getScriptableMeshProcessor(): MeshDrawProcessor;
     getScriptableFullscreenProcessor(): FullscreenDrawProcessor;
     getScriptableTargetResources(): RenderTargetResourceCache;
+    getScriptableStorageBufferResources(): StorageBufferResourceCache;
+    getScriptableComputePipelineResources(): ComputePipelineResourceCache;
+    getScriptableComputeSamplerResources(): ComputeSamplerResourceCache;
+    getScriptableGPUDrivenPipelineResources(): GPUDrivenPipelineResourceCache;
     getScriptableTargetBridge(): RenderTargetGraphBridge;
     resolveScriptableRenderTarget(target: RenderTarget): RHIRenderTarget;
+    resolveScriptableStorageBuffer(buffer: StorageBuffer): RendererStorageBuffer;
     createScriptableFrameContext(
         camera: Camera,
         viewport: Readonly<RHIViewport>,
@@ -605,6 +703,52 @@ function createTextureGraphDescriptor(): MutableTextureGraphDescriptor {
     };
 }
 
+function createBufferGraphDescriptor(): MutableBufferGraphDescriptor {
+    return { label: '', size: 4, usage: 0 };
+}
+
+function graphBufferUsage(use: RenderGraphBufferReadUse | RenderGraphBufferWriteUse): number {
+    switch (use) {
+        case 'storage':
+            return RHIBufferUsage.STORAGE;
+        case 'vertex':
+            return RHIBufferUsage.VERTEX;
+        case 'index':
+            return RHIBufferUsage.INDEX;
+        case 'copy-source':
+            return RHIBufferUsage.COPY_SRC;
+        case 'indirect':
+            return RHIBufferUsage.INDIRECT;
+        case 'copy-destination':
+            return RHIBufferUsage.COPY_DST;
+        default:
+            throw new TypeError(`Unsupported render graph buffer use ${String(use)}`);
+    }
+}
+
+function normalizeBufferRange(
+    buffer: BufferRecord,
+    byteOffset = 0,
+    byteLength = buffer.byteLength - byteOffset,
+    operation: string
+): Readonly<{ byteOffset: number; byteLength: number }> {
+    if (
+        !Number.isSafeInteger(byteOffset) ||
+        !Number.isSafeInteger(byteLength) ||
+        byteOffset < 0 ||
+        byteLength < 1 ||
+        byteOffset + byteLength > buffer.byteLength
+    ) {
+        throw new RangeError(
+            `${operation} byte range [${String(byteOffset)}, ${String(byteOffset + byteLength)}) is invalid`
+        );
+    }
+    if (byteOffset % 4 !== 0 || byteLength % 4 !== 0) {
+        throw new RangeError(`${operation} byte offset and length must be 4-byte aligned`);
+    }
+    return { byteOffset, byteLength };
+}
+
 function createCopyCommand(): MutableCopyCommand {
     return {
         sourceHandle: 0 as RenderGraphTextureHandle,
@@ -614,6 +758,28 @@ function createCopyCommand(): MutableCopyCommand {
         source: { texture: null },
         destination: { texture: null },
         size: { width: 1, height: 1, depthOrArrayLayers: 1 }
+    };
+}
+
+function createBufferCopyCommand(): MutableBufferCopyCommand {
+    return {
+        sourceHandle: 0 as RenderGraphBufferHandle,
+        destinationHandle: 0 as RenderGraphBufferHandle,
+        sourceInternal: 0 as RGBufferHandle,
+        destinationInternal: 0 as RGBufferHandle,
+        source: null,
+        destination: null,
+        byteLength: 0
+    };
+}
+
+function createBufferClearCommand(): MutableBufferClearCommand {
+    return {
+        handle: 0 as RenderGraphBufferHandle,
+        internal: 0 as RGBufferHandle,
+        buffer: null,
+        byteOffset: 0,
+        byteLength: 0
     };
 }
 
@@ -1048,8 +1214,32 @@ class ScriptableRenderPassBuilderLease implements ScriptableRenderPassBuilder {
         this.#slot.readTextureFromSetup(this.#lease, texture);
     }
 
+    writeStorageTexture(texture: RenderGraphTextureHandle): void {
+        this.#slot.writeStorageTextureFromSetup(this.#lease, texture);
+    }
+
     copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void {
         this.#slot.copyTextureFromSetup(this.#lease, source, destination);
+    }
+
+    readBuffer(buffer: RenderGraphBufferHandle, use: RenderGraphBufferReadUse): void {
+        this.#slot.readBufferFromSetup(this.#lease, buffer, use);
+    }
+
+    writeBuffer(buffer: RenderGraphBufferHandle, use: RenderGraphBufferWriteUse): void {
+        this.#slot.writeBufferFromSetup(this.#lease, buffer, use);
+    }
+
+    readWriteBuffer(buffer: RenderGraphBufferHandle): void {
+        this.#slot.readWriteBufferFromSetup(this.#lease, buffer);
+    }
+
+    copyBuffer(source: RenderGraphBufferHandle, destination: RenderGraphBufferHandle): void {
+        this.#slot.copyBufferFromSetup(this.#lease, source, destination);
+    }
+
+    clearBuffer(buffer: RenderGraphBufferHandle, byteOffset?: number, byteLength?: number): void {
+        this.#slot.clearBufferFromSetup(this.#lease, buffer, byteOffset, byteLength);
     }
 
     useColorAttachment(options: Readonly<RenderPipelineColorAttachment>): void {
@@ -1117,6 +1307,14 @@ class ScriptableRenderCommandsLease implements ScriptableRenderCommands {
     copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void {
         this.#slot.copyTextureFromExecute(this.#lease, source, destination);
     }
+
+    copyBuffer(source: RenderGraphBufferHandle, destination: RenderGraphBufferHandle): void {
+        this.#slot.copyBufferFromExecute(this.#lease, source, destination);
+    }
+
+    clearBuffer(buffer: RenderGraphBufferHandle, byteOffset?: number, byteLength?: number): void {
+        this.#slot.clearBufferFromExecute(this.#lease, buffer, byteOffset, byteLength);
+    }
 }
 
 class ScriptableRenderPassContextLease implements ScriptableRenderPassContext {
@@ -1137,6 +1335,82 @@ class ScriptableRenderPassContextLease implements ScriptableRenderPassContext {
     }
 }
 
+class ScriptableComputeDispatchServiceSlot implements ScriptableComputeDispatchServices {
+    #owner: ScriptableRenderPipelineContextImpl | null = null;
+
+    configure(owner: ScriptableRenderPipelineContextImpl): void {
+        this.#owner = owner;
+    }
+
+    release(): void {
+        this.#owner = null;
+    }
+
+    get pipelines(): ComputePipelineResourceCache {
+        return this.requireOwner().services.getScriptableComputePipelineResources();
+    }
+
+    get samplers(): ComputeSamplerResourceCache {
+        return this.requireOwner().services.getScriptableComputeSamplerResources();
+    }
+
+    get uniformBuffers(): MeshDrawProcessor['buffers'] {
+        return this.requireOwner().services.getScriptableMeshProcessor().buffers;
+    }
+
+    get resourceUses(): MeshDrawProcessor['resourceUses'] {
+        return this.requireOwner().services.getScriptableMeshProcessor().resourceUses;
+    }
+
+    get frameBindGroups(): ScriptableRenderPipelineResources {
+        return this.requireOwner().resources;
+    }
+
+    private requireOwner(): ScriptableRenderPipelineContextImpl {
+        const owner = this.#owner;
+        if (owner === null) throw new Error('Compute dispatch services are not configured');
+        return owner;
+    }
+}
+
+class ScriptableGPUDrivenDrawServiceSlot implements ScriptableGPUDrivenDrawServices {
+    #owner: ScriptableRenderPipelineContextImpl | null = null;
+
+    configure(owner: ScriptableRenderPipelineContextImpl): void {
+        this.#owner = owner;
+    }
+
+    release(): void {
+        this.#owner = null;
+    }
+
+    get pipelines(): GPUDrivenPipelineResourceCache {
+        return this.requireOwner().services.getScriptableGPUDrivenPipelineResources();
+    }
+
+    get samplers(): ComputeSamplerResourceCache {
+        return this.requireOwner().services.getScriptableComputeSamplerResources();
+    }
+
+    get uniformBuffers(): MeshDrawProcessor['buffers'] {
+        return this.requireOwner().services.getScriptableMeshProcessor().buffers;
+    }
+
+    get resourceUses(): MeshDrawProcessor['resourceUses'] {
+        return this.requireOwner().services.getScriptableMeshProcessor().resourceUses;
+    }
+
+    get frameBindGroups(): ScriptableRenderPipelineResources {
+        return this.requireOwner().resources;
+    }
+
+    private requireOwner(): ScriptableRenderPipelineContextImpl {
+        const owner = this.#owner;
+        if (owner === null) throw new Error('GPU-driven draw services are not configured');
+        return owner;
+    }
+}
+
 class ScriptablePassSlot {
     readonly draw = new SharedDrawPassParameters();
     readonly ranges: RendererListRange[] = [];
@@ -1144,6 +1418,7 @@ class ScriptablePassSlot {
     readonly sampledInternals = new Map<RenderGraphTextureHandle, RGTextureHandle>();
     readonly attachmentHandles = new Set<RenderGraphTextureHandle>();
     readonly sampledInternalHandles = new Set<RGTextureHandle>();
+    readonly storageWriteInternalHandles = new Set<RGTextureHandle>();
     readonly copySourceInternalHandles = new Set<RGTextureHandle>();
     readonly copyDestinationInternalHandles = new Set<RGTextureHandle>();
     readonly attachmentInternalHandles = new Set<RGTextureHandle>();
@@ -1164,7 +1439,15 @@ class ScriptablePassSlot {
     };
     readonly executionScissor = { x: 0, y: 0, width: 1, height: 1 };
     readonly copyCommands: MutableCopyCommand[] = [];
+    readonly bufferCopyCommands: MutableBufferCopyCommand[] = [];
+    readonly bufferClearCommands: MutableBufferClearCommand[] = [];
+    readonly writtenBufferRecords = new Set<BufferRecord>();
+    readonly completeBufferRecords = new Set<BufferRecord>();
+    readonly completeStorageBufferWrites = new Set<RendererStorageBuffer>();
+    readonly partialStorageBufferWrites = new Set<RendererStorageBuffer>();
     readonly #executionFailures: unknown[] = [];
+    readonly #computeServices = new ScriptableComputeDispatchServiceSlot();
+    readonly #gpuDrivenServices = new ScriptableGPUDrivenDrawServiceSlot();
     readonly template: RenderPassTemplate<ScriptablePassSlot>;
 
     #owner: ScriptableRenderPipelineContextImpl | null = null;
@@ -1175,11 +1458,32 @@ class ScriptablePassSlot {
     #encoder: RHIRenderPassEncoder | null = null;
     #previousDraw: PreparedDraw | null = null;
     #copyDeclarationCount = 0;
+    #bufferCopyDeclarationCount = 0;
+    #bufferClearDeclarationCount = 0;
     #rangeCount = 0;
     #hasRasterAttachments = false;
     #hasTargetShape = false;
     #fullscreenDraw: ScriptableFullscreenDraw | null = null;
     #activeFullscreenDraw = false;
+    #computeDispatch: ScriptableComputeDispatch | null = null;
+    #activeComputeDispatch = false;
+    #gpuDrivenDraw: ScriptableGPUDrivenDraw | null = null;
+    #activeGPUDrivenDraw = false;
+    #sceneStorageVariant: Readonly<SceneStorageShaderVariant> | null = null;
+    #sceneStorageBindingCount = 0;
+    #sceneStorageBindGroup: RHIBindGroup | null = null;
+    #activeSceneStorage = false;
+    readonly #sceneStoragePlans: MutableSceneStorageBindingPlan[] = [];
+    readonly #sceneStoragePreparation: StorageScenePreparationState = {
+        globalBindGroupLayout: null
+    };
+    readonly #sceneStorageEntries: MutableFrameBindGroupEntry[] = [];
+    readonly #sceneStorageDescriptor = {
+        label: 'Scene pass-global readonly storage',
+        lifetime: 'frame' as const,
+        layout: null as RHIBindGroupLayout | null,
+        entries: this.#sceneStorageEntries
+    };
     #capabilities: RenderPipelineCapabilities | null = null;
     #activeSetupLease: ScriptablePassCallbackLease | null = null;
     #activePrepareLease: ScriptablePassCallbackLease | null = null;
@@ -1193,6 +1497,15 @@ class ScriptablePassSlot {
             owner.services.getScriptableFullscreenProcessor(),
             owner.resources
         );
+    };
+    readonly #prepareGPUDrivenDraw = (context: RGPrepareContext): void => {
+        const draw = this.#gpuDrivenDraw;
+        if (!this.#activeGPUDrivenDraw || draw === null) return;
+        draw.prepare(context);
+    };
+    readonly #prepareSceneStorage = (context: RGPrepareContext): void => {
+        if (!this.#activeSceneStorage) return;
+        this.prepareSceneStorage(context);
     };
 
     constructor() {
@@ -1227,14 +1540,27 @@ class ScriptablePassSlot {
         this.#hasRasterAttachments = false;
         this.#hasTargetShape = false;
         this.#activeFullscreenDraw = false;
+        this.#activeComputeDispatch = false;
+        this.#activeGPUDrivenDraw = false;
+        this.#activeSceneStorage = false;
+        this.#sceneStorageVariant = null;
+        this.#sceneStorageBindingCount = 0;
+        this.#sceneStoragePreparation.globalBindGroupLayout = null;
         this.#copyDeclarationCount = 0;
+        this.#bufferCopyDeclarationCount = 0;
+        this.#bufferClearDeclarationCount = 0;
         this.sampledHandles.clear();
         this.sampledInternals.clear();
         this.attachmentHandles.clear();
         this.sampledInternalHandles.clear();
+        this.storageWriteInternalHandles.clear();
         this.copySourceInternalHandles.clear();
         this.copyDestinationInternalHandles.clear();
         this.attachmentInternalHandles.clear();
+        this.writtenBufferRecords.clear();
+        this.completeBufferRecords.clear();
+        this.completeStorageBufferWrites.clear();
+        this.partialStorageBufferWrites.clear();
         this.rendererListHandles.clear();
         this.colorFormats.length = 0;
         (
@@ -1247,13 +1573,35 @@ class ScriptablePassSlot {
 
     releaseFrameReferences(resources: ScriptableRenderPipelineResources): void {
         try {
-            this.#fullscreenDraw?.cleanup(resources);
+            try {
+                this.#fullscreenDraw?.cleanup(resources);
+            } finally {
+                try {
+                    this.#computeDispatch?.releaseFrameReferences();
+                } finally {
+                    try {
+                        this.#gpuDrivenDraw?.releaseFrameReferences();
+                    } finally {
+                        this.cleanupSceneStorage(resources);
+                    }
+                }
+            }
         } finally {
             for (let index = 0; index < this.#copyDeclarationCount; index += 1) {
                 const command = this.copyCommands[index];
                 if (command === undefined) continue;
                 command.source.texture = null;
                 command.destination.texture = null;
+            }
+            for (let index = 0; index < this.#bufferCopyDeclarationCount; index += 1) {
+                const command = this.bufferCopyCommands[index];
+                if (command === undefined) continue;
+                command.source = null;
+                command.destination = null;
+            }
+            for (let index = 0; index < this.#bufferClearDeclarationCount; index += 1) {
+                const command = this.bufferClearCommands[index];
+                if (command !== undefined) command.buffer = null;
             }
             this.draw.reset();
             this.#owner = null;
@@ -1264,8 +1612,21 @@ class ScriptablePassSlot {
             this.#encoder = null;
             this.#previousDraw = null;
             this.#copyDeclarationCount = 0;
+            this.#bufferCopyDeclarationCount = 0;
+            this.#bufferClearDeclarationCount = 0;
             this.#rangeCount = 0;
+            this.writtenBufferRecords.clear();
+            this.completeBufferRecords.clear();
+            this.completeStorageBufferWrites.clear();
+            this.partialStorageBufferWrites.clear();
             this.#activeFullscreenDraw = false;
+            this.#activeComputeDispatch = false;
+            this.#activeGPUDrivenDraw = false;
+            this.#activeSceneStorage = false;
+            this.#sceneStorageVariant = null;
+            this.#sceneStoragePreparation.globalBindGroupLayout = null;
+            this.#computeServices.release();
+            this.#gpuDrivenServices.release();
             this.#capabilities = null;
             this.#activeSetupLease = null;
             this.#activePrepareLease = null;
@@ -1315,6 +1676,47 @@ class ScriptablePassSlot {
             this.draw.addDraw(this.#fullscreenDraw.draw);
             this.draw.setPrepare(this.#prepareFullscreenDraw);
         }
+        if (pass instanceof ComputeRenderPass) {
+            if (this.#hasRasterAttachments || this.rendererListHandles.size !== 0) {
+                throw new Error('ComputeRenderPass cannot declare raster attachments or lists');
+            }
+            this.#computeServices.configure(owner);
+            this.#computeDispatch = owner.configureComputeDispatch(
+                this.#computeDispatch,
+                pass,
+                this.requireParameters() as ComputeRenderPassParameters,
+                this.#computeServices
+            );
+            this.#activeComputeDispatch = true;
+        }
+        if (pass instanceof GPUDrivenRenderPass) {
+            if (!this.#hasRasterAttachments) {
+                throw new Error('GPUDrivenRenderPass requires raster attachments');
+            }
+            if (this.rendererListHandles.size !== 0) {
+                throw new Error('GPUDrivenRenderPass cannot declare renderer lists');
+            }
+            this.#gpuDrivenServices.configure(owner);
+            this.#gpuDrivenDraw = owner.configureGPUDrivenDraw(
+                this.#gpuDrivenDraw,
+                pass,
+                this.requireParameters() as GPUDrivenRenderPassParameters,
+                this.targetDescriptor,
+                this.#gpuDrivenServices
+            );
+            this.#activeGPUDrivenDraw = true;
+            this.draw.addDraw(this.#gpuDrivenDraw.draw);
+            this.draw.setPrepare(this.#prepareGPUDrivenDraw);
+        }
+        if (pass instanceof SceneRenderPass) {
+            const parameters = this.requireParameters() as SceneRenderPassParameters;
+            const variant = parameters.storageShaderVariant;
+            if (variant !== undefined) {
+                this.configureSceneStorage(owner, variant);
+                this.#activeSceneStorage = true;
+                this.draw.setPrepare(this.#prepareSceneStorage);
+            }
+        }
         for (const list of this.rendererListHandles) {
             let range = this.ranges[this.#rangeCount];
             if (range === undefined) {
@@ -1323,11 +1725,27 @@ class ScriptablePassSlot {
             }
             range.handle = list;
             range.start = this.draw.drawCount;
-            owner.appendRendererListDraws(list, this.draw, this.targetDescriptor);
+            owner.appendRendererListDraws(
+                list,
+                this.draw,
+                this.targetDescriptor,
+                this.#sceneStorageVariant,
+                this.#sceneStoragePreparation
+            );
             range.count = this.draw.drawCount - range.start;
             this.#rangeCount++;
         }
         this.draw.declare(builder, false);
+    }
+
+    commitSetupState(): void {
+        const owner = this.requireOwner();
+        for (const record of this.completeBufferRecords) record.initialized = true;
+        for (const record of this.writtenBufferRecords) {
+            const internal = record.internal;
+            if (internal === null) throw new Error('Written graph buffer has no internal identity');
+            owner.noteBufferWrite(record, internal);
+        }
     }
 
     private configureDefaultViewport(owner: ScriptableRenderPipelineContextImpl): void {
@@ -1349,11 +1767,199 @@ class ScriptablePassSlot {
         this.draw.setScissor(this.executionScissor);
     }
 
+    private configureSceneStorage(
+        owner: ScriptableRenderPipelineContextImpl,
+        variant: Readonly<SceneStorageShaderVariant>
+    ): void {
+        const pipelines = owner.services.getScriptableGPUDrivenPipelineResources();
+        const registry = pipelines.registry;
+        if (registry.deviceBackend !== 'webgpu') {
+            throw new Error('Scene storage shader variants are supported only by WebGPU');
+        }
+        const limits = registry.deviceCapabilities.limits;
+        if (limits.maxBindGroups <= SCENE_STORAGE_BIND_GROUP) {
+            throw new RangeError('Scene storage shader variants require at least four bind groups');
+        }
+        if (!registry.deviceCapabilities.features.has('storage-buffers')) {
+            throw new Error('Scene storage shader variants require storage-buffer support');
+        }
+        requireRuntimeArray(variant.buffers, 'Scene storage shader variant buffers');
+        let storageCount = 0;
+        for (const binding of variant.shader.bindings) {
+            if (binding.kind === 'read-only-storage-buffer') {
+                if (binding.group !== SCENE_STORAGE_BIND_GROUP) {
+                    throw new TypeError(
+                        `Scene readonly storage binding ${binding.name} must use fixed group ${String(SCENE_STORAGE_BIND_GROUP)}`
+                    );
+                }
+                if (binding.dynamicOffset === true) {
+                    throw new TypeError(
+                        `Scene readonly storage binding ${binding.name} cannot use dynamic offsets`
+                    );
+                }
+                const resource = variant.buffers[storageCount];
+                if (resource === undefined) {
+                    throw new TypeError(`Scene storage binding ${binding.name} is missing`);
+                }
+                const resourceByteLength = owner.bufferByteLength(resource.buffer);
+                const byteOffset = resource.byteOffset ?? 0;
+                const byteLength = resource.byteLength ?? resourceByteLength - byteOffset;
+                if (
+                    !Number.isSafeInteger(byteOffset) ||
+                    !Number.isSafeInteger(byteLength) ||
+                    byteOffset < 0 ||
+                    byteLength < 1 ||
+                    byteOffset + byteLength > resourceByteLength ||
+                    byteOffset % 4 !== 0 ||
+                    byteLength % 4 !== 0
+                ) {
+                    throw new RangeError(
+                        `Scene storage binding ${binding.name} has an invalid 4-byte-aligned range`
+                    );
+                }
+                const alignment = limits.minStorageBufferOffsetAlignment;
+                if (alignment === undefined || byteOffset % alignment !== 0) {
+                    throw new RangeError(
+                        `Scene storage binding ${binding.name} offset must satisfy minStorageBufferOffsetAlignment`
+                    );
+                }
+                const maximumSize = limits.maxStorageBufferBindingSize;
+                if (maximumSize === undefined || byteLength > maximumSize) {
+                    throw new RangeError(
+                        `Scene storage binding ${binding.name} exceeds maxStorageBufferBindingSize`
+                    );
+                }
+                if (binding.minBindingSize !== undefined && byteLength < binding.minBindingSize) {
+                    throw new RangeError(
+                        `Scene storage binding ${binding.name} is smaller than minBindingSize`
+                    );
+                }
+                let plan = this.#sceneStoragePlans[storageCount];
+                if (plan === undefined) {
+                    const entry: MutableFrameBindGroupEntry = {
+                        binding: binding.binding,
+                        resource: null
+                    };
+                    plan = {
+                        binding: binding.binding,
+                        handle: null,
+                        byteOffset: 0,
+                        byteLength: 0,
+                        resource: { buffer: null },
+                        entry
+                    };
+                    this.#sceneStoragePlans.push(plan);
+                }
+                plan.binding = binding.binding;
+                plan.handle = owner.resolveBuffer(resource.buffer, 'storage');
+                plan.byteOffset = byteOffset;
+                plan.byteLength = byteLength;
+                plan.entry.binding = binding.binding;
+                this.#sceneStorageEntries[storageCount] = plan.entry;
+                storageCount++;
+                continue;
+            }
+            if (binding.kind === 'uniform-buffer' && binding.dynamicOffset === true) {
+                throw new TypeError(
+                    `Scene uniform binding ${binding.name} cannot use dynamic offsets`
+                );
+            }
+            if (binding.group >= SCENE_STORAGE_BIND_GROUP) {
+                throw new TypeError(
+                    `Scene ${binding.kind} binding ${binding.name} conflicts with reserved group ${String(SCENE_STORAGE_BIND_GROUP)}`
+                );
+            }
+        }
+        if (storageCount === 0) {
+            throw new TypeError(
+                'Scene storage shader variant requires at least one readonly storage buffer'
+            );
+        }
+        if (variant.buffers.length !== storageCount) {
+            throw new RangeError(
+                'Scene storage shader variant buffers do not match its positional shader ABI'
+            );
+        }
+        const maximumBindings = limits.maxStorageBuffersPerShaderStage;
+        if (maximumBindings === undefined || storageCount > maximumBindings) {
+            throw new RangeError(
+                'Scene storage shader variant exceeds maxStorageBuffersPerShaderStage'
+            );
+        }
+        this.#sceneStorageEntries.length = storageCount;
+        this.#sceneStorageBindingCount = storageCount;
+        this.#sceneStorageVariant = variant;
+    }
+
+    private prepareSceneStorage(context: RGPrepareContext): void {
+        const owner = this.requireOwner();
+        const layoutHandle = this.#sceneStoragePreparation.globalBindGroupLayout;
+        if (layoutHandle === null) {
+            if (this.draw.drawCount === 0) return;
+            throw new Error('Scene storage draw preparation did not produce a global layout');
+        }
+        this.cleanupSceneStorage(owner.resources);
+        const registry = owner.services.getScriptableGPUDrivenPipelineResources().registry;
+        const layout = registry.resolve(layoutHandle);
+        this.#sceneStorageDescriptor.layout = layout;
+        for (let index = 0; index < this.#sceneStorageBindingCount; index += 1) {
+            const plan = this.#sceneStoragePlans[index];
+            if (plan?.handle === null || plan?.handle === undefined) {
+                throw new Error(`Scene storage binding ${String(index)} is incomplete`);
+            }
+            const buffer = context.getBuffer(plan.handle);
+            if ((buffer.usage & RHIBufferUsage.STORAGE) === 0) {
+                throw new Error(`Scene storage binding ${String(index)} lacks STORAGE usage`);
+            }
+            if (buffer.mapState !== 'unmapped') {
+                throw new Error(`Scene storage binding ${String(index)} must be unmapped`);
+            }
+            plan.resource.buffer = buffer;
+            plan.resource.offset = plan.byteOffset;
+            plan.resource.size = plan.byteLength;
+            plan.entry.resource = plan.resource as RHIBindingResource;
+        }
+        const bindGroup = registry.createFrameBindGroup(
+            this.#sceneStorageDescriptor as RHIBindGroupDescriptor
+        );
+        this.#sceneStorageBindGroup = bindGroup;
+        owner.resources.trackFrameBindGroup(bindGroup);
+        for (let index = 0; index < this.#rangeCount; index += 1) {
+            const range = this.ranges[index];
+            if (range === undefined) continue;
+            this.draw.setPreparedBindGroupForRange(
+                range.start,
+                range.count,
+                SCENE_STORAGE_BIND_GROUP,
+                bindGroup
+            );
+        }
+    }
+
+    private cleanupSceneStorage(resources: ScriptableRenderPipelineResources): void {
+        const bindGroup = this.#sceneStorageBindGroup;
+        this.#sceneStorageBindGroup = null;
+        if (bindGroup !== null) resources.releaseFrameBindGroup(bindGroup);
+        this.#sceneStorageDescriptor.layout = null;
+        for (let index = 0; index < this.#sceneStorageBindingCount; index += 1) {
+            const plan = this.#sceneStoragePlans[index];
+            if (plan === undefined) continue;
+            plan.resource.buffer = null;
+            plan.entry.resource = null;
+        }
+    }
+
     private prepare(context: RGPrepareContext): void {
         const pass = this.requirePass();
         const parameters = this.requireParameters();
         this.requireOwner().services.recordScriptablePass(1);
         this.prepareTextureCopies(context);
+        this.prepareBufferCommands(context);
+        if (this.#activeComputeDispatch) {
+            const dispatch = this.#computeDispatch;
+            if (dispatch === null) throw new Error('Compute dispatch helper is unavailable');
+            dispatch.prepare(context);
+        }
         if (pass.prepare !== undefined) {
             const lease = Object.freeze({});
             this.#activePrepareLease = lease;
@@ -1397,6 +2003,21 @@ class ScriptablePassSlot {
                     this.#previousDraw
                 );
             }
+            if (this.#activeGPUDrivenDraw) {
+                const encoder = this.requireRasterEncoder();
+                this.#previousDraw = this.draw.executeDrawRange(
+                    encoder,
+                    0,
+                    this.draw.drawCount,
+                    this.#previousDraw
+                );
+            }
+            if (this.#activeComputeDispatch) {
+                const dispatch = this.#computeDispatch;
+                if (dispatch === null) throw new Error('Compute dispatch helper is unavailable');
+                dispatch.execute(context);
+            }
+            this.stageCompleteStorageBufferWrites();
         } catch (error) {
             failures.push(error);
         }
@@ -1413,6 +2034,20 @@ class ScriptablePassSlot {
             if (this.#activeFullscreenDraw) {
                 try {
                     this.#fullscreenDraw?.cleanup(this.requireOwner().resources);
+                } catch (error) {
+                    failures.push(error);
+                }
+            }
+            if (this.#activeGPUDrivenDraw) {
+                try {
+                    this.#gpuDrivenDraw?.cleanup(this.requireOwner().resources);
+                } catch (error) {
+                    failures.push(error);
+                }
+            }
+            if (this.#activeSceneStorage) {
+                try {
+                    this.cleanupSceneStorage(this.requireOwner().resources);
                 } catch (error) {
                     failures.push(error);
                 }
@@ -1444,6 +2079,14 @@ class ScriptablePassSlot {
         this.readTexture(texture);
     }
 
+    writeStorageTextureFromSetup(
+        lease: ScriptablePassCallbackLease,
+        texture: RenderGraphTextureHandle
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.writeStorageTexture(texture);
+    }
+
     copyTextureFromSetup(
         lease: ScriptablePassCallbackLease,
         source: RenderGraphTextureHandle,
@@ -1451,6 +2094,51 @@ class ScriptablePassSlot {
     ): void {
         this.assertSetupLeaseActive(lease);
         this.declareTextureCopy(source, destination);
+    }
+
+    readBufferFromSetup(
+        lease: ScriptablePassCallbackLease,
+        buffer: RenderGraphBufferHandle,
+        use: RenderGraphBufferReadUse
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.readBuffer(buffer, use);
+    }
+
+    writeBufferFromSetup(
+        lease: ScriptablePassCallbackLease,
+        buffer: RenderGraphBufferHandle,
+        use: RenderGraphBufferWriteUse
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.writeBuffer(buffer, use);
+    }
+
+    readWriteBufferFromSetup(
+        lease: ScriptablePassCallbackLease,
+        buffer: RenderGraphBufferHandle
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.readWriteBuffer(buffer);
+    }
+
+    copyBufferFromSetup(
+        lease: ScriptablePassCallbackLease,
+        source: RenderGraphBufferHandle,
+        destination: RenderGraphBufferHandle
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.declareBufferCopy(source, destination);
+    }
+
+    clearBufferFromSetup(
+        lease: ScriptablePassCallbackLease,
+        buffer: RenderGraphBufferHandle,
+        byteOffset?: number,
+        byteLength?: number
+    ): void {
+        this.assertSetupLeaseActive(lease);
+        this.declareBufferClear(buffer, byteOffset, byteLength);
     }
 
     useColorAttachmentFromSetup(
@@ -1527,6 +2215,25 @@ class ScriptablePassSlot {
         this.copyTexture(source, destination);
     }
 
+    copyBufferFromExecute(
+        lease: ScriptablePassCallbackLease,
+        source: RenderGraphBufferHandle,
+        destination: RenderGraphBufferHandle
+    ): void {
+        this.assertExecuteLeaseActive(lease);
+        this.copyBuffer(source, destination);
+    }
+
+    clearBufferFromExecute(
+        lease: ScriptablePassCallbackLease,
+        buffer: RenderGraphBufferHandle,
+        byteOffset?: number,
+        byteLength?: number
+    ): void {
+        this.assertExecuteLeaseActive(lease);
+        this.clearBuffer(buffer, byteOffset, byteLength);
+    }
+
     assertExecuteLeaseActive(lease: ScriptablePassCallbackLease): void {
         if (this.#activeExecuteLease !== lease) {
             throw new Error('Scriptable pass context is valid only during its execute() callback');
@@ -1551,6 +2258,132 @@ class ScriptablePassSlot {
         this.sampledInternalHandles.add(internal);
         this.sampledInternals.set(handle, internal);
         if (!alreadyRead) this.draw.addReadTexture(internal);
+    }
+
+    private writeStorageTexture(handle: RenderGraphTextureHandle): void {
+        const builder = this.requireSetupBuilder();
+        const owner = this.requireOwner();
+        const internal = owner.resolveTexture(handle, 'storage-write');
+        if (this.storageWriteInternalHandles.has(internal)) return;
+        this.assertWritableInternalAccess(internal);
+        this.storageWriteInternalHandles.add(internal);
+        builder.writeTexture(internal);
+        owner.noteTextureWrite(handle);
+    }
+
+    private readBuffer(handle: RenderGraphBufferHandle, use: RenderGraphBufferReadUse): void {
+        graphBufferUsage(use);
+        const internal = this.requireOwner().resolveBuffer(handle, use);
+        this.requireSetupBuilder().readBuffer(internal, use);
+    }
+
+    private writeBuffer(handle: RenderGraphBufferHandle, use: RenderGraphBufferWriteUse): void {
+        graphBufferUsage(use);
+        const owner = this.requireOwner();
+        const record = owner.requireBuffer(handle);
+        const internal = owner.resolveBuffer(handle, use);
+        this.requireSetupBuilder().writeBuffer(internal, use);
+        this.writtenBufferRecords.add(record);
+        this.completeBufferRecords.add(record);
+        this.noteCompleteBufferWrite(record);
+    }
+
+    private readWriteBuffer(handle: RenderGraphBufferHandle): void {
+        const owner = this.requireOwner();
+        const record = owner.requireBuffer(handle);
+        const internal = owner.resolveBuffer(handle, 'storage');
+        this.requireSetupBuilder().readWriteBuffer(internal, 'storage');
+        this.writtenBufferRecords.add(record);
+        this.notePartialBufferWrite(record);
+    }
+
+    private declareBufferCopy(
+        sourceHandle: RenderGraphBufferHandle,
+        destinationHandle: RenderGraphBufferHandle
+    ): void {
+        if (sourceHandle === destinationHandle) {
+            throw new Error('Buffer copy source and destination must be distinct');
+        }
+        const owner = this.requireOwner();
+        const sourceRecord = owner.requireBuffer(sourceHandle);
+        const destinationRecord = owner.requireBuffer(destinationHandle);
+        if (sourceRecord.byteLength !== destinationRecord.byteLength) {
+            throw new Error('Buffer copy requires matching source and destination byte lengths');
+        }
+        if (sourceRecord.byteLength % 4 !== 0) {
+            throw new RangeError('Buffer copy byte length must be 4-byte aligned');
+        }
+        const sourceInternal = owner.resolveBuffer(sourceHandle, 'copy-source');
+        const destinationInternal = owner.resolveBuffer(destinationHandle, 'copy-destination');
+        if (sourceInternal === destinationInternal) {
+            throw new Error('Buffer copy source and destination must be distinct');
+        }
+        const builder = this.requireSetupBuilder();
+        builder.readBuffer(sourceInternal, 'copy-source');
+        builder.writeBuffer(destinationInternal, 'copy-destination');
+        this.writtenBufferRecords.add(destinationRecord);
+        this.completeBufferRecords.add(destinationRecord);
+        this.noteCompleteBufferWrite(destinationRecord);
+
+        let command = this.bufferCopyCommands[this.#bufferCopyDeclarationCount++];
+        if (command === undefined) {
+            command = createBufferCopyCommand();
+            this.bufferCopyCommands.push(command);
+        }
+        command.sourceHandle = sourceHandle;
+        command.destinationHandle = destinationHandle;
+        command.sourceInternal = sourceInternal;
+        command.destinationInternal = destinationInternal;
+        command.source = null;
+        command.destination = null;
+        command.byteLength = sourceRecord.byteLength;
+    }
+
+    private declareBufferClear(
+        handle: RenderGraphBufferHandle,
+        byteOffset?: number,
+        byteLength?: number
+    ): void {
+        const owner = this.requireOwner();
+        if (owner.services.renderer.backend !== 'webgpu') {
+            throw new Error('Buffer clear is supported only by WebGPU');
+        }
+        const record = owner.requireBuffer(handle);
+        const range = normalizeBufferRange(record, byteOffset, byteLength, 'Buffer clear');
+        const complete = range.byteOffset === 0 && range.byteLength === record.byteLength;
+        if (!complete && !record.initialized) {
+            throw new Error('A partial buffer clear requires initialized existing contents');
+        }
+        const internal = owner.resolveBuffer(handle, 'copy-destination');
+        this.requireSetupBuilder().writeBuffer(internal, 'copy-destination');
+        this.writtenBufferRecords.add(record);
+        if (complete) {
+            this.completeBufferRecords.add(record);
+            this.noteCompleteBufferWrite(record);
+        } else this.notePartialBufferWrite(record);
+
+        let command = this.bufferClearCommands[this.#bufferClearDeclarationCount++];
+        if (command === undefined) {
+            command = createBufferClearCommand();
+            this.bufferClearCommands.push(command);
+        }
+        command.handle = handle;
+        command.internal = internal;
+        command.buffer = null;
+        command.byteOffset = range.byteOffset;
+        command.byteLength = range.byteLength;
+    }
+
+    private noteCompleteBufferWrite(record: BufferRecord): void {
+        if (record.source === null) return;
+        this.partialStorageBufferWrites.delete(record.source);
+        this.completeStorageBufferWrites.add(record.source);
+    }
+
+    private notePartialBufferWrite(record: BufferRecord): void {
+        if (record.source !== null && !this.completeStorageBufferWrites.has(record.source)) {
+            this.partialStorageBufferWrites.add(record.source);
+        }
     }
 
     private declareTextureCopy(
@@ -1820,6 +2653,73 @@ class ScriptablePassSlot {
         );
     }
 
+    private copyBuffer(
+        sourceHandle: RenderGraphBufferHandle,
+        destinationHandle: RenderGraphBufferHandle
+    ): void {
+        if (this.#encoder !== null) {
+            throw new Error('Buffer copies cannot execute inside a raster pass');
+        }
+        const context = this.requireExecutionContext();
+        let command: MutableBufferCopyCommand | undefined;
+        for (let index = 0; index < this.#bufferCopyDeclarationCount; index += 1) {
+            const candidate = this.bufferCopyCommands[index];
+            if (
+                candidate?.sourceHandle === sourceHandle &&
+                candidate.destinationHandle === destinationHandle
+            ) {
+                command = candidate;
+                break;
+            }
+        }
+        if (command === undefined) {
+            throw new Error('Exact buffer copy source/destination pair must be declared in setup');
+        }
+        const source = command.source;
+        const destination = command.destination;
+        if (source === null || destination === null) {
+            throw new Error('Buffer copy declaration was not prepared');
+        }
+        context.commandContext.copyBufferToBuffer(source, 0, destination, 0, command.byteLength);
+    }
+
+    private clearBuffer(
+        handle: RenderGraphBufferHandle,
+        byteOffset?: number,
+        byteLength?: number
+    ): void {
+        if (this.#encoder !== null) {
+            throw new Error('Buffer clears cannot execute inside a raster pass');
+        }
+        const range = normalizeBufferRange(
+            this.requireOwner().requireBuffer(handle),
+            byteOffset,
+            byteLength,
+            'Buffer clear'
+        );
+        let command: MutableBufferClearCommand | undefined;
+        for (let index = 0; index < this.#bufferClearDeclarationCount; index += 1) {
+            const candidate = this.bufferClearCommands[index];
+            if (
+                candidate?.handle === handle &&
+                candidate.byteOffset === range.byteOffset &&
+                candidate.byteLength === range.byteLength
+            ) {
+                command = candidate;
+                break;
+            }
+        }
+        if (command === undefined) {
+            throw new Error('Exact buffer clear destination/range must be declared in setup');
+        }
+        if (command.buffer === null) throw new Error('Buffer clear declaration was not prepared');
+        this.requireExecutionContext().commandContext.clearBuffer(
+            command.buffer,
+            command.byteOffset,
+            command.byteLength
+        );
+    }
+
     private prepareTextureCopies(context: RGPrepareContext): void {
         for (let index = 0; index < this.#copyDeclarationCount; index += 1) {
             const command = this.copyCommands[index];
@@ -1860,8 +2760,61 @@ class ScriptablePassSlot {
         }
     }
 
+    private prepareBufferCommands(context: RGPrepareContext): void {
+        for (let index = 0; index < this.#bufferCopyDeclarationCount; index += 1) {
+            const command = this.bufferCopyCommands[index];
+            if (command === undefined) {
+                throw new Error('Buffer copy declaration storage is incomplete');
+            }
+            const source = context.getBuffer(command.sourceInternal);
+            const destination = context.getBuffer(command.destinationInternal);
+            if (source.size !== command.byteLength || destination.size !== command.byteLength) {
+                throw new Error(
+                    'Buffer copy requires matching source and destination byte lengths'
+                );
+            }
+            if (
+                (source.usage & RHIBufferUsage.COPY_SRC) === 0 ||
+                (destination.usage & RHIBufferUsage.COPY_DST) === 0
+            ) {
+                throw new Error('Buffer copy resources do not satisfy declared copy usages');
+            }
+            command.source = source;
+            command.destination = destination;
+        }
+        for (let index = 0; index < this.#bufferClearDeclarationCount; index += 1) {
+            const command = this.bufferClearCommands[index];
+            if (command === undefined) {
+                throw new Error('Buffer clear declaration storage is incomplete');
+            }
+            const buffer = context.getBuffer(command.internal);
+            if (
+                (buffer.usage & RHIBufferUsage.COPY_DST) === 0 ||
+                command.byteOffset + command.byteLength > buffer.size
+            ) {
+                throw new Error('Buffer clear resource does not satisfy its declared byte range');
+            }
+            command.buffer = buffer;
+        }
+    }
+
+    private stageCompleteStorageBufferWrites(): void {
+        if (
+            this.completeStorageBufferWrites.size === 0 &&
+            this.partialStorageBufferWrites.size === 0
+        ) {
+            return;
+        }
+        const cache = this.requireOwner().services.getScriptableStorageBufferResources();
+        for (const buffer of this.completeStorageBufferWrites) {
+            cache.stageCompleteGPUWrite(buffer);
+        }
+        for (const buffer of this.partialStorageBufferWrites) cache.stageGPUWrite(buffer);
+    }
+
     private assertReadableInternalAccess(handle: RGTextureHandle): void {
         if (
+            this.storageWriteInternalHandles.has(handle) ||
             this.copyDestinationInternalHandles.has(handle) ||
             this.attachmentInternalHandles.has(handle)
         ) {
@@ -1872,6 +2825,7 @@ class ScriptablePassSlot {
     private assertWritableInternalAccess(handle: RGTextureHandle): void {
         if (
             this.sampledInternalHandles.has(handle) ||
+            this.storageWriteInternalHandles.has(handle) ||
             this.copySourceInternalHandles.has(handle) ||
             this.copyDestinationInternalHandles.has(handle) ||
             this.attachmentInternalHandles.has(handle)
@@ -1883,6 +2837,7 @@ class ScriptablePassSlot {
     private assertAttachmentInternalAccess(handle: RGTextureHandle): void {
         if (
             this.sampledInternalHandles.has(handle) ||
+            this.storageWriteInternalHandles.has(handle) ||
             this.copySourceInternalHandles.has(handle) ||
             this.copyDestinationInternalHandles.has(handle) ||
             this.attachmentInternalHandles.has(handle)
@@ -2204,6 +3159,19 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
         return this.#owner.createTexture(name, descriptor);
     }
 
+    createBuffer(
+        name: string,
+        descriptor: Readonly<RenderPipelineBufferDescriptor>
+    ): RenderGraphBufferHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.createBuffer(name, descriptor);
+    }
+
+    importStorageBuffer(buffer: StorageBuffer): RenderGraphBufferHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.importStorageBuffer(buffer);
+    }
+
     importOutput(): RenderPipelineTargetResources {
         this.#owner.assertLeaseActive(this.#lease);
         return this.#owner.importOutput();
@@ -2234,7 +3202,7 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
 }
 
 /** @internal High-water storage behind per-invocation public pipeline leases. */
-export class ScriptableRenderPipelineContextImpl {
+export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGraphResolver {
     readonly #viewportState: [number, number, number, number] = [0, 0, 1, 1];
     readonly rhiViewport: MutableRHIViewport = {
         x: 0,
@@ -2269,6 +3237,8 @@ export class ScriptableRenderPipelineContextImpl {
     readonly #rendererListByHandle = new Map<RendererListHandle, RendererListSlot>();
     readonly #textureRecords: TextureRecord[] = [];
     readonly #textureByHandle = new Map<RenderGraphTextureHandle, TextureRecord>();
+    readonly #bufferRecords: BufferRecord[] = [];
+    readonly #bufferByHandle = new Map<RenderGraphBufferHandle, BufferRecord>();
     readonly #targetSlots: TargetResourcesSlot[] = [];
     readonly #passSlots: ScriptablePassSlot[] = [];
     readonly #passByHandle = new Map<RenderGraphPassHandle, RGPassHandle>();
@@ -2294,6 +3264,7 @@ export class ScriptableRenderPipelineContextImpl {
     #cullingCursor = 0;
     #rendererListCursor = 0;
     #textureCursor = 0;
+    #bufferCursor = 0;
     #targetSlotCursor = 0;
     #passCursor = 0;
     #persistentTargetDescriptorCursor = 0;
@@ -2303,6 +3274,7 @@ export class ScriptableRenderPipelineContextImpl {
     #hasTerminalWork = false;
     #active = false;
     #outputFacade: TargetResourcesFacade | null = null;
+    #storageBufferBySource = new WeakMap<RendererStorageBuffer, BufferRecord>();
 
     constructor(
         readonly services: ScriptableRenderPipelineServices,
@@ -2360,6 +3332,7 @@ export class ScriptableRenderPipelineContextImpl {
         this.#cullingCursor = 0;
         this.#rendererListCursor = 0;
         this.#textureCursor = 0;
+        this.#bufferCursor = 0;
         this.#targetSlotCursor = 0;
         this.#passCursor = 0;
         this.#persistentTargetDescriptorCursor = 0;
@@ -2375,6 +3348,8 @@ export class ScriptableRenderPipelineContextImpl {
         this.#cullingByHandle.clear();
         this.#rendererListByHandle.clear();
         this.#textureByHandle.clear();
+        this.#bufferByHandle.clear();
+        this.#storageBufferBySource = new WeakMap();
         this.#passByHandle.clear();
         const rendererClearColor = this.services.renderer.clearColor;
         this.#clearColorState.r = rendererClearColor.r;
@@ -2499,9 +3474,19 @@ export class ScriptableRenderPipelineContextImpl {
         for (let index = 0; index < this.#cullingCursor; index += 1) {
             this.#cullingSlots[index]?.releaseFrameReferences();
         }
+        for (let index = 0; index < this.#bufferCursor; index += 1) {
+            const record = this.#bufferRecords[index];
+            if (record === undefined) continue;
+            record.name = '';
+            record.internal = null;
+            record.source = null;
+            record.initialized = false;
+        }
         this.#cullingByHandle.clear();
         this.#rendererListByHandle.clear();
         this.#textureByHandle.clear();
+        this.#bufferByHandle.clear();
+        this.#storageBufferBySource = new WeakMap();
         this.#passByHandle.clear();
         this.#outputFacade = null;
         this.#beforeEventMeshSet.clear();
@@ -2627,6 +3612,56 @@ export class ScriptableRenderPipelineContextImpl {
         }).handle;
     }
 
+    createBuffer(
+        name: string,
+        descriptor: Readonly<RenderPipelineBufferDescriptor>
+    ): RenderGraphBufferHandle {
+        this.assertActive();
+        if (typeof name !== 'string' || name.length === 0) {
+            throw new TypeError('Render graph buffer name must be non-empty');
+        }
+        if (!Number.isSafeInteger(descriptor.byteLength) || descriptor.byteLength < 1) {
+            throw new RangeError('Render graph buffer byteLength must be a positive safe integer');
+        }
+        if (descriptor.label !== undefined && typeof descriptor.label !== 'string') {
+            throw new TypeError('Render graph buffer label must be a string');
+        }
+        return this.acquireBufferRecord({
+            name: descriptor.label ?? name,
+            byteLength: descriptor.byteLength,
+            internal: null,
+            source: null,
+            transient: true,
+            initialized: false
+        }).handle;
+    }
+
+    importStorageBuffer(buffer: StorageBuffer): RenderGraphBufferHandle {
+        this.assertActive();
+        const source = this.services.resolveScriptableStorageBuffer(buffer);
+        const existing = this.#storageBufferBySource.get(source);
+        if (existing !== undefined) return existing.handle;
+        const cache = this.services.getScriptableStorageBufferResources();
+        const resource = cache.prepare(source);
+        const initialized = cache.isInitializedAtFrameStart(source);
+        const internal = this.requireScope().graph.importBuffer(
+            source.label,
+            resource,
+            initialized
+        );
+        this.requireScope().graph.markOutput(internal);
+        const record = this.acquireBufferRecord({
+            name: source.label,
+            byteLength: source.byteLength,
+            internal,
+            source,
+            transient: false,
+            initialized
+        });
+        this.#storageBufferBySource.set(source, record);
+        return record.handle;
+    }
+
     importOutput(): RenderPipelineTargetResources {
         this.assertActive();
         if (this.#outputFacade !== null) return this.#outputFacade;
@@ -2721,6 +3756,7 @@ export class ScriptableRenderPipelineContextImpl {
         }
         slot.begin(this, pass, parameters, this.capabilities);
         const internal = this.requireScope().graph.addPass(slot.template, slot);
+        slot.commitSetupState();
         this.#passByHandle.set(publicHandle, internal);
         return publicHandle;
     }
@@ -2755,16 +3791,59 @@ export class ScriptableRenderPipelineContextImpl {
         return record;
     }
 
+    requireBuffer(handle: RenderGraphBufferHandle): BufferRecord {
+        const record = this.#bufferByHandle.get(handle);
+        if (record === undefined) {
+            throw new Error(`Render graph buffer handle ${String(handle)} is stale or invalid`);
+        }
+        return record;
+    }
+
+    bufferByteLength(handle: RenderGraphBufferHandle): number {
+        return this.requireBuffer(handle).byteLength;
+    }
+
+    resolveBuffer(
+        handle: RenderGraphBufferHandle,
+        use: RenderGraphBufferReadUse | RenderGraphBufferWriteUse
+    ): RGBufferHandle {
+        const record = this.requireBuffer(handle);
+        const usage = graphBufferUsage(use);
+        let internal = record.internal;
+        if (internal === null) {
+            if (!record.transient) {
+                throw new Error(`${record.name} does not support requested buffer access`);
+            }
+            const descriptor = record.graphDescriptor;
+            descriptor.label = record.name;
+            descriptor.size = record.byteLength;
+            descriptor.usage = usage;
+            internal = this.requireScope().graph.createBuffer(record.name, descriptor);
+            record.internal = internal;
+        } else this.requireScope().graph.addBufferUsage(internal, usage);
+        return internal;
+    }
+
     resolveTexture(handle: RenderGraphTextureHandle, access: TextureAccess): RGTextureHandle {
         const record = this.requireTexture(handle);
+        if (
+            access === 'storage-write' &&
+            (record.sampleCount !== 1 || record.mipLevelCount !== 1)
+        ) {
+            throw new RangeError(
+                `${record.name} storage writes require one complete single-sample 2d mip subresource`
+            );
+        }
         const usage =
             access === 'attachment' || access === 'resolve-target'
                 ? RHITextureUsage.RENDER_ATTACHMENT
                 : access === 'sampled'
                   ? RHITextureUsage.TEXTURE_BINDING
-                  : access === 'copy-source'
-                    ? RHITextureUsage.COPY_SRC
-                    : RHITextureUsage.COPY_DST;
+                  : access === 'storage-write'
+                    ? RHITextureUsage.STORAGE_BINDING
+                    : access === 'copy-source'
+                      ? RHITextureUsage.COPY_SRC
+                      : RHITextureUsage.COPY_DST;
         let internal =
             access === 'attachment'
                 ? record.attachment
@@ -2796,6 +3875,14 @@ export class ScriptableRenderPipelineContextImpl {
         if (this.requireTexture(handle).outputRoot !== null) this.#hasTerminalWork = true;
     }
 
+    noteBufferWrite(record: BufferRecord, internal: RGBufferHandle): void {
+        if (record.source === null) return;
+        if (record.internal !== internal) {
+            throw new Error('Imported StorageBuffer graph identity is inconsistent');
+        }
+        this.#hasTerminalWork = true;
+    }
+
     noteSideEffect(): void {
         this.#hasTerminalWork = true;
     }
@@ -2821,7 +3908,9 @@ export class ScriptableRenderPipelineContextImpl {
     appendRendererListDraws(
         handle: RendererListHandle,
         drawPass: SharedDrawPassParameters,
-        target: RHIMeshDrawTargetDescriptor
+        target: RHIMeshDrawTargetDescriptor,
+        storageVariant: Readonly<SceneStorageShaderVariant> | null,
+        storagePreparation: StorageScenePreparationState
     ): void {
         const list = this.requireRendererList(handle);
         const culling = list.culling;
@@ -2849,23 +3938,88 @@ export class ScriptableRenderPipelineContextImpl {
         );
         this.services.beginScriptableMeshPass(context);
         const processor = this.services.getScriptableMeshProcessor();
+        const storagePipelines = this.services.getScriptableGPUDrivenPipelineResources();
         for (const mesh of plan.opaqueMeshes) {
-            drawPass.addDrawSnapshot(processor.prepare(mesh, target, list.overrideMaterial));
+            drawPass.addDrawSnapshot(
+                storageVariant === null
+                    ? processor.prepare(mesh, target, list.overrideMaterial)
+                    : processor.prepareStorageScene(
+                          mesh,
+                          target,
+                          storageVariant.shader,
+                          storagePipelines,
+                          storagePreparation,
+                          list.overrideMaterial
+                      )
+            );
         }
         for (const batch of plan.instancedBatches) {
             if (batch.transparent) continue;
-            drawPass.addDrawSnapshot(
-                processor.prepareInstancedBatch(batch, batch.meshes, target, list.overrideMaterial)
-            );
+            if (storageVariant === null) {
+                drawPass.addDrawSnapshot(
+                    processor.prepareInstancedBatch(
+                        batch,
+                        batch.meshes,
+                        target,
+                        list.overrideMaterial
+                    )
+                );
+                continue;
+            }
+            for (const mesh of batch.meshes) {
+                drawPass.addDrawSnapshot(
+                    processor.prepareStorageScene(
+                        mesh,
+                        target,
+                        storageVariant.shader,
+                        storagePipelines,
+                        storagePreparation,
+                        list.overrideMaterial,
+                        true
+                    )
+                );
+            }
         }
         for (const mesh of plan.transparentMeshes) {
-            drawPass.addDrawSnapshot(processor.prepare(mesh, target, list.overrideMaterial));
+            drawPass.addDrawSnapshot(
+                storageVariant === null
+                    ? processor.prepare(mesh, target, list.overrideMaterial)
+                    : processor.prepareStorageScene(
+                          mesh,
+                          target,
+                          storageVariant.shader,
+                          storagePipelines,
+                          storagePreparation,
+                          list.overrideMaterial
+                      )
+            );
         }
         for (const batch of plan.instancedBatches) {
             if (!batch.transparent) continue;
-            drawPass.addDrawSnapshot(
-                processor.prepareInstancedBatch(batch, batch.meshes, target, list.overrideMaterial)
-            );
+            if (storageVariant === null) {
+                drawPass.addDrawSnapshot(
+                    processor.prepareInstancedBatch(
+                        batch,
+                        batch.meshes,
+                        target,
+                        list.overrideMaterial
+                    )
+                );
+                continue;
+            }
+            for (const mesh of batch.meshes) {
+                drawPass.addDrawSnapshot(
+                    processor.prepareStorageScene(
+                        mesh,
+                        target,
+                        storageVariant.shader,
+                        storagePipelines,
+                        storagePreparation,
+                        list.overrideMaterial,
+                        true
+                    )
+                );
+            }
         }
         this.services
             .getScriptableTargetBridge()
@@ -2945,6 +4099,49 @@ export class ScriptableRenderPipelineContextImpl {
                 fullscreen.registry.deviceCapabilities.limits.maxBindGroups
             );
         draw.configure(pipeline, inputs, uniformHandles, this.frameIndex);
+        return draw;
+    }
+
+    configureComputeDispatch(
+        retained: ScriptableComputeDispatch | null,
+        pass: ComputeRenderPass,
+        parameters: ComputeRenderPassParameters,
+        services: ScriptableComputeDispatchServices
+    ): ScriptableComputeDispatch {
+        if (this.services.renderer.backend !== 'webgpu') {
+            throw new Error('ComputeRenderPass is supported only by the WebGPU renderer');
+        }
+        this.services.prepareScriptableCullingScene(this.scene, this.camera);
+        const context = this.services.createScriptableFrameContext(
+            this.camera,
+            this.rhiViewport,
+            this.frameIndex
+        );
+        this.services.beginScriptableMeshPass(context);
+        const dispatch = retained ?? new ScriptableComputeDispatch();
+        dispatch.configure(pass, parameters, this, services, this.frameIndex);
+        return dispatch;
+    }
+
+    configureGPUDrivenDraw(
+        retained: ScriptableGPUDrivenDraw | null,
+        pass: GPUDrivenRenderPass,
+        parameters: GPUDrivenRenderPassParameters,
+        target: RHIMeshDrawTargetDescriptor,
+        services: ScriptableGPUDrivenDrawServices
+    ): ScriptableGPUDrivenDraw {
+        if (this.services.renderer.backend !== 'webgpu') {
+            throw new Error('GPUDrivenRenderPass is supported only by the WebGPU renderer');
+        }
+        this.services.prepareScriptableCullingScene(this.scene, this.camera);
+        const context = this.services.createScriptableFrameContext(
+            this.camera,
+            this.rhiViewport,
+            this.frameIndex
+        );
+        this.services.beginScriptableMeshPass(context);
+        const draw = retained ?? new ScriptableGPUDrivenDraw();
+        draw.configure(pass, parameters, this, services, target, this.frameIndex);
         return draw;
     }
 
@@ -3147,6 +4344,37 @@ export class ScriptableRenderPipelineContextImpl {
         record.outputRoot = source.outputRoot;
         record.transient = source.transient;
         this.#textureByHandle.set(record.handle, record);
+        return record;
+    }
+
+    private acquireBufferRecord(
+        source: Omit<BufferRecord, 'handle' | 'graphDescriptor'>
+    ): BufferRecord {
+        let record = this.#bufferRecords[this.#bufferCursor++];
+        if (record === undefined) {
+            record = {
+                handle: 0 as RenderGraphBufferHandle,
+                name: '',
+                byteLength: 4,
+                internal: null,
+                source: null,
+                transient: false,
+                initialized: false,
+                graphDescriptor: createBufferGraphDescriptor()
+            };
+            this.#bufferRecords.push(record);
+        }
+        record.handle = this.allocateHandle() as RenderGraphBufferHandle;
+        record.name = source.name;
+        record.byteLength = source.byteLength;
+        record.internal = source.internal;
+        record.source = source.source;
+        record.transient = source.transient;
+        record.initialized = source.initialized;
+        record.graphDescriptor.label = source.name;
+        record.graphDescriptor.size = source.byteLength;
+        record.graphDescriptor.usage = 0;
+        this.#bufferByHandle.set(record.handle, record);
         return record;
     }
 

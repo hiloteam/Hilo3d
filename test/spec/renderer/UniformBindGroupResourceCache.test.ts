@@ -144,10 +144,16 @@ describe('UniformBindGroupResourceCache', () => {
             get sampledBindings(): never {
                 throw new Error('cache hit read sampledBindings');
             },
+            get storageBuffers(): never {
+                throw new Error('cache hit read storageBuffers');
+            },
             getUniformBlockBinding(): undefined {
                 return undefined;
             },
             getSampledBinding(): undefined {
+                return undefined;
+            },
+            getStorageBufferBinding(): undefined {
                 return undefined;
             }
         };

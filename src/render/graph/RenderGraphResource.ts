@@ -37,6 +37,33 @@ export type RGImportedBufferProvider = () => RHIBuffer;
 export type RGResourceKind = 'texture' | 'buffer';
 export type RGResourceOrigin = 'imported' | 'transient';
 
+/** Portable roles that consume initialized buffer contents. */
+export type RGBufferReadUse = 'storage' | 'vertex' | 'index' | 'copy-source' | 'indirect';
+
+/** Portable roles that completely replace buffer contents. */
+export type RGBufferWriteUse = 'storage' | 'copy-destination';
+
+/**
+ * One setup-declared buffer access. Read-write is deliberately limited to storage bindings;
+ * texture feedback and implicit buffer feedback remain invalid.
+ */
+export type RGBufferAccessDeclaration =
+    | Readonly<{
+          buffer: RGBufferHandle;
+          mode: 'read';
+          use: RGBufferReadUse;
+      }>
+    | Readonly<{
+          buffer: RGBufferHandle;
+          mode: 'write';
+          use: RGBufferWriteUse;
+      }>
+    | Readonly<{
+          buffer: RGBufferHandle;
+          mode: 'read-write';
+          use: 'storage';
+      }>;
+
 /** A color attachment is a render-pass read/write access, not sampled feedback. */
 export interface RGColorAttachmentDeclaration {
     readonly texture: RGTextureHandle;
@@ -84,6 +111,8 @@ export interface RGBufferResourceNode {
     readonly imported: RHIBuffer | null;
     readonly provider: RGImportedBufferProvider | null;
     readonly resourceLifetime: RHIResourceLifetime;
+    /** Whether contents exist before the first graph writer in this invocation. */
+    readonly initiallyInitialized: boolean;
     readonly extracted: boolean;
 }
 

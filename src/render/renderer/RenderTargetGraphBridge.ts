@@ -84,7 +84,7 @@ const attachment0CopyPassTemplate: RenderPassTemplate<Attachment0CopyPassParamet
     name: 'RenderTargetAttachment0CopyPass',
     setup(builder, params) {
         builder.readTexture(params.source);
-        builder.writeBuffer(params.destination);
+        builder.writeBuffer(params.destination, 'copy-destination');
         builder.markSideEffect();
     },
     execute(context, params) {

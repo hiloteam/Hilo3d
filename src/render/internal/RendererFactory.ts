@@ -15,12 +15,18 @@ import {
 } from '../rhi/RHIFactory';
 import { defaultForwardRenderPipelineFactory } from '../pipeline/ForwardRenderPipeline';
 import { snapshotRenderPipelineFactory } from '../pipeline/RenderPipelineFactory';
+import {
+    describeWebGL2OnlyRendererOption,
+    describeWebGPUOnlyPipelineRequirement,
+    describeWebGPUOnlyRendererFeature
+} from './RenderPipelineBackendSelection';
 
 const REQUESTABLE_WEBGPU_FEATURES: ReadonlySet<string> = new Set([
     'texture-compression-bc',
     'texture-compression-etc2',
     'texture-compression-astc',
     'timestamp-query',
+    'shader-f16',
     'depth32float-stencil8',
     'float32-filterable',
     'float32-blendable'
@@ -151,24 +157,51 @@ export async function isRendererBackendSupported(
     }
 }
 
-/** Resolve an explicit or WebGPU-first backend policy without creating a renderer. */
-export async function resolveRendererBackend(
-    options: RendererCreateOptions = {}
+async function resolveRendererBackendSnapshot(
+    options: RendererCreateOptions
 ): Promise<RendererBackend> {
     const requested: unknown = options.backend ?? 'auto';
-    if (requested === 'webgl2' || requested === 'webgpu') return requested;
     if (requested !== 'auto') {
-        throw new TypeError(`Unsupported Renderer backend ${String(requested)}`);
+        if (requested !== 'webgl2' && requested !== 'webgpu') {
+            throw new TypeError(`Unsupported Renderer backend ${String(requested)}`);
+        }
     }
-    if (
-        Object.prototype.hasOwnProperty.call(options, 'preserveDrawingBuffer') ||
-        (options.alpha === true && options.premultipliedAlpha === false)
-    ) {
+    const requiredFeatures = 'requiredFeatures' in options ? options.requiredFeatures : undefined;
+    const webGPURequirement =
+        describeWebGPUOnlyRendererFeature(requiredFeatures) ??
+        describeWebGPUOnlyPipelineRequirement(options.renderPipeline?.requirements);
+    const webGL2Option = describeWebGL2OnlyRendererOption(options);
+    if (requested === 'webgl2') {
+        if (webGPURequirement !== null) {
+            throw new TypeError(
+                `Renderer configuration conflict: ${webGPURequirement} requires WebGPU, but backend webgl2 was requested`
+            );
+        }
         return 'webgl2';
     }
-    return (await isRendererBackendSupported('webgpu', autoWebGPUSupportOptions(options)))
-        ? 'webgpu'
-        : 'webgl2';
+    if (requested === 'webgpu') {
+        if (webGL2Option !== null) {
+            throw new TypeError(`Renderer ${webGL2Option}; backend webgpu was requested`);
+        }
+        return 'webgpu';
+    }
+    if (webGL2Option !== null) {
+        if (webGPURequirement !== null) {
+            throw new TypeError(
+                `Renderer configuration conflict: ${webGPURequirement} requires WebGPU, but ${webGL2Option}`
+            );
+        }
+        return 'webgl2';
+    }
+    if (await isRendererBackendSupported('webgpu', autoWebGPUSupportOptions(options))) {
+        return 'webgpu';
+    }
+    if (webGPURequirement !== null) {
+        throw new Error(
+            `No compatible Renderer backend: ${webGPURequirement} requires WebGPU, but no compatible WebGPU adapter is available`
+        );
+    }
+    return 'webgl2';
 }
 
 function snapshotCreateOptions(options: RendererCreateOptions): RendererCreateOptions {
@@ -194,10 +227,17 @@ function snapshotCreateOptions(options: RendererCreateOptions): RendererCreateOp
     };
 }
 
+/** Resolve an explicit or WebGPU-first backend policy without creating a renderer. */
+export function resolveRendererBackend(
+    options: RendererCreateOptions = {}
+): Promise<RendererBackend> {
+    return resolveRendererBackendSnapshot(snapshotCreateOptions(options));
+}
+
 /** Resolve, construct and await one renderer backend. */
 export async function createRenderer(options: RendererCreateOptions = {}): Promise<RendererCore> {
     const snapshot = snapshotCreateOptions(options);
-    const backend = await resolveRendererBackend(snapshot);
+    const backend = await resolveRendererBackendSnapshot(snapshot);
     const renderer = constructRenderer({
         ...snapshot,
         backend

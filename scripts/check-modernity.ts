@@ -1,5 +1,6 @@
 import { access, readFile, readdir } from 'node:fs/promises';
 import { extname, join, relative, resolve } from 'node:path';
+import { collectShaderModernityViolations } from './shader-modernity';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const maintainedRoots = ['src', 'examples', 'test', 'scripts'] as const;
@@ -117,10 +118,6 @@ const forbiddenSourceRules = [
 ] as const;
 const forbiddenEngineSourceRules = [
     {
-        label: 'handwritten WGSL entry point',
-        pattern: /@(?:vertex|fragment|compute)\b/u
-    },
-    {
         label: 'backend-specific renderer class',
         pattern: /\b(?:WebGLRenderer|WebGPURenderer)\b/u
     }
@@ -133,8 +130,10 @@ const forbiddenCommonRendererRules = [
     },
     {
         label: 'native graphics handle declared by the shared render layer',
+        // `GPUDriven*` names describe a backend-neutral rendering technique, not native WebGPU
+        // ownership. All other `GPU*` identifiers remain confined to backend implementation code.
         pattern:
-            /\b(?:GPU[A-Z][A-Za-z0-9_]*|WebGL(?:2[A-Z][A-Za-z0-9_]*|[A-Z][A-Za-z0-9_]*)|GL(?:bitfield|boolean|char|enum|float|int|intptr|sizei|sizeiptr|uint))\b/u
+            /\b(?:GPU(?!Driven)[A-Z][A-Za-z0-9_]*|WebGL(?:2[A-Z][A-Za-z0-9_]*|[A-Z][A-Za-z0-9_]*)|GL(?:bitfield|boolean|char|enum|float|int|intptr|sizei|sizeiptr|uint))\b/u
     },
     {
         label: 'native graphics API called by the shared render layer',
@@ -302,12 +301,6 @@ async function collectLegacyArtifacts(directory: string): Promise<string[]> {
 
         const extension = extname(entry.name);
         if (
-            extension === '.wgsl' &&
-            (relativePath.startsWith('src/') || relativePath.startsWith('examples/'))
-        ) {
-            matches.push(`${relativePath} (handwritten WGSL source file)`);
-        }
-        if (
             forbiddenImplementationExtensions.has(extension) ||
             matchesForbiddenArtifactName(entry.name)
         ) {
@@ -323,6 +316,9 @@ async function collectLegacyArtifacts(directory: string): Promise<string[]> {
             }
             for (const rule of forbiddenSourceRules) {
                 if (rule.pattern.test(source)) matches.push(`${relativePath} (${rule.label})`);
+            }
+            for (const violation of collectShaderModernityViolations(relativePath, source)) {
+                matches.push(`${relativePath}:${String(violation.line)} (${violation.label})`);
             }
             if (relativePath.startsWith('src/')) {
                 for (const rule of forbiddenEngineSourceRules) {

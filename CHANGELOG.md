@@ -26,14 +26,42 @@
   and shared scene, shadow, fullscreen, copy, and present pass primitives.
 - Add `ForwardRenderPipelineFactory` feature injection with per-Renderer feature runtimes and
   creation-time capability/limit/format requirements. The empty default feature set retains the
-  existing direct forward recorder with no intermediate scene target or public-facade draw cost;
-  storage-buffer, storage-texture, and compute capability names remain fail-closed until their full
-  shader/Render Graph/RHI/backend implementations land.
+  existing direct forward recorder with no intermediate scene target or public-facade draw cost.
+  WebGPU-only `storage-buffer`, `storage-texture`, `compute-pass`, and `indirect-draw` requirements
+  now participate in backend selection and device capability/limit/format validation.
+- Add the WebGPU compute/storage foundation on the shared renderer path: WGSL host-shareable
+  `StorageLayout`, renderer-owned `StorageBuffer` upload/readback/recovery semantics, public graph
+  buffer access, Direct WGSL `ComputeShader` validation through Naga, immutable `ComputeKernel`,
+  `ComputeRenderPass`, and uniform/storage/complete-2D sampled or write-only-storage-texture
+  bindings. Compute is a dedicated pass model rather than a `Material` subtype.
+- Add portable RHI compute pipeline/pass contracts, direct and indirect dispatch, buffer clear,
+  direct/indexed indirect draw, compute/storage limits and diagnostics, a one-hop WebGPU backend,
+  and a WebGL 2 negative implementation that fails before native GL work instead of emulating
+  storage or compute. Creation-time pipeline requirements now prevent compute/storage pipelines from
+  falling back to WebGL 2.
+- Add the storage-aware raster path with constrained GLSL ES 3.10 translated through Naga, readonly
+  graphics storage bindings, graph vertex/index/indirect inputs, `GPUDrivenRenderPass`, and
+  `SceneRenderPass` group-3 pass-global storage variants. Scene variants reuse ordinary renderer
+  lists and deterministically expand instanced batches to direct per-mesh draws.
+- Add a polished deterministic WebGPU showcase and acceptance example: depth prepass → sampled-depth
+  tile culling → Scene group-3 storage shading, Gaussian cull/reorder/indirect draw, and a
+  1024-particle Hilo3D wordmark driven by Direct WGSL fractal value/curl noise, breathing, swirl,
+  return motion, compaction, GPU-generated indirect draw, and additive glow. GPU-produced counts,
+  indices, and draw arguments remain GPU-only. The Forward+/Gaussian algorithms are acceptance-scale
+  proofs, and the page is not a production performance baseline.
+- Keep first-release compute textures limited to complete 2D graph resources, with transient
+  write-only storage textures and no persistent storage-texture or layer/mip-view API. Persistent
+  state uses externally owned renderer `StorageBuffer` objects imported per frame; each Renderer
+  accepts one pending storage-buffer readback. `cpu-shadow` recovery restores CPU bytes rather than
+  later GPU mutations, and Direct WGSL `f16` remains fail-closed until the Naga validation path can
+  validate it end to end. Storage-aware graphics retains broader Material/Scene texture reflection,
+  while `GPUDrivenRenderPass` rejects non-2D graph texture bindings before backend execution.
 - Expose the built-in forward culling results to features, reject feature runtimes shared across
   Renderers, and preserve selected RenderTarget color/depth/stencil clear/load/store operations
   across feature-enabled scene, intermediate-color, and output passes.
-- Reject pre-opaque scene-color sampling and keep forward `sampledDepth` fail-closed until a
-  portable non-filtering public binding path exists.
+- Reject pre-opaque scene-color sampling and keep the built-in forward feature's `sampledDepth`
+  option fail-closed; a custom SRP can explicitly compose depth prepass, compute culling, and a
+  storage-aware Scene pass for Forward+.
 - Add backend-neutral `Renderer.waitForIdle()` for application completion fences. Native WebGL 2 or
   WebGPU interoperability is opt-in through `Renderer.getExtension()` instead of public `gl` or
   `gpuDevice` fields.
@@ -214,17 +242,18 @@
   instance-buffer mutation instead of rewriting resources already referenced by recorded passes.
 - Replace serialized shader variant keys with a bounded, structured dual-lane 64-bit hash, exact
   collision buckets, stable-draw revision snapshots, source-aware custom shader keys, and
-  generation-safe cache release. GLSL ES 3.00 remains the only authored shader language.
+  generation-safe cache release. GLSL ES 3.00 remains the only authored portable raster language;
+  WebGPU-only compute/storage use the constrained source contracts described above.
 - Migrate all maintained engine, test, example and tooling code to checked TypeScript without
   type-checking bypasses.
 - Split TypeScript into referenced library, test, example and Node projects with strict shared
   rules.
 - Generate bundled public declarations and API reports directly from the checked source.
 - Add repository-wide typed linting, deterministic formatting and enforced browser coverage.
-- Add Vite multi-page example builds and an automatically collected 78-HTML Playwright matrix. All
-  pages run through WebGL 2 and WebGPU except `webxr.html`, which is explicitly WebGL 2-only while
-  browsers expose XR presentation through `XRWebGLLayer`; it is not a WebGPU fallback and is not
-  part of the current WebGPU release gate.
+- Add Vite multi-page example builds and an automatically collected 80-HTML Playwright matrix.
+  Seventy-eight pages run through WebGL 2 and WebGPU; `webxr.html` is explicitly WebGL 2-only while
+  browsers expose XR presentation through `XRWebGLLayer`, and `compute_gpu_driven.html` is
+  explicitly WebGPU-only because its required capabilities are not simulated on WebGL 2.
 - Gate the same deterministic lit PBR readback and screenshot through both backends, and exercise
   fractional-DPR resizing, life-game and ShaderToy input, glTF Viewer load/replace/release, live
   post-process changes, native compressed textures, and GPU mesh picking on both backends. The first
@@ -239,12 +268,14 @@
   WebGL 2 core features, and enforce this class of WebGL 1 extension wrapper in the modernity gate.
 - Add type-safe std140 layout packing, stable global uniform-block bindings, reflected range-size
   validation, partial dirty uploads, and static/runtime rejection of legacy shader interfaces.
-- Keep GLSL ES 3.00 as the single shader source, prepare active variants as Vulkan GLSL 4.50, and
-  translate them through Naga WASM to WGSL. Preparation assigns IO locations, separates texture and
-  sampler bindings, maps the four WebGPU bind groups, and converts clip-space depth.
+- Keep GLSL ES 3.00 as the single portable raster shader source, prepare active variants as Vulkan
+  GLSL 4.50, and translate them through Naga WASM to WGSL. Preparation assigns IO locations,
+  separates texture and sampler bindings, maps the four WebGPU bind groups, and converts clip-space
+  depth.
 - Route renderer-owned fullscreen presentation and WebGPU mipmap generation through that same GLSL
   preprocessing and Naga path. Both consume translated sampler metadata and have no handwritten or
-  fallback WGSL module; the modernity gate rejects WGSL entry points in production TypeScript.
+  fallback WGSL module; the modernity gate rejects graphics WGSL entry points and only permits
+  Direct WGSL `@compute` structurally associated with `ComputeShader` validation.
 - Express the shared std140 ABI in generated WGSL with explicit `@align`/`@size` wrappers that work
   with WebGPU's default language features; do not request or depend on the optional
   `uniform_buffer_standard_layout` feature.

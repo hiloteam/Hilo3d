@@ -20,6 +20,8 @@ import {
     type RHICacheCounter,
     type RHICommandContext,
     type RHICommandContextState,
+    type RHIComputePassDescriptor,
+    type RHIComputePassEncoder,
     type RHIDataSource,
     type RHIDrawArgumentsRecord,
     type RHIExtent3D,
@@ -71,8 +73,14 @@ function resetDiagnostics(target?: RHIFrameDiagnostics): RHIFrameDiagnostics {
     const value = target ?? {
         commandCount: 0,
         drawCount: 0,
+        indirectDrawCount: 0,
+        dispatchCount: 0,
+        dispatchedWorkgroupCount: 0,
+        bufferClearCount: 0,
         pipelineSwitches: 0,
         bindGroupSwitches: 0,
+        computePipelineSwitches: 0,
+        computeBindGroupSwitches: 0,
         vertexBufferSwitches: 0,
         nativeStateCalls: 0,
         frameArenaGrowths: 0,
@@ -82,8 +90,14 @@ function resetDiagnostics(target?: RHIFrameDiagnostics): RHIFrameDiagnostics {
     };
     value.commandCount = 0;
     value.drawCount = 0;
+    value.indirectDrawCount = 0;
+    value.dispatchCount = 0;
+    value.dispatchedWorkgroupCount = 0;
+    value.bufferClearCount = 0;
     value.pipelineSwitches = 0;
     value.bindGroupSwitches = 0;
+    value.computePipelineSwitches = 0;
+    value.computeBindGroupSwitches = 0;
     value.vertexBufferSwitches = 0;
     value.nativeStateCalls = 0;
     value.frameArenaGrowths = 0;
@@ -1200,6 +1214,24 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         }
         this.diagnostics.commandCount++;
         return pass;
+    }
+
+    beginComputePass(_descriptor: RHIComputePassDescriptor = {}): RHIComputePassEncoder {
+        this.requireOpen();
+        throw new RHIValidationError(
+            'unsupported-feature',
+            'WebGL2 does not support compute passes',
+            'computePass'
+        );
+    }
+
+    clearBuffer(_buffer: RHIBuffer, _offset = 0, _size?: number): void {
+        this.requireOpen();
+        throw new RHIValidationError(
+            'unsupported-feature',
+            'WebGL2 does not support portable clearBuffer commands',
+            'clearBuffer'
+        );
     }
 
     copyBufferToBuffer(
@@ -2626,6 +2658,24 @@ export class WebGL2RenderPass
             this.context.nativeFailed(error);
         }
         this.recordDraw();
+    }
+
+    drawIndirect(_buffer: RHIBuffer, _offset = 0): void {
+        this.requireOpen();
+        throw new RHIValidationError(
+            'unsupported-feature',
+            'WebGL2 does not support portable indirect draws',
+            'renderPass.drawIndirect'
+        );
+    }
+
+    drawIndexedIndirect(_buffer: RHIBuffer, _offset = 0): void {
+        this.requireOpen();
+        throw new RHIValidationError(
+            'unsupported-feature',
+            'WebGL2 does not support portable indexed indirect draws',
+            'renderPass.drawIndexedIndirect'
+        );
     }
 
     end(): void {

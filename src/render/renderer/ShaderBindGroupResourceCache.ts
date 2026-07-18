@@ -15,6 +15,8 @@ import type {
     ShaderUniformBlockBindingPlan
 } from './ShaderBindingLayoutCompiler';
 
+const EMPTY_DEFERRED_GROUPS: readonly number[] = Object.freeze([]);
+
 export interface ShaderSampledBindingResources {
     readonly textureView: ResourceRegistryHandle<RHITextureView>;
     readonly sampler: ResourceRegistryHandle<RHISampler>;
@@ -32,6 +34,7 @@ interface ShaderBindGroupRecord {
     readonly layoutHandles: readonly ResourceRegistryHandle<RHIBindGroupLayout>[];
     readonly uniformBufferHandles: readonly ResourceRegistryHandle<RHIBuffer>[];
     readonly sampledResources: readonly Readonly<ShaderSampledBindingResources>[];
+    readonly deferredGroupIndices: readonly number[];
     readonly handles: Readonly<ShaderBindGroupHandleSet>;
 }
 
@@ -54,7 +57,12 @@ interface SamplerBindingRecipe {
 }
 
 type BindingRecipe = BufferBindingRecipe | TextureBindingRecipe | SamplerBindingRecipe;
-type BindingPlanKind = 'uniform-buffer' | 'sampled-texture' | 'sampler' | 'comparison-sampler';
+type BindingPlanKind =
+    | 'uniform-buffer'
+    | 'read-only-storage-buffer'
+    | 'sampled-texture'
+    | 'sampler'
+    | 'comparison-sampler';
 
 function requireNonNegativeSafeInteger(value: number, name: string): void {
     if (!Number.isSafeInteger(value) || value < 0) {
@@ -93,6 +101,14 @@ function sameSampledHandleIdentities(
     return true;
 }
 
+function sameNumbers(cached: readonly number[], incoming: readonly number[]): boolean {
+    if (cached.length !== incoming.length) return false;
+    for (let index = 0; index < cached.length; index += 1) {
+        if (cached[index] !== incoming[index]) return false;
+    }
+    return true;
+}
+
 function compareBindingRecipes(left: BindingRecipe, right: BindingRecipe): number {
     return left.binding - right.binding;
 }
@@ -118,7 +134,8 @@ export class ShaderBindGroupResourceCache {
         plan: Readonly<ShaderBindingLayoutPlan>,
         layoutHandles: readonly ResourceRegistryHandle<RHIBindGroupLayout>[],
         uniformBufferHandles: readonly ResourceRegistryHandle<RHIBuffer>[],
-        sampledResources: readonly Readonly<ShaderSampledBindingResources>[]
+        sampledResources: readonly Readonly<ShaderSampledBindingResources>[],
+        deferredGroupIndices: readonly number[] = EMPTY_DEFERRED_GROUPS
     ): Readonly<ShaderBindGroupHandleSet> {
         this.assertAlive();
         requireNonNegativeSafeInteger(layoutToken, 'Shader bind-group layout token');
@@ -128,20 +145,28 @@ export class ShaderBindGroupResourceCache {
             current?.layoutToken === layoutToken &&
             sameHandleIdentities(current.layoutHandles, layoutHandles) &&
             sameHandleIdentities(current.uniformBufferHandles, uniformBufferHandles) &&
-            sameSampledHandleIdentities(current.sampledResources, sampledResources)
+            sameSampledHandleIdentities(current.sampledResources, sampledResources) &&
+            sameNumbers(current.deferredGroupIndices, deferredGroupIndices)
         ) {
             this.metrics.recordHit();
             return current.handles;
         }
 
-        this.validateShape(plan, layoutHandles, uniformBufferHandles, sampledResources);
+        this.validateShape(
+            plan,
+            layoutHandles,
+            uniformBufferHandles,
+            sampledResources,
+            deferredGroupIndices
+        );
         this.validateHandles(layoutHandles, uniformBufferHandles, sampledResources);
         const replacement = this.createRecord(
             layoutToken,
             plan,
             layoutHandles,
             uniformBufferHandles,
-            sampledResources
+            sampledResources,
+            deferredGroupIndices
         );
         this.#recordsByOwner.set(owner, replacement);
         this.#records.add(replacement);
@@ -200,12 +225,14 @@ export class ShaderBindGroupResourceCache {
         plan: Readonly<ShaderBindingLayoutPlan>,
         layoutHandles: readonly ResourceRegistryHandle<RHIBindGroupLayout>[],
         uniformBufferHandles: readonly ResourceRegistryHandle<RHIBuffer>[],
-        sampledResources: readonly Readonly<ShaderSampledBindingResources>[]
+        sampledResources: readonly Readonly<ShaderSampledBindingResources>[],
+        deferredGroupIndices: readonly number[]
     ): void {
         const descriptors = plan.bindGroupLayoutDescriptors;
         const activeGroupIndices = plan.activeGroupIndices;
         const uniformBlocks = plan.uniformBlocks;
         const sampledBindings = plan.sampledBindings;
+        const storageBuffers = plan.storageBuffers;
         if (layoutHandles.length !== descriptors.length) {
             throw new RangeError(
                 'Shader bind-group layout handles must match the continuous shader group layout count'
@@ -252,12 +279,68 @@ export class ShaderBindGroupResourceCache {
         for (const sampled of sampledBindings) {
             this.validateSampledBinding(activeGroups, bindingsByGroup, sampled);
         }
+        for (const storage of storageBuffers) {
+            this.addPlanBinding(
+                activeGroups,
+                bindingsByGroup,
+                storage.group,
+                storage.binding,
+                'read-only-storage-buffer',
+                `Readonly storage buffer ${storage.name}`
+            );
+        }
         for (const group of activeGroups) {
             if (!bindingsByGroup.has(group)) {
                 throw new TypeError(`Active shader bind group ${String(group)} has no bindings`);
             }
         }
+        this.validateDeferredGroups(deferredGroupIndices, activeGroups, bindingsByGroup);
         this.validateDescriptors(descriptors, activeGroups, bindingsByGroup);
+    }
+
+    private validateDeferredGroups(
+        deferredGroupIndices: readonly number[],
+        activeGroups: ReadonlySet<number>,
+        bindingsByGroup: ReadonlyMap<number, ReadonlyMap<number, BindingPlanKind>>
+    ): void {
+        const deferred = new Set<number>();
+        let previous = -1;
+        for (const group of deferredGroupIndices) {
+            requireNonNegativeSafeInteger(group, 'Deferred shader bind-group index');
+            if (group <= previous) {
+                throw new TypeError(
+                    'Deferred shader bind-group indices must be unique and ascending'
+                );
+            }
+            if (!activeGroups.has(group)) {
+                throw new TypeError(`Deferred shader bind group ${String(group)} is not active`);
+            }
+            const bindings = bindingsByGroup.get(group);
+            if (
+                bindings === undefined ||
+                [...bindings.values()].some(kind => kind !== 'read-only-storage-buffer')
+            ) {
+                throw new TypeError(
+                    `Deferred shader bind group ${String(group)} must contain only readonly storage buffers`
+                );
+            }
+            deferred.add(group);
+            previous = group;
+        }
+        for (const [group, bindings] of bindingsByGroup) {
+            let containsStorage = false;
+            for (const kind of bindings.values()) {
+                if (kind === 'read-only-storage-buffer') {
+                    containsStorage = true;
+                    break;
+                }
+            }
+            if (containsStorage && !deferred.has(group)) {
+                throw new TypeError(
+                    `Readonly storage bind group ${String(group)} must be explicitly deferred`
+                );
+            }
+        }
     }
 
     private addPlanBinding(
@@ -372,6 +455,8 @@ export class ShaderBindGroupResourceCache {
         switch (kind) {
             case 'uniform-buffer':
                 return entry.buffer !== undefined && (entry.buffer.type ?? 'uniform') === 'uniform';
+            case 'read-only-storage-buffer':
+                return entry.buffer?.type === 'read-only-storage';
             case 'sampled-texture':
                 return entry.texture !== undefined;
             case 'sampler':
@@ -399,7 +484,8 @@ export class ShaderBindGroupResourceCache {
         plan: Readonly<ShaderBindingLayoutPlan>,
         incomingLayoutHandles: readonly ResourceRegistryHandle<RHIBindGroupLayout>[],
         incomingUniformBufferHandles: readonly ResourceRegistryHandle<RHIBuffer>[],
-        incomingSampledResources: readonly Readonly<ShaderSampledBindingResources>[]
+        incomingSampledResources: readonly Readonly<ShaderSampledBindingResources>[],
+        incomingDeferredGroupIndices: readonly number[]
     ): ShaderBindGroupRecord {
         const token = this.allocateToken();
         const layoutHandles = Object.freeze([...incomingLayoutHandles]);
@@ -412,12 +498,14 @@ export class ShaderBindGroupResourceCache {
                 })
             )
         );
+        const deferredGroupIndices = Object.freeze([...incomingDeferredGroupIndices]);
         const groupHandles = new Array<ResourceRegistryHandle<RHIBindGroup> | null>(
             layoutHandles.length
         ).fill(null);
         const created: ResourceRegistryHandle<RHIBindGroup>[] = [];
         try {
             for (const group of plan.activeGroupIndices) {
+                if (deferredGroupIndices.includes(group)) continue;
                 const layout = layoutHandles[group];
                 if (layout === undefined) {
                     throw new Error('Active shader bind group lost its layout handle');
@@ -452,6 +540,7 @@ export class ShaderBindGroupResourceCache {
             layoutHandles,
             uniformBufferHandles,
             sampledResources,
+            deferredGroupIndices,
             handles
         };
     }

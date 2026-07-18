@@ -3808,6 +3808,77 @@ void main() { color = textureLod(sourceCube, vec3(1.0, 0.0, 0.0), 0.0); }`,
         device.destroy();
     });
 
+    it('fails closed for compute, clearBuffer, and indirect draw before native calls', () => {
+        const canvas = document.createElement('canvas');
+        const native = canvas.getContext('webgl2', { alpha: false, antialias: false });
+        if (native === null) return;
+        const control: RecordingControl = { calls: [], failDraw: false };
+        const device = createWebGL2RHIDevice(recordingContext(native, control));
+
+        const shaderCallCount = control.calls.length;
+        expect(() =>
+            device.createShader({
+                artifact: {
+                    backend: 'webgl2',
+                    stage: 'compute',
+                    code: '#version 300 es\nvoid main() {}',
+                    entryPoint: 'main',
+                    reflection: { bindings: [], workgroupSize: [1, 1, 1] },
+                    cacheKey: 500
+                }
+            })
+        ).toThrow(expect.objectContaining({ code: 'unsupported-feature' }));
+        expect(control.calls).toHaveLength(shaderCallCount);
+
+        const buffer = device.createBuffer({ size: 16, usage: RHIBufferUsage.COPY_DST });
+        const texture = device.createTexture({
+            size: { width: 1, height: 1 },
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        const frame = device.graphicsQueue.beginFrame();
+        const computeCallCount = control.calls.length;
+        expect(() => frame.beginComputePass()).toThrow(
+            expect.objectContaining({ code: 'unsupported-feature', path: 'computePass' })
+        );
+        expect(() => {
+            frame.clearBuffer(buffer);
+        }).toThrow(expect.objectContaining({ code: 'unsupported-feature', path: 'clearBuffer' }));
+        expect(control.calls).toHaveLength(computeCallCount);
+
+        const pass = frame.beginRenderPass({
+            colorAttachments: [
+                {
+                    view: texture.createView(),
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                    clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                }
+            ]
+        });
+        const indirectCallCount = control.calls.length;
+        expect(() => {
+            pass.drawIndirect(buffer);
+        }).toThrow(
+            expect.objectContaining({
+                code: 'unsupported-feature',
+                path: 'renderPass.drawIndirect'
+            })
+        );
+        expect(() => {
+            pass.drawIndexedIndirect(buffer);
+        }).toThrow(
+            expect.objectContaining({
+                code: 'unsupported-feature',
+                path: 'renderPass.drawIndexedIndirect'
+            })
+        );
+        expect(control.calls).toHaveLength(indirectCallCount);
+        pass.end();
+        device.graphicsQueue.endFrame(frame);
+        device.destroy();
+    });
+
     it('contains no software command list or replay queue', () => {
         const sources = import.meta.glob<string>(
             '../../../../src/render/rhi/backends/webgl2/**/*.ts',

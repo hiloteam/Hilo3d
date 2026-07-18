@@ -18,8 +18,9 @@ import type {
 } from './RendererList';
 import type { ScriptableRenderGraph } from './ScriptableRenderGraph';
 
-/** Future engine capabilities that require a complete SRP/RHI vertical implementation. */
-export type RenderPipelineCapabilityName = 'storage-buffer' | 'storage-texture' | 'compute-pass';
+/** Optional renderer capabilities exposed only after their complete SRP/RHI path is available. */
+export type RenderPipelineCapabilityName =
+    'storage-buffer' | 'storage-texture' | 'compute-pass' | 'indirect-draw';
 
 /** Portable texture roles available to creation-time requirement validation. */
 export type RenderPipelineTextureUse =
@@ -27,6 +28,7 @@ export type RenderPipelineTextureUse =
     | 'filterable-sampled'
     | 'color-attachment'
     | 'depth-stencil-attachment'
+    | 'storage'
     | 'copy-source'
     | 'copy-destination';
 
@@ -38,6 +40,34 @@ export interface RenderPipelineLimits {
     readonly maxColorAttachments: number;
     /** Maximum sampled textures visible to one shader stage. */
     readonly maxSampledTexturesPerShaderStage: number;
+    /** Maximum bind groups in one pipeline layout. */
+    readonly maxBindGroups: number;
+    /** Maximum bindings declared by one bind group. */
+    readonly maxBindingsPerBindGroup: number;
+    /** Maximum byte size of any GPU buffer. */
+    readonly maxBufferSize: number;
+    /** Maximum storage buffers visible to one shader stage, when storage is supported. */
+    readonly maxStorageBuffersPerShaderStage?: number;
+    /** Maximum storage textures visible to one shader stage, when storage is supported. */
+    readonly maxStorageTexturesPerShaderStage?: number;
+    /** Maximum byte range of one storage-buffer binding. */
+    readonly maxStorageBufferBindingSize?: number;
+    /** Required byte alignment for static and dynamic storage-buffer offsets. */
+    readonly minStorageBufferOffsetAlignment?: number;
+    /** Maximum dynamic storage-buffer bindings in one pipeline layout. */
+    readonly maxDynamicStorageBuffersPerPipelineLayout?: number;
+    /** Maximum workgroup address-space storage in bytes. */
+    readonly maxComputeWorkgroupStorageSize?: number;
+    /** Maximum shader invocations in one workgroup. */
+    readonly maxComputeInvocationsPerWorkgroup?: number;
+    /** Maximum X dimension of a compute workgroup. */
+    readonly maxComputeWorkgroupSizeX?: number;
+    /** Maximum Y dimension of a compute workgroup. */
+    readonly maxComputeWorkgroupSizeY?: number;
+    /** Maximum Z dimension of a compute workgroup. */
+    readonly maxComputeWorkgroupSizeZ?: number;
+    /** Maximum direct dispatch count in each dimension. */
+    readonly maxComputeWorkgroupsPerDimension?: number;
 }
 
 /** Frozen effective capabilities for one renderer device generation. */

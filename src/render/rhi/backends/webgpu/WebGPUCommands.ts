@@ -1,6 +1,7 @@
 import type {
     RHICommandContext,
     RHICommandContextState,
+    RHIComputePassDescriptor,
     RHIFrameDiagnostics,
     RHIImageCopyBuffer,
     RHIImageCopyExternalImage,
@@ -9,6 +10,7 @@ import type {
     RHIImageCopyTexture,
     RHIRenderPassDescriptor
 } from '../../core/RHICommands';
+import { validateRHIClearBuffer } from '../../core/RHICommandValidation';
 import {
     validateRHICopyBufferToBuffer,
     validateRHICopyBufferToTexture,
@@ -30,6 +32,7 @@ import type { WebGPUDevice } from './WebGPUDevice';
 import { WebGPUBuffer, WebGPUTexture } from './WebGPUResources';
 import type { WebGPUQueue, WebGPUUploadAllocation } from './WebGPUQueue';
 import { WebGPURenderPass, type WebGPURenderPassStorage } from './WebGPURenderPass';
+import { WebGPUComputePass, type WebGPUComputePassStorage } from './WebGPUComputePass';
 
 export function resetWebGPUFrameDiagnostics(target?: RHIFrameDiagnostics): RHIFrameDiagnostics {
     const diagnostics =
@@ -37,8 +40,14 @@ export function resetWebGPUFrameDiagnostics(target?: RHIFrameDiagnostics): RHIFr
         ({
             commandCount: 0,
             drawCount: 0,
+            indirectDrawCount: 0,
+            dispatchCount: 0,
+            dispatchedWorkgroupCount: 0,
+            bufferClearCount: 0,
             pipelineSwitches: 0,
             bindGroupSwitches: 0,
+            computePipelineSwitches: 0,
+            computeBindGroupSwitches: 0,
             vertexBufferSwitches: 0,
             nativeStateCalls: 0,
             frameArenaGrowths: 0,
@@ -48,8 +57,14 @@ export function resetWebGPUFrameDiagnostics(target?: RHIFrameDiagnostics): RHIFr
         } satisfies RHIFrameDiagnostics);
     diagnostics.commandCount = 0;
     diagnostics.drawCount = 0;
+    diagnostics.indirectDrawCount = 0;
+    diagnostics.dispatchCount = 0;
+    diagnostics.dispatchedWorkgroupCount = 0;
+    diagnostics.bufferClearCount = 0;
     diagnostics.pipelineSwitches = 0;
     diagnostics.bindGroupSwitches = 0;
+    diagnostics.computePipelineSwitches = 0;
+    diagnostics.computeBindGroupSwitches = 0;
     diagnostics.vertexBufferSwitches = 0;
     diagnostics.nativeStateCalls = 0;
     diagnostics.frameArenaGrowths = 0;
@@ -138,7 +153,7 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
     readonly diagnostics: RHIFrameDiagnostics;
     readonly #nativeEncoder: GPUCommandEncoder;
     #contextState: RHICommandContextState = 'open';
-    #activePass: WebGPURenderPass | null = null;
+    #activePass: WebGPURenderPass | WebGPUComputePass | null = null;
     #externalImageUploadPhase = true;
     readonly #retainedReferences: WebGPUFrameReferences;
     readonly #uploadAllocation: WebGPUUploadAllocation = { buffer: null, offset: 0 };
@@ -387,6 +402,44 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
         return pass;
     }
 
+    beginComputePass(descriptor: RHIComputePassDescriptor = {}): WebGPUComputePass {
+        this.assertOpen();
+        if (!this.owner.capabilities.features.has('compute-pipelines')) {
+            validationFailure('unsupported-feature', 'compute passes are unsupported', 'context');
+        }
+        const storage = this.queue.acquireComputePassStorage(descriptor, this);
+        this.closeExternalImageUploadPhase();
+        let nativePass: GPUComputePassEncoder;
+        try {
+            nativePass = this.#nativeEncoder.beginComputePass(storage.nativeDescriptor);
+        } catch (error) {
+            this.queue.releaseComputePassStorage(storage);
+            throw error;
+        }
+        this.#contextState = 'compute-pass';
+        this.diagnostics.commandCount += 1;
+        this.diagnostics.nativeStateCalls += 1;
+        const pass = new WebGPUComputePass(this, nativePass, storage, descriptor.label ?? '');
+        this.#activePass = pass;
+        return pass;
+    }
+
+    clearBuffer(buffer: RHIBuffer, offset = 0, size?: number): void {
+        this.assertOpen();
+        const resolvedSize = validateRHIClearBuffer(
+            this.owner,
+            buffer,
+            offset,
+            size ?? buffer.size - offset
+        );
+        const nativeBuffer = webGPUBuffer(this.owner, buffer, 'clearBuffer.buffer');
+        this.retain(nativeBuffer);
+        this.closeExternalImageUploadPhase();
+        this.#nativeEncoder.clearBuffer(nativeBuffer.nativeHandle, offset, resolvedSize);
+        this.diagnostics.bufferClearCount += 1;
+        this.recordNativeCommand();
+    }
+
     copyBufferToBuffer(
         source: RHIBuffer,
         sourceOffset: number,
@@ -499,6 +552,23 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
         if (this.#activePass !== pass) return;
         this.#activePass = null;
         this.queue.releaseRenderPassStorage(storage);
+    }
+
+    /** @internal */
+    closeComputePass(pass: WebGPUComputePass, storage: WebGPUComputePassStorage): void {
+        if (this.#activePass !== pass || this.#contextState !== 'compute-pass') {
+            validationFailure('invalid-state', 'compute pass is not active', 'computePass');
+        }
+        this.#activePass = null;
+        this.#contextState = 'open';
+        this.queue.releaseComputePassStorage(storage);
+    }
+
+    /** @internal Release pass backing while the context itself transitions to aborted. */
+    abortComputePass(pass: WebGPUComputePass, storage: WebGPUComputePassStorage): void {
+        if (this.#activePass !== pass) return;
+        this.#activePass = null;
+        this.queue.releaseComputePassStorage(storage);
     }
 
     /** @internal */

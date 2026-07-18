@@ -97,6 +97,14 @@ export {
 
 export { default as RenderInfo } from './render/RenderInfo';
 export type {
+    StorageBuffer,
+    StorageBufferDescriptor,
+    StorageBufferRange,
+    StorageBufferReadback,
+    StorageBufferRecoveryPolicy,
+    StorageBufferUsage
+} from './render/StorageBuffer';
+export type {
     RenderTarget,
     RenderTargetColor,
     RenderTargetColorAttachmentOptions,
@@ -112,6 +120,52 @@ export type {
     RenderTargetSelectionOptions,
     RenderTargetStoreOp
 } from './render/RenderTarget';
+export {
+    default as ComputeKernel,
+    type ComputeKernelDescriptor,
+    type ComputePipelineConstant
+} from './render/compute/ComputeKernel';
+export {
+    default as ComputeSampler,
+    type ComputeSamplerAddressMode,
+    type ComputeSamplerDescriptor,
+    type ComputeSamplerFilterMode
+} from './render/compute/ComputeSampler';
+export {
+    default as ComputeShader,
+    type ComputeShaderBinding,
+    type ComputeShaderDescriptor,
+    type ComputeStorageBufferAccess,
+    type ComputeStorageTextureFormat,
+    type ComputeStorageTextureViewDimension,
+    type ComputeTextureSampleType,
+    type ComputeTextureViewDimension,
+    type NormalizedComputeWorkgroupSize,
+    type ShaderReadBinding,
+    type ShaderTextureSampleType,
+    type ShaderTextureViewDimension
+} from './render/compute/ComputeShader';
+export {
+    default as StorageGraphicsShader,
+    type StorageGraphicsShaderDescriptor
+} from './render/compute/StorageGraphicsShader';
+export {
+    createStorageLayout,
+    StorageLayout,
+    type StorageArrayDefinition,
+    type StorageFieldLayout,
+    type StorageMatrixType,
+    type StoragePrimitiveType,
+    type StoragePrimitiveValue,
+    type StorageScalarType,
+    type StorageSchema,
+    type StorageStructDefinition,
+    type StorageType,
+    type StorageValue,
+    type StorageValues,
+    type StorageVectorType,
+    type StorageWriteResult
+} from './render/storage/StorageLayout';
 export {
     default as UniformBuffer,
     type UniformBufferDirtyRange,

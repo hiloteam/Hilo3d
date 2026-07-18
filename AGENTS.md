@@ -60,12 +60,17 @@ with one shared rendering frontend, a Render Graph, a portable RHI, and WebGPU/W
 
 ## Shader rules
 
-- Engine and example shaders have one GLSL ES 3.00 source of truth using `in`/`out`, `texture()`,
+- Portable raster shaders have one GLSL ES 3.00 source of truth using `in`/`out`, `texture()`,
   explicit fragment outputs, and std140 blocks.
-- WebGPU artifacts follow engine preprocessing -> Vulkan GLSL 4.50 -> Naga WASM -> WGSL. Do not add
-  a parallel hand-authored WGSL shader tree or skip preprocessing.
-- Non-sampler data belongs in registered std140 uniform blocks. GLSL samplers are the only values
-  outside blocks; both backends reject classic numeric uniforms.
+- Portable WebGPU raster artifacts follow engine preprocessing -> Vulkan GLSL 4.50 -> Naga WASM ->
+  WGSL. Do not add a parallel hand-authored raster WGSL tree or skip preprocessing.
+- WebGPU-only compute uses direct WGSL through `ComputeShader`; it must pass the engine's explicit
+  binding/workgroup contract and Naga WGSL validation before pipeline creation.
+- WebGPU-only storage-aware raster uses the constrained `StorageGraphicsShader` GLSL ES 3.10
+  readonly-std430 contract and still follows preprocessing -> Vulkan GLSL 4.50 -> Naga -> WGSL.
+- Portable non-sampler data belongs in registered std140 uniform blocks. GLSL samplers are the only
+  values outside blocks; both backends reject classic numeric uniforms. The constrained
+  storage-aware raster contract is the only std430 exception.
 - A shader change is complete only after the relevant WebGL2 compile/link, Naga translation, and
   real WebGPU pipeline or browser coverage passes.
 

@@ -55,6 +55,7 @@ export class Renderer<
     declare readonly render: RendererContract['render'];
     declare readonly renderFrame: RendererContract['renderFrame'];
     declare readonly supportsTextureCompression: RendererContract['supportsTextureCompression'];
+    declare readonly createStorageBuffer: RendererContract['createStorageBuffer'];
     declare readonly createRenderTarget: RendererContract['createRenderTarget'];
     declare readonly setRenderTarget: (
         ...args: Parameters<RendererContract['setRenderTarget']>

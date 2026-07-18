@@ -7,7 +7,11 @@ import DirectionalLight from '../../../src/light/DirectionalLight';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import Vector3 from '../../../src/math/Vector3';
 import Renderer from '../../../src/render/Renderer';
+import ComputeKernel from '../../../src/render/compute/ComputeKernel';
+import ComputeShader from '../../../src/render/compute/ComputeShader';
+import StorageGraphicsShader from '../../../src/render/compute/StorageGraphicsShader';
 import type { RenderTarget } from '../../../src/render/RenderTarget';
+import type { StorageBuffer } from '../../../src/render/StorageBuffer';
 import {
     ForwardRenderPipelineFactory,
     type ForwardRenderFeatureContext,
@@ -21,6 +25,7 @@ import type {
     RenderPipelineFactory
 } from '../../../src/render/pipeline/RenderPipeline';
 import type {
+    RenderGraphBufferHandle,
     RenderGraphTextureHandle,
     RenderPipelineColorAttachment,
     RenderPipelineTargetResources,
@@ -30,10 +35,15 @@ import type {
     ScriptableRenderPassContext,
     ScriptableRenderPrepareContext
 } from '../../../src/render/pipeline/ScriptableRenderGraph';
-import { SceneRenderPass } from '../../../src/render/pipeline/passes/SceneRenderPass';
+import {
+    SCENE_STORAGE_BIND_GROUP,
+    SceneRenderPass
+} from '../../../src/render/pipeline/passes/SceneRenderPass';
+import { ComputeRenderPass } from '../../../src/render/pipeline/passes/ComputeRenderPass';
 import { TextureCopyPass } from '../../../src/render/pipeline/passes/TextureCopyPass';
 import { PresentRenderPass } from '../../../src/render/pipeline/passes/FullscreenRenderPass';
 import type { RenderTargetResourceCache } from '../../../src/render/renderer/RenderTargetResourceCache';
+import { MeshDrawProcessor } from '../../../src/render/renderer/MeshDrawProcessor';
 import type { RHIQueue, RHIRenderPassDescriptor } from '../../../src/render/rhi/core';
 
 class TestPipeline implements RenderPipeline {
@@ -74,6 +84,80 @@ class TestPipeline implements RenderPipeline {
 
     destroy(): void {
         this.destroyCount++;
+    }
+}
+
+class InstancedStorageScenePipeline implements RenderPipeline {
+    readonly name = 'instanced-storage-scene';
+    readonly pass = new SceneRenderPass('Instanced storage scene');
+    readonly shader = new StorageGraphicsShader({
+        label: 'Instanced renderer-list storage fallback',
+        vertexSource: `#version 310 es
+precision highp float;
+layout(std140) uniform ModelBlock {
+    mat4 u_modelMatrix;
+};
+in vec3 a_position;
+void main() {
+    gl_Position = u_modelMatrix * vec4(a_position, 1.0);
+}`,
+        fragmentSource: `#version 310 es
+precision highp float;
+layout(std430) readonly buffer SceneValues {
+    vec4 values[];
+} sceneValues;
+layout(location = 0) out vec4 color;
+void main() {
+    color = sceneValues.values[0];
+}`,
+        bindings: [
+            {
+                name: 'ModelBlock',
+                group: 2,
+                binding: 0,
+                kind: 'uniform-buffer'
+            },
+            {
+                name: 'sceneValues',
+                group: SCENE_STORAGE_BIND_GROUP,
+                binding: 0,
+                kind: 'read-only-storage-buffer',
+                minBindingSize: 16
+            }
+        ]
+    });
+    buffer: StorageBuffer | null = null;
+
+    record(context: RenderPipelineContext): void {
+        const buffer = this.buffer;
+        if (buffer === null) throw new Error('Instanced storage scene buffer is unavailable');
+        const culling = context.cull();
+        const rendererList = context.createRendererList({
+            cullingResults: culling,
+            queue: 'all',
+            sorting: 'material-front-to-back'
+        });
+        const storage = context.graph.importStorageBuffer(buffer);
+        const output = context.graph.importOutput();
+        context.graph.addPass(this.pass, {
+            rendererList,
+            colorAttachments: [
+                {
+                    texture: output.color(0),
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 }
+                }
+            ],
+            storageShaderVariant: {
+                shader: this.shader,
+                buffers: [{ buffer: storage }]
+            }
+        });
+    }
+
+    destroy(): void {
+        this.buffer = null;
     }
 }
 
@@ -159,6 +243,192 @@ class TextureCopySideEffectPass implements ScriptableRenderPass<TextureCopySideE
         parameters: TextureCopySideEffectParameters
     ): void {
         context.commands.copyTexture(parameters.source, parameters.destination);
+    }
+}
+
+interface BufferWriteParameters {
+    readonly buffer: RenderGraphBufferHandle;
+}
+
+class BufferWritePass implements ScriptableRenderPass<BufferWriteParameters> {
+    readonly name = 'Buffer complete write';
+
+    setup(builder: ScriptableRenderPassBuilder, parameters: BufferWriteParameters): void {
+        builder.writeBuffer(parameters.buffer, 'copy-destination');
+    }
+
+    execute(): void {
+        // Dependency fixture: the declaration is the complete-write contract under test.
+    }
+}
+
+interface BufferCopyParameters {
+    readonly source: RenderGraphBufferHandle;
+    readonly destination: RenderGraphBufferHandle;
+}
+
+class BufferCopySideEffectPass implements ScriptableRenderPass<BufferCopyParameters> {
+    readonly name = 'Buffer copy side effect';
+
+    setup(builder: ScriptableRenderPassBuilder, parameters: BufferCopyParameters): void {
+        builder.copyBuffer(parameters.source, parameters.destination);
+        builder.markSideEffect();
+    }
+
+    execute(context: ScriptableRenderPassContext, parameters: BufferCopyParameters): void {
+        context.commands.copyBuffer(parameters.source, parameters.destination);
+    }
+}
+
+class BufferCopyPipeline implements RenderPipeline {
+    readonly name = 'buffer-copy';
+    readonly writePass = new BufferWritePass();
+    readonly copyPass = new BufferCopySideEffectPass();
+
+    record(context: RenderPipelineContext): void {
+        const source = context.graph.createBuffer('copy source buffer', { byteLength: 16 });
+        const destination = context.graph.createBuffer('copy destination buffer', {
+            byteLength: 16
+        });
+        context.graph.addPass(this.writePass, { buffer: source });
+        context.graph.addPass(this.copyPass, { source, destination });
+    }
+
+    destroy(): void {
+        // No renderer-local resources.
+    }
+}
+
+class BufferClearPipeline implements RenderPipeline {
+    readonly name = 'buffer-clear';
+    readonly pass: ScriptableRenderPass<BufferWriteParameters> = {
+        name: 'WebGPU buffer clear',
+        setup(builder, parameters): void {
+            builder.clearBuffer(parameters.buffer);
+            builder.markSideEffect();
+        },
+        execute(context, parameters): void {
+            context.commands.clearBuffer(parameters.buffer);
+        }
+    };
+
+    record(context: RenderPipelineContext): void {
+        const buffer = context.graph.createBuffer('clear destination buffer', { byteLength: 16 });
+        context.graph.addPass(this.pass, { buffer });
+    }
+
+    destroy(): void {
+        // No renderer-local resources.
+    }
+}
+
+class WebGLComputePipeline implements RenderPipeline {
+    readonly name = 'webgl-compute-rejection';
+    readonly pass = new ComputeRenderPass(
+        new ComputeKernel({
+            shader: new ComputeShader({
+                source: '@compute @workgroup_size(1) fn main() {}',
+                workgroupSize: [1],
+                bindings: []
+            })
+        })
+    );
+
+    record(context: RenderPipelineContext): void {
+        context.graph.addPass(this.pass, {
+            buffers: [],
+            textures: [],
+            dispatch: { x: 1 }
+        });
+    }
+
+    destroy(): void {
+        // ComputeKernel contains no renderer-local resources.
+    }
+}
+
+class LiveComputePipeline implements RenderPipeline {
+    readonly name = 'live-compute';
+    readonly pass = new ComputeRenderPass(
+        new ComputeKernel({
+            shader: new ComputeShader({
+                source: `
+@group(0) @binding(0) var<storage, read_write> output: array<u32>;
+@compute @workgroup_size(4)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    output[id.x] = id.x + 7u;
+}`,
+                workgroupSize: [4],
+                bindings: [
+                    {
+                        name: 'output',
+                        group: 0,
+                        binding: 0,
+                        kind: 'storage-buffer',
+                        access: 'write-discard',
+                        minBindingSize: 16
+                    }
+                ]
+            })
+        })
+    );
+    buffer: StorageBuffer | null = null;
+
+    record(context: RenderPipelineContext): void {
+        const buffer = this.buffer;
+        if (buffer === null) throw new Error('Live compute buffer is unavailable');
+        const output = context.graph.importStorageBuffer(buffer);
+        context.graph.addPass(this.pass, {
+            buffers: [{ buffer: output }],
+            textures: [],
+            dispatch: { x: 1 }
+        });
+    }
+
+    destroy(): void {
+        this.buffer = null;
+    }
+}
+
+class InvalidStorageTextureMipPipeline implements RenderPipeline {
+    readonly name = 'invalid-storage-texture-mips';
+    readonly pass = new ComputeRenderPass(
+        new ComputeKernel({
+            shader: new ComputeShader({
+                source: `
+@group(0) @binding(0) var output: texture_storage_2d<rgba8unorm, write>;
+@compute @workgroup_size(1)
+fn main() { textureStore(output, vec2<i32>(0), vec4<f32>(1.0)); }`,
+                workgroupSize: [1],
+                bindings: [
+                    {
+                        name: 'output',
+                        group: 0,
+                        binding: 0,
+                        kind: 'storage-texture',
+                        access: 'write-only',
+                        format: 'rgba8unorm'
+                    }
+                ]
+            })
+        })
+    );
+
+    record(context: RenderPipelineContext): void {
+        const texture = context.graph.createTexture('invalid storage mip chain', {
+            format: 'rgba8unorm',
+            extent: { width: 4, height: 4 },
+            mipLevelCount: 2
+        });
+        context.graph.addPass(this.pass, {
+            buffers: [],
+            textures: [{ texture }],
+            dispatch: { x: 1 }
+        });
+    }
+
+    destroy(): void {
+        // ComputeKernel contains no renderer-local resources.
     }
 }
 
@@ -854,6 +1124,78 @@ describe('Scriptable render pipeline', () => {
         expect(factory.runtime?.destroyCount).toBe(1);
     });
 
+    it('expands planner-owned instanced batches into ordered direct storage scene draws', async () => {
+        const runtime = new InstancedStorageScenePipeline();
+        const renderer = await Renderer.create({
+            backend: 'webgpu',
+            domElement: document.createElement('canvas'),
+            width: 16,
+            height: 8,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(runtime)
+        });
+        activeRenderers.push(renderer);
+        runtime.buffer = renderer.createStorageBuffer({
+            label: 'instanced storage scene values',
+            byteLength: 16,
+            usage: ['storage'],
+            initialData: new Float32Array([1, 0.25, 0, 1])
+        });
+        const geometry = new BoxGeometry();
+        const material = new BasicMaterial({
+            lightType: 'NONE',
+            depthTest: false,
+            depthMask: false,
+            cullFace: false
+        });
+        const first = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
+        const second = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
+        first.setPosition(-0.25, 0, 0);
+        second.setPosition(0.25, 0, 0);
+        const transparentGeometry = new BoxGeometry();
+        const transparentMaterial = new BasicMaterial({
+            lightType: 'NONE',
+            transparent: true,
+            depthTest: false,
+            depthMask: false,
+            cullFace: false
+        });
+        const transparentFirst = new Mesh({
+            geometry: transparentGeometry,
+            material: transparentMaterial,
+            useInstanced: true,
+            frustumTest: false
+        });
+        const transparentSecond = new Mesh({
+            geometry: transparentGeometry,
+            material: transparentMaterial,
+            useInstanced: true,
+            frustumTest: false
+        });
+        const scene = new Node();
+        scene.addChild(first);
+        scene.addChild(second);
+        scene.addChild(transparentFirst);
+        scene.addChild(transparentSecond);
+        const prepareStorageScene = vi.spyOn(MeshDrawProcessor.prototype, 'prepareStorageScene');
+
+        renderer.render(scene, new PerspectiveCamera());
+        renderer.render(scene, new PerspectiveCamera());
+        await renderer.waitForIdle();
+
+        expect(prepareStorageScene).toHaveBeenCalledTimes(8);
+        expect(prepareStorageScene.mock.calls.slice(4).map(call => call[0])).toEqual([
+            first,
+            second,
+            transparentFirst,
+            transparentSecond
+        ]);
+        expect(prepareStorageScene.mock.calls.every(call => call[6] === true)).toBe(true);
+        expect(renderer.renderInfo.drawCount).toBe(4);
+        expect(renderer.renderInfo.faceCount).toBeGreaterThan(0);
+        prepareStorageScene.mockRestore();
+    });
+
     it('resolves texture-copy handles during setup and emits only the declared copy in execute', async () => {
         const renderer = await Renderer.create({
             backend: 'webgl2',
@@ -876,6 +1218,114 @@ describe('Scriptable render pipeline', () => {
 
         expect(renderer.isReady).toBe(true);
         target.destroy();
+    });
+
+    it('infers transient buffer usages and resolves a declared copy before execution', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 4,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(new BufferCopyPipeline())
+        });
+        activeRenderers.push(renderer);
+
+        expect(() => {
+            renderer.render(new Node(), new PerspectiveCamera());
+        }).not.toThrow();
+        expect(renderer.renderInfo.drawCount).toBe(0);
+    });
+
+    it('rejects WebGPU-only buffer clear declarations before beginning a WebGL 2 frame', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 4,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(new BufferClearPipeline())
+        });
+        activeRenderers.push(renderer);
+        const extension = renderer.getExtension('rhi') as {
+            readonly device?: { readonly graphicsQueue: { beginFrame(): unknown } };
+        } | null;
+        if (extension?.device === undefined) throw new Error('Expected an RHI extension');
+        const beginFrame = vi.spyOn(extension.device.graphicsQueue, 'beginFrame');
+
+        expect(() => {
+            renderer.render(new Node(), new PerspectiveCamera());
+        }).toThrow(/Buffer clear is supported only by WebGPU/u);
+        expect(beginFrame).not.toHaveBeenCalled();
+    });
+
+    it('rejects ComputeRenderPass on WebGL 2 before beginning an RHI frame', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 4,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(new WebGLComputePipeline())
+        });
+        activeRenderers.push(renderer);
+        const extension = renderer.getExtension('rhi') as {
+            readonly device?: { readonly graphicsQueue: { beginFrame(): unknown } };
+        } | null;
+        if (extension?.device === undefined) throw new Error('Expected an RHI extension');
+        const beginFrame = vi.spyOn(extension.device.graphicsQueue, 'beginFrame');
+
+        expect(() => {
+            renderer.render(new Node(), new PerspectiveCamera());
+        }).toThrow(/ComputeRenderPass.*only.*WebGPU/u);
+        expect(beginFrame).not.toHaveBeenCalled();
+    });
+
+    it('dispatches ComputeRenderPass through the shared graph and reads exact WebGPU results', async () => {
+        const runtime = new LiveComputePipeline();
+        const renderer = await Renderer.create({
+            backend: 'webgpu',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 4,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(runtime)
+        });
+        activeRenderers.push(renderer);
+        runtime.buffer = renderer.createStorageBuffer({
+            label: 'live compute output',
+            byteLength: 16,
+            usage: ['storage', 'copy-source']
+        });
+
+        renderer.render(new Node(), new PerspectiveCamera());
+        await renderer.waitForIdle();
+        const result = await runtime.buffer.read();
+
+        expect([...new Uint32Array(result.data.buffer)]).toEqual([7, 8, 9, 10]);
+        expect(renderer.renderInfo.drawCount).toBe(0);
+    });
+
+    it('rejects multi-mip storage texture views before beginning an RHI frame', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgpu',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 4,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(new InvalidStorageTextureMipPipeline())
+        });
+        activeRenderers.push(renderer);
+        const extension = renderer.getExtension('rhi') as {
+            readonly device?: { readonly graphicsQueue: { beginFrame(): unknown } };
+        } | null;
+        if (extension?.device === undefined) throw new Error('Expected an RHI extension');
+        const beginFrame = vi.spyOn(extension.device.graphicsQueue, 'beginFrame');
+
+        expect(() => {
+            renderer.render(new Node(), new PerspectiveCamera());
+        }).toThrow(/storage writes require one complete single-sample 2d mip subresource/u);
+        expect(beginFrame).not.toHaveBeenCalled();
     });
 
     it('keeps sampled depth reads independent from COPY_SRC usage', async () => {
@@ -1459,7 +1909,7 @@ describe('Scriptable render pipeline', () => {
                 height: 4,
                 renderPipeline: factory
             })
-        ).rejects.toThrow(/unsupported capability compute-pass/u);
+        ).rejects.toThrow(/compute-pass requires WebGPU/u);
         expect(create).not.toHaveBeenCalled();
     });
 
@@ -1489,7 +1939,7 @@ describe('Scriptable render pipeline', () => {
                 height: 4,
                 renderPipeline: factory
             })
-        ).rejects.toThrow(/unsupported capability compute-pass/u);
+        ).rejects.toThrow(/compute-pass requires WebGPU/u);
         expect(create).not.toHaveBeenCalled();
     });
 

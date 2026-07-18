@@ -2,6 +2,8 @@ import type { RGPassBuilder, RenderPassTemplate } from '../../graph/RenderGraphB
 import type { RGPassContext, RGPrepareContext } from '../../graph/RenderGraphExecutor';
 import type {
     RGBufferHandle,
+    RGBufferReadUse,
+    RGBufferWriteUse,
     RGColorAttachmentDeclaration,
     RGDepthStencilAttachmentDeclaration,
     RGPassHandle,
@@ -11,6 +13,7 @@ import {
     RHITextureUsage,
     rhiTextureFormatHasDepth,
     rhiTextureFormatHasStencil,
+    type RHIBindGroup,
     type RHIColor,
     type RHILoadOp,
     type RHIRect,
@@ -243,8 +246,10 @@ export class SharedDrawPassParameters {
     private readonly writeTextures: (RGTextureHandle | null)[] = [];
     private writeTextureCount = 0;
     private readonly readBuffers: (RGBufferHandle | null)[] = [];
+    private readonly readBufferUses: (RGBufferReadUse | null)[] = [];
     private readBufferCount = 0;
     private readonly writeBuffers: (RGBufferHandle | null)[] = [];
+    private readonly writeBufferUses: (RGBufferWriteUse | null)[] = [];
     private writeBufferCount = 0;
     private readonly dependencies: (RGPassHandle | null)[] = [];
     private dependencyCount = 0;
@@ -296,8 +301,14 @@ export class SharedDrawPassParameters {
         for (let index = 0; index < drawCapacity; index += 1) this.draws.push(null);
         for (let index = 0; index < readTextureCapacity; index += 1) this.readTextures.push(null);
         for (let index = 0; index < writeTextureCapacity; index += 1) this.writeTextures.push(null);
-        for (let index = 0; index < readBufferCapacity; index += 1) this.readBuffers.push(null);
-        for (let index = 0; index < writeBufferCapacity; index += 1) this.writeBuffers.push(null);
+        for (let index = 0; index < readBufferCapacity; index += 1) {
+            this.readBuffers.push(null);
+            this.readBufferUses.push(null);
+        }
+        for (let index = 0; index < writeBufferCapacity; index += 1) {
+            this.writeBuffers.push(null);
+            this.writeBufferUses.push(null);
+        }
         for (let index = 0; index < dependencyCapacity; index += 1) this.dependencies.push(null);
     }
 
@@ -417,12 +428,16 @@ export class SharedDrawPassParameters {
         this.writeTextures[this.writeTextureCount++] = handle;
     }
 
-    addReadBuffer(handle: RGBufferHandle): void {
-        this.readBuffers[this.readBufferCount++] = handle;
+    addReadBuffer(handle: RGBufferHandle, use: RGBufferReadUse): void {
+        const index = this.readBufferCount++;
+        this.readBuffers[index] = handle;
+        this.readBufferUses[index] = use;
     }
 
-    addWriteBuffer(handle: RGBufferHandle): void {
-        this.writeBuffers[this.writeBufferCount++] = handle;
+    addWriteBuffer(handle: RGBufferHandle, use: RGBufferWriteUse): void {
+        const index = this.writeBufferCount++;
+        this.writeBuffers[index] = handle;
+        this.writeBufferUses[index] = use;
     }
 
     dependsOn(handle: RGPassHandle): void {
@@ -483,6 +498,30 @@ export class SharedDrawPassParameters {
         this.prepareCallback = callback;
     }
 
+    /** @internal Overlay one prepare-resolved bind group on a contiguous draw range. */
+    setPreparedBindGroupForRange(
+        start: number,
+        count: number,
+        groupIndex: number,
+        bindGroup: RHIBindGroup
+    ): void {
+        if (
+            !Number.isSafeInteger(start) ||
+            !Number.isSafeInteger(count) ||
+            start < 0 ||
+            count < 0 ||
+            start + count > this.activeDrawCount
+        ) {
+            throw new RangeError('Prepared bind-group range is outside the active pass draws');
+        }
+        const end = start + count;
+        for (let index = start; index < end; index += 1) {
+            const draw = this.draws[index];
+            if (draw === null || draw === undefined) throw MISSING_DRAW_ERROR;
+            draw.setPreparedBindGroup(groupIndex, bindGroup);
+        }
+    }
+
     setViewport(viewport: RHIViewport | null): void {
         this.hasViewport = viewport !== null;
         if (!viewport) return;
@@ -541,11 +580,17 @@ export class SharedDrawPassParameters {
         }
         for (let index = 0; index < this.readBufferCount; index += 1) {
             const handle = this.readBuffers[index];
-            if (handle !== null && handle !== undefined) builder.readBuffer(handle);
+            const use = this.readBufferUses[index];
+            if (handle !== null && handle !== undefined && use !== null && use !== undefined) {
+                builder.readBuffer(handle, use);
+            }
         }
         for (let index = 0; index < this.writeBufferCount; index += 1) {
             const handle = this.writeBuffers[index];
-            if (handle !== null && handle !== undefined) builder.writeBuffer(handle);
+            const use = this.writeBufferUses[index];
+            if (handle !== null && handle !== undefined && use !== null && use !== undefined) {
+                builder.writeBuffer(handle, use);
+            }
         }
         for (let index = 0; index < this.colorAttachmentCount; index += 1) {
             const slot = this.colorSlots[index];

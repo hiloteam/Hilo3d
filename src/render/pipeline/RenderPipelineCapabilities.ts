@@ -17,11 +17,14 @@ import type {
     RenderTargetSampleCount
 } from '../RenderTarget';
 
-const SUPPORTED_PIPELINE_CAPABILITIES: ReadonlySet<RenderPipelineCapabilityName> = new Set();
+// Atomic release gate: flip only after public passes, graph access, RHI, both backend policies,
+// recovery, and browser coverage are all present. Per-device predicates below remain fail-closed.
+const ENABLED_PUBLIC_CAPABILITY_RELEASES: ReadonlySet<string> = new Set(['compute-storage']);
 const PIPELINE_CAPABILITY_NAMES: readonly RenderPipelineCapabilityName[] = Object.freeze([
     'storage-buffer',
     'storage-texture',
-    'compute-pass'
+    'compute-pass',
+    'indirect-draw'
 ]);
 const PUBLIC_TEXTURE_FORMATS: readonly (
     RenderTargetColorFormat | RenderTargetDepthStencilFormat
@@ -41,6 +44,7 @@ const PUBLIC_TEXTURE_USES: readonly RenderPipelineTextureUse[] = Object.freeze([
     'filterable-sampled',
     'color-attachment',
     'depth-stencil-attachment',
+    'storage',
     'copy-source',
     'copy-destination'
 ]);
@@ -51,6 +55,7 @@ interface PublicTextureFormatSnapshot {
     readonly sampled: boolean;
     readonly filterable: boolean;
     readonly renderable: boolean;
+    readonly storage: boolean;
     readonly sampleCounts: readonly number[];
 }
 
@@ -65,6 +70,34 @@ function publicPipelineLimit(
             return limits.maxColorAttachments;
         case 'maxSampledTexturesPerShaderStage':
             return limits.maxSampledTexturesPerShaderStage;
+        case 'maxBindGroups':
+            return limits.maxBindGroups;
+        case 'maxBindingsPerBindGroup':
+            return limits.maxBindingsPerBindGroup;
+        case 'maxBufferSize':
+            return limits.maxBufferSize;
+        case 'maxStorageBuffersPerShaderStage':
+            return limits.maxStorageBuffersPerShaderStage;
+        case 'maxStorageTexturesPerShaderStage':
+            return limits.maxStorageTexturesPerShaderStage;
+        case 'maxStorageBufferBindingSize':
+            return limits.maxStorageBufferBindingSize;
+        case 'minStorageBufferOffsetAlignment':
+            return limits.minStorageBufferOffsetAlignment;
+        case 'maxDynamicStorageBuffersPerPipelineLayout':
+            return limits.maxDynamicStorageBuffersPerPipelineLayout;
+        case 'maxComputeWorkgroupStorageSize':
+            return limits.maxComputeWorkgroupStorageSize;
+        case 'maxComputeInvocationsPerWorkgroup':
+            return limits.maxComputeInvocationsPerWorkgroup;
+        case 'maxComputeWorkgroupSizeX':
+            return limits.maxComputeWorkgroupSizeX;
+        case 'maxComputeWorkgroupSizeY':
+            return limits.maxComputeWorkgroupSizeY;
+        case 'maxComputeWorkgroupSizeZ':
+            return limits.maxComputeWorkgroupSizeZ;
+        case 'maxComputeWorkgroupsPerDimension':
+            return limits.maxComputeWorkgroupsPerDimension;
         default:
             return undefined;
     }
@@ -83,7 +116,65 @@ export function createRenderPipelineCapabilities(
     const limits: Readonly<RenderPipelineLimits> = Object.freeze({
         maxTextureDimension2D: capabilities.limits.maxTextureDimension2D,
         maxColorAttachments: capabilities.limits.maxColorAttachments,
-        maxSampledTexturesPerShaderStage: capabilities.limits.maxSampledTexturesPerShaderStage
+        maxSampledTexturesPerShaderStage: capabilities.limits.maxSampledTexturesPerShaderStage,
+        maxBindGroups: capabilities.limits.maxBindGroups,
+        maxBindingsPerBindGroup: capabilities.limits.maxBindingsPerBindGroup,
+        maxBufferSize: capabilities.limits.maxBufferSize,
+        ...(capabilities.limits.maxStorageBuffersPerShaderStage === undefined
+            ? {}
+            : {
+                  maxStorageBuffersPerShaderStage:
+                      capabilities.limits.maxStorageBuffersPerShaderStage
+              }),
+        ...(capabilities.limits.maxStorageTexturesPerShaderStage === undefined
+            ? {}
+            : {
+                  maxStorageTexturesPerShaderStage:
+                      capabilities.limits.maxStorageTexturesPerShaderStage
+              }),
+        ...(capabilities.limits.maxStorageBufferBindingSize === undefined
+            ? {}
+            : {
+                  maxStorageBufferBindingSize: capabilities.limits.maxStorageBufferBindingSize
+              }),
+        ...(capabilities.limits.minStorageBufferOffsetAlignment === undefined
+            ? {}
+            : {
+                  minStorageBufferOffsetAlignment:
+                      capabilities.limits.minStorageBufferOffsetAlignment
+              }),
+        ...(capabilities.limits.maxDynamicStorageBuffersPerPipelineLayout === undefined
+            ? {}
+            : {
+                  maxDynamicStorageBuffersPerPipelineLayout:
+                      capabilities.limits.maxDynamicStorageBuffersPerPipelineLayout
+              }),
+        ...(capabilities.limits.maxComputeWorkgroupStorageSize === undefined
+            ? {}
+            : {
+                  maxComputeWorkgroupStorageSize: capabilities.limits.maxComputeWorkgroupStorageSize
+              }),
+        ...(capabilities.limits.maxComputeInvocationsPerWorkgroup === undefined
+            ? {}
+            : {
+                  maxComputeInvocationsPerWorkgroup:
+                      capabilities.limits.maxComputeInvocationsPerWorkgroup
+              }),
+        ...(capabilities.limits.maxComputeWorkgroupSizeX === undefined
+            ? {}
+            : { maxComputeWorkgroupSizeX: capabilities.limits.maxComputeWorkgroupSizeX }),
+        ...(capabilities.limits.maxComputeWorkgroupSizeY === undefined
+            ? {}
+            : { maxComputeWorkgroupSizeY: capabilities.limits.maxComputeWorkgroupSizeY }),
+        ...(capabilities.limits.maxComputeWorkgroupSizeZ === undefined
+            ? {}
+            : { maxComputeWorkgroupSizeZ: capabilities.limits.maxComputeWorkgroupSizeZ }),
+        ...(capabilities.limits.maxComputeWorkgroupsPerDimension === undefined
+            ? {}
+            : {
+                  maxComputeWorkgroupsPerDimension:
+                      capabilities.limits.maxComputeWorkgroupsPerDimension
+              })
     });
     const formats = new Map<
         RenderTargetColorFormat | RenderTargetDepthStencilFormat,
@@ -102,14 +193,43 @@ export function createRenderPipelineCapabilities(
                 sampled: source.sampled,
                 filterable: source.filterable,
                 renderable: source.renderable,
+                storage: source.storage,
                 sampleCounts: Object.freeze([...source.sampleCounts])
             })
         );
     }
+    const storageBufferSupport =
+        ENABLED_PUBLIC_CAPABILITY_RELEASES.has('compute-storage') &&
+        capabilities.features.has('storage-buffers') &&
+        (limits.maxStorageBuffersPerShaderStage ?? 0) > 0 &&
+        (limits.maxStorageBufferBindingSize ?? 0) > 0 &&
+        limits.minStorageBufferOffsetAlignment !== undefined;
+    const computeSupport =
+        storageBufferSupport &&
+        capabilities.features.has('compute-pipelines') &&
+        (limits.maxComputeWorkgroupStorageSize ?? 0) > 0 &&
+        (limits.maxComputeInvocationsPerWorkgroup ?? 0) > 0 &&
+        (limits.maxComputeWorkgroupSizeX ?? 0) > 0 &&
+        (limits.maxComputeWorkgroupSizeY ?? 0) > 0 &&
+        (limits.maxComputeWorkgroupSizeZ ?? 0) > 0 &&
+        (limits.maxComputeWorkgroupsPerDimension ?? 0) > 0;
+    const storageTextureSupport =
+        computeSupport &&
+        capabilities.features.has('storage-textures') &&
+        (limits.maxStorageTexturesPerShaderStage ?? 0) > 0 &&
+        [...formats.values()].some(format => format.storage);
+    const indirectDrawSupport = storageBufferSupport && capabilities.features.has('indirect-draw');
+    const supportedCapabilities: Readonly<Record<RenderPipelineCapabilityName, boolean>> =
+        Object.freeze({
+            'storage-buffer': storageBufferSupport,
+            'storage-texture': storageTextureSupport,
+            'compute-pass': computeSupport,
+            'indirect-draw': indirectDrawSupport
+        });
     return Object.freeze({
         limits,
         supportsCapability(capability: RenderPipelineCapabilityName): boolean {
-            return SUPPORTED_PIPELINE_CAPABILITIES.has(capability);
+            return supportedCapabilities[capability];
         },
         supportsTextureFormat(
             format: RenderTargetColorFormat | RenderTargetDepthStencilFormat,
@@ -140,6 +260,13 @@ export function createRenderPipelineCapabilities(
                         formatCapabilities.renderable &&
                         formatCapabilities.sampleCounts.includes(sampleCount)
                     );
+                case 'storage':
+                    return (
+                        storageTextureSupport &&
+                        sampleCount === 1 &&
+                        !depthStencil &&
+                        formatCapabilities.storage
+                    );
                 case 'copy-source':
                 case 'copy-destination':
                     return sampleCount === 1 && formatCapabilities.supported;
@@ -157,9 +284,39 @@ export function validateRenderPipelineCapabilitySuperset(
         candidate.limits.maxTextureDimension2D < minimum.limits.maxTextureDimension2D ||
         candidate.limits.maxColorAttachments < minimum.limits.maxColorAttachments ||
         candidate.limits.maxSampledTexturesPerShaderStage <
-            minimum.limits.maxSampledTexturesPerShaderStage
+            minimum.limits.maxSampledTexturesPerShaderStage ||
+        candidate.limits.maxBindGroups < minimum.limits.maxBindGroups ||
+        candidate.limits.maxBindingsPerBindGroup < minimum.limits.maxBindingsPerBindGroup ||
+        candidate.limits.maxBufferSize < minimum.limits.maxBufferSize
     ) {
         throw new Error('Replacement RHI device reduces render pipeline public limits');
+    }
+    for (const name of [
+        'maxStorageBuffersPerShaderStage',
+        'maxStorageTexturesPerShaderStage',
+        'maxStorageBufferBindingSize',
+        'maxDynamicStorageBuffersPerPipelineLayout',
+        'maxComputeWorkgroupStorageSize',
+        'maxComputeInvocationsPerWorkgroup',
+        'maxComputeWorkgroupSizeX',
+        'maxComputeWorkgroupSizeY',
+        'maxComputeWorkgroupSizeZ',
+        'maxComputeWorkgroupsPerDimension'
+    ] as const) {
+        const required = minimum.limits[name];
+        if (required !== undefined && (candidate.limits[name] ?? -1) < required) {
+            throw new Error(`Replacement RHI device reduces render pipeline limit ${name}`);
+        }
+    }
+    const minimumAlignment = minimum.limits.minStorageBufferOffsetAlignment;
+    const candidateAlignment = candidate.limits.minStorageBufferOffsetAlignment;
+    if (
+        minimumAlignment !== undefined &&
+        (candidateAlignment === undefined || candidateAlignment > minimumAlignment)
+    ) {
+        throw new Error(
+            'Replacement RHI device reduces render pipeline limit minStorageBufferOffsetAlignment'
+        );
     }
     for (const capability of PIPELINE_CAPABILITY_NAMES) {
         if (minimum.supportsCapability(capability) && !candidate.supportsCapability(capability)) {

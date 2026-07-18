@@ -1,8 +1,16 @@
-import type { RHIBuffer, RHITexture, RHITextureUsageFlags } from '../rhi/core';
+import {
+    RHIBufferUsage,
+    type RHIBuffer,
+    type RHIBufferUsageFlags,
+    type RHITexture,
+    type RHITextureUsageFlags
+} from '../rhi/core';
 import type { RGPassContext, RGPrepareContext } from './RenderGraphExecutor';
 import type {
     RGBufferDescriptor,
+    RGBufferAccessDeclaration,
     RGBufferHandle,
+    RGBufferReadUse,
     RGColorAttachmentDeclaration,
     RGDepthStencilAttachmentDeclaration,
     RGImportedBufferProvider,
@@ -13,7 +21,8 @@ import type {
     RGResourceNode,
     RGTextureDescriptor,
     RGTextureHandle,
-    RGTextureResourceNode
+    RGTextureResourceNode,
+    RGBufferWriteUse
 } from './RenderGraphResource';
 import { renderGraphFailure } from './RenderGraphValidation';
 
@@ -57,6 +66,8 @@ export interface RGPassNode {
     readonly params: unknown;
     readonly reads: readonly RGResourceHandle[];
     readonly writes: readonly RGResourceHandle[];
+    readonly readWriteBuffers: readonly RGBufferHandle[];
+    readonly bufferAccesses: readonly RGBufferAccessDeclaration[];
     readonly colorAttachments: readonly RGColorAttachmentDeclaration[];
     readonly depthStencilAttachment: RGDepthStencilAttachmentDeclaration | null;
     readonly explicitDependencies: readonly RGPassHandle[];
@@ -81,6 +92,9 @@ interface MutablePassNode {
     readonly writes: RGResourceHandle[];
     readonly readSet: Set<RGResourceHandle>;
     readonly writeSet: Set<RGResourceHandle>;
+    readonly readWriteBuffers: RGBufferHandle[];
+    readonly bufferAccesses: MutableBufferAccessDeclaration[];
+    readonly bufferAccessPool: MutableBufferAccessDeclaration[];
     readonly attachmentSet: Set<RGResourceHandle>;
     readonly colorAttachments: MutableColorAttachmentDeclaration[];
     readonly colorAttachmentPool: MutableColorAttachmentDeclaration[];
@@ -128,6 +142,31 @@ interface MutableColorAttachmentDeclaration extends RGColorAttachmentDeclaration
     loadOp: RGColorAttachmentDeclaration['loadOp'];
     storeOp: RGColorAttachmentDeclaration['storeOp'];
     readonly clearValueStorage: { r: number; g: number; b: number; a: number };
+}
+
+interface MutableBufferAccessDeclaration {
+    buffer: RGBufferHandle;
+    mode: RGBufferAccessDeclaration['mode'];
+    use: RGBufferReadUse | RGBufferWriteUse;
+}
+
+function bufferUseUsage(use: RGBufferReadUse | RGBufferWriteUse): RHIBufferUsageFlags {
+    switch (use) {
+        case 'storage':
+            return RHIBufferUsage.STORAGE;
+        case 'vertex':
+            return RHIBufferUsage.VERTEX;
+        case 'index':
+            return RHIBufferUsage.INDEX;
+        case 'copy-source':
+            return RHIBufferUsage.COPY_SRC;
+        case 'indirect':
+            return RHIBufferUsage.INDIRECT;
+        case 'copy-destination':
+            return RHIBufferUsage.COPY_DST;
+        default:
+            return renderGraphFailure('invalid-descriptor', `unknown buffer use ${String(use)}`);
+    }
 }
 
 const EMPTY_PASS_TEMPLATE: RenderPassTemplate<unknown> = Object.freeze({
@@ -180,7 +219,7 @@ export class RenderGraphBuilderStorage {
     readonly snapshot: MutableRenderGraphBuildSnapshot = {
         generation: 0,
         resources: this.resources as RGResourceNode[],
-        passes: this.passes,
+        passes: this.passes as RGPassNode[],
         outputs: this.outputs
     };
     readonly diagnostics: MutableBuilderStorageDiagnostics = {
@@ -261,7 +300,8 @@ export class RenderGraphBuilderStorage {
         descriptor: RGBufferDescriptor,
         imported: RHIBuffer | null,
         provider: RGImportedBufferProvider | null,
-        resourceLifetime: RGBufferResourceNode['resourceLifetime']
+        resourceLifetime: RGBufferResourceNode['resourceLifetime'],
+        initiallyInitialized: boolean
     ): MutableBufferResourceNode {
         let node = this.#bufferNodePool[this.#bufferNodeCursor];
         if (!node) {
@@ -274,6 +314,7 @@ export class RenderGraphBuilderStorage {
                 imported,
                 provider,
                 resourceLifetime,
+                initiallyInitialized,
                 extracted: false
             };
             this.#bufferNodePool.push(node);
@@ -286,6 +327,7 @@ export class RenderGraphBuilderStorage {
             node.imported = imported;
             node.provider = provider;
             node.resourceLifetime = resourceLifetime;
+            node.initiallyInitialized = initiallyInitialized;
             node.extracted = false;
         }
         this.#bufferNodeCursor++;
@@ -312,6 +354,9 @@ export class RenderGraphBuilderStorage {
                 writes: [],
                 readSet: new Set(),
                 writeSet: new Set(),
+                readWriteBuffers: [],
+                bufferAccesses: [],
+                bufferAccessPool: [],
                 attachmentSet: new Set(),
                 colorAttachments: [],
                 colorAttachmentPool: [],
@@ -334,6 +379,8 @@ export class RenderGraphBuilderStorage {
             pass.writes.length = 0;
             pass.readSet.clear();
             pass.writeSet.clear();
+            pass.readWriteBuffers.length = 0;
+            pass.bufferAccesses.length = 0;
             pass.attachmentSet.clear();
             pass.colorAttachments.length = 0;
             pass.depthStencilAttachment = null;
@@ -345,6 +392,31 @@ export class RenderGraphBuilderStorage {
         this.passes.push(pass);
         this.passByHandle.set(handle, pass);
         return pass;
+    }
+
+    acquireBufferAccess(
+        pass: MutablePassNode,
+        buffer: RGBufferHandle,
+        mode: RGBufferAccessDeclaration['mode'],
+        use: RGBufferReadUse | RGBufferWriteUse
+    ): void {
+        for (const existing of pass.bufferAccesses) {
+            if (existing.buffer === buffer && existing.mode === mode && existing.use === use) {
+                return;
+            }
+        }
+        const index = pass.bufferAccesses.length;
+        let access = pass.bufferAccessPool[index];
+        if (!access) {
+            access = { buffer, mode, use };
+            pass.bufferAccessPool.push(access);
+            this.diagnostics.growthCount++;
+        } else {
+            access.buffer = buffer;
+            access.mode = mode;
+            access.use = use;
+        }
+        pass.bufferAccesses.push(access);
     }
 
     acquireColorAttachment(
@@ -503,6 +575,8 @@ export class RenderGraphBuilderStorage {
         pass.writes.length = 0;
         pass.readSet.clear();
         pass.writeSet.clear();
+        pass.readWriteBuffers.length = 0;
+        pass.bufferAccesses.length = 0;
         pass.attachmentSet.clear();
         pass.colorAttachments.length = 0;
         pass.depthStencilAttachment = null;
@@ -539,15 +613,40 @@ export class RGPassBuilder {
         return handle;
     }
 
-    readBuffer(handle: RGBufferHandle): RGBufferHandle {
+    readBuffer(handle: RGBufferHandle, use: RGBufferReadUse): RGBufferHandle {
         this.graph.requireResource(handle, 'buffer');
         this.addRead(handle);
+        this.graph.acquireBufferAccess(this.pass, handle, 'read', use);
         return handle;
     }
 
-    writeBuffer(handle: RGBufferHandle): RGBufferHandle {
+    writeBuffer(handle: RGBufferHandle, use: RGBufferWriteUse): RGBufferHandle {
         this.graph.requireResource(handle, 'buffer');
         this.addWrite(handle);
+        this.graph.acquireBufferAccess(this.pass, handle, 'write', use);
+        return handle;
+    }
+
+    readWriteBuffer(handle: RGBufferHandle, use: 'storage'): RGBufferHandle {
+        this.graph.requireResource(handle, 'buffer');
+        if (this.pass.readWriteBuffers.includes(handle)) return handle;
+        if (
+            this.pass.readSet.has(handle) ||
+            this.pass.writeSet.has(handle) ||
+            this.pass.attachmentSet.has(handle)
+        ) {
+            renderGraphFailure(
+                'duplicate-access',
+                'read-write buffer access must be declared exactly once and cannot be combined with another same-pass access',
+                this.pass.name
+            );
+        }
+        this.pass.readSet.add(handle);
+        this.pass.reads.push(handle);
+        this.pass.writeSet.add(handle);
+        this.pass.writes.push(handle);
+        this.pass.readWriteBuffers.push(handle);
+        this.graph.acquireBufferAccess(this.pass, handle, 'read-write', use);
         return handle;
     }
 
@@ -675,7 +774,8 @@ export class RenderGraphBuilder {
             descriptor,
             null,
             null,
-            'transient'
+            'transient',
+            false
         );
         return handle;
     }
@@ -695,8 +795,14 @@ export class RenderGraphBuilder {
         return handle;
     }
 
-    importBuffer(name: string, buffer: RHIBuffer): RGBufferHandle {
+    importBuffer(name: string, buffer: RHIBuffer, initiallyInitialized = true): RGBufferHandle {
         this.assertOpen();
+        if (typeof initiallyInitialized !== 'boolean') {
+            renderGraphFailure(
+                'invalid-descriptor',
+                'imported buffer initialization state must be boolean'
+            );
+        }
         const handle = this.allocateResourceHandle() as RGBufferHandle;
         this.#storage.acquireBufferNode(
             handle,
@@ -705,7 +811,8 @@ export class RenderGraphBuilder {
             buffer.descriptor,
             buffer,
             null,
-            buffer.lifetime
+            buffer.lifetime,
+            initiallyInitialized
         );
         return handle;
     }
@@ -739,9 +846,16 @@ export class RenderGraphBuilder {
         name: string,
         descriptor: RGBufferDescriptor,
         provider: RGImportedBufferProvider,
-        lifetime: 'persistent' | 'frame' = 'frame'
+        lifetime: 'persistent' | 'frame' = 'frame',
+        initiallyInitialized = true
     ): RGBufferHandle {
         this.assertOpen();
+        if (typeof initiallyInitialized !== 'boolean') {
+            renderGraphFailure(
+                'invalid-descriptor',
+                'imported buffer initialization state must be boolean'
+            );
+        }
         const handle = this.allocateResourceHandle() as RGBufferHandle;
         this.#storage.acquireBufferNode(
             handle,
@@ -750,7 +864,8 @@ export class RenderGraphBuilder {
             descriptor,
             null,
             provider,
-            lifetime
+            lifetime,
+            initiallyInitialized
         );
         return handle;
     }
@@ -814,6 +929,24 @@ export class RenderGraphBuilder {
         descriptor.usage |= usage;
     }
 
+    /** @internal Aggregate declaration-derived usage for a transient buffer. */
+    addBufferUsage(handle: RGBufferHandle, usage: RHIBufferUsageFlags): void {
+        const resource = this.requireResource(handle, 'buffer');
+        if (!Number.isSafeInteger(usage) || usage <= 0) {
+            renderGraphFailure('invalid-descriptor', 'buffer usage must be a positive bit mask');
+        }
+        const descriptor = resource.descriptor as { usage: RHIBufferUsageFlags };
+        const missing = usage & ~descriptor.usage;
+        if (missing === 0) return;
+        if (resource.origin !== 'transient') {
+            renderGraphFailure(
+                'invalid-descriptor',
+                `imported buffer ${resource.name} lacks usage ${String(missing)}`
+            );
+        }
+        descriptor.usage |= usage;
+    }
+
     addPass<P>(template: RenderPassTemplate<P>, params: P): RGPassHandle {
         this.assertOpen();
         if (template.name.length === 0) {
@@ -828,6 +961,7 @@ export class RenderGraphBuilder {
         );
         try {
             template.setup(new RGPassBuilder(this, pass), params);
+            this.commitBufferUsages(pass);
         } catch (error) {
             this.#storage.rollbackPass(pass);
             throw error;
@@ -876,6 +1010,39 @@ export class RenderGraphBuilder {
     ): void {
         this.assertOpen();
         this.#storage.setDepthStencilAttachment(pass, declaration);
+    }
+
+    private commitBufferUsages(pass: MutablePassNode): void {
+        for (const access of pass.bufferAccesses) {
+            const resource = this.requireResource(access.buffer, 'buffer');
+            const usage = bufferUseUsage(access.use);
+            const missing = usage & ~resource.descriptor.usage;
+            if (missing !== 0 && resource.origin === 'imported') {
+                renderGraphFailure(
+                    'invalid-descriptor',
+                    `imported buffer ${resource.name} lacks usage ${String(missing)}`,
+                    pass.name
+                );
+            }
+        }
+        for (const access of pass.bufferAccesses) {
+            const resource = this.requireResource(access.buffer, 'buffer');
+            if (resource.origin === 'transient') {
+                const descriptor = resource.descriptor as { usage: RHIBufferUsageFlags };
+                descriptor.usage |= bufferUseUsage(access.use);
+            }
+        }
+    }
+
+    /** @internal */
+    acquireBufferAccess(
+        pass: MutablePassNode,
+        buffer: RGBufferHandle,
+        mode: RGBufferAccessDeclaration['mode'],
+        use: RGBufferReadUse | RGBufferWriteUse
+    ): void {
+        this.assertOpen();
+        this.#storage.acquireBufferAccess(pass, buffer, mode, use);
     }
 
     /** @internal */

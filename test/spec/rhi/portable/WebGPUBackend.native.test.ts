@@ -1,4 +1,4 @@
-import { RHIBufferUsage, RHITextureUsage } from '../../../../src/render/rhi/core';
+import { RHIBufferUsage, RHIShaderStage, RHITextureUsage } from '../../../../src/render/rhi/core';
 import { ShaderArtifactCompiler } from '../../../../src/render/renderer/ShaderArtifactCompiler';
 import { prepareWebGPUMipmapShaderArtifacts } from '../../../../src/render/renderer/WebGPUMipmapShader';
 import { expect, it } from 'vitest';
@@ -35,6 +35,94 @@ it.skipIf(!nativeWebGPUAvailable)(
             const tail = progress.slice(-8).join(' -> ') || 'before the first recorded command';
             throw new Error(`Native WebGPU conformance failed after: ${tail}`, { cause: error });
         } finally {
+            device.destroy();
+        }
+    }
+);
+
+it.skipIf(!nativeWebGPUAvailable)(
+    'executes clearBuffer and an indirect compute dispatch on native WebGPU',
+    async testContext => {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter === null) {
+            testContext.skip();
+            return;
+        }
+        const device = await createWebGPUDevice({ adapter });
+        const output = device.createBuffer({
+            size: 16,
+            usage: RHIBufferUsage.STORAGE | RHIBufferUsage.COPY_SRC | RHIBufferUsage.COPY_DST,
+            initialData: new Uint32Array([99, 99, 99, 99])
+        });
+        const indirect = device.createBuffer({
+            size: 12,
+            usage: RHIBufferUsage.INDIRECT,
+            initialData: new Uint32Array([4, 1, 1])
+        });
+        const readback = device.createBuffer({
+            size: 16,
+            usage: RHIBufferUsage.COPY_DST | RHIBufferUsage.MAP_READ
+        });
+        try {
+            const shader = device.createShader({
+                artifact: {
+                    backend: 'webgpu',
+                    stage: 'compute',
+                    code: `
+@group(0) @binding(0) var<storage, read_write> output: array<u32>;
+@compute @workgroup_size(1)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    output[id.x] = id.x + 1u;
+}`,
+                    entryPoint: 'main',
+                    reflection: {
+                        bindings: [
+                            {
+                                group: 0,
+                                binding: 0,
+                                kind: 'storage-buffer',
+                                minBindingSize: 16
+                            }
+                        ],
+                        workgroupSize: [1, 1, 1],
+                        workgroupStorageSize: 0,
+                        overrides: []
+                    },
+                    cacheKey: 1
+                }
+            });
+            const bindGroupLayout = device.createBindGroupLayout({
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: RHIShaderStage.COMPUTE,
+                        buffer: { type: 'storage', minBindingSize: 16 }
+                    }
+                ]
+            });
+            const layout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
+            const pipeline = device.createComputePipeline({ layout, compute: { shader } });
+            const bindGroup = device.createBindGroup({
+                layout: bindGroupLayout,
+                entries: [{ binding: 0, resource: { buffer: output } }]
+            });
+
+            const frame = device.graphicsQueue.beginFrame();
+            frame.clearBuffer(output);
+            const pass = frame.beginComputePass();
+            pass.setPipeline(pipeline);
+            pass.setBindGroup(0, bindGroup);
+            pass.dispatchWorkgroupsIndirect(indirect);
+            pass.end();
+            frame.copyBufferToBuffer(output, 0, readback, 0, 16);
+            await device.graphicsQueue.endFrame(frame).done;
+            await readback.mapAsync('read');
+            expect([...new Uint32Array(readback.getMappedRange())]).toEqual([1, 2, 3, 4]);
+            readback.unmap();
+        } finally {
+            output.destroy();
+            indirect.destroy();
+            readback.destroy();
             device.destroy();
         }
     }

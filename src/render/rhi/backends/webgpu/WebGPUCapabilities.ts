@@ -225,10 +225,12 @@ function createFeatures(device: GPUDevice): ReadonlySet<RHIFeatureName> {
         'indirect-draw',
         'storage-buffers',
         'storage-textures',
+        'compute-pipelines',
         'anisotropic-filtering'
     ]);
     const portableNativeFeatures: readonly RHIFeatureName[] = [
         'timestamp-query',
+        'shader-f16',
         'texture-compression-bc',
         'texture-compression-etc2',
         'texture-compression-astc',
@@ -274,6 +276,11 @@ function createLimits(native: GPUSupportedLimits): Readonly<RHILimits> {
             'maxDynamicUniformBuffersPerPipelineLayout',
             8
         ),
+        maxDynamicStorageBuffersPerPipelineLayout: nativeLimit(
+            native,
+            'maxDynamicStorageBuffersPerPipelineLayout',
+            4
+        ),
         maxSampledTexturesPerShaderStage: nativeLimit(
             native,
             'maxSampledTexturesPerShaderStage',
@@ -299,7 +306,29 @@ function createLimits(native: GPUSupportedLimits): Readonly<RHILimits> {
             'maxStorageBufferBindingSize',
             134_217_728
         ),
-        minStorageBufferOffsetAlignment: nativeLimit(native, 'minStorageBufferOffsetAlignment', 256)
+        minStorageBufferOffsetAlignment: nativeLimit(
+            native,
+            'minStorageBufferOffsetAlignment',
+            256
+        ),
+        maxComputeWorkgroupStorageSize: nativeLimit(
+            native,
+            'maxComputeWorkgroupStorageSize',
+            16_384
+        ),
+        maxComputeInvocationsPerWorkgroup: nativeLimit(
+            native,
+            'maxComputeInvocationsPerWorkgroup',
+            256
+        ),
+        maxComputeWorkgroupSizeX: nativeLimit(native, 'maxComputeWorkgroupSizeX', 256),
+        maxComputeWorkgroupSizeY: nativeLimit(native, 'maxComputeWorkgroupSizeY', 256),
+        maxComputeWorkgroupSizeZ: nativeLimit(native, 'maxComputeWorkgroupSizeZ', 64),
+        maxComputeWorkgroupsPerDimension: nativeLimit(
+            native,
+            'maxComputeWorkgroupsPerDimension',
+            65_535
+        )
     });
 }
 

@@ -18,6 +18,7 @@ import type {
     RenderTargetParameters,
     RenderTargetSelectionOptions
 } from './RenderTarget';
+import type { StorageBuffer, StorageBufferDescriptor } from './StorageBuffer';
 
 export type RendererBackend = 'webgl2' | 'webgpu';
 
@@ -145,6 +146,8 @@ export interface RendererContract {
     /** Record resource-ready renderer passes in one synchronous backend frame boundary. */
     renderFrame(callback: RendererFrameCallback): void;
     supportsTextureCompression(format: TextureCompressionFormat): boolean;
+    /** Create a WebGPU renderer-owned storage buffer. WebGL 2 rejects this operation. */
+    createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
     createRenderTarget(parameters: RenderTargetParameters): RenderTarget;
     setRenderTarget(target: RenderTarget | null, options?: RenderTargetSelectionOptions): this;
     /** Present the first color attachment of a renderer-owned target to the canvas. */
@@ -253,6 +256,7 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     abstract render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
     abstract renderFrame(callback: RendererFrameCallback): void;
     abstract supportsTextureCompression(format: TextureCompressionFormat): boolean;
+    abstract createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
     abstract createRenderTarget(parameters: RenderTargetParameters): RenderTarget;
     abstract setRenderTarget(
         target: RenderTarget | null,

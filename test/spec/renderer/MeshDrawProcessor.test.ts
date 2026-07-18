@@ -22,16 +22,22 @@ import Color from '../../../src/math/Color';
 import Matrix4 from '../../../src/math/Matrix4';
 import Vector3 from '../../../src/math/Vector3';
 import type RendererCore from '../../../src/render/RendererCore';
+import StorageGraphicsShader from '../../../src/render/compute/StorageGraphicsShader';
 import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
 import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../../../src/render/graph/RenderGraphExecutor';
 import { ForwardRenderer } from '../../../src/render/renderer/ForwardRenderer';
+import { GPUDrivenPipelineResourceCache } from '../../../src/render/renderer/GPUDrivenPipelineResourceCache';
 import { externalTextureBindingRegistry } from '../../../src/render/renderer/ExternalTextureBindingRegistry';
-import { MeshDrawProcessor } from '../../../src/render/renderer/MeshDrawProcessor';
+import {
+    MeshDrawProcessor,
+    type StorageScenePreparationState
+} from '../../../src/render/renderer/MeshDrawProcessor';
 import type { PreparedDraw } from '../../../src/render/renderer/PreparedDraw';
 import type { RHIMeshDrawTargetDescriptor } from '../../../src/render/renderer/RHIDescriptorMapping';
 import { RenderTargetResourceCache } from '../../../src/render/renderer/RenderTargetResourceCache';
 import type { CompiledShaderArtifactPair } from '../../../src/render/renderer/ShaderArtifactCompiler';
+import { StorageGraphicsShaderCompiler } from '../../../src/render/shader/StorageGraphicsShaderCompiler';
 import { MainPassTemplate, SharedDrawPassParameters } from '../../../src/render/renderer/passes';
 import {
     RHITextureUsage,
@@ -74,6 +80,33 @@ precision highp float;
 layout(location = 0) out vec4 color;
 void main() {
     color = vec4(1.0, 0.25, 0.0, 1.0);
+}`;
+
+const STORAGE_VERTEX_SOURCE = `#version 310 es
+precision highp float;
+layout(location = 0) in vec3 position;
+void main() {
+    gl_Position = vec4(position, 1.0);
+}`;
+
+const STORAGE_MODEL_VERTEX_SOURCE = `#version 310 es
+precision highp float;
+layout(std140) uniform ModelBlock {
+    mat4 u_modelMatrix;
+};
+layout(location = 0) in vec3 position;
+void main() {
+    gl_Position = u_modelMatrix * vec4(position, 1.0);
+}`;
+
+const STORAGE_FRAGMENT_SOURCE = `#version 310 es
+precision highp float;
+layout(std430) readonly buffer SceneLightGrid {
+    vec4 lights[];
+} lightGrid;
+layout(location = 0) out vec4 color;
+void main() {
+    color = lightGrid.lights[0];
 }`;
 
 const MATRIX_VERTEX_SOURCE = `#version 300 es
@@ -599,6 +632,40 @@ function executeMeshFrame(
     );
     void fixture.processor.trackSubmission(frameIndex, result.submission);
     if (prepared === undefined) throw new Error('Mesh draw was not prepared');
+    return { result, draw: prepared };
+}
+
+function executeStorageMeshPreparationFrame(
+    fixture: ProcessorFixture,
+    mesh: Mesh,
+    frameIndex: number,
+    shader: StorageGraphicsShader,
+    pipelines: GPUDrivenPipelineResourceCache,
+    plannerInstancedFallback = false,
+    overrides: MeshFrameSemanticOverrides = {}
+): ExecutedMeshFrame {
+    let prepared: PreparedDraw | undefined;
+    const result = fixture.frame.execute(
+        createContext(fixture, frameIndex, fixture.device, overrides),
+        scope => {
+            fixture.processor.beginFrame(scope.context, scope.uploads);
+            const preparation: StorageScenePreparationState = {
+                globalBindGroupLayout: null
+            };
+            prepared = fixture.processor.prepareStorageScene(
+                mesh,
+                createTarget(),
+                shader,
+                pipelines,
+                preparation,
+                null,
+                plannerInstancedFallback
+            );
+            expect(preparation.globalBindGroupLayout).not.toBeNull();
+        }
+    );
+    void fixture.processor.trackSubmission(frameIndex, result.submission);
+    if (prepared === undefined) throw new Error('Storage scene mesh draw was not prepared');
     return { result, draw: prepared };
 }
 
@@ -1804,6 +1871,149 @@ void main() {
 });
 
 describe('MeshDrawProcessor cache and failure boundaries', () => {
+    it('validates storage-aware scene lighting before shader compilation or queue execution', async () => {
+        const fixture = await createProcessorFixture(new FakeWebGPURHIBackend());
+        const { mesh } = createLitMesh('LAMBERT');
+        const manager = new LightManager();
+        for (let index = 0; index <= MAX_DIRECTIONAL_LIGHTS; index += 1) {
+            manager.addLight(new DirectionalLight());
+        }
+        const shader = new StorageGraphicsShader({
+            label: 'scene-storage-light-validation',
+            vertexSource: STORAGE_VERTEX_SOURCE,
+            fragmentSource: STORAGE_FRAGMENT_SOURCE,
+            bindings: [
+                {
+                    name: 'lightGrid',
+                    group: 3,
+                    binding: 0,
+                    kind: 'read-only-storage-buffer',
+                    minBindingSize: 16
+                }
+            ]
+        });
+        const compiler = new StorageGraphicsShaderCompiler();
+        await compiler.initialize();
+        const compile = vi.spyOn(compiler, 'compile');
+        const pipelines = new GPUDrivenPipelineResourceCache(fixture.processor.registry, compiler);
+        const beginFrame = vi.spyOn(fixture.device.graphicsQueue, 'beginFrame');
+
+        expect(() =>
+            executeStorageMeshPreparationFrame(fixture, mesh, 1, shader, pipelines, false, {
+                lightManager: manager
+            })
+        ).toThrow(
+            `DIRECTIONAL_LIGHTS count ${String(MAX_DIRECTIONAL_LIGHTS + 1)} exceeds the fixed UBO capacity ${String(MAX_DIRECTIONAL_LIGHTS)}`
+        );
+        expect(compile).not.toHaveBeenCalled();
+        expect(beginFrame).not.toHaveBeenCalled();
+        expect(fixture.processor.active).toBe(false);
+
+        pipelines.destroy();
+        destroyFixture(fixture);
+    });
+
+    it('prepares planner-owned instanced meshes as explicit single-instance storage draws', async () => {
+        const fixture = await createProcessorFixture(new FakeWebGPURHIBackend());
+        const { mesh } = createMesh();
+        mesh.useInstanced = true;
+        mesh.setPosition(2, 0, 0).updateMatrixWorld(true);
+        const shader = new StorageGraphicsShader({
+            label: 'scene-storage-instanced-fallback',
+            vertexSource: STORAGE_MODEL_VERTEX_SOURCE,
+            fragmentSource: STORAGE_FRAGMENT_SOURCE,
+            bindings: [
+                {
+                    name: 'ModelBlock',
+                    group: 2,
+                    binding: 0,
+                    kind: 'uniform-buffer'
+                },
+                {
+                    name: 'lightGrid',
+                    group: 3,
+                    binding: 0,
+                    kind: 'read-only-storage-buffer',
+                    minBindingSize: 16
+                }
+            ]
+        });
+        const compiler = new StorageGraphicsShaderCompiler();
+        await compiler.initialize();
+        const compile = vi.spyOn(compiler, 'compile');
+        const pipelines = new GPUDrivenPipelineResourceCache(fixture.processor.registry, compiler);
+
+        expect(() =>
+            executeStorageMeshPreparationFrame(fixture, mesh, 1, shader, pipelines)
+        ).toThrow(/renderer-list direct-draw fallback/u);
+        const execution = executeStorageMeshPreparationFrame(
+            fixture,
+            mesh,
+            2,
+            shader,
+            pipelines,
+            true
+        );
+        await finishSubmission(fixture.backend, execution);
+
+        expect(preparedInstanceCount(execution.draw)).toBe(1);
+        expect(
+            execution.draw.pipeline.descriptor.vertex.shader.artifact.reflection.bindings.some(
+                binding => binding.name === 'ModelBlock'
+            )
+        ).toBe(true);
+        const bindGroups = Reflect.get(execution.draw, 'bindGroups') as readonly unknown[];
+        expect(bindGroups[2]).not.toBeNull();
+        expect(compile).toHaveBeenCalledTimes(1);
+
+        pipelines.destroy();
+        destroyFixture(fixture);
+    });
+
+    it('reuses a storage-aware scene draw and its stable vertex-layout pipeline across frames', async () => {
+        const fixture = await createProcessorFixture(new FakeWebGPURHIBackend());
+        const { mesh } = createMesh();
+        const shader = new StorageGraphicsShader({
+            label: 'scene-storage-cache',
+            vertexSource: STORAGE_VERTEX_SOURCE,
+            fragmentSource: STORAGE_FRAGMENT_SOURCE,
+            bindings: [
+                {
+                    name: 'lightGrid',
+                    group: 3,
+                    binding: 0,
+                    kind: 'read-only-storage-buffer',
+                    minBindingSize: 16
+                }
+            ]
+        });
+        const compiler = new StorageGraphicsShaderCompiler();
+        await compiler.initialize();
+        const compile = vi.spyOn(compiler, 'compile');
+        const pipelines = new GPUDrivenPipelineResourceCache(fixture.processor.registry, compiler);
+        const preparePipeline = vi.spyOn(pipelines, 'prepareScene');
+        const createPipeline = vi.spyOn(fixture.device, 'createGraphicsPipeline');
+
+        const first = executeStorageMeshPreparationFrame(fixture, mesh, 1, shader, pipelines);
+        await finishSubmission(fixture.backend, first);
+        const firstPipeline = first.draw.pipeline;
+        const beginUpdate = vi.spyOn(first.draw, 'beginUpdate');
+
+        const second = executeStorageMeshPreparationFrame(fixture, mesh, 2, shader, pipelines);
+        await finishSubmission(fixture.backend, second);
+
+        expect(second.draw).toBe(first.draw);
+        expect(second.draw.pipeline).toBe(firstPipeline);
+        expect(beginUpdate).not.toHaveBeenCalled();
+        expect(createPipeline).toHaveBeenCalledTimes(1);
+        expect(compile).toHaveBeenCalledTimes(1);
+        expect(preparePipeline.mock.calls).toHaveLength(2);
+        expect(preparePipeline.mock.calls[1]?.[2]).toBe(preparePipeline.mock.calls[0]?.[2]);
+
+        pipelines.destroy();
+        destroyFixture(fixture);
+    });
+
     it('keeps the steady draw/pipeline and invalidates only the affected preparation layers', async () => {
         const fixture = await createProcessorFixture(new FakeWebGLRHIBackend());
         const { mesh, vertices, material } = createMesh();

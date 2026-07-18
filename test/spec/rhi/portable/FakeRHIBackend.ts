@@ -7,6 +7,9 @@ import type {
 import type {
     RHICommandContext,
     RHICommandContextState,
+    RHIComputePassDescriptor,
+    RHIComputePassEncoder,
+    RHIComputePassState,
     RHIDrawArgumentsRecord,
     RHIFrameDiagnostics,
     RHIImageCopyBuffer,
@@ -20,6 +23,12 @@ import type {
     RHIRenderPassState,
     RHIVertexBufferBindingRecord
 } from '../../../../src/render/rhi/core/RHICommands';
+import {
+    validateRHIClearBuffer,
+    validateRHIDispatchWorkgroups,
+    validateRHIDispatchWorkgroupsIndirect,
+    validateRHIDrawIndirect
+} from '../../../../src/render/rhi/core/RHICommandValidation';
 import {
     validateAndSnapshotRHIWriteBuffer,
     validateAndSnapshotRHIWriteTexture,
@@ -36,6 +45,8 @@ import type {
     RHIBindGroupEntry,
     RHIBindGroupLayout,
     RHIBindGroupLayoutDescriptor,
+    RHIComputePipeline,
+    RHIComputePipelineDescriptor,
     RHIGraphicsPipeline,
     RHIGraphicsPipelineDescriptor,
     RHIPipelineLayout,
@@ -107,6 +118,7 @@ import {
     normalizeRHITextureViewDescriptor,
     snapshotRHIBindGroupDescriptor,
     snapshotRHIBindGroupLayoutDescriptor,
+    snapshotRHIComputePipelineDescriptor,
     snapshotRHIDataSource,
     snapshotRHIGraphicsPipelineDescriptor,
     snapshotRHIPipelineLayoutDescriptor,
@@ -164,8 +176,14 @@ function createDiagnostics(target?: RHIFrameDiagnostics): RHIFrameDiagnostics {
         ({
             commandCount: 0,
             drawCount: 0,
+            indirectDrawCount: 0,
+            dispatchCount: 0,
+            dispatchedWorkgroupCount: 0,
+            bufferClearCount: 0,
             pipelineSwitches: 0,
             bindGroupSwitches: 0,
+            computePipelineSwitches: 0,
+            computeBindGroupSwitches: 0,
             vertexBufferSwitches: 0,
             nativeStateCalls: 0,
             frameArenaGrowths: 0,
@@ -175,8 +193,14 @@ function createDiagnostics(target?: RHIFrameDiagnostics): RHIFrameDiagnostics {
         } satisfies RHIFrameDiagnostics);
     diagnostics.commandCount = 0;
     diagnostics.drawCount = 0;
+    diagnostics.indirectDrawCount = 0;
+    diagnostics.dispatchCount = 0;
+    diagnostics.dispatchedWorkgroupCount = 0;
+    diagnostics.bufferClearCount = 0;
     diagnostics.pipelineSwitches = 0;
     diagnostics.bindGroupSwitches = 0;
+    diagnostics.computePipelineSwitches = 0;
+    diagnostics.computeBindGroupSwitches = 0;
     diagnostics.vertexBufferSwitches = 0;
     diagnostics.nativeStateCalls = 0;
     diagnostics.frameArenaGrowths = 0;
@@ -339,6 +363,10 @@ export class FakeRHIBuffer
 
     writeBytes(destinationOffset: number, data: Uint8Array): void {
         new Uint8Array(this.storage, destinationOffset, data.byteLength).set(data);
+    }
+
+    clearBytes(offset: number, size: number): void {
+        new Uint8Array(this.storage, offset, size).fill(0);
     }
 }
 
@@ -516,6 +544,30 @@ class FakeGraphicsPipeline
     }
 }
 
+class FakeComputePipeline
+    extends FakeResource<RHIComputePipelineDescriptor>
+    implements RHIComputePipeline
+{
+    readonly descriptor: Readonly<RHIComputePipelineDescriptor>;
+    readonly layout: RHIPipelineLayout;
+
+    constructor(owner: FakeRHIDevice, source: RHIComputePipelineDescriptor) {
+        const descriptor = snapshotRHIComputePipelineDescriptor(owner, source);
+        super(owner, descriptor.label ?? '', normalizedLifetime(descriptor.lifetime));
+        this.descriptor = descriptor;
+        this.layout = descriptor.layout;
+    }
+
+    getBindGroupLayout(index: number): RHIBindGroupLayout {
+        assertFiniteInteger(index, 'bind group layout index');
+        const layout = this.layout.bindGroupLayouts[index];
+        if (layout === undefined) {
+            throw new Error(`pipeline has no bind group layout at index ${String(index)}`);
+        }
+        return layout;
+    }
+}
+
 class FakeRHICapabilities implements RHICapabilities {
     readonly features: ReadonlySet<RHIFeatureName>;
     readonly limits: Readonly<RHILimits>;
@@ -534,8 +586,11 @@ class FakeRHICapabilities implements RHICapabilities {
                       'cube-map-arrays' as const,
                       'draw-base-vertex' as const,
                       'draw-first-instance' as const,
+                      'indirect-draw' as const,
                       'storage-buffers' as const,
-                      'storage-textures' as const
+                      'storage-textures' as const,
+                      'compute-pipelines' as const,
+                      'shader-f16' as const
                   ]
                 : [])
         ]);
@@ -562,7 +617,14 @@ class FakeRHICapabilities implements RHICapabilities {
                       maxStorageBuffersPerShaderStage: 8,
                       maxStorageTexturesPerShaderStage: 4,
                       maxStorageBufferBindingSize: 134_217_728,
-                      minStorageBufferOffsetAlignment: 256
+                      minStorageBufferOffsetAlignment: 256,
+                      maxDynamicStorageBuffersPerPipelineLayout: 4,
+                      maxComputeWorkgroupStorageSize: 16_384,
+                      maxComputeInvocationsPerWorkgroup: 256,
+                      maxComputeWorkgroupSizeX: 256,
+                      maxComputeWorkgroupSizeY: 256,
+                      maxComputeWorkgroupSizeZ: 64,
+                      maxComputeWorkgroupsPerDimension: 65_535
                   }
                 : {})
         });
@@ -725,6 +787,18 @@ export class FakeRHIDevice implements RHIDevice {
     createGraphicsPipeline(descriptor: RHIGraphicsPipelineDescriptor): RHIGraphicsPipeline {
         this.assertAlive();
         return new FakeGraphicsPipeline(this, descriptor);
+    }
+
+    createComputePipeline(descriptor: RHIComputePipelineDescriptor): RHIComputePipeline {
+        this.assertAlive();
+        if (this.backend !== 'webgpu') {
+            throw new RHIValidationError(
+                'unsupported-feature',
+                'fake WebGL2 does not support compute pipelines',
+                'computePipeline'
+            );
+        }
+        return new FakeComputePipeline(this, descriptor);
     }
 
     createSurface(canvas: HTMLCanvasElement): FakeRHISurface {
@@ -906,7 +980,7 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
     readonly frameId: number;
     readonly diagnostics: RHIFrameDiagnostics;
     private contextState: RHICommandContextState = 'open';
-    private activePass: FakeRHIRenderPass | null = null;
+    private activePass: FakeRHIRenderPass | FakeRHIComputePass | null = null;
     private readonly deferredCommands: FakeRHICommand[] = [];
     private readonly retainedObjects = new Set<RHIDeviceOwnedObject>();
     private externalImageUploadPhase = true;
@@ -1028,6 +1102,45 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
         return pass;
     }
 
+    beginComputePass(descriptor: RHIComputePassDescriptor = {}): RHIComputePassEncoder {
+        this.assertOpen();
+        if (!this.owner.capabilities.features.has('compute-pipelines')) {
+            validationFailure(
+                'unsupported-feature',
+                'compute passes are unsupported',
+                'computePass'
+            );
+        }
+        this.closeExternalImageUploadPhase();
+        this.contextState = 'compute-pass';
+        const pass = new FakeRHIComputePass(this, descriptor.label ?? '');
+        this.activePass = pass;
+        this.issue(`compute-pass:${descriptor.label ?? ''}:begin`);
+        return pass;
+    }
+
+    clearBuffer(buffer: RHIBuffer, offset = 0, size?: number): void {
+        this.assertOpen();
+        if (this.owner.backend !== 'webgpu') {
+            validationFailure('unsupported-feature', 'clearBuffer is unsupported', 'clearBuffer');
+        }
+        const resolvedSize = validateRHIClearBuffer(
+            this.owner,
+            buffer,
+            offset,
+            size ?? buffer.size - offset
+        );
+        this.retainAll([buffer]);
+        this.closeExternalImageUploadPhase();
+        this.diagnostics.bufferClearCount++;
+        this.issue(
+            `clear-buffer:${String(buffer.id)}:${String(offset)}:${String(resolvedSize)}`,
+            () => {
+                if (buffer instanceof FakeRHIBuffer) buffer.clearBytes(offset, resolvedSize);
+            }
+        );
+    }
+
     copyBufferToBuffer(
         source: RHIBuffer,
         sourceOffset: number,
@@ -1127,6 +1240,14 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
     closePass(pass: FakeRHIRenderPass): void {
         if (this.activePass !== pass || this.contextState !== 'render-pass') {
             validationFailure('invalid-state', 'render pass is not active', 'renderPass');
+        }
+        this.activePass = null;
+        this.contextState = 'open';
+    }
+
+    closeComputePass(pass: FakeRHIComputePass): void {
+        if (this.activePass !== pass || this.contextState !== 'compute-pass') {
+            validationFailure('invalid-state', 'compute pass is not active', 'computePass');
         }
         this.activePass = null;
         this.contextState = 'open';
@@ -1492,6 +1613,35 @@ class FakeRHIRenderPass extends FakeDeviceObject implements RHIRenderPassEncoder
         this.context.issue(`draw-indexed:${String(indexCount)}`);
     }
 
+    drawIndirect(buffer: RHIBuffer, offset = 0): void {
+        this.assertOpen();
+        const pipeline = this.assertPipeline();
+        this.assertRequiredBindings(pipeline);
+        validateRHIDrawIndirect(this.context.owner, buffer, offset, false);
+        this.context.retainAll([buffer]);
+        this.context.diagnostics.drawCount++;
+        this.context.diagnostics.indirectDrawCount++;
+        this.context.issue(`draw-indirect:${String(buffer.id)}:${String(offset)}`);
+    }
+
+    drawIndexedIndirect(buffer: RHIBuffer, offset = 0): void {
+        this.assertOpen();
+        const pipeline = this.assertPipeline();
+        this.assertRequiredBindings(pipeline);
+        if (!this.hasIndexBuffer) {
+            validationFailure(
+                'invalid-state',
+                'drawIndexedIndirect requires an index buffer',
+                'indexBuffer'
+            );
+        }
+        validateRHIDrawIndirect(this.context.owner, buffer, offset, true);
+        this.context.retainAll([buffer]);
+        this.context.diagnostics.drawCount++;
+        this.context.diagnostics.indirectDrawCount++;
+        this.context.issue(`draw-indexed-indirect:${String(buffer.id)}:${String(offset)}`);
+    }
+
     end(): void {
         this.assertOpen();
         this.context.issue('render-pass:end');
@@ -1692,6 +1842,196 @@ class FakeRHIRenderPass extends FakeDeviceObject implements RHIRenderPassEncoder
                 );
             }
         }
+    }
+}
+
+class FakeRHIComputePass extends FakeDeviceObject implements RHIComputePassEncoder {
+    readonly contextId: number;
+    private passState: RHIComputePassState = 'open';
+    private pipeline: RHIComputePipeline | null = null;
+    private readonly bindGroups = new Map<number, RHIBindGroup>();
+
+    constructor(
+        readonly context: FakeRHICommandContext,
+        label: string
+    ) {
+        super(context.owner, label);
+        this.contextId = context.id;
+    }
+
+    get state(): RHIComputePassState {
+        return this.passState;
+    }
+
+    setPipeline(pipeline: RHIComputePipeline): void {
+        this.assertOpen();
+        this.context.owner.assertUsable(pipeline);
+        if (!(pipeline instanceof FakeComputePipeline)) {
+            validationFailure('wrong-device', 'expected a fake compute pipeline', 'pipeline');
+        }
+        this.context.retainAll([pipeline]);
+        if (this.pipeline !== pipeline) {
+            this.context.diagnostics.pipelineSwitches++;
+            this.context.diagnostics.computePipelineSwitches++;
+        }
+        this.pipeline = pipeline;
+        this.context.issue(`compute-pipeline:${String(pipeline.id)}`);
+    }
+
+    setBindGroup(index: number, bindGroup: RHIBindGroup, dynamicOffsets?: RHIUInt32View): void {
+        this.assertOpen();
+        assertFiniteInteger(index, 'bind group index');
+        if (index >= this.context.owner.capabilities.limits.maxBindGroups) {
+            validationFailure(
+                'out-of-bounds',
+                'bind group index exceeds device limit',
+                'bindGroup'
+            );
+        }
+        this.context.owner.assertUsable(bindGroup);
+        if (this.pipeline !== null) this.validateBindGroupLayout(index, bindGroup, this.pipeline);
+        this.validateDynamicOffsets(bindGroup, dynamicOffsets);
+        const objects: RHIDeviceOwnedObject[] = [bindGroup];
+        if (bindGroup instanceof FakeBindGroup) objects.push(...bindGroup.referencedObjects());
+        this.context.retainAll(objects);
+        this.bindGroups.set(index, bindGroup);
+        this.context.diagnostics.bindGroupSwitches++;
+        this.context.diagnostics.computeBindGroupSwitches++;
+        this.context.issue(`compute-bind-group:${String(index)}:${String(bindGroup.id)}`);
+    }
+
+    dispatchWorkgroups(x: number, y = 1, z = 1): void {
+        this.assertOpen();
+        this.assertPipelineAndBindings();
+        validateRHIDispatchWorkgroups(this.context.owner, x, y, z);
+        this.context.diagnostics.dispatchCount++;
+        this.context.diagnostics.dispatchedWorkgroupCount += x * y * z;
+        this.context.issue(`dispatch:${String(x)}:${String(y)}:${String(z)}`);
+    }
+
+    dispatchWorkgroupsIndirect(buffer: RHIBuffer, offset = 0): void {
+        this.assertOpen();
+        this.assertPipelineAndBindings();
+        validateRHIDispatchWorkgroupsIndirect(this.context.owner, buffer, offset);
+        this.context.retainAll([buffer]);
+        this.context.diagnostics.dispatchCount++;
+        this.context.issue(`dispatch-indirect:${String(buffer.id)}:${String(offset)}`);
+    }
+
+    end(): void {
+        this.assertOpen();
+        this.context.issue('compute-pass:end');
+        this.passState = 'ended';
+        this.pipeline = null;
+        this.context.closeComputePass(this);
+    }
+
+    abort(): void {
+        if (this.passState === 'open') {
+            this.passState = 'aborted';
+            this.pipeline = null;
+        }
+    }
+
+    private assertOpen(): void {
+        this.context.owner.assertUsable(this);
+        if (this.passState !== 'open' || this.context.state !== 'compute-pass') {
+            validationFailure('invalid-state', `compute pass is ${this.passState}`, 'computePass');
+        }
+    }
+
+    private validateBindGroupLayout(
+        index: number,
+        bindGroup: RHIBindGroup,
+        pipeline: RHIComputePipeline
+    ): void {
+        if (pipeline.layout.bindGroupLayouts[index] !== bindGroup.layout) {
+            validationFailure(
+                'incompatible-layout',
+                'bind group layout does not match pipeline',
+                `bindGroup[${String(index)}]`
+            );
+        }
+    }
+
+    private validateDynamicOffsets(
+        bindGroup: RHIBindGroup,
+        dynamicOffsets: RHIUInt32View | undefined
+    ): void {
+        const dynamicEntries = bindGroup.layout.entries
+            .filter(entry => entry.buffer?.hasDynamicOffset === true)
+            .sort((first, second) => first.binding - second.binding);
+        const count = dynamicOffsets?.length ?? 0;
+        if (count !== dynamicEntries.length) {
+            validationFailure(
+                'incompatible-layout',
+                'dynamic offset count does not match bind group layout',
+                'dynamicOffsets'
+            );
+        }
+        for (let index = 0; index < dynamicEntries.length; index += 1) {
+            const layoutEntry = dynamicEntries[index];
+            const dynamicOffset = dynamicOffsets?.[index];
+            if (layoutEntry === undefined || dynamicOffset === undefined) continue;
+            const resource = bindGroup.entries.find(
+                entry => entry.binding === layoutEntry.binding
+            )?.resource;
+            if (resource === undefined || !('buffer' in resource)) {
+                validationFailure(
+                    'incompatible-layout',
+                    'dynamic binding has no buffer resource',
+                    `bindGroup.binding[${String(layoutEntry.binding)}]`
+                );
+            }
+            const bufferType = layoutEntry.buffer?.type ?? 'uniform';
+            const alignment =
+                bufferType === 'uniform'
+                    ? this.context.owner.capabilities.limits.minUniformBufferOffsetAlignment
+                    : this.context.owner.capabilities.limits.minStorageBufferOffsetAlignment;
+            if (alignment === undefined || dynamicOffset % alignment !== 0) {
+                validationFailure(
+                    'invalid-descriptor',
+                    'dynamic offset does not meet device alignment',
+                    `dynamicOffsets[${String(index)}]`
+                );
+            }
+            const baseOffset = resource.offset ?? 0;
+            const size = resource.size ?? resource.buffer.size - baseOffset;
+            if (baseOffset + dynamicOffset + size > resource.buffer.size) {
+                validationFailure(
+                    'out-of-bounds',
+                    'dynamic buffer binding exceeds buffer size',
+                    `dynamicOffsets[${String(index)}]`
+                );
+            }
+        }
+    }
+
+    private assertPipelineAndBindings(): RHIComputePipeline {
+        const pipeline = this.pipeline;
+        if (pipeline === null) {
+            return validationFailure(
+                'invalid-state',
+                'dispatch requires a compute pipeline',
+                'pipeline'
+            );
+        }
+        const requiredBindGroups = new Set<number>();
+        for (const binding of pipeline.descriptor.compute.shader.artifact.reflection.bindings) {
+            requiredBindGroups.add(binding.group);
+        }
+        for (const index of requiredBindGroups) {
+            const bindGroup = this.bindGroups.get(index);
+            if (bindGroup === undefined) {
+                validationFailure(
+                    'invalid-state',
+                    'dispatch requires all pipeline bind groups',
+                    `bindGroup[${String(index)}]`
+                );
+            }
+            this.validateBindGroupLayout(index, bindGroup, pipeline);
+        }
+        return pipeline;
     }
 }
 

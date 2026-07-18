@@ -12,6 +12,7 @@ import Texture from '../../texture/Texture';
 import BuiltInUniformBlockManager from '../BuiltInUniformBlockManager';
 import type RendererCore from '../RendererCore';
 import type UniformBuffer from '../UniformBuffer';
+import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
 import type { RHIUploadBatch } from '../frame/RHIUploadBatch';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import { createSemanticFrameState, type SemanticFrameState } from '../frame/SemanticFrameState';
@@ -27,7 +28,9 @@ import {
     rhiTextureFormatHasDepth,
     type RHICacheCounters,
     type RHIBuffer,
+    type RHIBindGroupLayout,
     type RHIDevice,
+    type RHIGraphicsPipeline,
     type RHIIndexFormat,
     type RHISampler,
     type RHISubmission,
@@ -37,6 +40,7 @@ import {
 } from '../rhi/core';
 import { BufferResourceCache } from './BufferResourceCache';
 import { FrameResourceUseTracker } from './FrameResourceUseTracker';
+import type { GPUDrivenPipelineResourceCache } from './GPUDrivenPipelineResourceCache';
 import {
     externalTextureBindingRegistry,
     type ExternalTextureGraphDependency
@@ -73,9 +77,19 @@ import { refreshShadowAtlasSceneBinding } from './ShadowAtlasTextureBinding';
 import { TextureResourceCache } from './TextureResourceCache';
 import { VertexInputLayoutCompiler } from './VertexInputLayoutCompiler';
 
+const SCENE_STORAGE_BIND_GROUP = 3;
+const DEFERRED_SCENE_STORAGE_GROUPS: readonly number[] = Object.freeze([SCENE_STORAGE_BIND_GROUP]);
+
+/** @internal Reusable pass-owned output populated while scene storage draws are prepared. */
+export interface StorageScenePreparationState {
+    globalBindGroupLayout: ResourceRegistryHandle<RHIBindGroupLayout> | null;
+}
+
 interface MeshUniformHandleScratch {
     handles: ResourceRegistryHandle<RHIBuffer>[];
 }
+
+type MeshBindingPipelineRecord = Pick<PipelineResourceRecord, 'bindingPlan'>;
 
 interface MutableSampledBindingResources {
     textureView: ResourceRegistryHandle<RHITextureView>;
@@ -386,7 +400,9 @@ export class MeshDrawProcessor {
     #pendingMesh: Mesh | null = null;
     #pendingOwner: object | null = null;
     #pendingMaterial: Material | null = null;
-    #pendingPipeline: Readonly<PipelineResourceRecord> | null = null;
+    #pendingGraphicsPipeline: RHIGraphicsPipeline | null = null;
+    #pendingBindingPlan: Readonly<PipelineResourceRecord['bindingPlan']> | null = null;
+    #pendingDeferredBindGroup = -1;
     readonly #pendingVertexBuffers: (RHIBuffer | null)[];
     #pendingVertexBufferCount = 0;
     #pendingIndexBuffer: RHIBuffer | null = null;
@@ -398,12 +414,21 @@ export class MeshDrawProcessor {
         const mesh = this.#pendingMesh;
         const owner = this.#pendingOwner;
         const material = this.#pendingMaterial;
-        const pipeline = this.#pendingPipeline;
-        if (!mesh || !owner || !material || !pipeline || this.#pendingVertexBufferCount === 0) {
+        const pipeline = this.#pendingGraphicsPipeline;
+        const bindingPlan = this.#pendingBindingPlan;
+        if (
+            !mesh ||
+            !owner ||
+            !material ||
+            !pipeline ||
+            !bindingPlan ||
+            this.#pendingVertexBufferCount === 0
+        ) {
             throw new Error('Mesh draw processor lost its pending preparation state');
         }
-        draw.setPipeline(this.registry.resolve(pipeline.pipeline));
-        for (const group of pipeline.bindingPlan.activeGroupIndices) {
+        draw.setPipeline(pipeline);
+        for (const group of bindingPlan.activeGroupIndices) {
+            if (group === this.#pendingDeferredBindGroup) continue;
             const bindGroup = this.bindGroups.resolveGroup(owner, group);
             if (!bindGroup) {
                 throw new Error(`Prepared mesh draw is missing bind group ${String(group)}`);
@@ -684,7 +709,9 @@ export class MeshDrawProcessor {
         this.#pendingMesh = mesh;
         this.#pendingOwner = mesh;
         this.#pendingMaterial = material;
-        this.#pendingPipeline = pipeline;
+        this.#pendingGraphicsPipeline = this.registry.resolve(pipeline.pipeline);
+        this.#pendingBindingPlan = pipeline.bindingPlan;
+        this.#pendingDeferredBindGroup = -1;
         this.#pendingVertexBufferCount = vertexPlan.streams.length;
         this.#pendingIndexBuffer = indexBuffer;
         this.#pendingIndexFormat = indexFormat;
@@ -701,6 +728,166 @@ export class MeshDrawProcessor {
         this.trackGeometrySources(geometry, vertexPlan.streams);
         this.trackMeshTextures(mesh, this.requireSampledScratchSources(mesh, sampledResources));
         this.#preparedMeshes.add(mesh);
+        return prepared;
+    }
+
+    /**
+     * Prepare one ordinary renderer-list mesh with an explicit storage-aware scene shader.
+     *
+     * The mesh keeps the shared geometry, culling, sorting, material raster state, semantic UBO,
+     * texture, upload, recovery, and PreparedDraw paths. Only the graphics shader/pipeline is
+     * replaced. Group three is left unbound here and filled once per pass during graph prepare.
+     *
+     * @internal
+     */
+    prepareStorageScene(
+        mesh: Mesh,
+        target: RHIMeshDrawTargetDescriptor,
+        shader: StorageGraphicsShader,
+        storagePipelines: GPUDrivenPipelineResourceCache,
+        preparationState: StorageScenePreparationState,
+        materialOverride: Material | null = null,
+        plannerInstancedFallback = false
+    ): PreparedDraw {
+        this.assertAlive();
+        const context = this.requireActiveContext();
+        if (storagePipelines.registry !== this.registry) {
+            throw new Error('Scene storage pipeline cache must share the mesh resource registry');
+        }
+        if (this.registry.deviceBackend !== 'webgpu') {
+            throw new Error('Scene storage shader variants are supported only by WebGPU');
+        }
+        if (this.registry.deviceCapabilities.limits.maxBindGroups <= SCENE_STORAGE_BIND_GROUP) {
+            throw new RangeError('Scene storage shader variants require at least four bind groups');
+        }
+        if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
+        if (mesh.useInstanced && !plannerInstancedFallback) {
+            throw new TypeError(
+                'Instanced scene storage meshes require the renderer-list direct-draw fallback'
+            );
+        }
+        const geometry = mesh.geometry;
+        const material = materialOverride ?? context.renderer.forceMaterial ?? mesh.material;
+        if (!geometry || !material) {
+            throw new Error(`Mesh ${mesh.id} requires geometry and material`);
+        }
+        this.validateLighting(material, context);
+        this.validateSceneStorageShader(shader);
+        this.validateDeformation(mesh, geometry);
+        geometry.normalizePrimitiveTopology();
+        if (material.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
+        mapRHIPrimitiveTopology(geometry.mode);
+        const indices = geometry.indices;
+        const primitiveRestart =
+            indices !== null && (geometry.mode === LINE_STRIP || geometry.mode === TRIANGLE_STRIP);
+        const indexFormat = indices ? mapPortableRHIIndexFormat(indices) : 'uint16';
+        const stripIndexFormat = primitiveRestart ? indexFormat : undefined;
+
+        if (this.fragmentOutputModeFor(target) !== 'color') {
+            throw new TypeError('Scene storage shader variants require at least one color target');
+        }
+        const compiled = storagePipelines.resolveCompiledShader(shader);
+        this.validateFragmentOutputs(compiled.metadata.fragmentOutputs, material, target);
+        const vertexPlan = this.vertexInputs.compile(
+            compiled.metadata.vertexInputs,
+            mesh,
+            material,
+            this.registry.deviceCapabilities,
+            this.#programBindingInfo,
+            plannerInstancedFallback
+        );
+        const pipeline = storagePipelines.prepareScene(
+            shader,
+            material,
+            vertexPlan.vertexBuffers,
+            target,
+            geometry.mode,
+            stripIndexFormat
+        );
+        const globalLayout = pipeline.bindGroupLayouts[SCENE_STORAGE_BIND_GROUP];
+        if (globalLayout === undefined) {
+            throw new Error('Scene storage shader lost its fixed pass-global bind-group layout');
+        }
+
+        const uniformHandles = this.prepareUniformBuffers(
+            mesh,
+            mesh,
+            material,
+            pipeline,
+            context,
+            null
+        );
+        const sampledResources = this.prepareSampledResources(mesh, mesh, material, pipeline);
+        const bindingSet = this.bindGroups.prepare(
+            mesh,
+            pipeline.bindingLayoutToken,
+            pipeline.bindingPlan,
+            pipeline.bindGroupLayouts,
+            uniformHandles,
+            sampledResources,
+            DEFERRED_SCENE_STORAGE_GROUPS
+        );
+        for (let slot = 0; slot < vertexPlan.streams.length; slot += 1) {
+            const stream = vertexPlan.streams[slot];
+            if (stream?.slot !== slot) {
+                throw new Error('Vertex input plan contains a non-contiguous stream slot');
+            }
+            this.#pendingVertexBuffers[slot] = this.buffers.prepareVertexBuffer(
+                stream.source,
+                stream.sources
+            );
+        }
+        const indexBuffer = indices
+            ? this.buffers.prepareIndexBuffer(
+                  indices,
+                  primitiveRestart ? PRIMITIVE_RESTART_INDEX_BUFFER_OPTIONS : undefined
+              )
+            : null;
+        const elementCount = indices?.count ?? vertexPlan.vertexCount;
+        if (!Number.isSafeInteger(elementCount) || elementCount < 1) {
+            throw new RangeError('Prepared scene storage draw requires a positive element count');
+        }
+
+        const revision = this.#revisions.capture({
+            mesh,
+            material,
+            shaderToken: pipeline.shaderToken,
+            // Pass-global storage is overlaid after graph resources resolve. Its buffer/range may
+            // change without changing this reusable mesh packet; the fixed layout remains part of
+            // the shader/pipeline identity above.
+            resourceBindings: bindingSet.token,
+            vertexLayoutIdentity: vertexPlan,
+            target,
+            deviceGeneration: this.registry.generation
+        });
+        this.#pendingMesh = mesh;
+        this.#pendingOwner = mesh;
+        this.#pendingMaterial = material;
+        this.#pendingGraphicsPipeline = storagePipelines.resolvePipeline(pipeline);
+        this.#pendingBindingPlan = pipeline.bindingPlan;
+        this.#pendingDeferredBindGroup = SCENE_STORAGE_BIND_GROUP;
+        this.#pendingVertexBufferCount = vertexPlan.streams.length;
+        this.#pendingIndexBuffer = indexBuffer;
+        this.#pendingIndexFormat = indexFormat;
+        this.#pendingElementCount = elementCount;
+        this.#pendingInstanceCount = 1;
+        const prepared = this.#draws.prepare(mesh, revision, this.#updatePreparedDraw);
+
+        this.resourceUses.use(pipeline.pipeline);
+        for (const group of bindingSet.activeGroupIndices) {
+            const handle = bindingSet.groupHandles[group];
+            if (handle !== null && handle !== undefined) this.resourceUses.use(handle);
+        }
+        this.trackGeometrySources(geometry, vertexPlan.streams);
+        this.trackMeshTextures(mesh, this.requireSampledScratchSources(mesh, sampledResources));
+        this.#preparedMeshes.add(mesh);
+        if (
+            preparationState.globalBindGroupLayout !== null &&
+            preparationState.globalBindGroupLayout !== globalLayout
+        ) {
+            throw new Error('Scene storage meshes produced incompatible pass-global layouts');
+        }
+        preparationState.globalBindGroupLayout = globalLayout;
         return prepared;
     }
 
@@ -851,7 +1038,9 @@ export class MeshDrawProcessor {
         this.#pendingMesh = mesh;
         this.#pendingOwner = owner;
         this.#pendingMaterial = shadowMaterial;
-        this.#pendingPipeline = pipeline;
+        this.#pendingGraphicsPipeline = this.registry.resolve(pipeline.pipeline);
+        this.#pendingBindingPlan = pipeline.bindingPlan;
+        this.#pendingDeferredBindGroup = -1;
         this.#pendingVertexBufferCount = vertexPlan.streams.length;
         this.#pendingIndexBuffer = indexBuffer;
         this.#pendingIndexFormat = indexFormat;
@@ -1080,7 +1269,9 @@ export class MeshDrawProcessor {
         this.#pendingMesh = representative;
         this.#pendingOwner = owner;
         this.#pendingMaterial = material;
-        this.#pendingPipeline = pipeline;
+        this.#pendingGraphicsPipeline = this.registry.resolve(pipeline.pipeline);
+        this.#pendingBindingPlan = pipeline.bindingPlan;
+        this.#pendingDeferredBindGroup = -1;
         this.#pendingVertexBufferCount = instancePlan.requiredVertexBufferCount;
         this.#pendingIndexBuffer = indexBuffer;
         this.#pendingIndexFormat = indexFormat;
@@ -1351,6 +1542,41 @@ export class MeshDrawProcessor {
 
     private fragmentOutputModeFor(target: RHIMeshDrawTargetDescriptor): ShaderFragmentOutputMode {
         return target.colorFormats.length === 0 ? 'depth-only' : 'color';
+    }
+
+    private validateSceneStorageShader(shader: StorageGraphicsShader): void {
+        let storageCount = 0;
+        for (const binding of shader.bindings) {
+            if (binding.kind === 'read-only-storage-buffer') {
+                storageCount++;
+                if (binding.group !== SCENE_STORAGE_BIND_GROUP) {
+                    throw new TypeError(
+                        `Scene readonly storage binding ${binding.name} must use fixed group ${String(SCENE_STORAGE_BIND_GROUP)}`
+                    );
+                }
+                if (binding.dynamicOffset === true) {
+                    throw new TypeError(
+                        `Scene readonly storage binding ${binding.name} cannot use dynamic offsets`
+                    );
+                }
+                continue;
+            }
+            if (binding.kind === 'uniform-buffer' && binding.dynamicOffset === true) {
+                throw new TypeError(
+                    `Scene uniform binding ${binding.name} cannot use dynamic offsets`
+                );
+            }
+            if (binding.group >= SCENE_STORAGE_BIND_GROUP) {
+                throw new TypeError(
+                    `Scene ${binding.kind} binding ${binding.name} conflicts with reserved pass-global group ${String(SCENE_STORAGE_BIND_GROUP)}`
+                );
+            }
+        }
+        if (storageCount === 0) {
+            throw new TypeError(
+                'Scene storage shader variant requires at least one readonly storage buffer'
+            );
+        }
     }
 
     /** Validate reflected outputs against the same sparse target-location contract as the RHI. */
@@ -1645,7 +1871,7 @@ export class MeshDrawProcessor {
         owner: object,
         mesh: Mesh,
         material: Material,
-        pipeline: Readonly<PipelineResourceRecord>,
+        pipeline: Readonly<MeshBindingPipelineRecord>,
         context: RenderGraphFrameContext,
         instanceBlock: UniformBuffer | null
     ): readonly ResourceRegistryHandle<RHIBuffer>[] {
@@ -1682,7 +1908,7 @@ export class MeshDrawProcessor {
         owner: object,
         mesh: Mesh,
         material: Material,
-        pipeline: Readonly<PipelineResourceRecord>
+        pipeline: Readonly<MeshBindingPipelineRecord>
     ): readonly ShaderSampledBindingResources[] {
         const bindings = pipeline.bindingPlan.sampledBindings;
         if (bindings.length === 0) return EMPTY_SAMPLED_RESOURCES;

@@ -15,6 +15,8 @@ import {
     type RHIDevice,
     type RHIDeviceLostInfo,
     type RHIDeviceOwnedObject,
+    type RHIComputePipeline,
+    type RHIComputePipelineDescriptor,
     type RHIGraphicsPipeline,
     type RHIGraphicsPipelineDescriptor,
     type RHIPipelineLayoutDescriptor,
@@ -89,8 +91,14 @@ function emptyDiagnostics() {
     return {
         commandCount: 0,
         drawCount: 0,
+        indirectDrawCount: 0,
+        dispatchCount: 0,
+        dispatchedWorkgroupCount: 0,
+        bufferClearCount: 0,
         pipelineSwitches: 0,
         bindGroupSwitches: 0,
+        computePipelineSwitches: 0,
+        computeBindGroupSwitches: 0,
         vertexBufferSwitches: 0,
         nativeStateCalls: 0,
         frameArenaGrowths: 0,
@@ -243,6 +251,15 @@ export class WebGL2RHIDevice implements RHIDevice {
     createGraphicsPipeline(descriptor: RHIGraphicsPipelineDescriptor): WebGL2GraphicsPipeline {
         this.assertAlive();
         return new WebGL2GraphicsPipeline(this, descriptor);
+    }
+
+    createComputePipeline(_descriptor: RHIComputePipelineDescriptor): RHIComputePipeline {
+        this.assertAlive();
+        throw new RHIValidationError(
+            'unsupported-feature',
+            'WebGL2 does not support compute pipelines',
+            'computePipeline'
+        );
     }
 
     createSurface(canvas: HTMLCanvasElement): WebGL2Surface {

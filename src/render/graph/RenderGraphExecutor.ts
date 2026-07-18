@@ -60,7 +60,7 @@ function assertImportedBufferDescriptor(
     if (
         actual.lifetime !== expected.lifetime ||
         actual.size !== expected.size ||
-        actual.usage !== expected.usage ||
+        (actual.usage & expected.usage) !== expected.usage ||
         actual.mappedAtCreation !== expected.mappedAtCreation
     ) {
         renderGraphFailure(

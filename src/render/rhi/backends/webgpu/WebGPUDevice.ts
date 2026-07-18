@@ -7,6 +7,7 @@ import {
 import type {
     RHIBindGroupDescriptor,
     RHIBindGroupLayoutDescriptor,
+    RHIComputePipelineDescriptor,
     RHIGraphicsPipelineDescriptor,
     RHIPipelineLayoutDescriptor
 } from '../../core/RHIPipeline';
@@ -30,6 +31,7 @@ import {
     normalizeRHITextureDescriptor,
     snapshotRHIBindGroupDescriptor,
     snapshotRHIBindGroupLayoutDescriptor,
+    snapshotRHIComputePipelineDescriptor,
     snapshotRHIDataSource,
     snapshotRHIGraphicsPipelineDescriptor,
     snapshotRHIPipelineLayoutDescriptor
@@ -47,10 +49,12 @@ import { nativeWebGPUSamplerDescriptor, nativeWebGPUTextureDescriptor } from './
 import {
     WebGPUBindGroup,
     WebGPUBindGroupLayout,
+    WebGPUComputePipeline,
     WebGPUGraphicsPipeline,
     WebGPUPipelineLayout,
     nativeWebGPUBindGroupEntry,
     nativeWebGPUBindGroupLayoutEntry,
+    nativeWebGPUComputePipelineDescriptor,
     nativeWebGPUGraphicsPipelineDescriptor
 } from './WebGPUPipeline';
 import { WebGPUQueue } from './WebGPUQueue';
@@ -368,6 +372,30 @@ export class WebGPUDevice implements RHIDevice, WebGPUObjectOwner {
             )
         );
         return new WebGPUGraphicsPipeline(this, nativePipeline, snapshot);
+    }
+
+    createComputePipeline(descriptor: RHIComputePipelineDescriptor): WebGPUComputePipeline {
+        this.assertOperational();
+        const snapshot = snapshotRHIComputePipelineDescriptor(this, descriptor);
+        if (!(snapshot.layout instanceof WebGPUPipelineLayout) || snapshot.layout.owner !== this) {
+            throw new RHIValidationError(
+                'wrong-device',
+                'expected a WebGPU RHI pipeline layout',
+                'computePipeline.layout'
+            );
+        }
+        const shader = snapshot.compute.shader;
+        if (!(shader instanceof WebGPUShader) || shader.owner !== this) {
+            throw new RHIValidationError(
+                'wrong-device',
+                'expected a WebGPU RHI compute shader',
+                'computePipeline.compute.shader'
+            );
+        }
+        const nativePipeline = this.#nativeHandle.createComputePipeline(
+            nativeWebGPUComputePipelineDescriptor(snapshot, snapshot.layout, shader)
+        );
+        return new WebGPUComputePipeline(this, nativePipeline, snapshot, snapshot.layout);
     }
 
     createSurface(canvas: HTMLCanvasElement): RHISurface {

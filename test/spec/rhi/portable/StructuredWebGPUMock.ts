@@ -36,6 +36,7 @@ export interface StructuredWebGPUMock {
     readonly device: GPUDevice;
     readonly canvas: HTMLCanvasElement;
     readonly log: string[];
+    readonly computePipelineDescriptors: GPUComputePipelineDescriptor[];
     loseDevice(message?: string): void;
 }
 
@@ -90,6 +91,7 @@ function colorBytes(value: GPUColor | undefined): readonly number[] {
  */
 export function createStructuredWebGPUMock(): StructuredWebGPUMock {
     const log: string[] = [];
+    const computePipelineDescriptors: GPUComputePipelineDescriptor[] = [];
     const buffers = new WeakMap<object, MockBufferData>();
     const textures = new WeakMap<object, MockTextureData>();
     const views = new WeakMap<object, MockTextureViewData>();
@@ -268,6 +270,24 @@ export function createStructuredWebGPUMock(): StructuredWebGPUMock {
         if (first !== null && first !== undefined) fillView(first.view, color);
     }
 
+    function executeCompute(
+        pipeline: GPUComputePipeline,
+        group: GPUBindGroup | undefined,
+        x: number,
+        y: number,
+        z: number
+    ): void {
+        void pipeline;
+        const entry = (group === undefined ? undefined : bindGroups.get(group))?.entries.find(
+            candidate => candidate.binding === 0
+        );
+        const resource = entry?.resource;
+        if (resource === undefined || !('buffer' in resource)) return;
+        const binding = resource;
+        const target = new DataView(requireBuffer(binding.buffer).storage);
+        target.setUint32(binding.offset ?? 0, x * y * z, true);
+    }
+
     function copyView(source: GPUTextureView, destination: GPUTextureView): void {
         const sourceView = requireView(source);
         const destinationView = requireView(destination);
@@ -331,6 +351,26 @@ export function createStructuredWebGPUMock(): StructuredWebGPUMock {
                 });
                 log.push('pass.drawIndexed');
             },
+            drawIndirect: () => {
+                if (currentPipeline === null) throw new Error('drawIndirect has no pipeline');
+                const pipeline = currentPipeline;
+                const group = currentGroups[0];
+                operations.push(() => {
+                    executeDraw(pipeline, group, attachments);
+                });
+                log.push('pass.drawIndirect');
+            },
+            drawIndexedIndirect: () => {
+                if (currentPipeline === null) {
+                    throw new Error('drawIndexedIndirect has no pipeline');
+                }
+                const pipeline = currentPipeline;
+                const group = currentGroups[0];
+                operations.push(() => {
+                    executeDraw(pipeline, group, attachments);
+                });
+                log.push('pass.drawIndexedIndirect');
+            },
             end: () => {
                 for (const attachment of attachments) {
                     if (attachment?.resolveTarget !== undefined) {
@@ -343,6 +383,47 @@ export function createStructuredWebGPUMock(): StructuredWebGPUMock {
                 log.push('pass.end');
             }
         } as unknown as GPURenderPassEncoder;
+    }
+
+    function createComputePass(operations: MockOperation[]): GPUComputePassEncoder {
+        let currentPipeline: GPUComputePipeline | null = null;
+        const currentGroups: (GPUBindGroup | undefined)[] = [];
+        return {
+            setPipeline: (pipeline: GPUComputePipeline) => {
+                currentPipeline = pipeline;
+                log.push('computePass.setPipeline');
+            },
+            setBindGroup: (index: number, group: GPUBindGroup | null) => {
+                currentGroups[index] = group ?? undefined;
+                log.push('computePass.setBindGroup');
+            },
+            dispatchWorkgroups: (x: number, y = 1, z = 1) => {
+                if (currentPipeline === null) throw new Error('dispatch has no pipeline');
+                const pipeline = currentPipeline;
+                const group = currentGroups[0];
+                operations.push(() => {
+                    executeCompute(pipeline, group, x, y, z);
+                });
+                log.push('computePass.dispatchWorkgroups');
+            },
+            dispatchWorkgroupsIndirect: (buffer: GPUBuffer, offset: number) => {
+                if (currentPipeline === null) throw new Error('dispatch has no pipeline');
+                const pipeline = currentPipeline;
+                const group = currentGroups[0];
+                operations.push(() => {
+                    const source = new DataView(requireBuffer(buffer).storage);
+                    executeCompute(
+                        pipeline,
+                        group,
+                        source.getUint32(offset, true),
+                        source.getUint32(offset + 4, true),
+                        source.getUint32(offset + 8, true)
+                    );
+                });
+                log.push('computePass.dispatchWorkgroupsIndirect');
+            },
+            end: () => log.push('computePass.end')
+        } as unknown as GPUComputePassEncoder;
     }
 
     function copyBufferToTexture(
@@ -442,6 +523,17 @@ export function createStructuredWebGPUMock(): StructuredWebGPUMock {
             beginRenderPass: (descriptor: GPURenderPassDescriptor) => {
                 log.push('encoder.beginRenderPass');
                 return createRenderPass(descriptor, operations);
+            },
+            beginComputePass: () => {
+                log.push('encoder.beginComputePass');
+                return createComputePass(operations);
+            },
+            clearBuffer: (buffer: GPUBuffer, offset = 0, size?: number) => {
+                operations.push(() => {
+                    const storage = new Uint8Array(requireBuffer(buffer).storage);
+                    storage.fill(0, offset, size === undefined ? storage.length : offset + size);
+                });
+                log.push('encoder.clearBuffer');
             },
             copyBufferToBuffer: (
                 source: GPUBuffer,
@@ -571,6 +663,7 @@ export function createStructuredWebGPUMock(): StructuredWebGPUMock {
         maxBindGroups: 4,
         maxBindingsPerBindGroup: 32,
         maxDynamicUniformBuffersPerPipelineLayout: 8,
+        maxDynamicStorageBuffersPerPipelineLayout: 4,
         maxSampledTexturesPerShaderStage: 16,
         maxSamplersPerShaderStage: 16,
         maxUniformBuffersPerShaderStage: 12,
@@ -584,7 +677,13 @@ export function createStructuredWebGPUMock(): StructuredWebGPUMock {
         maxStorageBuffersPerShaderStage: 8,
         maxStorageTexturesPerShaderStage: 4,
         maxStorageBufferBindingSize: 134_217_728,
-        minStorageBufferOffsetAlignment: 256
+        minStorageBufferOffsetAlignment: 256,
+        maxComputeWorkgroupStorageSize: 16_384,
+        maxComputeInvocationsPerWorkgroup: 256,
+        maxComputeWorkgroupSizeX: 256,
+        maxComputeWorkgroupSizeY: 256,
+        maxComputeWorkgroupSizeZ: 64,
+        maxComputeWorkgroupsPerDimension: 65_535
     } as unknown as GPUSupportedLimits;
 
     let resolveLost: ((info: GPUDeviceLostInfo) => void) | undefined;
@@ -615,6 +714,12 @@ export function createStructuredWebGPUMock(): StructuredWebGPUMock {
         },
         createRenderPipeline: (descriptor: GPURenderPipelineDescriptor) => {
             const pipeline = { label: descriptor.label ?? '' } as GPURenderPipeline;
+            pipelines.set(pipeline, { label: descriptor.label ?? '' });
+            return pipeline;
+        },
+        createComputePipeline: (descriptor: GPUComputePipelineDescriptor) => {
+            computePipelineDescriptors.push(descriptor);
+            const pipeline = { label: descriptor.label ?? '' } as GPUComputePipeline;
             pipelines.set(pipeline, { label: descriptor.label ?? '' });
             return pipeline;
         },
@@ -654,6 +759,7 @@ export function createStructuredWebGPUMock(): StructuredWebGPUMock {
         device: nativeDevice,
         canvas,
         log,
+        computePipelineDescriptors,
         loseDevice: (message = 'structured device loss') => {
             resolveLost?.({ reason: 'unknown', message });
         }

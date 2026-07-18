@@ -1,4 +1,4 @@
-import type { RHIBindGroup, RHIGraphicsPipeline } from './RHIPipeline';
+import type { RHIBindGroup, RHIComputePipeline, RHIGraphicsPipeline } from './RHIPipeline';
 import type { RHIBuffer, RHIDeviceOwnedObject, RHITexture, RHITextureView } from './RHIResources';
 import type {
     RHIColor,
@@ -113,8 +113,14 @@ export interface RHIDrawArgumentsRecord {
 export interface RHIFrameDiagnostics {
     commandCount: number;
     drawCount: number;
+    indirectDrawCount: number;
+    dispatchCount: number;
+    dispatchedWorkgroupCount: number;
+    bufferClearCount: number;
     pipelineSwitches: number;
     bindGroupSwitches: number;
+    computePipelineSwitches: number;
+    computeBindGroupSwitches: number;
     vertexBufferSwitches: number;
     nativeStateCalls: number;
     frameArenaGrowths: number;
@@ -123,8 +129,28 @@ export interface RHIFrameDiagnostics {
     cacheMisses: number;
 }
 
-export type RHICommandContextState = 'open' | 'render-pass' | 'ended' | 'aborted';
+export type RHICommandContextState = 'open' | 'render-pass' | 'compute-pass' | 'ended' | 'aborted';
 export type RHIRenderPassState = 'open' | 'ended' | 'aborted';
+export type RHIComputePassState = 'open' | 'ended' | 'aborted';
+
+/** Optional debug metadata for a backend-neutral compute pass. */
+export interface RHIComputePassDescriptor {
+    readonly label?: string;
+}
+
+/** Command encoder valid only while its parent context is in the compute-pass state. */
+export interface RHIComputePassEncoder extends RHIDeviceOwnedObject {
+    readonly contextId: number;
+    readonly state: RHIComputePassState;
+
+    setPipeline(pipeline: RHIComputePipeline): void;
+    setBindGroup(index: number, bindGroup: RHIBindGroup, dynamicOffsets?: RHIUInt32View): void;
+    /** Dispatch positive workgroup counts bounded by maxComputeWorkgroupsPerDimension. */
+    dispatchWorkgroups(x: number, y?: number, z?: number): void;
+    /** Read three uint32 workgroup counts from an unmapped INDIRECT buffer. */
+    dispatchWorkgroupsIndirect(buffer: RHIBuffer, offset?: number): void;
+    end(): void;
+}
 
 /** A render pass is valid only while both it and its parent frame context are open. */
 export interface RHIRenderPassEncoder extends RHIDeviceOwnedObject {
@@ -171,6 +197,10 @@ export interface RHIRenderPassEncoder extends RHIDeviceOwnedObject {
     ): void;
     /** @internal Read synchronously from caller-owned allocation-stable command storage. */
     drawIndexedRecord(record: Readonly<RHIDrawArgumentsRecord>): void;
+    /** Read one non-indexed draw packet from an unmapped INDIRECT buffer. */
+    drawIndirect(buffer: RHIBuffer, offset?: number): void;
+    /** Read one indexed draw packet from an unmapped INDIRECT buffer. */
+    drawIndexedIndirect(buffer: RHIBuffer, offset?: number): void;
     end(): void;
 }
 
@@ -219,6 +249,10 @@ export interface RHICommandContext extends RHIDeviceOwnedObject {
      */
     generateMipmaps(texture: RHITexture): void;
     beginRenderPass(descriptor: RHIRenderPassDescriptor): RHIRenderPassEncoder;
+    /** Begin a compute pass; unsupported backends fail before native command emission. */
+    beginComputePass(descriptor?: RHIComputePassDescriptor): RHIComputePassEncoder;
+    /** Encode a four-byte-aligned zero fill for an unmapped COPY_DST buffer range. */
+    clearBuffer(buffer: RHIBuffer, offset?: number, size?: number): void;
     copyBufferToBuffer(
         source: RHIBuffer,
         sourceOffset: number,

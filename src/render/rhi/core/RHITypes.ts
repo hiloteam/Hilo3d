@@ -31,7 +31,8 @@ export const RHITextureUsage = Object.freeze({
 
 export const RHIShaderStage = Object.freeze({
     VERTEX: 0x1,
-    FRAGMENT: 0x2
+    FRAGMENT: 0x2,
+    COMPUTE: 0x4
 });
 
 export const RHIColorWrite = Object.freeze({
@@ -48,7 +49,7 @@ export type RHIShaderStageFlags = number;
 export type RHIColorWriteFlags = number;
 
 export type RHIPowerPreference = 'low-power' | 'high-performance';
-export type RHIShaderStageName = 'vertex' | 'fragment';
+export type RHIShaderStageName = 'vertex' | 'fragment' | 'compute';
 export type RHIDataSource = ArrayBuffer | ArrayBufferView;
 /** Preallocated dynamic-offset storage; ordinary arrays are excluded from the draw hot path. */
 export type RHIUInt32View = Uint32Array;

@@ -527,7 +527,6 @@ export class WebGL2Shader extends WebGL2ResourceBase implements RHIShader {
         super(owner, normalized.label, normalized.lifetime, WEBGL2_SHADER_OBJECT_KIND);
         this.descriptor = normalized;
         this.artifact = normalized.artifact;
-        this.stage = normalized.artifact.stage;
         if (normalized.artifact.backend !== 'webgl2') {
             throw new RHIValidationError(
                 'invalid-descriptor',
@@ -535,6 +534,14 @@ export class WebGL2Shader extends WebGL2ResourceBase implements RHIShader {
                 'shader.artifact'
             );
         }
+        if (normalized.artifact.stage === 'compute') {
+            throw new RHIValidationError(
+                'unsupported-feature',
+                'WebGL2 does not support compute shaders',
+                'shader.artifact.stage'
+            );
+        }
+        this.stage = normalized.artifact.stage;
         if (normalized.artifact.entryPoint !== 'main') {
             throw new RHIValidationError(
                 'unsupported-feature',

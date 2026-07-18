@@ -14,6 +14,10 @@ import {
 } from '../rhi/core';
 
 const MISSING_INDEX_BUFFER_ERROR = new Error('Prepared indexed draw lost its index buffer');
+const MISSING_INDIRECT_BUFFER_ERROR = new Error('Prepared indirect draw lost its argument buffer');
+const MISSING_INDEXED_INDIRECT_BUFFER_ERROR = new Error(
+    'Prepared indexed indirect draw lost its argument buffer'
+);
 const MISSING_VIEWPORT_ERROR = new Error(
     'Prepared draw with a custom depth range requires a pass viewport'
 );
@@ -68,6 +72,8 @@ interface MutableVertexInputBindings {
     indexBuffer: MutableVertexInputIndexBinding | null;
 }
 
+type PreparedDrawMode = 'draw' | 'draw-indexed' | 'draw-indirect' | 'draw-indexed-indirect';
+
 type MutableDrawArgumentsRecord = {
     -readonly [Key in keyof RHIDrawArgumentsRecord]: RHIDrawArgumentsRecord[Key];
 };
@@ -112,7 +118,9 @@ export class PreparedDraw {
         size: undefined
     };
     private readonly vertexInputBindings: MutableVertexInputBindings;
-    private indexed = false;
+    private drawMode: PreparedDrawMode = 'draw';
+    private indirectBuffer: RHIBuffer | null = null;
+    private indirectOffset = 0;
     private readonly drawArguments: MutableDrawArgumentsRecord = {
         elementCount: 0,
         instanceCount: 1,
@@ -207,7 +215,9 @@ export class PreparedDraw {
         this.indexBuffer.offset = 0;
         this.indexBuffer.size = undefined;
         this.vertexInputBindings.indexBuffer = null;
-        this.indexed = false;
+        this.drawMode = 'draw';
+        this.indirectBuffer = null;
+        this.indirectOffset = 0;
         const drawArguments = this.drawArguments;
         drawArguments.elementCount = 0;
         drawArguments.instanceCount = 1;
@@ -232,6 +242,19 @@ export class PreparedDraw {
         requireIndex(index, this.bindGroupCapacity, 'Bind group index');
         this.bindGroups[index] = bindGroup;
         this.dynamicOffsets[index] = dynamicOffsets ?? null;
+        if (index + 1 > this.bindGroupHighWater) this.bindGroupHighWater = index + 1;
+    }
+
+    /**
+     * Overlay a graph-resolved pass-global group on a sealed pass-local snapshot.
+     *
+     * @internal This is valid only during Render Graph prepare, before vertex-input preparation.
+     */
+    setPreparedBindGroup(index: number, bindGroup: RHIBindGroup): void {
+        if (!this.valid) throw new Error('Prepared draw is not ready for a pass-global bind group');
+        requireIndex(index, this.bindGroupCapacity, 'Bind group index');
+        this.bindGroups[index] = bindGroup;
+        this.dynamicOffsets[index] = null;
         if (index + 1 > this.bindGroupHighWater) this.bindGroupHighWater = index + 1;
     }
 
@@ -264,7 +287,8 @@ export class PreparedDraw {
         requireDrawInteger(instanceCount, 'Instance count', 1);
         requireDrawInteger(firstVertex, 'First vertex');
         requireDrawInteger(firstInstance, 'First instance');
-        this.indexed = false;
+        this.drawMode = 'draw';
+        this.indirectBuffer = null;
         this.vertexInputBindings.indexBuffer = null;
         const drawArguments = this.drawArguments;
         drawArguments.elementCount = vertexCount;
@@ -288,7 +312,8 @@ export class PreparedDraw {
         if (!Number.isSafeInteger(baseVertex))
             throw new RangeError('Base vertex must be a safe integer');
         requireDrawInteger(firstInstance, 'First instance');
-        this.indexed = true;
+        this.drawMode = 'draw-indexed';
+        this.indirectBuffer = null;
         this.vertexInputBindings.indexBuffer = this.indexBuffer;
         const drawArguments = this.drawArguments;
         drawArguments.elementCount = indexCount;
@@ -296,6 +321,30 @@ export class PreparedDraw {
         drawArguments.firstElement = firstIndex;
         drawArguments.baseVertex = baseVertex;
         drawArguments.firstInstance = firstInstance;
+    }
+
+    /** Select one GPU-authored non-indexed draw packet without reading its contents on the CPU. */
+    setDrawIndirect(buffer: RHIBuffer, offset = 0): void {
+        this.assertUpdating();
+        requireDrawInteger(offset, 'Indirect draw offset');
+        if (offset % 4 !== 0) throw new RangeError('Indirect draw offset must be 4-byte aligned');
+        this.drawMode = 'draw-indirect';
+        this.indirectBuffer = buffer;
+        this.indirectOffset = offset;
+        this.vertexInputBindings.indexBuffer = null;
+    }
+
+    /** Select one GPU-authored indexed draw packet without reading its contents on the CPU. */
+    setDrawIndexedIndirect(buffer: RHIBuffer, offset = 0): void {
+        this.assertUpdating();
+        requireDrawInteger(offset, 'Indexed indirect draw offset');
+        if (offset % 4 !== 0) {
+            throw new RangeError('Indexed indirect draw offset must be 4-byte aligned');
+        }
+        this.drawMode = 'draw-indexed-indirect';
+        this.indirectBuffer = buffer;
+        this.indirectOffset = offset;
+        this.vertexInputBindings.indexBuffer = this.indexBuffer;
     }
 
     setSortKey(high: number, low: number): void {
@@ -365,8 +414,13 @@ export class PreparedDraw {
         this.indexBuffer.format = source.indexBuffer.format;
         this.indexBuffer.offset = source.indexBuffer.offset;
         this.indexBuffer.size = source.indexBuffer.size;
-        this.indexed = source.indexed;
-        this.vertexInputBindings.indexBuffer = this.indexed ? this.indexBuffer : null;
+        this.drawMode = source.drawMode;
+        this.indirectBuffer = source.indirectBuffer;
+        this.indirectOffset = source.indirectOffset;
+        this.vertexInputBindings.indexBuffer =
+            this.drawMode === 'draw-indexed' || this.drawMode === 'draw-indexed-indirect'
+                ? this.indexBuffer
+                : null;
         const targetDrawArguments = this.drawArguments;
         const sourceDrawArguments = source.drawArguments;
         targetDrawArguments.elementCount = sourceDrawArguments.elementCount;
@@ -392,10 +446,22 @@ export class PreparedDraw {
     /** @internal */
     finishUpdate(revision: PreparedDrawRevision): void {
         if (!this.pipelineValue) throw new Error('Prepared draw update did not set a pipeline');
-        if (this.drawArguments.elementCount === 0)
+        if (
+            (this.drawMode === 'draw' || this.drawMode === 'draw-indexed') &&
+            this.drawArguments.elementCount === 0
+        )
             throw new Error('Prepared draw update did not set draw arguments');
-        if (this.indexed && !this.indexBuffer.buffer) {
+        if (
+            (this.drawMode === 'draw-indexed' || this.drawMode === 'draw-indexed-indirect') &&
+            !this.indexBuffer.buffer
+        ) {
             throw new Error('Prepared indexed draw update did not set an index buffer');
+        }
+        if (
+            (this.drawMode === 'draw-indirect' || this.drawMode === 'draw-indexed-indirect') &&
+            this.indirectBuffer === null
+        ) {
+            throw new Error('Prepared indirect draw update did not set an argument buffer');
         }
         requireRevision(revision.geometry, 'Geometry');
         requireRevision(revision.materialVariant, 'Material variant');
@@ -474,12 +540,14 @@ export class PreparedDraw {
                 }
             }
         }
-        if (this.indexed) {
+        if (this.drawMode === 'draw-indexed' || this.drawMode === 'draw-indexed-indirect') {
             const buffer = this.indexBuffer.buffer;
             if (!buffer) throw MISSING_INDEX_BUFFER_ERROR;
-            const previousIndexBuffer = previousDraw?.indexed
-                ? previousDraw.indexBuffer
-                : undefined;
+            const previousIndexBuffer =
+                previousDraw?.drawMode === 'draw-indexed' ||
+                previousDraw?.drawMode === 'draw-indexed-indirect'
+                    ? previousDraw.indexBuffer
+                    : undefined;
             const indexBuffer = this.indexBuffer;
             if (
                 previousIndexBuffer?.buffer !== buffer ||
@@ -491,9 +559,22 @@ export class PreparedDraw {
                     indexBuffer as unknown as Readonly<RHIIndexBufferBindingRecord>
                 );
             }
-            pass.drawIndexedRecord(this.drawArguments);
-        } else {
+            if (this.drawMode === 'draw-indexed') pass.drawIndexedRecord(this.drawArguments);
+            else {
+                const indirectBuffer = this.indirectBuffer;
+                if (indirectBuffer === null) {
+                    throw MISSING_INDEXED_INDIRECT_BUFFER_ERROR;
+                }
+                pass.drawIndexedIndirect(indirectBuffer, this.indirectOffset);
+            }
+        } else if (this.drawMode === 'draw') {
             pass.drawRecord(this.drawArguments);
+        } else {
+            const indirectBuffer = this.indirectBuffer;
+            if (indirectBuffer === null) {
+                throw MISSING_INDIRECT_BUFFER_ERROR;
+            }
+            pass.drawIndirect(indirectBuffer, this.indirectOffset);
         }
     }
 

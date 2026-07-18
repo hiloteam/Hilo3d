@@ -1,5 +1,6 @@
 import type {
     RHICommandContext,
+    RHIComputePassDescriptor,
     RHIFrameDiagnostics,
     RHIRenderPassDescriptor
 } from '../../core/RHICommands';
@@ -17,6 +18,7 @@ import { WebGPUObject, createWebGPUDeferred, type WebGPUDeferred } from './WebGP
 import { WebGPUCommandContext, type WebGPUFrameReferences } from './WebGPUCommands';
 import type { WebGPUDevice } from './WebGPUDevice';
 import { WebGPUExternalImageStager } from './WebGPUExternalImages';
+import { WebGPUComputePassStorage } from './WebGPUComputePass';
 import { WebGPURenderPassStorage } from './WebGPURenderPass';
 
 const MIN_UPLOAD_PAGE_CAPACITY = 64 * 1024;
@@ -442,6 +444,8 @@ export class WebGPUQueue extends WebGPUObject implements RHIQueue {
     readonly #submitBuffers: GPUCommandBuffer[] = [null as unknown as GPUCommandBuffer];
     #renderPassStorage: WebGPURenderPassStorage | null = null;
     #renderPassStorageLeased = false;
+    #computePassStorage: WebGPUComputePassStorage | null = null;
+    #computePassStorageLeased = false;
 
     constructor(owner: WebGPUDevice, nativeQueue: GPUQueue) {
         super(owner, nativeQueue.label);
@@ -659,6 +663,35 @@ export class WebGPUQueue extends WebGPUObject implements RHIQueue {
         }
         storage.release();
         this.#renderPassStorageLeased = false;
+    }
+
+    /** @internal A native compute-pass descriptor is consumed synchronously and then reused. */
+    acquireComputePassStorage(
+        descriptor: RHIComputePassDescriptor,
+        context: WebGPUCommandContext
+    ): WebGPUComputePassStorage {
+        if (this.#computePassStorageLeased) {
+            throw new Error('WebGPU compute-pass backing is already leased');
+        }
+        let storage = this.#computePassStorage;
+        if (storage === null) {
+            storage = new WebGPUComputePassStorage(this.owner);
+            this.#computePassStorage = storage;
+            context.diagnostics.frameArenaGrowths += 1;
+            context.diagnostics.transientAllocations += 1;
+        }
+        this.#computePassStorageLeased = true;
+        storage.prepare(descriptor.label ?? '');
+        return storage;
+    }
+
+    /** @internal */
+    releaseComputePassStorage(storage: WebGPUComputePassStorage): void {
+        if (storage !== this.#computePassStorage || !this.#computePassStorageLeased) {
+            throw new Error('WebGPU compute-pass backing is not leased');
+        }
+        storage.release();
+        this.#computePassStorageLeased = false;
     }
 
     private acquireFrameReferences(): WebGPUFrameReferences {

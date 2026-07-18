@@ -69,8 +69,8 @@ Stage / Renderer.render() / Renderer.renderFrame()
 - scriptable fullscreen 的 JS descriptor/entry storage 按高水位复用；绑定 graph-transient
   view 的 native bind group 仍采用 submission-fenced frame
   lifetime，每个存活 pass/frame 重新创建，不冒充跨帧 cache hit。
-- 公共 storage-buffer、storage-texture 和 compute
-  capability 名称已预留，但当前能力快照确定性返回不支持；在完整垂直实现前不会暴露半成品。
+- WebGPU-only `storage-buffer`、`storage-texture`、`compute-pass` 与 `indirect-draw` 已在同一 SRP
+  facade 上公开；requirements 在后端选择前排除 WebGL 2，runtime 仍使用同一 graph、事务和恢复链路。
 
 ### 1.2 2026-07-16 验证证据
 
@@ -88,20 +88,20 @@ Stage / Renderer.render() / Renderer.renderFrame()
 
 ## 2. 核心决策
 
-| 问题                         | 决策                                                                                                            |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| SRP 位于哪里                 | 共享 Renderer 与 `RenderGraphFrame` 之间，只负责编排后端中立工作                                                |
-| 默认渲染器是否变化           | 仍只有一个公开 `Renderer`，默认创建内置 `ForwardRenderPipeline`                                                 |
-| 如何选择自定义管线           | Renderer 创建时传入可复用的 `RenderPipelineFactory`；每个 Renderer 获得独立 runtime                             |
-| 是否恢复 Renderer 子类       | 否；使用组合，不恢复公开抽象 Renderer 或 backend-specific driver                                                |
-| 是否公开 RHI                 | 否；公开 SRP facade、图资源 handle 和受限命令，不公开 `RHIDevice`、native handle 或 backend command context     |
-| 是否公开内部 Render Graph    | 不直接公开；公开窄化且稳定的 `ScriptableRenderGraph` facade，内部仍可演进                                       |
-| 自定义 shader 来源           | 继续只有 GLSL ES 3.00，经统一预处理和 Naga 路径生成 WebGPU artifact                                             |
-| 异步边界                     | factory 可在 `Renderer.create()` 中异步创建 runtime；record、setup、prepare、execute 必须同步                   |
-| 默认路径如何保性能           | 管线选择只发生一次；默认路径无 feature 时直接调用现有 retained pass/cache，不增加逐 draw 分支、对象或二次命令流 |
-| pipeline-owned GPU 资源      | 由 Renderer 的 recipe registry 管理，submission-aware，并参与 device/context loss 恢复                          |
-| 多 Renderer 是否共享 runtime | 否；factory 可以共享，runtime、参数池、资源和诊断必须 renderer-local                                            |
-| 对外发布方式                 | 所有 API、默认管线迁移、文档、示例、API report、双后端测试与性能报告同一版本原子发布                            |
+| 问题                         | 决策                                                                                                             |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| SRP 位于哪里                 | 共享 Renderer 与 `RenderGraphFrame` 之间，只负责编排后端中立工作                                                 |
+| 默认渲染器是否变化           | 仍只有一个公开 `Renderer`，默认创建内置 `ForwardRenderPipeline`                                                  |
+| 如何选择自定义管线           | Renderer 创建时传入可复用的 `RenderPipelineFactory`；每个 Renderer 获得独立 runtime                              |
+| 是否恢复 Renderer 子类       | 否；使用组合，不恢复公开抽象 Renderer 或 backend-specific driver                                                 |
+| 是否公开 RHI                 | 否；公开 SRP facade、图资源 handle 和受限命令，不公开 `RHIDevice`、native handle 或 backend command context      |
+| 是否公开内部 Render Graph    | 不直接公开；公开窄化且稳定的 `ScriptableRenderGraph` facade，内部仍可演进                                        |
+| 自定义 shader 来源           | portable raster 保持 GLSL ES 3.00；Direct WGSL 只用于 ComputeShader，GLSL ES 3.10 只用于 readonly storage raster |
+| 异步边界                     | factory 可在 `Renderer.create()` 中异步创建 runtime；record、setup、prepare、execute 必须同步                    |
+| 默认路径如何保性能           | 管线选择只发生一次；默认路径无 feature 时直接调用现有 retained pass/cache，不增加逐 draw 分支、对象或二次命令流  |
+| pipeline-owned GPU 资源      | 由 Renderer 的 recipe registry 管理，submission-aware，并参与 device/context loss 恢复                           |
+| 多 Renderer 是否共享 runtime | 否；factory 可以共享，runtime、参数池、资源和诊断必须 renderer-local                                             |
+| 对外发布方式                 | 所有 API、默认管线迁移、文档、示例、API report、双后端测试与性能报告同一版本原子发布                             |
 
 ## 3. 实施前基础与缺口
 
@@ -1358,7 +1358,8 @@ compatibility layer 掩盖。
 
 ### Shader 与双后端
 
-- [ ] SRP shader 只有 GLSL ES 3.00 source of truth 和 std140/sampler ABI。
+- [ ] SRP portable raster shader 只有 GLSL ES 3.00 source of truth 和 std140/sampler
+      ABI；受控 compute/storage source contract 按当前架构文档执行。
 - [ ] WebGL 2 compile/link、Naga、真实 WebGPU pipeline/draw/readback 全部通过。
 - [ ] 自定义 deferred/fullscreen fixture 在 WebGL 2/WebGPU 得到一致、非空且可验证的结果。
 - [ ] UI、交互和视觉门禁没有放宽容差或新增静默 fallback。
@@ -1402,7 +1403,8 @@ TypeScript、ESM、测试可运行和单一资源 ownership；禁止用类型逃
 1. 新 renderer feature 默认实现为 `ForwardRenderPipelineFeature` 或共享 pass，不进入 backend。
 2. 新 pass 必须声明完整资源依赖，不能通过 native extension 隐藏读取/写入。
 3. 新 pass 参数必须使用 retained storage；默认/内置路径不得每帧创建 closure 或 descriptor tree。
-4. 新 shader 必须继续通过 WebGL 2、Naga 和真实 WebGPU pipeline 覆盖。
+4. 新 portable raster shader 必须继续通过 WebGL 2、Naga 和真实 WebGPU pipeline 覆盖；WebGPU-only
+   compute/storage shader 必须通过其 Naga、portable RHI、真实 WebGPU 与 WebGL 2 negative 门禁。
 5. 新 persistent resource 必须注册 recipe、owner、submission lifetime 和 recovery test。
 6. 新 feature 若改变 scene
    color/depth 中间资源需求，必须声明静态 requirements 并增加 bandwidth/performance benchmark。
@@ -1412,16 +1414,16 @@ TypeScript、ESM、测试可运行和单一资源 ownership；禁止用类型逃
 10. Render Graph/RHI 内部可以继续优化，但 public SRP
     facade 的作用域、同步、所有权和错误合同必须保持稳定。
 
-## 20. SSBO、storage texture 与 compute 的后续扩展路线
+## 20. SSBO、storage texture 与 compute 的已实现衔接
 
-当前 SRP 对这类能力的扩展性是足够的，但**当前版本没有声称已经支持**。公共
-`RenderPipelineCapabilityName` 预留的 `storage-buffer`、`storage-texture` 和 `compute-pass`
-目前全部返回 `false`；factory/feature 一旦声明为 required，会在 runtime 创建和 RHI
-frame 开始前失败。
+当前 SRP 已通过公开 `storage-buffer`、`storage-texture`、`compute-pass` 和 `indirect-draw`
+capability 支持这类能力。它们是 WebGPU-only：factory/feature 声明为 required 后，backend
+selection 会排除 WebGL 2，并在 runtime 创建前校验实际 WebGPU feature、limit 和 storage
+format；不兼容时明确失败，不运行时跳过。
 
-完整目标设计、API、hazard、Direct WGSL、GPU-driven raster、恢复、性能和发布门禁已经独立维护在
+完整公开设计、API、hazard、Direct WGSL、GPU-driven raster、恢复和首发边界独立维护在
 [`COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md`](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)。该文件取代本节早期“compute
-GLSL 转换”和“先公开部分 storage binding”的实施顺序；本节只保留与已落地 SRP 的衔接摘要。
+GLSL 转换”和“先公开部分 storage binding”的实施顺序；本节只保留与 SRP 的衔接摘要。
 
 固定衔接原则：
 
@@ -1438,14 +1440,18 @@ GLSL 转换”和“先公开部分 storage binding”的实施顺序；本节�
 5. raster、copy、compute 共用同一 Render Graph。Buffer
    read/write/read-write、clear、vertex/index/indirect access 和 storage texture
    access 全部进入统一 RAW/WAR/WAW、初始化、culling 和 lifetime 分析。
-6. RHI 增加 compute pipeline/pass、direct/indirect dispatch、buffer clear 和 indirect
+6. RHI 已增加 compute pipeline/pass、direct/indirect dispatch、buffer clear 和 indirect
    draw，不公开原生 `GPU*` 对象；WebGPU 一跳映射，WebGL
    2 明确 fail-closed，不做 texture/CPU/transform-feedback 模拟。
-7. required compute/storage/indirect capability 必须在 Renderer 创建前参与 `auto`
+7. required compute/storage/indirect capability 在 Renderer 创建前参与 `auto`
    候选筛选。WebGPU 不可用时返回“无兼容 backend”，不能创建 WebGL 2 后静默跳过 pass。
-8. 内部实现可以拆分评审，但公共 capability、根导出、示例和文档只在 StorageBuffer、storage
-   texture、direct/indirect dispatch/draw、graph hazard、readback、device-loss
-   recovery、真实 WebGPU 和负向 WebGL 2 证据全部完成后原子开放。
+8. 公共 capability、根导出、示例和文档与 StorageBuffer、storage texture、direct/indirect
+   dispatch/draw、graph hazard、readback、device-loss recovery、真实 WebGPU 和负向 WebGL 2
+   policy 原子开放。
+9. 首发 graph compute texture 只表达完整 2D subresource，storage texture 仅 transient
+   write-only；跨帧 state 使用 renderer-owned `StorageBuffer`。内置 Forward feature 的
+   `sampledDepth` 仍关闭，但完整自定义 SRP 可显式组合 depth prepass、compute 与 Scene group-3
+   storage。
 
 这样扩展不会重写 SRP：factory requirements、renderer-local runtime、同步 record、graph
 handle、三阶段 pass、persistent

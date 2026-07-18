@@ -2,7 +2,12 @@ import {
     BasicLoader,
     BasicMaterial,
     BoxGeometry,
+    ComputeKernel,
+    ComputeRenderPass,
+    ComputeSampler,
+    ComputeShader,
     constants,
+    createStorageLayout,
     EventDispatcher,
     GLTFLoader,
     HiloEvent,
@@ -11,9 +16,13 @@ import {
     MeshPicker,
     PerspectiveCamera,
     Renderer,
+    SCENE_STORAGE_BIND_GROUP,
+    SceneRenderPass,
     Stage,
+    StorageGraphicsShader,
     Texture,
     Tween,
+    GPUDrivenRenderPass,
     version,
     type BasicLoadRequest,
     type BasicMaterialParameters,
@@ -25,6 +34,8 @@ import {
     type LoaderRequest,
     type MeshParameters,
     type CullingResultsHandle,
+    type ComputeTextureSampleType,
+    type ComputeTextureViewDimension,
     type RendererBackend,
     type RendererResourceDiagnostics,
     type RendererSupportOptions,
@@ -36,6 +47,14 @@ import {
     type RenderPipelineOutput,
     type RenderPipelineOutputColorAttachment,
     type RenderPipelineOutputDepthStencilAttachment,
+    type RenderPipelineRequirements,
+    type RenderGraphBufferHandle,
+    type RenderGraphTextureHandle,
+    type RendererListHandle,
+    type StorageBuffer,
+    type StorageBufferReadback,
+    type ShaderTextureSampleType,
+    type ShaderTextureViewDimension,
     type ScriptableRenderGraph,
     type StageParameters,
     type StageBackend,
@@ -238,6 +257,115 @@ stage.addChild(mesh);
 const meshPicker = new MeshPicker({ stage });
 const meshSelection: Promise<Mesh[]> = meshPicker.getSelection(0, 0);
 
+const storageLayout = createStorageLayout({
+    position: 'vec4<f32>',
+    lifetime: 'f32',
+    metadata: { type: 'struct', fields: { flags: 'u32', velocity: 'vec3<f32>' } }
+});
+const storageInitialData = storageLayout.createBuffer({
+    position: [0, 1, 2, 1],
+    lifetime: 1,
+    metadata: { flags: 1, velocity: [0, 0, 0] }
+});
+const storageBuffer: StorageBuffer = webgpuRenderer.createStorageBuffer({
+    label: 'Type consumer storage',
+    byteLength: storageInitialData.byteLength,
+    usage: ['storage', 'vertex', 'indirect', 'copy-source', 'copy-destination'],
+    initialData: storageInitialData,
+    recovery: 'cpu-shadow'
+});
+storageBuffer.write(storageLayout.fields.lifetime.offset, new Float32Array([0.5]));
+const storageReadback: Promise<StorageBufferReadback> = storageBuffer.read();
+const graphStorageBuffer: RenderGraphBufferHandle =
+    scriptableGraph.importStorageBuffer(storageBuffer);
+const transientStorageBuffer: RenderGraphBufferHandle = scriptableGraph.createBuffer(
+    'Type consumer transient storage',
+    { byteLength: 256 }
+);
+const graphOutput = scriptableGraph.importOutput();
+const graphColor: RenderGraphTextureHandle = graphOutput.color(0);
+
+const computeShader = new ComputeShader({
+    label: 'Type consumer compute',
+    source: `
+        @group(0) @binding(0) var<storage, read_write> values: array<u32>;
+        override scale: u32;
+        @compute @workgroup_size(64)
+        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+            values[id.x] = values[id.x] * scale;
+        }
+    `,
+    entryPoint: 'main',
+    workgroupSize: [64],
+    bindings: [
+        { name: 'values', group: 0, binding: 0, kind: 'storage-buffer', access: 'read-write' }
+    ]
+});
+const computeKernel = new ComputeKernel({ shader: computeShader, constants: { scale: 2 } });
+const computePass = new ComputeRenderPass(computeKernel);
+const computeSampler = new ComputeSampler({
+    magFilter: 'linear',
+    minFilter: 'linear',
+    mipmapFilter: 'linear',
+    maxAnisotropy: 2
+});
+scriptableGraph.addPass(computePass, {
+    buffers: [{ buffer: graphStorageBuffer }],
+    textures: [],
+    dispatch: { x: 1 }
+});
+
+const storageGraphicsShader = new StorageGraphicsShader({
+    label: 'Type consumer storage graphics',
+    vertexSource: `#version 310 es
+        layout(std430) readonly buffer Values {
+            vec4 values[];
+        };
+        void main() { gl_Position = values[gl_VertexID]; }
+    `,
+    fragmentSource: `#version 310 es
+        precision highp float;
+        layout(location = 0) out vec4 fragColor;
+        void main() { fragColor = vec4(1.0); }
+    `,
+    bindings: [
+        {
+            name: 'Values',
+            group: SCENE_STORAGE_BIND_GROUP,
+            binding: 0,
+            kind: 'read-only-storage-buffer'
+        }
+    ]
+});
+const gpuDrivenPass = new GPUDrivenRenderPass({
+    shader: storageGraphicsShader,
+    material,
+    vertexLayouts: []
+});
+scriptableGraph.addPass(gpuDrivenPass, {
+    buffers: [{ buffer: graphStorageBuffer }],
+    draw: { kind: 'draw-indirect', buffer: graphStorageBuffer },
+    colorAttachments: [{ texture: graphColor, loadOp: 'load', storeOp: 'store' }]
+});
+declare const typeConsumerRendererList: RendererListHandle;
+const sceneStoragePass = new SceneRenderPass('Type consumer Forward+');
+scriptableGraph.addPass(sceneStoragePass, {
+    rendererList: typeConsumerRendererList,
+    colorAttachments: [{ texture: graphColor, loadOp: 'load', storeOp: 'store' }],
+    storageShaderVariant: {
+        shader: storageGraphicsShader,
+        buffers: [{ buffer: graphStorageBuffer }]
+    }
+});
+const computeRequirements = {
+    requiredCapabilities: ['storage-buffer', 'compute-pass', 'indirect-draw'],
+    requiredLimits: { maxComputeWorkgroupsPerDimension: 1 }
+} satisfies RenderPipelineRequirements;
+const computeTextureSampleType: ComputeTextureSampleType = 'unfilterable-float';
+const computeTextureViewDimension: ComputeTextureViewDimension = '2d';
+const storageGraphicsSampleType: ShaderTextureSampleType = 'uint';
+const storageGraphicsViewDimension: ShaderTextureViewDimension = 'cube';
+
 const registry = new Loader();
 const transport = new BasicLoader();
 const gltfLoader = new GLTFLoader(transport);
@@ -304,6 +432,14 @@ void material;
 void mesh;
 void meshPicker;
 void meshSelection;
+void storageReadback;
+void transientStorageBuffer;
+void computeSampler;
+void computeRequirements;
+void computeTextureSampleType;
+void computeTextureViewDimension;
+void storageGraphicsSampleType;
+void storageGraphicsViewDimension;
 void registryLoad;
 void textLoad;
 void modelLoad;

@@ -6,6 +6,7 @@ import type {
     RHIRenderPassState,
     RHIVertexBufferBindingRecord
 } from '../../core/RHICommands';
+import { validateRHIDrawIndirect } from '../../core/RHICommandValidation';
 import type { RHIBindGroup, RHIGraphicsPipeline } from '../../core/RHIPipeline';
 import type { RHIBuffer } from '../../core/RHIResources';
 import {
@@ -663,6 +664,32 @@ export class WebGPURenderPass extends WebGPUObject implements RHIRenderPassEncod
         );
         this.context.diagnostics.commandCount += 1;
         this.context.diagnostics.drawCount += 1;
+        this.context.diagnostics.nativeStateCalls += 1;
+    }
+
+    drawIndirect(buffer: RHIBuffer, offset = 0): void {
+        this.assertOpen();
+        this.assertPipelineAndBindings(false);
+        validateRHIDrawIndirect(this.owner, buffer, offset, false);
+        const nativeBuffer = webGPUBuffer(this.owner, buffer, 'drawIndirect.buffer');
+        this.context.retain(nativeBuffer);
+        this.#nativePass.drawIndirect(nativeBuffer.nativeHandle, offset);
+        this.context.diagnostics.commandCount += 1;
+        this.context.diagnostics.drawCount += 1;
+        this.context.diagnostics.indirectDrawCount += 1;
+        this.context.diagnostics.nativeStateCalls += 1;
+    }
+
+    drawIndexedIndirect(buffer: RHIBuffer, offset = 0): void {
+        this.assertOpen();
+        this.assertPipelineAndBindings(true);
+        validateRHIDrawIndirect(this.owner, buffer, offset, true);
+        const nativeBuffer = webGPUBuffer(this.owner, buffer, 'drawIndexedIndirect.buffer');
+        this.context.retain(nativeBuffer);
+        this.#nativePass.drawIndexedIndirect(nativeBuffer.nativeHandle, offset);
+        this.context.diagnostics.commandCount += 1;
+        this.context.diagnostics.drawCount += 1;
+        this.context.diagnostics.indirectDrawCount += 1;
         this.context.diagnostics.nativeStateCalls += 1;
     }
 

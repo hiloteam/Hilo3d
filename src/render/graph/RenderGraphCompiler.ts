@@ -1,4 +1,5 @@
 import {
+    RHIBufferUsage,
     RHITextureUsage,
     rhiTextureFormatHasDepth,
     rhiTextureFormatHasStencil,
@@ -16,6 +17,7 @@ import {
 } from '../rhi/core/RHIValidation';
 import type { RGPassNode, RenderGraphBuildSnapshot } from './RenderGraphBuilder';
 import type {
+    RGBufferAccessDeclaration,
     RGBufferHandle,
     RGColorAttachmentDeclaration,
     RGDepthStencilAttachmentDeclaration,
@@ -50,6 +52,7 @@ export interface CompiledRGBufferResource {
     readonly descriptor: Readonly<RHINormalizedBufferDescriptor>;
     readonly imported: RHIBuffer | null;
     readonly provider: RGImportedBufferProvider | null;
+    readonly initiallyInitialized: boolean;
     readonly extracted: boolean;
     readonly lifetime: RGResourceLifetime | null;
 }
@@ -65,6 +68,7 @@ export interface CompiledRGPass {
     readonly params: unknown;
     readonly reads: ReadonlySet<RGResourceHandle>;
     readonly writes: ReadonlySet<RGResourceHandle>;
+    readonly bufferAccesses: readonly RGBufferAccessDeclaration[];
 }
 
 /** Pure compile result. Constructing this object performs no RHI resource or command operation. */
@@ -126,6 +130,7 @@ class RenderGraphCompilerWorkspace {
     readonly incoming: Set<number>[] = [];
     readonly roots = new Set<number>();
     readonly scratchReadSet = new Set<RGResourceHandle>();
+    readonly scratchReadWriteSet = new Set<RGBufferHandle>();
     readonly firstUse = new Map<RGResourceHandle, number>();
     readonly lastUse = new Map<RGResourceHandle, number>();
     readonly indegree: number[] = [];
@@ -158,6 +163,7 @@ class RenderGraphCompilerWorkspace {
         this.passIndexByHandle.clear();
         this.roots.clear();
         this.scratchReadSet.clear();
+        this.scratchReadWriteSet.clear();
         this.firstUse.clear();
         this.lastUse.clear();
         this.indegree.length = 0;
@@ -221,6 +227,7 @@ class RenderGraphCompilerWorkspace {
         this.passIndexByHandle.clear();
         this.roots.clear();
         this.scratchReadSet.clear();
+        this.scratchReadWriteSet.clear();
         this.firstUse.clear();
         this.lastUse.clear();
         this.indegree.length = 0;
@@ -305,9 +312,27 @@ function normalizedResource(
         descriptor,
         imported: resource.imported,
         provider: resource.provider,
+        initiallyInitialized: resource.initiallyInitialized,
         extracted: resource.extracted,
         lifetime: null
     };
+}
+
+function bufferAccessUsage(access: RGBufferAccessDeclaration): number {
+    switch (access.use) {
+        case 'storage':
+            return RHIBufferUsage.STORAGE;
+        case 'vertex':
+            return RHIBufferUsage.VERTEX;
+        case 'index':
+            return RHIBufferUsage.INDEX;
+        case 'copy-source':
+            return RHIBufferUsage.COPY_SRC;
+        case 'copy-destination':
+            return RHIBufferUsage.COPY_DST;
+        case 'indirect':
+            return RHIBufferUsage.INDIRECT;
+    }
 }
 
 function markLivePasses(
@@ -654,7 +679,10 @@ export class RenderGraphCompiler {
             normalizedResources.push(normalized);
             resourceByHandle.set(normalized.handle, normalized);
             const imported = normalized.origin === 'imported';
-            contentAvailable.set(normalized.handle, imported);
+            contentAvailable.set(
+                normalized.handle,
+                normalized.kind === 'buffer' ? normalized.initiallyInitialized : imported
+            );
             if (normalized.kind === 'texture') {
                 if (rhiTextureFormatHasDepth(normalized.descriptor.format)) {
                     depthContentAvailable.set(normalized.handle, imported);
@@ -792,11 +820,54 @@ export class RenderGraphCompiler {
             const readSet = workspace.scratchReadSet;
             readSet.clear();
             for (const handle of pass.reads) readSet.add(handle);
+            const readWriteSet = workspace.scratchReadWriteSet;
+            readWriteSet.clear();
+            for (const handle of pass.readWriteBuffers) {
+                const resource = requireResource(handle, pass);
+                if (resource.kind !== 'buffer') {
+                    renderGraphFailure(
+                        'invalid-handle',
+                        'read-write access requires a buffer resource',
+                        pass.name
+                    );
+                }
+                readWriteSet.add(handle);
+            }
             for (const handle of pass.writes) {
-                if (readSet.has(handle)) {
+                if (readSet.has(handle) && !readWriteSet.has(handle as RGBufferHandle)) {
                     renderGraphFailure(
                         'duplicate-access',
                         'same-pass read/write feedback is not portable',
+                        pass.name
+                    );
+                }
+            }
+            for (const access of pass.bufferAccesses) {
+                const resource = requireResource(access.buffer, pass);
+                if (resource.kind !== 'buffer') {
+                    renderGraphFailure(
+                        'invalid-handle',
+                        'buffer access requires a buffer resource',
+                        pass.name
+                    );
+                }
+                const usage = bufferAccessUsage(access);
+                if ((resource.descriptor.usage & usage) === 0) {
+                    renderGraphFailure(
+                        'invalid-descriptor',
+                        `buffer ${resource.name} lacks declared ${access.use} usage`,
+                        pass.name
+                    );
+                }
+                if (
+                    access.mode === 'read-write' &&
+                    (!readSet.has(access.buffer) ||
+                        !pass.writes.includes(access.buffer) ||
+                        !readWriteSet.has(access.buffer))
+                ) {
+                    renderGraphFailure(
+                        'invalid-descriptor',
+                        'read-write buffer access is inconsistent with pass dependencies',
                         pass.name
                     );
                 }
@@ -948,6 +1019,9 @@ export class RenderGraphCompiler {
             if (!pass) throw new Error('Render graph compiler lost a scheduled pass');
             const reads = new Set(pass.reads);
             const writes = new Set(pass.writes);
+            const bufferAccesses = Object.freeze(
+                pass.bufferAccesses.map(access => Object.freeze({ ...access }))
+            );
             for (const attachment of pass.colorAttachments) {
                 writes.add(attachment.texture);
                 if (attachment.resolveTarget !== undefined) writes.add(attachment.resolveTarget);
@@ -979,7 +1053,8 @@ export class RenderGraphCompiler {
                     template: pass.template,
                     params: pass.params,
                     reads,
-                    writes
+                    writes,
+                    bufferAccesses
                 })
             );
         }

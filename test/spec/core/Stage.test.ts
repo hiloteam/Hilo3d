@@ -5,6 +5,18 @@ import { resolveStageBackend } from '../../../src/core/Stage';
 const Stage = Hilo3d.Stage;
 const Renderer = Hilo3d.Renderer;
 
+function backendSelectionPipeline(
+    requirements: Readonly<Hilo3d.RenderPipelineRequirements>
+): Hilo3d.RenderPipelineFactory {
+    return {
+        name: 'stage-backend-selection-test',
+        requirements,
+        create() {
+            throw new Error('Stage backend selection test pipeline must not be created');
+        }
+    };
+}
+
 afterEach(() => {
     vi.restoreAllMocks();
 });
@@ -181,6 +193,146 @@ describe('Stage', () => {
             })
         ).resolves.toBe('webgl2');
         expect(support).not.toHaveBeenCalled();
+    });
+
+    it('uses the same WebGPU-only pipeline selection policy as Renderer.create', async () => {
+        const support = vi.spyOn(Renderer, 'isBackendSupported');
+        support
+            .mockResolvedValueOnce(true)
+            .mockResolvedValueOnce(true)
+            .mockResolvedValueOnce(true)
+            .mockResolvedValueOnce(true);
+
+        await expect(
+            resolveStageBackend({
+                backend: 'auto',
+                renderPipeline: backendSelectionPipeline({
+                    requiredCapabilities: ['indirect-draw']
+                })
+            })
+        ).resolves.toBe('webgpu');
+        await expect(
+            resolveStageBackend({
+                backend: 'auto',
+                renderPipeline: backendSelectionPipeline({
+                    requiredTextureFormats: [{ format: 'rgba16float', use: 'storage' }]
+                })
+            })
+        ).resolves.toBe('webgpu');
+        await expect(
+            resolveStageBackend({
+                backend: 'auto',
+                renderPipeline: backendSelectionPipeline({
+                    requiredLimits: { maxComputeWorkgroupsPerDimension: 1024 }
+                })
+            })
+        ).resolves.toBe('webgpu');
+        await expect(
+            resolveStageBackend({
+                backend: 'auto',
+                renderPipeline: backendSelectionPipeline({
+                    requiredFeatures: ['shader-f16']
+                })
+            })
+        ).resolves.toBe('webgpu');
+
+        expect(support).toHaveBeenCalledTimes(4);
+        expect(support.mock.calls[2]?.[0]).toBe('webgpu');
+        expect(support.mock.calls[2]?.[1]).toMatchObject({
+            requiredLimits: { maxComputeWorkgroupsPerDimension: 1024 }
+        });
+        expect(support.mock.lastCall?.[1]).toMatchObject({
+            requiredFeatures: ['shader-f16']
+        });
+    });
+
+    it('rejects Stage WebGPU-only requirements instead of falling back to WebGL2', async () => {
+        const support = vi.spyOn(Renderer, 'isBackendSupported').mockResolvedValue(false);
+
+        await expect(
+            resolveStageBackend({
+                backend: 'auto',
+                renderPipeline: backendSelectionPipeline({
+                    requiredCapabilities: ['storage-buffer']
+                })
+            })
+        ).rejects.toThrow(
+            /No compatible Stage backend: render pipeline capability storage-buffer requires WebGPU/u
+        );
+        await expect(
+            resolveStageBackend({
+                backend: 'auto',
+                requiredFeatures: ['shader-f16']
+            })
+        ).rejects.toThrow(
+            /No compatible Stage backend: renderer feature shader-f16 requires WebGPU/u
+        );
+        expect(support).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects Stage backend and canvas-policy conflicts before probing or creating a context', async () => {
+        const support = vi.spyOn(Renderer, 'isBackendSupported');
+        const canvas = document.createElement('canvas');
+        const getContext = vi.spyOn(canvas, 'getContext');
+        const computePipeline = backendSelectionPipeline({
+            requiredCapabilities: ['compute-pass']
+        });
+
+        await expect(
+            Stage.create({
+                backend: 'webgl2',
+                canvas,
+                renderPipeline: computePipeline
+            })
+        ).rejects.toThrow(/capability compute-pass requires WebGPU.*backend webgl2/u);
+        await expect(
+            Stage.create({
+                backend: 'webgl2',
+                canvas,
+                requiredFeatures: ['shader-f16']
+            })
+        ).rejects.toThrow(/renderer feature shader-f16 requires WebGPU.*backend webgl2/u);
+        await expect(
+            resolveStageBackend({
+                backend: 'auto',
+                preserveDrawingBuffer: false,
+                renderPipeline: computePipeline
+            })
+        ).rejects.toThrow(/compute-pass requires WebGPU.*preserveDrawingBuffer is WebGL2-only/u);
+        await expect(
+            resolveStageBackend({
+                backend: 'auto',
+                alpha: true,
+                premultipliedAlpha: false,
+                renderPipeline: backendSelectionPipeline({
+                    requiredTextureFormats: [{ format: 'rgba8unorm', use: 'storage' }]
+                })
+            })
+        ).rejects.toThrow(
+            /storage texture format rgba8unorm requires WebGPU.*premultipliedAlpha: false is WebGL2-only/u
+        );
+        expect(support).not.toHaveBeenCalled();
+        expect(getContext).not.toHaveBeenCalled();
+    });
+
+    it('snapshots Stage pipeline requirements before awaiting adapter discovery', async () => {
+        let resolveSupport: ((supported: boolean) => void) | undefined;
+        vi.spyOn(Renderer, 'isBackendSupported').mockImplementation(
+            async () =>
+                new Promise<boolean>(resolve => {
+                    resolveSupport = resolve;
+                })
+        );
+        const requiredCapabilities: Hilo3d.RenderPipelineCapabilityName[] = ['compute-pass'];
+        const pendingStage = Stage.create({
+            backend: 'auto',
+            renderPipeline: backendSelectionPipeline({ requiredCapabilities })
+        });
+
+        requiredCapabilities.length = 0;
+        resolveSupport?.(false);
+
+        await expect(pendingStage).rejects.toThrow(/capability compute-pass requires WebGPU/u);
     });
 
     it('rejects invalid runtime backend values instead of silently selecting WebGL2', async () => {

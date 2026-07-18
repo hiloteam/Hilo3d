@@ -1,6 +1,6 @@
 # Hilo3d 现代前端工程改造记录
 
-状态：已完成 · 目标版本：2.0.0 · 最后核验：2026-07-14
+状态：已完成 · 目标版本：2.0.0 · 最后核验：2026-07-18
 
 范围：源码、示例、测试、构建、类型声明、API 文档、站点、npm 包、CI 与发布流程
 
@@ -19,19 +19,21 @@
   会阻止旧 JavaScript 或旧构建配置重新进入受维护目录。
 - 源码与发布物统一使用原生 ESM、原生 `class`、显式领域类型和标准浏览器 API；旧动态类/mixin
   API 与 CommonJS/UMD 输出已完全删除。
-- 渲染器提供显式选择的 WebGL 2 与 WebGPU 双后端。全部引擎 shader 都以 GLSL ES
-  3.00 为唯一源码；共享材质/阴影/呈现 shader 以及 WebGPU 专用的 mipmap 等内部 pass 均严格执行“引擎预处理 →
-  Vulkan GLSL 4.50 → Naga WASM → WGSL”，不存在手写 WGSL 镜像、WebGL 1、GLSL 1.00 或逐项 numeric
+- 渲染器提供显式选择的 WebGL 2 与 WebGPU 双后端。可移植 raster shader 以 GLSL ES
+  3.00 为唯一源码，并严格执行“引擎预处理 → Vulkan GLSL 4.50 → Naga WASM → WGSL”。WebGPU-only
+  compute 通过 `ComputeShader` 使用受控 Direct WGSL；storage-aware raster 使用受控 GLSL ES 3.10
+  readonly-std430 → Naga。不存在手写 graphics WGSL 镜像、WebGL 1、GLSL 1.00 或逐项 numeric
   uniform 路径。
-- 渲染代码统一位于 `src/render`，公开层只有 `Renderer`/`RenderTarget`，后端实现收口于
+- 渲染代码统一位于 `src/render`，公开入口由
+  `Renderer`/`RenderTarget`、SRP 与受控 compute/storage 对象组成，后端实现收口于
   `src/render/rhi/backends/webgl2` 与 `src/render/rhi/backends/webgpu`；`UniformBuffer` 与 frame
   planning 保持后端中立，WebGPU 通过同步 `renderFrame()`
   合并资源已就绪的多 pass，并以 submission 内 UBO
   revision 快照保证阴影与多相机数据不会互相覆盖。Shader variant 使用有界结构化 hash 与精确碰撞校验。
 - Vite 负责库与多页面示例构建，Vitest Browser
-  Mode 在真实 Chromium 环境中运行单元测试；Playwright 从示例目录自动收集 79 个 HTML，除明确限定为 WebGL
-  2 的 WebXR 页面外，逐页执行 WebGL 2 +
-  WebGPU 双后端，并对两个后端执行确定性视觉、交互、后处理与拾取门禁；真实 WebGPU
+  Mode 在真实 Chromium 环境中运行单元测试；Playwright 从示例目录自动收集 80 个 HTML：78 个执行 WebGL
+  2 + WebGPU，WebXR 明确 WebGL
+  2-only，compute/GPU-driven 验收页明确 WebGPU-only，并对适用后端执行确定性视觉、交互、后处理与拾取门禁；真实 WebGPU
   adapter/device/pipeline fixture 作为额外的深度验收，而不是 WebGPU 唯一覆盖。
 - 类型声明、TypeDoc API 页面和 API Extractor 签名报告全部从同一份已检查源码生成。
 - npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；本地/发布使用 `npm run validate`
@@ -45,22 +47,22 @@
 
 ## 改造结果
 
-| 领域     | 改造前                                                  | 当前实现                                                               |
-| -------- | ------------------------------------------------------- | ---------------------------------------------------------------------- |
-| 语言     | 大量 `.ts` 仅透传旧 JavaScript，主体使用 `Class.create` | 全部一方代码严格 TypeScript；对象模型统一为原生 class 与 ESM           |
-| 类型检查 | 单一配置混合浏览器、测试与 Node 环境                    | `base/lib/test/examples/node` project references，严格规则全覆盖       |
-| 静态质量 | lint 文件白名单，无统一 formatter                       | typed ESLint flat config 覆盖整仓，Prettier 与 EditorConfig 固化格式   |
-| 库构建   | Gulp、Webpack、Babel 和历史 polyfill                    | Vite 8 + Rolldown，ES2022 ESM、Naga/WASM 按需分包与完整 source map     |
-| 类型发布 | 手工维护的 namespace/CommonJS 声明                      | `tsc` 从源码 emit，声明 rollup 后由 Bundler/NodeNext 消费配置校验      |
-| API 契约 | JSDoc 静态产物，与源码和包入口脱节                      | TypeDoc 零警告文档 + API Extractor 签名基线                            |
-| 单元测试 | 旧断言、旧 mock、浏览器错误不一定失败                   | Vitest 原生 `expect`/`vi`，Chromium Browser Mode，错误门禁与 V8 覆盖率 |
-| UI 测试  | 少量代表页面 smoke test                                 | 79 个 HTML 自动清单；除 WebXR 外全部执行 WebGL 2 + WebGPU              |
-| 视觉测试 | 截图比较为空实现                                        | 两个后端共用确定场景、readback 断言、截图基线与像素差异阈值            |
-| 示例     | 旧全局变量、vendor 脚本、远程运行时资源                 | 严格 TS 多页面应用，本地 npm 依赖与本地静态资产                        |
-| 渲染 ABI | WebGL 1/2 分支、GLSL 1.00 转译与逐项 uniform            | WebGL 2 + WebGPU、GLSL→Naga→WGSL、按频率分组的固定 std140 UBO ABI      |
-| npm 包   | 仓库内入口能运行即视为通过                              | publint、Are the Types Wrong、Bundler/NodeNext 与真实 ESM 运行时消费   |
-| CI/发布  | 老版本 Actions、Node 与零散命令                         | 固定 Node 22.22.2、npm 12、Chromium 与单一完整发布门禁                 |
-| 文档站点 | 跟踪旧生成物                                            | CI 现场生成 TypeDoc 与 Vite 示例站点并部署 Pages                       |
+| 领域     | 改造前                                                  | 当前实现                                                                |
+| -------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 语言     | 大量 `.ts` 仅透传旧 JavaScript，主体使用 `Class.create` | 全部一方代码严格 TypeScript；对象模型统一为原生 class 与 ESM            |
+| 类型检查 | 单一配置混合浏览器、测试与 Node 环境                    | `base/lib/test/examples/node` project references，严格规则全覆盖        |
+| 静态质量 | lint 文件白名单，无统一 formatter                       | typed ESLint flat config 覆盖整仓，Prettier 与 EditorConfig 固化格式    |
+| 库构建   | Gulp、Webpack、Babel 和历史 polyfill                    | Vite 8 + Rolldown，ES2022 ESM、Naga/WASM 按需分包与完整 source map      |
+| 类型发布 | 手工维护的 namespace/CommonJS 声明                      | `tsc` 从源码 emit，声明 rollup 后由 Bundler/NodeNext 消费配置校验       |
+| API 契约 | JSDoc 静态产物，与源码和包入口脱节                      | TypeDoc 零警告文档 + API Extractor 签名基线                             |
+| 单元测试 | 旧断言、旧 mock、浏览器错误不一定失败                   | Vitest 原生 `expect`/`vi`，Chromium Browser Mode，错误门禁与 V8 覆盖率  |
+| UI 测试  | 少量代表页面 smoke test                                 | 80 个 HTML 自动清单；78 个双后端，WebXR/compute 各有一个明确单后端页    |
+| 视觉测试 | 截图比较为空实现                                        | 两个后端共用确定场景、readback 断言、截图基线与像素差异阈值             |
+| 示例     | 旧全局变量、vendor 脚本、远程运行时资源                 | 严格 TS 多页面应用，本地 npm 依赖与本地静态资产                         |
+| 渲染 ABI | WebGL 1/2 分支、GLSL 1.00 转译与逐项 uniform            | portable raster GLSL→Naga→WGSL；受控 Direct WGSL compute 与 storage ABI |
+| npm 包   | 仓库内入口能运行即视为通过                              | publint、Are the Types Wrong、Bundler/NodeNext 与真实 ESM 运行时消费    |
+| CI/发布  | 老版本 Actions、Node 与零散命令                         | 固定 Node 22.22.2、npm 12、Chromium 与单一完整发布门禁                  |
+| 文档站点 | 跟踪旧生成物                                            | CI 现场生成 TypeDoc 与 Vite 示例站点并部署 Pages                        |
 
 ## 语言与架构
 
@@ -199,9 +201,11 @@ setup、shader/pipeline prepare、graph compile 与 transient allocation 必须�
 target 与 readback 不得依赖 extension。等待提交完成统一使用
 `await renderer.waitForIdle()`，调用方不直接访问 native queue fence。
 
-可移植契约不伪造完整 WebGPU。Compute pipeline 不在当前 RHI surface 中；WebGL 2 的 storage
-buffer/texture、1D texture、异步 buffer mapping、base-vertex 和 first-instance draw 等能力通过缺失的
-`features`、0 `limits` 和创建/执行时错误明确暴露，不使用 CPU shadow 或隐藏降级来模拟。每个 texture
+可移植契约不伪造完整 WebGPU。RHI 已包含 WebGPU-only compute pipeline/pass、storage
+buffer/texture、buffer clear、direct/indirect dispatch 与 indirect draw，但它们在 WebGL
+2 上通过缺失的 `features`、limit 和创建/执行时错误明确暴露，不使用 texture、transform
+feedback、fragment pass 或 CPU 隐藏降级来模拟。1D texture、异步通用 buffer
+mapping、base-vertex 等未公开能力同样 fail-closed。每个 texture
 format 的 sampled/filterable/renderable/storage 与 sample-count 子集在 RHI 内部按 WebGPU feature
 tier 或 WebGL extension 做保守 gate，不会误报硬件实际无法创建的组合。
 
@@ -240,10 +244,10 @@ attachment，因此调用后的下一次 render 仍会创建 render pass 并提�
 loss 的内部 suspend 路径则保留公共 target/attachment
 identity 与 ownership，待新 device 激活后原位恢复。
 
-### GLSL 预处理 → Naga → WGSL
+### Raster GLSL 预处理与 Direct WGSL Compute
 
-全部生产 shader 都以 `src/shader/` 中的 GLSL ES 3.00 为唯一源码。两个后端复用材质、阴影与 fullscreen
-present shader；仅 WebGPU 需要的 mipmap utility
+全部可移植 raster shader 都以 `src/shader/` 中的 GLSL ES
+3.00 为唯一源码。两个后端复用材质、阴影与 fullscreen present shader；仅 WebGPU 需要的 mipmap utility
 pass 也继续写成 GLSL，而不是另建 WGSL 特例。WebGPU 不维护第二套手写 WGSL，对每个已解析的 shader
 variant 和内部 utility pass 执行同一确定流水线：
 
@@ -297,6 +301,16 @@ header 按 renderer 实例参与 shader cache key，因此不同 WebGL 2/WebGPU
 renderer 或运行时 precision 变化不会交叉复用错误源码。`commonOptions`
 每次生成不可变快照并把规范化 signature 纳入 header/variant key；不存在可变的全局
 `commonHeader`，也不要求调用方手动清 cache。
+
+WebGPU-only compute 是独立且受控的例外：`ComputeShader` 接受 Direct
+WGSL，不走 GLSL 转换，但必须经过 Naga WGSL
+frontend/validator、selected-entry/workgroup/workgroup-storage/override metadata 检查、显式 binding
+ABI 比对和真实 WebGPU pipeline validation。它只能声明 `@compute`，不能借此提交 graphics
+WGSL。当前 Naga 路径不能可靠完整验证 `f16`，因此 Direct WGSL `f16` 在 pipeline 创建前 fail-closed。
+
+WebGPU-only storage-aware raster 仍不接受 graphics WGSL。`StorageGraphicsShader` 使用受控 GLSL ES
+3.10 readonly-std430 subset，经引擎 preprocessing、Vulkan GLSL
+4.50 与 Naga 生成 WGSL；普通 Shader/Material 继续严格使用 GLSL ES 3.00/std140/sampler ABI。
 
 ### 按更新频率固定的 UBO 与 bind group
 
@@ -737,13 +751,14 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 79 个 HTML 的双后端 UI 矩阵
+### 80 个 HTML 的后端适用矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前清单固定为 79 个 HTML：其中 78 个页面分别以
-`?backend=webgl2` 和 `?backend=webgpu` 运行，`webxr.html` 因浏览器 WebXR 当前使用 `XRWebGLLayer`
-而只运行 WebGL
-2，共形成 157 个 page/backend 组合。WebXR 例外是显式产品边界，暂不计入 WebGPU 上线门槛；它不是 WebGPU 初始化失败后的回退。
+自动生成页面清单，不维护容易漏项的手工白名单。当前清单固定为 80 个 HTML：其中 78 个页面分别以
+`?backend=webgl2` 和 `?backend=webgpu` 运行；`webxr.html` 因浏览器 WebXR 当前使用 `XRWebGLLayer`
+而只运行 WebGL 2；`compute_gpu_driven.html`
+因公开能力明确 WebGPU-only 而只运行 WebGPU，共形成 158 个 page/backend 组合。两个单后端页面都是创建前的显式产品边界，不是初始化失败后的 runtime
+fallback。
 
 每个组合都必须通过以下检查：
 
@@ -780,7 +795,7 @@ target 做两次显式 readback，断言彩色像素、pointer 坐标、输出 h
 draw/submit；普通示例门禁因此不再重复加载同一重型 ray-march 页面。这个唯一例外仍在两个后端保留 GPU
 health、页面、网络、console、DevTools graphics 与终态稳定帧门禁，并由
 `DEDICATED_RELEASE_TEST_EXAMPLE_PATHS`
-契约锁定；通用门禁与专用门禁合计仍覆盖完整的 157 个 page/backend 组合。
+契约锁定；通用门禁与专用门禁合计仍覆盖完整的 158 个 page/backend 组合。
 
 ### WebGPU 深度运行时测试
 
@@ -806,6 +821,14 @@ validation error 均为空，全部纹理解析出的 dimension 正确，并且 
 `test:webgpu`
 还让压缩纹理示例分别通过两个后端渲染各自声明支持的 source，确认 WebGPU 原生 BC/ETC2/ASTC 路径且明确跳过 PVRTC，并让异步 GPU
 `MeshPicker` 在两个后端选择同一 mesh。
+
+Compute/storage 另有 WebGPU-only showcase/acceptance fixture：它通过公共 SRP 记录 depth
+prepass、sampled-depth tile culling、Scene group-3 readonly storage、Gaussian
+reorder 与 1024 粒子 Hilo3D wordmark 的 fractal value/curl
+noise、呼吸、涡旋、回归和 compaction，再用 GPU-generated indirect draw 产生 Gaussian 与 additive
+particle glow。门禁检查真实 compute pass/dispatch/indirect draw、最终 readback 和 reload
+determinism；只允许最后一次颜色验收 readback，不把 visible count、排序或 indirect
+arguments 映射到 CPU。Forward+/Gaussian 算法仍是 acceptance-scale，页面也不是性能 baseline。
 
 WebGPU shader
 corpus（包括 present/mipmap 内部 pass）与真实运行时测试是互补门禁：前者扩大 feature/variant 覆盖，后者证明浏览器端 Naga
@@ -868,16 +891,18 @@ npm run validate
 
 `validate` 按顺序执行：清理生成物、旧 JavaScript/旧工具配置门禁、格式检查、typed
 lint、全部 TypeScript project
-references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、79 个 HTML 双后端 UI 矩阵（仅 WebXR 显式 WebGL
-2-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
+references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、80 个 HTML 后端适用矩阵（78 个双后端、WebXR 显式 WebGL
+2-only、compute/GPU-driven 显式 WebGPU-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
 
 其中 shader 静态门禁会扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00
 `attribute`/`varying`、`texture2D`/`textureCube`、`gl_FragColor`/`gl_FragData`、WebGL 1 shader
-extensions，以及 block 外的 non-sampler `uniform`；现代性门禁还会扫描全部生产 TypeScript，禁止
-`@vertex`/`@fragment`/`@compute` 手写 WGSL entry point；扫描范围同时覆盖生产
-`.vert`/`.frag`/`.glsl`/`.wgsl` 源文件，不允许通过非 TypeScript 扩展绕过。运行时门禁会再次在 program
-link 或 Naga translation 时拒绝漏网接口，静态规则、WebGL 2 link、Naga corpus 与真实 WebGPU
-pipeline 互为补充。
+extensions，以及 block 外的 non-sampler `uniform`。现代性门禁只允许与 `new ComputeShader(...)`
+结构化关联并由 compiler/Naga 验证的 Direct WGSL `@compute`；`@vertex`/`@fragment` graphics
+WGSL、普通 Shader 中的 GLSL ES 3.10 和未受控 raw source 继续禁止。`StorageGraphicsShader`
+是唯一 GLSL ES 3.10 readonly-storage 入口。扫描范围同时覆盖生产 `.vert`/`.frag`/`.glsl`/`.wgsl`
+源文件，不允许通过非 TypeScript 扩展绕过。运行时门禁会再次在 program link、Naga
+translation 或 WebGPU pipeline creation 时拒绝漏网接口，静态规则、WebGL 2 link、Naga
+corpus 与真实 WebGPU pipeline 互为补充。
 
 ## 验收清单
 
@@ -891,16 +916,17 @@ pipeline 互为补充。
 - [x] 公共声明从源码生成，API 文档与 API report 同源。
 - [x] 单一 ESM 入口、类型、source map、package exports 与真实 tarball 一致。
 - [x] 浏览器单测执行完整源码覆盖率门禁，阈值面向 `src/**/*.ts`，不排除 renderer 或 WebGPU 核心目录。
-- [x] 自动清单包含 79 个 HTML；除 WebXR 显式 WebGL 2-only 例外外，全部通过 WebGL 2 +
-      WebGPU 页面、请求、控制台与 GPU 错误门禁。
+- [x] 自动清单包含 80 个 HTML；78 个通过 WebGL 2 + WebGPU，WebXR 显式 WebGL
+      2-only，compute/GPU-driven 验收页显式 WebGPU-only；适用组合都经过页面、请求、控制台与 GPU 错误门禁。
 - [x] 同一确定 PBR 场景和关键交互在两个后端都有 readback/截图或行为断言；WebGPU 不只依赖独立 fixture。
 - [x] `Stage.create()` 默认用无 device/resource 分配的 adapter probe 实现 WebGPU-first `auto`；显式
       `webgl2`/`webgpu` 不切换，auto 选中 WebGPU 后的真实初始化错误也不会触发回退。
 - [x] WebGPU device
       lost 会重新获取等价 adapter、复核 capability，并自动恢复 device/context/manager、released
       texture backing 与原 target identity；恢复期安全跳帧、失败后显式抛错、destroy 可取消。
-- [x] shader 只有 GLSL ES 3.00 source of truth；材质、阴影、present 与 mipmap utility
-      pass 都在引擎预处理后由 Naga WASM 生成 WGSL。
+- [x] 可移植 raster shader 只有 GLSL ES 3.00 source of truth；材质、阴影、present 与 mipmap utility
+      pass 都在引擎预处理后由 Naga WASM 生成 WGSL。Direct WGSL 只存在于受控 WebGPU
+      compute，storage-aware raster 只存在于受控 GLSL ES 3.10 readonly-storage contract。
 - [x] 生成 WGSL 在默认 WebGPU language feature 上保留 std140 ABI，不依赖可选
       `uniform_buffer_standard_layout`。
 - [x] Naga
@@ -938,7 +964,7 @@ pipeline 互为补充。
 1. 禁止新增类型、lint、测试或 API 检查的临时豁免；无法表达的领域结构应先补类型模型。
 2. 公共 API 变更必须同时更新源码 TSDoc、测试、API report、CHANGELOG 与消费测试。
 3. 新增示例必须进入 Vite MPA 和自动 Playwright 页面清单，并默认通过 WebGL 2 +
-   WebGPU；只有 WebXR 这类受浏览器平台 API 限制的边界才能显式列为单后端例外，例外不得实现失败后回退。不得以远程脚本或全局变量绕过依赖管理。
+   WebGPU；只有 WebXR 这类浏览器平台边界或 compute/storage 这类正式公开为 WebGPU-only 的 capability 才能显式列为单后端例外，例外不得实现失败后回退。不得以远程脚本或全局变量绕过依赖管理。
 4. 渲染行为变化必须审查视觉 diff；只有确认是预期变化时才更新基线。
 5. 覆盖率阈值只能保持或提高，不能通过扩大 exclude、空断言或无意义执行来提升。
 6. 不提交
@@ -946,17 +972,21 @@ pipeline 互为补充。
 7. 新工具必须替换旧工具的职责，不允许两套活跃构建、测试、文档或发布链路长期并存。
 8. 不得恢复动态类/mixin
    API、backend-specific 生命周期别名、CommonJS/UMD 构建或浏览器全局入口。不得在 Vite/Node 工具中读取并改写第三方 UMD/CommonJS 源码来制造 ESM 入口。
-9. 不得新增 WebGL 1/GLSL 1.00 兼容源码、手写 WGSL 镜像或 block 外 numeric uniform；WebGPU
-   shader（包括 renderer-owned present、mipmap 与后续 utility
-   pass）必须继续执行“当前 variant 预处理 → Vulkan GLSL 4.50 → Naga → WGSL”。
+9. 不得新增 WebGL 1/GLSL 1.00 兼容源码、手写 graphics WGSL 镜像或 block 外 numeric uniform；portable
+   raster（包括 renderer-owned present、mipmap 与后续 utility
+   pass）必须继续执行“当前 variant 预处理 → Vulkan GLSL 4.50 → Naga → WGSL”。Direct WGSL 只能通过
+   `ComputeShader`，storage-aware raster 只能通过 `StorageGraphicsShader` 的受控 GLSL ES 3.10
+   contract。
 10. 不得让 WebGPU 失败后静默创建 WebGL 2
     renderer，也不得通过关闭 feature、跳过 pass、替换空纹理或吞掉 validation error 伪造成功；device
     recovery 只能在同一 WebGPU 后端内重建资源，恢复失败必须保留 cause 并进入显式失败态。可选能力必须成为显式 API、capability 或错误。
 11. 新增 uniform block 必须先分配全局稳定 binding、定义 std140
     schema、补 offset/size 测试，并标明 owner、更新频率和 dirty
     revision；不能按 program 反射顺序临时占号。
-12. 新增 shader feature 必须同时进入 WebGL 2 compile/link、Naga corpus 和适当的 WebGPU
-    pipeline/UI 测试；只让某个 backend 通过字符串快照不算完成。
+12. 新增 portable raster shader feature 必须同时进入 WebGL 2 compile/link、Naga
+    corpus 和适当的 WebGPU pipeline/UI 测试；WebGPU-only compute/storage feature 必须进入 Direct
+    WGSL/GLSL ES 3.10 compiler、portable RHI、真实 WebGPU 与 WebGL 2
+    negative 门禁。只让某个 backend 通过字符串快照不算完成。
 13. 新离屏、后处理、拾取和 readback 功能必须建立在公共 `Renderer`/`RenderTarget`
     上；不得新增只服务单后端的业务层 framebuffer 包装、CPU fallback 或静默能力替换。资源工具必须消费
     `getDiagnostics()`，不得恢复 backend cache 日志探针。

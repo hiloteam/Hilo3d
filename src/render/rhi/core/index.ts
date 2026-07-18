@@ -11,3 +11,4 @@ export type * from './RHIQueue';
 export type * from './RHISurface';
 export * from './RHIValidation';
 export * from './RHICopyValidation';
+export * from './RHICommandValidation';

@@ -5,11 +5,12 @@ import {
     type RHIShaderBindingReflection,
     type RHIShaderReflection,
     type RHIShaderStageFlags,
-    type RHIShaderStageName,
     type RHITextureSampleType,
     type RHITextureViewDimension
 } from '../rhi/core';
 import type { CompiledShaderArtifactPair } from './ShaderArtifactCompiler';
+
+type GraphicsShaderStageName = 'vertex' | 'fragment';
 
 export interface ShaderStageReflectionPair {
     readonly vertex: Readonly<RHIShaderReflection>;
@@ -21,6 +22,15 @@ export type ShaderBindingLayoutSource =
     Pick<CompiledShaderArtifactPair, 'vertex' | 'fragment'> | ShaderStageReflectionPair;
 
 export interface ShaderUniformBlockBindingPlan {
+    readonly name: string;
+    readonly group: number;
+    readonly binding: number;
+    readonly visibility: RHIShaderStageFlags;
+    readonly minBindingSize?: number;
+}
+
+/** One readonly storage-buffer resource reflected by a storage-aware graphics shader. */
+export interface ShaderStorageBufferBindingPlan {
     readonly name: string;
     readonly group: number;
     readonly binding: number;
@@ -47,6 +57,8 @@ export interface ShaderBindingLayoutPlan {
     readonly uniformBlocks: readonly Readonly<ShaderUniformBlockBindingPlan>[];
     /** Stable group/texture/sampler/name order for sampled resource collection. */
     readonly sampledBindings: readonly Readonly<ShaderSampledBindingPlan>[];
+    /** Stable group/binding/name order for readonly storage resources. */
+    readonly storageBuffers: readonly Readonly<ShaderStorageBufferBindingPlan>[];
     /** Returns the exact frozen record stored in `uniformBlocks`. */
     getUniformBlockBinding(name: string): Readonly<ShaderUniformBlockBindingPlan> | undefined;
     /** Returns the exact frozen record stored in `sampledBindings`. */
@@ -54,9 +66,16 @@ export interface ShaderBindingLayoutPlan {
         name: string,
         arrayIndex?: number
     ): Readonly<ShaderSampledBindingPlan> | undefined;
+    /** Returns the exact frozen record stored in `storageBuffers`. */
+    getStorageBufferBinding(name: string): Readonly<ShaderStorageBufferBindingPlan> | undefined;
 }
 
-type SupportedBindingKind = 'uniform-buffer' | 'sampled-texture' | 'sampler' | 'comparison-sampler';
+type SupportedBindingKind =
+    | 'uniform-buffer'
+    | 'read-only-storage-buffer'
+    | 'sampled-texture'
+    | 'sampler'
+    | 'comparison-sampler';
 
 interface MutableMergedBinding {
     readonly group: number;
@@ -109,7 +128,7 @@ function sampledElementKey(name: string, arrayIndex: number): string {
 
 function reflectionForStage(
     source: ShaderBindingLayoutSource,
-    stage: RHIShaderStageName
+    stage: GraphicsShaderStageName
 ): Readonly<RHIShaderReflection> {
     const stageSource = source[stage];
     if ('reflection' in stageSource) {
@@ -125,7 +144,7 @@ function reflectionForStage(
 
 function requireBindingName(
     binding: RHIShaderBindingReflection,
-    stage: RHIShaderStageName,
+    stage: GraphicsShaderStageName,
     index: number
 ): string {
     if (typeof binding.name !== 'string' || binding.name.length === 0) {
@@ -139,16 +158,16 @@ function requireBindingName(
 
 function requireSupportedKind(
     binding: RHIShaderBindingReflection,
-    stage: RHIShaderStageName
+    stage: GraphicsShaderStageName
 ): SupportedBindingKind {
     switch (binding.kind) {
         case 'uniform-buffer':
+        case 'read-only-storage-buffer':
         case 'sampled-texture':
         case 'sampler':
         case 'comparison-sampler':
             return binding.kind;
         case 'storage-buffer':
-        case 'read-only-storage-buffer':
         case 'storage-texture':
             throw new TypeError(
                 `Shader binding ${bindingKey(binding.group, binding.binding)} uses unsupported ${binding.kind}; storage resources are outside the current mesh-draw slice (${stage})`
@@ -160,7 +179,7 @@ function assertBindingCompatible(
     existing: MutableMergedBinding,
     binding: RHIShaderBindingReflection,
     name: string,
-    stage: RHIShaderStageName
+    stage: GraphicsShaderStageName
 ): void {
     if (
         existing.kind !== binding.kind ||
@@ -178,7 +197,7 @@ function assertBindingCompatible(
 }
 
 function addStageSampledPart(
-    stage: RHIShaderStageName,
+    stage: GraphicsShaderStageName,
     binding: MutableMergedBinding,
     sampledByElement: Map<string, MutableStageSampledBinding>
 ): void {
@@ -217,12 +236,13 @@ function addStageSampledPart(
 }
 
 function collectStageBindings(
-    stage: RHIShaderStageName,
+    stage: GraphicsShaderStageName,
     reflection: Readonly<RHIShaderReflection>,
     stageFlag: RHIShaderStageFlags,
     maxBindGroups: number,
     mergedByLocation: Map<string, MutableMergedBinding>,
-    uniformLocationByName: Map<string, string>
+    uniformLocationByName: Map<string, string>,
+    storageLocationByName: Map<string, string>
 ): Map<string, MutableStageSampledBinding> {
     const seenInStage = new Set<string>();
     const sampledByElement = new Map<string, MutableStageSampledBinding>();
@@ -243,10 +263,17 @@ function collectStageBindings(
         const kind = requireSupportedKind(binding, stage);
         const arrayIndex = binding.arrayIndex ?? 0;
         requireNonNegativeSafeInteger(arrayIndex, `${stage} binding arrayIndex`);
-        if (kind === 'uniform-buffer' && binding.arrayIndex !== undefined) {
-            throw new TypeError(`${stage} uniform-buffer binding cannot declare arrayIndex`);
+        if (
+            (kind === 'uniform-buffer' || kind === 'read-only-storage-buffer') &&
+            binding.arrayIndex !== undefined
+        ) {
+            throw new TypeError(`${stage} ${kind} binding cannot declare arrayIndex`);
         }
-        if (kind !== 'uniform-buffer' && binding.minBindingSize !== undefined) {
+        if (
+            kind !== 'uniform-buffer' &&
+            kind !== 'read-only-storage-buffer' &&
+            binding.minBindingSize !== undefined
+        ) {
             throw new TypeError(
                 `${stage} ${kind} binding ${bindingKey(binding.group, binding.binding)} cannot declare minBindingSize`
             );
@@ -295,7 +322,25 @@ function collectStageBindings(
                     `Uniform block ${name} is assigned to conflicting bindings ${existingLocation} and ${key}`
                 );
             }
+            if (storageLocationByName.has(name)) {
+                throw new TypeError(
+                    `Shader resource name ${name} is used by both a uniform block and a readonly storage buffer`
+                );
+            }
             uniformLocationByName.set(name, key);
+        } else if (kind === 'read-only-storage-buffer') {
+            const existingLocation = storageLocationByName.get(name);
+            if (existingLocation !== undefined && existingLocation !== key) {
+                throw new TypeError(
+                    `Readonly storage buffer ${name} is assigned to conflicting bindings ${existingLocation} and ${key}`
+                );
+            }
+            if (uniformLocationByName.has(name)) {
+                throw new TypeError(
+                    `Shader resource name ${name} is used by both a uniform block and a readonly storage buffer`
+                );
+            }
+            storageLocationByName.set(name, key);
         } else {
             addStageSampledPart(stage, merged, sampledByElement);
         }
@@ -304,11 +349,12 @@ function collectStageBindings(
 }
 
 function mergeStageSampledBindings(
-    stage: RHIShaderStageName,
+    stage: GraphicsShaderStageName,
     stageFlag: RHIShaderStageFlags,
     stageBindings: Map<string, MutableStageSampledBinding>,
     mergedByElement: Map<string, MutableSampledBinding>,
-    uniformLocationByName: ReadonlyMap<string, string>
+    uniformLocationByName: ReadonlyMap<string, string>,
+    storageLocationByName: ReadonlyMap<string, string>
 ): void {
     for (const sampled of stageBindings.values()) {
         const texture = sampled.texture;
@@ -322,6 +368,11 @@ function mergeStageSampledBindings(
         if (uniformLocationByName.has(sampled.name)) {
             throw new TypeError(
                 `Shader resource name ${sampled.name} is used by both a uniform block and a sampled binding`
+            );
+        }
+        if (storageLocationByName.has(sampled.name)) {
+            throw new TypeError(
+                `Shader resource name ${sampled.name} is used by both a readonly storage buffer and a sampled binding`
             );
         }
         const samplerKind = sampler.kind;
@@ -406,6 +457,18 @@ function uniformBlockPlan(binding: MutableMergedBinding): Readonly<ShaderUniform
     });
 }
 
+function storageBufferPlan(
+    binding: MutableMergedBinding
+): Readonly<ShaderStorageBufferBindingPlan> {
+    return Object.freeze({
+        name: binding.name,
+        group: binding.group,
+        binding: binding.binding,
+        visibility: binding.visibility,
+        ...(binding.minBindingSize === undefined ? {} : { minBindingSize: binding.minBindingSize })
+    });
+}
+
 function sampledBindingPlan(binding: MutableSampledBinding): Readonly<ShaderSampledBindingPlan> {
     return Object.freeze({
         name: binding.name,
@@ -429,6 +492,18 @@ function layoutEntry(
             visibility: binding.visibility,
             buffer: Object.freeze({
                 type: 'uniform',
+                ...(binding.minBindingSize === undefined
+                    ? {}
+                    : { minBindingSize: binding.minBindingSize })
+            })
+        });
+    }
+    if (binding.kind === 'read-only-storage-buffer') {
+        return Object.freeze({
+            binding: binding.binding,
+            visibility: binding.visibility,
+            buffer: Object.freeze({
+                type: 'read-only-storage',
                 ...(binding.minBindingSize === undefined
                     ? {}
                     : { minBindingSize: binding.minBindingSize })
@@ -471,13 +546,15 @@ export function compileShaderBindingLayout(
 
     const mergedByLocation = new Map<string, MutableMergedBinding>();
     const uniformLocationByName = new Map<string, string>();
+    const storageLocationByName = new Map<string, string>();
     const vertexSampled = collectStageBindings(
         'vertex',
         reflectionForStage(source, 'vertex'),
         RHIShaderStage.VERTEX,
         maxBindGroups,
         mergedByLocation,
-        uniformLocationByName
+        uniformLocationByName,
+        storageLocationByName
     );
     const fragmentSampled = collectStageBindings(
         'fragment',
@@ -485,7 +562,8 @@ export function compileShaderBindingLayout(
         RHIShaderStage.FRAGMENT,
         maxBindGroups,
         mergedByLocation,
-        uniformLocationByName
+        uniformLocationByName,
+        storageLocationByName
     );
 
     const sampledByElement = new Map<string, MutableSampledBinding>();
@@ -494,14 +572,16 @@ export function compileShaderBindingLayout(
         RHIShaderStage.VERTEX,
         vertexSampled,
         sampledByElement,
-        uniformLocationByName
+        uniformLocationByName,
+        storageLocationByName
     );
     mergeStageSampledBindings(
         'fragment',
         RHIShaderStage.FRAGMENT,
         fragmentSampled,
         sampledByElement,
-        uniformLocationByName
+        uniformLocationByName,
+        storageLocationByName
     );
 
     const merged = [...mergedByLocation.values()].sort(compareBindings);
@@ -528,6 +608,12 @@ export function compileShaderBindingLayout(
         merged.filter(binding => binding.kind === 'uniform-buffer').map(uniformBlockPlan)
     );
     const uniformBlocksByName = new Map(uniformBlocks.map(block => [block.name, block] as const));
+    const storageBuffers = Object.freeze(
+        merged.filter(binding => binding.kind === 'read-only-storage-buffer').map(storageBufferPlan)
+    );
+    const storageBuffersByName = new Map(
+        storageBuffers.map(buffer => [buffer.name, buffer] as const)
+    );
     const sampledBindings = Object.freeze(
         [...sampledByElement.values()].sort(compareSampledBindings).map(sampledBindingPlan)
     );
@@ -542,6 +628,7 @@ export function compileShaderBindingLayout(
         activeGroupIndices,
         uniformBlocks,
         sampledBindings,
+        storageBuffers,
         getUniformBlockBinding(name: string): Readonly<ShaderUniformBlockBindingPlan> | undefined {
             return uniformBlocksByName.get(name);
         },
@@ -551,6 +638,11 @@ export function compileShaderBindingLayout(
         ): Readonly<ShaderSampledBindingPlan> | undefined {
             requireNonNegativeSafeInteger(arrayIndex, 'Sampled binding arrayIndex');
             return sampledBindingsByElement.get(sampledElementKey(name, arrayIndex));
+        },
+        getStorageBufferBinding(
+            name: string
+        ): Readonly<ShaderStorageBufferBindingPlan> | undefined {
+            return storageBuffersByName.get(name);
         }
     });
 }

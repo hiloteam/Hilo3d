@@ -14,6 +14,7 @@ export type ExampleCompletionContract =
 
 export const EXAMPLE_BACKENDS = ['webgl2', 'webgpu'] as const;
 export const WEBGL2_ONLY_EXAMPLE_PATHS = ['webxr.html'] as const;
+export const WEBGPU_ONLY_EXAMPLE_PATHS = ['compute_gpu_driven.html'] as const;
 export const NON_RENDERING_EXAMPLE_PATHS = ['math.html'] as const;
 export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = ['shaderToy.html'] as const;
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<
@@ -30,6 +31,7 @@ export const EXAMPLE_COMPLETION_CONTRACTS: Readonly<
 };
 
 const webgl2OnlyExamples = new Set<string>(WEBGL2_ONLY_EXAMPLE_PATHS);
+const webgpuOnlyExamples = new Set<string>(WEBGPU_ONLY_EXAMPLE_PATHS);
 const nonRenderingExamples = new Set<string>(NON_RENDERING_EXAMPLE_PATHS);
 const dedicatedReleaseTestExamples = new Set<string>(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS);
 const examplesDirectory = fileURLToPath(new URL('../../examples/', import.meta.url));
@@ -49,7 +51,9 @@ export const examplePaths = Object.freeze(
 );
 
 export function backendsForExample(examplePath: string): readonly ExampleBackend[] {
-    return webgl2OnlyExamples.has(examplePath) ? ['webgl2'] : EXAMPLE_BACKENDS;
+    if (webgl2OnlyExamples.has(examplePath)) return ['webgl2'];
+    if (webgpuOnlyExamples.has(examplePath)) return ['webgpu'];
+    return EXAMPLE_BACKENDS;
 }
 
 export function exampleRequiresRendering(examplePath: string): boolean {

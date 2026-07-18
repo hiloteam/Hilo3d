@@ -20,6 +20,23 @@ interface NativeAdapterAudit {
     failure: string | null;
 }
 
+interface NativeComputeEffectsResult {
+    readonly backend: string;
+    readonly forward: Readonly<{
+        coloredPixels: number;
+        distinctColors: number;
+        activeTiles: number;
+    }>;
+    readonly gaussian: Readonly<{ coloredPixels: number; distinctColors: number }>;
+    readonly particle: Readonly<{
+        coloredPixels: number;
+        distinctColors: number;
+        activeTiles: number;
+        hash: number;
+        simulatedParticles: number;
+    }>;
+}
+
 declare global {
     interface Window {
         __HILO3D_NATIVE_WEBGPU_AUDIT__?: NativeAdapterAudit;
@@ -183,6 +200,92 @@ test('runs the production WebGPU fixture on a non-fallback native adapter', asyn
             readRenderHealth: () => readRenderHealth(page)
         });
         failures.assertEmpty('native WebGPU browser failures');
+    } finally {
+        if (pageErrorHandler) page.off('pageerror', pageErrorHandler);
+        await failures.dispose();
+    }
+});
+
+test('runs public compute and GPU-driven effects on a non-fallback native adapter', async ({
+    page
+}) => {
+    test.setTimeout(120_000);
+    await installNativeAdapterGate(page);
+    await installRenderHealthProbe(page);
+    const failures = await installPageFailureMonitor(page);
+    let pageErrorHandler: ((error: Error) => void) | undefined;
+    const pageError = new Promise<never>((_resolve, reject) => {
+        pageErrorHandler = error => {
+            reject(
+                new Error(`Native compute effects page failed: ${error.message}`, { cause: error })
+            );
+        };
+        page.on('pageerror', pageErrorHandler);
+    });
+    try {
+        await Promise.race([
+            (async () => {
+                await page.goto('/examples/compute_gpu_driven.html?backend=webgpu', {
+                    waitUntil: 'load'
+                });
+                await page.waitForFunction(() => {
+                    const audit = window.__HILO3D_NATIVE_WEBGPU_AUDIT__;
+                    return (
+                        audit !== undefined &&
+                        (audit.failure !== null ||
+                            Reflect.get(window, '__HILO3D_COMPUTE_EFFECTS_RESULT__') !== undefined)
+                    );
+                });
+            })(),
+            pageError
+        ]);
+
+        const audit = await page.evaluate(() => window.__HILO3D_NATIVE_WEBGPU_AUDIT__);
+        expect(audit?.failure).toBeNull();
+        expect(audit?.observations.length).toBeGreaterThan(0);
+        expect(
+            audit?.observations.every(
+                observation =>
+                    observation.requestedForceFallbackAdapter !== true &&
+                    observation.isFallbackAdapter === false
+            )
+        ).toBe(true);
+
+        const result = (await page.evaluate(() =>
+            Reflect.get(window, '__HILO3D_COMPUTE_EFFECTS_RESULT__')
+        )) as NativeComputeEffectsResult;
+        expect(result.backend).toBe('webgpu');
+        expect(result.forward.coloredPixels).toBeGreaterThan(10_000);
+        expect(result.forward.distinctColors).toBeGreaterThan(3);
+        expect(result.forward.activeTiles).toBeGreaterThanOrEqual(3);
+        expect(result.gaussian.coloredPixels).toBeGreaterThan(20_000);
+        expect(result.gaussian.distinctColors).toBeGreaterThan(100);
+        expect(result.particle.coloredPixels).toBeGreaterThan(15_000);
+        expect(result.particle.distinctColors).toBeGreaterThan(1_000);
+        expect(result.particle.activeTiles).toBe(4);
+        expect(result.particle.hash).toBeGreaterThan(0);
+        expect(result.particle.simulatedParticles).toBe(1024);
+
+        const health = await readRenderHealth(page);
+        expect(
+            health.reduce((sum, frame) => sum + (frame.snapshot.webgpuDispatchCalls ?? 0), 0)
+        ).toBeGreaterThanOrEqual(7);
+        expect(
+            health.reduce((sum, frame) => sum + (frame.snapshot.webgpuIndirectDrawCalls ?? 0), 0)
+        ).toBeGreaterThanOrEqual(2);
+        const nativeDraws = health.reduce((sum, frame) => sum + frame.snapshot.webgpuDrawCalls, 0);
+        const indirectDraws = health.reduce(
+            (sum, frame) => sum + (frame.snapshot.webgpuIndirectDrawCalls ?? 0),
+            0
+        );
+        expect(nativeDraws - indirectDraws).toBeGreaterThanOrEqual(6);
+
+        await assertStableInstrumentationHealth('webgpu', 'native compute effects health', {
+            waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
+            awaitTrackedGPUQueues: () => awaitTrackedGPUQueues(page),
+            readRenderHealth: () => readRenderHealth(page)
+        });
+        failures.assertEmpty('native compute effects browser failures');
     } finally {
         if (pageErrorHandler) page.off('pageerror', pageErrorHandler);
         await failures.dispose();

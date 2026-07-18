@@ -273,3 +273,22 @@ export interface RHIGraphicsPipeline extends RHIResource {
     /** Ensure this exact binding packet can execute without creating backend objects in draw. */
     prepareVertexInput(bindings: Readonly<RHIVertexInputBindings>): void;
 }
+
+/** One backend-neutral compute entry point and its immutable pipeline override constants. */
+export interface RHIComputeState {
+    readonly shader: RHIShader;
+    readonly constants?: Readonly<Record<string, number | boolean>>;
+}
+
+/** Descriptor for a compute pipeline created by a compute-capable RHI device. */
+export interface RHIComputePipelineDescriptor extends RHIResourceDescriptorBase {
+    readonly layout: RHIPipelineLayout;
+    readonly compute: RHIComputeState;
+}
+
+/** Immutable compute pipeline compatible with one explicit portable pipeline layout. */
+export interface RHIComputePipeline extends RHIResource {
+    readonly descriptor: Readonly<RHIComputePipelineDescriptor>;
+    readonly layout: RHIPipelineLayout;
+    getBindGroupLayout(index: number): RHIBindGroupLayout;
+}

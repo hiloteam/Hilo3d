@@ -77,6 +77,7 @@ const CATEGORY_ORDER = new Map(
 );
 const BOTH_BACKENDS = ['webgl2', 'webgpu'] as const;
 const WEBGL2_ONLY = ['webgl2'] as const;
+const WEBGPU_ONLY = ['webgpu'] as const;
 
 const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'MultiSampledRenderbuffers.html': 'Multisampled Renderbuffers',
@@ -92,11 +93,14 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'sphericalHarmonics.html': 'Spherical Harmonics',
     'uniformBufferObject.html': 'Uniform Buffer Objects',
     'update_sub_texture.html': 'Update Sub-texture',
-    'webgl_support.html': 'Graphics Backend Support'
+    'webgl_support.html': 'Graphics Backend Support',
+    'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering'
 });
 
 const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'glTFViewer/index.html': 'Load glTF 2.0 models from a URL, files, or a dropped folder.',
+    'compute_gpu_driven.html':
+        'See Forward+, Gaussian splats, and a curl-noise Hilo3D GPU particle wordmark stay on the public Render Graph.',
     'pbr.html': 'Render a glTF asset with physically based materials and environment lighting.',
     'quickStart.html': 'Create a stage, camera, lights, and an animated PBR mesh.',
     'scriptable_pipeline.html':
@@ -129,7 +133,7 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'textures';
     }
     if (
-        /(?:post_process|bloom|ssao|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline)/u.test(
+        /(?:post_process|bloom|ssao|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|compute_gpu_driven)/u.test(
             normalized
         )
     ) {
@@ -197,7 +201,12 @@ function createEntry(path: string): ExampleCatalogEntry {
     const category = categoryForPath(path);
     const description = descriptionForEntry(path, title, category);
     const sourcePath = sourcePathForEntry(path);
-    const supportedBackends = path === 'webxr.html' ? WEBGL2_ONLY : BOTH_BACKENDS;
+    const supportedBackends =
+        path === 'webxr.html'
+            ? WEBGL2_ONLY
+            : path === 'compute_gpu_driven.html'
+              ? WEBGPU_ONLY
+              : BOTH_BACKENDS;
     const defaultQuery =
         path === 'glTFViewer/index.html'
             ? Object.freeze({ url: '/examples/models/Tmall/Tmall.gltf' })

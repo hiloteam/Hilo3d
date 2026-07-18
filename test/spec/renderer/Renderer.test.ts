@@ -6,6 +6,12 @@ import Node from '../../../src/core/Node';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import Renderer, { type RendererFrame } from '../../../src/render/Renderer';
+import { resolveRendererBackend } from '../../../src/render/internal/RendererFactory';
+import type {
+    RenderPipelineCapabilityName,
+    RenderPipelineFactory,
+    RenderPipelineRequirements
+} from '../../../src/render/pipeline/RenderPipeline';
 import type * as RHIFactoryExports from '../../../src/render/rhi/RHIFactory';
 import type {
     WebGL2RHIDeviceCreateOptions,
@@ -16,7 +22,7 @@ import { externalTextureBindingRegistry } from '../../../src/render/renderer/Ext
 import Shader from '../../../src/shader/Shader';
 
 const rhiSupportControl = vi.hoisted(() => ({
-    calls: vi.fn(),
+    calls: vi.fn<(backend: 'webgl2' | 'webgpu', options?: unknown) => void>(),
     override: null as ((backend: 'webgl2' | 'webgpu', options?: unknown) => Promise<boolean>) | null
 }));
 
@@ -57,6 +63,18 @@ function webGL2Native(renderer: Renderer): TestWebGL2NativeExtension {
     const extension = renderer.getExtension('webgl2-native');
     if (extension === null) throw new Error('WebGL2 native extension is unavailable');
     return extension as TestWebGL2NativeExtension;
+}
+
+function backendSelectionPipeline(
+    requirements: Readonly<RenderPipelineRequirements>
+): RenderPipelineFactory {
+    return {
+        name: 'backend-selection-test',
+        requirements,
+        create() {
+            throw new Error('Backend selection test pipeline must not be created');
+        }
+    };
 }
 
 afterEach(() => {
@@ -155,6 +173,158 @@ describe('Renderer public entry point', () => {
 
         expect(renderer.width).toBe(18);
         expect(renderer.height).toBe(9);
+    });
+
+    it('routes every compute and storage pipeline requirement only to WebGPU', async () => {
+        rhiSupportControl.override = backend => Promise.resolve(backend === 'webgpu');
+        const capabilities: readonly RenderPipelineCapabilityName[] = [
+            'storage-buffer',
+            'storage-texture',
+            'compute-pass',
+            'indirect-draw'
+        ];
+
+        for (const capability of capabilities) {
+            await expect(
+                resolveRendererBackend({
+                    backend: 'auto',
+                    renderPipeline: backendSelectionPipeline({
+                        requiredCapabilities: [capability]
+                    })
+                })
+            ).resolves.toBe('webgpu');
+        }
+        await expect(
+            resolveRendererBackend({
+                backend: 'auto',
+                renderPipeline: backendSelectionPipeline({
+                    requiredTextureFormats: [{ format: 'rgba8unorm', use: 'storage' }]
+                })
+            })
+        ).resolves.toBe('webgpu');
+        await expect(
+            resolveRendererBackend({
+                backend: 'auto',
+                renderPipeline: backendSelectionPipeline({
+                    requiredFeatures: ['shader-f16']
+                })
+            })
+        ).resolves.toBe('webgpu');
+        await expect(
+            resolveRendererBackend({
+                backend: 'auto',
+                renderPipeline: backendSelectionPipeline({
+                    requiredLimits: { maxComputeWorkgroupSizeX: 128 }
+                })
+            })
+        ).resolves.toBe('webgpu');
+
+        expect(rhiSupportControl.calls).toHaveBeenCalledTimes(7);
+        expect(rhiSupportControl.calls.mock.lastCall?.[0]).toBe('webgpu');
+        expect(rhiSupportControl.calls.mock.lastCall?.[1]).toMatchObject({
+            requiredLimits: { maxComputeWorkgroupSizeX: 128 }
+        });
+    });
+
+    it('rejects auto compute requirements when no compatible WebGPU adapter exists', async () => {
+        rhiSupportControl.override = () => Promise.resolve(false);
+        const canvas = document.createElement('canvas');
+        const getContext = vi.spyOn(canvas, 'getContext');
+
+        await expect(
+            Renderer.create({
+                backend: 'auto',
+                domElement: canvas,
+                renderPipeline: backendSelectionPipeline({
+                    requiredCapabilities: ['compute-pass']
+                })
+            })
+        ).rejects.toThrow(
+            /No compatible Renderer backend: render pipeline capability compute-pass requires WebGPU/u
+        );
+        expect(rhiSupportControl.calls).toHaveBeenCalledOnce();
+        expect(getContext).not.toHaveBeenCalled();
+    });
+
+    it('rejects explicit WebGL2 and WebGL2-only option conflicts before backend creation', async () => {
+        const canvas = document.createElement('canvas');
+        const getContext = vi.spyOn(canvas, 'getContext');
+        const computePipeline = backendSelectionPipeline({
+            requiredCapabilities: ['compute-pass']
+        });
+
+        await expect(
+            Renderer.create({
+                backend: 'webgl2',
+                domElement: canvas,
+                renderPipeline: computePipeline
+            })
+        ).rejects.toThrow(/capability compute-pass requires WebGPU.*backend webgl2/u);
+        await expect(
+            resolveRendererBackend({
+                backend: 'auto',
+                preserveDrawingBuffer: false,
+                renderPipeline: computePipeline
+            })
+        ).rejects.toThrow(/compute-pass requires WebGPU.*preserveDrawingBuffer is WebGL2-only/u);
+        await expect(
+            resolveRendererBackend({
+                backend: 'auto',
+                alpha: true,
+                premultipliedAlpha: false,
+                renderPipeline: backendSelectionPipeline({
+                    requiredLimits: { maxStorageBuffersPerShaderStage: 4 }
+                })
+            })
+        ).rejects.toThrow(
+            /maxStorageBuffersPerShaderStage requires WebGPU.*premultipliedAlpha: false is WebGL2-only/u
+        );
+        expect(rhiSupportControl.calls).not.toHaveBeenCalled();
+        expect(getContext).not.toHaveBeenCalled();
+    });
+
+    it('keeps explicit WebGPU fail-closed without probing or falling back', async () => {
+        rhiSupportControl.override = () => Promise.resolve(false);
+
+        await expect(
+            resolveRendererBackend({
+                backend: 'webgpu',
+                renderPipeline: backendSelectionPipeline({
+                    requiredTextureFormats: [{ format: 'rgba16float', use: 'storage' }]
+                })
+            })
+        ).resolves.toBe('webgpu');
+        await expect(
+            resolveRendererBackend({
+                backend: 'webgpu',
+                alpha: true,
+                premultipliedAlpha: false
+            })
+        ).rejects.toThrow(/premultipliedAlpha: false is WebGL2-only.*backend webgpu/u);
+        expect(rhiSupportControl.calls).not.toHaveBeenCalled();
+    });
+
+    it('freezes pipeline selection requirements before awaiting the auto probe', async () => {
+        let resolveSupport: ((supported: boolean) => void) | undefined;
+        rhiSupportControl.override = () =>
+            new Promise<boolean>(resolve => {
+                resolveSupport = resolve;
+            });
+        const requiredCapabilities: RenderPipelineCapabilityName[] = ['compute-pass'];
+        const factory = backendSelectionPipeline({ requiredCapabilities });
+        const canvas = document.createElement('canvas');
+        const getContext = vi.spyOn(canvas, 'getContext');
+        const pendingRenderer = Renderer.create({
+            backend: 'auto',
+            domElement: canvas,
+            renderPipeline: factory
+        });
+
+        requiredCapabilities.length = 0;
+        resolveSupport?.(false);
+
+        await expect(pendingRenderer).rejects.toThrow(/capability compute-pass requires WebGPU/u);
+        expect(getContext).not.toHaveBeenCalled();
     });
 
     it('repeats the last completed presentation without firing scene lifecycle events', async () => {

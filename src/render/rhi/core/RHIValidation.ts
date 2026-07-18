@@ -1,6 +1,7 @@
 import type { RHICapabilities } from './RHICapabilities';
 import type {
     RHICommandContext,
+    RHIComputePassEncoder,
     RHIRenderPassColorAttachment,
     RHIRenderPassDepthStencilAttachment,
     RHIRenderPassDescriptor,
@@ -12,7 +13,9 @@ import type {
     RHIBindGroupLayoutEntry,
     RHIBindingResource,
     RHIBufferBinding,
+    RHIComputePipelineDescriptor,
     RHIGraphicsPipelineDescriptor,
+    RHIPipelineLayout,
     RHIPipelineLayoutDescriptor,
     RHIStencilFaceState,
     RHITextureSampleType
@@ -34,6 +37,7 @@ import type {
     RHIShaderDescriptor,
     RHIShaderReflection,
     RHIShaderBindingReflection,
+    RHIShaderOverrideReflection,
     RHITexture,
     RHITextureDescriptor,
     RHITextureViewDescriptor,
@@ -98,6 +102,15 @@ function finiteNumber(value: number, path: string): void {
     if (!Number.isFinite(value)) {
         fail('invalid-descriptor', 'must be finite', path);
     }
+}
+
+const PORTABLE_WGSL_IDENTIFIER = /^[A-Za-z_]\w*$/u;
+
+function validPipelineConstantIdentifier(value: string): boolean {
+    if (PORTABLE_WGSL_IDENTIFIER.test(value)) return true;
+    if (!/^(?:0|[1-9][0-9]*)$/u.test(value)) return false;
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id <= 65_535;
 }
 
 function normalizedLabel(label: string | undefined): string {
@@ -181,6 +194,12 @@ export function assertRHICommandContextOpen(context: RHICommandContext): void {
 export function assertRHIRenderPassOpen(pass: RHIRenderPassEncoder): void {
     if (pass.state !== 'open') {
         fail('invalid-state', `render pass is ${pass.state}`, 'renderPass');
+    }
+}
+
+export function assertRHIComputePassOpen(pass: RHIComputePassEncoder): void {
+    if (pass.state !== 'open') {
+        fail('invalid-state', `compute pass is ${pass.state}`, 'computePass');
     }
 }
 
@@ -892,6 +911,12 @@ export function normalizeRHIShaderDescriptor(
             'shader.artifact.backend'
         );
     }
+    if (!(['vertex', 'fragment', 'compute'] as const).includes(artifact.stage)) {
+        fail('invalid-descriptor', 'has an invalid shader stage', 'shader.artifact.stage');
+    }
+    if (artifact.stage === 'compute' && !device.capabilities.features.has('compute-pipelines')) {
+        fail('unsupported-feature', 'compute shaders are unsupported', 'shader.artifact.stage');
+    }
     if (artifact.entryPoint.length === 0) {
         fail('invalid-descriptor', 'must not be empty', 'shader.artifact.entryPoint');
     }
@@ -959,14 +984,61 @@ export function normalizeRHIShaderDescriptor(
             }
         }
         const hasSampledTextureMetadata =
-            binding.sampleType !== undefined ||
-            binding.viewDimension !== undefined ||
-            binding.multisampled !== undefined;
+            binding.sampleType !== undefined || binding.multisampled !== undefined;
         if (hasSampledTextureMetadata && binding.kind !== 'sampled-texture') {
             fail(
                 'invalid-descriptor',
-                'sampleType, viewDimension, and multisampled are only valid for sampled-texture bindings',
+                'sampleType and multisampled are only valid for sampled-texture bindings',
                 bindingPath
+            );
+        }
+        if (
+            binding.viewDimension !== undefined &&
+            binding.kind !== 'sampled-texture' &&
+            binding.kind !== 'storage-texture'
+        ) {
+            fail(
+                'invalid-descriptor',
+                'viewDimension is only valid for texture bindings',
+                `${bindingPath}.viewDimension`
+            );
+        }
+        const hasStorageTextureMetadata =
+            binding.storageTextureAccess !== undefined ||
+            binding.storageTextureFormat !== undefined;
+        if (hasStorageTextureMetadata && binding.kind !== 'storage-texture') {
+            fail(
+                'invalid-descriptor',
+                'storageTextureAccess and storageTextureFormat are only valid for storage-texture bindings',
+                bindingPath
+            );
+        }
+        if (binding.kind === 'storage-texture') {
+            if (binding.storageTextureAccess === undefined) {
+                fail(
+                    'invalid-descriptor',
+                    'storage-texture reflection requires storageTextureAccess',
+                    `${bindingPath}.storageTextureAccess`
+                );
+            }
+            if (binding.storageTextureFormat === undefined) {
+                fail(
+                    'invalid-descriptor',
+                    'storage-texture reflection requires storageTextureFormat',
+                    `${bindingPath}.storageTextureFormat`
+                );
+            }
+        }
+        if (
+            binding.storageTextureAccess !== undefined &&
+            !(['write-only', 'read-only', 'read-write'] as const).includes(
+                binding.storageTextureAccess
+            )
+        ) {
+            fail(
+                'invalid-descriptor',
+                'has an invalid storage texture access',
+                `${bindingPath}.storageTextureAccess`
             );
         }
         if (
@@ -1000,6 +1072,129 @@ export function normalizeRHIShaderDescriptor(
         reflectedBindings.set(key, binding);
     }
 
+    const {
+        workgroupSize,
+        workgroupStorageSize,
+        overrides,
+        requiresF16,
+        vertexInputs,
+        fragmentOutputs
+    } = artifact.reflection;
+    if (artifact.stage === 'compute') {
+        if (workgroupSize === undefined) {
+            fail(
+                'invalid-descriptor',
+                'compute shader reflection requires workgroupSize',
+                'shader.artifact.reflection.workgroupSize'
+            );
+        }
+        if (workgroupStorageSize === undefined) {
+            fail(
+                'invalid-descriptor',
+                'compute shader reflection requires exact workgroupStorageSize',
+                'shader.artifact.reflection.workgroupStorageSize'
+            );
+        }
+        if (overrides === undefined) {
+            fail(
+                'invalid-descriptor',
+                'compute shader reflection requires a complete overrides ABI',
+                'shader.artifact.reflection.overrides'
+            );
+        }
+        if (vertexInputs !== undefined || fragmentOutputs !== undefined) {
+            fail(
+                'invalid-descriptor',
+                'compute shader reflection cannot declare graphics inputs or outputs',
+                'shader.artifact.reflection'
+            );
+        }
+    } else if (
+        workgroupSize !== undefined ||
+        workgroupStorageSize !== undefined ||
+        overrides !== undefined
+    ) {
+        fail(
+            'invalid-descriptor',
+            'compute metadata is only valid for compute shaders',
+            'shader.artifact.reflection'
+        );
+    }
+    if (workgroupSize !== undefined) {
+        const workgroupDimensionCount: unknown = Reflect.get(workgroupSize, 'length');
+        if (workgroupDimensionCount !== 3) {
+            fail(
+                'invalid-descriptor',
+                'must contain exactly three dimensions',
+                'shader.artifact.reflection.workgroupSize'
+            );
+        }
+        for (let index = 0; index < 3; index += 1) {
+            const dimension = workgroupSize[index];
+            if (dimension !== undefined) {
+                positiveInteger(
+                    dimension,
+                    `shader.artifact.reflection.workgroupSize[${String(index)}]`
+                );
+            }
+        }
+    }
+    if (workgroupStorageSize !== undefined) {
+        nonNegativeInteger(workgroupStorageSize, 'shader.artifact.reflection.workgroupStorageSize');
+    }
+    if (overrides !== undefined) {
+        const seenOverrides = new Set<string>();
+        for (let index = 0; index < overrides.length; index += 1) {
+            const override = overrides[index];
+            if (override === undefined) continue;
+            const overridePath = `shader.artifact.reflection.overrides[${String(index)}]`;
+            if (
+                typeof override.name !== 'string' ||
+                !validPipelineConstantIdentifier(override.name)
+            ) {
+                fail(
+                    'invalid-descriptor',
+                    'name must be a WGSL identifier or canonical numeric ID up to 65535',
+                    `${overridePath}.name`
+                );
+            }
+            if (seenOverrides.has(override.name)) {
+                fail('invalid-descriptor', 'contains a duplicate override name', overridePath);
+            }
+            seenOverrides.add(override.name);
+            if (!(['bool', 'f16', 'f32', 'i32', 'u32'] as const).includes(override.type)) {
+                fail('invalid-descriptor', 'has an invalid override type', `${overridePath}.type`);
+            }
+            if (typeof override.required !== 'boolean') {
+                fail('invalid-descriptor', 'must be a boolean', `${overridePath}.required`);
+            }
+        }
+    }
+    if (requiresF16 !== undefined && typeof requiresF16 !== 'boolean') {
+        fail('invalid-descriptor', 'must be a boolean', 'shader.artifact.reflection.requiresF16');
+    }
+    if (requiresF16 === true && !device.capabilities.features.has('shader-f16')) {
+        fail(
+            'unsupported-feature',
+            'WGSL f16 requires the shader-f16 device feature',
+            'shader.artifact.reflection.requiresF16'
+        );
+    }
+    if (artifact.stage !== 'vertex' && vertexInputs !== undefined) {
+        fail(
+            'invalid-descriptor',
+            'vertexInputs are only valid for vertex shaders',
+            'shader.artifact.reflection.vertexInputs'
+        );
+    }
+    if (artifact.stage !== 'fragment' && fragmentOutputs !== undefined) {
+        fail(
+            'invalid-descriptor',
+            'fragmentOutputs are only valid for fragment shaders',
+            'shader.artifact.reflection.fragmentOutputs'
+        );
+    }
+
     if (artifact.backend === 'webgl2' && artifact.preparedBindings !== undefined) {
         validateWebGL2PreparedBindings(artifact.preparedBindings, reflectedBindings);
     }
@@ -1023,7 +1218,25 @@ export function normalizeRHIShaderDescriptor(
                           Object.freeze({ ...output })
                       )
                   )
-              })
+              }),
+        ...(workgroupSize === undefined
+            ? {}
+            : {
+                  workgroupSize: Object.freeze([
+                      workgroupSize[0],
+                      workgroupSize[1],
+                      workgroupSize[2]
+                  ] satisfies [number, number, number])
+              }),
+        ...(workgroupStorageSize === undefined ? {} : { workgroupStorageSize }),
+        ...(overrides === undefined
+            ? {}
+            : {
+                  overrides: Object.freeze(
+                      overrides.map(override => Object.freeze({ ...override }))
+                  )
+              }),
+        ...(requiresF16 === undefined ? {} : { requiresF16 })
     });
     const commonArtifact = {
         stage: artifact.stage,
@@ -1097,11 +1310,23 @@ export function validateRHIBindGroupLayoutDescriptor(
         }
         if (
             entry.visibility <= 0 ||
-            (entry.visibility & ~(RHIShaderStage.VERTEX | RHIShaderStage.FRAGMENT)) !== 0
+            (entry.visibility &
+                ~(RHIShaderStage.VERTEX | RHIShaderStage.FRAGMENT | RHIShaderStage.COMPUTE)) !==
+                0
         ) {
             fail(
                 'invalid-descriptor',
                 'contains invalid shader-stage flags',
+                `bindGroupLayout.entries[${String(index)}].visibility`
+            );
+        }
+        if (
+            (entry.visibility & RHIShaderStage.COMPUTE) !== 0 &&
+            !capabilities.features.has('compute-pipelines')
+        ) {
+            fail(
+                'unsupported-feature',
+                'compute shader visibility is unsupported',
                 `bindGroupLayout.entries[${String(index)}].visibility`
             );
         }
@@ -1127,6 +1352,18 @@ export function validateRHIBindGroupLayoutDescriptor(
                 'unsupported-feature',
                 'storage textures are unsupported',
                 `bindGroupLayout.entries[${String(index)}].storageTexture`
+            );
+        }
+        if (
+            entry.storageTexture !== undefined &&
+            !(['write-only', 'read-only', 'read-write'] as const).includes(
+                entry.storageTexture.access
+            )
+        ) {
+            fail(
+                'invalid-descriptor',
+                'has an invalid access mode',
+                `bindGroupLayout.entries[${String(index)}].storageTexture.access`
             );
         }
         if (
@@ -1209,7 +1446,7 @@ function countRHIShaderStageBinding(
 
 function validateRHIShaderStageBindingLimits(
     device: RHIDevice,
-    stage: 'vertex' | 'fragment',
+    stage: 'vertex' | 'fragment' | 'compute',
     counts: RHIShaderStageBindingCounts
 ): void {
     const limits = device.capabilities.limits;
@@ -1247,8 +1484,10 @@ export function validateRHIPipelineLayoutDescriptor(
         fail('out-of-bounds', 'contains too many bind groups', 'pipelineLayout.bindGroupLayouts');
     }
     let dynamicUniformBufferCount = 0;
+    let dynamicStorageBufferCount = 0;
     const vertexCounts = emptyRHIShaderStageBindingCounts();
     const fragmentCounts = emptyRHIShaderStageBindingCounts();
+    const computeCounts = emptyRHIShaderStageBindingCounts();
     for (let index = 0; index < descriptor.bindGroupLayouts.length; index += 1) {
         const layout = descriptor.bindGroupLayouts[index];
         if (layout !== undefined) {
@@ -1264,11 +1503,15 @@ export function validateRHIPipelineLayoutDescriptor(
                 if ((entry.visibility & RHIShaderStage.FRAGMENT) !== 0) {
                     countRHIShaderStageBinding(fragmentCounts, entry);
                 }
-                if (
-                    entry.buffer?.hasDynamicOffset === true &&
-                    (entry.buffer.type ?? 'uniform') === 'uniform'
-                ) {
-                    dynamicUniformBufferCount += 1;
+                if ((entry.visibility & RHIShaderStage.COMPUTE) !== 0) {
+                    countRHIShaderStageBinding(computeCounts, entry);
+                }
+                if (entry.buffer?.hasDynamicOffset === true) {
+                    if ((entry.buffer.type ?? 'uniform') === 'uniform') {
+                        dynamicUniformBufferCount += 1;
+                    } else {
+                        dynamicStorageBufferCount += 1;
+                    }
                 }
             }
         }
@@ -1283,8 +1526,21 @@ export function validateRHIPipelineLayoutDescriptor(
             'pipelineLayout.bindGroupLayouts'
         );
     }
+    if (
+        dynamicStorageBufferCount > 0 &&
+        (device.capabilities.limits.maxDynamicStorageBuffersPerPipelineLayout === undefined ||
+            dynamicStorageBufferCount >
+                device.capabilities.limits.maxDynamicStorageBuffersPerPipelineLayout)
+    ) {
+        fail(
+            'out-of-bounds',
+            'contains too many dynamic storage buffers',
+            'pipelineLayout.bindGroupLayouts'
+        );
+    }
     validateRHIShaderStageBindingLimits(device, 'vertex', vertexCounts);
     validateRHIShaderStageBindingLimits(device, 'fragment', fragmentCounts);
+    validateRHIShaderStageBindingLimits(device, 'compute', computeCounts);
 }
 
 export function snapshotRHIPipelineLayoutDescriptor(
@@ -1404,6 +1660,13 @@ export function validateRHIBindGroupDescriptor(
                     'incompatible-layout',
                     'layout requires a buffer',
                     `bindGroup.entries[${String(index)}].resource`
+                );
+            }
+            if (entry.resource.buffer.mapState !== 'unmapped') {
+                fail(
+                    'invalid-state',
+                    `buffer is ${entry.resource.buffer.mapState}`,
+                    `bindGroup.entries[${String(index)}].resource.buffer`
                 );
             }
             const offset = entry.resource.offset ?? 0;
@@ -1629,7 +1892,7 @@ function layoutEntryMatchesShaderBinding(
 
 function validateRHIShaderAgainstPipelineLayout(
     shader: RHIShader,
-    descriptor: RHIGraphicsPipelineDescriptor,
+    layout: RHIPipelineLayout,
     stageFlag: number,
     path: string
 ): void {
@@ -1638,7 +1901,7 @@ function validateRHIShaderAgainstPipelineLayout(
         if (reflected === undefined) {
             continue;
         }
-        const group = descriptor.layout.bindGroupLayouts[reflected.group];
+        const group = layout.bindGroupLayouts[reflected.group];
         if (group === undefined) {
             fail(
                 'incompatible-layout',
@@ -1703,6 +1966,38 @@ function validateRHIShaderAgainstPipelineLayout(
                 );
             }
         }
+        if (reflected.kind === 'storage-texture' && entry.storageTexture !== undefined) {
+            if (
+                reflected.storageTextureAccess !== undefined &&
+                entry.storageTexture.access !== reflected.storageTextureAccess
+            ) {
+                fail(
+                    'incompatible-layout',
+                    'layout storage texture access does not match shader reflection',
+                    `${path}.artifact.reflection.bindings[${String(index)}]`
+                );
+            }
+            if (
+                reflected.storageTextureFormat !== undefined &&
+                entry.storageTexture.format !== reflected.storageTextureFormat
+            ) {
+                fail(
+                    'incompatible-layout',
+                    'layout storage texture format does not match shader reflection',
+                    `${path}.artifact.reflection.bindings[${String(index)}]`
+                );
+            }
+            if (
+                reflected.viewDimension !== undefined &&
+                (entry.storageTexture.viewDimension ?? '2d') !== reflected.viewDimension
+            ) {
+                fail(
+                    'incompatible-layout',
+                    'layout storage texture view dimension does not match shader reflection',
+                    `${path}.artifact.reflection.bindings[${String(index)}]`
+                );
+            }
+        }
     }
 }
 
@@ -1717,7 +2012,7 @@ export function validateRHIGraphicsPipelineDescriptor(
     }
     validateRHIShaderAgainstPipelineLayout(
         descriptor.vertex.shader,
-        descriptor,
+        descriptor.layout,
         RHIShaderStage.VERTEX,
         'graphicsPipeline.vertex.shader'
     );
@@ -1809,7 +2104,7 @@ export function validateRHIGraphicsPipelineDescriptor(
         }
         validateRHIShaderAgainstPipelineLayout(
             fragment.shader,
-            descriptor,
+            descriptor.layout,
             RHIShaderStage.FRAGMENT,
             'graphicsPipeline.fragment.shader'
         );
@@ -2012,6 +2307,186 @@ export function snapshotRHIGraphicsPipelineDescriptor(
         ...(descriptor.multisample === undefined
             ? {}
             : { multisample: Object.freeze({ ...descriptor.multisample }) })
+    });
+}
+
+function requireRHIComputeLimit(value: number | undefined, name: string): number {
+    if (value === undefined) {
+        fail(
+            'unsupported-feature',
+            `compute capability is missing ${name}`,
+            `device.capabilities.limits.${name}`
+        );
+    }
+    return value;
+}
+
+const MAX_F32 = 3.402_823_466_385_288_6e38;
+const MIN_I32 = -0x8000_0000;
+const MAX_I32 = 0x7fff_ffff;
+const MAX_U32 = 0xffff_ffff;
+
+function validateRHIOverrideConstant(
+    override: Readonly<RHIShaderOverrideReflection>,
+    value: number | boolean,
+    path: string
+): void {
+    if (override.type === 'bool') {
+        if (typeof value !== 'boolean') {
+            fail('invalid-descriptor', 'must be a boolean for a bool override', path);
+        }
+        return;
+    }
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        fail('invalid-descriptor', `must be a finite number for ${override.type}`, path);
+    }
+    switch (override.type) {
+        case 'i32':
+            if (!Number.isInteger(value) || value < MIN_I32 || value > MAX_I32) {
+                fail('out-of-bounds', 'must be an integer in the i32 range', path);
+            }
+            return;
+        case 'u32':
+            if (!Number.isInteger(value) || value < 0 || value > MAX_U32) {
+                fail('out-of-bounds', 'must be an integer in the u32 range', path);
+            }
+            return;
+        case 'f16':
+        case 'f32':
+            if (Math.abs(value) > MAX_F32) {
+                fail('out-of-bounds', 'must be representable as an f32 pipeline value', path);
+            }
+            return;
+    }
+}
+
+export function validateRHIComputePipelineDescriptor(
+    device: RHIDevice,
+    descriptor: RHIComputePipelineDescriptor
+): void {
+    if (!device.capabilities.features.has('compute-pipelines')) {
+        fail('unsupported-feature', 'compute pipelines are unsupported', 'computePipeline');
+    }
+    assertRHIObjectOwnedBy(device, descriptor.layout, 'computePipeline.layout');
+    assertRHIObjectOwnedBy(device, descriptor.compute.shader, 'computePipeline.compute.shader');
+    if (descriptor.compute.shader.stage !== 'compute') {
+        fail('invalid-descriptor', 'must use a compute shader', 'computePipeline.compute.shader');
+    }
+    validateRHIShaderAgainstPipelineLayout(
+        descriptor.compute.shader,
+        descriptor.layout,
+        RHIShaderStage.COMPUTE,
+        'computePipeline.compute.shader'
+    );
+
+    const workgroupSize = descriptor.compute.shader.artifact.reflection.workgroupSize;
+    if (workgroupSize === undefined) {
+        fail(
+            'invalid-descriptor',
+            'compute shader reflection requires workgroupSize',
+            'computePipeline.compute.shader.artifact.reflection.workgroupSize'
+        );
+    }
+    const limits = device.capabilities.limits;
+    const maximumDimensions = [
+        requireRHIComputeLimit(limits.maxComputeWorkgroupSizeX, 'maxComputeWorkgroupSizeX'),
+        requireRHIComputeLimit(limits.maxComputeWorkgroupSizeY, 'maxComputeWorkgroupSizeY'),
+        requireRHIComputeLimit(limits.maxComputeWorkgroupSizeZ, 'maxComputeWorkgroupSizeZ')
+    ] as const;
+    for (let index = 0; index < workgroupSize.length; index += 1) {
+        const dimension = workgroupSize[index];
+        const maximum = maximumDimensions[index];
+        if (dimension !== undefined && maximum !== undefined && dimension > maximum) {
+            fail(
+                'out-of-bounds',
+                'workgroup dimension exceeds the device limit',
+                `computePipeline.compute.shader.artifact.reflection.workgroupSize[${String(index)}]`
+            );
+        }
+    }
+    const invocationCount = workgroupSize[0] * workgroupSize[1] * workgroupSize[2];
+    if (
+        invocationCount >
+        requireRHIComputeLimit(
+            limits.maxComputeInvocationsPerWorkgroup,
+            'maxComputeInvocationsPerWorkgroup'
+        )
+    ) {
+        fail(
+            'out-of-bounds',
+            'workgroup invocation count exceeds the device limit',
+            'computePipeline.compute.shader.artifact.reflection.workgroupSize'
+        );
+    }
+    const workgroupStorageSize = descriptor.compute.shader.artifact.reflection.workgroupStorageSize;
+    if (workgroupStorageSize === undefined) {
+        fail(
+            'invalid-descriptor',
+            'compute shader reflection requires exact workgroupStorageSize',
+            'computePipeline.compute.shader.artifact.reflection.workgroupStorageSize'
+        );
+    }
+    if (
+        workgroupStorageSize >
+        requireRHIComputeLimit(
+            limits.maxComputeWorkgroupStorageSize,
+            'maxComputeWorkgroupStorageSize'
+        )
+    ) {
+        fail(
+            'out-of-bounds',
+            'workgroup storage exceeds the device limit',
+            'computePipeline.compute.shader.artifact.reflection.workgroupStorageSize'
+        );
+    }
+
+    const overrideABI = descriptor.compute.shader.artifact.reflection.overrides;
+    if (overrideABI === undefined) {
+        fail(
+            'invalid-descriptor',
+            'compute shader reflection requires a complete overrides ABI',
+            'computePipeline.compute.shader.artifact.reflection.overrides'
+        );
+    }
+    const overrideByName = new Map(overrideABI.map(override => [override.name, override]));
+    const constants = descriptor.compute.constants ?? {};
+    for (const [name, value] of Object.entries(constants)) {
+        const override = overrideByName.get(name);
+        if (override === undefined) {
+            fail(
+                'invalid-descriptor',
+                'does not name a reflected pipeline override',
+                `computePipeline.compute.constants.${name}`
+            );
+        }
+        validateRHIOverrideConstant(override, value, `computePipeline.compute.constants.${name}`);
+    }
+    for (const override of overrideABI) {
+        if (override.required && !Object.prototype.hasOwnProperty.call(constants, override.name)) {
+            fail(
+                'invalid-descriptor',
+                'required pipeline override has no supplied value',
+                `computePipeline.compute.constants.${override.name}`
+            );
+        }
+    }
+}
+
+export function snapshotRHIComputePipelineDescriptor(
+    device: RHIDevice,
+    descriptor: RHIComputePipelineDescriptor
+): Readonly<RHIComputePipelineDescriptor> {
+    validateRHIComputePipelineDescriptor(device, descriptor);
+    return Object.freeze({
+        label: normalizedLabel(descriptor.label),
+        lifetime: normalizedLifetime(descriptor.lifetime),
+        layout: descriptor.layout,
+        compute: Object.freeze({
+            shader: descriptor.compute.shader,
+            ...(descriptor.compute.constants === undefined
+                ? {}
+                : { constants: Object.freeze({ ...descriptor.compute.constants }) })
+        })
     });
 }
 

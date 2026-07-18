@@ -4,6 +4,8 @@ import type {
     RHIBindGroupEntry,
     RHIBindGroupLayout,
     RHIBindGroupLayoutDescriptor,
+    RHIComputePipeline,
+    RHIComputePipelineDescriptor,
     RHIGraphicsPipeline,
     RHIGraphicsPipelineDescriptor,
     RHIPipelineLayout,
@@ -263,6 +265,60 @@ export class WebGPUGraphicsPipeline
     }
 }
 
+export class WebGPUComputePipeline
+    extends WebGPUResource<RHIComputePipelineDescriptor>
+    implements RHIComputePipeline
+{
+    readonly descriptor: Readonly<RHIComputePipelineDescriptor>;
+    readonly layout: WebGPUPipelineLayout;
+    readonly requiredBindGroups: readonly boolean[];
+    readonly #nativeHandle: GPUComputePipeline;
+
+    constructor(
+        owner: WebGPUDevice,
+        nativeHandle: GPUComputePipeline,
+        descriptor: Readonly<RHIComputePipelineDescriptor>,
+        layout: WebGPUPipelineLayout
+    ) {
+        super(
+            owner,
+            descriptor.label ?? '',
+            descriptor.lifetime ?? 'persistent',
+            'pipeline',
+            'creation-only'
+        );
+        this.#nativeHandle = nativeHandle;
+        this.descriptor = descriptor;
+        this.layout = layout;
+
+        const requiredBindGroups = new Array<boolean>(owner.capabilities.limits.maxBindGroups).fill(
+            false
+        );
+        for (const binding of descriptor.compute.shader.artifact.reflection.bindings) {
+            requiredBindGroups[binding.group] = true;
+        }
+        this.requiredBindGroups = Object.freeze(requiredBindGroups);
+    }
+
+    /** @internal */
+    get nativeHandle(): GPUComputePipeline {
+        return this.#nativeHandle;
+    }
+
+    getBindGroupLayout(index: number): RHIBindGroupLayout {
+        assertNonNegativeSafeInteger(index, 'bindGroupLayout.index');
+        const layout = this.layout.bindGroupLayouts[index];
+        if (layout === undefined) {
+            throw new RHIValidationError(
+                'out-of-bounds',
+                'pipeline has no bind group layout at this index',
+                'bindGroupLayout.index'
+            );
+        }
+        return layout;
+    }
+}
+
 export function nativeWebGPUBindGroupLayoutEntry(
     entry: RHIBindGroupLayoutDescriptor['entries'][number]
 ): GPUBindGroupLayoutEntry {
@@ -452,5 +508,31 @@ export function nativeWebGPUGraphicsPipelineDescriptor(
                       )
                   }
               })
+    };
+}
+
+export function nativeWebGPUComputePipelineDescriptor(
+    descriptor: Readonly<RHIComputePipelineDescriptor>,
+    layout: WebGPUPipelineLayout,
+    shader: WebGPUShader
+): GPUComputePipelineDescriptor {
+    const constants = descriptor.compute.constants;
+    const nativeConstants: Record<string, number> | undefined =
+        constants === undefined
+            ? undefined
+            : Object.fromEntries(
+                  Object.entries(constants).map(([name, value]) => [
+                      name,
+                      typeof value === 'boolean' ? Number(value) : value
+                  ])
+              );
+    return {
+        ...(descriptor.label === undefined ? {} : { label: descriptor.label }),
+        layout: layout.nativeHandle,
+        compute: {
+            module: shader.nativeHandle,
+            entryPoint: shader.artifact.entryPoint,
+            ...(nativeConstants === undefined ? {} : { constants: nativeConstants })
+        }
     };
 }

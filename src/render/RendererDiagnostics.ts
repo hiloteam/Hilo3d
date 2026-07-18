@@ -77,9 +77,21 @@ export interface RendererCacheDiagnosticsSnapshot {
 
 export interface RendererFrameDiagnosticsSnapshot {
     readonly draws: number;
+    /** Direct or indexed indirect draw commands emitted this frame. */
+    readonly indirectDraws: number;
+    /** Compute dispatch commands emitted this frame. */
+    readonly dispatches: number;
+    /** Exact workgroup product for direct dispatches; indirect counts are intentionally omitted. */
+    readonly dispatchedWorkgroups: number;
+    /** Buffer clear commands emitted this frame. */
+    readonly bufferClears: number;
     readonly commands: number;
     readonly passes: number;
     readonly stateChanges: number;
+    /** Compute pipeline changes recorded by command encoders. */
+    readonly computePipelineSwitches: number;
+    /** Compute bind-group changes recorded by command encoders. */
+    readonly computeBindGroupSwitches: number;
     readonly uploads: number;
     readonly submissions: number;
     readonly arenaGrowths: number;
@@ -153,10 +165,16 @@ const CACHE_VERTEX_ARRAY = CACHE_FRAMEBUFFER + CACHE_STRIDE;
 
 const FRAME_START = CACHE_VERTEX_ARRAY + CACHE_STRIDE;
 const FRAME_DRAWS = FRAME_START;
-const FRAME_COMMANDS = FRAME_DRAWS + 1;
+const FRAME_INDIRECT_DRAWS = FRAME_DRAWS + 1;
+const FRAME_DISPATCHES = FRAME_INDIRECT_DRAWS + 1;
+const FRAME_DISPATCHED_WORKGROUPS = FRAME_DISPATCHES + 1;
+const FRAME_BUFFER_CLEARS = FRAME_DISPATCHED_WORKGROUPS + 1;
+const FRAME_COMMANDS = FRAME_BUFFER_CLEARS + 1;
 const FRAME_PASSES = FRAME_COMMANDS + 1;
 const FRAME_STATE_CHANGES = FRAME_PASSES + 1;
-const FRAME_UPLOADS = FRAME_STATE_CHANGES + 1;
+const FRAME_COMPUTE_PIPELINE_SWITCHES = FRAME_STATE_CHANGES + 1;
+const FRAME_COMPUTE_BIND_GROUP_SWITCHES = FRAME_COMPUTE_PIPELINE_SWITCHES + 1;
+const FRAME_UPLOADS = FRAME_COMPUTE_BIND_GROUP_SWITCHES + 1;
 const FRAME_SUBMISSIONS = FRAME_UPLOADS + 1;
 const FRAME_ARENA_GROWTHS = FRAME_SUBMISSIONS + 1;
 const COUNTER_COUNT = FRAME_ARENA_GROWTHS + 1;
@@ -378,6 +396,26 @@ export class RendererDiagnostics {
         this.increment(FRAME_DRAWS, count);
     }
 
+    recordIndirectDraw(count = 1): void {
+        requirePositiveCount(count);
+        this.increment(FRAME_INDIRECT_DRAWS, count);
+    }
+
+    recordDispatch(count = 1): void {
+        requirePositiveCount(count);
+        this.increment(FRAME_DISPATCHES, count);
+    }
+
+    recordDispatchedWorkgroup(count = 1): void {
+        requirePositiveCount(count);
+        this.increment(FRAME_DISPATCHED_WORKGROUPS, count);
+    }
+
+    recordBufferClear(count = 1): void {
+        requirePositiveCount(count);
+        this.increment(FRAME_BUFFER_CLEARS, count);
+    }
+
     recordCommand(count = 1): void {
         requirePositiveCount(count);
         this.increment(FRAME_COMMANDS, count);
@@ -391,6 +429,16 @@ export class RendererDiagnostics {
     recordStateChange(count = 1): void {
         requirePositiveCount(count);
         this.increment(FRAME_STATE_CHANGES, count);
+    }
+
+    recordComputePipelineSwitch(count = 1): void {
+        requirePositiveCount(count);
+        this.increment(FRAME_COMPUTE_PIPELINE_SWITCHES, count);
+    }
+
+    recordComputeBindGroupSwitch(count = 1): void {
+        requirePositiveCount(count);
+        this.increment(FRAME_COMPUTE_BIND_GROUP_SWITCHES, count);
     }
 
     recordUpload(count = 1): void {
@@ -445,9 +493,15 @@ export class RendererDiagnostics {
             }),
             frame: Object.freeze({
                 draws: this.value(FRAME_DRAWS),
+                indirectDraws: this.value(FRAME_INDIRECT_DRAWS),
+                dispatches: this.value(FRAME_DISPATCHES),
+                dispatchedWorkgroups: this.value(FRAME_DISPATCHED_WORKGROUPS),
+                bufferClears: this.value(FRAME_BUFFER_CLEARS),
                 commands: this.value(FRAME_COMMANDS),
                 passes: this.value(FRAME_PASSES),
                 stateChanges: this.value(FRAME_STATE_CHANGES),
+                computePipelineSwitches: this.value(FRAME_COMPUTE_PIPELINE_SWITCHES),
+                computeBindGroupSwitches: this.value(FRAME_COMPUTE_BIND_GROUP_SWITCHES),
                 uploads: this.value(FRAME_UPLOADS),
                 submissions: this.value(FRAME_SUBMISSIONS),
                 arenaGrowths: this.value(FRAME_ARENA_GROWTHS)

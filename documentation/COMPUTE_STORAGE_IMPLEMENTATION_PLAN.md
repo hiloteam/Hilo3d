@@ -1,13 +1,41 @@
-# Hilo3D WebGPU Compute、Storage 与 GPU-Driven Rendering 一次性实施设计
+# Hilo3D WebGPU Compute、Storage 与 GPU-Driven Rendering 首发设计与实施记录
 
-> 状态：目标设计已确定，代码尚未实施
+> 状态：首发合同已实现；兼容 WebGPU 设备公开 storage、compute 与 indirect-draw capability，WebGL
+> 2 保持正式的 fail-closed negative path
+>
 > 制定日期：2026-07-17
-> 目标版本：完成全部验收门禁后的首个原子公开版本；具体 semver 由发布评审决定
+>
+> 最近核对：2026-07-18
+>
+> 目标版本：当前 `Unreleased` 版本；具体 semver 由发布评审决定
+>
 > 当前生产事实仍以 [`RENDERING_ARCHITECTURE.md`](./RENDERING_ARCHITECTURE.md)、当前代码和测试为准。
+
+## 当前首发能力
+
+本文保留设计决策和实施轨迹，但本节描述的是当前公开合同。验证证据只记录实际运行过的门禁；未运行的物理 GPU、完整 release
+matrix 或不可覆盖性能 baseline 不会被写成通过。
+
+| 切片                               | 当前状态 | 已落地事实                                                                                                                                                                      |
+| ---------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage 数据与 renderer-owned 资源 | 已完成   | WGSL host-shareable `StorageLayout`、`StorageBuffer`、aligned range/partial write、readback、destroy、恢复策略                                                                  |
+| 公共 Render Graph buffer           | 已完成   | transient/import、storage/vertex/index/copy/indirect access、read-write、copy、clear、storage texture write                                                                     |
+| Shader source contracts            | 已完成   | Direct WGSL compute 必经 Naga；readonly storage graphics 使用受控 GLSL ES 3.10 → Vulkan GLSL 4.50 → Naga                                                                        |
+| Portable RHI / WebGPU              | 已完成   | compute stage/pipeline/pass、direct/indirect dispatch、clear、indirect draw、limits、validation、diagnostics                                                                    |
+| WebGL 2 policy                     | 已完成   | compute/storage/indirect 在 native GL 模拟前 fail-closed；没有 texture/TF/fragment/CPU fallback                                                                                 |
+| 创建前 requirements                | 已完成   | compute/storage/indirect capability、storage format 与 limits 把候选限定为 WebGPU；冲突在创建阶段失败                                                                           |
+| SRP compute runtime                | 已完成   | `ComputeKernel`/`ComputeRenderPass`、显式 binding、cache/registry、direct/indirect dispatch 已接入 shared frame                                                                 |
+| GPU-driven raster                  | 已完成   | `GPUDrivenRenderPass`、readonly storage/sampled/uniform/sampler、vertex/index input、direct/indirect draw 已接入 shared frame                                                   |
+| Scene storage integration          | 已完成   | `SceneRenderPass` group 3 pass-global readonly storage；复用 culling/sorting/material/geometry/UBO，instancing 确定性 direct fallback                                           |
+| Forward+/高斯/粒子 example/验收    | 已完成   | depth prepass/sampled-depth/Scene storage、高斯 cull/reorder、1024 粒子 noise/simulate/compact、GPU indirect additive draw；Forward+/高斯为 acceptance-scale，不是性能 baseline |
+| 公共 API 与 requirements           | 已完成   | 根导出、TSDoc、类型消费、创建前 WebGPU 选择、capability/limit/format 检查和 WebGL 2 fail-closed 同版本交付                                                                      |
+
+`storage-buffer`、`storage-texture`、`compute-pass`、`indirect-draw`
+仍按同一个公开 release 单元维护，但 capability 结果也必须满足实际设备 feature、format 和 limit；“已发布”不会把不兼容设备伪装成支持。
 
 ## 1. 结论
 
-Hilo3D 应在现有共享 Renderer、Render Graph 和 portable RHI 上增加一条完整的 WebGPU
+Hilo3D 已在现有共享 Renderer、Render Graph 和 portable RHI 上增加一条完整的 WebGPU
 Compute 与 compute-driven raster 能力链，而不是增加第二套 renderer、公开原生
 `GPUDevice`，或把 compute 塞进现有 raster
 `Material`。这条能力必须能自然承载 Forward+、高斯泼溅和 GPU 粒子，而不要求 CPU
@@ -62,24 +90,19 @@ RenderPipelineFactory requirements
 | Pipeline layout           | 始终显式生成；不使用 WebGPU `layout: 'auto'` 作为生产合同                                                        |
 | GPU command               | 同时支持 buffer clear、direct/indirect dispatch、direct/indirect draw                                            |
 | Queue 模型                | 继续使用一个 frame command scope；不引入 async compute 或多 queue                                                |
-| 发布策略                  | 内部可分工作包实施，但 capability、公共 API 和示例只在完整闭环后同版本开放                                       |
+| 发布策略                  | 内部按工作包实施；capability、公共 API、示例和 negative backend policy 同版本原子开放                            |
 
-“一次性实施”是指**对外原子、能力完整、没有半公开状态**，并不意味着把所有代码放进一个不可评审的提交。在全部功能、异常路径、恢复、性能、API 和真实 WebGPU 门禁通过前：
-
-- `storage-buffer`、`storage-texture`、`compute-pass` 以及实施时新增的 `indirect-draw` 继续返回
-  `false`；
-- 不导出临时类型或 deep-import 入口；
-- 不让应用先创建 WebGL 2 renderer 再在运行时跳过 compute；
-- 不保留手写 native WebGPU bypass；
-- 不用降低验证、关闭恢复或隐藏错误来换取可运行 demo。
+“一次性实施”是指**对外原子、能力完整、没有半公开状态**，并不意味着把所有代码放进一个不可评审的提交。当前首发没有临时 deep-import、WebGL
+2 runtime skip、native WebGPU bypass，也没有通过关闭恢复或隐藏错误换取可运行 demo。
 
 ## 2. 目标与非目标
 
-### 2.1 必须在首个公开版本完成
+### 2.1 首个公开版本已经完成
 
 1. WebGPU Compute Shader、Compute Pipeline、Compute Pass、direct/indirect dispatch。
 2. renderer-owned `StorageBuffer`，支持初始化、部分更新、range binding、异步 readback 和显式销毁。
-3. transient、imported、persistent graph buffer，以及声明推导的 RHI usage。
+3. transient graph buffer、renderer-owned persistent `StorageBuffer` import，以及声明推导的 RHI
+   usage。
 4. `read-only-storage`、`read-write-storage` buffer binding。
 5. sampled texture、sampler、uniform buffer、write-only storage texture compute binding。
 6. buffer 的 read、write、read-write、copy、indirect graph access 与统一 hazard。
@@ -91,9 +114,9 @@ RenderPipelineFactory requirements
     fence 和 device generation。
 11. 创建前 capability/limit/format 筛选；WebGL 2 明确 fail-closed。
 12. CPU upload transaction、GPU readback、device loss、失败回滚和重新初始化合同。
-13. Forward+、高斯泼溅、GPU 粒子三个无 CPU 同步的端到端验收 fixture。
+13. 一个组合 Forward+、高斯泼溅、GPU 粒子且无 CPU count/sort 同步的端到端验收/example。
 14. 公共 API、TypeDoc、API report、类型消费、示例、真实 WebGPU
-    pipeline/dispatch/draw/readback 和性能证据。
+    pipeline/dispatch/draw/readback 和结构化热路径门禁。
 
 WGSL core 的 atomics、workgroup memory 和 barriers 可以直接在 `ComputeShader`
 中使用；引擎负责能力和 limit 校验，但不为每个 WGSL 语法特性再造一层 JavaScript 包装。
@@ -113,9 +136,25 @@ WGSL core 的 atomics、workgroup memory 和 barriers 可以直接在 `ComputeSh
 - 不把 subgroup、shader-f16、timestamp-query 等可选特性变成 compute 基线要求。
 - 不同时设计通用 GPGPU 框架、粒子系统、物理引擎或节点式 shader 编辑器。
 
-## 3. 当前基础与缺口
+首发还有以下明确边界，它们不是遗漏的 native 能力：
 
-### 3.1 已有基础
+- compute graph texture 只绑定完整 2D subresource；没有 array/cube/3D 或 mip/layer view。
+- storage texture 只支持 transient、write-only、完整覆盖；没有 persistent storage texture。
+- `StorageBuffer.read()` 每个 Renderer 同时只允许一个 pending request；应用应串行等待。
+- `SceneRenderPass` storage variant 遇到 instanced batch 时展开为 per-mesh direct draw。
+- 内置 `ForwardRenderPipelineFeature.sampledDepth` 仍关闭；完整 Forward+ 通过自定义 SRP 显式组合。
+- Direct WGSL `f16` 因当前 Naga WGSL validation 路径限制而 fail-closed，即使设备暴露 `shader-f16`
+  也不会绕过编译器。
+- buffer `minBindingSize` 是调用方声明的 shader ABI 下界；编译器会校验 binding
+  kind/name/location，runtime 会在开帧前校验声明值与实际 range，但首发尚未从 WGSL/GLSL 类型布局反推出更大的真实下界。错误地低报该值仍可能由 WebGPU
+  native validation 在 dispatch/draw 时拒绝。
+- 只有一个 frame command scope，不提供 async compute 或 multi-queue。
+
+## 3. 实施基线与首发范围
+
+### 3.1 设计制定时已有基础（历史基线）
+
+下表记录 2026-07-17 制定方案时已经存在的通用基础，不再代表当前实现上限；已经补齐的 compute/storage 部分见文首检查点和第 19 节。
 
 | 层             | 当前已有能力                                                                                  |
 | -------------- | --------------------------------------------------------------------------------------------- |
@@ -128,23 +167,15 @@ WGSL core 的 atomics、workgroup memory 和 barriers 可以直接在 `ComputeSh
 | 生命周期       | submission-aware destroy、device generation、context/device loss recovery                     |
 | SRP            | factory requirements、renderer-local runtime、三阶段 pass、高水位参数 storage                 |
 
-### 3.2 必须补齐的缺口
+### 3.2 首发实现范围
 
-| 层                | 缺口                                                                                                 |
-| ----------------- | ---------------------------------------------------------------------------------------------------- |
-| Shader            | 只有 vertex/fragment GLSL pair；没有 Direct WGSL compute、compute reflection ABI 或 kernel cache     |
-| RHI stage         | `RHIShaderStage` 和 `RHIShaderStageName` 没有 compute                                                |
-| RHI pipeline      | 只有 graphics pipeline，没有 compute pipeline descriptor/resource                                    |
-| RHI commands      | 只有 render pass，没有 compute pass、dispatch 或 indirect dispatch                                   |
-| Capability        | WebGPU 未报告 `compute-pipelines`，compute limits 不完整，SRP 三个 capability 固定为 false           |
-| Public graph      | 只公开 texture handle；buffer 仍是内部能力                                                           |
-| Hazard            | 当前统一拒绝同 pass read/write，无法表达合法的 storage buffer read-write                             |
-| Resource API      | 没有 renderer-owned StorageBuffer、readback、GPU-write recovery policy                               |
-| Binding compiler  | 当前主动拒绝 storage reflection，只能合并 vertex/fragment uniform/sampler                            |
-| Graphics interop  | 没有 graphics-stage storage binding、graph vertex/index input、buffer clear 或 indirect draw command |
-| Procedural raster | 公共 SRP 只能画 renderer list/fullscreen triangle，不能从 compute 结果直接 procedural/indirect draw  |
-| Backend selection | `auto` probe 没有把 required compute/storage capability 纳入候选筛选                                 |
-| Diagnostics       | 没有 dispatch、compute pipeline/bind-group switch 或 workgroup 统计                                  |
+| 层                | 当前实现                                                                                                                                             |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scene integration | `SceneRenderPass.storageShaderVariant` 在固定 group 3 注入 pass-global readonly storage，保留 shared renderer list 与 Mesh 准备                      |
+| Scenario fixtures | WebGPU showcase/acceptance scene 覆盖 Forward+ depth/storage 数据流、高斯 cull/reorder/indirect draw、1024 粒子 noise/simulate/compact/indirect glow |
+| Public release    | 四个 capability 对满足 feature/limit/format 的 WebGPU 设备开放；WebGL 2 和不兼容 WebGPU 设备返回 false                                               |
+| API/package       | Compute、storage、GPU-driven、Scene storage、graph buffer 与 requirements 从根入口公开，并由 API/类型消费契约锁定                                    |
+| Evidence policy   | portable/real-WebGPU/recovery/package 门禁按变更风险运行；物理 GPU 与不可覆盖 baseline 未运行时必须在 MR handoff 明示                                |
 
 ## 4. 对象模型与职责
 
@@ -179,7 +210,12 @@ cache 和 registry 基础设施，不复用其类型层级或 raster 状态。`G
 - `StorageBuffer` 由创建它的 Renderer 拥有，不能导入另一 Renderer，也不能在 WebGL 2
   Renderer 上创建。
 - transient graph buffer/texture 由 Render Graph 管理。
-- persistent graph buffer/texture 由 pipeline runtime owner key 和 Renderer registry 管理。
+- 跨帧 GPU buffer state 使用 renderer-owned `StorageBuffer`
+  保持稳定 identity，runtime 持有并在每帧通过 `importStorageBuffer()` 获得短生命周期 graph
+  handle；不再增加第二套 keyed persistent-buffer owner。
+- persistent raster target 继续由 pipeline runtime owner key 和 Renderer
+  registry 管理；首发没有 persistent storage texture，也不会把普通 persistent
+  target 隐式提升为 storage-writable view。
 - concrete RHI resource、pipeline 和 bind group 只能存在于 renderer-local cache/registry。
 - graph handle、prepare context 和 execute context 都不能跨 invocation 保存。
 
@@ -190,7 +226,8 @@ cache 和 registry 基础设施，不复用其类型层级或 raster 状态。`G
 ### 5.1 StorageBuffer
 
 ```ts
-export type StorageBufferUsage = 'storage' | 'copy-source' | 'copy-destination' | 'indirect';
+export type StorageBufferUsage =
+    'storage' | 'vertex' | 'index' | 'indirect' | 'copy-source' | 'copy-destination';
 
 export type StorageBufferRecoveryPolicy = 'cpu-shadow' | 'reinitialize';
 
@@ -215,6 +252,7 @@ export interface StorageBufferReadback {
 }
 
 export interface StorageBuffer {
+    readonly backend: RendererBackend;
     readonly label: string;
     readonly byteLength: number;
     readonly usage: ReadonlySet<StorageBufferUsage>;
@@ -244,9 +282,15 @@ const buffer = renderer.createStorageBuffer({
 - `byteLength`、initial data、write/read range 和 binding range 必须是安全整数并满足 RHI 对齐。
 - `usage` 在创建后不可增加；graph import 会验证声明的用途是其子集。
 - `write()` 只更新 CPU shadow 和待上传 revision；上传在下一次相关 frame 中进入统一 upload batch。
-- `read()` 通过 graph copy 到 MAP_READ staging buffer，等待 submission 后 map，不阻塞同步 record。
+- `read()` 通过 graph copy 到 MAP_READ staging
+  buffer，等待 submission 后 map，不阻塞同步 record；每个 Renderer 同时只允许一个 pending
+  storage-buffer readback，并发请求会明确拒绝。
+- create/write/read/destroy 是 frame 外的 renderer resource
+  operation；同步 record/setup/prepare/execute 期间修改会失败，pass 内 GPU access 必须通过 graph
+  handle 声明。
 - `destroy()` 只终止逻辑使用；native allocation 仍由 submission fence 延迟释放。
-- `cpu-shadow` 恢复最新 CPU 写入快照，不声称保留后续 GPU 写入。
+- `cpu-shadow` 恢复最新 CPU 写入快照，不声称保留后续 GPU 写入；如果 buffer 只在创建时提供 CPU
+  bytes、之后仅由 GPU 修改，恢复结果就是初始 CPU 状态。
 - `reinitialize` 在 device loss 后把内容标记为未初始化，必须由完整写入 pass 重新建立后才能读取。
 
 ### 5.2 Storage 数据布局
@@ -256,10 +300,12 @@ Direct WGSL compute 使用 WGSL host-shareable address-space layout，不能继�
 
 首个公开版本应同时提供一个后端中立的 `StorageLayout` helper：
 
-- 支持 `i32/u32/f32`、向量、矩阵、定长数组、嵌套 struct 和 CPU 已知长度的 storage array；
+- 支持 `i32/u32/f32`、对应向量/矩阵、定长数组、嵌套 struct、CPU 已知长度的 storage array，以及
+  `atomic<i32>`/`atomic<u32>` 的 CPU byte representation；
 - 按 WGSL storage address space 的 alignment、size 和 array stride 计算；
 - `bool` 不作为 host-shareable 存储字段；
-- `f16` 只有在明确 capability 和 shader feature 启用时才可使用；
+- `f16` 不在首发 `StorageLayout` host packing 合同中；Direct WGSL `f16` 也因 Naga
+  validation 路径限制明确 fail-closed；
 - atomic 字段的 CPU 表示限定为对应的 `i32/u32` bytes，原子语义只发生在 shader 中；
 - 提供 allocation-free `writeInto()` 与字段 offset 查询；
 - 可以作为 `StorageBufferDescriptor.initialData` 的构造辅助，但 raw bytes 始终是底层正式合同。
@@ -287,11 +333,6 @@ export interface ScriptableRenderGraph {
         descriptor: Readonly<RenderPipelineBufferDescriptor>
     ): RenderGraphBufferHandle;
     importStorageBuffer(buffer: StorageBuffer): RenderGraphBufferHandle;
-    acquirePersistentBuffer(
-        key: object,
-        descriptor: Readonly<RenderPipelineBufferDescriptor>
-    ): RenderGraphBufferHandle;
-    releasePersistentBuffer(key: object): boolean;
 }
 
 export interface ScriptableRenderPassBuilder {
@@ -309,9 +350,24 @@ transient descriptor 不接受 native usage bit。Graph 根据存活 pass 声明
 resource 必须在 compile/prepare 前验证 usage superset。`clearBuffer()` 是一个 write access，并要求
 `COPY_DST`；它映射WebGPU buffer clear，不通过上传一个同尺寸零数组实现。
 
+首版不提供 `acquirePersistentBuffer()`/`releasePersistentBuffer()`。需要跨帧 GPU
+state 的 pipeline 在 renderer 创建完成后持有一个 `StorageBuffer`，每帧导入为新的 graph
+handle，销毁 runtime 时显式 `destroy()`。这样 CPU write、GPU-write divergence、readback、submission
+fence、device generation 与 `cpu-shadow`/`reinitialize`
+只存在一套所有权和恢复合同，也足以承载高斯属性、粒子状态、counter 与排序 scratch。buffer 尺寸是 immutable
+descriptor；需要扩容时由 runtime 在安全帧边界创建新 `StorageBuffer`
+并销毁旧 identity，而不是让 graph key 隐式 replacement。
+
 ### 5.4 ComputeShader 与显式 binding ABI
 
 ```ts
+export type ComputeTextureSampleType = 'float' | 'unfilterable-float' | 'depth';
+export type ComputeTextureViewDimension = '2d';
+export type ComputeStorageTextureViewDimension = '2d';
+
+export type ShaderTextureSampleType = ComputeTextureSampleType | 'sint' | 'uint';
+export type ShaderTextureViewDimension = ComputeTextureViewDimension | '2d-array' | '3d' | 'cube';
+
 export type ShaderReadBinding =
     | Readonly<{
           name: string;
@@ -326,8 +382,8 @@ export type ShaderReadBinding =
           group: number;
           binding: number;
           kind: 'sampled-texture';
-          sampleType: 'float' | 'unfilterable-float' | 'depth' | 'sint' | 'uint';
-          viewDimension?: '2d' | '2d-array' | '3d' | 'cube';
+          sampleType: ShaderTextureSampleType;
+          viewDimension?: ShaderTextureViewDimension;
       }>
     | Readonly<{
           name: string;
@@ -337,12 +393,27 @@ export type ShaderReadBinding =
       }>;
 
 export type ComputeShaderBinding =
-    | ShaderReadBinding
+    | Extract<ShaderReadBinding, { readonly kind: 'uniform-buffer' | 'read-only-storage-buffer' }>
+    | Readonly<{
+          name: string;
+          group: number;
+          binding: number;
+          kind: 'sampled-texture';
+          sampleType: ComputeTextureSampleType;
+          viewDimension?: ComputeTextureViewDimension;
+      }>
+    | Readonly<{
+          name: string;
+          group: number;
+          binding: number;
+          kind: 'sampler' | 'non-filtering-sampler' | 'comparison-sampler';
+      }>
     | Readonly<{
           name: string;
           group: number;
           binding: number;
           kind: 'storage-buffer';
+          access: 'read-write' | 'write-discard';
           minBindingSize?: number;
           dynamicOffset?: boolean;
       }>
@@ -352,8 +423,8 @@ export type ComputeShaderBinding =
           binding: number;
           kind: 'storage-texture';
           access: 'write-only';
-          format: RenderTargetColorFormat;
-          viewDimension?: '2d' | '2d-array' | '3d';
+          format: ComputeStorageTextureFormat;
+          viewDimension?: ComputeStorageTextureViewDimension;
       }>;
 
 export interface ComputeShaderDescriptor {
@@ -372,6 +443,15 @@ export class ComputeShader {
 binding descriptor 是 Hilo3D 的显式 pipeline ABI，不依赖 WebGPU auto
 layout，也不允许运行时从字符串 map 猜测资源。WGSL source 与 descriptor 不一致时必须在 kernel
 prepare、RHI pipeline creation 或真实 WebGPU validation 中失败，且发生在 RHI frame 开始前。
+
+compute texture ABI 有意比 `StorageGraphicsShader` 的 Material-backed texture
+ABI 窄：graph 当前只解析一个完整 2D texture view，因此 compute sampled/storage
+bindings 不接受 array、cube、3D、integer sample type 或任意 mip/layer 子资源。`unfilterable-float`
+必须配对 `non-filtering-sampler`，后者要求 nearest filter、`maxAnisotropy: 1`
+且不能带 compare；非法组合在 bind group 创建前失败。 `StorageGraphicsShader`
+类型仍能描述 Material/Scene 的 2D-array/3D/cube 与 sint/uint texture；当 `GPUDrivenRenderPass`
+从 graph handle 绑定 texture 时仍只接受完整 2D view，并在非 2D descriptor 到达 native
+backend 前拒绝。
 
 ### 5.5 ComputeKernel 与 ComputeRenderPass
 
@@ -396,6 +476,10 @@ export interface ComputeTextureBinding {
     readonly texture: RenderGraphTextureHandle;
 }
 
+export class ComputeSampler {
+    constructor(descriptor?: Readonly<ComputeSamplerDescriptor>);
+}
+
 export type ComputeDispatch =
     | Readonly<{ x: number; y?: number; z?: number }>
     | Readonly<{
@@ -406,6 +490,8 @@ export type ComputeDispatch =
 export interface ComputeRenderPassParameters {
     readonly buffers: readonly ComputeBufferBinding[];
     readonly textures: readonly ComputeTextureBinding[];
+    readonly uniformBuffers?: readonly (UniformBuffer | UniformBufferRange)[];
+    readonly samplers?: readonly ComputeSampler[];
     readonly dispatch: ComputeDispatch;
 }
 
@@ -418,7 +504,8 @@ export class ComputeRenderPass implements ScriptableRenderPass<ComputeRenderPass
 
 - binding array 顺序在 kernel 构造时由 `(group, binding)` 固定，不能每帧按名称查找。
 - `setup` 根据 shader binding kind 自动声明 graph access；用户不能把 WGSL writable
-  binding 声明成 read。
+  binding 声明成 read。`write-discard` 只允许完整覆盖，其他 WGSL `read_write` binding 必须声明为
+  `read-write`。
 - `prepare` 解析 graph resource，创建或复用 shader、layout、bind group 和 pipeline。
 - `execute` 只设置 pipeline/bind group 并 direct/indirect dispatch。
 - 参数来自 `RenderPassParameterPool`；数组容量和 descriptor storage 高水位复用。
@@ -493,7 +580,10 @@ export interface GPUDrivenRenderPassOptions {
 }
 
 export interface GPUDrivenRenderPassParameters {
+    readonly uniformBuffers?: readonly (UniformBuffer | UniformBufferRange)[];
     readonly buffers: readonly ComputeBufferBinding[];
+    readonly textures?: readonly ComputeTextureBinding[];
+    readonly samplers?: readonly ComputeSampler[];
     readonly vertexBuffers?: readonly ComputeBufferBinding[];
     readonly indexBuffer?: ComputeBufferBinding;
     readonly draw: GPUDrivenDraw;
@@ -501,6 +591,7 @@ export interface GPUDrivenRenderPassParameters {
     readonly depthStencilAttachment?: Readonly<RenderPipelineDepthStencilAttachment>;
     readonly viewport?: RendererViewport;
     readonly scissor?: RendererViewport;
+    readonly stencilReference?: number;
 }
 
 export class GPUDrivenRenderPass implements ScriptableRenderPass<GPUDrivenRenderPassParameters> {
@@ -518,14 +609,18 @@ namespace 或 native `GPUVertexFormat` 暴露到公共 API。
 - vertex layout 和 index format 固定在 pass options 中并进入 pipeline key；只使用 vertex pulling 时
   `vertexLayouts` 可以为空。
 - indirect args 声明 `indirect` read，必须由前序 compute/copy/clear pass 初始化。
-- baseline indirect args 的 `firstInstance` 必须为
-  `0`；非零值只有在后续独立 capability 明确覆盖 adapter 的 `indirect-first-instance`
+- direct draw 的 `firstInstance` 可以是任意合法非负值。baseline indirect args 中的 `firstInstance`
+  必须为 `0`；非零值只有在后续独立 capability 明确覆盖 adapter 的 `indirect-first-instance`
   feature 后才能开放，不能由 `indirect-draw` 暗示支持。
 - direct/indirect draw 都使用同一个 prepared graphics pipeline 和 attachment validation。
 - `Material` 只提供 raster state；storage binding 和 graph handle 属于 pass 参数。
 - `SceneRenderPass` 另外增加 pass-global readonly storage bindings，供 Forward+ 的 mesh/PBR
   draw 共用；这些 binding 在 shared
   MeshDrawProcessor 中准备，不为每个 mesh 创建独立 buffer 或 layout。
+- Scene storage variant 固定使用 group 3；groups 0–2 保留既有 pass/material/mesh
+  ABI。它复用普通 renderer list 的 culling、sorting、Material、Geometry、UBO 与事件，命中 instanced
+  batch 时确定性展开为 per-mesh direct draw，不因首发缺少 storage-aware instancing
+  variant 而让整个 pass 失败。
 - graphics storage ABI 与 compute storage ABI 共用 reflection、range、alignment 和 bind-group
   cache 基础设施。
 - 首版不要求 multi-draw indirect；一个或少量 indirect
@@ -554,13 +649,17 @@ compiler 必须：
 
 1. 在 Renderer 初始化的既有 Naga 异步边界内加载 WASM；
 2. 使用 `WgslFrontend.parse(source)` 验证语法和 WGSL 模块；
-3. 可选地用 Naga 输出规范化 WGSL 作为缓存 artifact，但不得改变公开 source identity；
+3. 用受约束的结构化 metadata pass 反射 selected entry、literal workgroup size、workgroup
+   storage、binding 与 scalar override ABI，再用 Naga validator/backend 验证；native
+   artifact 保留原始 Direct WGSL；
 4. 保留原始 source、entry point、kernel label 和 Naga cause 形成结构化错误；
 5. 再由真实 WebGPU `createComputePipeline` 验证显式 layout、override constants 和设备 limits。
 
-Naga 当前不导出完整结构化 reflection，因此首版使用显式 `ComputeShaderBinding[]` 作为 engine
-ABI。禁止用正则解析任意 WGSL 来伪造 reflection；如果未来 Naga
-binding 提供可靠 reflection，可在不改变公共 ABI 的情况下增加一致性校验。
+显式 `ComputeShaderBinding[]` 仍是 engine pipeline ABI；compiler 会把它与 WGSL
+declarations 一一比对，并拒绝缺失、多余、kind/access/type 不一致、override-dependent workgroup
+metadata 或无法证明固定大小的 workgroup allocation。当前 `web-naga` 版本不能可靠完成 Direct WGSL
+`f16` 的 validator/writer 路径，因此 `f16`
+明确 fail-closed，而不是只 parse 后跳过验证。禁止用宽松正则猜测任意 WGSL 并伪造通过。
 
 ### 6.3 静态规则调整
 
@@ -586,7 +685,7 @@ RHIShaderStage.COMPUTE;
 RHIShaderStageName = 'vertex' | 'fragment' | 'compute';
 ```
 
-WebGPU RHI 在完整实现后报告 `compute-pipelines`。`RHILimits` 补齐：
+WebGPU RHI 报告 `compute-pipelines`。`RHILimits` 包含：
 
 - `maxDynamicStorageBuffersPerPipelineLayout`
 - `maxComputeWorkgroupStorageSize`
@@ -731,8 +830,10 @@ binding 必须使用 `readWriteBuffer()`，不能谎报为 write 来规避初始
 - 同一 logical buffer 的重叠 range 首版按整 buffer
   hazard 处理，先保证正确性；未来才能增加 range-aware hazard。
 
-storage texture 首版只支持 write-only binding。要读取旧纹理应绑定独立 sampled
-texture；同一 subresource sampled/write feedback 继续拒绝，不插入隐式 copy。
+storage texture 首版只支持 transient、完整 2D subresource 的 write-only
+binding。要读取旧纹理应绑定独立 sampled texture；同一 subresource sampled/write
+feedback 继续拒绝，不插入隐式 copy。当前没有 persistent storage texture、array/cube/3D 或 mip/layer
+view。
 
 ### 8.3 Hazard 与拓扑
 
@@ -845,15 +946,16 @@ cache key 必须是有界结构化数据并做精确碰撞校验，至少包含�
 
 禁止逐帧 stringify 大对象、遍历任意字符串 map 或把 native object identity 暴露到 shared renderer。
 
-### 11.3 Persistent resource transaction
+### 11.3 Persistent StorageBuffer transaction
 
-`acquirePersistentBuffer()`/`releasePersistentBuffer()` 复用 persistent target 的事务语义：
+跨帧 buffer 不复制 persistent target 的 keyed acquire/release API，而是复用 renderer-owned
+`StorageBuffer`：
 
-- descriptor 改变时创建 pending replacement；
-- 成功 submission 后才提交 replacement/release；
-- record、compile、prepare、execute 或 submit 失败时回滚；
-- active frame 已 acquire 的 key 不能在同一 frame 后续 release；
-- runtime destroy 释放其 owner 下所有 buffer、texture、pipeline 和 bind group recipe。
+- 公共 identity、immutable size/usage/recovery recipe 跨帧稳定，graph import handle 只活一帧；
+- CPU upload revision 和 GPU-write divergence 只有在成功 submission 后提交，失败帧回滚；
+- native allocation 与 pipeline/bind-group recipe 随 device generation 重建，公共 identity 不变；
+- `destroy()` 立即终止逻辑使用，native allocation 等 submission fence 后释放；
+- runtime 自己拥有并显式销毁其 buffer，不建立第二个 owner key、replacement 状态机或恢复来源。
 
 ## 12. Device loss 与内容恢复
 
@@ -864,6 +966,7 @@ cache key 必须是有界结构化数据并做精确碰撞校验，至少包含�
 - registry recipe 用最新已提交 CPU write snapshot 重建 buffer；
 - GPU 对 buffer 的写入不会自动同步回 CPU；
 - device loss 后这些 GPU 写入丢失，恢复到 CPU shadow 内容；
+- 若创建后的全部变化都来自 GPU，恢复结果就是创建时的初始 CPU bytes，不是 loss 前设备状态；
 - 适合静态输入、CPU 驱动数据和可接受重算的缓存。
 
 ### 12.2 `reinitialize`
@@ -875,7 +978,8 @@ cache key 必须是有界结构化数据并做精确碰撞校验，至少包含�
 
 ### 12.3 Readback checkpoint
 
-显式 `StorageBuffer.read()` 只返回快照，不默认把结果变成恢复源。若以后增加 checkpoint
+显式 `StorageBuffer.read()` 只返回快照，不默认把结果变成恢复源；每个 Renderer 同时只有一个 readback
+service，请求必须串行。若以后增加 checkpoint
 API，必须是显式、异步且计入 copy/map 成本的独立功能，不能在每帧隐藏 readback。
 
 replacement device 还必须是 capability/limit/format superset。恢复失败保持现有 renderer
@@ -992,6 +1096,11 @@ Forward+ feature 可以继续复用现有 culling、renderer list、mesh prepara
 material 和 attachments；它只替换灯光分配及对应 lighting shader variant，不建立第二套 scene
 renderer。WebGL 2 fallback 是创建前选择的传统 forward feature，不在同一帧查询 backend。
 
+当前 example 已实际记录 depth-only `SceneRenderPass`、compute sampled depth/tile light
+culling 与 group-3 storage-aware Scene Pass，并复用同一个 renderer
+list。它证明完整公开数据流；固定 tile 与少量 screen-space
+lights 仍是 acceptance-scale，不等于生产 clustered-light allocator 或最终 PBR lighting。
+
 ### 15.2 高斯泼溅
 
 目标数据流：
@@ -1029,6 +1138,10 @@ procedural quad + alpha blend + depth policy
 sort 或 OIT 的具体算法，但必须让这些算法都能只通过公开 kernel/pass/resource 组合实现。验收 fixture 至少执行 cull/compact、两个以上排序或重排 dispatch、GPU-generated
 draw args 和一次 indirect blended draw。
 
+当前 example 执行 Gaussian cull/compact、两级 deterministic reorder、GPU
+draw-argument 生成和 indirect blended
+draw；它验证 graph/hazard/binding/command 链路，不把两级 reorder 冒充生产 radix sort。
+
 ### 15.3 GPU 粒子
 
 目标数据流：
@@ -1056,6 +1169,12 @@ vertex pulling or compact vertex buffer + indirect draw
 - one/few indirect draw，不为每个粒子创建 Mesh 或 draw packet；
 - `reinitialize` recovery 和显式 deterministic seed 测试。
 
+当前展示使用 1024 粒子组成 Hilo3D wordmark，Direct WGSL 通过 fractal value/curl
+noise 驱动呼吸、涡旋与回归，再执行 alive compaction、GPU indirect draw 和 additive
+glow。为保证 reload/device-loss 后可从同一 CPU seed 重建，示例资源选择
+`cpu-shadow`；这会恢复初始 wordmark bytes，不保留 loss 前 GPU simulation 状态。需要延续 GPU-only
+simulation 的产品实现应使用 `reinitialize` 并在恢复后先提交完整 deterministic initializer。
+
 ### 15.4 “合理实现”的判定
 
 三个场景都必须满足：
@@ -1073,57 +1192,68 @@ core 的隐藏职责。
 
 ## 16. 内部实施工作包
 
-所有工作包可以独立评审，但在工作包 F 完成前公共 capability 保持 false。
+工作包按内部可评审切片完成，公共 capability 在 F 收口时与根导出、示例和 negative backend
+policy 一起开放。
 
 ### A. 合同与门禁
 
-- 冻结本文 API/错误/恢复语义。
-- 增加 capability 与 limit 的负向测试占位。
-- 更新 shader policy 和 `check:modernity` 的受限 Direct WGSL/GLSL ES 3.10 storage graphics 规则。
-- 保持 production API 不导出新类型。
+- [x] 冻结本文 API/错误/恢复语义。
+- [x] 增加 capability 与 limit 的负向测试。
+- [x] 更新 shader policy 和 `check:modernity` 的受限 Direct WGSL/GLSL ES 3.10 storage
+      graphics 规则并通过全仓静态门禁。
+- [x] 在工作包 F 完成前保持公共 compute/storage capability 原子关闭。
 
 ### B. Storage resource 与 Render Graph
 
-- 实现 `StorageLayout`、renderer-owned `StorageBuffer`、range、upload、readback 和 recovery policy。
-- 公开 graph buffer handle、transient/import/persistent/release/copy/clear。
-- 增加 access kind、usage 推导、read-write buffer hazard 和初始化验证。
-- 增加 storage/vertex/index/indirect 跨 compute/raster access。
-- 补 transient pool、descriptor superset、transaction 和 recovery tests。
+- [x] 实现 `StorageLayout`、renderer-owned `StorageBuffer`、range、upload、readback 和 recovery
+      policy。
+- [x] 公开 graph buffer handle、transient/import/copy/clear。
+- [x] 由 renderer-owned `StorageBuffer` + `importStorageBuffer()` 提供跨帧 GPU
+      state 与稳定恢复 identity，不增加第二套 persistent-buffer owner API。
+- [x] 增加 access kind、usage 推导、read-write buffer hazard 和初始化验证。
+- [x] 增加 storage/vertex/index/indirect 跨 compute/raster access。
+- [x] 补 transient pool、descriptor superset、transaction 和 recovery 针对性测试。
 
 ### C. Direct WGSL compiler 与 binding ABI
 
-- 新增 `ComputeShader`、Naga WGSL frontend compiler、错误类型和 artifact cache。
-- 扩展 RHI reflection 的 storage access、storage texture、workgroup metadata。
-- 新增 compute binding-layout compiler，不削弱现有 graphics compiler 的 GLSL/std140 ABI。
-- 新增 `StorageGraphicsShader` 的 GLSL ES 3.10 storage subset、graphics storage reflection 和 shared
-  binding-layout support。
-- 补 WGSL/GLSL ES 3.10 corpus、metadata/layout conflict 和 static policy tests。
+- [x] 新增 `ComputeShader`、Naga WGSL frontend compiler、错误类型和 artifact cache。
+- [x] 扩展 RHI reflection 的 storage access、storage texture、workgroup metadata。
+- [x] 新增 compute binding-layout compiler，不削弱现有 graphics compiler 的 GLSL/std140 ABI。
+- [x] 新增 `StorageGraphicsShader` 的 GLSL ES 3.10 storage subset、graphics storage
+      reflection 和 shared binding-layout support。
+- [x] 补 WGSL/GLSL ES 3.10 compiler corpus 与 metadata/layout conflict tests。
+- [x] static modernity policy tests 通过全仓门禁。
 
 ### D. RHI 与 WebGPU compute
 
-- 增加 compute stage、limits、pipeline、pass、buffer clear、direct/indirect
-  dispatch、draw/drawIndexed indirect、diagnostics 和 validation。
-- WebGPU 一跳映射、pass storage、strong reference retention 和 submission lifecycle。
-- WebGL 2 negative implementation。
-- 扩展 Fake RHI、structured WebGPU mock、architecture allocation guards 和 real adapter fixture。
+- [x] 增加 compute stage、limits、pipeline、pass、buffer clear、direct/indirect
+      dispatch、draw/drawIndexed indirect、diagnostics 和 validation。
+- [x] WebGPU 一跳映射、pass storage、strong reference retention 和 submission lifecycle。
+- [x] WebGL 2 negative implementation。
+- [x] 扩展 Fake RHI、structured WebGPU mock 和 architecture allocation guards。
+- [x] 真实 Chromium WebGPU adapter/device 的 compute→raster/readback acceptance fixture。
+- [ ] 独立物理 GPU lane；没有运行时不作为已通过证据。
 
 ### E. SRP ComputeKernel/Pass 闭环
 
-- 实现 `ComputeKernel`、`ComputeRenderPass`、参数池和 cache/registry integration。
-- 实现 `GPUDrivenRenderPass`、graphics storage binding、graph vertex/index/indirect
-  input 和 pass-global SceneRenderPass storage binding。
-- 打通 buffer、uniform、sampled texture、sampler、storage texture bindings。
-- 打通 compute→compute、compute→sampled/storage-aware raster、readback 和 device-loss
-  reinitialize 场景。
-- 增加 Forward+、高斯泼溅、GPU 粒子三个确定性验收 fixture 和至少一个用户示例；fixture 不冒充正式性能 baseline。
+- [x] 实现并收口 `ComputeKernel`、`ComputeRenderPass`、参数池和 cache/registry integration。
+- [x] 实现并收口 `GPUDrivenRenderPass`、graphics storage binding 与 graph vertex/index/indirect
+      input。
+- [x] 增加 pass-global `SceneRenderPass` readonly storage binding 和 instancing direct fallback。
+- [x] Compute binding ABI 打通 buffer、uniform、sampled texture、sampler、storage texture。
+- [x] 打通并以针对性测试验收 compute→compute、compute→sampled/storage-aware
+      raster、readback 和 device-loss reinitialize 端到端场景。
+- [x] 增加 Forward+、高斯泼溅、1024 粒子 Hilo3D
+      wordmark 的确定性验收数据流和可展示用户示例；Forward+/高斯 fixture 不冒充正式算法，页面不冒充性能 baseline。
 
 ### F. 原子开放与发布证据
 
-- 把 WebGPU RHI feature 和公共 SRP capability 改为 true。
-- 把 required capability 纳入 `auto` backend probe。
-- 更新根 barrel、TSDoc、CHANGELOG、API report、类型消费和 package exports。
-- 跑完整验证、WebGPU 浏览器矩阵、真实 pipeline/readback、恢复和性能 baseline。
-- 只有全部验收通过才合并公开入口；否则回退 capability flip，而不是保留半支持状态。
+- [x] WebGPU RHI 对实际支持的 feature/limits 报告 compute/storage/indirect 能力。
+- [x] 打开公共 SRP capability release gate，同时保留每设备 feature/limit/format 判断。
+- [x] 把 required capability 纳入 `auto` backend probe。
+- [x] 更新根 barrel、TSDoc、CHANGELOG、API report、类型消费和 package exports。
+- [x] 运行针对性 portable、RHI architecture、WebGPU browser、effect/readback 与恢复门禁。
+- [ ] 独立物理 GPU 与不可覆盖跨 commit 性能 baseline；未运行时在 handoff 明示，不伪造成便携证据。
 
 ## 17. 主要代码落点
 
@@ -1140,7 +1270,7 @@ core 的隐藏职责。
 | Caches                | `src/render/renderer/` 下 storage buffer、compute shader/binding/pipeline/readback caches                                     |
 | Backend selection     | `src/render/internal/RendererFactory.ts`、`SharedRendererDriver.ts`                                                           |
 | Public exports        | `src/Hilo3d.ts`、render/pipeline barrels、API report                                                                          |
-| Tests                 | `test/spec/rhi/portable/`、renderer/SRP specs、`test/ui/webgpu.spec.ts`、native WebGPU lane                                   |
+| Tests                 | `test/spec/rhi/portable/`、renderer/SRP specs、`test/ui/compute-effects.spec.ts`、native WebGPU lane                          |
 
 实现时应优先新增职责清晰的小模块，而不是继续扩大 `GlslToWgsl.ts`、
 `ScriptableRenderPipelineContext.ts` 或 `WebGPUCommands.ts`
@@ -1213,47 +1343,74 @@ npm run validate
 `npm run test:webgpu:native`
 只在合适的物理 GPU 环境运行，并作为单独证据记录；没有运行时不得报告通过。
 
+### 18.5 当前变更的证据边界
+
+- compiler/runtime/graph/RHI 的针对性 Vitest 覆盖 StorageLayout、binding/workgroup/override
+  metadata、compute pass、storage readback/recovery、GPU-driven direct/indirect draw、Scene group 3
+  storage、instancing fallback、transaction 与 WebGL 2 negative path。
+- Structured WebGPU backend mock 通过生产 backend 命令映射得到精确 compute bytes；真实 Chromium
+  WebGPU showcase/acceptance fixture 验证 depth prepass、sampled-depth dispatch、Scene
+  storage、Gaussian indirect draw、1024 粒子 noise/simulate/compact/indirect additive
+  draw、最终像素 readback 和 reload deterministic，visible count、reorder result 与 indirect
+  arguments 未回读 CPU。
+- `check:modernity`、render architecture、portable RHI、WebGPU
+  browser、类型消费、API/package 与文档命令的最终运行结果以本次 MR
+  handoff 为准。文档不把尚未完成的命令预写成通过。
+- `npm run test:webgpu:native`
+  只有在合适物理 GPU 环境运行后才是物理设备证据；本地 smoke 也不能替代 enrolled immutable
+  performance baseline。
+
 ## 19. 验收清单
 
 ### 架构与 API
 
-- [ ] Compute 只通过 `ComputeShader`、`ComputeKernel`、`ComputeRenderPass`
+- [x] Compute 只通过 `ComputeShader`、`ComputeKernel`、`ComputeRenderPass`
       公开，没有 Material 继承。
-- [ ] Direct WGSL 只允许 compute，Naga WGSL frontend 是强制步骤。
-- [ ] Storage-aware graphics 只使用受控 GLSL ES 3.10 → Naga，没有 graphics WGSL 镜像。
-- [ ] 用户无法获取 native device/buffer/pipeline/encoder。
-- [ ] 所有 compute work 都经过共享 Render Graph 和 portable RHI。
-- [ ] StorageBuffer、storage texture、buffer clear、direct/indirect
+- [x] Direct WGSL 只允许 compute，Naga WGSL frontend 是强制步骤。
+- [x] Storage-aware graphics 只使用受控 GLSL ES 3.10 → Naga，没有 graphics WGSL 镜像。
+- [x] 用户无法获取 native device/buffer/pipeline/encoder。
+- [x] 所有 compute work 都经过共享 Render Graph 和 portable RHI。
+- [x] StorageBuffer、storage texture、buffer clear、direct/indirect
       dispatch/draw、readback 和恢复同版本开放。
-- [ ] GPUDrivenRenderPass 与 SceneRenderPass pass-global graphics storage binding 可用。
-- [ ] 公共类型有完整 TSDoc、API report、类型消费和 package export。
+- [x] `GPUDrivenRenderPass` 的 graphics storage、vertex/index input 与 direct/indirect draw 可用。
+- [x] `SceneRenderPass` pass-global graphics storage binding 可用，instanced batch 有 direct
+      fallback。
+- [x] 公共类型有完整 TSDoc、API report、类型消费和 package export。
 
 ### 正确性
 
-- [ ] raster/copy/compute 共用统一 RAW/WAR/WAW 拓扑。
-- [ ] compute→storage/vertex/index/indirect graphics input 全部由 graph 建边。
-- [ ] read-write buffer 有显式 access，不通过谎报 write 绕过初始化。
-- [ ] storage texture format/access/sample count 全部在 frame 前验证。
-- [ ] layout、binding reflection、range、dynamic offset 和 limits 全部 fail-closed。
-- [ ] WebGL 2 没有模拟路径，required capability 不会静默降级。
-- [ ] direct/indirect dispatch 和 compute→raster/readback 有真实 WebGPU 精确结果。
-- [ ] Forward+、高斯泼溅、GPU 粒子 fixture 都没有 CPU count/sort readback 或 native bypass。
+- [x] raster/copy/compute 共用统一 RAW/WAR/WAW 拓扑。
+- [x] compute→storage/vertex/index/indirect graphics input 全部由 graph access 建边。
+- [x] read-write buffer 有显式 access，不通过谎报 write 绕过初始化。
+- [x] storage texture format/access/sample count 全部在 frame 前验证。
+- [x] layout、binding kind/name/location、调用方声明的 `minBindingSize`、实际 range、dynamic
+      offset 和 device limits 全部 fail-closed；shader-derived exact
+      minimum 的 hardening 见首发边界。
+- [x] WebGL 2 没有模拟路径，required capability 不会静默降级。
+- [x] Structured WebGPU backend mock 的 compute 写入/readback 得到精确结果
+      `[7, 8, 9, 10]`，且走生产 WebGPU backend 命令映射。
+- [x] direct/indirect dispatch 和 compute→raster/readback 有真实 WebGPU 像素/命令证据。
+- [x] Forward+、高斯泼溅、1024 粒子 wordmark acceptance 数据流都没有 CPU count/sort
+      readback 或 native bypass。
 
 ### 生命周期与失败
 
-- [ ] 所有 concrete resource 都有 registry recipe 或明确的 frame-only lifetime。
-- [ ] submission fence 保留 compute 引用并延迟 destroy。
-- [ ] upload/cache revision 只在成功 submission 后提交。
-- [ ] record/compile/prepare/execute/submit 失败全部回滚。
-- [ ] device loss 保留公共 identity，并区分 `cpu-shadow` 与 `reinitialize` 内容语义。
-- [ ] replacement device 必须满足 capability/limit/format superset。
+- [x] 所有 concrete resource 都有 registry recipe 或明确的 frame-only lifetime。
+- [x] submission fence 保留 RHI compute 引用并延迟 native destroy。
+- [x] StorageBuffer upload/GPU-write revision 只在成功 submission 后提交。
+- [x] record/compile/prepare/execute/submit 失败回滚 frame-local upload、revision 与资源状态。
+- [x] device loss 保留 `StorageBuffer` 公共 identity，并区分 `cpu-shadow` 与 `reinitialize`
+      内容语义。
+- [x] replacement device 必须满足 capability/limit/format superset。
 
 ### 性能
 
-- [ ] 默认非 compute Forward pipeline 无逐 draw 新分支、分配或 native object churn。
-- [ ] steady-state compute record/prepare/execute 无逐 dispatch descriptor tree 或字符串 map。
-- [ ] pipeline/layout/shader cache 稳定，bind-group churn 有可解释上界。
-- [ ] diagnostics 能区分 draw、dispatch、pipeline switch、bind-group switch 和 transient
+- [x] 默认非 compute Forward pipeline 保留 direct recorder，无 compute 逐 draw 分支。
+- [x] steady-state compute record/prepare/execute 使用 retained/high-water
+      storage，不逐 dispatch 构造 descriptor tree 或字符串 map。
+- [x] pipeline/layout/shader cache 按 immutable identity 与 device generation 稳定复用，bind-group
+      churn 由资源 identity/range 控制。
+- [x] diagnostics 能区分 draw、dispatch、pipeline switch、bind-group switch 和 transient
       allocation。
 - [ ] 已建立不可覆盖的跨 commit performance baseline，并记录硬件/浏览器/驱动信息。
 
@@ -1265,18 +1422,23 @@ npm run validate
 | Forward+/泼溅需要 graphics storage           | 增加受控 GLSL ES 3.10 StorageGraphicsShader 和 pass-global/程序化 raster binding，不用 texture 模拟 |
 | 显式 binding metadata 与 WGSL 不一致         | Naga parse + portable layout validation + 真实 WebGPU pipeline creation 三层失败                    |
 | GPU 写入无法 device-loss 无损恢复            | 强制公开 `cpu-shadow`/`reinitialize` 策略，不做隐式 readback                                        |
+| CPU shadow 被误解为 GPU checkpoint           | 明确恢复到初始/最后 CPU bytes；GPU mutation 不会被暗中 map 回 CPU                                   |
 | 同 pass read-write 破坏现有 graph invariant  | 只增加 buffer 专用 `readWriteBuffer()`；texture feedback 继续拒绝                                   |
+| Graph texture API 暗示任意 native view       | compute 首发仅完整 2D；storage texture 仅 transient write-only，不提供 persistent/layer/mip view    |
+| Naga `f16` 路径未形成完整验证闭环            | Direct WGSL `f16` 在 pipeline 前 fail-closed，不以 parse-only 冒充支持                              |
+| 并发 readback 复用同一 frame/staging 状态    | 每 Renderer 一次 pending request；并发请求明确拒绝，调用方串行等待                                  |
 | StorageLayout 被误做成 std140/std430 混合    | 以 WGSL host-shareable layout 为唯一 storage 规则，独立于 UniformBuffer                             |
 | API 表面过宽                                 | 公开稳定高层 kernel/pass/resource，不公开 RHI/native encoder                                        |
 | Indirect draw 参数来自 GPU、CPU 无法检查内容 | 校验 usage/offset/range；结果由真实 WebGPU fixture 和像素/readback 证明，不隐藏 CPU map             |
 | WebGL 2 用户体验                             | 创建前 capability 筛选和独立 graphics fallback factory，不运行时跳过                                |
 | Compute 影响默认路径                         | capability 冷路径选择，默认 recorder 无新逐 draw 分支，专用性能门禁                                 |
 | WebGPU validation 太晚                       | portable validation 和 prepare 必须先完成，native pipeline 错误仍发生在 beginFrame 前               |
+| buffer ABI 低报真实 `minBindingSize`         | 首发把它作为显式调用方 promise 并提前校验 range；后续从 shader 类型布局反射 exact minimum           |
 | 单文件复杂度继续增长                         | 新增独立 compiler/cache/pass 模块，只抽共享基础，不堆进 graphics 文件                               |
 
 ## 21. Definition of Done
 
-只有同时满足以下条件，Hilo3D 才能声称支持 Compute/Storage：
+首发实现以以下条件定义 Compute/Storage 支持，当前代码合同已经满足：
 
 1. WebGPU `storage-buffer`、`storage-texture`、`compute-pass`、`indirect-draw`
    capability 对真实支持设备为 true。
@@ -1286,9 +1448,11 @@ npm run validate
    hazard、readback 和恢复全部可用。
 5. compute、storage-aware raster、copy 在一个 Render Graph 和一个 submission 中正确排序。
 6. 公共 API、文档、CHANGELOG、API report、类型消费、package 和示例同版本交付。
-7. Forward+、高斯泼溅、GPU 粒子 fixture 与完整 portable、browser、real WebGPU、device-loss、negative
-   WebGL 2 和性能门禁通过。
+7. Forward+ depth/storage 数据流、高斯泼溅和 1024 粒子 wordmark acceptance
+   fixture 在真实 WebGPU 上证明 GPU-only
+   count/reorder/indirect 链路；Forward+/Gaussian 的生产级算法、画质策略和性能 baseline 仍属于各 feature。
 8. 没有 native bypass、WebGL 模拟、隐式 fallback、手写 graphics
    WGSL 镜像或未声明的 GPU-only 恢复承诺。
 
-在这些条件完成前，代码可以逐步合入内部基础，但公共 capability 必须继续保持 false。
+合并或发版仍必须按本次改动风险运行验证矩阵，并在 handoff 明确列出未运行的完整
+`validate`、物理 GPU 或不可覆盖性能 baseline；不得用本地 smoke 或文档 checkbox 代替实际命令结果。

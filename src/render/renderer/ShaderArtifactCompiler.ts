@@ -16,8 +16,7 @@ import type {
     RHIBackend,
     RHIShaderArtifactInput,
     RHIShaderBindingReflection,
-    RHIShaderReflection,
-    RHIShaderStageName
+    RHIShaderReflection
 } from '../rhi/core';
 
 interface CachedShaderArtifactPair {
@@ -104,7 +103,7 @@ function validateNumericDepthSamplerMask(
     }
 }
 
-function stageUses(stages: readonly GraphicsShaderStage[], stage: RHIShaderStageName): boolean {
+function stageUses(stages: readonly GraphicsShaderStage[], stage: GraphicsShaderStage): boolean {
     return stages.includes(stage);
 }
 
@@ -123,7 +122,7 @@ function samplerSampleType(type: GlslSamplerType): 'float' | 'depth' | 'sint' | 
 }
 
 function bindingReflection(
-    stage: RHIShaderStageName,
+    stage: GraphicsShaderStage,
     uniformBlocks: readonly WebGPUUniformBlock[],
     samplers: readonly WebGPUSamplerBinding[],
     numericDepthSamplerMask: number
@@ -168,7 +167,7 @@ function bindingReflection(
 }
 
 function reflection(
-    stage: RHIShaderStageName,
+    stage: GraphicsShaderStage,
     metadata: SharedShaderMetadata,
     numericDepthSamplerMask: number
 ): Readonly<RHIShaderReflection> {
@@ -202,7 +201,7 @@ function reflection(
     });
 }
 
-function preparedBindings(stage: RHIShaderStageName, metadata: SharedShaderMetadata) {
+function preparedBindings(stage: GraphicsShaderStage, metadata: SharedShaderMetadata) {
     return Object.freeze({
         uniformBlocks: Object.freeze(
             metadata.uniformBlocks
@@ -393,7 +392,7 @@ export class ShaderArtifactCompiler {
 
     private artifact(
         backend: RHIBackend,
-        stage: RHIShaderStageName,
+        stage: GraphicsShaderStage,
         code: string,
         cacheKey: number,
         metadata: SharedShaderMetadata,

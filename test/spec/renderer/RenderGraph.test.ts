@@ -316,7 +316,7 @@ describe('RenderGraph compile', () => {
         const template: RenderPassTemplate<typeof buffer> = {
             name: 'storage write',
             setup(pass, handle) {
-                pass.writeBuffer(handle);
+                pass.writeBuffer(handle, 'storage');
                 pass.markSideEffect();
             },
             execute(context) {
@@ -330,6 +330,329 @@ describe('RenderGraph compile', () => {
         );
         expect(device.graphicsQueue.state).toBe('idle');
         expect(backend.executeCount).toBe(0);
+        backend.destroy();
+    });
+
+    it('infers transient buffer usages from purpose-aware access declarations', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const buffer = builder.createBuffer('generated vertices', {
+            size: 16,
+            usage: RHIBufferUsage.COPY_DST
+        });
+        builder.addPass(
+            {
+                name: 'upload vertices',
+                setup(pass) {
+                    pass.writeBuffer(buffer, 'copy-destination');
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+        builder.addPass(
+            {
+                name: 'draw vertices',
+                setup(pass) {
+                    pass.readBuffer(buffer, 'vertex');
+                    pass.markSideEffect();
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+
+        const compiled = graph.compile(builder, device.capabilities);
+
+        expect(compiled.resourceByHandle.get(buffer)?.descriptor.usage).toBe(
+            RHIBufferUsage.COPY_DST | RHIBufferUsage.VERTEX
+        );
+        expect(compiled.passes.map(pass => pass.bufferAccesses)).toEqual([
+            [{ buffer, mode: 'write', use: 'copy-destination' }],
+            [{ buffer, mode: 'read', use: 'vertex' }]
+        ]);
+
+        const rollbackBuilder = graph.createBuilder();
+        const rollbackBuffer = rollbackBuilder.createBuffer('rollback usage', {
+            size: 16,
+            usage: RHIBufferUsage.COPY_DST
+        });
+        expect(() =>
+            rollbackBuilder.addPass(
+                {
+                    name: 'failed usage inference',
+                    setup(pass) {
+                        pass.readBuffer(rollbackBuffer, 'vertex');
+                        pass.writeBuffer(rollbackBuffer, 'copy-destination');
+                    },
+                    execute(context) {
+                        void context;
+                    }
+                },
+                undefined
+            )
+        ).toThrow(expect.objectContaining<Partial<RenderGraphError>>({ code: 'duplicate-access' }));
+        rollbackBuilder.addPass(
+            {
+                name: 'valid usage after rollback',
+                setup(pass) {
+                    pass.writeBuffer(rollbackBuffer, 'copy-destination');
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+        rollbackBuilder.markOutput(rollbackBuffer);
+        expect(
+            graph.compile(rollbackBuilder, device.capabilities).resourceByHandle.get(rollbackBuffer)
+                ?.descriptor.usage
+        ).toBe(RHIBufferUsage.COPY_DST);
+        graph.destroy();
+        backend.destroy();
+    });
+
+    it('aggregates readonly storage, vertex, index, and indirect roles for one buffer', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const buffer = builder.createBuffer('GPU-authored draw data', {
+            size: 32,
+            usage: RHIBufferUsage.COPY_DST
+        });
+        builder.addPass(
+            {
+                name: 'initialize GPU-authored draw data',
+                setup(pass) {
+                    pass.writeBuffer(buffer, 'copy-destination');
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+        builder.addPass(
+            {
+                name: 'consume GPU-authored draw data',
+                setup(pass) {
+                    pass.readBuffer(buffer, 'storage');
+                    pass.readBuffer(buffer, 'vertex');
+                    pass.readBuffer(buffer, 'index');
+                    pass.readBuffer(buffer, 'indirect');
+                    pass.markSideEffect();
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+
+        const compiled = graph.compile(builder, device.capabilities);
+
+        expect(compiled.resourceByHandle.get(buffer)?.descriptor.usage).toBe(
+            RHIBufferUsage.COPY_DST |
+                RHIBufferUsage.STORAGE |
+                RHIBufferUsage.VERTEX |
+                RHIBufferUsage.INDEX |
+                RHIBufferUsage.INDIRECT
+        );
+        expect(compiled.passes[1]?.bufferAccesses).toEqual([
+            { buffer, mode: 'read', use: 'storage' },
+            { buffer, mode: 'read', use: 'vertex' },
+            { buffer, mode: 'read', use: 'index' },
+            { buffer, mode: 'read', use: 'indirect' }
+        ]);
+        expect(compiled.passes[1]?.reads).toEqual(new Set([buffer]));
+        graph.destroy();
+        backend.destroy();
+    });
+
+    it('keeps RAW, WAR, and WAW buffer hazards through explicit storage read-write access', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const buffer = builder.importBuffer(
+            'particles',
+            device.createBuffer({ size: 16, usage: RHIBufferUsage.STORAGE })
+        );
+        builder.addPass(
+            {
+                name: 'initial write',
+                setup(pass) {
+                    pass.writeBuffer(buffer, 'storage');
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+        builder.addPass(
+            {
+                name: 'read',
+                setup(pass) {
+                    pass.readBuffer(buffer, 'storage');
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+        builder.addPass(
+            {
+                name: 'overwrite',
+                setup(pass) {
+                    pass.writeBuffer(buffer, 'storage');
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+        builder.addPass(
+            {
+                name: 'integrate in place',
+                setup(pass) {
+                    pass.readWriteBuffer(buffer, 'storage');
+                    pass.markSideEffect();
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+
+        const compiled = graph.compile(builder, device.capabilities);
+
+        expect(compiled.passes.map(pass => pass.name)).toEqual([
+            'initial write',
+            'read',
+            'overwrite',
+            'integrate in place'
+        ]);
+        const integrate = compiled.passes[3];
+        expect(integrate?.reads).toEqual(new Set([buffer]));
+        expect(integrate?.writes).toEqual(new Set([buffer]));
+        expect(integrate?.bufferAccesses).toEqual([{ buffer, mode: 'read-write', use: 'storage' }]);
+        graph.destroy();
+        backend.destroy();
+    });
+
+    it('requires initialized contents and an explicit storage declaration for buffer feedback', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+
+        const transientBuilder = graph.createBuilder();
+        const transient = transientBuilder.createBuffer('uninitialized storage', {
+            size: 16,
+            usage: RHIBufferUsage.STORAGE
+        });
+        transientBuilder.addPass(
+            {
+                name: 'invalid in-place update',
+                setup(pass) {
+                    pass.readWriteBuffer(transient, 'storage');
+                    pass.markSideEffect();
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+        expect(() => graph.compile(transientBuilder, device.capabilities)).toThrow(
+            expect.objectContaining<Partial<RenderGraphError>>({ code: 'uninitialized-read' })
+        );
+
+        const importedBuilder = graph.createBuilder();
+        const imported = importedBuilder.importBuffer(
+            'explicitly uninitialized import',
+            device.createBuffer({ size: 16, usage: RHIBufferUsage.STORAGE }),
+            false
+        );
+        importedBuilder.addPass(
+            {
+                name: 'invalid imported read',
+                setup(pass) {
+                    pass.readBuffer(imported, 'storage');
+                    pass.markSideEffect();
+                },
+                execute(context) {
+                    void context;
+                }
+            },
+            undefined
+        );
+        expect(() => graph.compile(importedBuilder, device.capabilities)).toThrow(
+            expect.objectContaining<Partial<RenderGraphError>>({ code: 'uninitialized-read' })
+        );
+
+        const feedbackBuilder = graph.createBuilder();
+        const feedback = feedbackBuilder.importBuffer(
+            'ordinary feedback',
+            device.createBuffer({ size: 16, usage: RHIBufferUsage.STORAGE })
+        );
+        expect(() =>
+            feedbackBuilder.addPass(
+                {
+                    name: 'implicit feedback',
+                    setup(pass) {
+                        pass.readBuffer(feedback, 'storage');
+                        pass.writeBuffer(feedback, 'storage');
+                    },
+                    execute(context) {
+                        void context;
+                    }
+                },
+                undefined
+            )
+        ).toThrow(expect.objectContaining<Partial<RenderGraphError>>({ code: 'duplicate-access' }));
+        graph.destroy();
+        backend.destroy();
+    });
+
+    it('rejects purpose access missing from an imported buffer usage mask', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const buffer = builder.importBuffer(
+            'copy-only import',
+            device.createBuffer({ size: 16, usage: RHIBufferUsage.COPY_SRC })
+        );
+
+        expect(() =>
+            builder.addPass(
+                {
+                    name: 'invalid vertex consumption',
+                    setup(pass) {
+                        pass.readBuffer(buffer, 'vertex');
+                    },
+                    execute(context) {
+                        void context;
+                    }
+                },
+                undefined
+            )
+        ).toThrow(
+            expect.objectContaining<Partial<RenderGraphError>>({ code: 'invalid-descriptor' })
+        );
+        graph.destroy();
         backend.destroy();
     });
 
@@ -786,7 +1109,7 @@ describe('RenderGraph compile', () => {
             name: 'write extracted resources',
             setup(pass) {
                 pass.writeTexture(texture);
-                pass.writeBuffer(buffer);
+                pass.writeBuffer(buffer, 'copy-destination');
             },
             execute(context) {
                 void context;
@@ -833,7 +1156,7 @@ describe('RenderGraph execute', () => {
             return device.createBuffer({
                 lifetime: 'frame',
                 size: 4,
-                usage: RHIBufferUsage.COPY_DST
+                usage: RHIBufferUsage.COPY_SRC | RHIBufferUsage.VERTEX
             });
         });
         const texture = builder.importTextureProvider(
@@ -847,7 +1170,7 @@ describe('RenderGraph execute', () => {
         );
         const buffer = builder.importBufferProvider(
             'late buffer',
-            { size: 4, usage: RHIBufferUsage.COPY_DST },
+            { size: 4, usage: RHIBufferUsage.COPY_SRC },
             bufferProvider
         );
         const queue = device.graphicsQueue;
@@ -860,7 +1183,7 @@ describe('RenderGraph execute', () => {
             name: 'lazy imports',
             setup(pass) {
                 pass.readTexture(texture);
-                pass.readBuffer(buffer);
+                pass.readBuffer(buffer, 'copy-source');
                 pass.markSideEffect();
             },
             prepare(context) {
@@ -1062,9 +1385,9 @@ describe('RenderGraph execute', () => {
         const template: RenderPassTemplate<{ readonly name: string }> = {
             name: 'prepare order',
             setup(pass, params) {
-                if (params.name === 'first') pass.writeBuffer(first);
+                if (params.name === 'first') pass.writeBuffer(first, 'copy-destination');
                 else {
-                    pass.writeBuffer(output);
+                    pass.writeBuffer(output, 'copy-destination');
                     pass.dependsOn(firstPass);
                 }
             },
@@ -1157,7 +1480,7 @@ describe('RenderGraph execute', () => {
             {
                 name: 'stale callback contexts',
                 setup(pass) {
-                    pass.writeBuffer(output);
+                    pass.writeBuffer(output, 'copy-destination');
                 },
                 prepare(context) {
                     if (firstPrepareContext === null) firstPrepareContext = context;
@@ -1220,7 +1543,7 @@ describe('RenderGraph execute', () => {
             name: 'recoverable prepare',
             setup(pass) {
                 pass.readTexture(imported);
-                pass.writeBuffer(pooled);
+                pass.writeBuffer(pooled, 'copy-destination');
                 pass.markSideEffect();
             },
             prepare(context, state) {
@@ -1273,7 +1596,7 @@ describe('RenderGraph execute', () => {
         const template: RenderPassTemplate<undefined> = {
             name: 'failed extracted prepare',
             setup(pass) {
-                pass.writeBuffer(extracted);
+                pass.writeBuffer(extracted, 'copy-destination');
             },
             prepare(context) {
                 context.getBuffer(extracted);
@@ -1308,7 +1631,7 @@ describe('RenderGraph execute', () => {
         const template: RenderPassTemplate<undefined> = {
             name: 'pooled write',
             setup(pass) {
-                pass.writeBuffer(output);
+                pass.writeBuffer(output, 'copy-destination');
             },
             execute(context) {
                 void context;
@@ -1352,7 +1675,7 @@ describe('RenderGraph execute', () => {
             {
                 name: 'consume mapped transient',
                 setup(pass) {
-                    pass.writeBuffer(output);
+                    pass.writeBuffer(output, 'copy-destination');
                 },
                 prepare(context) {
                     const buffer = context.getBuffer(output);
@@ -1547,7 +1870,7 @@ describe('RenderGraph execute', () => {
         const template: RenderPassTemplate<undefined> = {
             name: 'generation write',
             setup(pass) {
-                pass.writeBuffer(output);
+                pass.writeBuffer(output, 'copy-destination');
             },
             execute(context) {
                 void context;
@@ -1588,8 +1911,8 @@ describe('RenderGraph execute', () => {
         const template: RenderPassTemplate<undefined> = {
             name: 'multi-key pooled write',
             setup(pass) {
-                pass.writeBuffer(small);
-                pass.writeBuffer(large);
+                pass.writeBuffer(small, 'copy-destination');
+                pass.writeBuffer(large, 'copy-destination');
             },
             execute(context) {
                 void context;
@@ -1628,7 +1951,7 @@ describe('RenderGraph execute', () => {
         const template: RenderPassTemplate<undefined> = {
             name: 'deferred pooled write',
             setup(pass) {
-                pass.writeBuffer(output);
+                pass.writeBuffer(output, 'copy-destination');
             },
             execute(context) {
                 void context;
@@ -1679,7 +2002,7 @@ describe('RenderGraph execute', () => {
             {
                 name: 'pending destroy write',
                 setup(pass) {
-                    pass.writeBuffer(output);
+                    pass.writeBuffer(output, 'copy-destination');
                 },
                 execute(context) {
                     void context;
@@ -1715,7 +2038,7 @@ describe('RenderGraph execute', () => {
             {
                 name: 'generation recovery write',
                 setup(pass) {
-                    pass.writeBuffer(output);
+                    pass.writeBuffer(output, 'copy-destination');
                 },
                 execute(context) {
                     void context;
@@ -1766,8 +2089,8 @@ describe('RenderGraph execute', () => {
         const copyPass: RenderPassTemplate<undefined> = {
             name: 'copy',
             setup(pass) {
-                pass.readBuffer(sourceHandle);
-                pass.writeBuffer(destinationHandle);
+                pass.readBuffer(sourceHandle, 'copy-source');
+                pass.writeBuffer(destinationHandle, 'copy-destination');
             },
             execute(context) {
                 context.commandContext.copyBufferToBuffer(
@@ -1816,7 +2139,7 @@ describe('RenderGraph execute', () => {
         const badPass: RenderPassTemplate<undefined> = {
             name: 'bad access',
             setup(pass) {
-                pass.writeBuffer(declared);
+                pass.writeBuffer(declared, 'copy-destination');
                 pass.markSideEffect();
             },
             execute(context) {
@@ -1847,7 +2170,7 @@ describe('RenderGraph execute', () => {
             {
                 name: 'valid after execute failure',
                 setup(pass) {
-                    pass.writeBuffer(validOutput);
+                    pass.writeBuffer(validOutput, 'copy-destination');
                 },
                 execute(context) {
                     void context;
@@ -1883,8 +2206,8 @@ describe('RenderGraph execute', () => {
         const template: RenderPassTemplate<undefined> = {
             name: 'deferred output',
             setup(pass) {
-                pass.readBuffer(source);
-                pass.writeBuffer(output);
+                pass.readBuffer(source, 'copy-source');
+                pass.writeBuffer(output, 'copy-destination');
             },
             execute(context) {
                 context.commandContext.copyBufferToBuffer(

@@ -632,6 +632,176 @@ export class Color extends Vector4 {
 }
 
 // @public
+export interface ComputeBufferBinding {
+    readonly buffer: RenderGraphBufferHandle;
+    readonly byteLength?: number;
+    readonly byteOffset?: number;
+}
+
+// @public
+export type ComputeDispatch = Readonly<{
+    x: number;
+    y?: number;
+    z?: number;
+}> | Readonly<{
+    indirectBuffer: RenderGraphBufferHandle;
+    indirectOffset?: number;
+}>;
+
+// @public
+export class ComputeKernel {
+    constructor(descriptor: Readonly<ComputeKernelDescriptor>);
+    readonly constants: Readonly<Record<string, ComputePipelineConstant>>;
+    readonly label: string;
+    readonly shader: ComputeShader;
+}
+
+// @public
+export interface ComputeKernelDescriptor {
+    readonly constants?: Readonly<Record<string, ComputePipelineConstant>>;
+    readonly label?: string;
+    readonly shader: ComputeShader;
+}
+
+// @public
+export type ComputePipelineConstant = number | boolean;
+
+// @public
+export class ComputeRenderPass implements ScriptableRenderPass<ComputeRenderPassParameters> {
+    constructor(kernel: ComputeKernel, name?: string);
+    execute(_context: ScriptableRenderPassContext, _parameters: ComputeRenderPassParameters): void;
+    readonly kernel: ComputeKernel;
+    readonly name: string;
+    setup(builder: ScriptableRenderPassBuilder, parameters: ComputeRenderPassParameters): void;
+}
+
+// @public
+export interface ComputeRenderPassParameters {
+    readonly buffers: readonly ComputeBufferBinding[];
+    readonly dispatch: ComputeDispatch;
+    readonly samplers?: readonly ComputeSampler[];
+    readonly textures: readonly ComputeTextureBinding[];
+    readonly uniformBuffers?: readonly ComputeUniformBufferBinding[];
+}
+
+// @public
+export class ComputeSampler {
+    constructor(descriptor?: Readonly<ComputeSamplerDescriptor>);
+    readonly addressModeU: ComputeSamplerAddressMode;
+    readonly addressModeV: ComputeSamplerAddressMode;
+    readonly addressModeW: ComputeSamplerAddressMode;
+    readonly compare: RenderTargetCompareFunction | undefined;
+    readonly label: string;
+    readonly lodMaxClamp: number;
+    readonly lodMinClamp: number;
+    readonly magFilter: ComputeSamplerFilterMode;
+    readonly maxAnisotropy: number;
+    readonly minFilter: ComputeSamplerFilterMode;
+    readonly mipmapFilter: ComputeSamplerFilterMode;
+}
+
+// @public
+export type ComputeSamplerAddressMode = 'clamp-to-edge' | 'repeat' | 'mirror-repeat';
+
+// @public
+export interface ComputeSamplerDescriptor {
+    readonly addressModeU?: ComputeSamplerAddressMode;
+    readonly addressModeV?: ComputeSamplerAddressMode;
+    readonly addressModeW?: ComputeSamplerAddressMode;
+    readonly compare?: RenderTargetCompareFunction;
+    readonly label?: string;
+    readonly lodMaxClamp?: number;
+    readonly lodMinClamp?: number;
+    readonly magFilter?: ComputeSamplerFilterMode;
+    readonly maxAnisotropy?: number;
+    readonly minFilter?: ComputeSamplerFilterMode;
+    readonly mipmapFilter?: ComputeSamplerFilterMode;
+}
+
+// @public
+export type ComputeSamplerFilterMode = 'nearest' | 'linear';
+
+// @public
+export class ComputeShader {
+    constructor(descriptor: Readonly<ComputeShaderDescriptor>);
+    readonly bindings: readonly ComputeShaderBinding[];
+    readonly entryPoint: string;
+    readonly label: string;
+    readonly source: string;
+    readonly workgroupSize: NormalizedComputeWorkgroupSize;
+}
+
+// @public
+export type ComputeShaderBinding = Readonly<{
+    name: string;
+    group: number;
+    binding: number;
+    kind: 'uniform-buffer' | 'read-only-storage-buffer';
+    minBindingSize?: number;
+    dynamicOffset?: boolean;
+}> | Readonly<{
+    name: string;
+    group: number;
+    binding: number;
+    kind: 'sampled-texture';
+    sampleType: ComputeTextureSampleType;
+    viewDimension?: ComputeTextureViewDimension;
+}> | Readonly<{
+    name: string;
+    group: number;
+    binding: number;
+    kind: 'sampler' | 'non-filtering-sampler' | 'comparison-sampler';
+}> | Readonly<{
+    name: string;
+    group: number;
+    binding: number;
+    kind: 'storage-buffer';
+    access: ComputeStorageBufferAccess;
+    minBindingSize?: number;
+    dynamicOffset?: boolean;
+}> | Readonly<{
+    name: string;
+    group: number;
+    binding: number;
+    kind: 'storage-texture';
+    access: 'write-only';
+    format: ComputeStorageTextureFormat;
+    viewDimension?: ComputeStorageTextureViewDimension;
+}>;
+
+// @public
+export interface ComputeShaderDescriptor {
+    readonly bindings: readonly ComputeShaderBinding[];
+    readonly entryPoint?: string;
+    readonly label?: string;
+    readonly source: string;
+    readonly workgroupSize: readonly [number, number?, number?];
+}
+
+// @public
+export type ComputeStorageBufferAccess = 'read-write' | 'write-discard';
+
+// @public
+export type ComputeStorageTextureFormat = Exclude<RenderTargetColorFormat, 'rgba8unorm-srgb'>;
+
+// @public
+export type ComputeStorageTextureViewDimension = '2d';
+
+// @public
+export interface ComputeTextureBinding {
+    readonly texture: RenderGraphTextureHandle;
+}
+
+// @public
+export type ComputeTextureSampleType = 'float' | 'unfilterable-float' | 'depth';
+
+// @public
+export type ComputeTextureViewDimension = '2d';
+
+// @public
+export type ComputeUniformBufferBinding = UniformBuffer | UniformBufferRange;
+
+// @public
 export const constants: {
     readonly webgl: typeof webglConstants;
     readonly webglExtensions: typeof webglExtensionConstants;
@@ -1250,6 +1420,9 @@ export function createEmptyGLTFRoot(): GLTFRoot;
 
 // @public (undocumented)
 export function createStd140Layout<const Schema extends Std140Schema>(schema: Schema): Std140Layout<Schema>;
+
+// @public
+export function createStorageLayout<const Schema extends StorageSchema>(schema: Schema): StorageLayout<Schema>;
 
 // @public
 export class CubeTexture extends Texture<CubeTextureImage> {
@@ -2791,6 +2964,77 @@ export interface GLTFTextureTransformExtension {
     texCoord?: number;
 }
 
+// @public
+export type GPUDrivenDraw = Readonly<{
+    kind: 'draw';
+    vertexCount: number;
+    instanceCount?: number;
+    firstVertex?: number;
+    firstInstance?: number;
+}> | Readonly<{
+    kind: 'draw-indirect';
+    buffer: RenderGraphBufferHandle;
+    byteOffset?: number;
+}> | Readonly<{
+    kind: 'draw-indexed-indirect';
+    buffer: RenderGraphBufferHandle;
+    byteOffset?: number;
+}>;
+
+// @public
+export class GPUDrivenRenderPass implements ScriptableRenderPass<GPUDrivenRenderPassParameters> {
+    constructor(options: Readonly<GPUDrivenRenderPassOptions>);
+    execute(context: ScriptableRenderPassContext, parameters: GPUDrivenRenderPassParameters): void;
+    readonly indexFormat: 'uint16' | 'uint32' | undefined;
+    readonly material: Material;
+    readonly name: string;
+    setup(builder: ScriptableRenderPassBuilder, parameters: GPUDrivenRenderPassParameters): void;
+    readonly shader: StorageGraphicsShader;
+    readonly vertexLayouts: readonly Readonly<GPUDrivenVertexBufferLayout>[];
+}
+
+// @public
+export interface GPUDrivenRenderPassOptions {
+    readonly indexFormat?: 'uint16' | 'uint32';
+    readonly material: Material;
+    readonly name?: string;
+    readonly shader: StorageGraphicsShader;
+    readonly vertexLayouts?: readonly GPUDrivenVertexBufferLayout[];
+}
+
+// @public
+export interface GPUDrivenRenderPassParameters {
+    readonly buffers: readonly ComputeBufferBinding[];
+    readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
+    readonly depthStencilAttachment?: Readonly<RenderPipelineDepthStencilAttachment>;
+    readonly draw: GPUDrivenDraw;
+    readonly indexBuffer?: ComputeBufferBinding;
+    readonly samplers?: readonly ComputeSampler[];
+    readonly scissor?: RendererViewport;
+    readonly stencilReference?: number;
+    readonly textures?: readonly ComputeTextureBinding[];
+    readonly uniformBuffers?: readonly (UniformBuffer | UniformBufferRange)[];
+    readonly vertexBuffers?: readonly ComputeBufferBinding[];
+    readonly viewport?: RendererViewport;
+}
+
+// @public
+export interface GPUDrivenVertexAttribute {
+    readonly byteOffset: number;
+    readonly format: GPUDrivenVertexFormat;
+    readonly shaderLocation: number;
+}
+
+// @public
+export interface GPUDrivenVertexBufferLayout {
+    readonly arrayStride: number;
+    readonly attributes: readonly GPUDrivenVertexAttribute[];
+    readonly stepMode?: 'vertex' | 'instance';
+}
+
+// @public
+export type GPUDrivenVertexFormat = 'uint8x2' | 'uint8x4' | 'sint8x2' | 'sint8x4' | 'unorm8x2' | 'unorm8x4' | 'snorm8x2' | 'snorm8x4' | 'uint16x2' | 'uint16x4' | 'sint16x2' | 'sint16x4' | 'unorm16x2' | 'unorm16x4' | 'snorm16x2' | 'snorm16x4' | 'float16x2' | 'float16x4' | 'float32' | 'float32x2' | 'float32x3' | 'float32x4' | 'uint32' | 'uint32x2' | 'uint32x3' | 'uint32x4' | 'sint32' | 'sint32x2' | 'sint32x3' | 'sint32x4';
+
 // @public (undocumented)
 export class HDRLoader {
     // (undocumented)
@@ -4059,6 +4303,9 @@ export type NodeTraverseResult = 0 | 1 | 2;
 const NORMAL = "NORMAL";
 
 // @public
+export type NormalizedComputeWorkgroupSize = readonly [number, number, number];
+
+// @public
 export class OrthographicCamera extends Camera {
     constructor(params?: OrthographicCameraParameters);
     // (undocumented)
@@ -4557,6 +4804,8 @@ export class Renderer<Backend extends RendererBackend = RendererBackend> impleme
     // (undocumented)
     readonly createRenderTarget: RendererContract['createRenderTarget'];
     // (undocumented)
+    readonly createStorageBuffer: RendererContract['createStorageBuffer'];
+    // (undocumented)
     readonly destroy: RendererContract['destroy'];
     // (undocumented)
     domElement: RendererContract['domElement'];
@@ -4686,6 +4935,7 @@ export interface RendererContract {
     clearColor: Color;
     // (undocumented)
     createRenderTarget(parameters: RenderTargetParameters): RenderTarget;
+    createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
     // (undocumented)
     destroy(): void;
     // (undocumented)
@@ -4746,7 +4996,7 @@ export type RendererCreateOptions = RendererExplicitOptions | RendererAutoOption
 export type RendererExplicitOptions = RendererOptions;
 
 // @public
-export type RendererFeatureName = 'texture-compression-bc' | 'texture-compression-etc2' | 'texture-compression-astc' | 'timestamp-query' | 'depth32float-stencil8' | 'float32-filterable' | 'float32-blendable';
+export type RendererFeatureName = 'texture-compression-bc' | 'texture-compression-etc2' | 'texture-compression-astc' | 'timestamp-query' | 'shader-f16' | 'depth32float-stencil8' | 'float32-filterable' | 'float32-blendable';
 
 // @public
 export interface RendererFrame {
@@ -4861,6 +5111,20 @@ export interface RendererWebGPUOptions extends RendererCommonOptions, RendererSu
 }
 
 // @public
+export type RenderGraphBufferHandle = number & {
+    readonly [renderGraphBufferHandleBrand]: true;
+};
+
+// @public (undocumented)
+const renderGraphBufferHandleBrand: unique symbol;
+
+// @public
+export type RenderGraphBufferReadUse = 'storage' | 'vertex' | 'index' | 'copy-source' | 'indirect';
+
+// @public
+export type RenderGraphBufferWriteUse = 'storage' | 'copy-destination';
+
+// @public
 export interface RenderGraphFramePlan {
     // (undocumented)
     readonly lights: readonly Light[];
@@ -4924,6 +5188,12 @@ export interface RenderPipeline {
 }
 
 // @public
+export interface RenderPipelineBufferDescriptor {
+    readonly byteLength: number;
+    readonly label?: string;
+}
+
+// @public
 export interface RenderPipelineCapabilities {
     readonly limits: Readonly<RenderPipelineLimits>;
     supportsCapability(capability: RenderPipelineCapabilityName): boolean;
@@ -4931,7 +5201,7 @@ export interface RenderPipelineCapabilities {
 }
 
 // @public
-export type RenderPipelineCapabilityName = 'storage-buffer' | 'storage-texture' | 'compute-pass';
+export type RenderPipelineCapabilityName = 'storage-buffer' | 'storage-texture' | 'compute-pass' | 'indirect-draw';
 
 // @public
 export interface RenderPipelineColorAttachment {
@@ -4996,9 +5266,23 @@ export interface RenderPipelineFactory {
 
 // @public
 export interface RenderPipelineLimits {
+    readonly maxBindGroups: number;
+    readonly maxBindingsPerBindGroup: number;
+    readonly maxBufferSize: number;
     readonly maxColorAttachments: number;
+    readonly maxComputeInvocationsPerWorkgroup?: number;
+    readonly maxComputeWorkgroupSizeX?: number;
+    readonly maxComputeWorkgroupSizeY?: number;
+    readonly maxComputeWorkgroupSizeZ?: number;
+    readonly maxComputeWorkgroupsPerDimension?: number;
+    readonly maxComputeWorkgroupStorageSize?: number;
+    readonly maxDynamicStorageBuffersPerPipelineLayout?: number;
     readonly maxSampledTexturesPerShaderStage: number;
+    readonly maxStorageBufferBindingSize?: number;
+    readonly maxStorageBuffersPerShaderStage?: number;
+    readonly maxStorageTexturesPerShaderStage?: number;
     readonly maxTextureDimension2D: number;
+    readonly minStorageBufferOffsetAlignment?: number;
 }
 
 // @public
@@ -5077,7 +5361,7 @@ export interface RenderPipelineTextureRequirement {
 }
 
 // @public
-export type RenderPipelineTextureUse = 'sampled' | 'filterable-sampled' | 'color-attachment' | 'depth-stencil-attachment' | 'copy-source' | 'copy-destination';
+export type RenderPipelineTextureUse = 'sampled' | 'filterable-sampled' | 'color-attachment' | 'depth-stencil-attachment' | 'storage' | 'copy-source' | 'copy-destination';
 
 // @public
 export interface RenderTarget {
@@ -5265,6 +5549,9 @@ export interface ResourceRequestOptions {
 }
 
 // @public
+export const SCENE_STORAGE_BIND_GROUP = 3;
+
+// @public
 export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassParameters> {
     constructor(name?: string);
     execute(context: ScriptableRenderPassContext, parameters: SceneRenderPassParameters): void;
@@ -5279,11 +5566,27 @@ export interface SceneRenderPassParameters {
     readonly rendererList: RendererListHandle;
     readonly scissor?: RendererViewport;
     readonly stencilReference?: number;
+    readonly storageShaderVariant?: Readonly<SceneStorageShaderVariant>;
     readonly viewport?: RendererViewport;
 }
 
 // @public
+export interface SceneStorageBufferBinding {
+    readonly buffer: RenderGraphBufferHandle;
+    readonly byteLength?: number;
+    readonly byteOffset?: number;
+}
+
+// @public
+export interface SceneStorageShaderVariant {
+    readonly buffers: readonly Readonly<SceneStorageBufferBinding>[];
+    readonly shader: StorageGraphicsShader;
+}
+
+// @public
 export interface ScriptableRenderCommands {
+    clearBuffer(buffer: RenderGraphBufferHandle, byteOffset?: number, byteLength?: number): void;
+    copyBuffer(source: RenderGraphBufferHandle, destination: RenderGraphBufferHandle): void;
     copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
     drawRendererList(list: RendererListHandle): void;
     setScissor(rect: RendererViewport): void;
@@ -5295,9 +5598,11 @@ export interface ScriptableRenderCommands {
 export interface ScriptableRenderGraph {
     acquirePersistentTarget(key: object, descriptor: Readonly<RenderPipelinePersistentTargetDescriptor>): RenderPipelineTargetResources;
     addPass<P extends object>(pass: ScriptableRenderPass<P>, parameters: P): RenderGraphPassHandle;
+    createBuffer(name: string, descriptor: Readonly<RenderPipelineBufferDescriptor>): RenderGraphBufferHandle;
     createTexture(name: string, descriptor: Readonly<RenderPipelineTextureDescriptor>): RenderGraphTextureHandle;
     importOutput(): RenderPipelineOutputResources;
     importRenderTarget(target: RenderTarget): RenderPipelineTargetResources;
+    importStorageBuffer(buffer: StorageBuffer): RenderGraphBufferHandle;
     releasePersistentTarget(key: object): boolean;
 }
 
@@ -5311,13 +5616,19 @@ export interface ScriptableRenderPass<P extends object> {
 
 // @public
 export interface ScriptableRenderPassBuilder {
+    clearBuffer(buffer: RenderGraphBufferHandle, byteOffset?: number, byteLength?: number): void;
+    copyBuffer(source: RenderGraphBufferHandle, destination: RenderGraphBufferHandle): void;
     copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
     dependsOn(pass: RenderGraphPassHandle): void;
     markSideEffect(): void;
+    readBuffer(buffer: RenderGraphBufferHandle, use: RenderGraphBufferReadUse): void;
     readTexture(texture: RenderGraphTextureHandle): void;
+    readWriteBuffer(buffer: RenderGraphBufferHandle): void;
     useColorAttachment(options: Readonly<RenderPipelineColorAttachment>): void;
     useDepthStencilAttachment(options: Readonly<RenderPipelineDepthStencilAttachment>): void;
     useRendererList(list: RendererListHandle): void;
+    writeBuffer(buffer: RenderGraphBufferHandle, use: RenderGraphBufferWriteUse): void;
+    writeStorageTexture(texture: RenderGraphTextureHandle): void;
 }
 
 // @public
@@ -5868,11 +6179,39 @@ export interface ShaderPrecisionProvider {
     vertexPrecision: ShaderPrecision;
 }
 
+// @public
+export type ShaderReadBinding = Readonly<{
+    name: string;
+    group: number;
+    binding: number;
+    kind: 'uniform-buffer' | 'read-only-storage-buffer';
+    minBindingSize?: number;
+    dynamicOffset?: boolean;
+}> | Readonly<{
+    name: string;
+    group: number;
+    binding: number;
+    kind: 'sampled-texture';
+    sampleType: ShaderTextureSampleType;
+    viewDimension?: ShaderTextureViewDimension;
+}> | Readonly<{
+    name: string;
+    group: number;
+    binding: number;
+    kind: 'sampler' | 'comparison-sampler';
+}>;
+
 // @public (undocumented)
 export interface ShaderRenderer extends ShaderPrecisionProvider {
     // (undocumented)
     resourceManager: RendererResourceManager;
 }
+
+// @public
+export type ShaderTextureSampleType = ComputeTextureSampleType | 'sint' | 'uint';
+
+// @public
+export type ShaderTextureViewDimension = ComputeTextureViewDimension | '2d-array' | '3d' | 'cube';
 
 // @public (undocumented)
 export interface ShadowCameraParameters {
@@ -6337,6 +6676,135 @@ export type Std140Values<Schema extends Std140Schema> = {
 
 // @public (undocumented)
 export type Std140VectorType = 'vec2' | 'vec3' | 'vec4' | 'ivec2' | 'ivec3' | 'ivec4' | 'uvec2' | 'uvec3' | 'uvec4' | 'bvec2' | 'bvec3' | 'bvec4';
+
+// @public
+export interface StorageArrayDefinition<Element extends StorageType = StorageType> {
+    readonly element: Element;
+    readonly length: number;
+    readonly type: 'array';
+}
+
+// @public
+export interface StorageBuffer {
+    readonly backend: RendererBackend;
+    readonly byteLength: number;
+    destroy(): void;
+    readonly isDestroyed: boolean;
+    readonly label: string;
+    range(byteOffset: number, byteLength: number): StorageBufferRange;
+    read(byteOffset?: number, byteLength?: number): Promise<StorageBufferReadback>;
+    readonly recovery: StorageBufferRecoveryPolicy;
+    readonly usage: ReadonlySet<StorageBufferUsage>;
+    write(byteOffset: number, data: ArrayBufferView): void;
+}
+
+// @public
+export interface StorageBufferDescriptor {
+    readonly byteLength: number;
+    readonly initialData?: ArrayBuffer | ArrayBufferView;
+    readonly label?: string;
+    readonly recovery?: StorageBufferRecoveryPolicy;
+    readonly usage: readonly StorageBufferUsage[];
+}
+
+// @public
+export interface StorageBufferRange {
+    readonly buffer: StorageBuffer;
+    readonly byteLength: number;
+    readonly byteOffset: number;
+}
+
+// @public
+export interface StorageBufferReadback {
+    readonly byteLength: number;
+    readonly byteOffset: number;
+    readonly data: Uint8Array;
+}
+
+// @public
+export type StorageBufferRecoveryPolicy = 'cpu-shadow' | 'reinitialize';
+
+// @public
+export type StorageBufferUsage = 'storage' | 'vertex' | 'index' | 'indirect' | 'copy-source' | 'copy-destination';
+
+// @public
+export interface StorageFieldLayout {
+    readonly alignment: number;
+    readonly byteLength: number;
+    readonly name: string;
+    readonly offset: number;
+    readonly type: StorageType;
+}
+
+// @public
+export class StorageGraphicsShader {
+    constructor(descriptor: Readonly<StorageGraphicsShaderDescriptor>);
+    readonly bindings: readonly ShaderReadBinding[];
+    readonly fragmentSource: string;
+    readonly label: string;
+    readonly vertexSource: string;
+}
+
+// @public
+export interface StorageGraphicsShaderDescriptor {
+    readonly bindings: readonly ShaderReadBinding[];
+    readonly fragmentSource: string;
+    readonly label?: string;
+    readonly vertexSource: string;
+}
+
+// @public
+export class StorageLayout<Schema extends StorageSchema = StorageSchema> {
+    constructor(schema: Schema);
+    readonly alignment: number;
+    readonly byteLength: number;
+    createBuffer(values?: Partial<StorageValues<Schema>>): ArrayBuffer;
+    readonly fields: Readonly<Record<keyof Schema & string, StorageFieldLayout>>;
+    readonly schema: Schema;
+    write<Name extends keyof Schema & string>(target: ArrayBuffer, name: Name, value: StorageValue<Schema[Name]>): StorageWriteResult;
+    writeInto<Name extends keyof Schema & string>(target: ArrayBuffer, name: Name, value: StorageValue<Schema[Name]>, result: StorageWriteResult): StorageWriteResult;
+}
+
+// @public
+export type StorageMatrixType = 'mat2x2<f32>' | 'mat2x3<f32>' | 'mat2x4<f32>' | 'mat3x2<f32>' | 'mat3x3<f32>' | 'mat3x4<f32>' | 'mat4x2<f32>' | 'mat4x3<f32>' | 'mat4x4<f32>';
+
+// @public
+export type StoragePrimitiveType = StorageScalarType | StorageVectorType | StorageMatrixType;
+
+// @public
+export type StoragePrimitiveValue<Type extends StoragePrimitiveType> = Type extends StorageScalarType ? number : ArrayLike<number>;
+
+// @public
+export type StorageScalarType = 'f32' | 'i32' | 'u32' | 'atomic<i32>' | 'atomic<u32>';
+
+// @public
+export type StorageSchema = Readonly<Record<string, StorageType>>;
+
+// @public
+export interface StorageStructDefinition<Fields extends StorageSchema = StorageSchema> {
+    readonly fields: Fields;
+    readonly type: 'struct';
+}
+
+// @public
+export type StorageType = StoragePrimitiveType | StorageArrayDefinition | StorageStructDefinition;
+
+// @public
+export type StorageValue<Definition> = Definition extends StoragePrimitiveType ? StoragePrimitiveValue<Definition> : Definition extends StorageArrayDefinition<infer Element> ? Element extends StorageScalarType ? ArrayLike<number> : readonly StorageValue<Element>[] : Definition extends StorageStructDefinition<infer Fields> ? StorageValues<Fields> : never;
+
+// @public
+export type StorageValues<Schema extends StorageSchema> = {
+    readonly [Name in keyof Schema]: StorageValue<Schema[Name]>;
+};
+
+// @public
+export type StorageVectorType = 'vec2<f32>' | 'vec3<f32>' | 'vec4<f32>' | 'vec2<i32>' | 'vec3<i32>' | 'vec4<i32>' | 'vec2<u32>' | 'vec3<u32>' | 'vec4<u32>';
+
+// @public
+export interface StorageWriteResult {
+    byteLength: number;
+    byteOffset: number;
+}
 
 // @public (undocumented)
 export interface SubDataUpdate {

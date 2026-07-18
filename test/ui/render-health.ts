@@ -8,6 +8,12 @@ export interface RenderHealthSnapshot {
     readonly webgpuCanvasAcquisitions: number;
     readonly webgpuRenderPasses: number;
     readonly webgpuDrawCalls: number;
+    /** Optional extended evidence used by WebGPU compute acceptance fixtures. */
+    readonly webgpuComputePasses?: number;
+    /** Optional native direct-plus-indirect dispatch count. */
+    readonly webgpuDispatchCalls?: number;
+    /** Optional native indirect raster draw count. */
+    readonly webgpuIndirectDrawCalls?: number;
     readonly webgpuQueueSubmissions: number;
     readonly instrumentationErrors: readonly string[];
 }
@@ -57,6 +63,9 @@ export async function installRenderHealthProbe(page: Page): Promise<void> {
             webgpuCanvasAcquisitions: number;
             webgpuRenderPasses: number;
             webgpuDrawCalls: number;
+            webgpuComputePasses: number;
+            webgpuDispatchCalls: number;
+            webgpuIndirectDrawCalls: number;
             webgpuQueueSubmissions: number;
             instrumentationErrors: string[];
         } = {
@@ -66,6 +75,9 @@ export async function installRenderHealthProbe(page: Page): Promise<void> {
             webgpuCanvasAcquisitions: 0,
             webgpuRenderPasses: 0,
             webgpuDrawCalls: 0,
+            webgpuComputePasses: 0,
+            webgpuDispatchCalls: 0,
+            webgpuIndirectDrawCalls: 0,
             webgpuQueueSubmissions: 0,
             instrumentationErrors: []
         };
@@ -302,6 +314,62 @@ export async function installRenderHealthProbe(page: Page): Promise<void> {
             } catch (error: unknown) {
                 recordInstrumentationError('webgpu.GPUCommandEncoder.beginRenderPass', error);
             }
+
+            try {
+                const nativeBeginComputePass = Object.getOwnPropertyDescriptor(
+                    GPUCommandEncoder.prototype,
+                    'beginComputePass'
+                )?.value as
+                    | ((
+                          this: GPUCommandEncoder,
+                          descriptor?: GPUComputePassDescriptor
+                      ) => GPUComputePassEncoder)
+                    | undefined;
+                if (!nativeBeginComputePass) {
+                    throw new Error('GPUCommandEncoder.beginComputePass is unavailable');
+                }
+                Object.defineProperty(GPUCommandEncoder.prototype, 'beginComputePass', {
+                    configurable: true,
+                    writable: true,
+                    value(
+                        this: GPUCommandEncoder,
+                        descriptor?: GPUComputePassDescriptor
+                    ): GPUComputePassEncoder {
+                        const pass = Reflect.apply(nativeBeginComputePass, this, [descriptor]) as
+                            GPUComputePassEncoder | undefined;
+                        if (!pass) {
+                            throw new Error('native beginComputePass did not return an encoder');
+                        }
+                        health.webgpuComputePasses++;
+                        return pass;
+                    }
+                });
+            } catch (error: unknown) {
+                recordInstrumentationError('webgpu.GPUCommandEncoder.beginComputePass', error);
+            }
+        }
+
+        if (typeof GPUComputePassEncoder !== 'undefined') {
+            const wrapDispatch = (method: 'dispatchWorkgroups' | 'dispatchWorkgroupsIndirect') => {
+                try {
+                    const nativeDispatch = GPUComputePassEncoder.prototype[method] as unknown as (
+                        ...parameters: unknown[]
+                    ) => unknown;
+                    Object.defineProperty(GPUComputePassEncoder.prototype, method, {
+                        configurable: true,
+                        writable: true,
+                        value(this: GPUComputePassEncoder, ...parameters: unknown[]): unknown {
+                            const result = Reflect.apply(nativeDispatch, this, parameters);
+                            health.webgpuDispatchCalls++;
+                            return result;
+                        }
+                    });
+                } catch (error: unknown) {
+                    recordInstrumentationError(`webgpu.GPUComputePassEncoder.${method}`, error);
+                }
+            };
+            wrapDispatch('dispatchWorkgroups');
+            wrapDispatch('dispatchWorkgroupsIndirect');
         }
 
         if (typeof GPURenderPassEncoder !== 'undefined') {
@@ -318,6 +386,9 @@ export async function installRenderHealthProbe(page: Page): Promise<void> {
                         value(this: GPURenderPassEncoder, ...parameters: unknown[]): unknown {
                             const result = Reflect.apply(nativeDraw, this, parameters);
                             health.webgpuDrawCalls++;
+                            if (method === 'drawIndirect' || method === 'drawIndexedIndirect') {
+                                health.webgpuIndirectDrawCalls++;
+                            }
                             return result;
                         }
                     });

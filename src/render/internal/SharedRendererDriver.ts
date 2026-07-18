@@ -35,6 +35,13 @@ import type {
     RenderTargetSelectionOptions
 } from '../RenderTarget';
 import {
+    RendererStorageBuffer,
+    type StorageBuffer,
+    type StorageBufferDescriptor,
+    type StorageBufferHost,
+    type StorageBufferReadback
+} from '../StorageBuffer';
+import {
     createRenderGraphFrameContext,
     type RenderGraphFrameContext
 } from '../frame/RenderGraphFrameContext';
@@ -82,7 +89,14 @@ import { ShadowAtlasRenderer } from '../renderer/ShadowAtlasRenderer';
 import { ShadowAtlasResourceCache } from '../renderer/ShadowAtlasResourceCache';
 import { ShadowAtlasSceneAdapter } from '../renderer/ShadowAtlasSceneAdapter';
 import { ShadowAtlasTextureBinding } from '../renderer/ShadowAtlasTextureBinding';
+import { ComputePipelineResourceCache } from '../renderer/ComputePipelineResourceCache';
+import { ComputeSamplerResourceCache } from '../renderer/ComputeSamplerResourceCache';
+import { GPUDrivenPipelineResourceCache } from '../renderer/GPUDrivenPipelineResourceCache';
+import { StorageBufferReadbackService } from '../renderer/StorageBufferReadback';
+import { StorageBufferResourceCache } from '../renderer/StorageBufferResourceCache';
 import { prepareWebGPUMipmapShaderArtifacts } from '../renderer/WebGPUMipmapShader';
+import { WgslComputeShaderCompiler } from '../shader/WgslComputeCompiler';
+import { StorageGraphicsShaderCompiler } from '../shader/StorageGraphicsShaderCompiler';
 import { RenderPipelineHost, type RenderPipelineHostLifecycle } from './RenderPipelineHost';
 import {
     ScriptableRenderPipelineContextImpl,
@@ -100,6 +114,11 @@ interface RenderingResources {
     readonly offscreen: OffscreenRenderTargetRenderer;
     readonly postProcess: PostProcessRenderer;
     readonly readback: RenderTargetReadback;
+    readonly storageBuffers: StorageBufferResourceCache;
+    readonly storageReadback: StorageBufferReadbackService;
+    readonly computePipelines: ComputePipelineResourceCache;
+    readonly computeSamplers: ComputeSamplerResourceCache;
+    readonly gpuDrivenPipelines: GPUDrivenPipelineResourceCache;
     readonly shadowScene: ShadowAtlasSceneAdapter;
     readonly shadowResources: ShadowAtlasResourceCache;
     readonly shadowRenderer: ShadowAtlasRenderer;
@@ -137,6 +156,7 @@ const OPTIONAL_WEBGPU_FEATURES: readonly RHIRequestableWebGPUFeature[] = Object.
 const REQUESTABLE_WEBGPU_FEATURES = new Set<string>([
     ...OPTIONAL_WEBGPU_FEATURES,
     'timestamp-query',
+    'shader-f16',
     'depth32float-stencil8',
     'float32-blendable'
 ]);
@@ -201,7 +221,11 @@ function reportListenerFailure(reason: unknown): void {
  */
 class SharedRendererDriver
     extends RendererCore
-    implements RHIRenderTargetHost, RenderPipelineHostLifecycle, ScriptableRenderPipelineServices
+    implements
+        RHIRenderTargetHost,
+        StorageBufferHost,
+        RenderPipelineHostLifecycle,
+        ScriptableRenderPipelineServices
 {
     override readonly className = 'Renderer' as const;
     override readonly backend: RendererBackend;
@@ -216,6 +240,8 @@ class SharedRendererDriver
     renderPipeline: RenderPipelineFactory = defaultForwardRenderPipelineFactory;
 
     readonly #compiler = new ShaderArtifactCompiler();
+    readonly #computeCompiler = new WgslComputeShaderCompiler();
+    readonly #storageGraphicsCompiler = new StorageGraphicsShaderCompiler();
     readonly #fallbackCamera = new Camera();
     readonly #pipelineHost = new RenderPipelineHost(this);
     readonly #scriptablePipelineResources = new ScriptableRenderPipelineResources();
@@ -225,6 +251,7 @@ class SharedRendererDriver
         this.#visibleMeshes.push(mesh);
     };
     readonly #renderTargets = new Set<RHIRenderTarget>();
+    readonly #storageBuffers = new Set<RendererStorageBuffer>();
     readonly #renderTargetTextureBindings = new Set<RenderTargetTextureBindingProvider>();
     readonly #getActiveUploadBatch = () => this.#pipelineHost.requireActiveScope().uploads;
     readonly #retiredResourceCleanups = new Set<Promise<void>>();
@@ -630,6 +657,10 @@ class SharedRendererDriver
                 throw new Error('Scriptable pipeline resources require an active frame');
             }
             this.#scriptablePipelineResources.beginFrame(frameIndex);
+            resources.storageBuffers.beginFrame(
+                frameIndex,
+                this.#pipelineHost.requireActiveScope().uploads
+            );
             this.#scriptableResourcesFrameStarted = true;
         }
         resources.shadowBinding.detach(this.lightManager);
@@ -683,6 +714,29 @@ class SharedRendererDriver
 
     getScriptableTargetBridge(): RenderTargetGraphBridge {
         return this.requireResources().offscreen.bridge;
+    }
+
+    getScriptableStorageBufferResources(): StorageBufferResourceCache {
+        return this.requireResources().storageBuffers;
+    }
+
+    resolveScriptableStorageBuffer(buffer: StorageBuffer): RendererStorageBuffer {
+        if (!(buffer instanceof RendererStorageBuffer)) {
+            throw new TypeError('StorageBuffer was not created by a Hilo3D Renderer');
+        }
+        return this.requireOwnedStorageBuffer(buffer);
+    }
+
+    getScriptableComputePipelineResources(): ComputePipelineResourceCache {
+        return this.requireResources().computePipelines;
+    }
+
+    getScriptableComputeSamplerResources(): ComputeSamplerResourceCache {
+        return this.requireResources().computeSamplers;
+    }
+
+    getScriptableGPUDrivenPipelineResources(): GPUDrivenPipelineResourceCache {
+        return this.requireResources().gpuDrivenPipelines;
     }
 
     resolveScriptableRenderTarget(target: RenderTarget): RHIRenderTarget {
@@ -793,6 +847,22 @@ class SharedRendererDriver
             case 'pvrtc':
                 return false;
         }
+    }
+
+    override createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer {
+        this.assertReadyForRender();
+        this.assertNoFrameMutation('createStorageBuffer');
+        const features = this.requireDevice().capabilities.features;
+        if (
+            this.backend !== 'webgpu' ||
+            !features.has('storage-buffers') ||
+            !features.has('compute-pipelines')
+        ) {
+            throw new Error('StorageBuffer is supported only by a compute-capable WebGPU renderer');
+        }
+        const buffer = new RendererStorageBuffer(this, descriptor);
+        this.#storageBuffers.add(buffer);
+        return buffer;
     }
 
     override createRenderTarget(parameters: RenderTargetParameters): RHIRenderTarget {
@@ -926,6 +996,9 @@ class SharedRendererDriver
         };
         attempt(() => {
             this.destroyAllRenderTargets();
+        });
+        attempt(() => {
+            this.destroyAllStorageBuffers();
         });
         attempt(() => {
             this.#pipelineHost.destroy();
@@ -1086,6 +1159,40 @@ class SharedRendererDriver
         return resources.readback.read(context, resolved.resourceRecord, options);
     }
 
+    assertStorageBufferMutationAllowed(operation: string): void {
+        this.assertNoFrameMutation(`storage-buffer ${operation}`);
+    }
+
+    storageBufferWritten(buffer: RendererStorageBuffer): void {
+        this.requireOwnedStorageBuffer(buffer);
+    }
+
+    async readStorageBuffer(
+        buffer: RendererStorageBuffer,
+        byteOffset: number,
+        byteLength: number
+    ): Promise<StorageBufferReadback> {
+        this.assertStorageBufferMutationAllowed('readback');
+        this.assertReadyForRender();
+        const source = this.requireOwnedStorageBuffer(buffer);
+        const context = this.createContext(
+            this.#lastCamera ?? this.#fallbackCamera,
+            this.surfaceViewport()
+        );
+        return this.requireResources().storageReadback.read(
+            context,
+            source,
+            byteOffset,
+            byteLength
+        );
+    }
+
+    storageBufferDestroyed(buffer: RendererStorageBuffer): void {
+        if (!this.#storageBuffers.delete(buffer)) return;
+        const resources = this.#resources;
+        if (resources !== null) resources.storageBuffers.detach(buffer);
+    }
+
     assertRenderTargetMutationAllowed(operation: string): void {
         this.assertNoFrameMutation(`render-target ${operation}`);
     }
@@ -1129,7 +1236,11 @@ class SharedRendererDriver
                 throw new Error('WebGPU canvas compositing requires premultiplied alpha');
             }
             this.requireCanvas();
-            await this.#compiler.initialize();
+            await Promise.all([
+                this.#compiler.initialize(),
+                this.#computeCompiler.initialize(),
+                this.#storageGraphicsCompiler.initialize()
+            ]);
             if (this.rendererWasDestroyed()) {
                 throw new Error('Renderer initialization was cancelled');
             }
@@ -1187,6 +1298,20 @@ class SharedRendererDriver
         const forward = new ForwardRenderer(0, undefined, offscreen.bridge);
         const postProcess = new PostProcessRenderer(targets, 0, this.#compiler);
         const readback = new RenderTargetReadback(targets, processor.submissions);
+        const storageBuffers = new StorageBufferResourceCache(processor.registry);
+        const storageReadback = new StorageBufferReadbackService(
+            storageBuffers,
+            processor.submissions
+        );
+        const computePipelines = new ComputePipelineResourceCache(
+            processor.registry,
+            this.#computeCompiler
+        );
+        const computeSamplers = new ComputeSamplerResourceCache(processor.registry);
+        const gpuDrivenPipelines = new GPUDrivenPipelineResourceCache(
+            processor.registry,
+            this.#storageGraphicsCompiler
+        );
         const shadowScene = new ShadowAtlasSceneAdapter();
         const shadowResources = new ShadowAtlasResourceCache(processor.registry);
         const shadowRenderer = new ShadowAtlasRenderer(
@@ -1223,6 +1348,7 @@ class SharedRendererDriver
         recovery.registerSynchronizer(processor.buffers);
         recovery.registerSynchronizer(processor.textures);
         recovery.registerSynchronizer(postProcess.fullscreen);
+        recovery.registerSynchronizer(storageBuffers);
         recovery.registerSynchronizer({
             synchronizeAfterRecovery: () => {
                 // Render-target pass contents are not recoverable from isolated public patches.
@@ -1247,6 +1373,11 @@ class SharedRendererDriver
             offscreen,
             postProcess,
             readback,
+            storageBuffers,
+            storageReadback,
+            computePipelines,
+            computeSamplers,
+            gpuDrivenPipelines,
             shadowScene,
             shadowResources,
             shadowRenderer,
@@ -1321,6 +1452,21 @@ class SharedRendererDriver
         });
         attempt(() => {
             resources.readback.destroy();
+        });
+        attempt(() => {
+            resources.storageReadback.destroy();
+        });
+        attempt(() => {
+            resources.computePipelines.destroy();
+        });
+        attempt(() => {
+            resources.computeSamplers.destroy();
+        });
+        attempt(() => {
+            resources.gpuDrivenPipelines.destroy();
+        });
+        attempt(() => {
+            resources.storageBuffers.destroy();
         });
         attempt(() => {
             this.#scriptablePipelineResources.releasePersistentTargets(resources.targets);
@@ -1732,10 +1878,16 @@ class SharedRendererDriver
     private recordExecutionDiagnostics(
         diagnostics: Readonly<{
             readonly drawCount: number;
+            readonly indirectDrawCount: number;
+            readonly dispatchCount: number;
+            readonly dispatchedWorkgroupCount: number;
+            readonly bufferClearCount: number;
             readonly commandCount: number;
             readonly pipelineSwitches: number;
             readonly bindGroupSwitches: number;
             readonly vertexBufferSwitches: number;
+            readonly computePipelineSwitches: number;
+            readonly computeBindGroupSwitches: number;
             readonly nativeStateCalls: number;
             readonly frameArenaGrowths: number;
         }>,
@@ -1745,6 +1897,16 @@ class SharedRendererDriver
         const sink = this.rendererDiagnosticsSink;
         if (sink === null) return;
         if (diagnostics.drawCount > 0) sink.recordDraw(diagnostics.drawCount);
+        if (diagnostics.indirectDrawCount > 0) {
+            sink.recordIndirectDraw(diagnostics.indirectDrawCount);
+        }
+        if (diagnostics.dispatchCount > 0) sink.recordDispatch(diagnostics.dispatchCount);
+        if (diagnostics.dispatchedWorkgroupCount > 0) {
+            sink.recordDispatchedWorkgroup(diagnostics.dispatchedWorkgroupCount);
+        }
+        if (diagnostics.bufferClearCount > 0) {
+            sink.recordBufferClear(diagnostics.bufferClearCount);
+        }
         if (diagnostics.commandCount > 0) sink.recordCommand(diagnostics.commandCount);
         if (passCount > 0) sink.recordPass(passCount);
         const stateChanges =
@@ -1753,6 +1915,12 @@ class SharedRendererDriver
             diagnostics.vertexBufferSwitches +
             diagnostics.nativeStateCalls;
         if (stateChanges > 0) sink.recordStateChange(stateChanges);
+        if (diagnostics.computePipelineSwitches > 0) {
+            sink.recordComputePipelineSwitch(diagnostics.computePipelineSwitches);
+        }
+        if (diagnostics.computeBindGroupSwitches > 0) {
+            sink.recordComputeBindGroupSwitch(diagnostics.computeBindGroupSwitches);
+        }
         if (uploadCount > 0) sink.recordUpload(uploadCount);
         if (diagnostics.frameArenaGrowths > 0) {
             sink.recordArenaGrowth(diagnostics.frameArenaGrowths);
@@ -1844,6 +2012,19 @@ class SharedRendererDriver
         this.#autoPresentRenderTarget = false;
     }
 
+    private destroyAllStorageBuffers(): void {
+        for (const buffer of [...this.#storageBuffers]) buffer.destroy();
+        this.#storageBuffers.clear();
+    }
+
+    private requireOwnedStorageBuffer(buffer: RendererStorageBuffer): RendererStorageBuffer {
+        if (!(buffer instanceof RendererStorageBuffer) || !this.#storageBuffers.has(buffer)) {
+            throw new TypeError('StorageBuffer belongs to a different renderer');
+        }
+        if (buffer.isDestroyed) throw new Error('Cannot use a destroyed StorageBuffer');
+        return buffer;
+    }
+
     private requireOwnedTarget(target: RenderTarget): RHIRenderTarget {
         if (!(target instanceof RHIRenderTarget) || !target.belongsTo(this)) {
             throw new TypeError('Render target belongs to a different renderer');
@@ -1908,7 +2089,8 @@ class SharedRendererDriver
             resources?.offscreen.active === true ||
             resources?.shadowRenderer.active === true ||
             resources?.postProcess.active === true ||
-            resources?.readback.frame.active === true
+            resources?.readback.frame.active === true ||
+            resources?.storageReadback.frame.active === true
         ) {
             const error = new Error(`Renderer ${operation} cannot run while a frame is active`);
             this.#pipelineHost.abort(error);

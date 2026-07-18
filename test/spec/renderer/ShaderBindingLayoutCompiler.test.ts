@@ -401,7 +401,33 @@ describe('ShaderBindingLayoutCompiler', () => {
         ).toThrow(/kind, name, arrayIndex, and minBindingSize must match exactly/);
     });
 
-    it.each(['storage-buffer', 'read-only-storage-buffer', 'storage-texture'] as const)(
+    it('merges readonly graphics storage into an explicit immutable binding plan', () => {
+        const storage = binding('read-only-storage-buffer', 'lightLists', 3, 1);
+        const plan = compileShaderBindingLayout(reflectionPair([storage], [storage]), 4);
+
+        expect(plan.bindGroupLayoutDescriptors).toHaveLength(4);
+        expect(plan.bindGroupLayoutDescriptors[3]?.entries).toEqual([
+            {
+                binding: 1,
+                visibility: RHIShaderStage.VERTEX | RHIShaderStage.FRAGMENT,
+                buffer: { type: 'read-only-storage' }
+            }
+        ]);
+        expect(plan.storageBuffers).toEqual([
+            {
+                name: 'lightLists',
+                group: 3,
+                binding: 1,
+                visibility: RHIShaderStage.VERTEX | RHIShaderStage.FRAGMENT
+            }
+        ]);
+        expect(plan.getStorageBufferBinding('lightLists')).toBe(plan.storageBuffers[0]);
+        expect(plan.getStorageBufferBinding('missing')).toBeUndefined();
+        expect(Object.isFrozen(plan.storageBuffers)).toBe(true);
+        expect(Object.isFrozen(plan.storageBuffers[0])).toBe(true);
+    });
+
+    it.each(['storage-buffer', 'storage-texture'] as const)(
         'rejects unsupported %s bindings',
         kind => {
             expect(() =>

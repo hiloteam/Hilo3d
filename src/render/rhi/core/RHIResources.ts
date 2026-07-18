@@ -6,10 +6,13 @@ import type {
     RHIBindGroupDescriptor,
     RHIBindGroupLayout,
     RHIBindGroupLayoutDescriptor,
+    RHIComputePipeline,
+    RHIComputePipelineDescriptor,
     RHIGraphicsPipeline,
     RHIGraphicsPipelineDescriptor,
     RHIPipelineLayout,
     RHIPipelineLayoutDescriptor,
+    RHIStorageTextureAccess,
     RHITextureSampleType
 } from './RHIPipeline';
 import type { RHIQueue } from './RHIQueue';
@@ -222,6 +225,9 @@ export interface RHIShaderBindingReflection {
     readonly sampleType?: RHITextureSampleType;
     readonly viewDimension?: RHITextureViewDimension;
     readonly multisampled?: boolean;
+    /** Storage-texture metadata emitted by the backend-neutral shader compiler. */
+    readonly storageTextureAccess?: RHIStorageTextureAccess;
+    readonly storageTextureFormat?: RHITextureFormat;
 }
 
 export interface RHIShaderVertexInputReflection {
@@ -234,11 +240,28 @@ export interface RHIShaderFragmentOutputReflection {
     readonly name?: string;
 }
 
+/** One WGSL pipeline override visible to portable compute-pipeline validation. */
+export interface RHIShaderOverrideReflection {
+    /** Pipeline constant identifier string: declaration name, or decimal `@id` value. */
+    readonly name: string;
+    readonly type: 'bool' | 'f16' | 'f32' | 'i32' | 'u32';
+    /** Whether pipeline creation must supply a value because the declaration has no initializer. */
+    readonly required: boolean;
+}
+
 /** Reflection is produced above the RHI together with the backend-specific artifact. */
 export interface RHIShaderReflection {
     readonly bindings: readonly RHIShaderBindingReflection[];
     readonly vertexInputs?: readonly RHIShaderVertexInputReflection[];
     readonly fragmentOutputs?: readonly RHIShaderFragmentOutputReflection[];
+    /** Resolved workgroup dimensions for a compute entry point. */
+    readonly workgroupSize?: readonly [number, number, number];
+    /** Statically allocated workgroup address-space bytes for a compute entry point. */
+    readonly workgroupStorageSize?: number;
+    /** Complete WGSL pipeline-override ABI for a compute module. */
+    readonly overrides?: readonly RHIShaderOverrideReflection[];
+    /** The shader source uses WGSL `f16` and requires the explicitly enabled shader-f16 feature. */
+    readonly requiresF16?: boolean;
 }
 
 /** A named GLSL uniform block resolved to one portable logical binding. */
@@ -351,5 +374,7 @@ export interface RHIDevice extends RHIDestroyable {
     createPipelineLayout(descriptor: RHIPipelineLayoutDescriptor): RHIPipelineLayout;
     createBindGroup(descriptor: RHIBindGroupDescriptor): RHIBindGroup;
     createGraphicsPipeline(descriptor: RHIGraphicsPipelineDescriptor): RHIGraphicsPipeline;
+    /** Create a compute pipeline or fail when compute-pipelines is unsupported. */
+    createComputePipeline(descriptor: RHIComputePipelineDescriptor): RHIComputePipeline;
     createSurface(canvas: HTMLCanvasElement): RHISurface;
 }

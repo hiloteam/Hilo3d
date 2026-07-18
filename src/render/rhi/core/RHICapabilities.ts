@@ -11,6 +11,7 @@ export type RHIFeatureName =
     | 'storage-buffers'
     | 'storage-textures'
     | 'compute-pipelines'
+    | 'shader-f16'
     | 'timestamp-query'
     | 'anisotropic-filtering'
     | 'texture-compression-bc'
@@ -32,6 +33,7 @@ export interface RHILimits {
     readonly maxBindGroups: number;
     readonly maxBindingsPerBindGroup: number;
     readonly maxDynamicUniformBuffersPerPipelineLayout: number;
+    readonly maxDynamicStorageBuffersPerPipelineLayout?: number;
     readonly maxSampledTexturesPerShaderStage: number;
     readonly maxSamplersPerShaderStage: number;
     readonly maxUniformBuffersPerShaderStage: number;
@@ -48,6 +50,10 @@ export interface RHILimits {
     readonly minStorageBufferOffsetAlignment?: number;
     readonly maxComputeWorkgroupStorageSize?: number;
     readonly maxComputeInvocationsPerWorkgroup?: number;
+    readonly maxComputeWorkgroupSizeX?: number;
+    readonly maxComputeWorkgroupSizeY?: number;
+    readonly maxComputeWorkgroupSizeZ?: number;
+    readonly maxComputeWorkgroupsPerDimension?: number;
 }
 
 /** Immutable capabilities for one texture format on one device generation. */

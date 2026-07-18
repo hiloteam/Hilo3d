@@ -24,7 +24,11 @@ import {
     compileShaderBindingLayout,
     type ShaderBindingLayoutPlan
 } from '../../../src/render/renderer/ShaderBindingLayoutCompiler';
-import { FakeWebGLRHIBackend, type FakeRHIDevice } from '../rhi/portable/FakeRHIBackend';
+import {
+    FakeWebGLRHIBackend,
+    FakeWebGPURHIBackend,
+    type FakeRHIDevice
+} from '../rhi/portable/FakeRHIBackend';
 
 const cacheSource =
     Object.values(
@@ -173,6 +177,49 @@ function boundSampler(group: RHIBindGroup, bindingIndex: number): RHISampler {
 }
 
 describe('ShaderBindGroupResourceCache', () => {
+    it('defers one storage-only global group while reusing ordinary mesh resource groups', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const createBindGroup = vi.spyOn(device, 'createBindGroup');
+        const registry = new ResourceRegistry(device);
+        const cache = new ShaderBindGroupResourceCache(registry);
+        const plan = bindingPlan(
+            [uniform('CameraBlock', 0, 0)],
+            [binding('read-only-storage-buffer', 'lightLists', 3, 0)]
+        );
+        const layouts = registerLayouts(registry, plan);
+        const camera = registerUniformBuffer(registry, 'camera uniform');
+        const owner = {};
+
+        const handles = cache.prepare(owner, 12, plan, layouts, [camera], [], [3]);
+
+        expect(handles.activeGroupIndices).toEqual([0, 3]);
+        expect(cache.resolveGroup(owner, 0)).not.toBeNull();
+        expect(cache.resolveGroup(owner, 3)).toBeNull();
+        expect(createBindGroup).toHaveBeenCalledTimes(1);
+        expect(cache.prepare(owner, 12, plan, layouts, [camera], [], [3])).toBe(handles);
+        expect(() => cache.prepare({}, 12, plan, layouts, [camera], [])).toThrow(
+            /must be explicitly deferred/u
+        );
+
+        const mixedPlan = bindingPlan(
+            [],
+            [
+                uniform('MaterialBlock', 3, 0),
+                binding('read-only-storage-buffer', 'lightLists', 3, 1)
+            ]
+        );
+        const mixedLayouts = registerLayouts(registry, mixedPlan);
+        const material = registerUniformBuffer(registry, 'material uniform');
+        expect(() => cache.prepare({}, 13, mixedPlan, mixedLayouts, [material], [], [3])).toThrow(
+            /must contain only readonly storage buffers/u
+        );
+
+        cache.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
+
     it('creates sorted mixed and sparse groups and hits before reading a poisoned plan', () => {
         const backend = new FakeWebGLRHIBackend();
         const device = backend.createDevice();
@@ -231,10 +278,16 @@ describe('ShaderBindGroupResourceCache', () => {
             get sampledBindings(): never {
                 throw new Error('cache hit read sampledBindings');
             },
+            get storageBuffers(): never {
+                throw new Error('cache hit read storageBuffers');
+            },
             getUniformBlockBinding(): undefined {
                 return undefined;
             },
             getSampledBinding(): undefined {
+                return undefined;
+            },
+            getStorageBufferBinding(): undefined {
                 return undefined;
             }
         };

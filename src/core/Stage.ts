@@ -14,6 +14,11 @@ import log from '../utils/log';
 import { getElementRect } from '../utils/util';
 import type { RenderPipelineFactory } from '../render/pipeline/RenderPipeline';
 import { snapshotRenderPipelineFactory } from '../render/pipeline/RenderPipelineFactory';
+import {
+    describeWebGL2OnlyRendererOption,
+    describeWebGPUOnlyPipelineRequirement,
+    describeWebGPUOnlyRendererFeature
+} from '../render/internal/RenderPipelineBackendSelection';
 
 type DOMViewport = ReturnType<typeof getElementRect>;
 const STAGE_CONSTRUCTION_TOKEN = Symbol('Stage construction');
@@ -236,22 +241,57 @@ function createStageCanvas(params: {
     return canvas;
 }
 
-/** @internal Resolve a requested backend without creating a device, context, or GPU resource. */
-export async function resolveStageBackend(
-    params: StageParameters<StageBackend> = {}
+async function resolveStageBackendSnapshot(
+    params: StageParameters<StageBackend>
 ): Promise<RendererBackend> {
     const requestedBackend: unknown = params.backend ?? 'auto';
-    if (requestedBackend === 'webgpu' || requestedBackend === 'webgl2') return requestedBackend;
     if (requestedBackend !== 'auto') {
-        throw new TypeError(`Unsupported Stage backend ${String(requestedBackend)}`);
+        if (requestedBackend !== 'webgpu' && requestedBackend !== 'webgl2') {
+            throw new TypeError(`Unsupported Stage backend ${String(requestedBackend)}`);
+        }
     }
-    if (
-        Object.prototype.hasOwnProperty.call(params, 'preserveDrawingBuffer') ||
-        (params.alpha === true && params.premultipliedAlpha === false)
-    ) {
+    const webGPURequirement =
+        describeWebGPUOnlyRendererFeature(params.requiredFeatures) ??
+        describeWebGPUOnlyPipelineRequirement(params.renderPipeline?.requirements);
+    const webGL2Option = describeWebGL2OnlyRendererOption(params);
+    if (requestedBackend === 'webgl2') {
+        if (webGPURequirement !== null) {
+            throw new TypeError(
+                `Stage configuration conflict: ${webGPURequirement} requires WebGPU, but backend webgl2 was requested`
+            );
+        }
         return 'webgl2';
     }
-    return (await Renderer.isBackendSupported('webgpu', params)) ? 'webgpu' : 'webgl2';
+    if (requestedBackend === 'webgpu') {
+        if (webGL2Option !== null) {
+            throw new TypeError(
+                `Stage configuration conflict: ${webGL2Option}, but backend webgpu was requested`
+            );
+        }
+        return 'webgpu';
+    }
+    if (webGL2Option !== null) {
+        if (webGPURequirement !== null) {
+            throw new TypeError(
+                `Stage configuration conflict: ${webGPURequirement} requires WebGPU, but ${webGL2Option}`
+            );
+        }
+        return 'webgl2';
+    }
+    if (await Renderer.isBackendSupported('webgpu', params)) return 'webgpu';
+    if (webGPURequirement !== null) {
+        throw new Error(
+            `No compatible Stage backend: ${webGPURequirement} requires WebGPU, but no compatible WebGPU adapter is available`
+        );
+    }
+    return 'webgl2';
+}
+
+/** @internal Resolve a requested backend without creating a device, context, or GPU resource. */
+export function resolveStageBackend(
+    params: StageParameters<StageBackend> = {}
+): Promise<RendererBackend> {
+    return resolveStageBackendSnapshot(snapshotStageParameters(params));
 }
 
 export interface StagePointerEvent extends NodePointerEvent {
@@ -378,7 +418,7 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
     static create(params: StageParameters<StageBackend>): Promise<Stage>;
     static async create(params: StageParameters<StageBackend> = {}): Promise<Stage> {
         const parameterSnapshot = snapshotStageParameters(params);
-        const backend = await resolveStageBackend(parameterSnapshot);
+        const backend = await resolveStageBackendSnapshot(parameterSnapshot);
         const width = parameterSnapshot.width ?? window.innerWidth;
         const height = parameterSnapshot.height ?? window.innerHeight;
         let pixelRatio = parameterSnapshot.pixelRatio;
