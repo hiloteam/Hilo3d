@@ -37,8 +37,10 @@
   adapter/device/pipeline fixture 作为额外的深度验收，而不是 WebGPU 唯一覆盖。
 - 类型声明、TypeDoc API 页面和 API Extractor 签名报告全部从同一份已检查源码生成。
 - npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；本地/发布使用 `npm run validate`
-  执行完整双后端浏览器矩阵。默认 hosted CI 使用 `npm run validate:ci`，执行 WebGL 2
-  presentation/UI/视觉矩阵、WebGPU native/offscreen RHI 门禁并额外执行 portable benchmark smoke。
+  执行完整双后端浏览器矩阵。默认 hosted
+  CI 把等价的 portable 门禁拆成预检、coverage、RHI、包/API/文档和四个隔离的 WebGL 2
+  presentation/UI/视觉分片；WebGPU native/offscreen RHI 保持独立进程，non-evidence portable
+  benchmark smoke 则由按性能路径、定时或手动触发的独立工作流执行。
 - 旧 Gulp、Webpack、Babel、Mocha、JSDoc、手写声明、旧 `build/`、已提交的旧
   `docs/`、旧测试页、运行时 vendor 脚本和远程 CDN 依赖已经退出活跃工程。
 
@@ -861,25 +863,32 @@ CI 只运行稳定的 WebGL 2 visual baseline，完整双后端视觉与像素 p
 
 CI 只保留项目最低版本 Node 22.22.2 这一个测试档位，使用当前维护的 GitHub
 Actions、锁文件安装、固定 npm 12.0.1 和显式 Chromium 系统依赖，避免在 Node
-22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master` 与版本 tag 使用
-`npm run validate:ci`，其功能、包和 API 门禁与 release validate 一致，并额外执行 portable RHI
-benchmark smoke；浏览器部分使用 `test:browser:ci` 跑完整 WebGL
-2 页面、交互与视觉矩阵。WebGPU 由同一 run 中的 `test:rhi` native/offscreen SwiftShader
+22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master`
+与版本 tag 先执行 modernity、格式、声明、lint、TypeScript project
+references 和示例目录合同预检；预检成功后并行执行两个 Vitest
+coverage 分片、RHI/架构、包/API/文档，以及四个 Playwright WebGL 2 页面/交互/视觉分片。每个 GPU
+job 内仍只使用一个 worker，不在同一 SwiftShader 进程并发争用设备；跨 runner 分片完成后分别合并 coverage 和 Playwright 报告，并由稳定的
+`Required CI` 聚合门禁统一给 branch protection 使用。
+
+WebGPU 由独立 RHI job 中的 native/offscreen SwiftShader
 lane 验证 adapter、device、pipeline、draw、submit、readback 与 backend contract。GitHub hosted
 Linux 不稳定的 WebGPU canvas presentation 不作为虚假的合并门禁；完整双后端页面/视觉矩阵仍由本地
-`npm run validate` 与手动 physical-GPU workflow 负责。过期任务由 concurrency 自动取消。
+`npm run validate` 与手动 physical-GPU workflow 负责。串行的 `npm run validate:ci`
+保留为 hosted 门禁的本地复现入口，过期任务由 concurrency 自动取消。
 
 Portable RHI benchmark smoke 只以单 draw 生产场景验证 fixture、allocation
-profiler、readback 和当前 RHI 路径。GitHub hosted Linux 的 SwiftShader WebGPU production
-fixture 会在首帧前丢失 fallback device，因此 PR CI 只运行 WebGL 2 production smoke；WebGPU 仍由独立
-`test:rhi` native lane、本地完整 UI/视觉矩阵和 enrolled physical-GPU
+profiler、readback 和当前 RHI 路径。它不属于普通合并门禁；独立 workflow 仅在 benchmark/performance 路径变化、每日定时或手动触发时运行 WebGL
+2 production smoke。GitHub hosted Linux 的 SwiftShader WebGPU production
+fixture 会在首帧前丢失 fallback device，因此 WebGPU 仍由独立 `test:rhi` native
+lane、本地完整 UI/视觉矩阵和 enrolled physical-GPU
 benchmark 覆盖。脚本直接运行时默认按 WebGPU、WebGL
 2 顺序为每个 scenario/backend 启动独立 Chromium，且非证据 SwiftShader 用例不申请正式 rig 才需要的 WebGPU
 `timestamp-query`。smoke 始终标记为 non-evidence，不替代物理 GPU 多场景冻结基线；需要扩展诊断时显式使用
 `--all` 入口。
 
-站点发布工作流同样从干净 checkout 执行 `npm ci` 和
-`npm run site:build`，再部署生成 artifact。仓库不再跟踪旧 API 生成物，也不会从开发者本机的残留目录发布。
+站点发布工作流同样从干净 checkout 执行 `npm ci`，只构建一次声明，再执行 `npm run api:check:built` 与
+`npm run site:build:built`
+后部署生成 artifact。仓库不再跟踪旧 API 生成物，也不会从开发者本机的残留目录发布。
 
 ## 唯一验收入口
 

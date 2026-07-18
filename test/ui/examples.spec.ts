@@ -385,10 +385,11 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
 }
 
 test.describe('examples using the generic release gate', () => {
-    // Default mode gives every case an independent result; unlike serial mode, one failure cannot
-    // skip the remainder of the generic release matrix. Heavy examples may use a dedicated gate
-    // that preserves the same failure monitoring while asserting stronger example-specific output.
-    test.describe.configure({ mode: 'default' });
+    // Parallel mode lets Playwright shard individual catalog cases across isolated CI machines.
+    // Every machine still uses one worker, so SwiftShader work remains serial within each process;
+    // unlike serial mode, one failure cannot skip the remainder of the release matrix. Heavy
+    // examples may use a dedicated gate with stronger example-specific output.
+    test.describe.configure({ mode: 'parallel' });
 
     for (const exampleCase of exampleCases) {
         const { path: examplePath, backend } = exampleCase;

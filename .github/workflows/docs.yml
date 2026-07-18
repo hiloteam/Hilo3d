@@ -60,8 +60,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build declarations once
+        run: npm run build:types
+
       - name: Validate API contract and build documentation site
-        run: npm run api:check && npm run site:build
+        run: npm run api:check:built && npm run site:build:built
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6

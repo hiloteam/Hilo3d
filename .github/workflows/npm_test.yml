@@ -16,10 +16,57 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Node 22.22.2
+  preflight:
+    name: Preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Set up npm
+        run: |
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check repository modernity
+        run: npm run check:modernity
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Build declarations for static analysis
+        run: npm run build:types
+
+      - name: Lint maintained TypeScript
+        run: npm run lint:built
+
+      - name: Check TypeScript project references
+        run: npm run typecheck:ci
+
+      - name: Check the example/backend catalog contract
+        run: npm run test:ui:contract
+
+  coverage:
+    name: Coverage (${{ matrix.shard }}/2)
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
 
     steps:
       - name: Check out repository
@@ -43,19 +90,289 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Validate release
-        run: npm run validate:ci
+      - name: Run browser coverage shard
+        run: >-
+          npx vitest run --coverage --shard=${{ matrix.shard }}/2 --reporter=default --reporter=blob
+          --outputFile.blob=reports/vitest/report-${{ matrix.shard }}.json
         env:
           CI: 'true'
 
-      - name: Upload test reports
-        if: always()
+      - name: Upload coverage shard
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: test-reports-node-22.22.2
+          name: vitest-coverage-${{ matrix.shard }}
           path: |
-            coverage
-            playwright-report
-            test-results
+            reports/vitest
+            .vitest-attachments
+          if-no-files-found: ignore
+          retention-days: 1
+
+  coverage-report:
+    name: Coverage report
+    if: ${{ !cancelled() }}
+    needs: coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Set up npm
+        run: |
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download coverage shards
+        uses: actions/download-artifact@v8
+        with:
+          path: reports/vitest
+          pattern: vitest-coverage-*
+          merge-multiple: true
+
+      - name: Merge coverage and enforce global thresholds
+        run: npx vitest --merge-reports=reports/vitest --coverage --reporter=default
+
+      - name: Upload merged coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage
+          if-no-files-found: error
+          retention-days: 14
+
+  rhi:
+    name: RHI and architecture
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Set up npm
+        run: |
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Check the RHI benchmark contract
+        run: npm run test:rhi-benchmark-contract
+
+      - name: Test portable and native-offscreen RHI contracts
+        run: npm run test:rhi
+
+      - name: Test renderer architecture invariants
+        run: npm run test:render:architecture
+
+      - name: Upload RHI failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rhi-failure-evidence
+          path: .vitest-attachments
           if-no-files-found: ignore
           retention-days: 14
+
+  package:
+    name: Build, API, docs, and package
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Set up npm
+        run: |
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build library
+        run: npm run build
+
+      - name: Test published type consumers
+        run: npm run test:types
+
+      - name: Build examples
+        run: npm run examples:build
+
+      - name: Check TypeDoc without rebuilding declarations
+        run: npm run docs:check:built
+
+      - name: Check the public API report without rebuilding declarations
+        run: npm run api:check:built
+
+      - name: Test the built package
+        run: npm run test:package:built
+
+      - name: Check packed files
+        run: npm run pack:check
+
+  ui-webgl2:
+    name: WebGL2 UI (${{ matrix.shard }}/4)
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Set up npm
+        run: |
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run WebGL2 UI shard
+        run: >-
+          npm run test:ui:webgl2:ci -- --shard=${{ matrix.shard }}/4 --reporter=github,blob
+        env:
+          CI: 'true'
+
+      - name: Upload Playwright shard
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-webgl2-${{ matrix.shard }}
+          path: blob-report
+          if-no-files-found: ignore
+          retention-days: 1
+
+  ui-report:
+    name: WebGL2 UI report
+    if: ${{ !cancelled() }}
+    needs: ui-webgl2
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Set up npm
+        run: |
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download Playwright shards
+        uses: actions/download-artifact@v8
+        with:
+          path: reports/playwright
+          pattern: playwright-webgl2-*
+          merge-multiple: true
+
+      - name: Merge Playwright reports
+        run: npx playwright merge-reports --reporter=html reports/playwright
+
+      - name: Upload merged Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report
+          if-no-files-found: error
+          retention-days: 14
+
+  required:
+    name: Required CI
+    if: ${{ always() }}
+    needs:
+      - preflight
+      - coverage
+      - coverage-report
+      - rhi
+      - package
+      - ui-webgl2
+      - ui-report
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify required jobs
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+          COVERAGE_REPORT_RESULT: ${{ needs.coverage-report.result }}
+          RHI_RESULT: ${{ needs.rhi.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
+          UI_RESULT: ${{ needs.ui-webgl2.result }}
+          UI_REPORT_RESULT: ${{ needs.ui-report.result }}
+        run: |
+          for result in \
+            "$PREFLIGHT_RESULT" \
+            "$COVERAGE_RESULT" \
+            "$COVERAGE_REPORT_RESULT" \
+            "$RHI_RESULT" \
+            "$PACKAGE_RESULT" \
+            "$UI_RESULT" \
+            "$UI_REPORT_RESULT"
+          do
+            if [ "$result" != 'success' ]; then
+              echo "A required CI job finished with result: $result"
+              exit 1
+            fi
+          done

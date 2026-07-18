@@ -1,0 +1,65 @@
+name: RHI performance smoke (non-evidence)
+
+on:
+  pull_request:
+    branches: [dev, master]
+    paths:
+      - '.github/workflows/performance_smoke.yml'
+      - 'benchmarks/rhi/**'
+      - 'scripts/performance/**'
+      - 'test/performance/**'
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: rhi-performance-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Portable WebGL2 fixture smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Set up npm
+        run: |
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Check benchmark protocol contracts
+        run: npm run test:rhi-benchmark-contract
+
+      - name: Run non-evidence WebGL2 fixture smoke
+        run: npm run test:rhi-benchmark-smoke:ci
+        env:
+          CI: 'true'
+
+      - name: Upload smoke diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rhi-performance-smoke-diagnostics
+          path: reports
+          if-no-files-found: ignore
+          retention-days: 14

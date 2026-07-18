@@ -452,12 +452,13 @@ describe('RHI production fixture smoke contract', () => {
 
     it('is explicitly non-evidence and cannot call artifact-producing pipeline stages', async () => {
         const repositoryRoot = resolve(new URL('../..', import.meta.url).pathname);
-        const [source, packageSource] = await Promise.all([
+        const [source, packageSource, performanceWorkflow] = await Promise.all([
             readFile(
                 resolve(repositoryRoot, 'scripts/performance/smoke-rhi-production-fixture.ts'),
                 'utf8'
             ),
-            readFile(resolve(repositoryRoot, 'package.json'), 'utf8')
+            readFile(resolve(repositoryRoot, 'package.json'), 'utf8'),
+            readFile(resolve(repositoryRoot, '.github/workflows/performance_smoke.yml'), 'utf8')
         ]);
         expect(source).toContain('NON-EVIDENCE');
         expect(source).toContain('No evidence artifact was written');
@@ -492,11 +493,11 @@ describe('RHI production fixture smoke contract', () => {
         const validateCI = packageJson.scripts?.['validate:ci'];
         expect(validateCI).toBeTypeOf('string');
         if (typeof validateCI !== 'string') throw new TypeError('validate:ci must be a string');
-        expect(validateCI.indexOf('npm run test:rhi-benchmark-smoke:ci')).toBeGreaterThan(
-            validateCI.indexOf('npm run test:rhi-benchmark-contract')
-        );
-        expect(validateCI.indexOf('npm run test:rhi-benchmark-smoke:ci')).toBeLessThan(
-            validateCI.indexOf('npm run test:coverage')
+        expect(validateCI).not.toContain('npm run test:rhi-benchmark-smoke:ci');
+        expect(performanceWorkflow).toContain('schedule:');
+        expect(performanceWorkflow).toContain('workflow_dispatch:');
+        expect(performanceWorkflow.indexOf('npm run test:rhi-benchmark-smoke:ci')).toBeGreaterThan(
+            performanceWorkflow.indexOf('npm run test:rhi-benchmark-contract')
         );
     });
 });
