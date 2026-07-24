@@ -510,6 +510,45 @@ function createTriangleResources(device: WebGPUDevice) {
 }
 
 describe('WebGPU RHI native backend', () => {
+    it('reuses a persistent default native texture view without sharing logical lifetime', () => {
+        const harness = createNativeHarness();
+        const diagnostics = new RendererDiagnostics();
+        const device = new WebGPUDevice(harness.device, diagnostics);
+        const persistent = device.createTexture({
+            label: 'persistent view source',
+            size: { width: 4, height: 4 },
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+
+        const first = persistent.createView();
+        const second = persistent.createView();
+        expect(first).not.toBe(second);
+        expect(first.id).not.toBe(second.id);
+        expect(first.nativeHandle).toBe(second.nativeHandle);
+        expect(harness.textureViewDescriptors).toHaveLength(1);
+
+        first.destroy();
+        expect(second.destroyed).toBe(false);
+
+        persistent.createView({ label: 'diagnostic view' });
+        expect(harness.textureViewDescriptors).toHaveLength(2);
+
+        const frame = device.createTexture({
+            label: 'frame view source',
+            lifetime: 'frame',
+            size: { width: 4, height: 4 },
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        frame.createView();
+        frame.createView();
+        expect(harness.textureViewDescriptors).toHaveLength(4);
+        expect(diagnostics.snapshot().nativeObjects.textureView.created).toBe(4);
+
+        device.destroy();
+    });
+
     it('maps per-vertex and instanced matrix columns into native WebGPU vertex layouts', () => {
         const harness = createNativeHarness();
         const device = new WebGPUDevice(harness.device);

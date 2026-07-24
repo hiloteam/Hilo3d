@@ -24,6 +24,19 @@ import { WebGPUDestroyableObject, WebGPUResource } from './WebGPUBase';
 import { nativeWebGPUTextureViewDescriptor } from './WebGPUDescriptors';
 import type { WebGPUDevice } from './WebGPUDevice';
 
+function isDefaultTextureViewDescriptor(descriptor: Readonly<RHITextureViewDescriptor>): boolean {
+    return (
+        descriptor.label === undefined &&
+        descriptor.format === undefined &&
+        descriptor.dimension === undefined &&
+        descriptor.aspect === undefined &&
+        descriptor.baseMipLevel === undefined &&
+        descriptor.mipLevelCount === undefined &&
+        descriptor.baseArrayLayer === undefined &&
+        descriptor.arrayLayerCount === undefined
+    );
+}
+
 export class WebGPUBuffer
     extends WebGPUResource<RHINormalizedBufferDescriptor>
     implements RHIBuffer
@@ -126,6 +139,7 @@ export class WebGPUTexture
     readonly usage: number;
     readonly #nativeHandle: GPUTexture;
     readonly #ownsNativeAllocation: boolean;
+    #defaultNativeView: GPUTextureView | null = null;
 
     constructor(
         owner: WebGPUDevice,
@@ -161,14 +175,27 @@ export class WebGPUTexture
     createView(descriptor: RHITextureViewDescriptor = {}): WebGPUTextureView {
         this.owner.assertUsable(this, 'texture');
         const normalized = normalizeRHITextureViewDescriptor(this, descriptor);
+        const cacheDefault =
+            this.lifetime !== 'frame' && isDefaultTextureViewDescriptor(descriptor);
+        if (cacheDefault && this.#defaultNativeView !== null) {
+            return new WebGPUTextureView(
+                this.owner,
+                this.#defaultNativeView,
+                this,
+                normalized,
+                false
+            );
+        }
         const nativeView = this.#nativeHandle.createView(
             nativeWebGPUTextureViewDescriptor(normalized)
         );
-        return new WebGPUTextureView(this.owner, nativeView, this, normalized);
+        if (cacheDefault) this.#defaultNativeView = nativeView;
+        return new WebGPUTextureView(this.owner, nativeView, this, normalized, true);
     }
 
     protected override releaseNative(): void {
         this.owner.mipmapGenerator.release(this);
+        this.#defaultNativeView = null;
         if (this.#ownsNativeAllocation) this.#nativeHandle.destroy();
     }
 }
@@ -185,9 +212,15 @@ export class WebGPUTextureView extends WebGPUDestroyableObject implements RHITex
         owner: WebGPUDevice,
         nativeHandle: GPUTextureView,
         texture: WebGPUTexture,
-        descriptor: Readonly<RHINormalizedTextureViewDescriptor>
+        descriptor: Readonly<RHINormalizedTextureViewDescriptor>,
+        recordsNativeCreation = true
     ) {
-        super(owner, descriptor.label, 'textureView', 'creation-only');
+        super(
+            owner,
+            descriptor.label,
+            recordsNativeCreation ? 'textureView' : null,
+            recordsNativeCreation ? 'creation-only' : null
+        );
         this.#nativeHandle = nativeHandle;
         this.texture = texture;
         this.descriptor = descriptor;

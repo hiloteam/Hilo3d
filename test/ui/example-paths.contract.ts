@@ -59,11 +59,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(81);
+        expect(examplePaths).toHaveLength(82);
     });
 
-    it('expands 81 pages into the complete 159-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(159);
+    it('expands 82 pages into the complete 161-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(161);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -87,7 +87,7 @@ describe('example release matrix contract', () => {
         expect(catalog).toHaveLength(80);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
-            new Set(examplePaths.filter(path => path !== 'list.html'))
+            new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
         );
         expect(new Set(catalog.map(entry => entry.category))).toEqual(
             new Set(EXAMPLE_CATEGORIES.map(category => category.id))
@@ -135,7 +135,7 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(157);
+        expect(genericCases).toHaveLength(159);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());

@@ -24,7 +24,7 @@
     "clean:build": "rimraf .cache/types .cache/tsconfig.lib.tsbuildinfo dist",
     "dev": "vite --host 0.0.0.0",
     "examples:dev": "vite --config vite.examples.config.ts --host 0.0.0.0",
-    "examples:serve": "vite --config vite.examples.config.ts --host 127.0.0.1 --port 4173 --strictPort",
+    "examples:serve": "vite --config vite.examples.config.ts --host 0.0.0.0 --port 4173 --strictPort --open /examples/index.html",
     "examples:build": "vite build --config vite.examples.config.ts",
     "examples:test": "npm run test:ui",
     "build": "npm run clean:build && npm run build:js && npm run build:types",
