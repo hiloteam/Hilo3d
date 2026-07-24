@@ -4,7 +4,9 @@ const TARGET_WIDTH = 960;
 const TARGET_HEIGHT = 540;
 const TARGET_ASPECT = TARGET_WIDTH / TARGET_HEIGHT;
 const WORKGROUP_SIZE = 8;
-const PIXEL_RECORD_VEC4S = 2;
+const HISTORY_LAYER_COUNT = 2;
+const RECORDS_PER_HISTORY_LAYER = 2;
+const PIXEL_RECORD_VEC4S = HISTORY_LAYER_COUNT * RECORDS_PER_HISTORY_LAYER;
 const ACCUMULATION_BYTE_LENGTH = TARGET_WIDTH * TARGET_HEIGHT * PIXEL_RECORD_VEC4S * 16;
 const FULL_VIEWPORT = Object.freeze([0, 0, TARGET_WIDTH, TARGET_HEIGHT] as const);
 const CLEAR_COLOR = Object.freeze({ r: 0.003, g: 0.005, b: 0.012, a: 1 });
@@ -17,14 +19,18 @@ const frameLayout = Hilo3d.createStd140Layout({
     u_resolution: 'vec4',
     u_camera: 'vec4',
     u_target: 'vec4',
-    u_render: 'vec4'
+    u_render: 'vec4',
+    u_previousCamera: 'vec4',
+    u_previousTarget: 'vec4'
 });
 
 const frameBlock = Hilo3d.UniformBuffer.fromSchema(frameLayout, {
     u_resolution: [TARGET_WIDTH, TARGET_HEIGHT, 1 / TARGET_WIDTH, 1 / TARGET_HEIGHT],
     u_camera: [0.06, 0.23, 5.35, 0],
     u_target: [0, 0.9, -0.12, 1.14],
-    u_render: [0, 0.012, 5.45, 0]
+    u_render: [0, 0.012, 5.45, 0],
+    u_previousCamera: [0.06, 0.23, 5.35, 0],
+    u_previousTarget: [0, 0.9, -0.12, 1.14]
 });
 
 const RAYTRACE_PASS = new Hilo3d.ComputeRenderPass(
@@ -38,6 +44,8 @@ struct FrameBlock {
     camera: vec4<f32>,
     lookAt: vec4<f32>,
     render: vec4<f32>,
+    previousCamera: vec4<f32>,
+    previousLookAt: vec4<f32>,
 };
 
 struct Hit {
@@ -50,6 +58,7 @@ struct Hit {
 struct TraceResult {
     radiance: vec3<f32>,
     guide: vec4<f32>,
+    material: u32,
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameBlock;
@@ -321,10 +330,24 @@ fn intersectRoundedBox(
     return missHit();
 }
 
+fn waterHeightAt(position: vec2<f32>, time: f32) -> f32 {
+    let phaseA = position.x * 1.45 + position.y * 1.1 + time * 0.14;
+    let phaseB = position.x * -2.25 + position.y * 1.7 + 1.3 - time * 0.11;
+    let phaseC = position.x * 4.4 + position.y * -3.1 + 0.6 + time * 0.19;
+    return 0.034 * sin(phaseA)
+        + 0.018 * sin(phaseB)
+        + 0.006 * sin(phaseC);
+}
+
+fn waterHeight(position: vec2<f32>) -> f32 {
+    return waterHeightAt(position, frame.render.w);
+}
+
 fn waterNormal(position: vec3<f32>) -> vec3<f32> {
-    let phaseA = position.x * 1.45 + position.z * 1.1;
-    let phaseB = position.x * -2.25 + position.z * 1.7 + 1.3;
-    let phaseC = position.x * 4.4 + position.z * -3.1 + 0.6;
+    let time = frame.render.w;
+    let phaseA = position.x * 1.45 + position.z * 1.1 + time * 0.14;
+    let phaseB = position.x * -2.25 + position.z * 1.7 + 1.3 - time * 0.11;
+    let phaseC = position.x * 4.4 + position.z * -3.1 + 0.6 + time * 0.19;
     let derivativeX = 0.034 * 1.45 * cos(phaseA)
         + 0.018 * -2.25 * cos(phaseB)
         + 0.006 * 4.4 * cos(phaseC);
@@ -334,21 +357,24 @@ fn waterNormal(position: vec3<f32>) -> vec3<f32> {
     return normalize(vec3<f32>(-derivativeX, 1.0, -derivativeZ));
 }
 
-fn traceScene(rayOrigin: vec3<f32>, rayDirection: vec3<f32>) -> Hit {
-    var closest = missHit();
-
-    if (abs(rayDirection.y) > 0.00001) {
-        let floorDistance = -rayOrigin.y / rayDirection.y;
-        if (floorDistance > EPSILON && floorDistance < closest.distance) {
-            let position = rayOrigin + rayDirection * floorDistance;
-            closest = Hit(
-                floorDistance,
-                position,
-                waterNormal(position),
-                5u
-            );
-        }
+fn intersectWater(rayOrigin: vec3<f32>, rayDirection: vec3<f32>) -> Hit {
+    if (abs(rayDirection.y) <= 0.00001) {
+        return missHit();
     }
+    var distance = -rayOrigin.y / rayDirection.y;
+    for (var refinement = 0u; refinement < 3u; refinement += 1u) {
+        let position = rayOrigin + rayDirection * distance;
+        distance = (waterHeight(position.xz) - rayOrigin.y) / rayDirection.y;
+    }
+    if (distance <= EPSILON) {
+        return missHit();
+    }
+    let position = rayOrigin + rayDirection * distance;
+    return Hit(distance, position, waterNormal(position), 5u);
+}
+
+fn traceScene(rayOrigin: vec3<f32>, rayDirection: vec3<f32>) -> Hit {
+    var closest = intersectWater(rayOrigin, rayDirection);
 
     let crystalSphere = intersectSphere(
         rayOrigin,
@@ -438,7 +464,7 @@ fn environment(direction: vec3<f32>) -> vec3<f32> {
     let star = pow(starNoise, 520.0) * smoothstep(0.06, 0.38, direction.y);
     color += vec3<f32>(0.72, 0.86, 1.0) * star * 1.8;
 
-    let sunsetDirection = normalize(vec3<f32>(-0.42, -0.015, -0.907));
+    let sunsetDirection = normalize(vec3<f32>(-0.42, 0.03, -0.907));
     let sunCosine = max(dot(direction, sunsetDirection), 0.0);
     let sunDisc = pow(sunCosine, 1650.0);
     let sunHalo = pow(sunCosine, 38.0);
@@ -516,6 +542,111 @@ fn directLight(
     return lightColor * cosine / max(distanceSquared * 0.16, 1.0);
 }
 
+fn sphereCaustic(position: vec3<f32>) -> vec3<f32> {
+    let lightDirection = normalize(vec3<f32>(-0.48, 0.86, 0.18));
+    let sphereCenter = vec3<f32>(-1.27, 0.53, 0.24);
+    let projectedCenter = sphereCenter
+        - lightDirection * (sphereCenter.y / lightDirection.y);
+    var local = position.xz - projectedCenter.xz;
+    let rotation = frame.render.w * 0.035;
+    local = vec2<f32>(
+        cos(rotation) * local.x - sin(rotation) * local.y,
+        sin(rotation) * local.x + cos(rotation) * local.y
+    );
+    let radius = length(local * vec2<f32>(1.08, 0.84));
+    let red = exp(-pow((radius - 0.355) / 0.055, 2.0));
+    let green = exp(-pow((radius - 0.31) / 0.05, 2.0));
+    let blue = exp(-pow((radius - 0.268) / 0.045, 2.0));
+    let focus = exp(-radius * radius * 34.0);
+    return vec3<f32>(red * 1.55, green * 1.3, blue * 1.8)
+        + focus * vec3<f32>(2.0, 1.7, 2.35);
+}
+
+fn textCaustic(position: vec3<f32>) -> vec3<f32> {
+    let lightDirection = normalize(vec3<f32>(0.18, 0.92, -0.35));
+    let projectionDistance = (-0.62 - position.z) / lightDirection.z;
+    if (projectionDistance <= 0.0) {
+        return vec3<f32>(0.0);
+    }
+    let projected = position + lightDirection * projectionDistance;
+    if (projected.y < 1.02 || projected.y > 1.94) {
+        return vec3<f32>(0.0);
+    }
+    let spectralOffset = vec3<f32>(0.014, 0.0, 0.0);
+    let redDistance = textDistance(projected - spectralOffset);
+    let greenDistance = textDistance(projected);
+    let blueDistance = textDistance(projected + spectralOffset);
+    let spectralEdge = vec3<f32>(
+        exp(-abs(redDistance) * 105.0),
+        exp(-abs(greenDistance) * 105.0),
+        exp(-abs(blueDistance) * 105.0)
+    );
+    let interior = smoothstep(0.022, -0.018, greenDistance);
+    return spectralEdge * vec3<f32>(1.6, 1.3, 2.0)
+        + interior * vec3<f32>(0.1, 0.045, 0.16);
+}
+
+fn henyeyGreenstein(cosine: f32, anisotropy: f32) -> f32 {
+    let numerator = 1.0 - anisotropy * anisotropy;
+    let denominator = pow(
+        max(1.0 + anisotropy * anisotropy - 2.0 * anisotropy * cosine, 0.0001),
+        1.5
+    );
+    return numerator / (4.0 * PI * denominator);
+}
+
+fn volumeVisibility(position: vec3<f32>, lightDirection: vec3<f32>) -> f32 {
+    let blocker = traceScene(position + lightDirection * EPSILON * 3.0, lightDirection);
+    if (blocker.material == 0u) {
+        return 1.0;
+    }
+    if (blocker.material == 1u || blocker.material == 2u) {
+        return 0.38;
+    }
+    return 0.0;
+}
+
+fn integrateVolume(
+    rayOrigin: vec3<f32>,
+    rayDirection: vec3<f32>,
+    maximumDistance: f32
+) -> vec3<f32> {
+    let stepCount = 6u;
+    let integrationDistance = min(maximumDistance, 8.5);
+    if (integrationDistance <= 0.01) {
+        return vec3<f32>(0.0);
+    }
+    let stepLength = integrationDistance / f32(stepCount);
+    let lightDirection = normalize(vec3<f32>(-0.42, 0.03, -0.907));
+    let phase = henyeyGreenstein(dot(rayDirection, lightDirection), 0.58);
+    let jitter = 0.5;
+    var transmittance = 1.0;
+    var scattering = vec3<f32>(0.0);
+    for (var step = 0u; step < stepCount; step += 1u) {
+        let distance = (f32(step) + jitter) * stepLength;
+        let position = rayOrigin + rayDirection * distance;
+        let mist = 0.72 + 0.28 * sin(
+            position.x * 0.72
+                + position.z * 0.48
+                + frame.render.w * 0.08
+        );
+        let density = 0.018
+            * exp(-max(position.y, 0.0) * 0.42)
+            * mist;
+        let visibility = volumeVisibility(position, lightDirection);
+        let sunScatter = vec3<f32>(4.2, 0.62, 0.34)
+            * phase
+            * visibility;
+        let skyScatter = vec3<f32>(0.018, 0.04, 0.08);
+        scattering += transmittance
+            * density
+            * (sunScatter + skyScatter)
+            * stepLength;
+        transmittance *= exp(-density * stepLength * 1.35);
+    }
+    return scattering;
+}
+
 fn tracePath(
     initialOrigin: vec3<f32>,
     initialDirection: vec3<f32>,
@@ -526,7 +657,15 @@ fn tracePath(
     var throughput = vec3<f32>(1.0);
     var radiance = vec3<f32>(0.0);
     var guide = vec4<f32>(0.0);
+    var primaryMaterial = 0u;
     let spectralBand = min(u32(random(state) * 3.0), 2u);
+    let primaryHit = traceScene(initialOrigin, initialDirection);
+    let volumeDistance = select(primaryHit.distance, 8.5, primaryHit.material == 0u);
+    radiance += integrateVolume(
+        initialOrigin,
+        initialDirection,
+        volumeDistance
+    );
 
     for (var bounce = 0u; bounce < 5u; bounce += 1u) {
         let hit = traceScene(rayOrigin, rayDirection);
@@ -539,6 +678,7 @@ fn tracePath(
         let orientedNormal = select(-hit.normal, hit.normal, frontFace);
         if (bounce == 0u) {
             guide = vec4<f32>(orientedNormal, hit.distance);
+            primaryMaterial = hit.material;
         }
 
         if (hit.material == 6u) {
@@ -656,6 +796,7 @@ fn tracePath(
                 hit.position.x * 3.7
                     + hit.position.z * 4.9
                     + sin(hit.position.z * 1.4) * 1.7
+                    + frame.render.w * 0.16
             ),
             28.0
         );
@@ -665,14 +806,16 @@ fn tracePath(
             vec3<f32>(0.012, 0.085, 0.12),
             shallow
         );
-        let sunsetDirection = normalize(vec3<f32>(-0.42, -0.015, -0.907));
+        let sunsetDirection = normalize(vec3<f32>(-0.42, 0.03, -0.907));
         let reflectedSun = reflect(-sunsetDirection, orientedNormal);
         let sunGlint = pow(max(dot(reflectedSun, -rayDirection), 0.0), 180.0);
+        let caustic = sphereCaustic(hit.position) + textCaustic(hit.position);
         radiance += throughput
             * (
                 waterBody * (1.0 - waterFresnel) * 0.42
                 + crest * vec3<f32>(0.015, 0.08, 0.12) * (1.0 - waterFresnel) * 0.35
                 + vec3<f32>(7.0, 0.48, 0.12) * sunGlint
+                + caustic * (1.0 - waterFresnel) * 0.26
                 + directLight(hit.position, orientedNormal, state) * 0.018
             );
         let reflected = reflect(rayDirection, orientedNormal);
@@ -697,7 +840,47 @@ fn tracePath(
             throughput /= survival;
         }
     }
-    return TraceResult(radiance, guide);
+    return TraceResult(radiance, guide, primaryMaterial);
+}
+
+fn cameraWorldPosition(
+    camera: vec4<f32>,
+    lookAt: vec3<f32>
+) -> vec3<f32> {
+    return lookAt + vec3<f32>(
+        sin(camera.x) * cos(camera.y),
+        sin(camera.y),
+        cos(camera.x) * cos(camera.y)
+    ) * camera.z;
+}
+
+fn projectToPreviousFrame(worldPosition: vec3<f32>) -> vec3<f32> {
+    let previousLookAt = frame.previousLookAt.xyz;
+    let previousPosition = cameraWorldPosition(
+        frame.previousCamera,
+        previousLookAt
+    );
+    let forward = normalize(previousLookAt - previousPosition);
+    let right = normalize(cross(forward, vec3<f32>(0.0, 1.0, 0.0)));
+    let up = cross(right, forward);
+    let delta = worldPosition - previousPosition;
+    let forwardDistance = dot(delta, forward);
+    if (forwardDistance <= EPSILON) {
+        return vec3<f32>(0.0);
+    }
+    let focalScale = tan(0.36);
+    let aspect = frame.resolution.x / frame.resolution.y;
+    let screen = vec2<f32>(
+        dot(delta, right) / (forwardDistance * focalScale * aspect),
+        dot(delta, up) / (forwardDistance * focalScale)
+    );
+    let uv = vec2<f32>(
+        screen.x * 0.5 + 0.5,
+        0.5 - screen.y * 0.5
+    );
+    let valid = all(uv >= vec2<f32>(0.0))
+        && all(uv < vec2<f32>(1.0));
+    return vec3<f32>(uv, select(0.0, 1.0, valid));
 }
 
 @compute @workgroup_size(${String(WORKGROUP_SIZE)}, ${String(WORKGROUP_SIZE)})
@@ -716,15 +899,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     screen.y = -screen.y;
     screen.x *= frame.resolution.x / frame.resolution.y;
 
-    let yaw = frame.camera.x;
-    let pitch = frame.camera.y;
-    let distance = frame.camera.z;
     let lookAt = frame.lookAt.xyz;
-    let cameraPosition = lookAt + vec3<f32>(
-        sin(yaw) * cos(pitch),
-        sin(pitch),
-        cos(yaw) * cos(pitch)
-    ) * distance;
+    let cameraPosition = cameraWorldPosition(frame.camera, lookAt);
     let forward = normalize(lookAt - cameraPosition);
     let right = normalize(cross(forward, vec3<f32>(0.0, 1.0, 0.0)));
     let up = cross(right, forward);
@@ -746,25 +922,96 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     let traced = tracePath(rayOrigin, rayDirection, &state);
-    let sample = min(traced.radiance, vec3<f32>(10.0));
+    let sampleLuminance = dot(traced.radiance, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let sample = traced.radiance
+        * min(1.0, 5.0 / max(sampleLuminance, 0.0001));
     let pixelIndex = id.y * width + id.x;
-    let radianceIndex = pixelIndex * ${String(PIXEL_RECORD_VEC4S)}u;
-    let guideIndex = radianceIndex + 1u;
-    let previous = select(
-        accumulation[radianceIndex].rgb,
-        vec3<f32>(0.0),
-        sampleIndex == 0u
+    let destinationLayer = sampleIndex % ${String(HISTORY_LAYER_COUNT)}u;
+    let sourceLayer = 1u - destinationLayer;
+    let destinationRadianceIndex = pixelIndex * ${String(PIXEL_RECORD_VEC4S)}u
+        + destinationLayer * ${String(RECORDS_PER_HISTORY_LAYER)}u;
+    let destinationGuideIndex = destinationRadianceIndex + 1u;
+
+    let currentWater = traced.material == 5u;
+    let worldPosition = select(
+        cameraPosition + rayDirection * 48.0,
+        rayOrigin + rayDirection * traced.guide.w,
+        traced.guide.w > 0.0
     );
-    let previousGuide = select(
-        accumulation[guideIndex],
-        traced.guide,
-        sampleIndex == 0u
+    var historyWorldPosition = worldPosition;
+    if (currentWater) {
+        historyWorldPosition.y = waterHeightAt(
+            historyWorldPosition.xz,
+            frame.previousLookAt.w
+        );
+    }
+    let cameraMotion = length(
+        frame.camera.xyz - frame.previousCamera.xyz
+    ) + length(
+        frame.lookAt.xyz - frame.previousLookAt.xyz
     );
-    let sampleWeight = 1.0 / (f32(sampleIndex) + 1.0);
-    let average = mix(previous, sample, sampleWeight);
-    let guideAverage = mix(previousGuide, traced.guide, sampleWeight);
-    accumulation[radianceIndex] = vec4<f32>(average, f32(sampleIndex + 1u));
-    accumulation[guideIndex] = guideAverage;
+    var projected = projectToPreviousFrame(historyWorldPosition);
+    if (cameraMotion < 0.00001 && !currentWater) {
+        projected = vec3<f32>(
+            (vec2<f32>(id.xy) + vec2<f32>(0.5)) / frame.resolution.xy,
+            1.0
+        );
+    }
+    let previousPixel = vec2<u32>(
+        clamp(
+            projected.xy * frame.resolution.xy,
+            vec2<f32>(0.0),
+            frame.resolution.xy - vec2<f32>(1.0)
+        )
+    );
+    let sourcePixelIndex = previousPixel.y * width + previousPixel.x;
+    let sourceRadianceIndex = sourcePixelIndex * ${String(PIXEL_RECORD_VEC4S)}u
+        + sourceLayer * ${String(RECORDS_PER_HISTORY_LAYER)}u;
+    let sourceGuideIndex = sourceRadianceIndex + 1u;
+    let previous = accumulation[sourceRadianceIndex];
+    let previousGuide = accumulation[sourceGuideIndex];
+
+    let previousWater = previous.w < 0.0;
+    var surfaceMatch = currentWater == previousWater;
+    if (traced.guide.w <= 0.0 || previousGuide.w <= 0.0) {
+        surfaceMatch = surfaceMatch
+            && traced.guide.w <= 0.0
+            && previousGuide.w <= 0.0;
+    } else {
+        let relativeDepth = abs(previousGuide.w - traced.guide.w)
+            / max(traced.guide.w, 0.35);
+        let normalThreshold = select(0.86, 0.58, currentWater);
+        surfaceMatch = surfaceMatch
+            && relativeDepth < 0.075
+            && dot(
+                normalize(previousGuide.xyz),
+                normalize(traced.guide.xyz)
+            ) > normalThreshold;
+    }
+
+    let historyValid = sampleIndex > 0u
+        && projected.z > 0.5
+        && abs(previous.w) >= 1.0
+        && surfaceMatch;
+    let historyCount = select(0.0, abs(previous.w), historyValid);
+    let historyLimit = select(1024.0, 512.0, currentWater);
+    let nextHistoryCount = select(
+        1.0,
+        min(historyCount + 1.0, historyLimit),
+        historyValid
+    );
+    let sampleWeight = 1.0 / nextHistoryCount;
+    let average = mix(previous.rgb, sample, sampleWeight);
+    let signedCount = select(nextHistoryCount, -nextHistoryCount, currentWater);
+    accumulation[destinationRadianceIndex] = vec4<f32>(average, signedCount);
+    accumulation[destinationGuideIndex] = traced.guide;
+
+    if (sampleIndex == 0u) {
+        let otherRadianceIndex = pixelIndex * ${String(PIXEL_RECORD_VEC4S)}u
+            + sourceLayer * ${String(RECORDS_PER_HISTORY_LAYER)}u;
+        accumulation[otherRadianceIndex] = vec4<f32>(0.0);
+        accumulation[otherRadianceIndex + 1u] = traced.guide;
+    }
 }`,
             workgroupSize: [WORKGROUP_SIZE, WORKGROUP_SIZE],
             bindings: [
@@ -773,7 +1020,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                     group: 0,
                     binding: 0,
                     kind: 'uniform-buffer',
-                    minBindingSize: 64
+                    minBindingSize: 96
                 },
                 {
                     name: 'accumulation',
@@ -808,6 +1055,14 @@ void main() {
 precision highp float;
 precision highp int;
 in vec2 v_uv;
+layout(std140) uniform FrameBlock {
+    vec4 u_resolution;
+    vec4 u_camera;
+    vec4 u_target;
+    vec4 u_render;
+    vec4 u_previousCamera;
+    vec4 u_previousTarget;
+};
 layout(std430) readonly buffer AccumulationData {
     vec4 values[];
 } accumulation;
@@ -830,12 +1085,18 @@ int pixelRecord(ivec2 coordinate) {
     return (coordinate.y * ${String(TARGET_WIDTH)} + coordinate.x) * ${String(PIXEL_RECORD_VEC4S)};
 }
 
+int latestRecord(ivec2 coordinate) {
+    int base = pixelRecord(clampPixel(coordinate));
+    int currentLayer = int(mod(round(u_render.x), ${String(HISTORY_LAYER_COUNT)}.0));
+    return base + currentLayer * ${String(RECORDS_PER_HISTORY_LAYER)};
+}
+
 vec3 radianceAt(ivec2 coordinate) {
-    return accumulation.values[pixelRecord(clampPixel(coordinate))].rgb;
+    return accumulation.values[latestRecord(coordinate)].rgb;
 }
 
 vec4 guideAt(ivec2 coordinate) {
-    return accumulation.values[pixelRecord(clampPixel(coordinate)) + 1];
+    return accumulation.values[latestRecord(coordinate) + 1];
 }
 
 float luminance(vec3 value) {
@@ -868,7 +1129,7 @@ void addDenoiseTap(
         float normalWeight = pow(max(dot(centerNormal, sampleNormal), 0.0), 24.0);
         sameSurface = depthWeight * normalWeight;
     }
-    float noiseScale = 0.34 / sqrt(max(sampleCount, 1.0)) + 0.045;
+    float noiseScale = 0.42 / sqrt(max(sampleCount, 1.0)) + 0.085;
     float colorWeight = exp(
         -abs(luminance(sampleColor) - luminance(centerColor)) / noiseScale
     );
@@ -878,11 +1139,12 @@ void addDenoiseTap(
 }
 
 vec3 denoisedRadiance(ivec2 coordinate) {
-    vec4 centerRecord = accumulation.values[pixelRecord(coordinate)];
+    vec4 centerRecord = accumulation.values[latestRecord(coordinate)];
     vec3 centerColor = centerRecord.rgb;
     vec4 centerGuide = guideAt(coordinate);
-    float sampleCount = max(centerRecord.w, 1.0);
-    int radius = sampleCount < 40.0 ? 2 : 1;
+    float historyLimit = centerRecord.w < 0.0 ? 512.0 : 1024.0;
+    float sampleCount = clamp(abs(centerRecord.w), 1.0, historyLimit);
+    int radius = 1;
     vec3 sum = centerColor;
     float weightSum = 1.0;
     addDenoiseTap(sum, weightSum, coordinate, centerColor, centerGuide, ivec2(radius, 0), 0.78, sampleCount);
@@ -893,6 +1155,10 @@ vec3 denoisedRadiance(ivec2 coordinate) {
     addDenoiseTap(sum, weightSum, coordinate, centerColor, centerGuide, ivec2(-radius, radius), 0.48, sampleCount);
     addDenoiseTap(sum, weightSum, coordinate, centerColor, centerGuide, ivec2(radius, -radius), 0.48, sampleCount);
     addDenoiseTap(sum, weightSum, coordinate, centerColor, centerGuide, ivec2(-radius, -radius), 0.48, sampleCount);
+    addDenoiseTap(sum, weightSum, coordinate, centerColor, centerGuide, ivec2(2, 0), 0.32, sampleCount);
+    addDenoiseTap(sum, weightSum, coordinate, centerColor, centerGuide, ivec2(-2, 0), 0.32, sampleCount);
+    addDenoiseTap(sum, weightSum, coordinate, centerColor, centerGuide, ivec2(0, 2), 0.32, sampleCount);
+    addDenoiseTap(sum, weightSum, coordinate, centerColor, centerGuide, ivec2(0, -2), 0.32, sampleCount);
     return sum / max(weightSum, 0.0001);
 }
 
@@ -924,7 +1190,7 @@ void main() {
     bloom += bloomTap(coordinate + ivec2(-21, 0)) * 0.12;
     hdr += bloom * 0.07;
 
-    vec3 mapped = acesFilm(hdr * 1.24);
+    vec3 mapped = acesFilm(hdr * 1.1);
     mapped = pow(mapped, vec3(1.0 / 2.2));
     mapped = mix(mapped, mapped * mapped * (3.0 - 2.0 * mapped), 0.22);
     float mappedLuminance = luminance(mapped);
@@ -942,9 +1208,16 @@ void main() {
 }`,
         bindings: [
             {
-                name: 'accumulation',
+                name: 'FrameBlock',
                 group: 0,
                 binding: 0,
+                kind: 'uniform-buffer',
+                minBindingSize: 96
+            },
+            {
+                name: 'accumulation',
+                group: 0,
+                binding: 1,
                 kind: 'read-only-storage-buffer',
                 minBindingSize: ACCUMULATION_BYTE_LENGTH
             }
@@ -988,6 +1261,7 @@ class RayTracingComputeParameters implements Hilo3d.ComputeRenderPassParameters 
 }
 
 class RayTracingPresentParameters implements Hilo3d.GPUDrivenRenderPassParameters {
+    readonly uniformBuffers = [frameBlock];
     readonly #accumulationBinding = new ReusableBufferBinding();
     readonly #colorAttachment = new ReusableColorAttachment();
     readonly buffers = [this.#accumulationBinding];
@@ -1077,11 +1351,14 @@ class OrbitController implements Hilo3d.Tickable {
     readonly #camera = new Float32Array([0.06, 0.23, 5.35, 0]);
     readonly #target = new Float32Array([0, 0.9, -0.12, 1.14]);
     readonly #render = new Float32Array([0, 0.012, 5.45, 0]);
+    readonly #previousCamera = new Float32Array([0.06, 0.23, 5.35, 0]);
+    readonly #previousTarget = new Float32Array([0, 0.9, -0.12, 1.14]);
     readonly #sampleElement: HTMLElement;
     #yaw = 0.06;
     #pitch = 0.23;
     #distance = 5.35;
     #sampleIndex = 0;
+    #timeSeconds = 0;
     #dragging = false;
     #pointerId = -1;
     #lastX = 0;
@@ -1144,16 +1421,23 @@ class OrbitController implements Hilo3d.Tickable {
         this.#sampleIndex = 0;
     }
 
-    tick(_deltaTime: number): void {
+    tick(deltaTime: number): void {
+        this.#timeSeconds += Math.max(deltaTime, 0) * 0.001;
         this.#camera[0] = this.#yaw;
         this.#camera[1] = this.#pitch;
         this.#camera[2] = this.#distance;
         this.#camera[3] = this.#sampleIndex;
         this.#render[0] = this.#sampleIndex;
+        this.#render[3] = this.#timeSeconds;
+        this.#target[3] = this.#timeSeconds;
+        frameBlock.set('u_previousCamera', this.#previousCamera);
+        frameBlock.set('u_previousTarget', this.#previousTarget);
         frameBlock.set('u_camera', this.#camera);
         frameBlock.set('u_target', this.#target);
         frameBlock.set('u_render', this.#render);
-        this.#sampleIndex = Math.min(this.#sampleIndex + 1, 4095);
+        this.#previousCamera.set(this.#camera);
+        this.#previousTarget.set(this.#target);
+        this.#sampleIndex += 1;
         if (this.#sampleIndex < 12 || this.#sampleIndex % 8 === 0) {
             this.#sampleElement.textContent = `${String(this.#sampleIndex).padStart(3, '0')} spp`;
         }
