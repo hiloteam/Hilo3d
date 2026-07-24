@@ -8,6 +8,7 @@ import { BufferResourceCache } from '../../../src/render/renderer/BufferResource
 import { ComputeSamplerResourceCache } from '../../../src/render/renderer/ComputeSamplerResourceCache';
 import { GPUDrivenPipelineResourceCache } from '../../../src/render/renderer/GPUDrivenPipelineResourceCache';
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
+import { ScriptableBindGroupResourceCache } from '../../../src/render/renderer/ScriptableBindGroupResourceCache';
 import {
     ScriptableGPUDrivenDraw,
     type ScriptableGPUDrivenDrawServices,
@@ -198,6 +199,7 @@ function createFixture(compiler: StorageGraphicsShaderCompiler): {
         resourceUses: {
             use: vi.fn()
         } as unknown as ScriptableGPUDrivenDrawServices['resourceUses'],
+        bindGroups: new ScriptableBindGroupResourceCache(registry),
         frameBindGroups: {
             trackFrameBindGroup(bindGroup): void {
                 frameBindGroups.add(bindGroup);

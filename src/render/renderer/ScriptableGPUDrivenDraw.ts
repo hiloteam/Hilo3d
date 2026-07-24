@@ -28,6 +28,7 @@ import type {
     GPUDrivenPipelineResourceCache,
     GPUDrivenPipelineResourceRecord
 } from './GPUDrivenPipelineResourceCache';
+import type { ScriptableBindGroupResourceCache } from './ScriptableBindGroupResourceCache';
 import { PreparedDraw } from './PreparedDraw';
 import {
     mapRHIMeshDrawDynamicState,
@@ -61,6 +62,7 @@ export interface ScriptableGPUDrivenDrawServices {
     readonly uniformBuffers: BufferResourceCache;
     readonly resourceUses: FrameResourceUseTracker;
     readonly frameBindGroups: ScriptableGPUDrivenFrameBindGroups;
+    readonly bindGroups: ScriptableBindGroupResourceCache;
 }
 
 interface MutableFrameBindGroupEntry {
@@ -88,6 +90,7 @@ interface BindGroupScratch {
     dynamicOffsetCursor: number;
     dynamicOffsets: Uint32Array | null;
     bindGroup: RHIBindGroup | null;
+    frameOwned: boolean;
 }
 
 interface MutableBindingPlan {
@@ -459,11 +462,13 @@ export class ScriptableGPUDrivenDraw {
         for (const group of this.#groups) {
             if (group === undefined) continue;
             const bindGroup = group.bindGroup;
+            const frameOwned = group.frameOwned;
             group.bindGroup = null;
+            group.frameOwned = false;
             group.entries.length = 0;
             group.bufferBindingCursor = 0;
             group.dynamicOffsetCursor = 0;
-            if (bindGroup === null) continue;
+            if (bindGroup === null || !frameOwned) continue;
             try {
                 frameBindGroups.releaseFrameBindGroup(bindGroup);
             } catch (error) {
@@ -536,12 +541,26 @@ export class ScriptableGPUDrivenDraw {
                 );
             }
             group.entries.sort(compareBindingEntries);
-            const bindGroup = services.pipelines.registry.createFrameBindGroup(
+            const stableHandle = services.bindGroups.prepare(
+                this,
+                groupIndex,
                 group.descriptor as RHIBindGroupDescriptor
             );
+            const bindGroup =
+                stableHandle === null
+                    ? services.pipelines.registry.createFrameBindGroup(
+                          group.descriptor as RHIBindGroupDescriptor
+                      )
+                    : services.pipelines.registry.resolve(stableHandle);
             group.bindGroup = bindGroup;
-            services.frameBindGroups.trackFrameBindGroup(bindGroup);
+            group.frameOwned = stableHandle === null;
+            if (stableHandle === null) {
+                services.frameBindGroups.trackFrameBindGroup(bindGroup);
+            } else {
+                services.resourceUses.use(stableHandle);
+            }
         }
+        services.bindGroups.prune(this, this.#activeGroups);
     }
 
     private prepareBinding(
@@ -785,7 +804,8 @@ export class ScriptableGPUDrivenDraw {
                 bufferBindingCursor: 0,
                 dynamicOffsetCursor: 0,
                 dynamicOffsets: null,
-                bindGroup: null
+                bindGroup: null,
+                frameOwned: false
             };
             this.#groups[index] = group;
         }

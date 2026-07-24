@@ -92,6 +92,7 @@ import { ShadowAtlasTextureBinding } from '../renderer/ShadowAtlasTextureBinding
 import { ComputePipelineResourceCache } from '../renderer/ComputePipelineResourceCache';
 import { ComputeSamplerResourceCache } from '../renderer/ComputeSamplerResourceCache';
 import { GPUDrivenPipelineResourceCache } from '../renderer/GPUDrivenPipelineResourceCache';
+import { ScriptableBindGroupResourceCache } from '../renderer/ScriptableBindGroupResourceCache';
 import { StorageBufferReadbackService } from '../renderer/StorageBufferReadback';
 import { StorageBufferResourceCache } from '../renderer/StorageBufferResourceCache';
 import { prepareWebGPUMipmapShaderArtifacts } from '../renderer/WebGPUMipmapShader';
@@ -119,6 +120,7 @@ interface RenderingResources {
     readonly computePipelines: ComputePipelineResourceCache;
     readonly computeSamplers: ComputeSamplerResourceCache;
     readonly gpuDrivenPipelines: GPUDrivenPipelineResourceCache;
+    readonly scriptableBindGroups: ScriptableBindGroupResourceCache;
     readonly shadowScene: ShadowAtlasSceneAdapter;
     readonly shadowResources: ShadowAtlasResourceCache;
     readonly shadowRenderer: ShadowAtlasRenderer;
@@ -739,6 +741,10 @@ class SharedRendererDriver
         return this.requireResources().gpuDrivenPipelines;
     }
 
+    getScriptableBindGroupResources(): ScriptableBindGroupResourceCache {
+        return this.requireResources().scriptableBindGroups;
+    }
+
     resolveScriptableRenderTarget(target: RenderTarget): RHIRenderTarget {
         return this.requireOwnedTarget(target);
     }
@@ -1312,6 +1318,7 @@ class SharedRendererDriver
             processor.registry,
             this.#storageGraphicsCompiler
         );
+        const scriptableBindGroups = new ScriptableBindGroupResourceCache(processor.registry);
         const shadowScene = new ShadowAtlasSceneAdapter();
         const shadowResources = new ShadowAtlasResourceCache(processor.registry);
         const shadowRenderer = new ShadowAtlasRenderer(
@@ -1378,6 +1385,7 @@ class SharedRendererDriver
             computePipelines,
             computeSamplers,
             gpuDrivenPipelines,
+            scriptableBindGroups,
             shadowScene,
             shadowResources,
             shadowRenderer,
@@ -1402,7 +1410,8 @@ class SharedRendererDriver
         ]);
         const bindGroupMetrics = new RHICacheCounterAggregate([
             resources.processor.bindGroups.metrics,
-            resources.postProcess.fullscreen.bindGroups.metrics
+            resources.postProcess.fullscreen.bindGroups.metrics,
+            resources.scriptableBindGroups.metrics
         ]);
         if (this.#pipelineCacheMetrics === null) {
             this.#pipelineCacheMetrics = new RHICacheCounterContinuation(pipelineMetrics);
@@ -1464,6 +1473,9 @@ class SharedRendererDriver
         });
         attempt(() => {
             resources.gpuDrivenPipelines.destroy();
+        });
+        attempt(() => {
+            resources.scriptableBindGroups.destroy();
         });
         attempt(() => {
             resources.storageBuffers.destroy();

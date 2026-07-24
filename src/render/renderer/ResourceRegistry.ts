@@ -90,6 +90,10 @@ export interface ResourceRegistryDiagnostics {
 export class ResourceRegistry {
     readonly id = allocateRegistryId();
     readonly #entries = new Map<number, ResourceRegistryEntry<RHIDeviceOwnedDestroyable>>();
+    #handlesByResource = new WeakMap<
+        RHIDeviceOwnedDestroyable,
+        ResourceRegistryHandle<RHIDeviceOwnedDestroyable>
+    >();
     #device: RHIDevice;
     #deviceGeneration: number;
     #state: ResourceRegistryState = 'active';
@@ -158,6 +162,7 @@ export class ResourceRegistry {
             everMarkedUsed: false
         };
         this.#entries.set(id, entry);
+        this.#handlesByResource.set(resource, handle);
         for (const dependency of dependencies) this.requireEntry(dependency).referenceCount++;
         return handle;
     }
@@ -213,6 +218,21 @@ export class ResourceRegistry {
         return this.requireEntry(handle).resource;
     }
 
+    /**
+     * Resolve the recovery-stable logical identity behind a current native-facing resource.
+     * Frame/transient graph allocations deliberately return `null` because they have no recipe.
+     *
+     * @internal
+     */
+    findHandle<T extends RHIDeviceOwnedDestroyable>(resource: T): ResourceRegistryHandle<T> | null {
+        this.assertActive();
+        const handle = this.#handlesByResource.get(resource);
+        if (handle === undefined) return null;
+        const entry = this.#entries.get(handle.id);
+        if (entry?.handle !== handle || entry.resource !== resource) return null;
+        return handle as ResourceRegistryHandle<T>;
+    }
+
     retain(handle: ResourceRegistryHandle<RHIDeviceOwnedDestroyable>): void {
         this.assertActive();
         const entry = this.requireEntry(handle);
@@ -258,6 +278,7 @@ export class ResourceRegistry {
             throw new Error('Only an exclusively owned, unsubmitted resource can be discarded');
         }
         this.#entries.delete(entry.handle.id);
+        this.#handlesByResource.delete(entry.resource);
         try {
             entry.resource.destroy();
         } finally {
@@ -344,12 +365,18 @@ export class ResourceRegistry {
             throw error;
         }
         const oldResources: RHIDeviceOwnedDestroyable[] = [];
+        const replacementHandles = new WeakMap<
+            RHIDeviceOwnedDestroyable,
+            ResourceRegistryHandle<RHIDeviceOwnedDestroyable>
+        >();
         for (const entry of this.#entries.values()) {
             const replacement = replacements.get(entry.handle.id);
             if (!replacement) throw new Error('Resource recovery result is incomplete');
             oldResources.push(entry.resource);
             entry.resource = replacement;
+            replacementHandles.set(replacement, entry.handle);
         }
+        this.#handlesByResource = replacementHandles;
         this.#device = device;
         this.#deviceGeneration = device.generation;
         this.#registryGeneration++;
@@ -389,6 +416,7 @@ export class ResourceRegistry {
             }
         }
         this.#entries.clear();
+        this.#handlesByResource = new WeakMap();
         if (firstFailure !== null) throw firstFailure;
     }
 
@@ -397,6 +425,7 @@ export class ResourceRegistry {
         completedFrame: number
     ): number {
         if (!this.#entries.delete(entry.handle.id)) return 0;
+        this.#handlesByResource.delete(entry.resource);
         let firstFailure: Error | null = null;
         try {
             entry.resource.destroy();
