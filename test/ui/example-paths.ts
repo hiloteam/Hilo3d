@@ -16,7 +16,8 @@ export const EXAMPLE_BACKENDS = ['webgl2', 'webgpu'] as const;
 export const WEBGL2_ONLY_EXAMPLE_PATHS = ['webxr.html'] as const;
 export const WEBGPU_ONLY_EXAMPLE_PATHS = [
     'compute_gpu_driven.html',
-    'compute_particles.html'
+    'compute_particles.html',
+    'compute_raytracing.html'
 ] as const;
 export const NON_RENDERING_EXAMPLE_PATHS = ['math.html'] as const;
 export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = ['shaderToy.html'] as const;

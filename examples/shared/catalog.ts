@@ -95,7 +95,8 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'update_sub_texture.html': 'Update Sub-texture',
     'webgl_support.html': 'Graphics Backend Support',
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
-    'compute_particles.html': 'Hilo3D Compute Particle Field'
+    'compute_particles.html': 'Hilo3D Compute Particle Field',
+    'compute_raytracing.html': 'Hilo3D Crystal Compute Path Tracer'
 });
 
 const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
@@ -104,6 +105,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'See Forward+, Gaussian splats, and a curl-noise Hilo3D GPU particle wordmark stay on the public Render Graph.',
     'compute_particles.html':
         'Drive 65,536 GPU bodies through aurora, stars, cyber dunes, meteor-wake force fields, boundary collisions, and indirect glow rendering.',
+    'compute_raytracing.html':
+        'Progressively path trace a refractive Hilo3D crystal wordmark, glass sphere, champagne-metal cube, soft shadows, and cinematic HDR bloom.',
     'pbr.html': 'Render a glTF asset with physically based materials and environment lighting.',
     'quickStart.html': 'Create a stage, camera, lights, and an animated PBR mesh.',
     'scriptable_pipeline.html':
@@ -207,7 +210,9 @@ function createEntry(path: string): ExampleCatalogEntry {
     const supportedBackends =
         path === 'webxr.html'
             ? WEBGL2_ONLY
-            : path === 'compute_gpu_driven.html' || path === 'compute_particles.html'
+            : path === 'compute_gpu_driven.html' ||
+                path === 'compute_particles.html' ||
+                path === 'compute_raytracing.html'
               ? WEBGPU_ONLY
               : BOTH_BACKENDS;
     const defaultQuery =
