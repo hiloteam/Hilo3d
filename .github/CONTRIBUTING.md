@@ -14,7 +14,10 @@ npx playwright install chromium
 npm run validate
 ```
 
-Use `npm run dev` for engine development and `npm run examples:dev` for the example gallery.
+Use `npm run dev` for engine development and `npm run examples:dev` for the example gallery. Use
+`npm run examples:serve` to serve the gallery on port 4173 for both localhost and the local network;
+it opens `/examples/index.html` with WebGPU selected by default. Pass `?backend=webgl2` explicitly
+when testing the WebGL 2 lane.
 
 ## Required quality checks
 

@@ -230,7 +230,7 @@ function createEntry(path: string): ExampleCatalogEntry {
 export function createExampleCatalog(paths: readonly string[]): readonly ExampleCatalogEntry[] {
     return Object.freeze(
         paths
-            .filter(path => path !== 'list.html')
+            .filter(path => path !== 'index.html' && path !== 'list.html')
             .map(createEntry)
             .sort((left, right) => {
                 const categoryDifference =

@@ -327,6 +327,16 @@ async function assertObservableRender(
         .toBeGreaterThan(0);
 }
 
+test('canonical examples index opens the WebGPU gallery by default', async ({ page }) => {
+    await page.goto('/examples/index.html', { waitUntil: 'networkidle' });
+    await expect(page).toHaveURL(/\/examples\/list\.html#\w+$/u);
+    await expect(page.locator('#backendSelect')).toHaveValue('webgpu');
+    await expect(page.locator('#exampleFrame')).toHaveAttribute(
+        'src',
+        /[?&]backend=webgpu(?:&|$)/u
+    );
+});
+
 for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`example gallery discovers every ${backend} page @${backend}`, async ({ page }) => {
         await page.goto(`/examples/list.html?backend=${backend}`, { waitUntil: 'networkidle' });

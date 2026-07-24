@@ -385,7 +385,10 @@ revision 判断是否复用。执行时只顺序读取已准备好的 Pipeline�
 共享层还维护 Buffer、Texture、Shader、Pipeline、BindGroup、Uniform Binding、RenderTarget 和 Shadow
 Atlas 等缓存；compute/storage 路径另有 `StorageBufferResourceCache`、compute pipeline/sampler
 cache、storage graphics/GPU-driven pipeline cache 和复用的 dispatch/draw
-state。后端再维护与原生 API 相关的 Vertex Input、Framebuffer 和状态缓存。诊断计数器统一记录 Cache
+state。后端再维护与原生 API 相关的 Vertex
+Input、Framebuffer 和状态缓存；WebGPU 持久/瞬态 Texture 的默认全资源 native Texture
+View 也按 Texture 复用，同时仍为每次 RHI `createView()` 返回独立逻辑对象。`frame` 生命周期的 Surface
+Texture View 不跨帧复用，因为 `present()` 后对应 Canvas Texture 已失效。诊断计数器统一记录 Cache
 Hit/Miss、Pipeline/BindGroup/Vertex Buffer Switch、Native State Call 和 Transient
 Allocation，并分别公开 indirect draw、dispatch、精确 direct workgroup、buffer clear、compute
 pipeline/bind-group switch；indirect dispatch 不从 CPU 猜测 workgroup 数。
