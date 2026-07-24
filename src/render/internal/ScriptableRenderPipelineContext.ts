@@ -101,6 +101,7 @@ import type {
 import type { ComputePipelineResourceCache } from '../renderer/ComputePipelineResourceCache';
 import type { ComputeSamplerResourceCache } from '../renderer/ComputeSamplerResourceCache';
 import type { GPUDrivenPipelineResourceCache } from '../renderer/GPUDrivenPipelineResourceCache';
+import type { ScriptableBindGroupResourceCache } from '../renderer/ScriptableBindGroupResourceCache';
 import { PreparedDraw } from '../renderer/PreparedDraw';
 import type { PipelineResourceRecord } from '../renderer/PipelineResourceCache';
 import type { RenderTargetGraphBridge } from '../renderer/RenderTargetGraphBridge';
@@ -319,6 +320,7 @@ export interface ScriptableRenderPipelineServices {
     getScriptableComputePipelineResources(): ComputePipelineResourceCache;
     getScriptableComputeSamplerResources(): ComputeSamplerResourceCache;
     getScriptableGPUDrivenPipelineResources(): GPUDrivenPipelineResourceCache;
+    getScriptableBindGroupResources(): ScriptableBindGroupResourceCache;
     getScriptableTargetBridge(): RenderTargetGraphBridge;
     resolveScriptableRenderTarget(target: RenderTarget): RHIRenderTarget;
     resolveScriptableStorageBuffer(buffer: StorageBuffer): RendererStorageBuffer;
@@ -1366,6 +1368,10 @@ class ScriptableComputeDispatchServiceSlot implements ScriptableComputeDispatchS
         return this.requireOwner().resources;
     }
 
+    get bindGroups(): ScriptableBindGroupResourceCache {
+        return this.requireOwner().services.getScriptableBindGroupResources();
+    }
+
     private requireOwner(): ScriptableRenderPipelineContextImpl {
         const owner = this.#owner;
         if (owner === null) throw new Error('Compute dispatch services are not configured');
@@ -1402,6 +1408,10 @@ class ScriptableGPUDrivenDrawServiceSlot implements ScriptableGPUDrivenDrawServi
 
     get frameBindGroups(): ScriptableRenderPipelineResources {
         return this.requireOwner().resources;
+    }
+
+    get bindGroups(): ScriptableBindGroupResourceCache {
+        return this.requireOwner().services.getScriptableBindGroupResources();
     }
 
     private requireOwner(): ScriptableRenderPipelineContextImpl {

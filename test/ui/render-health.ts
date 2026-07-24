@@ -14,6 +14,8 @@ export interface RenderHealthSnapshot {
     readonly webgpuDispatchCalls?: number;
     /** Optional native indirect raster draw count. */
     readonly webgpuIndirectDrawCalls?: number;
+    /** Optional native bind-group creation count for steady-state cache assertions. */
+    readonly webgpuBindGroupsCreated?: number;
     readonly webgpuQueueSubmissions: number;
     readonly instrumentationErrors: readonly string[];
 }
@@ -66,6 +68,7 @@ export async function installRenderHealthProbe(page: Page): Promise<void> {
             webgpuComputePasses: number;
             webgpuDispatchCalls: number;
             webgpuIndirectDrawCalls: number;
+            webgpuBindGroupsCreated: number;
             webgpuQueueSubmissions: number;
             instrumentationErrors: string[];
         } = {
@@ -78,6 +81,7 @@ export async function installRenderHealthProbe(page: Page): Promise<void> {
             webgpuComputePasses: 0,
             webgpuDispatchCalls: 0,
             webgpuIndirectDrawCalls: 0,
+            webgpuBindGroupsCreated: 0,
             webgpuQueueSubmissions: 0,
             instrumentationErrors: []
         };
@@ -446,6 +450,20 @@ export async function installRenderHealthProbe(page: Page): Promise<void> {
             if (instrumentedDevices.has(device)) return;
             instrumentedDevices.add(device);
             instrumentQueue(device.queue);
+            try {
+                const nativeCreateBindGroup = device.createBindGroup.bind(device);
+                Object.defineProperty(device, 'createBindGroup', {
+                    configurable: true,
+                    writable: true,
+                    value(descriptor: GPUBindGroupDescriptor): GPUBindGroup {
+                        const bindGroup = nativeCreateBindGroup(descriptor);
+                        health.webgpuBindGroupsCreated++;
+                        return bindGroup;
+                    }
+                });
+            } catch (error: unknown) {
+                recordInstrumentationError('webgpu.GPUDevice.createBindGroup', error);
+            }
             device.addEventListener('uncapturederror', event => {
                 recordInstrumentationError('webgpu.device.uncapturederror', event.error);
             });

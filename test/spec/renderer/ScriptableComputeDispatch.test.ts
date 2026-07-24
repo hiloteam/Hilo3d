@@ -23,6 +23,7 @@ import { ComputePipelineResourceCache } from '../../../src/render/renderer/Compu
 import { ComputeSamplerResourceCache } from '../../../src/render/renderer/ComputeSamplerResourceCache';
 import { FrameResourceUseTracker } from '../../../src/render/renderer/FrameResourceUseTracker';
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
+import { ScriptableBindGroupResourceCache } from '../../../src/render/renderer/ScriptableBindGroupResourceCache';
 import {
     ScriptableComputeDispatch,
     type ScriptableComputeFrameBindGroups,
@@ -196,6 +197,7 @@ function createServices(shader: ComputeShader) {
             samplers: new ComputeSamplerResourceCache(registry),
             uniformBuffers,
             resourceUses,
+            bindGroups: new ScriptableBindGroupResourceCache(registry),
             frameBindGroups: new TestFrameBindGroups()
         }
     };

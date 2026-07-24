@@ -149,6 +149,14 @@ descriptor 会在构造/prepare 阶段拒绝。`GPUDrivenRenderPass` 把这种 s
 draw、draw indirect 和 indexed draw indirect。compute、copy 与 raster 都通过同一 graph
 access 建边，不读取 GPU 产生的 count、排序结果或 indirect arguments。
 
+Scriptable compute 与 GPU-driven raster 的 bind
+group 采用两级生命周期：layout 和全部绑定资源都能反查到 `ResourceRegistry`
+逻辑 handle 时，`ScriptableBindGroupResourceCache` 按 owner、group
+slot、layout、资源 identity 与 buffer range 精确复用可恢复的 persistent bind
+group；任何 frame/transient graph 资源都会使该 group 确定性回退到 submission-fenced frame bind
+group。缓存不会把瞬态 texture/view 留到下一帧，也不会因为 descriptor 对象每帧重建而丢失稳定命中；device
+generation 切换后，persistent recipe 使用同一逻辑 handle 重建原生 bind group。
+
 普通 renderer list 也可以通过 `SceneRenderPass.storageShaderVariant` 使用 pass-global readonly
 storage。固定 group 3 由整个 pass 共用，group 0–2 继续服务现有 pass/material/mesh
 ABI；场景遍历、裁剪、排序、Material/Geometry/UBO 准备和 Mesh 事件仍走 shared renderer。storage-aware
@@ -165,7 +173,7 @@ implementation：在任何 native GL compute/storage 模拟之前失败，不使
 feedback、fragment compute 或 CPU fallback。完整公共合同、目标场景组合方式与首发边界见
 [`COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md`](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)。
 
-相关代码：[`compute/`](../src/render/compute)、[`StorageBuffer.ts`](../src/render/StorageBuffer.ts)、[`storage/`](../src/render/storage)、[`ComputeRenderPass.ts`](../src/render/pipeline/passes/ComputeRenderPass.ts)、[`GPUDrivenRenderPass.ts`](../src/render/pipeline/passes/GPUDrivenRenderPass.ts)、[`ScriptableComputeDispatch.ts`](../src/render/renderer/ScriptableComputeDispatch.ts)、[`ScriptableGPUDrivenDraw.ts`](../src/render/renderer/ScriptableGPUDrivenDraw.ts)、[`compute_gpu_driven.ts`](../examples/compute_gpu_driven.ts)、[`compute_particles.ts`](../examples/compute_particles.ts)。
+相关代码：[`compute/`](../src/render/compute)、[`StorageBuffer.ts`](../src/render/StorageBuffer.ts)、[`storage/`](../src/render/storage)、[`ComputeRenderPass.ts`](../src/render/pipeline/passes/ComputeRenderPass.ts)、[`GPUDrivenRenderPass.ts`](../src/render/pipeline/passes/GPUDrivenRenderPass.ts)、[`ScriptableComputeDispatch.ts`](../src/render/renderer/ScriptableComputeDispatch.ts)、[`ScriptableGPUDrivenDraw.ts`](../src/render/renderer/ScriptableGPUDrivenDraw.ts)、[`compute_gpu_driven.ts`](../examples/compute_gpu_driven.ts)、[`compute_particles.ts`](../examples/compute_particles.ts)、[`compute_raytracing.ts`](../examples/compute_raytracing.ts)。
 
 ### 1.5 RenderGraphFrame：一帧的事务边界
 
@@ -384,8 +392,8 @@ revision 判断是否复用。执行时只顺序读取已准备好的 Pipeline�
 
 共享层还维护 Buffer、Texture、Shader、Pipeline、BindGroup、Uniform Binding、RenderTarget 和 Shadow
 Atlas 等缓存；compute/storage 路径另有 `StorageBufferResourceCache`、compute pipeline/sampler
-cache、storage graphics/GPU-driven pipeline cache 和复用的 dispatch/draw
-state。后端再维护与原生 API 相关的 Vertex
+cache、storage graphics/GPU-driven pipeline cache、只接纳 registry-stable 依赖的 scriptable
+bind-group cache 和复用的 dispatch/draw state。后端再维护与原生 API 相关的 Vertex
 Input、Framebuffer 和状态缓存；WebGPU 持久/瞬态 Texture 的默认全资源 native Texture
 View 也按 Texture 复用，同时仍为每次 RHI `createView()` 返回独立逻辑对象。`frame` 生命周期的 Surface
 Texture View 不跨帧复用，因为 `present()` 后对应 Canvas Texture 已失效。诊断计数器统一记录 Cache

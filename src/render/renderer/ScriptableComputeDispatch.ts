@@ -31,6 +31,7 @@ import type {
 import type { ComputeSamplerResourceCache } from './ComputeSamplerResourceCache';
 import type { FrameResourceUseTracker } from './FrameResourceUseTracker';
 import type { ResourceRegistryHandle } from './ResourceRegistry';
+import type { ScriptableBindGroupResourceCache } from './ScriptableBindGroupResourceCache';
 
 const MAX_U32 = 0xffff_ffff;
 const EMPTY_COMPUTE_RESOURCES: readonly never[] = Object.freeze([]);
@@ -58,6 +59,7 @@ export interface ScriptableComputeDispatchServices {
     readonly uniformBuffers: BufferResourceCache;
     readonly resourceUses: FrameResourceUseTracker;
     readonly frameBindGroups: ScriptableComputeFrameBindGroups;
+    readonly bindGroups: ScriptableBindGroupResourceCache;
 }
 
 interface MutableFrameBindGroupEntry {
@@ -85,6 +87,7 @@ interface ComputeBindGroupScratch {
     dynamicOffsetCursor: number;
     dynamicOffsets: Uint32Array | null;
     bindGroup: RHIBindGroup | null;
+    frameOwned: boolean;
 }
 
 interface MutableComputeBindingPlan {
@@ -448,12 +451,26 @@ export class ScriptableComputeDispatch {
                         `Compute bind group ${String(groupIndex)} dynamic offsets are incomplete`
                     );
                 }
-                const bindGroup = services.pipelines.registry.createFrameBindGroup(
+                const stableHandle = services.bindGroups.prepare(
+                    this,
+                    groupIndex,
                     group.descriptor as RHIBindGroupDescriptor
                 );
+                const bindGroup =
+                    stableHandle === null
+                        ? services.pipelines.registry.createFrameBindGroup(
+                              group.descriptor as RHIBindGroupDescriptor
+                          )
+                        : services.pipelines.registry.resolve(stableHandle);
                 group.bindGroup = bindGroup;
-                services.frameBindGroups.trackFrameBindGroup(bindGroup);
+                group.frameOwned = stableHandle === null;
+                if (stableHandle === null) {
+                    services.frameBindGroups.trackFrameBindGroup(bindGroup);
+                } else {
+                    services.resourceUses.use(stableHandle);
+                }
             }
+            services.bindGroups.prune(this, this.#activeGroups);
             this.#prepared = true;
         } catch (error) {
             try {
@@ -720,7 +737,8 @@ export class ScriptableComputeDispatch {
                 bufferBindingCursor: 0,
                 dynamicOffsetCursor: 0,
                 dynamicOffsets: null,
-                bindGroup: null
+                bindGroup: null,
+                frameOwned: false
             };
             this.#groups[index] = group;
         }
@@ -767,11 +785,13 @@ export class ScriptableComputeDispatch {
         for (const group of this.#groups) {
             if (group === undefined) continue;
             const bindGroup = group.bindGroup;
+            const frameOwned = group.frameOwned;
             group.bindGroup = null;
+            group.frameOwned = false;
             group.entries.length = 0;
             group.bufferBindingCursor = 0;
             group.dynamicOffsetCursor = 0;
-            if (bindGroup === null) continue;
+            if (bindGroup === null || !frameOwned) continue;
             try {
                 owner.releaseFrameBindGroup(bindGroup);
             } catch (error) {
