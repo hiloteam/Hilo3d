@@ -5,7 +5,7 @@
 >
 > 制定日期：2026-07-17
 >
-> 最近核对：2026-07-18
+> 最近核对：2026-07-25
 >
 > 目标版本：当前 `Unreleased` 版本；具体 semver 由发布评审决定
 >
@@ -16,19 +16,19 @@
 本文保留设计决策和实施轨迹，但本节描述的是当前公开合同。验证证据只记录实际运行过的门禁；未运行的物理 GPU、完整 release
 matrix 或不可覆盖性能 baseline 不会被写成通过。
 
-| 切片                               | 当前状态 | 已落地事实                                                                                                                                                  |
-| ---------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Storage 数据与 renderer-owned 资源 | 已完成   | WGSL host-shareable `StorageLayout`、`StorageBuffer`、aligned range/partial write、readback、destroy、恢复策略                                              |
-| 公共 Render Graph buffer           | 已完成   | transient/import、storage/vertex/index/copy/indirect access、read-write、copy、clear、storage texture write                                                 |
-| Shader source contracts            | 已完成   | Direct WGSL compute 必经 Naga；readonly storage graphics 使用受控 GLSL ES 3.10 → Vulkan GLSL 4.50 → Naga                                                    |
-| Portable RHI / WebGPU              | 已完成   | compute stage/pipeline/pass、direct/indirect dispatch、clear、indirect draw、limits、validation、diagnostics                                                |
-| WebGL 2 policy                     | 已完成   | compute/storage/indirect 在 native GL 模拟前 fail-closed；没有 texture/TF/fragment/CPU fallback                                                             |
-| 创建前 requirements                | 已完成   | compute/storage/indirect capability、storage format 与 limits 把候选限定为 WebGPU；冲突在创建阶段失败                                                       |
-| SRP compute runtime                | 已完成   | `ComputeKernel`/`ComputeRenderPass`、显式 binding、cache/registry、direct/indirect dispatch 已接入 shared frame                                             |
-| GPU-driven raster                  | 已完成   | `GPUDrivenRenderPass`、readonly storage/sampled/uniform/sampler、vertex/index input、direct/indirect draw 已接入 shared frame                               |
-| Scene storage integration          | 已完成   | `SceneRenderPass` group 3 pass-global readonly storage；复用 culling/sorting/material/geometry/UBO，instancing 确定性 direct fallback                       |
-| Forward+/高斯/粒子 example/验收    | 已完成   | 组合页覆盖 depth/Scene storage、高斯与 1024 粒子；独立页覆盖 65,536 GPU body 的 noise/力场/碰撞与三层 GPU indirect raster；Forward+/高斯为 acceptance-scale |
-| 公共 API 与 requirements           | 已完成   | 根导出、TSDoc、类型消费、创建前 WebGPU 选择、capability/limit/format 检查和 WebGL 2 fail-closed 同版本交付                                                  |
+| 切片                                 | 当前状态 | 已落地事实                                                                                                                                     |
+| ------------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage 数据与 renderer-owned 资源   | 已完成   | WGSL host-shareable `StorageLayout`、`StorageBuffer`、aligned range/partial write、readback、destroy、恢复策略                                 |
+| 公共 Render Graph buffer             | 已完成   | transient/import、storage/vertex/index/copy/indirect access、read-write、copy、clear、storage texture write                                    |
+| Shader source contracts              | 已完成   | Direct WGSL compute 必经 Naga；readonly storage graphics 使用受控 GLSL ES 3.10 → Vulkan GLSL 4.50 → Naga                                       |
+| Portable RHI / WebGPU                | 已完成   | compute stage/pipeline/pass、direct/indirect dispatch、clear、indirect draw、limits、validation、diagnostics                                   |
+| WebGL 2 policy                       | 已完成   | compute/storage/indirect 在 native GL 模拟前 fail-closed；没有 texture/TF/fragment/CPU fallback                                                |
+| 创建前 requirements                  | 已完成   | compute/storage/indirect capability、storage format 与 limits 把候选限定为 WebGPU；冲突在创建阶段失败                                          |
+| SRP compute runtime                  | 已完成   | `ComputeKernel`/`ComputeRenderPass`、显式 binding、registry-stable bind-group cache、direct/indirect dispatch 已接入 shared frame              |
+| GPU-driven raster                    | 已完成   | `GPUDrivenRenderPass`、readonly storage/sampled/uniform/sampler、稳定 bind-group、vertex/index input、direct/indirect draw 已接入 shared frame |
+| Scene storage integration            | 已完成   | `SceneRenderPass` group 3 pass-global readonly storage；复用 culling/sorting/material/geometry/UBO，instancing 确定性 direct fallback          |
+| Forward+/高斯/粒子/光追 example/验收 | 已完成   | 组合页覆盖 depth/Scene storage、高斯与 1024 粒子；独立页覆盖 65,536 GPU body，以及水面、引导降噪、稳定 bind-group 的渐进式 HDR path tracing    |
+| 公共 API 与 requirements             | 已完成   | 根导出、TSDoc、类型消费、创建前 WebGPU 选择、capability/limit/format 检查和 WebGL 2 fail-closed 同版本交付                                     |
 
 `storage-buffer`、`storage-texture`、`compute-pass`、`indirect-draw`
 仍按同一个公开 release 单元维护，但 capability 结果也必须满足实际设备 feature、format 和 limit；“已发布”不会把不兼容设备伪装成支持。
