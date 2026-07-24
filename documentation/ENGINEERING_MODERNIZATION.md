@@ -844,12 +844,11 @@ WGSL compute 中更新，再由三次 indirect draw 分别绘制 deep
 field、additive 速度 halo 与 alpha-blended 发光 core。专用 Playwright 门禁发送真实 pointer 事件，检查上下坐标映射、字形采样覆盖和边缘背景亮度，冻结步进后比较确定性 readback
 hash，并检查 compute dispatch、indirect draw 和终态 GPU validation；页面不把粒子状态映射回 CPU。
 
-`compute_raytracing.html` 则用一个 renderer-owned storage buffer 保存双层 HDR
-radiance/normal/depth 历史，由 Direct WGSL
-compute 对解析球体、SDF 倒角方块、动画位移水面和 SDF 挤出/倒角的 Hilo3D 水晶字形求交，并完成五次 bounce、Fresnel 反射/折射、吸收、RGB 分波段色散、面积光软阴影、球透镜与文字投影焦散、带可见性测试的单次体积散射及 Russian
-roulette。当前水面世界点会按上一帧波高投影回历史层；相机静止时稳定主体直接复用同像素历史，失配历史再由 depth/normal/material 门禁拒绝。公共 storage-aware
-GPU-driven pass 从最新历史层执行边缘感知降噪、anamorphic
-bloom、ACES 与 present；全程保持同一个 registry-stable bind
+`compute_raytracing.html` 则用一个 renderer-owned storage buffer 跨帧累积 HDR
+radiance/normal/depth，由 Direct WGSL
+compute 对解析球体、SDF 倒角方块、静态水面和 SDF 挤出/倒角的 Hilo3D 水晶字形求交，并完成五次 bounce、Fresnel 反射/折射、吸收、RGB 分波段色散、面积光软阴影、球透镜与文字投影光谱焦散、带可见性测试和 HG 相函数的单次体积散射及 Russian
+roulette。公共 storage-aware GPU-driven pass 执行边缘感知降噪、anamorphic
+bloom、ACES 与 present；拖拽环绕或滚轮 dolly 会重置累积，全程保持同一个 registry-stable bind
 group。专用 Playwright 门禁验证真实 compute/dispatch/draw、渐进 readback、原生 bind-group 创建数稳定与终态 GPU
 validation，且源码不访问 native WebGPU 对象。
 
