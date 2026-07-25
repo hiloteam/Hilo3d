@@ -1,6 +1,6 @@
 {
   "name": "hilo3d",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "description": "A TypeScript-first 3D engine with explicit WebGL 2 and WebGPU backends.",
   "type": "module",
   "types": "./dist/Hilo3d.d.ts",
@@ -111,13 +111,13 @@
     "registry": "https://registry.npmjs.org/"
   },
   "engines": {
-    "node": ">=22.22.2"
+    "node": ">=20.19.0"
   },
-  "packageManager": "npm@12.0.1",
+  "packageManager": "npm@10.9.4",
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": ">=22.22.2",
+      "version": ">=20.19.0",
       "onFail": "error"
     },
     "packageManager": {
@@ -134,7 +134,7 @@
     "@eslint/js": "^10.0.1",
     "@microsoft/api-extractor": "^7.58.11",
     "@playwright/test": "^1.61.1",
-    "@types/node": "^22.20.1",
+    "@types/node": "^20.19.43",
     "@types/webxr": "0.5.24",
     "@vitest/browser-playwright": "^4.1.10",
     "@vitest/coverage-v8": "^4.1.10",

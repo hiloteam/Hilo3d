@@ -1,6 +1,6 @@
 # Hilo3d 现代前端工程改造记录
 
-状态：已完成 · 目标版本：2.0.0 · 最后核验：2026-07-25
+状态：已完成 · 目标版本：2.0.0 · 最后核验：2026-07-26
 
 范围：源码、示例、测试、构建、类型声明、API 文档、站点、npm 包、CI 与发布流程
 
@@ -66,7 +66,7 @@
 | 示例     | 旧全局变量、vendor 脚本、远程运行时资源                 | 严格 TS 多页面应用，本地 npm 依赖与本地静态资产                         |
 | 渲染 ABI | WebGL 1/2 分支、GLSL 1.00 转译与逐项 uniform            | portable raster GLSL→Naga→WGSL；受控 Direct WGSL compute 与 storage ABI |
 | npm 包   | 仓库内入口能运行即视为通过                              | publint、Are the Types Wrong、Bundler/NodeNext 与真实 ESM 运行时消费    |
-| CI/发布  | 老版本 Actions、Node 与零散命令                         | 固定 Node 22.22.2、npm 12、Chromium 与单一完整发布门禁                  |
+| CI/发布  | 老版本 Actions、Node 与零散命令                         | 固定 Node 20.19.0、npm 10、Chromium 与单一完整发布门禁                  |
 | 文档站点 | 跟踪旧生成物                                            | CI 现场生成 TypeDoc 与 Vite 示例站点并部署 Pages                        |
 
 ## 语言与架构
@@ -884,9 +884,9 @@ CI 只运行稳定的 WebGL 2 visual baseline，完整双后端视觉与像素 p
 
 ## CI 与站点发布
 
-CI 只保留项目最低版本 Node 22.22.2 这一个测试档位，使用当前维护的 GitHub
-Actions、锁文件安装、固定 npm 12.0.1 和显式 Chromium 系统依赖，避免在 Node
-22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master`
+CI 只保留项目最低版本 Node 20.19.0 这一个测试档位，使用当前维护的 GitHub
+Actions、锁文件安装、固定 npm 10.9.4 和显式 Chromium 系统依赖，避免在 Node
+20/22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master`
 与版本 tag 先执行 modernity、格式、声明、lint、TypeScript project
 references 和示例目录合同预检；预检成功后并行执行两个 Vitest
 coverage 分片、RHI/架构、包/API/文档，以及四个 Playwright WebGL 2 页面/交互/视觉分片。每个 GPU
@@ -994,7 +994,7 @@ corpus 与真实 WebGPU pipeline 互为补充。
 - [x] std140 offset/stride、固定 block binding、dirty-range upload 和非法 classic
       uniform 有自动测试。
 - [x] 旧构建、测试、文档生成和运行时 vendor 链路已删除。
-- [x] CI 只验证固定的最低 Node 22.22.2 档位，发布前复用同一完整门禁。
+- [x] CI 只验证固定的最低 Node 20.19.0 档位，发布前复用同一完整门禁。
 
 ## npm 发布生命周期
 

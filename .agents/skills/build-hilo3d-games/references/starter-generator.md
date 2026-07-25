@@ -30,7 +30,7 @@ private or mirrored registry, or `--hilo-version` to skip lookup and pin an exac
 
 The generator copies the shared starter files, selects one variant as `src/main.ts`, and omits the
 unused variant sources. It refuses a non-empty destination so it cannot silently overwrite user
-work. It also warns when invoked with Node.js older than 22.22.2; upgrade Node before installing
+work. It also warns when invoked with Node.js older than 20.19.0; upgrade Node before installing
 dependencies or running the generated game. Startup failures replace the loading status with a
 visible error while preserving the full exception in the developer console.
 

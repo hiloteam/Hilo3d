@@ -11,7 +11,7 @@ const STARTER_ROOT = join(SKILL_ROOT, 'assets', 'starter');
 const VALID_TYPES = new Set(['2d', '3d', 'hybrid']);
 const PROJECT_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u;
 const MAXIMUM_PROJECT_NAME_LENGTH = 214;
-const MINIMUM_NODE_VERSION = [22, 22, 2];
+const MINIMUM_NODE_VERSION = [20, 19, 0];
 const DEFAULT_REGISTRY = 'https://registry.npmjs.org/';
 const HILO_STABLE_VERSION = '2.0.0';
 const HILO_ALPHA_PATTERN = /^2\.0\.0-alpha\.(\d+)$/u;
@@ -68,7 +68,7 @@ function warnForUnsupportedNode() {
     const current = process.versions.node.split('.').map(Number);
     if (compareVersionParts(current, MINIMUM_NODE_VERSION) < 0) {
         process.stderr.write(
-            `Warning: generated Hilo3D projects require Node.js 22.22.2 or newer; current Node is ${process.versions.node}.\n`
+            `Warning: generated Hilo3D projects require Node.js 20.19.0 or newer; current Node is ${process.versions.node}.\n`
         );
     }
 }
