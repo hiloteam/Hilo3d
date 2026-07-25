@@ -115,7 +115,7 @@ async function resolveHiloVersion(requested, registry) {
     try {
         ({ stdout } = await execFileAsync(
             process.platform === 'win32' ? 'npm.cmd' : 'npm',
-            ['view', 'hilo3d', 'versions', '--json', `--registry=${registry}`],
+            ['view', 'hilo3d', 'versions', '--json', '--tag=latest', `--registry=${registry}`],
             { maxBuffer: 1024 * 1024 }
         ));
     } catch (error) {

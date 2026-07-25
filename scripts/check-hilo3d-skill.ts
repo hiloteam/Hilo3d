@@ -26,7 +26,9 @@ function localRegistryEnvironment(cache: string): NodeJS.ProcessEnv {
         no_proxy: '127.0.0.1,localhost',
         npm_config_cache: cache,
         npm_config_https_proxy: '',
-        npm_config_proxy: ''
+        npm_config_proxy: '',
+        // `npm publish --tag next` exports this into prepublishOnly scripts.
+        npm_config_tag: 'next'
     };
 }
 
