@@ -1,6 +1,6 @@
 # Hilo3d 现代前端工程改造记录
 
-状态：已完成 · 目标版本：2.0.0 · 最后核验：2026-07-18
+状态：已完成 · 目标版本：2.0.0 · 最后核验：2026-07-25
 
 范围：源码、示例、测试、构建、类型声明、API 文档、站点、npm 包、CI 与发布流程
 
@@ -36,8 +36,11 @@
   2-only，三个 compute/GPU-driven/path-tracing 页面明确 WebGPU-only，并对适用后端执行确定性视觉、交互、后处理与拾取门禁；真实 WebGPU
   adapter/device/pipeline fixture 作为额外的深度验收，而不是 WebGPU 唯一覆盖。
 - 类型声明、TypeDoc API 页面和 API Extractor 签名报告全部从同一份已检查源码生成。
-- npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；本地/发布使用 `npm run validate`
-  执行完整双后端浏览器矩阵。默认 hosted
+- npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；CI 与候选版本使用
+  `npm run validate`（或等价别名
+  `npm run release:check`）执行完整双后端浏览器矩阵。npm发布生命周期只执行快速、确定性的
+  `publish:check`，再由 `prepack`
+  构建 tarball，避免在 OTP 已生成后重新运行高成本浏览器矩阵。默认 hosted
   CI 把等价的 portable 门禁拆成预检、coverage、RHI、包/API/文档和四个隔离的 WebGL 2
   presentation/UI/视觉分片；WebGPU native/offscreen RHI 保持独立进程，non-evidence portable
   benchmark smoke 则由按性能路径、定时或手动触发的独立工作流执行。
@@ -898,8 +901,8 @@ job 验证。
 WebGPU 由独立 RHI job 中的 native/offscreen SwiftShader
 lane 验证 adapter、device、pipeline、draw、submit、readback 与 backend contract。GitHub hosted
 Linux 不稳定的 WebGPU canvas presentation 不作为虚假的合并门禁；完整双后端页面/视觉矩阵仍由本地
-`npm run validate` 与手动 physical-GPU workflow 负责。串行的 `npm run validate:ci`
-保留为 hosted 门禁的本地复现入口，过期任务由 concurrency 自动取消。
+`npm run validate`、`npm run release:check` 与手动 physical-GPU workflow 负责。串行的
+`npm run validate:ci` 保留为 hosted 门禁的本地复现入口，过期任务由 concurrency 自动取消。
 
 Portable RHI benchmark smoke 只以单 draw 生产场景验证 fixture、allocation
 profiler、readback 和当前 RHI 路径。它不属于普通合并门禁；独立 workflow 仅在 benchmark/performance 路径变化、每日定时或手动触发时运行 WebGL
@@ -992,6 +995,24 @@ corpus 与真实 WebGPU pipeline 互为补充。
       uniform 有自动测试。
 - [x] 旧构建、测试、文档生成和运行时 vendor 链路已删除。
 - [x] CI 只验证固定的最低 Node 22.22.2 档位，发布前复用同一完整门禁。
+
+## npm 发布生命周期
+
+完整候选版本验收与实际 npm 上传分成两个阶段：
+
+```sh
+npm run release:check
+npm publish --tag next --access public --otp=<current-otp>
+```
+
+`release:check` 是完整 `validate`
+的显式别名，仍执行全部单元、覆盖率、RHI、浏览器、视觉、文档、API 和包消费门禁。它应在 CI 通过的提交上、生成发布 OTP 之前完成。
+
+`npm publish` 的 `prepublishOnly` 只运行 `publish:check`：现代性门禁与 Hilo3D Skill 回归。随后
+`prepack` 从当前源码重新构建 JS、source
+map 和声明。这个轻量生命周期不会重复 coverage 或 Playwright 矩阵，也不替代
+`release:check`；它只防止上传阶段重新引入明显的源码、Skill 或构建错误。正式版使用对应的稳定 dist-tag，2.0.0
+prerelease 使用 `next`，不得让 prerelease 覆盖 `latest`。
 
 ## 后续维护规则
 

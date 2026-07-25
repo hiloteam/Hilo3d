@@ -72,9 +72,7 @@ setInterval(function () {
             if (!(img instanceof HTMLImageElement)) {
                 throw new TypeError('Replacement texture request did not return an image');
             }
-            if (Math.random() < 0.5) {
-                texture.image = img;
-            }
+            texture.image = img;
             texture.needUpdate = true;
         })
         .catch((error: unknown) => {

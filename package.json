@@ -1,6 +1,6 @@
 {
   "name": "hilo3d",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "description": "A TypeScript-first 3D engine with explicit WebGL 2 and WebGPU backends.",
   "type": "module",
   "types": "./dist/Hilo3d.d.ts",
@@ -41,6 +41,7 @@
     "format:check": "prettier --check .",
     "test": "npm run test:unit",
     "test:unit": "vitest run",
+    "test:skill": "jiti scripts/check-hilo3d-skill.ts",
     "test:rhi": "vitest run --config vitest.rhi.config.ts test/spec/rhi/portable && vitest run --config vitest.rhi-native.config.ts test/spec/rhi/portable/WebGPUBackend.native.test.ts",
     "test:rhi-benchmark-contract": "vitest run --config test/performance/vitest.config.ts",
     "test:rhi-benchmark-smoke": "jiti scripts/performance/smoke-rhi-production-fixture.ts",
@@ -80,10 +81,12 @@
     "site:build:built": "npm run docs:build:built && npm run examples:build && jiti scripts/build-site.ts && npm run site:check:links",
     "site:check:links": "jiti scripts/check-site-links.ts",
     "pack:check": "npm pack --dry-run --ignore-scripts",
-    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run test:rhi && npm run test:rhi-benchmark-contract && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run pack:check",
-    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck:ci && npm run test:rhi-benchmark-contract && npm run test:coverage && npm run test:rhi && npm run build && npm run test:types && npm run test:browser:ci && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run pack:check",
+    "publish:check": "npm run check:modernity && npm run test:skill",
+    "release:check": "npm run validate",
+    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:skill && npm run test:coverage && npm run test:rhi && npm run test:rhi-benchmark-contract && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run pack:check",
+    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck:ci && npm run test:skill && npm run test:rhi-benchmark-contract && npm run test:coverage && npm run test:rhi && npm run build && npm run test:types && npm run test:browser:ci && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run pack:check",
     "prepack": "npm run build",
-    "prepublishOnly": "npm run validate"
+    "prepublishOnly": "npm run publish:check"
   },
   "repository": {
     "type": "git",
@@ -103,6 +106,10 @@
     "url": "https://github.com/hiloteam/Hilo3d/issues"
   },
   "homepage": "https://hilo3d.js.org",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "engines": {
     "node": ">=22.22.2"
   },

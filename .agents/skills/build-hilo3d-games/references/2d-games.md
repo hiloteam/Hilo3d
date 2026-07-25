@@ -1,0 +1,225 @@
+# Build 2D games
+
+## Contents
+
+- [Use the 2D coordinate contract](#use-the-2d-coordinate-contract)
+- [Build sprites from textures and atlas frames](#build-sprites-from-textures-and-atlas-frames)
+- [Preserve batching](#preserve-batching)
+- [Use Text2D for dynamic labels](#use-text2d-for-dynamic-labels)
+- [Add pointer interaction](#add-pointer-interaction)
+- [Use simple collision shapes](#use-simple-collision-shapes)
+- [Compose a 2D background, 3D world, and HUD](#compose-a-2d-background-3d-world-and-hud)
+- [Design a complete 2D vertical slice](#design-a-complete-2d-vertical-slice)
+
+## Use the 2D coordinate contract
+
+`Camera2D` projects logical game pixels with:
+
+- origin at the top-left;
+- positive X to the right;
+- positive Y downward;
+- default visibility `DEFAULT_2D_LAYER`;
+- default priority `100`;
+- color preserved from lower-priority cameras.
+
+Create a 2D-only Stage:
+
+```ts
+const camera = new Hilo3d.Camera2D({ width, height });
+const stage = await Hilo3d.Stage.create({
+    backend: 'auto',
+    container,
+    camera,
+    width,
+    height,
+    useInstanced: true
+});
+```
+
+On resize, update both:
+
+```ts
+stage.resize(width, height, Math.min(devicePixelRatio || 1, 2));
+camera.resize(width, height);
+```
+
+## Build sprites from textures and atlas frames
+
+For a full texture:
+
+```ts
+const sprite = new Hilo3d.Sprite({
+    texture,
+    x: 200,
+    y: 160,
+    width: 64,
+    height: 64,
+    anchorX: 0.5,
+    anchorY: 0.5,
+    tint: new Hilo3d.Color(1, 1, 1, 1)
+}).addTo(stage);
+```
+
+For an atlas:
+
+```ts
+const frames = [
+    new Hilo3d.SpriteFrame({
+        texture: atlas,
+        x: 0,
+        y: 0,
+        width: 64,
+        height: 64,
+        duration: 90
+    }),
+    new Hilo3d.SpriteFrame({
+        texture: atlas,
+        x: 64,
+        y: 0,
+        width: 64,
+        height: 64,
+        duration: 90
+    })
+];
+
+const player = new Hilo3d.Sprite({
+    frames,
+    frameRate: 12,
+    loop: true,
+    autoPlay: true
+});
+```
+
+Control animation with `play()`, `pause()`, `stop()`, and `gotoFrame(index)`. Listen for
+`framechange`, `loop`, and `complete` when game logic needs animation events.
+
+Frame coordinates use top-left source pixels. `SpriteFrame` accounts for the texture `flipY` policy;
+do not manually invert atlas rows.
+
+## Preserve batching
+
+Default Sprites use one shared quad and opt into portable instancing. Sprites batch when they share
+the same geometry and `SpriteMaterial` identity. The default material cache shares a material per
+texture.
+
+Do:
+
+- place many frames on one atlas;
+- let Sprites using the same texture use the default material;
+- update transforms, tint, size, and UV frame in place;
+- keep decorative non-interactive sprites `pointerEnabled: false`.
+
+Avoid:
+
+- one texture per tiny sprite;
+- one custom material per sprite;
+- rebuilding Geometry or Sprite every animation frame;
+- changing material identity merely to change tint;
+- thousands of dynamic `Text2D` labels.
+
+Portable sprite draws are split at 128 instances. Large scenes can still batch efficiently across
+multiple draws.
+
+Transparent objects within one instance batch preserve collection order rather than receiving a
+global per-sprite depth sort. Use a small number of shared materials with distinct `renderOrder`
+values for intentional layers. This splits batches, so use only as much ordering as required.
+
+## Use Text2D for dynamic labels
+
+```ts
+const score = new Hilo3d.Text2D({
+    text: 'SCORE 000',
+    style: {
+        font: '700 24px system-ui, sans-serif',
+        fillStyle: '#ffffff',
+        strokeStyle: '#10152b',
+        strokeWidth: 4,
+        padding: 6,
+        resolution: 2,
+        textAlign: 'center'
+    },
+    anchorX: 0.5
+}).addTo(stage);
+
+score.setText('SCORE 120');
+score.setStyle({ fillStyle: '#ffe082' });
+```
+
+`Text2D` rerasterizes only after `setText()` or `setStyle()`. It preserves its Canvas, Texture,
+material, and pipeline identity. Each label still owns a texture and draw item.
+
+Use:
+
+- `Text2D` for scores, timers, prompts, and low-frequency labels;
+- a font atlas and normal Sprites for large amounts of mostly static glyphs;
+- DOM for accessible forms, long text, and screen-reader navigation.
+
+## Add pointer interaction
+
+```ts
+button.on('click', event => {
+    if ('stopPropagation' in event && typeof event.stopPropagation === 'function') {
+        event.stopPropagation();
+    }
+    activateButton();
+});
+stage.enableDOMEvent('click');
+```
+
+For drag:
+
+```ts
+stage.enableDOMEvent(['pointerdown', 'pointermove', 'pointerup', 'pointercancel']);
+```
+
+Sprites use their actual width, height, anchor, and world transform for CPU hit tests.
+Higher-priority cameras receive pointer hits first. Layer filtering for picking matches rendering.
+
+Set `useHandCursor: true` only for clickable objects. Disable picking on backgrounds and particle
+decorations.
+
+## Use simple collision shapes
+
+For centered sprites:
+
+```ts
+function overlaps(a: Hilo3d.Sprite, b: Hilo3d.Sprite): boolean {
+    return (
+        Math.abs(a.x - b.x) * 2 < a.width * Math.abs(a.scaleX) + b.width * Math.abs(b.scaleX) &&
+        Math.abs(a.y - b.y) * 2 < a.height * Math.abs(a.scaleY) + b.height * Math.abs(b.scaleY)
+    );
+}
+```
+
+Adjust for anchors if they differ from `0.5`. For many moving objects, use a uniform grid or spatial
+hash instead of testing every pair.
+
+## Compose a 2D background, 3D world, and HUD
+
+Use distinct layer bits:
+
+```ts
+const WORLD_LAYER = 1;
+const BACKGROUND_LAYER = 1 << 2;
+const UI_LAYER = Hilo3d.DEFAULT_2D_LAYER;
+```
+
+Create cameras with increasing priorities. The background camera clears color, the world and UI
+cameras normally preserve it. See [Rendering and performance](rendering-performance.md) for the full
+hybrid pattern.
+
+## Design a complete 2D vertical slice
+
+Include:
+
+- one controllable Sprite;
+- one collectible, obstacle, target, or enemy;
+- collision feedback;
+- a Text2D score or state label;
+- keyboard and pointer/touch controls;
+- an explicit restart path;
+- responsive layout;
+- shared atlas resources.
+
+The bundled `2d` starter demonstrates this without external assets by generating one Canvas atlas at
+runtime.
