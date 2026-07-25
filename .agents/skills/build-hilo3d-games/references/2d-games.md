@@ -3,7 +3,9 @@
 ## Contents
 
 - [Use the 2D coordinate contract](#use-the-2d-coordinate-contract)
+- [Match anchors to the layout coordinate system](#match-anchors-to-the-layout-coordinate-system)
 - [Build sprites from textures and atlas frames](#build-sprites-from-textures-and-atlas-frames)
+- [Control display order](#control-display-order)
 - [Preserve batching](#preserve-batching)
 - [Use Text2D for dynamic labels](#use-text2d-for-dynamic-labels)
 - [Add pointer interaction](#add-pointer-interaction)
@@ -42,6 +44,37 @@ On resize, update both:
 stage.resize(width, height, Math.min(devicePixelRatio || 1, 2));
 camera.resize(width, height);
 ```
+
+## Match anchors to the layout coordinate system
+
+`Camera2D` has a top-left screen origin, but every `Sprite` and `Text2D` defaults to a centered
+`anchorX: 0.5, anchorY: 0.5`. The anchor is part of the visual's local geometry; it does not change
+what `x` and `y` mean. Do not assume a top-left Camera also changes the Sprite anchor.
+
+For UI coordinates measured from a mockup's left/top edge, make the contract explicit:
+
+```ts
+const panel = new Hilo3d.Sprite({
+    texture: panelTexture,
+    x: 24,
+    y: 20,
+    width: 360,
+    height: 180,
+    anchorX: 0,
+    anchorY: 0
+});
+```
+
+For centered game objects, retain the default anchor and position their center:
+
+```ts
+portrait.x = panelLeft + portrait.width * 0.5;
+portrait.y = panelTop + portrait.height * 0.5;
+```
+
+Apply the same rule to cover backgrounds, panels, portraits, titles, and bottom/right-aligned HUD
+items. Browser-check every responsive edge: an anchor mismatch often clips exactly half of a visual
+while arithmetic and hit boxes otherwise look plausible.
 
 ## Build sprites from textures and atlas frames
 
@@ -96,11 +129,54 @@ Control animation with `play()`, `pause()`, `stop()`, and `gotoFrame(index)`. Li
 Frame coordinates use top-left source pixels. `SpriteFrame` accounts for the texture `flipY` policy;
 do not manually invert atlas rows.
 
+## Control display order
+
+Every `Sprite` and `Text2D` uses the Node-level display key:
+
+```text
+sortingLayer -> zIndex -> stable scene-tree traversal order
+```
+
+Higher `sortingLayer` and `zIndex` values render later. Equal values keep the order established by
+`addChild()`. Use `sortingLayer` for coarse groups such as background, world, and HUD, then use
+`zIndex` within a group:
+
+```ts
+background.sortingLayer = 0;
+player.sortingLayer = 10;
+hud.sortingLayer = 100;
+tooltip.sortingLayer = 100;
+tooltip.zIndex = 20;
+```
+
+For top-down worlds, anchor each actor or prop at its ground-contact point and derive `zIndex` from
+that foot/base Y coordinate. Update moving actors after movement; static scenery only needs the
+value once:
+
+```ts
+building.anchorY = 1;
+building.zIndex = Math.round(building.y);
+
+player.anchorY = 1;
+player.onUpdate = () => {
+    player.zIndex = Math.round(player.y);
+};
+```
+
+This keeps a character behind a building while north of its base and in front after walking south.
+Do not sort by Sprite center or top edge: differently sized art will cross at visibly wrong points.
+See `examples/2d_sorting_town.ts` for A* movement through an atlas-batched top-down scene.
+
+`Node.layer` remains a Camera visibility bit mask and is unrelated to `sortingLayer`. Do not mutate
+`SpriteMaterial.renderOrder` to position one Sprite: default materials are shared by texture, so a
+material mutation can affect several Sprites. Pointer picking follows the same 2D display key and
+selects the visually topmost overlapping node.
+
 ## Preserve batching
 
 Default Sprites use one shared quad and opt into portable instancing. Sprites batch when they share
-the same geometry and `SpriteMaterial` identity. The default material cache shares a material per
-texture.
+the same geometry and `SpriteMaterial` identity, are adjacent after display sorting, and fit within
+the 128-instance portable limit. The default material cache shares a material per texture.
 
 Do:
 
@@ -118,11 +194,9 @@ Avoid:
 - thousands of dynamic `Text2D` labels.
 
 Portable sprite draws are split at 128 instances. Large scenes can still batch efficiently across
-multiple draws.
-
-Transparent objects within one instance batch preserve collection order rather than receiving a
-global per-sprite depth sort. Use a small number of shared materials with distinct `renderOrder`
-values for intentional layers. This splits batches, so use only as much ordering as required.
+multiple draws. Batching never changes display order: `A(atlas1), B(atlas2), C(atlas1)` remains
+three draws because C cannot cross B to join A. Put related art on one atlas and keep same-layer
+Sprites contiguous in the scene tree to recover large batches without visual-order bugs.
 
 ## Use Text2D for dynamic labels
 

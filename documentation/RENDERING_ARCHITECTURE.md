@@ -63,7 +63,8 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
 7. 把 Shadow、Main、Transparent、PostProcess、Present 或离屏 RenderTarget
    Pass 加入同一个应用帧 RenderGraph。
 
-Sprite 仍是 Mesh：共享单位 quad、按 atlas Texture 共享 SpriteMaterial，并把 UV
+Sprite 仍是 Mesh：共享单位 quad、按 atlas Texture 共享 SpriteMaterial，先按 Node 级
+`sortingLayer / zIndex / stable scene traversal` 确定显示顺序，再仅对相邻兼容项合批，并把 UV
 rect、size/anchor、tint 与 transform 编译成 portable instance batch。WebGL 2 使用 instance vertex
 stream，WebGPU 使用固定 InstanceBlock 加 Sprite instance
 stream；没有 2D 专用 backend 或第二套 shader 树。

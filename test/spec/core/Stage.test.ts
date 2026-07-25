@@ -118,6 +118,51 @@ describe('Stage', () => {
         stage.destroy();
     });
 
+    it('picks the topmost overlapping 2D node by sortingLayer and zIndex', async () => {
+        const camera = new Hilo3d.Camera2D({ width: 32, height: 32 });
+        const stage = await Stage.create({
+            backend: 'webgl2',
+            width: 32,
+            height: 32,
+            pixelRatio: 1,
+            camera
+        });
+        const textureA = new Hilo3d.Texture({
+            image: new Uint8Array(4 * 4 * 4).fill(255),
+            width: 4,
+            height: 4
+        });
+        const textureB = new Hilo3d.Texture({
+            image: new Uint8Array(4 * 4 * 4).fill(255),
+            width: 4,
+            height: 4
+        });
+        const front = new Hilo3d.Sprite({
+            texture: textureA,
+            x: 16,
+            y: 16,
+            width: 20,
+            height: 20,
+            sortingLayer: 2,
+            zIndex: 5
+        });
+        const backAddedLater = new Hilo3d.Sprite({
+            texture: textureB,
+            x: 16,
+            y: 16,
+            width: 20,
+            height: 20,
+            sortingLayer: 1,
+            zIndex: 100
+        });
+        stage.addChild(front).addChild(backAddedLater);
+
+        stage.tick(16);
+
+        expect(stage.getMeshResultAtPoint(16, 16)?.mesh).toBe(front);
+        stage.destroy();
+    });
+
     it('retains independent Sprite instance batches for multiple cameras in one frame', async () => {
         const prepareInstancedBatch = vi.spyOn(
             MeshDrawProcessor.prototype,

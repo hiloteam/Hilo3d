@@ -17,6 +17,12 @@
 
 ### Changes
 
+- Add Node-level `sortingLayer` and `zIndex` for Sprite/Text2D display order, retain stable
+  scene-tree order for ties, make pointer picking select the same topmost 2D node, and restrict
+  transparent instancing to adjacent compatible items so batching cannot reorder interleaved
+  textures. Document the independent top-left Camera2D and centered Sprite-anchor contracts, and
+  update game-skill starters to avoid half-clipped edge UI. Add an ImageGen-authored pixel-town
+  example with A* walking, click-to-route interaction, and foot-Y ordering across both backends.
 - Add a portable `build-hilo3d-games` Agent Skill with strict TypeScript/Vite starters for 2D, 3D,
   and hybrid games, stable-first `2.0.0` dependency resolution, focused public-API references, and
   repository checks that keep bundled examples and version-selection behavior valid.

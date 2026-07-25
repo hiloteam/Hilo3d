@@ -54,6 +54,114 @@ describe('Sprite', () => {
         });
     });
 
+    it('sorts by node display order and only batches adjacent compatible sprites', () => {
+        const textureA = texture();
+        const textureB = texture();
+        const back = new Hilo3d.Sprite({ texture: textureA, zIndex: -10 });
+        const middle = new Hilo3d.Sprite({ texture: textureB, zIndex: 0 });
+        const front = new Hilo3d.Sprite({ texture: textureA, zIndex: 10 });
+        const planner = new MeshDrawListPlanner();
+
+        const plan = planner.build([front, back, middle]);
+
+        expect(plan.instancedBatches).toHaveLength(3);
+        expect(plan.instancedBatches.map(batch => batch.meshes)).toEqual([
+            [back],
+            [middle],
+            [front]
+        ]);
+        const batchOwners = [...plan.instancedBatches];
+        const allocationCount = planner.diagnostics().storageAllocationCount;
+
+        planner.build([front, back, middle]);
+
+        for (let index = 0; index < batchOwners.length; index += 1) {
+            expect(plan.instancedBatches[index]).toBe(batchOwners[index]);
+        }
+        expect(planner.diagnostics().storageAllocationCount).toBe(allocationCount);
+
+        expect(planner.detach(middle)).toBe(true);
+        expect(plan.instancedBatches.map(batch => batch.meshes)).toEqual([[back], [front]]);
+    });
+
+    it('renders interleaved textures in semantic zIndex order through WebGL2', async () => {
+        const stage = await Hilo3d.Stage.create({
+            backend: 'webgl2',
+            width: 16,
+            height: 16,
+            pixelRatio: 1,
+            camera: new Hilo3d.Camera2D({ width: 16, height: 16 })
+        });
+        const redTexture = new Hilo3d.Texture({
+            image: new Uint8Array([255, 0, 0, 255]),
+            width: 1,
+            height: 1
+        });
+        const greenTexture = new Hilo3d.Texture({
+            image: new Uint8Array([0, 255, 0, 255]),
+            width: 1,
+            height: 1
+        });
+        const sprites = [
+            new Hilo3d.Sprite({
+                texture: redTexture,
+                x: 8,
+                y: 8,
+                width: 16,
+                height: 16,
+                zIndex: -1
+            }),
+            new Hilo3d.Sprite({
+                texture: greenTexture,
+                x: 8,
+                y: 8,
+                width: 16,
+                height: 16,
+                zIndex: 0
+            }),
+            new Hilo3d.Sprite({
+                texture: redTexture,
+                x: 8,
+                y: 8,
+                width: 16,
+                height: 16,
+                zIndex: 1
+            })
+        ];
+        for (const sprite of sprites) stage.addChild(sprite);
+        const target = stage.renderer.createRenderTarget({
+            width: 16,
+            height: 16,
+            colorAttachments: [{ format: 'rgba8unorm' }],
+            depthStencilAttachment: false
+        });
+
+        try {
+            const camera = stage.camera;
+            if (!camera) throw new Error('2D ordering test lost its camera.');
+            stage.renderer.renderToTarget(target, stage, camera);
+            const readback = await target.readColorAttachment();
+            const offset = 8 * readback.bytesPerRow + 8 * readback.bytesPerPixel;
+            expect(
+                Array.from(readback.data.slice(offset, offset + readback.bytesPerPixel))
+            ).toEqual([255, 0, 0, 255]);
+        } finally {
+            target.destroy();
+            stage.destroy();
+        }
+    });
+
+    it('inherits parent position, scale, and rotation through the shared Node world matrix', () => {
+        const parent = new Hilo3d.Node({ x: 100, y: 50, scaleX: 2, scaleY: 3 });
+        const sprite = new Hilo3d.Sprite({ texture: texture(), x: 10, y: 20 });
+        parent.addChild(sprite);
+
+        parent.updateMatrixWorld(true);
+        const worldPosition = sprite.worldMatrix.getTranslation(new Hilo3d.Vector3());
+
+        expect([worldPosition.x, worldPosition.y]).toEqual([120, 110]);
+    });
+
     it('advances atlas animation by mutating stable instance storage', () => {
         const source = texture();
         const sprite = new Hilo3d.Sprite({

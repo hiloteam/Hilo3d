@@ -103,6 +103,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'compute_particles.html': 'Hilo3D Compute Particle Field',
     'compute_raytracing.html': 'Hilo3D Crystal Compute Path Tracer',
     '2d_sprite_animation.html': '2D Moon Moth Animation',
+    '2d_sorting_town.html': '2D Sorting Town',
     '2d_text.html': '2D Canvas Text',
     '2d_sprite_batch.html': '2D Sprite Batch'
 });
@@ -117,6 +118,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Progressively path trace a refractive Hilo3D crystal wordmark, glass sphere, champagne-metal cube, soft shadows, and cinematic HDR bloom.',
     '2d_sprite_animation.html':
         'Animate an ImageGen-authored atlas while three ordered cameras compose a 2D background, a 3D moon, and clickable 2D UI.',
+    '2d_sorting_town.html':
+        'Guide an A* courier through an ImageGen-authored pixel town while foot-Y ordering keeps buildings, trees, and the walker correctly layered.',
     '2d_text.html':
         'Rasterize styled multiline Canvas text only when content changes, then render and click it as Sprite UI.',
     '2d_sprite_batch.html':

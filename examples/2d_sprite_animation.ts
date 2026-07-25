@@ -92,7 +92,7 @@ const moth = new Hilo3d.Sprite({
     useHandCursor: true,
     z: 20
 }).addTo(stage);
-if (moth.material) moth.material.renderOrder = 20;
+moth.sortingLayer = 20;
 
 const title = setTextOrder(
     new Hilo3d.Text2D({
@@ -159,7 +159,7 @@ const decorations = decorationIndices.map((frameIndex, index) => {
         tint: new Hilo3d.Color(0.82, 0.94, 1, 0.88),
         z: 5
     }).addTo(stage);
-    if (sprite.material) sprite.material.renderOrder = 5;
+    sprite.sortingLayer = 5;
     return sprite;
 });
 

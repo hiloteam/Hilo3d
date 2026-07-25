@@ -51,7 +51,18 @@ class RenderList {
     readonly isRenderList = true;
     readonly opaqueList: Mesh[] = [];
     readonly transparentList: Mesh[] = [];
+    /**
+     * Camera-visible meshes in stable scene traversal order.
+     *
+     * The shared prepared-draw planner consumes this list so transparent instance batching can
+     * preserve 2D display order instead of inheriting the state-grouped legacy traversal.
+     */
+    readonly orderedList: Mesh[] = [];
     private readonly instancedDict = new Map<string, Mesh[]>();
+    /**
+     * Skip legacy queue classification when the shared draw planner only needs `orderedList`.
+     */
+    orderedOnly = false;
     /**
      * 使用 instanced
      */
@@ -62,6 +73,7 @@ class RenderList {
     reset(): void {
         this.opaqueList.length = 0;
         this.transparentList.length = 0;
+        this.orderedList.length = 0;
         this.instancedDict.clear();
     }
     /**
@@ -70,24 +82,23 @@ class RenderList {
      * @param instancedCallback - instancedCallback(instancedMeshes)
      */
     traverse(callback: (mesh: Mesh) => void, instancedCallback?: (meshes: Mesh[]) => void): void {
+        if (instancedCallback === undefined) {
+            for (const mesh of this.orderedList) callback(mesh);
+            return;
+        }
         this.opaqueList.forEach(mesh => {
             callback(mesh);
         });
         const instancedDict = this.instancedDict;
         for (const instancedList of instancedDict.values()) {
-            if (instancedCallback) {
-                instancedCallback(instancedList);
-            } else {
-                instancedList.forEach(mesh => {
-                    callback(mesh);
-                });
-            }
+            instancedCallback(instancedList);
         }
         this.transparentList.forEach(mesh => {
             callback(mesh);
         });
     }
     sort(): void {
+        if (this.orderedOnly) return;
         this.transparentList.sort(transparentSort);
         this.opaqueList.sort(opaqueSort);
     }
@@ -103,9 +114,11 @@ class RenderList {
             if (frustumCulling && mesh.frustumTest && !camera.isMeshVisible(mesh)) {
                 return;
             }
-            // `Mesh.useInstanced` is an explicit opt-in to batching, including the ordering
-            // trade-off for transparent geometry. Keeping every opted-in mesh on the instanced
-            // path is also required for custom shaders whose per-mesh values are vertex inputs.
+            this.orderedList.push(mesh);
+            if (this.orderedOnly) return;
+            // `Mesh.useInstanced` is an explicit opt-in to the instance shader contract. The shared
+            // planner may state-cluster opaque groups, but transparent groups only merge adjacent
+            // entries from `orderedList`.
             if (this.useInstanced && mesh.useInstanced) {
                 const instancedDict = this.instancedDict;
                 const instancedId = `${material.id}_${geometry.id}`;

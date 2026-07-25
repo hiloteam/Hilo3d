@@ -30,9 +30,9 @@ export interface SpriteParameters extends Omit<
     width?: number;
     /** Logical display height. Defaults to the initial frame height. */
     height?: number;
-    /** Horizontal anchor in normalized local coordinates. */
+    /** Horizontal anchor in normalized local coordinates. Defaults to the visual center (`0.5`). */
     anchorX?: number;
-    /** Vertical anchor in normalized local coordinates. */
+    /** Vertical anchor in normalized local coordinates. Defaults to the visual center (`0.5`). */
     anchorY?: number;
     /** Per-instance color multiplier. */
     tint?: Color;
@@ -102,8 +102,10 @@ function resolveNodeParameters(
 /**
  * Batched 2D sprite with atlas frames, per-instance tint/anchor/size, animation, and CPU hit tests.
  *
- * Sprites use one shared quad geometry and opt into the renderer's portable instance path. Sprites
- * using the same SpriteMaterial are grouped into draws of at most 128 instances on both backends.
+ * Sprites use one shared quad geometry and opt into the renderer's portable instance path. They
+ * render by Node `sortingLayer`, then `zIndex`, then stable scene-tree order. Adjacent Sprites using
+ * the same SpriteMaterial are grouped into draws of at most 128 instances on both backends without
+ * allowing batching to change that display order.
  */
 class Sprite extends Mesh {
     static override readonly typeName: string = 'Sprite';

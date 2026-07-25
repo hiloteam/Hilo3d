@@ -73,6 +73,11 @@ Read [Starter generator](references/starter-generator.md) when scaffolding or ad
 
 ## Avoid high-frequency mistakes
 
+- `Camera2D` uses a top-left screen origin, but `Sprite` and `Text2D` default to the center anchor
+  `(0.5, 0.5)`. For UI layouts expressed as left/top coordinates, set `anchorX: 0, anchorY: 0`;
+  otherwise add half the rendered width/height to the position. Verify backgrounds, panels,
+  portraits, titles, and responsive edge layouts in a real browser because a center-anchor mismatch
+  commonly clips exactly half of the visual.
 - Hilo3D event listeners receive the base `DispatchEvent` type. Narrow optional pointer fields with
   runtime checks before reading `stageX`, `stageY`, `hitPoint`, or propagation helpers.
 - Pass render-target operations in target-first order:

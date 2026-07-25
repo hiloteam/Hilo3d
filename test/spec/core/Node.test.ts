@@ -18,6 +18,8 @@ describe('Node', () => {
             x: 2,
             y: 3,
             z: 1,
+            sortingLayer: 4,
+            zIndex: 12,
             jointName: 'head'
         });
         node.addChild(
@@ -31,9 +33,21 @@ describe('Node', () => {
         expect(clonedNode.x).toBe(node.x);
         expect(clonedNode.y).toBe(node.y);
         expect(clonedNode.z).toBe(node.z);
+        expect(clonedNode.sortingLayer).toBe(4);
+        expect(clonedNode.zIndex).toBe(12);
         expect(clonedNode.jointName).toBe(node.jointName);
         expect(clonedNode.children).toHaveLength(1);
         expect(clonedNode.children.at(0)?.name).toBe('child0');
+    });
+
+    it('validates finite integer 2D display order', () => {
+        const node = new Node();
+        expect(() => {
+            node.sortingLayer = Number.NaN;
+        }).toThrow('sortingLayer must be a safe integer');
+        expect(() => {
+            node.zIndex = 0.5;
+        }).toThrow('zIndex must be a safe integer');
     });
 
     it('getChildrenNameMap', () => {

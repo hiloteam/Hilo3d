@@ -146,8 +146,7 @@ export function addMoonlitBackground(
         autoPlay: false,
         z: -100
     }).addTo(scene.stage);
-    const material = background.material;
-    if (material) material.renderOrder = -1000;
+    background.sortingLayer = -1000;
     scene.addLayout((width, height) => {
         const scale = Math.max(width / texture.origWidth, height / texture.origHeight);
         background.width = texture.origWidth * scale;
@@ -160,6 +159,6 @@ export function addMoonlitBackground(
 
 /** Move Canvas-backed UI text above world and decoration sprite batches. */
 export function setTextOrder(text: Hilo3d.Text2D, order: number): Hilo3d.Text2D {
-    if (text.material) text.material.renderOrder = order;
+    text.sortingLayer = order;
     return text;
 }

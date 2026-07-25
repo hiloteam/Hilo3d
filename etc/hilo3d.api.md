@@ -4185,6 +4185,8 @@ class Node_2 extends EventDispatcher {
     setPosition(x: number, y: number, z: number): this;
     setRotation(x: number, y: number, z: number): this;
     setScale(x: number, y?: number, z?: number): this;
+    get sortingLayer(): number;
+    set sortingLayer(value: number);
     traverse(callback: NodeTraverseCallback, onlyChild?: boolean): this;
     static readonly TRAVERSE_STOP_ALL: 2;
     static readonly TRAVERSE_STOP_CHILDREN: 1;
@@ -4212,6 +4214,8 @@ class Node_2 extends EventDispatcher {
     set y(value: number);
     get z(): number;
     set z(value: number);
+    get zIndex(): number;
+    set zIndex(value: number);
 }
 export { Node_2 as Node }
 
@@ -4263,6 +4267,7 @@ export interface NodeParameters {
     scaleY?: number;
     // (undocumented)
     scaleZ?: number;
+    sortingLayer?: number;
     // (undocumented)
     up?: Vector3;
     // (undocumented)
@@ -4277,6 +4282,7 @@ export interface NodeParameters {
     y?: number;
     // (undocumented)
     z?: number;
+    zIndex?: number;
 }
 
 // @public (undocumented)

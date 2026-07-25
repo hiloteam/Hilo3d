@@ -148,9 +148,9 @@ async function main(): Promise<void> {
         anchorY: 0.5,
         useHandCursor: true
     }).addTo(stage);
-    if (title.material) title.material.renderOrder = 100;
-    if (scoreLabel.material) scoreLabel.material.renderOrder = 100;
-    if (resetButton.material) resetButton.material.renderOrder = 110;
+    title.sortingLayer = 100;
+    scoreLabel.sortingLayer = 100;
+    resetButton.sortingLayer = 110;
 
     const keys = new Set<string>();
     const collected = new Set<Hilo3d.Mesh>();
