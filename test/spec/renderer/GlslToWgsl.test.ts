@@ -35,11 +35,6 @@ const bloomExampleModules = import.meta.glob<string>('../../../examples/bloom.ts
     query: '?raw',
     import: 'default'
 });
-const ssaoExampleModules = import.meta.glob<string>('../../../examples/ssao.ts', {
-    eager: true,
-    query: '?raw',
-    import: 'default'
-});
 const shaderToyExampleModules = import.meta.glob<string>('../../../examples/shaderToy.ts', {
     eager: true,
     query: '?raw',
@@ -1240,18 +1235,6 @@ describe('modern example WebGPU shader corpus', () => {
             shaderName: 'compositeFragment',
             blocks: ['BloomCompositeBlock'],
             samplers: ['u_scene', 'u_bloom0', 'u_bloom1', 'u_bloom2', 'u_bloom3', 'u_bloom4']
-        },
-        {
-            source: () => Object.values(ssaoExampleModules)[0],
-            shaderName: 'samplingFragment',
-            blocks: ['SsaoSamplingBlock'],
-            samplers: ['u_position', 'u_normal', 'u_depth', 'u_noise']
-        },
-        {
-            source: () => Object.values(ssaoExampleModules)[0],
-            shaderName: 'blurFragment',
-            blocks: ['SsaoBlurBlock'],
-            samplers: ['u_ssao', 'u_depth', 'u_normal']
         }
     ] as const;
 

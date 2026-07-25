@@ -74,6 +74,7 @@ export interface ExampleCatalogEntry {
     readonly sourcePath: string;
     readonly supportedBackends: readonly CatalogBackend[];
     readonly defaultQuery: Readonly<Record<string, string>>;
+    readonly featured: boolean;
     readonly searchText: string;
 }
 
@@ -107,7 +108,11 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     '2d_text.html': '2D Canvas Text',
     '2d_text_layout.html': '2D Responsive Text Layout',
     '2d_ui_button.html': '2D Nine-Slice UI Buttons',
-    '2d_sprite_batch.html': '2D Sprite Batch'
+    '2d_sprite_batch.html': '2D Sprite Batch',
+    'canvas_texture.html': 'Canvas Texture Dashboard',
+    'canvas_texture_animation.html': 'Canvas Texture Animation',
+    'geometry_primitives.html': 'Geometry Primitives',
+    'pbr2.html': 'PBR Material Lab'
 });
 
 const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
@@ -135,8 +140,46 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'scriptable_pipeline.html':
         'Compose a custom render pipeline through the public scriptable pipeline API.',
     'shaderToy.html': 'Run an interactive fragment shader with pointer and time inputs.',
-    'webgl_support.html': 'Inspect the graphics backend selected for the current browser.'
+    'webgl_support.html': 'Inspect the graphics backend selected for the current browser.',
+    'canvas_texture.html':
+        'Turn a live Canvas 2D dashboard into a continuously updated Hilo3D texture.',
+    'canvas_texture_animation.html':
+        'Stream a procedural Canvas 2D aquarium into a portable animated texture.',
+    'geometry_primitives.html':
+        'Compare built-in box and sphere meshes with a custom line-mode ring in one polished scene.',
+    'geometry_instanced.html':
+        'Render a deterministic wave of shared spheres through portable instanced batches.',
+    'pointLight.html':
+        'Orbit three colored point lights around a reflective sculpture with dynamic shadows.',
+    'bloom.html': 'Build a multi-level HDR bloom chain around a deterministic neon particle helix.',
+    'pbr2.html':
+        'Compare metallic and roughness response across a dense, environment-lit material matrix.'
 });
+
+const FEATURED_PATHS = new Set([
+    'quickStart.html',
+    '2d_sprite_animation.html',
+    '2d_sprite_batch.html',
+    '2d_sorting_town.html',
+    '2d_text_layout.html',
+    '2d_ui_button.html',
+    'canvas_texture.html',
+    'geometry_primitives.html',
+    'geometry_instanced.html',
+    'pbr2.html',
+    'pointLight.html',
+    'shadow.html',
+    'bloom.html',
+    'scriptable_pipeline.html',
+    'shaderToy.html',
+    'mesh_picker.html',
+    'glTFViewer/index.html',
+    'physics/cannon.html',
+    'video.html',
+    'compute_gpu_driven.html',
+    'compute_particles.html',
+    'compute_raytracing.html'
+]);
 
 function categoryForPath(path: string): ExampleCategoryId {
     const normalized = path.toLowerCase();
@@ -163,14 +206,14 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'textures';
     }
     if (
-        /(?:post_process|bloom|ssao|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|compute_gpu_driven|compute_particles)/u.test(
+        /(?:post_process|bloom|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|compute_gpu_driven|compute_particles)/u.test(
             normalized
         )
     ) {
         return 'rendering';
     }
     if (/(?:raycast|mesh_picker|mouse_event|webxr)/u.test(normalized)) return 'interaction';
-    if (/(?:pbr|polly|shader|transparent|fog|skybox|refract|snow|spheremap)/u.test(normalized)) {
+    if (/(?:pbr|shader|transparent|fog|skybox|refract|snow|spheremap)/u.test(normalized)) {
         return 'materials';
     }
     return 'advanced';
@@ -181,13 +224,8 @@ function formatWord(word: string): string {
     const acronyms: Readonly<Record<string, string>> = {
         gltf: 'glTF',
         hdr: 'HDR',
-        khc: 'KHC',
-        osg: 'OSG',
         pbr: 'PBR',
-        smd: 'SMD',
         srgb: 'sRGB',
-        ssao: 'SSAO',
-        tga: 'TGA',
         uv: 'UV',
         webgl: 'WebGL',
         webgpu: 'WebGPU',
@@ -215,9 +253,21 @@ function titleForPath(path: string): string {
 function descriptionForEntry(path: string, title: string, category: ExampleCategoryId): string {
     const override = DESCRIPTION_OVERRIDES[path];
     if (override) return override;
-    const categoryLabel =
-        EXAMPLE_CATEGORIES.find(candidate => candidate.id === category)?.label ?? 'Hilo3D';
-    return `Explore ${title} in the ${categoryLabel.toLowerCase()} examples.`;
+    const templates: Readonly<Record<ExampleCategoryId, string>> = {
+        'getting-started': `Learn the core Hilo3D workflow through ${title}.`,
+        '2d': `Build layered 2D content with ${title}.`,
+        geometry: `Inspect mesh construction and vertex data through ${title}.`,
+        materials: `Compare surface and shader behavior with ${title}.`,
+        lighting: `Study illumination, reflections, and shadow response with ${title}.`,
+        textures: `Explore texture sampling, formats, and color handling with ${title}.`,
+        animation: `Bring scene data to life through ${title}.`,
+        rendering: `Inspect the portable render pipeline through ${title}.`,
+        interaction: `Connect cameras, pointers, and scene queries through ${title}.`,
+        loaders: `Load and inspect production asset data with ${title}.`,
+        physics: `Connect Hilo3D rendering to a live ${title} simulation.`,
+        advanced: `Inspect lower-level engine behavior through ${title}.`
+    };
+    return templates[category];
 }
 
 function sourcePathForEntry(path: string): string {
@@ -230,6 +280,7 @@ function createEntry(path: string): ExampleCatalogEntry {
     const title = titleForPath(path);
     const category = categoryForPath(path);
     const description = descriptionForEntry(path, title, category);
+    const featured = FEATURED_PATHS.has(path);
     const sourcePath = sourcePathForEntry(path);
     const supportedBackends =
         path === 'webxr.html'
@@ -252,7 +303,8 @@ function createEntry(path: string): ExampleCatalogEntry {
         sourcePath,
         supportedBackends,
         defaultQuery,
-        searchText: `${title} ${path} ${category}`.toLowerCase()
+        featured,
+        searchText: `${title} ${description} ${path} ${category}`.toLowerCase()
     });
 }
 

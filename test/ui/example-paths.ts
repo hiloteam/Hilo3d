@@ -19,7 +19,7 @@ export const WEBGPU_ONLY_EXAMPLE_PATHS = [
     'compute_particles.html',
     'compute_raytracing.html'
 ] as const;
-export const NON_RENDERING_EXAMPLE_PATHS = ['math.html'] as const;
+export const NON_RENDERING_EXAMPLE_PATHS = [] as const;
 export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = ['shaderToy.html'] as const;
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     Partial<Record<string, Readonly<Record<string, string>>>>

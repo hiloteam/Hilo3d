@@ -66,6 +66,13 @@
 - Redesign the examples gallery with categorized metadata, search, responsive navigation, accessible
   controls, isolated per-example query parameters, source/direct links, loading states, and a shared
   renderer statistics panel that reports the active WebGL 2 or WebGPU backend.
+- Curate the gallery into focused Highlights and All Examples collections, replace generic
+  descriptions with capability-oriented copy, merge five primitive micro-pages into one visual
+  geometry lab, rename the two CanvasTexture demos, and remove obsolete OSG/SMD/TGA loaders,
+  duplicated Polly content, unused media, and the non-visual math fixture page.
+- Refresh the shared example lighting and dark canvas treatment, and rebuild Quick Start, point
+  lights, instancing, and bloom around deterministic showcase scenes. Add an ImageGen-authored
+  graphite/cyan/violet showroom-floor texture used by the new scenes.
 - Add renderer-local scriptable render pipelines through `RendererCommonOptions.renderPipeline`,
   reusable `RenderPipelineFactory` configurations, frame-scoped culling/renderer-list handles, a
   narrow `ScriptableRenderGraph`, retained pass-parameter pools, recovery-aware persistent targets,

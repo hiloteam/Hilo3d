@@ -1,72 +1,74 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage } = await createExampleContext({ stage: { useInstanced: true } });
+const { camera, stage, renderer, ambientLight } = await createExampleContext({
+    camera: { far: 50, near: 0.1, x: 0, y: 1.1, z: 6.5 },
+    stage: { useInstanced: true },
+    controls: { isLockMove: false, isLockZ: false }
+});
+camera.lookAt(new Hilo3d.Vector3());
+renderer.clearColor.set(0.004, 0.007, 0.018, 1);
+ambientLight.amount = 0.18;
 
-function rand(min: number, max: number): number {
-    return Math.random() * (max - min) + min;
+const root = new Hilo3d.Node().addTo(stage);
+const geometry = new Hilo3d.SphereGeometry({
+    radius: 0.095,
+    heightSegments: 12,
+    widthSegments: 16
+});
+const materials = [
+    new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.12, 0.86, 0.82),
+        metallic: 0.54,
+        roughness: 0.24
+    }),
+    new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.52, 0.38, 1),
+        metallic: 0.3,
+        roughness: 0.32
+    })
+] as const;
+
+const columnCount = 24;
+const rowCount = 14;
+for (let row = 0; row < rowCount; row += 1) {
+    for (let column = 0; column < columnCount; column += 1) {
+        const normalizedX = column / (columnCount - 1);
+        const normalizedY = row / (rowCount - 1);
+        const x = (normalizedX - 0.5) * 5.8;
+        const y = (normalizedY - 0.5) * 3.2;
+        const wave = Math.sin(normalizedX * Math.PI * 4 + normalizedY * Math.PI * 2);
+        const material = materials[(row + column) % materials.length];
+        if (!material) throw new RangeError('Missing instanced material');
+        new Hilo3d.Mesh({
+            useInstanced: true,
+            geometry,
+            material,
+            x,
+            y,
+            z: wave * 0.48
+        }).addTo(root);
+    }
 }
 
-function randomItem<Item>(items: readonly Item[]): Item {
-    const item = items[Math.floor(Math.random() * items.length)];
-    if (item === undefined) throw new Error('Cannot choose from an empty collection');
-    return item;
-}
+root.onUpdate = deltaTime => {
+    root.rotationY += deltaTime * 0.012;
+    root.rotationX = Math.sin(performance.now() * 0.00035) * 9;
+};
 
-const loader = new Hilo3d.BasicLoader();
-void loader
-    .load({
-        src: new URL('./image/brdfLUT.png', import.meta.url).href
-    })
-    .then(image => {
-        if (!(image instanceof HTMLImageElement)) throw new TypeError('Expected a texture image');
-        return new Hilo3d.Texture({ image });
-    })
-    .then(function (diffuse) {
-        const textureMaterial = new Hilo3d.BasicMaterial({
-            diffuse,
-            side: Hilo3d.constants.FRONT_AND_BACK
-        });
-        const colorMaterial = new Hilo3d.BasicMaterial({
-            diffuse: new Hilo3d.Color(0.3, 0.6, 0.9),
-            side: Hilo3d.constants.FRONT_AND_BACK
-        });
-        const planeGeometry = new Hilo3d.PlaneGeometry();
-        const sphereGeometry = new Hilo3d.SphereGeometry({
-            radius: 0.3
-        });
-        const boxGeometry = new Hilo3d.BoxGeometry({
-            width: 0.3,
-            height: 0.3,
-            depth: 0.3
-        });
-        boxGeometry.setAllRectUV([
-            [0, 1],
-            [1, 1],
-            [1, 0],
-            [0, 0]
-        ]);
-
-        const geometryes = [planeGeometry, sphereGeometry, boxGeometry];
-        const materials = [colorMaterial, textureMaterial];
-
-        for (let i = 0; i < 200; i++) {
-            const r = 1;
-            const rect = new Hilo3d.Mesh({
-                useInstanced: true,
-                geometry: randomItem(geometryes),
-                material: randomItem(materials),
-                x: rand(-r, r),
-                y: rand(-r, r),
-                z: rand(-r, r)
-            });
-            rect.rotationX = Math.random() * 360;
-            rect.rotationY = Math.random() * 360;
-            rect.rotationZ = Math.random() * 360;
-            rect.setScale(rand(0.2, 0.3));
-            stage.addChild(rect);
-        }
-    })
-    .catch((error: unknown) => {
-        console.error('Failed to initialize instanced geometry example', error);
-    });
+new Hilo3d.PointLight({
+    x: -3.5,
+    y: 2.5,
+    z: 3.5,
+    amount: 22,
+    range: 14,
+    color: new Hilo3d.Color(0.2, 0.9, 1)
+}).addTo(stage);
+new Hilo3d.PointLight({
+    x: 3.8,
+    y: -1.5,
+    z: 2,
+    amount: 18,
+    range: 12,
+    color: new Hilo3d.Color(0.68, 0.32, 1)
+}).addTo(stage);

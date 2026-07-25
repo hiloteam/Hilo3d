@@ -36,6 +36,8 @@ const frameStatus = requireElement('#frameStatus', HTMLDivElement);
 const frameStatusText = requireElement('#frameStatusText', HTMLSpanElement);
 const sidebarToggle = requireElement('#sidebarToggle', HTMLButtonElement);
 const sidebarBackdrop = requireElement('#sidebarBackdrop', HTMLButtonElement);
+const featuredModeButton = requireElement('#featuredMode', HTMLButtonElement);
+const allModeButton = requireElement('#allMode', HTMLButtonElement);
 const backend = resolveExampleBackend();
 
 const categoryLabels = new Map<ExampleCategoryId, string>(
@@ -49,7 +51,10 @@ const catalog = examplesForBackend(createExampleCatalog(examplePaths), backend);
 const entriesById = new Map(catalog.map(entry => [entry.id, entry] as const));
 const buttonsById = new Map<string, HTMLButtonElement>();
 
-let filteredEntries: readonly ExampleCatalogEntry[] = catalog;
+type CatalogMode = 'featured' | 'all';
+
+let catalogMode: CatalogMode = 'featured';
+let filteredEntries: readonly ExampleCatalogEntry[] = catalog.filter(entry => entry.featured);
 let currentId = '';
 let frameLoadTimeout: number | undefined;
 
@@ -163,7 +168,12 @@ function renderNavigation(entries: readonly ExampleCatalogEntry[]): void {
         section.className = 'categorySection';
         const heading = document.createElement('h2');
         heading.className = 'categoryHeading';
-        heading.textContent = category.label;
+        const headingLabel = document.createElement('span');
+        headingLabel.textContent = category.label;
+        const headingCount = document.createElement('span');
+        headingCount.className = 'categoryCount';
+        headingCount.textContent = String(categoryEntries.length);
+        heading.append(headingLabel, headingCount);
         section.appendChild(heading);
 
         const list = document.createElement('ul');
@@ -175,8 +185,14 @@ function renderNavigation(entries: readonly ExampleCatalogEntry[]): void {
             button.type = 'button';
             button.dataset['exampleId'] = entry.id;
             button.dataset['examplePath'] = entry.path;
-            button.textContent = entry.title;
             button.title = entry.description;
+            const title = document.createElement('span');
+            title.className = 'exampleButtonTitle';
+            title.textContent = entry.title;
+            const description = document.createElement('span');
+            description.className = 'exampleButtonDescription';
+            description.textContent = entry.description;
+            button.append(title, description);
             if (entry.id === currentId) button.setAttribute('aria-current', 'page');
             button.addEventListener('click', () => {
                 showExample(entry, { updateHistory: 'push' });
@@ -190,10 +206,23 @@ function renderNavigation(entries: readonly ExampleCatalogEntry[]): void {
     }
 }
 
+function entriesForCurrentMode(): readonly ExampleCatalogEntry[] {
+    return catalogMode === 'featured' ? catalog.filter(entry => entry.featured) : catalog;
+}
+
 function filterNavigation(): void {
     const query = searchInput.value.trim().toLowerCase();
-    filteredEntries = query ? catalog.filter(entry => entry.searchText.includes(query)) : catalog;
+    filteredEntries = query
+        ? catalog.filter(entry => entry.searchText.includes(query))
+        : entriesForCurrentMode();
     renderNavigation(filteredEntries);
+}
+
+function setCatalogMode(mode: CatalogMode): void {
+    catalogMode = mode;
+    featuredModeButton.setAttribute('aria-pressed', String(mode === 'featured'));
+    allModeButton.setAttribute('aria-pressed', String(mode === 'all'));
+    filterNavigation();
 }
 
 function navigationTargetIsEditable(target: EventTarget | null): boolean {
@@ -238,6 +267,12 @@ frame.addEventListener('error', () => {
 });
 
 searchInput.addEventListener('input', filterNavigation);
+featuredModeButton.addEventListener('click', () => {
+    setCatalogMode('featured');
+});
+allModeButton.addEventListener('click', () => {
+    setCatalogMode('all');
+});
 sidebarToggle.addEventListener('click', () => {
     setSidebarOpen(!document.body.classList.contains('sidebarOpen'));
 });
@@ -245,11 +280,11 @@ sidebarBackdrop.addEventListener('click', () => {
     setSidebarOpen(false);
 });
 
-renderNavigation(catalog);
-
 const requestedId = decodeURIComponent(location.hash.slice(1));
-const initial =
-    entriesById.get(requestedId) ?? catalog.find(entry => entry.id === 'quickStart') ?? catalog[0];
+const requestedEntry = entriesById.get(requestedId);
+if (requestedEntry && !requestedEntry.featured) catalogMode = 'all';
+setCatalogMode(catalogMode);
+const initial = requestedEntry ?? catalog.find(entry => entry.id === 'quickStart') ?? catalog[0];
 if (!initial) throw new Error('Example index has no entries');
 showExample(initial, {
     includeGalleryQuery: true,
