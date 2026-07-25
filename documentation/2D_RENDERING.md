@@ -91,6 +91,11 @@ Camera 之后。一个 attachment 在当前应用帧还没有前序 writer 时�
 `(0.5, 0.5)`。按 UI 左上角坐标布局背景、面板或立绘时必须显式设置
 `anchorX: 0, anchorY: 0`；保留中心 anchor 时，位置必须加上显示宽高的一半。两种坐标合同不能混用，否则真实浏览器渲染会把贴近边缘的内容裁掉一半。
 
+`Sprite.x/y` 始终是
+**anchor 在父节点局部坐标系中的位置**，不是图片左上角。父节点的 position/scale/rotation 会继续参与 world
+transform；DOM pointer 坐标则由 Stage 和命中的 Camera 转换到这套 world/local 坐标。不要因为
+`Camera2D` 使用左上角屏幕原点，就推断 Sprite 也默认左上角定位。
+
 ## Layer 语义
 
 `Node.layer` 默认是 bit 0（值 `1`），`Sprite` 和 `Text2D` 默认是 bit
@@ -184,6 +189,9 @@ stage.enableDOMEvent(['pointermove', 'pointerdown', 'pointerup', 'click']);
 `UiButton` 复用同一组九个分片，状态变化只调用分片的
 `setFrame()`，不会重建节点或实例数组。label是一个居中的
 `Text2D`。禁用状态会同时关闭按钮及其分片的 pointer picking。
+
+Nine-slice 只能保真拉伸专门为切片设计的素材。四角装饰必须完整落在 corner
+insets 内；四条边的可拉伸区必须连续、等宽且没有居中的徽章、卡扣、缺口或跨切线装饰；中心区应是可重复或可均匀拉伸的平面。不能把普通装饰框随意切九块，否则边缘过渡会被拉长，最终表现为顶边、正文和底边互相脱节。至少用一个比源 frame 更宽、一个更高的真实浏览器尺寸验收。
 
 ## 点击与命中
 

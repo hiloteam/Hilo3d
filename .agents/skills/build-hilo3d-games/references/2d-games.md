@@ -49,9 +49,13 @@ camera.resize(width, height);
 
 ## Match anchors to the layout coordinate system
 
+> **Coordinate invariant:** never infer Sprite positioning from the Camera origin.
+
 `Camera2D` has a top-left screen origin, but every `Sprite` and `Text2D` defaults to a centered
-`anchorX: 0.5, anchorY: 0.5`. The anchor is part of the visual's local geometry; it does not change
-what `x` and `y` mean. Do not assume a top-left Camera also changes the Sprite anchor.
+`anchorX: 0.5, anchorY: 0.5`. `sprite.x/y` is the anchor's position in the **parent node's local
+coordinate system**; it is not the image's top-left corner. The anchor changes which point of the
+visual sits at that local position. Parent translation, scale, and rotation then produce the world
+position. Do not assume a top-left Camera also changes the Sprite anchor.
 
 For UI coordinates measured from a mockup's left/top edge, make the contract explicit:
 
@@ -77,6 +81,24 @@ portrait.y = panelTop + portrait.height * 0.5;
 Apply the same rule to cover backgrounds, panels, portraits, titles, and bottom/right-aligned HUD
 items. Browser-check every responsive edge: an anchor mismatch often clips exactly half of a visual
 while arithmetic and hit boxes otherwise look plausible.
+
+For nested UI, keep the same contract at every level:
+
+```ts
+const panel = new Hilo3d.Node({ x: 24, y: 20 }).addTo(stage);
+const icon = new Hilo3d.Sprite({
+    texture: iconTexture,
+    x: 12,
+    y: 12,
+    anchorX: 0,
+    anchorY: 0
+}).addTo(panel);
+```
+
+Here the icon's top-left is `(12, 12)` in `panel` local space and `(36, 32)` in world space before
+any parent scale or rotation. Do not feed DOM `clientX/clientY` directly into a nested Sprite; let
+Stage/Camera picking perform screen-to-world conversion, then transform to local space when custom
+drag logic needs it.
 
 ## Build sprites from textures and atlas frames
 
@@ -130,6 +152,11 @@ Control animation with `play()`, `pause()`, `stop()`, and `gotoFrame(index)`. Li
 
 Frame coordinates use top-left source pixels. `SpriteFrame` accounts for the texture `flipY` policy;
 do not manually invert atlas rows.
+
+Still define animation rows through semantic names (`up`, `down`, `left`, `right`) and verify the
+map in a real browser on both backends. Do not let gameplay code depend on an image viewer's
+apparent row order: texture upload orientation, authored facing direction, and atlas tooling can
+make a visually plausible numeric row map point the character the wrong way.
 
 ## Replace Sprite sources in place
 
@@ -270,6 +297,17 @@ const panel = new Hilo3d.SlicedSprite({
 
 Its nine child Sprites use one texture and stay adjacent, so they normally form one portable
 instance batch. Use `UiButton` when the same skin has interaction states:
+
+The source art must itself be nine-slice-safe:
+
+- keep every corner ornament completely inside its fixed corner inset;
+- make each stretchable edge segment continuous and uniform;
+- keep emblems, clasps, notches, protrusions, and other unique details out of edge centers;
+- use a flat, repeatable, or uniformly stretchable center;
+- validate at one size wider and one size taller than the source frame in a real browser.
+
+Slicing an arbitrary ornate frame does not make it scalable. Details that cross a slice boundary or
+sit inside a stretchable edge become elongated gaps and detached top/center/bottom bands.
 
 ```ts
 const button = new Hilo3d.UiButton({

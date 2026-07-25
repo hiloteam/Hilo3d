@@ -1,12 +1,12 @@
 import * as Hilo3d from '../../src/Hilo3d';
 
-export const POSTAL_UI_FRAME_WIDTH = 367;
-export const POSTAL_UI_FRAME_HEIGHT = 166;
+export const POSTAL_UI_FRAME_WIDTH = 384;
+export const POSTAL_UI_FRAME_HEIGHT = 144;
 export const POSTAL_UI_INSETS = Object.freeze({
-    left: 58,
-    right: 58,
-    top: 40,
-    bottom: 40
+    left: 18,
+    right: 18,
+    top: 18,
+    bottom: 18
 });
 
 export async function loadPostalUiTexture(): Promise<Hilo3d.Texture> {
