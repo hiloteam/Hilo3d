@@ -1,4 +1,4 @@
-# Unreleased
+# 2.0.0-alpha.1 (2026-07-25)
 
 ### Breaking changes
 
@@ -17,6 +17,9 @@
 
 ### Changes
 
+- Add a portable `build-hilo3d-games` Agent Skill with strict TypeScript/Vite starters for 2D, 3D,
+  and hybrid games, stable-first `2.0.0` dependency resolution, focused public-API references, and
+  repository checks that keep bundled examples and version-selection behavior valid.
 - Add a shared 2D frontend with atlas-backed `Sprite`, `SpriteFrame` sequence animation,
   Canvas-2D-backed `Text2D`, pixel-space `Camera2D`, actual-size sprite pointer hit tests, and
   automatic portable instance batches capped at 128 sprites per draw. Sprite raster uses one GLSL ES
@@ -132,7 +135,7 @@
   buffer-range validation paths static, removing draw-count-amplified hot-path allocations without
   weakening the backend validation contract.
 
-# 2.0.0 (2026-07-14)
+## Earlier 2.0.0 development baseline (2026-07-14)
 
 ### Breaking changes
 

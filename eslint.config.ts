@@ -5,6 +5,7 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
     globalIgnores([
+        '.agents/skills/**/assets/**',
         '.cache/**',
         'coverage/**',
         'dist/**',

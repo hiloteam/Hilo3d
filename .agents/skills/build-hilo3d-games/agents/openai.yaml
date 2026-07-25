@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Hilo3D Game Development'
+  short_description: 'Build 2D, 3D, and hybrid games with Hilo3D 2.0'
+  default_prompt:
+    'Use $build-hilo3d-games to create and verify a complete 2D, 3D, or hybrid browser game with
+    Hilo3D 2.0.0.'
