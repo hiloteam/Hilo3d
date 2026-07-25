@@ -6396,6 +6396,51 @@ export interface SkinnedMeshParameters extends MeshParameters {
     skeleton?: Skeleton | null;
 }
 
+// @public
+export class SlicedSprite extends Node_2 {
+    constructor(params: SlicedSpriteParameters);
+    get anchorX(): number;
+    set anchorX(value: number);
+    get anchorY(): number;
+    set anchorY(value: number);
+    // (undocumented)
+    className: string;
+    get frame(): SpriteFrame;
+    get height(): number;
+    set height(value: number);
+    // (undocumented)
+    readonly insets: Readonly<SlicedSpriteInsets>;
+    // (undocumented)
+    readonly isSlicedSprite = true;
+    // (undocumented)
+    readonly parts: readonly Sprite[];
+    setFrame(frame: SpriteFrame): this;
+    setSize(width: number, height: number): this;
+    // (undocumented)
+    static readonly typeName: string;
+    get width(): number;
+    set width(value: number);
+}
+
+// @public (undocumented)
+export interface SlicedSpriteInsets {
+    bottom: number;
+    left: number;
+    right: number;
+    top: number;
+}
+
+// @public (undocumented)
+export interface SlicedSpriteParameters extends NodeParameters {
+    anchorX?: number;
+    anchorY?: number;
+    frame?: SpriteFrame;
+    height?: number;
+    insets: SlicedSpriteInsets;
+    texture?: Texture;
+    width?: number;
+}
+
 // @public (undocumented)
 export class Sphere {
     constructor(params?: {
@@ -6525,12 +6570,17 @@ export class Sprite extends Mesh {
     readonly isSprite = true;
     // (undocumented)
     loop: boolean;
+    // (undocumented)
+    material: SpriteMaterial;
     pause(): this;
     play(): this;
     // (undocumented)
     playing: boolean;
     // (undocumented)
     raycast(ray: Ray, _sort?: boolean): Vector3[] | null;
+    setFrame(frame: SpriteFrame, options?: SpriteFrameUpdateOptions): this;
+    setFrames(frames: readonly SpriteFrame[], options?: SpriteFramesUpdateOptions): this;
+    setTexture(texture: Texture, options?: SpriteFrameUpdateOptions): this;
     // (undocumented)
     readonly spriteSizeAnchor: Float32Array<ArrayBuffer>;
     // (undocumented)
@@ -6575,6 +6625,17 @@ export interface SpriteFrameParameters {
     width?: number;
     x?: number;
     y?: number;
+}
+
+// @public (undocumented)
+export interface SpriteFramesUpdateOptions extends SpriteFrameUpdateOptions {
+    autoPlay?: boolean;
+    currentFrame?: number;
+}
+
+// @public (undocumented)
+export interface SpriteFrameUpdateOptions {
+    resize?: boolean;
 }
 
 // @public
@@ -7007,12 +7068,19 @@ export interface Text2DParameters extends Omit<SpriteParameters, 'texture' | 'fr
 export interface Text2DStyle {
     fillStyle?: string;
     font?: string;
+    letterSpacing?: number;
     lineHeight?: number;
+    maxLines?: number;
+    maxWidth?: number;
+    overflow?: 'visible' | 'clip' | 'ellipsis';
     padding?: number;
+    paragraphSpacing?: number;
     resolution?: number;
     strokeStyle?: string;
     strokeWidth?: number;
     textAlign?: CanvasTextAlign;
+    textBaseline?: CanvasTextBaseline;
+    wordWrap?: boolean;
 }
 
 // @public
@@ -7424,6 +7492,46 @@ export interface TypedArrayConstructor {
     // (undocumented)
     readonly BYTES_PER_ELEMENT: number;
 }
+
+// @public
+export class UiButton extends SlicedSprite {
+    constructor(params: UiButtonParameters);
+    // (undocumented)
+    className: string;
+    get enabled(): boolean;
+    // (undocumented)
+    readonly frames: Readonly<UiButtonFrames>;
+    // (undocumented)
+    readonly isUiButton = true;
+    // (undocumented)
+    readonly label: Text2D;
+    setEnabled(enabled: boolean): this;
+    setLabel(text: string): this;
+    // (undocumented)
+    setSize(width: number, height: number): this;
+    get state(): UiButtonState;
+    // (undocumented)
+    static readonly typeName: string;
+}
+
+// @public (undocumented)
+export interface UiButtonFrames {
+    disabled?: SpriteFrame;
+    down?: SpriteFrame;
+    hover?: SpriteFrame;
+    up: SpriteFrame;
+}
+
+// @public (undocumented)
+export interface UiButtonParameters extends Omit<SlicedSpriteParameters, 'frame' | 'texture'> {
+    enabled?: boolean;
+    frames: UiButtonFrames;
+    label?: string;
+    labelStyle?: Text2DStyle;
+}
+
+// @public (undocumented)
+export type UiButtonState = 'up' | 'hover' | 'down' | 'disabled';
 
 // @public (undocumented)
 export const UNIFORM_BLOCK_BINDINGS: Readonly<{

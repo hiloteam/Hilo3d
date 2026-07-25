@@ -238,6 +238,56 @@ describe('Sprite', () => {
         expect(update).not.toHaveBeenCalled();
     });
 
+    it('accepts a SpriteMaterial as the initial image source', () => {
+        const source = texture(40, 24);
+        const material = Hilo3d.SpriteMaterial.forTexture(source);
+        const sprite = new Hilo3d.Sprite({ material });
+
+        expect(sprite.material).toBe(material);
+        expect(sprite.frames[0]?.texture).toBe(source);
+        expect([sprite.width, sprite.height]).toEqual([40, 24]);
+    });
+
+    it('replaces textures, frames, and animation sequences without reallocating instance arrays', () => {
+        const original = texture(64, 32);
+        const replacement = texture(48, 20);
+        const sprite = new Hilo3d.Sprite({ texture: original, width: 100, height: 50 });
+        const uvStorage = sprite.spriteUVRect;
+        const sizeStorage = sprite.spriteSizeAnchor;
+        const frames = [
+            new Hilo3d.SpriteFrame({
+                texture: replacement,
+                x: 0,
+                y: 0,
+                width: 24,
+                height: 20
+            }),
+            new Hilo3d.SpriteFrame({
+                texture: replacement,
+                x: 24,
+                y: 0,
+                width: 24,
+                height: 20
+            })
+        ];
+
+        sprite.setTexture(replacement);
+        expect([sprite.width, sprite.height]).toEqual([100, 50]);
+        expect(sprite.material.texture).toBe(replacement);
+
+        const firstFrame = frames[0];
+        if (!firstFrame) throw new Error('Replacement frame storage is incomplete.');
+        sprite.setFrame(firstFrame, { resize: true });
+        expect([sprite.width, sprite.height]).toEqual([24, 20]);
+
+        sprite.setFrames(frames, { currentFrame: 1, autoPlay: true });
+        expect(sprite.currentFrame).toBe(1);
+        expect(sprite.playing).toBe(true);
+        expect(sprite.frames).toEqual(frames);
+        expect(sprite.spriteUVRect).toBe(uvStorage);
+        expect(sprite.spriteSizeAnchor).toBe(sizeStorage);
+    });
+
     it('uses logical size and anchor for click ray tests', () => {
         const sprite = new Hilo3d.Sprite({
             texture: texture(),
@@ -269,7 +319,6 @@ describe('Sprite', () => {
     it('translates its single GLSL source through Naga with the WebGPU instance ABI', () => {
         const sprite = new Hilo3d.Sprite({ texture: texture() });
         const material = sprite.material;
-        if (!material) throw new Error('Sprite lost its material.');
         const shader = Hilo3d.Shader.getShader(
             sprite,
             material,

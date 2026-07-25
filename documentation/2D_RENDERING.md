@@ -10,7 +10,9 @@
 
 - 共享 quad 的 `Sprite`，支持尺寸、anchor、tint 和纹理图集 frame；
 - `SpriteFrame` 序列帧动画，可设置统一帧率或逐帧 duration；
-- Canvas 2D 栅格化的 `Text2D`，内容或样式改变时才更新纹理；
+- `Sprite.setTexture()`、`setFrame()`、`setFrames()` 的原地动态换图；
+- Canvas 2D 栅格化的 `Text2D`，支持实测宽度换行、CJK 断行、最多行数与 ellipsis；
+- atlas-backed `SlicedSprite` 九宫格与四状态 `UiButton`；
 - 复用 `Stage.enableDOMEvent()` 与 CPU raycast 的 click/pointer 事件；
 - `Camera2D` 的左上角像素坐标投影；
 - Node 级 `sortingLayer`、`zIndex` 与稳定场景树顺序；
@@ -68,6 +70,18 @@ stage.addChild(sprite);
 stage.enableDOMEvent('click');
 ```
 
+运行时换图不需要操作材质：
+
+```ts
+sprite.setTexture(newTexture, { resize: true });
+sprite.setFrame(newFrame, { resize: true });
+sprite.setFrames(newFrames, { currentFrame: 0, autoPlay: false });
+```
+
+三个方法都会保留 Sprite 的节点、共享 Geometry、UV/size/tint 实例数组；纹理变化时自动切换到该 Texture 对应的共享
+`SpriteMaterial`。仅传 `material: SpriteMaterial.forTexture(texture)`
+也会从材质纹理推导初始完整 frame。
+
 `Stage` 会在 tick 时按 `priority` 从低到高稳定排序。后绘制的高优先级 Camera 在 pointer hit
 test 时先接受命中。普通 Camera 默认清 color/depth/stencil；`Camera2D`
 默认保留 color、清 depth/stencil，因此可以直接叠在 3D
@@ -117,15 +131,59 @@ call。不要用 `SpriteMaterial.renderOrder`
 ## Canvas 文字
 
 `Text2D` 把完整标签栅格化为一个 Canvas 纹理和一个 Sprite
-quad。多行、font、fill、stroke、padding、line height 与 backing resolution 都由 Canvas
+quad。多行、font、fill、stroke、padding、line height、`maxWidth`、实测宽度自动换行、中文断行、
+`maxLines`、`overflow: 'ellipsis'`、baseline、段落间距、字间距与 backing resolution 都由 Canvas
 2D 处理。Canvas 只在 `setText()` 或 `setStyle()`
 时重绘；普通 tick 不读 Canvas，也不触发纹理上传。重绘会复用原 Canvas、Texture 和 SpriteMaterial
 identity，只推进 Texture content
 revision；因此低频更新 HUD 分数不会反复创建材质、shader 或 pipeline。
 
+```ts
+const description = new Text2D({
+    text: '枫叶镇 Maple Post 的快递将在 18:30 前送达。',
+    style: {
+        font: '600 16px system-ui',
+        maxWidth: 280,
+        maxLines: 3,
+        overflow: 'ellipsis',
+        lineHeight: 24,
+        paragraphSpacing: 8,
+        letterSpacing: 0.5
+    }
+});
+```
+
 每个动态 `Text2D` 默认拥有自己的纹理，所以它仍是一个 draw
 item，但不同标签不能像同图集 Sprite 一样合并。大量静态字形应预烘焙到同一个 font atlas，再使用普通
 `Sprite`/`SpriteFrame`，以获得完整的跨文字 batch。
+
+## Nine-slice 与按钮
+
+`SlicedSprite` 把一个 atlas frame 分成九个相邻 Sprite。四个角保持源像素尺寸，边和中心按目标
+`width`/`height` 拉伸；九个分片共享同一 Texture 的默认材质，因此排序相邻时进入同一个 Sprite instance
+batch。
+
+```ts
+const panel = new SlicedSprite({
+    frame: panelFrame,
+    insets: { left: 24, right: 24, top: 20, bottom: 20 },
+    width: 480,
+    height: 260
+});
+
+const button = new UiButton({
+    frames: { up, hover, down, disabled },
+    insets: { left: 24, right: 24, top: 20, bottom: 20 },
+    width: 260,
+    height: 72,
+    label: 'START'
+});
+stage.enableDOMEvent(['pointermove', 'pointerdown', 'pointerup', 'click']);
+```
+
+`UiButton` 复用同一组九个分片，状态变化只调用分片的
+`setFrame()`，不会重建节点或实例数组。label是一个居中的
+`Text2D`。禁用状态会同时关闭按钮及其分片的 pointer picking。
 
 ## 点击与命中
 
@@ -159,6 +217,8 @@ listener 或每帧 picking 成本。
 - [`2d_sprite_animation.html`](../examples/2d_sprite_animation.html)：序列帧月蛾、Sprite 点击暂停，以及背景 2D
   Camera、3D world Camera、2D UI Camera 的三层合成。
 - [`2d_text.html`](../examples/2d_text.html)：Canvas 多行文字、描边、低频动态分数与点击换文案。
+- [`2d_text_layout.html`](../examples/2d_text_layout.html)：中文/英文/数字混排的实测宽度响应式换行、最多行数、省略号、字距与段落间距。
+- [`2d_ui_button.html`](../examples/2d_ui_button.html)：ImageGen 邮政公会 atlas 驱动的可拉伸面板与四状态按钮。
 - [`2d_sprite_batch.html`](../examples/2d_sprite_batch.html)：单 atlas 的 4,096 Sprite；按 128
   instances 自动形成 32 个 portable Sprite batch。
 - [`2d_sorting_town.html`](../examples/2d_sorting_town.html)：像素小镇中的 A* 自动寻路角色；建筑、树木与角色统一使用脚底世界 Y 作为
@@ -166,6 +226,10 @@ listener 或每帧 picking 成本。
 
 ![2D sorting town example](./assets/2d-sorting-town-example.png)
 
-三套 “Moonlit Conservatory” 与两套 “Maple Post
-Town”美术资源由 ImageGen 生成，透明序列帧条与图集经过 Pillow 做色键去背、边缘消色与 alpha 检查。示例可用
+![2D responsive text layout example](./assets/2d-text-layout-example.png)
+
+![2D nine-slice UI button example](./assets/2d-ui-button-example.png)
+
+三套 “Moonlit Conservatory”、三套 “Maple Post Town”与一套 “Postal Guild
+UI”美术资源由 ImageGen 生成；小镇地表以单张静态纹理上传一次，透明序列帧条与 UI 图集经过 Pillow 做色键去背、边缘消色与 alpha 检查。示例可用
 `?backend=webgl2` 或 `?backend=webgpu` 显式选择后端。

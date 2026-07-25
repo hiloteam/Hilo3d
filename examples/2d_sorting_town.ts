@@ -50,11 +50,11 @@ const AUTO_DESTINATIONS = [
 ] as const satisfies readonly TilePoint[];
 
 const TOWN_OBJECTS = [
-    { frame: 0, x: 164, y: 324, width: 218, height: 255 },
-    { frame: 1, x: 424, y: 324, width: 220, height: 258 },
-    { frame: 2, x: 738, y: 324, width: 226, height: 258 },
+    { frame: 0, x: 164, y: 324, width: 200, height: 256 },
+    { frame: 1, x: 424, y: 324, width: 200, height: 256 },
+    { frame: 2, x: 738, y: 324, width: 200, height: 256 },
     { frame: 3, x: 1042, y: 324, width: 226, height: 258 },
-    { frame: 0, x: 1190, y: 324, width: 196, height: 232 },
+    { frame: 0, x: 1190, y: 324, width: 200, height: 256 },
     { frame: 3, x: 790, y: 744, width: 216, height: 254 },
     { frame: 1, x: 1115, y: 744, width: 220, height: 258 },
     { frame: 4, x: 76, y: 374, width: 138, height: 184 },
@@ -68,9 +68,9 @@ const TOWN_OBJECTS = [
     { frame: 5, x: 1242, y: 682, width: 128, height: 178 },
     { frame: 6, x: 628, y: 352, width: 104, height: 130 },
     { frame: 6, x: 1008, y: 574, width: 96, height: 120 },
-    { frame: 7, x: 290, y: 445, width: 86, height: 104 },
-    { frame: 7, x: 744, y: 502, width: 86, height: 104 },
-    { frame: 7, x: 1146, y: 514, width: 86, height: 104 }
+    { frame: 7, x: 290, y: 445, width: 200, height: 256 },
+    { frame: 7, x: 744, y: 502, width: 200, height: 256 },
+    { frame: 7, x: 1146, y: 514, width: 200, height: 256 }
 ] as const satisfies readonly TownObject[];
 
 function requireContainer(): HTMLElement {
@@ -187,56 +187,14 @@ function findPath(start: TilePoint, goal: TilePoint): TilePoint[] {
     return reversePath;
 }
 
-function createGroundTexture(): Hilo3d.Texture {
+function createLoadingGroundTexture(): Hilo3d.Texture {
     const canvas = document.createElement('canvas');
-    canvas.width = WORLD_WIDTH;
-    canvas.height = WORLD_HEIGHT;
+    canvas.width = 4;
+    canvas.height = 4;
     const context = requireContext(canvas);
     context.imageSmoothingEnabled = false;
     context.fillStyle = '#78a85b';
-    context.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-
-    for (let row = 0; row < MAP_ROWS; row += 1) {
-        for (let column = 0; column < MAP_COLUMNS; column += 1) {
-            const x = column * TILE_SIZE;
-            const y = row * TILE_SIZE;
-            if (isWalkable(column, row)) {
-                context.fillStyle = (column + row) % 2 === 0 ? '#d7bd7d' : '#d3b777';
-                context.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-                context.fillStyle = '#b08b59';
-                if (!isWalkable(column - 1, row)) context.fillRect(x, y, 5, TILE_SIZE);
-                if (!isWalkable(column + 1, row))
-                    context.fillRect(x + TILE_SIZE - 5, y, 5, TILE_SIZE);
-                if (!isWalkable(column, row - 1)) context.fillRect(x, y, TILE_SIZE, 5);
-                if (!isWalkable(column, row + 1))
-                    context.fillRect(x, y + TILE_SIZE - 5, TILE_SIZE, 5);
-                const pebbleX = x + 14 + ((column * 17 + row * 7) % 35);
-                const pebbleY = y + 14 + ((column * 11 + row * 19) % 34);
-                context.fillStyle = '#c09e65';
-                context.fillRect(pebbleX, pebbleY, 5, 3);
-            } else {
-                const detailX = x + 9 + ((column * 23 + row * 13) % 42);
-                const detailY = y + 8 + ((column * 7 + row * 29) % 43);
-                context.fillStyle = (column + row) % 3 === 0 ? '#67984f' : '#86b967';
-                context.fillRect(detailX, detailY, 5, 10);
-                context.fillRect(detailX - 3, detailY + 4, 11, 3);
-            }
-        }
-    }
-
-    context.fillStyle = '#4e98b1';
-    context.fillRect(832, 24, 362, 164);
-    context.fillStyle = '#72bed0';
-    for (let y = 40; y < 184; y += 32) {
-        for (let x = 850 + ((y / 32) % 2) * 16; x < 1180; x += 48) {
-            context.fillRect(x, y, 22, 4);
-        }
-    }
-    context.fillStyle = '#356e87';
-    context.fillRect(832, 24, 362, 6);
-    context.fillRect(832, 182, 362, 6);
-    context.fillRect(832, 24, 6, 164);
-    context.fillRect(1188, 24, 6, 164);
+    context.fillRect(0, 0, 4, 4);
 
     return new Hilo3d.Texture({
         image: canvas,
@@ -246,7 +204,7 @@ function createGroundTexture(): Hilo3d.Texture {
         magFilter: Hilo3d.constants.webgl.NEAREST,
         wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
         wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
-        name: 'SortingTown:ground'
+        name: 'SortingTown:loading-ground'
     });
 }
 
@@ -281,12 +239,16 @@ function createMarkerTexture(): Hilo3d.Texture {
     });
 }
 
-async function loadPixelTexture(url: URL, name: string): Promise<Hilo3d.Texture> {
+async function loadPixelTexture(
+    url: URL,
+    name: string,
+    premultiplyAlpha = true
+): Promise<Hilo3d.Texture> {
     const image = await new Hilo3d.BasicLoader().loadImg(url.href);
     return new Hilo3d.Texture({
         image,
         flipY: true,
-        premultiplyAlpha: true,
+        premultiplyAlpha,
         minFilter: Hilo3d.constants.webgl.NEAREST,
         magFilter: Hilo3d.constants.webgl.NEAREST,
         wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
@@ -340,8 +302,8 @@ const stage = await Hilo3d.Stage.create({
 const world = new Hilo3d.Node({ name: 'SortingTownWorld' }).addTo(stage);
 let worldScale = 1;
 
-new Hilo3d.Sprite({
-    texture: createGroundTexture(),
+const loadingGround = new Hilo3d.Sprite({
+    texture: createLoadingGroundTexture(),
     width: WORLD_WIDTH,
     height: WORLD_HEIGHT,
     anchorX: 0,
@@ -357,7 +319,12 @@ const ticker = new Hilo3d.Ticker(60);
 ticker.addTick(stage);
 ticker.start();
 
-const [objectTexture, courierTexture] = await Promise.all([
+const [groundTexture, objectTexture, courierTexture] = await Promise.all([
+    loadPixelTexture(
+        new URL('./image/2d/sorting-town-ground.png', import.meta.url),
+        'SortingTown:ground',
+        false
+    ),
     loadPixelTexture(
         new URL('./image/2d/sorting-town-objects.png', import.meta.url),
         'SortingTown:objects'
@@ -367,6 +334,17 @@ const [objectTexture, courierTexture] = await Promise.all([
         'SortingTown:courier'
     )
 ]);
+loadingGround.removeFromParent();
+new Hilo3d.Sprite({
+    texture: groundTexture,
+    width: WORLD_WIDTH,
+    height: WORLD_HEIGHT,
+    anchorX: 0,
+    anchorY: 0,
+    sortingLayer: -100,
+    pointerEnabled: false,
+    autoPlay: false
+}).addTo(world);
 const objectFrames = createGridFrames(objectTexture, 4, 2);
 const courierFrames = createGridFrames(courierTexture, 4, 4);
 
@@ -526,7 +504,7 @@ const courierController = {
             const dx = targetX - courier.x;
             const dy = targetY - courier.y;
             const distance = Math.hypot(dx, dy);
-            if (Math.abs(dx) >= Math.abs(dy)) currentDirectionRow = dx < 0 ? 1 : 2;
+            if (Math.abs(dx) >= Math.abs(dy)) currentDirectionRow = dx < 0 ? 2 : 1;
             else currentDirectionRow = dy < 0 ? 3 : 0;
             if (distance <= remainingDistance || distance < 0.001) {
                 courier.x = targetX;

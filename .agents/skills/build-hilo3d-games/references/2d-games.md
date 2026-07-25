@@ -5,9 +5,11 @@
 - [Use the 2D coordinate contract](#use-the-2d-coordinate-contract)
 - [Match anchors to the layout coordinate system](#match-anchors-to-the-layout-coordinate-system)
 - [Build sprites from textures and atlas frames](#build-sprites-from-textures-and-atlas-frames)
+- [Replace Sprite sources in place](#replace-sprite-sources-in-place)
 - [Control display order](#control-display-order)
 - [Preserve batching](#preserve-batching)
 - [Use Text2D for dynamic labels](#use-text2d-for-dynamic-labels)
+- [Build scalable panels and buttons](#build-scalable-panels-and-buttons)
 - [Add pointer interaction](#add-pointer-interaction)
 - [Use simple collision shapes](#use-simple-collision-shapes)
 - [Compose a 2D background, 3D world, and HUD](#compose-a-2d-background-3d-world-and-hud)
@@ -129,6 +131,21 @@ Control animation with `play()`, `pause()`, `stop()`, and `gotoFrame(index)`. Li
 Frame coordinates use top-left source pixels. `SpriteFrame` accounts for the texture `flipY` policy;
 do not manually invert atlas rows.
 
+## Replace Sprite sources in place
+
+Do not mutate `sprite.material` to swap character skins. Use the public source APIs:
+
+```ts
+portrait.setTexture(texture, { resize: true });
+portrait.setFrame(frame, { resize: true });
+portrait.setFrames(walkFrames, { currentFrame: 0, autoPlay: false });
+```
+
+They update UVs, shared material selection, animation state, and optional logical size together
+while preserving the Sprite node and its renderer-side instance arrays. A Sprite may also be
+constructed from only `material: SpriteMaterial.forTexture(texture)`; the complete initial frame is
+inferred from the material texture.
+
 ## Control display order
 
 Every `Sprite` and `Text2D` uses the Node-level display key:
@@ -202,13 +219,19 @@ Sprites contiguous in the scene tree to recover large batches without visual-ord
 
 ```ts
 const score = new Hilo3d.Text2D({
-    text: 'SCORE 000',
+    text: '枫叶镇 Maple Post 的快递将在 18:30 前送达。',
     style: {
         font: '700 24px system-ui, sans-serif',
         fillStyle: '#ffffff',
         strokeStyle: '#10152b',
         strokeWidth: 4,
         padding: 6,
+        maxWidth: 320,
+        maxLines: 3,
+        overflow: 'ellipsis',
+        lineHeight: 32,
+        paragraphSpacing: 8,
+        letterSpacing: 0.5,
         resolution: 2,
         textAlign: 'center'
     },
@@ -227,6 +250,40 @@ Use:
 - `Text2D` for scores, timers, prompts, and low-frequency labels;
 - a font atlas and normal Sprites for large amounts of mostly static glyphs;
 - DOM for accessible forms, long text, and screen-reader navigation.
+
+`maxWidth` wrapping uses Canvas glyph measurements rather than character counts. CJK characters are
+valid break points, Latin words stay together when they fit, and oversized tokens fall back to
+character breaks. Call `setStyle({ maxWidth })` from a resize handler to reflow responsive labels.
+
+## Build scalable panels and buttons
+
+Use `SlicedSprite` for atlas-backed frames that must resize without distorting corners:
+
+```ts
+const panel = new Hilo3d.SlicedSprite({
+    frame: panelFrame,
+    insets: { left: 24, right: 24, top: 20, bottom: 20 },
+    width: 480,
+    height: 260
+});
+```
+
+Its nine child Sprites use one texture and stay adjacent, so they normally form one portable
+instance batch. Use `UiButton` when the same skin has interaction states:
+
+```ts
+const button = new Hilo3d.UiButton({
+    frames: { up, hover, down, disabled },
+    insets: { left: 24, right: 24, top: 20, bottom: 20 },
+    width: 260,
+    height: 72,
+    label: 'START'
+});
+stage.enableDOMEvent(['pointermove', 'pointerdown', 'pointerup', 'click']);
+```
+
+State changes update the nine existing frames in place. Put all four states on one atlas so hover
+and press transitions reuse shared Sprite materials and pipelines.
 
 ## Add pointer interaction
 

@@ -44,6 +44,18 @@ export interface SpriteParameters extends Omit<
     autoPlay?: boolean;
 }
 
+export interface SpriteFrameUpdateOptions {
+    /** Resize the logical Sprite bounds to the new frame. Defaults to `false`. */
+    resize?: boolean;
+}
+
+export interface SpriteFramesUpdateOptions extends SpriteFrameUpdateOptions {
+    /** Frame to display after replacement. Defaults to zero. */
+    currentFrame?: number;
+    /** Start playback after replacement. Defaults to `false`. */
+    autoPlay?: boolean;
+}
+
 function positiveFinite(value: number, label: string): void {
     if (!Number.isFinite(value) || value <= 0) {
         throw new RangeError(`${label} must be a positive finite number.`);
@@ -73,6 +85,7 @@ function resolveFrames(params: SpriteParameters): SpriteFrame[] {
         return [params.frame];
     }
     if (params.texture !== undefined) return [SpriteFrame.fromTexture(params.texture)];
+    if (params.material !== undefined) return [SpriteFrame.fromTexture(params.material.texture)];
     throw new TypeError('Sprite requires texture, frame, or frames.');
 }
 
@@ -111,6 +124,7 @@ class Sprite extends Mesh {
     static override readonly typeName: string = 'Sprite';
     readonly isSprite = true;
     override className = 'Sprite';
+    declare material: SpriteMaterial;
     readonly frames: SpriteFrame[];
     readonly tint: Color;
     readonly spriteUVRect = new Float32Array(4);
@@ -233,6 +247,58 @@ class Sprite extends Mesh {
     gotoFrame(index: number): this {
         this.applyFrame(index, true);
         this.elapsedInFrame = 0;
+        return this;
+    }
+
+    /**
+     * Replace the complete texture and display it as one frame.
+     * @param texture - New complete-frame texture.
+     * @param options - Optional logical-size update.
+     */
+    setTexture(texture: Texture, options: SpriteFrameUpdateOptions = {}): this {
+        return this.setFrame(SpriteFrame.fromTexture(texture), options);
+    }
+
+    /**
+     * Replace the active source with one atlas frame.
+     * @param frame - New frame.
+     * @param options - Optional logical-size update.
+     */
+    setFrame(frame: SpriteFrame, options: SpriteFrameUpdateOptions = {}): this {
+        const replacementOptions: SpriteFramesUpdateOptions = {
+            currentFrame: 0,
+            autoPlay: false
+        };
+        if (options.resize !== undefined) replacementOptions.resize = options.resize;
+        return this.setFrames([frame], replacementOptions);
+    }
+
+    /**
+     * Replace the animation sequence without recreating the Sprite.
+     *
+     * Existing UV, size, and tint arrays are mutated in place so renderer-side instance storage
+     * remains reusable.
+     * @param frames - Non-empty replacement sequence.
+     * @param options - Initial frame, playback, and resize behavior.
+     */
+    setFrames(frames: readonly SpriteFrame[], options: SpriteFramesUpdateOptions = {}): this {
+        const replacement = resolveFrames({ frames });
+        const currentFrame = options.currentFrame ?? 0;
+        if (
+            !Number.isSafeInteger(currentFrame) ||
+            currentFrame < 0 ||
+            currentFrame >= replacement.length
+        ) {
+            throw new RangeError(
+                `Sprite replacement frame index ${String(currentFrame)} is out of range.`
+            );
+        }
+        this.frames.splice(0, this.frames.length, ...replacement);
+        if (options.resize !== undefined) this.autoSize = options.resize;
+        this.elapsedInFrame = 0;
+        this.playing = (options.autoPlay ?? false) && replacement.length > 1;
+        if (replacement.length > 1) this.enableUpdateHook();
+        this.applyFrame(currentFrame, true);
         return this;
     }
 

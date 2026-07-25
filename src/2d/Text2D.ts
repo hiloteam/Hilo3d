@@ -22,6 +22,20 @@ export interface Text2DStyle {
     padding?: number;
     /** Explicit logical line height. */
     lineHeight?: number;
+    /** Maximum content width in logical pixels. Zero disables width constraints. */
+    maxWidth?: number;
+    /** Automatically wrap measured words and CJK characters at `maxWidth`. */
+    wordWrap?: boolean;
+    /** Behavior when content exceeds `maxWidth` or `maxLines`. */
+    overflow?: 'visible' | 'clip' | 'ellipsis';
+    /** Maximum rendered lines. Zero allows any number of lines. */
+    maxLines?: number;
+    /** Canvas text baseline used inside each logical line box. */
+    textBaseline?: CanvasTextBaseline;
+    /** Additional space after explicit newline-separated paragraphs. */
+    paragraphSpacing?: number;
+    /** Additional space between Unicode characters in logical pixels. */
+    letterSpacing?: number;
     /** Canvas backing pixels per logical sprite pixel. */
     resolution?: number;
 }
@@ -42,6 +56,13 @@ const DEFAULT_STYLE: Required<Text2DStyle> = Object.freeze({
     textAlign: 'left',
     padding: 0,
     lineHeight: 0,
+    maxWidth: 0,
+    wordWrap: true,
+    overflow: 'visible',
+    maxLines: 0,
+    textBaseline: 'top',
+    paragraphSpacing: 0,
+    letterSpacing: 0,
     resolution: 1
 });
 
@@ -78,6 +99,12 @@ function resolveStyle(style: Text2DStyle = {}): Required<Text2DStyle> {
     nonNegative(resolved.padding, 'Text2D.style.padding');
     nonNegative(resolved.strokeWidth, 'Text2D.style.strokeWidth');
     nonNegative(resolved.lineHeight, 'Text2D.style.lineHeight');
+    nonNegative(resolved.maxWidth, 'Text2D.style.maxWidth');
+    nonNegative(resolved.paragraphSpacing, 'Text2D.style.paragraphSpacing');
+    nonNegative(resolved.letterSpacing, 'Text2D.style.letterSpacing');
+    if (!Number.isSafeInteger(resolved.maxLines) || resolved.maxLines < 0) {
+        throw new RangeError('Text2D.style.maxLines must be a non-negative safe integer.');
+    }
     return Object.freeze(resolved);
 }
 
@@ -87,6 +114,162 @@ interface PreparedText {
     readonly height: number;
 }
 
+interface TextLine {
+    text: string;
+    paragraphEnd: boolean;
+}
+
+function measureTextWidth(context: TextContext, text: string, letterSpacing: number): number {
+    if (text.length === 0) return 0;
+    if (letterSpacing === 0) return context.measureText(text).width;
+    const characters = Array.from(text);
+    let width = 0;
+    for (const character of characters) width += context.measureText(character).width;
+    return width + Math.max(0, characters.length - 1) * letterSpacing;
+}
+
+function splitOversizedToken(
+    context: TextContext,
+    token: string,
+    maxWidth: number,
+    letterSpacing: number
+): string[] {
+    const pieces: string[] = [];
+    let current = '';
+    for (const character of Array.from(token)) {
+        const candidate = current + character;
+        if (current.length > 0 && measureTextWidth(context, candidate, letterSpacing) > maxWidth) {
+            pieces.push(current);
+            current = character;
+        } else {
+            current = candidate;
+        }
+    }
+    if (current.length > 0) pieces.push(current);
+    return pieces;
+}
+
+function wrapParagraph(
+    context: TextContext,
+    paragraph: string,
+    maxWidth: number,
+    letterSpacing: number
+): string[] {
+    if (paragraph.length === 0) return [''];
+    const tokens = paragraph.match(
+        /\s+|[\u3040-\u30ff\u3400-\u9fff]|[^\s\u3040-\u30ff\u3400-\u9fff]+/gu
+    ) ?? [paragraph];
+    const lines: string[] = [];
+    let current = '';
+    for (const token of tokens) {
+        const candidate = current + token;
+        if (measureTextWidth(context, candidate, letterSpacing) <= maxWidth) {
+            current = candidate;
+            continue;
+        }
+        if (current.trimEnd().length > 0) lines.push(current.trimEnd());
+        if (measureTextWidth(context, token, letterSpacing) <= maxWidth) {
+            current = token.trimStart();
+            continue;
+        }
+        const pieces = splitOversizedToken(context, token.trim(), maxWidth, letterSpacing);
+        for (let index = 0; index < pieces.length - 1; index += 1) {
+            const piece = pieces[index];
+            if (piece !== undefined) lines.push(piece);
+        }
+        current = pieces.at(-1) ?? '';
+    }
+    if (current.length > 0 || lines.length === 0) lines.push(current.trimEnd());
+    return lines;
+}
+
+function ellipsize(
+    context: TextContext,
+    text: string,
+    maxWidth: number,
+    letterSpacing: number
+): string {
+    const ellipsis = '…';
+    if (maxWidth <= 0) return `${text}${ellipsis}`;
+    const characters = Array.from(text.trimEnd());
+    while (
+        characters.length > 0 &&
+        measureTextWidth(context, `${characters.join('')}${ellipsis}`, letterSpacing) > maxWidth
+    ) {
+        characters.pop();
+    }
+    return `${characters.join('')}${ellipsis}`;
+}
+
+function layoutLines(context: TextContext, text: string, style: Required<Text2DStyle>): TextLine[] {
+    const lines: TextLine[] = [];
+    const paragraphs = text.split('\n');
+    for (let index = 0; index < paragraphs.length; index += 1) {
+        const paragraph = paragraphs[index] ?? '';
+        const wrapped =
+            style.wordWrap && style.maxWidth > 0
+                ? wrapParagraph(context, paragraph, style.maxWidth, style.letterSpacing)
+                : [paragraph];
+        for (let lineIndex = 0; lineIndex < wrapped.length; lineIndex += 1) {
+            lines.push({
+                text: wrapped[lineIndex] ?? '',
+                paragraphEnd: lineIndex === wrapped.length - 1 && index < paragraphs.length - 1
+            });
+        }
+    }
+    const maxLines = style.maxLines;
+    if (maxLines > 0 && lines.length > maxLines) {
+        lines.length = maxLines;
+        if (style.overflow === 'ellipsis') {
+            const last = lines[maxLines - 1];
+            if (last) {
+                last.text = ellipsize(context, last.text, style.maxWidth, style.letterSpacing);
+                last.paragraphEnd = false;
+            }
+        }
+    } else if (
+        style.overflow === 'ellipsis' &&
+        !style.wordWrap &&
+        style.maxWidth > 0 &&
+        lines.some(
+            line => measureTextWidth(context, line.text, style.letterSpacing) > style.maxWidth
+        )
+    ) {
+        for (const line of lines) {
+            if (measureTextWidth(context, line.text, style.letterSpacing) > style.maxWidth) {
+                line.text = ellipsize(context, line.text, style.maxWidth, style.letterSpacing);
+            }
+        }
+    }
+    return lines;
+}
+
+function drawLine(
+    context: TextContext,
+    text: string,
+    x: number,
+    y: number,
+    style: Required<Text2DStyle>
+): void {
+    if (style.letterSpacing === 0) {
+        if (style.strokeWidth > 0) context.strokeText(text, x, y);
+        context.fillText(text, x, y);
+        return;
+    }
+    const width = measureTextWidth(context, text, style.letterSpacing);
+    let cursor =
+        style.textAlign === 'center'
+            ? x - width * 0.5
+            : style.textAlign === 'right' || style.textAlign === 'end'
+              ? x - width
+              : x;
+    for (const character of Array.from(text)) {
+        if (style.strokeWidth > 0) context.strokeText(character, cursor, y);
+        context.fillText(character, cursor, y);
+        cursor += context.measureText(character).width + style.letterSpacing;
+    }
+}
+
 function prepareText(
     text: string,
     style: Required<Text2DStyle>,
@@ -94,12 +277,15 @@ function prepareText(
 ): PreparedText {
     const context = context2D(canvas);
     context.font = style.font;
-    const lines = text.split('\n');
+    const lines = layoutLines(context, text, style);
     let contentWidth = 0;
     let measuredLineHeight = 0;
     for (const line of lines) {
-        const metrics = context.measureText(line.length === 0 ? ' ' : line);
-        contentWidth = Math.max(contentWidth, metrics.width);
+        const metrics = context.measureText(line.text.length === 0 ? ' ' : line.text);
+        contentWidth = Math.max(
+            contentWidth,
+            measureTextWidth(context, line.text, style.letterSpacing)
+        );
         measuredLineHeight = Math.max(
             measuredLineHeight,
             metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent
@@ -107,10 +293,21 @@ function prepareText(
     }
     const fallbackFontSize = Number.parseFloat(/(\d+(?:\.\d+)?)px/u.exec(style.font)?.[1] ?? '16');
     const lineHeight = style.lineHeight || measuredLineHeight || fallbackFontSize;
-    const logicalWidth = Math.max(1, contentWidth + style.padding * 2 + style.strokeWidth);
+    const constrainedWidth =
+        style.maxWidth > 0 && (style.wordWrap || style.overflow !== 'visible')
+            ? style.maxWidth
+            : contentWidth;
+    const logicalWidth = Math.max(1, constrainedWidth + style.padding * 2 + style.strokeWidth);
+    let paragraphSpacing = 0;
+    for (const line of lines) {
+        if (line.paragraphEnd) paragraphSpacing += style.paragraphSpacing;
+    }
     const logicalHeight = Math.max(
         1,
-        lineHeight * Math.max(lines.length, 1) + style.padding * 2 + style.strokeWidth
+        lineHeight * Math.max(lines.length, 1) +
+            paragraphSpacing +
+            style.padding * 2 +
+            style.strokeWidth
     );
     canvas.width = Math.max(1, Math.ceil(logicalWidth * style.resolution));
     canvas.height = Math.max(1, Math.ceil(logicalHeight * style.resolution));
@@ -118,7 +315,7 @@ function prepareText(
     draw.setTransform(style.resolution, 0, 0, style.resolution, 0, 0);
     draw.clearRect(0, 0, logicalWidth, logicalHeight);
     draw.font = style.font;
-    draw.textBaseline = 'top';
+    draw.textBaseline = style.textBaseline;
     draw.textAlign = style.textAlign;
     draw.fillStyle = style.fillStyle;
     draw.strokeStyle = style.strokeStyle;
@@ -129,11 +326,19 @@ function prepareText(
             : style.textAlign === 'right' || style.textAlign === 'end'
               ? logicalWidth - style.padding
               : style.padding;
+    const baselineOffset =
+        style.textBaseline === 'middle'
+            ? lineHeight * 0.5
+            : style.textBaseline === 'bottom'
+              ? lineHeight
+              : style.textBaseline === 'alphabetic' || style.textBaseline === 'ideographic'
+                ? Math.max(0, context.measureText('Mg').actualBoundingBoxAscent || lineHeight * 0.8)
+                : 0;
     let y = style.padding;
     for (const line of lines) {
-        if (style.strokeWidth > 0) draw.strokeText(line, x, y);
-        draw.fillText(line, x, y);
+        drawLine(draw, line.text, x, y + baselineOffset, style);
         y += lineHeight;
+        if (line.paragraphEnd) y += style.paragraphSpacing;
     }
     return { canvas, width: logicalWidth, height: logicalHeight };
 }

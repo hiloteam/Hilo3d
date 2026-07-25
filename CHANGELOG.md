@@ -17,6 +17,10 @@
 
 ### Changes
 
+- Add measured-width `Text2D` wrapping for mixed CJK/Latin content, max-line clipping and ellipsis,
+  baseline, paragraph spacing, and letter spacing. Add in-place Sprite source replacement,
+  material-only Sprite initialization, atlas-batched `SlicedSprite`, four-state `UiButton`, and
+  ImageGen-authored responsive text/nine-slice examples for WebGL 2 and WebGPU.
 - Add Node-level `sortingLayer` and `zIndex` for Sprite/Text2D display order, retain stable
   scene-tree order for ties, make pointer picking select the same topmost 2D node, and restrict
   transparent instancing to adjacent compatible items so batching cannot reorder interleaved

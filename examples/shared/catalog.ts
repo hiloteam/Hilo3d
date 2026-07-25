@@ -105,6 +105,8 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     '2d_sprite_animation.html': '2D Moon Moth Animation',
     '2d_sorting_town.html': '2D Sorting Town',
     '2d_text.html': '2D Canvas Text',
+    '2d_text_layout.html': '2D Responsive Text Layout',
+    '2d_ui_button.html': '2D Nine-Slice UI Buttons',
     '2d_sprite_batch.html': '2D Sprite Batch'
 });
 
@@ -122,6 +124,10 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Guide an A* courier through an ImageGen-authored pixel town while foot-Y ordering keeps buildings, trees, and the walker correctly layered.',
     '2d_text.html':
         'Rasterize styled multiline Canvas text only when content changes, then render and click it as Sprite UI.',
+    '2d_text_layout.html':
+        'Wrap measured Chinese and Latin text responsively with max lines, ellipsis, letter spacing, and paragraph spacing.',
+    '2d_ui_button.html':
+        'Scale an ImageGen-authored nine-slice skin into crisp panels and interactive four-state game buttons.',
     '2d_sprite_batch.html':
         'Render 4,096 ImageGen-authored collectibles from one atlas in 32 portable instance batches.',
     'pbr.html': 'Render a glTF asset with physically based materials and environment lighting.',

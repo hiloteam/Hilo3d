@@ -96,10 +96,26 @@ export {
     type SphereGeometryParameters
 } from './geometry/SphereGeometry';
 
-export { default as Sprite, type SpriteParameters } from './2d/Sprite';
+export {
+    default as Sprite,
+    type SpriteFrameUpdateOptions,
+    type SpriteFramesUpdateOptions,
+    type SpriteParameters
+} from './2d/Sprite';
 export { default as SpriteFrame, type SpriteFrameParameters } from './2d/SpriteFrame';
 export { default as SpriteMaterial, type SpriteMaterialParameters } from './2d/SpriteMaterial';
+export {
+    default as SlicedSprite,
+    type SlicedSpriteInsets,
+    type SlicedSpriteParameters
+} from './2d/SlicedSprite';
 export { default as Text2D, type Text2DParameters, type Text2DStyle } from './2d/Text2D';
+export {
+    default as UiButton,
+    type UiButtonFrames,
+    type UiButtonParameters,
+    type UiButtonState
+} from './2d/UiButton';
 
 export { default as RenderInfo } from './render/RenderInfo';
 export type {
