@@ -1,0 +1,48 @@
+@import url('./example.css');
+
+body {
+    background: #020713;
+    color: #f8f1d8;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+canvas {
+    display: block;
+}
+
+.exampleLoading {
+    position: fixed;
+    z-index: 10;
+    inset: 50% auto auto 50%;
+    padding: 10px 16px;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgba(235, 202, 119, 0.3);
+    border-radius: 999px;
+    background: rgba(3, 11, 27, 0.8);
+    box-shadow: 0 16px 50px rgba(0, 0, 0, 0.35);
+    color: #f5dfaa;
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    backdrop-filter: blur(14px);
+}
+
+.exampleLoading::before {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 9px;
+    border-radius: 50%;
+    background: #63d9e6;
+    box-shadow: 0 0 14px #63d9e6;
+    content: '';
+    animation: moonlitPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes moonlitPulse {
+    50% {
+        opacity: 0.35;
+        transform: scale(0.7);
+    }
+}

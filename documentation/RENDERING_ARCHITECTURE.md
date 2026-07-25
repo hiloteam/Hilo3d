@@ -18,7 +18,15 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
 
 ### 1.1 Stage：应用与渲染器之间的入口
 
-`Stage.tick(dt)` 先递归更新场景节点，再在存在 Camera 时调用 `renderer.render(stage, camera, true)`。
+`Stage.tick(dt)` 先递归更新场景节点，再按 `Camera.priority` 从低到高组合
+`Stage.cameras`。单 Camera 保留 `renderer.render(stage, camera, true)` 快路径；多 Camera 通过一次
+`renderer.renderFrame()` 把全部 Camera 记录进同一个 Render Graph/RHI submission。`Stage.camera`
+仍是最低优先级主 Camera 的兼容别名。
+
+每个 Camera 独立配置 `visibility`、`clearColor`、`clearDepth` 和
+`clearStencil`。共享场景 planner 只收集满足 `(camera.visibility & node.layer) !== 0`
+的 Mesh 与 Light；后绘制的 Camera 默认可以 load 前一 Camera 的 color，从而组合 3D 世界与
+`Camera2D`/Sprite UI。2D 系统的完整合同见 [`2D_RENDERING.md`](./2D_RENDERING.md)。
 
 后端选择发生在创建阶段，而不是每次渲染时：
 
@@ -45,7 +53,7 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
 `SharedRendererDriver` 是生产环境中 WebGPU 与 WebGL 2 共用的 Renderer 前端。一次普通场景渲染会经历：
 
 1. 更新场景世界矩阵和 Camera 的 View-Projection 矩阵。
-2. 单次遍历收集可见 Mesh 与 Light。
+2. 单次遍历收集 `visible` 且通过当前 Camera layer mask 的 Mesh 与 Light。
 3. 进行视锥裁剪，构建不透明、透明和显式 Instancing 队列。
 4. 不透明物体按 `renderOrder / material / geometry`
    聚类，减少状态切换；透明物体保留上游给出的后向前顺序。
@@ -54,6 +62,11 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
    Buffer、动态状态和 Draw 参数都在执行前准备完毕。
 7. 把 Shadow、Main、Transparent、PostProcess、Present 或离屏 RenderTarget
    Pass 加入同一个应用帧 RenderGraph。
+
+Sprite 仍是 Mesh：共享单位 quad、按 atlas Texture 共享 SpriteMaterial，并把 UV
+rect、size/anchor、tint 与 transform 编译成 portable instance batch。WebGL 2 使用 instance vertex
+stream，WebGPU 使用固定 InstanceBlock 加 Sprite instance
+stream；没有 2D 专用 backend 或第二套 shader 树。
 
 普通前向渲染至少包含 Main Pass；存在透明物体时增加 Transparent
 Pass；存在投影灯光时在它们之前加入 Shadow

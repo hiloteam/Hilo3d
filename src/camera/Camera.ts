@@ -8,7 +8,24 @@ import type Mesh from '../core/Mesh';
 const tempMatrix4 = new Matrix4();
 const tempSphere = new Sphere();
 
-export type CameraParameters = NodeParameters;
+export interface CameraParameters extends NodeParameters {
+    /**
+     * Camera visibility bit mask. A renderable node is collected when
+     * `(camera.visibility & node.layer) !== 0`.
+     */
+    visibility?: number;
+    /**
+     * Clear the current color attachment when this camera follows another camera in the same
+     * application frame. The first camera always clears.
+     */
+    clearColor?: boolean;
+    /** Clear depth before this camera when composing multiple cameras. */
+    clearDepth?: boolean;
+    /** Clear stencil before this camera when composing multiple cameras. */
+    clearStencil?: boolean;
+    /** Camera composition priority. Lower values render first. */
+    priority?: number;
+}
 /**
  * 摄像机
  */
@@ -24,6 +41,32 @@ class Camera extends Node {
     isOrthographicCamera = false;
     override className = 'Camera';
     /**
+     * Visibility mask used by shared scene collection and Stage pointer picking.
+     *
+     * The default exposes every 32-bit layer. Use `0` to disable scene collection for a camera.
+     */
+    visibility = 0xffffffff;
+    /**
+     * Whether this camera clears the color attachment. The base Camera defaults to clearing;
+     * Camera2D defaults to preserving prior camera color for overlays.
+     */
+    clearColor = true;
+    /** Whether this camera clears depth before drawing. */
+    clearDepth = true;
+    /** Whether this camera clears stencil before drawing. */
+    clearStencil = true;
+    private priorityValue = 0;
+    /** Camera composition priority. Lower values render first and receive pointer input last. */
+    get priority(): number {
+        return this.priorityValue;
+    }
+    set priority(value: number) {
+        if (!Number.isFinite(value)) {
+            throw new RangeError('Camera.priority must be finite.');
+        }
+        this.priorityValue = value;
+    }
+    /**
      * 是否需要更新投影矩阵
      */
     protected _needUpdateProjectionMatrix = true;
@@ -34,6 +77,13 @@ class Camera extends Node {
     constructor(params: CameraParameters = {}) {
         super();
         Object.assign(this, params);
+    }
+    /**
+     * Return whether this camera can see a node's layer mask.
+     * @param node - Scene node to test.
+     */
+    isLayerVisible(node: Pick<Node, 'layer'>): boolean {
+        return ((this.visibility >>> 0) & (node.layer >>> 0)) !== 0;
     }
     /**
      * 更新viewMatrix

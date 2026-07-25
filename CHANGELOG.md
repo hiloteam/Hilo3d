@@ -17,6 +17,14 @@
 
 ### Changes
 
+- Add a shared 2D frontend with atlas-backed `Sprite`, `SpriteFrame` sequence animation,
+  Canvas-2D-backed `Text2D`, pixel-space `Camera2D`, actual-size sprite pointer hit tests, and
+  automatic portable instance batches capped at 128 sprites per draw. Sprite raster uses one GLSL ES
+  3.00 source through native WebGL 2 or the existing Naga WGSL pipeline.
+- Add ordered multi-camera Stage composition through `Camera.priority`, per-camera color/depth/
+  stencil clear policy, and `Camera.visibility & Node.layer` filtering for Mesh, Light, scriptable
+  culling, and pointer input. All cameras record into one Render Graph/RHI frame; Camera2D defaults
+  to the dedicated 2D layer and preserves prior 3D color.
 - Redesign the examples gallery with categorized metadata, search, responsive navigation, accessible
   controls, isolated per-example query parameters, source/direct links, loading states, and a shared
   renderer statistics panel that reports the active WebGL 2 or WebGPU backend.

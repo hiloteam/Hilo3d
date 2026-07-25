@@ -7,6 +7,11 @@ export const EXAMPLE_CATEGORIES = [
         description: 'Small examples for learning the basic Hilo3D workflow.'
     },
     {
+        id: '2d',
+        label: '2D games',
+        description: 'Sprites, atlas animation, Canvas text, batching, layers, and camera stacks.'
+    },
+    {
         id: 'geometry',
         label: 'Geometry',
         description: 'Mesh construction, attributes, helpers, and instancing.'
@@ -96,7 +101,10 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'webgl_support.html': 'Graphics Backend Support',
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'compute_particles.html': 'Hilo3D Compute Particle Field',
-    'compute_raytracing.html': 'Hilo3D Crystal Compute Path Tracer'
+    'compute_raytracing.html': 'Hilo3D Crystal Compute Path Tracer',
+    '2d_sprite_animation.html': '2D Moon Moth Animation',
+    '2d_text.html': '2D Canvas Text',
+    '2d_sprite_batch.html': '2D Sprite Batch'
 });
 
 const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
@@ -107,6 +115,12 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Drive 65,536 GPU bodies through aurora, stars, cyber dunes, meteor-wake force fields, boundary collisions, and indirect glow rendering.',
     'compute_raytracing.html':
         'Progressively path trace a refractive Hilo3D crystal wordmark, glass sphere, champagne-metal cube, soft shadows, and cinematic HDR bloom.',
+    '2d_sprite_animation.html':
+        'Animate an ImageGen-authored atlas while three ordered cameras compose a 2D background, a 3D moon, and clickable 2D UI.',
+    '2d_text.html':
+        'Rasterize styled multiline Canvas text only when content changes, then render and click it as Sprite UI.',
+    '2d_sprite_batch.html':
+        'Render 4,096 ImageGen-authored collectibles from one atlas in 32 portable instance batches.',
     'pbr.html': 'Render a glTF asset with physically based materials and environment lighting.',
     'quickStart.html': 'Create a stage, camera, lights, and an animated PBR mesh.',
     'scriptable_pipeline.html':
@@ -118,6 +132,7 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
 function categoryForPath(path: string): ExampleCategoryId {
     const normalized = path.toLowerCase();
     if (normalized === 'quickstart.html') return 'getting-started';
+    if (normalized.startsWith('2d_')) return '2d';
     if (normalized.startsWith('physics/')) return 'physics';
     if (normalized.startsWith('loader/') || normalized.startsWith('gltfviewer/')) return 'loaders';
     if (

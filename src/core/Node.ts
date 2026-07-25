@@ -90,6 +90,11 @@ export interface NodeParameters {
     parent?: Node | null;
     needCallChildUpdate?: boolean;
     visible?: boolean;
+    /**
+     * Scene-layer bit mask. A node is renderable when at least one bit overlaps the active
+     * camera's `visibility` mask.
+     */
+    layer?: number;
     pointerEnabled?: boolean;
     pointerChildren?: boolean;
     useHandCursor?: boolean;
@@ -140,6 +145,7 @@ class Node extends EventDispatcher {
     protected _quaternion: QuaternionNotifier;
     _originName?: string;
     private readonly __pointersOver = new Set<number>();
+    private _usesUpdateHook = false;
     /**
      * traverse callback 返回值，执行后不暂停 traverse
      */
@@ -195,6 +201,13 @@ class Node extends EventDispatcher {
      * 节点是否显示
      */
     visible = true;
+    /**
+     * Scene-layer bit mask. Bit zero is the default 3D layer.
+     *
+     * Parents do not override a child's layer: `visible` controls hierarchical visibility, while
+     * `layer` controls per-camera collection for each renderable node.
+     */
+    layer = 1;
     /**
      * 可视对象是否接受交互事件。默认为接受交互事件，即true。
      */
@@ -269,6 +282,7 @@ class Node extends EventDispatcher {
         node.name = this.name;
         node.jointName = this.jointName;
         node.animationId = this.animationId;
+        node.layer = this.layer;
         node.setPosition(this.x, this.y, this.z);
         node.setScale(this.scaleX, this.scaleY, this.scaleZ);
         node.setRotation(this.rotationX, this.rotationY, this.rotationZ);
@@ -552,6 +566,7 @@ class Node extends EventDispatcher {
      */
     traverseUpdate(dt: number): this {
         this.traverse(node => {
+            if (node._usesUpdateHook) node.update(dt);
             if (node.onUpdate) {
                 node.onUpdate(dt);
             }
@@ -561,6 +576,21 @@ class Node extends EventDispatcher {
             return TRAVERSE_STOP_NONE;
         });
         return this;
+    }
+    /**
+     * Per-node update hook called by `traverseUpdate()` before `onUpdate`.
+     *
+     * Subclasses use this hook for built-in behavior such as sprite animation without consuming
+     * the application-owned `onUpdate` callback. Subclass constructors must call
+     * `enableUpdateHook()` to opt into the traversal hot path.
+     * @param _dt - Elapsed time in milliseconds.
+     */
+    update(_dt: number): void {
+        void _dt;
+    }
+    /** Enable the subclass update hook without calling empty virtual methods on every Node. */
+    protected enableUpdateHook(): void {
+        this._usesUpdateHook = true;
     }
     /**
      * 根据函数来获取一个子孙元素
@@ -702,6 +732,9 @@ class Node extends EventDispatcher {
         }
         let resArray: NodeRaycastInfo[] = [];
         this.traverse(child => {
+            if (!child.visible) {
+                return TRAVERSE_STOP_CHILDREN;
+            }
             if (eventMode && !child.pointerEnabled) {
                 return TRAVERSE_STOP_CHILDREN;
             }

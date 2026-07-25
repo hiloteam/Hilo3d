@@ -543,6 +543,9 @@ export class Camera extends Node_2 {
     constructor(params?: CameraParameters);
     // (undocumented)
     className: string;
+    clearColor: boolean;
+    clearDepth: boolean;
+    clearStencil: boolean;
     // (undocumented)
     protected readonly _frustum: Frustum;
     // (undocumented)
@@ -554,6 +557,7 @@ export class Camera extends Node_2 {
     isCamera: boolean;
     // (undocumented)
     protected _isGeometryDirty: boolean;
+    isLayerVisible(node: Pick<Node_2, 'layer'>): boolean;
     isMeshVisible(mesh: Mesh): boolean;
     // (undocumented)
     isOrthographicCamera: boolean;
@@ -561,6 +565,8 @@ export class Camera extends Node_2 {
     isPerspectiveCamera: boolean;
     isPointVisible(point: Vector3): boolean;
     protected _needUpdateProjectionMatrix: boolean;
+    get priority(): number;
+    set priority(value: number);
     // (undocumented)
     readonly projectionMatrix: Matrix4;
     projectVector(vector: Vector3, width?: number, height?: number): Vector3;
@@ -575,6 +581,29 @@ export class Camera extends Node_2 {
     readonly viewMatrix: Matrix4;
     // (undocumented)
     readonly viewProjectionMatrix: Matrix4;
+    visibility: number;
+}
+
+// @public
+export class Camera2D extends OrthographicCamera {
+    constructor(params?: Camera2DParameters);
+    // (undocumented)
+    className: string;
+    get height(): number;
+    // (undocumented)
+    readonly isCamera2D = true;
+    resize(width: number, height: number): this;
+    // (undocumented)
+    static readonly typeName: string;
+    get width(): number;
+}
+
+// @public (undocumented)
+export interface Camera2DParameters extends Omit<OrthographicCameraParameters, 'left' | 'right' | 'top' | 'bottom' | 'near' | 'far'> {
+    far?: number;
+    height?: number;
+    near?: number;
+    width?: number;
 }
 
 // @public
@@ -602,7 +631,13 @@ export interface CameraHelperParameters extends MeshParameters {
 }
 
 // @public (undocumented)
-export type CameraParameters = NodeParameters;
+export interface CameraParameters extends NodeParameters {
+    clearColor?: boolean;
+    clearDepth?: boolean;
+    clearStencil?: boolean;
+    priority?: number;
+    visibility?: number;
+}
 
 // @public (undocumented)
 export function collectionEntries<Value>(collection: GLTFCollection<Value> | undefined): (readonly [string, Value])[];
@@ -1512,6 +1547,9 @@ export interface DataTextureParameters extends Omit<TextureParameters<TypedArray
     // (undocumented)
     image?: TypedArray | null;
 }
+
+// @public
+export const DEFAULT_2D_LAYER: number;
 
 // @public (undocumented)
 const DEPTH$1 = "DEPTH";
@@ -4045,6 +4083,7 @@ class Node_2 extends EventDispatcher {
     // (undocumented)
     clone(isChild?: boolean): Node_2;
     destroy(renderer?: Renderer, destroyTextures?: boolean): this;
+    protected enableUpdateHook(): void;
     _firePointerEvent(event: NodePointerEvent): void;
     getBounds(parent?: Node_2, currentMatrix?: Matrix4, bounds?: Bounds): Bounds | undefined;
     getChildByFn(fn: NodeGetChildByCallback): Node_2 | null;
@@ -4069,6 +4108,7 @@ class Node_2 extends EventDispatcher {
     // (undocumented)
     isSkinnedMesh: boolean;
     jointName: string;
+    layer: number;
     lookAt(node: {
         x: number;
         y: number;
@@ -4155,6 +4195,7 @@ class Node_2 extends EventDispatcher {
     static readonly typeName: string;
     // (undocumented)
     up: Vector3;
+    update(_dt: number): void;
     updateMatrix(): this;
     updateMatrixWorld(force?: boolean): this;
     updateQuaternion(): this;
@@ -4189,6 +4230,7 @@ export interface NodeParameters {
     autoUpdateWorldMatrix?: boolean;
     // (undocumented)
     jointName?: string;
+    layer?: number;
     // (undocumented)
     name?: string;
     // (undocumented)
@@ -6457,8 +6499,118 @@ export interface SpotLightParameters extends ShadowCastingLightParameters {
 }
 
 // @public
+export class Sprite extends Mesh {
+    constructor(params: SpriteParameters);
+    get anchorX(): number;
+    set anchorX(value: number);
+    get anchorY(): number;
+    set anchorY(value: number);
+    // (undocumented)
+    className: string;
+    get currentFrame(): number;
+    get frameRate(): number;
+    set frameRate(value: number);
+    // (undocumented)
+    readonly frames: SpriteFrame[];
+    gotoFrame(index: number): this;
+    get height(): number;
+    set height(value: number);
+    // (undocumented)
+    readonly isSprite = true;
+    // (undocumented)
+    loop: boolean;
+    pause(): this;
+    play(): this;
+    // (undocumented)
+    playing: boolean;
+    // (undocumented)
+    raycast(ray: Ray, _sort?: boolean): Vector3[] | null;
+    // (undocumented)
+    readonly spriteSizeAnchor: Float32Array<ArrayBuffer>;
+    // (undocumented)
+    get spriteTint(): ArrayLike<number>;
+    // (undocumented)
+    readonly spriteUVRect: Float32Array<ArrayBuffer>;
+    stop(): this;
+    // (undocumented)
+    readonly tint: Color;
+    // (undocumented)
+    static readonly typeName: string;
+    // (undocumented)
+    update(dt: number): void;
+    get width(): number;
+    set width(value: number);
+}
+
+// @public
+export class SpriteFrame {
+    constructor(params: SpriteFrameParameters);
+    // (undocumented)
+    readonly duration: number | null;
+    static fromTexture(texture: Texture): SpriteFrame;
+    // (undocumented)
+    readonly height: number;
+    // (undocumented)
+    readonly texture: Texture;
+    // (undocumented)
+    readonly width: number;
+    writeUVRect(target: Float32Array): Float32Array;
+    // (undocumented)
+    readonly x: number;
+    // (undocumented)
+    readonly y: number;
+}
+
+// @public (undocumented)
+export interface SpriteFrameParameters {
+    duration?: number;
+    height?: number;
+    texture: Texture;
+    width?: number;
+    x?: number;
+    y?: number;
+}
+
+// @public
+export class SpriteMaterial extends ShaderMaterial {
+    constructor(params: SpriteMaterialParameters);
+    // (undocumented)
+    readonly className = "SpriteMaterial";
+    static forTexture(texture: Texture): SpriteMaterial;
+    // (undocumented)
+    readonly isSpriteMaterial = true;
+    // (undocumented)
+    texture: Texture;
+}
+
+// @public (undocumented)
+export interface SpriteMaterialParameters extends Omit<ShaderMaterialParameters, 'attributes' | 'uniforms' | 'uniformBlocks' | 'vs' | 'fs' | 'needBasicAttributes'> {
+    // (undocumented)
+    texture: Texture;
+}
+
+// @public (undocumented)
+export interface SpriteParameters extends Omit<MeshParameters, 'geometry' | 'material' | 'useInstanced' | 'frustumTest'> {
+    anchorX?: number;
+    anchorY?: number;
+    autoPlay?: boolean;
+    frame?: SpriteFrame;
+    frameRate?: number;
+    frames?: readonly SpriteFrame[];
+    height?: number;
+    loop?: boolean;
+    material?: SpriteMaterial;
+    texture?: Texture;
+    tint?: Color;
+    width?: number;
+}
+
+// @public
 export class Stage<Backend extends RendererBackend = RendererBackend> extends Node_2 {
-    camera: Camera | null;
+    addCamera(camera: Camera): this;
+    get camera(): Camera | null;
+    set camera(value: Camera | null);
+    readonly cameras: Camera[];
     canvas: HTMLCanvasElement;
     // (undocumented)
     className: string;
@@ -6481,12 +6633,14 @@ export class Stage<Backend extends RendererBackend = RendererBackend> extends No
     pixelRatio: number;
     readonly ready: Promise<void>;
     releaseGPUResources(): this;
+    removeCamera(camera: Camera): this;
     renderer: Renderer<Backend>;
     // (undocumented)
     rendererHeight: number;
     // (undocumented)
     rendererWidth: number;
     resize(width: number, height: number, pixelRatio?: number, force?: boolean): this;
+    setCameras(cameras: readonly Camera[]): this;
     setOffset(x: number, y: number): this;
     tick(dt: number): this;
     // (undocumented)
@@ -6525,6 +6679,7 @@ export interface StageCommonParameters extends NodeParameters {
     antialias?: boolean;
     // (undocumented)
     camera?: Camera | null;
+    cameras?: readonly Camera[];
     // (undocumented)
     canvas?: HTMLCanvasElement;
     // (undocumented)
@@ -6814,6 +6969,44 @@ export interface SubDataUpdate {
     readonly data: TypedArray;
     // (undocumented)
     readonly revision: number;
+}
+
+// @public
+export class Text2D extends Sprite {
+    constructor(params?: Text2DParameters);
+    // (undocumented)
+    className: string;
+    // (undocumented)
+    destroy(renderer?: Renderer, _destroyTextures?: boolean): this;
+    // (undocumented)
+    readonly isText2D = true;
+    setStyle(style: Text2DStyle): this;
+    setText(text: string): this;
+    get style(): Readonly<Required<Text2DStyle>>;
+    get text(): string;
+    set text(value: string);
+    // (undocumented)
+    static readonly typeName: string;
+}
+
+// @public (undocumented)
+export interface Text2DParameters extends Omit<SpriteParameters, 'texture' | 'frame' | 'frames' | 'material' | 'width' | 'height' | 'autoPlay'> {
+    // (undocumented)
+    style?: Text2DStyle;
+    // (undocumented)
+    text?: string;
+}
+
+// @public (undocumented)
+export interface Text2DStyle {
+    fillStyle?: string;
+    font?: string;
+    lineHeight?: number;
+    padding?: number;
+    resolution?: number;
+    strokeStyle?: string;
+    strokeWidth?: number;
+    textAlign?: CanvasTextAlign;
 }
 
 // @public

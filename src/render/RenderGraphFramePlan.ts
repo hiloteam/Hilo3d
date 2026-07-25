@@ -42,13 +42,15 @@ export class RenderGraphFramePlanner {
         this.shadowLights.clear();
         renderList.reset();
         lightManager.reset();
+        const cameraVisibility = camera.visibility >>> 0;
 
         stage.traverse(node => {
             if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
+            const layerVisible = (cameraVisibility & (node.layer >>> 0)) !== 0;
             if (node instanceof Mesh) {
-                if (!node.isDestroyed) this.meshes.push(node);
+                if (!node.isDestroyed && layerVisible) this.meshes.push(node);
             } else if (node instanceof Light) {
-                this.lights.push(node);
+                if (layerVisible) this.lights.push(node);
             }
             return Node.TRAVERSE_STOP_NONE;
         });
