@@ -67,4 +67,30 @@ describe('RenderGraphFramePlanner', () => {
         expect(plan.lights).toEqual([light]);
         expect(plan.shadowLights.size).toBe(0);
     });
+
+    it('filters meshes and lights with camera visibility and node layer masks', () => {
+        const planner = new RenderGraphFramePlanner();
+        const renderList = new RenderList();
+        const lightManager = new LightManager();
+        const camera = new PerspectiveCamera({ visibility: 1 << 2 });
+        const stage = new Node();
+        const visibleMesh = mesh();
+        visibleMesh.layer = 1 << 2;
+        const hiddenMesh = mesh();
+        hiddenMesh.layer = 1 << 1;
+        const visibleLight = new DirectionalLight({ layer: 1 << 2 });
+        const hiddenLight = new DirectionalLight({ layer: 1 << 1 });
+        stage
+            .addChild(visibleMesh)
+            .addChild(hiddenMesh)
+            .addChild(visibleLight)
+            .addChild(hiddenLight);
+
+        const plan = planner.build(stage, camera, renderList, lightManager);
+
+        expect(plan.meshes).toEqual([visibleMesh]);
+        expect(plan.lights).toEqual([visibleLight]);
+        expect(renderList.opaqueList).toEqual([visibleMesh]);
+        expect(lightManager.directionalLights).toEqual([visibleLight]);
+    });
 });

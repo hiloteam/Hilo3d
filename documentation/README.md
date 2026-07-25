@@ -9,6 +9,7 @@ committed.
 | Document                                                                   | Purpose                                                                                                                |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | [Rendering architecture](./RENDERING_ARCHITECTURE.md)                      | Current production rendering path: shared renderer, Render Graph, portable RHI, and WebGPU/WebGL2 backends             |
+| [2D rendering and multi-camera composition](./2D_RENDERING.md)             | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks           |
 | [Compute/storage implementation](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md) | Implemented Direct WGSL compute, storage resources, GPU-driven raster contract, first-release boundaries, and evidence |
 | [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)  | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration        |
 | [Engineering modernization](./ENGINEERING_MODERNIZATION.md)                | TypeScript, ESM, tooling, packaging, examples, testing, API documentation, and release baseline                        |

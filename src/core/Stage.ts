@@ -2,13 +2,14 @@ import Node, { type NodeParameters, type NodePointerEvent, type NodeRaycastInfo 
 import version from './version';
 import Renderer, {
     type RendererBackend,
+    type RendererFrame,
     type RendererOptions,
     type RendererSupportOptions
 } from '../render/Renderer';
 import Ray from '../math/Ray';
 import Vector3 from '../math/Vector3';
 import type Color from '../math/Color';
-import type Camera from '../camera/Camera';
+import Camera from '../camera/Camera';
 import type Fog from './Fog';
 import log from '../utils/log';
 import { getElementRect } from '../utils/util';
@@ -19,6 +20,7 @@ import {
     describeWebGPUOnlyPipelineRequirement,
     describeWebGPUOnlyRendererFeature
 } from '../render/internal/RenderPipelineBackendSelection';
+import { setCameraCompositionSingleSample } from '../render/internal/CameraCompositionPolicy';
 
 type DOMViewport = ReturnType<typeof getElementRect>;
 const STAGE_CONSTRUCTION_TOKEN = Symbol('Stage construction');
@@ -52,6 +54,8 @@ const DIRECT_MANIPULATION_EVENTS = new Set([
 const EXIT_EVENTS = new Set(['pointerout', 'pointerleave', 'mouseout', 'mouseleave', 'touchout']);
 const CANCEL_EVENTS = new Set(['pointercancel', 'touchcancel']);
 const END_EVENTS = new Set(['pointerup', 'mouseup', 'touchend']);
+const compareCameraPriority = (left: Camera, right: Camera): number =>
+    left.priority - right.priority;
 
 function getOutEventType(type: string): string | null {
     if (type.startsWith('pointer')) return 'pointerout';
@@ -151,6 +155,11 @@ export interface StageCommonParameters extends NodeParameters {
     container?: HTMLElement;
     canvas?: HTMLCanvasElement;
     camera?: Camera | null;
+    /**
+     * Ordered cameras rendered into one Render Graph/RHI submission. Later cameras overlay earlier
+     * cameras and preserve their color unless `camera.clearColor` is enabled.
+     */
+    cameras?: readonly Camera[];
     fog?: Fog | null;
     width?: number;
     height?: number;
@@ -332,10 +341,30 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
     renderer: Renderer<Backend>;
     /** Resolves when the selected graphics backend is ready for rendering. */
     readonly ready: Promise<void>;
+    /** Ordered cameras rendered by `tick()`. */
+    readonly cameras: Camera[] = [];
     /**
-     * 摄像机
+     * Legacy primary-camera alias. Assigning replaces the first camera while retaining any
+     * additional overlay cameras.
      */
-    camera: Camera | null = null;
+    get camera(): Camera | null {
+        this.sortCameras();
+        return this.cameras[0] ?? null;
+    }
+    set camera(value: Camera | null) {
+        this.sortCameras();
+        if (value === null) {
+            if (this.cameras.length > 0) this.cameras.shift();
+            return;
+        }
+        if (!(value instanceof Camera)) {
+            throw new TypeError('Stage.camera must be a Camera or null.');
+        }
+        const existingIndex = this.cameras.indexOf(value);
+        if (existingIndex > 0) this.cameras.splice(existingIndex, 1);
+        if (this.cameras.length === 0) this.cameras.push(value);
+        else this.cameras[0] = value;
+    }
     /** Scene fog consumed consistently by every renderer backend. */
     fog: Fog | null = null;
     /**
@@ -371,6 +400,9 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
     private _previousTouchAction: string | null = null;
     private _ray: Ray | null = null;
     private _stageResultAtPoint: NodeRaycastInfo | null = null;
+    private readonly _renderCameraComposition = (frame: RendererFrame): void => {
+        for (const camera of this.cameras) frame.render(this, camera, true);
+    };
     /**
      * @param params - 创建对象的属性参数。可包含此类的所有属性，所有属性会透传给 Renderer。
      * - `params.container`: stage的容器, 如果有，会把canvas加进container里。
@@ -399,7 +431,10 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
         if (token !== STAGE_CONSTRUCTION_TOKEN) {
             throw new TypeError('Stage cannot be constructed directly; use await Stage.create()');
         }
-        Object.assign(this, params);
+        const { camera, cameras, ...stageParameters } = params;
+        Object.assign(this, stageParameters);
+        if (cameras !== undefined) this.setCameras(cameras);
+        else this.camera = camera ?? null;
         this.canvas = canvas;
         this.renderer = renderer;
         this.canvas.dataset['hilo3dBackend'] = renderer.backend;
@@ -507,9 +542,70 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
      */
     tick(dt: number): this {
         this.traverseUpdate(dt);
-        if (this.camera) {
-            this.renderer.render(this, this.camera, true);
+        this.sortCameras();
+        const cameras = this.cameras;
+        if (cameras.length === 1) {
+            const camera = cameras[0];
+            if (camera) this.renderer.render(this, camera, true);
+        } else if (cameras.length > 1) {
+            let preserveDepthStencil = false;
+            for (let index = 1; index < cameras.length; index += 1) {
+                const camera = cameras[index];
+                if (camera && (!camera.clearDepth || !camera.clearStencil)) {
+                    preserveDepthStencil = true;
+                    break;
+                }
+            }
+            if (preserveDepthStencil) {
+                for (const camera of cameras) setCameraCompositionSingleSample(camera, true);
+            }
+            try {
+                this.renderer.renderFrame(this._renderCameraComposition);
+            } finally {
+                if (preserveDepthStencil) {
+                    for (const camera of cameras) setCameraCompositionSingleSample(camera, false);
+                }
+            }
         }
+        return this;
+    }
+    /**
+     * Replace the ordered camera composition.
+     * @param cameras - Unique Camera instances in back-to-front render order.
+     */
+    setCameras(cameras: readonly Camera[]): this {
+        const unique = new Set<Camera>();
+        for (const camera of cameras) {
+            if (!(camera instanceof Camera)) {
+                throw new TypeError('Stage cameras must contain only Camera instances.');
+            }
+            if (unique.has(camera)) {
+                throw new TypeError('Stage cameras cannot contain the same Camera more than once.');
+            }
+            unique.add(camera);
+        }
+        this.cameras.length = 0;
+        for (const camera of cameras) this.cameras.push(camera);
+        return this;
+    }
+    /**
+     * Append a camera after existing cameras.
+     * @param camera - Camera to add.
+     */
+    addCamera(camera: Camera): this {
+        if (!(camera instanceof Camera)) {
+            throw new TypeError('Stage.addCamera() requires a Camera.');
+        }
+        if (!this.cameras.includes(camera)) this.cameras.push(camera);
+        return this;
+    }
+    /**
+     * Remove a camera from the composition.
+     * @param camera - Camera to remove.
+     */
+    removeCamera(camera: Camera): this {
+        const index = this.cameras.indexOf(camera);
+        if (index >= 0) this.cameras.splice(index, 1);
         return this;
     }
     /**
@@ -649,15 +745,24 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
      * @param eventMode -
      */
     getMeshResultAtPoint(x: number, y: number, eventMode = false): NodeRaycastInfo | null {
-        const camera = this.camera;
-        if (!camera) return null;
         const ray = (this._ray ??= new Ray());
-        ray.fromCamera(camera, x, y, this.width, this.height);
-        const hitResult = this.raycast(ray, true, eventMode);
-        const firstHit = hitResult?.[0];
-        if (firstHit && !(firstHit instanceof Vector3)) {
-            return firstHit;
+        this.sortCameras();
+        // Later cameras draw on top, so they receive pointer priority. Layer filtering mirrors the
+        // renderer's per-camera scene collection.
+        for (let cameraIndex = this.cameras.length - 1; cameraIndex >= 0; cameraIndex -= 1) {
+            const camera = this.cameras[cameraIndex];
+            if (!camera) continue;
+            camera.updateViewProjectionMatrix();
+            ray.fromCamera(camera, x, y, this.width, this.height);
+            const hitResult = this.raycast(ray, true, eventMode);
+            if (!hitResult) continue;
+            for (const hit of hitResult) {
+                if (hit instanceof Vector3) continue;
+                if (camera.isLayerVisible(hit.mesh)) return hit;
+            }
         }
+        const camera = this.cameras.at(-1);
+        if (!camera) return null;
         this._stageResultAtPoint ??= {
             mesh: this,
             point: new Vector3()
@@ -665,6 +770,19 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
         const point = this._stageResultAtPoint.point;
         point.copy(camera.unprojectVector(point.set(x, y, 0), this.width, this.height));
         return this._stageResultAtPoint;
+    }
+    private sortCameras(): void {
+        let sorted = true;
+        for (let index = 1; index < this.cameras.length; index += 1) {
+            const previous = this.cameras[index - 1];
+            const current = this.cameras[index];
+            if (previous && current && previous.priority > current.priority) {
+                sorted = false;
+                break;
+            }
+        }
+        if (sorted) return;
+        this.cameras.sort(compareCameraPriority);
     }
     /**
      * 释放当前图形后端资源。

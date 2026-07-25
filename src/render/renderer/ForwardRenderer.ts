@@ -93,6 +93,17 @@ export interface ForwardRendererFrameOptions {
     readonly clearStencil?: number;
 }
 
+interface ForwardPassSet {
+    readonly main: SharedDrawPassParameters;
+    readonly transparent: SharedDrawPassParameters;
+    /**
+     * A graph composition can retain several camera passes at once. Each pass therefore owns its
+     * planner so a later camera cannot recycle and mutate instance data already captured by an
+     * earlier pass in the same frame.
+     */
+    readonly meshDrawListPlanner: MeshDrawListPlanner;
+}
+
 /**
  * Shared single-camera forward path. It builds one backend-neutral main pass, acquires the surface
  * only after graph compilation, submits through the selected RHI, and closes the explicit present
@@ -100,11 +111,7 @@ export interface ForwardRendererFrameOptions {
  */
 export class ForwardRenderer {
     readonly frame: RenderGraphFrame;
-    readonly #passSets: {
-        readonly main: SharedDrawPassParameters;
-        readonly transparent: SharedDrawPassParameters;
-    }[] = [];
-    readonly #meshDrawListPlanner = new MeshDrawListPlanner();
+    readonly #passSets: ForwardPassSet[] = [];
     #passSetCursor = 0;
     #active = false;
     #destroyed = false;
@@ -128,7 +135,8 @@ export class ForwardRenderer {
             transparent: new SharedDrawPassParameters({
                 colorAttachments: 1,
                 draws: initialDrawCapacity
-            })
+            }),
+            meshDrawListPlanner: new MeshDrawListPlanner()
         });
     }
 
@@ -139,10 +147,10 @@ export class ForwardRenderer {
     destroy(): void {
         if (this.#active) throw new Error('Cannot destroy an active ForwardRenderer');
         if (this.#destroyed) return;
-        this.#meshDrawListPlanner.reset();
         for (const passes of this.#passSets) {
             passes.main.reset();
             passes.transparent.reset();
+            passes.meshDrawListPlanner.reset();
         }
         this.#passSets.length = 0;
         this.#destroyed = true;
@@ -153,7 +161,11 @@ export class ForwardRenderer {
     detachMesh(mesh: Mesh): boolean {
         if (this.#active) throw new Error('Cannot detach a Mesh from an active ForwardRenderer');
         if (this.#destroyed) throw new Error('Cannot detach from a destroyed ForwardRenderer');
-        return this.#meshDrawListPlanner.detach(mesh);
+        let detached = false;
+        for (const passes of this.#passSets) {
+            detached = passes.meshDrawListPlanner.detach(mesh) || detached;
+        }
+        return detached;
     }
 
     /** Reset automatic Mesh planning while retaining its high-water storage. */
@@ -161,7 +173,7 @@ export class ForwardRenderer {
         if (this.#active) throw new Error('Cannot reset an active ForwardRenderer Mesh draw list');
         if (this.#destroyed)
             throw new Error('Cannot reset the Mesh draw list of a destroyed ForwardRenderer');
-        this.#meshDrawListPlanner.reset();
+        for (const passes of this.#passSets) passes.meshDrawListPlanner.reset();
     }
 
     /** Start one outer RenderGraphFrame composition. Every build receives retained pass storage. */
@@ -256,11 +268,13 @@ export class ForwardRenderer {
         }
         const opaqueDraws = options.opaqueDraws ?? options.draws ?? EMPTY_DRAWS;
         const transparentDraws = options.transparentDraws ?? EMPTY_DRAWS;
+        const passes = this.acquirePassSet();
+        const meshDrawListPlanner = passes.meshDrawListPlanner;
         let opaqueMeshes = options.opaqueMeshes ?? options.meshes ?? EMPTY_MESHES;
         let transparentMeshes = options.transparentMeshes ?? EMPTY_MESHES;
         let instancedBatches = EMPTY_INSTANCE_BATCHES;
         if (options.classifiedMeshes !== undefined) {
-            const plan = this.#meshDrawListPlanner.build(
+            const plan = meshDrawListPlanner.build(
                 options.classifiedMeshes,
                 forceMaterialOf(options.meshProcessor)
             );
@@ -268,7 +282,7 @@ export class ForwardRenderer {
             transparentMeshes = plan.transparentMeshes;
             instancedBatches = plan.instancedBatches;
         } else {
-            this.#meshDrawListPlanner.reset();
+            meshDrawListPlanner.reset();
         }
         const meshProcessor = options.meshProcessor;
         let hasTransparentInstanceBatch = false;
@@ -293,7 +307,6 @@ export class ForwardRenderer {
         const colorLoadOp = options.colorLoadOp ?? 'clear';
         const depthLoadOp = options.depthLoadOp ?? 'clear';
         const stencilLoadOp = options.stencilLoadOp ?? 'clear';
-        const passes = this.acquirePassSet();
         const mainPass = passes.main;
         const transparentPass = passes.transparent;
 
@@ -466,15 +479,13 @@ export class ForwardRenderer {
         scope.graph.markOutput(surfaceTexture);
     }
 
-    private acquirePassSet(): {
-        readonly main: SharedDrawPassParameters;
-        readonly transparent: SharedDrawPassParameters;
-    } {
+    private acquirePassSet(): ForwardPassSet {
         let passes = this.#passSets[this.#passSetCursor++];
         if (passes === undefined) {
             passes = {
                 main: new SharedDrawPassParameters({ colorAttachments: 1 }),
-                transparent: new SharedDrawPassParameters({ colorAttachments: 1 })
+                transparent: new SharedDrawPassParameters({ colorAttachments: 1 }),
+                meshDrawListPlanner: new MeshDrawListPlanner()
             };
             this.#passSets.push(passes);
         }

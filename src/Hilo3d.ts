@@ -54,6 +54,7 @@ export {
 export { default as version } from './core/version';
 
 export { default as Camera, type CameraParameters } from './camera/Camera';
+export { default as Camera2D, type Camera2DParameters, DEFAULT_2D_LAYER } from './camera/Camera2D';
 export {
     default as OrthographicCamera,
     type OrthographicCameraParameters
@@ -94,6 +95,11 @@ export {
     default as SphereGeometry,
     type SphereGeometryParameters
 } from './geometry/SphereGeometry';
+
+export { default as Sprite, type SpriteParameters } from './2d/Sprite';
+export { default as SpriteFrame, type SpriteFrameParameters } from './2d/SpriteFrame';
+export { default as SpriteMaterial, type SpriteMaterialParameters } from './2d/SpriteMaterial';
+export { default as Text2D, type Text2DParameters, type Text2DStyle } from './2d/Text2D';
 
 export { default as RenderInfo } from './render/RenderInfo';
 export type {

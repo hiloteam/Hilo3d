@@ -99,6 +99,7 @@ import { prepareWebGPUMipmapShaderArtifacts } from '../renderer/WebGPUMipmapShad
 import { WgslComputeShaderCompiler } from '../shader/WgslComputeCompiler';
 import { StorageGraphicsShaderCompiler } from '../shader/StorageGraphicsShaderCompiler';
 import { RenderPipelineHost, type RenderPipelineHostLifecycle } from './RenderPipelineHost';
+import { cameraCompositionRequiresSingleSample } from './CameraCompositionPolicy';
 import {
     ScriptableRenderPipelineContextImpl,
     ScriptableRenderPipelineResources,
@@ -495,6 +496,9 @@ class SharedRendererDriver
     beginFrame(_frameIndex: number): void {
         const resources = this.requireResources();
         this.resetDiagnosticsFrame();
+        // RenderInfo publishes the previous completed frame on reset. Reset once per application
+        // frame so multiple camera or scriptable-pipeline passes accumulate into one snapshot.
+        this.renderInfo.reset();
         this.#meshFrameStarted = false;
         this.#fullscreenFrameStarted = false;
         this.#surfaceRequested = false;
@@ -667,7 +671,6 @@ class SharedRendererDriver
         }
         resources.shadowBinding.detach(this.lightManager);
         this.#shadowBindingAttachedThisFrame = false;
-        this.renderInfo.reset();
         let context = this.#scriptablePipelineContexts[this.#scriptablePipelineContextCursor++];
         if (context === undefined) {
             context = new ScriptableRenderPipelineContextImpl(
@@ -1616,6 +1619,9 @@ class SharedRendererDriver
         const visible = this.prepareScene(stage, camera);
         const viewport = this.surfaceViewport();
         const context = this.createContext(camera, viewport);
+        const isOverlayCamera = this.#surfaceRequested;
+        const preservePreviousColor = isOverlayCamera && !camera.clearColor;
+        const forceSingleSample = cameraCompositionRequiresSingleSample(camera);
         this.ensureMeshFrame(context);
         const shadowPassCount = this.renderSceneShadows(
             resources,
@@ -1632,7 +1638,12 @@ class SharedRendererDriver
             {
                 classifiedMeshes: visible,
                 meshProcessor: resources.processor,
-                sampleCount: this.antialias ? 4 : 1,
+                // A newly allocated multisample attachment cannot load the previous camera's
+                // resolved surface color. Overlay cameras therefore render directly to the
+                // single-sample surface while the first/clearing camera keeps normal MSAA.
+                sampleCount:
+                    forceSingleSample || preservePreviousColor ? 1 : this.antialias ? 4 : 1,
+                colorLoadOp: preservePreviousColor ? 'load' : 'clear',
                 clearColor: this.clearColor,
                 depthStencilFormat:
                     this.depth || this.stencil
@@ -1640,8 +1651,10 @@ class SharedRendererDriver
                             ? 'depth24plus-stencil8'
                             : 'depth24plus'
                         : null,
-                depthStoreOp: 'discard',
-                stencilStoreOp: 'discard'
+                depthLoadOp: isOverlayCamera && !camera.clearDepth ? 'load' : 'clear',
+                depthStoreOp: 'store',
+                stencilLoadOp: isOverlayCamera && !camera.clearStencil ? 'load' : 'clear',
+                stencilStoreOp: 'store'
             },
             true
         );
@@ -1763,7 +1776,6 @@ class SharedRendererDriver
     private prepareScene(stage: RendererScene, camera: Camera): readonly Mesh[] {
         if (!this.#pipelineHost.recording) this.resetDiagnosticsFrame();
         this.fog = stage.fog ?? null;
-        this.renderInfo.reset();
         stage.updateMatrixWorld();
         camera.updateViewProjectionMatrix();
         this.buildFramePlan(stage, camera);

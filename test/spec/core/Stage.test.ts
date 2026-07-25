@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import { resolveStageBackend } from '../../../src/core/Stage';
+import { MeshDrawProcessor } from '../../../src/render/renderer/MeshDrawProcessor';
 
 const Stage = Hilo3d.Stage;
 const Renderer = Hilo3d.Renderer;
@@ -62,6 +63,123 @@ describe('Stage', () => {
 
         expect(stage.fog).toBe(fog);
         expect(stage.renderer.useInstanced).toBe(true);
+        stage.destroy();
+    });
+
+    it('composes cameras by priority while retaining the primary-camera alias', async () => {
+        const low = new Hilo3d.PerspectiveCamera({ priority: -10, visibility: 1 });
+        const overlay = new Hilo3d.Camera2D({ width: 64, height: 64, priority: 20 });
+        const stage = await Stage.create({
+            backend: 'webgl2',
+            width: 64,
+            height: 64,
+            pixelRatio: 1,
+            cameras: [overlay, low]
+        });
+
+        stage.tick(16);
+
+        expect(stage.cameras).toEqual([low, overlay]);
+        expect(stage.camera).toBe(low);
+        expect(overlay.clearColor).toBe(false);
+        stage.destroy();
+    });
+
+    it('renders a Canvas-backed Sprite batch through the shared WebGL2 frontend', async () => {
+        const camera = new Hilo3d.Camera2D({ width: 32, height: 32 });
+        const stage = await Stage.create({
+            backend: 'webgl2',
+            width: 32,
+            height: 32,
+            pixelRatio: 1,
+            camera
+        });
+        const pixels = new Uint8Array(4 * 4 * 4).fill(255);
+        const texture = new Hilo3d.Texture({
+            image: pixels,
+            width: 4,
+            height: 4,
+            flipY: true
+        });
+        const sprite = new Hilo3d.Sprite({
+            texture,
+            x: 16,
+            y: 16,
+            width: 16,
+            height: 16
+        });
+        stage.addChild(sprite);
+
+        stage.tick(16);
+        stage.tick(16);
+
+        expect(stage.renderer.renderInfo.drawCount).toBe(1);
+        expect(stage.getMeshResultAtPoint(16, 16)?.mesh).toBe(sprite);
+        stage.destroy();
+    });
+
+    it('retains independent Sprite instance batches for multiple cameras in one frame', async () => {
+        const prepareInstancedBatch = vi.spyOn(
+            MeshDrawProcessor.prototype,
+            'prepareInstancedBatch'
+        );
+        const backgroundCamera = new Hilo3d.Camera2D({
+            width: 32,
+            height: 32,
+            visibility: 4,
+            priority: -10,
+            clearColor: true
+        });
+        const overlayCamera = new Hilo3d.Camera2D({
+            width: 32,
+            height: 32,
+            visibility: 2,
+            priority: 10,
+            clearColor: false
+        });
+        const stage = await Stage.create({
+            backend: 'webgl2',
+            width: 32,
+            height: 32,
+            pixelRatio: 1,
+            cameras: [overlayCamera, backgroundCamera]
+        });
+        const texture = new Hilo3d.Texture({
+            image: new Uint8Array(4 * 4 * 4).fill(255),
+            width: 4,
+            height: 4,
+            flipY: true
+        });
+        stage.addChild(
+            new Hilo3d.Sprite({
+                texture,
+                layer: 4,
+                x: 8,
+                y: 8,
+                width: 12,
+                height: 12
+            })
+        );
+        stage.addChild(
+            new Hilo3d.Sprite({
+                texture,
+                layer: 2,
+                x: 24,
+                y: 24,
+                width: 12,
+                height: 12
+            })
+        );
+
+        stage.tick(16);
+        stage.tick(16);
+
+        expect(prepareInstancedBatch).toHaveBeenCalledTimes(4);
+        const owners = prepareInstancedBatch.mock.calls.map(call => call[0]);
+        expect(owners[0]).not.toBe(owners[1]);
+        expect(owners[2]).toBe(owners[0]);
+        expect(owners[3]).toBe(owners[1]);
+        expect(stage.renderer.renderInfo.drawCount).toBe(2);
         stage.destroy();
     });
 
