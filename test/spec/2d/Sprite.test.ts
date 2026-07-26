@@ -19,7 +19,9 @@ describe('SpriteFrame', () => {
             height: 8
         });
 
-        expect(Array.from(frame.writeUVRect(new Float32Array(4)))).toEqual([0.25, 0.5, 0.25, 0.25]);
+        expect(Array.from(frame.writeUVRect(new Float32Array(4)))).toEqual([
+            0.25, 0.25, 0.25, 0.25
+        ]);
 
         source.flipY = false;
         expect(Array.from(frame.writeUVRect(new Float32Array(4)))).toEqual([

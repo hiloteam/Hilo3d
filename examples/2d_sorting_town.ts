@@ -504,9 +504,9 @@ const courierController = {
             const dx = targetX - courier.x;
             const dy = targetY - courier.y;
             const distance = Math.hypot(dx, dy);
-            // Keep logical directions explicit: this authored atlas is uploaded with flipY.
-            if (Math.abs(dx) >= Math.abs(dy)) currentDirectionRow = dx < 0 ? 2 : 1;
-            else currentDirectionRow = dy < 0 ? 0 : 3;
+            // Map movement to the authored top-left atlas row contract.
+            if (Math.abs(dx) >= Math.abs(dy)) currentDirectionRow = dx < 0 ? 1 : 2;
+            else currentDirectionRow = dy < 0 ? 3 : 0;
             if (distance <= remainingDistance || distance < 0.001) {
                 courier.x = targetX;
                 courier.y = targetY;

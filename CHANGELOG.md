@@ -18,9 +18,11 @@
 
 ### Fixes
 
-- Use a strictly nine-slice-safe postal UI atlas with uniform stretchable edges and
-  deterministically mirrored corners/edge lighting. Correct the sorting-town courier's logical
-  direction map for its `flipY` atlas in real browser rendering.
+- Correct `SpriteFrame`'s top-left atlas-row offset for `flipY` textures on both backends. Full
+  textures were unaffected, but subframes previously selected the vertically opposite source row,
+  swapping nine-slice top/bottom pieces and requiring reversed character-direction maps. Use a
+  strictly nine-slice-safe postal UI atlas with uniform stretchable edges and deterministically
+  mirrored corners/edge lighting.
 - Expand the game-building skill's coordinate contract: Sprite positions target their anchor in the
   parent local coordinate system, and the default center anchor does not become top-left merely
   because Camera2D uses a top-left screen origin.

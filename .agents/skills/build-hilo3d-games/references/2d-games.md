@@ -150,8 +150,10 @@ const player = new Hilo3d.Sprite({
 Control animation with `play()`, `pause()`, `stop()`, and `gotoFrame(index)`. Listen for
 `framechange`, `loop`, and `complete` when game logic needs animation events.
 
-Frame coordinates use top-left source pixels. `SpriteFrame` accounts for the texture `flipY` policy;
-do not manually invert atlas rows.
+Frame coordinates use top-left source pixels: X grows right and Y grows down. `Texture.flipY`
+controls upload/sampling orientation and does not change this atlas-coordinate contract.
+`SpriteFrame` accounts for that policy for both complete textures and atlas subframes; do not
+manually invert atlas rows.
 
 Still define animation rows through semantic names (`up`, `down`, `left`, `right`) and verify the
 map in a real browser on both backends. Do not let gameplay code depend on an image viewer's

@@ -70,6 +70,10 @@ stage.addChild(sprite);
 stage.enableDOMEvent('click');
 ```
 
+`SpriteFrame.x/y` 始终以原始图片左上角为原点，向右/向下增长。`flipY`
+属于纹理上传与后端采样策略，不改变图集帧坐标；应用代码和动画方向表都不应倒置 atlas 行号。该契约覆盖完整纹理与子矩形，并在 WebGL
+2、WebGPU 真实浏览器渲染中保持一致。
+
 运行时换图不需要操作材质：
 
 ```ts
