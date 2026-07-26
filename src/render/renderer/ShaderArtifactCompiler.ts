@@ -18,6 +18,7 @@ import type {
     RHIShaderBindingReflection,
     RHIShaderReflection
 } from '../rhi/core';
+import { getWebGPUSceneTextureBinding } from '../shader/WebGPUBindingLayout';
 
 interface CachedShaderArtifactPair {
     readonly vertexSource: string;
@@ -311,7 +312,8 @@ export class ShaderArtifactCompiler {
         const metadata = metadataFromPrepared(
             prepareGLSLForNaga(shader.vs, shader.fs, undefined, {
                 fragmentOutputs: fragmentOutputMode,
-                defineWebGPU: false
+                defineWebGPU: false,
+                resolveSamplerBinding: getWebGPUSceneTextureBinding
             })
         );
         validateNumericDepthSamplerMask(numericDepthSamplerMask, metadata.samplers);
@@ -354,7 +356,8 @@ export class ShaderArtifactCompiler {
             throw new Error('ShaderArtifactCompiler.initialize() is required for WebGPU');
         }
         const base = this.#translator.translate(shader.vs, shader.fs, undefined, {
-            fragmentOutputs: fragmentOutputMode
+            fragmentOutputs: fragmentOutputMode,
+            resolveSamplerBinding: getWebGPUSceneTextureBinding
         });
         validateNumericDepthSamplerMask(numericDepthSamplerMask, base.samplers);
         const depthSamplers = base.samplers.filter((_sampler, index) =>

@@ -10,6 +10,7 @@ import type {
     ScriptableRenderPassBuilder,
     ScriptableRenderPassContext
 } from '../ScriptableRenderGraph';
+import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from './internal/PortableFullscreenShader';
 
 /** Immutable shader and binding configuration for a fullscreen pass instance. */
 export interface FullscreenRenderPassOptions {
@@ -109,13 +110,6 @@ export class FullscreenRenderPass implements ScriptableRenderPass<FullscreenRend
     }
 }
 
-const PRESENT_VERTEX_SOURCE = `#version 300 es
-out vec2 v_uv;
-void main() {
-    v_uv = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
-    gl_Position = vec4(v_uv * 2.0 - 1.0, 0.0, 1.0);
-}`;
-
 const PRESENT_FRAGMENT_SOURCE = `#version 300 es
 precision highp float;
 in vec2 v_uv;
@@ -130,7 +124,10 @@ export class PresentRenderPass extends FullscreenRenderPass {
     constructor(name = 'PresentRenderPass') {
         super({
             name,
-            shader: new Shader({ vs: PRESENT_VERTEX_SOURCE, fs: PRESENT_FRAGMENT_SOURCE }),
+            shader: new Shader({
+                vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
+                fs: PRESENT_FRAGMENT_SOURCE
+            }),
             material: new Material({ depthTest: false, depthMask: false, cullFace: false })
         });
     }

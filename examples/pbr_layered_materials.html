@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+        />
+        <title>Hilo3D Layered PBR Studio</title>
+        <link rel="stylesheet" type="text/css" href="./example.css" />
+        <link rel="stylesheet" type="text/css" href="./pbr_showcase.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+        <section class="showcasePanel" aria-label="Layered PBR controls">
+            <p class="showcaseEyebrow">Engine material studio</p>
+            <h1>Layered light, kept in HDR.</h1>
+            <p class="showcaseIntro">
+                Three live materials share the modern GGX lighting path. Toggle each defining lobe
+                to compare energy, direction and refraction without changing the scene.
+            </p>
+            <div class="showcaseBadges" aria-label="Active rendering features">
+                <span class="showcaseBadge">Smith-GGX</span>
+                <span class="showcaseBadge">Burley diffuse</span>
+                <span class="showcaseBadge">HDR Bloom</span>
+                <span class="showcaseBadge">PBR Neutral</span>
+            </div>
+        </section>
+        <div class="featureCards" aria-label="Material feature toggles">
+            <article class="featureCard" style="--feature-color: #e89a58">
+                <h2>Brushed copper</h2>
+                <p>
+                    Anisotropic tangent-space reflections stretch around the radial metal surface.
+                </p>
+                <button class="featureButton" data-feature="anisotropy" aria-pressed="true">
+                    anisotropy · on
+                </button>
+            </article>
+            <article class="featureCard" style="--feature-color: #6f9dff">
+                <h2>Coated ceramic</h2>
+                <p>
+                    A dielectric coat with its own roughness and wrinkled normal sits over blue
+                    paint.
+                </p>
+                <button class="featureButton" data-feature="clearcoat" aria-pressed="true">
+                    clearcoat · on
+                </button>
+            </article>
+            <article class="featureCard" style="--feature-color: #55ddff">
+                <h2>Cyan volume</h2>
+                <p>Opaque scene color refracts through thickness-aware Beer-Lambert absorption.</p>
+                <button class="featureButton" data-feature="transmission" aria-pressed="true">
+                    transmission · on
+                </button>
+            </article>
+        </div>
+        <p class="showcaseHint">drag to orbit · wheel to inspect</p>
+        <script type="module" src="./pbr_layered_materials.ts"></script>
+    </body>
+</html>

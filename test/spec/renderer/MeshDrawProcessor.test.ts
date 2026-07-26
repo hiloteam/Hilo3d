@@ -1040,7 +1040,8 @@ describe.each([
             expect.any(LightManager),
             null,
             false,
-            fixture.renderer
+            fixture.renderer,
+            false
         );
         expect(execution.draw.pipeline.descriptor.fragment?.targets).toEqual([]);
         expect(

@@ -2,6 +2,8 @@
 
 precision highp float;
 
+#include "./method/portableCoordinates.glsl"
+
 out vec2 v_uv;
 
 void main() {
@@ -12,8 +14,5 @@ void main() {
     );
     vec2 position = positions[gl_VertexID];
     gl_Position = vec4(position, 0.0, 1.0);
-    v_uv = position * 0.5 + 0.5;
-#ifdef HILO_WEBGPU
-    v_uv.y = 1.0 - v_uv.y;
-#endif
+    v_uv = hiloRenderTargetUV(position * 0.5 + 0.5);
 }

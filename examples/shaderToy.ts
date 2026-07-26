@@ -605,6 +605,9 @@ function bindChannel(texture: Hilo3d.Texture | null): Hilo3d.TextureBinding {
 const screenVertexShader = Hilo3d.Shader.shaders['screen.vert'];
 if (screenVertexShader === undefined)
     throw new Error('ShaderToy screen vertex shader is unavailable');
+const portableCoordinateShader = Hilo3d.Shader.shaders['method/portableCoordinates.glsl'];
+if (portableCoordinateShader === undefined)
+    throw new Error('Portable coordinate shader helpers are unavailable');
 Hilo3d.registerUniformBlockBinding('ShaderToyBlock');
 const shaderToyLayout = Hilo3d.createStd140Layout({
     iResolution: 'vec3',
@@ -654,10 +657,15 @@ const material = new Hilo3d.ShaderMaterial({
         uniform sampler2D iChannel2;
         uniform sampler2D iChannel3;
         layout(location = 0) out vec4 fragmentColor;
+        ${portableCoordinateShader}
         ${shaderToyCode}
         void main(void) {
             vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
-            mainImage(color, gl_FragCoord.xy);
+            vec2 shaderToyFragCoord = hiloBottomLeftFragCoord(
+                gl_FragCoord.xy,
+                iResolution.xy
+            );
+            mainImage(color, shaderToyFragCoord);
             fragmentColor = color;
         }
     `,

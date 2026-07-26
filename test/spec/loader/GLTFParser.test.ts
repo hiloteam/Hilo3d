@@ -106,6 +106,141 @@ describe('GLTFParser', () => {
         );
     });
 
+    it('parses the modern layered PBR material extensions and their textures', () => {
+        const parser = new GLTFParser();
+        parser.isGLTF2 = true;
+        parser.json = {
+            asset: { version: '2.0' },
+            textures: Array.from({ length: 8 }, () => ({ source: 0 })),
+            materials: [
+                {
+                    extensions: {
+                        KHR_materials_clearcoat: {
+                            clearcoatFactor: 0.85,
+                            clearcoatTexture: { index: 0 },
+                            clearcoatRoughnessFactor: 0.22,
+                            clearcoatRoughnessTexture: { index: 1 },
+                            clearcoatNormalTexture: { index: 2, texCoord: 1, scale: 0.65 }
+                        },
+                        KHR_materials_anisotropy: {
+                            anisotropyStrength: 0.72,
+                            anisotropyRotation: 0.3,
+                            anisotropyTexture: { index: 3, texCoord: 1 }
+                        },
+                        KHR_materials_transmission: {
+                            transmissionFactor: 0.9,
+                            transmissionTexture: { index: 4 }
+                        },
+                        KHR_materials_volume: {
+                            thicknessFactor: 0.4,
+                            thicknessTexture: { index: 5, texCoord: 1 },
+                            attenuationDistance: 2.5,
+                            attenuationColor: [0.8, 0.9, 1]
+                        },
+                        KHR_materials_ior: {
+                            ior: 1.42
+                        },
+                        KHR_materials_iridescence: {
+                            iridescenceFactor: 0.93,
+                            iridescenceTexture: { index: 6, texCoord: 1 },
+                            iridescenceIor: 1.33,
+                            iridescenceThicknessMinimum: 180,
+                            iridescenceThicknessMaximum: 620,
+                            iridescenceThicknessTexture: { index: 7 }
+                        }
+                    }
+                }
+            ]
+        };
+        for (let index = 0; index < 8; index += 1) {
+            parser.textures[String(index)] = new Hilo3d.Texture();
+        }
+
+        expect(parser.getUsedTextureNameMap()).toEqual({
+            '0': true,
+            '1': true,
+            '2': true,
+            '3': true,
+            '4': true,
+            '5': true,
+            '6': true,
+            '7': true
+        });
+        parser.parseMaterials();
+
+        const material = parser.materials['0'];
+        expect(material).toBeInstanceOf(Hilo3d.PBRMaterial);
+        if (!(material instanceof Hilo3d.PBRMaterial)) {
+            throw new TypeError('Expected a PBR material');
+        }
+        expect(material).toMatchObject({
+            clearcoatFactor: 0.85,
+            clearcoatRoughnessFactor: 0.22,
+            clearcoatNormalScale: 0.65,
+            anisotropyStrength: 0.72,
+            anisotropyRotation: 0.3,
+            transmissionFactor: 0.9,
+            thicknessFactor: 0.4,
+            attenuationDistance: 2.5,
+            ior: 1.42,
+            iridescenceFactor: 0.93,
+            iridescenceIor: 1.33,
+            iridescenceThicknessMinimum: 180,
+            iridescenceThicknessMaximum: 620,
+            transparent: true
+        });
+        expect(material.attenuationColor.r).toBeCloseTo(0.8);
+        expect(material.attenuationColor.g).toBeCloseTo(0.9);
+        expect(material.attenuationColor.b).toBe(1);
+        expect(material.clearcoatNormalMap?.uv).toBe(1);
+        expect(material.anisotropyMap?.uv).toBe(1);
+        expect(material.thicknessMap?.uv).toBe(1);
+        expect(material.iridescenceMap?.uv).toBe(1);
+        expect(material.iridescenceThicknessMap).toBe(parser.textures['7']);
+    });
+
+    it('rejects out-of-range modern PBR extension factors', () => {
+        const parser = new GLTFParser();
+        parser.isGLTF2 = true;
+        parser.json = {
+            asset: { version: '2.0' },
+            materials: [
+                {
+                    extensions: {
+                        KHR_materials_transmission: {
+                            transmissionFactor: 1.1
+                        }
+                    }
+                }
+            ]
+        };
+
+        expect(() => {
+            parser.parseMaterials();
+        }).toThrow('KHR_materials_transmission.transmissionFactor must be in [0, 1].');
+    });
+
+    it('rejects an invalid iridescence thin-film IOR', () => {
+        const parser = new GLTFParser();
+        parser.isGLTF2 = true;
+        parser.json = {
+            asset: { version: '2.0' },
+            materials: [
+                {
+                    extensions: {
+                        KHR_materials_iridescence: {
+                            iridescenceIor: 0.9
+                        }
+                    }
+                }
+            ]
+        };
+
+        expect(() => {
+            parser.parseMaterials();
+        }).toThrow('KHR_materials_iridescence.iridescenceIor must be in [1, Infinity].');
+    });
+
     it('decodes interleaved accessors without exposing padding as vertices', () => {
         const buffer = new ArrayBuffer(32);
         const values = new Float32Array(buffer);

@@ -408,6 +408,41 @@ export type BasicResource = HTMLImageElement | ArrayBuffer | JsonValue;
 // @public (undocumented)
 export type BasicResourceType = 'img' | 'json' | 'buffer' | 'text';
 
+// @public
+export class Bloom implements ForwardRenderPipelineFeature {
+    constructor(options?: Readonly<BloomOptions>);
+    // (undocumented)
+    create(): ForwardRenderPipelineFeatureRuntime;
+    // (undocumented)
+    readonly injectionPoint: "after-transparent";
+    // (undocumented)
+    readonly name = "bloom";
+    // (undocumented)
+    readonly requirements: Readonly<{
+        sampledSceneColor: true;
+        sampledDepth: false;
+        requiredTextureFormats: readonly (Readonly<{
+            format: "rgba16float";
+            use: "color-attachment";
+        }> | Readonly<{
+            format: "rgba16float";
+            use: "filterable-sampled";
+        }>)[];
+    }>;
+}
+
+// @public
+export interface BloomOptions {
+    readonly clamp?: number;
+    readonly intensity?: number;
+    readonly knee?: number;
+    readonly maxLevels?: number;
+    readonly minResolution?: number;
+    readonly scatter?: number;
+    readonly threshold?: number;
+    readonly tint?: Color;
+}
+
 // @public (undocumented)
 export interface Bounds {
     // (undocumented)
@@ -664,6 +699,63 @@ export class Color extends Vector4 {
     set r(value: number);
     toHEX(): string;
     toRGBArray(array?: number[], offset?: number): number[];
+}
+
+// @public
+export class ColorUber implements ForwardRenderPipelineFeature {
+    constructor(options?: Readonly<ColorUberOptions>);
+    // (undocumented)
+    create(): ForwardRenderPipelineFeatureRuntime;
+    // (undocumented)
+    readonly injectionPoint: "after-post-process";
+    // (undocumented)
+    readonly name = "color-uber";
+    // (undocumented)
+    readonly requirements: Readonly<{
+        sampledSceneColor: true;
+        sampledDepth: false;
+        requiredTextureFormats: readonly (Readonly<{
+            format: "rgba8unorm";
+            use: "color-attachment";
+        }> | Readonly<{
+            format: "rgba8unorm";
+            use: "filterable-sampled";
+        }>)[];
+    }>;
+}
+
+// @public
+export interface ColorUberOptions {
+    // (undocumented)
+    readonly channelBlue?: Color;
+    // (undocumented)
+    readonly channelGreen?: Color;
+    // (undocumented)
+    readonly channelRed?: Color;
+    // (undocumented)
+    readonly colorFilter?: Color;
+    readonly contrast?: number;
+    // (undocumented)
+    readonly dithering?: boolean;
+    readonly exposure?: number;
+    // (undocumented)
+    readonly gain?: Color;
+    // (undocumented)
+    readonly gamma?: Color;
+    readonly hueShift?: number;
+    // (undocumented)
+    readonly lift?: Color;
+    readonly saturation?: number;
+    readonly temperature?: number;
+    readonly tint?: number;
+    // (undocumented)
+    readonly toneMapping?: ToneMappingMode;
+    // (undocumented)
+    readonly vignetteColor?: Color;
+    // (undocumented)
+    readonly vignetteIntensity?: number;
+    // (undocumented)
+    readonly vignetteSmoothness?: number;
 }
 
 // @public
@@ -1779,12 +1871,16 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
     create(context: RenderPipelineCreateContext): RenderPipeline;
     readonly features: readonly ForwardRenderPipelineFeature[];
     readonly name = "forward";
+    readonly opaqueTexture: boolean;
     readonly requirements: Readonly<RenderPipelineRequirements>;
+    readonly sceneColorFormat: RenderTargetColorFormat | null;
 }
 
 // @public
 export interface ForwardRenderPipelineFactoryOptions {
     readonly features?: readonly ForwardRenderPipelineFeature[];
+    readonly opaqueTexture?: boolean;
+    readonly sceneColorFormat?: RenderTargetColorFormat;
 }
 
 // @public
@@ -2175,6 +2271,16 @@ export interface GLTFAnimationTarget {
 }
 
 // @public (undocumented)
+export interface GLTFAnisotropyExtension {
+    // (undocumented)
+    anisotropyRotation?: number;
+    // (undocumented)
+    anisotropyStrength?: number;
+    // (undocumented)
+    anisotropyTexture?: GLTFTextureInfo;
+}
+
+// @public (undocumented)
 export interface GLTFAsset extends GLTFProperty {
     // (undocumented)
     copyright?: string;
@@ -2335,8 +2441,13 @@ export namespace GLTFExtensions {
         GLTFExtensions_d_ALI_bounding_box as ALI_bounding_box,
         GLTFExtensions_d_HILO_animation_clips as HILO_animation_clips,
         GLTFExtensions_d_KHR_lights_punctual as KHR_lights_punctual,
+        GLTFExtensions_d_KHR_materials_anisotropy as KHR_materials_anisotropy,
         GLTFExtensions_d_KHR_materials_clearcoat as KHR_materials_clearcoat,
+        GLTFExtensions_d_KHR_materials_ior as KHR_materials_ior,
+        GLTFExtensions_d_KHR_materials_iridescence as KHR_materials_iridescence,
         GLTFExtensions_d_KHR_materials_pbrSpecularGlossiness as KHR_materials_pbrSpecularGlossiness,
+        GLTFExtensions_d_KHR_materials_transmission as KHR_materials_transmission,
+        GLTFExtensions_d_KHR_materials_volume as KHR_materials_volume,
         GLTFExtensions_d_WEB3D_quantized_attributes as WEB3D_quantized_attributes,
     };
 }
@@ -2353,6 +2464,28 @@ export interface GLTFImage extends GLTFProperty {
 
 // @public (undocumented)
 export type GLTFIndex = string | number;
+
+// @public (undocumented)
+export interface GLTFIorExtension {
+    // (undocumented)
+    ior?: number;
+}
+
+// @public (undocumented)
+export interface GLTFIridescenceExtension {
+    // (undocumented)
+    iridescenceFactor?: number;
+    // (undocumented)
+    iridescenceIor?: number;
+    // (undocumented)
+    iridescenceTexture?: GLTFTextureInfo;
+    // (undocumented)
+    iridescenceThicknessMaximum?: number;
+    // (undocumented)
+    iridescenceThicknessMinimum?: number;
+    // (undocumented)
+    iridescenceThicknessTexture?: GLTFTextureInfo;
+}
 
 // @public
 export class GLTFLoader extends EventDispatcher implements GLTFResourceLoader {
@@ -3000,6 +3133,26 @@ export interface GLTFTextureTransformExtension {
     scale?: readonly [number, number];
     // (undocumented)
     texCoord?: number;
+}
+
+// @public (undocumented)
+export interface GLTFTransmissionExtension {
+    // (undocumented)
+    transmissionFactor?: number;
+    // (undocumented)
+    transmissionTexture?: GLTFTextureInfo;
+}
+
+// @public (undocumented)
+export interface GLTFVolumeExtension {
+    // (undocumented)
+    attenuationColor?: readonly [number, number, number];
+    // (undocumented)
+    attenuationDistance?: number;
+    // (undocumented)
+    thicknessFactor?: number;
+    // (undocumented)
+    thicknessTexture?: GLTFTextureInfo;
 }
 
 // @public
@@ -4407,6 +4560,11 @@ export function parseRadianceHDR(input: ArrayBuffer | Uint8Array): RadianceHDRIm
 // @public
 export class PBRMaterial extends Material {
     constructor(params?: PBRMaterialParameters);
+    anisotropyMap: Texture | null;
+    anisotropyRotation: number;
+    anisotropyStrength: number;
+    attenuationColor: Color;
+    attenuationDistance: number;
     baseColor: Color;
     baseColorMap: Texture | null;
     brdfLUT: Texture | null;
@@ -4415,6 +4573,7 @@ export class PBRMaterial extends Material {
     clearcoatFactor: number;
     clearcoatMap: Texture | null;
     clearcoatNormalMap: Texture | null;
+    clearcoatNormalScale: number;
     clearcoatRoughnessFactor: number;
     clearcoatRoughnessMap: Texture | null;
     diffuseEnvIntensity: number;
@@ -4426,6 +4585,13 @@ export class PBRMaterial extends Material {
     // (undocumented)
     getRenderOption(option?: ShaderOptions): ShaderOptions;
     glossiness: number;
+    ior: number;
+    iridescenceFactor: number;
+    iridescenceIor: number;
+    iridescenceMap: Texture | null;
+    iridescenceThicknessMap: Texture | null;
+    iridescenceThicknessMaximum: number;
+    iridescenceThicknessMinimum: number;
     isOcclusionInMetallicRoughnessMap: boolean;
     // (undocumented)
     isPBRMaterial: boolean;
@@ -4445,6 +4611,11 @@ export class PBRMaterial extends Material {
     specularEnvIntensity: number;
     specularEnvMap: MaterialTexture | null;
     specularGlossinessMap: Texture | null;
+    thicknessFactor: number;
+    thicknessMap: Texture | null;
+    get transmissionFactor(): number;
+    set transmissionFactor(value: number);
+    transmissionMap: Texture | null;
     // (undocumented)
     usedUniformVectors: number;
     usePhysicsLight: boolean;
@@ -4452,6 +4623,16 @@ export class PBRMaterial extends Material {
 
 // @public (undocumented)
 export interface PBRMaterialParameters extends MaterialParameters {
+    // (undocumented)
+    anisotropyMap?: Texture | null;
+    // (undocumented)
+    anisotropyRotation?: number;
+    // (undocumented)
+    anisotropyStrength?: number;
+    // (undocumented)
+    attenuationColor?: Color;
+    // (undocumented)
+    attenuationDistance?: number;
     // (undocumented)
     baseColor?: Color;
     // (undocumented)
@@ -4464,6 +4645,8 @@ export interface PBRMaterialParameters extends MaterialParameters {
     clearcoatMap?: Texture | null;
     // (undocumented)
     clearcoatNormalMap?: Texture | null;
+    // (undocumented)
+    clearcoatNormalScale?: number;
     // (undocumented)
     clearcoatRoughnessFactor?: number;
     // (undocumented)
@@ -4480,6 +4663,20 @@ export interface PBRMaterialParameters extends MaterialParameters {
     emissionFactor?: Color;
     // (undocumented)
     glossiness?: number;
+    // (undocumented)
+    ior?: number;
+    // (undocumented)
+    iridescenceFactor?: number;
+    // (undocumented)
+    iridescenceIor?: number;
+    // (undocumented)
+    iridescenceMap?: Texture | null;
+    // (undocumented)
+    iridescenceThicknessMap?: Texture | null;
+    // (undocumented)
+    iridescenceThicknessMaximum?: number;
+    // (undocumented)
+    iridescenceThicknessMinimum?: number;
     // (undocumented)
     isOcclusionInMetallicRoughnessMap?: boolean;
     // (undocumented)
@@ -4512,6 +4709,14 @@ export interface PBRMaterialParameters extends MaterialParameters {
     specularEnvMap?: MaterialTexture | null;
     // (undocumented)
     specularGlossinessMap?: Texture | null;
+    // (undocumented)
+    thicknessFactor?: number;
+    // (undocumented)
+    thicknessMap?: Texture | null;
+    // (undocumented)
+    transmissionFactor?: number;
+    // (undocumented)
+    transmissionMap?: Texture | null;
 }
 
 // @public
@@ -4639,6 +4844,25 @@ export type PointShadowCameraParameters = Pick<ShadowCameraParameters, 'near' | 
 
 // @public (undocumented)
 const POSITION = "POSITION";
+
+// @public
+export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
+    constructor(options?: Readonly<PostProcessRenderPipelineOptions>);
+    // (undocumented)
+    create(context: RenderPipelineCreateContext): RenderPipeline;
+    // (undocumented)
+    readonly name = "post-process-forward";
+    // (undocumented)
+    readonly requirements: Readonly<RenderPipelineRequirements>;
+}
+
+// @public
+export interface PostProcessRenderPipelineOptions {
+    readonly bloom?: Readonly<BloomOptions> | false;
+    readonly colorUber?: Readonly<ColorUberOptions>;
+    readonly features?: readonly ForwardRenderPipelineFeature[];
+    readonly opaqueTexture?: boolean;
+}
 
 // @public
 export class PresentRenderPass extends FullscreenRenderPass {
@@ -5611,6 +5835,7 @@ export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassPara
 export interface SceneRenderPassParameters {
     readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
     readonly depthStencilAttachment?: Readonly<RenderPipelineDepthStencilAttachment>;
+    readonly opaqueTexture?: RenderGraphTextureHandle;
     readonly rendererList: RendererListHandle;
     readonly scissor?: RendererViewport;
     readonly stencilReference?: number;
@@ -6035,6 +6260,45 @@ export const semantic: {
         notSupportInstanced: boolean;
         get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
+    CLEARCOATNORMALSCALE: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    ANISOTROPYSTRENGTH: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    ANISOTROPYROTATION: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    TRANSMISSIONFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    THICKNESSFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    ATTENUATIONDISTANCE: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    ATTENUATIONCOLOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    IOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    IRIDESCENCEFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    IRIDESCENCEIOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    IRIDESCENCETHICKNESSMINIMUM: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    IRIDESCENCETHICKNESSMAXIMUM: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    OPAQUETEXTURE: {
+        get(): unknown;
+    };
 };
 
 // @public (undocumented)
@@ -6043,6 +6307,16 @@ export interface SemanticMaterial extends Material {
     [property: string]: unknown;
     // (undocumented)
     ambient: MaterialTextureValue;
+    // (undocumented)
+    anisotropyMap: Texture | null;
+    // (undocumented)
+    anisotropyRotation: number;
+    // (undocumented)
+    anisotropyStrength: number;
+    // (undocumented)
+    attenuationColor: Color;
+    // (undocumented)
+    attenuationDistance: number;
     // (undocumented)
     baseColor: Color;
     // (undocumented)
@@ -6055,6 +6329,8 @@ export interface SemanticMaterial extends Material {
     clearcoatMap: Texture | null;
     // (undocumented)
     clearcoatNormalMap: Texture | null;
+    // (undocumented)
+    clearcoatNormalScale: number;
     // (undocumented)
     clearcoatRoughnessFactor: number;
     // (undocumented)
@@ -6071,6 +6347,20 @@ export interface SemanticMaterial extends Material {
     emissionFactor: Color;
     // (undocumented)
     glossiness: number;
+    // (undocumented)
+    ior: number;
+    // (undocumented)
+    iridescenceFactor: number;
+    // (undocumented)
+    iridescenceIor: number;
+    // (undocumented)
+    iridescenceMap: Texture | null;
+    // (undocumented)
+    iridescenceThicknessMap: Texture | null;
+    // (undocumented)
+    iridescenceThicknessMaximum: number;
+    // (undocumented)
+    iridescenceThicknessMinimum: number;
     // (undocumented)
     lightMap: Texture | null;
     // (undocumented)
@@ -6105,6 +6395,14 @@ export interface SemanticMaterial extends Material {
     specularEnvMatrix: Matrix4 | null;
     // (undocumented)
     specularGlossinessMap: Texture | null;
+    // (undocumented)
+    thicknessFactor: number;
+    // (undocumented)
+    thicknessMap: Texture | null;
+    // (undocumented)
+    transmissionFactor: number;
+    // (undocumented)
+    transmissionMap: Texture | null;
 }
 
 // @public (undocumented)
@@ -6143,7 +6441,7 @@ export class Shader {
     static getCustomShader(vs: string, fs: string, header?: string, cacheKey?: string, useHeaderCache?: boolean, renderer?: ShaderPrecisionProvider): Shader;
     static getHeader(mesh: Mesh, material: Material, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean): string;
     static getHeaderKey(mesh: Mesh, material: Material, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean): string;
-    static getShader(mesh: Mesh, material: Material, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, renderer?: ShaderPrecisionProvider): Shader | null;
+    static getShader(mesh: Mesh, material: Material, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, renderer?: ShaderPrecisionProvider, linearOutput?: boolean): Shader | null;
     static get headerCache(): Cache_2<string>;
     // (undocumented)
     readonly id: string;
@@ -7317,6 +7615,9 @@ export class Ticker {
     // (undocumented)
     timeout(callback: () => void, duration: number): Tickable;
 }
+
+// @public
+export type ToneMappingMode = 'pbr-neutral' | 'aces' | 'reinhard' | 'none';
 
 // @public (undocumented)
 export type Triangle = readonly [ArrayLike<number>, ArrayLike<number>, ArrayLike<number>];

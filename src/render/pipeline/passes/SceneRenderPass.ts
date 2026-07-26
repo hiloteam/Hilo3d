@@ -3,6 +3,7 @@ import type StorageGraphicsShader from '../../compute/StorageGraphicsShader';
 import type { RendererListHandle } from '../RendererList';
 import type {
     RenderGraphBufferHandle,
+    RenderGraphTextureHandle,
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     ScriptableRenderPass,
@@ -56,6 +57,11 @@ export interface SceneRenderPassParameters {
     readonly scissor?: RendererViewport;
     /** Optional unsigned stencil reference set before drawing the list. */
     readonly stencilReference?: number;
+    /**
+     * Opaque scene color sampled by transmission/volume materials in this pass. The graph keeps
+     * this input distinct from the active color attachment, preventing raster feedback.
+     */
+    readonly opaqueTexture?: RenderGraphTextureHandle;
     /** Optional WebGPU-only storage-aware shader variant for the ordinary renderer-list path. */
     readonly storageShaderVariant?: Readonly<SceneStorageShaderVariant>;
 }
@@ -90,6 +96,9 @@ export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassPara
         }
         if (parameters.depthStencilAttachment !== undefined) {
             builder.useDepthStencilAttachment(parameters.depthStencilAttachment);
+        }
+        if (parameters.opaqueTexture !== undefined) {
+            builder.readTexture(parameters.opaqueTexture);
         }
         const storageVariant = parameters.storageShaderVariant;
         if (storageVariant !== undefined) {

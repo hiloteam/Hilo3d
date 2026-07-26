@@ -520,6 +520,8 @@ class Shader {
      * @param lightManager -
      * @param fog -
      * @param useLogDepth -
+     * @param renderer - Renderer precision provider used to build the portable shader preamble.
+     * @param linearOutput - Keep lighting in linear HDR space for floating-point scene targets.
      */
     static getShader(
         mesh: Mesh,
@@ -528,9 +530,11 @@ class Shader {
         lightManager: LightManager,
         fog: Fog | null,
         useLogDepth: boolean,
-        renderer?: ShaderPrecisionProvider
+        renderer?: ShaderPrecisionProvider,
+        linearOutput = false
     ): Shader | null {
-        const header = this.getHeader(mesh, material, lightManager, fog, useLogDepth);
+        let header = this.getHeader(mesh, material, lightManager, fog, useLogDepth);
+        if (linearOutput) header += '#define HILO_LINEAR_OUTPUT 1\n';
         if (isBasicMaterial(material) || isPBRMaterial(material)) {
             return this.getBasicShader(material, isUseInstance, header, renderer);
         }

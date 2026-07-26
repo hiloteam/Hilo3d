@@ -6,11 +6,65 @@
             name="viewport"
             content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
         />
-        <title>Hilo3d PBR Demo</title>
+        <title>Hilo3D PBR Material Lab</title>
         <link rel="stylesheet" type="text/css" href="./example.css" />
+        <link rel="stylesheet" type="text/css" href="./pbr_lab.css" />
     </head>
     <body>
         <div id="container"></div>
+
+        <aside class="labPanel" aria-label="PBR material controls">
+            <p class="labEyebrow">Hilo3D · Material Lab 02</p>
+            <h1>Read the lobe,<br />not the noise.</h1>
+            <p class="labIntro">
+                One controlled HDR studio. Thirty samples isolate the relationship between metallic
+                response and perceptual roughness.
+            </p>
+
+            <div class="familyControls" role="group" aria-label="Material color family">
+                <button data-material-family="steel" aria-pressed="false">Steel</button>
+                <button data-material-family="copper" aria-pressed="true">Copper</button>
+                <button data-material-family="gold" aria-pressed="false">Gold</button>
+                <button data-material-family="ceramic" aria-pressed="false">Ceramic</button>
+            </div>
+
+            <div class="familyReadout">
+                <span class="familySwatch" aria-hidden="true"></span>
+                <div>
+                    <strong id="familyName">Warm copper</strong>
+                    <p id="familyDescription">
+                        Saturated metal makes the roughness response immediately visible.
+                    </p>
+                </div>
+            </div>
+
+            <dl class="labLegend">
+                <div>
+                    <dt>Columns</dt>
+                    <dd>metallic · 0 → 1</dd>
+                </div>
+                <div>
+                    <dt>Rows</dt>
+                    <dd>roughness · 0.08 → 0.82</dd>
+                </div>
+                <div>
+                    <dt>Pipeline</dt>
+                    <dd>GGX · HDR · PBR Neutral</dd>
+                </div>
+            </dl>
+        </aside>
+
+        <div class="axisLabel axisMetallic" aria-hidden="true">
+            <span>dielectric</span>
+            <i></i>
+            <span>conductor</span>
+        </div>
+        <div class="axisLabel axisRoughness" aria-hidden="true">
+            <span>polished</span>
+            <i></i>
+            <span>diffuse</span>
+        </div>
+        <p class="labHint">drag to orbit · controlled studio lighting</p>
 
         <script type="module" src="./pbr2.ts"></script>
     </body>

@@ -1,6 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { addEnvironmentSkybox } from './shared/environment';
 import { createExampleContext } from './shared/init';
+import { createStudioEnvironmentFaceUrls } from './shared/studioEnvironment';
 
 const { stage, orbitControls } = await createExampleContext();
 orbitControls.isLockZ = true;
@@ -8,14 +9,10 @@ orbitControls.isLockZ = true;
 async function initialize(): Promise<void> {
     const [skyboxMap, model] = await Promise.all([
         new Hilo3d.CubeTextureLoader().load({
-            images: [
-                new URL('./image/px.jpg', import.meta.url).href,
-                new URL('./image/nx.jpg', import.meta.url).href,
-                new URL('./image/py.jpg', import.meta.url).href,
-                new URL('./image/ny.jpg', import.meta.url).href,
-                new URL('./image/pz.jpg', import.meta.url).href,
-                new URL('./image/nz.jpg', import.meta.url).href
-            ]
+            images: [...createStudioEnvironmentFaceUrls()],
+            internalFormat: Hilo3d.constants.RGBA8,
+            format: Hilo3d.constants.RGBA,
+            minFilter: Hilo3d.constants.webgl.LINEAR_MIPMAP_LINEAR
         }),
         new Hilo3d.GLTFLoader().load({ src: './models/Tmall/Tmall.gltf' })
     ]);

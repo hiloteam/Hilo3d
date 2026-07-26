@@ -32,6 +32,19 @@ function requireNumber(value: unknown, label: string): number {
     return value;
 }
 
+function requireRange(
+    value: unknown,
+    label: string,
+    minimum: number,
+    maximum = Number.POSITIVE_INFINITY
+): number {
+    const number = requireNumber(value, label);
+    if (number < minimum || number > maximum) {
+        throw new RangeError(`${label} must be in [${String(minimum)}, ${String(maximum)}].`);
+    }
+    return number;
+}
+
 function readNumberArray(value: unknown): readonly number[] | undefined {
     if (!Array.isArray(value)) return undefined;
     const result: number[] = [];
@@ -294,15 +307,19 @@ export const KHR_materials_clearcoat = {
             throw new TypeError('KHR_materials_clearcoat must be an object.');
         const material = requirePBRMaterial(result, 'KHR_materials_clearcoat');
         if (extensionData['clearcoatFactor'] !== undefined) {
-            material.clearcoatFactor = requireNumber(
+            material.clearcoatFactor = requireRange(
                 extensionData['clearcoatFactor'],
-                'KHR_materials_clearcoat.clearcoatFactor'
+                'KHR_materials_clearcoat.clearcoatFactor',
+                0,
+                1
             );
         }
         if (extensionData['clearcoatRoughnessFactor'] !== undefined) {
-            material.clearcoatRoughnessFactor = requireNumber(
+            material.clearcoatRoughnessFactor = requireRange(
                 extensionData['clearcoatRoughnessFactor'],
-                'KHR_materials_clearcoat.clearcoatRoughnessFactor'
+                'KHR_materials_clearcoat.clearcoatRoughnessFactor',
+                0,
+                1
             );
         }
         const clearcoatMap = optionalTextureInfo(
@@ -322,7 +339,189 @@ export const KHR_materials_clearcoat = {
         );
         if (clearcoatMap) material.clearcoatMap = parser.getTexture(clearcoatMap);
         if (roughnessMap) material.clearcoatRoughnessMap = parser.getTexture(roughnessMap);
-        if (normalMap) material.clearcoatNormalMap = parser.getTexture(normalMap);
+        if (normalMap) {
+            material.clearcoatNormalMap = parser.getTexture(normalMap);
+            material.clearcoatNormalScale = normalMap.scale ?? 1;
+        }
+        return material;
+    }
+} satisfies GLTFExtensionHandler;
+
+export const KHR_materials_anisotropy = {
+    getUsedTextureNameMap(extensionData: unknown, map: Record<string, true>): void {
+        addUsedTexture(extensionData, 'anisotropyTexture', map, 'KHR_materials_anisotropy');
+    },
+    parse(extensionData: unknown, parser: GLTFParser, result: unknown): PBRMaterial {
+        if (!isRecord(extensionData)) {
+            throw new TypeError('KHR_materials_anisotropy must be an object.');
+        }
+        const material = requirePBRMaterial(result, 'KHR_materials_anisotropy');
+        if (extensionData['anisotropyStrength'] !== undefined) {
+            material.anisotropyStrength = requireRange(
+                extensionData['anisotropyStrength'],
+                'KHR_materials_anisotropy.anisotropyStrength',
+                0,
+                1
+            );
+        }
+        if (extensionData['anisotropyRotation'] !== undefined) {
+            material.anisotropyRotation = requireNumber(
+                extensionData['anisotropyRotation'],
+                'KHR_materials_anisotropy.anisotropyRotation'
+            );
+        }
+        const texture = optionalTextureInfo(
+            extensionData,
+            'anisotropyTexture',
+            'KHR_materials_anisotropy'
+        );
+        if (texture) material.anisotropyMap = parser.getTexture(texture);
+        return material;
+    }
+} satisfies GLTFExtensionHandler;
+
+export const KHR_materials_transmission = {
+    getUsedTextureNameMap(extensionData: unknown, map: Record<string, true>): void {
+        addUsedTexture(extensionData, 'transmissionTexture', map, 'KHR_materials_transmission');
+    },
+    parse(extensionData: unknown, parser: GLTFParser, result: unknown): PBRMaterial {
+        if (!isRecord(extensionData)) {
+            throw new TypeError('KHR_materials_transmission must be an object.');
+        }
+        const material = requirePBRMaterial(result, 'KHR_materials_transmission');
+        if (extensionData['transmissionFactor'] !== undefined) {
+            material.transmissionFactor = requireRange(
+                extensionData['transmissionFactor'],
+                'KHR_materials_transmission.transmissionFactor',
+                0,
+                1
+            );
+        }
+        const texture = optionalTextureInfo(
+            extensionData,
+            'transmissionTexture',
+            'KHR_materials_transmission'
+        );
+        if (texture) material.transmissionMap = parser.getTexture(texture);
+        return material;
+    }
+} satisfies GLTFExtensionHandler;
+
+export const KHR_materials_volume = {
+    getUsedTextureNameMap(extensionData: unknown, map: Record<string, true>): void {
+        addUsedTexture(extensionData, 'thicknessTexture', map, 'KHR_materials_volume');
+    },
+    parse(extensionData: unknown, parser: GLTFParser, result: unknown): PBRMaterial {
+        if (!isRecord(extensionData)) {
+            throw new TypeError('KHR_materials_volume must be an object.');
+        }
+        const material = requirePBRMaterial(result, 'KHR_materials_volume');
+        if (extensionData['thicknessFactor'] !== undefined) {
+            material.thicknessFactor = requireRange(
+                extensionData['thicknessFactor'],
+                'KHR_materials_volume.thicknessFactor',
+                0
+            );
+        }
+        if (extensionData['attenuationDistance'] !== undefined) {
+            material.attenuationDistance = requireRange(
+                extensionData['attenuationDistance'],
+                'KHR_materials_volume.attenuationDistance',
+                Number.MIN_VALUE
+            );
+        }
+        if (extensionData['attenuationColor'] !== undefined) {
+            const color = requireNumberArray(
+                extensionData['attenuationColor'],
+                'KHR_materials_volume.attenuationColor',
+                3
+            );
+            material.attenuationColor.set(
+                requireRange(color[0], 'KHR_materials_volume.attenuationColor[0]', 0, 1),
+                requireRange(color[1], 'KHR_materials_volume.attenuationColor[1]', 0, 1),
+                requireRange(color[2], 'KHR_materials_volume.attenuationColor[2]', 0, 1),
+                1
+            );
+        }
+        const texture = optionalTextureInfo(
+            extensionData,
+            'thicknessTexture',
+            'KHR_materials_volume'
+        );
+        if (texture) material.thicknessMap = parser.getTexture(texture);
+        return material;
+    }
+} satisfies GLTFExtensionHandler;
+
+export const KHR_materials_ior = {
+    parse(extensionData: unknown, _parser: GLTFParser, result: unknown): PBRMaterial {
+        if (!isRecord(extensionData)) {
+            throw new TypeError('KHR_materials_ior must be an object.');
+        }
+        const material = requirePBRMaterial(result, 'KHR_materials_ior');
+        if (extensionData['ior'] !== undefined) {
+            material.ior = requireRange(extensionData['ior'], 'KHR_materials_ior.ior', 1);
+        }
+        return material;
+    }
+} satisfies GLTFExtensionHandler;
+
+export const KHR_materials_iridescence = {
+    getUsedTextureNameMap(extensionData: unknown, map: Record<string, true>): void {
+        addUsedTexture(extensionData, 'iridescenceTexture', map, 'KHR_materials_iridescence');
+        addUsedTexture(
+            extensionData,
+            'iridescenceThicknessTexture',
+            map,
+            'KHR_materials_iridescence'
+        );
+    },
+    parse(extensionData: unknown, parser: GLTFParser, result: unknown): PBRMaterial {
+        if (!isRecord(extensionData)) {
+            throw new TypeError('KHR_materials_iridescence must be an object.');
+        }
+        const material = requirePBRMaterial(result, 'KHR_materials_iridescence');
+        if (extensionData['iridescenceFactor'] !== undefined) {
+            material.iridescenceFactor = requireRange(
+                extensionData['iridescenceFactor'],
+                'KHR_materials_iridescence.iridescenceFactor',
+                0,
+                1
+            );
+        }
+        if (extensionData['iridescenceIor'] !== undefined) {
+            material.iridescenceIor = requireRange(
+                extensionData['iridescenceIor'],
+                'KHR_materials_iridescence.iridescenceIor',
+                1
+            );
+        }
+        if (extensionData['iridescenceThicknessMinimum'] !== undefined) {
+            material.iridescenceThicknessMinimum = requireRange(
+                extensionData['iridescenceThicknessMinimum'],
+                'KHR_materials_iridescence.iridescenceThicknessMinimum',
+                0
+            );
+        }
+        if (extensionData['iridescenceThicknessMaximum'] !== undefined) {
+            material.iridescenceThicknessMaximum = requireRange(
+                extensionData['iridescenceThicknessMaximum'],
+                'KHR_materials_iridescence.iridescenceThicknessMaximum',
+                0
+            );
+        }
+        const factorMap = optionalTextureInfo(
+            extensionData,
+            'iridescenceTexture',
+            'KHR_materials_iridescence'
+        );
+        const thicknessMap = optionalTextureInfo(
+            extensionData,
+            'iridescenceThicknessTexture',
+            'KHR_materials_iridescence'
+        );
+        if (factorMap) material.iridescenceMap = parser.getTexture(factorMap);
+        if (thicknessMap) material.iridescenceThicknessMap = parser.getTexture(thicknessMap);
         return material;
     }
 } satisfies GLTFExtensionHandler;

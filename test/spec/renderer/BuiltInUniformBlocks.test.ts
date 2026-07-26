@@ -31,7 +31,7 @@ describe('built-in std140 ABI', () => {
             CameraBlock: 416,
             SceneBlock: 32,
             LightBlock: 13600,
-            MaterialBlock: 480,
+            MaterialBlock: 544,
             ModelBlock: 128,
             GeometryBlock: 224,
             SkinningBlock: 8192,
@@ -55,7 +55,12 @@ describe('built-in std140 ABI', () => {
         expect(materialBlockLayout.fields.u_diffuseEnvSphereHarmonics3.arrayStride).toBe(16);
         expect(materialBlockLayout.fields.u_specularEnvMatrix.offset).toBe(240);
         expect(materialBlockLayout.fields.u_normalMapScale.offset).toBe(400);
-        expect(materialBlockLayout.fields.u_materialPadding.offset).toBe(472);
+        expect(materialBlockLayout.fields.u_clearcoatNormalScale.offset).toBe(472);
+        expect(materialBlockLayout.fields.u_transmissionFactor.offset).toBe(484);
+        expect(materialBlockLayout.fields.u_ior.offset).toBe(496);
+        expect(materialBlockLayout.fields.u_iridescenceFactor.offset).toBe(500);
+        expect(materialBlockLayout.fields.u_iridescenceThicknessMaximum.offset).toBe(512);
+        expect(materialBlockLayout.fields.u_attenuationColor.offset).toBe(528);
 
         expect(modelBlockLayout.fields.u_modelMatrix.offset).toBe(0);
         expect(modelBlockLayout.fields.u_normalWorldMatrix.offset).toBe(64);

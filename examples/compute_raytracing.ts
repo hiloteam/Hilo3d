@@ -12,6 +12,10 @@ const REQUIRED_CAPABILITIES: readonly Hilo3d.RenderPipelineCapabilityName[] = Ob
     'storage-buffer',
     'compute-pass'
 ]);
+const portableCoordinateShader = Hilo3d.Shader.shaders['method/portableCoordinates.glsl'];
+if (portableCoordinateShader === undefined) {
+    throw new Error('Portable coordinate shader helpers are unavailable');
+}
 
 const frameLayout = Hilo3d.createStd140Layout({
     u_resolution: 'vec4',
@@ -902,11 +906,12 @@ const PRESENT_PASS = new Hilo3d.GPUDrivenRenderPass({
 precision highp float;
 precision highp int;
 out vec2 v_uv;
+${portableCoordinateShader}
 void main() {
     vec2 corner = vec2(-1.0, -1.0);
     if (gl_VertexID == 1 || gl_VertexID >= 4) corner.x = 1.0;
     if (gl_VertexID == 2 || gl_VertexID == 3 || gl_VertexID == 5) corner.y = 1.0;
-    v_uv = corner * 0.5 + 0.5;
+    v_uv = hiloRenderTargetUV(corner * 0.5 + 0.5);
     gl_Position = vec4(corner, 0.0, 1.0);
 }`,
         fragmentSource: `#version 310 es

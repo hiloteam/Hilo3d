@@ -57,6 +57,10 @@ for (const target of [currentTarget, nextTarget]) {
 let copySource: Hilo3d.Texture<unknown> = initialState;
 const screenFragment = Hilo3d.Shader.shaders['screen.frag'];
 if (!screenFragment) throw new Error('Built-in fullscreen fragment shader is unavailable.');
+const portableCoordinateShader = Hilo3d.Shader.shaders['method/portableCoordinates.glsl'];
+if (!portableCoordinateShader) {
+    throw new Error('Portable coordinate shader helpers are unavailable.');
+}
 const copyPass = new FullscreenPass({
     renderer,
     fragmentShader: screenFragment,
@@ -77,9 +81,13 @@ const lifePass = new FullscreenPass({
             vec2 u_size;
         };
         layout(location = 0) out vec4 fragmentColor;
+        ${portableCoordinateShader}
 
         int getCell(int x, int y) {
-            vec2 coordinates = (gl_FragCoord.xy + vec2(x, y)) / u_size;
+            vec2 bottomLeftCoord = hiloBottomLeftFragCoord(gl_FragCoord.xy, u_size);
+            vec2 coordinates = hiloRenderTargetUV(
+                (bottomLeftCoord + vec2(x, y)) / u_size
+            );
             return int(round(texture(u_diffuse, coordinates).b));
         }
 
@@ -169,7 +177,7 @@ document.addEventListener('click', event => {
     );
     const y = Math.max(
         0,
-        Math.min(height - 1, Math.floor(((bounds.bottom - event.clientY) / bounds.height) * height))
+        Math.min(height - 1, Math.floor(((event.clientY - bounds.top) / bounds.height) * height))
     );
     injectionQueue = injectionQueue.then(() => injectLiveCell(x, y));
     void injectionQueue.catch(reportAsyncError);

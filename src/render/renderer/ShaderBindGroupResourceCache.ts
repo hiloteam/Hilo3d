@@ -316,12 +316,20 @@ export class ShaderBindGroupResourceCache {
                 throw new TypeError(`Deferred shader bind group ${String(group)} is not active`);
             }
             const bindings = bindingsByGroup.get(group);
-            if (
-                bindings === undefined ||
-                [...bindings.values()].some(kind => kind !== 'read-only-storage-buffer')
-            ) {
+            const kinds = bindings === undefined ? [] : [...bindings.values()];
+            const storageOnly =
+                kinds.length !== 0 && kinds.every(kind => kind === 'read-only-storage-buffer');
+            const sampledOnly =
+                kinds.length !== 0 &&
+                kinds.every(
+                    kind =>
+                        kind === 'sampled-texture' ||
+                        kind === 'sampler' ||
+                        kind === 'comparison-sampler'
+                );
+            if (bindings === undefined || (!storageOnly && !sampledOnly)) {
                 throw new TypeError(
-                    `Deferred shader bind group ${String(group)} must contain only readonly storage buffers`
+                    `Deferred shader bind group ${String(group)} must contain only readonly storage buffers or sampled textures`
                 );
             }
             deferred.add(group);

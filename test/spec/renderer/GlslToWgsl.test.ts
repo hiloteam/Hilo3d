@@ -5,6 +5,8 @@ import {
     specializeWebGPUDepthSamplers,
     type GlslSamplerType
 } from '../../../src/render/shader/GlslToWgsl';
+import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from '../../../src/render/pipeline/passes/internal/PortableFullscreenShader';
+import { getWebGPUUniformBlockBinding } from '../../../src/render/shader/WebGPUBindingLayout';
 import { registerUniformBlockBinding } from '../../../src/render/ubo/UniformBlockBindings';
 import Shader from '../../../src/shader/Shader';
 import { testEnv } from '../../renderer-setup';
@@ -23,6 +25,7 @@ const screenVertexSource = builtInShaderSource('screen.vert');
 const screenFragmentSource = builtInShaderSource('screen.frag');
 const presentVertexSource = builtInShaderSource('present.vert');
 const presentFragmentSource = builtInShaderSource('present.frag');
+const portableCoordinateSource = builtInShaderSource('method/portableCoordinates.glsl');
 const mipmapVertexSource = builtInShaderSource('webgpu/mipmap.vert');
 const mipmapFragmentSource = builtInShaderSource('webgpu/mipmap.frag');
 const snowExampleModules = import.meta.glob<string>('../../../examples/snow.ts', {
@@ -30,11 +33,19 @@ const snowExampleModules = import.meta.glob<string>('../../../examples/snow.ts',
     query: '?raw',
     import: 'default'
 });
-const bloomExampleModules = import.meta.glob<string>('../../../examples/bloom.ts', {
+const bloomSourceModules = import.meta.glob<string>('../../../src/render/postprocessing/Bloom.ts', {
     eager: true,
     query: '?raw',
     import: 'default'
 });
+const colorUberSourceModules = import.meta.glob<string>(
+    '../../../src/render/postprocessing/ColorUber.ts',
+    {
+        eager: true,
+        query: '?raw',
+        import: 'default'
+    }
+);
 const shaderToyExampleModules = import.meta.glob<string>('../../../examples/shaderToy.ts', {
     eager: true,
     query: '?raw',
@@ -84,7 +95,10 @@ function shaderToyFragment(source: string): string {
     const bodyStart = start + marker.length;
     const end = source.indexOf('\n    `,', bodyStart);
     if (end < 0) throw new Error('ShaderToy fragment shader is not terminated');
-    return source.slice(bodyStart, end).replace('${shaderToyCode}', shaderToyCode);
+    return source
+        .slice(bodyStart, end)
+        .replace('${portableCoordinateShader}', portableCoordinateSource)
+        .replace('${shaderToyCode}', shaderToyCode);
 }
 
 const vertex = `#version 300 es
@@ -204,8 +218,9 @@ void main() {
         expect(prepared.vertex.glsl).toContain(
             'layout(std140, set = 0, binding = 1) uniform CameraBlock'
         );
+        const effectBinding = getWebGPUUniformBlockBinding('EffectBlock');
         expect(prepared.fragment.glsl).toContain(
-            'layout(std140, set = 3, binding = 0) uniform EffectBlock'
+            `layout(std140, set = 3, binding = ${String(effectBinding.binding)}) uniform EffectBlock`
         );
         expect(prepared.fragment.glsl).toContain(
             'layout(set = 1, binding = 1) uniform texture2D diffuseMap__texture;'
@@ -938,6 +953,15 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
             HILO_CLEARCOAT_MAP: 0,
             HILO_CLEARCOAT_ROUGHNESS_MAP: 1,
             HILO_CLEARCOAT_NORMAL_MAP: 0,
+            HILO_HAS_ANISOTROPY: 1,
+            HILO_ANISOTROPY_MAP: 1,
+            HILO_HAS_TRANSMISSION: 1,
+            HILO_TRANSMISSION_MAP: 0,
+            HILO_HAS_VOLUME: 1,
+            HILO_THICKNESS_MAP: 1,
+            HILO_HAS_IRIDESCENCE: 1,
+            HILO_IRIDESCENCE_MAP: 0,
+            HILO_IRIDESCENCE_THICKNESS_MAP: 1,
             HILO_NORMAL_MAP: 0,
             HILO_DIRECTIONAL_LIGHTS: 2,
             HILO_SPOT_LIGHTS: 1,
@@ -955,7 +979,13 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
             'u_specularEnvMap[0]',
             'u_areaLightsLtcTexture1[0]',
             'u_areaLightsLtcTexture2[0]',
-            'u_clearcoatNormalMap[0]'
+            'u_clearcoatNormalMap[0]',
+            'u_anisotropyMap[0]',
+            'u_transmissionMap[0]',
+            'u_thicknessMap[0]',
+            'u_iridescenceMap[0]',
+            'u_iridescenceThicknessMap[0]',
+            'u_opaqueTexture[0]'
         ]
     },
     {
@@ -1219,41 +1249,72 @@ describe('modern example WebGPU shader corpus', () => {
 
     const postProcessShaderCases = [
         {
-            source: () => Object.values(bloomExampleModules)[0],
-            shaderName: 'extractFragment',
-            blocks: ['BloomExtractBlock'],
-            samplers: ['u_scene']
-        },
-        {
-            source: () => Object.values(bloomExampleModules)[0],
-            shaderName: 'blurFragment',
-            blocks: ['BloomBlurBlock'],
+            source: () => Object.values(bloomSourceModules)[0],
+            fragmentName: 'PREFILTER_FRAGMENT',
+            blocks: ['BloomBlock'],
             samplers: ['u_source']
         },
         {
-            source: () => Object.values(bloomExampleModules)[0],
-            shaderName: 'compositeFragment',
-            blocks: ['BloomCompositeBlock'],
-            samplers: ['u_scene', 'u_bloom0', 'u_bloom1', 'u_bloom2', 'u_bloom3', 'u_bloom4']
+            source: () => Object.values(bloomSourceModules)[0],
+            fragmentName: 'DOWNSAMPLE_FRAGMENT',
+            blocks: ['BloomBlock'],
+            samplers: ['u_source']
+        },
+        {
+            source: () => Object.values(bloomSourceModules)[0],
+            fragmentName: 'UPSAMPLE_FRAGMENT',
+            blocks: ['BloomBlock'],
+            samplers: ['u_high', 'u_low']
+        },
+        {
+            source: () => Object.values(bloomSourceModules)[0],
+            fragmentName: 'COMPOSITE_FRAGMENT',
+            blocks: ['BloomBlock'],
+            samplers: ['u_scene', 'u_bloom']
+        },
+        {
+            source: () => Object.values(colorUberSourceModules)[0],
+            fragmentName: 'FRAGMENT_SOURCE',
+            blocks: ['ColorUberBlock'],
+            samplers: ['u_source']
         }
     ] as const;
 
     it.each(postProcessShaderCases)(
-        'translates $shaderName post-processing shader through Naga',
+        'translates $fragmentName post-processing shader through Naga',
         async shaderCase => {
             for (const block of shaderCase.blocks) registerUniformBlockBinding(block);
             const source = shaderCase.source();
-            if (!source) throw new Error(`${shaderCase.shaderName} example source was not loaded`);
+            if (!source) {
+                throw new Error(`${shaderCase.fragmentName} engine source was not loaded`);
+            }
+            const bloomBlock = source.includes('const BLOOM_BLOCK = `')
+                ? embeddedShader(source, 'BLOOM_BLOCK')
+                : '';
+            const postProcessFragment = embeddedShader(source, shaderCase.fragmentName).replace(
+                '${BLOOM_BLOCK}',
+                bloomBlock
+            );
             const translator = new NagaShaderTranslator();
             await translator.initialize();
             const translated = translator.translate(
-                screenVertexSource,
-                embeddedShader(source, shaderCase.shaderName)
+                PORTABLE_FULLSCREEN_VERTEX_SOURCE,
+                postProcessFragment
             );
 
             expect(translated.fragment.wgsl).toContain('@fragment');
             expect(translated.uniformBlocks.map(block => block.name)).toEqual(shaderCase.blocks);
             expect(translated.samplers.map(sampler => sampler.name)).toEqual(shaderCase.samplers);
+            await Promise.all([
+                validateWgslOnDevice(
+                    `${shaderCase.fragmentName} post-process vertex`,
+                    translated.vertex.wgsl
+                ),
+                validateWgslOnDevice(
+                    `${shaderCase.fragmentName} post-process fragment`,
+                    translated.fragment.wgsl
+                )
+            ]);
         }
     );
 });

@@ -19,6 +19,7 @@ interface ParticleEvidence {
     readonly distinctColors: number;
     readonly activeTiles: number;
     readonly wordSampleCoverage: number;
+    readonly mirroredWordSampleCoverage: number;
     readonly ambientLuminousPixels: number;
     readonly hash: number;
     readonly interactionRevision: number;
@@ -74,6 +75,7 @@ test('runs interactive Hilo3D noise, meteor-wake, and collision particles on Web
     expect(initial.distinctColors).toBeGreaterThan(500);
     expect(initial.activeTiles).toBeGreaterThan(80);
     expect(initial.wordSampleCoverage).toBeGreaterThan(0.75);
+    expect(initial.wordSampleCoverage).toBeGreaterThan(initial.mirroredWordSampleCoverage * 1.25);
     expect(initial.ambientLuminousPixels).toBeGreaterThan(100);
     expect(baseline.hash).not.toBe(initial.hash);
 

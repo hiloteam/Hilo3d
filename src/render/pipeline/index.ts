@@ -17,3 +17,4 @@ export type * from './RendererList';
 export type * from './RenderPipeline';
 export type * from './ScriptableRenderGraph';
 export * from './passes';
+export * from '../postprocessing';

@@ -61,8 +61,25 @@ export interface SemanticMaterial extends Material {
     clearcoatFactor: number;
     clearcoatMap: Texture | null;
     clearcoatNormalMap: Texture | null;
+    clearcoatNormalScale: number;
     clearcoatRoughnessFactor: number;
     clearcoatRoughnessMap: Texture | null;
+    anisotropyStrength: number;
+    anisotropyRotation: number;
+    anisotropyMap: Texture | null;
+    transmissionFactor: number;
+    transmissionMap: Texture | null;
+    thicknessFactor: number;
+    thicknessMap: Texture | null;
+    attenuationDistance: number;
+    attenuationColor: Color;
+    ior: number;
+    iridescenceFactor: number;
+    iridescenceMap: Texture | null;
+    iridescenceIor: number;
+    iridescenceThicknessMinimum: number;
+    iridescenceThicknessMaximum: number;
+    iridescenceThicknessMap: Texture | null;
     diffuse: MaterialTextureValue;
     ambient: MaterialTextureValue;
     specular: MaterialTextureValue;
@@ -1398,6 +1415,84 @@ const semantic = {
         ): unknown {
             return material.clearcoatRoughnessFactor;
         }
+    },
+
+    CLEARCOATNORMALSCALE: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.clearcoatNormalScale;
+        }
+    },
+
+    ANISOTROPYSTRENGTH: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.anisotropyStrength;
+        }
+    },
+
+    ANISOTROPYROTATION: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.anisotropyRotation;
+        }
+    },
+
+    TRANSMISSIONFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.transmissionFactor;
+        }
+    },
+
+    THICKNESSFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.thicknessFactor;
+        }
+    },
+
+    ATTENUATIONDISTANCE: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return Number.isFinite(material.attenuationDistance) ? material.attenuationDistance : 0;
+        }
+    },
+
+    ATTENUATIONCOLOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.attenuationColor.elements;
+        }
+    },
+
+    IOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.ior;
+        }
+    },
+
+    IRIDESCENCEFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.iridescenceFactor;
+        }
+    },
+
+    IRIDESCENCEIOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.iridescenceIor;
+        }
+    },
+
+    IRIDESCENCETHICKNESSMINIMUM: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.iridescenceThicknessMinimum;
+        }
+    },
+
+    IRIDESCENCETHICKNESSMAXIMUM: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.iridescenceThicknessMaximum;
+        }
+    },
+
+    OPAQUETEXTURE: {
+        get(): unknown {
+            return semantic.getBlankTexture();
+        }
     }
 };
 
@@ -1523,7 +1618,12 @@ const textureSemantics: readonly (readonly [string, string])[] = [
     ['LIGHTMAP', 'lightMap'],
     ['CLEARCOATMAP', 'clearcoatMap'],
     ['CLEARCOATROUGHNESSMAP', 'clearcoatRoughnessMap'],
-    ['CLEARCOATNORMALMAP', 'clearcoatNormalMap']
+    ['CLEARCOATNORMALMAP', 'clearcoatNormalMap'],
+    ['ANISOTROPYMAP', 'anisotropyMap'],
+    ['TRANSMISSIONMAP', 'transmissionMap'],
+    ['THICKNESSMAP', 'thicknessMap'],
+    ['IRIDESCENCEMAP', 'iridescenceMap'],
+    ['IRIDESCENCETHICKNESSMAP', 'iridescenceThicknessMap']
 ];
 for (const [semanticName, textureName] of textureSemantics) {
     registerSemantic(semanticName, {

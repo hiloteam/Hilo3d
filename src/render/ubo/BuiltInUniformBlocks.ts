@@ -94,7 +94,18 @@ export const materialBlockLayout = createStd140Layout({
     u_glossiness: 'float',
     u_clearcoatFactor: 'float',
     u_clearcoatRoughnessFactor: 'float',
-    u_materialPadding: 'float'
+    u_clearcoatNormalScale: 'float',
+    u_anisotropyStrength: 'float',
+    u_anisotropyRotation: 'float',
+    u_transmissionFactor: 'float',
+    u_thicknessFactor: 'float',
+    u_attenuationDistance: 'float',
+    u_ior: 'float',
+    u_iridescenceFactor: 'float',
+    u_iridescenceIor: 'float',
+    u_iridescenceThicknessMinimum: 'float',
+    u_iridescenceThicknessMaximum: 'float',
+    u_attenuationColor: 'vec4'
 });
 
 export const modelBlockLayout = createStd140Layout({

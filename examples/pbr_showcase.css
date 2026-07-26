@@ -1,0 +1,324 @@
+:root {
+    color-scheme: dark;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+}
+
+body {
+    background:
+        radial-gradient(circle at 72% 18%, rgba(60, 118, 255, 0.16), transparent 34%),
+        radial-gradient(circle at 22% 84%, rgba(255, 127, 62, 0.12), transparent 38%), #050813;
+    color: #f7f9ff;
+}
+
+.showcasePanel {
+    position: fixed;
+    z-index: 30;
+    top: 22px;
+    left: 22px;
+    width: min(380px, calc(100vw - 44px));
+    box-sizing: border-box;
+    padding: 22px;
+    border: 1px solid rgba(188, 210, 255, 0.16);
+    border-radius: 20px;
+    background: linear-gradient(145deg, rgba(9, 15, 31, 0.9), rgba(6, 9, 20, 0.7));
+    box-shadow:
+        0 24px 80px rgba(0, 0, 0, 0.38),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(22px) saturate(1.2);
+}
+
+.showcaseEyebrow {
+    margin: 0 0 9px;
+    color: #8eb8ff;
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.showcasePanel h1 {
+    max-width: 320px;
+    margin: 0;
+    font-size: clamp(24px, 3vw, 38px);
+    font-weight: 690;
+    letter-spacing: -0.04em;
+    line-height: 1.03;
+}
+
+.showcaseIntro {
+    max-width: 330px;
+    margin: 14px 0 0;
+    color: rgba(226, 235, 255, 0.7);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.showcaseBadges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 16px;
+}
+
+.showcaseBadge {
+    padding: 6px 9px;
+    border: 1px solid rgba(128, 172, 255, 0.2);
+    border-radius: 999px;
+    background: rgba(78, 123, 214, 0.1);
+    color: rgba(220, 233, 255, 0.85);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+}
+
+.assetSwitcher {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 7px;
+    margin-top: 18px;
+}
+
+.assetButton,
+.featureButton {
+    appearance: none;
+    border: 1px solid rgba(184, 205, 255, 0.14);
+    color: rgba(231, 237, 255, 0.72);
+    cursor: pointer;
+    transition:
+        border-color 160ms ease,
+        background 160ms ease,
+        color 160ms ease,
+        transform 160ms ease;
+}
+
+.assetButton {
+    min-height: 38px;
+    padding: 8px;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.035);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.assetButton:hover,
+.assetButton:focus-visible,
+.featureButton:hover,
+.featureButton:focus-visible {
+    border-color: rgba(128, 174, 255, 0.62);
+    color: #fff;
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.assetButton[aria-pressed='true'] {
+    border-color: rgba(113, 165, 255, 0.72);
+    background: linear-gradient(135deg, rgba(45, 105, 226, 0.42), rgba(105, 67, 220, 0.3));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.assetButton:disabled {
+    cursor: wait;
+    opacity: 0.48;
+    transform: none;
+}
+
+.assetMeta {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: end;
+    min-height: 54px;
+    margin-top: 16px;
+    padding-top: 15px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.assetName {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 14px;
+    font-weight: 690;
+}
+
+.assetDescription,
+.assetStatus {
+    color: rgba(220, 230, 252, 0.58);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.assetStatus {
+    color: #8eb8ff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-transform: uppercase;
+}
+
+.featureCards {
+    position: fixed;
+    z-index: 25;
+    right: 22px;
+    bottom: 22px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(150px, 190px));
+    gap: 10px;
+}
+
+.featureCard {
+    padding: 15px;
+    border: 1px solid rgba(193, 213, 255, 0.13);
+    border-radius: 16px;
+    background: linear-gradient(155deg, rgba(11, 18, 37, 0.82), rgba(5, 9, 20, 0.72));
+    box-shadow: 0 14px 46px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(18px);
+}
+
+.featureCard::before {
+    display: block;
+    width: 28px;
+    height: 3px;
+    margin-bottom: 12px;
+    border-radius: 99px;
+    background: var(--feature-color, #7aa9ff);
+    box-shadow: 0 0 18px var(--feature-color, #7aa9ff);
+    content: '';
+}
+
+.featureCard h2 {
+    margin: 0;
+    font-size: 13px;
+    letter-spacing: -0.01em;
+}
+
+.featureCard p {
+    min-height: 46px;
+    margin: 7px 0 12px;
+    color: rgba(224, 233, 255, 0.58);
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.featureButton {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.045);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    text-align: left;
+}
+
+.featureButton[aria-pressed='true'] {
+    border-color: color-mix(in srgb, var(--feature-color, #7aa9ff), transparent 32%);
+    background: color-mix(in srgb, var(--feature-color, #7aa9ff), transparent 88%);
+    color: #fff;
+}
+
+.showcaseCredit {
+    position: fixed;
+    z-index: 26;
+    right: 24px;
+    bottom: 24px;
+    max-width: min(520px, calc(100vw - 48px));
+    color: rgba(222, 231, 251, 0.48);
+    font-size: 10px;
+    line-height: 1.5;
+    text-align: right;
+}
+
+.showcaseCredit a {
+    color: rgba(167, 197, 255, 0.82);
+    text-underline-offset: 3px;
+}
+
+.showcaseHint {
+    position: fixed;
+    z-index: 20;
+    right: 24px;
+    top: 24px;
+    color: rgba(224, 233, 255, 0.45);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+    text-transform: uppercase;
+}
+
+.hilo3dStats {
+    top: auto !important;
+    bottom: 14px;
+}
+
+@media (max-width: 900px) {
+    .showcasePanel {
+        top: 14px;
+        left: 14px;
+        width: min(360px, calc(100vw - 28px));
+        padding: 17px;
+        border-radius: 17px;
+    }
+
+    .showcasePanel h1 {
+        font-size: 25px;
+    }
+
+    .showcaseIntro {
+        margin-top: 10px;
+    }
+
+    .featureCards {
+        right: 14px;
+        bottom: 14px;
+        left: 14px;
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .featureCard {
+        padding: 12px;
+    }
+
+    .featureCard p {
+        display: none;
+    }
+
+    .showcaseHint,
+    .showcaseCredit,
+    .hilo3dStats {
+        display: none !important;
+    }
+}
+
+@media (max-width: 560px) {
+    .showcaseBadges,
+    .showcaseIntro {
+        display: none;
+    }
+
+    .assetSwitcher {
+        margin-top: 13px;
+    }
+
+    .assetMeta {
+        min-height: 38px;
+        margin-top: 12px;
+        padding-top: 11px;
+    }
+
+    .assetDescription {
+        display: none;
+    }
+
+    .featureCards {
+        grid-template-columns: 1fr;
+    }
+
+    .featureCard:not(:first-child) {
+        display: none;
+    }
+}

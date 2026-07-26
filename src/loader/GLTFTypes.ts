@@ -135,6 +135,37 @@ export interface GLTFClearcoatExtension {
     clearcoatNormalTexture?: GLTFTextureInfo;
 }
 
+export interface GLTFAnisotropyExtension {
+    anisotropyStrength?: number;
+    anisotropyRotation?: number;
+    anisotropyTexture?: GLTFTextureInfo;
+}
+
+export interface GLTFTransmissionExtension {
+    transmissionFactor?: number;
+    transmissionTexture?: GLTFTextureInfo;
+}
+
+export interface GLTFVolumeExtension {
+    thicknessFactor?: number;
+    thicknessTexture?: GLTFTextureInfo;
+    attenuationDistance?: number;
+    attenuationColor?: readonly [number, number, number];
+}
+
+export interface GLTFIorExtension {
+    ior?: number;
+}
+
+export interface GLTFIridescenceExtension {
+    iridescenceFactor?: number;
+    iridescenceTexture?: GLTFTextureInfo;
+    iridescenceIor?: number;
+    iridescenceThicknessMinimum?: number;
+    iridescenceThicknessMaximum?: number;
+    iridescenceThicknessTexture?: GLTFTextureInfo;
+}
+
 export interface GLTFMaterialsCommonExtension {
     technique?: 'CONSTANT' | 'LAMBERT' | 'PHONG' | 'BLINN';
     values: Readonly<Record<string, GLTFMaterialValue>>;

@@ -59,11 +59,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(79);
+        expect(examplePaths).toHaveLength(81);
     });
 
-    it('expands 79 pages into the complete 154-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(154);
+    it('expands 81 pages into the complete 158-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(158);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -86,7 +86,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(77);
+        expect(catalog).toHaveLength(79);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -95,8 +95,8 @@ describe('example release matrix contract', () => {
             new Set(EXAMPLE_CATEGORIES.map(category => category.id))
         );
         expect(catalog[0]?.id).toBe('quickStart');
-        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(74);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(76);
+        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(76);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(78);
         expect(catalog.filter(entry => entry.featured).length).toBeGreaterThan(12);
         expect(catalog.filter(entry => entry.featured).length).toBeLessThan(catalog.length);
         expect(
@@ -128,6 +128,41 @@ describe('example release matrix contract', () => {
         }
     });
 
+    it('uses the procedural studio environment instead of legacy LDR cube assets', () => {
+        const legacyEnvironmentAssets = [
+            'bakedDiffuse_01.jpg',
+            'bakedDiffuse_02.jpg',
+            'bakedDiffuse_03.jpg',
+            'bakedDiffuse_04.jpg',
+            'bakedDiffuse_05.jpg',
+            'bakedDiffuse_06.jpg',
+            'px.jpg',
+            'nx.jpg',
+            'py.jpg',
+            'ny.jpg',
+            'pz.jpg',
+            'nz.jpg'
+        ];
+        for (const asset of legacyEnvironmentAssets) {
+            expect(existsSync(join(examplesDirectory, 'image', asset)), asset).toBe(false);
+        }
+
+        const initializationSource = readFileSync(
+            join(examplesDirectory, 'shared', 'init.ts'),
+            'utf8'
+        );
+        const studioSource = readFileSync(
+            join(examplesDirectory, 'shared', 'studioEnvironment.ts'),
+            'utf8'
+        );
+        expect(initializationSource).toContain('createStudioEnvironmentMaps()');
+        expect(studioSource).toContain('function cubeDirection(');
+        expect(studioSource).toContain('createStudioEnvironmentFaceUrls');
+        expect(`${initializationSource}\n${studioSource}`).not.toMatch(
+            /bakedDiffuse_|(?:^|[/_"'])p[xyz]\.jpg|(?:^|[/_"'])n[xyz]\.jpg/u
+        );
+    });
+
     it('keeps renderer and completion exceptions explicit and minimal', () => {
         expect(WEBGL2_ONLY_EXAMPLE_PATHS).toEqual(['webxr.html']);
         expect(WEBGPU_ONLY_EXAMPLE_PATHS).toEqual([
@@ -145,7 +180,7 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(152);
+        expect(genericCases).toHaveLength(156);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());

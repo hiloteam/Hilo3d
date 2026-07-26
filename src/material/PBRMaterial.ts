@@ -39,6 +39,23 @@ export interface PBRMaterialParameters extends MaterialParameters {
     clearcoatRoughnessFactor?: number;
     clearcoatRoughnessMap?: Texture | null;
     clearcoatNormalMap?: Texture | null;
+    clearcoatNormalScale?: number;
+    anisotropyStrength?: number;
+    anisotropyRotation?: number;
+    anisotropyMap?: Texture | null;
+    transmissionFactor?: number;
+    transmissionMap?: Texture | null;
+    thicknessFactor?: number;
+    thicknessMap?: Texture | null;
+    attenuationDistance?: number;
+    attenuationColor?: Color;
+    ior?: number;
+    iridescenceFactor?: number;
+    iridescenceMap?: Texture | null;
+    iridescenceIor?: number;
+    iridescenceThicknessMinimum?: number;
+    iridescenceThicknessMaximum?: number;
+    iridescenceThicknessMap?: Texture | null;
 }
 /**
  * PBR材质
@@ -175,7 +192,48 @@ class PBRMaterial extends Material {
      * The clearcoat normal map texture.
      */
     clearcoatNormalMap: Texture | null = null;
-    usedUniformVectors = 11;
+    /** Scale applied to the clearcoat normal texture XY channels. */
+    clearcoatNormalScale = 1;
+    /** Strength of the anisotropic GGX lobe in the range [0, 1]. */
+    anisotropyStrength = 0;
+    /** Counter-clockwise anisotropy direction rotation in tangent space, in radians. */
+    anisotropyRotation = 0;
+    /** RG tangent-space direction and B strength texture from KHR_materials_anisotropy. */
+    anisotropyMap: Texture | null = null;
+    private _transmissionFactor = 0;
+    /** Thin-surface transmission fraction in the range [0, 1]. */
+    get transmissionFactor(): number {
+        return this._transmissionFactor;
+    }
+    set transmissionFactor(value: number) {
+        this._transmissionFactor = value;
+        if (value > 0) this.transparent = true;
+    }
+    /** Linear R-channel transmission texture. */
+    transmissionMap: Texture | null = null;
+    /** Maximum volume thickness in scene units. */
+    thicknessFactor = 0;
+    /** Linear G-channel thickness texture. */
+    thicknessMap: Texture | null = null;
+    /** Beer-Lambert attenuation distance; positive infinity disables attenuation. */
+    attenuationDistance = Number.POSITIVE_INFINITY;
+    /** Linear attenuation color reached after {@link PBRMaterial.attenuationDistance}. */
+    attenuationColor: Color = new Color(1, 1, 1);
+    /** Index of refraction used by screen-space volume refraction. */
+    ior = 1.5;
+    /** Thin-film iridescence intensity in the range [0, 1]. */
+    iridescenceFactor = 0;
+    /** Linear R-channel thin-film intensity texture. */
+    iridescenceMap: Texture | null = null;
+    /** Index of refraction of the thin-film layer. */
+    iridescenceIor = 1.3;
+    /** Thin-film thickness represented by a zero texture sample, in nanometers. */
+    iridescenceThicknessMinimum = 100;
+    /** Thin-film thickness represented by a one texture sample, in nanometers. */
+    iridescenceThicknessMaximum = 400;
+    /** Linear G-channel thin-film thickness texture. */
+    iridescenceThicknessMap: Texture | null = null;
+    usedUniformVectors = 16;
     /**
      * @param params - 初始化参数，所有params都会复制到实例上
      * - `params.lightType`: 光照类型，只能为 PBR 或 NONE
@@ -215,7 +273,20 @@ class PBRMaterial extends Material {
             u_specularEnvMapMipCount: 'SPECULARENVMAPMIPCOUNT',
             u_diffuseEnvSphereHarmonics3: 'DIFFUSEENVSPHEREHARMONICS3',
             u_clearcoatFactor: 'CLEARCOATFACTOR',
-            u_clearcoatRoughnessFactor: 'CLEARCOATROUGHNESSFACTOR'
+            u_clearcoatRoughnessFactor: 'CLEARCOATROUGHNESSFACTOR',
+            u_clearcoatNormalScale: 'CLEARCOATNORMALSCALE',
+            u_anisotropyStrength: 'ANISOTROPYSTRENGTH',
+            u_anisotropyRotation: 'ANISOTROPYROTATION',
+            u_transmissionFactor: 'TRANSMISSIONFACTOR',
+            u_thicknessFactor: 'THICKNESSFACTOR',
+            u_attenuationDistance: 'ATTENUATIONDISTANCE',
+            u_attenuationColor: 'ATTENUATIONCOLOR',
+            u_ior: 'IOR',
+            u_iridescenceFactor: 'IRIDESCENCEFACTOR',
+            u_iridescenceIor: 'IRIDESCENCEIOR',
+            u_iridescenceThicknessMinimum: 'IRIDESCENCETHICKNESSMINIMUM',
+            u_iridescenceThicknessMaximum: 'IRIDESCENCETHICKNESSMAXIMUM',
+            u_opaqueTexture: 'OPAQUETEXTURE'
         });
         this.addTextureUniforms({
             u_baseColorMap: 'BASECOLORMAP',
@@ -227,7 +298,12 @@ class PBRMaterial extends Material {
             u_lightMap: 'LIGHTMAP',
             u_clearcoatMap: 'CLEARCOATMAP',
             u_clearcoatRoughnessMap: 'CLEARCOATROUGHNESSMAP',
-            u_clearcoatNormalMap: 'CLEARCOATNORMALMAP'
+            u_clearcoatNormalMap: 'CLEARCOATNORMALMAP',
+            u_anisotropyMap: 'ANISOTROPYMAP',
+            u_transmissionMap: 'TRANSMISSIONMAP',
+            u_thicknessMap: 'THICKNESSMAP',
+            u_iridescenceMap: 'IRIDESCENCEMAP',
+            u_iridescenceThicknessMap: 'IRIDESCENCETHICKNESSMAP'
         });
     }
     override getRenderOption(option: ShaderOptions = {}): ShaderOptions {
@@ -278,6 +354,27 @@ class PBRMaterial extends Material {
             if (this.clearcoatRoughnessMap) {
                 textureOption.add(this.clearcoatRoughnessMap, 'CLEARCOAT_ROUGHNESS_MAP');
             }
+        }
+        if (this.anisotropyStrength > 0) {
+            option['HAS_ANISOTROPY'] = 1;
+            option['HAS_NORMAL'] = 1;
+            option['NEED_TANGENT_BASIS'] = 1;
+            textureOption.add(this.anisotropyMap, 'ANISOTROPY_MAP');
+        }
+        if (this.transmissionFactor > 0) {
+            option['HAS_TRANSMISSION'] = 1;
+            option['HAS_NORMAL'] = 1;
+            textureOption.add(this.transmissionMap, 'TRANSMISSION_MAP');
+            if (this.thicknessFactor > 0) {
+                option['HAS_VOLUME'] = 1;
+                textureOption.add(this.thicknessMap, 'THICKNESS_MAP');
+            }
+        }
+        if (this.iridescenceFactor > 0) {
+            option['HAS_IRIDESCENCE'] = 1;
+            option['HAS_NORMAL'] = 1;
+            textureOption.add(this.iridescenceMap, 'IRIDESCENCE_MAP');
+            textureOption.add(this.iridescenceThicknessMap, 'IRIDESCENCE_THICKNESS_MAP');
         }
         textureOption.update();
         return option;

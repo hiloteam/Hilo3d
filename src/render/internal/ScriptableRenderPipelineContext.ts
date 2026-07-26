@@ -96,6 +96,7 @@ import { MeshDrawListPlanner, type MeshDrawListPlan } from '../renderer/MeshDraw
 import type { FullscreenDrawProcessor } from '../renderer/FullscreenDrawProcessor';
 import type {
     MeshDrawProcessor,
+    SceneTexturePreparationState,
     StorageScenePreparationState
 } from '../renderer/MeshDrawProcessor';
 import type { ComputePipelineResourceCache } from '../renderer/ComputePipelineResourceCache';
@@ -1484,6 +1485,22 @@ class ScriptablePassSlot {
     #sceneStorageBindingCount = 0;
     #sceneStorageBindGroup: RHIBindGroup | null = null;
     #activeSceneStorage = false;
+    #sceneTextureHandle: RGTextureHandle | null = null;
+    #sceneTextureBindGroup: RHIBindGroup | null = null;
+    #activeSceneTexture = false;
+    readonly #sceneTexturePreparation: SceneTexturePreparationState = {
+        globalBindGroupLayout: null
+    };
+    readonly #sceneTextureEntries: MutableFrameBindGroupEntry[] = [
+        { binding: 0, resource: null },
+        { binding: 1, resource: null }
+    ];
+    readonly #sceneTextureDescriptor = {
+        label: 'Opaque scene texture',
+        lifetime: 'frame' as const,
+        layout: null as RHIBindGroupLayout | null,
+        entries: this.#sceneTextureEntries
+    };
     readonly #sceneStoragePlans: MutableSceneStorageBindingPlan[] = [];
     readonly #sceneStoragePreparation: StorageScenePreparationState = {
         globalBindGroupLayout: null
@@ -1517,6 +1534,10 @@ class ScriptablePassSlot {
     readonly #prepareSceneStorage = (context: RGPrepareContext): void => {
         if (!this.#activeSceneStorage) return;
         this.prepareSceneStorage(context);
+    };
+    readonly #prepareSceneTexture = (context: RGPrepareContext): void => {
+        if (!this.#activeSceneTexture) return;
+        this.prepareSceneTexture(context);
     };
 
     constructor() {
@@ -1554,9 +1575,12 @@ class ScriptablePassSlot {
         this.#activeComputeDispatch = false;
         this.#activeGPUDrivenDraw = false;
         this.#activeSceneStorage = false;
+        this.#activeSceneTexture = false;
+        this.#sceneTextureHandle = null;
         this.#sceneStorageVariant = null;
         this.#sceneStorageBindingCount = 0;
         this.#sceneStoragePreparation.globalBindGroupLayout = null;
+        this.#sceneTexturePreparation.globalBindGroupLayout = null;
         this.#copyDeclarationCount = 0;
         this.#bufferCopyDeclarationCount = 0;
         this.#bufferClearDeclarationCount = 0;
@@ -1593,7 +1617,11 @@ class ScriptablePassSlot {
                     try {
                         this.#gpuDrivenDraw?.releaseFrameReferences();
                     } finally {
-                        this.cleanupSceneStorage(resources);
+                        try {
+                            this.cleanupSceneStorage(resources);
+                        } finally {
+                            this.cleanupSceneTexture(resources);
+                        }
                     }
                 }
             }
@@ -1634,8 +1662,11 @@ class ScriptablePassSlot {
             this.#activeComputeDispatch = false;
             this.#activeGPUDrivenDraw = false;
             this.#activeSceneStorage = false;
+            this.#activeSceneTexture = false;
+            this.#sceneTextureHandle = null;
             this.#sceneStorageVariant = null;
             this.#sceneStoragePreparation.globalBindGroupLayout = null;
+            this.#sceneTexturePreparation.globalBindGroupLayout = null;
             this.#computeServices.release();
             this.#gpuDrivenServices.release();
             this.#capabilities = null;
@@ -1722,10 +1753,24 @@ class ScriptablePassSlot {
         if (pass instanceof SceneRenderPass) {
             const parameters = this.requireParameters() as SceneRenderPassParameters;
             const variant = parameters.storageShaderVariant;
+            if (variant !== undefined && parameters.opaqueTexture !== undefined) {
+                throw new Error(
+                    'SceneRenderPass cannot combine a storage shader override with opaque scene-texture sampling'
+                );
+            }
             if (variant !== undefined) {
                 this.configureSceneStorage(owner, variant);
                 this.#activeSceneStorage = true;
                 this.draw.setPrepare(this.#prepareSceneStorage);
+            }
+            if (parameters.opaqueTexture !== undefined) {
+                const texture = this.sampledInternals.get(parameters.opaqueTexture);
+                if (texture === undefined) {
+                    throw new Error('Opaque scene texture was not declared during setup');
+                }
+                this.#sceneTextureHandle = texture;
+                this.#activeSceneTexture = true;
+                this.draw.setPrepare(this.#prepareSceneTexture);
             }
         }
         for (const list of this.rendererListHandles) {
@@ -1741,7 +1786,8 @@ class ScriptablePassSlot {
                 this.draw,
                 this.targetDescriptor,
                 this.#sceneStorageVariant,
-                this.#sceneStoragePreparation
+                this.#sceneStoragePreparation,
+                this.#activeSceneTexture ? this.#sceneTexturePreparation : null
             );
             range.count = this.draw.drawCount - range.start;
             this.#rangeCount++;
@@ -1958,6 +2004,45 @@ class ScriptablePassSlot {
             plan.resource.buffer = null;
             plan.entry.resource = null;
         }
+    }
+
+    private prepareSceneTexture(context: RGPrepareContext): void {
+        const layoutHandle = this.#sceneTexturePreparation.globalBindGroupLayout;
+        if (layoutHandle === null) return;
+        const textureHandle = this.#sceneTextureHandle;
+        if (textureHandle === null) throw new Error('Opaque scene texture is unavailable');
+        this.cleanupSceneTexture(this.requireOwner().resources);
+        const fullscreen = this.requireOwner().services.getScriptableFullscreenProcessor();
+        const registry = fullscreen.registry;
+        const texture = context.getTexture(textureHandle);
+        if (texture.sampleCount !== 1) {
+            throw new Error('Opaque scene texture must be single-sample');
+        }
+        const textureEntry = this.#sceneTextureEntries[0];
+        const samplerEntry = this.#sceneTextureEntries[1];
+        if (textureEntry === undefined || samplerEntry === undefined) {
+            throw new Error('Opaque scene texture bind-group entries are unavailable');
+        }
+        textureEntry.resource = context.getTextureView(textureHandle);
+        samplerEntry.resource = registry.resolve(fullscreen.defaultSampler);
+        this.#sceneTextureDescriptor.layout = registry.resolve(layoutHandle);
+        const bindGroup = registry.createFrameBindGroup(
+            this.#sceneTextureDescriptor as RHIBindGroupDescriptor
+        );
+        this.#sceneTextureBindGroup = bindGroup;
+        this.requireOwner().resources.trackFrameBindGroup(bindGroup);
+        this.draw.setPreparedBindGroupForDeferredDraws(SCENE_STORAGE_BIND_GROUP, bindGroup);
+    }
+
+    private cleanupSceneTexture(resources: ScriptableRenderPipelineResources): void {
+        const bindGroup = this.#sceneTextureBindGroup;
+        this.#sceneTextureBindGroup = null;
+        const textureEntry = this.#sceneTextureEntries[0];
+        const samplerEntry = this.#sceneTextureEntries[1];
+        if (textureEntry !== undefined) textureEntry.resource = null;
+        if (samplerEntry !== undefined) samplerEntry.resource = null;
+        this.#sceneTextureDescriptor.layout = null;
+        if (bindGroup !== null) resources.releaseFrameBindGroup(bindGroup);
     }
 
     private prepare(context: RGPrepareContext): void {
@@ -3921,7 +4006,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         drawPass: SharedDrawPassParameters,
         target: RHIMeshDrawTargetDescriptor,
         storageVariant: Readonly<SceneStorageShaderVariant> | null,
-        storagePreparation: StorageScenePreparationState
+        storagePreparation: StorageScenePreparationState,
+        sceneTexturePreparation: SceneTexturePreparationState | null
     ): void {
         const list = this.requireRendererList(handle);
         const culling = list.culling;
@@ -3953,7 +4039,12 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         for (const mesh of plan.opaqueMeshes) {
             drawPass.addDrawSnapshot(
                 storageVariant === null
-                    ? processor.prepare(mesh, target, list.overrideMaterial)
+                    ? processor.prepare(
+                          mesh,
+                          target,
+                          list.overrideMaterial,
+                          sceneTexturePreparation
+                      )
                     : processor.prepareStorageScene(
                           mesh,
                           target,
@@ -3972,7 +4063,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                         batch,
                         batch.meshes,
                         target,
-                        list.overrideMaterial
+                        list.overrideMaterial,
+                        sceneTexturePreparation
                     )
                 );
                 continue;
@@ -3994,7 +4086,12 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         for (const mesh of plan.transparentMeshes) {
             drawPass.addDrawSnapshot(
                 storageVariant === null
-                    ? processor.prepare(mesh, target, list.overrideMaterial)
+                    ? processor.prepare(
+                          mesh,
+                          target,
+                          list.overrideMaterial,
+                          sceneTexturePreparation
+                      )
                     : processor.prepareStorageScene(
                           mesh,
                           target,
@@ -4013,7 +4110,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                         batch,
                         batch.meshes,
                         target,
-                        list.overrideMaterial
+                        list.overrideMaterial,
+                        sceneTexturePreparation
                     )
                 );
                 continue;

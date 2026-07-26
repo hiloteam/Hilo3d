@@ -192,6 +192,36 @@ failure handling, performance gates, and the capability-gated route to storage b
 Those compute/storage capability names are currently fail-closed rather than partially emulated on
 WebGL 2.
 
+### HDR PBR and built-in post-processing
+
+Use the turnkey post-process factory for linear `rgba16float` lighting, engine-owned opaque scene
+color, high-quality pyramid Bloom, and one final Color Uber display transform:
+
+```ts
+const stage = await Hilo3d.Stage.create({
+    backend: 'auto',
+    container: document.querySelector('#app')!,
+    camera,
+    renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
+        bloom: { threshold: 1, knee: 0.5, intensity: 0.8, scatter: 0.7 },
+        colorUber: { toneMapping: 'pbr-neutral', exposure: 0 },
+        opaqueTexture: true
+    })
+});
+```
+
+PBR lighting uses correlated Smith-GGX, Burley diffuse, energy-compensated specular IBL, layered
+clearcoat, thin-film iridescence, anisotropic GGX, inverse-square punctual lights, and screen-space
+transmission with Beer-Lambert volume attenuation. The glTF loader supports
+`KHR_materials_anisotropy`, `KHR_materials_clearcoat`, `KHR_materials_transmission`,
+`KHR_materials_volume`, and `KHR_materials_ior`, plus `KHR_materials_iridescence`. See the
+[PBR/HDR contract](./documentation/PBR_AND_POST_PROCESSING.md) for color-space rules, algorithms,
+and the explicit screen-space transmission limits. The
+[layered PBR studio](https://hilo3d.js.org/examples/pbr_layered_materials.html) demonstrates the
+direct material API, while the
+[Khronos material gallery](https://hilo3d.js.org/examples/gltf_material_extensions.html) exercises
+the same path with attributed production glTF assets.
+
 ## Modern renderer architecture
 
 - `src/render` owns the single public Renderer, scene traversal, frame planning, render-target
@@ -314,6 +344,7 @@ shared Renderer/RenderTarget API.
 - [glTF viewer](https://hilo3d.js.org/examples/glTFViewer/index.html)
 - [Engineering documentation index](./documentation/README.md)
 - [Current rendering architecture](./documentation/RENDERING_ARCHITECTURE.md)
+- [PBR, HDR, and post-processing](./documentation/PBR_AND_POST_PROCESSING.md)
 - [vNext renderer engineering record](./documentation/ENGINEERING_MODERNIZATION.md#双后端渲染与-shader-abi)
 - [ShaderMaterial migration guide](./documentation/ENGINEERING_MODERNIZATION.md#shadermaterial-迁移)
 - [Breaking changes](./CHANGELOG.md#breaking-changes)

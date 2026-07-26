@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+        />
+        <title>Hilo3D Khronos Material Gallery</title>
+        <link rel="stylesheet" type="text/css" href="./example.css" />
+        <link rel="stylesheet" type="text/css" href="./pbr_showcase.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+        <section class="showcasePanel" aria-label="Khronos glTF asset gallery">
+            <p class="showcaseEyebrow">Khronos glTF sample assets</p>
+            <h1>Real assets. Layered materials.</h1>
+            <p class="showcaseIntro">
+                A curated stress test for the engine glTF extension path, rendered through the same
+                HDR pipeline on WebGL 2 and WebGPU.
+            </p>
+            <div class="assetSwitcher" role="group" aria-label="Choose a glTF model">
+                <button class="assetButton" data-asset="lamp" aria-pressed="true">Barn lamp</button>
+                <button class="assetButton" data-asset="wicker" aria-pressed="false">Wicker</button>
+                <button class="assetButton" data-asset="dragon" aria-pressed="false">
+                    Glass dragon
+                </button>
+                <button class="assetButton" data-asset="dish" aria-pressed="false">
+                    Iridescent dish
+                </button>
+            </div>
+            <div class="assetMeta" aria-live="polite">
+                <div>
+                    <strong class="assetName" id="assetName">Anisotropy Barn Lamp</strong>
+                    <span class="assetDescription" id="assetDescription">
+                        Brushed copper, clearcoat, emissive filament and transmissive bulb glass.
+                    </span>
+                </div>
+                <span class="assetStatus" id="assetStatus">loading</span>
+            </div>
+            <div class="showcaseBadges" id="assetBadges" aria-label="Asset material extensions">
+                <span class="showcaseBadge">anisotropy</span>
+                <span class="showcaseBadge">clearcoat</span>
+                <span class="showcaseBadge">transmission</span>
+                <span class="showcaseBadge">volume</span>
+            </div>
+        </section>
+        <p class="showcaseHint">choose an asset · drag to orbit ±90°</p>
+        <p class="showcaseCredit">
+            Models from
+            <a
+                href="https://github.com/KhronosGroup/glTF-Sample-Assets"
+                target="_blank"
+                rel="noreferrer"
+                >KhronosGroup/glTF-Sample-Assets</a
+            >. Individual attribution and licenses are included with the local assets.
+        </p>
+        <script type="module" src="./gltf_material_extensions.ts"></script>
+    </body>
+</html>

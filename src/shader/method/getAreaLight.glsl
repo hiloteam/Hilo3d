@@ -54,7 +54,22 @@ vec3 LTC_Evaluate(const in vec3 N, const in vec3 V, const in vec3 P, const in ma
     return vec3(result);
 }
 
-vec3 getAreaLight(const in vec3 diffuseColor, const in vec3 specularColor, const in float roughness, const in vec3 normal, const in vec3 viewDir, const in vec3 position, const in vec3 lightPos, const in vec3 lightColor, const in vec3 halfWidth, const in vec3 halfHeight, const in sampler2D areaLightsLtcTexture1, const in sampler2D areaLightsLtcTexture2){
+void getAreaLightComponents(
+    const in vec3 diffuseColor,
+    const in vec3 specularColor,
+    const in float roughness,
+    const in vec3 normal,
+    const in vec3 viewDir,
+    const in vec3 position,
+    const in vec3 lightPos,
+    const in vec3 lightColor,
+    const in vec3 halfWidth,
+    const in vec3 halfHeight,
+    const in sampler2D areaLightsLtcTexture1,
+    const in sampler2D areaLightsLtcTexture2,
+    out vec3 diffuseContribution,
+    out vec3 specularContribution
+) {
     vec3 rectCoords[4];
     rectCoords[0] = (lightPos - halfWidth) - halfHeight;
     rectCoords[1] = (lightPos + halfWidth) - halfHeight;
@@ -62,14 +77,50 @@ vec3 getAreaLight(const in vec3 diffuseColor, const in vec3 specularColor, const
     rectCoords[3] = (lightPos - halfWidth) + halfHeight;
     
     vec2 uv = LTC_Uv(normal, viewDir, roughness);
-    vec4 t1 = texture(areaLightsLtcTexture1, uv);
-    vec4 t2 = texture(areaLightsLtcTexture2, uv);
+    vec4 t1 = texture(areaLightsLtcTexture1, hiloTextureUV(uv));
+    vec4 t2 = texture(areaLightsLtcTexture2, hiloTextureUV(uv));
 
     mat3 mInv = mat3(vec3(t1.x, 0, t1.y), vec3(0, 1, 0), vec3(t1.z, 0, t1.w));
     vec3 fresnel = (specularColor * t2.x) + ((vec3(1.0) - specularColor) * t2.y);
-    
-    vec3 color = vec3(0.0, 0.0, 0.0);
-    color += ((lightColor * fresnel) * LTC_Evaluate(normal, viewDir, position, mInv, rectCoords));
-    color += ((lightColor * diffuseColor) * LTC_Evaluate(normal, viewDir, position, mat3(1.0), rectCoords));
-    return color;
+
+    specularContribution =
+        lightColor * fresnel * LTC_Evaluate(normal, viewDir, position, mInv, rectCoords);
+    diffuseContribution =
+        lightColor * diffuseColor *
+        LTC_Evaluate(normal, viewDir, position, mat3(1.0), rectCoords);
+}
+
+vec3 getAreaLight(
+    const in vec3 diffuseColor,
+    const in vec3 specularColor,
+    const in float roughness,
+    const in vec3 normal,
+    const in vec3 viewDir,
+    const in vec3 position,
+    const in vec3 lightPos,
+    const in vec3 lightColor,
+    const in vec3 halfWidth,
+    const in vec3 halfHeight,
+    const in sampler2D areaLightsLtcTexture1,
+    const in sampler2D areaLightsLtcTexture2
+) {
+    vec3 diffuseContribution;
+    vec3 specularContribution;
+    getAreaLightComponents(
+        diffuseColor,
+        specularColor,
+        roughness,
+        normal,
+        viewDir,
+        position,
+        lightPos,
+        lightColor,
+        halfWidth,
+        halfHeight,
+        areaLightsLtcTexture1,
+        areaLightsLtcTexture2,
+        diffuseContribution,
+        specularContribution
+    );
+    return diffuseContribution + specularContribution;
 }

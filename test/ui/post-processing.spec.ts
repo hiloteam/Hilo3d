@@ -64,7 +64,24 @@ for (const backend of backends) {
             );
             expect(result?.backend).toBe(backend);
             expect(result?.source).toEqual(result?.copied);
-            expect(result?.source.slice(0, 16)).not.toEqual(result?.source.slice(-16));
+            expect(result?.source.slice(0, 16)).toEqual([
+                0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255
+            ]);
+            expect(result?.source.slice(-16)).toEqual([
+                255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255
+            ]);
+            expect(result?.managed2D.slice(0, 16)).toEqual([
+                255, 0, 0, 255, 255, 0, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255
+            ]);
+            expect(result?.managed2D.slice(-16)).toEqual([
+                0, 0, 255, 255, 0, 0, 255, 255, 255, 255, 0, 255, 255, 255, 0, 255
+            ]);
+            expect(result?.managedCube.slice(0, 16)).toEqual([
+                255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255
+            ]);
+            expect(result?.managedCube.slice(-16)).toEqual([
+                0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255
+            ]);
             await assertFinalGraphicsHealth(
                 page,
                 backend,
@@ -194,6 +211,8 @@ declare global {
             readonly backend: ExampleBackend;
             readonly source: readonly number[];
             readonly copied: readonly number[];
+            readonly managed2D: readonly number[];
+            readonly managedCube: readonly number[];
         };
     }
 }

@@ -1,7 +1,35 @@
 # 2.0.0-alpha.2 (2026-07-26)
 
+### Breaking changes
+
+- Expand the fixed `MaterialBlock` std140 ABI for layered PBR material data and reserve WebGPU group
+  3 bindings 0/1 for the pass-global opaque scene texture. Portable custom uniform blocks retain
+  registration order and now start at WebGPU group 3 binding 2.
+
 ### Changes
 
+- Replace the legacy PBR lighting core with correlated Smith-GGX, Burley diffuse, anisotropic GGX,
+  energy-compensated/specular-occluded IBL, layered clearcoat, and physically smooth punctual-light
+  attenuation. Add glTF parsing and material shader support for `KHR_materials_anisotropy`,
+  `KHR_materials_clearcoat`, `KHR_materials_transmission`, `KHR_materials_volume`, and
+  `KHR_materials_ior`, plus spectrally integrated thin-film `KHR_materials_iridescence`.
+- Add forward opaque scene-color capture and pass-global transparent-material sampling through the
+  Render Graph/RHI path. Add a linear-HDR `PostProcessRenderPipelineFactory`, engine-owned
+  soft-knee/13-tap/tent-pyramid `Bloom`, and a one-pass `ColorUber` display transform with LMS white
+  balance, grading, PBR Neutral/ACES/Reinhard tone mapping, vignette, exact sRGB output, and
+  display-space dithering.
+- Replace the Bloom example's application-owned RenderTarget/Gaussian/composite implementation with
+  the built-in HDR Bloom and Color Uber pipeline.
+- Add a layered PBR studio with live anisotropy, clearcoat, transmission, and volume comparisons,
+  plus a switchable Khronos glTF material gallery using the attributed Anisotropy Barn Lamp,
+  Clearcoat Wicker, Dragon Attenuation, and animated Iridescent Dish with Olives sample assets.
+- Replace the overlapping legacy PBR sphere stack with a controlled 30-sample Material Lab,
+  switchable steel/copper/gold/ceramic families, explicit metallic/roughness axes, studio lighting,
+  and the engine HDR post-processing pipeline.
+- Remove the twelve low-resolution baked/cloud cube-map images from the examples. Shared PBR and
+  glTF pages now use a seam-coherent procedural studio environment with neutral fill, warm/cool
+  softboxes, generated mipmaps, and runtime PNG face URLs for the CubeTextureLoader/image-release
+  examples.
 - Add measured-width `Text2D` wrapping for mixed CJK/Latin content, max-line clipping and ellipsis,
   baseline, paragraph spacing, and letter spacing. Add in-place Sprite source replacement,
   material-only Sprite initialization, atlas-batched `SlicedSprite`, four-state `UiButton`, and
@@ -18,6 +46,18 @@
 
 ### Fixes
 
+- Keep float scene-color variants linear by suppressing material-local gamma encoding and legacy
+  per-material tone mapping until the final display transform. Preserve HDR Bloom energy with
+  normalized Karis weights, remove the non-physical far-distance light floor, and use refracted
+  volume path length for Beer-Lambert attenuation.
+- Rebalance the Khronos layered-material gallery around neutral photographic key/fill lighting,
+  readable opaque transmission backdrops, restrained warm highlights, and a 90-degree orbit pitch so
+  dark metals and iridescent glass remain legible without clipping the top view.
+- Define one portable coordinate contract for fullscreen render targets, native fragment
+  coordinates, top-left managed 2D textures, cube-map face rows, BRDF/LTC lookup tables, compute
+  storage rows, pointer input, and readback. Apply it to Bloom, Color Uber, graph present,
+  transmission, ShaderToy, Life Game, the compute particle field, the compute path tracer, and
+  built-in material/environment sampling so WebGL 2 and WebGPU retain the same Y orientation.
 - Correct `SpriteFrame`'s top-left atlas-row offset for `flipY` textures on both backends. Full
   textures were unaffected, but subframes previously selected the vertically opposite source row,
   swapping nine-slice top/bottom pieces and requiring reversed character-direction maps. Use a
