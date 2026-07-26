@@ -3,6 +3,7 @@ import type { PerspectiveCameraParameters } from '../../src/camera/PerspectiveCa
 import OrbitControls, { type OrbitControlsOptions } from './OrbitControls';
 import Stats from './stats';
 import { resolveExampleBackend } from './backend';
+import { loadDefaultEnvironmentMaps, loadDefaultSkyboxMap } from './defaultEnvironment';
 
 export { resolveExampleBackend };
 
@@ -11,6 +12,7 @@ export type QueryValues = Readonly<Record<string, string>>;
 export interface EnvironmentMaps {
     diffuseEnvMap: Hilo3d.CubeTexture;
     specularEnvMap: Hilo3d.CubeTexture;
+    skyboxMap: Hilo3d.CubeTexture;
     brdfLUT: Hilo3d.Texture;
 }
 
@@ -37,10 +39,6 @@ export interface ExampleContext<Backend extends Hilo3d.RendererBackend = Hilo3d.
     dispose(): void;
 }
 
-function isTexture(value: unknown): value is Hilo3d.Texture {
-    return value instanceof Hilo3d.Texture;
-}
-
 export function parseQuery(url: string | URL = location.href): QueryValues {
     return Object.freeze(Object.fromEntries(new URL(url, location.href).searchParams));
 }
@@ -58,69 +56,16 @@ export function buildUrl(
 
 export async function loadEnvironmentMaps(): Promise<EnvironmentMaps> {
     const imageUrl = (name: string): string => new URL(`../image/${name}`, import.meta.url).href;
-    const queue = new Hilo3d.LoadQueue([
-        {
-            type: 'CubeTexture',
-            images: [
-                imageUrl('bakedDiffuse_01.jpg'),
-                imageUrl('bakedDiffuse_02.jpg'),
-                imageUrl('bakedDiffuse_03.jpg'),
-                imageUrl('bakedDiffuse_04.jpg'),
-                imageUrl('bakedDiffuse_05.jpg'),
-                imageUrl('bakedDiffuse_06.jpg')
-            ]
-        },
-        {
-            type: 'CubeTexture',
-            right: imageUrl('px.jpg'),
-            left: imageUrl('nx.jpg'),
-            top: imageUrl('py.jpg'),
-            bottom: imageUrl('ny.jpg'),
-            front: imageUrl('pz.jpg'),
-            back: imageUrl('nz.jpg'),
-            magFilter: Hilo3d.constants.webgl.LINEAR,
-            minFilter: Hilo3d.constants.webgl.LINEAR_MIPMAP_LINEAR
-        },
-        {
+    const [{ diffuseEnvMap, specularEnvMap }, skyboxMap, brdfLUT] = await Promise.all([
+        loadDefaultEnvironmentMaps(),
+        loadDefaultSkyboxMap(),
+        new Hilo3d.TextureLoader().load({
             src: imageUrl('brdfLUT.png'),
             wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
-            wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
-            type: 'Texture'
-        }
+            wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE
+        })
     ]);
-
-    const failures: unknown[] = [];
-    queue.on('error', event => {
-        failures.push(event.detail);
-    });
-
-    await new Promise<void>((resolve, reject) => {
-        queue.on(
-            'complete',
-            () => {
-                if (failures.length > 0) {
-                    reject(new AggregateError(failures, 'Failed to load environment maps'));
-                } else {
-                    resolve();
-                }
-            },
-            true
-        );
-        queue.start();
-    });
-
-    const [diffuseEnvMap, specularEnvMap, brdfLUT] = queue.getAllContent();
-    if (!(diffuseEnvMap instanceof Hilo3d.CubeTexture)) {
-        throw new TypeError('Diffuse environment map did not produce a CubeTexture');
-    }
-    if (!(specularEnvMap instanceof Hilo3d.CubeTexture)) {
-        throw new TypeError('Specular environment map did not produce a CubeTexture');
-    }
-    if (!isTexture(brdfLUT)) {
-        throw new TypeError('BRDF lookup table did not produce a Texture');
-    }
-
-    return { diffuseEnvMap, specularEnvMap, brdfLUT };
+    return { diffuseEnvMap, specularEnvMap, skyboxMap, brdfLUT };
 }
 
 export const utils = Object.freeze({
@@ -185,8 +130,7 @@ export async function createExampleContext(
     ticker.addTick(Hilo3d.Animation);
     const stats = new Stats(ticker, renderer);
     const orbitControls = new OrbitControls(stage, {
-        isLockMove: true,
-        isLockZ: true,
+        enablePan: false,
         ...options.controls
     });
 
@@ -211,7 +155,7 @@ export async function createExampleContext(
         orbitControls,
         dispose(): void {
             window.removeEventListener('resize', handleResize);
-            orbitControls.disable();
+            orbitControls.dispose();
             stats.stop();
             ticker.stop();
             stage.destroy();

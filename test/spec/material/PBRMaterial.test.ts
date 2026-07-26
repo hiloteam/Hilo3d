@@ -53,4 +53,40 @@ describe('PBRMaterial', () => {
         material.gammaCorrection = true;
         expect(material.getRenderOption()['GAMMA_CORRECTION']).toBe(1);
     });
+
+    it('enables layered anisotropy, clearcoat, transmission and volume variants', () => {
+        const material = new PBRMaterial({
+            clearcoatFactor: 0.8,
+            clearcoatMap: new Hilo3d.Texture({ uv: 0 }),
+            clearcoatNormalMap: new Hilo3d.Texture({ uv: 1 }),
+            anisotropyStrength: 0.7,
+            anisotropyMap: new Hilo3d.Texture({ uv: 1 }),
+            transmissionFactor: 0.9,
+            transmissionMap: new Hilo3d.Texture({ uv: 0 }),
+            thicknessFactor: 0.4,
+            thicknessMap: new Hilo3d.Texture({ uv: 1 }),
+            iridescenceFactor: 0.85,
+            iridescenceMap: new Hilo3d.Texture({ uv: 0 }),
+            iridescenceThicknessMap: new Hilo3d.Texture({ uv: 1 })
+        });
+
+        const option = material.getRenderOption();
+        expect(option).toMatchObject({
+            HAS_CLEARCOAT: 1,
+            CLEARCOAT_MAP: 0,
+            CLEARCOAT_NORMAL_MAP: 1,
+            HAS_ANISOTROPY: 1,
+            ANISOTROPY_MAP: 1,
+            NEED_TANGENT_BASIS: 1,
+            HAS_TRANSMISSION: 1,
+            TRANSMISSION_MAP: 0,
+            HAS_VOLUME: 1,
+            THICKNESS_MAP: 1,
+            HAS_IRIDESCENCE: 1,
+            IRIDESCENCE_MAP: 0,
+            IRIDESCENCE_THICKNESS_MAP: 1
+        });
+        expect(material.transparent).toBe(true);
+        expect(material.uniforms['u_opaqueTexture']).toBe('OPAQUETEXTURE');
+    });
 });

@@ -119,6 +119,15 @@ Pass 无需重新 cull，也不会与 Shadow Atlas 的场景 identity 分叉。�
 color/depth 时才创建中间资源；其中 scene color 使用公共 fullscreen 线性采样 ABI，因此要求
 `filterable-sampled` format；无 feature 的默认 factory 始终保留 direct recorder。
 
+内置 HDR 组合由 `PostProcessRenderPipelineFactory` 提供：attachment-zero scene color 使用
+`rgba16float`，opaque queue 完成后由 graph `TextureCopyPass` 捕获 opaque scene
+texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。随后
+`Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent
+upsample 与线性 composite；`ColorUber` 最后统一完成 grading、tone
+mapping、linear-to-sRGB 与 dithering。float scene target 会选择 linear-output material
+variant，禁止材质 shader 提前执行 gamma encode 或旧的局部 tone mapping。完整颜色与材质合同见
+[`PBR_AND_POST_PROCESSING.md`](./PBR_AND_POST_PROCESSING.md)。
+
 scriptable output 同时暴露只读、后端无关的 color/depth/stencil load/store/clear
 policy。带 feature 的 Forward pipeline 把该 policy 分配到首个和末个 Scene
 Pass；中间队列 Pass 强制 store/load 以保持内容。当 filterable sampled scene
@@ -371,6 +380,35 @@ group 在 texture allocation 阶段准备；`generateMipmaps()` 的 execute 路�
 pass，不创建这些原生对象。
 
 相关代码：[`ShaderArtifactCompiler.ts`](../src/render/renderer/ShaderArtifactCompiler.ts)、[`GlslToWgsl.ts`](../src/render/shader/GlslToWgsl.ts)、[`WgslComputeCompiler.ts`](../src/render/shader/WgslComputeCompiler.ts)、[`StorageGraphicsShaderCompiler.ts`](../src/render/shader/StorageGraphicsShaderCompiler.ts)、[`NagaModule.ts`](../src/render/shader/NagaModule.ts)。
+
+### 3.6 坐标与纹理行方向合同
+
+共享前端使用一套明确的坐标合同，业务代码不能用“当前后端是 WebGPU”作为临时翻转条件：
+
+- world、view、clip 与交互物理空间都以 `+Y` 向上；DOM pointer 的 `+Y` 向下只在输入边界转换一次。
+- glTF UV、引擎管理的 2D Texture、CubeTexture 各 face、texture
+  upload/update 和公开 readback 都把第 0 行定义为顶部。WebGL
+  2 的底部原生 sampler/FBO 行方向由上传、readback 与共享 shader helper 消化，不暴露给材质或 glTF
+  loader。
+- 普通材质采样通过 `hiloTextureUV()` 把 top-left logical UV 转成 native sampler
+  UV；cube 环境采样通过 `hiloTextureCubeDirection()` 翻转 face-local V，且不改变 face
+  selection。base color、normal、metallic/roughness、anisotropy、clearcoat、BRDF LUT 与 LTC
+  lookup 都服从这一规则。
+- fullscreen quad 自身仍以 bottom-left geometry UV 表达，因此 scene/render-target
+  sampling 使用不同的
+  `hiloRenderTargetUV()`；不能在 vertex、fragment、present 和单个 effect 中重复翻转。
+- `gl_FragCoord` 是 backend-native 输入。需要 ShaderToy 式 bottom-left screen
+  coordinate 时必须把 attachment size 传给
+  `hiloBottomLeftFragCoord()`。不依赖方向的随机 dither 可以继续直接使用 native fragment position。
+- compute/storage image 的 row 0 是顶部；compute presenter 只在 storage-row 到 fullscreen native
+  UV 的边界转换一次。CPU readback 仍返回 top-to-bottom rows。
+
+这套合同覆盖 ShaderToy、Life Game、Bloom/Color Uber、opaque scene texture transmission、compute
+particles、compute path tracer、普通 glTF 材质与 cube IBL。方向性 fixture 同时验证 WebGL
+2/WebGPU 的 render-target copy、managed 2D texture 和 cube-face
+top/bottom 结果，避免某个 example 修正后另一个路径再次反向。
+
+相关代码：[`portableCoordinates.glsl`](../src/shader/method/portableCoordinates.glsl)、[`uv.frag`](../src/shader/chunk/uv.frag)、[`textureEnvMap.glsl`](../src/shader/method/textureEnvMap.glsl)、[`fullscreen-orientation.ts`](../test/ui/fixtures/fullscreen-orientation.ts)。
 
 ## 4. WebGPU / WebGL 2 双后端如何实现同一合同
 

@@ -4,6 +4,7 @@ import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/Rend
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RenderGraphBuilder } from '../graph/RenderGraphBuilder';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
+import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from '../pipeline/passes/internal/PortableFullscreenShader';
 import {
     RHITextureUsage,
     type RHIBuffer,
@@ -27,13 +28,6 @@ import { PostProcessPassTemplate, PresentPassTemplate, SharedDrawPassParameters 
 
 const DEFAULT_CLEAR_COLOR: Readonly<RHIColor> = Object.freeze({ r: 0, g: 0, b: 0, a: 1 });
 const EMPTY_UNIFORM_BUFFERS: readonly ResourceRegistryHandle<RHIBuffer>[] = Object.freeze([]);
-
-const FULLSCREEN_VERTEX_SOURCE = `#version 300 es
-out vec2 v_uv;
-void main() {
-    v_uv = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
-    gl_Position = vec4(v_uv * 2.0 - 1.0, 0.0, 1.0);
-}`;
 
 const PRESENT_FRAGMENT_SOURCE = `#version 300 es
 precision highp float;
@@ -101,7 +95,7 @@ export class PostProcessRenderer {
     });
     readonly #presentOwner = {};
     readonly #presentShader = new ShaderClass({
-        vs: FULLSCREEN_VERTEX_SOURCE,
+        vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
         fs: PRESENT_FRAGMENT_SOURCE
     });
     readonly #presentMaterial = new Material({

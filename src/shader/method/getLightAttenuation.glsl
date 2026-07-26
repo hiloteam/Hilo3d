@@ -1,14 +1,19 @@
 float getLightAttenuation(vec3 distanceVec, vec3 info, float range){
-    float distance = length(distanceVec);
-    float attenuation = 1.0;
+    float distanceSquared = dot(distanceVec, distanceVec);
     #ifdef HILO_USE_PHYSICS_LIGHT
-        attenuation = max(1.0 / (distance * distance), 0.001);
+        float attenuation = 1.0 / max(distanceSquared, 0.01);
         if (range > 0.0) {
-            attenuation *= max(min(1.0 - pow( distance / range, 4.0 ), 1.0), 0.0);
+            float normalizedDistanceSquared = distanceSquared / (range * range);
+            float smoothRange = clamp(
+                1.0 - normalizedDistanceSquared * normalizedDistanceSquared,
+                0.0,
+                1.0
+            );
+            attenuation *= smoothRange * smoothRange;
         }
+        return attenuation;
     #else
-        attenuation = 1.0/(info.x + info.y * distance + info.z * distance * distance);
+        float distance = sqrt(distanceSquared);
+        return 1.0 / max(info.x + info.y * distance + info.z * distanceSquared, 1e-4);
     #endif
-
-    return attenuation;
 }

@@ -180,6 +180,34 @@ fullscreen feature 采样 scene color；
 buffer/compute 的 capability-gated 扩展路线。当前 compute/storage
 capability 会明确失败，不会在 WebGL 2 上提供不完整模拟。
 
+### HDR PBR 与内置后处理
+
+完整的线性 `rgba16float` 光照、引擎 opaque scene color、高质量 pyramid Bloom 与最终 Color
+Uber 显示变换可以直接使用：
+
+```ts
+const stage = await Hilo3d.Stage.create({
+    backend: 'auto',
+    container: document.querySelector('#app')!,
+    camera,
+    renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
+        bloom: { threshold: 1, knee: 0.5, intensity: 0.8, scatter: 0.7 },
+        colorUber: { toneMapping: 'pbr-neutral', exposure: 0 },
+        opaqueTexture: true
+    })
+});
+```
+
+PBR 光照使用 correlated Smith-GGX、Burley diffuse、带能量补偿的 specular
+IBL、分层 clearcoat、薄膜干涉 iridescence、anisotropic GGX、inverse-square punctual
+light，以及 screen-space transmission 和 Beer-Lambert volume attenuation。glTF loader 支持
+`KHR_materials_anisotropy`、
+`KHR_materials_clearcoat`、`KHR_materials_transmission`、`KHR_materials_volume` 与
+`KHR_materials_ior`，并支持 `KHR_materials_iridescence`。颜色空间、算法和屏幕空间折射边界见
+[PBR/HDR 合同](./documentation/PBR_AND_POST_PROCESSING.md)。可在
+[分层 PBR 材质展厅](https://hilo3d.js.org/examples/pbr_layered_materials.html)体验直接材质API，也可在
+[Khronos 材质模型展厅](https://hilo3d.js.org/examples/gltf_material_extensions.html)检查同一渲染路径上的真实 glTF 资产。
+
 ## 现代渲染架构
 
 - `src/render` 负责唯一公开的 Renderer、scene traversal、frame planning、render target 契约、std140
@@ -291,6 +319,7 @@ API。
 - [glTF Viewer](https://hilo3d.js.org/examples/glTFViewer/index.html)
 - [工程文档索引](./documentation/README.md)
 - [当前渲染架构](./documentation/RENDERING_ARCHITECTURE.md)
+- [PBR、HDR 与后处理](./documentation/PBR_AND_POST_PROCESSING.md)
 - [vNext 渲染工程记录](./documentation/ENGINEERING_MODERNIZATION.md#双后端渲染与-shader-abi)
 - [ShaderMaterial 迁移指南](./documentation/ENGINEERING_MODERNIZATION.md#shadermaterial-迁移)
 - [Breaking changes](./CHANGELOG.md#breaking-changes)

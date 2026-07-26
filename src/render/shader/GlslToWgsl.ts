@@ -207,7 +207,7 @@ export interface PrepareGLSLForNagaOptions {
     readonly resolveSamplerBinding?: (
         name: string,
         arrayIndex: number
-    ) => WebGPUSamplerResourceBinding;
+    ) => WebGPUSamplerResourceBinding | undefined;
 }
 
 interface ConditionalFrame {
@@ -2044,7 +2044,7 @@ function collectSamplerDeclarations(
 
 function createSamplerResources(
     declarations: readonly SamplerDeclaration[],
-    resolveBinding?: (name: string, arrayIndex: number) => WebGPUSamplerResourceBinding
+    resolveBinding?: (name: string, arrayIndex: number) => WebGPUSamplerResourceBinding | undefined
 ): SamplerResource[] {
     const signatures = new Map<string, string>();
     const stages = new Map<string, Set<GraphicsShaderStage>>();

@@ -96,7 +96,18 @@ layout(std140) uniform MaterialBlock {
     float u_glossiness;
     float u_clearcoatFactor;
     float u_clearcoatRoughnessFactor;
-    float u_materialPadding;
+    float u_clearcoatNormalScale;
+    float u_anisotropyStrength;
+    float u_anisotropyRotation;
+    float u_transmissionFactor;
+    float u_thicknessFactor;
+    float u_attenuationDistance;
+    float u_ior;
+    float u_iridescenceFactor;
+    float u_iridescenceIor;
+    float u_iridescenceThicknessMinimum;
+    float u_iridescenceThicknessMaximum;
+    vec4 u_attenuationColor;
 };
 
 #ifdef HILO_VERTEX_SHADER

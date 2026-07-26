@@ -79,9 +79,15 @@ import { VertexInputLayoutCompiler } from './VertexInputLayoutCompiler';
 
 const SCENE_STORAGE_BIND_GROUP = 3;
 const DEFERRED_SCENE_STORAGE_GROUPS: readonly number[] = Object.freeze([SCENE_STORAGE_BIND_GROUP]);
+const OPAQUE_SCENE_TEXTURE_NAME = 'u_opaqueTexture';
 
 /** @internal Reusable pass-owned output populated while scene storage draws are prepared. */
 export interface StorageScenePreparationState {
+    globalBindGroupLayout: ResourceRegistryHandle<RHIBindGroupLayout> | null;
+}
+
+/** @internal Reusable pass-owned output for the graph-resolved opaque scene texture. */
+export interface SceneTexturePreparationState {
     globalBindGroupLayout: ResourceRegistryHandle<RHIBindGroupLayout> | null;
 }
 
@@ -203,6 +209,7 @@ interface MeshShaderSnapshot {
     readonly fragmentPrecision: RendererCore['fragmentPrecision'];
     readonly commonOptions: Readonly<Record<string, number>>;
     readonly instanced: boolean;
+    readonly linearOutput: boolean;
     readonly shader: Shader;
 }
 
@@ -428,7 +435,10 @@ export class MeshDrawProcessor {
         }
         draw.setPipeline(pipeline);
         for (const group of bindingPlan.activeGroupIndices) {
-            if (group === this.#pendingDeferredBindGroup) continue;
+            if (group === this.#pendingDeferredBindGroup) {
+                draw.deferBindGroup(group);
+                continue;
+            }
             const bindGroup = this.bindGroups.resolveGroup(owner, group);
             if (!bindGroup) {
                 throw new Error(`Prepared mesh draw is missing bind group ${String(group)}`);
@@ -595,7 +605,8 @@ export class MeshDrawProcessor {
     prepare(
         mesh: Mesh,
         target: RHIMeshDrawTargetDescriptor,
-        materialOverride: Material | null = null
+        materialOverride: Material | null = null,
+        sceneTexturePreparation: SceneTexturePreparationState | null = null
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireActiveContext();
@@ -619,7 +630,7 @@ export class MeshDrawProcessor {
         const indexFormat = indices ? mapPortableRHIIndexFormat(indices) : 'uint16';
         const stripIndexFormat = primitiveRestart ? indexFormat : undefined;
 
-        const shader = this.resolveShader(mesh, geometry, material, context, false);
+        const shader = this.resolveShader(mesh, geometry, material, context, false, target);
         const fragmentOutputMode = this.fragmentOutputModeFor(target);
         const baseCompiled =
             fragmentOutputMode === 'depth-only'
@@ -668,13 +679,21 @@ export class MeshDrawProcessor {
             null
         );
         const sampledResources = this.prepareSampledResources(mesh, mesh, material, pipeline);
+        const deferSceneTexture =
+            sceneTexturePreparation !== null &&
+            pipeline.bindingPlan.sampledBindings.some(
+                binding =>
+                    binding.group === SCENE_STORAGE_BIND_GROUP &&
+                    binding.name === OPAQUE_SCENE_TEXTURE_NAME
+            );
         const bindingSet = this.bindGroups.prepare(
             mesh,
             pipeline.bindingLayoutToken,
             pipeline.bindingPlan,
             pipeline.bindGroupLayouts,
             uniformHandles,
-            sampledResources
+            sampledResources,
+            deferSceneTexture ? DEFERRED_SCENE_STORAGE_GROUPS : undefined
         );
         for (let slot = 0; slot < vertexPlan.streams.length; slot += 1) {
             const stream = vertexPlan.streams[slot];
@@ -711,7 +730,7 @@ export class MeshDrawProcessor {
         this.#pendingMaterial = material;
         this.#pendingGraphicsPipeline = this.registry.resolve(pipeline.pipeline);
         this.#pendingBindingPlan = pipeline.bindingPlan;
-        this.#pendingDeferredBindGroup = -1;
+        this.#pendingDeferredBindGroup = deferSceneTexture ? SCENE_STORAGE_BIND_GROUP : -1;
         this.#pendingVertexBufferCount = vertexPlan.streams.length;
         this.#pendingIndexBuffer = indexBuffer;
         this.#pendingIndexFormat = indexFormat;
@@ -728,6 +747,19 @@ export class MeshDrawProcessor {
         this.trackGeometrySources(geometry, vertexPlan.streams);
         this.trackMeshTextures(mesh, this.requireSampledScratchSources(mesh, sampledResources));
         this.#preparedMeshes.add(mesh);
+        if (deferSceneTexture) {
+            const layout = pipeline.bindGroupLayouts[SCENE_STORAGE_BIND_GROUP];
+            if (layout === undefined) {
+                throw new Error('Opaque scene texture lost its pass-global bind-group layout');
+            }
+            if (
+                sceneTexturePreparation.globalBindGroupLayout !== null &&
+                sceneTexturePreparation.globalBindGroupLayout !== layout
+            ) {
+                throw new Error('Opaque scene texture meshes produced incompatible layouts');
+            }
+            sceneTexturePreparation.globalBindGroupLayout = layout;
+        }
         return prepared;
     }
 
@@ -1071,7 +1103,8 @@ export class MeshDrawProcessor {
         owner: object,
         meshes: readonly Mesh[],
         target: RHIMeshDrawTargetDescriptor,
-        materialOverride: Material | null = null
+        materialOverride: Material | null = null,
+        sceneTexturePreparation: SceneTexturePreparationState | null = null
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireActiveContext();
@@ -1124,7 +1157,14 @@ export class MeshDrawProcessor {
         const indexFormat = indices ? mapPortableRHIIndexFormat(indices) : 'uint16';
         const stripIndexFormat = primitiveRestart ? indexFormat : undefined;
 
-        const shader = this.resolveShader(representative, geometry, material, context, true);
+        const shader = this.resolveShader(
+            representative,
+            geometry,
+            material,
+            context,
+            true,
+            target
+        );
         const fragmentOutputMode = this.fragmentOutputModeFor(target);
         const baseCompiled =
             fragmentOutputMode === 'depth-only'
@@ -1220,13 +1260,21 @@ export class MeshDrawProcessor {
             material,
             pipeline
         );
+        const deferSceneTexture =
+            sceneTexturePreparation !== null &&
+            pipeline.bindingPlan.sampledBindings.some(
+                binding =>
+                    binding.group === SCENE_STORAGE_BIND_GROUP &&
+                    binding.name === OPAQUE_SCENE_TEXTURE_NAME
+            );
         const bindingSet = this.bindGroups.prepare(
             owner,
             pipeline.bindingLayoutToken,
             pipeline.bindingPlan,
             pipeline.bindGroupLayouts,
             uniformHandles,
-            sampledResources
+            sampledResources,
+            deferSceneTexture ? DEFERRED_SCENE_STORAGE_GROUPS : undefined
         );
         for (let slot = 0; slot < vertexPlan.streams.length; slot += 1) {
             const stream = vertexPlan.streams[slot];
@@ -1271,7 +1319,7 @@ export class MeshDrawProcessor {
         this.#pendingMaterial = material;
         this.#pendingGraphicsPipeline = this.registry.resolve(pipeline.pipeline);
         this.#pendingBindingPlan = pipeline.bindingPlan;
-        this.#pendingDeferredBindGroup = -1;
+        this.#pendingDeferredBindGroup = deferSceneTexture ? SCENE_STORAGE_BIND_GROUP : -1;
         this.#pendingVertexBufferCount = instancePlan.requiredVertexBufferCount;
         this.#pendingIndexBuffer = indexBuffer;
         this.#pendingIndexFormat = indexFormat;
@@ -1306,6 +1354,19 @@ export class MeshDrawProcessor {
             this.trackMeshShader(mesh, shader);
             this.trackMeshTextures(mesh, sampledSources);
             this.#preparedMeshes.add(mesh);
+        }
+        if (deferSceneTexture) {
+            const layout = pipeline.bindGroupLayouts[SCENE_STORAGE_BIND_GROUP];
+            if (layout === undefined) {
+                throw new Error('Opaque scene texture lost its pass-global bind-group layout');
+            }
+            if (
+                sceneTexturePreparation.globalBindGroupLayout !== null &&
+                sceneTexturePreparation.globalBindGroupLayout !== layout
+            ) {
+                throw new Error('Opaque scene texture meshes produced incompatible layouts');
+            }
+            sceneTexturePreparation.globalBindGroupLayout = layout;
         }
         return prepared;
     }
@@ -1472,12 +1533,15 @@ export class MeshDrawProcessor {
         geometry: Geometry,
         material: Material,
         context: RenderGraphFrameContext,
-        instanced: boolean
+        instanced: boolean,
+        target: RHIMeshDrawTargetDescriptor
     ): Shader {
         const canUseSnapshot =
             Reflect.get(material, 'isShaderMaterial') === true &&
             Reflect.get(material, 'getCustomRenderOption') === null;
         const snapshot = canUseSnapshot ? this.#shaderSnapshots.get(mesh) : undefined;
+        const linearOutput =
+            target.colorFormats[0] === 'rgba16float' || target.colorFormats[0] === 'rgba32float';
         const colors = Reflect.get(geometry, 'colors');
         if (
             snapshot?.geometry === geometry &&
@@ -1501,6 +1565,7 @@ export class MeshDrawProcessor {
             snapshot.vertexPrecision === context.renderer.vertexPrecision &&
             snapshot.fragmentPrecision === context.renderer.fragmentPrecision &&
             snapshot.instanced === instanced &&
+            snapshot.linearOutput === linearOutput &&
             commonShaderOptionsMatch(snapshot.commonOptions)
         ) {
             return snapshot.shader;
@@ -1513,7 +1578,8 @@ export class MeshDrawProcessor {
             context.lightManager,
             context.fog,
             context.renderer.useLogDepth,
-            context.renderer
+            context.renderer,
+            linearOutput
         );
         if (!shader) throw new Error(`Material ${material.className} has no renderable shader`);
         if (!canUseSnapshot) {
@@ -1535,6 +1601,7 @@ export class MeshDrawProcessor {
             fragmentPrecision: context.renderer.fragmentPrecision,
             commonOptions: snapshotCommonShaderOptions(),
             instanced,
+            linearOutput,
             shader
         });
         return shader;

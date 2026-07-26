@@ -522,6 +522,17 @@ export class SharedDrawPassParameters {
         }
     }
 
+    /** @internal Overlay only packets that explicitly deferred the requested pass-global group. */
+    setPreparedBindGroupForDeferredDraws(groupIndex: number, bindGroup: RHIBindGroup): void {
+        for (let index = 0; index < this.activeDrawCount; index += 1) {
+            const draw = this.draws[index];
+            if (draw === null || draw === undefined) throw MISSING_DRAW_ERROR;
+            if (draw.acceptsPreparedBindGroup(groupIndex)) {
+                draw.setPreparedBindGroup(groupIndex, bindGroup);
+            }
+        }
+    }
+
     setViewport(viewport: RHIViewport | null): void {
         this.hasViewport = viewport !== null;
         if (!viewport) return;

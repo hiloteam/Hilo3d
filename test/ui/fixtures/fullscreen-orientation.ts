@@ -45,6 +45,43 @@ function createFullscreenPass(
     };
 }
 
+function createManagedMaterialPass(
+    renderer: Hilo3d.Renderer,
+    material: Hilo3d.BasicMaterial,
+    positions: Float32Array,
+    uvs?: Float32Array
+): (target: Hilo3d.RenderTarget) => void {
+    const scene = new Hilo3d.Node();
+    const camera = new Hilo3d.OrthographicCamera({
+        left: -1,
+        right: 1,
+        bottom: -1,
+        top: 1,
+        near: 0.1,
+        far: 10,
+        z: 3
+    });
+    camera.lookAt(new Hilo3d.Vector3(0, 0, 0));
+    scene.addChild(
+        new Hilo3d.Mesh({
+            geometry: new Hilo3d.Geometry({
+                mode: Hilo3d.constants.TRIANGLE_STRIP,
+                vertices: new Hilo3d.GeometryData(positions, 3),
+                ...(uvs === undefined ? {} : { uvs: new Hilo3d.GeometryData(uvs, 2) })
+            }),
+            material,
+            frustumTest: false
+        })
+    );
+    return target => {
+        renderer.renderToTarget(target, scene, camera, false);
+    };
+}
+
+function cubeFace(top: readonly [number, number, number, number], bottom = top): ImageData {
+    return new ImageData(new Uint8ClampedArray([...top, ...top, ...bottom, ...bottom]), 2, 2);
+}
+
 const requestedBackend = new URL(location.href).searchParams.get('backend');
 if (requestedBackend !== 'webgl2' && requestedBackend !== 'webgpu') {
     throw new TypeError('Fullscreen orientation fixture requires backend=webgl2 or backend=webgpu');
@@ -72,14 +109,28 @@ const targetParameters = {
 };
 const source = renderer.createRenderTarget({ ...targetParameters, label: 'orientation.source' });
 const copied = renderer.createRenderTarget({ ...targetParameters, label: 'orientation.copied' });
+const managed2D = renderer.createRenderTarget({
+    ...targetParameters,
+    label: 'orientation.managed-2d'
+});
+const managedCube = renderer.createRenderTarget({
+    ...targetParameters,
+    label: 'orientation.managed-cube'
+});
+const portableCoordinateShader = Hilo3d.Shader.shaders['method/portableCoordinates.glsl'];
+if (!portableCoordinateShader) {
+    throw new Error('Portable coordinate shader helpers are unavailable');
+}
 const renderSource = createFullscreenPass(
     renderer,
     'OrientationSource',
     `#version 300 es
         precision highp float;
         layout(location = 0) out vec4 fragmentColor;
+        ${portableCoordinateShader}
         void main(void) {
-            fragmentColor = gl_FragCoord.y < 2.0
+            vec2 fragCoord = hiloBottomLeftFragCoord(gl_FragCoord.xy, vec2(4.0));
+            fragmentColor = fragCoord.y < 2.0
                 ? vec4(1.0, 0.0, 0.0, 1.0)
                 : vec4(0.0, 0.0, 1.0, 1.0);
         }
@@ -99,18 +150,74 @@ const renderCopy = createFullscreenPass(
     `,
     { u_source: () => source.getColorTexture() }
 );
+const managedTexture = new Hilo3d.Texture({
+    image: new ImageData(
+        new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255]),
+        2,
+        2
+    ),
+    internalFormat: Hilo3d.constants.RGBA8,
+    format: Hilo3d.constants.RGBA,
+    minFilter: Hilo3d.constants.webgl.NEAREST,
+    magFilter: Hilo3d.constants.webgl.NEAREST
+});
+const quadPositions = new Float32Array([-1, 1, 0, 1, 1, 0, -1, -1, 0, 1, -1, 0]);
+const renderManaged2D = createManagedMaterialPass(
+    renderer,
+    new Hilo3d.BasicMaterial({
+        lightType: 'NONE',
+        diffuse: managedTexture,
+        depthTest: false,
+        depthMask: false,
+        cullFace: false
+    }),
+    quadPositions,
+    new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
+);
+const blackFace = cubeFace([0, 0, 0, 255]);
+const managedCubeTexture = new Hilo3d.CubeTexture({
+    image: [
+        blackFace,
+        blackFace,
+        blackFace,
+        blackFace,
+        cubeFace([255, 0, 0, 255], [0, 0, 255, 255]),
+        blackFace
+    ],
+    internalFormat: Hilo3d.constants.RGBA8,
+    format: Hilo3d.constants.RGBA,
+    minFilter: Hilo3d.constants.webgl.NEAREST,
+    magFilter: Hilo3d.constants.webgl.NEAREST
+});
+const renderManagedCube = createManagedMaterialPass(
+    renderer,
+    new Hilo3d.BasicMaterial({
+        lightType: 'NONE',
+        diffuse: managedCubeTexture,
+        depthTest: false,
+        depthMask: false,
+        cullFace: false
+    }),
+    new Float32Array([-1, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1])
+);
 
 renderSource(source);
 renderCopy(copied);
+renderManaged2D(managed2D);
+renderManagedCube(managedCube);
 renderer.present(copied);
-const [sourceReadback, copiedReadback] = await Promise.all([
+const [sourceReadback, copiedReadback, managed2DReadback, managedCubeReadback] = await Promise.all([
     source.readColorAttachment(),
-    copied.readColorAttachment()
+    copied.readColorAttachment(),
+    managed2D.readColorAttachment(),
+    managedCube.readColorAttachment()
 ]);
 window.__HILO3D_FULLSCREEN_ORIENTATION_RESULT__ = {
     backend,
     source: [...sourceReadback.data],
-    copied: [...copiedReadback.data]
+    copied: [...copiedReadback.data],
+    managed2D: [...managed2DReadback.data],
+    managedCube: [...managedCubeReadback.data]
 };
 document.body.dataset['fullscreenOrientationComplete'] = 'true';
 
@@ -120,6 +227,8 @@ declare global {
             readonly backend: Hilo3d.RendererBackend;
             readonly source: readonly number[];
             readonly copied: readonly number[];
+            readonly managed2D: readonly number[];
+            readonly managedCube: readonly number[];
         };
     }
 }

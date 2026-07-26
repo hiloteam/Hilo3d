@@ -1,11 +1,10 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, stage, renderer } = await createExampleContext({
+const { stage, renderer } = await createExampleContext({
     camera: { far: 30, near: 0.1, x: 0, y: 1.4, z: 6 },
-    controls: { isLockMove: false, isLockZ: false }
+    controls: { enablePan: true, target: new Hilo3d.Vector3(0, 0.15, 0) }
 });
-camera.lookAt(new Hilo3d.Vector3(0, 0.15, 0));
 renderer.clearColor.set(0.008, 0.012, 0.028, 1);
 
 const floorTexture = new Hilo3d.LazyTexture({

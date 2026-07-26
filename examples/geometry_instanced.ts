@@ -4,7 +4,7 @@ import { createExampleContext } from './shared/init';
 const { camera, stage, renderer, ambientLight } = await createExampleContext({
     camera: { far: 50, near: 0.1, x: 0, y: 1.1, z: 6.5 },
     stage: { useInstanced: true },
-    controls: { isLockMove: false, isLockZ: false }
+    controls: { enablePan: true }
 });
 camera.lookAt(new Hilo3d.Vector3());
 renderer.clearColor.set(0.004, 0.007, 0.018, 1);

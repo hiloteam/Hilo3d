@@ -193,6 +193,127 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
             await page.context().close();
         }
     });
+
+    test(`Layered PBR studio toggles material lobes on ${backend} @${backend}`, async ({
+        browser
+    }) => {
+        const page = await createPage(browser);
+        await installRenderHealthProbe(page);
+        const failures = await installPageFailureMonitor(page);
+        try {
+            await page.goto(
+                `${serverOrigin}/examples/pbr_layered_materials.html?backend=${backend}`,
+                { waitUntil: 'networkidle' }
+            );
+            await expect(page.locator('body')).toHaveAttribute('data-showcase-ready', 'true', {
+                timeout: 15_000
+            });
+            const canvas = page.locator(`canvas[data-hilo3d-backend="${backend}"]`);
+            await expect(canvas).toBeVisible();
+
+            for (const feature of ['anisotropy', 'clearcoat', 'transmission'] as const) {
+                const button = page.locator(`[data-feature="${feature}"]`);
+                const before = await currentProgress(page, backend);
+                await button.click();
+                await expect(button).toHaveAttribute('aria-pressed', 'false');
+                await expectActionProgress(
+                    page,
+                    backend,
+                    before,
+                    `${feature} toggle must issue a new native ${backend} draw`
+                );
+            }
+
+            await assertFinalGraphicsHealth(
+                page,
+                backend,
+                `Layered PBR studio graphics errors on ${backend}`
+            );
+            await page.goto('about:blank');
+            failures.assertEmpty(`Layered PBR studio failures on ${backend}`);
+        } finally {
+            await failures.dispose();
+            await page.context().close();
+        }
+    });
+
+    test(`Khronos material gallery switches layered glTF assets on ${backend} @${backend}`, async ({
+        browser
+    }) => {
+        // Loading and rendering all seven production glTF assets is intentionally heavyweight on
+        // CI SwiftShader, while each individual readiness and native-progress assertion stays strict.
+        test.slow();
+        const page = await createPage(browser);
+        await installRenderHealthProbe(page);
+        const failures = await installPageFailureMonitor(page);
+        try {
+            await page.goto(
+                `${serverOrigin}/examples/gltf_material_extensions.html?backend=${backend}&asset=lamp`,
+                { waitUntil: 'networkidle' }
+            );
+            const body = page.locator('body');
+            const canvas = page.locator(`canvas[data-hilo3d-backend="${backend}"]`);
+            await expect(body).toHaveAttribute('data-showcase-ready', 'lamp', {
+                timeout: 30_000
+            });
+            await expect(canvas).toBeVisible();
+            await expect(page.locator('.showcaseHint')).toContainText('±90°');
+
+            const orbitBounds = await canvas.boundingBox();
+            if (!orbitBounds) throw new Error('Khronos gallery canvas has no orbit bounds');
+            const beforeOrbit = await currentProgress(page, backend);
+            await page.mouse.move(
+                orbitBounds.x + orbitBounds.width * 0.65,
+                orbitBounds.y + orbitBounds.height * 0.22
+            );
+            await page.mouse.down();
+            await page.mouse.move(
+                orbitBounds.x + orbitBounds.width * 0.65,
+                orbitBounds.y + orbitBounds.height * 0.78,
+                { steps: 12 }
+            );
+            await page.mouse.up();
+            await expectActionProgress(
+                page,
+                backend,
+                beforeOrbit,
+                `90-degree gallery orbit must issue a new native ${backend} draw`
+            );
+
+            for (const asset of [
+                'wicker',
+                'dragon',
+                'dish',
+                'candle',
+                'amber',
+                'helmet'
+            ] as const) {
+                const before = await currentProgress(page, backend);
+                await page.locator(`[data-asset="${asset}"]`).click();
+                await expect(body).toHaveAttribute('data-showcase-ready', asset, {
+                    timeout: 30_000
+                });
+                await expect(page.locator('#assetStatus')).toHaveText('ready');
+                await expectActionProgress(
+                    page,
+                    backend,
+                    before,
+                    `${asset} selection must issue a new native ${backend} draw`
+                );
+            }
+
+            await assertFinalGraphicsHealth(
+                page,
+                backend,
+                `Khronos material gallery graphics errors on ${backend}`
+            );
+            await page.goto('about:blank');
+            failures.assertEmpty(`Khronos material gallery failures on ${backend}`);
+        } finally {
+            await failures.dispose();
+            await page.context().close();
+        }
+    });
 }
 
 const fractionalDprExamples = ['renderTarget.html', 'bloom.html', 'lifegame.html'] as const;

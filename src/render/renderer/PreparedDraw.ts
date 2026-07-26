@@ -108,6 +108,7 @@ export class PreparedDraw {
     private pipelineValue: RHIGraphicsPipeline | null = null;
     private readonly bindGroups: (RHIBindGroup | null)[];
     private readonly dynamicOffsets: (RHIUInt32View | null)[];
+    private readonly deferredBindGroups: boolean[];
     private bindGroupHighWater = 0;
     private readonly vertexBuffers: MutableVertexInputBufferBinding[];
     private vertexBufferHighWater = 0;
@@ -158,6 +159,7 @@ export class PreparedDraw {
         requireDrawInteger(vertexBufferCapacity, 'Vertex buffer capacity', 1);
         this.bindGroups = new Array<RHIBindGroup | null>(bindGroupCapacity).fill(null);
         this.dynamicOffsets = new Array<RHIUInt32View | null>(bindGroupCapacity).fill(null);
+        this.deferredBindGroups = new Array<boolean>(bindGroupCapacity).fill(false);
         this.vertexBuffers = new Array<MutableVertexInputBufferBinding>(vertexBufferCapacity);
         for (let slot = 0; slot < vertexBufferCapacity; slot += 1) {
             this.vertexBuffers[slot] = { slot, buffer: null, offset: 0, size: undefined };
@@ -200,6 +202,7 @@ export class PreparedDraw {
         for (let index = 0; index < this.bindGroupHighWater; index += 1) {
             this.bindGroups[index] = null;
             this.dynamicOffsets[index] = null;
+            this.deferredBindGroups[index] = false;
         }
         for (let index = 0; index < this.vertexBufferHighWater; index += 1) {
             const binding = this.vertexBuffers[index];
@@ -245,6 +248,20 @@ export class PreparedDraw {
         if (index + 1 > this.bindGroupHighWater) this.bindGroupHighWater = index + 1;
     }
 
+    /** Mark one shader-declared group for graph-prepare overlay. */
+    deferBindGroup(index: number): void {
+        this.assertUpdating();
+        requireIndex(index, this.bindGroupCapacity, 'Deferred bind group index');
+        this.deferredBindGroups[index] = true;
+        if (index + 1 > this.bindGroupHighWater) this.bindGroupHighWater = index + 1;
+    }
+
+    /** Whether this sealed packet expects a pass-global overlay at the given group. */
+    acceptsPreparedBindGroup(index: number): boolean {
+        requireIndex(index, this.bindGroupCapacity, 'Prepared bind group index');
+        return this.valid && this.deferredBindGroups[index] === true;
+    }
+
     /**
      * Overlay a graph-resolved pass-global group on a sealed pass-local snapshot.
      *
@@ -253,6 +270,9 @@ export class PreparedDraw {
     setPreparedBindGroup(index: number, bindGroup: RHIBindGroup): void {
         if (!this.valid) throw new Error('Prepared draw is not ready for a pass-global bind group');
         requireIndex(index, this.bindGroupCapacity, 'Bind group index');
+        if (!this.deferredBindGroups[index]) {
+            throw new Error(`Prepared draw does not defer bind group ${String(index)}`);
+        }
         this.bindGroups[index] = bindGroup;
         this.dynamicOffsets[index] = null;
         if (index + 1 > this.bindGroupHighWater) this.bindGroupHighWater = index + 1;
@@ -400,6 +420,7 @@ export class PreparedDraw {
         for (let index = 0; index < source.bindGroupHighWater; index += 1) {
             this.bindGroups[index] = source.bindGroups[index] ?? null;
             this.dynamicOffsets[index] = source.dynamicOffsets[index] ?? null;
+            this.deferredBindGroups[index] = source.deferredBindGroups[index] ?? false;
         }
         this.vertexBufferHighWater = source.vertexBufferHighWater;
         for (let index = 0; index < source.vertexBufferHighWater; index += 1) {

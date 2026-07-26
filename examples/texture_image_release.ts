@@ -1,5 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
+import { createStudioEnvironmentFaceUrls } from './shared/studioEnvironment';
 
 const { stage } = await createExampleContext();
 
@@ -10,18 +11,15 @@ Hilo3d.BasicLoader.disableCache();
 const cubeTextureLoader = new Hilo3d.CubeTextureLoader();
 const imageLoader = new Hilo3d.BasicLoader();
 const imageUrl = (name: string): string => new URL(`./image/${name}`, import.meta.url).href;
+const studioEnvironmentUrls = createStudioEnvironmentFaceUrls();
 
 void cubeTextureLoader
     .load({
         isImageCanRelease: true,
-        images: [
-            imageUrl('px.jpg'),
-            imageUrl('nx.jpg'),
-            imageUrl('py.jpg'),
-            imageUrl('ny.jpg'),
-            imageUrl('pz.jpg'),
-            imageUrl('nz.jpg')
-        ]
+        images: [...studioEnvironmentUrls],
+        internalFormat: Hilo3d.constants.RGBA8,
+        format: Hilo3d.constants.RGBA,
+        minFilter: Hilo3d.constants.webgl.LINEAR_MIPMAP_LINEAR
     })
     .then(skyboxMap => {
         const skybox = new Hilo3d.Mesh({

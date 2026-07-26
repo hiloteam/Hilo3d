@@ -18,6 +18,10 @@ const REQUIRED_CAPABILITIES: readonly Hilo3d.RenderPipelineCapabilityName[] = Ob
     'compute-pass',
     'indirect-draw'
 ]);
+const portableCoordinateShader = Hilo3d.Shader.shaders['method/portableCoordinates.glsl'];
+if (portableCoordinateShader === undefined) {
+    throw new Error('Portable coordinate shader helpers are unavailable');
+}
 
 const interactionLayout = Hilo3d.createStd140Layout({
     u_pointer: 'vec4',
@@ -113,12 +117,6 @@ fn curlNoise(point: vec2<f32>, time: f32) -> vec2<f32> {
     let negativeY = fractalNoise3(samplePoint - vec3<f32>(0.0, epsilon, 0.0));
     let curl = vec2<f32>(positiveY - negativeY, negativeX - positiveX) / (2.0 * epsilon);
     return curl / max(length(curl), 0.001);
-}
-
-// Screen-authored interactions use visual clip space. Particle storage is consumed by the
-// GPU-driven vertex path with the opposite presented Y, so physics centers cross this boundary.
-fn visualToParticleVector(vector: vec2<f32>) -> vec2<f32> {
-    return vec2<f32>(vector.x, -vector.y);
 }
 
 fn particleToPhysicalDelta(delta: vec2<f32>, aspect: f32) -> vec2<f32> {
@@ -219,7 +217,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let frameTime = interaction.time.x;
     let stepTime = min(interaction.time.y, 0.025) * 0.5;
     let aspect = interaction.time.z;
-    let pointerCenter = visualToParticleVector(interaction.pointer.xy);
+    let pointerCenter = interaction.pointer.xy;
     var collisionFlash = particle.positionPhase.w * exp(-interaction.time.y * 7.0);
 
     let meteorAState = meteorState(frameTime, 22.0, 2.4);
@@ -231,12 +229,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let meteorBEnd = vec2<f32>(-0.58, -0.12);
     let meteorCStart = vec2<f32>(-0.25, 1.15);
     let meteorCEnd = vec2<f32>(0.92, -0.08);
-    let meteorA = visualToParticleVector(mix(meteorAStart, meteorAEnd, meteorAState.x));
-    let meteorB = visualToParticleVector(mix(meteorBStart, meteorBEnd, meteorBState.x));
-    let meteorC = visualToParticleVector(mix(meteorCStart, meteorCEnd, meteorCState.x));
-    let meteorADirection = visualToParticleVector(meteorAEnd - meteorAStart);
-    let meteorBDirection = visualToParticleVector(meteorBEnd - meteorBStart);
-    let meteorCDirection = visualToParticleVector(meteorCEnd - meteorCStart);
+    let meteorA = mix(meteorAStart, meteorAEnd, meteorAState.x);
+    let meteorB = mix(meteorBStart, meteorBEnd, meteorBState.x);
+    let meteorC = mix(meteorCStart, meteorCEnd, meteorCState.x);
+    let meteorADirection = meteorAEnd - meteorAStart;
+    let meteorBDirection = meteorBEnd - meteorBStart;
+    let meteorCDirection = meteorCEnd - meteorCStart;
 
     particle.previousMisc = vec4<f32>(position, particle.previousMisc.zw);
     let noiseOffset = vec2<f32>(seed * 0.00037, seed * 0.00019);
@@ -312,10 +310,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             let distance = sqrt(distanceSquared);
             let physicalDirection = pointerPhysical / max(distance, 0.001);
             let direction = physicalToParticleDelta(physicalDirection, aspect);
-            var pointerVelocityPhysical = particleToPhysicalDelta(
-                visualToParticleVector(interaction.motion.xy),
-                aspect
-            );
+            var pointerVelocityPhysical = particleToPhysicalDelta(interaction.motion.xy, aspect);
             let pointerSpeed = length(pointerVelocityPhysical);
             if (pointerSpeed > 1.8) {
                 pointerVelocityPhysical *= 1.8 / pointerSpeed;
@@ -489,6 +484,7 @@ layout(std140) uniform InteractionBlock {
 };
 in float fieldEnergy;
 layout(location = 0) out vec4 color;
+${portableCoordinateShader}
 
 float lineGrid(vec2 point, float scale, float width) {
     vec2 cell = abs(fract(point * scale - 0.5) - 0.5) / fwidth(point * scale);
@@ -580,13 +576,16 @@ vec3 meteorLight(
 }
 
 void main() {
-    vec2 uv = gl_FragCoord.xy / vec2(${String(TARGET_WIDTH)}.0, ${String(TARGET_HEIGHT)}.0);
-    // Keep this pass in visual clip space; the compute pass maps these centers into particle space.
+    vec2 fragCoord = hiloBottomLeftFragCoord(
+        gl_FragCoord.xy,
+        vec2(${String(TARGET_WIDTH)}.0, ${String(TARGET_HEIGHT)}.0)
+    );
+    vec2 uv = fragCoord / vec2(${String(TARGET_WIDTH)}.0, ${String(TARGET_HEIGHT)}.0);
     vec2 point = (uv * 2.0 - 1.0) * vec2(u_time.z, 1.0);
     float vignette = 1.0 - smoothstep(0.25, 1.28, length(point * vec2(0.58, 0.92)));
     float fineGrid = lineGrid(point, 13.0, 0.8) * 0.035;
     float majorGrid = lineGrid(point, 3.25, 1.15) * 0.075;
-    float scan = pow(0.5 + 0.5 * sin(gl_FragCoord.y * 0.21 + u_time.x * 2.3), 18.0) * 0.045;
+    float scan = pow(0.5 + 0.5 * sin(fragCoord.y * 0.21 + u_time.x * 2.3), 18.0) * 0.045;
     float radial = 1.0 - smoothstep(0.0, 1.22, length(point));
     float horizon = exp(-72.0 * pow(point.y + 0.09, 2.0));
     vec3 base = vec3(0.004, 0.011, 0.032);
@@ -1420,10 +1419,6 @@ function wordmarkTargetCells(): readonly WordmarkCell[] {
     return cachedWordmarkCells;
 }
 
-function visualYToParticle(y: number): number {
-    return -y;
-}
-
 function particleInitialData(): Float32Array {
     const cells = wordmarkTargetCells();
     if (cells.length === 0) throw new Error('Hilo3D particle wordmark has no active cells');
@@ -1441,13 +1436,13 @@ function particleInitialData(): Float32Array {
             cell.x + (deterministicUnit(index, 0x7f4a7c15) - 0.5) * (0.006 - edgeFactor * 0.004);
         const visualTargetY =
             cell.y + (deterministicUnit(index, 0x31e0f6a7) - 0.5) * (0.007 - edgeFactor * 0.0045);
-        const targetY = visualYToParticle(visualTargetY);
+        const targetY = visualTargetY;
         const cloudRadius =
             0.001 + deterministicUnit(index, 0x967a889b) * (0.004 - edgeFactor * 0.0025);
         const cloudAngle = angle + deterministicUnit(index, 0x02e5be93) * 1.7;
         const positionX = targetX + Math.cos(cloudAngle) * cloudRadius;
         const visualPositionY = visualTargetY + Math.sin(cloudAngle) * cloudRadius;
-        const positionY = visualYToParticle(visualPositionY);
+        const positionY = visualPositionY;
         const velocityScale = 0.018 + deterministicUnit(index, 0x4f1bbcdc) * 0.02;
         const offset = index * PARTICLE_FLOATS_PER_RECORD;
         data[offset] = positionX;
@@ -1455,7 +1450,7 @@ function particleInitialData(): Float32Array {
         data[offset + 2] = deterministicUnit(index, 0x51ed270b) * Math.PI * 2;
         data[offset + 3] = 0;
         data[offset + 4] = -Math.sin(cloudAngle) * velocityScale;
-        data[offset + 5] = -Math.cos(cloudAngle) * velocityScale;
+        data[offset + 5] = Math.cos(cloudAngle) * velocityScale;
         data[offset + 6] = deterministicUnit(index, 0x6d2b79f5) * 2048 + index;
         data[offset + 7] = deterministicUnit(index, 0x1b56c4e9) * 0.5;
         data[offset + 8] = targetX;
@@ -1518,15 +1513,15 @@ function particleInitialData(): Float32Array {
                     -0.09 - depth * 0.99 + macroWave + primaryWave + detailWave + grainJitter
                 )
             );
-            anchorY = visualYToParticle(visualAnchorY);
+            anchorY = visualAnchorY;
             const cloudRadius =
                 0.0015 + deterministicUnit(ambientIndex, 0x02e5be93) * (0.004 + depth * 0.01);
             positionX = anchorX + Math.cos(angle) * cloudRadius;
-            positionY = visualYToParticle(visualAnchorY + Math.sin(angle) * cloudRadius);
+            positionY = visualAnchorY + Math.sin(angle) * cloudRadius;
             const velocityScale =
                 0.002 + deterministicUnit(ambientIndex, 0x4f1bbcdc) * (0.006 + depth * 0.012);
             velocityX = Math.cos(angle) * velocityScale;
-            velocityY = visualYToParticle(Math.sin(angle) * velocityScale * 0.35);
+            velocityY = Math.sin(angle) * velocityScale * 0.35;
             palette = deterministicUnit(ambientIndex, 0x6d2b79f5);
         } else if (layerSelector < 0.95) {
             layer = 2;
@@ -1548,13 +1543,13 @@ function particleInitialData(): Float32Array {
                     0.49 + nebulaWave + (deterministicUnit(ambientIndex, 0x9e8c21a7) - 0.5) * 0.52
                 )
             );
-            anchorY = visualYToParticle(visualAnchorY);
+            anchorY = visualAnchorY;
             const cloudRadius = 0.018 + deterministicUnit(ambientIndex, 0x967a889b) * 0.07;
             positionX = anchorX + Math.cos(angle) * cloudRadius;
-            positionY = visualYToParticle(visualAnchorY + Math.sin(angle) * cloudRadius);
+            positionY = visualAnchorY + Math.sin(angle) * cloudRadius;
             const velocityScale = 0.0003 + deterministicUnit(ambientIndex, 0x4f1bbcdc) * 0.001;
             velocityX = -Math.sin(angle) * velocityScale;
-            velocityY = visualYToParticle(Math.cos(angle) * velocityScale);
+            velocityY = Math.cos(angle) * velocityScale;
         } else {
             layer = 1;
             anchorX = -1.08 + deterministicUnit(ambientIndex, 0x68bc21eb) * 2.16;
@@ -1568,13 +1563,13 @@ function particleInitialData(): Float32Array {
             );
             ridgeLight =
                 deterministicUnit(ambientIndex, 0xa24baed4) * (0.52 + brightPlacement * 0.48);
-            anchorY = visualYToParticle(visualAnchorY);
+            anchorY = visualAnchorY;
             const cloudRadius = 0.004 + deterministicUnit(ambientIndex, 0x967a889b) * 0.02;
             positionX = anchorX + Math.cos(angle) * cloudRadius;
-            positionY = visualYToParticle(visualAnchorY + Math.sin(angle) * cloudRadius);
+            positionY = visualAnchorY + Math.sin(angle) * cloudRadius;
             const velocityScale = 0.002 + deterministicUnit(ambientIndex, 0x4f1bbcdc) * 0.007;
             velocityX = -Math.sin(angle) * velocityScale;
-            velocityY = visualYToParticle(Math.cos(angle) * velocityScale);
+            velocityY = Math.cos(angle) * velocityScale;
         }
 
         const offset = index * PARTICLE_FLOATS_PER_RECORD;
@@ -1710,6 +1705,7 @@ interface ParticleEvidence {
     readonly distinctColors: number;
     readonly activeTiles: number;
     readonly wordSampleCoverage: number;
+    readonly mirroredWordSampleCoverage: number;
     readonly ambientLuminousPixels: number;
     readonly hash: number;
     readonly interactionRevision: number;
@@ -1749,7 +1745,7 @@ function wordSampleCoverage(data: Uint8Array, flipY: boolean): number {
         sampledCells += 1;
         const x = (cell.x * 0.5 + 0.5) * TARGET_WIDTH;
         const clipY = flipY ? -cell.y : cell.y;
-        const y = (clipY * 0.5 + 0.5) * TARGET_HEIGHT;
+        const y = (1 - clipY) * 0.5 * TARGET_HEIGHT;
         if (peakLuminance(data, x, y) > 190) visibleCells += 1;
     }
     return visibleCells / Math.max(sampledCells, 1);
@@ -1812,10 +1808,10 @@ function analyzeFrame(
         }
     }
     const pointerCenterX = (controller.pointerX * 0.5 + 0.5) * TARGET_WIDTH;
-    // Render-target readback preserves bottom-up rows even though the presented canvas uses
-    // top-left DOM coordinates. Keep that storage convention explicit in the evidence sampler.
-    const pointerCenterY = (controller.pointerY * 0.5 + 0.5) * TARGET_HEIGHT;
-    const mirroredPointerCenterY = (1 - controller.pointerY) * 0.5 * TARGET_HEIGHT;
+    // Public readback rows and DOM coordinates both originate at the top. Simulation clip-space
+    // Y grows upward, so perform that single boundary conversion here.
+    const pointerCenterY = (1 - controller.pointerY) * 0.5 * TARGET_HEIGHT;
+    const mirroredPointerCenterY = (controller.pointerY * 0.5 + 0.5) * TARGET_HEIGHT;
     return {
         backend,
         particleCount: PARTICLE_COUNT,
@@ -1825,10 +1821,8 @@ function analyzeFrame(
         luminousCenterY: luminousY / Math.max(luminousPixels, 1),
         distinctColors: colors.size,
         activeTiles: tiles.size,
-        wordSampleCoverage: Math.max(
-            wordSampleCoverage(data, false),
-            wordSampleCoverage(data, true)
-        ),
+        wordSampleCoverage: wordSampleCoverage(data, false),
+        mirroredWordSampleCoverage: wordSampleCoverage(data, true),
         ambientLuminousPixels,
         hash,
         interactionRevision: controller.revision,

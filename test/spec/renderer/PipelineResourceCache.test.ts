@@ -46,6 +46,23 @@ void main() {
     color = texture(sourceMap, vec2(0.5));
 }`;
 
+const sceneTextureFragmentSource = `#version 300 es
+precision highp float;
+uniform sampler2D u_opaqueTexture;
+layout(location = 0) out vec4 color;
+void main() {
+    color = texture(u_opaqueTexture, vec2(0.5));
+}`;
+
+const layeredSceneTextureFragmentSource = `#version 300 es
+precision highp float;
+uniform sampler2D detailMap;
+uniform sampler2D u_opaqueTexture;
+layout(location = 0) out vec4 color;
+void main() {
+    color = texture(u_opaqueTexture, vec2(0.5)) * texture(detailMap, vec2(0.5));
+}`;
+
 interface CacheFixture {
     readonly backend: FakeWebGLRHIBackend;
     readonly device: FakeRHIDevice;
@@ -86,6 +103,43 @@ function target(colorFormat: RHITextureFormat = 'rgba8unorm'): RHIMeshDrawTarget
 }
 
 describe('PipelineResourceCache', () => {
+    it('shares the pass-global opaque texture layout across material shader variants', () => {
+        const fixture = createFixture();
+        const first = fixture.pipelines.prepare(
+            shader(sceneTextureFragmentSource),
+            vertexLayout(),
+            new Material(),
+            target()
+        );
+        const second = fixture.pipelines.prepare(
+            shader(layeredSceneTextureFragmentSource),
+            vertexLayout(),
+            new Material(),
+            target()
+        );
+
+        expect(first.bindingPlan.getSampledBinding('u_opaqueTexture')).toMatchObject({
+            group: 3,
+            textureBinding: 0,
+            samplerBinding: 1
+        });
+        expect(second.bindingPlan.getSampledBinding('u_opaqueTexture')).toMatchObject({
+            group: 3,
+            textureBinding: 0,
+            samplerBinding: 1
+        });
+        expect(first.bindGroupLayouts[3]).toBe(second.bindGroupLayouts[3]);
+        expect(fixture.pipelines.resolve(first).bindGroupLayouts[3]).toBe(
+            fixture.pipelines.resolve(second).bindGroupLayouts[3]
+        );
+
+        fixture.pipelines.destroy();
+        fixture.shaders.destroy();
+        fixture.registry.collect(0);
+        fixture.registry.destroy();
+        fixture.backend.destroy();
+    });
+
     it('keeps ordinary-color and numeric-depth sampler pipeline buckets independent', () => {
         const fixture = createFixture();
         const source = shader(sampledFragmentSource);

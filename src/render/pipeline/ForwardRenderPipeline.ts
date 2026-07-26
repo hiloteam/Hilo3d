@@ -26,6 +26,7 @@ import {
     PresentRenderPass,
     SceneRenderPass,
     ShadowRenderPass,
+    TextureCopyPass,
     type FullscreenRenderPassParameters,
     type SceneRenderPassParameters
 } from './passes';
@@ -111,6 +112,16 @@ export interface ForwardRenderFeatureContext {
 export interface ForwardRenderPipelineFactoryOptions {
     /** Ordered reusable feature configurations. */
     readonly features?: readonly ForwardRenderPipelineFeature[];
+    /**
+     * Linear scene-color format used before final output. Use `rgba16float` for HDR lighting,
+     * Bloom, and display-referred color grading.
+     */
+    readonly sceneColorFormat?: RenderTargetColorFormat;
+    /**
+     * Capture opaque scene color before transparent rendering and bind it to transmission/volume
+     * materials as `u_opaqueTexture`.
+     */
+    readonly opaqueTexture?: boolean;
 }
 
 interface FeatureSnapshot extends ForwardRenderPipelineFeature {
@@ -233,10 +244,12 @@ class MutableSceneParameters implements SceneRenderPassParameters {
     readonly #retiredColorAttachments: MutableColorAttachment[] = [];
     readonly #depthStencil = createDepthStencilAttachment();
     depthStencilAttachment?: MutableDepthStencilAttachment;
+    opaqueTexture?: RenderGraphTextureHandle;
 
     reset(): void {
         this.rendererList = INVALID_RENDERER_LIST_HANDLE;
         delete this.depthStencilAttachment;
+        delete this.opaqueTexture;
     }
 
     setColorAttachmentCount(count: number): void {
@@ -292,6 +305,16 @@ class MutablePresentParameters implements FullscreenRenderPassParameters {
             delete attachment.resolveTarget;
             delete attachment.clearValue;
         }
+    }
+}
+
+class MutableTextureCopyParameters {
+    source = INVALID_TEXTURE_HANDLE;
+    destination = INVALID_TEXTURE_HANDLE;
+
+    reset(): void {
+        this.source = INVALID_TEXTURE_HANDLE;
+        this.destination = INVALID_TEXTURE_HANDLE;
     }
 }
 
@@ -589,6 +612,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly #shadowPass = new ShadowRenderPass('Forward shadows');
     readonly #loadPass = new PresentRenderPass('Forward output load');
     readonly #presentPass = new PresentRenderPass('Forward output');
+    readonly #opaqueCopyPass = new TextureCopyPass('Forward opaque texture');
     readonly #sceneParameters = new RenderPassParameterPool(
         () => new MutableSceneParameters(),
         parameters => {
@@ -597,6 +621,12 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     );
     readonly #presentParameters = new RenderPassParameterPool(
         () => new MutablePresentParameters(),
+        parameters => {
+            parameters.reset();
+        }
+    );
+    readonly #textureCopyParameters = new RenderPassParameterPool(
+        () => new MutableTextureCopyParameters(),
         parameters => {
             parameters.reset();
         }
@@ -641,16 +671,28 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         stencilLoadOp: 'clear',
         stencilStoreOp: 'discard'
     };
+    readonly #opaqueTextureDescriptor: MutableTextureDescriptor = {
+        format: 'rgba8unorm',
+        extent: OUTPUT_EXTENT,
+        sampleCount: 1,
+        mipLevelCount: 1
+    };
     readonly #compiledFeatures: readonly CompiledFeature[];
     readonly #requiresSampledColor: boolean;
     readonly #requiresSampledDepth: boolean;
     readonly #samplesBetweenQueues: boolean;
     readonly #splitScene: boolean;
+    readonly #sceneColorFormat: RenderTargetColorFormat | null;
+    readonly #opaqueTextureEnabled: boolean;
     #destroyed = false;
 
     constructor(
         features: readonly FeatureSnapshot[],
-        runtimes: readonly ForwardRenderPipelineFeatureRuntime[]
+        runtimes: readonly ForwardRenderPipelineFeatureRuntime[],
+        options: Readonly<{
+            sceneColorFormat: RenderTargetColorFormat | null;
+            opaqueTexture: boolean;
+        }>
     ) {
         const compiled: CompiledFeature[] = [];
         let sampledColor = false;
@@ -675,11 +717,16 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                 samplesBetweenQueues = true;
             }
         }
+        this.#sceneColorFormat = options.sceneColorFormat;
+        this.#opaqueTextureEnabled = options.opaqueTexture;
+        sampledColor ||= options.opaqueTexture || options.sceneColorFormat !== null;
+        samplesBetweenQueues ||= options.opaqueTexture;
         this.#compiledFeatures = Object.freeze(compiled);
         this.#requiresSampledColor = sampledColor;
         this.#requiresSampledDepth = sampledDepth;
         this.#samplesBetweenQueues = samplesBetweenQueues;
         this.#splitScene =
+            options.opaqueTexture ||
             this.#groups[injectionPointIndex('after-opaque')]?.length !== 0 ||
             this.#groups[injectionPointIndex('before-transparent')]?.length !== 0;
     }
@@ -727,6 +774,9 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             if (this.#splitScene) {
                 const opaque = context.createRendererList(this.#opaqueListDescriptor);
                 this.recordScenePass(context, output, opaque, depth, true, false, sceneSampleCount);
+                const opaqueTexture = this.#opaqueTextureEnabled
+                    ? this.recordOpaqueTexture(context)
+                    : null;
                 this.#featureState.allowColorReplacement();
                 this.recordFeatureGroup('after-opaque');
                 this.recordFeatureGroup('before-transparent');
@@ -738,7 +788,8 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                     depth,
                     false,
                     true,
-                    sceneSampleCount
+                    sceneSampleCount,
+                    opaqueTexture
                 );
             } else {
                 const all = context.createRendererList(this.#allListDescriptor);
@@ -796,11 +847,13 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                 continue;
             }
             const format = context.output.colorFormat(index);
-            const descriptor = this.colorDescriptor(index, format, sampleCount, false);
+            const sceneFormat =
+                index === 0 && this.#sceneColorFormat !== null ? this.#sceneColorFormat : format;
+            const descriptor = this.colorDescriptor(index, sceneFormat, sampleCount, false);
             const source = context.graph.createTexture(this.#colorNames[index] ?? '', descriptor);
             this.#sceneColorSources[index] = source;
             if (sampleCount === 4) {
-                const resolveDescriptor = this.colorDescriptor(index, format, 1, true);
+                const resolveDescriptor = this.colorDescriptor(index, sceneFormat, 1, true);
                 const resolve = context.graph.createTexture(
                     this.#resolveNames[index] ?? '',
                     resolveDescriptor
@@ -886,10 +939,13 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         depth: RenderGraphTextureHandle | null,
         firstScenePass: boolean,
         lastScenePass: boolean,
-        sampleCount: RenderTargetSampleCount
+        sampleCount: RenderTargetSampleCount,
+        opaqueTexture: RenderGraphTextureHandle | null = null
     ): void {
         const parameters = context.acquirePassParameters(this.#sceneParameters);
         parameters.rendererList = rendererList;
+        if (opaqueTexture === null) delete parameters.opaqueTexture;
+        else parameters.opaqueTexture = opaqueTexture;
         parameters.setColorAttachmentCount(this.#sceneColorSources.length);
         const currentColor = this.#featureState.currentColor;
         for (let index = 0; index < parameters.colorAttachments.length; index += 1) {
@@ -930,6 +986,22 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         if (sampleCount === 1 && currentColor !== null && this.#sceneColorResolved.length > 0) {
             this.#sceneColorResolved[0] = currentColor;
         }
+    }
+
+    private recordOpaqueTexture(context: RenderPipelineContext): RenderGraphTextureHandle {
+        const source = this.#featureState.currentColor;
+        if (source === null) throw new Error('Forward opaque texture requires scene color');
+        this.#opaqueTextureDescriptor.format =
+            this.#sceneColorFormat ?? context.output.colorFormat(0);
+        const destination = context.graph.createTexture(
+            'forward opaque scene color',
+            this.#opaqueTextureDescriptor
+        );
+        const parameters = context.acquirePassParameters(this.#textureCopyParameters);
+        parameters.source = source;
+        parameters.destination = destination;
+        context.graph.addPass(this.#opaqueCopyPass, parameters);
+        return destination;
     }
 
     private configureDepthOperations(
@@ -1041,6 +1113,10 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
     readonly requirements: Readonly<RenderPipelineRequirements>;
     /** Constructor-snapshotted feature configurations in insertion order. */
     readonly features: readonly ForwardRenderPipelineFeature[];
+    /** Linear intermediate scene-color format, or null to match the selected output. */
+    readonly sceneColorFormat: RenderTargetColorFormat | null;
+    /** Whether the forward pipeline captures opaque scene color for transparent materials. */
+    readonly opaqueTexture: boolean;
 
     constructor(options: ForwardRenderPipelineFactoryOptions = {}) {
         const features = (options.features ?? []).map(snapshotFeature);
@@ -1052,12 +1128,42 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
             names.add(feature.name);
         }
         this.features = Object.freeze(features);
-        this.requirements = mergeFeatureRequirements(features);
+        const sceneColorFormat: unknown = options.sceneColorFormat ?? null;
+        if (
+            sceneColorFormat !== null &&
+            sceneColorFormat !== 'rgba8unorm' &&
+            sceneColorFormat !== 'rgba8unorm-srgb' &&
+            sceneColorFormat !== 'rgba16float' &&
+            sceneColorFormat !== 'rgba32float'
+        ) {
+            const formatLabel =
+                typeof sceneColorFormat === 'string' ? sceneColorFormat : '<non-string>';
+            throw new RangeError(`Unsupported forward scene color format ${formatLabel}`);
+        }
+        this.sceneColorFormat = sceneColorFormat;
+        this.opaqueTexture = options.opaqueTexture ?? false;
+        if (typeof this.opaqueTexture !== 'boolean') {
+            throw new TypeError('Forward opaqueTexture must be a boolean');
+        }
+        const featureRequirements = mergeFeatureRequirements(features);
+        this.requirements =
+            this.sceneColorFormat === null
+                ? featureRequirements
+                : snapshotRenderPipelineRequirements({
+                      ...featureRequirements,
+                      requiredTextureFormats: [
+                          ...(featureRequirements.requiredTextureFormats ?? []),
+                          { format: this.sceneColorFormat, use: 'color-attachment' },
+                          { format: this.sceneColorFormat, use: 'filterable-sampled' }
+                      ]
+                  });
     }
 
     /** Create an independent forward runtime and feature runtime set for one Renderer. */
     create(context: RenderPipelineCreateContext): RenderPipeline {
-        if (this.features.length === 0) return new DirectForwardRenderPipeline();
+        if (this.features.length === 0 && this.sceneColorFormat === null && !this.opaqueTexture) {
+            return new DirectForwardRenderPipeline();
+        }
         const features = this.features as readonly FeatureSnapshot[];
         const runtimes: ForwardRenderPipelineFeatureRuntime[] = [];
         try {
@@ -1109,7 +1215,10 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
                 attachedForwardFeatureRuntimes.add(runtime);
                 runtimes.push(runtime);
             }
-            return new ScriptableForwardRenderPipeline(features, runtimes);
+            return new ScriptableForwardRenderPipeline(features, runtimes, {
+                sceneColorFormat: this.sceneColorFormat,
+                opaqueTexture: this.opaqueTexture
+            });
         } catch (creationError) {
             const failures: unknown[] = [creationError];
             for (let index = runtimes.length - 1; index >= 0; index -= 1) {

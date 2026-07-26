@@ -5,10 +5,12 @@ import {
 } from '../../../src/render/ubo/UniformBlockBindings';
 import {
     getWebGPUMaterialTextureBinding,
+    getWebGPUSceneTextureBinding,
     getWebGPUUniformBlockBinding,
     registerWebGPUCustomUniformBlockBinding,
     WEBGPU_BIND_GROUP_COUNT,
     WEBGPU_BIND_GROUPS,
+    WEBGPU_SCENE_TEXTURE_BINDING,
     WEBGPU_UNIFORM_BLOCK_BINDINGS
 } from '../../../src/render/shader/WebGPUBindingLayout';
 
@@ -52,7 +54,7 @@ describe('WebGPUBindingLayout', () => {
 
         expect(getWebGPUUniformBlockBinding(name)).toEqual({
             group: WEBGPU_BIND_GROUPS.CUSTOM,
-            binding: flatBinding - BUILTIN_UNIFORM_BLOCK_BINDING_COUNT
+            binding: flatBinding - BUILTIN_UNIFORM_BLOCK_BINDING_COUNT + 2
         });
         expect(registerWebGPUCustomUniformBlockBinding(name)).toEqual(
             getWebGPUUniformBlockBinding(name)
@@ -69,9 +71,22 @@ describe('WebGPUBindingLayout', () => {
             BUILTIN_UNIFORM_BLOCK_BINDING_COUNT + 41
         );
 
-        expect(first).toEqual({ group: 3, binding: 40 });
-        expect(second).toEqual({ group: 3, binding: 41 });
+        expect(first).toEqual({ group: 3, binding: 42 });
+        expect(second).toEqual({ group: 3, binding: 43 });
         expect(first).not.toEqual(second);
+    });
+
+    it('reserves one pass-global opaque scene texture pair', () => {
+        expect(WEBGPU_SCENE_TEXTURE_BINDING).toEqual({
+            group: WEBGPU_BIND_GROUPS.CUSTOM,
+            textureBinding: 0,
+            samplerBinding: 1
+        });
+        expect(getWebGPUSceneTextureBinding('u_opaqueTexture', 0)).toBe(
+            WEBGPU_SCENE_TEXTURE_BINDING
+        );
+        expect(getWebGPUSceneTextureBinding('u_diffuse', 0)).toBeUndefined();
+        expect(() => getWebGPUSceneTextureBinding('u_opaqueTexture', 1)).toThrow(/scalar sampler/);
     });
 
     it('allocates deterministic separate texture and sampler bindings after MaterialBlock', () => {

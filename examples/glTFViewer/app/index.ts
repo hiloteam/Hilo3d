@@ -55,7 +55,7 @@ ticker.addTick(Hilo3d.Tween);
 ticker.addTick(Hilo3d.Animation);
 ticker.start();
 const stats = new Stats(ticker, stage.renderer);
-const orbitControls = new OrbitControls(stage, { isLockMove: true, isLockZ: true });
+const orbitControls = new OrbitControls(stage, { enablePan: false });
 const loader = new Hilo3d.GLTFLoader();
 const diagnosticTarget = stage.renderer.createRenderTarget({
     width: 320,
@@ -188,11 +188,13 @@ async function initializeModel(model: Hilo3d.GLTFModel, generation: number): Pro
             environment.brdfLUT.destroy();
             environment.diffuseEnvMap.destroy();
             environment.specularEnvMap.destroy();
+            environment.skyboxMap.destroy();
             return;
         }
         viewerOwnedTextures.add(environment.brdfLUT);
         viewerOwnedTextures.add(environment.diffuseEnvMap);
         viewerOwnedTextures.add(environment.specularEnvMap);
+        viewerOwnedTextures.add(environment.skyboxMap);
         model.materials.forEach(material => {
             if (material instanceof Hilo3d.PBRMaterial) {
                 material.brdfLUT = environment.brdfLUT;
@@ -209,7 +211,7 @@ async function initializeModel(model: Hilo3d.GLTFModel, generation: number): Pro
             material: new Hilo3d.BasicMaterial({
                 lightType: 'NONE',
                 side: Hilo3d.constants.BACK,
-                diffuse: environment.specularEnvMap
+                diffuse: environment.skyboxMap
             })
         }).addTo(stage);
         skybox.setScale(20);
@@ -347,7 +349,7 @@ window.__HILO3D_GLTF_VIEWER_DIAGNOSTICS__ = {
 window.addEventListener('beforeunload', () => {
     diagnosticTarget.destroy();
     releaseCurrentModel();
-    orbitControls.disable();
+    orbitControls.dispose();
     stats.stop();
     ticker.stop();
 });

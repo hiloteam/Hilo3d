@@ -87,7 +87,6 @@ const WEBGPU_ONLY = ['webgpu'] as const;
 
 const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'MultiSampledRenderbuffers.html': 'Multisampled Renderbuffers',
-    'cubeTexture_HDR.html': 'HDR Cube Texture',
     'glTFViewer/index.html': 'glTF Viewer',
     'loader/glTF_clone.html': 'glTF Clone',
     'loader/glTF_loader.html': 'glTF Loader',
@@ -95,7 +94,6 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'resourceManagerTest.html': 'Resource Manager Diagnostics',
     'sRGB.html': 'sRGB Color Space',
     'shaderToy.html': 'ShaderToy',
-    'sphereEnvMap.html': 'Sphere Environment Map',
     'sphericalHarmonics.html': 'Spherical Harmonics',
     'uniformBufferObject.html': 'Uniform Buffer Objects',
     'update_sub_texture.html': 'Update Sub-texture',
@@ -112,7 +110,9 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'canvas_texture.html': 'Canvas Texture Dashboard',
     'canvas_texture_animation.html': 'Canvas Texture Animation',
     'geometry_primitives.html': 'Geometry Primitives',
-    'pbr2.html': 'PBR Material Lab'
+    'pbr2.html': 'PBR Material Lab',
+    'pbr_layered_materials.html': 'Layered PBR Studio',
+    'gltf_material_extensions.html': 'Khronos Layered Material Gallery'
 });
 
 const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
@@ -151,9 +151,14 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Render a deterministic wave of shared spheres through portable instanced batches.',
     'pointLight.html':
         'Orbit three colored point lights around a reflective sculpture with dynamic shadows.',
-    'bloom.html': 'Build a multi-level HDR bloom chain around a deterministic neon particle helix.',
+    'bloom.html':
+        'Use the engine HDR Bloom and Color Uber pipeline around a deterministic neon particle helix.',
     'pbr2.html':
-        'Compare metallic and roughness response across a dense, environment-lit material matrix.'
+        'Read metallic and roughness response across a controlled 30-sample HDR material studio.',
+    'pbr_layered_materials.html':
+        'Toggle anisotropy, clearcoat, transmission and volume across a cinematic engine-owned HDR material studio.',
+    'gltf_material_extensions.html':
+        'Inspect four curated Khronos glTF assets with anisotropy, clearcoat, iridescence, transmission and thickness-aware volume.'
 });
 
 const FEATURED_PATHS = new Set([
@@ -167,6 +172,8 @@ const FEATURED_PATHS = new Set([
     'geometry_primitives.html',
     'geometry_instanced.html',
     'pbr2.html',
+    'pbr_layered_materials.html',
+    'gltf_material_extensions.html',
     'pointLight.html',
     'shadow.html',
     'bloom.html',
@@ -213,7 +220,11 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'rendering';
     }
     if (/(?:raycast|mesh_picker|mouse_event|webxr)/u.test(normalized)) return 'interaction';
-    if (/(?:pbr|shader|transparent|fog|skybox|refract|snow|spheremap)/u.test(normalized)) {
+    if (
+        /(?:pbr|material_extensions|shader|transparent|fog|skybox|refract|snow|spheremap)/u.test(
+            normalized
+        )
+    ) {
         return 'materials';
     }
     return 'advanced';

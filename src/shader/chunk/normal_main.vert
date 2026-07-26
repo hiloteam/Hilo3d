@@ -1,5 +1,5 @@
 #ifdef HILO_HAS_NORMAL
-    #if defined(HILO_NORMAL_MAP) || defined(HILO_CLEARCOAT_NORMAL_MAP)
+    #if defined(HILO_NORMAL_MAP) || defined(HILO_CLEARCOAT_NORMAL_MAP) || defined(HILO_NEED_TANGENT_BASIS)
         mat3 viewNormalMatrix = mat3(u_viewMatrix) * u_normalWorldMatrix;
         vec3 T = normalize(viewNormalMatrix * tangent.xyz);
         vec3 N = normalize(viewNormalMatrix * normal);
