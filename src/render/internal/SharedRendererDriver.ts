@@ -1402,6 +1402,7 @@ class SharedRendererDriver
         };
         this.#resources = renderingResources;
         this.bindCacheDiagnostics(device, renderingResources);
+        this.renderList.orderedOnly = true;
         this.renderList.useInstanced = this.useInstanced;
     }
 

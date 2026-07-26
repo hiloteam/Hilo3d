@@ -166,7 +166,8 @@ function normalizeCopyOptions(
 function normalizeDrawInputs(
     options: Readonly<OffscreenRenderTargetFrameOptions>,
     planner: MeshDrawListPlanner,
-    result: NormalizedDrawInputs
+    result: NormalizedDrawInputs,
+    context: RenderGraphFrameContext
 ): NormalizedDrawInputs {
     if (options.draws !== undefined && options.opaqueDraws !== undefined) {
         throw new TypeError('Offscreen renderer draws and opaqueDraws are mutually exclusive');
@@ -211,7 +212,12 @@ function normalizeDrawInputs(
     if (classified === undefined) {
         planner.reset();
     } else {
-        const plan = planner.build(classified, forceMaterialOf(options.meshProcessor));
+        const plan = planner.build(
+            classified,
+            forceMaterialOf(options.meshProcessor),
+            true,
+            context.camera
+        );
         opaqueMeshes = plan.opaqueMeshes;
         transparentMeshes = plan.transparentMeshes;
         instancedBatches = plan.instancedBatches;
@@ -507,7 +513,12 @@ export class OffscreenRenderTargetRenderer {
             );
         }
         this.validateContext(context);
-        const inputs = normalizeDrawInputs(options, this.#meshDrawListPlanner, this.#drawInputs);
+        const inputs = normalizeDrawInputs(
+            options,
+            this.#meshDrawListPlanner,
+            this.#drawInputs,
+            context
+        );
         if (inputs.meshProcessor !== null) {
             this.validateMeshProcessor(inputs.meshProcessor, context, meshFrameStarted);
         } else validatePreparedDraws(context, inputs, targetDescriptor);
@@ -669,7 +680,12 @@ export class OffscreenRenderTargetRenderer {
             throw new RangeError('Offscreen color operations exceed the target attachment count');
         }
         this.validateContext(context);
-        const inputs = normalizeDrawInputs(options, this.#meshDrawListPlanner, this.#drawInputs);
+        const inputs = normalizeDrawInputs(
+            options,
+            this.#meshDrawListPlanner,
+            this.#drawInputs,
+            context
+        );
         if (inputs.meshProcessor !== null) {
             this.validateMeshProcessor(inputs.meshProcessor, context);
         } else validatePreparedDraws(context, inputs, targetDescriptor);

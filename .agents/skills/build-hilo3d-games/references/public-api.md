@@ -54,6 +54,7 @@ Common constructor fields:
 - identity and data: `name`, `userData`;
 - transform: `x`, `y`, `z`, `scaleX/Y/Z`, `rotationX/Y/Z`, `pivotX/Y/Z`;
 - behavior: `visible`, `layer`, `pointerEnabled`, `pointerChildren`, `useHandCursor`, `onUpdate`;
+- 2D display order: `sortingLayer`, then `zIndex`, then stable scene-tree order;
 - hierarchy: `parent`.
 
 Common methods:
@@ -151,7 +152,8 @@ const camera = new Hilo3d.Camera2D({
 ```
 
 `Camera2D` uses a top-left origin, right-growing X, and down-growing Y. Call
-`camera.resize(width, height)` after Stage resize.
+`camera.resize(width, height)` after Stage resize. Sprite/Text2D anchors still default to
+`(0.5, 0.5)`; set both anchors to `0` when `x/y` represent a UI element's left/top corner.
 
 ## Loop and time
 

@@ -57,6 +57,13 @@ const END_EVENTS = new Set(['pointerup', 'mouseup', 'touchend']);
 const compareCameraPriority = (left: Camera, right: Camera): number =>
     left.priority - right.priority;
 
+function compare2DDisplayOrder(left: Node, right: Node): number {
+    if (left.sortingLayer !== right.sortingLayer) {
+        return left.sortingLayer - right.sortingLayer;
+    }
+    return left.zIndex - right.zIndex;
+}
+
 function getOutEventType(type: string): string | null {
     if (type.startsWith('pointer')) return 'pointerout';
     if (type.startsWith('mouse')) return 'mouseout';
@@ -754,12 +761,19 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
             if (!camera) continue;
             camera.updateViewProjectionMatrix();
             ray.fromCamera(camera, x, y, this.width, this.height);
-            const hitResult = this.raycast(ray, true, eventMode);
+            const isCamera2D = Reflect.get(camera, 'isCamera2D') === true;
+            const hitResult = this.raycast(ray, !isCamera2D, eventMode);
             if (!hitResult) continue;
+            let top2DHit: NodeRaycastInfo | null = null;
             for (const hit of hitResult) {
                 if (hit instanceof Vector3) continue;
-                if (camera.isLayerVisible(hit.mesh)) return hit;
+                if (!camera.isLayerVisible(hit.mesh)) continue;
+                if (!isCamera2D) return hit;
+                if (top2DHit === null || compare2DDisplayOrder(top2DHit.mesh, hit.mesh) <= 0) {
+                    top2DHit = hit;
+                }
             }
+            if (top2DHit !== null) return top2DHit;
         }
         const camera = this.cameras.at(-1);
         if (!camera) return null;

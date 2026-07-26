@@ -90,7 +90,7 @@ class SpriteFrame {
         target[0] = this.x / textureWidth;
         target[2] = this.width / textureWidth;
         if (this.texture.flipY) {
-            target[1] = 1 - (this.y + this.height) / textureHeight;
+            target[1] = this.y / textureHeight;
             target[3] = this.height / textureHeight;
         } else {
             target[1] = (this.y + this.height) / textureHeight;

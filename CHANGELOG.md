@@ -1,3 +1,32 @@
+# 2.0.0-alpha.2 (2026-07-26)
+
+### Changes
+
+- Add measured-width `Text2D` wrapping for mixed CJK/Latin content, max-line clipping and ellipsis,
+  baseline, paragraph spacing, and letter spacing. Add in-place Sprite source replacement,
+  material-only Sprite initialization, atlas-batched `SlicedSprite`, four-state `UiButton`, and
+  ImageGen-authored responsive text/nine-slice examples for WebGL 2 and WebGPU.
+- Add Node-level `sortingLayer` and `zIndex` for Sprite/Text2D display order, retain stable
+  scene-tree order for ties, make pointer picking select the same topmost 2D node, and restrict
+  transparent instancing to adjacent compatible items so batching cannot reorder interleaved
+  textures. Document the independent top-left Camera2D and centered Sprite-anchor contracts, and add
+  an ImageGen-authored pixel-town example with A* walking, click-to-route interaction, and foot-Y
+  ordering across both backends.
+- Lower the supported development and package runtime floor to Node.js 20.19.0, the shared minimum
+  accepted by Vite 8 and ESLint 10, and pin npm 10.9.4 so the declared package manager also runs on
+  Node 20.
+
+### Fixes
+
+- Correct `SpriteFrame`'s top-left atlas-row offset for `flipY` textures on both backends. Full
+  textures were unaffected, but subframes previously selected the vertically opposite source row,
+  swapping nine-slice top/bottom pieces and requiring reversed character-direction maps. Use a
+  strictly nine-slice-safe postal UI atlas with uniform stretchable edges and deterministically
+  mirrored corners/edge lighting.
+- Expand the game-building skill's coordinate contract: Sprite positions target their anchor in the
+  parent local coordinate system, and the default center anchor does not become top-left merely
+  because Camera2D uses a top-left screen origin.
+
 # 2.0.0-alpha.1 (2026-07-25)
 
 ### Breaking changes

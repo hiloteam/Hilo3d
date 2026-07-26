@@ -16,7 +16,7 @@ with one shared rendering frontend, a Render Graph, a portable RHI, and WebGPU/W
 
 ## Toolchain and generated files
 
-- Use Node.js 22.22.2 or newer and the npm version declared by the repository.
+- Use Node.js 20.19.0 or newer and the npm version declared by the repository.
 - Install with `npm ci`. Use `npm run dev` for engine work and `npm run examples:dev` for examples.
 - `docs/` is generated TypeDoc output. `dist/`, `dist-examples/`, `coverage/`, `site/`, browser
   reports, and test results are also generated. Do not hand-edit or commit them.

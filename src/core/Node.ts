@@ -95,6 +95,14 @@ export interface NodeParameters {
      * camera's `visibility` mask.
      */
     layer?: number;
+    /**
+     * Coarse 2D display layer. Higher values render later.
+     *
+     * This is independent from `layer`, which is a camera-visibility bit mask.
+     */
+    sortingLayer?: number;
+    /** Fine 2D display order within `sortingLayer`. Higher values render later. */
+    zIndex?: number;
     pointerEnabled?: boolean;
     pointerChildren?: boolean;
     useHandCursor?: boolean;
@@ -208,6 +216,8 @@ class Node extends EventDispatcher {
      * `layer` controls per-camera collection for each renderable node.
      */
     layer = 1;
+    private sortingLayerValue = 0;
+    private zIndexValue = 0;
     /**
      * 可视对象是否接受交互事件。默认为接受交互事件，即true。
      */
@@ -283,6 +293,8 @@ class Node extends EventDispatcher {
         node.jointName = this.jointName;
         node.animationId = this.animationId;
         node.layer = this.layer;
+        node.sortingLayer = this.sortingLayer;
+        node.zIndex = this.zIndex;
         node.setPosition(this.x, this.y, this.z);
         node.setScale(this.scaleX, this.scaleY, this.scaleZ);
         node.setRotation(this.rotationX, this.rotationY, this.rotationZ);
@@ -777,6 +789,32 @@ class Node extends EventDispatcher {
      */
     get position(): Vector3Notifier {
         return this._position;
+    }
+    /**
+     * Coarse 2D display layer. Higher values render later.
+     *
+     * Unlike `layer`, this value does not affect Camera visibility. Sprite and Text2D ordering is
+     * stable for equal `sortingLayer` and `zIndex`, so scene-tree traversal order remains the final
+     * tie breaker.
+     */
+    get sortingLayer(): number {
+        return this.sortingLayerValue;
+    }
+    set sortingLayer(value: number) {
+        if (!Number.isSafeInteger(value)) {
+            throw new RangeError('Node.sortingLayer must be a safe integer.');
+        }
+        this.sortingLayerValue = value;
+    }
+    /** Fine 2D display order within `sortingLayer`. Higher values render later. */
+    get zIndex(): number {
+        return this.zIndexValue;
+    }
+    set zIndex(value: number) {
+        if (!Number.isSafeInteger(value)) {
+            throw new RangeError('Node.zIndex must be a safe integer.');
+        }
+        this.zIndexValue = value;
     }
     /**
      * x轴坐标

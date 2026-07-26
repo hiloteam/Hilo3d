@@ -109,10 +109,13 @@ Transparent objects require ordering and often cost overdraw. Prefer:
 - opaque rendering when possible;
 - alpha cutoff for hard-edged sprites, leaves, and fences;
 - fewer large transparent layers;
-- explicit `renderOrder` for semantic UI layers;
+- Node-level `sortingLayer` and `zIndex` for semantic 2D/UI order;
 - premultiplied alpha textures and matching material policy.
 
-Do not use `renderOrder` to hide incorrect depth or blend configuration.
+Do not mutate a shared Sprite material's `renderOrder` to position one 2D object, and do not use
+render ordering to hide incorrect depth or blend configuration. Transparent Sprite batches only
+merge adjacent compatible items after semantic sorting; use atlases to reduce the resulting texture
+boundaries.
 
 ## Use render targets and post-processing only when needed
 
@@ -185,7 +188,7 @@ When the canvas is blank:
 6. add ambient plus directional light for PBR;
 7. test a known unlit BasicMaterial;
 8. inspect backend selection and renderer diagnostics;
-9. test explicit WebGL2 and WebGPU separately.
+9. when backend-specific behavior is in scope, exercise the selected backends separately.
 
 When picking fails:
 

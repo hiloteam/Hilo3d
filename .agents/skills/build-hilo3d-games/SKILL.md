@@ -21,7 +21,7 @@ vertical slice before expanding content.
   use the highest exact `2.0.0-alpha.N`. Never substitute a 1.x, beta, or release candidate.
 - Keep the generated exact version and package lock. Change it only when the user requests a version
   or after verifying compatibility with a newer 2.0.0 release.
-- Use Node.js 22.22.2 or newer for the bundled starter.
+- Use Node.js 20.19.0 or newer for the bundled starter.
 - Import public API only from `hilo3d`.
 - Treat installed declarations at `node_modules/hilo3d/dist/Hilo3d.d.ts` as the final local source
   of truth when a signature is uncertain.
@@ -68,11 +68,18 @@ Read [Starter generator](references/starter-generator.md) when scaffolding or ad
 7. Make resize behavior explicit for the Stage and every active camera.
 8. Add interaction only for objects that need it, and enable only the necessary DOM event types.
 9. Reuse geometry, materials, textures, atlas frames, and scratch math objects in steady-state code.
-10. Validate type safety, production build, both applicable graphics backends, interaction, resize,
-    pause/resume, and teardown.
+10. Validate type safety, the production build, and task-scoped behavior. Defer general browser-game
+    playtesting policy to the containing project's QA workflow.
 
 ## Avoid high-frequency mistakes
 
+- **Never infer Sprite positioning from the Camera origin.** `Camera2D` uses a top-left screen
+  origin, but `Sprite` and `Text2D` default to the center anchor `(0.5, 0.5)`. `sprite.x/y` is the
+  anchor position in the parent's local coordinate system; it is not the image's top-left corner.
+  For UI layouts expressed as left/top coordinates, always set `anchorX: 0, anchorY: 0`; otherwise
+  add half the rendered width/height to the position. Parent transforms still apply. Apply this
+  contract consistently to backgrounds, panels, portraits, titles, and responsive edge layouts; a
+  mismatch commonly clips exactly half of the visual.
 - Hilo3D event listeners receive the base `DispatchEvent` type. Narrow optional pointer fields with
   runtime checks before reading `stageX`, `stageY`, `hitPoint`, or propagation helpers.
 - Pass render-target operations in target-first order:
@@ -165,16 +172,6 @@ npm run typecheck
 npm run build
 ```
 
-Then test:
-
-1. the default `auto` backend;
-2. explicit `?backend=webgl2` and `?backend=webgpu` selection when the app supports query routing;
-3. first load with an empty cache;
-4. resize and high-DPI behavior;
-5. keyboard plus pointer/touch controls;
-6. pause, resume, restart, win/loss, and teardown;
-7. missing or failed assets;
-8. sustained play without increasing draw calls, listeners, or resource counts.
-
-Do not claim a backend passed unless it was actually exercised. If WebGPU is unavailable, report
-that limitation and still test WebGL2.
+Use the containing project's general browser-game QA workflow for runtime, interaction, resize,
+lifecycle, and backend coverage. Keep validation claims precise: do not claim a backend or runtime
+path passed unless it was actually exercised.

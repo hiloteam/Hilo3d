@@ -16,7 +16,7 @@ describe('Text2D', () => {
         const firstTexture = text.frames[0]?.texture;
         const firstTextureRevision = firstTexture?.updateRevision ?? 0;
         const firstWidth = text.width;
-        if (firstMaterial) firstMaterial.renderOrder = 42;
+        firstMaterial.renderOrder = 42;
 
         expect(text.frames).toHaveLength(1);
         expect(text.width).toBeGreaterThan(0);
@@ -31,7 +31,7 @@ describe('Text2D', () => {
         expect(text.material).toBe(firstMaterial);
         expect(text.frames[0]?.texture).toBe(firstTexture);
         expect(text.frames[0]?.texture.updateRevision).toBeGreaterThan(firstTextureRevision);
-        expect(text.material?.renderOrder).toBe(42);
+        expect(text.material.renderOrder).toBe(42);
         expect(text.useInstanced).toBe(true);
     });
 
@@ -63,5 +63,32 @@ describe('Text2D', () => {
         expect(text.frames[0]?.texture).toBe(texture);
         expect(stage.renderer.renderInfo.drawCount).toBe(1);
         stage.destroy();
+    });
+
+    it('wraps measured mixed-language text and supports bounded ellipsis layout', () => {
+        const text = new Hilo3d.Text2D({
+            text: '枫叶镇 Maple Post 2026 快递服务',
+            style: {
+                font: '20px sans-serif',
+                maxWidth: 120,
+                maxLines: 2,
+                overflow: 'ellipsis',
+                lineHeight: 24,
+                letterSpacing: 1,
+                paragraphSpacing: 6,
+                padding: 4
+            }
+        });
+
+        expect(text.width).toBe(128);
+        expect(text.height).toBe(56);
+        expect(text.style.maxWidth).toBe(120);
+        expect(text.style.maxLines).toBe(2);
+
+        text.setStyle({ maxWidth: 220, maxLines: 1, wordWrap: false });
+
+        expect(text.width).toBe(228);
+        expect(text.height).toBe(32);
+        expect(text.frames).toHaveLength(1);
     });
 });

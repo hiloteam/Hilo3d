@@ -50,6 +50,41 @@ describe('RenderList', () => {
         expect(callback).toHaveBeenCalledTimes(7);
     });
 
+    it('preserves camera-visible scene order for the shared draw planner', () => {
+        const first = createMesh(true);
+        const second = createMesh(false);
+        first.useInstanced = true;
+        list.reset();
+        list.useInstanced = true;
+
+        list.addMesh(first, testEnv.camera);
+        list.addMesh(second, testEnv.camera);
+
+        const callback = vi.fn<(mesh: Hilo3d.Mesh) => void>();
+        list.traverse(callback);
+        expect(callback.mock.calls.map(call => call[0])).toEqual([first, second]);
+    });
+
+    it('skips duplicate legacy classification in ordered-only shared-planner mode', () => {
+        const first = createMesh(true);
+        const second = createMesh(false);
+        first.useInstanced = true;
+        list.reset();
+        list.orderedOnly = true;
+        list.useInstanced = true;
+
+        list.addMesh(first, testEnv.camera);
+        list.addMesh(second, testEnv.camera);
+        list.sort();
+
+        expect(list.orderedList).toEqual([first, second]);
+        expect(list.opaqueList).toEqual([]);
+        expect(list.transparentList).toEqual([]);
+        const instancedCallback = vi.fn<(meshes: Hilo3d.Mesh[]) => void>();
+        list.traverse(vi.fn(), instancedCallback);
+        expect(instancedCallback).not.toHaveBeenCalled();
+    });
+
     it('keeps explicitly opted-in transparent meshes on the instanced path', () => {
         const transparent = createMesh(true);
         const material = transparent.material;

@@ -5,10 +5,10 @@ declarations, tests, examples, documentation, and package metadata in sync.
 
 ## Development setup
 
-Use Node.js 22.22.2 or newer and the npm version recorded in `package.json`.
+Use Node.js 20.19.0 or newer and the npm version recorded in `package.json`.
 
 ```sh
-npm install --global npm@12.0.1
+npm install --global npm@10.9.4
 npm ci
 npx playwright install chromium
 npm run validate

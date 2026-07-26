@@ -276,7 +276,9 @@ export class ForwardRenderer {
         if (options.classifiedMeshes !== undefined) {
             const plan = meshDrawListPlanner.build(
                 options.classifiedMeshes,
-                forceMaterialOf(options.meshProcessor)
+                forceMaterialOf(options.meshProcessor),
+                true,
+                context.camera
             );
             opaqueMeshes = plan.opaqueMeshes;
             transparentMeshes = plan.transparentMeshes;

@@ -14,6 +14,7 @@ import {
     Loader,
     Mesh,
     MeshPicker,
+    Node,
     PerspectiveCamera,
     Renderer,
     SCENE_STORAGE_BIND_GROUP,
@@ -33,6 +34,7 @@ import {
     type KTXTextureOptions,
     type LoaderRequest,
     type MeshParameters,
+    type NodeParameters,
     type CullingResultsHandle,
     type ComputeTextureSampleType,
     type ComputeTextureViewDimension,
@@ -66,6 +68,13 @@ import {
     type TextureParameters,
     type TweenParameters
 } from 'hilo3d';
+
+const orderedNodeParameters = {
+    sortingLayer: 100,
+    zIndex: 20
+} satisfies NodeParameters;
+const orderedNode = new Node(orderedNodeParameters);
+orderedNode.zIndex = 21;
 
 const camera = new PerspectiveCamera({ aspect: 16 / 9, near: 0.1, far: 1_000, z: 4 });
 const rendererParameters = {

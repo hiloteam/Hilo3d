@@ -825,6 +825,7 @@ class CullingSlot {
         this.camera = camera;
         this.scene = scene;
         this.used = false;
+        this.renderList.orderedOnly = true;
         this.renderList.useInstanced = useInstanced;
         const plan = this.planner.build(
             scene,
