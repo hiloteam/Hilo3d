@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { applyEnvironmentMaps } from './shared/environment';
+import { addEnvironmentSkybox, applyEnvironmentMaps } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 interface MaterialFamily {
@@ -137,6 +137,7 @@ function layoutMaterialGrid(): void {
 
 async function initializeStudio(): Promise<void> {
     const environment = await loadEnvironmentMaps();
+    addEnvironmentSkybox(stage, environment.skyboxMap);
     const sphereGeometry = new Hilo3d.SphereGeometry({
         radius: 0.48,
         heightSegments: 64,
@@ -167,26 +168,14 @@ async function initializeStudio(): Promise<void> {
         }
     }
 
-    const backdropMaterial = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.008, 0.014, 0.034),
-        metallic: 0.18,
-        roughness: 0.64
-    });
     const floorMaterial = new Hilo3d.PBRMaterial({
         baseColor: new Hilo3d.Color(0.014, 0.021, 0.042),
         metallic: 0.76,
         roughness: 0.3
     });
-    applyEnvironmentMaps([backdropMaterial, floorMaterial], environment);
-    backdropMaterial.diffuseEnvIntensity = 0.18;
-    backdropMaterial.specularEnvIntensity = 0.25;
+    applyEnvironmentMaps([floorMaterial], environment);
     floorMaterial.diffuseEnvIntensity = 0.16;
     floorMaterial.specularEnvIntensity = 0.45;
-    new Hilo3d.Mesh({
-        geometry: new Hilo3d.PlaneGeometry({ width: 24, height: 15 }),
-        material: backdropMaterial,
-        z: -2.2
-    }).addTo(stage);
     new Hilo3d.Mesh({
         geometry: new Hilo3d.PlaneGeometry({ width: 22, height: 11 }),
         material: floorMaterial,

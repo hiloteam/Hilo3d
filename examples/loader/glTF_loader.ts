@@ -95,7 +95,7 @@ function applyEnvironment(model: Hilo3d.GLTFModel, environment: EnvironmentMaps)
         material: new Hilo3d.BasicMaterial({
             lightType: 'NONE',
             side: Hilo3d.constants.BACK,
-            diffuse: environment.specularEnvMap
+            diffuse: environment.skyboxMap
         })
     }).addTo(stage);
     skybox.setScale(20);

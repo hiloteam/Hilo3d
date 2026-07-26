@@ -12,7 +12,7 @@ async function initialize(): Promise<void> {
     applyEnvironmentMaps(model.materials, environment);
     model.node.rotationY = 160;
     stage.addChild(model.node);
-    addEnvironmentSkybox(stage, environment.specularEnvMap);
+    addEnvironmentSkybox(stage, environment.skyboxMap);
 }
 
 void initialize().catch((error: unknown) => {

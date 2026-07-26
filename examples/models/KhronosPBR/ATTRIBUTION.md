@@ -41,4 +41,34 @@ The binary assets in this directory are unmodified copies from
   [CC BY 4.0 International](https://creativecommons.org/licenses/by/4.0/legalcode)
 - SHA-256: `1540b4a36b790a907f4824cfe848ba481b3da3cc8070172b7b3ba178f78a7ed1`
 
+## GlassHurricaneCandleHolder.glb
+
+- Source:
+  [Glass Hurricane Candle Holder](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlassHurricaneCandleHolder)
+- Copyright 2021 Wayfair, LLC; model and textures by Eric Chadwick.
+- License:
+  [CC BY 4.0 International](https://creativecommons.org/licenses/by/4.0/legalcode)
+- SHA-256: `add23791ee6f5f550b94a21232a323720c92c20d280f4f7d19cf954234f0b7b8`
+
+## MosquitoInAmber.glb
+
+- Source:
+  [Mosquito in Amber](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MosquitoInAmber)
+- Model by Loïc Norgeot and mosquito scan by Geoffrey Marchal for Sketchfab.
+- License:
+  [CC BY 4.0 International](https://creativecommons.org/licenses/by/4.0/legalcode)
+- Local processing: unused secondary UV attributes were removed with
+  `@gltf-transform/cli` 4.2.1 so the asset stays within Hilo3D's two-UV-set geometry contract.
+- SHA-256: `a5889653dcf792238956d4885455c815e350e8f8c0db7532ecb09a34c5631285`
+
+## DamagedHelmet.glb
+
+- Source:
+  [Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)
+- Copyright 2018 ctxwing for the rebuild and glTF conversion, licensed under
+  [CC BY 4.0 International](https://creativecommons.org/licenses/by/4.0/legalcode).
+- Based on an earlier model copyright 2016 theblueturtle_, licensed under
+  [CC BY-NC 4.0 International](https://creativecommons.org/licenses/by-nc/4.0/legalcode).
+- SHA-256: `a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8`
+
 The source repository remains the authority for complete model descriptions and legal metadata.

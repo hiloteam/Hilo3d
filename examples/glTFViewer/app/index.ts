@@ -188,11 +188,13 @@ async function initializeModel(model: Hilo3d.GLTFModel, generation: number): Pro
             environment.brdfLUT.destroy();
             environment.diffuseEnvMap.destroy();
             environment.specularEnvMap.destroy();
+            environment.skyboxMap.destroy();
             return;
         }
         viewerOwnedTextures.add(environment.brdfLUT);
         viewerOwnedTextures.add(environment.diffuseEnvMap);
         viewerOwnedTextures.add(environment.specularEnvMap);
+        viewerOwnedTextures.add(environment.skyboxMap);
         model.materials.forEach(material => {
             if (material instanceof Hilo3d.PBRMaterial) {
                 material.brdfLUT = environment.brdfLUT;
@@ -209,7 +211,7 @@ async function initializeModel(model: Hilo3d.GLTFModel, generation: number): Pro
             material: new Hilo3d.BasicMaterial({
                 lightType: 'NONE',
                 side: Hilo3d.constants.BACK,
-                diffuse: environment.specularEnvMap
+                diffuse: environment.skyboxMap
             })
         }).addTo(stage);
         skybox.setScale(20);

@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { applyEnvironmentMaps } from './shared/environment';
+import { addEnvironmentSkybox, applyEnvironmentMaps } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 const ASSETS = {
@@ -10,7 +10,10 @@ const ASSETS = {
         extensions: ['anisotropy', 'clearcoat', 'transmission', 'volume'],
         fitSize: 4.35,
         rotationY: 20,
-        yOffset: 0.1
+        yOffset: 0.1,
+        diffuseEnvIntensity: 0.68,
+        specularEnvIntensity: 0.76,
+        lightProfile: 'standard'
     },
     wicker: {
         name: 'Clearcoat Wicker',
@@ -19,7 +22,10 @@ const ASSETS = {
         extensions: ['clearcoat', 'clearcoat normal'],
         fitSize: 3.35,
         rotationY: -18,
-        yOffset: 0.15
+        yOffset: 0.15,
+        diffuseEnvIntensity: 0.68,
+        specularEnvIntensity: 0.76,
+        lightProfile: 'standard'
     },
     dragon: {
         name: 'Dragon Attenuation',
@@ -28,7 +34,10 @@ const ASSETS = {
         extensions: ['transmission', 'volume', 'thickness texture'],
         fitSize: 4.9,
         rotationY: 0,
-        yOffset: -0.05
+        yOffset: -0.05,
+        diffuseEnvIntensity: 0.9,
+        specularEnvIntensity: 1,
+        lightProfile: 'glass'
     },
     dish: {
         name: 'Iridescent Dish with Olives',
@@ -37,16 +46,53 @@ const ASSETS = {
         extensions: ['iridescence', 'ior', 'transmission', 'volume'],
         fitSize: 4.4,
         rotationY: -24,
-        yOffset: -0.1
+        yOffset: -0.1,
+        diffuseEnvIntensity: 1.05,
+        specularEnvIntensity: 1.15,
+        lightProfile: 'glass'
+    },
+    candle: {
+        name: 'Glass Hurricane Candle Holder',
+        file: 'GlassHurricaneCandleHolder.glb',
+        description: 'Colored glass uses textured thickness, transmission and volume absorption.',
+        extensions: ['transmission', 'volume', 'thickness texture'],
+        fitSize: 4.3,
+        rotationY: 18,
+        yOffset: -0.05,
+        diffuseEnvIntensity: 0.9,
+        specularEnvIntensity: 1,
+        lightProfile: 'glass'
+    },
+    amber: {
+        name: 'Mosquito in Amber',
+        file: 'MosquitoInAmber.glb',
+        description: 'A scanned insect suspended inside refractive amber with a physical IOR.',
+        extensions: ['transmission', 'volume', 'ior'],
+        fitSize: 4,
+        rotationY: -22,
+        yOffset: 0,
+        diffuseEnvIntensity: 0.9,
+        specularEnvIntensity: 1,
+        lightProfile: 'glass'
+    },
+    helmet: {
+        name: 'Damaged Helmet',
+        file: 'DamagedHelmet.glb',
+        description: 'A core metallic-roughness benchmark with detailed normal and emissive maps.',
+        extensions: ['metallic-roughness', 'normal map', 'emissive'],
+        fitSize: 4.3,
+        rotationY: -10,
+        yOffset: 0,
+        diffuseEnvIntensity: 0.88,
+        specularEnvIntensity: 0.98,
+        lightProfile: 'standard'
     }
 } as const;
 
 type AssetKey = keyof typeof ASSETS;
 
 function assetKey(value: string | null): AssetKey | null {
-    return value === 'lamp' || value === 'wicker' || value === 'dragon' || value === 'dish'
-        ? value
-        : null;
+    return value && value in ASSETS ? (value as AssetKey) : null;
 }
 
 function requireElement(selector: string): HTMLElement {
@@ -55,46 +101,14 @@ function requireElement(selector: string): HTMLElement {
     return element;
 }
 
-function require2DContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Khronos material gallery requires Canvas 2D');
-    return context;
-}
-
-function paintStudioBackdrop(
-    context: CanvasRenderingContext2D,
-    width: number,
-    height: number,
-    key: AssetKey
-): void {
-    const isDish = key === 'dish';
-    const background = context.createLinearGradient(0, 0, width, height);
-    background.addColorStop(0, isDish ? '#050d1c' : '#030816');
-    background.addColorStop(0.52, isDish ? '#071a32' : '#05142e');
-    background.addColorStop(1, isDish ? '#020711' : '#02050d');
-    context.fillStyle = background;
-    context.fillRect(0, 0, width, height);
-
-    const softbox = context.createRadialGradient(
-        width * 0.67,
-        height * 0.34,
-        0,
-        width * 0.67,
-        height * 0.34,
-        height * 0.46
-    );
-    softbox.addColorStop(0, isDish ? 'rgba(151, 197, 242, 0.19)' : 'rgba(94, 151, 231, 0.13)');
-    softbox.addColorStop(0.38, isDish ? 'rgba(70, 126, 195, 0.09)' : 'rgba(30, 91, 171, 0.06)');
-    softbox.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    context.fillStyle = softbox;
-    context.fillRect(0, 0, width, height);
-
-    const horizon = context.createLinearGradient(0, height * 0.58, 0, height);
-    horizon.addColorStop(0, 'rgba(255, 255, 255, 0)');
-    horizon.addColorStop(0.62, isDish ? 'rgba(128, 168, 214, 0.05)' : 'rgba(67, 113, 183, 0.04)');
-    horizon.addColorStop(1, 'rgba(0, 0, 0, 0.22)');
-    context.fillStyle = horizon;
-    context.fillRect(0, height * 0.58, width, height * 0.42);
+function describeError(error: unknown): string {
+    const messages: string[] = [];
+    let current = error;
+    while (current instanceof Error) {
+        messages.push(current.message);
+        current = current.cause;
+    }
+    return messages.join(' → ');
 }
 
 const presentationRoot = new Hilo3d.Node();
@@ -137,12 +151,13 @@ const { stage, renderer, directionLight, ambientLight } = await createExampleCon
 presentationRoot.addTo(stage);
 presentationRoot.x = 0.85;
 renderer.clearColor.set(0.003, 0.005, 0.016, 1);
-directionLight.amount = 2.05;
+directionLight.amount = 1.45;
 directionLight.color.set(1, 0.93, 0.86, 1);
 directionLight.direction.set(-0.7, -1, -0.48);
 ambientLight.amount = 0.15;
 
 const environment = await loadEnvironmentMaps();
+addEnvironmentSkybox(stage, environment.skyboxMap);
 
 const floorMaterial = new Hilo3d.PBRMaterial({
     baseColor: new Hilo3d.Color(0.018, 0.026, 0.052),
@@ -158,33 +173,9 @@ new Hilo3d.Mesh({
     rotationX: -90
 }).addTo(stage);
 
-const backdropCanvas = document.createElement('canvas');
-backdropCanvas.width = 1024;
-backdropCanvas.height = 512;
-const backdropContext = require2DContext(backdropCanvas);
-paintStudioBackdrop(backdropContext, backdropCanvas.width, backdropCanvas.height, 'lamp');
-const backdropTexture = new Hilo3d.Texture({
-    image: backdropCanvas,
-    minFilter: Hilo3d.constants.webgl.LINEAR,
-    magFilter: Hilo3d.constants.webgl.LINEAR,
-    wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
-    wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE
-});
-const backdropMaterial = new Hilo3d.BasicMaterial({
-    lightType: 'NONE',
-    diffuse: backdropTexture
-});
-new Hilo3d.Mesh({
-    geometry: new Hilo3d.PlaneGeometry({ width: 18, height: 11 }),
-    material: backdropMaterial,
-    x: 0.8,
-    y: 0.4,
-    z: -3.2
-}).addTo(stage);
-
 const rimLight = new Hilo3d.AreaLight({
     color: new Hilo3d.Color(0.24, 0.58, 1),
-    amount: 2.75,
+    amount: 1.9,
     width: 4,
     height: 3,
     x: 3.8,
@@ -195,7 +186,7 @@ rimLight.lookAt(new Hilo3d.Vector3(0, 0.3, 0));
 
 const warmLight = new Hilo3d.PointLight({
     color: new Hilo3d.Color(1, 0.48, 0.24),
-    amount: 2.8,
+    amount: 1.6,
     range: 12,
     x: -3.6,
     y: 1.4,
@@ -271,12 +262,8 @@ async function getAsset(key: AssetKey): Promise<LoadedAsset> {
     applyEnvironmentMaps(model.materials, environment);
     for (const material of model.materials) {
         if (!(material instanceof Hilo3d.PBRMaterial)) continue;
-        material.diffuseEnvIntensity = 1.18;
-        material.specularEnvIntensity = 1.3;
-        if (key === 'dish') {
-            material.diffuseEnvIntensity = 1.7;
-            material.specularEnvIntensity = 2;
-        }
+        material.diffuseEnvIntensity = asset.diffuseEnvIntensity;
+        material.specularEnvIntensity = asset.specularEnvIntensity;
     }
     const loaded = Object.freeze({
         model,
@@ -298,19 +285,17 @@ async function selectAsset(key: AssetKey): Promise<void> {
         currentNode = loaded.node;
         currentNode.addTo(presentationRoot);
         currentAsset = key;
-        if (key === 'dish') {
-            ambientLight.amount = 0.26;
-            directionLight.amount = 1.55;
-            rimLight.amount = 2.8;
-            warmLight.amount = 1.1;
+        if (ASSETS[key].lightProfile === 'glass') {
+            ambientLight.amount = 0.22;
+            directionLight.amount = 1.25;
+            rimLight.amount = 2.1;
+            warmLight.amount = 0.95;
         } else {
             ambientLight.amount = 0.15;
-            directionLight.amount = 2.05;
-            rimLight.amount = 2.75;
-            warmLight.amount = 2.8;
+            directionLight.amount = 1.45;
+            rimLight.amount = 1.9;
+            warmLight.amount = 1.6;
         }
-        paintStudioBackdrop(backdropContext, backdropCanvas.width, backdropCanvas.height, key);
-        backdropTexture.needUpdate = true;
         presentationRoot.setRotation(0, 0, 0);
         updateMetadata(key, 'ready');
         const url = new URL(location.href);
@@ -328,7 +313,7 @@ for (const button of buttons) {
         if (!key) return;
         void selectAsset(key).catch((error: unknown) => {
             assetStatus.textContent = 'failed';
-            console.error(`Failed to load ${ASSETS[key].name}`, error);
+            console.error(`Failed to load ${ASSETS[key].name}: ${describeError(error)}`);
         });
     });
 }
@@ -339,4 +324,7 @@ presentationRoot.onUpdate = deltaTime => {
 };
 
 const initialAsset = assetKey(new URL(location.href).searchParams.get('asset')) ?? 'lamp';
-await selectAsset(initialAsset);
+await selectAsset(initialAsset).catch((error: unknown) => {
+    assetStatus.textContent = 'failed';
+    console.error(`Failed to load ${ASSETS[initialAsset].name}: ${describeError(error)}`);
+});

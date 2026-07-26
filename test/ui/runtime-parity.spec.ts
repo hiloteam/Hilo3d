@@ -277,7 +277,14 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                 `90-degree gallery orbit must issue a new native ${backend} draw`
             );
 
-            for (const asset of ['wicker', 'dragon', 'dish'] as const) {
+            for (const asset of [
+                'wicker',
+                'dragon',
+                'dish',
+                'candle',
+                'amber',
+                'helmet'
+            ] as const) {
                 const before = await currentProgress(page, backend);
                 await page.locator(`[data-asset="${asset}"]`).click();
                 await expect(body).toHaveAttribute('data-showcase-ready', asset, {

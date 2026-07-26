@@ -26,7 +26,7 @@ async function initialize(): Promise<void> {
         loadEnvironmentMaps()
     ]);
     stage.addChild(model.node);
-    addEnvironmentSkybox(stage, environment.specularEnvMap);
+    addEnvironmentSkybox(stage, environment.skyboxMap);
 
     for (const y of [-0.5, 0.5]) {
         stage.addChild(

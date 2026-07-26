@@ -128,7 +128,7 @@ describe('example release matrix contract', () => {
         }
     });
 
-    it('uses the procedural studio environment instead of legacy LDR cube assets', () => {
+    it('uses the curated CC0 HDR environment instead of legacy LDR cube assets', () => {
         const legacyEnvironmentAssets = [
             'bakedDiffuse_01.jpg',
             'bakedDiffuse_02.jpg',
@@ -151,14 +151,33 @@ describe('example release matrix contract', () => {
             join(examplesDirectory, 'shared', 'init.ts'),
             'utf8'
         );
-        const studioSource = readFileSync(
-            join(examplesDirectory, 'shared', 'studioEnvironment.ts'),
+        const environmentSource = readFileSync(
+            join(examplesDirectory, 'shared', 'defaultEnvironment.ts'),
             'utf8'
         );
-        expect(initializationSource).toContain('createStudioEnvironmentMaps()');
-        expect(studioSource).toContain('function cubeDirection(');
-        expect(studioSource).toContain('createStudioEnvironmentFaceUrls');
-        expect(`${initializationSource}\n${studioSource}`).not.toMatch(
+        const environmentDirectory = join(
+            examplesDirectory,
+            'image',
+            'environment',
+            'ferndale-studio-03'
+        );
+        expect(initializationSource).toContain('loadDefaultEnvironmentMaps()');
+        expect(initializationSource).toContain('loadDefaultSkyboxMap()');
+        expect(environmentSource).toContain("const RGBD_MAGIC = 'H3DRGBD1'");
+        for (const asset of [
+            'diffuse.rgbd',
+            'specular.rgbd',
+            'right.jpg',
+            'left.jpg',
+            'top.jpg',
+            'bottom.jpg',
+            'front.jpg',
+            'back.jpg',
+            'README.md'
+        ]) {
+            expect(existsSync(join(environmentDirectory, asset)), asset).toBe(true);
+        }
+        expect(`${initializationSource}\n${environmentSource}`).not.toMatch(
             /bakedDiffuse_|(?:^|[/_"'])p[xyz]\.jpg|(?:^|[/_"'])n[xyz]\.jpg/u
         );
     });

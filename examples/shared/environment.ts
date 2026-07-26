@@ -17,13 +17,17 @@ export function applyEnvironmentMaps(
 export function addEnvironmentSkybox(
     stage: Hilo3d.Stage,
     texture: Hilo3d.MaterialTexture,
-    scale = 20
+    scale = 40
 ): Hilo3d.Mesh {
     const skybox = new Hilo3d.Mesh({
         geometry: new Hilo3d.BoxGeometry(),
         material: new Hilo3d.BasicMaterial({
             lightType: 'NONE',
             side: Hilo3d.constants.BACK,
+            castShadows: false,
+            receiveShadows: false,
+            depthMask: false,
+            renderOrder: -1000,
             diffuse: texture
         })
     }).addTo(stage);

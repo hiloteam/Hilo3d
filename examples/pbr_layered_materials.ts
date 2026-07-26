@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { applyEnvironmentMaps } from './shared/environment';
+import { addEnvironmentSkybox, applyEnvironmentMaps } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 type FeatureName = 'anisotropy' | 'clearcoat' | 'transmission';
@@ -92,6 +92,7 @@ directionLight.direction.set(-0.65, -1, -0.4);
 ambientLight.amount = 0.08;
 
 const environment = await loadEnvironmentMaps();
+addEnvironmentSkybox(stage, environment.skyboxMap);
 
 const clearcoatNormalMap = createWrinkledNormalTexture();
 const anisotropyMaterial = new Hilo3d.PBRMaterial({

@@ -3,7 +3,7 @@ import type { PerspectiveCameraParameters } from '../../src/camera/PerspectiveCa
 import OrbitControls, { type OrbitControlsOptions } from './OrbitControls';
 import Stats from './stats';
 import { resolveExampleBackend } from './backend';
-import { createStudioEnvironmentMaps } from './studioEnvironment';
+import { loadDefaultEnvironmentMaps, loadDefaultSkyboxMap } from './defaultEnvironment';
 
 export { resolveExampleBackend };
 
@@ -12,6 +12,7 @@ export type QueryValues = Readonly<Record<string, string>>;
 export interface EnvironmentMaps {
     diffuseEnvMap: Hilo3d.CubeTexture;
     specularEnvMap: Hilo3d.CubeTexture;
+    skyboxMap: Hilo3d.CubeTexture;
     brdfLUT: Hilo3d.Texture;
 }
 
@@ -55,13 +56,16 @@ export function buildUrl(
 
 export async function loadEnvironmentMaps(): Promise<EnvironmentMaps> {
     const imageUrl = (name: string): string => new URL(`../image/${name}`, import.meta.url).href;
-    const { diffuseEnvMap, specularEnvMap } = createStudioEnvironmentMaps();
-    const brdfLUT = await new Hilo3d.TextureLoader().load({
-        src: imageUrl('brdfLUT.png'),
-        wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
-        wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE
-    });
-    return { diffuseEnvMap, specularEnvMap, brdfLUT };
+    const [{ diffuseEnvMap, specularEnvMap }, skyboxMap, brdfLUT] = await Promise.all([
+        loadDefaultEnvironmentMaps(),
+        loadDefaultSkyboxMap(),
+        new Hilo3d.TextureLoader().load({
+            src: imageUrl('brdfLUT.png'),
+            wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
+            wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE
+        })
+    ]);
+    return { diffuseEnvMap, specularEnvMap, skyboxMap, brdfLUT };
 }
 
 export const utils = Object.freeze({
