@@ -195,12 +195,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
     });
 }
 
-const fractionalDprExamples = [
-    'renderTarget.html',
-    'bloom.html',
-    'ssao.html',
-    'lifegame.html'
-] as const;
+const fractionalDprExamples = ['renderTarget.html', 'bloom.html', 'lifegame.html'] as const;
 
 for (const deviceScaleFactor of [1.25, 1.5] as const) {
     for (const backend of ['webgl2', 'webgpu'] as const) {

@@ -12,7 +12,7 @@
     color: #f5f7fb;
     font-synthesis: none;
     --gallery-header-height: 64px;
-    --gallery-sidebar-width: 300px;
+    --gallery-sidebar-width: 336px;
     --gallery-border: rgba(255, 255, 255, 0.09);
     --gallery-muted: #98a2b3;
     --gallery-panel: rgba(17, 22, 34, 0.96);
@@ -220,6 +220,38 @@ select:focus-visible {
     border-bottom: 1px solid var(--gallery-border);
 }
 
+.catalogMode {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-bottom: 15px;
+    padding: 4px;
+    border: 1px solid var(--gallery-border);
+    border-radius: 11px;
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.catalogModeButton {
+    min-height: 32px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #7f8999;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    transition:
+        background 140ms ease,
+        color 140ms ease,
+        box-shadow 140ms ease;
+}
+
+.catalogModeButton[aria-pressed='true'] {
+    background: linear-gradient(135deg, rgba(105, 230, 194, 0.17), rgba(68, 99, 255, 0.16));
+    box-shadow: inset 0 0 0 1px rgba(105, 230, 194, 0.13);
+    color: #f6fffc;
+}
+
 .searchLabel {
     display: block;
     margin-bottom: 8px;
@@ -268,6 +300,9 @@ select:focus-visible {
 }
 
 .categoryHeading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin: 0;
     padding: 6px 9px;
     color: #778297;
@@ -275,6 +310,17 @@ select:focus-visible {
     font-weight: 800;
     letter-spacing: 0.09em;
     text-transform: uppercase;
+}
+
+.categoryCount {
+    display: grid;
+    min-width: 18px;
+    height: 18px;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.055);
+    color: #69758a;
+    font-size: 9px;
 }
 
 .categoryList {
@@ -286,19 +332,38 @@ select:focus-visible {
 }
 
 .exampleButton {
-    display: block;
+    display: grid;
+    gap: 3px;
     width: 100%;
     border: 1px solid transparent;
     border-radius: 9px;
     background: transparent;
     color: #cfd5df;
     cursor: pointer;
-    padding: 9px 10px;
+    padding: 10px 11px;
     text-align: left;
     transition:
         background 120ms ease,
         border-color 120ms ease,
         color 120ms ease;
+}
+
+.exampleButtonTitle {
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 690;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.exampleButtonDescription {
+    display: -webkit-box;
+    overflow: hidden;
+    color: #778297;
+    font-size: 10px;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 .exampleButton:hover {
@@ -312,15 +377,12 @@ select:focus-visible {
     color: #fff;
 }
 
-.exampleButton[aria-current='page']::before {
-    display: inline-block;
-    width: 5px;
-    height: 5px;
-    margin: 0 8px 2px 0;
-    border-radius: 50%;
-    background: var(--gallery-accent);
-    box-shadow: 0 0 12px rgba(105, 230, 194, 0.75);
-    content: '';
+.exampleButton[aria-current='page'] .exampleButtonTitle {
+    color: #fff;
+}
+
+.exampleButton[aria-current='page'] .exampleButtonDescription {
+    color: #a8b4c7;
 }
 
 .emptyState {

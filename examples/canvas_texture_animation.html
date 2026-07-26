@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Hilo3d Canvas Animation Texture</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="stylesheet" type="text/css" href="./example.css" />
+        <style>
+            #animation-canvas {
+                position: absolute;
+                left: -10000px;
+                top: 0;
+                opacity: 0;
+                pointer-events: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="container"></div>
+        <canvas id="animation-canvas" width="375" height="667"></canvas>
+        <script type="module" src="./canvas_texture_animation.ts"></script>
+    </body>
+</html>

@@ -31,7 +31,7 @@
   合并资源已就绪的多 pass，并以 submission 内 UBO
   revision 快照保证阴影与多相机数据不会互相覆盖。Shader variant 使用有界结构化 hash 与精确碰撞校验。
 - Vite 负责库与多页面示例构建，Vitest Browser
-  Mode 在真实 Chromium 环境中运行单元测试；Playwright 从示例目录自动收集 83 个 HTML：79 个执行 WebGL
+  Mode 在真实 Chromium 环境中运行单元测试；Playwright 从示例目录自动收集 79 个 HTML：75 个执行 WebGL
   2 + WebGPU，WebXR 明确 WebGL
   2-only，三个 compute/GPU-driven/path-tracing 页面明确 WebGPU-only，并对适用后端执行确定性视觉、交互、后处理与拾取门禁；真实 WebGPU
   adapter/device/pipeline fixture 作为额外的深度验收，而不是 WebGPU 唯一覆盖。
@@ -61,7 +61,7 @@
 | 类型发布 | 手工维护的 namespace/CommonJS 声明                      | `tsc` 从源码 emit，声明 rollup 后由 Bundler/NodeNext 消费配置校验       |
 | API 契约 | JSDoc 静态产物，与源码和包入口脱节                      | TypeDoc 零警告文档 + API Extractor 签名基线                             |
 | 单元测试 | 旧断言、旧 mock、浏览器错误不一定失败                   | Vitest 原生 `expect`/`vi`，Chromium Browser Mode，错误门禁与 V8 覆盖率  |
-| UI 测试  | 少量代表页面 smoke test                                 | 83 个 HTML 自动清单；79 个双后端，WebXR 单页与三个 compute 页明确单后端 |
+| UI 测试  | 少量代表页面 smoke test                                 | 79 个 HTML 自动清单；75 个双后端，WebXR 单页与三个 compute 页明确单后端 |
 | 视觉测试 | 截图比较为空实现                                        | 两个后端共用确定场景、readback 断言、截图基线与像素差异阈值             |
 | 示例     | 旧全局变量、vendor 脚本、远程运行时资源                 | 严格 TS 多页面应用，本地 npm 依赖与本地静态资产                         |
 | 渲染 ABI | WebGL 1/2 分支、GLSL 1.00 转译与逐项 uniform            | portable raster GLSL→Naga→WGSL；受控 Direct WGSL compute 与 storage ABI |
@@ -123,14 +123,14 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 - 删除 AMC 专有扩展；相关演示资产转换为标准 glTF。
 - WebXR 使用标准 WebXR 类型与浏览器 API；当前呈现层是 `XRWebGLLayer`，因此 `webxr.html`
   被明确声明为 WebGL 2-only。它暂不计入 WebGPU 上线门槛，也不会先请求 WebGPU、失败后再回退 WebGL
-  2；其余 79 个 HTML（包括两个画廊入口）均进入双后端门禁。
+  2；其余 75 个 HTML（包括两个画廊入口）均进入双后端门禁。
 - 资源观测统一为 `renderer.resourceManager.getDiagnostics(rootNode?)`
   返回的后端中立快照，包括已跟踪 mesh/resource、当前使用、待销毁数量和 frame 状态。会读取 WebGL 私有 cache 并产生日志副作用的
   `logGLResource()` 已从公共入口和源码删除。
 - 物理示例使用
   `cannon-es`。原 Draco 示例适配器及演示资产已退出：上游只提供 UMD/CommonJS 风格的浏览器 wrapper，而可用的纯 TypeScript 候选无法通过本仓库的严格 TypeScript
   6 声明检查；不通过构建期字符串改写、假声明或 `skipLibCheck` 伪装成现代模块。
-- OSG、SMD、TGA 等示例 loader 都是严格 TypeScript，不再依赖旧 vendor 全局对象。
+- 示例画廊只保留仍能说明当前引擎能力的加载路径。OSG、SMD、TGA 等历史格式示例及其大体积专用资产已经移除；glTF、CanvasTexture、HDR 与压缩纹理示例继续使用严格 TypeScript 和受支持的公共 API。
 - 示例运行时资源来自仓库或 npm 依赖，不依赖第三方 CDN 才能通过测试。
 - Vite 配置不读取、截断或改写 `node_modules`
   中的 UMD/CommonJS 源码；依赖必须提供可直接消费的 ESM 与严格类型契约，否则删除该集成，等待合格实现后再按正常模块边界接入。
@@ -760,13 +760,13 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 83 个 HTML 的后端适用矩阵
+### 79 个 HTML 的后端适用矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前清单固定为 83 个 HTML：其中 79 个页面分别以
+自动生成页面清单，不维护容易漏项的手工白名单。当前清单固定为 79 个 HTML：其中 75 个页面分别以
 `?backend=webgl2` 和 `?backend=webgpu` 运行；`webxr.html` 因浏览器 WebXR 当前使用 `XRWebGLLayer`
 而只运行 WebGL 2；`compute_gpu_driven.html`、`compute_particles.html` 与 `compute_raytracing.html`
-因公开能力明确 WebGPU-only 而只运行 WebGPU，共形成 162 个 page/backend 组合。四个单后端页面都是创建前的显式产品边界，不是初始化失败后的 runtime
+因公开能力明确 WebGPU-only 而只运行 WebGPU，共形成 154 个 page/backend 组合。四个单后端页面都是创建前的显式产品边界，不是初始化失败后的 runtime
 fallback。
 
 每个组合都必须通过以下检查：
@@ -795,7 +795,7 @@ Viewer 则比较替换前后实际模型渲染的 readback。页面、request/re
 graphics 与 uncaptured GPU
 error 门禁一直保持到交互和 pagehide 清理完成，最后再等待稳定帧做终态采样。video 示例在 WebGL
 2/WebGPU 上都必须从本地媒体资源产生真实 draw，且无 GPU
-validation 或 decoder-backing 上传错误。`renderTarget`、bloom、SSAO、life-game 还在 DPR
+validation 或 decoder-backing 上传错误。`renderTarget`、bloom、life-game 还在 DPR
 1.25/1.5 下验证取整后的 backing size、真实 draw 和相同终态错误门禁，避免非整数尺寸进入 GPU
 descriptor。CI 使用单 worker控制 SwiftShader GPU/内存峰值；没有重试或吞错来掩盖失败。
 
@@ -804,7 +804,7 @@ target 做两次显式 readback，断言彩色像素、pointer 坐标、输出 h
 draw/submit；普通示例门禁因此不再重复加载同一重型 ray-march 页面。这个唯一例外仍在两个后端保留 GPU
 health、页面、网络、console、DevTools graphics 与终态稳定帧门禁，并由
 `DEDICATED_RELEASE_TEST_EXAMPLE_PATHS`
-契约锁定；通用门禁与专用门禁合计仍覆盖完整的 162 个 page/backend 组合。由于该 ray-march 交互在 GitHub
+契约锁定；通用门禁与专用门禁合计仍覆盖完整的 154 个 page/backend 组合。由于该 ray-march 交互在 GitHub
 hosted runner 上成本过高，GitHub
 Actions 明确跳过这一个专用用例；本地与发布前完整 Playwright 门禁仍会执行它。
 
@@ -928,7 +928,7 @@ npm run validate
 
 `validate` 按顺序执行：清理生成物、旧 JavaScript/旧工具配置门禁、格式检查、typed
 lint、全部 TypeScript project
-references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、83 个 HTML 后端适用矩阵（79 个双后端、WebXR 显式 WebGL
+references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、79 个 HTML 后端适用矩阵（75 个双后端、WebXR 显式 WebGL
 2-only、三个 compute/GPU-driven/path-tracing 页面显式 WebGPU-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
 
 其中 shader 静态门禁会扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00
@@ -953,7 +953,7 @@ corpus 与真实 WebGPU pipeline 互为补充。
 - [x] 公共声明从源码生成，API 文档与 API report 同源。
 - [x] 单一 ESM 入口、类型、source map、package exports 与真实 tarball 一致。
 - [x] 浏览器单测执行完整源码覆盖率门禁，阈值面向 `src/**/*.ts`，不排除 renderer 或 WebGPU 核心目录。
-- [x] 自动清单包含 83 个 HTML；79 个通过 WebGL 2 + WebGPU，WebXR 显式 WebGL
+- [x] 自动清单包含 79 个 HTML；75 个通过 WebGL 2 + WebGPU，WebXR 显式 WebGL
       2-only，三个 compute/GPU-driven/path-tracing 页面显式 WebGPU-only；适用组合都经过页面、请求、控制台与 GPU 错误门禁。
 - [x] 同一确定 PBR 场景和关键交互在两个后端都有 readback/截图或行为断言；WebGPU 不只依赖独立 fixture。
 - [x] `Stage.create()` 默认用无 device/resource 分配的 adapter probe 实现 WebGPU-first `auto`；显式

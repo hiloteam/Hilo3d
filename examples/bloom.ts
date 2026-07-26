@@ -206,7 +206,7 @@ for (let level = 0; level < BLOOM_LEVEL_COUNT; level++) {
     });
 }
 
-let bloomStrength = 1;
+let bloomStrength = 1.35;
 const compositeLayout = Hilo3d.createStd140Layout({
     u_strength: 'float',
     u_exposure: 'float',
@@ -215,9 +215,9 @@ const compositeLayout = Hilo3d.createStd140Layout({
 });
 const compositeBlock = Hilo3d.UniformBuffer.fromSchema(compositeLayout, {
     u_strength: bloomStrength,
-    u_exposure: 0.8,
-    u_levelWeights: [1, 0.8, 0.6, 0.4],
-    u_levelWeight4: 0.2
+    u_exposure: 0.72,
+    u_levelWeights: [1, 0.9, 0.75, 0.58],
+    u_levelWeight4: 0.42
 });
 
 function bloomTexture(levelIndex: number): Hilo3d.Texture<unknown> {
@@ -260,46 +260,64 @@ function resizePipelineTargets(): void {
     });
 }
 
-function random(min: number, max: number): number {
-    return Math.random() * (max - min) + min;
-}
-
 function initScene(): void {
-    camera.far = 5;
-    stage.rotationX = 25;
+    camera.far = 20;
+    camera.z = 4.35;
+    camera.lookAt(new Hilo3d.Vector3());
+    renderer.clearColor.set(0.002, 0.004, 0.012, 1);
 
-    const boxGeometry = new Hilo3d.BoxGeometry();
-    boxGeometry.setAllRectUV([
-        [0, 1],
-        [1, 1],
-        [1, 0],
-        [0, 0]
-    ]);
-    const sphereGeometry = new Hilo3d.SphereGeometry({ radius: 0.7 });
+    const root = new Hilo3d.Node().addTo(stage);
+    const sphereGeometry = new Hilo3d.SphereGeometry({
+        radius: 0.11,
+        heightSegments: 14,
+        widthSegments: 18
+    });
+    const cyanMaterial = new Hilo3d.BasicMaterial({
+        lightType: 'NONE',
+        diffuse: new Hilo3d.Color(0.35, 2.2, 2.5)
+    });
+    const violetMaterial = new Hilo3d.BasicMaterial({
+        lightType: 'NONE',
+        diffuse: new Hilo3d.Color(1.5, 0.36, 2.4)
+    });
+    const warmMaterial = new Hilo3d.BasicMaterial({
+        lightType: 'NONE',
+        diffuse: new Hilo3d.Color(2.5, 0.72, 0.2)
+    });
+    const materials = [cyanMaterial, violetMaterial, warmMaterial] as const;
 
-    for (let index = 0; index < 50; index++) {
-        const speed = random(0.5, 1);
-        const colorMesh = new Hilo3d.Mesh({
-            geometry: random(0, 1) > 0.5 ? boxGeometry : sphereGeometry,
-            material: new Hilo3d.BasicMaterial({
-                lightType: 'NONE',
-                diffuse: new Hilo3d.Color(random(0.5, 1), random(0.5, 1), random(0.5, 1))
-            }),
-            x: random(-1.5, 1.5),
-            y: random(-1.5, 1.5),
-            z: random(-1.5, 1.5)
-        });
-        colorMesh.onUpdate = () => {
-            colorMesh.rotationX += speed;
-            colorMesh.rotationY += speed;
-        };
-        colorMesh.setScale(random(0.05, 0.08));
-        stage.addChild(colorMesh);
+    const particleCount = 72;
+    for (let index = 0; index < particleCount; index += 1) {
+        const progress = index / particleCount;
+        const angle = progress * Math.PI * 8;
+        const radius = 0.75 + progress * 1.55;
+        const material = materials[index % materials.length];
+        if (!material) throw new RangeError('Missing bloom particle material');
+        const mesh = new Hilo3d.Mesh({
+            geometry: sphereGeometry,
+            material,
+            x: Math.cos(angle) * radius,
+            y: (progress - 0.5) * 3.2,
+            z: Math.sin(angle) * radius * 0.42
+        }).addTo(root);
+        mesh.setScale(0.65 + (index % 5) * 0.11);
     }
 
-    stage.onUpdate = function () {
-        this.rotationX += 0.5;
-        this.rotationY += 0.5;
+    const core = new Hilo3d.Mesh({
+        geometry: new Hilo3d.BoxGeometry({ width: 0.8, height: 0.8, depth: 0.8 }),
+        material: new Hilo3d.BasicMaterial({
+            lightType: 'NONE',
+            diffuse: new Hilo3d.Color(1.2, 0.42, 2.1)
+        }),
+        rotationX: 35,
+        rotationY: 45
+    }).addTo(root);
+
+    root.onUpdate = deltaTime => {
+        root.rotationY += deltaTime * 0.018;
+        root.rotationZ += deltaTime * 0.006;
+        core.rotationX += deltaTime * 0.02;
+        core.rotationY -= deltaTime * 0.014;
     };
 }
 
@@ -308,14 +326,14 @@ initScene();
 const bloomAnimation = { value: 0 };
 Hilo3d.Tween.to(
     bloomAnimation,
-    { value: 0.8 },
+    { value: 0.65 },
     {
         ease: Hilo3d.Tween.Ease.Quad.EaseOut,
         duration: 1000,
         loop: true,
         reverse: true,
         onUpdate: () => {
-            bloomStrength = bloomAnimation.value;
+            bloomStrength = 1.1 + bloomAnimation.value;
         }
     }
 );

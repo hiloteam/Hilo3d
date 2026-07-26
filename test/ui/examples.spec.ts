@@ -341,10 +341,21 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`example gallery discovers every ${backend} page @${backend}`, async ({ page }) => {
         await page.goto(`/examples/list.html?backend=${backend}`, { waitUntil: 'networkidle' });
         const expected = examplesForBackend(createExampleCatalog(examplePaths), backend);
+        const expectedHighlights = expected.filter(entry => entry.featured);
         const navigationItems = page.locator('#exampleNavigation .exampleButton');
         expect(
-            await navigationItems.evaluateAll(items => items.map(item => item.textContent))
-        ).toEqual(expected.map(entry => entry.title));
+            await page
+                .locator('#exampleNavigation .exampleButtonTitle')
+                .evaluateAll(items => items.map(item => item.textContent))
+        ).toEqual(expectedHighlights.map(entry => entry.title));
+        expect(
+            await navigationItems.evaluateAll(items =>
+                items.map(item => (item as HTMLElement).dataset['examplePath'])
+            )
+        ).toEqual(expectedHighlights.map(entry => entry.path));
+
+        await page.locator('#allMode').click();
+        await expect(navigationItems).toHaveCount(expected.length);
         expect(
             await navigationItems.evaluateAll(items =>
                 items.map(item => (item as HTMLElement).dataset['examplePath'])
@@ -358,9 +369,9 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
             new RegExp(`[?&]backend=${backend}(?:&|$)`, 'u')
         );
 
-        await page.locator('#exampleSearch').fill('Geometry Box');
+        await page.locator('#exampleSearch').fill('Geometry Primitives');
         await expect(navigationItems).toHaveCount(1);
-        await page.locator('[data-example-path="geometry_box.html"]').click();
+        await page.locator('[data-example-path="geometry_primitives.html"]').click();
         await expect(page.frameLocator('#exampleFrame').locator('.hilo3dStats')).toContainText(
             `renderBackend: ${backend === 'webgl2' ? 'WebGL 2' : 'WebGPU'}`
         );
@@ -597,7 +608,7 @@ test.describe('WebGL render-health browser contract', () => {
 test.describe('WebGPU render-health browser contract', () => {
     test('fences every tracked native GPUQueue before the final snapshot', async ({ page }) => {
         await installRenderHealthProbe(page);
-        await page.goto('/examples/math.html?backend=webgpu', { waitUntil: 'networkidle' });
+        await page.goto('/test/ui/fixtures/blank.html', { waitUntil: 'networkidle' });
         await page.evaluate(async () => {
             const adapter = await navigator.gpu.requestAdapter({ forceFallbackAdapter: false });
             if (!adapter) throw new Error('WebGPU queue-fence fixture requires an adapter.');

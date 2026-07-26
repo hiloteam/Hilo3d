@@ -1,101 +1,124 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { camera, stage, directionLight, ambientLight } = await createExampleContext();
+const { camera, stage, renderer, directionLight, ambientLight } = await createExampleContext({
+    camera: { far: 40, near: 0.1, x: 0, y: 1.85, z: 6.4 },
+    controls: { isLockMove: false, isLockZ: false }
+});
+camera.lookAt(new Hilo3d.Vector3(0, 0.1, 0));
+renderer.clearColor.set(0.005, 0.008, 0.02, 1);
+directionLight.amount = 0.45;
+ambientLight.amount = 0.12;
 
-camera.fov = 45;
-camera.near = 1;
-camera.far = 1000;
-camera.position.set(0, 10, 40);
-
-directionLight.enabled = false;
-ambientLight.enabled = false;
-
-const createWall = (): Hilo3d.Mesh => {
-    const geometry = new Hilo3d.BoxGeometry({
-        width: 30,
-        height: 30,
-        depth: 30
-    });
-
-    const material = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color().fromHEX('fff'),
-        side: Hilo3d.constants.BACK,
+new Hilo3d.Mesh({
+    y: -1.25,
+    rotationX: -90,
+    geometry: new Hilo3d.PlaneGeometry(),
+    material: new Hilo3d.PBRMaterial({
+        baseColorMap: new Hilo3d.LazyTexture({
+            src: new URL('./image/hilo-showroom-grid-v2.jpg', import.meta.url).href
+        }),
+        baseColor: new Hilo3d.Color(0.2, 0.24, 0.34),
+        metallic: 0.28,
+        roughness: 0.6,
         castShadows: false,
         receiveShadows: true
-    });
-
-    const mesh = new Hilo3d.Mesh({
-        geometry,
-        material,
-        y: 10
-    });
-
-    return mesh;
-};
-
-let lightNum = 0;
-const sphereGeometry = new Hilo3d.SphereGeometry();
-const boxGeometry = new Hilo3d.BoxGeometry();
-const boxMaterial = new Hilo3d.PBRMaterial({
-    castShadows: true,
-    receiveShadows: true,
-    roughness: 0.5,
-    metallic: 0
-});
-const createLight = (color: Hilo3d.Color): Hilo3d.PointLight => {
-    lightNum += 1;
-    const amount = 100 + 2 * Math.random();
-    let time = lightNum * 666;
-
-    const pointLight = new Hilo3d.PointLight({
-        color,
-        amount,
-        range: 100,
-        shadow: { minBias: 0.1 },
-        rotationZ: 240
-    });
-    pointLight.onUpdate = deltaTime => {
-        time += deltaTime * 0.001;
-        pointLight.x = Math.sin(time * 0.6) * 9;
-        pointLight.y = Math.sin(time * 0.7) * 9;
-        pointLight.z = Math.sin(time * 0.8) * 9;
-        pointLight.rotationX = time * 50;
-        pointLight.rotationZ = time * 50;
-    };
-
-    // light mesh
-    new Hilo3d.Mesh({
-        geometry: sphereGeometry,
-        material: new Hilo3d.BasicMaterial({
-            diffuse: new Hilo3d.Color(color.r, color.g, color.b, color.a).scale(amount),
-            lightType: 'NONE',
-            castShadows: false,
-            receiveShadows: false
-        })
     })
-        .setScale(0.3)
-        .addTo(pointLight);
+})
+    .setScale(8)
+    .addTo(stage);
 
-    // box mesh
-    const orbitingMesh = new Hilo3d.Mesh({
-        geometry: Math.random() > 0.4 ? boxGeometry : sphereGeometry,
-        material: boxMaterial,
-        y: Math.random() * 2 + 3,
-        rotationX: Math.random() * 360,
-        rotationY: Math.random() * 360,
-        rotationZ: Math.random() * 360
-    });
-    orbitingMesh.onUpdate = () => {
-        orbitingMesh.rotationX += 1;
-        orbitingMesh.rotationY += 1;
+const sculpture = new Hilo3d.Node({ y: -0.1 }).addTo(stage);
+const sphereGeometry = new Hilo3d.SphereGeometry({
+    radius: 0.46,
+    heightSegments: 24,
+    widthSegments: 32
+});
+const boxGeometry = new Hilo3d.BoxGeometry({ width: 0.76, height: 0.76, depth: 0.76 });
+const materials = [
+    new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.13, 0.18, 0.28),
+        metallic: 0.88,
+        roughness: 0.16
+    }),
+    new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.36, 0.42, 0.56),
+        metallic: 0.25,
+        roughness: 0.32
+    })
+] as const;
+
+const sculpturePositions = [
+    [-1.6, -0.35, 0],
+    [-0.8, 0.35, -0.35],
+    [0, -0.28, 0.25],
+    [0.82, 0.42, -0.2],
+    [1.62, -0.3, 0.1]
+] as const;
+sculpturePositions.forEach((position, index) => {
+    const [x, y, z] = position;
+    const material = materials[index % materials.length];
+    if (!material) throw new RangeError('Missing sculpture material');
+    const mesh = new Hilo3d.Mesh({
+        x,
+        y,
+        z,
+        rotationX: index * 19,
+        rotationY: index * 31,
+        geometry: index % 2 === 0 ? sphereGeometry : boxGeometry,
+        material
+    }).addTo(sculpture);
+    mesh.onUpdate = deltaTime => {
+        mesh.rotationY += deltaTime * (0.012 + index * 0.0015);
+        mesh.rotationX += deltaTime * 0.006;
     };
-    orbitingMesh.addTo(pointLight).setScale(1);
+});
 
-    return pointLight;
-};
+const lightSpecs = [
+    {
+        color: new Hilo3d.Color(0.1, 0.68, 1),
+        radius: 2.6,
+        speed: 0.00042,
+        phase: 0
+    },
+    {
+        color: new Hilo3d.Color(1, 0.18, 0.48),
+        radius: 3.1,
+        speed: -0.00034,
+        phase: Math.PI * 0.66
+    },
+    {
+        color: new Hilo3d.Color(0.42, 1, 0.58),
+        radius: 2.25,
+        speed: 0.0005,
+        phase: Math.PI * 1.3
+    }
+] as const;
 
-const wall = createWall().addTo(stage);
-createLight(new Hilo3d.Color().fromHEX('0000ff')).addTo(wall);
-createLight(new Hilo3d.Color().fromHEX('ff0000')).addTo(wall);
-createLight(new Hilo3d.Color().fromHEX('00ff00')).addTo(wall);
+lightSpecs.forEach((spec, index) => {
+    let elapsed = 0;
+    const light = new Hilo3d.PointLight({
+        amount: 24,
+        range: 9,
+        color: spec.color,
+        ...(index === 0 ? { shadow: { minBias: 0.001, maxBias: 0.02 } } : {})
+    }).addTo(stage);
+    new Hilo3d.Mesh({
+        geometry: new Hilo3d.SphereGeometry({
+            radius: 0.09,
+            heightSegments: 12,
+            widthSegments: 16
+        }),
+        material: new Hilo3d.BasicMaterial({
+            diffuse: new Hilo3d.Color(spec.color.r * 2.4, spec.color.g * 2.4, spec.color.b * 2.4),
+            lightType: 'NONE'
+        })
+    }).addTo(light);
+    light.onUpdate = deltaTime => {
+        elapsed += deltaTime;
+        const angle = spec.phase + elapsed * spec.speed;
+        light.x = Math.cos(angle) * spec.radius;
+        light.z = Math.sin(angle) * spec.radius + 0.8;
+        light.y = 1.25 + Math.sin(angle * 1.7 + index) * 1.05;
+    };
+});

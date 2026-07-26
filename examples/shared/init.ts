@@ -154,7 +154,7 @@ export async function createExampleContext(
     const backend = options.backend ?? resolveExampleBackend();
     const stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
         backend,
-        clearColor: new Hilo3d.Color(0.3, 0.35, 0.35),
+        clearColor: new Hilo3d.Color(0.008, 0.012, 0.028),
         width,
         height,
         antialias: false,
@@ -167,14 +167,15 @@ export async function createExampleContext(
 
     const renderer = stage.renderer;
     const directionLight = new Hilo3d.DirectionalLight({
-        color: new Hilo3d.Color(1, 1, 1),
-        direction: new Hilo3d.Vector3(0, -1, 0)
+        color: new Hilo3d.Color(0.86, 0.92, 1),
+        amount: 3.2,
+        direction: new Hilo3d.Vector3(-0.7, -1, -0.35)
     });
     directionLight.addTo(stage);
 
     const ambientLight = new Hilo3d.AmbientLight({
-        color: new Hilo3d.Color(1, 1, 1),
-        amount: 0.5
+        color: new Hilo3d.Color(0.42, 0.48, 0.68),
+        amount: 0.42
     });
     ambientLight.addTo(stage);
 

@@ -59,11 +59,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(89);
+        expect(examplePaths).toHaveLength(79);
     });
 
-    it('expands 89 pages into the complete 174-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(174);
+    it('expands 79 pages into the complete 154-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(154);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -86,7 +86,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(87);
+        expect(catalog).toHaveLength(77);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -95,8 +95,10 @@ describe('example release matrix contract', () => {
             new Set(EXAMPLE_CATEGORIES.map(category => category.id))
         );
         expect(catalog[0]?.id).toBe('quickStart');
-        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(84);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(86);
+        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(74);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(76);
+        expect(catalog.filter(entry => entry.featured).length).toBeGreaterThan(12);
+        expect(catalog.filter(entry => entry.featured).length).toBeLessThan(catalog.length);
         expect(
             examplesForBackend(catalog, 'webgpu').some(entry => entry.path === 'webxr.html')
         ).toBe(false);
@@ -133,7 +135,7 @@ describe('example release matrix contract', () => {
             'compute_particles.html',
             'compute_raytracing.html'
         ]);
-        expect(NON_RENDERING_EXAMPLE_PATHS).toEqual(['math.html']);
+        expect(NON_RENDERING_EXAMPLE_PATHS).toEqual([]);
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual(['shaderToy.html']);
         expect(exampleUsesDedicatedReleaseTest('shaderToy.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('quickStart.html')).toBe(false);
@@ -143,7 +145,7 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(172);
+        expect(genericCases).toHaveLength(152);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());
