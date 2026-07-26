@@ -45,11 +45,12 @@ function createWrinkledNormalTexture(): Hilo3d.Texture {
 }
 
 const galleryRoot = new Hilo3d.Node();
-const { stage, camera, renderer, directionLight, ambientLight } = await createExampleContext({
+const { stage, renderer, directionLight, ambientLight } = await createExampleContext({
     camera: {
         fov: 42,
         near: 0.1,
         far: 60,
+        y: 0.5,
         z: 8.4
     },
     stage: {
@@ -75,18 +76,15 @@ const { stage, camera, renderer, directionLight, ambientLight } = await createEx
         })
     },
     controls: {
-        model: galleryRoot,
-        isLockMove: true,
-        isLockZ: true,
-        isLockScale: false,
-        rotationXLimit: 0.5
+        enablePan: false,
+        target: new Hilo3d.Vector3(0.25, 0.25, 0),
+        minPolarAngle: Math.PI / 2 - 0.5,
+        maxPolarAngle: Math.PI / 2 + 0.5
     }
 });
 
 galleryRoot.addTo(stage);
 galleryRoot.x = 0.7;
-camera.y = 0.5;
-camera.lookAt(new Hilo3d.Vector3(0.25, 0.25, 0));
 renderer.clearColor.set(0.003, 0.006, 0.018, 1);
 directionLight.amount = 1.8;
 directionLight.color.set(1, 0.82, 0.65, 1);

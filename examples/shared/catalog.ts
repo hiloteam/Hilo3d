@@ -87,7 +87,6 @@ const WEBGPU_ONLY = ['webgpu'] as const;
 
 const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'MultiSampledRenderbuffers.html': 'Multisampled Renderbuffers',
-    'cubeTexture_HDR.html': 'HDR Cube Texture',
     'glTFViewer/index.html': 'glTF Viewer',
     'loader/glTF_clone.html': 'glTF Clone',
     'loader/glTF_loader.html': 'glTF Loader',
@@ -95,7 +94,6 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'resourceManagerTest.html': 'Resource Manager Diagnostics',
     'sRGB.html': 'sRGB Color Space',
     'shaderToy.html': 'ShaderToy',
-    'sphereEnvMap.html': 'Sphere Environment Map',
     'sphericalHarmonics.html': 'Spherical Harmonics',
     'uniformBufferObject.html': 'Uniform Buffer Objects',
     'update_sub_texture.html': 'Update Sub-texture',

@@ -98,11 +98,12 @@ function paintStudioBackdrop(
 }
 
 const presentationRoot = new Hilo3d.Node();
-const { stage, camera, renderer, directionLight, ambientLight } = await createExampleContext({
+const { stage, renderer, directionLight, ambientLight } = await createExampleContext({
     camera: {
         fov: 40,
         near: 0.05,
         far: 80,
+        y: 0.35,
         z: 7.6
     },
     stage: {
@@ -128,18 +129,13 @@ const { stage, camera, renderer, directionLight, ambientLight } = await createEx
         })
     },
     controls: {
-        model: presentationRoot,
-        isLockMove: true,
-        isLockZ: true,
-        isLockScale: false,
-        rotationXLimit: Math.PI / 2
+        enablePan: false,
+        target: new Hilo3d.Vector3(0.3, 0.2, 0)
     }
 });
 
 presentationRoot.addTo(stage);
 presentationRoot.x = 0.85;
-camera.y = 0.35;
-camera.lookAt(new Hilo3d.Vector3(0.3, 0.2, 0));
 renderer.clearColor.set(0.003, 0.005, 0.016, 1);
 directionLight.amount = 2.05;
 directionLight.color.set(1, 0.93, 0.86, 1);

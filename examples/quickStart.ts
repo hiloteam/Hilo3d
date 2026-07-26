@@ -1,6 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
+import OrbitControls from './shared/OrbitControls';
 import { resolveExampleBackend } from './shared/init';
 
+const cameraTarget = new Hilo3d.Vector3(0, 0.35, 0);
 const camera = new Hilo3d.PerspectiveCamera({
     aspect: innerWidth / innerHeight,
     far: 40,
@@ -9,7 +11,6 @@ const camera = new Hilo3d.PerspectiveCamera({
     y: 1.65,
     z: 5
 });
-camera.lookAt(new Hilo3d.Vector3(0, 0.35, 0));
 const container = document.querySelector<HTMLElement>('#container');
 if (!container) throw new Error('Quick start example requires #container');
 
@@ -21,6 +22,12 @@ const stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
     height: innerHeight,
     antialias: true,
     clearColor: new Hilo3d.Color(0.008, 0.012, 0.028)
+});
+const orbitControls = new OrbitControls(stage, {
+    target: cameraTarget,
+    enablePan: false,
+    minDistance: 2,
+    maxDistance: 12
 });
 
 new Hilo3d.Mesh({
@@ -119,7 +126,13 @@ const ticker = new Hilo3d.Ticker(60);
 ticker.addTick(stage);
 ticker.start();
 
-window.addEventListener('resize', () => {
+const handleResize = (): void => {
     camera.aspect = innerWidth / innerHeight;
     stage.resize(innerWidth, innerHeight);
+};
+window.addEventListener('resize', handleResize);
+window.addEventListener('beforeunload', () => {
+    window.removeEventListener('resize', handleResize);
+    orbitControls.dispose();
+    ticker.stop();
 });

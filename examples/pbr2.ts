@@ -37,7 +37,7 @@ const metallicStops = [0, 0.18, 0.36, 0.58, 0.8, 1] as const;
 const roughnessStops = [0.08, 0.2, 0.38, 0.58, 0.82] as const;
 const materialRoot = new Hilo3d.Node();
 
-const { stage, camera, renderer, directionLight, ambientLight } = await createExampleContext({
+const { stage, renderer, directionLight, ambientLight } = await createExampleContext({
     camera: {
         fov: 38,
         near: 0.05,
@@ -66,17 +66,16 @@ const { stage, camera, renderer, directionLight, ambientLight } = await createEx
         })
     },
     controls: {
-        model: materialRoot,
-        isLockMove: true,
-        isLockZ: true,
-        isLockScale: true,
-        rotationXLimit: 0.22
+        enablePan: false,
+        enableZoom: false,
+        target: new Hilo3d.Vector3(0.85, 0.05, 0),
+        minPolarAngle: Math.PI / 2 - 0.22,
+        maxPolarAngle: Math.PI / 2 + 0.22
     }
 });
 
 materialRoot.addTo(stage);
 materialRoot.rotationY = -7;
-camera.lookAt(new Hilo3d.Vector3(0.85, 0.05, 0));
 renderer.clearColor.set(0.0025, 0.004, 0.011, 1);
 
 directionLight.amount = 0.52;

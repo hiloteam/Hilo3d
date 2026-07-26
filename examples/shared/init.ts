@@ -126,8 +126,7 @@ export async function createExampleContext(
     ticker.addTick(Hilo3d.Animation);
     const stats = new Stats(ticker, renderer);
     const orbitControls = new OrbitControls(stage, {
-        isLockMove: true,
-        isLockZ: true,
+        enablePan: false,
         ...options.controls
     });
 
@@ -152,7 +151,7 @@ export async function createExampleContext(
         orbitControls,
         dispose(): void {
             window.removeEventListener('resize', handleResize);
-            orbitControls.disable();
+            orbitControls.dispose();
             stats.stop();
             ticker.stop();
             stage.destroy();
