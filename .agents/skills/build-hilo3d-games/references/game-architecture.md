@@ -224,11 +224,11 @@ Keep simulation functions free of DOM and GPU dependencies where practical. Unit
 - fixed-step behavior;
 - restart determinism.
 
-Browser-test:
+Integration-test as required by the containing project:
 
 - asset loading and first frame;
 - input routing and picking;
 - backend selection;
 - resize and device pixel ratio;
 - pause/resume after focus loss;
-- WebGL2/WebGPU parity where supported.
+- backend parity when it is in scope.

@@ -79,8 +79,8 @@ portrait.y = panelTop + portrait.height * 0.5;
 ```
 
 Apply the same rule to cover backgrounds, panels, portraits, titles, and bottom/right-aligned HUD
-items. Browser-check every responsive edge: an anchor mismatch often clips exactly half of a visual
-while arithmetic and hit boxes otherwise look plausible.
+items. Check every required responsive edge size: an anchor mismatch often clips exactly half of a
+visual while arithmetic and hit boxes otherwise look plausible.
 
 For nested UI, keep the same contract at every level:
 
@@ -155,10 +155,10 @@ controls upload/sampling orientation and does not change this atlas-coordinate c
 `SpriteFrame` accounts for that policy for both complete textures and atlas subframes; do not
 manually invert atlas rows.
 
-Still define animation rows through semantic names (`up`, `down`, `left`, `right`) and verify the
-map in a real browser on both backends. Do not let gameplay code depend on an image viewer's
-apparent row order: texture upload orientation, authored facing direction, and atlas tooling can
-make a visually plausible numeric row map point the character the wrong way.
+Define animation rows through semantic names (`up`, `down`, `left`, `right`) and map them from the
+authored atlas contract. Do not let gameplay code depend on an image viewer's apparent row order:
+texture orientation, authored facing direction, and atlas tooling can make a visually plausible
+numeric row map point the character the wrong way.
 
 ## Replace Sprite sources in place
 
@@ -306,7 +306,7 @@ The source art must itself be nine-slice-safe:
 - make each stretchable edge segment continuous and uniform;
 - keep emblems, clasps, notches, protrusions, and other unique details out of edge centers;
 - use a flat, repeatable, or uniformly stretchable center;
-- validate at one size wider and one size taller than the source frame in a real browser.
+- check at least one target size wider and one target size taller than the source frame.
 
 Slicing an arbitrary ornate frame does not make it scalable. Details that cross a slice boundary or
 sit inside a stretchable edge become elongated gaps and detached top/center/bottom bands.

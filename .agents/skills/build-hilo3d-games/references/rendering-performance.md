@@ -188,7 +188,7 @@ When the canvas is blank:
 6. add ambient plus directional light for PBR;
 7. test a known unlit BasicMaterial;
 8. inspect backend selection and renderer diagnostics;
-9. test explicit WebGL2 and WebGPU separately.
+9. when backend-specific behavior is in scope, exercise the selected backends separately.
 
 When picking fails:
 
