@@ -416,6 +416,10 @@ test.describe('examples using the generic release gate', () => {
         const { path: examplePath, backend } = exampleCase;
         if (exampleUsesDedicatedReleaseTest(examplePath)) continue;
         test(`${examplePath} renders through ${backend} @${backend}`, async ({ page }) => {
+            if (examplePath === 'pbr2.html') {
+                // The 30-material HDR grid is intentionally expensive under CI SwiftShader.
+                test.slow();
+            }
             await installRenderHealthProbe(page);
 
             const consoleErrors: string[] = [];

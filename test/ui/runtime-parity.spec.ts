@@ -240,6 +240,9 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`Khronos material gallery switches layered glTF assets on ${backend} @${backend}`, async ({
         browser
     }) => {
+        // Loading and rendering all seven production glTF assets is intentionally heavyweight on
+        // CI SwiftShader, while each individual readiness and native-progress assertion stays strict.
+        test.slow();
         const page = await createPage(browser);
         await installRenderHealthProbe(page);
         const failures = await installPageFailureMonitor(page);
