@@ -1,11 +1,27 @@
 import * as Hilo3d from '../../src/Hilo3d';
 
-const ASSET_DIRECTORY = '../image/environment/ferndale-studio-03';
+const ENVIRONMENT_ASSET_URLS = {
+    'diffuse.rgbd': new URL('../image/environment/ferndale-studio-03/diffuse.rgbd', import.meta.url)
+        .href,
+    'specular.rgbd': new URL(
+        '../image/environment/ferndale-studio-03/specular.rgbd',
+        import.meta.url
+    ).href,
+    'right.jpg': new URL('../image/environment/ferndale-studio-03/right.jpg', import.meta.url).href,
+    'left.jpg': new URL('../image/environment/ferndale-studio-03/left.jpg', import.meta.url).href,
+    'top.jpg': new URL('../image/environment/ferndale-studio-03/top.jpg', import.meta.url).href,
+    'bottom.jpg': new URL('../image/environment/ferndale-studio-03/bottom.jpg', import.meta.url)
+        .href,
+    'front.jpg': new URL('../image/environment/ferndale-studio-03/front.jpg', import.meta.url).href,
+    'back.jpg': new URL('../image/environment/ferndale-studio-03/back.jpg', import.meta.url).href
+} as const;
 const RGBD_MAGIC = 'H3DRGBD1';
 const HEADER_BYTES = 16;
 
-function assetUrl(name: string): string {
-    return new URL(`${ASSET_DIRECTORY}/${name}`, import.meta.url).href;
+type EnvironmentAssetName = keyof typeof ENVIRONMENT_ASSET_URLS;
+
+function assetUrl(name: EnvironmentAssetName): string {
+    return ENVIRONMENT_ASSET_URLS[name];
 }
 
 function expectedPayloadBytes(faceSize: number, levelCount: number): number {
@@ -17,7 +33,9 @@ function expectedPayloadBytes(faceSize: number, levelCount: number): number {
     return bytes;
 }
 
-async function loadRGBDCube(name: string): Promise<Hilo3d.CubeTexture> {
+async function loadRGBDCube(
+    name: Extract<EnvironmentAssetName, `${string}.rgbd`>
+): Promise<Hilo3d.CubeTexture> {
     const url = assetUrl(name);
     const response = await fetch(url);
     if (!response.ok) {
@@ -99,15 +117,14 @@ export async function loadDefaultEnvironmentMaps(): Promise<{
 }
 
 export function loadDefaultSkyboxMap(): Promise<Hilo3d.CubeTexture> {
-    const faceUrl = (name: string): string => assetUrl(`${name}.jpg`);
     return new Hilo3d.CubeTextureLoader().load({
         images: [
-            faceUrl('right'),
-            faceUrl('left'),
-            faceUrl('top'),
-            faceUrl('bottom'),
-            faceUrl('front'),
-            faceUrl('back')
+            assetUrl('right.jpg'),
+            assetUrl('left.jpg'),
+            assetUrl('top.jpg'),
+            assetUrl('bottom.jpg'),
+            assetUrl('front.jpg'),
+            assetUrl('back.jpg')
         ],
         internalFormat: Hilo3d.constants.SRGB8,
         format: Hilo3d.constants.RGB,
