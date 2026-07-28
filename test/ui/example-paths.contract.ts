@@ -161,10 +161,11 @@ describe('example release matrix contract', () => {
             'environment',
             'ferndale-studio-03'
         );
+        const normalizedEnvironmentSource = environmentSource.replaceAll(/\s+/gu, '');
         expect(initializationSource).toContain('loadDefaultEnvironmentMaps()');
         expect(initializationSource).toContain('loadDefaultSkyboxMap()');
         expect(environmentSource).toContain("const RGBD_MAGIC = 'H3DRGBD1'");
-        for (const asset of [
+        const runtimeEnvironmentAssets = [
             'diffuse.rgbd',
             'specular.rgbd',
             'right.jpg',
@@ -172,11 +173,16 @@ describe('example release matrix contract', () => {
             'top.jpg',
             'bottom.jpg',
             'front.jpg',
-            'back.jpg',
-            'README.md'
-        ]) {
+            'back.jpg'
+        ];
+        for (const asset of runtimeEnvironmentAssets) {
             expect(existsSync(join(environmentDirectory, asset)), asset).toBe(true);
+            expect(normalizedEnvironmentSource, asset).toContain(
+                `newURL('../image/environment/ferndale-studio-03/${asset}',import.meta.url)`
+            );
         }
+        expect(existsSync(join(environmentDirectory, 'README.md'))).toBe(true);
+        expect(environmentSource).not.toContain('ASSET_DIRECTORY');
         expect(`${initializationSource}\n${environmentSource}`).not.toMatch(
             /bakedDiffuse_|(?:^|[/_"'])p[xyz]\.jpg|(?:^|[/_"'])n[xyz]\.jpg/u
         );
