@@ -84,12 +84,28 @@ const { stage, renderer, directionLight, ambientLight } = await createExampleCon
 });
 
 galleryRoot.addTo(stage);
-galleryRoot.x = 0.7;
 renderer.clearColor.set(0.003, 0.006, 0.018, 1);
 directionLight.amount = 1.8;
 directionLight.color.set(1, 0.82, 0.65, 1);
 directionLight.direction.set(-0.65, -1, -0.4);
 ambientLight.amount = 0.08;
+
+function layoutGallery(): void {
+    const width = window.innerWidth;
+    if (width <= 560) {
+        galleryRoot.setScale(0.52);
+        galleryRoot.setPosition(0.25, -0.08, 0);
+    } else if (width <= 900) {
+        galleryRoot.setScale(0.72);
+        galleryRoot.setPosition(0.35, 0, 0);
+    } else {
+        galleryRoot.setScale(1);
+        galleryRoot.setPosition(0.7, 0, 0);
+    }
+}
+
+layoutGallery();
+window.addEventListener('resize', layoutGallery);
 
 const environment = await loadEnvironmentMaps();
 addEnvironmentSkybox(stage, environment.skyboxMap);

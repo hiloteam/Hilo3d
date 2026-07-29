@@ -149,12 +149,28 @@ const { stage, renderer, directionLight, ambientLight } = await createExampleCon
 });
 
 presentationRoot.addTo(stage);
-presentationRoot.x = 0.85;
 renderer.clearColor.set(0.003, 0.005, 0.016, 1);
 directionLight.amount = 1.45;
 directionLight.color.set(1, 0.93, 0.86, 1);
 directionLight.direction.set(-0.7, -1, -0.48);
 ambientLight.amount = 0.15;
+
+function layoutPresentation(): void {
+    const width = window.innerWidth;
+    if (width <= 560) {
+        presentationRoot.setScale(0.62);
+        presentationRoot.setPosition(0.3, -0.72, 0);
+    } else if (width <= 900) {
+        presentationRoot.setScale(0.8);
+        presentationRoot.setPosition(0.5, -0.25, 0);
+    } else {
+        presentationRoot.setScale(1);
+        presentationRoot.setPosition(0.85, 0, 0);
+    }
+}
+
+layoutPresentation();
+window.addEventListener('resize', layoutPresentation);
 
 const environment = await loadEnvironmentMaps();
 addEnvironmentSkybox(stage, environment.skyboxMap);

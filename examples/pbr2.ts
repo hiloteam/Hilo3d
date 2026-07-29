@@ -123,9 +123,12 @@ for (const button of familyButtons) {
 
 function layoutMaterialGrid(): void {
     const width = window.innerWidth;
-    if (width <= 820) {
+    if (width <= 560) {
+        materialRoot.setScale(0.48);
+        materialRoot.setPosition(0.85, -0.82, 0);
+    } else if (width <= 820) {
         materialRoot.setScale(0.62);
-        materialRoot.setPosition(1.35, -0.18, 0);
+        materialRoot.setPosition(1.05, -0.24, 0);
     } else if (width <= 1200) {
         materialRoot.setScale(0.8);
         materialRoot.setPosition(1.85, 0.05, 0);

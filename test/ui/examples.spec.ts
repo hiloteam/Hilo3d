@@ -337,6 +337,62 @@ test('canonical examples index opens the WebGPU gallery by default', async ({ pa
     );
 });
 
+test('PBR showcase controls remain usable at phone width', async ({ page }) => {
+    await page.setViewportSize({ width: 344, height: 728 });
+    await page.route('**/*.ts', route =>
+        route.fulfill({
+            contentType: 'application/javascript',
+            body: ''
+        })
+    );
+
+    await page.goto('/examples/list.html', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.siteLinks')).toHaveCSS('display', 'none');
+    const brandBounds = await page.locator('.brand').boundingBox();
+    const backendBounds = await page.locator('.backendControl').boundingBox();
+    if (!brandBounds || !backendBounds) throw new Error('Mobile gallery header is not visible');
+    expect(brandBounds.x + brandBounds.width).toBeLessThanOrEqual(backendBounds.x);
+    expect(backendBounds.x + backendBounds.width).toBeLessThanOrEqual(344);
+
+    await page.goto('/examples/pbr2.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('body').evaluate(body => {
+        const stats = document.createElement('div');
+        stats.className = 'hilo3dStats';
+        body.append(stats);
+    });
+    await expect(page.locator('.hilo3dStats')).toHaveCSS('display', 'none');
+    const labPanelBounds = await page.locator('.labPanel').boundingBox();
+    if (!labPanelBounds) throw new Error('Mobile PBR lab panel is not visible');
+    expect(labPanelBounds.x).toBeGreaterThanOrEqual(0);
+    expect(labPanelBounds.x + labPanelBounds.width).toBeLessThanOrEqual(344);
+
+    await page.goto('/examples/pbr_layered_materials.html', {
+        waitUntil: 'domcontentloaded'
+    });
+    const featureCardLayout = await page.locator('.featureCards').evaluate(element => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        visibleCards: [...element.children].filter(
+            child => getComputedStyle(child).display !== 'none'
+        ).length
+    }));
+    expect(featureCardLayout.scrollWidth).toBeGreaterThan(featureCardLayout.clientWidth);
+    expect(featureCardLayout.visibleCards).toBe(3);
+
+    await page.goto('/examples/gltf_material_extensions.html', {
+        waitUntil: 'domcontentloaded'
+    });
+    const assetSwitcherLayout = await page.locator('.assetSwitcher').evaluate(element => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        visibleButtons: [...element.children].filter(
+            child => getComputedStyle(child).display !== 'none'
+        ).length
+    }));
+    expect(assetSwitcherLayout.scrollWidth).toBeGreaterThan(assetSwitcherLayout.clientWidth);
+    expect(assetSwitcherLayout.visibleButtons).toBe(7);
+});
+
 for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`example gallery discovers every ${backend} page @${backend}`, async ({ page }) => {
         await page.goto(`/examples/list.html?backend=${backend}`, { waitUntil: 'networkidle' });
