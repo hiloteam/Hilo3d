@@ -589,6 +589,28 @@ select:focus-visible {
 }
 
 @media (max-width: 620px) {
+    .galleryHeader {
+        gap: 8px;
+        padding-inline: 10px;
+    }
+
+    .brand {
+        gap: 8px;
+    }
+
+    .brandTitle {
+        font-size: 15px;
+        line-height: 1.05;
+    }
+
+    .siteLinks {
+        display: none;
+    }
+
+    .headerActions {
+        gap: 6px;
+    }
+
     .viewerToolbar {
         min-height: 60px;
         padding: 9px 12px;
@@ -610,7 +632,8 @@ select:focus-visible {
     }
 
     .backendControl select {
-        min-width: 100px;
+        min-width: 96px;
+        padding-inline: 9px 26px;
     }
 }
 

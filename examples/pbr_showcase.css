@@ -257,9 +257,9 @@ body {
 
 @media (max-width: 900px) {
     .showcasePanel {
-        top: 14px;
-        left: 14px;
-        width: min(360px, calc(100vw - 28px));
+        top: 12px;
+        left: 12px;
+        width: calc(100vw - 24px);
         padding: 17px;
         border-radius: 17px;
     }
@@ -273,9 +273,9 @@ body {
     }
 
     .featureCards {
-        right: 14px;
-        bottom: 14px;
-        left: 14px;
+        right: 12px;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        left: 12px;
         grid-template-columns: repeat(3, 1fr);
     }
 
@@ -301,7 +301,24 @@ body {
     }
 
     .assetSwitcher {
+        display: flex;
         margin-top: 13px;
+        margin-right: -17px;
+        margin-left: -17px;
+        overflow-x: auto;
+        padding: 0 17px 4px;
+        scroll-padding-inline: 17px;
+        scroll-snap-type: x proximity;
+        scrollbar-color: rgba(142, 184, 255, 0.35) transparent;
+        scrollbar-width: thin;
+    }
+
+    .assetButton {
+        min-width: max-content;
+        min-height: 36px;
+        flex: 0 0 auto;
+        padding-inline: 14px;
+        scroll-snap-align: start;
     }
 
     .assetMeta {
@@ -315,10 +332,16 @@ body {
     }
 
     .featureCards {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(3, minmax(210px, 78vw));
+        overflow-x: auto;
+        padding: 0 2px 4px;
+        scroll-padding-inline: 2px;
+        scroll-snap-type: x proximity;
+        scrollbar-color: rgba(142, 184, 255, 0.35) transparent;
+        scrollbar-width: thin;
     }
 
-    .featureCard:not(:first-child) {
-        display: none;
+    .featureCard {
+        scroll-snap-align: start;
     }
 }
