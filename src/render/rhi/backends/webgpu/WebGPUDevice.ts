@@ -94,6 +94,16 @@ function webGPUAdapterIsFallback(adapter: GPUAdapter): boolean {
     );
 }
 
+function requiresAppleMobileDirectUploadWorkaround(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    const userAgent = navigator.userAgent;
+    if (!userAgent.includes('AppleWebKit')) return false;
+    return (
+        /(?:iPad|iPhone|iPod)/u.test(userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
+}
+
 /** Concrete RHI device: all native API access remains inside this backend directory. */
 export class WebGPUDevice implements RHIDevice, WebGPUObjectOwner {
     readonly id = allocateRHIDeviceId();
@@ -106,6 +116,11 @@ export class WebGPUDevice implements RHIDevice, WebGPUObjectOwner {
     readonly framebufferCacheMetrics = new RHICacheCounter();
     readonly framebufferCache: WebGPUFramebufferCache;
     readonly mipmapGenerator: WebGPUMipmapGenerator;
+    /**
+     * @internal Apple mobile WebKit buffer and texture uploads use the direct queue path as an
+     * implementation workaround, not as a WebGPU portability requirement.
+     */
+    readonly directUploadWorkaround: boolean;
     label: string;
     #generation = 1;
     #destroyed = false;
@@ -129,6 +144,7 @@ export class WebGPUDevice implements RHIDevice, WebGPUObjectOwner {
         this.label = nativeHandle.label;
         this.#lostSignal = createWebGPUDeferred<RHIDeviceLostInfo>();
         this.lost = this.#lostSignal.promise;
+        this.directUploadWorkaround = requiresAppleMobileDirectUploadWorkaround();
         this.graphicsQueue = new WebGPUQueue(this, nativeHandle.queue);
         this.framebufferCache = new WebGPUFramebufferCache(this, this.framebufferCacheMetrics);
         this.mipmapGenerator = new WebGPUMipmapGenerator(this, mipmapShaderArtifacts);

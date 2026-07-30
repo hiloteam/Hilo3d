@@ -78,6 +78,8 @@ export function resetWebGPUFrameDiagnostics(target?: RHIFrameDiagnostics): RHIFr
 export interface WebGPUFrameReferences {
     readonly objects: (WebGPUDestroyableObject | null)[];
     count: number;
+    readonly directUploadSources: Uint8Array[];
+    directUploadSourceCount: number;
 }
 
 function validationFailure(
@@ -155,6 +157,7 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
     #contextState: RHICommandContextState = 'open';
     #activePass: WebGPURenderPass | WebGPUComputePass | null = null;
     #externalImageUploadPhase = true;
+    #directUploadPhase: boolean;
     readonly #retainedReferences: WebGPUFrameReferences;
     readonly #uploadAllocation: WebGPUUploadAllocation = { buffer: null, offset: 0 };
 
@@ -167,6 +170,7 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
         super(queue.owner, descriptor.label ?? 'WebGPU frame context');
         this.#nativeEncoder = nativeEncoder;
         this.#retainedReferences = retainedReferences;
+        this.#directUploadPhase = queue.owner.directUploadWorkaround;
         this.frameId = this.id;
         this.diagnostics = resetWebGPUFrameDiagnostics(descriptor.diagnostics);
     }
@@ -191,6 +195,21 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
         validateRHIWriteBuffer(this.owner, destination, destinationOffset, data, dataOffset, size);
         const writeSize = size ?? data.byteLength - dataOffset;
         const nativeDestination = webGPUBuffer(this.owner, destination, 'destination');
+        if (this.#directUploadPhase) {
+            const source = this.queue.sourceBytes(data);
+            const snapshot = this.directUploadSnapshot(source, dataOffset, writeSize);
+            this.queue.nativeHandle.writeBuffer(
+                nativeDestination.nativeHandle,
+                destinationOffset,
+                snapshot.buffer,
+                0,
+                writeSize
+            );
+            this.retain(nativeDestination);
+            this.#externalImageUploadPhase = false;
+            this.recordNativeCommand();
+            return;
+        }
         this.queue.stageUpload(
             data,
             dataOffset,
@@ -210,6 +229,23 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
             writeSize
         );
         this.recordNativeCommand();
+    }
+
+    private directUploadSnapshot(
+        source: Uint8Array,
+        sourceOffset: number,
+        byteLength: number
+    ): Uint8Array {
+        const index = this.#retainedReferences.directUploadSourceCount++;
+        let snapshot = this.#retainedReferences.directUploadSources[index];
+        if (snapshot === undefined || snapshot.byteLength < byteLength) {
+            snapshot = new Uint8Array(byteLength);
+            this.#retainedReferences.directUploadSources[index] = snapshot;
+            this.diagnostics.frameArenaGrowths++;
+            this.diagnostics.transientAllocations++;
+        }
+        snapshot.set(source.subarray(sourceOffset, sourceOffset + byteLength), 0);
+        return snapshot;
     }
 
     writeTexture(
@@ -260,28 +296,12 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
                 }
             }
         }
-        this.queue.stageUpload(
-            repacked,
-            0,
-            stagingSize,
-            this.diagnostics,
-            this.#uploadAllocation,
-            Math.max(4, bytesPerBlock)
-        );
-        const staging = this.#uploadAllocation.buffer;
-        if (staging === null) throw new Error('WebGPU upload arena did not return a buffer');
         const concreteDestination = webGPUTexture(
             this.owner,
             destination.texture,
             'destination.texture'
         );
         this.retain(concreteDestination);
-        this.closeExternalImageUploadPhase();
-        const nativeSource = this.queue.textureUploadSource;
-        nativeSource.buffer = staging;
-        nativeSource.offset = this.#uploadAllocation.offset;
-        nativeSource.bytesPerRow = stagingBytesPerRow;
-        nativeSource.rowsPerImage = blockRows;
         const nativeOrigin = this.queue.textureUploadOrigin;
         nativeOrigin.x = destination.origin?.x ?? 0;
         nativeOrigin.y = destination.origin?.y ?? 0;
@@ -294,6 +314,38 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
         nativeExtent.width = Math.ceil(width / block.blockWidth) * block.blockWidth;
         nativeExtent.height = Math.ceil(height / block.blockHeight) * block.blockHeight;
         nativeExtent.depthOrArrayLayers = depth;
+        if (this.#directUploadPhase) {
+            const snapshot = this.directUploadSnapshot(repacked, 0, stagingSize);
+            this.queue.nativeHandle.writeTexture(
+                nativeDestination,
+                snapshot.buffer,
+                {
+                    offset: 0,
+                    bytesPerRow: stagingBytesPerRow,
+                    rowsPerImage: blockRows
+                },
+                nativeExtent
+            );
+            this.#externalImageUploadPhase = false;
+            this.recordNativeCommand();
+            return;
+        }
+        this.queue.stageUpload(
+            repacked,
+            0,
+            stagingSize,
+            this.diagnostics,
+            this.#uploadAllocation,
+            Math.max(4, bytesPerBlock)
+        );
+        const staging = this.#uploadAllocation.buffer;
+        if (staging === null) throw new Error('WebGPU upload arena did not return a buffer');
+        this.closeExternalImageUploadPhase();
+        const nativeSource = this.queue.textureUploadSource;
+        nativeSource.buffer = staging;
+        nativeSource.offset = this.#uploadAllocation.offset;
+        nativeSource.bytesPerRow = stagingBytesPerRow;
+        nativeSource.rowsPerImage = blockRows;
         this.#nativeEncoder.copyBufferToTexture(nativeSource, nativeDestination, nativeExtent);
         this.recordNativeCommand();
     }
@@ -607,6 +659,7 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
 
     private closeExternalImageUploadPhase(): void {
         this.#externalImageUploadPhase = false;
+        this.#directUploadPhase = false;
     }
 
     private assertOpen(): void {

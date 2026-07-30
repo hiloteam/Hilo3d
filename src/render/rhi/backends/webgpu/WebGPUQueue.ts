@@ -627,6 +627,7 @@ export class WebGPUQueue extends WebGPUObject implements RHIQueue {
             index += 1;
         }
         references.count = 0;
+        references.directUploadSourceCount = 0;
         this.#freeFrameReferences[this.#freeFrameReferenceCount] = references;
         this.#freeFrameReferenceCount += 1;
     }
@@ -695,7 +696,14 @@ export class WebGPUQueue extends WebGPUObject implements RHIQueue {
     }
 
     private acquireFrameReferences(): WebGPUFrameReferences {
-        if (this.#freeFrameReferenceCount === 0) return { objects: [], count: 0 };
+        if (this.#freeFrameReferenceCount === 0) {
+            return {
+                objects: [],
+                count: 0,
+                directUploadSources: [],
+                directUploadSourceCount: 0
+            };
+        }
         this.#freeFrameReferenceCount -= 1;
         const index = this.#freeFrameReferenceCount;
         const references = this.#freeFrameReferences[index];
