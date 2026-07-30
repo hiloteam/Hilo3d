@@ -95,6 +95,49 @@ for (const backend of backends) {
         }
     });
 
+    test(`shadow atlas preserves projected row orientation on ${backend} @${backend}`, async ({
+        page
+    }) => {
+        await installRenderHealthProbe(page);
+        const failures = await installPageFailureMonitor(page);
+        try {
+            await page.goto(`/test/ui/fixtures/shadow-orientation.html?backend=${backend}`, {
+                waitUntil: 'networkidle'
+            });
+            await expect(page.locator('body')).toHaveAttribute(
+                'data-shadow-orientation-complete',
+                'true'
+            );
+            const result = await page.evaluate(() => {
+                const diagnostics = window.__HILO3D_SHADOW_ORIENTATION_RESULT__;
+                if (!diagnostics) throw new Error('Shadow orientation diagnostics are unavailable');
+                return {
+                    backend: diagnostics.backend,
+                    summary: diagnostics.summaries.find(entry => entry.threshold === 80)
+                };
+            });
+
+            expect(result.backend).toBe(backend);
+            expect(result.summary?.count).toBeGreaterThan(250);
+            expect(result.summary?.centroid?.[0]).toBeGreaterThan(30);
+            expect(result.summary?.centroid?.[0]).toBeLessThan(45);
+            expect(result.summary?.centroid?.[1]).toBeGreaterThan(38);
+            expect(result.summary?.centroid?.[1]).toBeLessThan(48);
+            expect(result.summary?.bounds?.[0]).toBeLessThan(20);
+            expect(result.summary?.bounds?.[2]).toBeGreaterThan(65);
+            await assertFinalGraphicsHealth(
+                page,
+                backend,
+                `shadow atlas orientation graphics errors on ${backend}`
+            );
+
+            await page.goto('about:blank');
+            failures.assertEmpty(`shadow atlas orientation failures on ${backend}`);
+        } finally {
+            await failures.dispose();
+        }
+    });
+
     test(`life-game ping-pong accepts public texture updates through ${backend} @${backend}`, async ({
         page
     }) => {

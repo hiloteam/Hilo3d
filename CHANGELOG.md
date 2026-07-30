@@ -58,6 +58,9 @@
   storage rows, pointer input, and readback. Apply it to Bloom, Color Uber, graph present,
   transmission, ShaderToy, Life Game, the compute particle field, the compute path tracer, and
   built-in material/environment sampling so WebGL 2 and WebGPU retain the same Y orientation.
+- Keep shared Shadow Atlas rectangles in positive top-left coordinates and convert light-space UVs
+  through the portable render-target helper. WebGL 2 no longer samples a vertically mirrored depth
+  atlas that made moving shadows appear to rotate opposite their casters.
 - Correct `SpriteFrame`'s top-left atlas-row offset for `flipY` textures on both backends. Full
   textures were unaffected, but subframes previously selected the vertically opposite source row,
   swapping nine-slice top/bottom pieces and requiring reversed character-direction maps. Use a

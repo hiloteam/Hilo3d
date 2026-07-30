@@ -149,7 +149,8 @@ describe.each([
         expectNumbers(result.lightBlock.directionalBiases.subarray(0, 2), [0.002, 0.04]);
         expectNumbers(result.lightBlock.spotBiases.subarray(0, 2), [0.003, 0.06]);
         expectNumbers(result.lightBlock.pointCameraPlanes.subarray(0, 2), [0.25, 25]);
-        expectNumbers(result.slices[0]?.atlasRect ?? [], [1 / 3, -1 / 3, 0, 1 / 3]);
+        expectNumbers(result.slices[0]?.atlasRect ?? [], [1 / 3, 1 / 3, 0, 0]);
+        expectNumbers(result.slices[7]?.atlasRect ?? [], [1 / 3, 1 / 3, 1 / 3, 2 / 3]);
         expect(
             result.slices.every(slice =>
                 Array.from(slice.lightSpaceMatrix.elements).every(value => Number.isFinite(value))
