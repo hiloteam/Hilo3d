@@ -77,6 +77,12 @@ interface NativeHarness {
         readonly dataOffset: number;
         readonly size: number | undefined;
     }[];
+    readonly textureWrites: readonly {
+        readonly destination: GPUTexture;
+        readonly data: AllowSharedBufferSource;
+        readonly dataLayout: GPUTexelCopyBufferLayout;
+        readonly size: GPUExtent3D;
+    }[];
     readonly surfaceConfigurations: GPUCanvasConfiguration[];
     readonly textureCopyExtents: GPUExtent3D[];
     readonly textureCopySources: GPUTexelCopyBufferInfo[];
@@ -112,6 +118,12 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
         readonly data: AllowSharedBufferSource;
         readonly dataOffset: number;
         readonly size: number | undefined;
+    }[] = [];
+    const textureWrites: {
+        readonly destination: GPUTexture;
+        readonly data: AllowSharedBufferSource;
+        readonly dataLayout: GPUTexelCopyBufferLayout;
+        readonly size: GPUExtent3D;
     }[] = [];
     const surfaceConfigurations: GPUCanvasConfiguration[] = [];
     const textureCopyExtents: GPUExtent3D[] = [];
@@ -319,6 +331,25 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
                 `queue.writeBuffer:${destination.label}@${String(destinationOffset)}:${String(byteLength)}`
             );
         },
+        writeTexture: (
+            destination: GPUTexelCopyTextureInfo,
+            data: AllowSharedBufferSource,
+            dataLayout: GPUTexelCopyBufferLayout,
+            size: GPUExtent3D
+        ) => {
+            textureWrites.push({
+                destination: destination.texture,
+                data,
+                dataLayout: { ...dataLayout },
+                size: {
+                    width: extentNumber(size, 'width', 1),
+                    height: extentNumber(size, 'height', 1),
+                    depthOrArrayLayers: extentNumber(size, 'depthOrArrayLayers', 1)
+                }
+            });
+            const origin = destination.origin as GPUOrigin3DDict | undefined;
+            log.push(`queue.writeTexture:${destination.texture.label}@${String(origin?.z ?? 0)}`);
+        },
         copyExternalImageToTexture: (
             source: GPUCopyExternalImageSourceInfo,
             destination: GPUCopyExternalImageDestInfo,
@@ -442,6 +473,7 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
         renderPassDescriptors,
         renderPassCalls,
         bufferWrites,
+        textureWrites,
         surfaceConfigurations,
         textureCopyExtents,
         textureCopySources,
@@ -1320,6 +1352,118 @@ describe('WebGPU RHI native backend', () => {
         ).toHaveLength(1);
 
         device.destroy();
+    });
+
+    it('normalizes Apple mobile direct uploads and preserves later command order', () => {
+        vi.stubGlobal('navigator', {
+            userAgent:
+                'Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15',
+            platform: 'iPhone',
+            maxTouchPoints: 5
+        });
+        try {
+            const harness = createNativeHarness();
+            const device = new WebGPUDevice(harness.device);
+            const source = device.createBuffer({
+                label: 'direct source',
+                size: 4,
+                usage: RHIBufferUsage.COPY_SRC,
+                initialData: new Uint8Array([9, 9, 9, 9])
+            });
+            const uniform = device.createBuffer({
+                label: 'direct uniform destination',
+                size: 12,
+                usage: RHIBufferUsage.COPY_DST | RHIBufferUsage.UNIFORM
+            });
+            const vertex = device.createBuffer({
+                label: 'direct vertex destination',
+                size: 4,
+                usage: RHIBufferUsage.COPY_DST | RHIBufferUsage.VERTEX
+            });
+            const cube = device.createTexture({
+                label: 'direct cube destination',
+                size: { width: 2, height: 2, depthOrArrayLayers: 6 },
+                viewDimension: 'cube',
+                format: 'rgba8unorm',
+                usage: RHITextureUsage.COPY_DST | RHITextureUsage.TEXTURE_BINDING
+            });
+            const arena = new Uint8Array([90, 91, 92, 93, 1, 2, 3, 4, 5, 6, 7, 8]);
+            const textureArena = new Uint8Array([
+                90, 91, 92, 93, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+            ]);
+            harness.log.length = 0;
+
+            const frame = device.graphicsQueue.beginFrame();
+            frame.writeBuffer(uniform, 0, arena.subarray(4, 8));
+            frame.writeBuffer(vertex, 0, arena.subarray(8, 12));
+            frame.writeTexture(
+                { texture: cube, origin: { z: 2 } },
+                textureArena,
+                { offset: 4, bytesPerRow: 8, rowsPerImage: 2 },
+                { width: 2, height: 2 }
+            );
+            frame.copyBufferToBuffer(source, 0, uniform, 4, 4);
+            frame.writeBuffer(uniform, 8, new Uint8Array([10, 11, 12, 13]));
+            frame.writeTexture(
+                { texture: cube, origin: { z: 3 } },
+                new Uint8Array(16),
+                { bytesPerRow: 8, rowsPerImage: 2 },
+                { width: 2, height: 2 }
+            );
+            device.graphicsQueue.endFrame(frame);
+
+            expect(harness.bufferWrites).toHaveLength(2);
+            for (const write of harness.bufferWrites) {
+                expect(write.data).toBeInstanceOf(ArrayBuffer);
+                expect(write.dataOffset).toBe(0);
+                expect(write.size).toBe(4);
+            }
+            expect(harness.bufferWrites[0]?.data).not.toBe(harness.bufferWrites[1]?.data);
+            expect(harness.textureWrites).toHaveLength(1);
+            const textureWrite = harness.textureWrites[0];
+            expect(textureWrite?.destination.label).toBe('direct cube destination');
+            expect(textureWrite?.data).toBeInstanceOf(ArrayBuffer);
+            expect(textureWrite?.dataLayout).toEqual({
+                offset: 0,
+                bytesPerRow: 256,
+                rowsPerImage: 2
+            });
+            expect(textureWrite?.size).toEqual({
+                width: 2,
+                height: 2,
+                depthOrArrayLayers: 1
+            });
+            const textureBytes = new Uint8Array(textureWrite?.data as ArrayBuffer);
+            expect([...textureBytes.subarray(0, 8)]).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+            expect([...textureBytes.subarray(256, 264)]).toEqual([9, 10, 11, 12, 13, 14, 15, 16]);
+            expect(harness.log).toContain('queue.writeBuffer:direct uniform destination@0:4');
+            expect(harness.log).toContain('queue.writeBuffer:direct vertex destination@0:4');
+            expect(harness.log).toContain('queue.writeTexture:direct cube destination@2');
+            const encodedCopy = harness.log.indexOf(
+                'encoder.copyBufferToBuffer:direct source->direct uniform destination'
+            );
+            const stagedWrite = harness.log.indexOf(
+                'encoder.copyBufferToBuffer:WebGPU upload arena->direct uniform destination'
+            );
+            expect(encodedCopy).toBeGreaterThan(
+                harness.log.indexOf('queue.writeBuffer:direct vertex destination@0:4')
+            );
+            expect(stagedWrite).toBeGreaterThan(encodedCopy);
+            expect(
+                harness.log.indexOf(
+                    'encoder.copyBufferToTexture:WebGPU upload arena->direct cube destination'
+                )
+            ).toBeGreaterThan(stagedWrite);
+            expect(harness.log.indexOf('queue.submit')).toBeGreaterThan(stagedWrite);
+            expect([...harness.getBufferBytesForHandle(uniform.nativeHandle)]).toEqual([
+                1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0
+            ]);
+
+            harness.resolveWork();
+            device.destroy();
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 
     it('stages a cross-realm ArrayBuffer without same-realm identity assumptions', () => {

@@ -163,6 +163,21 @@ map；每个 Renderer 同时只允许一个 pending storage-buffer readback，�
 writer 重新初始化”。GPU 写入只在有效 submission 后提交内容分歧，后续相同 CPU
 bytes 仍会重新上传，避免 CPU shadow 错误掩盖 GPU 修改。
 
+WebGPU 常规 buffer/texture upload 使用可复用 mapped staging arena。Apple mobile WebKit 的 mapped
+upload 路径存在呈现稳定性问题，因此仅该平台在任何 command-buffer 工作开始前分别改用
+`GPUQueue.writeBuffer` 和 `GPUQueue.writeTexture`。源数据先复制到复用的零偏移 scratch，以保持 frame
+arena 子视图和 texture row
+layout 的字节范围；每个在途 submission 保留独立的高水位 scratch 槽位，fence 完成后才回收，避免后续 UBO、顶点或 cubemap 写入覆盖较早的数据。一旦开始编码 copy、mipmap、render 或 compute 命令，后续写入仍回到 staging
+copy，保留严格的命令顺序。
+
+这是 Apple mobile WebKit 实现兼容路径，不是 WebGPU 标准限制；规范同时定义了
+[immediate queue writes](https://gpuweb.github.io/gpuweb/#copies) 和 mapped `COPY_SRC` staging
+buffer。相关 WebKit 报告包括 iOS 26 的
+[整 canvas 闪烁](https://bugs.webkit.org/show_bug.cgi?id=301627) 和 mapped upload
+[状态处理差异](https://bugs.webkit.org/show_bug.cgi?id=293062)。前者报告在 iOS
+26.4 已修复，但 Hilo3D 在 iOS
+26.5.2 仍复现 upload 数据陈旧或归零，因此不将两者视为已确认的同一根因。
+
 `StorageGraphicsShader` 是独立的 WebGPU-only graphics source contract：vertex/fragment 仍由受控 GLSL
 ES 3.10 storage subset 经统一预处理和 Naga 转为 WGSL，不接受手写 graphics WGSL；首版只允许 readonly
 storage。其 Material/Scene texture reflection 仍保留 2D-array/3D/cube 与 sint/uint 类型表达，但
