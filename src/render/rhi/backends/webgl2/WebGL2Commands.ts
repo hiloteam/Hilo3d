@@ -115,6 +115,10 @@ function normalizedExtent(size: RHIExtent3D): Required<RHIExtent3D> {
     };
 }
 
+function isCubeTexture(gl: WebGL2RenderingContext, texture: WebGL2Texture): boolean {
+    return texture.target === gl.TEXTURE_CUBE_MAP;
+}
+
 function assertWebGL2BufferToTextureAspectCopySupported(
     texture: WebGL2Texture,
     aspect: RHITextureAspect,
@@ -1420,7 +1424,8 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         const destinationZ = destination.origin?.z ?? 0;
         const mipLevel = destination.mipLevel ?? 0;
         const mipHeight = Math.max(1, Math.floor(destinationTexture.height / 2 ** mipLevel));
-        const nativeDestinationY = mipHeight - destinationY - height;
+        const cubeTexture = isCubeTexture(gl, destinationTexture);
+        const nativeDestinationY = cubeTexture ? destinationY : mipHeight - destinationY - height;
         const info = destinationTexture.formatInfo;
         const externalGL = gl as WebGL2ExternalImageUploadContext;
         try {
@@ -1436,9 +1441,14 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
             state.setPixelStore(gl.UNPACK_SKIP_PIXELS, source.origin?.x ?? 0);
             state.setPixelStore(gl.UNPACK_SKIP_ROWS, source.origin?.y ?? 0);
             state.setPixelStore(gl.UNPACK_SKIP_IMAGES, 0);
-            // DOM uploads place the source's first row at WebGL's bottom row. Invert the native
-            // flag so the public RHI contract retains top-left rows unless flipY is requested.
-            state.setPixelStore(gl.UNPACK_FLIP_Y_WEBGL, source.flipY === true ? 0 : 1);
+            // Native cube lookup already interprets its face rows in the portable orientation.
+            // Keeping cube sources in their original row order preserves seamless filtering
+            // across faces; applying a face-local V flip in the shader makes that transform
+            // discontinuous at every face boundary.
+            state.setPixelStore(
+                gl.UNPACK_FLIP_Y_WEBGL,
+                cubeTexture ? (source.flipY === true ? 1 : 0) : source.flipY === true ? 0 : 1
+            );
             state.setPixelStore(
                 gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,
                 destination.premultipliedAlpha === true ? 1 : 0
@@ -1594,13 +1604,15 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         }
         this.owner.state.setPixelStore(gl.UNPACK_ROW_LENGTH, bytesPerRow / info.bytesPerTexel);
         // PBO and typed-array uploads cannot use the DOM-source flip flag. Address each source
-        // row directly so portable top-to-bottom order reaches WebGL's bottom-left texture space
-        // without allocating a vertically flipped staging image.
+        // row directly without allocating a vertically flipped staging image. Cube faces retain
+        // source row order so native cube filtering stays continuous across face boundaries.
         for (let layer = 0; layer < depthOrArrayLayers; layer += 1) {
             const layerOffset = (source.offset ?? 0) + layer * rowsPerImage * bytesPerRow;
             for (let row = 0; row < height; row += 1) {
                 const offset = layerOffset + row * bytesPerRow;
-                const destinationY = mipHeight - originY - 1 - row;
+                const destinationY = isCubeTexture(gl, destinationTexture)
+                    ? originY + row
+                    : mipHeight - originY - 1 - row;
                 if (
                     destinationTexture.target === gl.TEXTURE_2D ||
                     destinationTexture.target === gl.TEXTURE_CUBE_MAP
@@ -1662,7 +1674,7 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         };
         const mipLevel = source.mipLevel ?? 0;
         const mipHeight = Math.max(1, Math.floor(sourceTexture.height / 2 ** mipLevel));
-        const readY = mipHeight - origin.y - extent.height;
+        const cubeTexture = isCubeTexture(gl, sourceTexture);
         const info = sourceTexture.formatInfo;
         const bytesPerRow = destination.bytesPerRow ?? extent.width * info.bytesPerTexel;
         const rowsPerImage = destination.rowsPerImage ?? extent.height;
@@ -1680,13 +1692,13 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
                 source.aspect ?? 'all'
             );
             const offset = (destination.offset ?? 0) + layer * rowsPerImage * bytesPerRow;
-            // readPixels emits bottom-to-top rows, while the portable RHI copy contract follows
-            // WebGPU's top-to-bottom texture coordinates and buffer row order. Writing one row at
-            // a time keeps the destination portable without a CPU staging allocation.
+            // Cube face storage keeps source row order so native seamless cube lookup stays
+            // continuous. Other WebGL textures retain the backend's vertically inverted storage.
             for (let row = 0; row < extent.height; row += 1) {
+                const sourceY = cubeTexture ? origin.y + row : mipHeight - origin.y - 1 - row;
                 gl.readPixels(
                     origin.x,
-                    readY + extent.height - 1 - row,
+                    sourceY,
                     extent.width,
                     1,
                     info.format,
@@ -1732,8 +1744,18 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
             1,
             Math.floor(destinationTexture.height / 2 ** destinationMipLevel)
         );
-        const sourceY = sourceMipHeight - sourceOrigin.y - extent.height;
-        const destinationY = destinationMipHeight - destinationOrigin.y - extent.height;
+        const sourceCube = isCubeTexture(gl, sourceTexture);
+        const destinationCube = isCubeTexture(gl, destinationTexture);
+        const sourceY0 = sourceCube ? sourceOrigin.y : sourceMipHeight - sourceOrigin.y;
+        const sourceY1 = sourceCube
+            ? sourceOrigin.y + extent.height
+            : sourceMipHeight - sourceOrigin.y - extent.height;
+        const destinationY0 = destinationCube
+            ? destinationOrigin.y
+            : destinationMipHeight - destinationOrigin.y;
+        const destinationY1 = destinationCube
+            ? destinationOrigin.y + extent.height
+            : destinationMipHeight - destinationOrigin.y - extent.height;
         const read = this.queue.copyReadFramebuffer();
         const draw = this.queue.copyDrawFramebuffer();
         this.owner.state.bindFramebuffer(gl.READ_FRAMEBUFFER, read);
@@ -1764,13 +1786,13 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
             );
             gl.blitFramebuffer(
                 sourceOrigin.x,
-                sourceY,
+                sourceY0,
                 sourceOrigin.x + extent.width,
-                sourceY + extent.height,
+                sourceY1,
                 destinationOrigin.x,
-                destinationY,
+                destinationY0,
                 destinationOrigin.x + extent.width,
-                destinationY + extent.height,
+                destinationY1,
                 mask,
                 gl.NEAREST
             );

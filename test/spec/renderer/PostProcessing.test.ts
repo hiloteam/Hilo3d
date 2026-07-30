@@ -47,6 +47,9 @@ describe('built-in post-processing', () => {
 
         expect(coordinates).toContain('vec2 hiloTextureUV(vec2 uv)');
         expect(coordinates).toContain('vec3 hiloTextureCubeDirection(vec3 direction)');
+        expect(coordinates).toMatch(
+            /vec3 hiloTextureCubeDirection\(vec3 direction\)\s*\{\s*return direction;\s*\}/u
+        );
         expect(uv).toContain('texture(sourceTexture, hiloTextureUV(uv))');
         expect(environment).toContain('texture(uTexture, hiloTextureCubeDirection(position))');
         expect(pbr).toContain('hiloTextureUV(vec2(NdotV, 1.0 - perceptualRoughness))');

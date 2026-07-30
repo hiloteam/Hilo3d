@@ -17,25 +17,13 @@ vec2 hiloTextureUV(vec2 uv) {
 }
 
 /**
- * Convert a logical cube direction so every face retains top-left image rows on both backends.
+ * Convert a logical cube direction into the backend-native cube lookup direction.
  *
- * Cube lookup face selection is shared by WebGL and WebGPU, but the native V origin of each face
- * differs. Flipping the face-local V axis requires changing Y on the side faces and Z on the
- * top/bottom faces without changing the selected face.
+ * The WebGL backend adapts cube face rows while uploading and copying texture data. Keeping this
+ * direction continuous is required for native seamless filtering across cube face boundaries.
  */
 vec3 hiloTextureCubeDirection(vec3 direction) {
-#ifdef HILO_WEBGPU
     return direction;
-#else
-    vec3 absoluteDirection = abs(direction);
-    if (
-        absoluteDirection.y >= absoluteDirection.x &&
-        absoluteDirection.y >= absoluteDirection.z
-    ) {
-        return vec3(direction.x, direction.y, -direction.z);
-    }
-    return vec3(direction.x, -direction.y, direction.z);
-#endif
 }
 
 /**

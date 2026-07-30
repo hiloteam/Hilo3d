@@ -390,10 +390,10 @@ pass，不创建这些原生对象。
   upload/update 和公开 readback 都把第 0 行定义为顶部。WebGL
   2 的底部原生 sampler/FBO 行方向由上传、readback 与共享 shader helper 消化，不暴露给材质或 glTF
   loader。
-- 普通材质采样通过 `hiloTextureUV()` 把 top-left logical UV 转成 native sampler
-  UV；cube 环境采样通过 `hiloTextureCubeDirection()` 翻转 face-local V，且不改变 face
-  selection。base color、normal、metallic/roughness、anisotropy、clearcoat、BRDF LUT 与 LTC
-  lookup 都服从这一规则。
+- 普通材质采样通过 `hiloTextureUV()` 把 top-left logical UV 转成 native sampler UV；WebGL 2 在 cube
+  face 上传与拷贝边界适配行方向，cube 环境采样因此通过 `hiloTextureCubeDirection()`
+  保持连续的原始方向，避免破坏跨 face 的 seamless filtering。base
+  color、normal、metallic/roughness、anisotropy、clearcoat、BRDF LUT 与 LTC lookup 都服从这一规则。
 - fullscreen quad 自身仍以 bottom-left geometry UV 表达，因此 scene/render-target
   sampling 使用不同的
   `hiloRenderTargetUV()`；不能在 vertex、fragment、present 和单个 effect 中重复翻转。

@@ -1570,6 +1570,58 @@ describe('RHI WebGL2 immediate backend', () => {
         device.destroy();
     });
 
+    it('preserves cube face rows when blitting between cube and 2D textures', async () => {
+        const canvas = document.createElement('canvas');
+        const native = canvas.getContext('webgl2');
+        if (native === null) return;
+        const device = createWebGL2RHIDevice(native);
+        const usage = RHITextureUsage.COPY_DST | RHITextureUsage.COPY_SRC;
+        const cube = device.createTexture({
+            size: { width: 2, height: 2, depthOrArrayLayers: 6 },
+            viewDimension: 'cube',
+            format: 'rgba8unorm',
+            usage
+        });
+        const texture2D = device.createTexture({
+            size: { width: 2, height: 2 },
+            format: 'rgba8unorm',
+            usage
+        });
+        const topRedBottomBlue = new Uint8Array([
+            255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 255, 255
+        ]);
+
+        const frame = device.graphicsQueue.beginFrame();
+        frame.writeTexture(
+            { texture: cube, origin: { z: 0 } },
+            topRedBottomBlue,
+            { bytesPerRow: 8 },
+            { width: 2, height: 2 }
+        );
+        frame.copyTextureToTexture(
+            { texture: cube, origin: { z: 0 } },
+            { texture: texture2D },
+            { width: 2, height: 2 }
+        );
+        frame.copyTextureToTexture(
+            { texture: texture2D },
+            { texture: cube, origin: { z: 1 } },
+            { width: 2, height: 2 }
+        );
+        await device.graphicsQueue.endFrame(frame).done;
+
+        await expect(readTexturePixels(device, cube, 0)).resolves.toEqual([
+            255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 255, 255
+        ]);
+        await expect(readTexturePixels(device, texture2D)).resolves.toEqual([
+            255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 255, 255
+        ]);
+        await expect(readTexturePixels(device, cube, 1)).resolves.toEqual([
+            255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 255, 255
+        ]);
+        device.destroy();
+    });
+
     it('converts top-left texture copy origins to bottom-left readPixels coordinates per mip', () => {
         const canvas = document.createElement('canvas');
         const native = canvas.getContext('webgl2');
