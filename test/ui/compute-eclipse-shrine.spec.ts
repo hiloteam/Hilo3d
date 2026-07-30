@@ -102,6 +102,7 @@ test('keeps Eclipse Shrine on public compute, storage, and Render Graph APIs', (
     expect(source).toContain("readonly injectionPoint = 'before-transparent'");
     expect(source).toContain('bloom: {');
     expect(source).toContain('colorUber: {');
+    expect(source).toContain('this.#targetPitch + deltaY * 0.0032');
 });
 
 declare global {

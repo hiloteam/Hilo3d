@@ -1128,7 +1128,7 @@ class EclipseController implements Hilo3d.Tickable {
         this.#pointerMotion = Math.min(6, this.#pointerMotion + Math.hypot(deltaX, deltaY) * 0.025);
         if (!this.#dragging) return;
         this.#targetYaw -= deltaX * 0.0042;
-        this.#targetPitch = Math.max(-0.38, Math.min(0.52, this.#targetPitch - deltaY * 0.0032));
+        this.#targetPitch = Math.max(-0.38, Math.min(0.52, this.#targetPitch + deltaY * 0.0032));
     };
 
     readonly #onPointerDown = (event: PointerEvent): void => {
