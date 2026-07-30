@@ -397,18 +397,21 @@ pass，不创建这些原生对象。
 - fullscreen quad 自身仍以 bottom-left geometry UV 表达，因此 scene/render-target
   sampling 使用不同的
   `hiloRenderTargetUV()`；不能在 vertex、fragment、present 和单个 effect 中重复翻转。
+- Shadow Atlas 的 rect 始终以 top-left 正向 scale/offset 保存；light-space
+  projection 在映射进 rect 前通过同一个 `hiloRenderTargetUV()` 转成 backend-native render-target
+  sampler 坐标。不能把 WebGPU 所需的 V 翻转预先写进共享 LightBlock，否则 WebGL 2 会再次翻转投影。
 - `gl_FragCoord` 是 backend-native 输入。需要 ShaderToy 式 bottom-left screen
   coordinate 时必须把 attachment size 传给
   `hiloBottomLeftFragCoord()`。不依赖方向的随机 dither 可以继续直接使用 native fragment position。
 - compute/storage image 的 row 0 是顶部；compute presenter 只在 storage-row 到 fullscreen native
   UV 的边界转换一次。CPU readback 仍返回 top-to-bottom rows。
 
-这套合同覆盖 ShaderToy、Life Game、Bloom/Color Uber、opaque scene texture transmission、compute
-particles、compute path tracer、普通 glTF 材质与 cube IBL。方向性 fixture 同时验证 WebGL
-2/WebGPU 的 render-target copy、managed 2D texture 和 cube-face
-top/bottom 结果，避免某个 example 修正后另一个路径再次反向。
+这套合同覆盖 ShaderToy、Life Game、Bloom/Color Uber、opaque scene texture transmission、Shadow
+Atlas、compute particles、compute path tracer、普通 glTF 材质与 cube
+IBL。方向性 fixture 同时验证 WebGL 2/WebGPU 的 render-target copy、managed 2D texture、cube-face
+top/bottom 和不对称投影阴影，避免某个 example 修正后另一个路径再次反向。
 
-相关代码：[`portableCoordinates.glsl`](../src/shader/method/portableCoordinates.glsl)、[`uv.frag`](../src/shader/chunk/uv.frag)、[`textureEnvMap.glsl`](../src/shader/method/textureEnvMap.glsl)、[`fullscreen-orientation.ts`](../test/ui/fixtures/fullscreen-orientation.ts)。
+相关代码：[`portableCoordinates.glsl`](../src/shader/method/portableCoordinates.glsl)、[`uv.frag`](../src/shader/chunk/uv.frag)、[`textureEnvMap.glsl`](../src/shader/method/textureEnvMap.glsl)、[`fullscreen-orientation.ts`](../test/ui/fixtures/fullscreen-orientation.ts)、[`shadow-orientation.ts`](../test/ui/fixtures/shadow-orientation.ts)。
 
 ## 4. WebGPU / WebGL 2 双后端如何实现同一合同
 

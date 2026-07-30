@@ -1,3 +1,5 @@
+#include "./portableCoordinates.glsl"
+
 bool isOutOfRange(vec2 pos) {
     if (pos.x < 0.0 || pos.x > 1.0 || pos.y < 0.0 || pos.y > 1.0) {
         return true;
@@ -18,7 +20,7 @@ float getShadowAtlas(int sliceIndex, float bias, vec3 fragPos, mat4 lightSpaceMa
         return 1.0;
     }
     vec4 atlasRect = u_shadowAtlasRects[sliceIndex];
-    vec2 atlasUV = atlasRect.zw + projection.xy * atlasRect.xy;
+    vec2 atlasUV = atlasRect.zw + hiloRenderTargetUV(projection.xy) * atlasRect.xy;
     vec2 texel = u_shadowAtlasSize.zw;
     vec2 rectEnd = atlasRect.zw + atlasRect.xy;
     vec2 rectMin = min(atlasRect.zw, rectEnd) + texel * 0.5;

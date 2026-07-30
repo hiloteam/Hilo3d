@@ -76,7 +76,7 @@ export interface ShadowAtlasSceneSlice {
     readonly maxBias: number;
     readonly near: number;
     readonly far: number;
-    /** `[scaleX, scaleY, offsetX, offsetY]`; Y is flipped into the top-left atlas. */
+    /** Top-left atlas rectangle encoded as `[scaleX, scaleY, offsetX, offsetY]`. */
     readonly atlasRect: Float32Array;
 }
 
@@ -946,9 +946,9 @@ export class ShadowAtlasSceneAdapter {
         for (const slice of atlas.slices) {
             const offset = slice.sliceIndex * 4;
             this.#stageLightBlock.atlasRects[offset] = slice.uvRect.width;
-            this.#stageLightBlock.atlasRects[offset + 1] = -slice.uvRect.height;
+            this.#stageLightBlock.atlasRects[offset + 1] = slice.uvRect.height;
             this.#stageLightBlock.atlasRects[offset + 2] = slice.uvRect.x;
-            this.#stageLightBlock.atlasRects[offset + 3] = slice.uvRect.y + slice.uvRect.height;
+            this.#stageLightBlock.atlasRects[offset + 3] = slice.uvRect.y;
         }
     }
 
