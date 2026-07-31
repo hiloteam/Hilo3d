@@ -104,6 +104,23 @@ stage.addChild(
     })
 );
 
+// Exercise four real cascade passes and the main-pass selection shader without changing the
+// orientation image produced by the visible compatibility light above.
+const cascadedCoverageLight = new Hilo3d.DirectionalLight({
+    amount: 0,
+    direction: new Hilo3d.Vector3(-0.5, -1, -1),
+    shadow: {
+        width: 512,
+        height: 512,
+        cascadeCount: 4,
+        cascadeSplitLambda: 0.6,
+        cascadeMaxDistance: 12,
+        cascadeBlend: 0.1,
+        stabilizeCascades: true
+    }
+});
+stage.addChild(cascadedCoverageLight);
+
 const target = stage.renderer.createRenderTarget({
     width: SIZE,
     height: SIZE,
@@ -163,15 +180,24 @@ function summarizeDarkPixels(threshold: number): {
 const summaries = [40, 80, 120, 160].map(summarizeDarkPixels);
 window.__HILO3D_SHADOW_ORIENTATION_RESULT__ = {
     backend,
+    cascadeCount: cascadedCoverageLight.shadow?.cascadeCount ?? 0,
+    shadowAtlasSize: [
+        stage.renderer.lightManager.shadowAtlas?.width ?? 0,
+        stage.renderer.lightManager.shadowAtlas?.height ?? 0
+    ],
     summaries
 };
 document.body.dataset['shadowOrientationComplete'] = 'true';
-document.body.dataset['shadowOrientationResult'] = JSON.stringify({ backend, summaries });
+document.body.dataset['shadowOrientationResult'] = JSON.stringify(
+    window.__HILO3D_SHADOW_ORIENTATION_RESULT__
+);
 
 declare global {
     interface Window {
         __HILO3D_SHADOW_ORIENTATION_RESULT__?: {
             readonly backend: Hilo3d.RendererBackend;
+            readonly cascadeCount: number;
+            readonly shadowAtlasSize: readonly [number, number];
             readonly summaries: readonly {
                 readonly threshold: number;
                 readonly count: number;

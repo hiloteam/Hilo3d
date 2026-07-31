@@ -12,6 +12,7 @@ import type Mesh from '../core/Mesh';
 import type Geometry from '../geometry/Geometry';
 import MorphGeometry from '../geometry/MorphGeometry';
 import type LightManager from '../light/LightManager';
+import { getDirectionalCascadeState } from '../light/DirectionalCascadeState';
 import type SphericalHarmonics3 from '../math/SphericalHarmonics3';
 import type Material from './Material';
 import type {
@@ -1534,6 +1535,34 @@ export function resolveSemanticBinding(
 function registerSemantic(name: string, entry: SemanticEntry): void {
     Reflect.set(semantic, name, entry);
 }
+
+registerSemantic('DIRECTIONALCASCADESPLITS', {
+    get(
+        _mesh: SemanticMesh,
+        _material: SemanticMaterial,
+        programInfo: ProgramBindingInfo
+    ): unknown {
+        return getDirectionalCascadeState(semanticLights(programInfo))?.directionalCascadeSplits;
+    }
+});
+registerSemantic('DIRECTIONALCASCADEPARAMS', {
+    get(
+        _mesh: SemanticMesh,
+        _material: SemanticMaterial,
+        programInfo: ProgramBindingInfo
+    ): unknown {
+        return getDirectionalCascadeState(semanticLights(programInfo))?.directionalCascadeParams;
+    }
+});
+registerSemantic('DIRECTIONALCASCADEMATRICES', {
+    get(
+        _mesh: SemanticMesh,
+        _material: SemanticMaterial,
+        programInfo: ProgramBindingInfo
+    ): unknown {
+        return getDirectionalCascadeState(semanticLights(programInfo))?.directionalCascadeMatrices;
+    }
+});
 
 registerSemantic(
     '_TIME',

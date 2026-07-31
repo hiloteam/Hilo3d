@@ -63,6 +63,21 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
 7. 把 Shadow、Main、Transparent、PostProcess、Present 或离屏 RenderTarget
    Pass 加入同一个应用帧 RenderGraph。
 
+方向光阴影在同一 Shadow Atlas/Render Graph/RHI 链路内支持 1–4 级 CSM。默认 `cascadeCount: 1`
+保持原单投影行为；启用多级后，共享前端按主 Camera 的 view-space near/far 计算 practical
+splits（透视 Camera 由 `cascadeSplitLambda` 在 uniform/logarithmic 间插值，正交 Camera 使用 uniform
+splits），用 `cascadeMaxDistance` 限制最远阴影范围，并为每段拟合 Orthographic shadow
+Camera。`stabilizeCascades` 默认把投影中心吸附到 atlas tile texel；fragment shader 在 view
+depth 上选择 cascade，并在 `cascadeBlend` 区间同时采样相邻两级以隐藏接缝。`shadowStrength` 默认 `1`
+保留 PCF 采样的物理可见度，0–4 范围可在 shared
+shader 中强化或减弱部分覆盖半影，而不增加 backend 分支。显式 `cameraInfo`
+仍服务单级兼容路径，与多级 cascade 组合会在 graph/RHI frame 开始前失败。
+
+LightBlock 为每个方向光保留 4 个稳定的逻辑 matrix/rect slot，Spot 与 Point 的 ABI
+base 不随当前 cascade 数变化；物理 atlas 只创建实际启用的 slice。这样运行时从 4 级改为 2 级不会改变其他灯光的 shader 索引，也不需要 backend 分支。扩展后的 LightBlock 为 16,288
+bytes，仍低于 WebGL 2 保证的 16,384-byte minimum uniform-block
+capacity；WebGPU 使用相同 std140 布局和 GLSL→Naga→WGSL 产物。
+
 Sprite 仍是 Mesh：共享单位 quad、按 atlas Texture 共享 SpriteMaterial，先按 Node 级
 `sortingLayer / zIndex / stable scene traversal` 确定显示顺序，再仅对相邻兼容项合批，并把 UV
 rect、size/anchor、tint 与 transform 编译成 portable instance batch。WebGL 2 使用 instance vertex

@@ -1,20 +1,34 @@
-import * as Hilo3d from '../../src/Hilo3d';
+import PerspectiveCamera from '../camera/PerspectiveCamera';
+import type Stage from '../core/Stage';
+import Vector3 from '../math/Vector3';
 
+/** Configuration for {@link OrbitControls}. */
 export interface OrbitControlsOptions {
     /** Perspective camera to control. Defaults to the Stage primary camera. */
-    camera?: Hilo3d.PerspectiveCamera;
+    camera?: PerspectiveCamera;
     /** Orbit center in the camera parent's coordinate space. */
-    target?: Hilo3d.Vector3;
+    target?: Vector3;
+    /** Whether event listeners are attached immediately. Defaults to `true`. */
     enabled?: boolean;
+    /** Whether pointer gestures can orbit the camera. Defaults to `true`. */
     enableRotate?: boolean;
+    /** Whether wheel and pinch gestures can dolly the camera. Defaults to `true`. */
     enableZoom?: boolean;
+    /** Whether secondary-drag, Shift-drag, and two-finger gestures can pan. Defaults to `true`. */
     enablePan?: boolean;
+    /** Orbit sensitivity multiplier. Defaults to `1`. */
     rotateSpeed?: number;
+    /** Dolly sensitivity multiplier. Defaults to `1`. */
     zoomSpeed?: number;
+    /** Pan sensitivity multiplier. Defaults to `1`. */
     panSpeed?: number;
+    /** Minimum camera distance from the target. Defaults to the camera near plane. */
     minDistance?: number;
+    /** Maximum camera distance from the target. Defaults to positive infinity. */
     maxDistance?: number;
+    /** Minimum polar orbit angle in radians. */
     minPolarAngle?: number;
+    /** Maximum polar orbit angle in radians. */
     maxPolarAngle?: number;
 }
 
@@ -33,56 +47,73 @@ function requireNonNegative(value: number, name: string): number {
     return value;
 }
 
-function requireFiniteVector(vector: Hilo3d.Vector3, name: string): void {
+function requireFiniteVector(vector: Vector3, name: string): void {
     if (![vector.x, vector.y, vector.z].every(Number.isFinite)) {
         throw new RangeError(`${name} must contain finite coordinates.`);
     }
 }
 
 /**
- * Camera-centric orbit, dolly, and pan controls shared by the 3D examples.
+ * Camera-centric orbit, dolly, and pan controls for a {@link PerspectiveCamera}.
  *
  * Mouse: drag to orbit, right-drag or Shift-drag to pan, and wheel to dolly.
  * Touch: drag with one finger to orbit, or use two fingers to pan and pinch-to-dolly.
  */
 export default class OrbitControls {
-    readonly stage: Hilo3d.Stage;
+    /** Stage that owns the controlled canvas and default camera. */
+    readonly stage: Stage;
+    /** Canvas that receives pointer, wheel, and touch events. */
     readonly canvas: HTMLCanvasElement;
-    readonly camera: Hilo3d.PerspectiveCamera;
-    readonly target: Hilo3d.Vector3;
+    /** Perspective camera manipulated by these controls. */
+    readonly camera: PerspectiveCamera;
+    /** Mutable orbit center in the camera parent's coordinate space. */
+    readonly target: Vector3;
 
+    /** Whether orbit gestures are accepted. */
     enableRotate: boolean;
+    /** Whether dolly gestures are accepted. */
     enableZoom: boolean;
+    /** Whether pan gestures are accepted. */
     enablePan: boolean;
+    /** Orbit sensitivity multiplier. */
     rotateSpeed: number;
+    /** Dolly sensitivity multiplier. */
     zoomSpeed: number;
+    /** Pan sensitivity multiplier. */
     panSpeed: number;
+    /** Minimum camera distance from the target. */
     minDistance: number;
+    /** Maximum camera distance from the target. */
     maxDistance: number;
+    /** Minimum polar orbit angle in radians. */
     minPolarAngle: number;
+    /** Maximum polar orbit angle in radians. */
     maxPolarAngle: number;
+    /** Whether browser event listeners are currently attached. */
     isEnabled = false;
+    /** Optional callback invoked after the controls change the camera view. */
     onChange: (() => void) | undefined;
 
-    private readonly initialCameraPosition: Hilo3d.Vector3;
-    private readonly initialTarget: Hilo3d.Vector3;
+    private readonly initialCameraPosition: Vector3;
+    private readonly initialTarget: Vector3;
     private readonly pointers = new Map<number, PointerPosition>();
-    private readonly offset = new Hilo3d.Vector3();
-    private readonly right = new Hilo3d.Vector3();
-    private readonly up = new Hilo3d.Vector3();
-    private readonly panOffset = new Hilo3d.Vector3();
+    private readonly offset = new Vector3();
+    private readonly right = new Vector3();
+    private readonly up = new Vector3();
+    private readonly panOffset = new Vector3();
     private readonly initialTouchAction: string;
 
-    constructor(stage: Hilo3d.Stage, options: OrbitControlsOptions = {}) {
+    /** Create controls for a stage and optionally attach their browser event listeners. */
+    constructor(stage: Stage, options: OrbitControlsOptions = {}) {
         const camera = options.camera ?? stage.camera;
-        if (!(camera instanceof Hilo3d.PerspectiveCamera)) {
+        if (!(camera instanceof PerspectiveCamera)) {
             throw new TypeError('OrbitControls requires a PerspectiveCamera.');
         }
 
         this.stage = stage;
         this.canvas = stage.canvas;
         this.camera = camera;
-        this.target = options.target?.clone() ?? new Hilo3d.Vector3();
+        this.target = options.target?.clone() ?? new Vector3();
         this.enableRotate = options.enableRotate ?? true;
         this.enableZoom = options.enableZoom ?? true;
         this.enablePan = options.enablePan ?? true;
@@ -107,6 +138,7 @@ export default class OrbitControls {
         if (options.enabled ?? true) this.enable();
     }
 
+    /** Attach pointer, wheel, touch, and context-menu listeners to the canvas. */
     enable(): void {
         if (this.isEnabled) return;
         this.isEnabled = true;
@@ -120,6 +152,7 @@ export default class OrbitControls {
         this.canvas.addEventListener('contextmenu', this.preventContextMenu);
     }
 
+    /** Detach all listeners and restore the canvas touch-action style. */
     disable(): void {
         if (!this.isEnabled) return;
         this.isEnabled = false;
@@ -139,6 +172,7 @@ export default class OrbitControls {
         this.canvas.removeEventListener('contextmenu', this.preventContextMenu);
     }
 
+    /** Release the browser event listeners owned by these controls. */
     dispose(): void {
         this.disable();
     }
@@ -149,12 +183,28 @@ export default class OrbitControls {
         this.applySpherical(radius, polarAngle, azimuthAngle);
     }
 
-    setTarget(target: Hilo3d.Vector3): void {
+    /** Replace the orbit center and reorient the camera toward it. */
+    setTarget(target: Vector3): void {
         requireFiniteVector(target, 'target');
         this.target.copy(target);
         this.update();
     }
 
+    /**
+     * Set a complete camera view while applying the configured orbit limits.
+     *
+     * This is useful for scripted tours that should share the same camera contract as pointer
+     * interaction.
+     */
+    setView(position: Vector3, target: Vector3): void {
+        requireFiniteVector(position, 'position');
+        requireFiniteVector(target, 'target');
+        this.target.copy(target);
+        this.camera.position.copy(position);
+        this.update();
+    }
+
+    /** Orbit by a pointer delta measured in CSS pixels. */
     rotate(deltaX: number, deltaY: number): void {
         if (!this.enableRotate || (!deltaX && !deltaY)) return;
         const viewportHeight = Math.max(this.canvas.clientHeight, this.canvas.height, 1);
@@ -199,6 +249,7 @@ export default class OrbitControls {
         this.onChange?.();
     }
 
+    /** Restore the camera position and target captured at construction time. */
     reset(): void {
         this.target.copy(this.initialTarget);
         this.camera.position.copy(this.initialCameraPosition);

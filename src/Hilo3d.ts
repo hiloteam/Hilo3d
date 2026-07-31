@@ -63,6 +63,7 @@ export {
     default as PerspectiveCamera,
     type PerspectiveCameraParameters
 } from './camera/PerspectiveCamera';
+export { default as OrbitControls, type OrbitControlsOptions } from './controls/OrbitControls';
 
 export {
     default as BoxGeometry,
@@ -376,7 +377,8 @@ export { default as AmbientLight, type AmbientLightParameters } from './light/Am
 export { default as AreaLight, type AreaLightParameters } from './light/AreaLight';
 export {
     default as DirectionalLight,
-    type DirectionalLightParameters
+    type DirectionalLightParameters,
+    type DirectionalLightShadowOptions
 } from './light/DirectionalLight';
 export {
     default as Light,

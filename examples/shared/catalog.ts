@@ -113,7 +113,8 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'geometry_primitives.html': 'Geometry Primitives',
     'pbr2.html': 'PBR Material Lab',
     'pbr_layered_materials.html': 'Layered PBR Studio',
-    'gltf_material_extensions.html': 'Khronos Layered Material Gallery'
+    'gltf_material_extensions.html': 'Khronos Layered Material Gallery',
+    'cascaded_shadows.html': 'Cascaded Sunset Garden'
 });
 
 const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
@@ -161,7 +162,9 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'pbr_layered_materials.html':
         'Toggle anisotropy, clearcoat, transmission and volume across a cinematic engine-owned HDR material studio.',
     'gltf_material_extensions.html':
-        'Inspect four curated Khronos glTF assets with anisotropy, clearcoat, iridescence, transmission and thickness-aware volume.'
+        'Inspect four curated Khronos glTF assets with anisotropy, clearcoat, iridescence, transmission and thickness-aware volume.',
+    'cascaded_shadows.html':
+        'Compare one and four camera-relative cascades across a procedural pastel sunset garden with live split, blend, contrast, stabilization, reach, and 4× MSAA.'
 });
 
 const FEATURED_PATHS = new Set([
@@ -179,6 +182,7 @@ const FEATURED_PATHS = new Set([
     'gltf_material_extensions.html',
     'pointLight.html',
     'shadow.html',
+    'cascaded_shadows.html',
     'bloom.html',
     'scriptable_pipeline.html',
     'shaderToy.html',

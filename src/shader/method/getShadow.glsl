@@ -43,6 +43,60 @@ float getShadowAtlas(int sliceIndex, float bias, vec3 fragPos, mat4 lightSpaceMa
     return visibility / 9.0;
 }
 
+float applyDirectionalShadowStrength(int lightIndex, float visibility) {
+    float strength = clamp(u_directionalCascadeParams[lightIndex].z, 0.0, 4.0);
+    return clamp(1.0 - (1.0 - visibility) * strength, 0.0, 1.0);
+}
+
+float getDirectionalShadowAtlas(int lightIndex, float bias, vec3 fragPos) {
+    vec4 splits = u_directionalCascadeSplits[lightIndex];
+    int cascadeCount = clamp(
+        int(u_directionalCascadeParams[lightIndex].x + 0.5),
+        1,
+        HILO_MAX_DIRECTIONAL_SHADOW_CASCADES
+    );
+    float viewDepth = max(-fragPos.z, 0.0);
+    int cascade = 0;
+    if (cascadeCount > 1 && viewDepth > splits.x) cascade = 1;
+    if (cascadeCount > 2 && viewDepth > splits.y) cascade = 2;
+    if (cascadeCount > 3 && viewDepth > splits.z) cascade = 3;
+    if (viewDepth > splits[cascadeCount - 1]) return 1.0;
+
+    int matrixIndex = lightIndex * HILO_MAX_DIRECTIONAL_SHADOW_CASCADES + cascade;
+    float visibility = getShadowAtlas(
+        matrixIndex,
+        bias,
+        fragPos,
+        u_directionalCascadeMatrices[matrixIndex]
+    );
+    float blend = u_directionalCascadeParams[lightIndex].y;
+    if (cascade >= cascadeCount - 1 || blend <= 0.0) {
+        return applyDirectionalShadowStrength(lightIndex, visibility);
+    }
+
+    float previousSplit = cascade == 0 ? u_cameraNear : splits[cascade - 1];
+    float interval = max(splits[cascade] - previousSplit, 1e-5);
+    float blendStart = splits[cascade] - interval * blend;
+    if (viewDepth <= blendStart) {
+        return applyDirectionalShadowStrength(lightIndex, visibility);
+    }
+    int nextMatrixIndex = matrixIndex + 1;
+    float nextVisibility = getShadowAtlas(
+        nextMatrixIndex,
+        bias,
+        fragPos,
+        u_directionalCascadeMatrices[nextMatrixIndex]
+    );
+    return applyDirectionalShadowStrength(
+        lightIndex,
+        mix(
+            visibility,
+            nextVisibility,
+            smoothstep(blendStart, splits[cascade], viewDepth)
+        )
+    );
+}
+
 float getPointShadowAtlas(int lightIndex, float bias, vec3 fragPos) {
     int matrixOffset = lightIndex * 6;
     for (int face = 0; face < 6; face++) {
@@ -54,7 +108,8 @@ float getPointShadowAtlas(int lightIndex, float bias, vec3 fragPos) {
         vec3 projection = clipPosition.xyz / clipPosition.w;
         if (abs(projection.x) <= 1.0001 && abs(projection.y) <= 1.0001) {
             return getShadowAtlas(
-                HILO_MAX_DIRECTIONAL_LIGHTS + HILO_MAX_SPOT_LIGHTS + matrixOffset + face,
+                HILO_MAX_DIRECTIONAL_LIGHTS * HILO_MAX_DIRECTIONAL_SHADOW_CASCADES +
+                    HILO_MAX_SPOT_LIGHTS + matrixOffset + face,
                 bias,
                 fragPos,
                 lightSpaceMatrix

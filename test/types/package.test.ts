@@ -8,6 +8,7 @@ import {
     ComputeShader,
     constants,
     createStorageLayout,
+    DirectionalLight,
     EventDispatcher,
     GLTFLoader,
     HiloEvent,
@@ -15,6 +16,7 @@ import {
     Mesh,
     MeshPicker,
     Node,
+    OrbitControls,
     PerspectiveCamera,
     Renderer,
     SCENE_STORAGE_BIND_GROUP,
@@ -23,18 +25,21 @@ import {
     StorageGraphicsShader,
     Texture,
     Tween,
+    Vector3,
     GPUDrivenRenderPass,
     version,
     type BasicLoadRequest,
     type BasicMaterialParameters,
     type AreaLightParameters,
     type DispatchEvent,
+    type DirectionalLightShadowOptions,
     type EventListener,
     type ForwardRenderFeatureContext,
     type KTXTextureOptions,
     type LoaderRequest,
     type MeshParameters,
     type NodeParameters,
+    type OrbitControlsOptions,
     type CullingResultsHandle,
     type ComputeTextureSampleType,
     type ComputeTextureViewDimension,
@@ -91,6 +96,16 @@ const stageParameters = {
     height: rendererParameters.height
 } satisfies StageParameters;
 const stage = await Stage.create(stageParameters);
+const orbitControlsOptions = {
+    camera,
+    target: new Vector3(0, 0, 0),
+    enablePan: false,
+    minDistance: 1,
+    maxDistance: 20
+} satisfies OrbitControlsOptions;
+const orbitControls = new OrbitControls(stage, orbitControlsOptions);
+orbitControls.setView(camera.position, orbitControls.target);
+orbitControls.dispose();
 const webgpuRendererParameters = {
     backend: 'webgpu',
     domElement: document.createElement('canvas'),
@@ -154,6 +169,18 @@ const areaLightHasShadow: 'shadow' extends keyof AreaLightParameters ? true : fa
 const shadowCastingLightHasShadow: 'shadow' extends keyof ShadowCastingLightParameters
     ? true
     : false = true;
+const cascadedDirectionalShadow = {
+    cascadeCount: 4,
+    cascadeSplitLambda: 0.65,
+    cascadeMaxDistance: 250,
+    cascadeBlend: 0.1,
+    stabilizeCascades: true,
+    shadowStrength: 1.5
+} satisfies DirectionalLightShadowOptions;
+const cascadedDirectionalLight = new DirectionalLight({ shadow: cascadedDirectionalShadow });
+if (cascadedDirectionalLight.shadow !== null) {
+    cascadedDirectionalLight.shadow.cascadeCount = 3;
+}
 const renderTargetParameters = {
     width: 320,
     height: 180,

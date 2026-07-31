@@ -7,7 +7,7 @@ float hiloDirectionalShadow(
     vec3 fragPosition,
     mat4 lightSpaceMatrix
 ) {
-    return getShadowAtlas(index, bias, fragPosition, lightSpaceMatrix);
+    return getDirectionalShadowAtlas(index, bias, fragPosition);
 }
 #endif
 
@@ -19,7 +19,12 @@ float hiloSpotShadow(
     vec3 fragPosition,
     mat4 lightSpaceMatrix
 ) {
-    return getShadowAtlas(HILO_MAX_DIRECTIONAL_LIGHTS + index, bias, fragPosition, lightSpaceMatrix);
+    return getShadowAtlas(
+        HILO_MAX_DIRECTIONAL_LIGHTS * HILO_MAX_DIRECTIONAL_SHADOW_CASCADES + index,
+        bias,
+        fragPosition,
+        lightSpaceMatrix
+    );
 }
 #endif
 

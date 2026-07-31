@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createExampleCatalog, examplesForBackend } from '../../examples/shared/catalog';
+import { createExampleCatalog } from '../../examples/shared/catalog';
 import {
     completionContractForExample,
     exampleCases,
@@ -396,7 +396,7 @@ test('PBR showcase controls remain usable at phone width', async ({ page }) => {
 for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`example gallery discovers every ${backend} page @${backend}`, async ({ page }) => {
         await page.goto(`/examples/list.html?backend=${backend}`, { waitUntil: 'networkidle' });
-        const expected = examplesForBackend(createExampleCatalog(examplePaths), backend);
+        const expected = createExampleCatalog(examplePaths);
         const expectedHighlights = expected.filter(entry => entry.featured);
         const navigationItems = page.locator('#exampleNavigation .exampleButton');
         expect(
@@ -417,6 +417,11 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                 items.map(item => (item as HTMLElement).dataset['examplePath'])
             )
         ).toEqual(expected.map(entry => entry.path));
+        await expect(page.locator('.exampleBackendBadge[data-backend="webgpu"]')).toHaveCount(5);
+        await expect(page.locator('.exampleBackendBadge[data-backend="webgl2"]')).toHaveCount(1);
+        await expect(page.locator('.exampleButton[data-backend-compatible="false"]')).toHaveCount(
+            backend === 'webgl2' ? 5 : 1
+        );
 
         const exampleFrame = page.locator('#exampleFrame');
         await expect(page.locator('#currentTitle')).toHaveText('Quick Start');
@@ -451,6 +456,23 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         expect(quickStartUrl.searchParams.get('backend')).toBe(backend);
         expect(quickStartUrl.searchParams.has('url')).toBe(false);
 
+        await page.locator('#exampleSearch').fill('');
+        const fallbackPath = backend === 'webgl2' ? 'compute_gpu_driven.html' : 'webxr.html';
+        const fallbackBackend = backend === 'webgl2' ? 'webgpu' : 'webgl2';
+        const fallbackLabel = backend === 'webgl2' ? 'WebGPU only' : 'WebGL 2 only';
+        await page.route(`**/${fallbackPath}*`, route =>
+            route.fulfill({
+                contentType: 'text/html',
+                body: '<!doctype html><title>Single-backend example</title>'
+            })
+        );
+        await page.locator(`[data-example-path="${fallbackPath}"]`).click();
+        await expect(page.locator('#currentBackend')).toHaveText(fallbackLabel);
+        await expect(page.locator('#currentBackend')).toHaveAttribute('data-fallback', 'true');
+        const fallbackSource = await exampleFrame.getAttribute('src');
+        if (!fallbackSource) throw new Error(`${fallbackPath} did not set an iframe source.`);
+        expect(new URL(fallbackSource).searchParams.get('backend')).toBe(fallbackBackend);
+
         await page.setViewportSize({ width: 600, height: 720 });
         const sidebarToggle = page.locator('#sidebarToggle');
         await expect(sidebarToggle).toBeVisible();
@@ -458,6 +480,59 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await expect(page.locator('body')).toHaveClass(/sidebarOpen/u);
         await page.locator('#sidebarBackdrop').click({ position: { x: 590, y: 300 } });
         await expect(page.locator('body')).not.toHaveClass(/sidebarOpen/u);
+    });
+}
+
+for (const backend of ['webgl2', 'webgpu'] as const) {
+    test(`cascaded shadow garden exposes live controls through ${backend} @${backend}`, async ({
+        page
+    }) => {
+        test.slow();
+        await installRenderHealthProbe(page);
+        await page.goto(exampleRequestUrl('cascaded_shadows.html', backend), {
+            waitUntil: 'networkidle'
+        });
+        await expect(page.locator('body')).toHaveAttribute('data-csm-ready', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-msaa', '4');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-mode', '4');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-strength', '3');
+        await expect(page.locator('[data-cascade-count="4"]')).toHaveAttribute(
+            'aria-pressed',
+            'true'
+        );
+        await expect(page.locator('#splitValues')).toContainText('C4 200.0 m');
+
+        await page.locator('[data-cascade-count="1"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-mode', '1');
+        await expect(page.locator('#modeSummary')).toContainText('single');
+
+        await page.locator('#stabilizeToggle').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-stabilized', 'false');
+
+        await page.locator('[data-cascade-count="0"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-mode', 'off');
+        await page.locator('[data-cascade-count="4"]').click();
+        await page.locator('#distanceControl').evaluate(element => {
+            if (!(element instanceof HTMLInputElement)) {
+                throw new Error('Expected #distanceControl to be an input element');
+            }
+            element.value = '90';
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await expect(page.locator('body')).toHaveAttribute('data-csm-mode', '4');
+        await expect(page.locator('#distanceOutput')).toHaveText('90 m');
+        await expect(page.locator('#splitValues')).toContainText('C4 90.0 m');
+        await page.locator('#strengthControl').evaluate(element => {
+            if (!(element instanceof HTMLInputElement)) {
+                throw new Error('Expected #strengthControl to be an input element');
+            }
+            element.value = '1.2';
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await expect(page.locator('body')).toHaveAttribute('data-csm-strength', '1.2');
+        await expect(page.locator('#strengthOutput')).toHaveText('1.20');
+
+        await assertObservableRender(page, 'cascaded_shadows.html', backend);
     });
 }
 

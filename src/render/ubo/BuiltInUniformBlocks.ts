@@ -1,6 +1,7 @@
 import { createStd140Layout, type Std140Layout, type Std140Value } from './Std140Layout';
 
 export const MAX_DIRECTIONAL_LIGHTS = 8;
+export const MAX_DIRECTIONAL_SHADOW_CASCADES = 4;
 export const MAX_SPOT_LIGHTS = 8;
 export const MAX_POINT_LIGHTS = 16;
 export const MAX_AREA_LIGHTS = 8;
@@ -8,7 +9,9 @@ export const MAX_SKIN_JOINTS = 128;
 export const MAX_MORPH_WEIGHTS = 8;
 export const MAX_INSTANCES_PER_DRAW = 128;
 export const MAX_SHADOW_ATLAS_SLICES =
-    MAX_DIRECTIONAL_LIGHTS + MAX_SPOT_LIGHTS + MAX_POINT_LIGHTS * 6;
+    MAX_DIRECTIONAL_LIGHTS * MAX_DIRECTIONAL_SHADOW_CASCADES +
+    MAX_SPOT_LIGHTS +
+    MAX_POINT_LIGHTS * 6;
 
 export const frameBlockLayout = createStd140Layout({
     u_rendererSize: 'vec2',
@@ -40,6 +43,12 @@ export const lightBlockLayout = createStd140Layout({
     u_directionalLightsShadowMapSize: { type: 'vec2', arrayLength: MAX_DIRECTIONAL_LIGHTS },
     u_directionalLightsShadowBias: { type: 'vec2', arrayLength: MAX_DIRECTIONAL_LIGHTS },
     u_directionalLightSpaceMatrix: { type: 'mat4', arrayLength: MAX_DIRECTIONAL_LIGHTS },
+    u_directionalCascadeSplits: { type: 'vec4', arrayLength: MAX_DIRECTIONAL_LIGHTS },
+    u_directionalCascadeParams: { type: 'vec4', arrayLength: MAX_DIRECTIONAL_LIGHTS },
+    u_directionalCascadeMatrices: {
+        type: 'mat4',
+        arrayLength: MAX_DIRECTIONAL_LIGHTS * MAX_DIRECTIONAL_SHADOW_CASCADES
+    },
     u_spotLightsPos: { type: 'vec3', arrayLength: MAX_SPOT_LIGHTS },
     u_spotLightsDir: { type: 'vec3', arrayLength: MAX_SPOT_LIGHTS },
     u_spotLightsColor: { type: 'vec3', arrayLength: MAX_SPOT_LIGHTS },

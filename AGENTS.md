@@ -36,6 +36,14 @@ with one shared rendering frontend, a Render Graph, a portable RHI, and WebGPU/W
   `npm run api:update` followed by `npm run api:check`.
 - The public rendering backends are exactly `webgl2` and `webgpu`.
 
+## Camera controls
+
+- `src/controls/OrbitControls.ts` is the canonical orbit, dolly, and pan implementation for the
+  engine and maintained browser examples.
+- Examples that need pointer, wheel, or touch camera navigation must use the public `OrbitControls`
+  API instead of implementing local camera gesture handlers. Scripted tours should use
+  `OrbitControls.setView()` when the same perspective-camera contract applies.
+
 ## Rendering invariants
 
 - `Renderer` is the public renderer entry point. `Renderer` and `Stage` are created only through
@@ -77,6 +85,7 @@ with one shared rendering frontend, a Render Graph, a portable RHI, and WebGPU/W
 ## Repository map
 
 - `src/`: engine source and public API.
+- `src/controls/`: reusable public camera and interaction controls.
 - `src/render/`: shared renderer, frame orchestration, Render Graph, RHI, shaders, and UBO support.
 - `src/render/graph/`: graph builder, compiler, validation, resource model, and executor.
 - `src/render/rhi/core/`: backend-neutral contracts, descriptors, capabilities, and validation.

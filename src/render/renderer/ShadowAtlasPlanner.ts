@@ -1,6 +1,7 @@
 import type { RHICapabilities, RHITextureFormat, RHIViewport } from '../rhi/core';
 import {
     MAX_DIRECTIONAL_LIGHTS,
+    MAX_DIRECTIONAL_SHADOW_CASCADES,
     MAX_POINT_LIGHTS,
     MAX_SHADOW_ATLAS_SLICES,
     MAX_SPOT_LIGHTS
@@ -12,6 +13,8 @@ export interface ShadowAtlasLightRequest<Owner extends object = object> {
     readonly owner: Owner;
     readonly width: number;
     readonly height: number;
+    /** Directional requests only. Omitted requests use one compatibility cascade. */
+    readonly cascadeCount?: number;
 }
 
 export interface ShadowAtlasRequests<Owner extends object = object> {
@@ -33,6 +36,8 @@ export interface ShadowAtlasSlice<Owner extends object = object> {
     readonly kind: ShadowAtlasLightKind;
     /** `null` for planar shadows; `0..5` for a point-light cube face. */
     readonly face: number | null;
+    /** `0..3` for a directional-light cascade; `null` for spot and point shadows. */
+    readonly cascade: number | null;
     /** Stable LightBlock ABI index used by `u_shadowAtlasRects`. */
     readonly sliceIndex: number;
     /** Dense atlas placement index, independent of the sparse ABI index. */
@@ -92,6 +97,7 @@ interface MutableShadowAtlasSlice<Owner extends object> {
     owner: Owner | null;
     kind: ShadowAtlasLightKind;
     face: number | null;
+    cascade: number | null;
     sliceIndex: number;
     physicalIndex: number;
     readonly viewport: MutableViewport;
@@ -160,6 +166,7 @@ function createMutableSlice<Owner extends object>(): MutableShadowAtlasSlice<Own
         owner: null,
         kind: 'directional',
         face: null,
+        cascade: null,
         sliceIndex: 0,
         physicalIndex: 0,
         viewport: { x: 0, y: 0, width: 0, height: 0, minDepth: 0, maxDepth: 1 },
@@ -170,6 +177,7 @@ function createMutableSlice<Owner extends object>(): MutableShadowAtlasSlice<Own
 function clearMutableSlice<Owner extends object>(slice: MutableShadowAtlasSlice<Owner>): void {
     slice.owner = null;
     slice.face = null;
+    slice.cascade = null;
     slice.sliceIndex = 0;
     slice.physicalIndex = 0;
     slice.viewport.x = 0;
@@ -275,7 +283,8 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
                 `Point shadow count ${String(pointCount)} exceeds the LightBlock limit ${String(MAX_POINT_LIGHTS)}`
             );
         }
-        const sliceCount = directionalCount + spotCount + pointCount * 6;
+        const directionalSliceCount = this.directionalSliceCount(requests.directional);
+        const sliceCount = directionalSliceCount + spotCount + pointCount * 6;
         if (sliceCount > this.maxSlices) {
             throw new RangeError(
                 `Shadow atlas requires ${String(sliceCount)} slices, exceeding maxSlices ${String(this.maxSlices)}`
@@ -313,6 +322,7 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             requests.directional,
             'directional',
             0,
+            MAX_DIRECTIONAL_SHADOW_CASCADES,
             1,
             physicalIndex,
             columns,
@@ -324,7 +334,8 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
         physicalIndex = this.writeRequests(
             requests.spot,
             'spot',
-            MAX_DIRECTIONAL_LIGHTS,
+            MAX_DIRECTIONAL_LIGHTS * MAX_DIRECTIONAL_SHADOW_CASCADES,
+            1,
             1,
             physicalIndex,
             columns,
@@ -336,7 +347,8 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
         this.writeRequests(
             requests.point,
             'point',
-            MAX_DIRECTIONAL_LIGHTS + MAX_SPOT_LIGHTS,
+            MAX_DIRECTIONAL_LIGHTS * MAX_DIRECTIONAL_SHADOW_CASCADES + MAX_SPOT_LIGHTS,
+            6,
             6,
             physicalIndex,
             columns,
@@ -405,6 +417,11 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             }
             requirePositiveSafeInteger(request.width, `${kind} shadow width`);
             requirePositiveSafeInteger(request.height, `${kind} shadow height`);
+            if (kind === 'directional') {
+                this.directionalRequestCascadeCount(request);
+            } else if (request.cascadeCount !== undefined) {
+                throw new TypeError('Only directional shadow requests may specify cascadeCount');
+            }
             requireOwner(request.owner, kind, index);
             if (this.#seenOwners.has(request.owner)) {
                 throw new TypeError('A shadow atlas owner may appear only once per plan');
@@ -449,7 +466,8 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
         requests: readonly ShadowAtlasLightRequest<Owner>[],
         kind: ShadowAtlasLightKind,
         logicalBase: number,
-        facesPerOwner: number,
+        logicalStride: number,
+        defaultSliceCount: number,
         initialPhysicalIndex: number,
         columns: number,
         tileWidth: number,
@@ -463,9 +481,13 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             if (request === undefined) {
                 throw new TypeError(`${kind} shadow requests must not contain sparse entries`);
             }
-            const ownerSliceIndex = logicalBase + ownerIndex * facesPerOwner;
-            this.recordOwner(request.owner, kind, ownerSliceIndex, physicalIndex, facesPerOwner);
-            for (let face = 0; face < facesPerOwner; face += 1) {
+            const ownerSliceCount =
+                kind === 'directional'
+                    ? this.directionalRequestCascadeCount(request)
+                    : defaultSliceCount;
+            const ownerSliceIndex = logicalBase + ownerIndex * logicalStride;
+            this.recordOwner(request.owner, kind, ownerSliceIndex, physicalIndex, ownerSliceCount);
+            for (let subIndex = 0; subIndex < ownerSliceCount; subIndex += 1) {
                 const slice = this.#activeSlices[physicalIndex];
                 if (slice === undefined) {
                     throw new Error('Shadow atlas slice storage is incomplete');
@@ -476,8 +498,9 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
                 const y = row * tileHeight;
                 slice.owner = request.owner;
                 slice.kind = kind;
-                slice.face = kind === 'point' ? face : null;
-                slice.sliceIndex = ownerSliceIndex + face;
+                slice.face = kind === 'point' ? subIndex : null;
+                slice.cascade = kind === 'directional' ? subIndex : null;
+                slice.sliceIndex = ownerSliceIndex + subIndex;
                 slice.physicalIndex = physicalIndex;
                 slice.viewport.x = x;
                 slice.viewport.y = y;
@@ -493,6 +516,28 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             }
         }
         return physicalIndex;
+    }
+
+    private directionalSliceCount(requests: readonly ShadowAtlasLightRequest<Owner>[]): number {
+        let count = 0;
+        for (const request of requests as readonly (ShadowAtlasLightRequest<Owner> | undefined)[]) {
+            if (request === undefined) {
+                throw new TypeError('directional shadow requests must not contain sparse entries');
+            }
+            count += this.directionalRequestCascadeCount(request);
+        }
+        return count;
+    }
+
+    private directionalRequestCascadeCount(request: ShadowAtlasLightRequest<Owner>): number {
+        const count = request.cascadeCount ?? 1;
+        requirePositiveSafeInteger(count, 'Directional shadow cascadeCount');
+        if (count > MAX_DIRECTIONAL_SHADOW_CASCADES) {
+            throw new RangeError(
+                `Directional shadow cascadeCount ${String(count)} exceeds ${String(MAX_DIRECTIONAL_SHADOW_CASCADES)}`
+            );
+        }
+        return count;
     }
 
     private recordOwner(

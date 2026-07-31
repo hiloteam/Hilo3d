@@ -349,11 +349,50 @@ select:focus-visible {
 }
 
 .exampleButtonTitle {
+    min-width: 0;
     overflow: hidden;
     font-size: 12px;
     font-weight: 690;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.exampleButtonHeading {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.exampleBackendBadge {
+    flex: 0 0 auto;
+    border: 1px solid rgba(152, 162, 179, 0.2);
+    border-radius: 999px;
+    padding: 2px 6px;
+    background: rgba(152, 162, 179, 0.09);
+    color: #aeb7c6;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    line-height: 1.25;
+    text-transform: uppercase;
+}
+
+.exampleBackendBadge[data-backend='webgpu'] {
+    border-color: rgba(160, 130, 255, 0.3);
+    background: rgba(129, 92, 246, 0.14);
+    color: #c8b7ff;
+}
+
+.exampleBackendBadge[data-backend='webgl2'] {
+    border-color: rgba(255, 183, 92, 0.3);
+    background: rgba(255, 159, 67, 0.12);
+    color: #ffc681;
+}
+
+.exampleButton[data-backend-compatible='false'] .exampleButtonDescription {
+    color: #6e788a;
 }
 
 .exampleButtonDescription {
@@ -441,6 +480,11 @@ select:focus-visible {
 .viewerBackend {
     background: rgba(105, 230, 194, 0.12);
     color: var(--gallery-accent);
+}
+
+.viewerBackend[data-fallback='true'] {
+    background: rgba(129, 92, 246, 0.16);
+    color: #c8b7ff;
 }
 
 .viewerTitle {

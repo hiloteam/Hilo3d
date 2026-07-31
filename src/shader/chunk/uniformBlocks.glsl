@@ -1,10 +1,11 @@
 #define HILO_MAX_DIRECTIONAL_LIGHTS 8
+#define HILO_MAX_DIRECTIONAL_SHADOW_CASCADES 4
 #define HILO_MAX_SPOT_LIGHTS 8
 #define HILO_MAX_POINT_LIGHTS 16
 #define HILO_MAX_AREA_LIGHTS 8
 #define HILO_MAX_SKIN_JOINTS 128
 #define HILO_MAX_INSTANCES_PER_DRAW 128
-#define HILO_MAX_SHADOW_ATLAS_SLICES 112
+#define HILO_MAX_SHADOW_ATLAS_SLICES 136
 
 layout(std140) uniform FrameBlock {
     vec2 u_rendererSize;
@@ -42,6 +43,11 @@ layout(std140) uniform LightBlock {
     vec2 u_directionalLightsShadowMapSize[HILO_MAX_DIRECTIONAL_LIGHTS];
     vec2 u_directionalLightsShadowBias[HILO_MAX_DIRECTIONAL_LIGHTS];
     mat4 u_directionalLightSpaceMatrix[HILO_MAX_DIRECTIONAL_LIGHTS];
+    vec4 u_directionalCascadeSplits[HILO_MAX_DIRECTIONAL_LIGHTS];
+    vec4 u_directionalCascadeParams[HILO_MAX_DIRECTIONAL_LIGHTS];
+    mat4 u_directionalCascadeMatrices[
+        HILO_MAX_DIRECTIONAL_LIGHTS * HILO_MAX_DIRECTIONAL_SHADOW_CASCADES
+    ];
     vec3 u_spotLightsPos[HILO_MAX_SPOT_LIGHTS];
     vec3 u_spotLightsDir[HILO_MAX_SPOT_LIGHTS];
     vec3 u_spotLightsColor[HILO_MAX_SPOT_LIGHTS];

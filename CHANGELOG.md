@@ -1,3 +1,18 @@
+# Unreleased
+
+### Changes
+
+- Add camera-relative cascaded shadows for directional lights on the shared WebGL 2/WebGPU shadow
+  atlas path. `DirectionalLight.shadow` now supports one to four cascades, practical split
+  weighting, a maximum shadow distance, cross-cascade blending, and texel stabilization while
+  preserving the existing single-shadow default. Filtered directional shadow contrast is
+  art-directable through `shadowStrength`. Add an interactive pastel sunset geometry-garden example
+  with live cascade count, stabilization, orbit controls, split, blend, strength, distance, and 4×
+  MSAA.
+- Promote `OrbitControls` from an example helper to the public `src/controls` API, add constrained
+  `setView()` support for scripted tours, and make maintained examples reuse the engine control
+  instead of carrying local camera gesture implementations.
+
 # 2.0.0-alpha.2 (2026-07-26)
 
 ### Breaking changes

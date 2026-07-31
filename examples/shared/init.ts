@@ -1,6 +1,5 @@
 import * as Hilo3d from '../../src/Hilo3d';
 import type { PerspectiveCameraParameters } from '../../src/camera/PerspectiveCamera';
-import OrbitControls, { type OrbitControlsOptions } from './OrbitControls';
 import Stats from './stats';
 import { resolveExampleBackend } from './backend';
 import { loadDefaultEnvironmentMaps, loadDefaultSkyboxMap } from './defaultEnvironment';
@@ -23,7 +22,7 @@ export interface ExampleContextOptions<
     camera?: PerspectiveCameraParameters;
     backend?: Backend;
     stage?: Omit<Hilo3d.StageParameters<Backend>, 'backend' | 'camera' | 'container'>;
-    controls?: OrbitControlsOptions;
+    controls?: Hilo3d.OrbitControlsOptions;
     autoStart?: boolean;
 }
 
@@ -35,7 +34,7 @@ export interface ExampleContext<Backend extends Hilo3d.RendererBackend = Hilo3d.
     readonly ambientLight: Hilo3d.AmbientLight;
     readonly ticker: Hilo3d.Ticker;
     readonly stats: Stats;
-    readonly orbitControls: OrbitControls;
+    readonly orbitControls: Hilo3d.OrbitControls;
     dispose(): void;
 }
 
@@ -129,7 +128,7 @@ export async function createExampleContext(
     ticker.addTick(Hilo3d.Tween);
     ticker.addTick(Hilo3d.Animation);
     const stats = new Stats(ticker, renderer);
-    const orbitControls = new OrbitControls(stage, {
+    const orbitControls = new Hilo3d.OrbitControls(stage, {
         enablePan: false,
         ...options.controls
     });

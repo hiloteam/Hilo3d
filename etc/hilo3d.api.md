@@ -1663,6 +1663,8 @@ export class DirectionalLight extends Light {
     getWorldDirection(): Vector3;
     // (undocumented)
     isDirectionalLight: boolean;
+    get shadow(): DirectionalLightShadowOptions | null;
+    set shadow(value: DirectionalLightShadowOptions | null);
     // (undocumented)
     static readonly typeName = "DirectionalLight";
 }
@@ -1678,9 +1680,21 @@ export interface DirectionalLightInfo extends ShadowInfo {
 }
 
 // @public (undocumented)
-export interface DirectionalLightParameters extends ShadowCastingLightParameters {
+export interface DirectionalLightParameters extends Omit<ShadowCastingLightParameters, 'shadow'> {
     // (undocumented)
     direction?: Vector3;
+    // (undocumented)
+    shadow?: DirectionalLightShadowOptions | null;
+}
+
+// @public
+export interface DirectionalLightShadowOptions extends LightShadowOptions {
+    cascadeBlend?: number;
+    cascadeCount?: number;
+    cascadeMaxDistance?: number;
+    cascadeSplitLambda?: number;
+    shadowStrength?: number;
+    stabilizeCascades?: boolean;
 }
 
 // @public
@@ -4505,6 +4519,54 @@ const NORMAL = "NORMAL";
 
 // @public
 export type NormalizedComputeWorkgroupSize = readonly [number, number, number];
+
+// @public
+export class OrbitControls {
+    constructor(stage: Stage, options?: OrbitControlsOptions);
+    readonly camera: PerspectiveCamera;
+    readonly canvas: HTMLCanvasElement;
+    disable(): void;
+    dispose(): void;
+    dolly(scale: number): void;
+    enable(): void;
+    enablePan: boolean;
+    enableRotate: boolean;
+    enableZoom: boolean;
+    isEnabled: boolean;
+    maxDistance: number;
+    maxPolarAngle: number;
+    minDistance: number;
+    minPolarAngle: number;
+    onChange: (() => void) | undefined;
+    pan(deltaX: number, deltaY: number): void;
+    panSpeed: number;
+    reset(): void;
+    rotate(deltaX: number, deltaY: number): void;
+    rotateSpeed: number;
+    setTarget(target: Vector3): void;
+    setView(position: Vector3, target: Vector3): void;
+    readonly stage: Stage;
+    readonly target: Vector3;
+    update(): void;
+    zoomSpeed: number;
+}
+
+// @public
+export interface OrbitControlsOptions {
+    camera?: PerspectiveCamera;
+    enabled?: boolean;
+    enablePan?: boolean;
+    enableRotate?: boolean;
+    enableZoom?: boolean;
+    maxDistance?: number;
+    maxPolarAngle?: number;
+    minDistance?: number;
+    minPolarAngle?: number;
+    panSpeed?: number;
+    rotateSpeed?: number;
+    target?: Vector3;
+    zoomSpeed?: number;
+}
 
 // @public
 export class OrthographicCamera extends Camera {

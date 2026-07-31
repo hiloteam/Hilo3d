@@ -2,7 +2,6 @@ import { resolveExampleBackend, type ExampleBackend } from './shared/backend';
 import {
     createExampleCatalog,
     EXAMPLE_CATEGORIES,
-    examplesForBackend,
     type ExampleCatalogEntry,
     type ExampleCategoryId
 } from './shared/catalog';
@@ -47,7 +46,7 @@ const backendLabels: Readonly<Record<ExampleBackend, string>> = Object.freeze({
     webgl2: 'WebGL 2',
     webgpu: 'WebGPU'
 });
-const catalog = examplesForBackend(createExampleCatalog(examplePaths), backend);
+const catalog = createExampleCatalog(examplePaths);
 const entriesById = new Map(catalog.map(entry => [entry.id, entry] as const));
 const buttonsById = new Map<string, HTMLButtonElement>();
 
@@ -83,6 +82,18 @@ function setFrameStatus(state: 'loading' | 'ready' | 'error', message: string): 
     frameStatusText.textContent = message;
 }
 
+function backendForEntry(entry: ExampleCatalogEntry): ExampleBackend {
+    if (entry.supportedBackends.includes(backend)) return backend;
+    if (entry.supportedBackends.includes('webgpu')) return 'webgpu';
+    if (entry.supportedBackends.includes('webgl2')) return 'webgl2';
+    throw new Error(`${entry.path} does not declare a supported graphics backend.`);
+}
+
+function onlyBackendLabel(entry: ExampleCatalogEntry): string | undefined {
+    if (entry.supportedBackends.length !== 1) return undefined;
+    return entry.supportedBackends[0] === 'webgpu' ? 'WebGPU only' : 'WebGL 2 only';
+}
+
 function buildExampleUrl(entry: ExampleCatalogEntry, includeGalleryQuery: boolean): URL {
     const target = new URL(entry.path, location.href);
     const query = new URLSearchParams(entry.defaultQuery);
@@ -91,7 +102,7 @@ function buildExampleUrl(entry: ExampleCatalogEntry, includeGalleryQuery: boolea
             if (name !== 'backend') query.set(name, value);
         }
     }
-    query.set('backend', backend);
+    query.set('backend', backendForEntry(entry));
     target.search = query.toString();
     return target;
 }
@@ -124,10 +135,14 @@ function showExample(entry: ExampleCatalogEntry, options: ShowExampleOptions = {
     nextButton?.setAttribute('aria-current', 'page');
 
     const target = buildExampleUrl(entry, options.includeGalleryQuery ?? false);
+    const activeBackend = backendForEntry(entry);
+    const backendRestriction = onlyBackendLabel(entry);
     currentTitle.textContent = entry.title;
     currentDescription.textContent = entry.description;
     currentCategory.textContent = categoryLabels.get(entry.category) ?? entry.category;
-    currentBackend.textContent = backendLabels[backend];
+    currentBackend.textContent = backendRestriction ?? backendLabels[activeBackend];
+    currentBackend.dataset['backend'] = activeBackend;
+    currentBackend.dataset['fallback'] = String(activeBackend !== backend);
     openExample.href = target.href;
     viewSource.href = `https://github.com/hiloteam/Hilo3d/blob/dev/examples/${entry.sourcePath}`;
     frame.title = `${entry.title} — Hilo3D example`;
@@ -185,14 +200,26 @@ function renderNavigation(entries: readonly ExampleCatalogEntry[]): void {
             button.type = 'button';
             button.dataset['exampleId'] = entry.id;
             button.dataset['examplePath'] = entry.path;
+            button.dataset['backendCompatible'] = String(entry.supportedBackends.includes(backend));
             button.title = entry.description;
+            const buttonHeading = document.createElement('span');
+            buttonHeading.className = 'exampleButtonHeading';
             const title = document.createElement('span');
             title.className = 'exampleButtonTitle';
             title.textContent = entry.title;
+            buttonHeading.appendChild(title);
+            const backendRestriction = onlyBackendLabel(entry);
+            if (backendRestriction) {
+                const badge = document.createElement('span');
+                badge.className = 'exampleBackendBadge';
+                badge.dataset['backend'] = entry.supportedBackends[0];
+                badge.textContent = backendRestriction;
+                buttonHeading.appendChild(badge);
+            }
             const description = document.createElement('span');
             description.className = 'exampleButtonDescription';
             description.textContent = entry.description;
-            button.append(title, description);
+            button.append(buttonHeading, description);
             if (entry.id === currentId) button.setAttribute('aria-current', 'page');
             button.addEventListener('click', () => {
                 showExample(entry, { updateHistory: 'push' });
