@@ -1,5 +1,4 @@
 import * as Hilo3d from '../src/Hilo3d';
-import OrbitControls from './shared/OrbitControls';
 import { addEnvironmentSkybox, applyEnvironmentMaps } from './shared/environment';
 import { loadEnvironmentMaps, resolveExampleBackend } from './shared/init';
 
@@ -24,7 +23,7 @@ const stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
     antialias: true,
     clearColor: new Hilo3d.Color(0.008, 0.012, 0.028)
 });
-const orbitControls = new OrbitControls(stage, {
+const orbitControls = new Hilo3d.OrbitControls(stage, {
     target: cameraTarget,
     enablePan: false,
     minDistance: 2,

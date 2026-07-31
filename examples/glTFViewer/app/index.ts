@@ -1,5 +1,4 @@
 import * as Hilo3d from '../../../src/Hilo3d';
-import OrbitControls from '../../shared/OrbitControls';
 import Stats from '../../shared/stats';
 import { loadEnvironmentMaps, parseQuery, resolveExampleBackend } from '../../shared/init';
 import { hashReadback } from '../../shared/readbackDiagnostics';
@@ -55,7 +54,7 @@ ticker.addTick(Hilo3d.Tween);
 ticker.addTick(Hilo3d.Animation);
 ticker.start();
 const stats = new Stats(ticker, stage.renderer);
-const orbitControls = new OrbitControls(stage, { enablePan: false });
+const orbitControls = new Hilo3d.OrbitControls(stage, { enablePan: false });
 const loader = new Hilo3d.GLTFLoader();
 const diagnosticTarget = stage.renderer.createRenderTarget({
     width: 320,

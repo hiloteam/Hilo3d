@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import * as Hilo3d from '../../src/Hilo3d';
-import OrbitControls, { type OrbitControlsOptions } from './OrbitControls';
+import * as Hilo3d from '../../../src/Hilo3d';
 
-function createControls(options: OrbitControlsOptions = {}): {
+function createControls(options: Hilo3d.OrbitControlsOptions = {}): {
     camera: Hilo3d.PerspectiveCamera;
     canvas: HTMLCanvasElement;
-    controls: OrbitControls;
+    controls: Hilo3d.OrbitControls;
 } {
     const canvas = document.createElement('canvas');
     canvas.width = 1000;
@@ -23,7 +22,7 @@ function createControls(options: OrbitControlsOptions = {}): {
             z: 10
         });
     const stage = { camera, canvas } as unknown as Hilo3d.Stage;
-    const controls = new OrbitControls(stage, { ...options, camera, enabled: false });
+    const controls = new Hilo3d.OrbitControls(stage, { ...options, camera, enabled: false });
     return { camera, canvas, controls };
 }
 
@@ -85,6 +84,19 @@ describe('OrbitControls', () => {
         expect(camera.x).toBeCloseTo(10, 5);
         expect(camera.y).toBeCloseTo(0, 5);
         expect(camera.z).toBeCloseTo(0, 5);
+    });
+
+    it('sets a scripted view through the same target and limit contract', () => {
+        const { camera, controls } = createControls({
+            minDistance: 4,
+            maxDistance: 8
+        });
+
+        controls.setView(new Hilo3d.Vector3(20, 0, 0), new Hilo3d.Vector3(2, 0, 0));
+
+        expect(controls.target.equals(new Hilo3d.Vector3(2, 0, 0))).toBe(true);
+        expect(cameraDistance(camera, controls.target)).toBeCloseTo(8, 5);
+        expect(camera.x).toBeCloseTo(10, 5);
     });
 
     it('resets camera and target after interaction', () => {

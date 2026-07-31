@@ -11,8 +11,10 @@ interface TestOwner {
     readonly name: string;
 }
 
-function request(owner: TestOwner, width = 64, height = width) {
-    return { owner, width, height };
+function request(owner: TestOwner, width = 64, height = width, cascadeCount?: number) {
+    return cascadeCount === undefined
+        ? { owner, width, height }
+        : { owner, width, height, cascadeCount };
 }
 
 function snapshotPlan(plan: Readonly<ShadowAtlasPlan<TestOwner>>) {
@@ -30,6 +32,7 @@ function snapshotPlan(plan: Readonly<ShadowAtlasPlan<TestOwner>>) {
             owner: slice.owner.name,
             kind: slice.kind,
             face: slice.face,
+            cascade: slice.cascade,
             sliceIndex: slice.sliceIndex,
             physicalIndex: slice.physicalIndex,
             viewport: { ...slice.viewport },
@@ -106,7 +109,17 @@ describe('ShadowAtlasPlanner', () => {
             'point'
         ]);
         expect(plan.slices.map(slice => slice.face)).toEqual([null, null, 0, 1, 2, 3, 4, 5]);
-        expect(plan.slices.map(slice => slice.sliceIndex)).toEqual([0, 8, 16, 17, 18, 19, 20, 21]);
+        expect(plan.slices.map(slice => slice.cascade)).toEqual([
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ]);
+        expect(plan.slices.map(slice => slice.sliceIndex)).toEqual([0, 32, 40, 41, 42, 43, 44, 45]);
         expect(plan.slices.map(slice => slice.physicalIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
         expect(plan.slices.map(slice => slice.viewport)).toEqual([
             { x: 0, y: 0, width: 128, height: 64, minDepth: 0, maxDepth: 1 },
@@ -297,7 +310,51 @@ describe('ShadowAtlasPlanner', () => {
                 device.capabilities
             )
         ).toThrow('Directional shadow count 9');
-        expect(() => new ShadowAtlasPlanner({ maxSlices: 113 })).toThrow('ABI capacity');
+        expect(() => new ShadowAtlasPlanner({ maxSlices: 137 })).toThrow('ABI capacity');
+        backend.destroy();
+    });
+
+    it('packs variable directional cascade counts into fixed per-light ABI slots', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const first = { name: 'first' };
+        const second = { name: 'second' };
+        const spot = { name: 'spot' };
+        const planner = new ShadowAtlasPlanner<TestOwner>();
+
+        const plan = planner.build(
+            {
+                directional: [request(first, 64, 64, 4), request(second, 64, 64, 2)],
+                spot: [request(spot, 64, 64)],
+                point: []
+            },
+            device.capabilities
+        );
+
+        expect(plan.sliceCount).toBe(7);
+        expect(plan.slices.map(slice => slice.owner)).toEqual([
+            first,
+            first,
+            first,
+            first,
+            second,
+            second,
+            spot
+        ]);
+        expect(plan.slices.map(slice => slice.cascade)).toEqual([0, 1, 2, 3, 0, 1, null]);
+        expect(plan.slices.map(slice => slice.sliceIndex)).toEqual([0, 1, 2, 3, 4, 5, 32]);
+        expect(() =>
+            planner.build(
+                {
+                    directional: [request(first, 64, 64, 5)],
+                    spot: [],
+                    point: []
+                },
+                device.capabilities
+            )
+        ).toThrow('cascadeCount 5 exceeds 4');
+
+        planner.destroy();
         backend.destroy();
     });
 

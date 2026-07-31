@@ -443,7 +443,7 @@ describe.each([
         );
         await complete(backend, firstShadow.submission);
         await shadowRenderer.waitForIdle();
-        expect(labels).toEqual(['Shadow atlas directional 0', 'Shadow atlas directional 1']);
+        expect(labels).toEqual(['Shadow atlas directional 0', 'Shadow atlas directional 4']);
         expect(backend.executionLog.filter(command => command.startsWith('draw:'))).toHaveLength(
             scenePlan.atlas.sliceCount * meshes.length
         );

@@ -30,7 +30,7 @@ describe('built-in std140 ABI', () => {
             FrameBlock: 16,
             CameraBlock: 416,
             SceneBlock: 32,
-            LightBlock: 13600,
+            LightBlock: 16288,
             MaterialBlock: 544,
             ModelBlock: 128,
             GeometryBlock: 224,
@@ -75,12 +75,15 @@ describe('built-in std140 ABI', () => {
         expect(lightBlockLayout.fields.u_directionalLightsColor.arrayStride).toBe(16);
         expect(lightBlockLayout.fields.u_directionalLightSpaceMatrix.offset).toBe(528);
         expect(lightBlockLayout.fields.u_directionalLightSpaceMatrix.arrayStride).toBe(64);
-        expect(lightBlockLayout.fields.u_spotLightSpaceMatrix.offset).toBe(2064);
-        expect(lightBlockLayout.fields.u_pointLightSpaceMatrix.offset).toBe(3856);
-        expect(lightBlockLayout.fields.u_shadowAtlasSize.offset).toBe(5136);
-        expect(lightBlockLayout.fields.u_shadowAtlasRects.offset).toBe(5152);
-        expect(lightBlockLayout.fields.u_pointShadowMatrices.offset).toBe(6944);
-        expect(lightBlockLayout.fields.u_areaLightsHeight.offset).toBe(13472);
+        expect(lightBlockLayout.fields.u_directionalCascadeSplits.offset).toBe(1040);
+        expect(lightBlockLayout.fields.u_directionalCascadeParams.offset).toBe(1168);
+        expect(lightBlockLayout.fields.u_directionalCascadeMatrices.offset).toBe(1296);
+        expect(lightBlockLayout.fields.u_spotLightSpaceMatrix.offset).toBe(4368);
+        expect(lightBlockLayout.fields.u_pointLightSpaceMatrix.offset).toBe(6160);
+        expect(lightBlockLayout.fields.u_shadowAtlasSize.offset).toBe(7440);
+        expect(lightBlockLayout.fields.u_shadowAtlasRects.offset).toBe(7456);
+        expect(lightBlockLayout.fields.u_pointShadowMatrices.offset).toBe(9632);
+        expect(lightBlockLayout.fields.u_areaLightsHeight.offset).toBe(16160);
 
         expect(skinningBlockLayout.fields.u_jointMat.arrayStride).toBe(64);
         expect(morphBlockLayout.fields.u_morphWeights1.offset).toBe(16);

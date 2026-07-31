@@ -8,6 +8,7 @@ import Vector3 from '../../../src/math/Vector3';
 import { ShadowAtlasSceneAdapter } from '../../../src/render/renderer/ShadowAtlasSceneAdapter';
 import {
     MAX_DIRECTIONAL_LIGHTS,
+    MAX_DIRECTIONAL_SHADOW_CASCADES,
     MAX_POINT_LIGHTS,
     MAX_SHADOW_ATLAS_SLICES,
     MAX_SPOT_LIGHTS
@@ -161,6 +162,90 @@ describe.each([
         backend.destroy();
     });
 
+    it('fits, packs, blends, and reuses four directional cascades', () => {
+        const backend = createBackend();
+        const device = backend.createDevice();
+        const directional = new DirectionalLight({
+            direction: new Vector3(-0.5, -1, 0.25),
+            shadow: {
+                width: 64,
+                height: 64,
+                cascadeCount: 4,
+                cascadeSplitLambda: 0.5,
+                cascadeMaxDistance: 40,
+                cascadeBlend: 0.2,
+                stabilizeCascades: true,
+                shadowStrength: 1.6
+            }
+        });
+        const manager = new LightManager();
+        manager.addLight(directional);
+        const adapter = new ShadowAtlasSceneAdapter();
+        const camera = mainCamera();
+
+        const first = adapter.prepare(manager, camera, device.capabilities, {
+            width: 64,
+            height: 64
+        });
+
+        expect(first.atlas.sliceCount).toBe(4);
+        expect(first.requests.directional[0]).toMatchObject({
+            owner: directional,
+            cascadeCount: 4
+        });
+        expect(first.slices.map(slice => slice.cascade)).toEqual([0, 1, 2, 3]);
+        expect(first.slices.map(slice => slice.sliceIndex)).toEqual([0, 1, 2, 3]);
+        expect(new Set(first.slices.map(slice => slice.camera)).size).toBe(4);
+        expect(first.slices.every(slice => slice.camera.isOrthographicCamera)).toBe(true);
+        expectNumbers(first.lightBlock.directionalCascadeParams.subarray(0, 4), [4, 0.2, 1.6, 0]);
+        const expectedSplits: number[] = [];
+        for (let index = 1; index <= 4; index += 1) {
+            const ratio = index / 4;
+            const uniform = 0.1 + (40 - 0.1) * ratio;
+            const logarithmic = 0.1 * Math.pow(40 / 0.1, ratio);
+            expectedSplits.push((uniform + logarithmic) * 0.5);
+        }
+        expectNumbers(first.lightBlock.directionalCascadeSplits.subarray(0, 4), expectedSplits);
+        first.slices.forEach((slice, cascade) => {
+            const offset = cascade * 16;
+            expectNumbers(
+                first.lightBlock.directionalCascadeMatrices.subarray(offset, offset + 16),
+                Array.from(slice.lightSpaceMatrix.elements)
+            );
+        });
+
+        const cameraIdentities = first.slices.map(slice => slice.camera);
+        if (!directional.shadow) throw new Error('Directional shadow options are missing');
+        const shadow = directional.shadow;
+        shadow.cascadeCount = 2;
+        const second = adapter.prepare(manager, camera, device.capabilities, {
+            width: 64,
+            height: 64
+        });
+        expect(second).toBe(first);
+        expect(second.slices).toHaveLength(2);
+        expect(second.slices[0]?.camera).toBe(cameraIdentities[0]);
+        expect(second.slices[1]?.camera).toBe(cameraIdentities[1]);
+        expect(second.lightBlock.directionalCascadeParams[0]).toBe(2);
+        expect(adapter.diagnostics()).toMatchObject({
+            activeLightCount: 1,
+            activeCameraCount: 2,
+            activeSliceCount: 2,
+            retainedSliceCapacity: 4
+        });
+
+        shadow.cameraInfo = { left: -1, right: 1, bottom: -1, top: 1 };
+        expect(() =>
+            adapter.prepare(manager, camera, device.capabilities, {
+                width: 64,
+                height: 64
+            })
+        ).toThrow('cameraInfo cannot be combined with multiple cascades');
+
+        adapter.destroy();
+        backend.destroy();
+    });
+
     it('locks point faces and matrices to +X,-X,+Y,-Y,+Z,-Z order', () => {
         const backend = createBackend();
         const device = backend.createDevice();
@@ -183,7 +268,7 @@ describe.each([
 
         expect(result.atlas.slices.map(slice => slice.face)).toEqual([0, 1, 2, 3, 4, 5]);
         expect(result.atlas.slices.map(slice => slice.sliceIndex)).toEqual([
-            16, 17, 18, 19, 20, 21
+            40, 41, 42, 43, 44, 45
         ]);
         result.slices.forEach((slice, face) => {
             expectNumbers(
@@ -396,7 +481,15 @@ describe.each([
         const device = backend.createDevice();
         const manager = new LightManager();
         for (let index = 0; index < MAX_DIRECTIONAL_LIGHTS; index += 1) {
-            manager.addLight(new DirectionalLight({ shadow: { width: 1, height: 1 } }));
+            manager.addLight(
+                new DirectionalLight({
+                    shadow: {
+                        width: 1,
+                        height: 1,
+                        cascadeCount: MAX_DIRECTIONAL_SHADOW_CASCADES
+                    }
+                })
+            );
         }
         for (let index = 0; index < MAX_SPOT_LIGHTS; index += 1) {
             manager.addLight(new SpotLight({ shadow: { width: 1, height: 1 } }));
@@ -478,6 +571,13 @@ describe.each([
 
         directional.direction.set(0, 0, 1);
         if (!directional.shadow) throw new Error('Directional shadow options are missing');
+        directional.shadow.shadowStrength = 4.1;
+        expect(() =>
+            adapter.prepare(manager, camera, device.capabilities, { width: 16, height: 16 })
+        ).toThrow('shadowStrength must be between 0 and 4');
+        expect(build).not.toHaveBeenCalled();
+
+        directional.shadow.shadowStrength = 1;
         directional.shadow.width = device.capabilities.limits.maxTextureDimension2D + 1;
         expect(() =>
             adapter.prepare(manager, camera, device.capabilities, { width: 16, height: 16 })

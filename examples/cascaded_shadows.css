@@ -1,0 +1,422 @@
+:root {
+    color-scheme: dark;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+}
+
+body {
+    overflow: hidden;
+    background: #6375ad;
+    color: #fffaf0;
+}
+
+button,
+input,
+summary {
+    font: inherit;
+}
+
+.titleCard {
+    position: fixed;
+    z-index: 30;
+    top: 28px;
+    left: 32px;
+    pointer-events: none;
+    text-shadow: 0 2px 24px rgba(50, 38, 80, 0.28);
+}
+
+.titleCard p {
+    margin: 0 0 10px;
+    color: rgba(255, 247, 229, 0.68);
+    font-size: 9px;
+    font-weight: 720;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.titleCard h1 {
+    margin: 0;
+    color: #fff9e9;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(42px, 5.2vw, 72px);
+    font-weight: 400;
+    letter-spacing: -0.055em;
+    line-height: 0.82;
+}
+
+.titleCard > span {
+    display: block;
+    margin-top: 15px;
+    color: rgba(255, 246, 226, 0.62);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8px;
+    letter-spacing: 0.06em;
+}
+
+.depthReadout {
+    position: fixed;
+    z-index: 30;
+    top: 30px;
+    right: 32px;
+    width: min(274px, calc(100vw - 64px));
+    color: rgba(255, 247, 231, 0.7);
+    pointer-events: none;
+}
+
+.depthHeading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: 8px;
+    font-weight: 720;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.depthHeading strong {
+    color: rgba(255, 246, 227, 0.9);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.depthTrack {
+    display: flex;
+    height: 4px;
+    gap: 3px;
+    margin-top: 9px;
+}
+
+.depthTrack i {
+    min-width: 3px;
+    border-radius: 99px;
+    box-shadow: 0 0 12px currentColor;
+}
+
+.depthNear {
+    background: #67dfc7;
+    color: rgba(103, 223, 199, 0.4);
+}
+
+.depthMiddle {
+    background: #71a9ff;
+    color: rgba(113, 169, 255, 0.38);
+}
+
+.depthDeep {
+    background: #c58df4;
+    color: rgba(197, 141, 244, 0.4);
+}
+
+.depthFar {
+    background: #ff9f7c;
+    color: rgba(255, 159, 124, 0.42);
+}
+
+.depthValues {
+    margin-top: 8px;
+    color: rgba(255, 244, 225, 0.54);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 7px;
+    letter-spacing: 0.03em;
+    text-align: right;
+}
+
+.controlDock {
+    position: fixed;
+    z-index: 50;
+    right: 50%;
+    bottom: 22px;
+    display: flex;
+    min-height: 48px;
+    align-items: center;
+    gap: 9px;
+    box-sizing: border-box;
+    padding: 7px 8px 7px 10px;
+    border: 1px solid rgba(255, 247, 228, 0.24);
+    border-radius: 18px;
+    background:
+        linear-gradient(135deg, rgba(56, 50, 88, 0.68), rgba(78, 69, 108, 0.42)),
+        rgba(52, 45, 83, 0.48);
+    box-shadow:
+        0 18px 50px rgba(42, 31, 67, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(20px) saturate(1.18);
+    transform: translateX(50%);
+}
+
+.backendPill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 10px 0 3px;
+    border-right: 1px solid rgba(255, 255, 255, 0.13);
+    color: rgba(255, 246, 227, 0.72);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 7px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.statusLight {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #6fe0bf;
+    box-shadow: 0 0 12px rgba(111, 224, 191, 0.8);
+}
+
+.modeGroup {
+    display: grid;
+    grid-template-columns: repeat(4, 30px);
+    gap: 3px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.modeGroup legend {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+}
+
+.modeGroup button,
+.stabilizeButton {
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.07);
+    color: rgba(255, 248, 235, 0.58);
+    cursor: pointer;
+    transition:
+        transform 150ms ease,
+        border-color 150ms ease,
+        background 150ms ease,
+        color 150ms ease;
+}
+
+.modeGroup button {
+    width: 30px;
+    height: 32px;
+    padding: 0;
+    border-radius: 10px;
+    font-size: 9px;
+    font-weight: 740;
+}
+
+.modeGroup button:hover,
+.modeGroup button:focus-visible,
+.stabilizeButton:hover,
+.stabilizeButton:focus-visible {
+    border-color: rgba(255, 205, 147, 0.52);
+    color: #fff9ec;
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.modeGroup button[aria-pressed='true'] {
+    border-color: rgba(255, 205, 147, 0.58);
+    background: linear-gradient(145deg, rgba(255, 142, 105, 0.82), rgba(238, 94, 111, 0.72));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.32),
+        0 6px 18px rgba(223, 85, 103, 0.3);
+    color: #fffdf7;
+}
+
+.stabilizeButton {
+    display: flex;
+    height: 34px;
+    align-items: center;
+    gap: 7px;
+    padding: 0 9px;
+    border-radius: 11px;
+    text-align: left;
+}
+
+.stabilizeButton strong,
+.stabilizeButton small {
+    display: block;
+    line-height: 1.05;
+}
+
+.stabilizeButton strong {
+    color: rgba(255, 249, 235, 0.9);
+    font-size: 8px;
+}
+
+.stabilizeButton small {
+    margin-top: 3px;
+    color: rgba(255, 245, 226, 0.42);
+    font-size: 6px;
+    letter-spacing: 0.04em;
+}
+
+.toggleGlyph {
+    position: relative;
+    width: 22px;
+    height: 13px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.toggleGlyph i {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.45);
+    transition:
+        background 150ms ease,
+        box-shadow 150ms ease,
+        transform 150ms ease;
+}
+
+.stabilizeButton[aria-pressed='true'] .toggleGlyph {
+    background: rgba(89, 221, 190, 0.25);
+}
+
+.stabilizeButton[aria-pressed='true'] .toggleGlyph i {
+    background: #6fe0bf;
+    box-shadow: 0 0 10px rgba(111, 224, 191, 0.7);
+    transform: translateX(9px);
+}
+
+.tuningPanel {
+    position: relative;
+}
+
+.tuningPanel summary {
+    display: grid;
+    height: 32px;
+    place-items: center;
+    padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    color: rgba(255, 246, 228, 0.58);
+    cursor: pointer;
+    font-size: 8px;
+    font-weight: 700;
+    list-style: none;
+    white-space: nowrap;
+}
+
+.tuningPanel summary::-webkit-details-marker {
+    display: none;
+}
+
+.tuningPanel[open] summary {
+    border-color: rgba(255, 205, 147, 0.44);
+    color: #fff8e8;
+}
+
+.tuningGrid {
+    position: absolute;
+    right: 0;
+    bottom: 46px;
+    display: grid;
+    width: 238px;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 14px;
+    box-sizing: border-box;
+    padding: 14px;
+    border: 1px solid rgba(255, 247, 228, 0.2);
+    border-radius: 16px;
+    background: rgba(54, 47, 83, 0.76);
+    box-shadow: 0 18px 44px rgba(38, 29, 61, 0.25);
+    backdrop-filter: blur(20px);
+}
+
+.tuningGrid label {
+    min-width: 0;
+}
+
+.tuningGrid label > span {
+    display: flex;
+    justify-content: space-between;
+    color: rgba(255, 247, 232, 0.58);
+    font-size: 7px;
+    font-weight: 680;
+}
+
+.tuningGrid output {
+    color: #ffb481;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.tuningGrid input {
+    width: 100%;
+    height: 13px;
+    margin: 4px 0 0;
+    accent-color: #ff8d74;
+    cursor: ew-resize;
+}
+
+.interactionHint {
+    position: fixed;
+    z-index: 20;
+    right: 26px;
+    bottom: 29px;
+    margin: 0;
+    color: rgba(255, 244, 223, 0.46);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 7px;
+    letter-spacing: 0.06em;
+    pointer-events: none;
+    text-transform: uppercase;
+}
+
+.hilo3dStats {
+    display: none !important;
+}
+
+@media (max-width: 900px) {
+    .titleCard {
+        top: 20px;
+        left: 20px;
+    }
+
+    .titleCard h1 {
+        font-size: 46px;
+    }
+
+    .titleCard > span,
+    .depthReadout,
+    .interactionHint {
+        display: none;
+    }
+
+    .controlDock {
+        bottom: 14px;
+    }
+}
+
+@media (max-width: 560px) {
+    .titleCard h1 {
+        font-size: 38px;
+    }
+
+    .backendPill {
+        display: none;
+    }
+
+    .controlDock {
+        width: calc(100vw - 20px);
+        justify-content: center;
+    }
+
+    .tuningPanel {
+        display: none;
+    }
+}

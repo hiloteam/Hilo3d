@@ -1,4 +1,8 @@
 import LightManager from '../../light/LightManager';
+import {
+    clearDirectionalCascadeState,
+    setDirectionalCascadeState
+} from '../../light/DirectionalCascadeState';
 import Texture from '../../texture/Texture';
 import type { ShaderSampledBindingResources } from './ShaderBindGroupResourceCache';
 import type { ShadowAtlasLightBlockState, ShadowAtlasScenePlan } from './ShadowAtlasSceneAdapter';
@@ -15,6 +19,7 @@ function applyLightBlock(manager: LightManager, state: Readonly<ShadowAtlasLight
     manager.shadowAtlasSize = state.atlasSize;
     manager.shadowAtlasRects = state.atlasRects;
     manager.pointShadowMatrices = state.pointMatrices;
+    setDirectionalCascadeState(manager, state);
     if (manager.directionalInfo !== null) {
         manager.directionalInfo.shadowMapSize = state.directionalMapSizes;
         manager.directionalInfo.shadowBias = state.directionalBiases;
@@ -124,6 +129,7 @@ export class ShadowAtlasTextureBinding implements ExternalTextureBindingProvider
         this.assertAlive();
         if (!this.#managers.delete(manager)) return false;
         if (activeBindings.get(manager) === this) activeBindings.delete(manager);
+        clearDirectionalCascadeState(manager);
         if (manager.shadowAtlas === this.texture) {
             manager.shadowAtlas = null;
             manager.shadowAtlasSize = new Float32Array(4);
@@ -137,6 +143,7 @@ export class ShadowAtlasTextureBinding implements ExternalTextureBindingProvider
         if (this.#destroyed) return;
         for (const manager of this.#managers) {
             if (activeBindings.get(manager) === this) activeBindings.delete(manager);
+            clearDirectionalCascadeState(manager);
             if (manager.shadowAtlas === this.texture) manager.shadowAtlas = null;
         }
         this.#managers.clear();

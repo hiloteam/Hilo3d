@@ -1,5 +1,4 @@
 import * as Hilo3d from '../src/Hilo3d';
-import OrbitControls from './shared/OrbitControls';
 import { resolveExampleBackend } from './shared/init';
 import Stats from './shared/stats';
 
@@ -34,7 +33,7 @@ ticker.addTick(Hilo3d.Tween);
 ticker.start();
 
 new Stats(ticker, stage.renderer);
-new OrbitControls(stage);
+new Hilo3d.OrbitControls(stage);
 
 function randInt(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min)) + min;

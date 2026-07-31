@@ -113,11 +113,15 @@ for (const backend of backends) {
                 if (!diagnostics) throw new Error('Shadow orientation diagnostics are unavailable');
                 return {
                     backend: diagnostics.backend,
+                    cascadeCount: diagnostics.cascadeCount,
+                    shadowAtlasSize: diagnostics.shadowAtlasSize,
                     summary: diagnostics.summaries.find(entry => entry.threshold === 80)
                 };
             });
 
             expect(result.backend).toBe(backend);
+            expect(result.cascadeCount).toBe(4);
+            expect(result.shadowAtlasSize).toEqual([1536, 1024]);
             expect(result.summary?.count).toBeGreaterThan(250);
             expect(result.summary?.centroid?.[0]).toBeGreaterThan(30);
             expect(result.summary?.centroid?.[0]).toBeLessThan(45);
