@@ -62,8 +62,8 @@ describe('example release matrix contract', () => {
         expect(examplePaths).toHaveLength(74);
     });
 
-    it('expands 74 pages into the complete 143-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(143);
+    it('expands 74 pages into the complete 142-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(142);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -71,7 +71,8 @@ describe('example release matrix contract', () => {
             const expectedBackends =
                 path === 'webxr.html'
                     ? ['webgl2']
-                    : path === 'compute_gpu_driven.html' ||
+                    : path === 'bloom.html' ||
+                        path === 'compute_gpu_driven.html' ||
                         path === 'compute_eclipse_shrine.html' ||
                         path === 'compute_particles.html' ||
                         path === 'compute_raytracing.html'
@@ -96,7 +97,7 @@ describe('example release matrix contract', () => {
             new Set(EXAMPLE_CATEGORIES.map(category => category.id))
         );
         expect(catalog[0]?.id).toBe('quickStart');
-        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(68);
+        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(67);
         expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(71);
         expect(catalog.filter(entry => entry.featured).length).toBeGreaterThan(12);
         expect(catalog.filter(entry => entry.featured).length).toBeLessThan(catalog.length);
@@ -197,6 +198,7 @@ describe('example release matrix contract', () => {
     it('keeps renderer and completion exceptions explicit and minimal', () => {
         expect(WEBGL2_ONLY_EXAMPLE_PATHS).toEqual(['webxr.html']);
         expect(WEBGPU_ONLY_EXAMPLE_PATHS).toEqual([
+            'bloom.html',
             'compute_gpu_driven.html',
             'compute_eclipse_shrine.html',
             'compute_particles.html',
@@ -212,7 +214,7 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(141);
+        expect(genericCases).toHaveLength(140);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());

@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import type { ExampleBackend } from './example-paths';
+import { backendsForExample, type ExampleBackend } from './example-paths';
 import { installPageFailureMonitor } from './page-failure-monitor';
 import {
     assertStableInstrumentationHealth,
@@ -321,6 +321,7 @@ const fractionalDprExamples = ['renderTarget.html', 'bloom.html', 'lifegame.html
 for (const deviceScaleFactor of [1.25, 1.5] as const) {
     for (const backend of ['webgl2', 'webgpu'] as const) {
         for (const examplePath of fractionalDprExamples) {
+            if (!backendsForExample(examplePath).includes(backend)) continue;
             test(`${examplePath} renders at DPR ${String(deviceScaleFactor)} on ${backend} @${backend}`, async ({
                 browser
             }) => {
