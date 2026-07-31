@@ -7,6 +7,10 @@ type ShadowMode = 0 | 1 | 2 | 4;
 const FULL_CIRCLE = Math.PI * 2;
 const ATLAS_SIZE = 2048;
 const MSAA_SAMPLES = 4;
+const BACKEND_LABELS: Readonly<Record<Hilo3d.RendererBackend, string>> = Object.freeze({
+    webgl2: 'WebGL 2',
+    webgpu: 'WebGPU'
+});
 
 function geometryFrom(
     positions: readonly number[],
@@ -682,7 +686,7 @@ const handleKeyboard = (event: KeyboardEvent): void => {
 };
 window.addEventListener('keydown', handleKeyboard);
 
-backendBadge.textContent = `${renderer.backend === 'webgl2' ? 'WebGL 2' : 'WebGPU'} · ${String(MSAA_SAMPLES)}× MSAA`;
+backendBadge.textContent = `${BACKEND_LABELS[renderer.backend]} · ${String(MSAA_SAMPLES)}× MSAA`;
 document.body.dataset['csmMsaa'] = String(MSAA_SAMPLES);
 document.body.dataset['csmStrength'] = strengthControl.value;
 setShadowMode(4);
