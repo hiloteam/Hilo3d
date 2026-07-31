@@ -802,7 +802,7 @@ Viewer 则比较替换前后实际模型渲染的 readback。页面、request/re
 graphics 与 uncaptured GPU
 error 门禁一直保持到交互和 pagehide 清理完成，最后再等待稳定帧做终态采样。video 示例在 WebGL
 2/WebGPU 上都必须从本地媒体资源产生真实 draw，且无 GPU
-validation 或 decoder-backing 上传错误。`renderTarget`、bloom、life-game 还在 DPR
+validation 或 decoder-backing 上传错误。`renderTarget`、bloom、life-game 还会在各自适用后端以 DPR
 1.25/1.5 下验证取整后的 backing size、真实 draw 和相同终态错误门禁，避免非整数尺寸进入 GPU
 descriptor。CI 使用单 worker控制 SwiftShader GPU/内存峰值；没有重试或吞错来掩盖失败。
 

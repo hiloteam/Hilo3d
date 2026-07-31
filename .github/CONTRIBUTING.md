@@ -49,7 +49,8 @@ When an example changes backend support, update all three release-matrix surface
 `examples/shared/catalog.ts`, `test/ui/example-paths.ts`, and the explicit counts and exception sets
 in `test/ui/example-paths.contract.ts`. Making one existing dual-backend page single-backend reduces
 the total page/backend case count and that backend's catalog count by one. Run
-`npm run test:ui:contract` before pushing any such change.
+`npm run test:ui:contract` before pushing any such change. Curated runtime or visual matrices must
+also filter each page through `backendsForExample()` instead of assuming both backends.
 
 Do not commit generated `dist/`, `dist-examples/`, `docs/`, coverage, or browser report files.
 Visual regression baselines under `test/ui/__screenshots__/` are reviewed source artifacts and must
