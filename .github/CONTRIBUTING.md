@@ -45,6 +45,12 @@ when testing the WebGL 2 lane.
   failures surface earlier. The non-evidence RHI performance smoke and physical-GPU
   `npm run test:webgpu:native` lane remain separate.
 
+When an example changes backend support, update all three release-matrix surfaces together:
+`examples/shared/catalog.ts`, `test/ui/example-paths.ts`, and the explicit counts and exception sets
+in `test/ui/example-paths.contract.ts`. Making one existing dual-backend page single-backend reduces
+the total page/backend case count and that backend's catalog count by one. Run
+`npm run test:ui:contract` before pushing any such change.
+
 Do not commit generated `dist/`, `dist-examples/`, `docs/`, coverage, or browser report files.
 Visual regression baselines under `test/ui/__screenshots__/` are reviewed source artifacts and must
 be committed when a rendering change is intentional.
