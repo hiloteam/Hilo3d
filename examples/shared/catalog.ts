@@ -155,7 +155,7 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'pointLight.html':
         'Orbit three colored point lights around a reflective sculpture with dynamic shadows.',
     'bloom.html':
-        'Use the engine HDR Bloom and Color Uber pipeline around a deterministic neon particle helix.',
+        'Compare engine HDR Bloom against the same raw scene in a WebGPU nocturne driven by 32,768 compute-simulated fireflies around an eclipse shrine.',
     'pbr2.html':
         'Read metallic and roughness response across a controlled 30-sample HDR material studio.',
     'pbr_layered_materials.html':
@@ -300,7 +300,8 @@ function createEntry(path: string): ExampleCatalogEntry {
     const supportedBackends =
         path === 'webxr.html'
             ? WEBGL2_ONLY
-            : path === 'compute_gpu_driven.html' ||
+            : path === 'bloom.html' ||
+                path === 'compute_gpu_driven.html' ||
                 path === 'compute_eclipse_shrine.html' ||
                 path === 'compute_particles.html' ||
                 path === 'compute_raytracing.html'

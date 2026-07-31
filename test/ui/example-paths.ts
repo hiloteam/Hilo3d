@@ -15,6 +15,7 @@ export type ExampleCompletionContract =
 export const EXAMPLE_BACKENDS = ['webgl2', 'webgpu'] as const;
 export const WEBGL2_ONLY_EXAMPLE_PATHS = ['webxr.html'] as const;
 export const WEBGPU_ONLY_EXAMPLE_PATHS = [
+    'bloom.html',
     'compute_gpu_driven.html',
     'compute_eclipse_shrine.html',
     'compute_particles.html',
