@@ -1,15 +1,14 @@
 import { opendir, readFile, stat } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
+import { extractSiteReferences, type SiteFileType } from './site-link-references';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const siteDirectory = resolve(projectRoot, 'site');
 const externalReferencePattern = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i;
-const htmlReferencePattern = /\b(?:href|src|poster)=["']([^"']+)["']/g;
-const cssReferencePattern = /url\(\s*(["']?)([^"')]+)\1\s*\)/g;
 
 interface SiteFile {
     path: string;
-    type: 'css' | 'html';
+    type: SiteFileType;
 }
 
 interface LinkIssue {
@@ -52,21 +51,13 @@ async function resolveTarget(reference: string, sourcePath: string): Promise<str
     return target;
 }
 
-function extractReferences(file: SiteFile, contents: string): string[] {
-    const pattern = file.type === 'html' ? htmlReferencePattern : cssReferencePattern;
-    return [...contents.matchAll(pattern)].map(match => {
-        const valueIndex = file.type === 'html' ? 1 : 2;
-        return (match[valueIndex] ?? '').replaceAll('&amp;', '&').trim();
-    });
-}
-
 const siteFiles = await collectSiteFiles(siteDirectory);
 const issues: LinkIssue[] = [];
 let checkedReferences = 0;
 
 for (const file of siteFiles) {
     const contents = await readFile(file.path, 'utf8');
-    for (const reference of extractReferences(file, contents)) {
+    for (const reference of extractSiteReferences(file.type, contents)) {
         if (!reference || reference.startsWith('#') || externalReferencePattern.test(reference)) {
             continue;
         }
