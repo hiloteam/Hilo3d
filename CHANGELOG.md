@@ -13,6 +13,16 @@
   and GPU picking. Add optional camera-relative GPU transforms while preserving CPU world identity,
   plus submission-transactional current/previous camera, mesh, instance, skinning, and morph state.
   `Node.invalidateTransformHistory()` resets discontinuous motion deterministically.
+- Add the WebGPU-only `ClusteredForwardPlusPipelineFactory` high-end opaque-scene slice. Registered
+  ordinary Mesh buckets now use stable dirty GPU Scene records, six-level previous-frame Hi-Z
+  occlusion, projected-size LOD compaction, fixed indexed-indirect draws, depth-driven logarithmic
+  3D clusters, a bounded count/prefix/write light allocator, storage GGX PBR, HDR Bloom, ACES
+  display, and on-demand visibility/overflow diagnostics. Add real WebGPU renderer coverage for the
+  compute/dispatch/indirect-draw path.
+- Let scriptable pipeline factories create persistent renderer-owned storage buffers, stage dirty
+  writes before graph import, and commit or discard CPU temporal state at the actual submission
+  boundary through `frameSubmitted()` and `frameDiscarded()`. Pipeline-owned buffers retain normal
+  device-loss recipes and submission-aware destruction.
 
 - Add modern WebGPU capability discovery for `subgroups`, adapter subgroup-size limits,
   `shader-f16`, and `timestamp-query`; expose renderer feature queries for explicit f32/workgroup

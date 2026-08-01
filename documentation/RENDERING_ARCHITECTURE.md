@@ -154,6 +154,25 @@ frame 开始前明确失败。scene color sampling 只允许在 opaque writer �
 显式记录 depth Scene Pass、compute Pass 与最终 storage-aware Scene
 Pass，而不是假定内置 feature 已经自动改写 forward shader。
 
+WebGPU high-end profile 现在提供公开的
+`ClusteredForwardPlusPipelineFactory`。应用注册稳定的 geometry/material/LOD
+bucket 后，runtime 在创建阶段通过 `RenderPipelineCreateContext.createStorageBuffer()`
+建立 renderer-owned object、geometry、material、light、visible、indirect、cluster 和 diagnostics
+database；帧内 dirty 数据必须通过 `RenderPipelineContext.writeStorageBuffer()` 在 graph
+import 前提交。注册的不透明普通 `Mesh` 仍使用共享 Scene 遍历和矩阵更新，但不创建 CPU renderer
+list 或 `PreparedDraw`：compute 完成 frustum/previous-Hi-Z cull、projected-radius LOD、bucket
+compact 和 indirect arguments，随后同一 Render Graph 记录 depth、current Hi-Z、3D cluster
+allocator、storage-aware GGX PBR、HDR Bloom 与 ACES
+display。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD bucket 发一个 indirect
+draw，GPU 为不可见 bucket 写零 instance count。
+
+pipeline runtime 的 `frameSubmitted()` / `frameDiscarded()` 是 CPU-side temporal
+state 的事务边界；current/previous object/camera transform 只在 RHI
+submission 已存在后提交，录制或提交前失败则丢弃 staged revision。当前 factory 限定 single-sample
+perspective camera 与 opaque、unskinned、indexed triangle PBR
+bucket；透明、alpha-test、skinning/morph、完整 layered PBR、shadow/cookie/IES 和精确 LTC area
+light 继续走后续 high-end 扩展，不会静默退化到 WebGL 2。
+
 设备恢复必须保留 runtime 创建时可见的完整公共 capability 超集，包括 limits 和全部公共 format/use/sample-count 查询；能力缩减会使恢复明确失败，而不是让旧 runtime 在后续 pass 中延迟出错。
 
 相关代码：[`RenderPipelineHost.ts`](../src/render/internal/RenderPipelineHost.ts)、[`pipeline/`](../src/render/pipeline)、[`ScriptableRenderPipelineContext.ts`](../src/render/internal/ScriptableRenderPipelineContext.ts)。
@@ -620,11 +639,15 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 - `SceneRenderPass` 已能让普通 renderer list 在 group 3 读取 pass-global storage；命中 instancing
   batch 时会展开为 direct per-mesh draw。需要 storage
   instancing 的后续优化不能改变这个确定性正确性合同。
-- 自定义 SRP 可以组合 depth prepass、compute tile/cluster culling 与 storage-aware Scene
-  Pass 实现完整 Forward+。内置 Forward feature 的 `sampledDepth: true` 仍关闭，也不会自动生成 PBR
-  storage shader variant。
-- WebGPU-only effect 页面同时是可展示 example 与真实浏览器验收：depth prepass → sampled-depth tile
-  cull → Scene group-3 storage、Gaussian cull/reorder/indirect draw，以及 1024 粒子 Hilo3D
+- 自定义 SRP 可以直接使用 `ClusteredForwardPlusPipelineFactory` 获得已注册 opaque PBR bucket 的 GPU
+  Scene、Hi-Z、3D cluster allocator 和 storage GGX PBR；内置 Forward feature 的 `sampledDepth: true`
+  仍关闭，也不会把任意 layered/transparent material 自动改写为 clustered variant。
+- G0/L0 renderer browser fixture 直接构造普通 `Mesh` 与动态局部光，覆盖 dirty
+  database、previous-frame Hi-Z cull/LOD/compact、fixed bucket indirect depth/color、depth-driven 3D
+  cluster count/prefix/write、HDR/Bloom/ACES 和按需 diagnostics；readback 不参与 draw 或 light
+  allocation。完整 100k/10k 性能 baseline 仍使用单独的受控协议。
+- 旧的 WebGPU-only effect 页面同时是可展示 example 与真实浏览器验收：depth prepass → sampled-depth
+  tile cull → Scene group-3 storage、Gaussian cull/reorder/indirect draw，以及 1024 粒子 Hilo3D
   wordmark 的 fractal value/curl noise、呼吸、涡旋、回归、compact、GPU indirect additive
   glow。Forward+/Gaussian 算法仍是 acceptance-scale，整个页面也不是生产性能 baseline。
 - 独立交互式粒子页面使用 65,536 个持久 storage body，其中 4096 个组成连续可读的 Hilo3D word

@@ -6,6 +6,7 @@ import type { RenderGraphTimelineSink } from '../graph/RenderGraphTimeline';
 import type { RHICapabilities } from '../rhi/core';
 import type { RenderTarget } from '../RenderTarget';
 import type { RendererScene } from '../RendererCore';
+import type { StorageBuffer, StorageBufferDescriptor } from '../StorageBuffer';
 import { isDirectForwardRenderPipeline } from '../pipeline/ForwardRenderPipeline';
 import {
     createRenderPipelineCapabilities,
@@ -29,6 +30,7 @@ export interface RenderPipelineHostLifecycle {
     completeFrame(frameIndex: number, execution: RGExecutionResult, uploadCount: number): void;
     failFrame(error: unknown): void;
     endFrame(submitted: boolean): void;
+    createPipelineStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
     recordDefaultPipeline(
         scene: RendererScene,
         camera: Camera,
@@ -115,7 +117,12 @@ export class RenderPipelineHost {
         const capabilities = createRenderPipelineCapabilities(deviceCapabilities);
         const requirements = factory.requirements ?? {};
         validateRenderPipelineRequirements(requirements, capabilities, deviceCapabilities);
-        const candidate: unknown = await factory.create(Object.freeze({ capabilities }));
+        const candidate: unknown = await factory.create(
+            Object.freeze({
+                capabilities,
+                createStorageBuffer: this.lifecycle.createPipelineStorageBuffer.bind(this.lifecycle)
+            })
+        );
         if (
             ((typeof candidate === 'object' && candidate !== null) ||
                 typeof candidate === 'function') &&
@@ -300,12 +307,14 @@ export class RenderPipelineHost {
                 this.lifecycle.getRenderGraphTimelineSink?.() ?? null
             );
             submitted = true;
+            this.#runtime?.frameSubmitted?.(frameIndex);
             this.lifecycle.completeFrame(frameIndex, execution, this.#frame.uploads.pendingCount);
         } catch (error) {
             firstFailure = error;
             failureCount = 1;
             if (lifecycleStarted) {
                 try {
+                    if (!submitted) this.#runtime?.frameDiscarded?.(frameIndex);
                     this.lifecycle.failFrame(error);
                 } catch (cleanupError) {
                     additionalFailures = [error, cleanupError];

@@ -3742,6 +3742,11 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
         return this.#owner.acquirePassParameters(pool);
     }
 
+    writeStorageBuffer(buffer: StorageBuffer, byteOffset: number, data: ArrayBufferView): void {
+        this.#owner.assertLeaseActive(this.#lease);
+        this.#owner.writeStorageBuffer(buffer, byteOffset, data);
+    }
+
     createTexture(
         name: string,
         descriptor: Readonly<RenderPipelineTextureDescriptor>
@@ -4237,6 +4242,20 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         const owner = this.#runtimeOwner;
         if (owner === null) throw new Error('Pipeline runtime owner is unavailable');
         return acquireRenderPassParameters(pool, owner, this.frameIndex);
+    }
+
+    writeStorageBuffer(buffer: StorageBuffer, byteOffset: number, data: ArrayBufferView): void {
+        this.assertActive();
+        if (!ArrayBuffer.isView(data)) {
+            throw new TypeError('RenderPipeline storage-buffer data must be an ArrayBufferView');
+        }
+        const source = this.services.resolveScriptableStorageBuffer(buffer);
+        if (this.#storageBufferBySource.has(source)) {
+            throw new Error(
+                'RenderPipeline storage-buffer writes must occur before the buffer is imported'
+            );
+        }
+        source.writeFromRenderPipeline(byteOffset, data);
     }
 
     createTexture(

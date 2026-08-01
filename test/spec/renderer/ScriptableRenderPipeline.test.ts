@@ -755,6 +755,84 @@ class FixedRuntimeFactory implements RenderPipelineFactory {
     }
 }
 
+class LifecycleSurfaceClearPipeline extends SurfaceClearPipeline {
+    readonly submittedFrames: number[] = [];
+    readonly discardedFrames: number[] = [];
+    failRecording = false;
+
+    override record(context: RenderPipelineContext): void {
+        if (this.failRecording) throw new Error('lifecycle recording failed');
+        super.record(context);
+    }
+
+    frameSubmitted(frameIndex: number): void {
+        this.submittedFrames.push(frameIndex);
+    }
+
+    frameDiscarded(frameIndex: number): void {
+        this.discardedFrames.push(frameIndex);
+    }
+}
+
+class PipelineOwnedStoragePipeline implements RenderPipeline {
+    readonly name = 'pipeline-owned-storage';
+    readonly clear = new SurfaceClearPipeline();
+    readonly submittedFrames: number[] = [];
+    readonly discardedFrames: number[] = [];
+    importBeforeWrite = false;
+
+    constructor(readonly buffer: StorageBuffer) {}
+
+    record(context: RenderPipelineContext): void {
+        if (this.importBeforeWrite) {
+            context.graph.importStorageBuffer(this.buffer);
+            context.writeStorageBuffer(this.buffer, 0, new Uint32Array([99]));
+            return;
+        }
+        context.writeStorageBuffer(
+            this.buffer,
+            0,
+            new Uint32Array([context.frameIndex + 11, 12, 13, 14])
+        );
+        context.graph.importStorageBuffer(this.buffer);
+        this.clear.record(context);
+    }
+
+    frameSubmitted(frameIndex: number): void {
+        this.submittedFrames.push(frameIndex);
+    }
+
+    frameDiscarded(frameIndex: number): void {
+        this.discardedFrames.push(frameIndex);
+    }
+
+    destroy(): void {
+        this.buffer.destroy();
+        this.clear.destroy();
+    }
+}
+
+class PipelineOwnedStorageFactory implements RenderPipelineFactory {
+    readonly name = 'pipeline-owned-storage';
+    readonly requirements = Object.freeze({
+        requiredCapabilities: ['storage-buffer', 'compute-pass'] as const
+    });
+    runtime: PipelineOwnedStoragePipeline | null = null;
+
+    create(context: RenderPipelineCreateContext): RenderPipeline {
+        const runtime = new PipelineOwnedStoragePipeline(
+            context.createStorageBuffer({
+                label: 'pipeline-owned values',
+                byteLength: 16,
+                usage: ['storage', 'copy-source', 'copy-destination'],
+                recovery: 'cpu-shadow'
+            })
+        );
+        this.runtime = runtime;
+        return runtime;
+    }
+}
+
 class FullscreenPresentPipeline implements RenderPipeline {
     readonly name = 'fullscreen-present';
     readonly clearPass = new SceneRenderPass('Fullscreen source clear');
@@ -1264,6 +1342,78 @@ describe('Scriptable render pipeline', () => {
         activeRenderers.pop();
         expect(factory.runtime?.destroyCount).toBe(1);
     });
+
+    it('commits submitted pipeline state and discards only pre-submission failures', async () => {
+        const runtime = new LifecycleSurfaceClearPipeline();
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 4,
+            height: 4,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(runtime)
+        });
+        activeRenderers.push(renderer);
+        const scene = new Node();
+        const camera = new PerspectiveCamera();
+
+        renderer.render(scene, camera);
+        const failAfterRender = (): void => {
+            throw new Error('lifecycle after-render failed');
+        };
+        renderer.on('afterRender', failAfterRender);
+        expect(() => {
+            renderer.render(scene, camera, true);
+        }).toThrow(/lifecycle after-render failed/u);
+        renderer.off('afterRender', failAfterRender);
+
+        runtime.failRecording = true;
+        expect(() => {
+            renderer.render(scene, camera);
+        }).toThrow(/lifecycle recording failed/u);
+
+        expect(runtime.submittedFrames).toEqual([0, 1]);
+        expect(runtime.discardedFrames).toEqual([2]);
+    });
+
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'creates, writes and recovers pipeline-owned storage through the public SRP lifecycle',
+        async () => {
+            const factory = new PipelineOwnedStorageFactory();
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: document.createElement('canvas'),
+                width: 4,
+                height: 4,
+                antialias: false,
+                renderPipeline: factory
+            });
+            activeRenderers.push(renderer);
+            const runtime = factory.runtime;
+            if (runtime === null) throw new Error('Expected pipeline-owned storage runtime');
+
+            renderer.render(new Node(), new PerspectiveCamera());
+            await renderer.waitForIdle();
+            const readback = await runtime.buffer.read();
+
+            expect([...new Uint32Array(readback.data.buffer)]).toEqual([11, 12, 13, 14]);
+            expect(runtime.submittedFrames).toEqual([0]);
+            expect(runtime.discardedFrames).toEqual([]);
+
+            runtime.importBeforeWrite = true;
+            expect(() => {
+                renderer.render(new Node(), new PerspectiveCamera());
+            }).toThrow(/writes must occur before the buffer is imported/u);
+            expect(runtime.submittedFrames).toEqual([0]);
+            expect(runtime.discardedFrames).toHaveLength(1);
+            expect(runtime.discardedFrames[0]).toBeGreaterThan(runtime.submittedFrames[0] ?? -1);
+
+            renderer.destroy();
+            activeRenderers.pop();
+            expect(runtime.buffer.isDestroyed).toBe(true);
+            expect(runtime.clear.destroyCount).toBe(1);
+        }
+    );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
         'expands planner-owned instanced batches into ordered direct storage scene draws',

@@ -112,6 +112,21 @@ describe('ComputeShader', () => {
     });
 
     it('rejects duplicate names and locations plus unsupported storage texture formats', () => {
+        const r32Storage = new ComputeShader({
+            source: minimalSource,
+            workgroupSize: [8],
+            bindings: [
+                {
+                    name: 'hiZ',
+                    group: 0,
+                    binding: 0,
+                    kind: 'storage-texture',
+                    access: 'write-only',
+                    format: 'r32float'
+                }
+            ]
+        });
+        expect(r32Storage.bindings[0]?.kind).toBe('storage-texture');
         expect(
             () =>
                 new ComputeShader({

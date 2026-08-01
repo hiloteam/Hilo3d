@@ -680,6 +680,44 @@ export interface CameraParameters extends NodeParameters {
     visibility?: number;
 }
 
+// @public
+export interface ClusteredForwardPlusDiagnostics {
+    readonly clusterLightIndexCount: number;
+    readonly clusterOverflowCount: number;
+    readonly droppedLightCount: number;
+    readonly hiZValid: boolean;
+    readonly lightCount: number;
+    readonly lodObjectCount: number;
+    readonly objectCount: number;
+    readonly occludedObjectCount: number;
+    readonly visibleObjectCount: number;
+}
+
+// @public
+export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactory {
+    constructor(options: Readonly<ClusteredForwardPlusPipelineOptions>);
+    create(context: RenderPipelineCreateContext): RenderPipeline;
+    readonly name = "GPU Scene + Clustered Forward+";
+    readDiagnostics(): Promise<Readonly<ClusteredForwardPlusDiagnostics>>;
+    readonly requirements: Readonly<RenderPipelineRequirements>;
+}
+
+// @public
+export interface ClusteredForwardPlusPipelineOptions {
+    readonly bloomStrength?: number;
+    readonly buckets: readonly GPUSceneBucket[];
+    readonly exposure?: number;
+    readonly hiZ?: boolean;
+    readonly maxLightIndices?: number;
+    readonly maxLights?: number;
+    readonly maxLightsPerCluster?: number;
+    readonly maxObjects?: number;
+    readonly maxViewportHeight?: number;
+    readonly maxViewportWidth?: number;
+    readonly tileSize?: number;
+    readonly zSlices?: number;
+}
+
 // @public (undocumented)
 export function collectionEntries<Value>(collection: GLTFCollection<Value> | undefined): (readonly [string, Value])[];
 
@@ -915,7 +953,7 @@ export interface ComputeShaderDescriptor {
 export type ComputeStorageBufferAccess = 'read-write' | 'write-discard';
 
 // @public
-export type ComputeStorageTextureFormat = Exclude<RenderTargetColorFormat, 'rgba8unorm-srgb'>;
+export type ComputeStorageTextureFormat = 'r32float' | 'rgba8unorm' | 'rgba16float' | 'rgba32float';
 
 // @public
 export type ComputeStorageTextureViewDimension = '2d';
@@ -3246,6 +3284,19 @@ export interface GPUDrivenVertexBufferLayout {
 // @public
 export type GPUDrivenVertexFormat = 'uint8x2' | 'uint8x4' | 'sint8x2' | 'sint8x4' | 'unorm8x2' | 'unorm8x4' | 'snorm8x2' | 'snorm8x4' | 'uint16x2' | 'uint16x4' | 'sint16x2' | 'sint16x4' | 'unorm16x2' | 'unorm16x4' | 'snorm16x2' | 'snorm16x4' | 'float16x2' | 'float16x4' | 'float32' | 'float32x2' | 'float32x3' | 'float32x4' | 'uint32' | 'uint32x2' | 'uint32x3' | 'uint32x4' | 'sint32' | 'sint32x2' | 'sint32x3' | 'sint32x4';
 
+// @public
+export interface GPUSceneBucket {
+    readonly geometry: Geometry;
+    readonly lods?: readonly GPUSceneLOD[];
+    readonly material: PBRMaterial;
+}
+
+// @public
+export interface GPUSceneLOD {
+    readonly geometry: Geometry;
+    readonly maximumProjectedRadius: number;
+}
+
 // @public (undocumented)
 export class HDRLoader {
     // (undocumented)
@@ -5548,6 +5599,8 @@ export type RenderPassParameterReset<P extends object> = (parameters: P) => void
 // @public
 export interface RenderPipeline {
     destroy(): void;
+    frameDiscarded?(frameIndex: number): void;
+    frameSubmitted?(frameIndex: number): void;
     readonly name: string;
     record(context: RenderPipelineContext): unknown;
 }
@@ -5592,11 +5645,13 @@ export interface RenderPipelineContext {
     recordShadows(cullingResults: CullingResultsHandle): void;
     readonly scene: RendererScene;
     readonly viewport: RendererViewport;
+    writeStorageBuffer(buffer: StorageBuffer, byteOffset: number, data: ArrayBufferView): void;
 }
 
 // @public
 export interface RenderPipelineCreateContext {
     readonly capabilities: RenderPipelineCapabilities;
+    createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
 }
 
 // @public
@@ -7213,6 +7268,7 @@ export interface StageCommonParameters extends NodeParameters {
     pixelRatio?: number;
     // (undocumented)
     premultipliedAlpha?: boolean;
+    renderingProfile?: RendererRenderingProfile;
     renderPipeline?: RenderPipelineFactory;
     // (undocumented)
     stencil?: boolean;

@@ -285,6 +285,16 @@ export class RendererStorageBuffer implements StorageBuffer {
     write(byteOffset: number, data: ArrayBufferView): void {
         this.assertAlive('write');
         this.#host.assertStorageBufferMutationAllowed('write StorageBuffer');
+        this.writeValidated(byteOffset, data);
+    }
+
+    /** @internal Pipeline-record upload path guarded by the renderer's active graph scope. */
+    writeFromRenderPipeline(byteOffset: number, data: ArrayBufferView): void {
+        this.assertAlive('write from RenderPipeline');
+        this.writeValidated(byteOffset, data);
+    }
+
+    private writeValidated(byteOffset: number, data: ArrayBufferView): void {
         if (!this.usage.has('copy-destination')) {
             throw new TypeError('StorageBuffer.write() requires copy-destination usage');
         }

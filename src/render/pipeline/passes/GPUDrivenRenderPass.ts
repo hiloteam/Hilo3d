@@ -525,8 +525,10 @@ export class GPUDrivenRenderPass implements ScriptableRenderPass<GPUDrivenRender
             parameters.colorAttachments,
             'GPUDrivenRenderPass.colorAttachments'
         );
-        if (colorAttachments.length === 0) {
-            throw new RangeError('GPUDrivenRenderPass requires at least one color attachment');
+        if (colorAttachments.length === 0 && parameters.depthStencilAttachment === undefined) {
+            throw new RangeError(
+                'GPUDrivenRenderPass requires at least one color or depth/stencil attachment'
+            );
         }
         for (let index = 0; index < colorAttachments.length; index += 1) {
             builder.useColorAttachment(

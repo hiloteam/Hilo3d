@@ -4,6 +4,7 @@ import Renderer, {
     type RendererBackend,
     type RendererFrame,
     type RendererOptions,
+    type RendererRenderingProfile,
     type RendererSupportOptions
 } from '../render/Renderer';
 import Ray from '../math/Ray';
@@ -174,6 +175,8 @@ export interface StageCommonParameters extends NodeParameters {
     clearColor?: Color;
     useInstanced?: boolean;
     useLogDepth?: boolean;
+    /** Renderer policy bundle. `high-end` enables reversed-Z and camera-relative transforms. */
+    renderingProfile?: RendererRenderingProfile;
     alpha?: boolean;
     depth?: boolean;
     stencil?: boolean;

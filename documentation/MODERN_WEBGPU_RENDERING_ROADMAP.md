@@ -1,6 +1,7 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
-> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-01，F0、F1、D0 已落地；同日补充 E0 自动曝光、虚拟纹理术语边界和 SDF 准入门槛。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
+> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-02，F0、F1、D0 已落地，G0/L0 的 WebGPU
+> high-end 不透明场景切片已落地；同日补充 E0 自动曝光、虚拟纹理术语边界和 SDF 准入门槛。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
 
 ## 结论先行
@@ -9,10 +10,12 @@ Hilo3D 当前最强的部分是渲染底座：共享 Renderer、Scriptable Rende
 RHI、WebGPU/WebGL 2 双后端、Compute/Storage/Indirect
 Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前主要缺口不在“能不能向 WebGPU 发命令”，而在以下五个生产级系统：
 
-1. **GPU Scene 与 GPU 可见性**：普通 `Mesh` 仍由 CPU 遍历、裁剪、排序和准备，已有
-   `GPUDrivenRenderPass` 尚未成为普通场景的规模化路径。
-2. **生产级 Clustered Forward+**：仓库已有 depth → compute tile cull → storage-aware
-   scene 的验收闭环，但没有可直接替换固定 LightBlock 的内置 PBR clustered lighting。
+1. **GPU Scene 与 GPU 可见性**：high-end profile 已让注册的普通不透明 `Mesh` 进入常驻 GPU
+   database、previous-frame Hi-Z、GPU cull/LOD/compact 和固定 bucket indirect
+   draw；透明、蒙皮、morph、alpha-test 和 100k/10k 性能基线仍是后续完成门禁。
+2. **生产级 Clustered Forward+**：high-end profile 已提供 depth-driven 3D cluster、GPU
+   count/prefix/write allocator、有界 overflow 与 storage-aware GGX
+   PBR；完整材质层、阴影、cookie/IES、精确 area-light 和透明路径仍需接入。
 3. **时域渲染框架**：已有 recovery-aware history owner 与显式 invalidation，但仍没有 motion
    vector、projection jitter、TAA/TAAU、动态分辨率和 reactive mask。
 4. **自动曝光与可控显示变换**：已有手动 EV exposure、PBR Neutral、ACES fitted、Reinhard 和 Color
@@ -80,20 +83,20 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 
 ## 2. 当前渲染能力基线
 
-| 领域                                 | 当前状态     | 证据与边界                                                                                                 |
-| ------------------------------------ | ------------ | ---------------------------------------------------------------------------------------------------------- |
-| Shared Renderer / Render Graph / RHI | 生产可用     | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                  |
-| Raster PBR / HDR                     | 生产可用     | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径       |
-| Shadow                               | 可用基线     | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页            |
-| Compute / Storage / Indirect         | 底座生产可用 | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环  |
-| GPU-driven ordinary scene            | 缺失         | procedural/Gaussian/particle 可 GPU-driven；普通 `Mesh` 仍走 CPU renderer list 和 `PreparedDraw`           |
-| Forward+                             | 仅验收规模   | 示例证明 depth → tile cull → group-3 storage → scene draw；不是生产 light allocator 或内置 PBR variant     |
-| Temporal rendering                   | 缺失         | Camera/mesh 没有 previous-frame ABI；无 jitter、motion vector、history 或 TAAU                             |
-| Exposure / display transform         | 部分可用     | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制 |
-| Screen-space lighting                | 缺失         | 无 depth pyramid、normal/roughness attribute buffer、GTAO、SSR、SSGI                                       |
-| Volumetrics / atmosphere             | 缺失         | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                  |
-| Geometry / texture streaming         | 缺失         | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                    |
-| GPU profiling / graph debugging      | 生产基线     | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query    |
+| 领域                                 | 当前状态      | 证据与边界                                                                                                 |
+| ------------------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------- |
+| Shared Renderer / Render Graph / RHI | 生产可用      | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                  |
+| Raster PBR / HDR                     | 生产可用      | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径       |
+| Shadow                               | 可用基线      | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页            |
+| Compute / Storage / Indirect         | 底座生产可用  | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环  |
+| GPU-driven ordinary scene            | high-end 切片 | 注册的不透明 indexed `Mesh` 走 dirty GPU database、Hi-Z/LOD/compact 与固定 bucket indirect；透明/变形待补  |
+| Forward+                             | high-end 切片 | 3D cluster count/prefix/write、有界预算和 storage GGX PBR 已闭环；阴影/完整 layered PBR/透明待补           |
+| Temporal rendering                   | 缺失          | Camera/mesh 没有 previous-frame ABI；无 jitter、motion vector、history 或 TAAU                             |
+| Exposure / display transform         | 部分可用      | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制 |
+| Screen-space lighting                | 缺失          | 无 depth pyramid、normal/roughness attribute buffer、GTAO、SSR、SSGI                                       |
+| Volumetrics / atmosphere             | 缺失          | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                  |
+| Geometry / texture streaming         | 缺失          | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                    |
+| GPU profiling / graph debugging      | 生产基线      | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query    |
 
 ### 2.1 现有实现中最关键的限制
 
@@ -190,8 +193,10 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 `P0` 是“现代 WebGPU renderer”定义所需能力；`P1` 是高画质生产 profile；`P2`
 是依赖场景规模、内容管线和长期性能投入的虚拟化能力。
 
-实施状态：**F0、F1、D0 已完成**；后续工作包可把 subresource/history、GPU
-timeline 与确定的前后帧坐标 ABI 作为现有基础使用。
+实施状态：**F0、F1、D0 已完成；G0/L0 的首个 WebGPU
+high-end 不透明场景切片已完成**。后续工作包可把 subresource/history、GPU
+timeline、确定的前后帧坐标 ABI、GPU Scene object/light database 和 3D cluster
+allocator 作为现有基础使用；G0/L0 在本节列出的透明、变形、阴影和规模性能门禁仍保留。
 
 ## 6. 可落地工作包
 
@@ -297,6 +302,17 @@ packing、实例 current/previous、成功提交/失败回滚和显式 invalidat
 | ----------------------------------- | ---------------------------------------------------------- | ------------------------------------- | ----------------------------------------------- |
 | 常驻对象记录、bounds、previous Hi-Z | dirty upload、frustum/occlusion/LOD、compact、bucket build | 可见实例表与固定 bucket indirect args | 生产循环零 visible-count readback，遮挡剔除有效 |
 
+已落地的 `ClusteredForwardPlusPipelineFactory` 以注册的 geometry/material
+identity 建立稳定对象槽和 LOD bucket；对象 current/previous transform、world bounds、layer 与 active
+flag 使用 160-byte storage record。CPU 只合并 dirty slot/geometry/material
+range，GPU 执行 frustum、六级 previous-frame Hi-Z、projected-radius LOD、按 bucket
+compact，并写固定 indexed-indirect
+arguments。每个 bucket 的可见表使用满足 storage-offset 对齐的独立 range，不依赖
+`firstInstance`；生产帧不读取 visible count。camera cut、失败帧和提交后的时域推进分别通过 history
+invalidation、`frameDiscarded()` 与 `frameSubmitted()`
+处理。当前公开切片限定为单相机、single-sample、opaque、unskinned、indexed triangle PBR
+bucket；以下 100k + 10k fixture、变形/alpha-test/透明和材质/几何替换的完整规模证据仍是 G0 最终门禁。
+
 建议内部建立稳定、后端中立的 `GPUScene` 数据库：
 
 - stable object ID、current/previous transform、world bounds、layer、material ID、geometry ID；
@@ -333,6 +349,16 @@ draw/instance 数显著下降；构建过程无逐 mip CPU 资源创建。
 | 输入                           | 核心处理                                                      | 输出                             | 首要验收                                      |
 | ------------------------------ | ------------------------------------------------------------- | -------------------------------- | --------------------------------------------- |
 | depth/Hi-Z、GPU light database | 3D cluster、count/prefix/write、有界 overflow、PBR light loop | cluster light list、Forward+ HDR | 数百局部光无越界、无 light-count variant 爆炸 |
+
+已落地切片把当前 depth 汇总为 tile depth bounds，再按 logarithmic Z slice 建立 3D
+cluster。光源分配使用 count → 256-entry workgroup scan → block prefix → bounded finalize → index
+write；全局 index budget 与 per-cluster ceiling 都有 deterministic truncation 和 overflow
+counter。点光、聚光、方向光与 area-light 近似共享固定 64-byte light record，fragment
+shader 只按 cluster grid/list 迭代，不产生 light-count variant。结果进入 `rgba16float`
+HDR、Bloom 和 ACES display transform；`readDiagnostics()`
+仅用于显式、按需的验收读回，不参与生产帧调度。当前 storage PBR 覆盖 base
+color、metallic、roughness、emission 与 GGX punctual-light core；shadow/cookie/IES、LTC area
+light、完整 layered PBR、alpha-test/transparent 和 transmission 仍是 L0 最终兼容门禁。
 
 第一版不应继续扩充固定 LightBlock，而应：
 

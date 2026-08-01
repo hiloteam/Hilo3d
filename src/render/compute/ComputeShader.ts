@@ -1,5 +1,3 @@
-import type { RenderTargetColorFormat } from '../RenderTarget';
-
 /** Sample interpretation supported by whole-subresource compute graph textures. */
 export type ComputeTextureSampleType = 'float' | 'unfilterable-float' | 'depth';
 
@@ -12,7 +10,7 @@ export type ShaderTextureSampleType = ComputeTextureSampleType | 'sint' | 'uint'
 /** Texture views supported by the Material-backed storage graphics path. */
 export type ShaderTextureViewDimension = ComputeTextureViewDimension | '2d-array' | '3d' | 'cube';
 /** Public color formats that can be requested for a storage-texture binding. */
-export type ComputeStorageTextureFormat = Exclude<RenderTargetColorFormat, 'rgba8unorm-srgb'>;
+export type ComputeStorageTextureFormat = 'r32float' | 'rgba8unorm' | 'rgba16float' | 'rgba32float';
 /** Graph initialization promise for a writable storage-buffer binding. */
 export type ComputeStorageBufferAccess = 'read-write' | 'write-discard';
 
@@ -112,6 +110,7 @@ const sampledTextureTypes: ReadonlySet<string> = new Set(['float', 'unfilterable
 const textureViewDimensions: ReadonlySet<string> = new Set(['2d']);
 const storageTextureViewDimensions: ReadonlySet<string> = new Set(['2d']);
 const storageTextureFormats: ReadonlySet<string> = new Set([
+    'r32float',
     'rgba8unorm',
     'rgba16float',
     'rgba32float'
