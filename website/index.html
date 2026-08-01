@@ -5,13 +5,13 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta
             name="description"
-            content="Hilo3D is a WebGPU-first, TypeScript-first 3D engine with one shared renderer and a production WebGL 2 backend."
+            content="Hilo3D is a modern Web graphics engine with a portable RHI, validated Render Graph, scriptable render pipeline, and native WebGPU and WebGL 2 backends."
         />
         <meta name="theme-color" content="#070a10" />
-        <meta property="og:title" content="Hilo3D — One renderer. Two modern backends." />
+        <meta property="og:title" content="Hilo3D — Modern Web graphics engine" />
         <meta
             property="og:description"
-            content="Build high-performance 3D experiences for the modern web with WebGPU and WebGL 2."
+            content="Build realtime 2D and 3D experiences with a modern rendering architecture for WebGPU and WebGL 2."
         />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://hilo3d.js.org/" />
@@ -19,13 +19,13 @@
         <meta property="og:image:width" content="1729" />
         <meta property="og:image:height" content="910" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Hilo3D — One renderer. Two modern backends." />
+        <meta name="twitter:title" content="Hilo3D — Modern Web graphics engine" />
         <meta
             name="twitter:description"
-            content="Build high-performance 3D experiences for the modern web with WebGPU and WebGL 2."
+            content="Build realtime 2D and 3D experiences with a modern rendering architecture for WebGPU and WebGL 2."
         />
         <meta name="twitter:image" content="https://hilo3d.js.org/og.png" />
-        <title>Hilo3D — WebGPU-first 3D engine</title>
+        <title>Hilo3D — Modern Web graphics engine</title>
         <link rel="stylesheet" href="./styles.css" />
     </head>
     <body>
@@ -43,11 +43,11 @@
                     <span class="brandName">Hilo3D</span>
                 </a>
                 <nav class="mainNavigation" aria-label="Main navigation">
-                    <a href="#why">Architecture</a>
+                    <a href="#examples">Examples</a>
                     <a href="#showcase">Showcase</a>
+                    <a href="#why">Architecture</a>
                     <a href="./docs/">Docs</a>
                     <a href="./docs/modules/Hilo3d.html">API</a>
-                    <a href="./examples/list.html">Examples</a>
                 </nav>
                 <a
                     class="headerAction"
@@ -63,70 +63,162 @@
         <main id="main">
             <section class="hero sectionShell">
                 <div class="heroCopy">
-                    <p class="eyebrow"><span></span> Modern graphics rendering engine</p>
+                    <p class="eyebrow"><span></span> Modern Web graphics engine</p>
                     <h1>
-                        <span>Modern graphics.</span>
-                        <em>One unified engine.</em>
+                        <span>Render the web.</span>
+                        <em>Own every frame.</em>
                     </h1>
                     <p class="heroDescription">
-                        Build production 3D experiences on a portable RHI for WebGPU and WebGL 2, a
-                        validated Render Graph, and a fully scriptable render pipeline.
+                        One RHI runs the same scene on WebGPU and WebGL 2. The Render Graph
+                        validates work before submission. The Scriptable Render Pipeline lets you
+                        customize passes without forking the engine.
                     </p>
+                    <div class="heroCapabilities" aria-label="Rendering capabilities">
+                        <span>2D + 3D</span>
+                        <span>PBR + glTF</span>
+                        <span>HDR + Post FX</span>
+                        <span>GPU Compute</span>
+                    </div>
                     <div class="heroActions">
                         <a class="button buttonPrimary" href="./docs/">
                             Start building <span aria-hidden="true">→</span>
                         </a>
                         <a class="button buttonSecondary" href="./examples/list.html">
-                            Explore 81 examples
+                            Explore 70+ examples
                         </a>
                     </div>
                     <div class="installLine" aria-label="Install Hilo3D with npm">
                         <span aria-hidden="true">$</span>
                         <code>npm install hilo3d</code>
-                        <small>ESM · strict TypeScript</small>
+                        <small>WebGPU · WebGL 2</small>
                     </div>
                 </div>
 
                 <div class="heroArtwork">
                     <div class="artworkHeader" aria-hidden="true">
-                        <span><i></i> Shared renderer</span>
-                        <span>Portable RHI</span>
+                        <span><i></i> Live rendering system</span>
+                        <span>One shared frontend</span>
                     </div>
                     <div class="artworkScene">
                         <img
-                            src="./assets/hero-renderer.png"
-                            alt="Abstract rendering pipeline flowing from a shared core into two graphics backends"
+                            src="./assets/hero-game-world.webp"
+                            alt="Stylized game world concept with a luminous gateway and floating islands"
                             width="1568"
                             height="1003"
                             decoding="async"
                             fetchpriority="high"
                         />
-                        <span class="artworkBadge artworkBadgeScene">Scene</span>
+                        <span class="artworkBadge artworkBadgeScene">PBR + glTF</span>
                         <span class="artworkBadge artworkBadgeGraph">Render Graph</span>
                         <span class="artworkBadge artworkBadgeWebgpu"><i></i> WebGPU</span>
                         <span class="artworkBadge artworkBadgeWebgl"><i></i> WebGL 2</span>
                     </div>
                     <div class="artworkFooter">
-                        <span>Scene</span><i>→</i><span>Renderer</span><i>→</i><span>RHI</span>
-                        <strong>Backend neutral</strong>
+                        <span>Scene</span><i>→</i><span>Render Graph</span><i>→</i><span>RHI</span>
+                        <strong>WebGPU native · WebGL 2 portable</strong>
                     </div>
                 </div>
             </section>
 
             <section class="proofBar sectionShell" aria-label="Hilo3D project highlights">
-                <div><strong>RHI</strong><span>WebGPU + WebGL 2</span></div>
-                <div><strong>Graph</strong><span>validated render scheduling</span></div>
-                <div><strong>SRP</strong><span>scriptable render pipeline</span></div>
-                <div><strong>TS</strong><span>strict TypeScript API</span></div>
+                <div><strong>RHI</strong><span>one renderer for WebGPU + WebGL 2</span></div>
+                <div><strong>Render Graph</strong><span>validate passes before GPU work</span></div>
+                <div>
+                    <strong>SRP</strong><span>customize the frame without an engine fork</span>
+                </div>
+                <div><strong>PBR</strong><span>glTF · HDR · Bloom · compute</span></div>
+            </section>
+
+            <section class="examples sectionShell" id="examples">
+                <div class="sectionIntro sectionIntroRow">
+                    <div>
+                        <p class="eyebrow"><span></span> Live engine studies</p>
+                        <h2>Light, materials and compute—in motion.</h2>
+                    </div>
+                    <a class="textLink" href="./examples/list.html">Browse 70+ examples →</a>
+                </div>
+
+                <div class="exampleGrid">
+                    <a
+                        class="exampleCard exampleCardFeatured exampleCardBloom"
+                        href="./examples/bloom.html?backend=webgpu"
+                    >
+                        <div class="exampleMedia">
+                            <img
+                                src="./assets/example-bloom.webp"
+                                alt="Garden of the Last Star HDR Bloom scene"
+                                width="1280"
+                                height="720"
+                                loading="lazy"
+                                decoding="async"
+                            />
+                        </div>
+                        <div class="exampleCopy">
+                            <span>WebGPU · Bloom · Compute</span>
+                            <h3>Garden of the Last Star</h3>
+                            <p>
+                                32,768 compute-driven fireflies feed a linear HDR scene before the
+                                engine shapes that energy into light.
+                            </p>
+                        </div>
+                        <b aria-hidden="true">↗</b>
+                    </a>
+
+                    <a
+                        class="exampleCard exampleCardGltf"
+                        href="./examples/gltf_material_extensions.html"
+                    >
+                        <div class="exampleMedia">
+                            <img
+                                src="./assets/example-gltf-materials.webp"
+                                alt="Layered glTF materials on a copper lamp"
+                                width="1280"
+                                height="720"
+                                loading="lazy"
+                                decoding="async"
+                            />
+                        </div>
+                        <div class="exampleCopy">
+                            <span>WebGPU · WebGL 2 · glTF</span>
+                            <h3>Real assets. Layered materials.</h3>
+                            <p>Clearcoat, transmission, volume and anisotropy on Khronos assets.</p>
+                        </div>
+                        <b aria-hidden="true">↗</b>
+                    </a>
+
+                    <a
+                        class="exampleCard exampleCardRaytracing"
+                        href="./examples/compute_raytracing.html?backend=webgpu"
+                    >
+                        <div class="exampleMedia">
+                            <img
+                                src="./assets/example-compute-raytracing.webp"
+                                alt="Progressive WebGPU compute path tracing scene"
+                                width="1280"
+                                height="720"
+                                loading="lazy"
+                                decoding="async"
+                            />
+                        </div>
+                        <div class="exampleCopy">
+                            <span>WebGPU · Compute · Path tracing</span>
+                            <h3>Progressive light transport</h3>
+                            <p>
+                                Denoised tracing, spectral caustics and HDR output in one GPU path.
+                            </p>
+                        </div>
+                        <b aria-hidden="true">↗</b>
+                    </a>
+                </div>
             </section>
 
             <section class="why sectionShell" id="why">
                 <div class="sectionIntro">
                     <p class="eyebrow"><span></span> Rendering architecture</p>
-                    <h2>The architecture behind every frame.</h2>
+                    <h2>Modern graphics architecture, end to end.</h2>
                     <p>
-                        One shared rendering frontend connects portable hardware access, validated
-                        scheduling and a pipeline you can shape for production.
+                        The RHI keeps rendering portable, the Render Graph keeps every frame
+                        predictable, and the Scriptable Render Pipeline keeps the engine extensible.
                     </p>
                 </div>
 
@@ -153,11 +245,11 @@
                             </div>
                         </div>
                         <div class="advantageCopy">
-                            <p class="cardKicker">01 · Unified graphics interface</p>
-                            <h3>One RHI. WebGPU and WebGL 2.</h3>
+                            <p class="cardKicker">01 · Rendering Hardware Interface · RHI</p>
+                            <h3>One renderer. Two native backends.</h3>
                             <p>
-                                A backend-neutral resource, pipeline and command contract keeps the
-                                renderer portable while each backend stays native to its API.
+                                One resource, pipeline, and command contract keeps scene code
+                                portable while WebGPU and WebGL 2 stay native to their own APIs.
                             </p>
                         </div>
                     </article>
@@ -170,11 +262,11 @@
                         </div>
                         <div class="advantageCardCopy">
                             <p class="cardKicker">02 · Validated Render Graph</p>
-                            <h3>Declare first.<br />Execute with confidence.</h3>
+                            <h3>Validate first.<br />Execute with confidence.</h3>
                             <p>
                                 Resource dependencies, descriptors and pass ordering are validated
-                                before the RHI frame begins, with explicit setup, prepare and
-                                execute phases.
+                                before GPU work begins, so an invalid frame stops before partial
+                                submission.
                             </p>
                         </div>
                     </article>
@@ -193,10 +285,10 @@
                         </div>
                         <div class="advantageCardCopy">
                             <p class="cardKicker">03 · Scriptable Render Pipeline</p>
-                            <h3>Own the pipeline.<br />Keep the engine.</h3>
+                            <h3>Shape the frame.<br />Keep the engine.</h3>
                             <p>
-                                Extend or replace render sequencing through the public pipeline
-                                contract without bypassing the Render Graph or portable RHI.
+                                Add or replace shadow, scene, post-processing and output stages
+                                without forking the renderer or bypassing engine lifecycle.
                             </p>
                         </div>
                     </article>
@@ -207,7 +299,7 @@
                 <div class="sectionIntro sectionIntroSplit">
                     <div>
                         <p class="eyebrow"><span></span> Production showcase</p>
-                        <h2>Built for more than demos.</h2>
+                        <h2>Built for worlds people enter.</h2>
                     </div>
                     <p>
                         Hilo3D has powered character worlds, social games, and interactive 3D
@@ -296,64 +388,6 @@
                 </div>
             </section>
 
-            <section class="examples sectionShell" id="examples">
-                <div class="sectionIntro sectionIntroRow">
-                    <div>
-                        <p class="eyebrow"><span></span> Explore the engine</p>
-                        <h2>From first triangle<br />to GPU-driven scenes.</h2>
-                    </div>
-                    <a class="textLink" href="./examples/list.html">Browse all 81 examples →</a>
-                </div>
-
-                <div class="exampleGrid">
-                    <a
-                        class="exampleCard exampleCardCompute"
-                        href="./examples/compute_particles.html?backend=webgpu"
-                    >
-                        <div class="computeVisual" aria-hidden="true">
-                            <span></span><span></span><span></span><span></span><span></span>
-                            <span></span><span></span><span></span><span></span><span></span>
-                        </div>
-                        <div class="exampleCopy">
-                            <span>WebGPU · Compute</span>
-                            <h3>65K GPU particles</h3>
-                            <p>
-                                Persistent simulation, indirect draws and interactive force fields.
-                            </p>
-                        </div>
-                        <b aria-hidden="true">↗</b>
-                    </a>
-
-                    <a
-                        class="exampleCard exampleCardPbr"
-                        href="./examples/pbr2.html?backend=webgl2"
-                    >
-                        <div class="pbrVisual" aria-hidden="true">
-                            <span></span><span></span><span></span><span></span><span></span>
-                            <span></span><span></span><span></span><span></span>
-                        </div>
-                        <div class="exampleCopy">
-                            <span>WebGPU · WebGL 2</span>
-                            <h3>Physically based rendering</h3>
-                            <p>Metallic, roughness and image-based lighting on both backends.</p>
-                        </div>
-                        <b aria-hidden="true">↗</b>
-                    </a>
-
-                    <a class="exampleCard exampleCardGltf" href="./examples/glTFViewer/index.html">
-                        <div class="gltfVisual" aria-hidden="true">
-                            <span></span><span></span><span></span>
-                        </div>
-                        <div class="exampleCopy">
-                            <span>glTF · Loader</span>
-                            <h3>Production glTF viewer</h3>
-                            <p>Load, inspect and render modern 3D assets in the browser.</p>
-                        </div>
-                        <b aria-hidden="true">↗</b>
-                    </a>
-                </div>
-            </section>
-
             <section class="quickStart sectionShell">
                 <div class="quickStartCopy">
                     <p class="eyebrow"><span></span> Start building</p>
@@ -377,7 +411,7 @@
                     <div class="codeHeader">
                         <span><i></i><i></i><i></i></span>
                         <span>main.ts</span>
-                        <span>TypeScript</span>
+                        <span>Hilo3D 2.0</span>
                     </div>
                     <pre><code><span class="codePurple">import</span> * <span class="codePurple">as</span> Hilo3d <span class="codePurple">from</span> <span class="codeGreen">'hilo3d'</span>;
 
@@ -401,7 +435,7 @@
             <section class="finalCta sectionShell">
                 <div>
                     <p class="eyebrow"><span></span> Open source · MIT</p>
-                    <h2>Ship your next<br />3D experience.</h2>
+                    <h2>Ship your next<br />realtime world.</h2>
                 </div>
                 <div class="finalActions">
                     <a class="button buttonPrimary" href="./docs/">Read the docs →</a>
@@ -424,7 +458,7 @@
                 </span>
                 <span class="brandName">Hilo3D</span>
             </a>
-            <p>One renderer. Two modern backends.</p>
+            <p>Modern Web graphics, from scene to GPU.</p>
             <nav aria-label="Footer navigation">
                 <a href="./docs/">Docs</a>
                 <a href="./docs/modules/Hilo3d.html">API</a>

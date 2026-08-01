@@ -1,13 +1,13 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
-> 审计基线：`296a18d`（2026-08-01）；实施状态更新：2026-08-01，F0、F1 已落地。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
+> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-01，F0、F1 已落地；同日补充 E0 自动曝光、虚拟纹理术语边界和 SDF 准入门槛。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
 
 ## 结论先行
 
 Hilo3D 当前最强的部分是渲染底座：共享 Renderer、Scriptable Render Pipeline、Render Graph、portable
 RHI、WebGPU/WebGL 2 双后端、Compute/Storage/Indirect
-Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前主要缺口不在“能不能向 WebGPU 发命令”，而在以下四个生产级系统：
+Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前主要缺口不在“能不能向 WebGPU 发命令”，而在以下五个生产级系统：
 
 1. **GPU Scene 与 GPU 可见性**：普通 `Mesh` 仍由 CPU 遍历、裁剪、排序和准备，已有
    `GPUDrivenRenderPass` 尚未成为普通场景的规模化路径。
@@ -15,15 +15,18 @@ Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前
    scene 的验收闭环，但没有可直接替换固定 LightBlock 的内置 PBR clustered lighting。
 3. **时域渲染框架**：已有 recovery-aware history owner 与显式 invalidation，但仍没有 motion
    vector、projection jitter、TAA/TAAU、动态分辨率和 reactive mask。
-4. **现代资源与几何虚拟化**：已有 mip/array/aspect subresource graph view，但仍没有 GPU
+4. **自动曝光与可控显示变换**：已有手动 EV exposure、PBR Neutral、ACES fitted、Reinhard 和 Color
+   Uber，但没有 GPU 亮度统计、eye adaptation、exposure history 或参数化 filmic toe/shoulder。
+5. **现代资源与几何虚拟化**：已有 mip/array/aspect subresource graph view，但仍没有 GPU
    meshlet/LOD、纹理流送、KTX 2/Basis、虚拟纹理或虚拟阴影页系统。
 
-最值得先做的不是直接复刻 Nanite 或 Lumen，而是完成两条可以并行推进的主线：
+最值得先做的不是直接复刻 Nanite 或 Lumen，而是完成两条可以并行推进的 P0 主线；E0 是可独立交付的显示质量切片，可以复用已经完成的 F0/F1，但不能抢占或阻塞这两条主线：
 
 ```mermaid
 flowchart LR
   F["WebGPU / Render Graph 基础"] --> G["GPU Scene"]
   F --> T["时域资源与帧坐标"]
+  F --> E["自动曝光 / Filmic"]
   G --> H["Previous-frame Hi-Z"]
   H --> C["GPU Cull / LOD"]
   C --> L["Clustered Forward+"]
@@ -32,6 +35,7 @@ flowchart LR
   L --> Q["GTAO / SSR / SSGI"]
   U --> Q
   Q --> V["阴影缓存 / Froxel 体积光"]
+  E --> V
   V --> A["Meshlet / 资源流送"]
   A --> GI["混合 GI"]
 ```
@@ -41,7 +45,7 @@ Graph、RHI 和生命周期系统，但不应为了 WebGL 2 对等而限制设�
 
 ### 插图阅读约定
 
-本文的 12 张技术插图与 12 个工作包一一对应。图片用于解释数据流和最终效果，不作为精确 API 定义；每张图下的“输入 / 核心处理 / 输出 / 首要验收”才是实施边界。所有流程都默认从左向右阅读：蓝色表示资源或稳定数据，紫色表示时域/计算过程，橙色表示更新、风险或预算事件，绿色表示最终可见工作集。
+现有技术插图用于解释主数据流和最终效果，不作为精确 API 定义；工作包中的“输入 / 核心处理 / 输出 / 首要验收”才是实施边界。没有独立插图的增量工作包也必须遵守同样的输入、生命周期和验收合同。所有流程都默认从左向右阅读：蓝色表示资源或稳定数据，紫色表示时域/计算过程，橙色表示更新、风险或预算事件，绿色表示最终可见工作集。
 
 ## 1. 盘点范围与判断标准
 
@@ -76,19 +80,20 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 
 ## 2. 当前渲染能力基线
 
-| 领域                                 | 当前状态     | 证据与边界                                                                                                |
-| ------------------------------------ | ------------ | --------------------------------------------------------------------------------------------------------- |
-| Shared Renderer / Render Graph / RHI | 生产可用     | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                 |
-| Raster PBR / HDR                     | 生产可用     | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径      |
-| Shadow                               | 可用基线     | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页           |
-| Compute / Storage / Indirect         | 底座生产可用 | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环 |
-| GPU-driven ordinary scene            | 缺失         | procedural/Gaussian/particle 可 GPU-driven；普通 `Mesh` 仍走 CPU renderer list 和 `PreparedDraw`          |
-| Forward+                             | 仅验收规模   | 示例证明 depth → tile cull → group-3 storage → scene draw；不是生产 light allocator 或内置 PBR variant    |
-| Temporal rendering                   | 缺失         | Camera/mesh 没有 previous-frame ABI；无 jitter、motion vector、history 或 TAAU                            |
-| Screen-space lighting                | 缺失         | 无 depth pyramid、normal/roughness attribute buffer、GTAO、SSR、SSGI                                      |
-| Volumetrics / atmosphere             | 缺失         | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                 |
-| Geometry / texture streaming         | 缺失         | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                   |
-| GPU profiling / graph debugging      | 生产基线     | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query   |
+| 领域                                 | 当前状态     | 证据与边界                                                                                                 |
+| ------------------------------------ | ------------ | ---------------------------------------------------------------------------------------------------------- |
+| Shared Renderer / Render Graph / RHI | 生产可用     | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                  |
+| Raster PBR / HDR                     | 生产可用     | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径       |
+| Shadow                               | 可用基线     | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页            |
+| Compute / Storage / Indirect         | 底座生产可用 | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环  |
+| GPU-driven ordinary scene            | 缺失         | procedural/Gaussian/particle 可 GPU-driven；普通 `Mesh` 仍走 CPU renderer list 和 `PreparedDraw`           |
+| Forward+                             | 仅验收规模   | 示例证明 depth → tile cull → group-3 storage → scene draw；不是生产 light allocator 或内置 PBR variant     |
+| Temporal rendering                   | 缺失         | Camera/mesh 没有 previous-frame ABI；无 jitter、motion vector、history 或 TAAU                             |
+| Exposure / display transform         | 部分可用     | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制 |
+| Screen-space lighting                | 缺失         | 无 depth pyramid、normal/roughness attribute buffer、GTAO、SSR、SSGI                                       |
+| Volumetrics / atmosphere             | 缺失         | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                  |
+| Geometry / texture streaming         | 缺失         | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                    |
+| GPU profiling / graph debugging      | 生产基线     | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query    |
 
 ### 2.1 现有实现中最关键的限制
 
@@ -109,8 +114,9 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
   reuse 或同帧物理 alias。
 - Camera 只有当前 `view/projection/viewProjection`；普通 mesh/frame ABI 没有 previous
   transform、camera jitter 或 history generation。
-- 当前 turnkey post-processing 只有 Bloom 与 Color Uber。Opaque scene
-  texture 只能支持最低边界的屏幕空间 transmission。
+- 当前 turnkey post-processing 只有 Bloom 与 Color Uber；exposure 是手动 EV compensation，固定 tone
+  mapper 没有参数化 filmic toe/shoulder，也没有 histogram、eye adaptation 或 GPU exposure
+  history。Opaque scene texture 只能支持最低边界的屏幕空间 transmission。
 - RHI 已有 timestamp QuerySet、pass timestamp、debug group/marker 和 Render Graph
   timeline；occlusion query 仍不在当前合同内。
 - KTX loader 明确只解析 KTX 1.1、单 face 2D；没有 KTX 2、Basis Universal transcode、mip
@@ -120,14 +126,15 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 
 Hilo3D 应借鉴这些引擎解决的问题与数据流，而不是复制其依赖 DX12/Vulkan/主机平台的具体实现。
 
-| 参照能力                                          | 值得借鉴的原则                                                                 | Hilo3D / WebGPU 落点                                                                  |
-| ------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| Unity GPU Resident Drawer / GPU Occlusion Culling | 场景对象常驻 GPU，CPU 只上传脏数据；可见性和实例合批在 GPU 完成                | 建立 `GPUScene`、previous-frame Hi-Z、compute cull/compact、固定 bucket indirect draw |
-| Unity HDRP Tile/Cluster Forward/Deferred          | 光源分配与 shading 解耦，大量局部光不进入固定 uniform array                    | 优先生产级 Clustered Forward+，保留现有 forward 材质和透明路径                        |
-| Unreal TSR                                        | motion vector、history、disocclusion、shading rejection 和动态分辨率是一个系统 | 先做 TAA，再完成 TAAU、reactive mask、history rejection 和动态分辨率控制器            |
-| Unreal Nanite                                     | cluster/meshlet、GPU culling、细粒度 LOD、流送和 material binning 协同         | 做 WebGPU meshlet pipeline 与 cluster streaming，不宣称 Nanite 等价                   |
-| Unreal Virtual Shadow Maps                        | receiver-driven page request、物理页缓存、按需重绘和 clipmap                   | 先补 shadow cache/invalidations，再做 WebGPU 物理 atlas + page table 的虚拟阴影       |
-| Unreal Lumen                                      | 屏幕 trace、低频场景表示、时域积累和 fallback 组合                             | 采用 Hi-Z SSR/SSGI + probe/软件 BVH 或 SDF clipmap 的混合方案，不承诺硬件 RT          |
+| 参照能力                                          | 值得借鉴的原则                                                                 | Hilo3D / WebGPU 落点                                                                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| Unity GPU Resident Drawer / GPU Occlusion Culling | 场景对象常驻 GPU，CPU 只上传脏数据；可见性和实例合批在 GPU 完成                | 建立 `GPUScene`、previous-frame Hi-Z、compute cull/compact、固定 bucket indirect draw  |
+| Unity HDRP Tile/Cluster Forward/Deferred          | 光源分配与 shading 解耦，大量局部光不进入固定 uniform array                    | 优先生产级 Clustered Forward+，保留现有 forward 材质和透明路径                         |
+| Unreal TSR                                        | motion vector、history、disocclusion、shading rejection 和动态分辨率是一个系统 | 先做 TAA，再完成 TAAU、reactive mask、history rejection 和动态分辨率控制器             |
+| Unreal Auto Exposure / Filmic Tonemapper          | HDR 亮度统计、时域适应、曝光补偿与 filmic 曲线是一个连贯的显示合同             | GPU histogram/history 驱动曝光；Color Uber 增加可控 filmic 模式且保留 PBR Neutral 默认 |
+| Unreal Nanite                                     | cluster/meshlet、GPU culling、细粒度 LOD、流送和 material binning 协同         | 做 WebGPU meshlet pipeline 与 cluster streaming，不宣称 Nanite 等价                    |
+| Unreal Virtual Shadow Maps                        | receiver-driven page request、物理页缓存、按需重绘和 clipmap                   | 先补 shadow cache/invalidations，再做 WebGPU 物理 atlas + page table 的虚拟阴影        |
+| Unreal Lumen                                      | 屏幕 trace、低频场景表示、时域积累和 fallback 组合                             | 采用 Hi-Z SSR/SSGI + probe/软件 BVH 或 SDF clipmap 的混合方案，不承诺硬件 RT           |
 
 Unity HDRP 本身把目标描述为面向 compute-capable 平台的混合 Tile/Cluster
 Forward/Deferred 架构；Unreal 的 Nanite、VSM、Lumen 和 TSR 也分别解决几何、阴影、间接光和时域重建问题。Hilo3D 当前最接近这些能力的是 Compute/Storage/SRP 底座，尚缺的是可复用的生产系统。
@@ -172,6 +179,7 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 | G0  | GPU Scene、dirty upload、GPU frustum/Hi-Z culling、LOD/compact           | P0     | 解除 CPU scene/draw preparation 瓶颈          | XL     | F0、D0                              |
 | L0  | 生产级 Clustered Forward+ + 内置 PBR storage lighting                    | P0     | 大量动态光、稳定 shader variant 和 light list | XL     | F0、F1、G0 的 light database 可并行 |
 | T0  | Motion Vector、history、TAA/TAAU、dynamic resolution                     | P0     | 现代抗锯齿、稳定细节和后续时域效果底座        | XL     | F0、D0                              |
+| E0  | Auto exposure、exposure history、参数化 filmic display transform         | P1     | HDR 明暗适应、稳定高光与可控显示对比          | M      | F0、F1；与 T0 history 集成          |
 | Q0  | Material attribute buffer、GTAO、Hi-Z SSR、temporal SSGI                 | P1     | 接触、反射和间接光质量                        | XL     | T0、F0；SSR/SSGI 还需 G0 Hi-Z       |
 | S0  | Shadow cache/invalidation、GPU caster cull、virtual shadow pages         | P1→P2  | 大场景高分辨率动态阴影                        | XL     | G0、F0、F1                          |
 | V0  | Froxel volumetric fog/lighting/cloud foundation                          | P1     | 现代大气与局部光体积表现                      | XL     | L0、T0、F0                          |
@@ -354,6 +362,33 @@ light、transmission 和 device recovery 有真实 WebGPU 像素证据；overflo
 完成标准：静态画面收敛、运动物体不拖影、camera
 cut 不闪旧 history、动态分辨率不改变 UI 分辨率；测试同时覆盖高亮 emissive、细栅栏、alpha-test、透明、粒子和快速旋转。
 
+#### E0：Auto Exposure 与 Filmic Display Transform
+
+| 输入                                               | 核心处理                                                            | 输出                                 | 首要验收                                     |
+| -------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------- |
+| 线性 HDR scene color、上一帧 exposure、camera 状态 | log-luminance histogram、percentile metering、时域适应、filmic 曲线 | GPU exposure history、稳定的显示变换 | 无逐帧 CPU readback，camera cut 不闪曝光旧值 |
+
+第一版应保持现有手动 `ColorUber.exposure` 与 PBR Neutral 默认行为不变，并把自动模式作为显式的 WebGPU
+high-end profile 能力：
+
+- 从 tone mapping 前的线性 HDR scene color 构建 log-luminance
+  histogram；低成本 reduction 可以作为受测降级模式，但不能用逐帧 CPU readback 驱动曝光；
+- percentile clipping、可选 metering mask、min/max EV、exposure
+  compensation、由暗到亮和由亮到暗的独立适应速度进入一个不可变配置；
+- target/current/previous exposure 保存在 renderer-owned GPU
+  history 中，只有有效 submission 才交换；camera cut、resize、device
+  loss、manual/auto 切换和配置 revision 必须显式 invalidation；
+- Bloom threshold/composite、TAA/TAAU history rescale 与 Color
+  Uber 使用同一 exposure 合同，不能各自引入隐藏标度或让曝光变化造成 history 闪烁；
+- Color Uber 增加参数化 `filmic` 模式，至少表达 slope、toe、shoulder、black clip 和 white
+  clip；现有 PBR Neutral、ACES fitted、Reinhard 与 `none` 保留，默认值仍是 PBR Neutral；
+- diagnostics 暴露 histogram、target EV、actual EV、compensation、history generation 和 reset
+  reason，关闭诊断时不产生 readback 或常驻调试资源。
+
+完成标准：室内到室外、暗场到高亮 emissive、快速 camera
+cut 和曝光上下限 fixture 的适应曲线确定且无 NaN/闪回；filmic 曲线在合法参数范围内单调、黑白端有限、不会因单通道高亮产生不可控 hue
+shift；真实 WebGPU 浏览器证据同时覆盖 Bloom、TAA history、resize 和 device recovery。
+
 ### 6.4 Milestone 2：现代高画质系统
 
 #### Q0：Material Attribute Buffer + GTAO / SSR / SSGI
@@ -390,6 +425,11 @@ SSGI，而不是单帧固定步长 ray march。
    tile、按灯光预算更新、receiver-driven resolution、远近级更新频率；
 2. **虚拟阴影层**：directional clipmap/local-light virtual page table、depth/receiver 分析产生 page
    request、physical page allocation、per-page draw list、submission 后提交 residency。
+
+这里的 virtual shadow
+page 不等同于 SVT/RVT。SVT 是从磁盘按 tile 流送纹理，RVT 是运行时生成并缓存材质或地形 shading 数据；两者可以承载 lightmap 或 shadow
+factor 等数据，但不能直接替代动态 shadow rendering。VSM 才是把 shadow
+map 自身分页、请求、缓存和失效的系统，并且本质上仍是 shadow map。
 
 WebGPU 没有 sparse texture；虚拟页必须落到普通 depth
 atlas。第一层已经能显著降低当前“有变化就重画 atlas”的成本，也为第二层提供正确的 invalidation 和 residency 数据。
@@ -463,6 +503,19 @@ timestamp、streaming bytes、cluster rejection 和 shading cost 证明收益。
 3. 只有在内容需要且基准可接受时，再加入 software BVH 或 SDF clipmap trace；
 4. probe/software trace 作为 off-screen fallback，不能冒充硬件 ray tracing。
 
+SDF 不单独前移为近期 milestone。只有同时满足以下准入门槛，才在 GI0 下启动 `SDF0`
+探索并考虑公共 provider：
+
+- 真实产品需要 screen-space 方法无法覆盖的 off-screen
+  AO/GI/visibility，且 Q0 的 GTAO/SSGI 已有对照基线；
+- offline mesh-to-SDF baker 明确定义 watertight、thin surface、two-sided、masked
+  foliage、压缩、版本和 Worker/CI 产物合同；
+- per-object SDF、global clipmap composition、局部失效、camera teleport 和 device
+  recovery 在移动与桌面代表设备上都有体积内存、更新带宽和 cone/ray-march 时间证据；
+- 首版限定 static/rigid mesh，skinning/morph 不用每帧重烘焙或低质量占位假装支持；
+- 至少两个生产消费者能够复用同一场景表示，例如 off-screen AO 与 GI
+  fallback；在此之前保持内部实验接口，不公开最低公分母式 `SDFProvider`。
+
 仓库已有 compute path tracing example，证明 WGSL 可以做 BVH/光线类工作，但 progressive full-frame
 path
 tracing 与实时动态场景 GI 的更新、加速结构、降噪和 residency 成本不是同一个问题。GI0 必须单独建立动态 geometry、skinning、light
@@ -482,9 +535,11 @@ flowchart TD
   G --> H
   H --> I["Transparent / Particle / Froxel composition"]
   E --> J["GTAO / SSR / SSGI（按需）"]
-  I --> K["TAAU + Dynamic Resolution resolve"]
+  I --> X["HDR luminance histogram / Exposure history"]
+  X --> K["TAAU + Dynamic Resolution resolve"]
   J --> K
-  K --> L["Bloom + Color Uber + Display transform"]
+  K --> L["Bloom + Filmic / Color Uber + Display transform"]
+  X --> L
   L --> M["Present"]
 ```
 
@@ -494,23 +549,23 @@ flowchart TD
 - graph access 是唯一 hazard 来源，不向应用公开 native encoder/barrier；
 - WebGPU-only pipeline 通过创建前 requirements 排除 WebGL 2，不在热路径查询 backend；
 - CPU 不读取 visible count、cluster list、indirect args、virtual page request 或 temporal
-  statistics；
-- history、residency、resource revision 只在有效 submission 后 commit。
+  statistics；auto exposure 同样不能依赖逐帧 CPU readback；
+- history、exposure、residency、resource revision 只在有效 submission 后 commit。
 
 ## 8. 主要代码落点
 
-| 领域              | 现有入口                                             | 建议增量                                                                        |
-| ----------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Public capability | `RendererOptions.ts`、`RenderPipeline.ts`            | WebGPU high-end profile、subgroup/query/temporal/streaming requirements         |
-| RHI core          | `src/render/rhi/core/`                               | query、debug marker、subresource view、subgroup limits；保持 native type 不越界 |
-| WebGPU backend    | `src/render/rhi/backends/webgpu/`                    | query/timestamp、feature mapping、view/cache、f16/subgroup pipeline             |
-| Render Graph      | `src/render/graph/`、`ScriptableRenderGraph.ts`      | texture/view 分离、history/persistent texture、subresource hazard               |
-| Shader compiler   | `src/render/shader/`、`src/render/compute/`          | exact storage layout、f16/subgroup validation、built-in storage PBR variant     |
-| Shared renderer   | `src/render/renderer/`                               | GPUScene、Hi-Z、GPU cull/LOD、cluster lighting、motion vector、shadow residency |
-| Pipeline features | `src/render/pipeline/`、`src/render/postprocessing/` | TAAU、GTAO、SSR/SSGI、volumetric、dynamic resolution                            |
-| Camera/frame ABI  | `src/camera/`、`BuiltInUniformBlocks.ts`             | reversed-Z、jittered/non-jittered、current/previous、camera-relative origin     |
-| Assets            | `src/loader/`、`src/texture/`、`src/geometry/`       | KTX 2/Basis、meshopt/meshlet metadata、residency and streaming budget           |
-| Diagnostics       | `RendererDiagnostics`、RHI diagnostics               | GPU timeline、graph viewer、resident bytes、overflow/culling counters           |
+| 领域              | 现有入口                                             | 建议增量                                                                                      |
+| ----------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Public capability | `RendererOptions.ts`、`RenderPipeline.ts`            | WebGPU high-end profile、subgroup/query/temporal/streaming requirements                       |
+| RHI core          | `src/render/rhi/core/`                               | query、debug marker、subresource view、subgroup limits；保持 native type 不越界               |
+| WebGPU backend    | `src/render/rhi/backends/webgpu/`                    | query/timestamp、feature mapping、view/cache、f16/subgroup pipeline                           |
+| Render Graph      | `src/render/graph/`、`ScriptableRenderGraph.ts`      | texture/view 分离、history/persistent texture、subresource hazard                             |
+| Shader compiler   | `src/render/shader/`、`src/render/compute/`          | exact storage layout、f16/subgroup validation、built-in storage PBR variant                   |
+| Shared renderer   | `src/render/renderer/`                               | GPUScene、Hi-Z、GPU cull/LOD、cluster lighting、motion vector、shadow residency               |
+| Pipeline features | `src/render/pipeline/`、`src/render/postprocessing/` | auto exposure、filmic display transform、TAAU、GTAO、SSR/SSGI、volumetric、dynamic resolution |
+| Camera/frame ABI  | `src/camera/`、`BuiltInUniformBlocks.ts`             | reversed-Z、jittered/non-jittered、current/previous、camera-relative origin                   |
+| Assets            | `src/loader/`、`src/texture/`、`src/geometry/`       | KTX 2/Basis、meshopt/meshlet metadata、residency and streaming budget                         |
+| Diagnostics       | `RendererDiagnostics`、RHI diagnostics               | GPU timeline、exposure/EV、graph viewer、resident bytes、overflow/culling counters            |
 
 任何公共 API 变更仍需遵循仓库规则：测试、TypeDoc、`CHANGELOG.md`、API
 report、类型消费和 package 验证必须同版本完成。
@@ -531,6 +586,7 @@ report、类型消费和 package 验证必须同版本完成。
   replacement；
 - Clustered Forward+：数百局部光、shadowed/unshadowed、area light、transparent 和 overflow；
 - TAAU：细几何、alpha-test、emissive、particle、transmission、快速 camera 和动态分辨率；
+- Auto exposure：室内外切换、极亮 emissive、metering mask、上下限、camera cut、手动/自动切换和恢复；
 - Streaming：低带宽冷启动、快速 teleport、取消、内存压力、device loss；
 - Virtual shadow：静态缓存、局部动态 caster、快速 camera、page budget overflow；
 - GI/SSR：screen edge、disocclusion、动态 emissive/light、off-screen fallback 和 temporal reset。
@@ -547,6 +603,9 @@ time、确定的资源预算和失败时的可观察行为。
 - 不用 texture-backed SSBO、transform feedback、fragment compute 或 CPU fallback 模拟 WebGPU；
 - 不公开 native WebGPU device/buffer/encoder 作为常规功能入口；
 - 不承诺硬件 ray tracing、mesh shader、bindless、sparse residency、async compute 或 multi-queue；
+- 不为尚不存在的硬件 RT 路径预先公开最低公分母式 trace
+  provider；先定义 AO、reflection、shadow 和 GI 各自的 graph
+  resource/output 合同，等至少两种生产实现存在后再抽象公共查询层；
 - 不把 compute path-tracing demo 当作实时 Lumen 替代；
 - 不在缺少 streaming、material binning、可见性和真实性能证据时宣传 Nanite/VSM 等价能力。
 
@@ -560,16 +619,20 @@ time、确定的资源预算和失败时的可观察行为。
 4. 原生分辨率 TAA，再扩为 TAAU/dynamic resolution；
 5. GPUScene dirty database + previous Hi-Z culling + fixed bucket indirect draw；
 6. current Hi-Z + production Clustered Forward+ + built-in storage PBR；
-7. material attribute buffer + GTAO/SSR/SSGI；
-8. shadow cache/GPU caster cull，再决定是否进入 virtual shadow page；
-9. froxel volumetrics；
-10. KTX 2/Basis/mip streaming，之后再进入 meshlet/geometry streaming；
-11. 基于真实产品内容决定 GI、virtual texture 和完整 virtual shadow 的投入。
+7. Auto exposure + exposure history + 参数化 filmic display
+   transform；该 M 级切片可在 F0/F1 之后并行，但不能阻塞 D0/G0/L0/T0；
+8. material attribute buffer + GTAO/SSR/SSGI；
+9. shadow cache/GPU caster cull，再决定是否进入 virtual shadow page；
+10. froxel volumetrics；
+11. KTX 2/Basis/mip streaming，之后再进入 meshlet/geometry streaming；
+12. 基于真实产品内容决定 GI、virtual texture、SDF clipmap 和完整 virtual shadow 的投入。
 
 ```mermaid
 flowchart LR
   F0["F0 Graph View / History"] --> D0["D0 Depth / Previous ABI"]
   F0 --> F1["F1 Capability / GPU Timeline"]
+  F0 --> E0["E0 Auto Exposure / Filmic"]
+  F1 --> E0
   D0 --> T0["T0 TAAU / Dynamic Resolution"]
   D0 --> G0["G0 GPU Scene / Hi-Z"]
   F1 --> G0
@@ -579,6 +642,7 @@ flowchart LR
   G0 --> S0["S0 Shadow Cache / Pages"]
   L0 --> V0["V0 Froxel Volumetrics"]
   T0 --> V0
+  E0 --> V0
   F0 --> A0["A0 Asset Streaming"]
   G0 --> M0["M0 Meshlets"]
   A0 --> M0
@@ -586,7 +650,7 @@ flowchart LR
   A0 --> GI0
 ```
 
-第 1–6 项完成后，Hilo3D 才从“有现代 WebGPU 底座”进入“有现代 WebGPU 生产渲染器”；第 7–11 项是在这个生产框架上增加高端画质和超大场景能力。
+第 1–6 项完成后，Hilo3D 才从“有现代 WebGPU 底座”进入“有现代 WebGPU 生产渲染器”；第 7–12 项是在这个生产框架上增加高端画质和超大场景能力。E0 是可独立验收的显示质量切片，不改变 P0 主线的完成标准。
 
 ## 12. 外部参照
 
@@ -597,5 +661,10 @@ flowchart LR
 - [Unreal Engine：Nanite Virtualized Geometry](https://dev.epicgames.com/documentation/unreal-engine/nanite-in-unreal-engine?lang=en-US)
 - [Unreal Engine：Virtual Shadow Maps](https://dev.epicgames.com/documentation/en-us/unreal-engine/virtual-shadow-maps-in-unreal-engine)
 - [Unreal Engine：Temporal Super Resolution](https://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine)
+- [Unreal Engine：Auto Exposure / Eye Adaptation](https://dev.epicgames.com/documentation/unreal-engine/auto-exposure-eye-adaptation?application_version=4.27)
+- [Unreal Engine：Color Grading 与 Filmic Tonemapper](https://dev.epicgames.com/documentation/en-us/unreal-engine/color-grading-and-the-filmic-tonemapper-in-unreal-engine)
+- [Unreal Engine：Streaming Virtual Texturing](https://dev.epicgames.com/documentation/unreal-engine/streaming-virtual-texturing-in-unreal-engine?lang=en-US)
+- [Unreal Engine：Runtime Virtual Texturing](https://dev.epicgames.com/documentation/en-us/unreal-engine/runtime-virtual-texturing-in-unreal-engine)
+- [Unreal Engine：Mesh Distance Fields](https://dev.epicgames.com/documentation/unreal-engine/mesh-distance-fields-in-unreal-engine?lang=en-US)
 - [Unreal Engine：Lumen Technical Details](https://dev.epicgames.com/documentation/en-us/unreal-engine/lumen-technical-details-in-unreal-engine)
 - [Unreal Engine：高级渲染功能的硬件与 Shader Model 要求](https://dev.epicgames.com/documentation/unreal-engine/hardware-and-software-specifications-for-unreal-engine?lang=en-US)
