@@ -89,7 +89,7 @@ video {
 .ambientGlow {
     position: absolute;
     z-index: -2;
-    width: 620px;
+    width: min(620px, 100vw);
     height: 620px;
     border-radius: 50%;
     filter: blur(140px);
@@ -99,13 +99,13 @@ video {
 
 .ambientGlowMint {
     top: -310px;
-    left: -260px;
+    left: 0;
     background: var(--mint);
 }
 
 .ambientGlowBlue {
     top: 120px;
-    right: -350px;
+    right: 0;
     background: var(--blue);
 }
 
@@ -542,6 +542,7 @@ video {
 
 .proofBar > div {
     display: flex;
+    min-width: 0;
     min-height: 122px;
     flex-direction: column;
     justify-content: center;
@@ -555,9 +556,10 @@ video {
 
 .proofBar strong {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 27px;
+    font-size: clamp(21px, 1.5vw, 27px);
     font-weight: 520;
     letter-spacing: -0.04em;
+    white-space: nowrap;
 }
 
 .proofBar span {
@@ -758,54 +760,30 @@ video {
     max-width: 680px;
 }
 
-.advantageGrid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-top: 58px;
+.architectureIntro {
+    max-width: 1000px;
 }
 
-.advantageCard {
+.architectureIntro h2 span {
+    display: block;
+}
+
+.architectureIntro > p:last-child {
+    max-width: 820px;
+}
+
+.architectureDiagram {
     position: relative;
-    display: flex;
-    min-height: 500px;
     overflow: hidden;
-    flex-direction: column;
-    padding: 30px;
+    margin-top: 58px;
+    padding: 26px;
     border: 1px solid var(--line);
-    border-radius: 17px;
-    background:
-        radial-gradient(circle at 100% 0%, rgba(107, 140, 255, 0.08), transparent 45%), var(--panel);
-}
-
-.advantageCard::before {
-    position: absolute;
-    top: 0;
-    right: 18%;
-    left: 18%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(110, 231, 196, 0.7), transparent);
-    content: '';
-    opacity: 0.65;
-}
-
-.advantageCard:nth-child(3)::before {
-    background: linear-gradient(90deg, transparent, rgba(183, 147, 255, 0.8), transparent);
-}
-
-.advantageCardPrimary {
-    display: grid;
-    min-height: 430px;
-    grid-column: 1 / -1;
-    grid-template-columns: minmax(310px, 0.78fr) minmax(520px, 1.22fr);
-    align-items: center;
-    gap: 54px;
-    padding: 44px;
+    border-radius: 18px;
     background:
         linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-        radial-gradient(circle at 70% 50%, rgba(110, 231, 196, 0.12), transparent 34%),
-        linear-gradient(145deg, #111824, #0b1018);
+        radial-gradient(circle at 66% 36%, rgba(110, 231, 196, 0.1), transparent 28%),
+        linear-gradient(145deg, #101722, #0a0f17);
     background-size:
         40px 40px,
         40px 40px,
@@ -813,133 +791,147 @@ video {
         auto;
 }
 
-.cardNumber {
+.architectureDiagram::before {
     position: absolute;
-    top: 27px;
-    right: 28px;
-    color: #465164;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 9px;
+    top: 0;
+    right: 22%;
+    left: 22%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(110, 231, 196, 0.75), transparent);
+    content: '';
 }
 
-.cardKicker {
-    display: inline-flex;
-    width: fit-content;
-    margin: 0 0 17px;
-    padding: 7px 10px;
-    border: 1px solid rgba(110, 231, 196, 0.18);
-    border-radius: 999px;
-    background: rgba(110, 231, 196, 0.055);
-    color: var(--mint);
+.architectureDiagramHeader {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #697589;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 9px;
-    font-weight: 750;
-    letter-spacing: 0.12em;
+    font-size: 8px;
+    font-weight: 720;
+    letter-spacing: 0.11em;
     text-transform: uppercase;
 }
 
-.advantageCard h3 {
-    margin: 0;
-    color: #f4f7fb;
-    font-size: clamp(31px, 3.4vw, 46px);
-    font-weight: 670;
-    letter-spacing: -0.055em;
-    line-height: 1.04;
-    text-wrap: balance;
+.architectureDiagramHeader > span {
+    display: flex;
+    align-items: center;
+    gap: 9px;
 }
 
-.advantageCard > p:last-child,
-.advantageCopy > p:last-child,
-.advantageCardCopy > p:last-child {
-    max-width: 580px;
-    margin: 17px 0 0;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1.7;
+.architectureDiagramHeader b {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 12px var(--mint);
 }
 
-.miniPipeline {
+.architectureDiagramHeader small {
+    color: #596477;
+    font-size: inherit;
+}
+
+.architecturePath {
     position: relative;
     z-index: 1;
     display: grid;
-    width: 100%;
-    grid-column: 2;
-    grid-row: 1;
-    grid-template-columns: 0.8fr auto 1.25fr auto 0.9fr;
-    align-items: center;
-    gap: 12px;
+    grid-template-columns:
+        minmax(100px, 0.68fr) auto minmax(130px, 0.95fr) auto minmax(150px, 1.08fr) auto
+        minmax(150px, 1.08fr) auto minmax(120px, 0.8fr) auto minmax(125px, 0.84fr);
+    align-items: stretch;
+    gap: 8px;
+    margin-top: 24px;
 }
 
-.miniPipeline > div,
-.miniOutputs {
+.architectureNode {
     display: grid;
-    min-height: 132px;
+    min-width: 0;
+    min-height: 148px;
     align-content: center;
     gap: 11px;
-    padding: 20px;
+    padding: 17px;
     border: 1px solid var(--line);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.025);
-    color: #b8c1ce;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.028);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 9px;
-    font-weight: 700;
+}
+
+.architectureNode small,
+.architectureServices small {
+    color: #697589;
+    font-size: 7px;
+    font-weight: 750;
+    letter-spacing: 0.11em;
     text-transform: uppercase;
 }
 
-.miniPipeline > div > small {
-    color: #657084;
-    font-size: 7px;
-    letter-spacing: 0.12em;
-}
-
-.miniPipeline > div > span {
-    color: #c9d1dc;
-    font-size: 10px;
-}
-
-.miniPipeline > div > b {
-    color: #647084;
-    font-size: 7px;
-    font-weight: 650;
-    letter-spacing: 0.03em;
-    text-transform: none;
-}
-
-.miniPipeline .miniPipelineCore {
-    min-height: 174px;
-    border-color: rgba(110, 231, 196, 0.32);
-    background: linear-gradient(145deg, rgba(110, 231, 196, 0.1), rgba(107, 140, 255, 0.08));
-    box-shadow: 0 0 44px rgba(110, 231, 196, 0.08);
-    color: var(--mint);
-}
-
-.miniPipeline .miniPipelineCore > span {
-    color: var(--mint);
+.architectureNode strong {
+    color: #dce2eb;
     font-size: 12px;
+    line-height: 1.35;
 }
 
-.miniPipeline > i {
-    color: #4c5769;
+.architectureNode > span {
+    color: #788498;
+    font-size: 7px;
+    line-height: 1.6;
+}
+
+.architectureNodeShared {
+    border-color: rgba(110, 231, 196, 0.2);
+    background: rgba(110, 231, 196, 0.045);
+}
+
+.architectureNodePipeline {
+    border-color: rgba(183, 147, 255, 0.23);
+    background: rgba(183, 147, 255, 0.05);
+}
+
+.architectureNodeGraph {
+    border-color: rgba(110, 231, 196, 0.36);
+    background: linear-gradient(145deg, rgba(110, 231, 196, 0.11), rgba(107, 140, 255, 0.07));
+    box-shadow: 0 0 42px rgba(110, 231, 196, 0.07);
+}
+
+.architectureNodeGraph strong {
+    color: var(--mint);
+}
+
+.architectureNodeRhi {
+    border-color: rgba(107, 140, 255, 0.3);
+    background: rgba(107, 140, 255, 0.07);
+}
+
+.architectureNodeRhi strong {
+    color: #91a7ff;
+}
+
+.architectureConnector {
+    display: grid;
+    align-items: center;
+    color: #536073;
     font-style: normal;
+    font-size: 15px;
 }
 
-.miniOutputs {
-    min-height: 174px;
-    align-content: center;
-    justify-items: start;
-    gap: 14px;
+.architectureBackends > div {
+    display: grid;
+    gap: 8px;
 }
 
-.miniOutputs span {
+.architectureBackends span {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #c9d1dc;
+    color: #c8d0dc;
     font-size: 9px;
+    font-weight: 720;
 }
 
-.miniOutputs b {
+.architectureBackends span b {
     width: 5px;
     height: 5px;
     border-radius: 50%;
@@ -947,111 +939,80 @@ video {
     box-shadow: 0 0 9px var(--blue);
 }
 
-.miniOutputs span:last-child b {
+.architectureBackends span:last-child b {
     background: var(--purple);
     box-shadow: 0 0 9px var(--purple);
 }
 
-.advantageCopy {
+.architectureServices {
     position: relative;
-    z-index: 2;
-    grid-column: 1;
-    grid-row: 1;
-}
-
-.advantageCardCopy {
-    position: relative;
-    z-index: 2;
-    margin-top: auto;
-}
-
-.graphGraphic {
-    display: flex;
-    min-height: 158px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 7px;
-    margin: 26px 0 42px;
-    padding: 18px;
-    border: 1px solid var(--line);
+    z-index: 1;
+    margin-top: 14px;
+    padding: 16px 17px;
+    border: 1px solid rgba(110, 231, 196, 0.16);
     border-radius: 11px;
-    background: rgba(4, 7, 12, 0.46);
-    color: #9ea9b8;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 8px;
-    font-weight: 700;
+    background: rgba(4, 8, 13, 0.5);
 }
 
-.graphGraphic span {
+.architectureServices > div {
     display: grid;
-    min-height: 76px;
-    flex: 1;
-    align-content: center;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 8px;
-    padding: 11px 9px;
-    border: 1px solid rgba(110, 231, 196, 0.13);
-    border-radius: 6px;
-    background: rgba(110, 231, 196, 0.04);
-    color: #c4cdd9;
+    margin-top: 11px;
+}
+
+.architectureServices span {
+    padding: 9px 8px;
+    border: 1px solid rgba(110, 231, 196, 0.11);
+    border-radius: 7px;
+    background: rgba(110, 231, 196, 0.035);
+    color: #8c98aa;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 7px;
+    font-weight: 680;
     text-align: center;
 }
 
-.graphGraphic span b {
-    color: var(--mint);
-    font-size: 7px;
-    font-weight: 750;
-}
-
-.graphGraphic i {
-    color: #4e596b;
-    font-style: normal;
-}
-
-.scriptPipelineGraphic {
+.architecturePrinciples {
     display: grid;
-    min-height: 158px;
-    gap: 10px;
-    margin: 26px 0 42px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 16px;
 }
 
-.scriptPipelineGraphic > div {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    padding: 0 18px;
+.architecturePrinciples article {
+    min-height: 230px;
+    padding: 28px;
     border: 1px solid var(--line);
-    border-radius: 9px;
-    background: rgba(255, 255, 255, 0.025);
+    border-radius: 16px;
+    background:
+        radial-gradient(circle at 100% 0%, rgba(107, 140, 255, 0.07), transparent 48%), var(--panel);
 }
 
-.scriptPipelineGraphic > div:last-child {
-    border-color: rgba(183, 147, 255, 0.2);
-    background: rgba(183, 147, 255, 0.045);
-}
-
-.scriptPipelineGraphic span {
-    color: #b9c2cf;
+.architecturePrinciples article > span {
+    color: var(--mint);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 10px;
-    font-weight: 720;
+    font-size: 8px;
+    font-weight: 750;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
 }
 
-.scriptPipelineGraphic span b {
-    display: block;
-    margin-bottom: 5px;
-    color: var(--mint);
-    font-size: 7px;
-    letter-spacing: 0.12em;
+.architecturePrinciples h3 {
+    margin: 48px 0 0;
+    color: #f4f7fb;
+    font-size: clamp(24px, 2.35vw, 31px);
+    font-weight: 660;
+    letter-spacing: -0.05em;
+    line-height: 1.08;
+    text-wrap: balance;
 }
 
-.scriptPipelineGraphic > div:last-child span b {
-    color: var(--purple);
-}
-
-.scriptPipelineGraphic small {
-    color: #657084;
-    font-size: 8px;
+.architecturePrinciples p {
+    margin: 15px 0 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.7;
 }
 
 .sectionIntroRow {
@@ -1141,7 +1102,13 @@ video {
 }
 
 .exampleCardGltf .exampleMedia img {
-    object-position: 59% center;
+    object-position: 72% center;
+}
+
+.exampleCardGltf::after {
+    background:
+        linear-gradient(90deg, rgba(5, 8, 13, 0.9), rgba(5, 8, 13, 0.3) 48%, transparent 72%),
+        linear-gradient(180deg, rgba(5, 8, 13, 0.08) 25%, rgba(5, 8, 13, 0.92) 100%);
 }
 
 .exampleCardRaytracing .exampleMedia img {
@@ -1424,6 +1391,23 @@ video {
         transform: none;
     }
 
+    .proofBar {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .proofBar > div {
+        border-bottom: 1px solid var(--line);
+    }
+
+    .proofBar > div:nth-child(odd) {
+        border-left: 0;
+    }
+
+    .proofBar > div:nth-child(3),
+    .proofBar > div:nth-child(4) {
+        border-bottom: 0;
+    }
+
     .why {
         grid-template-columns: 1fr;
     }
@@ -1432,16 +1416,17 @@ video {
         position: static;
     }
 
-    .advantageCardPrimary {
-        min-height: auto;
-        grid-template-columns: 1fr;
-        gap: 38px;
+    .architecturePath {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
     }
 
-    .advantageCardPrimary .miniPipeline,
-    .advantageCardPrimary .advantageCopy {
-        grid-column: 1;
-        grid-row: auto;
+    .architectureConnector {
+        display: none;
+    }
+
+    .architectureNode {
+        min-height: 132px;
     }
 
     .exampleGrid {
@@ -1555,22 +1540,34 @@ video {
         padding: 30px;
     }
 
-    .advantageGrid {
+    .architectureDiagram {
+        padding: 22px;
+    }
+
+    .architectureDiagramHeader {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .architecturePath {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .architectureServices > div {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .architecturePrinciples {
         grid-template-columns: 1fr;
     }
 
-    .advantageCardPrimary {
+    .architecturePrinciples article {
         min-height: auto;
-        grid-column: auto;
-        grid-template-columns: 1fr;
-        gap: 38px;
-        padding: 36px 30px;
     }
 
-    .advantageCardPrimary .miniPipeline,
-    .advantageCardPrimary .advantageCopy {
-        grid-column: 1;
-        grid-row: auto;
+    .architecturePrinciples h3 {
+        margin-top: 32px;
     }
 
     .sectionIntroRow {
@@ -1620,6 +1617,18 @@ video {
 @media (max-width: 560px) {
     .headerAction {
         padding: 0 12px;
+    }
+
+    .proofBar {
+        grid-template-columns: 1fr;
+    }
+
+    .proofBar > div {
+        border-left: 0;
+    }
+
+    .proofBar > div:nth-child(3) {
+        border-bottom: 1px solid var(--line);
     }
 
     .installLine {
@@ -1679,47 +1688,32 @@ video {
         font-size: 34px;
     }
 
-    .advantageCard {
-        min-height: 310px;
-        padding: 26px 23px;
+    .architectureIntro h2 span {
+        display: inline;
     }
 
-    .advantageCardPrimary {
-        min-height: auto;
+    .architectureIntro h2 span + span::before {
+        content: ' ';
     }
 
-    .miniPipeline {
-        width: 100%;
+    .architectureDiagram {
+        padding: 19px;
+    }
+
+    .architecturePath {
         grid-template-columns: 1fr;
-        gap: 8px;
     }
 
-    .miniPipeline > i {
-        display: none;
+    .architectureNode {
+        min-height: 104px;
     }
 
-    .miniPipeline > div,
-    .miniPipeline .miniPipelineCore,
-    .miniOutputs {
-        min-height: 74px;
-    }
-
-    .miniOutputs {
-        grid-template-columns: 1fr 1fr;
-        justify-items: center;
-    }
-
-    .miniOutputs small {
-        grid-column: 1 / -1;
-    }
-
-    .graphGraphic {
-        display: grid;
+    .architectureServices > div {
         grid-template-columns: 1fr 1fr;
     }
 
-    .graphGraphic i {
-        display: none;
+    .architecturePrinciples article {
+        padding: 24px;
     }
 
     .codeWindow pre {

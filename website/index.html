@@ -44,8 +44,8 @@
                 </a>
                 <nav class="mainNavigation" aria-label="Main navigation">
                     <a href="#examples">Examples</a>
-                    <a href="#showcase">Showcase</a>
                     <a href="#why">Architecture</a>
+                    <a href="#showcase">Showcase</a>
                     <a href="./docs/">Docs</a>
                     <a href="./docs/modules/Hilo3d.html">API</a>
                 </nav>
@@ -69,9 +69,9 @@
                         <em>Own every frame.</em>
                     </h1>
                     <p class="heroDescription">
-                        One RHI runs the same scene on WebGPU and WebGL 2. The Render Graph
-                        validates work before submission. The Scriptable Render Pipeline lets you
-                        customize passes without forking the engine.
+                        Build high-performance 2D and 3D experiences with a modern TypeScript
+                        graphics engine. Run the same scene on WebGPU and WebGL 2, customize every
+                        render pass, and stay in control from scene to screen.
                     </p>
                     <div class="heroCapabilities" aria-label="Rendering capabilities">
                         <span>2D + 3D</span>
@@ -121,12 +121,21 @@
             </section>
 
             <section class="proofBar sectionShell" aria-label="Hilo3D project highlights">
-                <div><strong>RHI</strong><span>one renderer for WebGPU + WebGL 2</span></div>
-                <div><strong>Render Graph</strong><span>validate passes before GPU work</span></div>
                 <div>
-                    <strong>SRP</strong><span>customize the frame without an engine fork</span>
+                    <strong>One frontend</strong><span>one scene across WebGPU and WebGL 2</span>
                 </div>
-                <div><strong>PBR</strong><span>glTF · HDR · Bloom · compute</span></div>
+                <div>
+                    <strong>Validated frames</strong
+                    ><span>validate passes before GPU submission</span>
+                </div>
+                <div>
+                    <strong>Your pipeline</strong
+                    ><span>compose and customize without an engine fork</span>
+                </div>
+                <div>
+                    <strong>Modern rendering</strong
+                    ><span>PBR · glTF · HDR · Bloom · GPU Compute</span>
+                </div>
             </section>
 
             <section class="examples sectionShell" id="examples">
@@ -213,84 +222,101 @@
             </section>
 
             <section class="why sectionShell" id="why">
-                <div class="sectionIntro">
+                <div class="sectionIntro architectureIntro">
                     <p class="eyebrow"><span></span> Rendering architecture</p>
-                    <h2>Modern graphics architecture, end to end.</h2>
+                    <h2>
+                        <span>One rendering path.</span>
+                        <span>Native on both backends.</span>
+                    </h2>
                     <p>
-                        The RHI keeps rendering portable, the Render Graph keeps every frame
-                        predictable, and the Scriptable Render Pipeline keeps the engine extensible.
+                        Scene processing, draw preparation, shadows, post-processing, and resource
+                        lifecycle stay in one shared frontend. Every frame is compiled through a
+                        validated Render Graph and executed through native WebGPU or WebGL 2
+                        backends.
                     </p>
                 </div>
 
-                <div class="advantageGrid">
-                    <article class="advantageCard advantageCardPrimary">
-                        <span class="cardNumber">01</span>
-                        <div class="miniPipeline" aria-hidden="true">
-                            <div class="miniPipelineSource">
-                                <small>Shared frontend</small>
-                                <span>Renderer</span>
-                                <b>Scene · Passes</b>
-                            </div>
-                            <i>→</i>
-                            <div class="miniPipelineCore">
-                                <small>Unified contract</small>
-                                <span>Portable RHI</span>
-                                <b>Resources · Pipelines · Commands</b>
-                            </div>
-                            <i>→</i>
-                            <div class="miniOutputs">
-                                <small>Native backends</small>
+                <div class="architectureDiagram">
+                    <div class="architectureDiagramHeader">
+                        <span><b></b>Production frame path</span>
+                        <small>One shared frontend · two native backends</small>
+                    </div>
+                    <div class="architecturePath">
+                        <div class="architectureNode">
+                            <small>Public scene</small>
+                            <strong>Stage</strong>
+                            <span>Nodes · Cameras · Lights</span>
+                        </div>
+                        <i class="architectureConnector" aria-hidden="true">→</i>
+                        <div class="architectureNode architectureNodeShared">
+                            <small>Shared frontend</small>
+                            <strong>Renderer</strong>
+                            <span>Collect · Cull · Sort · Instance</span>
+                        </div>
+                        <i class="architectureConnector" aria-hidden="true">→</i>
+                        <div class="architectureNode architectureNodePipeline">
+                            <small>Extension layer</small>
+                            <strong>Pipeline Host + SRP</strong>
+                            <span>Default path · Custom passes</span>
+                        </div>
+                        <i class="architectureConnector" aria-hidden="true">→</i>
+                        <div class="architectureNode architectureNodeGraph">
+                            <small>Frame compiler</small>
+                            <strong>Render Graph</strong>
+                            <span>Setup · Compile · Prepare · Execute</span>
+                        </div>
+                        <i class="architectureConnector" aria-hidden="true">→</i>
+                        <div class="architectureNode architectureNodeRhi">
+                            <small>Portable contract</small>
+                            <strong>RHI</strong>
+                            <span>Resources · Pipelines · Commands</span>
+                        </div>
+                        <i class="architectureConnector" aria-hidden="true">→</i>
+                        <div class="architectureNode architectureBackends">
+                            <small>Native backends</small>
+                            <div>
                                 <span><b></b>WebGPU</span>
                                 <span><b></b>WebGL 2</span>
                             </div>
                         </div>
-                        <div class="advantageCopy">
-                            <p class="cardKicker">01 · Rendering Hardware Interface · RHI</p>
-                            <h3>One renderer. Two native backends.</h3>
-                            <p>
-                                One resource, pipeline, and command contract keeps scene code
-                                portable while WebGPU and WebGL 2 stay native to their own APIs.
-                            </p>
+                    </div>
+                    <div class="architectureServices">
+                        <small>Shared frame state &amp; lifecycle</small>
+                        <div>
+                            <span>Frame Arena</span>
+                            <span>Upload Batch</span>
+                            <span>Resource Registry</span>
+                            <span>Persistent Resources</span>
+                            <span>Submission Tracking</span>
+                            <span>Device Recovery</span>
                         </div>
-                    </article>
+                    </div>
+                </div>
 
-                    <article class="advantageCard">
-                        <span class="cardNumber">02</span>
-                        <div class="graphGraphic" aria-hidden="true">
-                            <span><b>01</b>Setup</span><i>→</i><span><b>02</b>Compile</span><i>→</i
-                            ><span><b>03</b>Prepare</span><i>→</i><span><b>04</b>Execute</span>
-                        </div>
-                        <div class="advantageCardCopy">
-                            <p class="cardKicker">02 · Validated Render Graph</p>
-                            <h3>Validate first.<br />Execute with confidence.</h3>
-                            <p>
-                                Resource dependencies, descriptors and pass ordering are validated
-                                before GPU work begins, so an invalid frame stops before partial
-                                submission.
-                            </p>
-                        </div>
+                <div class="architecturePrinciples">
+                    <article>
+                        <span>01 · Shared frontend</span>
+                        <h3>One renderer owns the frame.</h3>
+                        <p>
+                            Scene collection, culling, sorting, instancing, shadows and
+                            post-processing stay backend-neutral.
+                        </p>
                     </article>
-
-                    <article class="advantageCard">
-                        <span class="cardNumber">03</span>
-                        <div class="scriptPipelineGraphic" aria-hidden="true">
-                            <div>
-                                <span><b>Default</b> Forward Pipeline</span>
-                                <small>Production path</small>
-                            </div>
-                            <div>
-                                <span><b>Custom</b> Your Pipeline</span>
-                                <small>Scriptable features</small>
-                            </div>
-                        </div>
-                        <div class="advantageCardCopy">
-                            <p class="cardKicker">03 · Scriptable Render Pipeline</p>
-                            <h3>Shape the frame.<br />Keep the engine.</h3>
-                            <p>
-                                Add or replace shadow, scene, post-processing and output stages
-                                without forking the renderer or bypassing engine lifecycle.
-                            </p>
-                        </div>
+                    <article>
+                        <span>02 · Transactional graph</span>
+                        <h3>Validate, submit, then commit.</h3>
+                        <p>
+                            Invalid dependencies stop before GPU work. Frame-local state commits
+                            only after a valid submission and rolls back on failure.
+                        </p>
+                    </article>
+                    <article>
+                        <span>03 · Portable execution</span>
+                        <h3>Native APIs behind one contract.</h3>
+                        <p>
+                            Resources, pipelines, bindings, commands and recovery cross the RHI
+                            while native access stays inside backend boundaries.
+                        </p>
                     </article>
                 </div>
             </section>
@@ -391,7 +417,7 @@
             <section class="quickStart sectionShell">
                 <div class="quickStartCopy">
                     <p class="eyebrow"><span></span> Start building</p>
-                    <h2>From install to<br />first frame.</h2>
+                    <h2>From install to <br />first frame.</h2>
                     <p>
                         Create one asynchronous stage. Auto mode selects a compatible WebGPU adapter
                         first and uses WebGL 2 when WebGPU is unavailable.
@@ -435,7 +461,7 @@
             <section class="finalCta sectionShell">
                 <div>
                     <p class="eyebrow"><span></span> Open source · MIT</p>
-                    <h2>Ship your next<br />realtime world.</h2>
+                    <h2>Ship your next <br />realtime world.</h2>
                 </div>
                 <div class="finalActions">
                     <a class="button buttonPrimary" href="./docs/">Read the docs →</a>
