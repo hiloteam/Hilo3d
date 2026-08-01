@@ -59,7 +59,15 @@ class Plane {
      * @returns this
      */
     normalize(): this {
-        const inverseNormalLength = 1.0 / this.normal.length();
+        const normalLength = this.normal.length();
+        if (normalLength === 0) {
+            // Infinite perspective projections contain one disabled far plane. Represent it as a
+            // plane that accepts every finite point instead of producing NaNs during culling.
+            this.normal.set(0, 0, 0);
+            this.distance = Infinity;
+            return this;
+        }
+        const inverseNormalLength = 1.0 / normalLength;
         this.normal.scale(inverseNormalLength);
         this.distance *= inverseNormalLength;
         return this;

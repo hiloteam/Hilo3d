@@ -14,6 +14,7 @@ import {
     materialBlockLayout,
     modelBlockLayout,
     morphBlockLayout,
+    MAX_SKIN_JOINTS,
     paddedStd140Value,
     sceneBlockLayout,
     skinningBlockLayout
@@ -22,10 +23,14 @@ import type { Std140Layout, Std140WriteResult } from './ubo/Std140Layout';
 import { getMeshPickingIdentity } from './PickingIdentity';
 import type { RendererViewport } from './Renderer';
 import type { SemanticFrameState } from './frame/SemanticFrameState';
+import type { RHIUploadBatch, RHIUploadBatchParticipant } from './frame/RHIUploadBatch';
+import type { RHISubmission } from './rhi/core';
+import { getTransformHistoryRevision } from '../core/TransformHistory';
 
 interface RendererSize {
     width: number;
     height: number;
+    cameraRelative?: boolean;
     getViewport?(): RendererViewport;
 }
 
@@ -59,10 +64,43 @@ interface FrameCachedBuffer {
     frameIndex: number;
 }
 
+interface ModelFrameCachedBuffer extends FrameCachedBuffer {
+    readonly normal: Matrix3;
+    revision: number;
+}
+
 interface MorphFrameCachedBuffer extends FrameCachedBuffer {
     readonly weights: Float32Array;
     readonly weights0: Float32Array;
     readonly weights1: Float32Array;
+}
+
+interface CameraHistoryRecord {
+    readonly committedView: Float32Array;
+    readonly committedProjection: Float32Array;
+    readonly committedViewProjection: Float32Array;
+    readonly committedViewInverse: Float32Array;
+    readonly committedOrigin: Float32Array;
+    readonly pendingView: Float32Array;
+    readonly pendingProjection: Float32Array;
+    readonly pendingViewProjection: Float32Array;
+    readonly pendingViewInverse: Float32Array;
+    readonly pendingOrigin: Float32Array;
+    committedRevision: number;
+    pendingRevision: number;
+    committedDepthMode: Camera['depthMode'];
+    pendingDepthMode: Camera['depthMode'];
+    committedGeneration: number;
+    pendingFrame: number;
+}
+
+interface TransformHistoryRecord {
+    readonly committed: Float32Array;
+    readonly pending: Float32Array;
+    committedRevision: number;
+    pendingRevision: number;
+    committedGeneration: number;
+    pendingFrame: number;
 }
 
 type OwnedBufferRegistration =
@@ -74,6 +112,9 @@ type OwnedBufferRegistration =
 
 const tempInverseProjection = new Matrix4();
 const tempViewNormal = new Matrix3();
+const tempRelativeViewInverse = new Matrix4();
+const tempRelativeView = new Matrix4();
+const tempRelativeViewProjection = new Matrix4();
 const std140WriteResult: Std140WriteResult = { byteOffset: 0, byteLength: 0 };
 const semanticBlockScratch = new WeakMap<UniformBuffer, Uint8Array>();
 const uniformBufferByteViews = new WeakMap<UniformBuffer, Uint8Array>();
@@ -265,6 +306,54 @@ function bytesEqual(
     return true;
 }
 
+function copyRelativeMatrix(
+    target: Float32Array,
+    source: ArrayLike<number>,
+    origin: ArrayLike<number>
+): void {
+    target.set(source);
+    target[12] = (source[12] ?? 0) - (origin[0] ?? 0);
+    target[13] = (source[13] ?? 0) - (origin[1] ?? 0);
+    target[14] = (source[14] ?? 0) - (origin[2] ?? 0);
+}
+
+function updateModelTransformBlock(
+    buffer: UniformBuffer,
+    mesh: Mesh,
+    current: Float32Array,
+    previous: Float32Array,
+    normal: Matrix3
+): void {
+    let candidate = semanticBlockScratch.get(buffer);
+    if (candidate?.byteLength !== modelBlockLayout.byteLength) {
+        candidate = new Uint8Array(modelBlockLayout.byteLength);
+        semanticBlockScratch.set(buffer, candidate);
+    } else {
+        candidate.fill(0);
+    }
+    const target = candidate.buffer;
+    if (!(target instanceof ArrayBuffer)) {
+        throw new TypeError('ModelBlock scratch storage must use an ArrayBuffer');
+    }
+    modelBlockLayout.writeInto(target, 'u_modelMatrix', current, std140WriteResult);
+    modelBlockLayout.writeInto(target, 'u_previousModelMatrix', previous, std140WriteResult);
+    modelBlockLayout.writeInto(
+        target,
+        'u_normalWorldMatrix',
+        normal.normalFromMat4(mesh.worldMatrix).elements,
+        std140WriteResult
+    );
+    modelBlockLayout.writeInto(
+        target,
+        'u_objectIdColor',
+        getMeshPickingIdentity(mesh).color,
+        std140WriteResult
+    );
+    if (!bytesEqual(bytesOf(buffer), candidate, 0, candidate.byteLength)) {
+        buffer.write(0, candidate);
+    }
+}
+
 /**
  * Commit only fields whose packed std140 bytes changed. Comparing the final ABI bytes catches
  * scalar assignments, in-place Color/Matrix edits and texture-derived numeric values without
@@ -298,7 +387,7 @@ function synchronizeMaterialBlock(cached: MaterialCachedBuffer): void {
 }
 
 /** Owns the canonical cross-backend uniform blocks and updates each at its natural frequency. */
-class BuiltInUniformBlockManager {
+class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
     private readonly renderer: RendererSize;
     private readonly ownedBuffers = new Set<UniformBuffer>();
     private readonly frameUniformBuffer: UniformBuffer;
@@ -320,13 +409,23 @@ class BuiltInUniformBlockManager {
     private readonly rendererSizeScratch = new Float32Array(2);
     private readonly cameraPositionNearScratch = new Float32Array(4);
     private readonly cameraParamsScratch = new Float32Array(4);
+    private readonly renderOriginScratch = new Float32Array(4);
+    private readonly historyParamsScratch = new Float32Array(4);
     /** Canonical semantic bindings for pass-global blocks, independent of draw order/material. */
     private readonly globalSemanticMaterial = new Material();
     private readonly materialBuffers = new WeakMap<Material, MaterialCachedBuffer>();
-    private readonly modelBuffers = new WeakMap<Mesh, RevisionCachedBuffer>();
+    private readonly modelBuffers = new WeakMap<Mesh, ModelFrameCachedBuffer>();
     private readonly geometryBuffers = new WeakMap<Geometry, RevisionCachedBuffer>();
     private readonly skinningBuffers = new WeakMap<Mesh, FrameCachedBuffer>();
     private readonly morphBuffers = new WeakMap<Mesh, MorphFrameCachedBuffer>();
+    private readonly cameraHistory = new WeakMap<Camera, CameraHistoryRecord>();
+    private readonly modelHistory = new WeakMap<Mesh, TransformHistoryRecord>();
+    private readonly skinningHistory = new WeakMap<Mesh, TransformHistoryRecord>();
+    private readonly morphHistory = new WeakMap<Mesh, TransformHistoryRecord>();
+    private readonly stagedCameras: CameraHistoryRecord[] = [];
+    private readonly stagedModels: TransformHistoryRecord[] = [];
+    private readonly stagedSkinning: TransformHistoryRecord[] = [];
+    private readonly stagedMorphs: TransformHistoryRecord[] = [];
     private readonly bufferOwners = new WeakMap<UniformBuffer, OwnedBufferRegistration>();
     private camera: Camera | null = null;
     private semanticFrame: SemanticFrameState | null = null;
@@ -334,6 +433,7 @@ class BuiltInUniformBlockManager {
     private readonly startTime = performance.now();
     private sceneRevision = -1;
     private lightRevision = -1;
+    private historyGeneration = 1;
 
     constructor(renderer: RendererSize) {
         this.renderer = renderer;
@@ -351,29 +451,105 @@ class BuiltInUniformBlockManager {
         });
     }
 
-    beginFrame(camera: Camera, viewport: RendererViewport = this.defaultViewport()): void {
+    beginFrame(
+        camera: Camera,
+        viewport: RendererViewport = this.defaultViewport(),
+        uploads?: RHIUploadBatch
+    ): void {
         this.semanticFrame = null;
-        this.beginApplicationFrame();
+        this.beginApplicationFrame(camera, uploads);
         this.beginPass(camera, viewport);
     }
 
     /** Begin one shared-renderer frame with explicit semantic ownership. */
-    beginSemanticFrame(frame: SemanticFrameState): void {
+    beginSemanticFrame(frame: SemanticFrameState, uploads?: RHIUploadBatch): void {
         this.semanticFrame = frame;
-        this.beginApplicationFrame();
+        this.beginApplicationFrame(frame.camera, uploads);
         this.beginSemanticPass(frame);
     }
 
     /** Advance frame-frequency semantics once, independently of the number of render passes. */
-    beginApplicationFrame(): void {
+    beginApplicationFrame(camera?: Camera, uploads?: RHIUploadBatch): void {
         this.frameIndex++;
+        uploads?.enlist(this);
         this.semanticPassCursor = 0;
+        this.renderOriginScratch.fill(0);
+        if (this.renderer.cameraRelative === true && camera !== undefined) {
+            this.renderOriginScratch[0] = camera.worldMatrix.elements[12];
+            this.renderOriginScratch[1] = camera.worldMatrix.elements[13];
+            this.renderOriginScratch[2] = camera.worldMatrix.elements[14];
+        }
         this.rendererSizeScratch[0] = this.renderer.width;
         this.rendererSizeScratch[1] = this.renderer.height;
         this.frameUniformBuffer
             .set('u_rendererSize', this.rendererSizeScratch)
             .set('u_time', (performance.now() - this.startTime) * 0.001)
             .set('u_frameIndex', this.frameIndex);
+    }
+
+    prepareCommit(_submission: RHISubmission): void {
+        // History snapshots are CPU-side and require no pre-submission work.
+    }
+
+    commit(_submission: RHISubmission): void {
+        for (const record of this.stagedCameras) {
+            record.committedView.set(record.pendingView);
+            record.committedProjection.set(record.pendingProjection);
+            record.committedViewProjection.set(record.pendingViewProjection);
+            record.committedViewInverse.set(record.pendingViewInverse);
+            record.committedOrigin.set(record.pendingOrigin);
+            record.committedRevision = record.pendingRevision;
+            record.committedDepthMode = record.pendingDepthMode;
+            record.committedGeneration = this.historyGeneration;
+            record.pendingFrame = -1;
+        }
+        this.commitTransformRecords(this.stagedModels);
+        this.commitTransformRecords(this.stagedSkinning);
+        this.commitTransformRecords(this.stagedMorphs);
+        this.clearStagedHistory();
+    }
+
+    rollback(): void {
+        for (const record of this.stagedCameras) record.pendingFrame = -1;
+        for (const record of this.stagedModels) record.pendingFrame = -1;
+        for (const record of this.stagedSkinning) record.pendingFrame = -1;
+        for (const record of this.stagedMorphs) record.pendingFrame = -1;
+        this.clearStagedHistory();
+    }
+
+    /** Invalidate every previous transform at a device-generation boundary. */
+    synchronizeAfterRecovery(): void {
+        this.historyGeneration += 1;
+    }
+
+    /** @internal Frame-wide origin used by instanced GPU transforms. */
+    get renderOrigin(): Readonly<Float32Array> {
+        return this.renderOriginScratch;
+    }
+
+    /** @internal Stage and write one current/previous camera-relative instance transform. */
+    writeInstanceModelMatrices(
+        mesh: Mesh,
+        current: Float32Array,
+        previous: Float32Array,
+        offset: number
+    ): void {
+        const history = this.transformHistoryRecord(this.modelHistory, mesh, 16);
+        if (history.pendingFrame !== this.frameIndex) {
+            copyRelativeMatrix(
+                history.pending,
+                mesh.worldMatrix.elements,
+                this.renderOriginScratch
+            );
+            history.pendingRevision = getTransformHistoryRevision(mesh);
+            history.pendingFrame = this.frameIndex;
+            this.stagedModels.push(history);
+        }
+        current.set(history.pending, offset);
+        const valid =
+            history.committedGeneration === this.historyGeneration &&
+            history.committedRevision === getTransformHistoryRevision(mesh);
+        previous.set(valid ? history.committed : history.pending, offset);
     }
 
     /** Start a camera/render pass without advancing animation-frame scoped buffers. */
@@ -452,21 +628,62 @@ class BuiltInUniformBlockManager {
             }
         }
         this.activeCameraBuffer = cameraBuffer;
-        this.cameraPositionNearScratch[0] = camera.worldMatrix.elements[12];
-        this.cameraPositionNearScratch[1] = camera.worldMatrix.elements[13];
-        this.cameraPositionNearScratch[2] = camera.worldMatrix.elements[14];
+        const history = this.cameraHistoryRecord(camera);
+        const firstCameraStage = history.pendingFrame !== this.frameIndex;
+        copyRelativeMatrix(
+            history.pendingViewInverse,
+            camera.worldMatrix.elements,
+            this.renderOriginScratch
+        );
+        tempRelativeViewInverse.fromArray(history.pendingViewInverse);
+        tempRelativeView.invert(tempRelativeViewInverse);
+        history.pendingView.set(tempRelativeView.elements);
+        history.pendingProjection.set(camera.projectionMatrix.elements);
+        tempRelativeViewProjection.multiply(camera.projectionMatrix, tempRelativeView);
+        history.pendingViewProjection.set(tempRelativeViewProjection.elements);
+        history.pendingOrigin.set(this.renderOriginScratch);
+        history.pendingRevision = getTransformHistoryRevision(camera);
+        history.pendingDepthMode = camera.depthMode;
+        if (firstCameraStage) {
+            history.pendingFrame = this.frameIndex;
+            this.stagedCameras.push(history);
+        }
+        const historyValid =
+            history.committedGeneration === this.historyGeneration &&
+            history.committedRevision === getTransformHistoryRevision(camera) &&
+            history.committedDepthMode === camera.depthMode;
+        const previousView = historyValid ? history.committedView : history.pendingView;
+        const previousProjection = historyValid
+            ? history.committedProjection
+            : history.pendingProjection;
+        const previousViewProjection = historyValid
+            ? history.committedViewProjection
+            : history.pendingViewProjection;
+        const previousViewInverse = historyValid
+            ? history.committedViewInverse
+            : history.pendingViewInverse;
+        const previousOrigin = historyValid ? history.committedOrigin : history.pendingOrigin;
+        this.cameraPositionNearScratch[0] = history.pendingViewInverse[12] ?? 0;
+        this.cameraPositionNearScratch[1] = history.pendingViewInverse[13] ?? 0;
+        this.cameraPositionNearScratch[2] = history.pendingViewInverse[14] ?? 0;
         this.cameraPositionNearScratch[3] = numericCameraProperty(camera, 'near', 0);
         this.cameraParamsScratch[0] = numericCameraProperty(camera, 'far', 0);
         this.cameraParamsScratch[1] = camera.isPerspectiveCamera ? 1 : 0;
         this.cameraParamsScratch[2] = camera.isPerspectiveCamera
             ? 2 / Math.log2(numericCameraProperty(camera, 'far', 1) + 1)
             : 0;
-        this.cameraParamsScratch[3] = 0;
+        this.cameraParamsScratch[3] = camera.depthMode === 'reversed' ? 1 : 0;
+        this.historyParamsScratch.fill(0);
+        this.historyParamsScratch[0] = historyValid ? 1 : 0;
         cameraBuffer
-            .set('u_viewMatrix', camera.viewMatrix.elements)
-            .set('u_projectionMatrix', camera.projectionMatrix.elements)
-            .set('u_viewProjectionMatrix', camera.viewProjectionMatrix.elements)
-            .set('u_viewInverseMatrix', camera.worldMatrix.elements)
+            .set('u_viewMatrix', history.pendingView)
+            .set('u_projectionMatrix', history.pendingProjection)
+            .set('u_viewProjectionMatrix', history.pendingViewProjection)
+            .set('u_previousViewMatrix', previousView)
+            .set('u_previousProjectionMatrix', previousProjection)
+            .set('u_previousViewProjectionMatrix', previousViewProjection)
+            .set('u_viewInverseMatrix', history.pendingViewInverse)
+            .set('u_previousViewInverseMatrix', previousViewInverse)
             .set(
                 'u_projectionInverseMatrix',
                 tempInverseProjection.invert(camera.projectionMatrix).elements
@@ -476,7 +693,10 @@ class BuiltInUniformBlockManager {
                 tempViewNormal.normalFromMat4(camera.worldMatrix).elements
             )
             .set('u_cameraPositionNear', this.cameraPositionNearScratch)
-            .set('u_cameraParams', this.cameraParamsScratch);
+            .set('u_cameraParams', this.cameraParamsScratch)
+            .set('u_renderOrigin', history.pendingOrigin)
+            .set('u_previousRenderOrigin', previousOrigin)
+            .set('u_historyParams', this.historyParamsScratch);
         this.setViewport(viewport);
     }
 
@@ -649,8 +869,8 @@ class BuiltInUniformBlockManager {
 
     private getModelBuffer(
         mesh: Mesh,
-        material: Material,
-        semanticFrame?: SemanticFrameState
+        _material: Material,
+        _semanticFrame?: SemanticFrameState
     ): UniformBuffer {
         let cached = this.modelBuffers.get(mesh);
         if (!cached) {
@@ -659,12 +879,36 @@ class BuiltInUniformBlockManager {
                     kind: 'model',
                     owner: mesh
                 }),
+                frameIndex: -1,
+                normal: new Matrix3(),
                 revision: -1
             };
             this.modelBuffers.set(mesh, cached);
         }
-        if (cached.revision !== mesh.worldMatrixVersion) {
-            updateSemanticBlock(cached.buffer, 'ModelBlock', mesh, material, semanticFrame);
+        if (cached.frameIndex !== this.frameIndex || cached.revision !== mesh.worldMatrixVersion) {
+            const history = this.transformHistoryRecord(this.modelHistory, mesh, 16);
+            const firstModelStage = history.pendingFrame !== this.frameIndex;
+            copyRelativeMatrix(
+                history.pending,
+                mesh.worldMatrix.elements,
+                this.renderOriginScratch
+            );
+            history.pendingRevision = getTransformHistoryRevision(mesh);
+            if (firstModelStage) {
+                history.pendingFrame = this.frameIndex;
+                this.stagedModels.push(history);
+            }
+            const historyValid =
+                history.committedGeneration === this.historyGeneration &&
+                history.committedRevision === getTransformHistoryRevision(mesh);
+            updateModelTransformBlock(
+                cached.buffer,
+                mesh,
+                history.pending,
+                historyValid ? history.committed : history.pending,
+                cached.normal
+            );
+            cached.frameIndex = this.frameIndex;
             cached.revision = mesh.worldMatrixVersion;
         }
         return cached.buffer;
@@ -712,7 +956,39 @@ class BuiltInUniformBlockManager {
             this.skinningBuffers.set(mesh, cached);
         }
         if (cached.frameIndex !== this.frameIndex) {
-            updateSemanticBlock(cached.buffer, 'SkinningBlock', mesh, material, semanticFrame);
+            const value = material.getUniformData(
+                'u_jointMat',
+                mesh,
+                programBindingInfoFor(semanticFrame)
+            );
+            const values =
+                Array.isArray(value) || (ArrayBuffer.isView(value) && !(value instanceof DataView))
+                    ? (value as ArrayLike<unknown>)
+                    : EMPTY_NUMERIC_VALUES;
+            const capacity = MAX_SKIN_JOINTS * 16;
+            if (values.length > capacity) {
+                throw new RangeError(
+                    `SkinningBlock supports at most ${String(MAX_SKIN_JOINTS)} joints`
+                );
+            }
+            const history = this.transformHistoryRecord(this.skinningHistory, mesh, capacity);
+            history.pending.fill(0);
+            for (let index = 0; index < values.length; index += 1) {
+                const component = values[index];
+                if (typeof component !== 'number' || !Number.isFinite(component)) {
+                    throw new TypeError(`Joint matrix component ${String(index)} must be finite`);
+                }
+                history.pending[index] = component;
+            }
+            history.pendingRevision = getTransformHistoryRevision(mesh);
+            history.pendingFrame = this.frameIndex;
+            this.stagedSkinning.push(history);
+            const historyValid =
+                history.committedGeneration === this.historyGeneration &&
+                history.committedRevision === history.pendingRevision;
+            cached.buffer
+                .set('u_jointMat', history.pending)
+                .set('u_previousJointMat', historyValid ? history.committed : history.pending);
             cached.frameIndex = this.frameIndex;
         }
         return cached.buffer;
@@ -760,8 +1036,20 @@ class BuiltInUniformBlockManager {
             }
             cached.weights[index] = value;
         }
-        cached.buffer.set('u_morphWeights0', cached.weights0);
-        cached.buffer.set('u_morphWeights1', cached.weights1);
+        const history = this.transformHistoryRecord(this.morphHistory, mesh, cached.weights.length);
+        history.pending.set(cached.weights);
+        history.pendingRevision = getTransformHistoryRevision(mesh);
+        history.pendingFrame = this.frameIndex;
+        this.stagedMorphs.push(history);
+        const historyValid =
+            history.committedGeneration === this.historyGeneration &&
+            history.committedRevision === history.pendingRevision;
+        const previous = historyValid ? history.committed : history.pending;
+        cached.buffer
+            .set('u_morphWeights0', cached.weights0)
+            .set('u_morphWeights1', cached.weights1)
+            .set('u_previousMorphWeights0', previous.subarray(0, 4))
+            .set('u_previousMorphWeights1', previous.subarray(4, 8));
         cached.frameIndex = this.frameIndex;
         return cached.buffer;
     }
@@ -814,6 +1102,68 @@ class BuiltInUniformBlockManager {
             default:
                 return undefined;
         }
+    }
+
+    private cameraHistoryRecord(camera: Camera): CameraHistoryRecord {
+        let record = this.cameraHistory.get(camera);
+        if (record !== undefined) return record;
+        const matrix = (): Float32Array => new Float32Array(16);
+        const origin = (): Float32Array => new Float32Array(4);
+        record = {
+            committedView: matrix(),
+            committedProjection: matrix(),
+            committedViewProjection: matrix(),
+            committedViewInverse: matrix(),
+            committedOrigin: origin(),
+            pendingView: matrix(),
+            pendingProjection: matrix(),
+            pendingViewProjection: matrix(),
+            pendingViewInverse: matrix(),
+            pendingOrigin: origin(),
+            committedRevision: -1,
+            pendingRevision: -1,
+            committedDepthMode: 'standard',
+            pendingDepthMode: 'standard',
+            committedGeneration: 0,
+            pendingFrame: -1
+        };
+        this.cameraHistory.set(camera, record);
+        return record;
+    }
+
+    private transformHistoryRecord(
+        records: WeakMap<Mesh, TransformHistoryRecord>,
+        mesh: Mesh,
+        length: number
+    ): TransformHistoryRecord {
+        let record = records.get(mesh);
+        if (record !== undefined) return record;
+        record = {
+            committed: new Float32Array(length),
+            pending: new Float32Array(length),
+            committedRevision: -1,
+            pendingRevision: -1,
+            committedGeneration: 0,
+            pendingFrame: -1
+        };
+        records.set(mesh, record);
+        return record;
+    }
+
+    private commitTransformRecords(records: readonly TransformHistoryRecord[]): void {
+        for (const record of records) {
+            record.committed.set(record.pending);
+            record.committedRevision = record.pendingRevision;
+            record.committedGeneration = this.historyGeneration;
+            record.pendingFrame = -1;
+        }
+    }
+
+    private clearStagedHistory(): void {
+        this.stagedCameras.length = 0;
+        this.stagedModels.length = 0;
+        this.stagedSkinning.length = 0;
+        this.stagedMorphs.length = 0;
     }
 
     private createBuffer(layout: Std140Layout): UniformBuffer {

@@ -29,6 +29,7 @@ import {
     GPUDrivenRenderPass,
     version,
     type BasicLoadRequest,
+    type CameraDepthMode,
     type BasicMaterialParameters,
     type AreaLightParameters,
     type DispatchEvent,
@@ -45,6 +46,7 @@ import {
     type ComputeTextureViewDimension,
     type RendererBackend,
     type RendererResourceDiagnostics,
+    type RendererRenderingProfile,
     type RendererSupportOptions,
     type RendererWebGL2Options,
     type RendererWebGPUOptions,
@@ -85,7 +87,15 @@ const orderedNodeParameters = {
 const orderedNode = new Node(orderedNodeParameters);
 orderedNode.zIndex = 21;
 
-const camera = new PerspectiveCamera({ aspect: 16 / 9, near: 0.1, far: 1_000, z: 4 });
+const depthMode: CameraDepthMode = 'reversed';
+const camera = new PerspectiveCamera({
+    aspect: 16 / 9,
+    near: 0.1,
+    far: null,
+    depthMode,
+    z: 4
+});
+camera.invalidateTransformHistory();
 const rendererParameters = {
     backend: 'webgl2',
     width: 640,
@@ -115,8 +125,10 @@ const webgpuRendererParameters = {
     domElement: document.createElement('canvas'),
     width: 640,
     height: 360,
-    pixelRatio: 1
+    pixelRatio: 1,
+    renderingProfile: 'high-end'
 } satisfies RendererWebGPUOptions;
+const renderingProfile: RendererRenderingProfile = webgpuRendererParameters.renderingProfile;
 const webgpuRendererPromise: Promise<Renderer<'webgpu'>> =
     Renderer.create(webgpuRendererParameters);
 const webgpuRenderer = await webgpuRendererPromise;
@@ -189,7 +201,8 @@ const renderTargetParameters = {
     width: 320,
     height: 180,
     sampleCount: 4,
-    colorAttachments: [{ format: 'rgba16float' }, { format: 'rgba8unorm' }]
+    colorAttachments: [{ format: 'rgba16float' }, { format: 'rgba8unorm' }],
+    depthStencilAttachment: { depthMode: 'reversed', sampled: true }
 } satisfies RenderTargetParameters;
 const renderers: readonly Renderer[] = [renderer, webgpuRenderer];
 const compressionFormat: TextureCompressionFormat = 'bc';
@@ -464,6 +477,7 @@ version satisfies string;
 void renderer;
 void stage;
 void webgpuRenderer;
+void renderingProfile;
 void webglRendererPromise;
 void webgpuRendererPromise;
 void webgpuRendererPreserveDrawingBufferIsNever;

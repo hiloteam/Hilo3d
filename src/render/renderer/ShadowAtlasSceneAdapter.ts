@@ -391,6 +391,7 @@ function stageDirectionalCamera(
     light: DirectionalLight,
     mainCamera: Camera
 ): void {
+    camera.depthMode = mainCamera.depthMode;
     resetCameraTransform(camera);
     camera.left = -1;
     camera.right = 1;
@@ -521,6 +522,7 @@ function stageDirectionalCascadeCamera(
     tileHeight: number,
     stabilize: boolean
 ): void {
+    camera.depthMode = mainCamera.depthMode;
     resetCameraTransform(camera);
     camera.left = -1;
     camera.right = 1;
@@ -642,6 +644,7 @@ function stageSpotCamera(
     mainCamera: Camera,
     tileAspect: number
 ): void {
+    camera.depthMode = mainCamera.depthMode;
     resetCameraTransform(camera);
     camera.fov = 50;
     camera.near = 0.1;
@@ -1218,6 +1221,7 @@ export class ShadowAtlasSceneAdapter {
                 const camera = staged.cameras[face];
                 const matrix = staged.lightSpaceMatrices[face];
                 if (!camera || !matrix) throw new Error('Point shadow face staging is incomplete');
+                camera.depthMode = mainCamera.depthMode;
                 stagePointCamera(camera, light, face, planes.near, planes.far);
                 matrix.multiply(camera.viewProjectionMatrix, mainCamera.worldMatrix);
                 finiteMatrix(matrix, `Point shadow face ${String(face)} lightSpaceMatrix`);

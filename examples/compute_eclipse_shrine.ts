@@ -765,11 +765,6 @@ layout(std140) uniform CameraBlock {
     mat4 u_viewMatrix;
     mat4 u_projectionMatrix;
     mat4 u_viewProjectionMatrix;
-    mat4 u_viewInverseMatrix;
-    mat4 u_projectionInverseMatrix;
-    mat3 u_viewInverseNormalMatrix;
-    vec4 u_cameraPositionNear;
-    vec4 u_cameraParams;
 };
 void main() {
     v_direction = a_position;

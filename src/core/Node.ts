@@ -12,6 +12,7 @@ import Geometry, { type Bounds } from '../geometry/Geometry';
 import Skeleton from './Skeleton';
 import type { Renderer } from '../render/Renderer';
 import math from '../math/math';
+import { invalidateTransformHistory as invalidateNodeTransformHistory } from './TransformHistory';
 const defaultUp = new Vector3(0, 1, 0);
 const tempMatrix4 = new Matrix4();
 const TRAVERSE_STOP_NONE = 0 as const;
@@ -388,6 +389,17 @@ class Node extends EventDispatcher {
         if (this.parent) {
             this.parent.removeChild(this);
         }
+        return this;
+    }
+    /**
+     * Reset this node's previous-frame transform on its next submitted render.
+     *
+     * Call this after a discontinuous teleport, origin shift, camera cut, or animation reset so
+     * temporal effects receive `previous === current` instead of a false motion vector.
+     * @returns this
+     */
+    invalidateTransformHistory(): this {
+        invalidateNodeTransformHistory(this);
         return this;
     }
     /**

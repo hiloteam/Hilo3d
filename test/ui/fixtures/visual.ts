@@ -13,6 +13,7 @@ import {
     Stage,
     Vector3
 } from '../../../src/Hilo3d';
+import cameraBlockSource from '../../../src/shader/chunk/cameraBlock.glsl?raw';
 
 const container = document.querySelector<HTMLElement>('#stage');
 if (!container) throw new Error('Visual fixture container is missing.');
@@ -143,17 +144,7 @@ async function runReadbackDiagnostics(): Promise<void> {
                     `,
                     fs: `#version 300 es
                         precision highp float;
-                        layout(std140) uniform CameraBlock {
-                            mat4 u_viewMatrix;
-                            mat4 u_projectionMatrix;
-                            mat4 u_viewProjectionMatrix;
-                            mat4 u_viewInverseMatrix;
-                            mat4 u_projectionInverseMatrix;
-                            mat3 u_viewInverseNormalMatrix;
-                            vec4 u_cameraPositionNear;
-                            vec4 u_cameraParams;
-                            vec4 u_viewport;
-                        };
+                        ${cameraBlockSource}
                         layout(location = 0) out vec4 fragmentColor;
                         void main(void) {
                             fragmentColor = u_viewport / 255.0;

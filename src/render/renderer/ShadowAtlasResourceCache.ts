@@ -9,12 +9,15 @@ import {
 } from '../rhi/core';
 import type { ResourceRegistry, ResourceRegistryHandle } from './ResourceRegistry';
 import { assertShadowAtlasFormatSupported, type ShadowAtlasPlan } from './ShadowAtlasPlanner';
+import type { CameraDepthMode } from '../../camera/Camera';
+import { depthComparison } from './DepthConvention';
 
 export interface ShadowAtlasResourceRecord {
     readonly token: number;
     readonly width: number;
     readonly height: number;
     readonly format: RHITextureFormat;
+    readonly depthMode: CameraDepthMode;
     readonly texture: ResourceRegistryHandle<RHITexture>;
     readonly textureDescriptor: Readonly<RHINormalizedTextureDescriptor>;
     /** Persistent depth view consumed by reflected comparison-sampler bind groups. */
@@ -41,7 +44,11 @@ export class ShadowAtlasResourceCache {
 
     constructor(readonly registry: ResourceRegistry) {}
 
-    prepare(owner: object, plan: Readonly<ShadowAtlasPlan>): Readonly<ShadowAtlasResourceRecord> {
+    prepare(
+        owner: object,
+        plan: Readonly<ShadowAtlasPlan>,
+        depthMode: CameraDepthMode = 'standard'
+    ): Readonly<ShadowAtlasResourceRecord> {
         this.assertAlive();
         requireOwner(owner);
         this.validatePlanShape(plan);
@@ -49,7 +56,8 @@ export class ShadowAtlasResourceCache {
         if (
             current?.resource.width === plan.width &&
             current.resource.height === plan.height &&
-            current.resource.format === plan.format
+            current.resource.format === plan.format &&
+            current.resource.depthMode === depthMode
         ) {
             return current.resource;
         }
@@ -99,7 +107,7 @@ export class ShadowAtlasResourceCache {
                 mipmapFilter: 'nearest',
                 lodMinClamp: 0,
                 lodMaxClamp: 0,
-                compare: 'less-equal',
+                compare: depthComparison(depthMode),
                 maxAnisotropy: 1
             });
         } catch (error) {
@@ -116,6 +124,7 @@ export class ShadowAtlasResourceCache {
                 width: plan.width,
                 height: plan.height,
                 format: plan.format,
+                depthMode,
                 texture,
                 textureDescriptor,
                 view,

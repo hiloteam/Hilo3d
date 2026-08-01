@@ -135,6 +135,38 @@ describe('Renderer public entry point', () => {
         expect(renderer.isReady).toBe(true);
     });
 
+    it('applies the high-end depth and coordinate profile across cameras and targets', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 12,
+            height: 6,
+            antialias: false,
+            renderingProfile: 'high-end'
+        });
+        activeRenderers.push(renderer);
+        const camera = new PerspectiveCamera({ near: 0.1, far: null });
+        const stage = new Node();
+        const derivedTarget = renderer.createRenderTarget({ width: 12, height: 6 });
+
+        renderer.renderToTarget(derivedTarget, stage, camera);
+
+        expect(renderer.renderingProfile).toBe('high-end');
+        expect(renderer.cameraRelative).toBe(true);
+        expect(camera.depthMode).toBe('reversed');
+
+        const incompatibleTarget = renderer.createRenderTarget({
+            width: 12,
+            height: 6,
+            depthStencilAttachment: { depthMode: 'standard' }
+        });
+        expect(() => {
+            renderer.renderToTarget(incompatibleTarget, stage, camera);
+        }).toThrow(/depth mode standard does not match camera depth mode reversed/u);
+        derivedTarget.destroy();
+        incompatibleTarget.destroy();
+    });
+
     it('probes auto once and falls back to WebGL2 without a facade', async () => {
         rhiSupportControl.override = () => Promise.resolve(false);
         const renderer = await Renderer.create({

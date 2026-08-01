@@ -329,18 +329,18 @@ WebGPU-only storage-aware raster 仍不接受 graphics WGSL。`StorageGraphicsSh
 所有内置数值 shader 数据按所有权和更新频率进入固定 std140 block。WebGL 2 使用稳定的 flat
 binding；WebGPU 将同一逻辑 ABI 分到四个 bind group，避免高频对象数据导致全局或材质资源重新绑定：
 
-| Block           | 数据所有者与典型内容                                           | 更新时机                      | WebGL 2 | WebGPU |
-| --------------- | -------------------------------------------------------------- | ----------------------------- | ------: | -----: |
-| `FrameBlock`    | render size、时间与帧序号                                      | 每个 renderer frame 一次      |       0 |    0/0 |
-| `CameraBlock`   | view/projection、逆矩阵、相机位置、裁剪平面与物理像素 viewport | 每个 camera/render pass 一次  |       1 |    0/1 |
-| `SceneBlock`    | fog 等 scene-owned 状态                                        | scene revision 变化时         |       2 |    0/2 |
-| `LightBlock`    | view-space 灯光、衰减、阴影 atlas 参数                         | 每个 camera/render pass 一次  |       3 |    0/3 |
-| `MaterialBlock` | Basic/PBR、IBL、UV 变换与材质标志                              | 最终 std140 字段变化时        |       4 |    1/0 |
-| `ModelBlock`    | model 与 world-normal 变换                                     | 非实例对象 transform 变化时   |       5 |    2/0 |
-| `GeometryBlock` | position/normal/UV decode 变换                                 | geometry revision 变化时      |       6 |    2/1 |
-| `SkinningBlock` | joint palette                                                  | skeleton pose 变化时          |       7 |    2/2 |
-| `MorphBlock`    | morph weights 与 target 状态                                   | morph pose 变化时             |       8 |    2/3 |
-| `InstanceBlock` | 每批 model/normal matrix array                                 | WebGPU instanced batch 变化时 |       — |    2/4 |
+| Block           | 数据所有者与典型内容                                                                           | 更新时机                      | WebGL 2 | WebGPU |
+| --------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | ------: | -----: |
+| `FrameBlock`    | render size、时间与帧序号                                                                      | 每个 renderer frame 一次      |       0 |    0/0 |
+| `CameraBlock`   | current/previous view/projection、逆矩阵、render origin、history/depth 标志、物理像素 viewport | 每个 camera/render pass 一次  |       1 |    0/1 |
+| `SceneBlock`    | fog 等 scene-owned 状态                                                                        | scene revision 变化时         |       2 |    0/2 |
+| `LightBlock`    | view-space 灯光、衰减、阴影 atlas 参数                                                         | 每个 camera/render pass 一次  |       3 |    0/3 |
+| `MaterialBlock` | Basic/PBR、IBL、UV 变换与材质标志                                                              | 最终 std140 字段变化时        |       4 |    1/0 |
+| `ModelBlock`    | current/previous model 与 world-normal 变换                                                    | 非实例对象 transform 变化时   |       5 |    2/0 |
+| `GeometryBlock` | position/normal/UV decode 变换                                                                 | geometry revision 变化时      |       6 |    2/1 |
+| `SkinningBlock` | current/previous joint palette                                                                 | skeleton pose 变化时          |       7 |    2/2 |
+| `MorphBlock`    | current/previous morph weights 与 target 状态                                                  | morph pose 变化时             |       8 |    2/3 |
+| `InstanceBlock` | 每批 current/previous model 与 normal matrix array                                             | WebGPU instanced batch 变化时 |       — |    2/4 |
 
 WebGPU group 0 是 frame/pass/scene 全局域，group 1 是 material 与纹理域，group
 2 是 object/geometry/pose 域，group
@@ -349,6 +349,12 @@ WebGPU group 0 是 frame/pass/scene 全局域，group 1 是 material 与纹理�
 `CameraBlock.u_viewport` 的语义固定为当前 attachment 的物理像素
 `(x, y, width, height)`；canvas、RenderTarget、平面阴影与点光六面阴影切换 camera/pass 时都更新同一 std140 字段，不保留 classic
 `uniform` 兼容路径。
+
+前后帧状态属于 submission transaction，而不是“执行过一次 CPU
+update”就推进：成功提交后才把 pending 变成 previous，record/prepare/execute 失败统一 rollback；device
+recovery 使旧 generation 无效。Camera cut、teleport、world-origin shift、pose
+reset 等不连续变化通过公开 `Node.invalidateTransformHistory()`
+把下一次 previous 设为 current。spawn 首帧同样 previous=current；despawn 不产生 motion 输入。
 
 公开 `Std140Schema`
 是刻意固定的扁平 scalar/vector/matrix（含定长数组）模型；嵌套 struct 不在这套跨 WebGL
@@ -592,6 +598,10 @@ layout。
   `InstanceBlock`，由 `gl_InstanceIndex`
   读取固定数组，并在超过 128 个实例时拆成多个 draw。两个路径都由 `HILO_WEBGPU` 的编译期 shader
   variant 明确表达，不运行时改写 uniform 声明。
+- WebGPU `InstanceBlock` 保存真正的 current/previous model array；WebGL 2 的现有 attribute
+  budget 保持 current model，shader 把 previous alias 到 current，因而 WebGL 2 instanced
+  draw 的 motion 输入确定为零，而不虚构跨帧 attribute
+  stream。普通 draw、skinning 与 morph 在两端均携带真实 previous。
 - `ModelBlock` 只服务普通 draw 或整个 batch 的公共数据；model-view 与 MVP 在 shader 中由
   `CameraBlock × ModelBlock` 推导，不重复上传 camera-dependent 派生矩阵。
 - vertex geometry/morph attribute 按兼容格式打包到尽量少的 interleaved GPU buffer，并同时校验

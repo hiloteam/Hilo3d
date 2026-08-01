@@ -1,6 +1,18 @@
 # Unreleased
 
+### Breaking changes
+
+- Expand the fixed Camera/Model/Skinning/Morph/Instance std140 ABI with current/previous transforms,
+  render origins, and history/depth flags. Custom shaders that redeclare built-in blocks must use
+  the updated field order and capacities.
+
 ### Changes
+
+- Add the `high-end` rendering profile, per-camera standard/reversed depth modes, finite/infinite
+  reversed-Z projection, depth-convention-aware surfaces, render targets, shadows, storage graphics,
+  and GPU picking. Add optional camera-relative GPU transforms while preserving CPU world identity,
+  plus submission-transactional current/previous camera, mesh, instance, skinning, and morph state.
+  `Node.invalidateTransformHistory()` resets discontinuous motion deterministically.
 
 - Add modern WebGPU capability discovery for `subgroups`, adapter subgroup-size limits,
   `shader-f16`, and `timestamp-query`; expose renderer feature queries for explicit f32/workgroup

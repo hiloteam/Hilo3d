@@ -88,13 +88,22 @@ class OrthographicCamera extends Camera {
      * 更新投影矩阵
      */
     override updateProjectionMatrix(): void {
+        const { left, right, bottom, top, near, far } = this;
+        if (![left, right, bottom, top, near, far].every(Number.isFinite)) {
+            throw new RangeError('OrthographicCamera projection bounds must be finite.');
+        }
+        if (left === right || bottom === top || far <= near) {
+            throw new RangeError(
+                'OrthographicCamera bounds must be non-degenerate and far must be greater than near.'
+            );
+        }
         this.projectionMatrix.ortho(
-            this.left,
-            this.right,
-            this.bottom,
-            this.top,
-            this.near,
-            this.far
+            left,
+            right,
+            bottom,
+            top,
+            this.depthMode === 'reversed' ? far : near,
+            this.depthMode === 'reversed' ? near : far
         );
     }
     override getGeometry(forceUpdate = false): Geometry {

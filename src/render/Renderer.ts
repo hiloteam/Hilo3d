@@ -20,6 +20,7 @@ import type {
     RendererFeatureName,
     RendererOptions,
     RendererOptionsMap,
+    RendererRenderingProfile,
     RendererSupportOptions,
     RendererWebGL2Options,
     RendererWebGPUOptions
@@ -42,6 +43,8 @@ export class Renderer<
     declare readonly lightManager: RendererContract['lightManager'];
     declare readonly resourceManager: RendererContract['resourceManager'];
     declare readonly renderTarget: RendererContract['renderTarget'];
+    declare readonly cameraRelative: RendererContract['cameraRelative'];
+    declare readonly renderingProfile: RendererContract['renderingProfile'];
     declare width: RendererContract['width'];
     declare height: RendererContract['height'];
     declare pixelRatio: RendererContract['pixelRatio'];
@@ -116,6 +119,7 @@ export type {
     RendererFeatureName,
     RendererOptions,
     RendererOptionsMap,
+    RendererRenderingProfile,
     RendererSupportOptions,
     RendererWebGL2Options,
     RendererWebGPUOptions

@@ -35,7 +35,7 @@ float getShadowAtlas(int sliceIndex, float bias, vec3 fragPos, mat4 lightSpaceMa
             );
             visibility += textureLod(
                 u_shadowAtlas,
-                vec3(sampleUV, projection.z - bias),
+                vec3(sampleUV, projection.z + (u_reversedDepth > 0.5 ? bias : -bias)),
                 0.0
             );
         }

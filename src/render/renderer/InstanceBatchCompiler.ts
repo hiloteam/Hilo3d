@@ -29,6 +29,17 @@ export interface InstanceBatchCompilerCapabilities {
     >;
 }
 
+/** Internal bridge to the submission-transactional current/previous transform store. */
+export interface InstanceTransformHistory {
+    readonly renderOrigin: Readonly<Float32Array>;
+    writeInstanceModelMatrices(
+        mesh: Mesh,
+        current: Float32Array,
+        previous: Float32Array,
+        offset: number
+    ): void;
+}
+
 /** One interleaved, high-water CPU stream appended after the per-vertex streams. */
 export interface InstanceBatchVertexStreamPlan {
     readonly source: GeometryData;
@@ -610,6 +621,7 @@ class BatchRecord {
     private uniformBuffer: UniformBuffer | null = null;
     private uniformBufferFloats: Float32Array | null = null;
     private modelScratch: Float32Array | null = null;
+    private previousModelScratch: Float32Array | null = null;
     private normalScratch: Float32Array | null = null;
     private readonly normalMatrix3 = new Matrix3();
     private readonly normalMatrix4 = new Matrix4();
@@ -694,7 +706,8 @@ class BatchRecord {
         material: Material,
         inputs: readonly InstanceBatchVertexInputReflection[],
         capabilities: InstanceBatchCompilerCapabilities,
-        programInfo: ProgramBindingInfo
+        programInfo: ProgramBindingInfo,
+        transformHistory?: InstanceTransformHistory
     ): Readonly<InstanceBatchPlan> {
         this.classify(
             inputs,
@@ -808,7 +821,8 @@ class BatchRecord {
                 requirePresent(candidateStagingView, 'instance staging view'),
                 meshes,
                 material,
-                programInfo
+                programInfo,
+                transformHistory?.renderOrigin
             );
         }
 
@@ -817,21 +831,34 @@ class BatchRecord {
         if (this.backend === 'webgpu') {
             this.ensureUniformScratch();
             const modelScratch = requirePresent(this.modelScratch, 'model-matrix staging storage');
+            const previousModelScratch = requirePresent(
+                this.previousModelScratch,
+                'previous model-matrix staging storage'
+            );
             const normalScratch = requirePresent(
                 this.normalScratch,
                 'normal-matrix staging storage'
             );
             modelScratch.fill(0);
+            previousModelScratch.fill(0);
             normalScratch.fill(0);
             for (let meshIndex = 0; meshIndex < meshes.length; meshIndex += 1) {
                 const mesh = requirePresent(meshes[meshIndex], 'instance mesh');
-                const world = validateWorldMatrix(mesh);
                 const matrixOffset = meshIndex * 16;
-                for (let component = 0; component < 16; component += 1) {
-                    modelScratch[matrixOffset + component] = requirePresent(
-                        world[component],
-                        'world-matrix component'
+                if (transformHistory !== undefined) {
+                    transformHistory.writeInstanceModelMatrices(
+                        mesh,
+                        modelScratch,
+                        previousModelScratch,
+                        matrixOffset
                     );
+                } else {
+                    const world = validateWorldMatrix(mesh);
+                    for (let component = 0; component < 16; component += 1) {
+                        const value = requirePresent(world[component], 'world-matrix component');
+                        modelScratch[matrixOffset + component] = value;
+                        previousModelScratch[matrixOffset + component] = value;
+                    }
                 }
                 requireInvertibleWorldMatrix(mesh);
                 this.normalMatrix4.invert(mesh.worldMatrix).transpose();
@@ -854,12 +881,21 @@ class BatchRecord {
                     instanceBlockLayout.fields.u_instanceModelMatrices.offset / FLOAT_BYTES;
                 const normalOffset =
                     instanceBlockLayout.fields.u_instanceNormalMatrices.offset / FLOAT_BYTES;
-                modelChanged = !arraysEqual(
-                    modelScratch,
-                    this.uniformBufferFloats,
-                    modelScratch.length,
-                    modelOffset
-                );
+                const previousModelOffset =
+                    instanceBlockLayout.fields.u_previousInstanceModelMatrices.offset / FLOAT_BYTES;
+                modelChanged =
+                    !arraysEqual(
+                        modelScratch,
+                        this.uniformBufferFloats,
+                        modelScratch.length,
+                        modelOffset
+                    ) ||
+                    !arraysEqual(
+                        previousModelScratch,
+                        this.uniformBufferFloats,
+                        previousModelScratch.length,
+                        previousModelOffset
+                    );
                 normalChanged = !arraysEqual(
                     normalScratch,
                     this.uniformBufferFloats,
@@ -943,6 +979,13 @@ class BatchRecord {
                     'u_instanceModelMatrices',
                     requirePresent(this.modelScratch, 'model-matrix staging storage')
                 );
+                this.uniformBuffer.set(
+                    'u_previousInstanceModelMatrices',
+                    requirePresent(
+                        this.previousModelScratch,
+                        'previous model-matrix staging storage'
+                    )
+                );
             }
             if (normalChanged) {
                 this.uniformBuffer.set(
@@ -997,6 +1040,7 @@ class BatchRecord {
         this.uniformBuffer = null;
         this.uniformBufferFloats = null;
         this.modelScratch = null;
+        this.previousModelScratch = null;
         this.normalScratch = null;
     }
 
@@ -1168,7 +1212,8 @@ class BatchRecord {
         target: Float32Array,
         meshes: readonly Mesh[],
         material: Material,
-        programInfo: ProgramBindingInfo
+        programInfo: ProgramBindingInfo,
+        renderOrigin?: Readonly<Float32Array>
     ): void {
         let componentsPerInstance = 0;
         const last = this.instanceScratch.at(-1);
@@ -1179,10 +1224,17 @@ class BatchRecord {
             for (const input of this.instanceScratch) {
                 const targetOffset = instanceOffset + input.componentOffset;
                 if (input.builtIn === 1) {
+                    const world = validateWorldMatrix(mesh);
+                    if (renderOrigin !== undefined) {
+                        this.normalMatrix4.fromArray(world);
+                        this.normalMatrix4.elements[12] -= renderOrigin[0] ?? 0;
+                        this.normalMatrix4.elements[13] -= renderOrigin[1] ?? 0;
+                        this.normalMatrix4.elements[14] -= renderOrigin[2] ?? 0;
+                    }
                     copyResolvedValue(
                         target,
                         targetOffset,
-                        validateWorldMatrix(mesh),
+                        renderOrigin === undefined ? world : this.normalMatrix4.elements,
                         16,
                         input.name,
                         mesh
@@ -1215,11 +1267,17 @@ class BatchRecord {
     }
 
     private ensureUniformScratch(): void {
-        if (this.modelScratch !== null && this.normalScratch !== null) return;
+        if (
+            this.modelScratch !== null &&
+            this.previousModelScratch !== null &&
+            this.normalScratch !== null
+        )
+            return;
         const componentCount = MAX_INSTANCES_PER_DRAW * 16;
         this.modelScratch = new Float32Array(componentCount);
+        this.previousModelScratch = new Float32Array(componentCount);
         this.normalScratch = new Float32Array(componentCount);
-        this.diagnostics.storageAllocationCount += 2;
+        this.diagnostics.storageAllocationCount += 3;
     }
 
     private buildStreamLayout(stride: number): Readonly<RHIVertexBufferLayout> {
@@ -1330,7 +1388,8 @@ export class InstanceBatchCompiler {
         backend: RHIBackend,
         capabilities: InstanceBatchCompilerCapabilities,
         programInfo: ProgramBindingInfo = EMPTY_PROGRAM_INFO,
-        allowMaterialOverride = false
+        allowMaterialOverride = false,
+        transformHistory?: InstanceTransformHistory
     ): Readonly<InstanceBatchPlan> {
         validateBatch(owner, meshes, material, allowMaterialOverride);
         requireBackend(backend);
@@ -1348,7 +1407,15 @@ export class InstanceBatchCompiler {
             this.diagnosticState.planCapacity++;
         }
         try {
-            const plan = record.compile(owner, meshes, material, inputs, capabilities, programInfo);
+            const plan = record.compile(
+                owner,
+                meshes,
+                material,
+                inputs,
+                capabilities,
+                programInfo,
+                transformHistory
+            );
             if (createdRecord) {
                 records[backend] = record;
                 this.diagnosticState.activePlanCount++;

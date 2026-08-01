@@ -1,5 +1,6 @@
 import type GeometryData from '../../geometry/GeometryData';
 import type Material from '../../material/Material';
+import type { CameraDepthMode } from '../../camera/Camera';
 import {
     ALWAYS,
     BACK,
@@ -74,6 +75,7 @@ import {
     type RHIVertexFormat,
     type RHICapabilities
 } from '../rhi/core';
+import { applyDepthModeToComparison } from './DepthConvention';
 
 /** Render-target identity required to create the first production mesh-draw pipeline. */
 export interface RHIMeshDrawTargetDescriptor {
@@ -454,7 +456,8 @@ export function mapRHIDefaultBlendState(
 
 export function mapRHIDepthStencilState(
     material: RHIMeshDrawMaterialState,
-    format: RHITextureFormat | null | undefined
+    format: RHITextureFormat | null | undefined,
+    depthMode: CameraDepthMode = 'standard'
 ): Readonly<RHIDepthStencilState> | undefined {
     mapRHIMeshDrawDynamicState(material);
     if (format === null || format === undefined) {
@@ -498,7 +501,9 @@ export function mapRHIDepthStencilState(
     return Object.freeze({
         format,
         depthCompare:
-            hasDepth && material.depthTest ? mapRHICompareFunction(material.depthFunc) : 'always',
+            hasDepth && material.depthTest
+                ? applyDepthModeToComparison(mapRHICompareFunction(material.depthFunc), depthMode)
+                : 'always',
         depthWriteEnabled: hasDepth && material.depthTest && material.depthMask,
         ...stencilState
     });
@@ -663,11 +668,12 @@ export function createRHIMeshDrawPipelineState(
     capabilities?: RHIMeshDrawTargetCapabilities,
     fragmentOutputMode: RHIMeshDrawFragmentOutputMode = 'color',
     stripIndexFormat?: RHIIndexFormat,
-    fragmentOutputs?: readonly Readonly<RHIShaderFragmentOutputReflection>[]
+    fragmentOutputs?: readonly Readonly<RHIShaderFragmentOutputReflection>[],
+    depthMode: CameraDepthMode = 'standard'
 ): Readonly<RHIMeshDrawPipelineState> {
     if (fragmentOutputMode === 'depth-only') {
         const depthFormat = validateRHIMeshDepthOnlyTarget(target, capabilities);
-        const mappedDepth = mapRHIDepthStencilState(material, depthFormat);
+        const mappedDepth = mapRHIDepthStencilState(material, depthFormat, depthMode);
         if (mappedDepth === undefined) {
             throw new Error('Depth-only mesh state could not be created');
         }
@@ -677,7 +683,10 @@ export function createRHIMeshDrawPipelineState(
             colorTargets: Object.freeze([]),
             depthStencil: Object.freeze({
                 ...mappedDepth,
-                depthCompare: mapRHICompareFunction(material.depthFunc),
+                depthCompare: applyDepthModeToComparison(
+                    mapRHICompareFunction(material.depthFunc),
+                    depthMode
+                ),
                 depthWriteEnabled: true
             }),
             multisample: mapRHIMultisampleState(target.sampleCount, material.sampleAlphaToCoverage)
@@ -714,7 +723,7 @@ export function createRHIMeshDrawPipelineState(
             });
         })
     );
-    const depthStencil = mapRHIDepthStencilState(material, target.depthStencilFormat);
+    const depthStencil = mapRHIDepthStencilState(material, target.depthStencilFormat, depthMode);
     const multisample = mapRHIMultisampleState(target.sampleCount, material.sampleAlphaToCoverage);
 
     return Object.freeze({

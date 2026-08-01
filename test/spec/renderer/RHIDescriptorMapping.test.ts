@@ -238,6 +238,11 @@ describe('RHIDescriptorMapping material state', () => {
             depthCompare: 'less-equal',
             depthWriteEnabled: true
         });
+        expect(mapRHIDepthStencilState(new Material(), 'depth24plus', 'reversed')).toEqual({
+            format: 'depth24plus',
+            depthCompare: 'greater-equal',
+            depthWriteEnabled: true
+        });
         expect(
             mapRHIDepthStencilState(
                 new Material({ depthTest: false, depthMask: true }),

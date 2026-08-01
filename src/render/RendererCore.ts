@@ -137,6 +137,8 @@ export interface RendererContract {
     pixelRatio: number;
     domElement: HTMLCanvasElement | null;
     useInstanced: boolean;
+    readonly cameraRelative: boolean;
+    readonly renderingProfile: 'portable' | 'high-end';
     forceMaterial: Material | null;
     clearColor: Color;
     resize(width: number, height: number, force?: boolean): void;
@@ -197,6 +199,9 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     premultipliedAlpha = true;
     failIfMajorPerformanceCaveat = false;
     useLogDepth = false;
+    /** Use frame-wide camera-relative GPU transforms without changing CPU world coordinates. */
+    cameraRelative = false;
+    readonly renderingProfile: 'portable' | 'high-end' = 'portable';
     vertexPrecision: ShaderPrecision = 'highp';
     fragmentPrecision: ShaderPrecision = 'highp';
     fog: Fog | null = null;

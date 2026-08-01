@@ -441,6 +441,23 @@ pass，不创建这些原生对象。
 
 共享前端使用一套明确的坐标合同，业务代码不能用“当前后端是 WebGPU”作为临时翻转条件：
 
+- public projection 保持 OpenGL `[-1, 1]` clip Z；WebGPU shader artifact 仍只在统一编译边界映射到
+  `[0, 1]`。`Camera.depthMode='standard'` 把 near/far 映射到 `-1/+1`，`reversed` 映射到
+  `+1/-1`；Perspective `far:null` 使用无限远投影。
+- depth mode 同时决定 attachment clear（standard `1`、reversed `0`）、material
+  compare 方向、sampled-depth comparison sampler、shadow bias 符号和 picking
+  target。RenderTarget 明确保存 `depthMode`，与 active
+  Camera 不匹配时在 graph 执行前失败；多 camera 只有 depth mode 相同才能 load 前一 camera 的 surface
+  depth。
+- `cameraRelative:true`（high-end profile 自动启用）按 application
+  frame 的首个主 Camera 选择一个共享 render origin。GPU camera/model/instance
+  translation 减去该 origin；CPU world matrix、scene
+  identity、frustum、project/unproject 和交互坐标不改写。共享 origin 使同一帧的 shadow、overlay 与多 camera
+  pass 可以引用同一 object-frequency UBO。
+- current/previous camera、model、instance、joint palette 与 morph weight 随 upload
+  transaction 提交；首次出现或 `Node.invalidateTransformHistory()`
+  后 previous=current，失败帧回滚，device recovery 使旧 generation 无效。
+
 - world、view、clip 与交互物理空间都以 `+Y` 向上；DOM pointer 的 `+Y` 向下只在输入边界转换一次。
 - glTF UV、引擎管理的 2D Texture、CubeTexture 各 face、texture
   upload/update 和公开 readback 都把第 0 行定义为顶部。WebGL
@@ -467,7 +484,7 @@ Atlas、compute particles、compute path tracer、普通 glTF 材质与 cube
 IBL。方向性 fixture 同时验证 WebGL 2/WebGPU 的 render-target copy、managed 2D texture、cube-face
 top/bottom 和不对称投影阴影，避免某个 example 修正后另一个路径再次反向。
 
-相关代码：[`portableCoordinates.glsl`](../src/shader/method/portableCoordinates.glsl)、[`uv.frag`](../src/shader/chunk/uv.frag)、[`textureEnvMap.glsl`](../src/shader/method/textureEnvMap.glsl)、[`fullscreen-orientation.ts`](../test/ui/fixtures/fullscreen-orientation.ts)、[`shadow-orientation.ts`](../test/ui/fixtures/shadow-orientation.ts)。
+相关代码：[`Camera.ts`](../src/camera/Camera.ts)、[`DepthConvention.ts`](../src/render/renderer/DepthConvention.ts)、[`BuiltInUniformBlockManager.ts`](../src/render/BuiltInUniformBlockManager.ts)、[`portableCoordinates.glsl`](../src/shader/method/portableCoordinates.glsl)、[`uv.frag`](../src/shader/chunk/uv.frag)、[`textureEnvMap.glsl`](../src/shader/method/textureEnvMap.glsl)、[`fullscreen-orientation.ts`](../test/ui/fixtures/fullscreen-orientation.ts)、[`shadow-orientation.ts`](../test/ui/fixtures/shadow-orientation.ts)。
 
 ## 4. WebGPU / WebGL 2 双后端如何实现同一合同
 

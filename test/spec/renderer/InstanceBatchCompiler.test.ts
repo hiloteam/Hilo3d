@@ -344,6 +344,8 @@ describe('InstanceBatchCompiler WebGPU planning', () => {
         expect(block?.layout).toBe(instanceBlockLayout);
         const packed = blockFloats(required(block, 'WebGPU InstanceBlock'));
         const modelOffset = instanceBlockLayout.fields.u_instanceModelMatrices.offset / 4;
+        const previousModelOffset =
+            instanceBlockLayout.fields.u_previousInstanceModelMatrices.offset / 4;
         const normalOffset = instanceBlockLayout.fields.u_instanceNormalMatrices.offset / 4;
         expect(Array.from(packed.slice(modelOffset, modelOffset + 16))).toEqual([
             1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1
@@ -357,8 +359,14 @@ describe('InstanceBatchCompiler WebGPU planning', () => {
         expect(Array.from(packed.slice(normalOffset + 16, normalOffset + 32))).toEqual([
             0.5, 0, 0, 0, 0, 0.25, 0, 0, 0, 0, 0.20000000298023224, 0, 0, 0, 0, 1
         ]);
-        expect(Array.from(packed.slice(modelOffset + 32, normalOffset))).toEqual(
-            new Array(normalOffset - modelOffset - 32).fill(0)
+        expect(Array.from(packed.slice(modelOffset + 32, previousModelOffset))).toEqual(
+            new Array(previousModelOffset - modelOffset - 32).fill(0)
+        );
+        expect(Array.from(packed.slice(previousModelOffset, previousModelOffset + 32))).toEqual(
+            Array.from(packed.slice(modelOffset, modelOffset + 32))
+        );
+        expect(Array.from(packed.slice(previousModelOffset + 32, normalOffset))).toEqual(
+            new Array(normalOffset - previousModelOffset - 32).fill(0)
         );
         expect(Array.from(packed.slice(normalOffset + 32))).toEqual(
             new Array(packed.length - normalOffset - 32).fill(0)
