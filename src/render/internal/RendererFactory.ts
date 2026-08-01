@@ -27,6 +27,7 @@ const REQUESTABLE_WEBGPU_FEATURES: ReadonlySet<string> = new Set([
     'texture-compression-astc',
     'timestamp-query',
     'shader-f16',
+    'subgroups',
     'depth32float-stencil8',
     'float32-filterable',
     'float32-blendable'

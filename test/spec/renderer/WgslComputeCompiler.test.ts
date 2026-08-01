@@ -106,28 +106,34 @@ describe('WgslComputeShaderCompiler', () => {
         expect(compiled).toMatchObject({
             source,
             entryPoint: 'compact',
-            workgroupSize: [8, 4, 1],
-            bindings: shader.bindings
+            workgroupSize: [8, 4, 1]
         });
+        expect(compiled.bindings.slice(0, 3)).toMatchObject([
+            { minBindingSize: 4 },
+            { minBindingSize: 4 },
+            { minBindingSize: 4 }
+        ]);
         expect(compiled.reflection.bindings).toEqual([
             {
                 name: 'params',
                 group: 0,
                 binding: 0,
                 kind: 'uniform-buffer',
-                minBindingSize: 16
+                minBindingSize: 4
             },
             {
                 name: 'inputData',
                 group: 0,
                 binding: 1,
-                kind: 'read-only-storage-buffer'
+                kind: 'read-only-storage-buffer',
+                minBindingSize: 4
             },
             {
                 name: 'outputData',
                 group: 0,
                 binding: 2,
-                kind: 'storage-buffer'
+                kind: 'storage-buffer',
+                minBindingSize: 4
             },
             {
                 name: 'sourceTexture',
@@ -275,22 +281,74 @@ override OPTIONAL_SCALE: f32 = 1.0;
         expect(reflection.requiresF16).toBe(false);
     });
 
-    it('fails closed for f16 until the required Naga WGSL validation path is available', () => {
-        expect(() =>
-            compiler.compile(
-                createShader({
-                    source: `
+    it('validates f16 metadata through Naga and preserves the exact native WGSL artifact', () => {
+        const f16Source = `
 enable f16;
 override HALF_SCALE: f16 = 1.0h;
 var<workgroup> values: array<vec3<f16>, 2>;
 @compute @workgroup_size(1) fn metadata() {}
-`,
-                    entryPoint: 'metadata',
+`;
+        const compiled = compiler.compile(
+            createShader({
+                source: f16Source,
+                entryPoint: 'metadata',
+                workgroupSize: [1],
+                bindings: []
+            })
+        );
+
+        expect(compiled.source).toBe(f16Source);
+        expect(compiled.reflection.requiresF16).toBe(true);
+        expect(compiled.reflection.overrides).toEqual([
+            { name: 'HALF_SCALE', type: 'f16', required: false }
+        ]);
+    });
+
+    it('derives exact minimum buffer binding sizes from WGSL store types', () => {
+        const exactSource = `
+struct Values {
+    header: vec3<f32>,
+    items: array<vec2<f32>, 2>,
+}
+@group(0) @binding(0) var<storage, read> values: Values;
+@compute @workgroup_size(1) fn main() { _ = values.header; }
+`;
+        const exact = compiler.compile(
+            createShader({
+                source: exactSource,
+                entryPoint: 'main',
+                workgroupSize: [1],
+                bindings: [
+                    {
+                        name: 'values',
+                        group: 0,
+                        binding: 0,
+                        kind: 'read-only-storage-buffer'
+                    }
+                ]
+            })
+        );
+        expect(exact.bindings[0]).toMatchObject({ minBindingSize: 32 });
+        expect(exact.reflection.bindings[0]).toMatchObject({ minBindingSize: 32 });
+
+        expect(() =>
+            compiler.compile(
+                createShader({
+                    source: exactSource,
+                    entryPoint: 'main',
                     workgroupSize: [1],
-                    bindings: []
+                    bindings: [
+                        {
+                            name: 'values',
+                            group: 0,
+                            binding: 0,
+                            kind: 'read-only-storage-buffer',
+                            minBindingSize: 16
+                        }
+                    ]
                 })
             )
-        ).toThrow(/Direct WGSL f16 is fail-closed/u);
+        ).toThrow(/below the shader-derived minimum 32/u);
     });
 
     it('fails closed when overrides or non-literal expressions determine compute metadata', () => {

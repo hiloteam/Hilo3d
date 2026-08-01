@@ -1,6 +1,6 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
-> 审计基线：`296a18d`（2026-08-01）；实施状态更新：2026-08-01，F0 已落地。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
+> 审计基线：`296a18d`（2026-08-01）；实施状态更新：2026-08-01，F0、F1 已落地。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
 
 ## 结论先行
@@ -88,7 +88,7 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 | Screen-space lighting                | 缺失         | 无 depth pyramid、normal/roughness attribute buffer、GTAO、SSR、SSGI                                      |
 | Volumetrics / atmosphere             | 缺失         | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                 |
 | Geometry / texture streaming         | 缺失         | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                   |
-| GPU profiling / graph debugging      | 部分具备     | 有 CPU/RHI diagnostics 和可请求 `timestamp-query` feature，但 RHI/Graph 没有通用 query/timeline API       |
+| GPU profiling / graph debugging      | 生产基线     | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query   |
 
 ### 2.1 现有实现中最关键的限制
 
@@ -102,16 +102,17 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 - 公共 graph texture 虽有 `mipLevelCount`，但 pass 只能引用整张 2D texture；Compute storage
   texture 也是 transient、write-only、完整 2D view。没有 mip/layer/aspect view 或独立 persistent
   storage texture。
-- Direct WGSL `f16` 当前 fail-closed；RHI capability 也尚未表达 WebGPU `subgroups`、
-  `subgroup-size-control` 等现代 compute 可选能力。
+- Direct WGSL `f16`、`subgroups`
+  与 timestamp-query 已进入 capability/compiler/RHI 闭环；当前 WebGPU 标准未暴露
+  `subgroup-size-control` feature，因此只记录 adapter 的 subgroup min/max，不虚构非标准 gate。
 - Render Graph 每帧 Build/Compile，已有 pass culling 和跨帧 transient pool，但没有 compiled graph
   reuse 或同帧物理 alias。
 - Camera 只有当前 `view/projection/viewProjection`；普通 mesh/frame ABI 没有 previous
   transform、camera jitter 或 history generation。
 - 当前 turnkey post-processing 只有 Bloom 与 Color Uber。Opaque scene
   texture 只能支持最低边界的屏幕空间 transmission。
-- RHI 没有 query set、pass timestamp、debug group/render graph timeline，也没有 occlusion-query
-  command。
+- RHI 已有 timestamp QuerySet、pass timestamp、debug group/marker 和 Render Graph
+  timeline；occlusion query 仍不在当前合同内。
 - KTX loader 明确只解析 KTX 1.1、单 face 2D；没有 KTX 2、Basis Universal transcode、mip
   residency 或带宽预算。
 
@@ -138,7 +139,8 @@ Forward/Deferred 架构；Unreal 的 Nanite、VSM、Lumen 和 TSR 也分别解�
 - Compute shader、workgroup memory、barrier、32-bit atomic、storage buffer/texture；
 - direct/indirect dispatch，direct/indirect indexed/non-indexed draw；
 - texture array、3D texture、mip/layer view、MRT、MSAA、depth sampling；
-- capability-gated `shader-f16`、`subgroups`、`subgroup-size-control` 和 `timestamp-query`；
+- capability-gated `shader-f16`、`subgroups` 和 `timestamp-query`；subgroup size 只读 adapter
+  min/max，当前标准没有 `subgroup-size-control` feature；
 - buffer/texture copy、异步 map readback、OffscreenCanvas 和 Worker 侧资源处理；
 - 通过普通 texture + buffer 模拟 page table、physical atlas 和 software BVH。
 
@@ -180,7 +182,7 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 `P0` 是“现代 WebGPU renderer”定义所需能力；`P1` 是高画质生产 profile；`P2`
 是依赖场景规模、内容管线和长期性能投入的虚拟化能力。
 
-实施状态：**F0 已完成**；后续工作包可把 subresource view 与 history owner 作为现有基础使用。
+实施状态：**F0、F1 已完成**；后续工作包可把 subresource/history 与 GPU timeline 作为现有基础使用。
 
 ## 6. 可落地工作包
 
@@ -213,7 +215,7 @@ revision 后失效、device loss 后按 recipe 重建，失败 record/submission
 Graph、SRP、capability、ResourceRegistry、真实 WebGPU storage-view 和 package
 type-consumer 均有自动化覆盖。
 
-#### F1：现代 WebGPU capability 与 GPU timeline
+#### F1：现代 WebGPU capability 与 GPU timeline（已完成）
 
 ![F1：GPU 能力发现、时间戳与性能时间线](./images/modern-webgpu-roadmap/gpu-capabilities-profiling.jpg)
 
@@ -221,10 +223,10 @@ type-consumer 均有自动化覆盖。
 | ---------------------------- | ---------------------------------------------- | --------------------------------- | ------------------------------------------ |
 | adapter features、graph pass | `f16`/subgroup gate、timestamp resolve、marker | CPU/GPU pass 时间线、能力降级路径 | 关闭 query 无热路径成本，fallback 结果一致 |
 
-需要增加：
+已落地：
 
-- `RHIFeatureName`/`RendererFeatureName` 支持 `subgroups` 和可选
-  `subgroup-size-control`；记录 adapter 的 subgroup min/max；
+- `RHIFeatureName`/`RendererFeatureName` 支持 `subgroups`，记录 adapter 的 subgroup
+  min/max；当前标准没有 `subgroup-size-control` feature，故未把它加入可请求能力；
 - 修通 Naga/Direct WGSL 的 `shader-f16` 验证和 pipeline 闭环；不支持设备继续使用 f32 kernel；
 - QuerySet、timestamp write/resolve、submission-fenced asynchronous result；
 - Render Graph 自动生成 pass timestamp range，结果延迟若干帧读取，生产帧不等待；
@@ -234,6 +236,12 @@ type-consumer 均有自动化覆盖。
 完成标准：同一场景可输出 CPU record/compile/prepare/execute 与 GPU
 per-pass 时间线；关闭 query 时热路径不增加逐 draw 成本；subgroup/f16 kernel 必须有 f32/workgroup
 fallback 和相同结果测试。
+
+实现说明：timeline 以已注册 `RendererDiagnostics` 为开关，三槽 query/readback
+ring 在 submission 完成后异步 map；槽位繁忙时报告 `saturated`，不等待 GPU。Direct WGSL
+f16 保留原始 native artifact，Naga validator/writer 使用等价 f32 特化；设备没有 `shader-f16`
+时 RHI 明确拒绝，pipeline 可通过 `supportsFeature()` 选择 f32/workgroup
+fallback。仓库未引入新的内置 subgroup/f16 kernel，因此不存在需要伪装为双后端等价的隐式降级结果。
 
 #### D0：现代深度与帧坐标合同
 

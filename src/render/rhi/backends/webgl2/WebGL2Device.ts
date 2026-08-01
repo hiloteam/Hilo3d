@@ -20,6 +20,8 @@ import {
     type RHIGraphicsPipeline,
     type RHIGraphicsPipelineDescriptor,
     type RHIPipelineLayoutDescriptor,
+    type RHIQuerySet,
+    type RHIQuerySetDescriptor,
     type RHISampler,
     type RHISamplerDescriptor,
     type RHIShader,
@@ -231,6 +233,15 @@ export class WebGL2RHIDevice implements RHIDevice {
     createShader(descriptor: RHIShaderDescriptor): WebGL2Shader {
         this.assertAlive();
         return new WebGL2Shader(this, descriptor);
+    }
+
+    createQuerySet(_descriptor: RHIQuerySetDescriptor): RHIQuerySet {
+        this.assertAlive();
+        throw new RHIValidationError(
+            'unsupported-feature',
+            'WebGL2 does not support portable query sets',
+            'querySet'
+        );
     }
 
     createBindGroupLayout(descriptor: RHIBindGroupLayoutDescriptor): WebGL2BindGroupLayout {

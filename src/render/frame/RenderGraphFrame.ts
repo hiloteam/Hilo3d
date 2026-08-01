@@ -1,6 +1,10 @@
 import { RenderGraph } from '../graph/RenderGraph';
 import type { RenderGraphBuilder } from '../graph/RenderGraphBuilder';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
+import {
+    RenderGraphTimelineRecorder,
+    type RenderGraphTimelineSink
+} from '../graph/RenderGraphTimeline';
 import type { RHIFrameDiagnostics } from '../rhi/core';
 import { FrameArena } from './FrameArena';
 import { RHIUploadBatch } from './RHIUploadBatch';
@@ -75,7 +79,8 @@ export class RenderGraphFrame {
     execute(
         context: RenderGraphFrameContext,
         build: RenderGraphFrameBuildCallback,
-        abortSignal?: RenderGraphFrameAbortSignal
+        abortSignal?: RenderGraphFrameAbortSignal,
+        timelineSink?: RenderGraphTimelineSink | null
     ): RGExecutionResult {
         if (this.#active)
             throw new Error('Nested execution on the same RenderGraphFrame is not allowed');
@@ -85,20 +90,34 @@ export class RenderGraphFrame {
         this.arena.reset();
         this.uploads.reset();
         const growthsBeforeBuild = this.arena.growthCount;
+        const timeline =
+            timelineSink === undefined || timelineSink === null
+                ? undefined
+                : new RenderGraphTimelineRecorder(context.frameIndex, timelineSink);
         try {
             const graph = this.#renderGraph.createBuilder();
+            const recordStart = timeline === undefined ? 0 : performance.now();
             const result = build(
                 Object.freeze({ context, graph, arena: this.arena, uploads: this.uploads })
             );
             if (isPromiseLike(result)) {
                 throw new TypeError('Render frame build callbacks must be synchronous');
             }
+            if (timeline !== undefined) {
+                timeline.setRecordDuration(performance.now() - recordStart);
+            }
+            const compileStart = timeline === undefined ? 0 : performance.now();
             const compiled = this.#renderGraph.compile(graph, context.rhi.capabilities);
+            if (timeline !== undefined) {
+                timeline.setCompileDuration(performance.now() - compileStart);
+                timeline.captureGraph(compiled);
+            }
             this.uploads.validate(context.rhi);
             const execution = this.#renderGraph.execute(compiled, context.rhi, {
                 frameIndex: context.frameIndex,
                 diagnostics: this.diagnostics,
                 prePassCommands: this.uploads,
+                ...(timeline === undefined ? {} : { timeline }),
                 ...(abortSignal === undefined ? {} : { abortSignal })
             });
             this.uploads.commit(execution.submission);

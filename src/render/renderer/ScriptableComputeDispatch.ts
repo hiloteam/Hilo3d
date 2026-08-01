@@ -20,7 +20,9 @@ import {
     type RHIBindGroupLayout,
     type RHIBindingResource,
     type RHIBuffer,
+    type RHIComputePassDescriptor,
     type RHIComputePipeline,
+    type RHITimestampWrites,
     type RHISampler
 } from '../rhi/core';
 import type { BufferResourceCache } from './BufferResourceCache';
@@ -215,7 +217,10 @@ export class ScriptableComputeDispatch {
     readonly #groups: (ComputeBindGroupScratch | undefined)[] = [];
     readonly #activeGroups: number[] = [];
     readonly #cleanupFailures: unknown[] = [];
-    readonly #computePassDescriptor = { label: '' };
+    readonly #computePassDescriptor: {
+        label: string;
+        timestampWrites: Readonly<RHITimestampWrites> | undefined;
+    } = { label: '', timestampWrites: undefined };
     readonly #uniformBindingScratch: MutableNormalizedUniformBinding = {
         source: null,
         byteOffset: 0,
@@ -490,7 +495,15 @@ export class ScriptableComputeDispatch {
         const services = this.requireServices();
         let primaryFailure: unknown = null;
         try {
-            const encoder = context.commandContext.beginComputePass(this.#computePassDescriptor);
+            this.#computePassDescriptor.timestampWrites = context.timestampWrites;
+            let encoder;
+            try {
+                encoder = context.commandContext.beginComputePass(
+                    this.#computePassDescriptor as unknown as RHIComputePassDescriptor
+                );
+            } finally {
+                this.#computePassDescriptor.timestampWrites = undefined;
+            }
             encoder.setPipeline(this.#pipeline);
             for (const groupIndex of this.#activeGroups) {
                 const group = this.#groups[groupIndex];

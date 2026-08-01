@@ -4,6 +4,7 @@ import type {
     RHIDevice,
     RHIFrameDiagnostics,
     RHISubmission,
+    RHITimestampWrites,
     RHITexture,
     RHITextureView
 } from '../rhi/core';
@@ -20,6 +21,8 @@ import type {
     RGTextureHandle
 } from './RenderGraphResource';
 import { renderGraphFailure } from './RenderGraphValidation';
+import { RenderGraphGPUProfiler, type RenderGraphGPUProfileFrame } from './RenderGraphGPUProfiler';
+import type { RenderGraphTimelineRecorder } from './RenderGraphTimeline';
 
 type CompiledRGPhysicalResource = Exclude<CompiledRGResource, { readonly kind: 'texture-view' }>;
 
@@ -539,10 +542,13 @@ export interface RGExecutionOptions {
     readonly prePassCommands?: { flush(context: RHICommandContext): void };
     /** @internal Frame-owner cancellation gate checked before submission and between callbacks. */
     readonly abortSignal?: { throwIfAborted(): void };
+    /** @internal Enables pass markers, CPU phases and automatic WebGPU timestamp queries. */
+    readonly timeline?: RenderGraphTimelineRecorder;
 }
 
 export interface RGPassContext {
     readonly commandContext: RHICommandContext;
+    readonly timestampWrites: Readonly<RHITimestampWrites> | undefined;
     getTexture(handle: RGTextureAccessHandle): RHITexture;
     getTextureView(handle: RGTextureAccessHandle): RHITextureView;
     getBuffer(handle: RGBufferHandle): RHIBuffer;
@@ -606,11 +612,26 @@ class RGDeclaredResourceContext implements RGPrepareContext {
 }
 
 class RGPassContextImpl extends RGDeclaredResourceContext implements RGPassContext {
+    timestampWrites: Readonly<RHITimestampWrites> | undefined;
+
     constructor(
         readonly commandContext: RHICommandContext,
         prepared: PreparedRGResourceLookup
     ) {
         super(prepared);
+    }
+
+    override setPass(pass: CompiledRGPass | null): void {
+        super.setPass(pass);
+        this.timestampWrites = undefined;
+    }
+
+    setProfiledPass(
+        pass: CompiledRGPass,
+        timestampWrites: Readonly<RHITimestampWrites> | undefined
+    ): void {
+        super.setPass(pass);
+        this.timestampWrites = timestampWrites;
     }
 }
 
@@ -696,6 +717,7 @@ function releaseAfterSubmission(
 /** Allocates only after a graph compiled successfully, then executes its stable pass schedule. */
 export class RenderGraphExecutor {
     readonly #transientPool = new TransientResourcePool();
+    readonly #gpuProfiler = new RenderGraphGPUProfiler();
     readonly #workspaces: RenderGraphExecutorWorkspace[] = [];
     readonly #availableWorkspaces: RenderGraphExecutorWorkspace[] = [];
     readonly #storageDiagnostics: {
@@ -730,6 +752,7 @@ export class RenderGraphExecutor {
         if (this.#destroyed) return;
         this.#destroyed = true;
         this.#transientPool.destroy();
+        this.#gpuProfiler.destroy();
         this.#availableWorkspaces.length = 0;
     }
 
@@ -741,6 +764,8 @@ export class RenderGraphExecutor {
         if (this.#destroyed) throw new Error('Render graph executor is destroyed');
         this.#transientPool.useDevice(device);
         const workspace = this.acquireWorkspace();
+        const timeline = options.timeline;
+        const prepareStart = timeline === undefined ? 0 : performance.now();
         const preparedList = workspace.resources;
         const preparedByHandle = workspace.preparedByHandle;
         try {
@@ -828,6 +853,9 @@ export class RenderGraphExecutor {
                 options.abortSignal?.throwIfAborted();
             }
             prepareContext.setPass(null);
+            if (timeline !== undefined) {
+                timeline.setPrepareDuration(performance.now() - prepareStart);
+            }
         } catch (error) {
             prepareContext.setPass(null);
             releaseBeforeFrame(preparedList, this.#transientPool);
@@ -855,17 +883,38 @@ export class RenderGraphExecutor {
         }
         context.diagnostics.transientAllocations += transientAllocations;
         const passContext = new RGPassContextImpl(context, preparedByHandle);
+        let gpuProfile: RenderGraphGPUProfileFrame | null =
+            timeline === undefined ? null : this.#gpuProfiler.begin(device, timeline);
+        const executeStart = timeline === undefined ? 0 : performance.now();
         try {
             options.prePassCommands?.flush(context);
             options.abortSignal?.throwIfAborted();
-            for (const pass of graph.passes) {
-                passContext.setPass(pass);
+            for (let passIndex = 0; passIndex < graph.passes.length; passIndex += 1) {
+                const pass = graph.passes[passIndex];
+                if (pass === undefined) continue;
+                const timestampWrites =
+                    gpuProfile !== null && timeline?.passKind(passIndex) !== null
+                        ? gpuProfile.timestampWrites(passIndex)
+                        : undefined;
+                passContext.setProfiledPass(pass, timestampWrites);
+                const passStart = timeline === undefined ? 0 : performance.now();
+                if (timeline !== undefined) context.insertDebugMarker(`RenderGraph: ${pass.name}`);
                 pass.template.execute(passContext, pass.params);
+                if (timeline !== undefined) {
+                    timeline.setPassCPUTime(passIndex, performance.now() - passStart);
+                }
                 options.abortSignal?.throwIfAborted();
             }
             passContext.setPass(null);
             options.abortSignal?.throwIfAborted();
+            gpuProfile?.resolve(context);
             const submission = queue.endFrame(context);
+            if (timeline !== undefined) {
+                timeline.setExecuteDuration(performance.now() - executeStart);
+                gpuProfile?.submitted(submission);
+                timeline.publish();
+            }
+            gpuProfile = null;
             let extracted: Map<RGResourceHandle, ExtractedRGResource> | null = null;
             for (const resource of preparedList) {
                 if (resource.compiled.extracted) {
@@ -886,6 +935,7 @@ export class RenderGraphExecutor {
             return new RGExecutionResultImpl(submission, context.diagnostics, extracted);
         } catch (error) {
             passContext.setPass(null);
+            gpuProfile?.abort();
             try {
                 queue.abortFrame(context, error);
             } catch {

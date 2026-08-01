@@ -7,6 +7,7 @@ import LightManager from '../light/LightManager';
 import type Material from '../material/Material';
 import Color from '../math/Color';
 import type { RendererDiagnostics, RendererDiagnosticsSnapshot } from './RendererDiagnostics';
+import type { RenderGraphTimelineSink } from './graph/RenderGraphTimeline';
 import type { Resource, ShaderPrecision } from './types';
 import GraphicsResourceManager from './GraphicsResourceManager';
 import RenderInfo from './RenderInfo';
@@ -248,6 +249,11 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     /** @internal Snapshot opt-in counters for benchmark and renderer diagnostics tooling. */
     getDiagnosticsSnapshot(): Readonly<RendererDiagnosticsSnapshot> | null {
         return this.diagnosticsSink?.snapshot() ?? null;
+    }
+
+    /** @internal Opt-in timeline sink resolved once during renderer initialization. */
+    getRenderGraphTimelineSink(): RenderGraphTimelineSink | null {
+        return this.diagnosticsSink;
     }
 
     abstract resize(width: number, height: number, force?: boolean): void;

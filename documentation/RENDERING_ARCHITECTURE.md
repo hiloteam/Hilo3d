@@ -222,9 +222,11 @@ variant 当前不合并 instanced batch，而是确定性展开为逐 Mesh direc
 draw，保证正确性且不建立第二套场景渲染器。
 
 Direct WGSL compiler 会反射并验证 entry point、literal workgroup size、workgroup storage、binding
-ABI 与 pipeline override。当前 Naga WGSL validation/writer 路径不能可靠承载 Direct WGSL
-`f16`，因此即使设备可申请 `shader-f16`，compute source 中的 `f16`
-仍在 pipeline 创建前明确 fail-closed。
+ABI 与 pipeline override。Direct WGSL `f16` 先由 Naga
+frontend 解析原始源码，再把 token-safe 的等价 f32 特化送入当前 `web-naga`
+validator/writer；原始 f16 源码仍是 WebGPU artifact，并在 RHI 检查设备已启用 `shader-f16`
+后进入原生 shader module/pipeline validation。不支持该 feature 的设备必须由 pipeline 根据
+`supportsFeature('shader-f16')` 选择 f32 kernel，不能静默降级同一 shader。
 
 WebGL 2 对 compute pipeline、storage binding 和 indirect draw 提供的是明确的 negative
 implementation：在任何 native GL compute/storage 模拟之前失败，不使用 texture-backed SSBO、transform
@@ -320,11 +322,27 @@ Executor 的顺序是：
 
 相关代码：[`RenderGraphExecutor.ts`](../src/render/graph/RenderGraphExecutor.ts)、[`RenderGraph.ts`](../src/render/graph/RenderGraph.ts)。
 
+### 2.4 可选 CPU/GPU 时间线
+
+只有 Canvas 注册 `RendererDiagnostics` 时，`RenderGraphFrame` 才创建帧级 timeline
+recorder。它记录 record、compile、prepare、execute 四个 CPU 区间、逐 Pass CPU 时间以及编译后的资源
+`firstUse / lastUse`。启用 `timestamp-query`
+的 WebGPU 设备还会为每个声明了原生 render/compute 类别的 Graph Pass 自动写入起止 timestamp，经
+`QUERY_RESOLVE -> COPY_DST|MAP_READ` 三槽 ring 异步回读；生产帧从不等待 map，槽位占满只把该帧标记为
+`saturated`。没有注册 diagnostics 时不创建 QuerySet/resolve/readback 资源，也不在逐 draw 路径增加分支。
+
+RHI 同时提供 submission-aware `RHIQuerySet`、pass timestamp
+writes、显式 resolve，以及 command、render pass、compute pass 的 debug
+group/marker。WebGPU 转发原生命令；WebGL 2 对 query/timestamp 明确 fail-fast，debug
+annotation 保留嵌套验证但不伪造扩展能力。
+
+相关代码：[`RenderGraphTimeline.ts`](../src/render/graph/RenderGraphTimeline.ts)、[`RenderGraphGPUProfiler.ts`](../src/render/graph/RenderGraphGPUProfiler.ts)、[`RHIQueryValidation.ts`](../src/render/rhi/core/RHIQueryValidation.ts)。
+
 ## 3. RHI 设计
 
 ### 3.1 WebGPU 风格、可移植子集
 
-RHI 的对象模型接近 WebGPU：`Device / Queue / CommandContext / RenderPass / ComputePass / Surface / Buffer / Texture / Sampler / Shader / BindGroup / GraphicsPipeline / ComputePipeline`。但它不是 WebGPU
+RHI 的对象模型接近 WebGPU：`Device / Queue / CommandContext / RenderPass / ComputePass / Surface / Buffer / Texture / QuerySet / Sampler / Shader / BindGroup / GraphicsPipeline / ComputePipeline`。但它不是 WebGPU
 API 的简单拷贝。普通 raster 合同是 WebGPU 与 WebGL 2 的可移植子集；WebGPU-only compute/storage/
 indirect 合同仍定义在 backend-neutral core 中，并要求不支持的 WebGL 2 后端在 native
 call 前明确拒绝。
@@ -402,7 +420,10 @@ Artifact。这样 Shader 语言差异不会污染 RenderGraph 或 RHI 命令层�
 WebGPU compute 是一个有意的独立 source contract：`ComputeShader` 接受 Direct WGSL，
 `WgslComputeShaderCompiler` 必须先用 Naga WGSL frontend 校验语法、entry point、workgroup
 metadata 与显式 binding ABI，再形成 RHI artifact。它不经过 GLSL 转换，也不改变普通 graphics
-shader 的单一 GLSL 来源。storage-aware raster 则使用 `StorageGraphicsShaderCompiler` 的受控 GLSL ES
+shader 的单一 GLSL 来源。f16 原始源码通过 Naga frontend，validator/writer 使用等价 f32 特化规避当前
+`web-naga` writer 缺陷；原始源码仍必须通过 capability gate 和真实 WebGPU pipeline。buffer
+binding 的 exact minimum 则按 WGSL store type 的 `SizeOf` 推导，runtime
+array 按一个元素计算。storage-aware raster 则使用 `StorageGraphicsShaderCompiler` 的受控 GLSL ES
 3.10 readonly storage subset，仍经 engine preprocessing、Vulkan GLSL
 4.50 和 Naga 生成 WGSL；仓库不维护手写 graphics WGSL 镜像。
 
@@ -595,11 +616,11 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
   noise、回归/轨道/鼠标力场、低频流星头部碰撞和尾迹力场与边界碰撞共用一次 compute。compute 同帧生成两组 draw
   arguments，deep field、velocity halo 和 luminous core 由 Render Graph 中三次 storage-aware
   indirect `GPUDrivenRenderPass` 完成，不走原生 WebGPU bypass 或粒子状态 readback。
-- Direct WGSL `f16` 当前因 Naga validation 路径限制而 fail-closed；workgroup
-  memory、barrier、atomic 与受验证的 scalar override 仍可直接使用。
-- compute/storage buffer 的 `minBindingSize` 是显式 ABI
-  promise；引擎会在开帧前校验调用方声明值与实际绑定 range，但当前不会从 WGSL/GLSL 类型布局反射更大的 exact
-  minimum。错误低报仍可能由 native WebGPU validation 在 dispatch/draw 时拒绝。
+- Direct WGSL `f16` 已进入 Naga frontend、等价 f32 validator/writer、RHI feature gate 与真实 WebGPU
+  pipeline 的闭环；workgroup memory、barrier、atomic 与受验证的 scalar override 继续使用同一路径。
+- compute buffer 的 `minBindingSize` 由 WGSL store type 精确推导；runtime
+  array 按标准要求替换为一个 element。调用方仍可声明更强下界，但低于 shader-derived
+  minimum 会在创建任何 native pipeline 前拒绝。
 - RenderGraph 每帧重新 Build/Compile，依靠高水位存储复用降低成本；当前没有跨帧复用完整的 Compiled
   Graph。
 - 已有 Pass 裁剪、资源生命周期区间和跨帧瞬态资源池，但没有宣称同帧物理内存别名复用。

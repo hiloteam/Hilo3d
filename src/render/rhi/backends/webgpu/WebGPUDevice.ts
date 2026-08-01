@@ -1,4 +1,5 @@
 import type { RHICapabilities } from '../../core/RHICapabilities';
+import { normalizeRHIQuerySetDescriptor } from '../../core/RHIQueryValidation';
 import {
     allocateRHIDeviceId,
     createRHIObjectIdAllocator,
@@ -17,6 +18,7 @@ import type {
     RHIDeviceLostInfo,
     RHIDeviceOwnedObject,
     RHIGraphicsShaderArtifactInput,
+    RHIQuerySetDescriptor,
     RHISamplerDescriptor,
     RHIShaderDescriptor,
     RHITextureDescriptor
@@ -58,7 +60,13 @@ import {
     nativeWebGPUGraphicsPipelineDescriptor
 } from './WebGPUPipeline';
 import { WebGPUQueue } from './WebGPUQueue';
-import { WebGPUBuffer, WebGPUSampler, WebGPUShader, WebGPUTexture } from './WebGPUResources';
+import {
+    WebGPUBuffer,
+    WebGPUQuerySet,
+    WebGPUSampler,
+    WebGPUShader,
+    WebGPUTexture
+} from './WebGPUResources';
 import { WebGPUSurface } from './WebGPUSurface';
 import { WebGPUFramebufferCache } from './WebGPUFramebufferCache';
 import { WebGPUMipmapGenerator } from './WebGPUMipmapGenerator';
@@ -135,12 +143,13 @@ export class WebGPUDevice implements RHIDevice, WebGPUObjectOwner {
     constructor(
         nativeHandle: GPUDevice,
         diagnosticsSink: RHIDiagnosticsSink | null = null,
-        mipmapShaderArtifacts: Readonly<RHIGraphicsShaderArtifactInput> | null = null
+        mipmapShaderArtifacts: Readonly<RHIGraphicsShaderArtifactInput> | null = null,
+        adapterInfo?: Pick<GPUAdapterInfo, 'subgroupMinSize' | 'subgroupMaxSize'>
     ) {
         this.#nativeHandle = nativeHandle;
         this.#diagnosticsSink = diagnosticsSink;
         this.#objectIds = createRHIObjectIdAllocator(this.id);
-        this.capabilities = new WebGPUCapabilities(nativeHandle);
+        this.capabilities = new WebGPUCapabilities(nativeHandle, adapterInfo);
         this.label = nativeHandle.label;
         this.#lostSignal = createWebGPUDeferred<RHIDeviceLostInfo>();
         this.lost = this.#lostSignal.promise;
@@ -300,6 +309,17 @@ export class WebGPUDevice implements RHIDevice, WebGPUObjectOwner {
             code: normalized.artifact.code
         });
         return new WebGPUShader(this, nativeShader, normalized);
+    }
+
+    createQuerySet(descriptor: RHIQuerySetDescriptor): WebGPUQuerySet {
+        this.assertOperational();
+        const normalized = normalizeRHIQuerySetDescriptor(descriptor, this.capabilities);
+        const nativeQuerySet = this.#nativeHandle.createQuerySet({
+            label: normalized.label,
+            type: normalized.type,
+            count: normalized.count
+        });
+        return new WebGPUQuerySet(this, nativeQuerySet, normalized);
     }
 
     createBindGroupLayout(descriptor: RHIBindGroupLayoutDescriptor): WebGPUBindGroupLayout {
@@ -508,7 +528,8 @@ export async function createWebGPUDevice(
         return new WebGPUDevice(
             nativeDevice,
             options.diagnosticsSink ?? null,
-            options.mipmapShaderArtifacts ?? null
+            options.mipmapShaderArtifacts ?? null,
+            adapter.info
         );
     } catch (error) {
         nativeDevice.destroy();

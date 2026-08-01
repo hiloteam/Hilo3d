@@ -5330,7 +5330,7 @@ export type RendererCreateOptions = RendererExplicitOptions | RendererAutoOption
 export type RendererExplicitOptions = RendererOptions;
 
 // @public
-export type RendererFeatureName = 'texture-compression-bc' | 'texture-compression-etc2' | 'texture-compression-astc' | 'timestamp-query' | 'shader-f16' | 'depth32float-stencil8' | 'float32-filterable' | 'float32-blendable';
+export type RendererFeatureName = 'texture-compression-bc' | 'texture-compression-etc2' | 'texture-compression-astc' | 'timestamp-query' | 'shader-f16' | 'subgroups' | 'depth32float-stencil8' | 'float32-filterable' | 'float32-blendable';
 
 // @public
 export interface RendererFrame {
@@ -5542,6 +5542,7 @@ export interface RenderPipelineBufferDescriptor {
 export interface RenderPipelineCapabilities {
     readonly limits: Readonly<RenderPipelineLimits>;
     supportsCapability(capability: RenderPipelineCapabilityName): boolean;
+    supportsFeature(feature: RendererFeatureName): boolean;
     supportsTextureFormat(format: RenderPipelineTextureFormat, use: RenderPipelineTextureUse, sampleCount?: RenderTargetSampleCount): boolean;
 }
 
@@ -5644,6 +5645,8 @@ export interface RenderPipelineLimits {
     readonly maxStorageTexturesPerShaderStage?: number;
     readonly maxTextureDimension2D: number;
     readonly minStorageBufferOffsetAlignment?: number;
+    readonly subgroupMaxSize?: number;
+    readonly subgroupMinSize?: number;
 }
 
 // @public

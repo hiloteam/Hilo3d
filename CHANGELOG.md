@@ -2,6 +2,16 @@
 
 ### Changes
 
+- Add modern WebGPU capability discovery for `subgroups`, adapter subgroup-size limits,
+  `shader-f16`, and `timestamp-query`; expose renderer feature queries for explicit f32/workgroup
+  fallback selection. Direct WGSL f16 now preserves the exact native artifact while completing Naga
+  validation through an equivalent f32 specialization. Compute buffer `minBindingSize` is derived
+  from WGSL store types, including the required one-element runtime-array minimum.
+- Add submission-aware timestamp QuerySets, pass timestamp writes, explicit resolves, and validated
+  debug groups/markers to the portable RHI. Opt-in renderer diagnostics now publish Render Graph
+  record/compile/prepare/execute CPU timing, per-pass asynchronous GPU timing, and compiled resource
+  lifetime intervals through a non-blocking three-slot readback ring; the default diagnostics-off
+  path creates no query resources.
 - Add explicit Render Graph texture views for mip, array-layer, dimension, compatible-format, and
   depth/stencil-aspect access across sampled, storage, attachment, and copy paths. Add
   renderer-owned double/triple-buffer history textures whose recipes survive device recovery, whose

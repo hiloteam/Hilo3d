@@ -255,6 +255,9 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
                 log.push('pass.drawIndexed');
                 renderPassCalls.push({ name: 'drawIndexed', args });
             },
+            pushDebugGroup: (label: string) => log.push(`pass.pushDebugGroup:${label}`),
+            popDebugGroup: () => log.push('pass.popDebugGroup'),
+            insertDebugMarker: (label: string) => log.push(`pass.insertDebugMarker:${label}`),
             end: () => log.push('pass.end')
         } as unknown as GPURenderPassEncoder;
     }
@@ -286,6 +289,19 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
             },
             copyTextureToBuffer: () => log.push('encoder.copyTextureToBuffer'),
             copyTextureToTexture: () => log.push('encoder.copyTextureToTexture'),
+            resolveQuerySet: (
+                _querySet: GPUQuerySet,
+                firstQuery: number,
+                queryCount: number,
+                destination: GPUBuffer,
+                offset: number
+            ) =>
+                log.push(
+                    `encoder.resolveQuerySet:${String(firstQuery)}:${String(queryCount)}:${destination.label}:${String(offset)}`
+                ),
+            pushDebugGroup: (label: string) => log.push(`encoder.pushDebugGroup:${label}`),
+            popDebugGroup: () => log.push('encoder.popDebugGroup'),
+            insertDebugMarker: (label: string) => log.push(`encoder.insertDebugMarker:${label}`),
             finish: () => {
                 log.push('encoder.finish');
                 const failure = nextEncoderFinishFailure;
@@ -399,7 +415,11 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
 
     const device = {
         label: 'structured native device',
-        features: new Set<string>(['core-features-and-limits']) as unknown as GPUSupportedFeatures,
+        features: new Set<string>([
+            'core-features-and-limits',
+            'timestamp-query',
+            'subgroups'
+        ]) as unknown as GPUSupportedFeatures,
         limits,
         queue: nativeQueue,
         lost: lost.promise,
@@ -413,6 +433,12 @@ function createNativeHarness(options: NativeHarnessOptions = {}): NativeHarness 
             log.push('createShaderModule');
             return { label: 'native shader' } as GPUShaderModule;
         },
+        createQuerySet: (descriptor: GPUQuerySetDescriptor) => ({
+            label: descriptor.label ?? '',
+            type: descriptor.type,
+            count: descriptor.count,
+            destroy: () => log.push(`querySet.destroy:${descriptor.label ?? ''}`)
+        }),
         createBindGroupLayout: () => {
             log.push('createBindGroupLayout');
             return { label: 'native bind group layout' };
@@ -542,6 +568,84 @@ function createTriangleResources(device: WebGPUDevice) {
 }
 
 describe('WebGPU RHI native backend', () => {
+    it('maps subgroup features and adapter subgroup-size limits into portable capabilities', () => {
+        const harness = createNativeHarness();
+        const device = new WebGPUDevice(harness.device, null, null, {
+            subgroupMinSize: 4,
+            subgroupMaxSize: 32
+        });
+
+        expect(device.capabilities.features.has('subgroups')).toBe(true);
+        expect(device.capabilities.limits.subgroupMinSize).toBe(4);
+        expect(device.capabilities.limits.subgroupMaxSize).toBe(32);
+        device.destroy();
+    });
+
+    it('forwards timestamp queries, resolves, and debug annotations to native WebGPU', async () => {
+        const harness = createNativeHarness();
+        const device = new WebGPUDevice(harness.device);
+        const querySet = device.createQuerySet({
+            label: 'native timestamps',
+            type: 'timestamp',
+            count: 2
+        });
+        const resolve = device.createBuffer({
+            label: 'native query resolve',
+            size: 256,
+            usage: RHIBufferUsage.QUERY_RESOLVE | RHIBufferUsage.COPY_SRC
+        });
+        const color = device.createTexture({
+            size: { width: 1, height: 1 },
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.RENDER_ATTACHMENT
+        });
+        const view = color.createView();
+        const context = device.graphicsQueue.beginFrame();
+        context.pushDebugGroup('graph');
+        context.insertDebugMarker('timed pass');
+        const pass = context.beginRenderPass({
+            colorAttachments: [
+                {
+                    view,
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                    loadOp: 'clear',
+                    storeOp: 'store'
+                }
+            ],
+            timestampWrites: {
+                querySet,
+                beginningOfPassWriteIndex: 0,
+                endOfPassWriteIndex: 1
+            }
+        });
+        pass.pushDebugGroup('draws');
+        pass.insertDebugMarker('empty');
+        pass.popDebugGroup();
+        pass.end();
+        context.resolveQuerySet(querySet, 0, 2, resolve);
+        context.popDebugGroup();
+        const submission = device.graphicsQueue.endFrame(context);
+
+        expect(harness.renderPassDescriptors[0]?.timestampWrites).toMatchObject({
+            beginningOfPassWriteIndex: 0,
+            endOfPassWriteIndex: 1
+        });
+        expect(harness.log).toContain('encoder.pushDebugGroup:graph');
+        expect(harness.log).toContain('pass.insertDebugMarker:empty');
+        expect(harness.log).toContain('encoder.resolveQuerySet:0:2:native query resolve:0');
+        querySet.destroy();
+        expect(harness.log).not.toContain('querySet.destroy:native timestamps');
+        harness.resolveWork();
+        await submission.done;
+        await flushMicrotasks();
+        expect(harness.log).toContain('querySet.destroy:native timestamps');
+
+        resolve.destroy();
+        view.destroy();
+        color.destroy();
+        device.destroy();
+    });
+
     it('reuses a persistent default native texture view without sharing logical lifetime', () => {
         const harness = createNativeHarness();
         const diagnostics = new RendererDiagnostics();

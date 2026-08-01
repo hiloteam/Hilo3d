@@ -137,7 +137,8 @@ WGSL core 的 atomics、workgroup memory 和 barriers 可以直接在 `ComputeSh
 - 不把 subgroup、shader-f16、timestamp-query 等可选特性变成 compute 基线要求。
 - 不同时设计通用 GPGPU 框架、粒子系统、物理引擎或节点式 shader 编辑器。
 
-以下条目描述最初首发边界；其中 graph subresource 与 persistent history 已由后续 F0 工作包解除：
+以下条目描述最初首发边界；其中 graph subresource/persistent history 已由 F0 解除，f16 与 exact
+binding size 已由 F1 解除：
 
 - compute graph texture 已可绑定显式 array/cube/3D、mip/layer/aspect
   view；同一 subresource 的 sampled/write feedback 仍拒绝。
@@ -147,11 +148,10 @@ WGSL core 的 atomics、workgroup memory 和 barriers 可以直接在 `ComputeSh
 - `StorageBuffer.read()` 每个 Renderer 同时只允许一个 pending request；应用应串行等待。
 - `SceneRenderPass` storage variant 遇到 instanced batch 时展开为 per-mesh direct draw。
 - 内置 `ForwardRenderPipelineFeature.sampledDepth` 仍关闭；完整 Forward+ 通过自定义 SRP 显式组合。
-- Direct WGSL `f16` 因当前 Naga WGSL validation 路径限制而 fail-closed，即使设备暴露 `shader-f16`
-  也不会绕过编译器。
-- buffer `minBindingSize` 是调用方声明的 shader ABI 下界；编译器会校验 binding
-  kind/name/location，runtime 会在开帧前校验声明值与实际 range，但首发尚未从 WGSL/GLSL 类型布局反推出更大的真实下界。错误地低报该值仍可能由 WebGPU
-  native validation 在 dispatch/draw 时拒绝。
+- Direct WGSL `f16` 保留原始 artifact，由 Naga frontend、等价 f32 validator/writer、RHI `shader-f16`
+  gate 与真实 WebGPU pipeline 共同验证。
+- compute buffer `minBindingSize` 已从 WGSL store type 推导 exact minimum；runtime
+  array 按一个元素计算。调用方低报会在 native pipeline 创建前拒绝。
 - 只有一个 frame command scope，不提供 async compute 或 multi-queue。
 
 ## 3. 实施基线与首发范围
@@ -308,8 +308,8 @@ Direct WGSL compute 使用 WGSL host-shareable address-space layout，不能继�
   `atomic<i32>`/`atomic<u32>` 的 CPU byte representation；
 - 按 WGSL storage address space 的 alignment、size 和 array stride 计算；
 - `bool` 不作为 host-shareable 存储字段；
-- `f16` 不在首发 `StorageLayout` host packing 合同中；Direct WGSL `f16` 也因 Naga
-  validation 路径限制明确 fail-closed；
+- `f16` 不在首发 `StorageLayout` host packing 合同中；Direct WGSL `f16` 则由 F1 的 compiler/RHI
+  capability 路径支持，两者不是同一个 CPU packing 合同；
 - atomic 字段的 CPU 表示限定为对应的 `i32/u32` bytes，原子语义只发生在 shader 中；
 - 提供 allocation-free `writeInto()` 与字段 offset 查询；
 - 可以作为 `StorageBufferDescriptor.initialData` 的构造辅助，但 raw bytes 始终是底层正式合同。
@@ -661,9 +661,9 @@ compiler 必须：
 
 显式 `ComputeShaderBinding[]` 仍是 engine pipeline ABI；compiler 会把它与 WGSL
 declarations 一一比对，并拒绝缺失、多余、kind/access/type 不一致、override-dependent workgroup
-metadata 或无法证明固定大小的 workgroup allocation。当前 `web-naga` 版本不能可靠完成 Direct WGSL
-`f16` 的 validator/writer 路径，因此 `f16`
-明确 fail-closed，而不是只 parse 后跳过验证。禁止用宽松正则猜测任意 WGSL 并伪造通过。
+metadata 或无法证明固定大小的 workgroup allocation。当前 `web-naga`
+writer 不能直接序列化 f16，F1 因此让原始源码先过 frontend，再把 token-safe 等价 f32 特化送入 validator/writer；原始源码仍交给 capability-gated 真实 WebGPU
+pipeline。禁止只 parse 后跳过验证，或用宽松正则猜测任意 WGSL 并伪造通过。
 
 ### 6.3 静态规则调整
 
@@ -1398,9 +1398,9 @@ npm run validate
 - [x] compute→storage/vertex/index/indirect graphics input 全部由 graph access 建边。
 - [x] read-write buffer 有显式 access，不通过谎报 write 绕过初始化。
 - [x] storage texture format/access/sample count 全部在 frame 前验证。
-- [x] layout、binding kind/name/location、调用方声明的 `minBindingSize`、实际 range、dynamic
-      offset 和 device limits 全部 fail-closed；shader-derived exact
-      minimum 的 hardening 见首发边界。
+- [x] layout、binding kind/name/location、shader-derived exact
+      `minBindingSize`、调用方更强下界、实际 range、dynamic offset 和 device
+      limits 全部 fail-closed。
 - [x] WebGL 2 没有模拟路径，required capability 不会静默降级。
 - [x] Structured WebGPU backend mock 的 compute 写入/readback 得到精确结果
       `[7, 8, 9, 10]`，且走生产 WebGPU backend 命令映射。
@@ -1440,7 +1440,7 @@ npm run validate
 | CPU shadow 被误解为 GPU checkpoint           | 明确恢复到初始/最后 CPU bytes；GPU mutation 不会被暗中 map 回 CPU                                   |
 | 同 pass read-write 破坏现有 graph invariant  | 只增加 buffer 专用 `readWriteBuffer()`；texture feedback 继续拒绝                                   |
 | Graph texture view 与 history 完整性混淆     | view 显式建模 mip/layer/aspect hazard；history 首版限定完整单 mip 2D color slot                     |
-| Naga `f16` 路径未形成完整验证闭环            | Direct WGSL `f16` 在 pipeline 前 fail-closed，不以 parse-only 冒充支持                              |
+| Naga writer 不能直接序列化 `f16`             | 原始 frontend parse + 等价 f32 validator/writer + capability-gated native pipeline                  |
 | 并发 readback 复用同一 frame/staging 状态    | 每 Renderer 一次 pending request；并发请求明确拒绝，调用方串行等待                                  |
 | StorageLayout 被误做成 std140/std430 混合    | 以 WGSL host-shareable layout 为唯一 storage 规则，独立于 UniformBuffer                             |
 | API 表面过宽                                 | 公开稳定高层 kernel/pass/resource，不公开 RHI/native encoder                                        |
@@ -1448,7 +1448,7 @@ npm run validate
 | WebGL 2 用户体验                             | 创建前 capability 筛选和独立 graphics fallback factory，不运行时跳过                                |
 | Compute 影响默认路径                         | capability 冷路径选择，默认 recorder 无新逐 draw 分支，专用性能门禁                                 |
 | WebGPU validation 太晚                       | portable validation 和 prepare 必须先完成，native pipeline 错误仍发生在 beginFrame 前               |
-| buffer ABI 低报真实 `minBindingSize`         | 首发把它作为显式调用方 promise 并提前校验 range；后续从 shader 类型布局反射 exact minimum           |
+| buffer ABI 低报真实 `minBindingSize`         | 从 WGSL store type 推导 exact minimum；runtime array 按一个 element；native 调用前拒绝低报          |
 | 单文件复杂度继续增长                         | 新增独立 compiler/cache/pass 模块，只抽共享基础，不堆进 graphics 文件                               |
 
 ## 21. Definition of Done

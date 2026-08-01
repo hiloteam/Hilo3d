@@ -39,6 +39,7 @@ export type RHIRequestableWebGPUFeature = Extract<
     | 'texture-compression-astc'
     | 'timestamp-query'
     | 'shader-f16'
+    | 'subgroups'
     | 'depth32float-stencil8'
     | 'float32-filterable'
     | 'float32-blendable'

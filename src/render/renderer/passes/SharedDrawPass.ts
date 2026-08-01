@@ -20,6 +20,7 @@ import {
     type RHIRenderPassDescriptor,
     type RHIRenderPassEncoder,
     type RHIStoreOp,
+    type RHITimestampWrites,
     type RHITexture,
     type RHITextureView,
     type RHIViewport
@@ -113,6 +114,7 @@ interface MutableRenderPassDescriptor {
     label: string | undefined;
     readonly colorAttachments: (MutableColorAttachmentDescriptor | null)[];
     depthStencilAttachment: MutableDepthStencilAttachmentDescriptor | undefined;
+    timestampWrites: Readonly<RHITimestampWrites> | undefined;
 }
 
 type MutableRHIViewport = {
@@ -284,7 +286,8 @@ export class SharedDrawPassParameters {
     private readonly descriptor: MutableRenderPassDescriptor = {
         label: undefined,
         colorAttachments: [],
-        depthStencilAttachment: undefined
+        depthStencilAttachment: undefined,
+        timestampWrites: undefined
     };
 
     constructor(capacity: SharedDrawPassCapacity = {}) {
@@ -712,9 +715,15 @@ export class SharedDrawPassParameters {
     /** @internal Allocation-free steady-state command path. */
     execute(context: RGPassContext): void {
         if (!this.prepared) throw UNPREPARED_PASS_ERROR;
-        const pass = context.commandContext.beginRenderPass(
-            this.descriptor as unknown as RHIRenderPassDescriptor
-        );
+        this.descriptor.timestampWrites = context.timestampWrites;
+        let pass: RHIRenderPassEncoder;
+        try {
+            pass = context.commandContext.beginRenderPass(
+                this.descriptor as unknown as RHIRenderPassDescriptor
+            );
+        } finally {
+            this.descriptor.timestampWrites = undefined;
+        }
         if (this.hasViewport) {
             pass.setViewportRecord(this.viewport);
             this.drawViewportState.minDepth = this.viewport.minDepth;
@@ -740,9 +749,15 @@ export class SharedDrawPassParameters {
     /** @internal Begin a prepared raster pass for a scriptable command facade. */
     beginExecute(context: RGPassContext): RHIRenderPassEncoder {
         if (!this.prepared) throw UNPREPARED_PASS_ERROR;
-        const pass = context.commandContext.beginRenderPass(
-            this.descriptor as unknown as RHIRenderPassDescriptor
-        );
+        this.descriptor.timestampWrites = context.timestampWrites;
+        let pass: RHIRenderPassEncoder;
+        try {
+            pass = context.commandContext.beginRenderPass(
+                this.descriptor as unknown as RHIRenderPassDescriptor
+            );
+        } finally {
+            this.descriptor.timestampWrites = undefined;
+        }
         if (this.hasViewport) {
             pass.setViewportRecord(this.viewport);
             this.drawViewportState.minDepth = this.viewport.minDepth;
@@ -802,6 +817,7 @@ export function createSharedDrawPassTemplate(
     if (name.length === 0) throw new Error('Shared draw pass template name must be non-empty');
     const template: RenderPassTemplate<SharedDrawPassParameters> = {
         name,
+        timestampKind: () => 'render',
         setup(builder, params) {
             params.declare(builder, forceSideEffect);
         },

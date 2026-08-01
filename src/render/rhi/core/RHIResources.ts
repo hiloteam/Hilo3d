@@ -339,6 +339,28 @@ export interface RHIShader extends RHIResource {
     readonly stage: RHIShaderStageName;
 }
 
+/** Query kinds exposed by the portable RHI. Timestamp queries remain capability-gated. */
+export type RHIQueryType = 'timestamp';
+
+export interface RHIQuerySetDescriptor extends RHIResourceDescriptorBase {
+    readonly type: RHIQueryType;
+    readonly count: number;
+}
+
+export interface RHINormalizedQuerySetDescriptor {
+    readonly label: string;
+    readonly lifetime: RHIResourceLifetime;
+    readonly type: RHIQueryType;
+    readonly count: number;
+}
+
+/** Device-owned query storage resolved explicitly into a QUERY_RESOLVE buffer. */
+export interface RHIQuerySet extends RHIResource {
+    readonly descriptor: Readonly<RHINormalizedQuerySetDescriptor>;
+    readonly type: RHIQueryType;
+    readonly count: number;
+}
+
 export type RHIDeviceLostReason =
     'destroyed' | 'context-lost' | 'adapter-removed' | 'reset' | 'unknown';
 
@@ -370,6 +392,8 @@ export interface RHIDevice extends RHIDestroyable {
     createTexture(descriptor: RHITextureDescriptor): RHITexture;
     createSampler(descriptor?: RHISamplerDescriptor): RHISampler;
     createShader(descriptor: RHIShaderDescriptor): RHIShader;
+    /** Create a query set or fail before native work when its feature is unavailable. */
+    createQuerySet(descriptor: RHIQuerySetDescriptor): RHIQuerySet;
     createBindGroupLayout(descriptor: RHIBindGroupLayoutDescriptor): RHIBindGroupLayout;
     createPipelineLayout(descriptor: RHIPipelineLayoutDescriptor): RHIPipelineLayout;
     createBindGroup(descriptor: RHIBindGroupDescriptor): RHIBindGroup;

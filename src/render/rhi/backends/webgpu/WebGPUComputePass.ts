@@ -1,4 +1,5 @@
 import type { RHIComputePassEncoder, RHIComputePassState } from '../../core/RHICommands';
+import { validateRHIDebugLabel } from '../../core/RHIQueryValidation';
 import {
     validateRHIDispatchWorkgroups,
     validateRHIDispatchWorkgroupsIndirect
@@ -49,6 +50,7 @@ export class WebGPUComputePassStorage {
     release(): void {
         this.boundBindGroups.fill(null);
         this.nativeDescriptor.label = '';
+        delete this.nativeDescriptor.timestampWrites;
     }
 }
 
@@ -59,6 +61,7 @@ export class WebGPUComputePass extends WebGPUObject implements RHIComputePassEnc
     readonly #boundBindGroups: (WebGPUBindGroup | null)[];
     #passState: RHIComputePassState = 'open';
     #pipeline: WebGPUComputePipeline | null = null;
+    #debugGroupDepth = 0;
 
     constructor(
         readonly context: WebGPUCommandContext,
@@ -150,8 +153,44 @@ export class WebGPUComputePass extends WebGPUObject implements RHIComputePassEnc
         this.context.diagnostics.nativeStateCalls += 1;
     }
 
+    pushDebugGroup(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'computePass.debugGroup');
+        this.#nativePass.pushDebugGroup(label);
+        this.#debugGroupDepth += 1;
+        this.context.diagnostics.nativeStateCalls += 1;
+    }
+
+    popDebugGroup(): void {
+        this.assertOpen();
+        if (this.#debugGroupDepth === 0) {
+            validationFailure(
+                'invalid-state',
+                'compute pass debug group stack is empty',
+                'computePass'
+            );
+        }
+        this.#nativePass.popDebugGroup();
+        this.#debugGroupDepth -= 1;
+        this.context.diagnostics.nativeStateCalls += 1;
+    }
+
+    insertDebugMarker(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'computePass.debugMarker');
+        this.#nativePass.insertDebugMarker(label);
+        this.context.diagnostics.nativeStateCalls += 1;
+    }
+
     end(): void {
         this.assertOpen();
+        if (this.#debugGroupDepth !== 0) {
+            validationFailure(
+                'invalid-state',
+                'compute pass has unclosed debug groups',
+                'computePass'
+            );
+        }
         this.#nativePass.end();
         this.context.diagnostics.commandCount += 1;
         this.context.diagnostics.nativeStateCalls += 1;
@@ -165,6 +204,7 @@ export class WebGPUComputePass extends WebGPUObject implements RHIComputePassEnc
         if (this.#passState !== 'open') return;
         this.#passState = 'aborted';
         this.#pipeline = null;
+        this.#debugGroupDepth = 0;
         this.context.abortComputePass(this, this.#storage);
     }
 
