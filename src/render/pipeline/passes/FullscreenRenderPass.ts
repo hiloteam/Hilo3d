@@ -3,7 +3,7 @@ import Shader from '../../../shader/Shader';
 import type UniformBuffer from '../../UniformBuffer';
 import type { RendererViewport } from '../../RendererCore';
 import type {
-    RenderGraphTextureHandle,
+    RenderGraphTextureAccessHandle,
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     ScriptableRenderPass,
@@ -27,7 +27,7 @@ export interface FullscreenRenderPassOptions {
 /** Frame-scoped graph resources and dynamic state for one fullscreen draw. */
 export interface FullscreenRenderPassParameters {
     /** Linear-filterable sampled textures in reflected sampler order. */
-    readonly inputTextures: readonly RenderGraphTextureHandle[];
+    readonly inputTextures: readonly RenderGraphTextureAccessHandle[];
     /** Color attachments in fragment-output location order. */
     readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
     /** Optional depth/stencil attachment. */

@@ -1,19 +1,19 @@
 import type {
-    RenderGraphTextureHandle,
+    RenderGraphTextureAccessHandle,
     ScriptableRenderPass,
     ScriptableRenderPassBuilder,
     ScriptableRenderPassContext
 } from '../ScriptableRenderGraph';
 
-/** Full-subresource texture copy parameters. Both textures must have matching descriptors. */
+/** Full selected-subresource copy parameters. Views may have different parent descriptors. */
 export interface TextureCopyPassParameters {
     /** Initialized single-sample copy source. */
-    readonly source: RenderGraphTextureHandle;
+    readonly source: RenderGraphTextureAccessHandle;
     /** Same-format, same-extent single-sample copy destination. */
-    readonly destination: RenderGraphTextureHandle;
+    readonly destination: RenderGraphTextureAccessHandle;
 }
 
-/** Portable full-texture copy pass emitted through the selected RHI backend. */
+/** Portable full selected-subresource copy pass emitted through the selected RHI backend. */
 export class TextureCopyPass implements ScriptableRenderPass<TextureCopyPassParameters> {
     /** Stable diagnostic pass name. */
     readonly name: string;

@@ -10,9 +10,16 @@ import type {
 import type { RendererViewport } from '../RendererCore';
 import type { StorageBuffer } from '../StorageBuffer';
 import type { RenderPipelineCapabilities } from './RenderPipeline';
+import type {
+    RenderPipelineTextureAspect,
+    RenderPipelineTextureDimension,
+    RenderPipelineTextureFormat,
+    RenderPipelineTextureViewDimension
+} from './RenderPipelineTexture';
 import type { RendererListHandle } from './RendererList';
 
 declare const renderGraphTextureHandleBrand: unique symbol;
+declare const renderGraphTextureViewHandleBrand: unique symbol;
 declare const renderGraphBufferHandleBrand: unique symbol;
 declare const renderGraphPassHandleBrand: unique symbol;
 
@@ -20,6 +27,15 @@ declare const renderGraphPassHandleBrand: unique symbol;
 export type RenderGraphTextureHandle = number & {
     readonly [renderGraphTextureHandleBrand]: true;
 };
+
+/** Opaque view identity selecting subresources from one graph texture. */
+export type RenderGraphTextureViewHandle = number & {
+    readonly [renderGraphTextureViewHandleBrand]: true;
+};
+
+/** A complete graph texture or one explicit mip/layer/aspect view. */
+export type RenderGraphTextureAccessHandle =
+    RenderGraphTextureHandle | RenderGraphTextureViewHandle;
 
 /** Opaque buffer identity scoped to one scriptable frame. */
 export type RenderGraphBufferHandle = number & {
@@ -44,13 +60,41 @@ export type RenderPipelineExtent =
 /** Backend-neutral transient texture descriptor. Usage is inferred from pass declarations. */
 export interface RenderPipelineTextureDescriptor {
     /** Color or depth/stencil format. */
-    readonly format: RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+    readonly format: RenderPipelineTextureFormat;
     /** Absolute or output-relative dimensions. */
     readonly extent: RenderPipelineExtent;
     /** Raster sample count, defaulting to one. */
     readonly sampleCount?: RenderTargetSampleCount;
     /** Mip count, defaulting to one; multisampled textures require one mip. */
     readonly mipLevelCount?: number;
+    /** Texture depth or array-layer count, defaulting to one. */
+    readonly depthOrArrayLayers?: number;
+    /** Physical texture dimension, defaulting to `2d`. */
+    readonly dimension?: RenderPipelineTextureDimension;
+    /** Default whole-resource view dimension. */
+    readonly viewDimension?: RenderPipelineTextureViewDimension;
+    /** Compatible formats that explicit views may select. */
+    readonly viewFormats?: readonly RenderPipelineTextureFormat[];
+}
+
+/** Explicit subresource selection into one graph texture. */
+export interface RenderPipelineTextureViewDescriptor {
+    /** Optional diagnostic label. */
+    readonly label?: string;
+    /** Optional compatible format reinterpretation declared by the parent texture. */
+    readonly format?: RenderPipelineTextureFormat;
+    /** View dimensionality. */
+    readonly dimension?: RenderPipelineTextureViewDimension;
+    /** Color, depth, stencil, or all compatible aspects. */
+    readonly aspect?: RenderPipelineTextureAspect;
+    /** First selected mip. */
+    readonly baseMipLevel?: number;
+    /** Number of selected mips. */
+    readonly mipLevelCount?: number;
+    /** First selected array layer. */
+    readonly baseArrayLayer?: number;
+    /** Number of selected array layers. */
+    readonly arrayLayerCount?: number;
 }
 
 /** Backend-neutral transient buffer descriptor. Usage is inferred from pass declarations. */
@@ -100,12 +144,45 @@ export interface RenderPipelinePersistentTargetDescriptor {
     readonly sampleCount?: RenderTargetSampleCount;
 }
 
+/** Explicit creation roles for a recovery-aware history texture. */
+export type RenderPipelinePersistentTextureUsage =
+    'sampled' | 'storage' | 'attachment' | 'copy-source' | 'copy-destination';
+
+/**
+ * Recovery recipe for a renderer-owned double- or triple-buffered history texture.
+ *
+ * The first release accepts one single-sample 2D color mip and array layer. This fail-closed
+ * boundary ensures any submitted current-slot writer fully initializes the next readable slot.
+ */
+export interface RenderPipelineHistoryTextureDescriptor extends RenderPipelineTextureDescriptor {
+    /** Optional diagnostic label. */
+    readonly label?: string;
+    /** Complete immutable usage set required by every history slot. */
+    readonly usage: readonly RenderPipelinePersistentTextureUsage[];
+    /** Number of rotating slots, defaulting to two. */
+    readonly bufferCount?: 2 | 3;
+}
+
+/** Frame-scoped handles for one persistent history ring. */
+export interface RenderPipelineHistoryTextureResources {
+    /** Slot that this frame may completely replace. */
+    readonly current: RenderGraphTextureHandle;
+    /** Whether the immediately previous slot contains valid submitted contents. */
+    readonly valid: boolean;
+    /** Invalidation generation for cached temporal state. */
+    readonly generation: number;
+    /** Number of readable history slots. */
+    readonly historyCount: number;
+    /** Return history slot zero (previous frame) through `historyCount - 1`. */
+    history(index?: number): RenderGraphTextureHandle;
+}
+
 /** One setup-declared color attachment. */
 export interface RenderPipelineColorAttachment {
     /** Attachment source texture. */
-    readonly texture: RenderGraphTextureHandle;
+    readonly texture: RenderGraphTextureAccessHandle;
     /** Optional single-sample resolve destination. */
-    readonly resolveTarget?: RenderGraphTextureHandle;
+    readonly resolveTarget?: RenderGraphTextureAccessHandle;
     /** Whether existing contents are loaded or cleared. */
     readonly loadOp: RenderTargetLoadOp;
     /** Whether resulting contents remain available after the pass. */
@@ -117,7 +194,7 @@ export interface RenderPipelineColorAttachment {
 /** One setup-declared depth/stencil attachment. */
 export interface RenderPipelineDepthStencilAttachment {
     /** Depth/stencil texture handle. */
-    readonly texture: RenderGraphTextureHandle;
+    readonly texture: RenderGraphTextureAccessHandle;
     /** Depth aspect load operation. */
     readonly depthLoadOp?: RenderTargetLoadOp;
     /** Depth aspect store operation. */
@@ -139,14 +216,17 @@ export interface RenderPipelineDepthStencilAttachment {
 /** Setup-only dependency declaration surface for one pass. */
 export interface ScriptableRenderPassBuilder {
     /** Declare a sampled texture read. */
-    readTexture(texture: RenderGraphTextureHandle): void;
+    readTexture(texture: RenderGraphTextureAccessHandle): void;
     /**
      * Declare a write-only storage-texture binding that completely replaces its subresource.
      * Partial in-place texture updates are intentionally outside the first public compute ABI.
      */
-    writeStorageTexture(texture: RenderGraphTextureHandle): void;
-    /** Declare one complete texture copy and its exact source/destination dependency pair. */
-    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
+    writeStorageTexture(texture: RenderGraphTextureAccessHandle): void;
+    /** Declare one complete selected-subresource copy and its exact dependency pair. */
+    copyTexture(
+        source: RenderGraphTextureAccessHandle,
+        destination: RenderGraphTextureAccessHandle
+    ): void;
     /** Declare one initialized buffer read for the given portable role. */
     readBuffer(buffer: RenderGraphBufferHandle, use: RenderGraphBufferReadUse): void;
     /** Declare a complete buffer replacement for the given portable role. */
@@ -179,8 +259,11 @@ export interface ScriptableRenderCommands {
     setStencilReference(reference: number): void;
     /** Draw a renderer list declared during setup. */
     drawRendererList(list: RendererListHandle): void;
-    /** Copy the complete single-sample source texture into the destination. */
-    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
+    /** Copy the complete selected single-sample subresource into the destination. */
+    copyTexture(
+        source: RenderGraphTextureAccessHandle,
+        destination: RenderGraphTextureAccessHandle
+    ): void;
     /** Copy one complete buffer using a source/destination pair declared during setup. */
     copyBuffer(source: RenderGraphBufferHandle, destination: RenderGraphBufferHandle): void;
     /** Clear the exact destination byte range declared during setup. */
@@ -230,6 +313,12 @@ export interface ScriptableRenderGraph {
         name: string,
         descriptor: Readonly<RenderPipelineTextureDescriptor>
     ): RenderGraphTextureHandle;
+    /** Create one explicit mip/layer/aspect view into a graph texture. */
+    createTextureView(
+        name: string,
+        texture: RenderGraphTextureHandle,
+        descriptor?: Readonly<RenderPipelineTextureViewDescriptor>
+    ): RenderGraphTextureViewHandle;
     /** Create a logical transient buffer whose usage is inferred from live passes. */
     createBuffer(
         name: string,
@@ -246,6 +335,15 @@ export interface ScriptableRenderGraph {
         key: object,
         descriptor: Readonly<RenderPipelinePersistentTargetDescriptor>
     ): RenderPipelineTargetResources;
+    /** Acquire one renderer-owned history ring; it rotates only after a successful write frame. */
+    acquireHistoryTexture(
+        key: object,
+        descriptor: Readonly<RenderPipelineHistoryTextureDescriptor>
+    ): RenderPipelineHistoryTextureResources;
+    /** Invalidate submitted history before acquiring it in the active frame. */
+    invalidateHistoryTexture(key: object): boolean;
+    /** Transactionally release one renderer-owned history ring. */
+    releaseHistoryTexture(key: object): boolean;
     /**
      * Release one persistent target by runtime-owned key.
      *

@@ -1,0 +1,73 @@
+/** Physical dimension of a scriptable render-pipeline texture. */
+export type RenderPipelineTextureDimension = '1d' | '2d' | '3d';
+
+/** Dimension exposed by one scriptable render-pipeline texture view. */
+export type RenderPipelineTextureViewDimension =
+    '1d' | '2d' | '2d-array' | 'cube' | 'cube-array' | '3d';
+
+/** Aspect selected by one scriptable render-pipeline texture view. */
+export type RenderPipelineTextureAspect = 'all' | 'stencil-only' | 'depth-only';
+
+/** Portable texture formats accepted by graph, compute, copy, and raster validation. */
+export type RenderPipelineTextureFormat =
+    | 'r8unorm'
+    | 'r8snorm'
+    | 'r8uint'
+    | 'r8sint'
+    | 'r16uint'
+    | 'r16sint'
+    | 'r16float'
+    | 'rg8unorm'
+    | 'rg8snorm'
+    | 'rg8uint'
+    | 'rg8sint'
+    | 'r32uint'
+    | 'r32sint'
+    | 'r32float'
+    | 'rg16uint'
+    | 'rg16sint'
+    | 'rg16float'
+    | 'rgba8unorm'
+    | 'rgba8unorm-srgb'
+    | 'rgba8snorm'
+    | 'rgba8uint'
+    | 'rgba8sint'
+    | 'bgra8unorm'
+    | 'bgra8unorm-srgb'
+    | 'rgb10a2unorm'
+    | 'rgb10a2uint'
+    | 'rg11b10ufloat'
+    | 'rgb9e5ufloat'
+    | 'rg32uint'
+    | 'rg32sint'
+    | 'rg32float'
+    | 'rgba16uint'
+    | 'rgba16sint'
+    | 'rgba16float'
+    | 'rgba32uint'
+    | 'rgba32sint'
+    | 'rgba32float'
+    | 'stencil8'
+    | 'depth16unorm'
+    | 'depth24plus'
+    | 'depth24plus-stencil8'
+    | 'depth32float'
+    | 'depth32float-stencil8'
+    | 'bc1-rgba-unorm'
+    | 'bc1-rgba-unorm-srgb'
+    | 'bc2-rgba-unorm'
+    | 'bc2-rgba-unorm-srgb'
+    | 'bc3-rgba-unorm'
+    | 'bc3-rgba-unorm-srgb'
+    | 'etc2-rgb8unorm'
+    | 'etc2-rgb8unorm-srgb'
+    | 'etc2-rgb8a1unorm'
+    | 'etc2-rgb8a1unorm-srgb'
+    | 'etc2-rgba8unorm'
+    | 'etc2-rgba8unorm-srgb'
+    | 'eac-r11unorm'
+    | 'eac-r11snorm'
+    | 'eac-rg11unorm'
+    | 'eac-rg11snorm'
+    | 'astc-4x4-unorm'
+    | 'astc-4x4-unorm-srgb';

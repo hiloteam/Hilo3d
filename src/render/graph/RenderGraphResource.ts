@@ -6,22 +6,28 @@ import type {
     RHIResourceLifetime,
     RHIStoreOp,
     RHITexture,
-    RHITextureDescriptor
+    RHITextureDescriptor,
+    RHITextureViewDescriptor
 } from '../rhi/core';
 
 declare const rgTextureHandleBrand: unique symbol;
+declare const rgTextureViewHandleBrand: unique symbol;
 declare const rgBufferHandleBrand: unique symbol;
 declare const rgPassHandleBrand: unique symbol;
 
 /** Numeric texture identity scoped to one RenderGraphBuilder. */
 export type RGTextureHandle = number & { readonly [rgTextureHandleBrand]: true };
+/** Numeric texture-view identity scoped to one RenderGraphBuilder. */
+export type RGTextureViewHandle = number & { readonly [rgTextureViewHandleBrand]: true };
 /** Numeric buffer identity scoped to one RenderGraphBuilder. */
 export type RGBufferHandle = number & { readonly [rgBufferHandleBrand]: true };
 /** Numeric pass identity scoped to one RenderGraphBuilder. */
 export type RGPassHandle = number & { readonly [rgPassHandleBrand]: true };
-export type RGResourceHandle = RGTextureHandle | RGBufferHandle;
+export type RGTextureAccessHandle = RGTextureHandle | RGTextureViewHandle;
+export type RGResourceHandle = RGTextureAccessHandle | RGBufferHandle;
 
 export type RGTextureDescriptor = Omit<RHITextureDescriptor, 'lifetime'>;
+export type RGTextureViewDescriptor = RHITextureViewDescriptor;
 export type RGBufferDescriptor = Omit<RHIBufferDescriptor, 'lifetime' | 'initialData'>;
 
 /**
@@ -34,7 +40,7 @@ export type RGImportedTextureProvider = () => RHITexture;
 /** See {@link RGImportedTextureProvider}. */
 export type RGImportedBufferProvider = () => RHIBuffer;
 
-export type RGResourceKind = 'texture' | 'buffer';
+export type RGResourceKind = 'texture' | 'texture-view' | 'buffer';
 export type RGResourceOrigin = 'imported' | 'transient';
 
 /** Portable roles that consume initialized buffer contents. */
@@ -66,8 +72,8 @@ export type RGBufferAccessDeclaration =
 
 /** A color attachment is a render-pass read/write access, not sampled feedback. */
 export interface RGColorAttachmentDeclaration {
-    readonly texture: RGTextureHandle;
-    readonly resolveTarget?: RGTextureHandle;
+    readonly texture: RGTextureAccessHandle;
+    readonly resolveTarget?: RGTextureAccessHandle;
     readonly clearValue?: RHIColor;
     readonly loadOp: RHILoadOp;
     readonly storeOp: RHIStoreOp;
@@ -75,7 +81,7 @@ export interface RGColorAttachmentDeclaration {
 
 /** Depth/stencil access is tracked independently from ordinary sampled/copy reads and writes. */
 export interface RGDepthStencilAttachmentDeclaration {
-    readonly texture: RGTextureHandle;
+    readonly texture: RGTextureAccessHandle;
     readonly depthClearValue?: number;
     readonly depthLoadOp?: RHILoadOp;
     readonly depthStoreOp?: RHIStoreOp;
@@ -98,7 +104,19 @@ export interface RGTextureResourceNode {
     readonly resourceLifetime: RHIResourceLifetime;
     /** @internal Pure graph reads prefer this graph's complete writer chain when one exists. */
     readonly readFromLastGraphWriter: boolean;
+    /** Whether every selected subresource has contents before this graph invocation. */
+    readonly initiallyInitialized: boolean;
     readonly extracted: boolean;
+}
+
+/** @internal Compiler snapshot for one view into a graph texture resource. */
+export interface RGTextureViewResourceNode {
+    readonly kind: 'texture-view';
+    readonly handle: RGTextureViewHandle;
+    readonly name: string;
+    readonly texture: RGTextureHandle;
+    readonly descriptor: RGTextureViewDescriptor;
+    readonly extracted: false;
 }
 
 /** @internal Compiler snapshot; renderer features should use numeric handles instead. */
@@ -117,7 +135,8 @@ export interface RGBufferResourceNode {
 }
 
 /** @internal */
-export type RGResourceNode = RGTextureResourceNode | RGBufferResourceNode;
+export type RGResourceNode =
+    RGTextureResourceNode | RGTextureViewResourceNode | RGBufferResourceNode;
 
 export interface RGResourceLifetime {
     readonly firstUse: number;

@@ -56,7 +56,11 @@ import {
     type RenderPipelineOutputDepthStencilAttachment,
     type RenderPipelineRequirements,
     type RenderGraphBufferHandle,
+    type RenderGraphTextureAccessHandle,
     type RenderGraphTextureHandle,
+    type RenderGraphTextureViewHandle,
+    type RenderPipelineHistoryTextureResources,
+    type RenderPipelineTextureFormat,
     type RendererListHandle,
     type StorageBuffer,
     type StorageBufferReadback,
@@ -219,6 +223,28 @@ const webgpuIdlePromise: Promise<void> = webgpuRenderer.waitForIdle();
 declare const scriptableGraph: ScriptableRenderGraph;
 declare const forwardFeatureContext: ForwardRenderFeatureContext;
 declare const pipelineOutput: RenderPipelineOutput;
+const graphTextureFormat: RenderPipelineTextureFormat = 'r32float';
+const graphMipChain: RenderGraphTextureHandle = scriptableGraph.createTexture('typed mip chain', {
+    format: graphTextureFormat,
+    extent: { width: 8, height: 8 },
+    mipLevelCount: 2
+});
+const graphMipView: RenderGraphTextureViewHandle = scriptableGraph.createTextureView(
+    'typed mip view',
+    graphMipChain,
+    { baseMipLevel: 1, mipLevelCount: 1 }
+);
+const graphTextureAccess: RenderGraphTextureAccessHandle = graphMipView;
+const typedHistory: RenderPipelineHistoryTextureResources = scriptableGraph.acquireHistoryTexture(
+    Object.freeze({}),
+    {
+        format: 'rgba16float',
+        extent: { relativeTo: 'output', scale: 1 },
+        usage: ['sampled', 'storage'],
+        bufferCount: 3
+    }
+);
+const typedPreviousHistory: RenderGraphTextureHandle = typedHistory.history();
 const persistentTargetReleased: boolean = scriptableGraph.releasePersistentTarget(
     Object.freeze({})
 );
@@ -227,6 +253,8 @@ const outputColorPolicy: Readonly<RenderPipelineOutputColorAttachment> =
     pipelineOutput.colorAttachment(0);
 const outputDepthStencilPolicy: Readonly<RenderPipelineOutputDepthStencilAttachment> | null =
     pipelineOutput.depthStencilAttachment;
+void graphTextureAccess;
+void typedPreviousHistory;
 
 const textureParameters = {
     uv: 0,

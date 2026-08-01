@@ -2,6 +2,12 @@
 
 ### Changes
 
+- Add explicit Render Graph texture views for mip, array-layer, dimension, compatible-format, and
+  depth/stencil-aspect access across sampled, storage, attachment, and copy paths. Add
+  renderer-owned double/triple-buffer history textures whose recipes survive device recovery, whose
+  contents invalidate on descriptor or device-generation changes, and whose current/history rotation
+  commits only after a successful submitted writer frame. History recipes initially accept one
+  single-sample 2D color mip/layer so slot validity always means complete initialization.
 - Add camera-relative cascaded shadows for directional lights on the shared WebGL 2/WebGPU shadow
   atlas path. `DirectionalLight.shadow` now supports one to four cascades, practical split
   weighting, a maximum shadow distance, cross-cascade blending, and texel stabilization while
@@ -167,13 +173,14 @@
   forces, boundary physics, GPU-authored indirect arguments, and three particle raster layers stay
   on the public Render Graph/RHI path. Its deterministic test mode drives real pointer input without
   reading particle state back to the CPU.
-- Keep first-release compute textures limited to complete 2D graph resources, with transient
-  write-only storage textures and no persistent storage-texture or layer/mip-view API. Persistent
-  state uses externally owned renderer `StorageBuffer` objects imported per frame; each Renderer
-  accepts one pending storage-buffer readback. `cpu-shadow` recovery restores CPU bytes rather than
-  later GPU mutations, and Direct WGSL `f16` remains fail-closed until the Naga validation path can
-  validate it end to end. Storage-aware graphics retains broader Material/Scene texture reflection,
-  while `GPUDrivenRenderPass` rejects non-2D graph texture bindings before backend execution.
+- Keep storage texture writes write-only and complete for the selected single-mip view; overlapping
+  sampled/write feedback remains invalid. Persistent texture state uses renderer-owned history
+  recipes, while persistent buffer state uses externally owned renderer `StorageBuffer` objects
+  imported per frame; each Renderer accepts one pending storage-buffer readback. `cpu-shadow`
+  recovery restores CPU bytes rather than later GPU mutations, and Direct WGSL `f16` remains
+  fail-closed until the Naga validation path can validate it end to end. Storage-aware graphics
+  retains broader Material/Scene texture reflection, while `GPUDrivenRenderPass` validates explicit
+  graph view dimension, format, and sample type before backend execution.
 - Expose the built-in forward culling results to features, reject feature runtimes shared across
   Renderers, and preserve selected RenderTarget color/depth/stencil clear/load/store operations
   across feature-enabled scene, intermediate-color, and output passes.

@@ -168,13 +168,18 @@ Compute 不是 `Material`。它使用三个后端中立、不可变的 CPU 配�
   access，在 prepare 阶段解析资源并复用显式 layout/pipeline/bind
   group，在 execute 阶段只发 direct 或 indirect dispatch。
 
-compute binding 覆盖 uniform buffer、readonly/read-write storage buffer、完整 2D sampled
-texture、filtering/non-filtering/comparison sampler 和完整覆盖的 transient write-only 2D storage
-texture。首发 graph texture 不公开 array/cube/3D 或 mip/layer 子资源 view，也没有 persistent storage
-texture；跨帧 GPU 数据使用 renderer-owned `StorageBuffer`。它是公共逻辑资源，CPU 写入走统一 upload
-transaction，异步读取走 graph copy、submission fence 和 staging
-map；每个 Renderer 同时只允许一个 pending storage-buffer readback，调用方应串行等待。`cpu-shadow` 与
-`reinitialize` 恢复策略明确区分“恢复 CPU 快照”和“恢复后必须由完整 GPU
+compute binding 覆盖 uniform buffer、readonly/read-write storage buffer、显式 texture
+view、filtering/non-filtering/comparison sampler 和完整覆盖的 write-only storage texture
+view。`ScriptableRenderGraph.createTextureView()` 可选择 mip、array
+layer、dimension、format 和 depth/stencil
+aspect；sampled、storage、attachment 与 copy 共用这一个 view
+identity。跨帧纹理由 renderer-owned 双/三缓冲 history recipe 管理；当前 history
+recipe 明确限定为单 sample、单 mip、单 layer 的 2D color texture，使任一提交成功的 current
+writer 都能完整初始化下一帧 history。跨帧 buffer 继续使用 renderer-owned
+`StorageBuffer`。后者是公共逻辑资源，CPU 写入走统一 upload transaction，异步读取走 graph
+copy、submission fence 和 staging map；每个 Renderer 同时只允许一个 pending storage-buffer
+readback，调用方应串行等待。`cpu-shadow` 与 `reinitialize`
+恢复策略明确区分“恢复 CPU 快照”和“恢复后必须由完整 GPU
 writer 重新初始化”。GPU 写入只在有效 submission 后提交内容分歧，后续相同 CPU
 bytes 仍会重新上传，避免 CPU shadow 错误掩盖 GPU 修改。
 
@@ -196,8 +201,8 @@ buffer。相关 WebKit 报告包括 iOS 26 的
 `StorageGraphicsShader` 是独立的 WebGPU-only graphics source contract：vertex/fragment 仍由受控 GLSL
 ES 3.10 storage subset 经统一预处理和 Naga 转为 WGSL，不接受手写 graphics WGSL；首版只允许 readonly
 storage。其 Material/Scene texture reflection 仍保留 2D-array/3D/cube 与 sint/uint 类型表达，但
-`GPUDrivenRenderPass` 绑定的 graph texture 当前必须是完整 2D view，非 2D
-descriptor 会在构造/prepare 阶段拒绝。`GPUDrivenRenderPass` 把这种 shader 与普通 `Material`
+`GPUDrivenRenderPass` 绑定显式 graph texture view，并在 shader reflection、view dimension、sample
+type 与 format 不兼容时于 prepare 阶段拒绝。`GPUDrivenRenderPass` 把这种 shader 与普通 `Material`
 的 blend/depth/cull raster state 组合，并支持 vertex pulling、显式 vertex/index buffer、direct
 draw、draw indirect 和 indexed draw indirect。compute、copy 与 raster 都通过同一 graph
 access 建边，不读取 GPU 产生的 count、排序结果或 indirect arguments。
@@ -563,10 +568,15 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 - `storage-buffer`、`storage-texture`、`compute-pass` 与 `indirect-draw` 是 WebGPU-only
   capability。显式或自动选择 WebGL 2 时不会模拟或静默跳过；pipeline
   requirements 会在创建阶段排除不兼容后端。
-- graph compute texture 首发只表达完整 2D subresource；storage
-  texture 是 transient、write-only、完整覆盖，没有 persistent storage texture、layer/mip
-  view 或 sampled/write feedback。跨帧状态使用外部 renderer-owned `StorageBuffer`，每帧通过
-  `importStorageBuffer()` 导入。
+- graph texture 把物理 texture 与显式 view 分离；mip、array layer、dimension、compatible
+  format 和 depth/stencil aspect 都进入 subresource
+  hazard。不同 subresource 可以在同 pass 使用，重叠的 sampled/write feedback 继续 fail-closed。
+- storage texture binding 仍是 write-only 且必须完整覆盖所选单 mip view；跨帧 texture 使用
+  `acquireHistoryTexture()` 的 renderer-owned 双/三缓冲 recipe；当前 recipe
+  fail-closed 为单 sample、单 mip、单 layer 的 2D color
+  texture。history 只在有效 submission 且 current 确有 writer 时轮换；resize/format/quality
+  revision、显式 invalidation 和 device
+  recovery 都递增 generation 并使旧内容失效。跨帧 buffer 继续通过 `importStorageBuffer()` 导入。
 - 每个 Renderer 同时只处理一个 `StorageBuffer.read()`；并发 readback 会明确拒绝。`cpu-shadow`
   恢复 CPU 快照而不保留 GPU mutation；需要保留或重算 GPU-only 状态时选择合适策略并显式重建。
 - `SceneRenderPass` 已能让普通 renderer list 在 group 3 读取 pass-global storage；命中 instancing

@@ -7,7 +7,7 @@ import type {
     RGColorAttachmentDeclaration,
     RGDepthStencilAttachmentDeclaration,
     RGPassHandle,
-    RGTextureHandle
+    RGTextureAccessHandle
 } from '../../graph/RenderGraphResource';
 import {
     RHITextureUsage,
@@ -80,8 +80,8 @@ interface MutableColorAttachmentDescriptor {
 }
 
 interface ColorAttachmentSlot {
-    texture: RGTextureHandle | null;
-    resolveTarget: RGTextureHandle | null;
+    texture: RGTextureAccessHandle | null;
+    resolveTarget: RGTextureAccessHandle | null;
     readonly clearValue: MutableColor;
     readonly descriptor: MutableColorAttachmentDescriptor;
     readonly graphDeclaration: MutableGraphColorAttachmentDeclaration;
@@ -137,7 +137,7 @@ function createColorAttachmentSlot(): ColorAttachmentSlot {
             storeOp: 'store'
         },
         graphDeclaration: {
-            texture: 0 as RGTextureHandle,
+            texture: 0 as RGTextureAccessHandle,
             loadOp: 'load',
             storeOp: 'store'
         }
@@ -188,15 +188,15 @@ export interface SharedDrawPassCapacity {
 }
 
 export interface SharedDrawPassColorAttachment {
-    readonly texture: RGTextureHandle;
-    readonly resolveTarget?: RGTextureHandle;
+    readonly texture: RGTextureAccessHandle;
+    readonly resolveTarget?: RGTextureAccessHandle;
     readonly clearValue?: RHIColor;
     readonly loadOp: RHILoadOp;
     readonly storeOp: RHIStoreOp;
 }
 
 export interface SharedDrawPassDepthStencilAttachment {
-    readonly texture: RGTextureHandle;
+    readonly texture: RGTextureAccessHandle;
     readonly depthClearValue?: number;
     readonly depthLoadOp?: RHILoadOp;
     readonly depthStoreOp?: RHIStoreOp;
@@ -237,13 +237,13 @@ export class SharedDrawPassParameters {
         stencilReadOnly: undefined
     };
     private readonly depthStencilGraphDeclaration: MutableGraphDepthStencilAttachmentDeclaration = {
-        texture: 0 as RGTextureHandle
+        texture: 0 as RGTextureAccessHandle
     };
-    private depthStencilTexture: RGTextureHandle | null = null;
+    private depthStencilTexture: RGTextureAccessHandle | null = null;
 
-    private readonly readTextures: (RGTextureHandle | null)[] = [];
+    private readonly readTextures: (RGTextureAccessHandle | null)[] = [];
     private readTextureCount = 0;
-    private readonly writeTextures: (RGTextureHandle | null)[] = [];
+    private readonly writeTextures: (RGTextureAccessHandle | null)[] = [];
     private writeTextureCount = 0;
     private readonly readBuffers: (RGBufferHandle | null)[] = [];
     private readonly readBufferUses: (RGBufferReadUse | null)[] = [];
@@ -420,11 +420,11 @@ export class SharedDrawPassParameters {
         this.prepared = false;
     }
 
-    addReadTexture(handle: RGTextureHandle): void {
+    addReadTexture(handle: RGTextureAccessHandle): void {
         this.readTextures[this.readTextureCount++] = handle;
     }
 
-    addWriteTexture(handle: RGTextureHandle): void {
+    addWriteTexture(handle: RGTextureAccessHandle): void {
         this.writeTextures[this.writeTextureCount++] = handle;
     }
 

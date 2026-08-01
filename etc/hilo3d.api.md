@@ -916,7 +916,7 @@ export type ComputeStorageTextureViewDimension = '2d';
 
 // @public
 export interface ComputeTextureBinding {
-    readonly texture: RenderGraphTextureHandle;
+    readonly texture: RenderGraphTextureAccessHandle;
 }
 
 // @public
@@ -1955,7 +1955,7 @@ export interface FullscreenRenderPassOptions {
 export interface FullscreenRenderPassParameters {
     readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
     readonly depthStencilAttachment?: Readonly<RenderPipelineDepthStencilAttachment>;
-    readonly inputTextures: readonly RenderGraphTextureHandle[];
+    readonly inputTextures: readonly RenderGraphTextureAccessHandle[];
     readonly scissor?: RendererViewport;
     readonly stencilReference?: number;
     readonly viewport?: RendererViewport;
@@ -5477,12 +5477,23 @@ export type RenderGraphPassHandle = number & {
 const renderGraphPassHandleBrand: unique symbol;
 
 // @public
+export type RenderGraphTextureAccessHandle = RenderGraphTextureHandle | RenderGraphTextureViewHandle;
+
+// @public
 export type RenderGraphTextureHandle = number & {
     readonly [renderGraphTextureHandleBrand]: true;
 };
 
 // @public (undocumented)
 const renderGraphTextureHandleBrand: unique symbol;
+
+// @public
+export type RenderGraphTextureViewHandle = number & {
+    readonly [renderGraphTextureViewHandleBrand]: true;
+};
+
+// @public (undocumented)
+const renderGraphTextureViewHandleBrand: unique symbol;
 
 // @public
 export class RenderInfo {
@@ -5531,7 +5542,7 @@ export interface RenderPipelineBufferDescriptor {
 export interface RenderPipelineCapabilities {
     readonly limits: Readonly<RenderPipelineLimits>;
     supportsCapability(capability: RenderPipelineCapabilityName): boolean;
-    supportsTextureFormat(format: RenderTargetColorFormat | RenderTargetDepthStencilFormat, use: RenderPipelineTextureUse, sampleCount?: RenderTargetSampleCount): boolean;
+    supportsTextureFormat(format: RenderPipelineTextureFormat, use: RenderPipelineTextureUse, sampleCount?: RenderTargetSampleCount): boolean;
 }
 
 // @public
@@ -5541,9 +5552,9 @@ export type RenderPipelineCapabilityName = 'storage-buffer' | 'storage-texture' 
 export interface RenderPipelineColorAttachment {
     readonly clearValue?: RenderTargetColor;
     readonly loadOp: RenderTargetLoadOp;
-    readonly resolveTarget?: RenderGraphTextureHandle;
+    readonly resolveTarget?: RenderGraphTextureAccessHandle;
     readonly storeOp: RenderTargetStoreOp;
-    readonly texture: RenderGraphTextureHandle;
+    readonly texture: RenderGraphTextureAccessHandle;
 }
 
 // @public
@@ -5577,7 +5588,7 @@ export interface RenderPipelineDepthStencilAttachment {
     readonly stencilLoadOp?: RenderTargetLoadOp;
     readonly stencilReadOnly?: boolean;
     readonly stencilStoreOp?: RenderTargetStoreOp;
-    readonly texture: RenderGraphTextureHandle;
+    readonly texture: RenderGraphTextureAccessHandle;
 }
 
 // @public
@@ -5596,6 +5607,22 @@ export interface RenderPipelineFactory {
     create(context: RenderPipelineCreateContext): RenderPipeline | Promise<RenderPipeline>;
     readonly name: string;
     readonly requirements?: Readonly<RenderPipelineRequirements>;
+}
+
+// @public
+export interface RenderPipelineHistoryTextureDescriptor extends RenderPipelineTextureDescriptor {
+    readonly bufferCount?: 2 | 3;
+    readonly label?: string;
+    readonly usage: readonly RenderPipelinePersistentTextureUsage[];
+}
+
+// @public
+export interface RenderPipelineHistoryTextureResources {
+    readonly current: RenderGraphTextureHandle;
+    readonly generation: number;
+    history(index?: number): RenderGraphTextureHandle;
+    readonly historyCount: number;
+    readonly valid: boolean;
 }
 
 // @public
@@ -5662,6 +5689,9 @@ export interface RenderPipelinePersistentTargetDescriptor {
 }
 
 // @public
+export type RenderPipelinePersistentTextureUsage = 'sampled' | 'storage' | 'attachment' | 'copy-source' | 'copy-destination';
+
+// @public
 export interface RenderPipelineRequirements {
     readonly requiredCapabilities?: readonly RenderPipelineCapabilityName[];
     readonly requiredFeatures?: readonly RendererFeatureName[];
@@ -5680,22 +5710,50 @@ export interface RenderPipelineTargetResources {
 }
 
 // @public
+export type RenderPipelineTextureAspect = 'all' | 'stencil-only' | 'depth-only';
+
+// @public
 export interface RenderPipelineTextureDescriptor {
+    readonly depthOrArrayLayers?: number;
+    readonly dimension?: RenderPipelineTextureDimension;
     readonly extent: RenderPipelineExtent;
-    readonly format: RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+    readonly format: RenderPipelineTextureFormat;
     readonly mipLevelCount?: number;
     readonly sampleCount?: RenderTargetSampleCount;
+    readonly viewDimension?: RenderPipelineTextureViewDimension;
+    readonly viewFormats?: readonly RenderPipelineTextureFormat[];
 }
 
 // @public
+export type RenderPipelineTextureDimension = '1d' | '2d' | '3d';
+
+// @public
+export type RenderPipelineTextureFormat = 'r8unorm' | 'r8snorm' | 'r8uint' | 'r8sint' | 'r16uint' | 'r16sint' | 'r16float' | 'rg8unorm' | 'rg8snorm' | 'rg8uint' | 'rg8sint' | 'r32uint' | 'r32sint' | 'r32float' | 'rg16uint' | 'rg16sint' | 'rg16float' | 'rgba8unorm' | 'rgba8unorm-srgb' | 'rgba8snorm' | 'rgba8uint' | 'rgba8sint' | 'bgra8unorm' | 'bgra8unorm-srgb' | 'rgb10a2unorm' | 'rgb10a2uint' | 'rg11b10ufloat' | 'rgb9e5ufloat' | 'rg32uint' | 'rg32sint' | 'rg32float' | 'rgba16uint' | 'rgba16sint' | 'rgba16float' | 'rgba32uint' | 'rgba32sint' | 'rgba32float' | 'stencil8' | 'depth16unorm' | 'depth24plus' | 'depth24plus-stencil8' | 'depth32float' | 'depth32float-stencil8' | 'bc1-rgba-unorm' | 'bc1-rgba-unorm-srgb' | 'bc2-rgba-unorm' | 'bc2-rgba-unorm-srgb' | 'bc3-rgba-unorm' | 'bc3-rgba-unorm-srgb' | 'etc2-rgb8unorm' | 'etc2-rgb8unorm-srgb' | 'etc2-rgb8a1unorm' | 'etc2-rgb8a1unorm-srgb' | 'etc2-rgba8unorm' | 'etc2-rgba8unorm-srgb' | 'eac-r11unorm' | 'eac-r11snorm' | 'eac-rg11unorm' | 'eac-rg11snorm' | 'astc-4x4-unorm' | 'astc-4x4-unorm-srgb';
+
+// @public
 export interface RenderPipelineTextureRequirement {
-    readonly format: RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+    readonly format: RenderPipelineTextureFormat;
     readonly sampleCount?: RenderTargetSampleCount;
     readonly use: RenderPipelineTextureUse;
 }
 
 // @public
 export type RenderPipelineTextureUse = 'sampled' | 'filterable-sampled' | 'color-attachment' | 'depth-stencil-attachment' | 'storage' | 'copy-source' | 'copy-destination';
+
+// @public
+export interface RenderPipelineTextureViewDescriptor {
+    readonly arrayLayerCount?: number;
+    readonly aspect?: RenderPipelineTextureAspect;
+    readonly baseArrayLayer?: number;
+    readonly baseMipLevel?: number;
+    readonly dimension?: RenderPipelineTextureViewDimension;
+    readonly format?: RenderPipelineTextureFormat;
+    readonly label?: string;
+    readonly mipLevelCount?: number;
+}
+
+// @public
+export type RenderPipelineTextureViewDimension = '1d' | '2d' | '2d-array' | 'cube' | 'cube-array' | '3d';
 
 // @public
 export interface RenderTarget {
@@ -5897,7 +5955,7 @@ export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassPara
 export interface SceneRenderPassParameters {
     readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
     readonly depthStencilAttachment?: Readonly<RenderPipelineDepthStencilAttachment>;
-    readonly opaqueTexture?: RenderGraphTextureHandle;
+    readonly opaqueTexture?: RenderGraphTextureAccessHandle;
     readonly rendererList: RendererListHandle;
     readonly scissor?: RendererViewport;
     readonly stencilReference?: number;
@@ -5922,7 +5980,7 @@ export interface SceneStorageShaderVariant {
 export interface ScriptableRenderCommands {
     clearBuffer(buffer: RenderGraphBufferHandle, byteOffset?: number, byteLength?: number): void;
     copyBuffer(source: RenderGraphBufferHandle, destination: RenderGraphBufferHandle): void;
-    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
+    copyTexture(source: RenderGraphTextureAccessHandle, destination: RenderGraphTextureAccessHandle): void;
     drawRendererList(list: RendererListHandle): void;
     setScissor(rect: RendererViewport): void;
     setStencilReference(reference: number): void;
@@ -5931,13 +5989,17 @@ export interface ScriptableRenderCommands {
 
 // @public
 export interface ScriptableRenderGraph {
+    acquireHistoryTexture(key: object, descriptor: Readonly<RenderPipelineHistoryTextureDescriptor>): RenderPipelineHistoryTextureResources;
     acquirePersistentTarget(key: object, descriptor: Readonly<RenderPipelinePersistentTargetDescriptor>): RenderPipelineTargetResources;
     addPass<P extends object>(pass: ScriptableRenderPass<P>, parameters: P): RenderGraphPassHandle;
     createBuffer(name: string, descriptor: Readonly<RenderPipelineBufferDescriptor>): RenderGraphBufferHandle;
     createTexture(name: string, descriptor: Readonly<RenderPipelineTextureDescriptor>): RenderGraphTextureHandle;
+    createTextureView(name: string, texture: RenderGraphTextureHandle, descriptor?: Readonly<RenderPipelineTextureViewDescriptor>): RenderGraphTextureViewHandle;
     importOutput(): RenderPipelineOutputResources;
     importRenderTarget(target: RenderTarget): RenderPipelineTargetResources;
     importStorageBuffer(buffer: StorageBuffer): RenderGraphBufferHandle;
+    invalidateHistoryTexture(key: object): boolean;
+    releaseHistoryTexture(key: object): boolean;
     releasePersistentTarget(key: object): boolean;
 }
 
@@ -5953,17 +6015,17 @@ export interface ScriptableRenderPass<P extends object> {
 export interface ScriptableRenderPassBuilder {
     clearBuffer(buffer: RenderGraphBufferHandle, byteOffset?: number, byteLength?: number): void;
     copyBuffer(source: RenderGraphBufferHandle, destination: RenderGraphBufferHandle): void;
-    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void;
+    copyTexture(source: RenderGraphTextureAccessHandle, destination: RenderGraphTextureAccessHandle): void;
     dependsOn(pass: RenderGraphPassHandle): void;
     markSideEffect(): void;
     readBuffer(buffer: RenderGraphBufferHandle, use: RenderGraphBufferReadUse): void;
-    readTexture(texture: RenderGraphTextureHandle): void;
+    readTexture(texture: RenderGraphTextureAccessHandle): void;
     readWriteBuffer(buffer: RenderGraphBufferHandle): void;
     useColorAttachment(options: Readonly<RenderPipelineColorAttachment>): void;
     useDepthStencilAttachment(options: Readonly<RenderPipelineDepthStencilAttachment>): void;
     useRendererList(list: RendererListHandle): void;
     writeBuffer(buffer: RenderGraphBufferHandle, use: RenderGraphBufferWriteUse): void;
-    writeStorageTexture(texture: RenderGraphTextureHandle): void;
+    writeStorageTexture(texture: RenderGraphTextureAccessHandle): void;
 }
 
 // @public
@@ -7517,8 +7579,8 @@ export class TextureCopyPass implements ScriptableRenderPass<TextureCopyPassPara
 
 // @public
 export interface TextureCopyPassParameters {
-    readonly destination: RenderGraphTextureHandle;
-    readonly source: RenderGraphTextureHandle;
+    readonly destination: RenderGraphTextureAccessHandle;
+    readonly source: RenderGraphTextureAccessHandle;
 }
 
 // @public

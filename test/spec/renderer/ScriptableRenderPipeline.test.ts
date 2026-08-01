@@ -26,6 +26,7 @@ import type {
 } from '../../../src/render/pipeline/RenderPipeline';
 import type {
     RenderGraphBufferHandle,
+    RenderGraphTextureAccessHandle,
     RenderGraphTextureHandle,
     RenderPipelineColorAttachment,
     RenderPipelineTargetResources,
@@ -211,7 +212,7 @@ class CopyPipelineFactory implements RenderPipelineFactory {
 }
 
 interface TextureReadParameters {
-    readonly texture: RenderGraphTextureHandle;
+    readonly texture: RenderGraphTextureAccessHandle;
 }
 
 class TextureReadSideEffectPass implements ScriptableRenderPass<TextureReadParameters> {
@@ -427,6 +428,54 @@ fn main() { textureStore(output, vec2<i32>(0), vec4<f32>(1.0)); }`,
             textures: [{ texture }],
             dispatch: { x: 1 }
         });
+    }
+
+    destroy(): void {
+        // ComputeKernel contains no renderer-local resources.
+    }
+}
+
+class StorageTextureMipViewPipeline implements RenderPipeline {
+    readonly name = 'storage-texture-mip-view';
+    readonly pass = new ComputeRenderPass(
+        new ComputeKernel({
+            shader: new ComputeShader({
+                source: `
+@group(0) @binding(0) var output: texture_storage_2d<rgba8unorm, write>;
+@compute @workgroup_size(1)
+fn main() { textureStore(output, vec2<i32>(0), vec4<f32>(1.0, 0.0, 0.0, 1.0)); }`,
+                workgroupSize: [1],
+                bindings: [
+                    {
+                        name: 'output',
+                        group: 0,
+                        binding: 0,
+                        kind: 'storage-texture',
+                        access: 'write-only',
+                        format: 'rgba8unorm'
+                    }
+                ]
+            })
+        })
+    );
+    readonly readPass = new TextureReadSideEffectPass();
+
+    record(context: RenderPipelineContext): void {
+        const texture = context.graph.createTexture('storage mip chain', {
+            format: 'rgba8unorm',
+            extent: { width: 4, height: 4 },
+            mipLevelCount: 2
+        });
+        const mip1 = context.graph.createTextureView('storage mip 1', texture, {
+            baseMipLevel: 1,
+            mipLevelCount: 1
+        });
+        context.graph.addPass(this.pass, {
+            buffers: [],
+            textures: [{ texture: mip1 }],
+            dispatch: { x: 1 }
+        });
+        context.graph.addPass(this.readPass, { texture: mip1 });
     }
 
     destroy(): void {
@@ -786,6 +835,96 @@ class PersistentTargetPipeline implements RenderPipeline {
 
     destroy(): void {
         // No renderer-local resources.
+    }
+}
+
+interface SubresourcePassParameters {
+    readonly input?: RenderGraphTextureAccessHandle;
+    readonly output: RenderGraphTextureAccessHandle;
+    readonly sideEffect?: boolean;
+}
+
+class SubresourcePass implements ScriptableRenderPass<SubresourcePassParameters> {
+    readonly name = 'Subresource view pass';
+
+    setup(builder: ScriptableRenderPassBuilder, parameters: SubresourcePassParameters): void {
+        if (parameters.input !== undefined) builder.readTexture(parameters.input);
+        builder.useColorAttachment({
+            texture: parameters.output,
+            loadOp: 'clear',
+            storeOp: 'store',
+            clearValue: { r: 0, g: 0, b: 0, a: 1 }
+        });
+        if (parameters.sideEffect) builder.markSideEffect();
+    }
+
+    execute(): void {
+        // Graph subresource scheduling is under test; no native draw is required.
+    }
+}
+
+class SubresourceViewPipeline implements RenderPipeline {
+    readonly name = 'subresource-view-pipeline';
+    readonly pass = new SubresourcePass();
+    overlap = false;
+
+    record(context: RenderPipelineContext): void {
+        const texture = context.graph.createTexture('public mip chain', {
+            format: 'r32float',
+            extent: { width: 8, height: 8 },
+            mipLevelCount: 2
+        });
+        const mip0 = context.graph.createTextureView('public mip 0', texture, {
+            baseMipLevel: 0,
+            mipLevelCount: 1
+        });
+        const output = context.graph.createTextureView(
+            this.overlap ? 'overlapping public mip 0' : 'public mip 1',
+            texture,
+            {
+                baseMipLevel: this.overlap ? 0 : 1,
+                mipLevelCount: 1
+            }
+        );
+        context.graph.addPass(this.pass, { output: mip0 });
+        context.graph.addPass(this.pass, { input: mip0, output, sideEffect: true });
+    }
+
+    destroy(): void {
+        // No renderer-local resources.
+    }
+}
+
+class HistoryTexturePipeline implements RenderPipeline {
+    readonly name = 'history-texture-pipeline';
+    readonly key = Object.freeze({});
+    readonly pass = new SubresourcePass();
+    readonly valid: boolean[] = [];
+    readonly generations: number[] = [];
+    width = 4;
+    mipLevelCount = 1;
+    failAfterRecord = false;
+
+    record(context: RenderPipelineContext): void {
+        const history = context.graph.acquireHistoryTexture(this.key, {
+            label: 'temporal color history',
+            format: 'rgba8unorm',
+            extent: { width: this.width, height: 4 },
+            mipLevelCount: this.mipLevelCount,
+            usage: ['sampled', 'attachment'],
+            bufferCount: 3
+        });
+        this.valid.push(history.valid);
+        this.generations.push(history.generation);
+        context.graph.addPass(this.pass, {
+            ...(history.valid ? { input: history.history() } : {}),
+            output: history.current
+        });
+        if (this.failAfterRecord) throw new Error('history frame failed');
+    }
+
+    destroy(): void {
+        // The renderer owns and releases the history recipes.
     }
 }
 
@@ -1336,6 +1475,23 @@ describe('Scriptable render pipeline', () => {
         expect(beginFrame).not.toHaveBeenCalled();
     });
 
+    it('binds one explicit mip view as a real WebGPU storage texture', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgpu',
+            domElement: document.createElement('canvas'),
+            width: 4,
+            height: 4,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(new StorageTextureMipViewPipeline())
+        });
+        activeRenderers.push(renderer);
+
+        expect(() => {
+            renderer.render(new Node(), new PerspectiveCamera());
+        }).not.toThrow();
+        await renderer.waitForIdle();
+    });
+
     it('keeps sampled depth reads independent from COPY_SRC usage', async () => {
         const runtime = new SampledDepthPipeline();
         const renderer = await Renderer.create({
@@ -1531,6 +1687,66 @@ describe('Scriptable render pipeline', () => {
         renderer.render(new Node(), new PerspectiveCamera());
 
         expect(renderer.renderInfo.drawCount).toBe(1);
+    });
+
+    it('schedules public mip views independently and rejects overlapping feedback', async () => {
+        const runtime = new SubresourceViewPipeline();
+        const renderer = await Renderer.create({
+            backend: 'webgpu',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 8,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(runtime)
+        });
+        activeRenderers.push(renderer);
+
+        expect(() => {
+            renderer.render(new Node(), new PerspectiveCamera());
+        }).not.toThrow();
+        runtime.overlap = true;
+        expect(() => {
+            renderer.render(new Node(), new PerspectiveCamera());
+        }).toThrow(/overlaps|feedback|duplicate|same-pass/u);
+    });
+
+    it('commits history rotation and descriptor generations only after successful frames', async () => {
+        const runtime = new HistoryTexturePipeline();
+        const renderer = await Renderer.create({
+            backend: 'webgpu',
+            domElement: document.createElement('canvas'),
+            width: 4,
+            height: 4,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(runtime)
+        });
+        activeRenderers.push(renderer);
+        const scene = new Node();
+        const camera = new PerspectiveCamera();
+
+        renderer.render(scene, camera);
+        renderer.render(scene, camera);
+        expect(runtime.valid).toEqual([false, true]);
+        expect(runtime.generations[1]).toBe(runtime.generations[0]);
+
+        runtime.width = 8;
+        runtime.failAfterRecord = true;
+        expect(() => {
+            renderer.render(scene, camera);
+        }).toThrow(/history frame failed/u);
+        const failedGeneration = runtime.generations[2];
+
+        runtime.width = 4;
+        runtime.failAfterRecord = false;
+        renderer.render(scene, camera);
+        expect(runtime.valid[3]).toBe(true);
+        expect(runtime.generations[3]).toBe(runtime.generations[1]);
+        expect(failedGeneration).toBe((runtime.generations[1] ?? 0) + 1);
+
+        runtime.mipLevelCount = 2;
+        expect(() => {
+            renderer.render(scene, camera);
+        }).toThrow(/one single-sample 2D color mip and array layer/u);
     });
 
     it('commits persistent target descriptor changes only after successful submission', async () => {

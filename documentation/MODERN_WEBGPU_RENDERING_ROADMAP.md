@@ -1,6 +1,6 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
-> 审计基线：`296a18d`（2026-08-01）。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
+> 审计基线：`296a18d`（2026-08-01）；实施状态更新：2026-08-01，F0 已落地。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
 
 ## 结论先行
@@ -13,10 +13,10 @@ Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前
    `GPUDrivenRenderPass` 尚未成为普通场景的规模化路径。
 2. **生产级 Clustered Forward+**：仓库已有 depth → compute tile cull → storage-aware
    scene 的验收闭环，但没有可直接替换固定 LightBlock 的内置 PBR clustered lighting。
-3. **时域渲染框架**：没有 motion vector、projection jitter、history、camera-cut
-   invalidation、TAA/TAAU、动态分辨率和 reactive mask。
-4. **现代资源与几何虚拟化**：没有 mip/array subresource graph view、GPU meshlet/LOD、纹理流送、KTX
-   2/Basis、虚拟纹理或虚拟阴影页系统。
+3. **时域渲染框架**：已有 recovery-aware history owner 与显式 invalidation，但仍没有 motion
+   vector、projection jitter、TAA/TAAU、动态分辨率和 reactive mask。
+4. **现代资源与几何虚拟化**：已有 mip/array/aspect subresource graph view，但仍没有 GPU
+   meshlet/LOD、纹理流送、KTX 2/Basis、虚拟纹理或虚拟阴影页系统。
 
 最值得先做的不是直接复刻 Nanite 或 Lumen，而是完成两条可以并行推进的主线：
 
@@ -180,11 +180,13 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 `P0` 是“现代 WebGPU renderer”定义所需能力；`P1` 是高画质生产 profile；`P2`
 是依赖场景规模、内容管线和长期性能投入的虚拟化能力。
 
+实施状态：**F0 已完成**；后续工作包可把 subresource view 与 history owner 作为现有基础使用。
+
 ## 6. 可落地工作包
 
 ### 6.1 Milestone 0：WebGPU high-end profile 基础
 
-#### F0：Graph subresource 与跨帧资源
+#### F0：Graph subresource 与跨帧资源（已完成）
 
 ![F0：Render Graph 子资源视图与跨帧 History](./images/modern-webgpu-roadmap/render-graph-history.jpg)
 
@@ -192,7 +194,7 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 | ---------------------------------- | ----------------------------------------------------- | ---------------------------------------- | ----------------------------------------- |
 | 多 mip/layer texture、帧成功或失败 | 显式 view、subresource hazard、双/三缓冲 history 交换 | Hi-Z mip 链、稳定 history、可恢复 recipe | resize/device loss/失败 submission 不串帧 |
 
-需要增加：
+已落地：
 
 - graph texture 与 texture view 分离；view 显式表达 mip、array layer 和 aspect；
 - sampled、storage、attachment、copy access 都绑定 view，而不是隐含整张 texture；
@@ -201,8 +203,15 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 - resize、camera cut、format/quality change 和 device loss 的 history invalidation generation；
 - transient texture 同帧 alias 先保留为后续优化，不能阻塞 view 正确性。
 
-完成标准：一张多 mip texture 能在连续 pass 中逐级写入/采样；TAA
-history 能跨帧存活、resize 后失效、device loss 后按 recipe 重建，失败 submission 不交换 history。
+当前 history recipe fail-closed 为单 sample、单 mip、单 layer 的 2D color texture，使公开 `valid`
+与完整初始化严格同义；多 mip/array/volume
+history 要等 subresource-validity 能跨帧持久化后再开放。显式 graph view 本身已经支持 mip、array
+layer、dimension、compatible format 和 depth/stencil aspect。
+
+验收证据：多 mip texture 可在连续 pass 中逐级写入/采样；history 可跨帧存活、descriptor
+revision 后失效、device loss 后按 recipe 重建，失败 record/submission 不交换 current/history。Render
+Graph、SRP、capability、ResourceRegistry、真实 WebGPU storage-view 和 package
+type-consumer 均有自动化覆盖。
 
 #### F1：现代 WebGPU capability 与 GPU timeline
 

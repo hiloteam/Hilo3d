@@ -20,7 +20,11 @@ import type {
     RGResourceHandle,
     RGResourceNode,
     RGTextureDescriptor,
+    RGTextureAccessHandle,
     RGTextureHandle,
+    RGTextureViewDescriptor,
+    RGTextureViewHandle,
+    RGTextureViewResourceNode,
     RGTextureResourceNode,
     RGBufferWriteUse
 } from './RenderGraphResource';
@@ -124,11 +128,19 @@ type MutableTextureResourceNode = Omit<
     { -readonly [Key in keyof RGTextureResourceNode]: RGTextureResourceNode[Key] },
     'descriptor'
 > & { descriptor: MutableTextureDescriptor };
+type MutableTextureViewDescriptor = {
+    -readonly [Key in keyof RGTextureViewDescriptor]: RGTextureViewDescriptor[Key];
+};
+type MutableTextureViewResourceNode = Omit<
+    { -readonly [Key in keyof RGTextureViewResourceNode]: RGTextureViewResourceNode[Key] },
+    'descriptor'
+> & { descriptor: MutableTextureViewDescriptor };
 type MutableBufferResourceNode = Omit<
     { -readonly [Key in keyof RGBufferResourceNode]: RGBufferResourceNode[Key] },
     'descriptor'
 > & { descriptor: MutableBufferDescriptor };
-type MutableResourceNode = MutableTextureResourceNode | MutableBufferResourceNode;
+type MutableResourceNode =
+    MutableTextureResourceNode | MutableTextureViewResourceNode | MutableBufferResourceNode;
 type MutableDepthStencilAttachmentDeclaration = {
     -readonly [
         Key in keyof RGDepthStencilAttachmentDeclaration
@@ -136,8 +148,8 @@ type MutableDepthStencilAttachmentDeclaration = {
 };
 
 interface MutableColorAttachmentDeclaration extends RGColorAttachmentDeclaration {
-    texture: RGTextureHandle;
-    resolveTarget?: RGTextureHandle;
+    texture: RGTextureAccessHandle;
+    resolveTarget?: RGTextureAccessHandle;
     clearValue?: { r: number; g: number; b: number; a: number };
     loadOp: RGColorAttachmentDeclaration['loadOp'];
     storeOp: RGColorAttachmentDeclaration['storeOp'];
@@ -230,9 +242,11 @@ export class RenderGraphBuilderStorage {
     };
 
     readonly #textureNodePool: MutableTextureResourceNode[] = [];
+    readonly #textureViewNodePool: MutableTextureViewResourceNode[] = [];
     readonly #bufferNodePool: MutableBufferResourceNode[] = [];
     readonly #passNodePool: MutablePassNode[] = [];
     #textureNodeCursor = 0;
+    #textureViewNodeCursor = 0;
     #bufferNodeCursor = 0;
     #passNodeCursor = 0;
     #leased = false;
@@ -241,6 +255,7 @@ export class RenderGraphBuilderStorage {
         if (this.#leased) throw new Error('Render graph builder storage is already leased');
         this.#leased = true;
         this.#textureNodeCursor = 0;
+        this.#textureViewNodeCursor = 0;
         this.#bufferNodeCursor = 0;
         this.#passNodeCursor = 0;
         this.resources.length = 0;
@@ -258,7 +273,8 @@ export class RenderGraphBuilderStorage {
         descriptor: RGTextureDescriptor,
         imported: RHITexture | null,
         provider: RGImportedTextureProvider | null,
-        resourceLifetime: RGTextureResourceNode['resourceLifetime']
+        resourceLifetime: RGTextureResourceNode['resourceLifetime'],
+        initiallyInitialized: boolean
     ): MutableTextureResourceNode {
         let node = this.#textureNodePool[this.#textureNodeCursor];
         if (!node) {
@@ -272,6 +288,7 @@ export class RenderGraphBuilderStorage {
                 provider,
                 resourceLifetime,
                 readFromLastGraphWriter: false,
+                initiallyInitialized,
                 extracted: false
             };
             this.#textureNodePool.push(node);
@@ -285,6 +302,7 @@ export class RenderGraphBuilderStorage {
             node.provider = provider;
             node.resourceLifetime = resourceLifetime;
             node.readFromLastGraphWriter = false;
+            node.initiallyInitialized = initiallyInitialized;
             node.extracted = false;
         }
         this.#textureNodeCursor++;
@@ -336,6 +354,36 @@ export class RenderGraphBuilderStorage {
         return node;
     }
 
+    acquireTextureViewNode(
+        handle: RGTextureViewHandle,
+        name: string,
+        texture: RGTextureHandle,
+        descriptor: RGTextureViewDescriptor
+    ): MutableTextureViewResourceNode {
+        let node = this.#textureViewNodePool[this.#textureViewNodeCursor];
+        if (!node) {
+            node = {
+                kind: 'texture-view',
+                handle,
+                name,
+                texture,
+                descriptor: this.createTextureViewDescriptor(descriptor),
+                extracted: false
+            };
+            this.#textureViewNodePool.push(node);
+            this.recordResourceGrowth();
+        } else {
+            node.handle = handle;
+            node.name = name;
+            node.texture = texture;
+            this.copyTextureViewDescriptor(node.descriptor, descriptor);
+        }
+        this.#textureViewNodeCursor++;
+        this.resources.push(node);
+        this.resourceByHandle.set(handle, node);
+        return node;
+    }
+
     acquirePassNode<P>(
         handle: RGPassHandle,
         index: number,
@@ -361,7 +409,7 @@ export class RenderGraphBuilderStorage {
                 colorAttachments: [],
                 colorAttachmentPool: [],
                 depthStencilAttachment: null,
-                depthStencilStorage: { texture: 0 as RGTextureHandle },
+                depthStencilStorage: { texture: 0 as RGTextureAccessHandle },
                 explicitDependencies: [],
                 dependencySet: new Set(),
                 sideEffect: false
@@ -487,8 +535,10 @@ export class RenderGraphBuilderStorage {
         for (const pass of this.passes) this.clearPassReferences(pass);
         for (const resource of this.resources) {
             resource.name = '';
-            resource.imported = null;
-            resource.provider = null;
+            if (resource.kind !== 'texture-view') {
+                resource.imported = null;
+                resource.provider = null;
+            }
         }
         this.resources.length = 0;
         this.resourceByHandle.clear();
@@ -500,7 +550,9 @@ export class RenderGraphBuilderStorage {
 
     private recordResourceGrowth(): void {
         this.diagnostics.resourceNodeCapacity =
-            this.#textureNodePool.length + this.#bufferNodePool.length;
+            this.#textureNodePool.length +
+            this.#textureViewNodePool.length +
+            this.#bufferNodePool.length;
         this.diagnostics.growthCount++;
     }
 
@@ -548,6 +600,28 @@ export class RenderGraphBuilderStorage {
         };
         this.copyBufferDescriptor(target, descriptor);
         return target;
+    }
+
+    private createTextureViewDescriptor(
+        descriptor: RGTextureViewDescriptor
+    ): MutableTextureViewDescriptor {
+        const target: MutableTextureViewDescriptor = {};
+        this.copyTextureViewDescriptor(target, descriptor);
+        return target;
+    }
+
+    private copyTextureViewDescriptor(
+        target: MutableTextureViewDescriptor,
+        source: RGTextureViewDescriptor
+    ): void {
+        this.copyOptionalProperty(target, source, 'label');
+        this.copyOptionalProperty(target, source, 'format');
+        this.copyOptionalProperty(target, source, 'dimension');
+        this.copyOptionalProperty(target, source, 'aspect');
+        this.copyOptionalProperty(target, source, 'baseMipLevel');
+        this.copyOptionalProperty(target, source, 'mipLevelCount');
+        this.copyOptionalProperty(target, source, 'baseArrayLayer');
+        this.copyOptionalProperty(target, source, 'arrayLayerCount');
     }
 
     private copyBufferDescriptor(
@@ -601,14 +675,14 @@ export class RGPassBuilder {
         private readonly pass: MutablePassNode
     ) {}
 
-    readTexture(handle: RGTextureHandle): RGTextureHandle {
-        this.graph.requireResource(handle, 'texture');
+    readTexture(handle: RGTextureAccessHandle): RGTextureAccessHandle {
+        this.graph.requireTextureAccess(handle);
         this.addRead(handle);
         return handle;
     }
 
-    writeTexture(handle: RGTextureHandle): RGTextureHandle {
-        this.graph.requireResource(handle, 'texture');
+    writeTexture(handle: RGTextureAccessHandle): RGTextureAccessHandle {
+        this.graph.requireTextureAccess(handle);
         this.addWrite(handle);
         return handle;
     }
@@ -651,10 +725,10 @@ export class RGPassBuilder {
     }
 
     useColorAttachment(declaration: RGColorAttachmentDeclaration): void {
-        this.graph.requireResource(declaration.texture, 'texture');
+        this.graph.requireTextureAccess(declaration.texture);
         this.addAttachment(declaration.texture);
         if (declaration.resolveTarget !== undefined) {
-            this.graph.requireResource(declaration.resolveTarget, 'texture');
+            this.graph.requireTextureAccess(declaration.resolveTarget);
             this.addAttachment(declaration.resolveTarget);
         }
         this.graph.acquireColorAttachment(this.pass, declaration);
@@ -668,7 +742,7 @@ export class RGPassBuilder {
                 this.pass.name
             );
         }
-        this.graph.requireResource(declaration.texture, 'texture');
+        this.graph.requireTextureAccess(declaration.texture);
         this.addAttachment(declaration.texture);
         this.graph.setDepthStencilAttachment(this.pass, declaration);
     }
@@ -759,8 +833,21 @@ export class RenderGraphBuilder {
             descriptor,
             null,
             null,
-            'transient'
+            'transient',
+            false
         );
+        return handle;
+    }
+
+    createTextureView(
+        name: string,
+        texture: RGTextureHandle,
+        descriptor: RGTextureViewDescriptor = {}
+    ): RGTextureViewHandle {
+        this.assertOpen();
+        this.requireResource(texture, 'texture');
+        const handle = this.allocateResourceHandle() as RGTextureViewHandle;
+        this.#storage.acquireTextureViewNode(handle, name, texture, descriptor);
         return handle;
     }
 
@@ -780,8 +867,14 @@ export class RenderGraphBuilder {
         return handle;
     }
 
-    importTexture(name: string, texture: RHITexture): RGTextureHandle {
+    importTexture(name: string, texture: RHITexture, initiallyInitialized = true): RGTextureHandle {
         this.assertOpen();
+        if (typeof initiallyInitialized !== 'boolean') {
+            renderGraphFailure(
+                'invalid-descriptor',
+                'imported texture initialization state must be boolean'
+            );
+        }
         const handle = this.allocateResourceHandle() as RGTextureHandle;
         this.#storage.acquireTextureNode(
             handle,
@@ -790,7 +883,8 @@ export class RenderGraphBuilder {
             texture.descriptor,
             texture,
             null,
-            texture.lifetime
+            texture.lifetime,
+            initiallyInitialized
         );
         return handle;
     }
@@ -825,9 +919,16 @@ export class RenderGraphBuilder {
         name: string,
         descriptor: RGTextureDescriptor,
         provider: RGImportedTextureProvider,
-        lifetime: 'persistent' | 'frame' = 'frame'
+        lifetime: 'persistent' | 'frame' = 'frame',
+        initiallyInitialized = true
     ): RGTextureHandle {
         this.assertOpen();
+        if (typeof initiallyInitialized !== 'boolean') {
+            renderGraphFailure(
+                'invalid-descriptor',
+                'imported texture initialization state must be boolean'
+            );
+        }
         const handle = this.allocateResourceHandle() as RGTextureHandle;
         this.#storage.acquireTextureNode(
             handle,
@@ -836,7 +937,8 @@ export class RenderGraphBuilder {
             descriptor,
             null,
             provider,
-            lifetime
+            lifetime,
+            initiallyInitialized
         );
         return handle;
     }
@@ -1046,6 +1148,12 @@ export class RenderGraphBuilder {
     }
 
     /** @internal */
+    requireResource(handle: RGResourceHandle, kind: 'texture'): RGTextureResourceNode;
+    /** @internal */
+    requireResource(handle: RGResourceHandle, kind: 'buffer'): RGBufferResourceNode;
+    /** @internal */
+    requireResource(handle: RGResourceHandle): RGResourceNode;
+    /** @internal */
     requireResource(handle: RGResourceHandle, kind?: 'texture' | 'buffer'): RGResourceNode {
         this.assertOpen();
         const resource = this.#storage.resourceByHandle.get(handle);
@@ -1053,6 +1161,20 @@ export class RenderGraphBuilder {
             renderGraphFailure('invalid-handle', `resource handle ${String(handle)} is invalid`);
         }
         return resource as RGResourceNode;
+    }
+
+    /** @internal */
+    requireTextureAccess(
+        handle: RGTextureAccessHandle
+    ): RGTextureResourceNode | RGTextureViewResourceNode {
+        const resource = this.requireResource(handle);
+        if (resource.kind !== 'texture' && resource.kind !== 'texture-view') {
+            renderGraphFailure(
+                'invalid-handle',
+                `texture access handle ${String(handle)} is invalid`
+            );
+        }
+        return resource;
     }
 
     /** @internal */

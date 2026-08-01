@@ -570,8 +570,21 @@ function rhiTextureViewFormatsCompatible(
     );
 }
 
+type RHITextureViewNormalizationSource = Pick<
+    RHITexture,
+    | 'width'
+    | 'height'
+    | 'depthOrArrayLayers'
+    | 'mipLevelCount'
+    | 'sampleCount'
+    | 'dimension'
+    | 'format'
+> & {
+    readonly descriptor: Pick<RHINormalizedTextureDescriptor, 'viewDimension' | 'viewFormats'>;
+};
+
 function defaultTextureViewArrayLayerCount(
-    texture: RHITexture,
+    texture: RHITextureViewNormalizationSource,
     dimension: RHITextureViewDimension,
     baseArrayLayer: number
 ): number {
@@ -597,13 +610,10 @@ function textureViewDimensionIsCompatible(
     return false;
 }
 
-export function normalizeRHITextureViewDescriptor(
-    texture: RHITexture,
+function normalizeTextureViewDescriptor(
+    texture: RHITextureViewNormalizationSource,
     descriptor: RHITextureViewDescriptor = {}
 ): Readonly<RHINormalizedTextureViewDescriptor> {
-    if (texture.destroyed) {
-        fail('destroyed-object', 'texture has been destroyed', 'textureView.texture');
-    }
     const baseMipLevel = descriptor.baseMipLevel ?? 0;
     const baseArrayLayer = descriptor.baseArrayLayer ?? 0;
     const dimension = descriptor.dimension ?? texture.descriptor.viewDimension;
@@ -729,6 +739,36 @@ export function normalizeRHITextureViewDescriptor(
         baseArrayLayer,
         arrayLayerCount
     });
+}
+
+/** Normalize a texture view against an already-normalized backend-neutral texture descriptor. */
+export function normalizeRHITextureViewDescriptorForTextureDescriptor(
+    texture: Readonly<RHINormalizedTextureDescriptor>,
+    descriptor: RHITextureViewDescriptor = {}
+): Readonly<RHINormalizedTextureViewDescriptor> {
+    return normalizeTextureViewDescriptor(
+        {
+            width: texture.size.width,
+            height: texture.size.height,
+            depthOrArrayLayers: texture.size.depthOrArrayLayers,
+            mipLevelCount: texture.mipLevelCount,
+            sampleCount: texture.sampleCount,
+            dimension: texture.dimension,
+            format: texture.format,
+            descriptor: texture
+        },
+        descriptor
+    );
+}
+
+export function normalizeRHITextureViewDescriptor(
+    texture: RHITexture,
+    descriptor: RHITextureViewDescriptor = {}
+): Readonly<RHINormalizedTextureViewDescriptor> {
+    if (texture.destroyed) {
+        fail('destroyed-object', 'texture has been destroyed', 'textureView.texture');
+    }
+    return normalizeTextureViewDescriptor(texture, descriptor);
 }
 
 export function normalizeRHISamplerDescriptor(

@@ -3,7 +3,7 @@ import type StorageGraphicsShader from '../../compute/StorageGraphicsShader';
 import type { RendererListHandle } from '../RendererList';
 import type {
     RenderGraphBufferHandle,
-    RenderGraphTextureHandle,
+    RenderGraphTextureAccessHandle,
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     ScriptableRenderPass,
@@ -61,7 +61,7 @@ export interface SceneRenderPassParameters {
      * Opaque scene color sampled by transmission/volume materials in this pass. The graph keeps
      * this input distinct from the active color attachment, preventing raster feedback.
      */
-    readonly opaqueTexture?: RenderGraphTextureHandle;
+    readonly opaqueTexture?: RenderGraphTextureAccessHandle;
     /** Optional WebGPU-only storage-aware shader variant for the ordinary renderer-list path. */
     readonly storageShaderVariant?: Readonly<SceneStorageShaderVariant>;
 }

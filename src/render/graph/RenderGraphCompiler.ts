@@ -8,12 +8,14 @@ import {
     type RHICapabilities,
     type RHINormalizedBufferDescriptor,
     type RHINormalizedTextureDescriptor,
+    type RHINormalizedTextureViewDescriptor,
     type RHITexture,
     type RHITextureDescriptor
 } from '../rhi/core';
 import {
     normalizeRHIBufferDescriptor,
-    normalizeRHITextureDescriptor
+    normalizeRHITextureDescriptor,
+    normalizeRHITextureViewDescriptorForTextureDescriptor
 } from '../rhi/core/RHIValidation';
 import type { RGPassNode, RenderGraphBuildSnapshot } from './RenderGraphBuilder';
 import type {
@@ -27,7 +29,9 @@ import type {
     RGResourceHandle,
     RGResourceLifetime,
     RGResourceNode,
-    RGTextureHandle
+    RGTextureAccessHandle,
+    RGTextureHandle,
+    RGTextureViewHandle
 } from './RenderGraphResource';
 import { renderGraphFailure } from './RenderGraphValidation';
 
@@ -40,6 +44,7 @@ export interface CompiledRGTextureResource {
     readonly imported: RHITexture | null;
     readonly provider: RGImportedTextureProvider | null;
     readonly readFromLastGraphWriter: boolean;
+    readonly initiallyInitialized: boolean;
     readonly extracted: boolean;
     readonly lifetime: RGResourceLifetime | null;
 }
@@ -57,7 +62,24 @@ export interface CompiledRGBufferResource {
     readonly lifetime: RGResourceLifetime | null;
 }
 
-export type CompiledRGResource = CompiledRGTextureResource | CompiledRGBufferResource;
+export interface CompiledRGTextureViewResource {
+    readonly kind: 'texture-view';
+    readonly handle: RGTextureViewHandle;
+    readonly name: string;
+    readonly origin: 'view';
+    readonly texture: RGTextureHandle;
+    readonly descriptor: Readonly<
+        RHINormalizedTextureViewDescriptor & {
+            readonly lifetime?: never;
+            readonly usage?: never;
+        }
+    >;
+    readonly extracted: false;
+    readonly lifetime: RGResourceLifetime | null;
+}
+
+export type CompiledRGResource =
+    CompiledRGTextureResource | CompiledRGTextureViewResource | CompiledRGBufferResource;
 
 export interface CompiledRGPass {
     readonly handle: RGPassHandle;
@@ -114,23 +136,27 @@ type MutableCompilerStorageDiagnostics = {
     ]: RenderGraphCompilerStorageDiagnostics[Key];
 };
 
+type RGHazardKey = string;
+
 class RenderGraphCompilerWorkspace {
     readonly normalizedResources: CompiledRGResource[] = [];
     readonly resourceByHandle = new Map<RGResourceHandle, CompiledRGResource>();
     readonly resourceWriters = new Map<RGResourceHandle, number>();
-    readonly lastPreferredGraphWriter = new Map<RGResourceHandle, number>();
+    readonly lastPreferredGraphWriter = new Map<RGHazardKey, number>();
     readonly preferredGraphWriterReads = new Set<RGResourceHandle>();
-    readonly lastWriter = new Map<RGResourceHandle, number>();
-    readonly readersSinceWrite = new Map<RGResourceHandle, Set<number>>();
-    readonly contentAvailable = new Map<RGResourceHandle, boolean>();
-    readonly depthContentAvailable = new Map<RGResourceHandle, boolean>();
-    readonly stencilContentAvailable = new Map<RGResourceHandle, boolean>();
+    readonly hazardKeysByHandle = new Map<RGResourceHandle, readonly RGHazardKey[]>();
+    readonly lastWriter = new Map<RGHazardKey, number>();
+    readonly readersSinceWrite = new Map<RGHazardKey, Set<number>>();
+    readonly contentAvailable = new Map<RGHazardKey, boolean>();
     readonly passIndexByHandle = new Map<RGPassHandle, number>();
     readonly outgoing: Set<number>[] = [];
     readonly incoming: Set<number>[] = [];
     readonly roots = new Set<number>();
     readonly scratchReadSet = new Set<RGResourceHandle>();
     readonly scratchReadWriteSet = new Set<RGBufferHandle>();
+    readonly scratchReadHazards = new Set<RGHazardKey>();
+    readonly scratchWriteHazards = new Set<RGHazardKey>();
+    readonly scratchAttachmentHazards = new Set<RGHazardKey>();
     readonly firstUse = new Map<RGResourceHandle, number>();
     readonly lastUse = new Map<RGResourceHandle, number>();
     readonly indegree: number[] = [];
@@ -155,15 +181,17 @@ class RenderGraphCompilerWorkspace {
         this.resourceWriters.clear();
         this.lastPreferredGraphWriter.clear();
         this.preferredGraphWriterReads.clear();
+        this.hazardKeysByHandle.clear();
         this.lastWriter.clear();
         this.readersSinceWrite.clear();
         this.contentAvailable.clear();
-        this.depthContentAvailable.clear();
-        this.stencilContentAvailable.clear();
         this.passIndexByHandle.clear();
         this.roots.clear();
         this.scratchReadSet.clear();
         this.scratchReadWriteSet.clear();
+        this.scratchReadHazards.clear();
+        this.scratchWriteHazards.clear();
+        this.scratchAttachmentHazards.clear();
         this.firstUse.clear();
         this.lastUse.clear();
         this.indegree.length = 0;
@@ -198,7 +226,7 @@ class RenderGraphCompilerWorkspace {
         }
     }
 
-    acquireReaderSet(handle: RGResourceHandle): Set<number> {
+    acquireReaderSet(handle: RGHazardKey): Set<number> {
         let readers = this.readersSinceWrite.get(handle);
         if (readers) return readers;
         readers = this.#readerSetPool[this.#readerSetCursor];
@@ -219,15 +247,17 @@ class RenderGraphCompilerWorkspace {
         this.resourceWriters.clear();
         this.lastPreferredGraphWriter.clear();
         this.preferredGraphWriterReads.clear();
+        this.hazardKeysByHandle.clear();
         this.lastWriter.clear();
         this.readersSinceWrite.clear();
         this.contentAvailable.clear();
-        this.depthContentAvailable.clear();
-        this.stencilContentAvailable.clear();
         this.passIndexByHandle.clear();
         this.roots.clear();
         this.scratchReadSet.clear();
         this.scratchReadWriteSet.clear();
+        this.scratchReadHazards.clear();
+        this.scratchWriteHazards.clear();
+        this.scratchAttachmentHazards.clear();
         this.firstUse.clear();
         this.lastUse.clear();
         this.indegree.length = 0;
@@ -274,7 +304,8 @@ function stableTopologicalOrder(
 
 function normalizedResource(
     resource: RGResourceNode,
-    capabilities: RHICapabilities
+    capabilities: RHICapabilities,
+    resources: ReadonlyMap<RGResourceHandle, CompiledRGResource>
 ): CompiledRGResource {
     if (resource.kind === 'texture') {
         const descriptor = normalizeRHITextureDescriptor(
@@ -293,7 +324,31 @@ function normalizedResource(
             imported: resource.imported,
             provider: resource.provider,
             readFromLastGraphWriter: resource.readFromLastGraphWriter,
+            initiallyInitialized: resource.initiallyInitialized,
             extracted: resource.extracted,
+            lifetime: null
+        };
+    }
+    if (resource.kind === 'texture-view') {
+        const texture = resources.get(resource.texture);
+        if (texture?.kind !== 'texture') {
+            renderGraphFailure(
+                'invalid-handle',
+                `texture view ${resource.name} references an invalid texture`
+            );
+        }
+        const descriptor = normalizeRHITextureViewDescriptorForTextureDescriptor(
+            texture.descriptor,
+            resource.descriptor
+        );
+        return {
+            kind: 'texture-view',
+            handle: resource.handle,
+            name: resource.name,
+            origin: 'view',
+            texture: resource.texture,
+            descriptor,
+            extracted: false,
             lifetime: null
         };
     }
@@ -355,20 +410,110 @@ function markLivePasses(
     return live;
 }
 
-function requireTextureResource(
+interface CompiledRGTextureAccess {
+    readonly resource: CompiledRGTextureResource | CompiledRGTextureViewResource;
+    readonly texture: CompiledRGTextureResource;
+    readonly view: Readonly<RHINormalizedTextureViewDescriptor>;
+    readonly width: number;
+    readonly height: number;
+    readonly depthOrArrayLayers: number;
+}
+
+function requireTextureAccess(
     resources: ReadonlyMap<RGResourceHandle, CompiledRGResource>,
-    handle: RGTextureHandle,
+    handle: RGTextureAccessHandle,
     passName: string
-): CompiledRGTextureResource {
+): CompiledRGTextureAccess {
     const resource = resources.get(handle);
-    if (resource?.kind !== 'texture') {
+    if (resource?.kind !== 'texture' && resource?.kind !== 'texture-view') {
         renderGraphFailure(
             'invalid-handle',
-            `texture resource ${String(handle)} is not in this graph`,
+            `texture access ${String(handle)} is not in this graph`,
             passName
         );
     }
-    return resource;
+    const texture = resource.kind === 'texture' ? resource : resources.get(resource.texture);
+    if (texture?.kind !== 'texture') {
+        return renderGraphFailure(
+            'invalid-handle',
+            `texture access ${String(handle)} has no parent texture`,
+            passName
+        );
+    }
+    const view =
+        resource.kind === 'texture'
+            ? normalizeRHITextureViewDescriptorForTextureDescriptor(texture.descriptor)
+            : resource.descriptor;
+    const mipScale = 2 ** view.baseMipLevel;
+    return {
+        resource,
+        texture,
+        view,
+        width: Math.max(1, Math.floor(texture.descriptor.size.width / mipScale)),
+        height: Math.max(1, Math.floor(texture.descriptor.size.height / mipScale)),
+        depthOrArrayLayers:
+            texture.descriptor.dimension === '3d'
+                ? Math.max(1, Math.floor(texture.descriptor.size.depthOrArrayLayers / mipScale))
+                : view.arrayLayerCount
+    };
+}
+
+function textureAccessAspects(
+    access: CompiledRGTextureAccess
+): readonly ('color' | 'depth' | 'stencil')[] {
+    if (access.view.aspect === 'depth-only') return ['depth'];
+    if (access.view.aspect === 'stencil-only') return ['stencil'];
+    const depth = rhiTextureFormatHasDepth(access.view.format);
+    const stencil = rhiTextureFormatHasStencil(access.view.format);
+    if (depth && stencil) return ['depth', 'stencil'];
+    if (depth) return ['depth'];
+    if (stencil) return ['stencil'];
+    return ['color'];
+}
+
+function createTextureHazardKeys(access: CompiledRGTextureAccess): readonly RGHazardKey[] {
+    const keys: RGHazardKey[] = [];
+    const layers = access.texture.descriptor.dimension === '3d' ? 1 : access.view.arrayLayerCount;
+    const aspects = textureAccessAspects(access);
+    for (
+        let mip = access.view.baseMipLevel;
+        mip < access.view.baseMipLevel + access.view.mipLevelCount;
+        mip += 1
+    ) {
+        for (let layerOffset = 0; layerOffset < layers; layerOffset += 1) {
+            const layer = access.view.baseArrayLayer + layerOffset;
+            for (const aspect of aspects) {
+                keys.push(
+                    `${String(access.texture.handle)}:${String(mip)}:${String(layer)}:${aspect}`
+                );
+            }
+        }
+    }
+    return Object.freeze(keys);
+}
+
+function requireHazardKeys(
+    workspace: RenderGraphCompilerWorkspace,
+    handle: RGResourceHandle,
+    passName = ''
+): readonly RGHazardKey[] {
+    const keys = workspace.hazardKeysByHandle.get(handle);
+    if (keys === undefined) {
+        renderGraphFailure(
+            'invalid-handle',
+            `resource ${String(handle)} has no hazard identity`,
+            passName
+        );
+    }
+    return keys;
+}
+
+function filterHazardKeysByAspect(
+    keys: readonly RGHazardKey[],
+    aspect: 'depth' | 'stencil'
+): readonly RGHazardKey[] {
+    const suffix = `:${aspect}`;
+    return keys.filter(key => key.endsWith(suffix));
 }
 
 function validateLoadOp(value: unknown, path: string): asserts value is 'load' | 'clear' {
@@ -384,26 +529,30 @@ function validateStoreOp(value: unknown, path: string): asserts value is 'store'
 }
 
 function validateRenderAttachmentTexture(
-    resource: CompiledRGTextureResource,
+    access: CompiledRGTextureAccess,
     path: string,
     expected: 'color' | 'depth-stencil'
 ): void {
-    if ((resource.descriptor.usage & RHITextureUsage.RENDER_ATTACHMENT) === 0) {
+    if ((access.texture.descriptor.usage & RHITextureUsage.RENDER_ATTACHMENT) === 0) {
         renderGraphFailure(
             'invalid-descriptor',
             'attachment texture lacks RENDER_ATTACHMENT usage',
             path
         );
     }
-    if (resource.descriptor.viewDimension !== '2d') {
+    if (
+        access.view.dimension !== '2d' ||
+        access.view.mipLevelCount !== 1 ||
+        access.view.arrayLayerCount !== 1
+    ) {
         renderGraphFailure(
             'invalid-descriptor',
-            'attachment declaration requires a single 2D default view',
+            'attachment declaration requires one 2D mip and array layer',
             path
         );
     }
-    const depth = rhiTextureFormatHasDepth(resource.descriptor.format);
-    const stencil = rhiTextureFormatHasStencil(resource.descriptor.format);
+    const depth = rhiTextureFormatHasDepth(access.view.format);
+    const stencil = rhiTextureFormatHasStencil(access.view.format);
     if (expected === 'color' ? depth || stencil : !depth && !stencil) {
         renderGraphFailure(
             'invalid-descriptor',
@@ -416,17 +565,15 @@ function validateRenderAttachmentTexture(
 }
 
 function validateAttachmentCompatibility(
-    reference: CompiledRGTextureResource,
-    candidate: CompiledRGTextureResource,
+    reference: CompiledRGTextureAccess,
+    candidate: CompiledRGTextureAccess,
     path: string
 ): void {
-    const first = reference.descriptor;
-    const second = candidate.descriptor;
     if (
-        first.size.width !== second.size.width ||
-        first.size.height !== second.size.height ||
-        first.size.depthOrArrayLayers !== second.size.depthOrArrayLayers ||
-        first.sampleCount !== second.sampleCount
+        reference.width !== candidate.width ||
+        reference.height !== candidate.height ||
+        reference.depthOrArrayLayers !== candidate.depthOrArrayLayers ||
+        reference.texture.descriptor.sampleCount !== candidate.texture.descriptor.sampleCount
     ) {
         renderGraphFailure(
             'invalid-descriptor',
@@ -442,8 +589,8 @@ function validateColorAttachment(
     passName: string,
     index: number
 ): {
-    readonly source: CompiledRGTextureResource;
-    readonly resolve: CompiledRGTextureResource | null;
+    readonly source: CompiledRGTextureAccess;
+    readonly resolve: CompiledRGTextureAccess | null;
 } {
     const path = `${passName}.colorAttachments[${String(index)}]`;
     validateLoadOp(declaration.loadOp, `${path}.loadOp`);
@@ -464,14 +611,14 @@ function validateColorAttachment(
             );
         }
     }
-    const source = requireTextureResource(resources, declaration.texture, passName);
+    const source = requireTextureAccess(resources, declaration.texture, passName);
     validateRenderAttachmentTexture(source, `${path}.texture`, 'color');
     if (declaration.resolveTarget === undefined) return { source, resolve: null };
 
-    const resolve = requireTextureResource(resources, declaration.resolveTarget, passName);
+    const resolve = requireTextureAccess(resources, declaration.resolveTarget, passName);
     validateRenderAttachmentTexture(resolve, `${path}.resolveTarget`, 'color');
-    const sourceDescriptor = source.descriptor;
-    const resolveDescriptor = resolve.descriptor;
+    const sourceDescriptor = source.texture.descriptor;
+    const resolveDescriptor = resolve.texture.descriptor;
     if (sourceDescriptor.sampleCount <= 1 || resolveDescriptor.sampleCount !== 1) {
         renderGraphFailure(
             'invalid-descriptor',
@@ -479,19 +626,17 @@ function validateColorAttachment(
             `${path}.resolveTarget`
         );
     }
-    if (sourceDescriptor.format !== resolveDescriptor.format) {
+    if (source.view.format !== resolve.view.format) {
         renderGraphFailure(
             'invalid-descriptor',
             'resolve source and target formats must match',
             `${path}.resolveTarget`
         );
     }
-    const sourceSize = sourceDescriptor.size;
-    const resolveSize = resolveDescriptor.size;
     if (
-        sourceSize.width !== resolveSize.width ||
-        sourceSize.height !== resolveSize.height ||
-        sourceSize.depthOrArrayLayers !== resolveSize.depthOrArrayLayers
+        source.width !== resolve.width ||
+        source.height !== resolve.height ||
+        source.depthOrArrayLayers !== resolve.depthOrArrayLayers
     ) {
         renderGraphFailure(
             'invalid-descriptor',
@@ -562,12 +707,14 @@ function validateDepthStencilAttachment(
     declaration: RGDepthStencilAttachmentDeclaration,
     resources: ReadonlyMap<RGResourceHandle, CompiledRGResource>,
     passName: string
-): { readonly resource: CompiledRGTextureResource; readonly access: DepthStencilAccess } {
+): { readonly resource: CompiledRGTextureAccess; readonly access: DepthStencilAccess } {
     const path = `${passName}.depthStencilAttachment`;
-    const resource = requireTextureResource(resources, declaration.texture, passName);
+    const resource = requireTextureAccess(resources, declaration.texture, passName);
     validateRenderAttachmentTexture(resource, `${path}.texture`, 'depth-stencil');
-    const hasDepth = rhiTextureFormatHasDepth(resource.descriptor.format);
-    const hasStencil = rhiTextureFormatHasStencil(resource.descriptor.format);
+    const hasDepth =
+        resource.view.aspect !== 'stencil-only' && rhiTextureFormatHasDepth(resource.view.format);
+    const hasStencil =
+        resource.view.aspect !== 'depth-only' && rhiTextureFormatHasStencil(resource.view.format);
     const depth = validateDepthStencilAspect({
         path,
         label: 'depth',
@@ -669,35 +816,49 @@ export class RenderGraphCompiler {
         const lastWriter = workspace.lastWriter;
         const readersSinceWrite = workspace.readersSinceWrite;
         const contentAvailable = workspace.contentAvailable;
-        const depthContentAvailable = workspace.depthContentAvailable;
-        const stencilContentAvailable = workspace.stencilContentAvailable;
         const passIndexByHandle = workspace.passIndexByHandle;
         const outgoing = workspace.outgoing;
         const incoming = workspace.incoming;
         for (const resource of snapshot.resources) {
-            const normalized = normalizedResource(resource, capabilities);
+            const normalized = normalizedResource(resource, capabilities, resourceByHandle);
             normalizedResources.push(normalized);
             resourceByHandle.set(normalized.handle, normalized);
-            const imported = normalized.origin === 'imported';
-            contentAvailable.set(
-                normalized.handle,
-                normalized.kind === 'buffer' ? normalized.initiallyInitialized : imported
-            );
-            if (normalized.kind === 'texture') {
-                if (rhiTextureFormatHasDepth(normalized.descriptor.format)) {
-                    depthContentAvailable.set(normalized.handle, imported);
-                }
-                if (rhiTextureFormatHasStencil(normalized.descriptor.format)) {
-                    stencilContentAvailable.set(normalized.handle, imported);
+            if (normalized.kind === 'buffer') {
+                const key = `buffer:${String(normalized.handle)}`;
+                const keys = Object.freeze([key]);
+                workspace.hazardKeysByHandle.set(normalized.handle, keys);
+                contentAvailable.set(key, normalized.initiallyInitialized);
+            } else {
+                const access = requireTextureAccess(
+                    resourceByHandle,
+                    normalized.handle,
+                    normalized.name
+                );
+                const keys = createTextureHazardKeys(access);
+                workspace.hazardKeysByHandle.set(normalized.handle, keys);
+                if (normalized.kind === 'texture') {
+                    const initialized =
+                        normalized.origin === 'imported' && normalized.initiallyInitialized;
+                    for (const key of keys) contentAvailable.set(key, initialized);
                 }
             }
         }
         for (const pass of snapshot.passes) passIndexByHandle.set(pass.handle, pass.index);
 
-        const capturePreferredWriter = (handle: RGResourceHandle, pass: RGPassNode): void => {
+        const capturePreferredWriter = (
+            handle: RGResourceHandle,
+            pass: RGPassNode,
+            keys = requireHazardKeys(workspace, handle, pass.name)
+        ): void => {
             const resource = resourceByHandle.get(handle);
-            if (resource?.kind === 'texture' && resource.readFromLastGraphWriter) {
-                lastPreferredGraphWriter.set(handle, pass.index);
+            const texture =
+                resource?.kind === 'texture-view'
+                    ? resourceByHandle.get(resource.texture)
+                    : resource;
+            if (texture?.kind === 'texture' && texture.readFromLastGraphWriter) {
+                for (const key of keys) {
+                    lastPreferredGraphWriter.set(key, pass.index);
+                }
             }
         };
         for (const pass of snapshot.passes) {
@@ -716,7 +877,16 @@ export class RenderGraphCompiler {
                     pass.name
                 );
                 if (access.depth.writes || access.stencil.writes) {
-                    capturePreferredWriter(resource.handle, pass);
+                    const keys = requireHazardKeys(workspace, resource.resource.handle, pass.name);
+                    capturePreferredWriter(
+                        resource.resource.handle,
+                        pass,
+                        keys.filter(
+                            key =>
+                                (access.depth.writes && key.endsWith(':depth')) ||
+                                (access.stencil.writes && key.endsWith(':stencil'))
+                        )
+                    );
                 }
             }
         }
@@ -732,41 +902,76 @@ export class RenderGraphCompiler {
             }
             return resource;
         };
+        const readHazardDependencies = (keys: readonly RGHazardKey[], pass: RGPassNode): void => {
+            for (const key of keys) {
+                const writer = lastWriter.get(key);
+                if (writer !== undefined) addEdge(outgoing, incoming, writer, pass.index);
+                const readers = readersSinceWrite.get(key) ?? workspace.acquireReaderSet(key);
+                readers.add(pass.index);
+            }
+        };
+        const writeHazardDependencies = (keys: readonly RGHazardKey[], pass: RGPassNode): void => {
+            for (const key of keys) {
+                const writer = lastWriter.get(key);
+                if (writer !== undefined) addEdge(outgoing, incoming, writer, pass.index);
+                for (const reader of readersSinceWrite.get(key) ?? []) {
+                    addEdge(outgoing, incoming, reader, pass.index);
+                }
+                workspace.acquireReaderSet(key).clear();
+                lastWriter.set(key, pass.index);
+            }
+        };
         const readResourceDependency = (
             handle: RGResourceHandle,
             pass: RGPassNode,
             preferLastGraphWriter = false
         ): void => {
             const resource = requireResource(handle, pass);
-            const preferredWriter = preferLastGraphWriter
-                ? lastPreferredGraphWriter.get(handle)
-                : undefined;
-            if (resource.kind === 'texture' && resource.readFromLastGraphWriter) {
-                if (preferredWriter !== undefined) {
-                    addEdge(outgoing, incoming, preferredWriter, pass.index);
-                    preferredGraphWriterReads.add(handle);
-                    return;
+            const parent =
+                resource.kind === 'texture-view'
+                    ? resourceByHandle.get(resource.texture)
+                    : resource;
+            if (parent?.kind === 'texture' && parent.readFromLastGraphWriter) {
+                let usedPreferredWriter = false;
+                for (const key of requireHazardKeys(workspace, handle, pass.name)) {
+                    const preferredWriter = preferLastGraphWriter
+                        ? lastPreferredGraphWriter.get(key)
+                        : undefined;
+                    if (preferredWriter !== undefined) {
+                        addEdge(outgoing, incoming, preferredWriter, pass.index);
+                        usedPreferredWriter = true;
+                    } else readHazardDependencies([key], pass);
                 }
+                if (usedPreferredWriter) {
+                    preferredGraphWriterReads.add(handle);
+                }
+                return;
             }
-            const writer = lastWriter.get(handle);
-            if (writer !== undefined) addEdge(outgoing, incoming, writer, pass.index);
-            let readers = readersSinceWrite.get(handle);
-            readers ??= workspace.acquireReaderSet(handle);
-            readers.add(pass.index);
+            readHazardDependencies(requireHazardKeys(workspace, handle, pass.name), pass);
         };
-        const genericContentAvailable = (resource: CompiledRGResource): boolean =>
-            contentAvailable.get(resource.handle) === true;
+        const genericContentAvailable = (resource: CompiledRGResource): boolean => {
+            for (const key of requireHazardKeys(workspace, resource.handle)) {
+                if (contentAvailable.get(key) !== true) return false;
+            }
+            return true;
+        };
         const readResource = (
             handle: RGResourceHandle,
             pass: RGPassNode,
             preferLastGraphWriter = false
         ): void => {
             const resource = requireResource(handle, pass);
+            const preferredTexture =
+                resource.kind === 'texture-view'
+                    ? resourceByHandle.get(resource.texture)
+                    : resource;
             if (
                 preferLastGraphWriter &&
-                resource.kind === 'texture' &&
-                resource.readFromLastGraphWriter &&
-                lastPreferredGraphWriter.has(handle)
+                preferredTexture?.kind === 'texture' &&
+                preferredTexture.readFromLastGraphWriter &&
+                requireHazardKeys(workspace, handle, pass.name).some(key =>
+                    lastPreferredGraphWriter.has(key)
+                )
             ) {
                 readResourceDependency(handle, pass, true);
                 return;
@@ -785,26 +990,14 @@ export class RenderGraphCompiler {
             pass: RGPassNode
         ): CompiledRGResource => {
             const resource = requireResource(handle, pass);
-            const writer = lastWriter.get(handle);
-            if (writer !== undefined) addEdge(outgoing, incoming, writer, pass.index);
-            for (const reader of readersSinceWrite.get(handle) ?? []) {
-                addEdge(outgoing, incoming, reader, pass.index);
-            }
-            workspace.acquireReaderSet(handle).clear();
-            lastWriter.set(handle, pass.index);
+            writeHazardDependencies(requireHazardKeys(workspace, handle, pass.name), pass);
             resourceWriters.set(handle, pass.index);
             return resource;
         };
         const writeResource = (handle: RGResourceHandle, pass: RGPassNode): void => {
-            const resource = writeResourceDependency(handle, pass);
-            contentAvailable.set(handle, true);
-            if (resource.kind === 'texture') {
-                if (rhiTextureFormatHasDepth(resource.descriptor.format)) {
-                    depthContentAvailable.set(handle, true);
-                }
-                if (rhiTextureFormatHasStencil(resource.descriptor.format)) {
-                    stencilContentAvailable.set(handle, true);
-                }
+            writeResourceDependency(handle, pass);
+            for (const key of requireHazardKeys(workspace, handle, pass.name)) {
+                contentAvailable.set(key, true);
             }
         };
 
@@ -816,7 +1009,7 @@ export class RenderGraphCompiler {
                     pass.name
                 );
             }
-            let attachmentReference: CompiledRGTextureResource | null = null;
+            let attachmentReference: CompiledRGTextureAccess | null = null;
             const readSet = workspace.scratchReadSet;
             readSet.clear();
             for (const handle of pass.reads) readSet.add(handle);
@@ -833,14 +1026,53 @@ export class RenderGraphCompiler {
                 }
                 readWriteSet.add(handle);
             }
-            for (const handle of pass.writes) {
-                if (readSet.has(handle) && !readWriteSet.has(handle as RGBufferHandle)) {
-                    renderGraphFailure(
-                        'duplicate-access',
-                        'same-pass read/write feedback is not portable',
-                        pass.name
-                    );
+            const readHazards = workspace.scratchReadHazards;
+            const writeHazards = workspace.scratchWriteHazards;
+            const attachmentHazards = workspace.scratchAttachmentHazards;
+            readHazards.clear();
+            writeHazards.clear();
+            attachmentHazards.clear();
+            for (const handle of pass.reads) {
+                for (const key of requireHazardKeys(workspace, handle, pass.name)) {
+                    readHazards.add(key);
                 }
+            }
+            for (const handle of pass.writes) {
+                for (const key of requireHazardKeys(workspace, handle, pass.name)) {
+                    if (readHazards.has(key) && !readWriteSet.has(handle as RGBufferHandle)) {
+                        renderGraphFailure(
+                            'duplicate-access',
+                            'same-pass overlapping texture/buffer feedback is not portable',
+                            pass.name
+                        );
+                    }
+                    writeHazards.add(key);
+                }
+            }
+            const addAttachmentHazards = (handle: RGTextureAccessHandle): void => {
+                for (const key of requireHazardKeys(workspace, handle, pass.name)) {
+                    if (
+                        readHazards.has(key) ||
+                        writeHazards.has(key) ||
+                        attachmentHazards.has(key)
+                    ) {
+                        renderGraphFailure(
+                            'duplicate-access',
+                            'attachment overlaps another same-pass resource access',
+                            pass.name
+                        );
+                    }
+                    attachmentHazards.add(key);
+                }
+            };
+            for (const attachment of pass.colorAttachments) {
+                addAttachmentHazards(attachment.texture);
+                if (attachment.resolveTarget !== undefined) {
+                    addAttachmentHazards(attachment.resolveTarget);
+                }
+            }
+            if (pass.depthStencilAttachment !== null) {
+                addAttachmentHazards(pass.depthStencilAttachment.texture);
             }
             for (const access of pass.bufferAccesses) {
                 const resource = requireResource(access.buffer, pass);
@@ -905,10 +1137,13 @@ export class RenderGraphCompiler {
                         `${pass.name}.colorAttachments[${String(index)}]`
                     );
                 } else attachmentReference = source;
-                if (declaration.loadOp === 'load') readResource(source.handle, pass);
-                writeResource(source.handle, pass);
-                contentAvailable.set(source.handle, declaration.storeOp === 'store');
-                if (resolve) writeResource(resolve.handle, pass);
+                const sourceHandle = source.resource.handle;
+                if (declaration.loadOp === 'load') readResource(sourceHandle, pass);
+                writeResource(sourceHandle, pass);
+                for (const key of requireHazardKeys(workspace, sourceHandle, pass.name)) {
+                    contentAvailable.set(key, declaration.storeOp === 'store');
+                }
+                if (resolve) writeResource(resolve.resource.handle, pass);
             }
             if (pass.depthStencilAttachment) {
                 const { resource, access } = validateDepthStencilAttachment(
@@ -923,43 +1158,52 @@ export class RenderGraphCompiler {
                         `${pass.name}.depthStencilAttachment`
                     );
                 }
+                const resourceHandle = resource.resource.handle;
+                const resourceKeys = requireHazardKeys(workspace, resourceHandle, pass.name);
+                const depthKeys = filterHazardKeysByAspect(resourceKeys, 'depth');
+                const stencilKeys = filterHazardKeysByAspect(resourceKeys, 'stencil');
                 if (
                     access.depth.requiresLoad &&
-                    depthContentAvailable.get(resource.handle) !== true
+                    depthKeys.some(key => contentAvailable.get(key) !== true)
                 ) {
                     renderGraphFailure(
                         'uninitialized-read',
-                        `loads depth from ${resource.name} before initialization or after discard`,
+                        `loads depth from ${resource.resource.name} before initialization or after discard`,
                         pass.name
                     );
                 }
                 if (
                     access.stencil.requiresLoad &&
-                    stencilContentAvailable.get(resource.handle) !== true
+                    stencilKeys.some(key => contentAvailable.get(key) !== true)
                 ) {
                     renderGraphFailure(
                         'uninitialized-read',
-                        `loads stencil from ${resource.name} before initialization or after discard`,
+                        `loads stencil from ${resource.resource.name} before initialization or after discard`,
                         pass.name
                     );
                 }
                 if (access.depth.requiresLoad || access.stencil.requiresLoad) {
-                    readResourceDependency(resource.handle, pass);
+                    const readKeys: RGHazardKey[] = [];
+                    if (access.depth.requiresLoad) readKeys.push(...depthKeys);
+                    if (access.stencil.requiresLoad) readKeys.push(...stencilKeys);
+                    readHazardDependencies(readKeys, pass);
                 }
                 if (access.depth.writes || access.stencil.writes) {
-                    writeResourceDependency(resource.handle, pass);
+                    const writeKeys: RGHazardKey[] = [];
+                    if (access.depth.writes) writeKeys.push(...depthKeys);
+                    if (access.stencil.writes) writeKeys.push(...stencilKeys);
+                    writeHazardDependencies(writeKeys, pass);
                     if (access.depth.writes) {
-                        depthContentAvailable.set(resource.handle, access.depth.stores);
+                        for (const key of depthKeys) {
+                            contentAvailable.set(key, access.depth.stores);
+                        }
                     }
                     if (access.stencil.writes) {
-                        stencilContentAvailable.set(resource.handle, access.stencil.stores);
+                        for (const key of stencilKeys) {
+                            contentAvailable.set(key, access.stencil.stores);
+                        }
                     }
-                    contentAvailable.set(
-                        resource.handle,
-                        (!access.hasDepth || depthContentAvailable.get(resource.handle) === true) &&
-                            (!access.hasStencil ||
-                                stencilContentAvailable.get(resource.handle) === true)
-                    );
+                    resourceWriters.set(resourceHandle, pass.index);
                 }
             }
         }
@@ -989,17 +1233,21 @@ export class RenderGraphCompiler {
                     `output ${String(output)} is not in this graph`
                 );
             }
-            const writer = resourceWriters.get(output);
+            const outputWriters = new Set<number>();
+            for (const key of requireHazardKeys(workspace, output)) {
+                const writer = lastWriter.get(key);
+                if (writer !== undefined) outputWriters.add(writer);
+            }
             if (
-                contentAvailable.get(output) !== true &&
-                (writer === undefined || resource.extracted)
+                !genericContentAvailable(resource) &&
+                (outputWriters.size === 0 || resource.extracted)
             ) {
                 renderGraphFailure(
                     'uninitialized-read',
                     `output resource ${resource.name} is uninitialized or was discarded`
                 );
             }
-            if (writer !== undefined) roots.add(writer);
+            for (const writer of outputWriters) roots.add(writer);
         }
         const live = markLivePasses(roots, incoming, snapshot.passes.length, workspace);
         const scheduledSourceIndices = workspace.scheduledSourceIndices;
@@ -1033,7 +1281,7 @@ export class RenderGraphCompiler {
                     pass.name
                 );
                 (access.depth.writes || access.stencil.writes ? writes : reads).add(
-                    resource.handle
+                    resource.resource.handle
                 );
             }
             for (const handle of reads) {
@@ -1056,6 +1304,22 @@ export class RenderGraphCompiler {
                     writes,
                     bufferAccesses
                 })
+            );
+        }
+        for (const resource of normalizedResources) {
+            if (resource.kind !== 'texture-view') continue;
+            const viewFirstUse = firstUse.get(resource.handle);
+            if (viewFirstUse === undefined) continue;
+            const viewLastUse = lastUse.get(resource.handle) ?? viewFirstUse;
+            const parentFirstUse = firstUse.get(resource.texture);
+            const parentLastUse = lastUse.get(resource.texture);
+            firstUse.set(
+                resource.texture,
+                parentFirstUse === undefined ? viewFirstUse : Math.min(parentFirstUse, viewFirstUse)
+            );
+            lastUse.set(
+                resource.texture,
+                parentLastUse === undefined ? viewLastUse : Math.max(parentLastUse, viewLastUse)
             );
         }
         const compiledResources: CompiledRGResource[] = [];

@@ -15,6 +15,7 @@ export {
 } from './RenderPassParameterPool';
 export type * from './RendererList';
 export type * from './RenderPipeline';
+export type * from './RenderPipelineTexture';
 export type * from './ScriptableRenderGraph';
 export * from './passes';
 export * from '../postprocessing';

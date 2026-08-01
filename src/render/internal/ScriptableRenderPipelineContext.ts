@@ -7,7 +7,12 @@ import type { RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGPassBuilder, RenderPassTemplate } from '../graph/RenderGraphBuilder';
 import type { RGPassContext, RGPrepareContext } from '../graph/RenderGraphExecutor';
-import type { RGBufferHandle, RGPassHandle, RGTextureHandle } from '../graph/RenderGraphResource';
+import type {
+    RGBufferHandle,
+    RGPassHandle,
+    RGTextureAccessHandle,
+    RGTextureHandle
+} from '../graph/RenderGraphResource';
 import RenderList from '../RenderList';
 import { RenderGraphFramePlanner } from '../RenderGraphFramePlan';
 import type {
@@ -30,12 +35,19 @@ import {
     type RHIBindGroupLayout,
     type RHIBindingResource,
     type RHIBuffer,
+    type RHINormalizedTextureViewDescriptor,
     type RHIRenderPassEncoder,
     type RHISurface,
     type RHITexture,
+    type RHITextureDimension,
     type RHITextureFormat,
+    type RHITextureViewDimension,
     type RHIViewport
 } from '../rhi/core';
+import {
+    normalizeRHITextureDescriptor,
+    normalizeRHITextureViewDescriptorForTextureDescriptor
+} from '../rhi/core/RHIValidation';
 import type { RendererStorageBuffer, StorageBuffer } from '../StorageBuffer';
 import type {
     CullingOptions,
@@ -77,14 +89,20 @@ import type {
     RenderGraphBufferReadUse,
     RenderGraphBufferWriteUse,
     RenderGraphPassHandle,
+    RenderGraphTextureAccessHandle,
     RenderGraphTextureHandle,
+    RenderGraphTextureViewHandle,
     RenderPipelineBufferDescriptor,
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     RenderPipelineExtent,
+    RenderPipelineHistoryTextureDescriptor,
+    RenderPipelineHistoryTextureResources,
     RenderPipelinePersistentTargetDescriptor,
+    RenderPipelinePersistentTextureUsage,
     RenderPipelineTargetResources,
     RenderPipelineTextureDescriptor,
+    RenderPipelineTextureViewDescriptor,
     ScriptableRenderCommands,
     ScriptableRenderGraph,
     ScriptableRenderPass,
@@ -112,7 +130,7 @@ import type {
     RenderTargetResourceRecord
 } from '../renderer/RenderTargetResourceCache';
 import type { RHIMeshDrawTargetDescriptor } from '../renderer/RHIDescriptorMapping';
-import type { ResourceRegistryHandle } from '../renderer/ResourceRegistry';
+import type { ResourceRegistry, ResourceRegistryHandle } from '../renderer/ResourceRegistry';
 import type { RHIRenderTarget } from '../renderer/RHIRenderTarget';
 import type { StorageBufferResourceCache } from '../renderer/StorageBufferResourceCache';
 import {
@@ -135,7 +153,7 @@ type TextureAccess =
     | 'storage-write'
     | 'copy-source'
     | 'copy-destination';
-type PipelineTextureFormat = RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+type PipelineTextureFormat = RHITextureFormat;
 type MutableRHIViewport = { -readonly [Key in keyof RHIViewport]: RHIViewport[Key] };
 type MutableRenderTargetColor = {
     -readonly [Key in keyof RenderTargetColor]: RenderTargetColor[Key];
@@ -175,10 +193,11 @@ interface MutableTextureGraphDescriptor {
     readonly size: { width: number; height: number; depthOrArrayLayers: number };
     mipLevelCount: number;
     sampleCount: number;
-    dimension: '2d';
-    viewDimension: '2d';
+    dimension: RHITextureDimension;
+    viewDimension: RHITextureViewDimension;
     format: PipelineTextureFormat;
     usage: number;
+    readonly viewFormats: RHITextureFormat[];
 }
 
 interface MutableBufferGraphDescriptor {
@@ -198,21 +217,66 @@ interface MutablePersistentTargetResourceDescriptor extends RenderTargetResource
     depthStencilSampled: false;
 }
 
-interface TextureRecord {
-    handle: RenderGraphTextureHandle;
+interface TextureAccessRecordBase {
+    handle: RenderGraphTextureAccessHandle;
     name: string;
     format: PipelineTextureFormat;
     width: number;
     height: number;
+    depthOrArrayLayers: number;
     sampleCount: 1 | 4;
     mipLevelCount: number;
+    textureDimension: RHITextureDimension;
+    attachment: RGTextureAccessHandle | null;
+    readable: RGTextureAccessHandle | null;
+    writable: RGTextureAccessHandle | null;
+    resolveTarget: RGTextureAccessHandle | null;
+    outputRoot: RGTextureHandle | null;
+    transient: boolean;
+    historyState: PersistentHistoryState | null;
+    historyCurrent: boolean;
+}
+
+interface TextureRecord extends TextureAccessRecordBase {
+    readonly kind: 'texture';
+    handle: RenderGraphTextureHandle;
     attachment: RGTextureHandle | null;
     readable: RGTextureHandle | null;
     writable: RGTextureHandle | null;
     resolveTarget: RGTextureHandle | null;
-    outputRoot: RGTextureHandle | null;
-    transient: boolean;
+    viewDimension: RHITextureViewDimension;
+    viewFormats: readonly RHITextureFormat[];
     readonly graphDescriptor: MutableTextureGraphDescriptor;
+}
+
+interface TextureViewRecord extends TextureAccessRecordBase {
+    readonly kind: 'texture-view';
+    handle: RenderGraphTextureViewHandle;
+    texture: TextureRecord;
+    descriptor: Readonly<RHINormalizedTextureViewDescriptor>;
+}
+
+type TextureAccessRecord = TextureRecord | TextureViewRecord;
+
+interface TextureRecordSource {
+    readonly name: string;
+    readonly format: PipelineTextureFormat;
+    readonly width: number;
+    readonly height: number;
+    readonly depthOrArrayLayers?: number;
+    readonly sampleCount: 1 | 4;
+    readonly mipLevelCount: number;
+    readonly textureDimension?: RHITextureDimension;
+    readonly viewDimension?: RHITextureViewDimension;
+    readonly viewFormats?: readonly RHITextureFormat[];
+    readonly attachment: RGTextureHandle | null;
+    readonly readable: RGTextureHandle | null;
+    readonly writable: RGTextureHandle | null;
+    readonly resolveTarget: RGTextureHandle | null;
+    readonly outputRoot: RGTextureHandle | null;
+    readonly transient: boolean;
+    readonly historyState?: PersistentHistoryState | null;
+    readonly historyCurrent?: boolean;
 }
 
 interface BufferRecord {
@@ -233,12 +297,22 @@ interface RendererListRange {
 }
 
 interface MutableCopyCommand {
-    sourceHandle: RenderGraphTextureHandle;
-    destinationHandle: RenderGraphTextureHandle;
-    sourceInternal: RGTextureHandle;
-    destinationInternal: RGTextureHandle;
-    readonly source: { texture: RHITexture | null };
-    readonly destination: { texture: RHITexture | null };
+    sourceHandle: RenderGraphTextureAccessHandle;
+    destinationHandle: RenderGraphTextureAccessHandle;
+    sourceInternal: RGTextureAccessHandle;
+    destinationInternal: RGTextureAccessHandle;
+    readonly source: {
+        texture: RHITexture | null;
+        mipLevel: number;
+        readonly origin: { x: number; y: number; z: number };
+        aspect: 'all' | 'depth-only' | 'stencil-only';
+    };
+    readonly destination: {
+        texture: RHITexture | null;
+        mipLevel: number;
+        readonly origin: { x: number; y: number; z: number };
+        aspect: 'all' | 'depth-only' | 'stencil-only';
+    };
     readonly size: { width: number; height: number; depthOrArrayLayers: number };
 }
 
@@ -308,6 +382,48 @@ interface PersistentTargetState {
     pendingRelease: boolean;
 }
 
+interface PersistentHistoryState {
+    readonly key: object;
+    descriptor: Readonly<HistoryTextureRecipe> | null;
+    handles: ResourceRegistryHandle<RHITexture>[];
+    initialized: boolean[];
+    committedIndex: number;
+    registryGeneration: number;
+    generation: number;
+    pendingDescriptor: Readonly<HistoryTextureRecipe> | null;
+    pendingHandles: ResourceRegistryHandle<RHITexture>[];
+    pendingInitialized: boolean[];
+    frameHandles: ResourceRegistryHandle<RHITexture>[] | null;
+    frameInitialized: boolean[] | null;
+    frameWriteIndex: number;
+    lastAcquiredFrameIndex: number;
+    wroteThisFrame: boolean;
+    pendingRelease: boolean;
+}
+
+interface HistoryTextureRecipe {
+    readonly label: string;
+    readonly width: number;
+    readonly height: number;
+    readonly depthOrArrayLayers: number;
+    readonly mipLevelCount: number;
+    readonly sampleCount: 1 | 4;
+    readonly dimension: RHITextureDimension;
+    readonly viewDimension: RHITextureViewDimension;
+    readonly format: PipelineTextureFormat;
+    readonly usage: number;
+    readonly viewFormats: readonly RHITextureFormat[];
+    readonly bufferCount: 2 | 3;
+}
+
+interface PreparedHistoryTexture {
+    readonly state: PersistentHistoryState;
+    readonly handles: readonly ResourceRegistryHandle<RHITexture>[];
+    readonly initialized: readonly boolean[];
+    readonly writeIndex: number;
+    readonly generation: number;
+}
+
 /** @internal Renderer services deliberately narrower than either Renderer or the portable RHI. */
 export interface ScriptableRenderPipelineServices {
     readonly renderer: RendererCore;
@@ -358,10 +474,13 @@ export class ScriptableRenderPipelineResources {
     #runtimeOwner: object | null = null;
     #persistentByKey = new WeakMap<object, PersistentTargetState>();
     readonly #persistentStates = new Set<PersistentTargetState>();
+    #historyByKey = new WeakMap<object, PersistentHistoryState>();
+    readonly #historyStates = new Set<PersistentHistoryState>();
     readonly #deferredPersistentCleanupOwners = new Set<object>();
     readonly #frameBindGroups = new Set<RHIBindGroup>();
     readonly #cleanupFailures: unknown[] = [];
     #activeFrameIndex = -1;
+    #activeRegistry: ResourceRegistry | null = null;
     #nextHandle = 1;
 
     allocateHandle(): number {
@@ -463,7 +582,117 @@ export class ScriptableRenderPipelineResources {
         return true;
     }
 
-    beginFrame(frameIndex: number): void {
+    prepareHistoryTexture(
+        runtimeOwner: object,
+        key: unknown,
+        frameIndex: number,
+        registry: ResourceRegistry,
+        descriptor: Readonly<HistoryTextureRecipe>
+    ): PreparedHistoryTexture {
+        this.requirePersistentKey(runtimeOwner, key, 'history texture');
+        if (frameIndex !== this.#activeFrameIndex || registry !== this.#activeRegistry) {
+            throw new Error('History texture acquisition requires the active scriptable frame');
+        }
+        let state = this.#historyByKey.get(key as object);
+        if (state === undefined) {
+            state = {
+                key: key as object,
+                descriptor: null,
+                handles: [],
+                initialized: [],
+                committedIndex: -1,
+                registryGeneration: registry.generation,
+                generation: 1,
+                pendingDescriptor: null,
+                pendingHandles: [],
+                pendingInitialized: [],
+                frameHandles: null,
+                frameInitialized: null,
+                frameWriteIndex: -1,
+                lastAcquiredFrameIndex: -1,
+                wroteThisFrame: false,
+                pendingRelease: false
+            };
+            this.#historyByKey.set(key as object, state);
+            this.#historyStates.add(state);
+        }
+        if (state.pendingRelease) {
+            throw new Error('Cannot acquire a history texture pending release in this frame');
+        }
+        if (state.frameHandles !== null) {
+            if (
+                !sameHistoryTextureRecipe(state.pendingDescriptor ?? state.descriptor, descriptor)
+            ) {
+                throw new Error(
+                    'A history texture key cannot use multiple descriptors in one frame'
+                );
+            }
+            return this.preparedHistoryResult(state);
+        }
+        if (state.registryGeneration !== registry.generation && state.descriptor !== null) {
+            state.registryGeneration = registry.generation;
+            state.initialized.fill(false);
+            state.committedIndex = -1;
+            state.generation += 1;
+        }
+        if (sameHistoryTextureRecipe(state.descriptor, descriptor)) {
+            state.frameHandles = state.handles;
+            state.frameInitialized = state.initialized;
+        } else {
+            const snapshot = snapshotHistoryTextureRecipe(descriptor);
+            const handles = this.registerHistoryTextures(registry, snapshot);
+            state.pendingDescriptor = snapshot;
+            state.pendingHandles = handles;
+            state.pendingInitialized = new Array<boolean>(snapshot.bufferCount).fill(false);
+            state.frameHandles = handles;
+            state.frameInitialized = state.pendingInitialized;
+        }
+        const count = state.frameHandles.length;
+        state.frameWriteIndex =
+            state.pendingDescriptor === null && state.committedIndex >= 0
+                ? (state.committedIndex + 1) % count
+                : 0;
+        state.lastAcquiredFrameIndex = frameIndex;
+        state.wroteThisFrame = false;
+        return this.preparedHistoryResult(state);
+    }
+
+    noteHistoryTextureWrite(state: PersistentHistoryState): void {
+        if (
+            state.lastAcquiredFrameIndex !== this.#activeFrameIndex ||
+            state.frameHandles === null ||
+            state.frameWriteIndex < 0
+        ) {
+            throw new Error('History texture write does not belong to the active frame');
+        }
+        state.wroteThisFrame = true;
+    }
+
+    invalidateHistoryTexture(runtimeOwner: object, key: unknown): boolean {
+        this.requirePersistentKey(runtimeOwner, key, 'history texture');
+        const state = this.#historyByKey.get(key as object);
+        if (state === undefined) return false;
+        if (state.lastAcquiredFrameIndex === this.#activeFrameIndex) {
+            throw new Error('Invalidate history before acquiring it in the active frame');
+        }
+        state.initialized.fill(false);
+        state.committedIndex = -1;
+        state.generation += 1;
+        return true;
+    }
+
+    releaseHistoryTexture(runtimeOwner: object, key: unknown): boolean {
+        this.requirePersistentKey(runtimeOwner, key, 'history texture');
+        const state = this.#historyByKey.get(key as object);
+        if (state === undefined) return false;
+        if (state.lastAcquiredFrameIndex === this.#activeFrameIndex) {
+            throw new Error('Cannot release a history texture used by the active frame');
+        }
+        state.pendingRelease = true;
+        return true;
+    }
+
+    beginFrame(frameIndex: number, registry: ResourceRegistry): void {
         if (this.#frameBindGroups.size !== 0) {
             throw new Error('Scriptable frame bind groups escaped their previous frame');
         }
@@ -472,7 +701,13 @@ export class ScriptableRenderPipelineResources {
                 throw new Error('Persistent target staging escaped its previous frame');
             }
         }
+        for (const state of this.#historyStates) {
+            if (state.frameHandles !== null || state.pendingHandles.length !== 0) {
+                throw new Error('History texture staging escaped its previous frame');
+            }
+        }
         this.#activeFrameIndex = frameIndex;
+        this.#activeRegistry = registry;
     }
 
     trackFrameBindGroup(bindGroup: RHIBindGroup): void {
@@ -484,7 +719,11 @@ export class ScriptableRenderPipelineResources {
         bindGroup.destroy();
     }
 
-    endFrame(cache: RenderTargetResourceCache, submitted: boolean): void {
+    endFrame(
+        cache: RenderTargetResourceCache,
+        registry: ResourceRegistry,
+        submitted: boolean
+    ): void {
         const failures = this.#cleanupFailures;
         failures.length = 0;
         for (const bindGroup of this.#frameBindGroups) {
@@ -530,7 +769,76 @@ export class ScriptableRenderPipelineResources {
             }
             this.removeEmptyPersistentState(state);
         }
+        for (const state of this.#historyStates) {
+            const frameHandles = state.frameHandles;
+            const frameInitialized = state.frameInitialized;
+            if (frameHandles !== null && frameInitialized !== null) {
+                if (submitted) {
+                    for (const handle of frameHandles) {
+                        try {
+                            registry.markUsed(handle, this.#activeFrameIndex);
+                        } catch (error) {
+                            failures.push(error);
+                        }
+                    }
+                    if (state.wroteThisFrame) {
+                        frameInitialized[state.frameWriteIndex] = true;
+                    }
+                    if (state.pendingDescriptor !== null) {
+                        for (const handle of state.handles) {
+                            try {
+                                registry.release(handle);
+                            } catch (error) {
+                                failures.push(error);
+                            }
+                        }
+                        state.descriptor = state.pendingDescriptor;
+                        state.handles = state.pendingHandles;
+                        state.initialized = state.pendingInitialized;
+                        state.registryGeneration = registry.generation;
+                        state.generation += 1;
+                        state.committedIndex = state.wroteThisFrame ? state.frameWriteIndex : -1;
+                    } else if (state.wroteThisFrame) {
+                        state.committedIndex = state.frameWriteIndex;
+                    }
+                } else if (state.pendingDescriptor !== null) {
+                    for (const handle of state.pendingHandles) {
+                        try {
+                            registry.discardUnsubmitted(handle);
+                        } catch (error) {
+                            failures.push(error);
+                        }
+                    }
+                }
+            }
+            state.pendingDescriptor = null;
+            state.pendingHandles = [];
+            state.pendingInitialized = [];
+            state.frameHandles = null;
+            state.frameInitialized = null;
+            state.frameWriteIndex = -1;
+            state.lastAcquiredFrameIndex = -1;
+            state.wroteThisFrame = false;
+            if (state.pendingRelease) {
+                if (submitted) {
+                    for (const handle of state.handles) {
+                        try {
+                            registry.release(handle);
+                        } catch (error) {
+                            failures.push(error);
+                        }
+                    }
+                    state.handles = [];
+                    state.initialized = [];
+                    state.descriptor = null;
+                    state.committedIndex = -1;
+                    state.pendingRelease = false;
+                } else state.pendingRelease = false;
+            }
+            this.removeEmptyHistoryState(state);
+        }
         this.#activeFrameIndex = -1;
+        this.#activeRegistry = null;
         if (failures.length !== 0) {
             const failure = new AggregateError(
                 failures,
@@ -544,7 +852,7 @@ export class ScriptableRenderPipelineResources {
         }
     }
 
-    releasePersistentTargets(cache: RenderTargetResourceCache): void {
+    releasePersistentTargets(cache: RenderTargetResourceCache, registry: ResourceRegistry): void {
         if (this.#activeFrameIndex !== -1 || this.#frameBindGroups.size !== 0) {
             throw new Error('Cannot release scriptable resources during an active frame');
         }
@@ -571,6 +879,24 @@ export class ScriptableRenderPipelineResources {
         }
         this.#persistentStates.clear();
         this.#persistentByKey = new WeakMap();
+        for (const state of this.#historyStates) {
+            for (const handle of state.pendingHandles) {
+                try {
+                    registry.discardUnsubmitted(handle);
+                } catch (error) {
+                    failures.push(error);
+                }
+            }
+            for (const handle of state.handles) {
+                try {
+                    registry.release(handle);
+                } catch (error) {
+                    failures.push(error);
+                }
+            }
+        }
+        this.#historyStates.clear();
+        this.#historyByKey = new WeakMap();
         if (failures.length !== 0) {
             const failure = new AggregateError(
                 failures,
@@ -618,6 +944,72 @@ export class ScriptableRenderPipelineResources {
         this.#persistentByKey.delete(state.key);
         this.#persistentStates.delete(state);
     }
+
+    private removeEmptyHistoryState(state: PersistentHistoryState): void {
+        if (state.descriptor !== null || state.pendingDescriptor !== null || state.pendingRelease) {
+            return;
+        }
+        this.#historyByKey.delete(state.key);
+        this.#historyStates.delete(state);
+    }
+
+    private requirePersistentKey(runtimeOwner: object, key: unknown, label: string): void {
+        if ((typeof key !== 'object' && typeof key !== 'function') || key === null) {
+            throw new TypeError(`Persistent ${label} key must be an object`);
+        }
+        if (this.#runtimeOwner === null) this.#runtimeOwner = runtimeOwner;
+        else if (this.#runtimeOwner !== runtimeOwner) {
+            throw new Error('Scriptable render resources belong to another pipeline runtime');
+        }
+    }
+
+    private registerHistoryTextures(
+        registry: ResourceRegistry,
+        descriptor: Readonly<HistoryTextureRecipe>
+    ): ResourceRegistryHandle<RHITexture>[] {
+        const handles: ResourceRegistryHandle<RHITexture>[] = [];
+        try {
+            for (let index = 0; index < descriptor.bufferCount; index += 1) {
+                handles.push(
+                    registry.registerTexture({
+                        label: `${descriptor.label} [${String(index)}]`,
+                        lifetime: 'persistent',
+                        size: {
+                            width: descriptor.width,
+                            height: descriptor.height,
+                            depthOrArrayLayers: descriptor.depthOrArrayLayers
+                        },
+                        mipLevelCount: descriptor.mipLevelCount,
+                        sampleCount: descriptor.sampleCount,
+                        dimension: descriptor.dimension,
+                        viewDimension: descriptor.viewDimension,
+                        format: descriptor.format,
+                        usage: descriptor.usage,
+                        viewFormats: descriptor.viewFormats
+                    })
+                );
+            }
+        } catch (error) {
+            for (const handle of handles) registry.discardUnsubmitted(handle);
+            throw error;
+        }
+        return handles;
+    }
+
+    private preparedHistoryResult(state: PersistentHistoryState): PreparedHistoryTexture {
+        const handles = state.frameHandles;
+        const initialized = state.frameInitialized;
+        if (handles === null || initialized === null || state.frameWriteIndex < 0) {
+            throw new Error('History texture frame state is incomplete');
+        }
+        return {
+            state,
+            handles,
+            initialized,
+            writeIndex: state.frameWriteIndex,
+            generation: state.generation + (state.pendingDescriptor === null ? 0 : 1)
+        };
+    }
 }
 
 function samePersistentTargetDescriptor(
@@ -656,6 +1048,42 @@ function snapshotPersistentTargetDescriptor(
         multisampleAttachmentLifetime: descriptor.multisampleAttachmentLifetime ?? 'persistent',
         depthStencilFormat: descriptor.depthStencilFormat ?? null,
         depthStencilSampled: descriptor.depthStencilSampled ?? false
+    });
+}
+
+function sameHistoryTextureRecipe(
+    first: Readonly<HistoryTextureRecipe> | null,
+    second: Readonly<HistoryTextureRecipe>
+): boolean {
+    if (first === null) return false;
+    if (
+        first.label !== second.label ||
+        first.width !== second.width ||
+        first.height !== second.height ||
+        first.depthOrArrayLayers !== second.depthOrArrayLayers ||
+        first.mipLevelCount !== second.mipLevelCount ||
+        first.sampleCount !== second.sampleCount ||
+        first.dimension !== second.dimension ||
+        first.viewDimension !== second.viewDimension ||
+        first.format !== second.format ||
+        first.usage !== second.usage ||
+        first.bufferCount !== second.bufferCount ||
+        first.viewFormats.length !== second.viewFormats.length
+    ) {
+        return false;
+    }
+    for (let index = 0; index < first.viewFormats.length; index += 1) {
+        if (first.viewFormats[index] !== second.viewFormats[index]) return false;
+    }
+    return true;
+}
+
+function snapshotHistoryTextureRecipe(
+    descriptor: Readonly<HistoryTextureRecipe>
+): Readonly<HistoryTextureRecipe> {
+    return Object.freeze({
+        ...descriptor,
+        viewFormats: Object.freeze([...descriptor.viewFormats])
     });
 }
 
@@ -702,7 +1130,8 @@ function createTextureGraphDescriptor(): MutableTextureGraphDescriptor {
         dimension: '2d',
         viewDimension: '2d',
         format: 'rgba8unorm',
-        usage: RHITextureUsage.RENDER_ATTACHMENT
+        usage: RHITextureUsage.RENDER_ATTACHMENT,
+        viewFormats: []
     };
 }
 
@@ -727,6 +1156,46 @@ function graphBufferUsage(use: RenderGraphBufferReadUse | RenderGraphBufferWrite
         default:
             throw new TypeError(`Unsupported render graph buffer use ${String(use)}`);
     }
+}
+
+function historyTextureUsage(uses: readonly RenderPipelinePersistentTextureUsage[]): number {
+    const candidate: unknown = uses;
+    if (!Array.isArray(candidate) || uses.length === 0) {
+        throw new TypeError('History texture usage must be a non-empty array');
+    }
+    let usage = 0;
+    const seen = new Set<string>();
+    for (const use of uses) {
+        if (seen.has(use)) throw new TypeError(`Duplicate history texture usage ${use}`);
+        seen.add(use);
+        switch (use) {
+            case 'sampled':
+                usage |= RHITextureUsage.TEXTURE_BINDING;
+                break;
+            case 'storage':
+                usage |= RHITextureUsage.STORAGE_BINDING;
+                break;
+            case 'attachment':
+                usage |= RHITextureUsage.RENDER_ATTACHMENT;
+                break;
+            case 'copy-source':
+                usage |= RHITextureUsage.COPY_SRC;
+                break;
+            case 'copy-destination':
+                usage |= RHITextureUsage.COPY_DST;
+                break;
+            default:
+                throw new TypeError(`Unsupported history texture usage ${String(use)}`);
+        }
+    }
+    return usage;
+}
+
+function historyTextureBufferCount(value: unknown): 2 | 3 {
+    if (value !== 2 && value !== 3) {
+        throw new RangeError('History texture bufferCount must be two or three');
+    }
+    return value;
 }
 
 function normalizeBufferRange(
@@ -754,12 +1223,22 @@ function normalizeBufferRange(
 
 function createCopyCommand(): MutableCopyCommand {
     return {
-        sourceHandle: 0 as RenderGraphTextureHandle,
-        destinationHandle: 0 as RenderGraphTextureHandle,
-        sourceInternal: 0 as RGTextureHandle,
-        destinationInternal: 0 as RGTextureHandle,
-        source: { texture: null },
-        destination: { texture: null },
+        sourceHandle: 0 as RenderGraphTextureAccessHandle,
+        destinationHandle: 0 as RenderGraphTextureAccessHandle,
+        sourceInternal: 0 as RGTextureAccessHandle,
+        destinationInternal: 0 as RGTextureAccessHandle,
+        source: {
+            texture: null,
+            mipLevel: 0,
+            origin: { x: 0, y: 0, z: 0 },
+            aspect: 'all'
+        },
+        destination: {
+            texture: null,
+            mipLevel: 0,
+            origin: { x: 0, y: 0, z: 0 },
+            aspect: 'all'
+        },
         size: { width: 1, height: 1, depthOrArrayLayers: 1 }
     };
 }
@@ -1029,7 +1508,7 @@ function compareFrameBinding(
 
 class ScriptableFullscreenDraw {
     readonly draw: PreparedDraw;
-    readonly #inputHandles: RGTextureHandle[] = [];
+    readonly #inputHandles: RGTextureAccessHandle[] = [];
     readonly #uniformHandles: ResourceRegistryHandle<RHIBuffer>[] = [];
     readonly #groups: (FrameBindGroupScratch | undefined)[] = [];
     #pipeline: Readonly<PipelineResourceRecord> | null = null;
@@ -1041,7 +1520,7 @@ class ScriptableFullscreenDraw {
 
     configure(
         pipeline: Readonly<PipelineResourceRecord>,
-        inputs: readonly RGTextureHandle[],
+        inputs: readonly RGTextureAccessHandle[],
         uniformHandles: readonly ResourceRegistryHandle<RHIBuffer>[],
         frameIndex: number
     ): void {
@@ -1214,15 +1693,18 @@ class ScriptableRenderPassBuilderLease implements ScriptableRenderPassBuilder {
         Object.freeze(this);
     }
 
-    readTexture(texture: RenderGraphTextureHandle): void {
+    readTexture(texture: RenderGraphTextureAccessHandle): void {
         this.#slot.readTextureFromSetup(this.#lease, texture);
     }
 
-    writeStorageTexture(texture: RenderGraphTextureHandle): void {
+    writeStorageTexture(texture: RenderGraphTextureAccessHandle): void {
         this.#slot.writeStorageTextureFromSetup(this.#lease, texture);
     }
 
-    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void {
+    copyTexture(
+        source: RenderGraphTextureAccessHandle,
+        destination: RenderGraphTextureAccessHandle
+    ): void {
         this.#slot.copyTextureFromSetup(this.#lease, source, destination);
     }
 
@@ -1308,7 +1790,10 @@ class ScriptableRenderCommandsLease implements ScriptableRenderCommands {
         this.#slot.drawRendererListFromExecute(this.#lease, list);
     }
 
-    copyTexture(source: RenderGraphTextureHandle, destination: RenderGraphTextureHandle): void {
+    copyTexture(
+        source: RenderGraphTextureAccessHandle,
+        destination: RenderGraphTextureAccessHandle
+    ): void {
         this.#slot.copyTextureFromExecute(this.#lease, source, destination);
     }
 
@@ -1426,14 +1911,14 @@ class ScriptableGPUDrivenDrawServiceSlot implements ScriptableGPUDrivenDrawServi
 class ScriptablePassSlot {
     readonly draw = new SharedDrawPassParameters();
     readonly ranges: RendererListRange[] = [];
-    readonly sampledHandles = new Set<RenderGraphTextureHandle>();
-    readonly sampledInternals = new Map<RenderGraphTextureHandle, RGTextureHandle>();
-    readonly attachmentHandles = new Set<RenderGraphTextureHandle>();
-    readonly sampledInternalHandles = new Set<RGTextureHandle>();
-    readonly storageWriteInternalHandles = new Set<RGTextureHandle>();
-    readonly copySourceInternalHandles = new Set<RGTextureHandle>();
-    readonly copyDestinationInternalHandles = new Set<RGTextureHandle>();
-    readonly attachmentInternalHandles = new Set<RGTextureHandle>();
+    readonly sampledHandles = new Set<RenderGraphTextureAccessHandle>();
+    readonly sampledInternals = new Map<RenderGraphTextureAccessHandle, RGTextureAccessHandle>();
+    readonly attachmentHandles = new Set<RenderGraphTextureAccessHandle>();
+    readonly sampledInternalHandles = new Set<RGTextureAccessHandle>();
+    readonly storageWriteInternalHandles = new Set<RGTextureAccessHandle>();
+    readonly copySourceInternalHandles = new Set<RGTextureAccessHandle>();
+    readonly copyDestinationInternalHandles = new Set<RGTextureAccessHandle>();
+    readonly attachmentInternalHandles = new Set<RGTextureAccessHandle>();
     readonly rendererListHandles = new Set<RendererListHandle>();
     readonly colorFormats: (RHITextureFormat | null)[] = [];
     readonly targetDescriptor: RHIMeshDrawTargetDescriptor = {
@@ -1485,7 +1970,7 @@ class ScriptablePassSlot {
     #sceneStorageBindingCount = 0;
     #sceneStorageBindGroup: RHIBindGroup | null = null;
     #activeSceneStorage = false;
-    #sceneTextureHandle: RGTextureHandle | null = null;
+    #sceneTextureHandle: RGTextureAccessHandle | null = null;
     #sceneTextureBindGroup: RHIBindGroup | null = null;
     #activeSceneTexture = false;
     readonly #sceneTexturePreparation: SceneTexturePreparationState = {
@@ -2169,7 +2654,7 @@ class ScriptablePassSlot {
 
     readTextureFromSetup(
         lease: ScriptablePassCallbackLease,
-        texture: RenderGraphTextureHandle
+        texture: RenderGraphTextureAccessHandle
     ): void {
         this.assertSetupLeaseActive(lease);
         this.readTexture(texture);
@@ -2177,7 +2662,7 @@ class ScriptablePassSlot {
 
     writeStorageTextureFromSetup(
         lease: ScriptablePassCallbackLease,
-        texture: RenderGraphTextureHandle
+        texture: RenderGraphTextureAccessHandle
     ): void {
         this.assertSetupLeaseActive(lease);
         this.writeStorageTexture(texture);
@@ -2185,8 +2670,8 @@ class ScriptablePassSlot {
 
     copyTextureFromSetup(
         lease: ScriptablePassCallbackLease,
-        source: RenderGraphTextureHandle,
-        destination: RenderGraphTextureHandle
+        source: RenderGraphTextureAccessHandle,
+        destination: RenderGraphTextureAccessHandle
     ): void {
         this.assertSetupLeaseActive(lease);
         this.declareTextureCopy(source, destination);
@@ -2304,8 +2789,8 @@ class ScriptablePassSlot {
 
     copyTextureFromExecute(
         lease: ScriptablePassCallbackLease,
-        source: RenderGraphTextureHandle,
-        destination: RenderGraphTextureHandle
+        source: RenderGraphTextureAccessHandle,
+        destination: RenderGraphTextureAccessHandle
     ): void {
         this.assertExecuteLeaseActive(lease);
         this.copyTexture(source, destination);
@@ -2342,7 +2827,7 @@ class ScriptablePassSlot {
         }
     }
 
-    private readTexture(handle: RenderGraphTextureHandle): void {
+    private readTexture(handle: RenderGraphTextureAccessHandle): void {
         this.requireSetupBuilder();
         if (this.sampledHandles.has(handle)) return;
         const internal = this.requireOwner().resolveTexture(handle, 'sampled');
@@ -2356,7 +2841,7 @@ class ScriptablePassSlot {
         if (!alreadyRead) this.draw.addReadTexture(internal);
     }
 
-    private writeStorageTexture(handle: RenderGraphTextureHandle): void {
+    private writeStorageTexture(handle: RenderGraphTextureAccessHandle): void {
         const builder = this.requireSetupBuilder();
         const owner = this.requireOwner();
         const internal = owner.resolveTexture(handle, 'storage-write');
@@ -2483,8 +2968,8 @@ class ScriptablePassSlot {
     }
 
     private declareTextureCopy(
-        sourceHandle: RenderGraphTextureHandle,
-        destinationHandle: RenderGraphTextureHandle
+        sourceHandle: RenderGraphTextureAccessHandle,
+        destinationHandle: RenderGraphTextureAccessHandle
     ): void {
         this.requireSetupBuilder();
         if (sourceHandle === destinationHandle) {
@@ -2495,18 +2980,16 @@ class ScriptablePassSlot {
         const destinationRecord = owner.requireTexture(destinationHandle);
         if (
             sourceRecord.width !== destinationRecord.width ||
-            sourceRecord.height !== destinationRecord.height
+            sourceRecord.height !== destinationRecord.height ||
+            sourceRecord.depthOrArrayLayers !== destinationRecord.depthOrArrayLayers
         ) {
             throw new Error('Texture copy requires matching source and destination extents');
         }
         if (sourceRecord.format !== destinationRecord.format) {
             throw new Error('Texture copy requires matching source and destination formats');
         }
-        if (
-            sourceRecord.mipLevelCount !== destinationRecord.mipLevelCount ||
-            sourceRecord.mipLevelCount !== 1
-        ) {
-            throw new Error('Texture copy requires single-mip source and destination textures');
+        if (sourceRecord.mipLevelCount !== 1 || destinationRecord.mipLevelCount !== 1) {
+            throw new Error('Texture copy requires one selected source and destination mip');
         }
         const sourceInternal = owner.resolveTexture(sourceHandle, 'copy-source');
         const destinationInternal = owner.resolveTexture(destinationHandle, 'copy-destination');
@@ -2535,6 +3018,27 @@ class ScriptablePassSlot {
         command.destinationInternal = destinationInternal;
         command.source.texture = null;
         command.destination.texture = null;
+        command.source.mipLevel =
+            sourceRecord.kind === 'texture-view' ? sourceRecord.descriptor.baseMipLevel : 0;
+        command.destination.mipLevel =
+            destinationRecord.kind === 'texture-view'
+                ? destinationRecord.descriptor.baseMipLevel
+                : 0;
+        command.source.origin.z =
+            sourceRecord.kind === 'texture-view' && sourceRecord.textureDimension !== '3d'
+                ? sourceRecord.descriptor.baseArrayLayer
+                : 0;
+        command.destination.origin.z =
+            destinationRecord.kind === 'texture-view' && destinationRecord.textureDimension !== '3d'
+                ? destinationRecord.descriptor.baseArrayLayer
+                : 0;
+        command.source.aspect =
+            sourceRecord.kind === 'texture-view' ? sourceRecord.descriptor.aspect : 'all';
+        command.destination.aspect =
+            destinationRecord.kind === 'texture-view' ? destinationRecord.descriptor.aspect : 'all';
+        command.size.width = sourceRecord.width;
+        command.size.height = sourceRecord.height;
+        command.size.depthOrArrayLayers = sourceRecord.depthOrArrayLayers;
     }
 
     private useColorAttachment(options: Readonly<RenderPipelineColorAttachment>): void {
@@ -2545,7 +3049,7 @@ class ScriptablePassSlot {
         this.assertAttachmentInternalAccess(texture);
         this.attachmentHandles.add(options.texture);
         this.attachmentInternalHandles.add(texture);
-        let resolveTarget: RGTextureHandle | undefined;
+        let resolveTarget: RGTextureAccessHandle | undefined;
         if (options.resolveTarget !== undefined) {
             if (options.resolveTarget === options.texture) {
                 throw new Error('Color attachment resolve target must be distinct');
@@ -2635,7 +3139,7 @@ class ScriptablePassSlot {
         }
     }
 
-    private mergeTargetShape(record: TextureRecord): void {
+    private mergeTargetShape(record: TextureAccessRecord): void {
         if (!this.#hasTargetShape) {
             this.#hasTargetShape = true;
             (this.targetDescriptor as { sampleCount: number }).sampleCount = record.sampleCount;
@@ -2718,8 +3222,8 @@ class ScriptablePassSlot {
     }
 
     private copyTexture(
-        sourceHandle: RenderGraphTextureHandle,
-        destinationHandle: RenderGraphTextureHandle
+        sourceHandle: RenderGraphTextureAccessHandle,
+        destinationHandle: RenderGraphTextureAccessHandle
     ): void {
         if (this.#encoder !== null) {
             throw new Error('Texture copies cannot execute inside a raster pass');
@@ -2824,33 +3328,13 @@ class ScriptablePassSlot {
             }
             const source = context.getTexture(command.sourceInternal);
             const destination = context.getTexture(command.destinationInternal);
-            if (
-                source.width !== destination.width ||
-                source.height !== destination.height ||
-                source.depthOrArrayLayers !== destination.depthOrArrayLayers ||
-                source.mipLevelCount !== destination.mipLevelCount ||
-                source.dimension !== destination.dimension ||
-                source.descriptor.viewDimension !== destination.descriptor.viewDimension ||
-                source.format !== destination.format ||
-                source.sampleCount !== destination.sampleCount
-            ) {
-                throw new Error(
-                    'Texture copy requires matching source and destination descriptors'
-                );
-            }
-            if (source.sampleCount !== 1 || source.mipLevelCount !== 1) {
-                throw new Error(
-                    'Texture copy requires single-sample, single-mip source and destination textures'
-                );
-            }
             command.source.texture = source;
             command.destination.texture = destination;
-            command.size.width = source.width;
-            command.size.height = source.height;
-            command.size.depthOrArrayLayers = source.depthOrArrayLayers;
             validateRHITextureToTextureCopyParameters(
-                command.source as { readonly texture: RHITexture },
-                command.destination as { readonly texture: RHITexture },
+                command.source as typeof command.source & { readonly texture: RHITexture },
+                command.destination as typeof command.destination & {
+                    readonly texture: RHITexture;
+                },
                 command.size
             );
         }
@@ -2908,7 +3392,7 @@ class ScriptablePassSlot {
         for (const buffer of this.partialStorageBufferWrites) cache.stageGPUWrite(buffer);
     }
 
-    private assertReadableInternalAccess(handle: RGTextureHandle): void {
+    private assertReadableInternalAccess(handle: RGTextureAccessHandle): void {
         if (
             this.storageWriteInternalHandles.has(handle) ||
             this.copyDestinationInternalHandles.has(handle) ||
@@ -2918,7 +3402,7 @@ class ScriptablePassSlot {
         }
     }
 
-    private assertWritableInternalAccess(handle: RGTextureHandle): void {
+    private assertWritableInternalAccess(handle: RGTextureAccessHandle): void {
         if (
             this.sampledInternalHandles.has(handle) ||
             this.storageWriteInternalHandles.has(handle) ||
@@ -2930,7 +3414,7 @@ class ScriptablePassSlot {
         }
     }
 
-    private assertAttachmentInternalAccess(handle: RGTextureHandle): void {
+    private assertAttachmentInternalAccess(handle: RGTextureAccessHandle): void {
         if (
             this.sampledInternalHandles.has(handle) ||
             this.storageWriteInternalHandles.has(handle) ||
@@ -3255,6 +3739,15 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
         return this.#owner.createTexture(name, descriptor);
     }
 
+    createTextureView(
+        name: string,
+        texture: RenderGraphTextureHandle,
+        descriptor: Readonly<RenderPipelineTextureViewDescriptor> = {}
+    ): RenderGraphTextureViewHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.createTextureView(name, texture, descriptor);
+    }
+
     createBuffer(
         name: string,
         descriptor: Readonly<RenderPipelineBufferDescriptor>
@@ -3284,6 +3777,24 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
     ): RenderPipelineTargetResources {
         this.#owner.assertLeaseActive(this.#lease);
         return this.#owner.acquirePersistentTarget(key, descriptor);
+    }
+
+    acquireHistoryTexture(
+        key: object,
+        descriptor: Readonly<RenderPipelineHistoryTextureDescriptor>
+    ): RenderPipelineHistoryTextureResources {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.acquireHistoryTexture(key, descriptor);
+    }
+
+    invalidateHistoryTexture(key: object): boolean {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.invalidateHistoryTexture(key);
+    }
+
+    releaseHistoryTexture(key: object): boolean {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.releaseHistoryTexture(key);
     }
 
     releasePersistentTarget(key: object): boolean {
@@ -3333,16 +3844,25 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     readonly #rendererListByHandle = new Map<RendererListHandle, RendererListSlot>();
     readonly #textureRecords: TextureRecord[] = [];
     readonly #textureByHandle = new Map<RenderGraphTextureHandle, TextureRecord>();
+    readonly #textureViewRecords: TextureViewRecord[] = [];
+    readonly #textureAccessByHandle = new Map<
+        RenderGraphTextureAccessHandle,
+        TextureAccessRecord
+    >();
     readonly #bufferRecords: BufferRecord[] = [];
     readonly #bufferByHandle = new Map<RenderGraphBufferHandle, BufferRecord>();
     readonly #targetSlots: TargetResourcesSlot[] = [];
     readonly #passSlots: ScriptablePassSlot[] = [];
     readonly #passByHandle = new Map<RenderGraphPassHandle, RGPassHandle>();
     readonly #targetColorScratch: RenderGraphTextureHandle[] = [];
-    readonly #fullscreenInputScratch: RGTextureHandle[] = [];
+    readonly #fullscreenInputScratch: RGTextureAccessHandle[] = [];
     readonly #fullscreenUniformScratch: ResourceRegistryHandle<RHIBuffer>[] = [];
     readonly #outputColorFormats: RenderTargetColorFormat[] = [];
     readonly #persistentTargetDescriptors: MutablePersistentTargetResourceDescriptor[] = [];
+    readonly #historyFacadeByState = new Map<
+        PersistentHistoryState,
+        RenderPipelineHistoryTextureResources
+    >();
     readonly #beforeEventMeshSet = new Set<Mesh>();
     readonly #beforeEventMeshScratch: Mesh[] = [];
     readonly #eventMeshes: Mesh[] = [];
@@ -3360,6 +3880,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     #cullingCursor = 0;
     #rendererListCursor = 0;
     #textureCursor = 0;
+    #textureViewCursor = 0;
     #bufferCursor = 0;
     #targetSlotCursor = 0;
     #passCursor = 0;
@@ -3428,6 +3949,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.#cullingCursor = 0;
         this.#rendererListCursor = 0;
         this.#textureCursor = 0;
+        this.#textureViewCursor = 0;
         this.#bufferCursor = 0;
         this.#targetSlotCursor = 0;
         this.#passCursor = 0;
@@ -3444,6 +3966,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.#cullingByHandle.clear();
         this.#rendererListByHandle.clear();
         this.#textureByHandle.clear();
+        this.#textureAccessByHandle.clear();
+        this.#historyFacadeByState.clear();
         this.#bufferByHandle.clear();
         this.#storageBufferBySource = new WeakMap();
         this.#passByHandle.clear();
@@ -3578,9 +4102,35 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             record.source = null;
             record.initialized = false;
         }
+        for (let index = 0; index < this.#textureCursor; index += 1) {
+            const record = this.#textureRecords[index];
+            if (record === undefined) continue;
+            record.name = '';
+            record.attachment = null;
+            record.readable = null;
+            record.writable = null;
+            record.resolveTarget = null;
+            record.outputRoot = null;
+            record.historyState = null;
+            record.historyCurrent = false;
+        }
+        for (let index = 0; index < this.#textureViewCursor; index += 1) {
+            const record = this.#textureViewRecords[index];
+            if (record === undefined) continue;
+            record.name = '';
+            record.attachment = null;
+            record.readable = null;
+            record.writable = null;
+            record.resolveTarget = null;
+            record.outputRoot = null;
+            record.historyState = null;
+            record.historyCurrent = false;
+        }
         this.#cullingByHandle.clear();
         this.#rendererListByHandle.clear();
         this.#textureByHandle.clear();
+        this.#textureAccessByHandle.clear();
+        this.#historyFacadeByState.clear();
         this.#bufferByHandle.clear();
         this.#storageBufferBySource = new WeakMap();
         this.#passByHandle.clear();
@@ -3692,19 +4242,101 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         if (sampleCount > 1 && mipLevelCount !== 1) {
             throw new RangeError('Multisampled render graph textures require one mip level');
         }
+        const depthOrArrayLayers = positiveInteger(
+            descriptor.depthOrArrayLayers ?? 1,
+            'Render graph texture depthOrArrayLayers'
+        );
+        const dimension = descriptor.dimension ?? '2d';
+        const viewDimension =
+            descriptor.viewDimension ??
+            (dimension === '1d'
+                ? '1d'
+                : dimension === '3d'
+                  ? '3d'
+                  : depthOrArrayLayers === 1
+                    ? '2d'
+                    : '2d-array');
         return this.acquireTextureRecord({
             name,
             format: descriptor.format,
             width: extent.width,
             height: extent.height,
+            depthOrArrayLayers,
             sampleCount,
             mipLevelCount,
+            textureDimension: dimension,
+            viewDimension,
+            viewFormats: Object.freeze([...(descriptor.viewFormats ?? [])]),
             attachment: null,
             readable: null,
             writable: null,
             resolveTarget: null,
             outputRoot: null,
-            transient: true
+            transient: true,
+            historyState: null,
+            historyCurrent: false
+        }).handle;
+    }
+
+    createTextureView(
+        name: string,
+        texture: RenderGraphTextureHandle,
+        descriptor: Readonly<RenderPipelineTextureViewDescriptor> = {}
+    ): RenderGraphTextureViewHandle {
+        this.assertActive();
+        if (typeof name !== 'string' || name.length === 0) {
+            throw new TypeError('Render graph texture view name must be non-empty');
+        }
+        const parent = this.#textureByHandle.get(texture);
+        if (parent === undefined) {
+            throw new Error(`Render graph texture handle ${String(texture)} is stale or invalid`);
+        }
+        const normalizedTexture = normalizeRHITextureDescriptor(
+            {
+                label: parent.name,
+                lifetime: parent.transient ? 'transient' : 'persistent',
+                size: {
+                    width: parent.width,
+                    height: parent.height,
+                    depthOrArrayLayers: parent.depthOrArrayLayers
+                },
+                mipLevelCount: parent.mipLevelCount,
+                sampleCount: parent.sampleCount,
+                dimension: parent.textureDimension,
+                viewDimension: parent.viewDimension,
+                format: parent.format,
+                usage: RHITextureUsage.COPY_SRC,
+                viewFormats: parent.viewFormats
+            },
+            this.services.getScriptableMeshProcessor().registry.deviceCapabilities
+        );
+        const view = normalizeRHITextureViewDescriptorForTextureDescriptor(
+            normalizedTexture,
+            descriptor
+        );
+        const mipScale = 2 ** view.baseMipLevel;
+        return this.acquireTextureViewRecord({
+            name,
+            texture: parent,
+            descriptor: view,
+            format: view.format,
+            width: Math.max(1, Math.floor(parent.width / mipScale)),
+            height: Math.max(1, Math.floor(parent.height / mipScale)),
+            depthOrArrayLayers:
+                parent.textureDimension === '3d'
+                    ? Math.max(1, Math.floor(parent.depthOrArrayLayers / mipScale))
+                    : view.arrayLayerCount,
+            sampleCount: parent.sampleCount,
+            mipLevelCount: view.mipLevelCount,
+            textureDimension: parent.textureDimension,
+            attachment: null,
+            readable: null,
+            writable: null,
+            resolveTarget: null,
+            outputRoot: parent.outputRoot,
+            transient: parent.transient,
+            historyState: parent.historyState,
+            historyCurrent: parent.historyCurrent
         }).handle;
     }
 
@@ -3822,6 +4454,165 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         return this.resources.releasePersistentTarget(runtimeOwner, key);
     }
 
+    acquireHistoryTexture(
+        key: object,
+        descriptor: Readonly<RenderPipelineHistoryTextureDescriptor>
+    ): RenderPipelineHistoryTextureResources {
+        this.assertActive();
+        const runtimeOwner = this.#runtimeOwner;
+        if (runtimeOwner === null) throw new Error('Pipeline runtime owner is unavailable');
+        const extent = this.resolveExtent(descriptor.extent);
+        const usage = historyTextureUsage(descriptor.usage);
+        const bufferCount = historyTextureBufferCount(descriptor.bufferCount ?? 2);
+        const normalized = normalizeRHITextureDescriptor(
+            {
+                label: descriptor.label ?? 'Scriptable history texture',
+                lifetime: 'persistent',
+                size: {
+                    width: extent.width,
+                    height: extent.height,
+                    depthOrArrayLayers: descriptor.depthOrArrayLayers ?? 1
+                },
+                mipLevelCount: descriptor.mipLevelCount ?? 1,
+                sampleCount: descriptor.sampleCount ?? 1,
+                dimension: descriptor.dimension ?? '2d',
+                ...(descriptor.viewDimension === undefined
+                    ? {}
+                    : { viewDimension: descriptor.viewDimension }),
+                format: descriptor.format,
+                usage,
+                viewFormats: descriptor.viewFormats ?? []
+            },
+            this.services.getScriptableMeshProcessor().registry.deviceCapabilities
+        );
+        if (
+            normalized.dimension !== '2d' ||
+            normalized.viewDimension !== '2d' ||
+            normalized.size.depthOrArrayLayers !== 1 ||
+            normalized.mipLevelCount !== 1 ||
+            normalized.sampleCount !== 1 ||
+            rhiTextureFormatHasDepth(normalized.format) ||
+            rhiTextureFormatHasStencil(normalized.format)
+        ) {
+            throw new RangeError(
+                'History textures currently require one single-sample 2D color mip and array layer'
+            );
+        }
+        const recipe: Readonly<HistoryTextureRecipe> = {
+            label: normalized.label,
+            width: normalized.size.width,
+            height: normalized.size.height,
+            depthOrArrayLayers: normalized.size.depthOrArrayLayers,
+            mipLevelCount: normalized.mipLevelCount,
+            sampleCount: normalized.sampleCount,
+            dimension: normalized.dimension,
+            viewDimension: normalized.viewDimension,
+            format: normalized.format,
+            usage: normalized.usage,
+            viewFormats: normalized.viewFormats,
+            bufferCount
+        };
+        const registry = this.services.getScriptableMeshProcessor().registry;
+        const prepared = this.resources.prepareHistoryTexture(
+            runtimeOwner,
+            key,
+            this.frameIndex,
+            registry,
+            recipe
+        );
+        const existing = this.#historyFacadeByState.get(prepared.state);
+        if (existing !== undefined) return existing;
+        const graph = this.requireScope().graph;
+        const publicHandles: RenderGraphTextureHandle[] = [];
+        for (let index = 0; index < prepared.handles.length; index += 1) {
+            const registryHandle = prepared.handles[index];
+            if (registryHandle === undefined) {
+                throw new Error('History texture registry handle is incomplete');
+            }
+            const internal = graph.importTextureProvider(
+                `${recipe.label} [${String(index)}]`,
+                {
+                    label: `${recipe.label} [${String(index)}]`,
+                    size: {
+                        width: recipe.width,
+                        height: recipe.height,
+                        depthOrArrayLayers: recipe.depthOrArrayLayers
+                    },
+                    mipLevelCount: recipe.mipLevelCount,
+                    sampleCount: recipe.sampleCount,
+                    dimension: recipe.dimension,
+                    viewDimension: recipe.viewDimension,
+                    format: recipe.format,
+                    usage: recipe.usage,
+                    viewFormats: recipe.viewFormats
+                },
+                () => registry.resolve(registryHandle),
+                'persistent',
+                prepared.initialized[index] ?? false
+            );
+            const current = index === prepared.writeIndex;
+            publicHandles[index] = this.acquireTextureRecord({
+                name: `${recipe.label} [${String(index)}]`,
+                format: recipe.format,
+                width: recipe.width,
+                height: recipe.height,
+                depthOrArrayLayers: recipe.depthOrArrayLayers,
+                sampleCount: recipe.sampleCount,
+                mipLevelCount: recipe.mipLevelCount,
+                textureDimension: recipe.dimension,
+                viewDimension: recipe.viewDimension,
+                viewFormats: recipe.viewFormats,
+                attachment: internal,
+                readable: internal,
+                writable: internal,
+                resolveTarget: null,
+                outputRoot: current ? internal : null,
+                transient: false,
+                historyState: prepared.state,
+                historyCurrent: current
+            }).handle;
+        }
+        const historyIndices: number[] = [];
+        for (let index = 0; index < bufferCount - 1; index += 1) {
+            historyIndices.push((prepared.writeIndex - 1 - index + bufferCount * 2) % bufferCount);
+        }
+        const previousIndex = historyIndices[0];
+        const currentHandle = publicHandles[prepared.writeIndex];
+        if (currentHandle === undefined)
+            throw new Error('History texture current slot is incomplete');
+        const result: RenderPipelineHistoryTextureResources = Object.freeze({
+            current: currentHandle,
+            valid: previousIndex !== undefined && prepared.initialized[previousIndex] === true,
+            generation: prepared.generation,
+            historyCount: historyIndices.length,
+            history(index = 0): RenderGraphTextureHandle {
+                if (!Number.isSafeInteger(index) || index < 0 || index >= historyIndices.length) {
+                    throw new RangeError(`History texture index ${String(index)} does not exist`);
+                }
+                const slot = historyIndices[index];
+                const handle = slot === undefined ? undefined : publicHandles[slot];
+                if (handle === undefined) throw new Error('History texture slot is incomplete');
+                return handle;
+            }
+        });
+        this.#historyFacadeByState.set(prepared.state, result);
+        return result;
+    }
+
+    invalidateHistoryTexture(key: object): boolean {
+        this.assertActive();
+        const runtimeOwner = this.#runtimeOwner;
+        if (runtimeOwner === null) throw new Error('Pipeline runtime owner is unavailable');
+        return this.resources.invalidateHistoryTexture(runtimeOwner, key);
+    }
+
+    releaseHistoryTexture(key: object): boolean {
+        this.assertActive();
+        const runtimeOwner = this.#runtimeOwner;
+        if (runtimeOwner === null) throw new Error('Pipeline runtime owner is unavailable');
+        return this.resources.releaseHistoryTexture(runtimeOwner, key);
+    }
+
     addPass<P extends object>(pass: ScriptableRenderPass<P>, parameters: P): RenderGraphPassHandle {
         this.assertActive();
         const passCandidate: unknown = pass;
@@ -3879,8 +4670,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         return pass;
     }
 
-    requireTexture(handle: RenderGraphTextureHandle): TextureRecord {
-        const record = this.#textureByHandle.get(handle);
+    requireTexture(handle: RenderGraphTextureAccessHandle): TextureAccessRecord {
+        const record = this.#textureAccessByHandle.get(handle);
         if (record === undefined) {
             throw new Error(`Render graph texture handle ${String(handle)} is stale or invalid`);
         }
@@ -3920,16 +4711,43 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         return internal;
     }
 
-    resolveTexture(handle: RenderGraphTextureHandle, access: TextureAccess): RGTextureHandle {
+    resolveTexture(
+        handle: RenderGraphTextureAccessHandle,
+        access: TextureAccess
+    ): RGTextureAccessHandle {
         const record = this.requireTexture(handle);
         if (
             access === 'storage-write' &&
             (record.sampleCount !== 1 || record.mipLevelCount !== 1)
         ) {
             throw new RangeError(
-                `${record.name} storage writes require one complete single-sample 2d mip subresource`
+                `${record.name} storage writes require one complete single-sample 2d mip subresource or one explicit single-mip view`
             );
         }
+        if (record.kind === 'texture-view') {
+            let internal =
+                access === 'attachment'
+                    ? record.attachment
+                    : access === 'sampled' || access === 'copy-source'
+                      ? record.readable
+                      : record.writable;
+            if (internal !== null) return internal;
+            const parent = this.resolvePhysicalTexture(record.texture, access);
+            internal = this.requireScope().graph.createTextureView(
+                record.name,
+                parent,
+                record.descriptor
+            );
+            if (access === 'attachment') record.attachment = internal;
+            else if (access === 'sampled' || access === 'copy-source') {
+                record.readable = internal;
+            } else record.writable = internal;
+            return internal;
+        }
+        return this.resolvePhysicalTexture(record, access);
+    }
+
+    private resolvePhysicalTexture(record: TextureRecord, access: TextureAccess): RGTextureHandle {
         const usage =
             access === 'attachment' || access === 'resolve-target'
                 ? RHITextureUsage.RENDER_ATTACHMENT
@@ -3954,11 +4772,18 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             descriptor.label = record.name;
             descriptor.size.width = record.width;
             descriptor.size.height = record.height;
-            descriptor.size.depthOrArrayLayers = 1;
+            descriptor.size.depthOrArrayLayers = record.depthOrArrayLayers;
             descriptor.mipLevelCount = record.mipLevelCount;
             descriptor.sampleCount = record.sampleCount;
+            descriptor.dimension = record.textureDimension;
+            descriptor.viewDimension = record.viewDimension;
             descriptor.format = record.format;
             descriptor.usage = usage;
+            descriptor.viewFormats.length = record.viewFormats.length;
+            for (let index = 0; index < record.viewFormats.length; index += 1) {
+                const format = record.viewFormats[index];
+                if (format !== undefined) descriptor.viewFormats[index] = format;
+            }
             internal = this.requireScope().graph.createTexture(record.name, descriptor);
             record.attachment ??= internal;
             record.readable ??= internal;
@@ -3967,8 +4792,17 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         return internal;
     }
 
-    noteTextureWrite(handle: RenderGraphTextureHandle): void {
-        if (this.requireTexture(handle).outputRoot !== null) this.#hasTerminalWork = true;
+    noteTextureWrite(handle: RenderGraphTextureAccessHandle): void {
+        const record = this.requireTexture(handle);
+        if (record.historyCurrent && record.historyState !== null) {
+            this.resources.noteHistoryTextureWrite(record.historyState);
+            const output = record.outputRoot;
+            if (output === null) throw new Error('History texture current slot has no graph root');
+            this.requireScope().graph.markOutput(output);
+            this.#hasTerminalWork = true;
+        } else if (record.historyState !== null) {
+            throw new Error('Only the current history texture slot may be written');
+        } else if (record.outputRoot !== null) this.#hasTerminalWork = true;
     }
 
     noteBufferWrite(record: BufferRecord, internal: RGBufferHandle): void {
@@ -3984,7 +4818,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     }
 
     passAttachmentDimensions(
-        attachments: ReadonlySet<RenderGraphTextureHandle>
+        attachments: ReadonlySet<RenderGraphTextureAccessHandle>
     ): Readonly<{ width: number; height: number }> {
         let width = 0;
         let height = 0;
@@ -4158,7 +4992,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         pass: FullscreenRenderPass,
         parameters: FullscreenRenderPassParameters,
         target: RHIMeshDrawTargetDescriptor,
-        declaredInputs: ReadonlyMap<RenderGraphTextureHandle, RGTextureHandle>
+        declaredInputs: ReadonlyMap<RenderGraphTextureAccessHandle, RGTextureAccessHandle>
     ): ScriptableFullscreenDraw {
         this.services.prepareScriptableCullingScene(this.scene, this.camera);
         const context = this.services.createScriptableFrameContext(
@@ -4416,25 +5250,30 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         });
     }
 
-    private acquireTextureRecord(
-        source: Omit<TextureRecord, 'handle' | 'graphDescriptor'>
-    ): TextureRecord {
+    private acquireTextureRecord(source: TextureRecordSource): TextureRecord {
         let record = this.#textureRecords[this.#textureCursor++];
         if (record === undefined) {
             record = {
+                kind: 'texture',
                 handle: 0 as RenderGraphTextureHandle,
                 name: '',
                 format: 'rgba8unorm',
                 width: 1,
                 height: 1,
+                depthOrArrayLayers: 1,
                 sampleCount: 1,
                 mipLevelCount: 1,
+                textureDimension: '2d',
+                viewDimension: '2d',
+                viewFormats: Object.freeze([]),
                 attachment: null,
                 readable: null,
                 writable: null,
                 resolveTarget: null,
                 outputRoot: null,
                 transient: false,
+                historyState: null,
+                historyCurrent: false,
                 graphDescriptor: createTextureGraphDescriptor()
             };
             this.#textureRecords.push(record);
@@ -4444,15 +5283,74 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         record.format = source.format;
         record.width = source.width;
         record.height = source.height;
+        record.depthOrArrayLayers = source.depthOrArrayLayers ?? 1;
         record.sampleCount = source.sampleCount;
         record.mipLevelCount = source.mipLevelCount;
+        record.textureDimension = source.textureDimension ?? '2d';
+        record.viewDimension = source.viewDimension ?? '2d';
+        record.viewFormats = source.viewFormats ?? Object.freeze([]);
         record.attachment = source.attachment;
         record.readable = source.readable;
         record.writable = source.writable;
         record.resolveTarget = source.resolveTarget;
         record.outputRoot = source.outputRoot;
         record.transient = source.transient;
+        record.historyState = source.historyState ?? null;
+        record.historyCurrent = source.historyCurrent ?? false;
         this.#textureByHandle.set(record.handle, record);
+        this.#textureAccessByHandle.set(record.handle, record);
+        return record;
+    }
+
+    private acquireTextureViewRecord(
+        source: Omit<TextureViewRecord, 'kind' | 'handle'>
+    ): TextureViewRecord {
+        let record = this.#textureViewRecords[this.#textureViewCursor++];
+        if (record === undefined) {
+            record = {
+                kind: 'texture-view',
+                handle: 0 as RenderGraphTextureViewHandle,
+                name: '',
+                texture: source.texture,
+                descriptor: source.descriptor,
+                format: 'rgba8unorm',
+                width: 1,
+                height: 1,
+                depthOrArrayLayers: 1,
+                sampleCount: 1,
+                mipLevelCount: 1,
+                textureDimension: '2d',
+                attachment: null,
+                readable: null,
+                writable: null,
+                resolveTarget: null,
+                outputRoot: null,
+                transient: false,
+                historyState: null,
+                historyCurrent: false
+            };
+            this.#textureViewRecords.push(record);
+        }
+        record.handle = this.allocateHandle() as RenderGraphTextureViewHandle;
+        record.name = source.name;
+        record.texture = source.texture;
+        record.descriptor = source.descriptor;
+        record.format = source.format;
+        record.width = source.width;
+        record.height = source.height;
+        record.depthOrArrayLayers = source.depthOrArrayLayers;
+        record.sampleCount = source.sampleCount;
+        record.mipLevelCount = source.mipLevelCount;
+        record.textureDimension = source.textureDimension;
+        record.attachment = source.attachment;
+        record.readable = source.readable;
+        record.writable = source.writable;
+        record.resolveTarget = source.resolveTarget;
+        record.outputRoot = source.outputRoot;
+        record.transient = source.transient;
+        record.historyState = source.historyState;
+        record.historyCurrent = source.historyCurrent;
+        this.#textureAccessByHandle.set(record.handle, record);
         return record;
     }
 

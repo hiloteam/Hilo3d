@@ -5,7 +5,10 @@ import type {
     RGPassContext,
     RGPrepareContext
 } from '../../../src/render/graph/RenderGraphExecutor';
-import type { RGTextureHandle } from '../../../src/render/graph/RenderGraphResource';
+import type {
+    RGTextureAccessHandle,
+    RGTextureHandle
+} from '../../../src/render/graph/RenderGraphResource';
 import type { RenderGraphError } from '../../../src/render/graph/RenderGraphValidation';
 import { RHIBufferUsage, RHITextureUsage } from '../../../src/render/rhi/core';
 import {
@@ -16,8 +19,8 @@ import {
 } from '../rhi/portable/FakeRHIBackend';
 
 interface AccessParams {
-    readonly reads?: readonly RGTextureHandle[];
-    readonly writes?: readonly RGTextureHandle[];
+    readonly reads?: readonly RGTextureAccessHandle[];
+    readonly writes?: readonly RGTextureAccessHandle[];
     readonly log: string[];
     readonly name: string;
     readonly sideEffect?: boolean;
@@ -301,6 +304,166 @@ describe('RenderGraph compile', () => {
         expect(() => graph.compile(cycle, device.capabilities)).toThrow(
             expect.objectContaining({ code: 'cycle' })
         );
+        backend.destroy();
+    });
+
+    it('tracks non-overlapping mip views independently and keeps their parent alive', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const pyramid = builder.createTexture('depth pyramid', {
+            size: { width: 16, height: 16 },
+            mipLevelCount: 3,
+            format: 'r32float',
+            usage: RHITextureUsage.TEXTURE_BINDING | RHITextureUsage.STORAGE_BINDING
+        });
+        const mip0 = builder.createTextureView('depth pyramid mip 0', pyramid, {
+            baseMipLevel: 0,
+            mipLevelCount: 1
+        });
+        const mip1 = builder.createTextureView('depth pyramid mip 1', pyramid, {
+            baseMipLevel: 1,
+            mipLevelCount: 1
+        });
+        const mip2 = builder.createTextureView('depth pyramid mip 2', pyramid, {
+            baseMipLevel: 2,
+            mipLevelCount: 1
+        });
+        const observedMipLevels: number[] = [];
+        builder.addPass(texturePass, { writes: [mip0], log: [], name: 'seed mip 0' });
+        builder.addPass(
+            {
+                name: 'reduce mip 1',
+                setup(pass) {
+                    pass.readTexture(mip0);
+                    pass.writeTexture(mip1);
+                },
+                prepare(context) {
+                    observedMipLevels.push(context.getTextureView(mip0).descriptor.baseMipLevel);
+                    observedMipLevels.push(context.getTextureView(mip1).descriptor.baseMipLevel);
+                    expect(context.getTexture(mip0)).toBe(context.getTexture(mip1));
+                },
+                execute() {
+                    // Dependency and prepared-view contracts are under test.
+                }
+            },
+            undefined
+        );
+        builder.addPass(texturePass, {
+            reads: [mip1],
+            writes: [mip2],
+            log: [],
+            name: 'reduce mip 2'
+        });
+        builder.markOutput(mip2);
+
+        const compiled = graph.compile(builder, device.capabilities);
+        expect(compiled.passes).toHaveLength(3);
+        expect(compiled.resources.map(resource => resource.name)).toEqual([
+            'depth pyramid',
+            'depth pyramid mip 0',
+            'depth pyramid mip 1',
+            'depth pyramid mip 2'
+        ]);
+        expect(compiled.resourceByHandle.get(pyramid)?.lifetime).toEqual({
+            firstUse: 0,
+            lastUse: 2
+        });
+
+        graph.execute(compiled, device);
+        expect(observedMipLevels).toEqual([0, 1]);
+        graph.destroy();
+        backend.destroy();
+    });
+
+    it('allows disjoint same-pass views and rejects overlapping view feedback', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const importedTexture = device.createTexture({
+            size: { width: 8, height: 8 },
+            mipLevelCount: 2,
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.TEXTURE_BINDING | RHITextureUsage.STORAGE_BINDING
+        });
+
+        const disjoint = graph.createBuilder();
+        const disjointTexture = disjoint.importTexture('disjoint texture', importedTexture);
+        const readMip0 = disjoint.createTextureView('read mip 0', disjointTexture, {
+            baseMipLevel: 0,
+            mipLevelCount: 1
+        });
+        const writeMip1 = disjoint.createTextureView('write mip 1', disjointTexture, {
+            baseMipLevel: 1,
+            mipLevelCount: 1
+        });
+        disjoint.addPass(texturePass, {
+            reads: [readMip0],
+            writes: [writeMip1],
+            log: [],
+            name: 'disjoint feedback',
+            sideEffect: true
+        });
+        expect(() => graph.compile(disjoint, device.capabilities)).not.toThrow();
+
+        const overlapping = graph.createBuilder();
+        const overlappingTexture = overlapping.importTexture(
+            'overlapping texture',
+            importedTexture
+        );
+        const firstMip0 = overlapping.createTextureView('first mip 0', overlappingTexture, {
+            baseMipLevel: 0,
+            mipLevelCount: 1
+        });
+        const secondMip0 = overlapping.createTextureView('second mip 0', overlappingTexture, {
+            baseMipLevel: 0,
+            mipLevelCount: 1
+        });
+        overlapping.addPass(texturePass, {
+            reads: [firstMip0],
+            writes: [secondMip0],
+            log: [],
+            name: 'overlapping feedback',
+            sideEffect: true
+        });
+        expect(() => graph.compile(overlapping, device.capabilities)).toThrow(
+            expect.objectContaining<Partial<RenderGraphError>>({ code: 'duplicate-access' })
+        );
+
+        graph.destroy();
+        importedTexture.destroy();
+        backend.destroy();
+    });
+
+    it('preserves explicit imported-texture initialization across subresource views', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const graph = new RenderGraph();
+        const texture = device.createTexture({
+            size: { width: 4, height: 4 },
+            mipLevelCount: 2,
+            format: 'rgba8unorm',
+            usage: RHITextureUsage.TEXTURE_BINDING
+        });
+        const builder = graph.createBuilder();
+        const imported = builder.importTexture('uninitialized history', texture, false);
+        const mip = builder.createTextureView('uninitialized history mip', imported, {
+            baseMipLevel: 1,
+            mipLevelCount: 1
+        });
+        builder.addPass(texturePass, {
+            reads: [mip],
+            log: [],
+            name: 'invalid history read',
+            sideEffect: true
+        });
+
+        expect(() => graph.compile(builder, device.capabilities)).toThrow(
+            expect.objectContaining<Partial<RenderGraphError>>({ code: 'uninitialized-read' })
+        );
+        graph.destroy();
+        texture.destroy();
         backend.destroy();
     });
 
@@ -882,6 +1045,74 @@ describe('RenderGraph compile', () => {
 
         expect(graph.compile(builder, device.capabilities).passes).toHaveLength(2);
         graph.destroy();
+        backend.destroy();
+    });
+
+    it('selects the last graph writer independently for depth and stencil views', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const texture = device.createTexture({
+            size: { width: 4, height: 4 },
+            format: 'depth24plus-stencil8',
+            usage: RHITextureUsage.RENDER_ATTACHMENT | RHITextureUsage.TEXTURE_BINDING,
+            lifetime: 'persistent'
+        });
+        const graph = new RenderGraph();
+        const builder = graph.createBuilder();
+        const depthStencil = builder.importTexture('persistent depth stencil', texture, false);
+        builder.readTextureFromLastGraphWriter(depthStencil);
+        const depth = builder.createTextureView('depth aspect', depthStencil, {
+            aspect: 'depth-only'
+        });
+        const stencil = builder.createTextureView('stencil aspect', depthStencil, {
+            aspect: 'stencil-only'
+        });
+        builder.addPass(texturePass, {
+            reads: [stencil],
+            log: [],
+            name: 'read stencil',
+            sideEffect: true
+        });
+        builder.addPass(
+            {
+                name: 'write stencil',
+                setup(pass) {
+                    pass.useDepthStencilAttachment({
+                        texture: stencil,
+                        stencilClearValue: 0,
+                        stencilLoadOp: 'clear',
+                        stencilStoreOp: 'store'
+                    });
+                },
+                execute() {
+                    // Dependency and culling selection are asserted below.
+                }
+            },
+            undefined
+        );
+        builder.addPass(
+            {
+                name: 'write depth',
+                setup(pass) {
+                    pass.useDepthStencilAttachment({
+                        texture: depth,
+                        depthClearValue: 1,
+                        depthLoadOp: 'clear',
+                        depthStoreOp: 'store'
+                    });
+                },
+                execute() {
+                    // A depth-only writer must not satisfy the stencil read.
+                }
+            },
+            undefined
+        );
+
+        const compiled = graph.compile(builder, device.capabilities);
+        expect(compiled.passes.map(pass => pass.name)).toEqual(['write stencil', 'texture access']);
+
+        graph.destroy();
+        texture.destroy();
         backend.destroy();
     });
 
