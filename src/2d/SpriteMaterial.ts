@@ -10,18 +10,11 @@ layout(std140) uniform CameraBlock {
     mat4 u_viewMatrix;
     mat4 u_projectionMatrix;
     mat4 u_viewProjectionMatrix;
-    mat4 u_viewInverseMatrix;
-    mat4 u_projectionInverseMatrix;
-    mat3 u_viewInverseNormalMatrix;
-    vec4 u_cameraPositionNear;
-    vec4 u_cameraParams;
-    vec4 u_viewport;
 };
 
 #ifdef HILO_WEBGPU
 layout(std140) uniform InstanceBlock {
     mat4 u_instanceModelMatrices[128];
-    mat4 u_instanceNormalMatrices[128];
 };
 #define u_modelMatrix u_instanceModelMatrices[gl_InstanceIndex]
 #else
