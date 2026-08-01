@@ -5,7 +5,7 @@
 >
 > 制定日期：2026-07-17
 >
-> 最近核对：2026-07-25
+> 最近核对：2026-08-01
 >
 > 目标版本：当前 `Unreleased` 版本；具体 semver 由发布评审决定
 >
@@ -29,6 +29,7 @@ matrix 或不可覆盖性能 baseline 不会被写成通过。
 | Scene storage integration            | 已完成   | `SceneRenderPass` group 3 pass-global readonly storage；复用 culling/sorting/material/geometry/UBO，instancing 确定性 direct fallback                               |
 | Forward+/高斯/粒子/光追 example/验收 | 已完成   | 组合页覆盖 depth/Scene storage、高斯与 1024 粒子；独立页覆盖 65,536 GPU body，以及静态水面、光谱焦散、体积散射、引导降噪与稳定 bind-group 的渐进式 HDR path tracing |
 | 公共 API 与 requirements             | 已完成   | 根导出、TSDoc、类型消费、创建前 WebGPU 选择、capability/limit/format 检查和 WebGL 2 fail-closed 同版本交付                                                          |
+| Graph texture subresource/history    | 已完成   | 显式 mip/layer/aspect/dimension view；sampled/storage/attachment/copy 共用 hazard；renderer-owned 2/3-buffer history 按成功 submission 轮换并在恢复后失效           |
 
 `storage-buffer`、`storage-texture`、`compute-pass`、`indirect-draw`
 仍按同一个公开 release 单元维护，但 capability 结果也必须满足实际设备 feature、format 和 limit；“已发布”不会把不兼容设备伪装成支持。
@@ -136,10 +137,13 @@ WGSL core 的 atomics、workgroup memory 和 barriers 可以直接在 `ComputeSh
 - 不把 subgroup、shader-f16、timestamp-query 等可选特性变成 compute 基线要求。
 - 不同时设计通用 GPGPU 框架、粒子系统、物理引擎或节点式 shader 编辑器。
 
-首发还有以下明确边界，它们不是遗漏的 native 能力：
+以下条目描述最初首发边界；其中 graph subresource 与 persistent history 已由后续 F0 工作包解除：
 
-- compute graph texture 只绑定完整 2D subresource；没有 array/cube/3D 或 mip/layer view。
-- storage texture 只支持 transient、write-only、完整覆盖；没有 persistent storage texture。
+- compute graph texture 已可绑定显式 array/cube/3D、mip/layer/aspect
+  view；同一 subresource 的 sampled/write feedback 仍拒绝。
+- storage texture 仍是 write-only、完整覆盖所选单 mip
+  view；跨帧 texture 由显式 usage 的双/三缓冲 history recipe 提供，不开放任意 native persistent
+  texture。
 - `StorageBuffer.read()` 每个 Renderer 同时只允许一个 pending request；应用应串行等待。
 - `SceneRenderPass` storage variant 遇到 instanced batch 时展开为 per-mesh direct draw。
 - 内置 `ForwardRenderPipelineFeature.sampledDepth` 仍关闭；完整 Forward+ 通过自定义 SRP 显式组合。
@@ -444,9 +448,9 @@ binding descriptor 是 Hilo3D 的显式 pipeline ABI，不依赖 WebGPU auto
 layout，也不允许运行时从字符串 map 猜测资源。WGSL source 与 descriptor 不一致时必须在 kernel
 prepare、RHI pipeline creation 或真实 WebGPU validation 中失败，且发生在 RHI frame 开始前。
 
-compute texture ABI 有意比 `StorageGraphicsShader` 的 Material-backed texture
-ABI 窄：graph 当前只解析一个完整 2D texture view，因此 compute sampled/storage
-bindings 不接受 array、cube、3D、integer sample type 或任意 mip/layer 子资源。`unfilterable-float`
+compute texture ABI 直接消费显式 graph texture view：sampled/storage
+bindings 可表达 array、cube、3D、integer sample type 与 mip/layer/aspect 子资源，并在 shader
+reflection、view dimension、sample type 与 format 不匹配时于 prepare 阶段拒绝。`unfilterable-float`
 必须配对 `non-filtering-sampler`，后者要求 nearest filter、`maxAnisotropy: 1`
 且不能带 compare；非法组合在 bind group 创建前失败。 `StorageGraphicsShader`
 类型仍能描述 Material/Scene 的 2D-array/3D/cube 与 sint/uint texture；当 `GPUDrivenRenderPass`
@@ -830,10 +834,12 @@ binding 必须使用 `readWriteBuffer()`，不能谎报为 write 来规避初始
 - 同一 logical buffer 的重叠 range 首版按整 buffer
   hazard 处理，先保证正确性；未来才能增加 range-aware hazard。
 
-storage texture 首版只支持 transient、完整 2D subresource 的 write-only
-binding。要读取旧纹理应绑定独立 sampled texture；同一 subresource sampled/write
-feedback 继续拒绝，不插入隐式 copy。当前没有 persistent storage texture、array/cube/3D 或 mip/layer
-view。
+storage texture 保持 write-only 且完整覆盖所选单 mip view。要读取旧纹理应绑定独立 sampled
+view；同一 subresource sampled/write
+feedback 继续拒绝，不插入隐式 copy。显式 view 可选择 array/cube/3D、mip/layer 和 aspect；跨帧 texture 通过 renderer-owned 双/三缓冲 history
+recipe 导入，并只在有效 submission 后交换 current/history。当前 history
+recipe 限定为单 sample、单 mip、单 layer 的 2D color texture，以保证公开的 slot-level `valid`
+精确表示完整初始化状态。
 
 ### 8.3 Hazard 与拓扑
 
@@ -1433,7 +1439,7 @@ npm run validate
 | GPU 写入无法 device-loss 无损恢复            | 强制公开 `cpu-shadow`/`reinitialize` 策略，不做隐式 readback                                        |
 | CPU shadow 被误解为 GPU checkpoint           | 明确恢复到初始/最后 CPU bytes；GPU mutation 不会被暗中 map 回 CPU                                   |
 | 同 pass read-write 破坏现有 graph invariant  | 只增加 buffer 专用 `readWriteBuffer()`；texture feedback 继续拒绝                                   |
-| Graph texture API 暗示任意 native view       | compute 首发仅完整 2D；storage texture 仅 transient write-only，不提供 persistent/layer/mip view    |
+| Graph texture view 与 history 完整性混淆     | view 显式建模 mip/layer/aspect hazard；history 首版限定完整单 mip 2D color slot                     |
 | Naga `f16` 路径未形成完整验证闭环            | Direct WGSL `f16` 在 pipeline 前 fail-closed，不以 parse-only 冒充支持                              |
 | 并发 readback 复用同一 frame/staging 状态    | 每 Renderer 一次 pending request；并发请求明确拒绝，调用方串行等待                                  |
 | StorageLayout 被误做成 std140/std430 混合    | 以 WGSL host-shareable layout 为唯一 storage 规则，独立于 UniformBuffer                             |

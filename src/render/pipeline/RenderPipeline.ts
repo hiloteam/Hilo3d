@@ -17,6 +17,7 @@ import type {
     RendererListHandle
 } from './RendererList';
 import type { ScriptableRenderGraph } from './ScriptableRenderGraph';
+import type { RenderPipelineTextureFormat } from './RenderPipelineTexture';
 
 /** Optional renderer capabilities exposed only after their complete SRP/RHI path is available. */
 export type RenderPipelineCapabilityName =
@@ -78,7 +79,7 @@ export interface RenderPipelineCapabilities {
     supportsCapability(capability: RenderPipelineCapabilityName): boolean;
     /** Return whether a texture format supports a portable role and sample count. */
     supportsTextureFormat(
-        format: RenderTargetColorFormat | RenderTargetDepthStencilFormat,
+        format: RenderPipelineTextureFormat,
         use: RenderPipelineTextureUse,
         sampleCount?: RenderTargetSampleCount
     ): boolean;
@@ -87,7 +88,7 @@ export interface RenderPipelineCapabilities {
 /** One texture-format constraint validated before the pipeline runtime is created. */
 export interface RenderPipelineTextureRequirement {
     /** Required portable format. */
-    readonly format: RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+    readonly format: RenderPipelineTextureFormat;
     /** Required graph or pass role. */
     readonly use: RenderPipelineTextureUse;
     /** Required sample count, defaulting to one. */

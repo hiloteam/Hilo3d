@@ -580,7 +580,11 @@ class SharedRendererDriver
         }
         if (this.#scriptableResourcesFrameStarted) {
             try {
-                this.#scriptablePipelineResources.endFrame(resources.targets, submitted);
+                this.#scriptablePipelineResources.endFrame(
+                    resources.targets,
+                    resources.processor.registry,
+                    submitted
+                );
             } catch (error) {
                 failures.push(error);
             }
@@ -662,7 +666,7 @@ class SharedRendererDriver
             if (frameIndex === null) {
                 throw new Error('Scriptable pipeline resources require an active frame');
             }
-            this.#scriptablePipelineResources.beginFrame(frameIndex);
+            this.#scriptablePipelineResources.beginFrame(frameIndex, resources.processor.registry);
             resources.storageBuffers.beginFrame(
                 frameIndex,
                 this.#pipelineHost.requireActiveScope().uploads
@@ -1485,7 +1489,10 @@ class SharedRendererDriver
             resources.storageBuffers.destroy();
         });
         attempt(() => {
-            this.#scriptablePipelineResources.releasePersistentTargets(resources.targets);
+            this.#scriptablePipelineResources.releasePersistentTargets(
+                resources.targets,
+                resources.processor.registry
+            );
         });
         attempt(() => {
             resources.targets.destroy();

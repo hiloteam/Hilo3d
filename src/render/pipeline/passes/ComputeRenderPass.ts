@@ -4,7 +4,7 @@ import ComputeKernel from '../../compute/ComputeKernel';
 import type ComputeSampler from '../../compute/ComputeSampler';
 import type {
     RenderGraphBufferHandle,
-    RenderGraphTextureHandle,
+    RenderGraphTextureAccessHandle,
     ScriptableRenderPass,
     ScriptableRenderPassBuilder,
     ScriptableRenderPassContext
@@ -25,7 +25,7 @@ export interface ComputeBufferBinding {
 /** One graph texture consumed by a sampled- or storage-texture binding. */
 export interface ComputeTextureBinding {
     /** Complete single-sample two-dimensional graph texture subresource. */
-    readonly texture: RenderGraphTextureHandle;
+    readonly texture: RenderGraphTextureAccessHandle;
 }
 
 /** A whole std140 uniform buffer or one explicitly selected range. */

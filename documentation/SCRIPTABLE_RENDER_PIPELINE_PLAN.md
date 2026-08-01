@@ -208,10 +208,12 @@ handle。具体 GPU 对象始终归 Renderer cache/registry 和 RHI device 所�
 
 公开 facade 只表达 SRP 需要的图能力：
 
-- transient texture；
+- transient texture 与显式 mip/layer/aspect/dimension view；
 - 当前 output 与公共 RenderTarget attachment import；
 - pipeline-owned persistent target import；
-- sampled read、color/depth attachment、copy source/destination 和显式依赖；
+- renderer-owned 双/三缓冲 history texture；
+- sampled/storage read-write declaration、color/depth attachment、copy
+  source/destination 和显式依赖；
 - stable pass template；
 - terminal output/side effect 标记。
 
@@ -588,6 +590,13 @@ export interface ScriptableRenderGraph {
   frame 有效提交后 commit，record/compile/prepare/execute 失败时 rollback，且不能释放本帧已 acquire 的 target。
 - persistent resource 在 device/context
   recovery 后按 recipe 原位重建；pipeline 不接收 generation-specific handle。
+- history current 只有在本帧声明 writer 且 submission 有效时才轮换；失败帧回滚 write
+  index。descriptor revision、camera cut/显式 invalidation 与 registry
+  generation 变化都会使旧 history 失效并递增公开 generation。
+- history 首版只接受单 sample、单 mip、单 layer 的 2D color texture，确保 slot-level `valid`
+  与“完整初始化”同义；多 mip/array/volume history 留给后续 subresource-validity 扩展。
+- texture view 的 mip/layer/aspect 进入 graph hazard
+  identity；不同 subresource 可并行，重叠 sampled/storage/attachment/copy access 继续拒绝。
 - transient resource 在 submission 完成后归还池；第一版不宣称同帧 alias。
 - graph handle 不能保存在 runtime 字段中；跨 frame 使用必须抛出 generation error。
 - 同 pass sampled read/write feedback、未初始化读取、非法 discard 后读取和 attachment shape
@@ -1180,10 +1189,11 @@ shell 分配保持 O(callback)；architecture test 证明无镜像 graph。
 
 工作：
 
-- 增加 runtime owner + stable key + recipe 的 persistent target registry；
+- 增加 runtime owner + stable key + recipe 的 persistent target/history registry；
 - descriptor revision 触发事务 resize；
 - 接入 submission tracker、release、destroy、WebGL context loss 和 WebGPU device loss；
-- 覆盖 history ping-pong、多 Renderer factory 复用和 runtime cleanup。
+- 覆盖 history 双/三缓冲、失败 submission 回滚、recovery invalidation、多 Renderer
+  factory 复用和 runtime cleanup。
 
 退出条件：恢复前后逻辑 identity、输出像素和 owner 不变；10,000 帧/资源 churn 有界；失败 resize/rebuild 不留下半提交资源。
 

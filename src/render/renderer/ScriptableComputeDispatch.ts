@@ -1,7 +1,7 @@
 import UniformBuffer, { type UniformBufferRange } from '../UniformBuffer';
 import type { ComputeShaderBinding } from '../compute/ComputeShader';
 import ComputeSampler from '../compute/ComputeSampler';
-import type { RGBufferHandle, RGTextureHandle } from '../graph/RenderGraphResource';
+import type { RGBufferHandle, RGTextureAccessHandle } from '../graph/RenderGraphResource';
 import type { RGPassContext, RGPrepareContext } from '../graph/RenderGraphExecutor';
 import type {
     ComputeRenderPassParameters,
@@ -11,7 +11,7 @@ import type ComputeRenderPass from '../pipeline/passes/ComputeRenderPass';
 import type {
     RenderGraphBufferHandle,
     RenderGraphBufferReadUse,
-    RenderGraphTextureHandle
+    RenderGraphTextureAccessHandle
 } from '../pipeline/ScriptableRenderGraph';
 import {
     RHIBufferUsage,
@@ -41,9 +41,9 @@ export interface ScriptableComputeGraphResolver {
     resolveBuffer(handle: RenderGraphBufferHandle, use: RenderGraphBufferReadUse): RGBufferHandle;
     bufferByteLength(handle: RenderGraphBufferHandle): number;
     resolveTexture(
-        handle: RenderGraphTextureHandle,
+        handle: RenderGraphTextureAccessHandle,
         access: 'sampled' | 'storage-write'
-    ): RGTextureHandle;
+    ): RGTextureAccessHandle;
 }
 
 /** @internal Submission-fenced owner for graph-dependent frame bind groups. */
@@ -94,7 +94,7 @@ interface MutableComputeBindingPlan {
     binding: ComputeShaderBinding | null;
     uniformHandle: ResourceRegistryHandle<RHIBuffer> | null;
     graphBuffer: RGBufferHandle | null;
-    graphTexture: RGTextureHandle | null;
+    graphTexture: RGTextureAccessHandle | null;
     sampler: ComputeSampler | null;
     byteOffset: number;
     byteLength: number;

@@ -13,8 +13,15 @@ import type {
     CompiledRGResource,
     CompiledRenderGraph
 } from './RenderGraphCompiler';
-import type { RGBufferHandle, RGResourceHandle, RGTextureHandle } from './RenderGraphResource';
+import type {
+    RGBufferHandle,
+    RGResourceHandle,
+    RGTextureAccessHandle,
+    RGTextureHandle
+} from './RenderGraphResource';
 import { renderGraphFailure } from './RenderGraphValidation';
+
+type CompiledRGPhysicalResource = Exclude<CompiledRGResource, { readonly kind: 'texture-view' }>;
 
 function sameStringList(first: readonly string[], second: readonly string[]): boolean {
     if (first.length !== second.length) return false;
@@ -167,7 +174,7 @@ class PreparedRGResourceLookup {
 
 interface PooledRGResource {
     readonly key: number;
-    readonly compiled: CompiledRGResource;
+    readonly compiled: CompiledRGPhysicalResource;
     readonly deviceId: number;
     readonly deviceGeneration: number;
     readonly texture: RHITexture | null;
@@ -189,7 +196,7 @@ function mixPoolKeyString(hash: number, value: string): number {
 }
 
 /** Allocation-free numeric bucket; structural equality below makes hash collisions harmless. */
-function resourcePoolKey(resource: CompiledRGResource): number {
+function resourcePoolKey(resource: CompiledRGPhysicalResource): number {
     if (resource.kind === 'buffer') {
         const descriptor = resource.descriptor;
         let hash = mixPoolKey(0x811c9dc5, 1);
@@ -221,7 +228,7 @@ function resourcePoolKey(resource: CompiledRGResource): number {
 
 function samePooledResourceDescriptor(
     entry: PooledRGResource,
-    resource: CompiledRGResource
+    resource: CompiledRGPhysicalResource
 ): boolean {
     const cached = entry.compiled;
     if (cached.kind !== resource.kind) return false;
@@ -270,7 +277,11 @@ class TransientResourcePool {
         this.#ownerDeviceGeneration = device.generation;
     }
 
-    acquire(resource: CompiledRGResource, device: RHIDevice, result: PreparedRGResource): void {
+    acquire(
+        resource: CompiledRGPhysicalResource,
+        device: RHIDevice,
+        result: PreparedRGResource
+    ): void {
         this.useDevice(device);
         const key = resourcePoolKey(resource);
         const entries = this.#entries.get(key);
@@ -532,15 +543,15 @@ export interface RGExecutionOptions {
 
 export interface RGPassContext {
     readonly commandContext: RHICommandContext;
-    getTexture(handle: RGTextureHandle): RHITexture;
-    getTextureView(handle: RGTextureHandle): RHITextureView;
+    getTexture(handle: RGTextureAccessHandle): RHITexture;
+    getTextureView(handle: RGTextureAccessHandle): RHITextureView;
     getBuffer(handle: RGBufferHandle): RHIBuffer;
 }
 
 /** Resource-only scope used before queue.beginFrame; it intentionally exposes no command context. */
 export interface RGPrepareContext {
-    getTexture(handle: RGTextureHandle): RHITexture;
-    getTextureView(handle: RGTextureHandle): RHITextureView;
+    getTexture(handle: RGTextureAccessHandle): RHITexture;
+    getTextureView(handle: RGTextureAccessHandle): RHITextureView;
     getBuffer(handle: RGBufferHandle): RHIBuffer;
 }
 
@@ -553,7 +564,7 @@ class RGDeclaredResourceContext implements RGPrepareContext {
         this.activePass = pass;
     }
 
-    getTexture(handle: RGTextureHandle): RHITexture {
+    getTexture(handle: RGTextureAccessHandle): RHITexture {
         const resource = this.requireDeclared(handle);
         if (!resource.texture) {
             renderGraphFailure('invalid-handle', `resource ${String(handle)} is not a texture`);
@@ -561,7 +572,7 @@ class RGDeclaredResourceContext implements RGPrepareContext {
         return resource.texture;
     }
 
-    getTextureView(handle: RGTextureHandle): RHITextureView {
+    getTextureView(handle: RGTextureAccessHandle): RHITextureView {
         const resource = this.requireDeclared(handle);
         if (!resource.textureView) {
             renderGraphFailure('invalid-handle', `resource ${String(handle)} is not a texture`);
@@ -735,6 +746,19 @@ export class RenderGraphExecutor {
         try {
             for (const resource of graph.resources) {
                 const prepared = workspace.acquire(resource);
+                if (resource.kind === 'texture-view') {
+                    const parent = preparedByHandle.get(resource.texture);
+                    if (!parent?.texture) {
+                        renderGraphFailure(
+                            'invalid-state',
+                            'texture view parent was not prepared before the view',
+                            resource.name
+                        );
+                    }
+                    prepared.texture = parent.texture;
+                    prepared.textureView = parent.texture.createView(resource.descriptor);
+                    continue;
+                }
                 prepared.owned = resource.origin === 'transient';
                 prepared.allocated = prepared.owned;
                 if (prepared.owned && !resource.extracted) {

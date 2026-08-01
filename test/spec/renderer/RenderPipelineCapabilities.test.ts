@@ -202,6 +202,29 @@ describe('RenderPipelineCapabilities', () => {
         backend.destroy();
     });
 
+    it('preserves storage-oriented graph texture formats across device replacement', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const source = backend.createDevice().capabilities;
+        const minimum = createRenderPipelineCapabilities(source);
+        const reduced = createRenderPipelineCapabilities(
+            overrideFormat(
+                source,
+                'r32float',
+                formatCapabilities(source, 'r32float', {
+                    sampled: false,
+                    filterable: false,
+                    storage: false
+                })
+            )
+        );
+
+        expect(minimum.supportsTextureFormat('r32float', 'sampled')).toBe(true);
+        expect(() => {
+            validateRenderPipelineCapabilitySuperset(minimum, reduced);
+        }).toThrow(/r32float sampled/u);
+        backend.destroy();
+    });
+
     it('rejects replacement devices with narrower compute limits or stricter storage alignment', () => {
         const backend = new FakeWebGPURHIBackend();
         const source = backend.createDevice().capabilities;
