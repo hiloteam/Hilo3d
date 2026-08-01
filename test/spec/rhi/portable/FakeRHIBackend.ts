@@ -39,6 +39,12 @@ import {
     validateRHICommandCopyExternalImageToTexture,
     validateRHICommandGenerateMipmaps
 } from '../../../../src/render/rhi/core/RHICopyValidation';
+import {
+    normalizeRHIQuerySetDescriptor,
+    validateRHIDebugLabel,
+    validateRHIResolveQuerySet,
+    validateRHITimestampWrites
+} from '../../../../src/render/rhi/core/RHIQueryValidation';
 import type {
     RHIBindGroup,
     RHIBindGroupDescriptor,
@@ -71,12 +77,15 @@ import type {
     RHIDeviceOwnedObject,
     RHIDeviceOwnedDestroyable,
     RHINormalizedBufferDescriptor,
+    RHINormalizedQuerySetDescriptor,
     RHINormalizedSamplerDescriptor,
     RHINormalizedShaderDescriptor,
     RHINormalizedTextureDescriptor,
     RHINormalizedTextureViewDescriptor,
     RHIResource,
     RHIResourceLifetime,
+    RHIQuerySet,
+    RHIQuerySetDescriptor,
     RHISampler,
     RHISamplerDescriptor,
     RHIShader,
@@ -431,6 +440,23 @@ export class FakeRHITextureView extends FakeDestroyableObject implements RHIText
     }
 }
 
+export class FakeRHIQuerySet
+    extends FakeResource<RHINormalizedQuerySetDescriptor>
+    implements RHIQuerySet
+{
+    readonly descriptor: Readonly<RHINormalizedQuerySetDescriptor>;
+    readonly type;
+    readonly count;
+
+    constructor(owner: FakeRHIDevice, source: RHIQuerySetDescriptor) {
+        const descriptor = normalizeRHIQuerySetDescriptor(source, owner.capabilities);
+        super(owner, descriptor.label, descriptor.lifetime);
+        this.descriptor = descriptor;
+        this.type = descriptor.type;
+        this.count = descriptor.count;
+    }
+}
+
 export class FakeRHISampler
     extends FakeResource<RHINormalizedSamplerDescriptor>
     implements RHISampler
@@ -590,7 +616,9 @@ class FakeRHICapabilities implements RHICapabilities {
                       'storage-buffers' as const,
                       'storage-textures' as const,
                       'compute-pipelines' as const,
-                      'shader-f16' as const
+                      'shader-f16' as const,
+                      'timestamp-query' as const,
+                      'subgroups' as const
                   ]
                 : [])
         ]);
@@ -624,7 +652,9 @@ class FakeRHICapabilities implements RHICapabilities {
                       maxComputeWorkgroupSizeX: 256,
                       maxComputeWorkgroupSizeY: 256,
                       maxComputeWorkgroupSizeZ: 64,
-                      maxComputeWorkgroupsPerDimension: 65_535
+                      maxComputeWorkgroupsPerDimension: 65_535,
+                      subgroupMinSize: 4,
+                      subgroupMaxSize: 32
                   }
                 : {})
         });
@@ -752,6 +782,11 @@ export class FakeRHIDevice implements RHIDevice {
     createBuffer(descriptor: RHIBufferDescriptor): FakeRHIBuffer {
         this.assertAlive();
         return new FakeRHIBuffer(this, descriptor);
+    }
+
+    createQuerySet(descriptor: RHIQuerySetDescriptor): FakeRHIQuerySet {
+        this.assertAlive();
+        return new FakeRHIQuerySet(this, descriptor);
     }
 
     createTexture(descriptor: RHITextureDescriptor): FakeRHITexture {
@@ -984,6 +1019,7 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
     private readonly deferredCommands: FakeRHICommand[] = [];
     private readonly retainedObjects = new Set<RHIDeviceOwnedObject>();
     private externalImageUploadPhase = true;
+    private debugGroupDepth = 0;
 
     constructor(
         readonly queue: FakeRHIQueue,
@@ -1078,6 +1114,11 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
 
     beginRenderPass(descriptor: RHIRenderPassDescriptor): RHIRenderPassEncoder {
         this.assertOpen();
+        validateRHITimestampWrites(
+            this.owner,
+            descriptor.timestampWrites,
+            'renderPass.timestampWrites'
+        );
         const normalizedDescriptor = snapshotRHIRenderPassDescriptor(this.owner, descriptor);
         const attachments: RHIDeviceOwnedObject[] = [];
         for (const attachment of normalizedDescriptor.colorAttachments) {
@@ -1092,6 +1133,9 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
                 normalizedDescriptor.depthStencilAttachment.view,
                 normalizedDescriptor.depthStencilAttachment.view.texture
             );
+        }
+        if (descriptor.timestampWrites !== undefined) {
+            attachments.push(descriptor.timestampWrites.querySet);
         }
         this.closeExternalImageUploadPhase();
         this.retainAll(attachments);
@@ -1110,6 +1154,14 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
                 'compute passes are unsupported',
                 'computePass'
             );
+        }
+        validateRHITimestampWrites(
+            this.owner,
+            descriptor.timestampWrites,
+            'computePass.timestampWrites'
+        );
+        if (descriptor.timestampWrites !== undefined) {
+            this.retainAll([descriptor.timestampWrites.querySet]);
         }
         this.closeExternalImageUploadPhase();
         this.contextState = 'compute-pass';
@@ -1210,6 +1262,53 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
         this.issue(`copy-texture:${String(source.texture.id)}:${String(destination.texture.id)}`);
     }
 
+    resolveQuerySet(
+        querySet: RHIQuerySet,
+        firstQuery: number,
+        queryCount: number,
+        destination: RHIBuffer,
+        destinationOffset = 0
+    ): void {
+        this.assertOpen();
+        validateRHIResolveQuerySet(
+            this.owner,
+            querySet,
+            firstQuery,
+            queryCount,
+            destination,
+            destinationOffset
+        );
+        this.retainAll([querySet, destination]);
+        this.closeExternalImageUploadPhase();
+        this.issue(
+            `resolve-query-set:${String(querySet.id)}:${String(firstQuery)}:${String(queryCount)}`,
+            () => {
+                if (destination instanceof FakeRHIBuffer) {
+                    destination.writeBytes(destinationOffset, new Uint8Array(queryCount * 8));
+                }
+            }
+        );
+    }
+
+    pushDebugGroup(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'context.debugGroup');
+        this.debugGroupDepth += 1;
+    }
+
+    popDebugGroup(): void {
+        this.assertOpen();
+        if (this.debugGroupDepth === 0) {
+            validationFailure('invalid-state', 'context debug group stack is empty', 'context');
+        }
+        this.debugGroupDepth -= 1;
+    }
+
+    insertDebugMarker(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'context.debugMarker');
+    }
+
     issue(label: string, apply?: () => void): void {
         this.diagnostics.commandCount++;
         if (this.owner.fakeBackend.executionMode === 'immediate') {
@@ -1258,6 +1357,9 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
         readonly references: readonly RHIDeviceOwnedObject[];
     } {
         this.assertOpen();
+        if (this.debugGroupDepth !== 0) {
+            validationFailure('invalid-state', 'context has unclosed debug groups', 'context');
+        }
         this.contextState = 'ended';
         return {
             commands: this.deferredCommands,
@@ -1275,6 +1377,7 @@ export class FakeRHICommandContext extends FakeDeviceObject implements RHIComman
         }
         this.activePass?.abort();
         this.activePass = null;
+        this.debugGroupDepth = 0;
         this.contextState = 'aborted';
         this.deferredCommands.length = 0;
         return [...this.retainedObjects];
@@ -1304,6 +1407,7 @@ class FakeRHIRenderPass extends FakeDeviceObject implements RHIRenderPassEncoder
     private readonly bindGroups = new Map<number, RHIBindGroup>();
     private readonly vertexBuffers = new Set<number>();
     private hasIndexBuffer = false;
+    private debugGroupDepth = 0;
 
     constructor(
         readonly context: FakeRHICommandContext,
@@ -1642,15 +1746,48 @@ class FakeRHIRenderPass extends FakeDeviceObject implements RHIRenderPassEncoder
         this.context.issue(`draw-indexed-indirect:${String(buffer.id)}:${String(offset)}`);
     }
 
+    pushDebugGroup(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'renderPass.debugGroup');
+        this.debugGroupDepth += 1;
+    }
+
+    popDebugGroup(): void {
+        this.assertOpen();
+        if (this.debugGroupDepth === 0) {
+            validationFailure(
+                'invalid-state',
+                'render pass debug group stack is empty',
+                'renderPass'
+            );
+        }
+        this.debugGroupDepth -= 1;
+    }
+
+    insertDebugMarker(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'renderPass.debugMarker');
+    }
+
     end(): void {
         this.assertOpen();
+        if (this.debugGroupDepth !== 0) {
+            validationFailure(
+                'invalid-state',
+                'render pass has unclosed debug groups',
+                'renderPass'
+            );
+        }
         this.context.issue('render-pass:end');
         this.passState = 'ended';
         this.context.closePass(this);
     }
 
     abort(): void {
-        if (this.passState === 'open') this.passState = 'aborted';
+        if (this.passState === 'open') {
+            this.passState = 'aborted';
+            this.debugGroupDepth = 0;
+        }
     }
 
     private assertOpen(): void {
@@ -1850,6 +1987,7 @@ class FakeRHIComputePass extends FakeDeviceObject implements RHIComputePassEncod
     private passState: RHIComputePassState = 'open';
     private pipeline: RHIComputePipeline | null = null;
     private readonly bindGroups = new Map<number, RHIBindGroup>();
+    private debugGroupDepth = 0;
 
     constructor(
         readonly context: FakeRHICommandContext,
@@ -1918,8 +2056,38 @@ class FakeRHIComputePass extends FakeDeviceObject implements RHIComputePassEncod
         this.context.issue(`dispatch-indirect:${String(buffer.id)}:${String(offset)}`);
     }
 
+    pushDebugGroup(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'computePass.debugGroup');
+        this.debugGroupDepth += 1;
+    }
+
+    popDebugGroup(): void {
+        this.assertOpen();
+        if (this.debugGroupDepth === 0) {
+            validationFailure(
+                'invalid-state',
+                'compute pass debug group stack is empty',
+                'computePass'
+            );
+        }
+        this.debugGroupDepth -= 1;
+    }
+
+    insertDebugMarker(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'computePass.debugMarker');
+    }
+
     end(): void {
         this.assertOpen();
+        if (this.debugGroupDepth !== 0) {
+            validationFailure(
+                'invalid-state',
+                'compute pass has unclosed debug groups',
+                'computePass'
+            );
+        }
         this.context.issue('compute-pass:end');
         this.passState = 'ended';
         this.pipeline = null;
@@ -1930,6 +2098,7 @@ class FakeRHIComputePass extends FakeDeviceObject implements RHIComputePassEncod
         if (this.passState === 'open') {
             this.passState = 'aborted';
             this.pipeline = null;
+            this.debugGroupDepth = 0;
         }
     }
 

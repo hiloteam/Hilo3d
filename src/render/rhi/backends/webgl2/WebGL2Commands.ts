@@ -14,6 +14,7 @@ import {
     validateRHICopyTextureToTexture,
     validateRHIRenderPassPipelineDepthStencilAccess,
     snapshotRHIRenderPassDescriptorInto,
+    validateRHIDebugLabel,
     type RHIBindGroup,
     type RHIBuffer,
     type RHIColor,
@@ -38,6 +39,7 @@ import {
     type RHIIndexFormat,
     type RHIQueue,
     type RHIQueueState,
+    type RHIQuerySet,
     type RHIRect,
     type RHIRenderPassDescriptor,
     type RHIRenderPassDescriptorSnapshotStorage,
@@ -1046,6 +1048,7 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
     #state: RHICommandContextState = 'open';
     #activePass: WebGL2RenderPass | null = null;
     #externalImageUploadPhase = true;
+    #debugGroupDepth = 0;
 
     constructor(
         owner: WebGL2RHIDevice,
@@ -1205,6 +1208,13 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
 
     beginRenderPass(descriptor: RHIRenderPassDescriptor): WebGL2RenderPass {
         this.requireOpen();
+        if (descriptor.timestampWrites !== undefined) {
+            throw new RHIValidationError(
+                'unsupported-feature',
+                'WebGL2 does not support timestamp writes',
+                'renderPass.timestampWrites'
+            );
+        }
         const storage = this.queue.acquireRenderPassStorage(descriptor, this.diagnostics);
         this.closeExternalImageUploadPhase();
         const pass = new WebGL2RenderPass(this.owner, this, storage);
@@ -1339,6 +1349,44 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         this.diagnostics.commandCount++;
     }
 
+    resolveQuerySet(
+        _querySet: RHIQuerySet,
+        _firstQuery: number,
+        _queryCount: number,
+        _destination: RHIBuffer,
+        _destinationOffset = 0
+    ): void {
+        this.requireOpen();
+        throw new RHIValidationError(
+            'unsupported-feature',
+            'WebGL2 does not support query resolves',
+            'resolveQuerySet'
+        );
+    }
+
+    pushDebugGroup(label: string): void {
+        this.requireOpen();
+        validateRHIDebugLabel(label, 'context.debugGroup');
+        this.#debugGroupDepth += 1;
+    }
+
+    popDebugGroup(): void {
+        this.requireOpen();
+        if (this.#debugGroupDepth === 0) {
+            throw new RHIValidationError(
+                'invalid-state',
+                'context debug group stack is empty',
+                'context'
+            );
+        }
+        this.#debugGroupDepth -= 1;
+    }
+
+    insertDebugMarker(label: string): void {
+        this.requireOpen();
+        validateRHIDebugLabel(label, 'context.debugMarker');
+    }
+
     nativeSucceeded(operation: string): void {
         this.owner.assertNoNativeError(operation);
     }
@@ -1368,12 +1416,21 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
     }
 
     finish(): void {
+        this.requireOpen();
+        if (this.#debugGroupDepth !== 0) {
+            throw new RHIValidationError(
+                'invalid-state',
+                'context has unclosed debug groups',
+                'context'
+            );
+        }
         this.#state = 'ended';
     }
 
     abort(): void {
         this.#activePass?.abort();
         this.#activePass = null;
+        this.#debugGroupDepth = 0;
         this.#state = 'aborted';
     }
 
@@ -1854,6 +1911,7 @@ export class WebGL2RenderPass
     #scissorStateChanged = false;
     #observedResourcesValid = true;
     #observingResources = true;
+    #debugGroupDepth = 0;
 
     constructor(
         owner: WebGL2RHIDevice,
@@ -2700,8 +2758,38 @@ export class WebGL2RenderPass
         );
     }
 
+    pushDebugGroup(label: string): void {
+        this.requireOpen();
+        validateRHIDebugLabel(label, 'renderPass.debugGroup');
+        this.#debugGroupDepth += 1;
+    }
+
+    popDebugGroup(): void {
+        this.requireOpen();
+        if (this.#debugGroupDepth === 0) {
+            throw new RHIValidationError(
+                'invalid-state',
+                'render pass debug group stack is empty',
+                'renderPass'
+            );
+        }
+        this.#debugGroupDepth -= 1;
+    }
+
+    insertDebugMarker(label: string): void {
+        this.requireOpen();
+        validateRHIDebugLabel(label, 'renderPass.debugMarker');
+    }
+
     end(): void {
         this.requireOpen();
+        if (this.#debugGroupDepth !== 0) {
+            throw new RHIValidationError(
+                'invalid-state',
+                'render pass has unclosed debug groups',
+                'renderPass'
+            );
+        }
         try {
             this.flushPendingDrawBatch();
             this.assertAttachmentResourcesUsable();
@@ -2712,6 +2800,7 @@ export class WebGL2RenderPass
         }
         this.#state = 'ended';
         this.#pipeline = null;
+        this.#debugGroupDepth = 0;
         this.unsubscribeObservedResources();
         this.context.finishPass(this, this.#storage);
         this.context.diagnostics.commandCount++;

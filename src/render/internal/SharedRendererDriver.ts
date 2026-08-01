@@ -150,6 +150,9 @@ interface PendingAfterSceneEvent {
 }
 
 const OPTIONAL_WEBGPU_FEATURES: readonly RHIRequestableWebGPUFeature[] = Object.freeze([
+    'timestamp-query',
+    'shader-f16',
+    'subgroups',
     'float32-filterable',
     'texture-compression-bc',
     'texture-compression-etc2',
@@ -158,8 +161,6 @@ const OPTIONAL_WEBGPU_FEATURES: readonly RHIRequestableWebGPUFeature[] = Object.
 
 const REQUESTABLE_WEBGPU_FEATURES = new Set<string>([
     ...OPTIONAL_WEBGPU_FEATURES,
-    'timestamp-query',
-    'shader-f16',
     'depth32float-stencil8',
     'float32-blendable'
 ]);

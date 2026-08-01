@@ -3,9 +3,100 @@ import { ShaderArtifactCompiler } from '../../../../src/render/renderer/ShaderAr
 import { prepareWebGPUMipmapShaderArtifacts } from '../../../../src/render/renderer/WebGPUMipmapShader';
 import { expect, it } from 'vitest';
 import { createWebGPUDevice } from '../../../../src/render/rhi/backends/webgpu';
+import ComputeShader from '../../../../src/render/compute/ComputeShader';
+import { WgslComputeShaderCompiler } from '../../../../src/render/shader/WgslComputeCompiler';
 import { expectRHIPhase2Conformance, runRHIPhase2Conformance } from './RHIPhase2Conformance';
 
 const nativeWebGPUAvailable = typeof navigator !== 'undefined' && 'gpu' in navigator;
+
+it.skipIf(!nativeWebGPUAvailable)(
+    'validates and executes a Direct WGSL f16 compute pipeline on capable native WebGPU',
+    async testContext => {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter?.features.has('shader-f16')) {
+            testContext.skip();
+            return;
+        }
+        const compiler = new WgslComputeShaderCompiler();
+        await compiler.initialize();
+        const compiled = compiler.compile(
+            new ComputeShader({
+                source: `
+enable f16;
+struct Output { value: f16, }
+@group(0) @binding(0) var<storage, read_write> output: Output;
+@compute @workgroup_size(1) fn main() { output.value = 1.5h; }
+`,
+                workgroupSize: [1],
+                bindings: [
+                    {
+                        name: 'output',
+                        group: 0,
+                        binding: 0,
+                        kind: 'storage-buffer',
+                        access: 'write-discard'
+                    }
+                ]
+            })
+        );
+        const device = await createWebGPUDevice({ adapter, requiredFeatures: ['shader-f16'] });
+        const output = device.createBuffer({
+            size: 4,
+            usage: RHIBufferUsage.STORAGE | RHIBufferUsage.COPY_SRC
+        });
+        const readback = device.createBuffer({
+            size: 4,
+            usage: RHIBufferUsage.COPY_DST | RHIBufferUsage.MAP_READ
+        });
+        try {
+            const shader = device.createShader({
+                artifact: {
+                    backend: 'webgpu',
+                    stage: 'compute',
+                    code: compiled.source,
+                    entryPoint: compiled.entryPoint,
+                    reflection: compiled.reflection,
+                    cacheKey: compiled.cacheKey
+                }
+            });
+            const bindGroupLayout = device.createBindGroupLayout({
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: RHIShaderStage.COMPUTE,
+                        buffer: { type: 'storage', minBindingSize: 2 }
+                    }
+                ]
+            });
+            const layout = device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] });
+            const pipeline = device.createComputePipeline({ layout, compute: { shader } });
+            const bindGroup = device.createBindGroup({
+                layout: bindGroupLayout,
+                entries: [{ binding: 0, resource: { buffer: output } }]
+            });
+            const frame = device.graphicsQueue.beginFrame();
+            const pass = frame.beginComputePass();
+            pass.setPipeline(pipeline);
+            pass.setBindGroup(0, bindGroup);
+            pass.dispatchWorkgroups(1);
+            pass.end();
+            frame.copyBufferToBuffer(output, 0, readback, 0, 4);
+            await device.graphicsQueue.endFrame(frame).done;
+            await readback.mapAsync('read');
+            expect(new Uint16Array(readback.getMappedRange())[0]).toBe(0x3e00);
+            readback.unmap();
+            bindGroup.destroy();
+            pipeline.destroy();
+            layout.destroy();
+            bindGroupLayout.destroy();
+            shader.destroy();
+        } finally {
+            output.destroy();
+            readback.destroy();
+            device.destroy();
+        }
+    }
+);
 
 it.skipIf(!nativeWebGPUAvailable)(
     'executes the shared offscreen Phase 2 scene matrix on native WebGPU',

@@ -12,6 +12,7 @@ export type RHIFeatureName =
     | 'storage-textures'
     | 'compute-pipelines'
     | 'shader-f16'
+    | 'subgroups'
     | 'timestamp-query'
     | 'anisotropic-filtering'
     | 'texture-compression-bc'
@@ -54,6 +55,10 @@ export interface RHILimits {
     readonly maxComputeWorkgroupSizeY?: number;
     readonly maxComputeWorkgroupSizeZ?: number;
     readonly maxComputeWorkgroupsPerDimension?: number;
+    /** Minimum invocation count in a native subgroup when the subgroups feature is enabled. */
+    readonly subgroupMinSize?: number;
+    /** Maximum invocation count in a native subgroup when the subgroups feature is enabled. */
+    readonly subgroupMaxSize?: number;
 }
 
 /** Immutable capabilities for one texture format on one device generation. */

@@ -2,6 +2,7 @@ import type Camera from '../../camera/Camera';
 import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
+import type { RenderGraphTimelineSink } from '../graph/RenderGraphTimeline';
 import type { RHICapabilities } from '../rhi/core';
 import type { RenderTarget } from '../RenderTarget';
 import type { RendererScene } from '../RendererCore';
@@ -43,6 +44,7 @@ export interface RenderPipelineHostLifecycle {
         runtimeOwner: object
     ): RenderPipelineContext;
     endPipelineInvocation(completed: boolean): void;
+    getRenderGraphTimelineSink?(): RenderGraphTimelineSink | null;
 }
 
 /**
@@ -291,7 +293,12 @@ export class RenderPipelineHost {
             lifecycleStarted = true;
             this.lifecycle.beginFrame(frameIndex);
             const context = this.lifecycle.createFrameContext(frameIndex);
-            const execution = this.#frame.execute(context, this.#buildFrame, this.#abortSignal);
+            const execution = this.#frame.execute(
+                context,
+                this.#buildFrame,
+                this.#abortSignal,
+                this.lifecycle.getRenderGraphTimelineSink?.() ?? null
+            );
             submitted = true;
             this.lifecycle.completeFrame(frameIndex, execution, this.#frame.uploads.pendingCount);
         } catch (error) {

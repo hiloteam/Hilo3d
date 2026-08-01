@@ -171,6 +171,7 @@ function prepareContexts(buffers: ReadonlyMap<RGBufferHandle, RHIBuffer>): Reado
         prepare: { getBuffer, getTexture: noTexture, getTextureView: noTextureView },
         execute: commandContext => ({
             commandContext,
+            timestampWrites: undefined,
             getBuffer,
             getTexture: noTexture,
             getTextureView: noTextureView

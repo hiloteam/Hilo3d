@@ -6,6 +6,7 @@ import {
     type RHITextureUsageFlags
 } from '../rhi/core';
 import type { RGPassContext, RGPrepareContext } from './RenderGraphExecutor';
+import type { RGPassTimestampKind } from './RenderGraphTimeline';
 import type {
     RGBufferDescriptor,
     RGBufferAccessDeclaration,
@@ -56,6 +57,8 @@ function allocateGraphHandle(): RGResourceHandle | RGPassHandle {
  */
 export interface RenderPassTemplate<P> {
     readonly name: string;
+    /** Native pass category used only by opt-in automatic GPU timestamp instrumentation. */
+    timestampKind?(params: P): RGPassTimestampKind | null;
     setup(builder: RGPassBuilder, params: P): void;
     prepare?(context: RGPrepareContext, params: P): void;
     execute(context: RGPassContext, params: P): void;

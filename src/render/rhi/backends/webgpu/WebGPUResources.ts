@@ -3,10 +3,12 @@ import type {
     RHIBufferMapMode,
     RHIBufferMapState,
     RHINormalizedBufferDescriptor,
+    RHINormalizedQuerySetDescriptor,
     RHINormalizedSamplerDescriptor,
     RHINormalizedShaderDescriptor,
     RHINormalizedTextureDescriptor,
     RHINormalizedTextureViewDescriptor,
+    RHIQuerySet,
     RHISampler,
     RHIShader,
     RHITexture,
@@ -120,6 +122,37 @@ export class WebGPUBuffer
     protected override releaseNative(): void {
         this.#mappedOffset = 0;
         this.#mappedSize = 0;
+        this.#nativeHandle.destroy();
+    }
+}
+
+export class WebGPUQuerySet
+    extends WebGPUResource<RHINormalizedQuerySetDescriptor>
+    implements RHIQuerySet
+{
+    readonly descriptor: Readonly<RHINormalizedQuerySetDescriptor>;
+    readonly type;
+    readonly count: number;
+    readonly #nativeHandle: GPUQuerySet;
+
+    constructor(
+        owner: WebGPUDevice,
+        nativeHandle: GPUQuerySet,
+        descriptor: Readonly<RHINormalizedQuerySetDescriptor>
+    ) {
+        super(owner, descriptor.label, descriptor.lifetime);
+        this.#nativeHandle = nativeHandle;
+        this.descriptor = descriptor;
+        this.type = descriptor.type;
+        this.count = descriptor.count;
+    }
+
+    /** @internal */
+    get nativeHandle(): GPUQuerySet {
+        return this.#nativeHandle;
+    }
+
+    protected override releaseNative(): void {
         this.#nativeHandle.destroy();
     }
 }

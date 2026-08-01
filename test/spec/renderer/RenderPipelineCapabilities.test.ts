@@ -77,6 +77,11 @@ describe('RenderPipelineCapabilities', () => {
         expect(released.supportsCapability('storage-texture')).toBe(true);
         expect(released.supportsCapability('compute-pass')).toBe(true);
         expect(released.supportsCapability('indirect-draw')).toBe(true);
+        expect(released.supportsFeature('shader-f16')).toBe(true);
+        expect(released.supportsFeature('subgroups')).toBe(true);
+        expect(released.supportsFeature('timestamp-query')).toBe(true);
+        expect(released.limits.subgroupMinSize).toBe(4);
+        expect(released.limits.subgroupMaxSize).toBe(32);
 
         const withoutCompute = new Set(source.features);
         withoutCompute.delete('compute-pipelines');
@@ -94,6 +99,7 @@ describe('RenderPipelineCapabilities', () => {
         expect(fallback.supportsCapability('storage-buffer')).toBe(false);
         expect(fallback.supportsCapability('compute-pass')).toBe(false);
         expect(fallback.supportsCapability('indirect-draw')).toBe(false);
+        expect(fallback.supportsFeature('subgroups')).toBe(false);
 
         webgpu.destroy();
         webgl2.destroy();

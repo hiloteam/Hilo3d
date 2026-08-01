@@ -8,7 +8,8 @@ import type {
     RHIImageCopyExternalImageToTexture,
     RHIImageDataLayout,
     RHIImageCopyTexture,
-    RHIRenderPassDescriptor
+    RHIRenderPassDescriptor,
+    RHITimestampWrites
 } from '../../core/RHICommands';
 import { validateRHIClearBuffer } from '../../core/RHICommandValidation';
 import {
@@ -22,14 +23,24 @@ import {
     validateRHIWriteTexture,
     getRHITextureFormatBlockInfo
 } from '../../core/RHICopyValidation';
-import type { RHIBuffer, RHIDeviceOwnedObject, RHITexture } from '../../core/RHIResources';
+import type {
+    RHIBuffer,
+    RHIDeviceOwnedObject,
+    RHIQuerySet,
+    RHITexture
+} from '../../core/RHIResources';
+import {
+    validateRHIDebugLabel,
+    validateRHIResolveQuerySet,
+    validateRHITimestampWrites
+} from '../../core/RHIQueryValidation';
 import type { RHIFrameDescriptor } from '../../core/RHIQueue';
 import type { RHIDataSource, RHIExtent3D } from '../../core/RHITypes';
 import { RHIValidationError } from '../../core/RHIValidation';
 import { WebGPUDestroyableObject, WebGPUObject } from './WebGPUBase';
 import { nativeWebGPUOrigin } from './WebGPUDescriptors';
 import type { WebGPUDevice } from './WebGPUDevice';
-import { WebGPUBuffer, WebGPUTexture } from './WebGPUResources';
+import { WebGPUBuffer, WebGPUQuerySet, WebGPUTexture } from './WebGPUResources';
 import type { WebGPUQueue, WebGPUUploadAllocation } from './WebGPUQueue';
 import { WebGPURenderPass, type WebGPURenderPassStorage } from './WebGPURenderPass';
 import { WebGPUComputePass, type WebGPUComputePassStorage } from './WebGPUComputePass';
@@ -122,6 +133,31 @@ function webGPUTexture(
     return texture;
 }
 
+function webGPUQuerySet(device: WebGPUDevice, querySet: RHIQuerySet, path: string): WebGPUQuerySet {
+    device.assertUsable(querySet, path);
+    if (!(querySet instanceof WebGPUQuerySet) || querySet.owner !== device) {
+        return validationFailure('wrong-device', 'expected a WebGPU RHI query set', path);
+    }
+    return querySet;
+}
+
+function nativeTimestampWrites(
+    device: WebGPUDevice,
+    writes: Readonly<RHITimestampWrites>,
+    path: string
+): GPURenderPassTimestampWrites {
+    const querySet = webGPUQuerySet(device, writes.querySet, `${path}.querySet`);
+    return {
+        querySet: querySet.nativeHandle,
+        ...(writes.beginningOfPassWriteIndex === undefined
+            ? {}
+            : { beginningOfPassWriteIndex: writes.beginningOfPassWriteIndex }),
+        ...(writes.endOfPassWriteIndex === undefined
+            ? {}
+            : { endOfPassWriteIndex: writes.endOfPassWriteIndex })
+    };
+}
+
 function nativeImageCopyTexture(
     device: WebGPUDevice,
     copy: RHIImageCopyTexture,
@@ -158,6 +194,7 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
     #activePass: WebGPURenderPass | WebGPUComputePass | null = null;
     #externalImageUploadPhase = true;
     #directUploadPhase: boolean;
+    #debugGroupDepth = 0;
     readonly #retainedReferences: WebGPUFrameReferences;
     readonly #uploadAllocation: WebGPUUploadAllocation = { buffer: null, offset: 0 };
 
@@ -417,13 +454,29 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
 
     beginRenderPass(descriptor: RHIRenderPassDescriptor): WebGPURenderPass {
         this.assertOpen();
+        validateRHITimestampWrites(
+            this.owner,
+            descriptor.timestampWrites,
+            'renderPass.timestampWrites'
+        );
         const storage = this.queue.acquireRenderPassStorage(descriptor, this);
         const snapshot = storage.snapshot.descriptor;
         this.closeExternalImageUploadPhase();
         let nativePass: GPURenderPassEncoder;
         try {
+            const cachedDescriptor = this.owner.framebufferCache.lookup(snapshot);
+            const writes = descriptor.timestampWrites;
             nativePass = this.#nativeEncoder.beginRenderPass(
-                this.owner.framebufferCache.lookup(snapshot)
+                writes === undefined
+                    ? cachedDescriptor
+                    : {
+                          ...cachedDescriptor,
+                          timestampWrites: nativeTimestampWrites(
+                              this.owner,
+                              writes,
+                              'renderPass.timestampWrites'
+                          )
+                      }
             );
         } catch (error) {
             this.queue.releaseRenderPassStorage(storage);
@@ -446,6 +499,15 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
             this.retain(snapshot.depthStencilAttachment.view);
             this.retain(snapshot.depthStencilAttachment.view.texture);
         }
+        if (descriptor.timestampWrites !== undefined) {
+            this.retain(
+                webGPUQuerySet(
+                    this.owner,
+                    descriptor.timestampWrites.querySet,
+                    'renderPass.timestampWrites.querySet'
+                )
+            );
+        }
         this.#contextState = 'render-pass';
         this.diagnostics.commandCount += 1;
         this.diagnostics.nativeStateCalls += 1;
@@ -459,7 +521,26 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
         if (!this.owner.capabilities.features.has('compute-pipelines')) {
             validationFailure('unsupported-feature', 'compute passes are unsupported', 'context');
         }
+        validateRHITimestampWrites(
+            this.owner,
+            descriptor.timestampWrites,
+            'computePass.timestampWrites'
+        );
         const storage = this.queue.acquireComputePassStorage(descriptor, this);
+        if (descriptor.timestampWrites !== undefined) {
+            storage.nativeDescriptor.timestampWrites = nativeTimestampWrites(
+                this.owner,
+                descriptor.timestampWrites,
+                'computePass.timestampWrites'
+            );
+            this.retain(
+                webGPUQuerySet(
+                    this.owner,
+                    descriptor.timestampWrites.querySet,
+                    'computePass.timestampWrites.querySet'
+                )
+            );
+        }
         this.closeExternalImageUploadPhase();
         let nativePass: GPUComputePassEncoder;
         try {
@@ -577,6 +658,66 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
         this.recordNativeCommand();
     }
 
+    resolveQuerySet(
+        querySet: RHIQuerySet,
+        firstQuery: number,
+        queryCount: number,
+        destination: RHIBuffer,
+        destinationOffset = 0
+    ): void {
+        this.assertOpen();
+        validateRHIResolveQuerySet(
+            this.owner,
+            querySet,
+            firstQuery,
+            queryCount,
+            destination,
+            destinationOffset
+        );
+        const nativeQuerySet = webGPUQuerySet(this.owner, querySet, 'resolveQuerySet.querySet');
+        const nativeDestination = webGPUBuffer(
+            this.owner,
+            destination,
+            'resolveQuerySet.destination'
+        );
+        this.retain(nativeQuerySet);
+        this.retain(nativeDestination);
+        this.closeExternalImageUploadPhase();
+        this.#nativeEncoder.resolveQuerySet(
+            nativeQuerySet.nativeHandle,
+            firstQuery,
+            queryCount,
+            nativeDestination.nativeHandle,
+            destinationOffset
+        );
+        this.recordNativeCommand();
+    }
+
+    pushDebugGroup(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'context.debugGroup');
+        this.#nativeEncoder.pushDebugGroup(label);
+        this.#debugGroupDepth += 1;
+        this.diagnostics.nativeStateCalls += 1;
+    }
+
+    popDebugGroup(): void {
+        this.assertOpen();
+        if (this.#debugGroupDepth === 0) {
+            validationFailure('invalid-state', 'context debug group stack is empty', 'context');
+        }
+        this.#nativeEncoder.popDebugGroup();
+        this.#debugGroupDepth -= 1;
+        this.diagnostics.nativeStateCalls += 1;
+    }
+
+    insertDebugMarker(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'context.debugMarker');
+        this.#nativeEncoder.insertDebugMarker(label);
+        this.diagnostics.nativeStateCalls += 1;
+    }
+
     /** @internal */
     retain(object: RHIDeviceOwnedObject): void {
         this.owner.assertUsable(object, 'frame.resource');
@@ -631,6 +772,9 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
     /** @internal */
     finishForSubmission(): GPUCommandBuffer {
         this.assertOpen();
+        if (this.#debugGroupDepth !== 0) {
+            validationFailure('invalid-state', 'context has unclosed debug groups', 'context');
+        }
         const commandBuffer = this.#nativeEncoder.finish();
         this.owner.recordNativeObjectCreated('commandBuffer', 'creation-only');
         this.#contextState = 'ended';
@@ -648,6 +792,7 @@ export class WebGPUCommandContext extends WebGPUObject implements RHICommandCont
         }
         this.#activePass?.abort();
         this.#activePass = null;
+        this.#debugGroupDepth = 0;
         this.#contextState = 'aborted';
         return this.#retainedReferences;
     }

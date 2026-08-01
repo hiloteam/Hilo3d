@@ -7,6 +7,7 @@ import type { RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGPassBuilder, RenderPassTemplate } from '../graph/RenderGraphBuilder';
 import type { RGPassContext, RGPrepareContext } from '../graph/RenderGraphExecutor';
+import type { RGPassTimestampKind } from '../graph/RenderGraphTimeline';
 import type {
     RGBufferHandle,
     RGPassHandle,
@@ -2031,6 +2032,9 @@ class ScriptablePassSlot {
             get name(): string {
                 return getPassName();
             },
+            timestampKind(params: ScriptablePassSlot): RGPassTimestampKind | null {
+                return params.timestampKind();
+            },
             setup(builder: RGPassBuilder, params: ScriptablePassSlot): void {
                 params.setup(builder);
             },
@@ -2178,6 +2182,12 @@ class ScriptablePassSlot {
             this.#activeSetupLease = null;
             this.#setupBuilder = null;
         }
+    }
+
+    timestampKind(): RGPassTimestampKind | null {
+        if (this.#hasRasterAttachments) return 'render';
+        if (this.#activeComputeDispatch) return 'compute';
+        return null;
     }
 
     private finishSetup(builder: RGPassBuilder): void {

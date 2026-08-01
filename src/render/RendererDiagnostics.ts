@@ -1,4 +1,8 @@
 import type { RHICacheCounters } from './rhi/core';
+import type {
+    RenderGraphTimelineSink,
+    RenderGraphTimelineSnapshot
+} from './graph/RenderGraphTimeline';
 
 export type RendererNativeObjectKind =
     | 'buffer'
@@ -101,6 +105,8 @@ export interface RendererDiagnosticsSnapshot {
     readonly nativeObjects: RendererNativeObjectDiagnosticsSnapshot;
     readonly caches: RendererCacheDiagnosticsSnapshot;
     readonly frame: RendererFrameDiagnosticsSnapshot;
+    /** Latest opt-in Render Graph CPU/GPU timeline, updated after asynchronous GPU readback. */
+    readonly renderGraph: Readonly<RenderGraphTimelineSnapshot> | null;
 }
 
 const NATIVE_CREATED = 0;
@@ -255,8 +261,18 @@ function requireSize(size: number): void {
  * Backend-neutral renderer counters. A renderer owns one instance and reuses its fixed typed-array
  * storage across frames. Recording methods do not allocate; only an explicit snapshot does.
  */
-export class RendererDiagnostics {
+export class RendererDiagnostics implements RenderGraphTimelineSink {
     readonly #counters = new Float64Array(COUNTER_COUNT);
+    #renderGraphTimeline: Readonly<RenderGraphTimelineSnapshot> | null = null;
+
+    recordRenderGraphTimeline(snapshot: Readonly<RenderGraphTimelineSnapshot>): void {
+        if (
+            this.#renderGraphTimeline === null ||
+            snapshot.frameIndex >= this.#renderGraphTimeline.frameIndex
+        ) {
+            this.#renderGraphTimeline = snapshot;
+        }
+    }
 
     recordNativeObjectCreated(kind: RendererNativeObjectKind, count = 1): void {
         requirePositiveCount(count);
@@ -505,7 +521,8 @@ export class RendererDiagnostics {
                 uploads: this.value(FRAME_UPLOADS),
                 submissions: this.value(FRAME_SUBMISSIONS),
                 arenaGrowths: this.value(FRAME_ARENA_GROWTHS)
-            })
+            }),
+            renderGraph: this.#renderGraphTimeline
         });
     }
 

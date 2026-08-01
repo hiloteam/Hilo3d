@@ -314,8 +314,11 @@ renderer 或运行时 precision 变化不会交叉复用错误源码。`commonOp
 WebGPU-only compute 是独立且受控的例外：`ComputeShader` 接受 Direct
 WGSL，不走 GLSL 转换，但必须经过 Naga WGSL
 frontend/validator、selected-entry/workgroup/workgroup-storage/override metadata 检查、显式 binding
-ABI 比对和真实 WebGPU pipeline validation。它只能声明 `@compute`，不能借此提交 graphics
-WGSL。当前 Naga 路径不能可靠完整验证 `f16`，因此 Direct WGSL `f16` 在 pipeline 创建前 fail-closed。
+ABI 比对和真实 WebGPU pipeline validation。它只能声明 `@compute`，不能借此提交 graphics WGSL。`f16`
+原始源码先通过 Naga frontend；当前 `web-naga`
+writer 使用 token-safe 等价 f32 特化完成 validator/backend，原始 artifact 再经 `shader-f16`
+capability 和真实 WebGPU pipeline 验证。buffer `minBindingSize` 从 WGSL store type 推导，runtime
+array 按一个元素计算，低报在 native 调用前失败。
 
 WebGPU-only storage-aware raster 仍不接受 graphics WGSL。`StorageGraphicsShader` 使用受控 GLSL ES
 3.10 readonly-std430 subset，经引擎 preprocessing、Vulkan GLSL

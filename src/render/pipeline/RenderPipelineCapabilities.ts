@@ -13,6 +13,7 @@ import type {
     RenderPipelineTextureUse
 } from './RenderPipeline';
 import type { RenderTargetSampleCount } from '../RenderTarget';
+import type { RendererFeatureName } from '../RendererOptions';
 
 // Atomic release gate: flip only after public passes, graph access, RHI, both backend policies,
 // recovery, and browser coverage are all present. Per-device predicates below remain fail-closed.
@@ -22,6 +23,17 @@ const PIPELINE_CAPABILITY_NAMES: readonly RenderPipelineCapabilityName[] = Objec
     'storage-texture',
     'compute-pass',
     'indirect-draw'
+]);
+const PUBLIC_RENDERER_FEATURES: readonly RendererFeatureName[] = Object.freeze([
+    'texture-compression-bc',
+    'texture-compression-etc2',
+    'texture-compression-astc',
+    'timestamp-query',
+    'shader-f16',
+    'subgroups',
+    'depth32float-stencil8',
+    'float32-filterable',
+    'float32-blendable'
 ]);
 const PUBLIC_TEXTURE_FORMATS: readonly RHITextureFormat[] = Object.freeze([
     'r8unorm',
@@ -145,6 +157,10 @@ function publicPipelineLimit(
             return limits.maxComputeWorkgroupSizeZ;
         case 'maxComputeWorkgroupsPerDimension':
             return limits.maxComputeWorkgroupsPerDimension;
+        case 'subgroupMinSize':
+            return limits.subgroupMinSize;
+        case 'subgroupMaxSize':
+            return limits.subgroupMaxSize;
         default:
             return undefined;
     }
@@ -219,8 +235,18 @@ export function createRenderPipelineCapabilities(
             : {
                   maxComputeWorkgroupsPerDimension:
                       capabilities.limits.maxComputeWorkgroupsPerDimension
-              })
+              }),
+        ...(capabilities.limits.subgroupMinSize === undefined
+            ? {}
+            : { subgroupMinSize: capabilities.limits.subgroupMinSize }),
+        ...(capabilities.limits.subgroupMaxSize === undefined
+            ? {}
+            : { subgroupMaxSize: capabilities.limits.subgroupMaxSize })
     });
+    const supportedFeatures = new Set<RendererFeatureName>();
+    for (const feature of PUBLIC_RENDERER_FEATURES) {
+        if (capabilities.features.has(feature)) supportedFeatures.add(feature);
+    }
     const formats = new Map<RHITextureFormat, Readonly<PublicTextureFormatSnapshot>>();
     const resolveFormatCapabilities = (
         format: RHITextureFormat
@@ -274,6 +300,9 @@ export function createRenderPipelineCapabilities(
         });
     return Object.freeze({
         limits,
+        supportsFeature(feature: RendererFeatureName): boolean {
+            return supportedFeatures.has(feature);
+        },
         supportsCapability(capability: RenderPipelineCapabilityName): boolean {
             return supportedCapabilities[capability];
         },
@@ -346,7 +375,8 @@ export function validateRenderPipelineCapabilitySuperset(
         'maxComputeWorkgroupSizeX',
         'maxComputeWorkgroupSizeY',
         'maxComputeWorkgroupSizeZ',
-        'maxComputeWorkgroupsPerDimension'
+        'maxComputeWorkgroupsPerDimension',
+        'subgroupMaxSize'
     ] as const) {
         const required = minimum.limits[name];
         if (required !== undefined && (candidate.limits[name] ?? -1) < required) {
@@ -363,11 +393,24 @@ export function validateRenderPipelineCapabilitySuperset(
             'Replacement RHI device reduces render pipeline limit minStorageBufferOffsetAlignment'
         );
     }
+    const minimumSubgroupSize = minimum.limits.subgroupMinSize;
+    const candidateSubgroupSize = candidate.limits.subgroupMinSize;
+    if (
+        minimumSubgroupSize !== undefined &&
+        (candidateSubgroupSize === undefined || candidateSubgroupSize > minimumSubgroupSize)
+    ) {
+        throw new Error('Replacement RHI device reduces render pipeline limit subgroupMinSize');
+    }
     for (const capability of PIPELINE_CAPABILITY_NAMES) {
         if (minimum.supportsCapability(capability) && !candidate.supportsCapability(capability)) {
             throw new Error(
                 `Replacement RHI device removes render pipeline capability ${capability}`
             );
+        }
+    }
+    for (const feature of PUBLIC_RENDERER_FEATURES) {
+        if (minimum.supportsFeature(feature) && !candidate.supportsFeature(feature)) {
+            throw new Error(`Replacement RHI device removes render pipeline feature ${feature}`);
         }
     }
     for (const format of PUBLIC_TEXTURE_FORMATS) {

@@ -35,7 +35,12 @@ interface BackendSelectionOptions {
 export function describeWebGPUOnlyRendererFeature(
     features: readonly RendererFeatureName[] | undefined
 ): string | null {
-    return features?.includes('shader-f16') === true ? 'renderer feature shader-f16' : null;
+    for (const feature of features ?? []) {
+        if (feature === 'shader-f16' || feature === 'subgroups' || feature === 'timestamp-query') {
+            return `renderer feature ${feature}`;
+        }
+    }
+    return null;
 }
 
 /** @internal Describe the first pipeline constraint that WebGL2 cannot satisfy. */

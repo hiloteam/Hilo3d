@@ -5,10 +5,12 @@ import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
 import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import type { RenderPassTemplate } from '../../../src/render/graph/RenderGraphBuilder';
 import type { RGBufferHandle } from '../../../src/render/graph/RenderGraphResource';
-import { RHIBufferUsage } from '../../../src/render/rhi/core';
+import { RHIBufferUsage, RHITextureUsage } from '../../../src/render/rhi/core';
+import { RendererDiagnostics } from '../../../src/render/RendererDiagnostics';
 import { describe, expect, it, vi } from 'vitest';
 import {
     FakeWebGLRHIBackend,
+    FakeWebGPURHIBackend,
     type FakeRHIBuffer,
     type FakeRHIDevice
 } from '../rhi/portable/FakeRHIBackend';
@@ -51,6 +53,88 @@ describe('RenderGraphFrameContext', () => {
 });
 
 describe('RenderGraphFrame', () => {
+    it('publishes CPU, GPU pass, and resource-lifetime timelines only when opted in', async () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const frame = new RenderGraphFrame();
+        const diagnostics = new RendererDiagnostics();
+        const result = frame.execute(
+            frameContext(device, 9),
+            scope => {
+                const output = scope.graph.createBuffer('timeline output', {
+                    size: 4,
+                    usage: RHIBufferUsage.COPY_DST
+                });
+                const color = scope.graph.createTexture('timeline color', {
+                    size: { width: 1, height: 1 },
+                    format: 'rgba8unorm',
+                    usage: RHITextureUsage.RENDER_ATTACHMENT
+                });
+                const pass: RenderPassTemplate<undefined> = {
+                    name: 'timed render pass',
+                    timestampKind: () => 'render',
+                    setup(builder) {
+                        builder.writeBuffer(output, 'copy-destination');
+                        builder.useColorAttachment({
+                            texture: color,
+                            clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                            loadOp: 'clear',
+                            storeOp: 'store'
+                        });
+                        builder.markSideEffect();
+                    },
+                    execute(context) {
+                        context.commandContext.clearBuffer(context.getBuffer(output));
+                        const encoder = context.commandContext.beginRenderPass({
+                            label: 'timed render pass',
+                            colorAttachments: [
+                                {
+                                    view: context.getTextureView(color),
+                                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                                    loadOp: 'clear',
+                                    storeOp: 'store'
+                                }
+                            ],
+                            ...(context.timestampWrites === undefined
+                                ? {}
+                                : { timestampWrites: context.timestampWrites })
+                        });
+                        encoder.end();
+                    }
+                };
+                scope.graph.addPass(pass, undefined);
+            },
+            undefined,
+            diagnostics
+        );
+
+        const pendingTimeline = diagnostics.snapshot().renderGraph;
+        expect(pendingTimeline).toMatchObject({
+            frameIndex: 9,
+            gpuStatus: 'pending',
+            passes: [{ name: 'timed render pass', kind: 'render', gpuDurationMs: null }]
+        });
+        expect(pendingTimeline?.resources).toContainEqual({
+            name: 'timeline output',
+            kind: 'buffer',
+            origin: 'transient',
+            firstUse: 0,
+            lastUse: 0
+        });
+        backend.completeNextSubmission();
+        await result.submission.done;
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(diagnostics.snapshot().renderGraph).toMatchObject({
+            frameIndex: 9,
+            gpuStatus: 'ready',
+            passes: [{ name: 'timed render pass', gpuDurationMs: 0 }]
+        });
+
+        frame.destroy();
+        backend.destroy();
+    });
+
     it('builds, compiles, executes, and returns extracted resources in one frame', async () => {
         const backend = new FakeWebGLRHIBackend();
         const device = backend.createDevice();

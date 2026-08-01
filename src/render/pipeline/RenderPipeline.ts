@@ -69,12 +69,18 @@ export interface RenderPipelineLimits {
     readonly maxComputeWorkgroupSizeZ?: number;
     /** Maximum direct dispatch count in each dimension. */
     readonly maxComputeWorkgroupsPerDimension?: number;
+    /** Minimum native subgroup size when the optional subgroups feature is enabled. */
+    readonly subgroupMinSize?: number;
+    /** Maximum native subgroup size when the optional subgroups feature is enabled. */
+    readonly subgroupMaxSize?: number;
 }
 
 /** Frozen effective capabilities for one renderer device generation. */
 export interface RenderPipelineCapabilities {
     /** Backend-neutral limit snapshot. */
     readonly limits: Readonly<RenderPipelineLimits>;
+    /** Return whether one optional renderer device feature is enabled for this generation. */
+    supportsFeature(feature: RendererFeatureName): boolean;
     /** Return whether an optional pipeline capability is fully implemented end to end. */
     supportsCapability(capability: RenderPipelineCapabilityName): boolean;
     /** Return whether a texture format supports a portable role and sample count. */

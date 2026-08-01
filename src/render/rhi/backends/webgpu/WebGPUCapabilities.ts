@@ -231,6 +231,7 @@ function createFeatures(device: GPUDevice): ReadonlySet<RHIFeatureName> {
     const portableNativeFeatures: readonly RHIFeatureName[] = [
         'timestamp-query',
         'shader-f16',
+        'subgroups',
         'texture-compression-bc',
         'texture-compression-etc2',
         'texture-compression-astc',
@@ -253,7 +254,21 @@ function createFeatures(device: GPUDevice): ReadonlySet<RHIFeatureName> {
     return result;
 }
 
-function createLimits(native: GPUSupportedLimits): Readonly<RHILimits> {
+function adapterSubgroupSize(
+    info: Pick<GPUAdapterInfo, 'subgroupMinSize' | 'subgroupMaxSize'> | undefined,
+    name: 'subgroupMinSize' | 'subgroupMaxSize'
+): number | undefined {
+    const value = info?.[name];
+    return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+        ? value
+        : undefined;
+}
+
+function createLimits(
+    native: GPUSupportedLimits,
+    features: ReadonlySet<RHIFeatureName>,
+    adapterInfo?: Pick<GPUAdapterInfo, 'subgroupMinSize' | 'subgroupMaxSize'>
+): Readonly<RHILimits> {
     const maxStorageBuffersPerShaderStage = nativeLimit(
         native,
         'maxStorageBuffersPerShaderStage',
@@ -264,6 +279,12 @@ function createLimits(native: GPUSupportedLimits): Readonly<RHILimits> {
         'maxStorageTexturesPerShaderStage',
         4
     );
+    const subgroupMinSize = features.has('subgroups')
+        ? adapterSubgroupSize(adapterInfo, 'subgroupMinSize')
+        : undefined;
+    const subgroupMaxSize = features.has('subgroups')
+        ? adapterSubgroupSize(adapterInfo, 'subgroupMaxSize')
+        : undefined;
     return Object.freeze({
         maxTextureDimension1D: nativeLimit(native, 'maxTextureDimension1D', 8192),
         maxTextureDimension2D: nativeLimit(native, 'maxTextureDimension2D', 8192),
@@ -328,7 +349,9 @@ function createLimits(native: GPUSupportedLimits): Readonly<RHILimits> {
             native,
             'maxComputeWorkgroupsPerDimension',
             65_535
-        )
+        ),
+        ...(subgroupMinSize === undefined ? {} : { subgroupMinSize }),
+        ...(subgroupMaxSize === undefined ? {} : { subgroupMaxSize })
     });
 }
 
@@ -338,10 +361,13 @@ export class WebGPUCapabilities implements RHICapabilities {
     readonly #nativeFeatures: GPUSupportedFeatures;
     readonly #formatCapabilities = new Map<RHITextureFormat, RHITextureFormatCapabilities>();
 
-    constructor(device: GPUDevice) {
+    constructor(
+        device: GPUDevice,
+        adapterInfo?: Pick<GPUAdapterInfo, 'subgroupMinSize' | 'subgroupMaxSize'>
+    ) {
         this.#nativeFeatures = device.features;
         this.features = createFeatures(device);
-        this.limits = createLimits(device.limits);
+        this.limits = createLimits(device.limits, this.features, adapterInfo);
     }
 
     getTextureFormatCapabilities(format: RHITextureFormat): RHITextureFormatCapabilities {

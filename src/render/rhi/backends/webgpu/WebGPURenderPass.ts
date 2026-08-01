@@ -7,6 +7,7 @@ import type {
     RHIVertexBufferBindingRecord
 } from '../../core/RHICommands';
 import { validateRHIDrawIndirect } from '../../core/RHICommandValidation';
+import { validateRHIDebugLabel } from '../../core/RHIQueryValidation';
 import type { RHIBindGroup, RHIGraphicsPipeline } from '../../core/RHIPipeline';
 import type { RHIBuffer } from '../../core/RHIResources';
 import {
@@ -125,6 +126,7 @@ export class WebGPURenderPass extends WebGPUObject implements RHIRenderPassEncod
     #indexSize = 0;
     #viewportStateChanged = false;
     #scissorStateChanged = false;
+    #debugGroupDepth = 0;
 
     constructor(
         readonly context: WebGPUCommandContext,
@@ -693,8 +695,44 @@ export class WebGPURenderPass extends WebGPUObject implements RHIRenderPassEncod
         this.context.diagnostics.nativeStateCalls += 1;
     }
 
+    pushDebugGroup(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'renderPass.debugGroup');
+        this.#nativePass.pushDebugGroup(label);
+        this.#debugGroupDepth += 1;
+        this.context.diagnostics.nativeStateCalls += 1;
+    }
+
+    popDebugGroup(): void {
+        this.assertOpen();
+        if (this.#debugGroupDepth === 0) {
+            validationFailure(
+                'invalid-state',
+                'render pass debug group stack is empty',
+                'renderPass'
+            );
+        }
+        this.#nativePass.popDebugGroup();
+        this.#debugGroupDepth -= 1;
+        this.context.diagnostics.nativeStateCalls += 1;
+    }
+
+    insertDebugMarker(label: string): void {
+        this.assertOpen();
+        validateRHIDebugLabel(label, 'renderPass.debugMarker');
+        this.#nativePass.insertDebugMarker(label);
+        this.context.diagnostics.nativeStateCalls += 1;
+    }
+
     end(): void {
         this.assertOpen();
+        if (this.#debugGroupDepth !== 0) {
+            validationFailure(
+                'invalid-state',
+                'render pass has unclosed debug groups',
+                'renderPass'
+            );
+        }
         this.#nativePass.end();
         this.context.diagnostics.commandCount += 1;
         this.context.diagnostics.nativeStateCalls += 1;
@@ -710,6 +748,7 @@ export class WebGPURenderPass extends WebGPUObject implements RHIRenderPassEncod
         this.#passState = 'aborted';
         this.#pipeline = null;
         this.#indexBuffer = null;
+        this.#debugGroupDepth = 0;
         this.context.abortPass(this, this.#storage);
     }
 

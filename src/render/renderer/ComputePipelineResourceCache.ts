@@ -121,9 +121,10 @@ function bindingLayoutEntry(binding: ComputeShaderBinding): Readonly<RHIBindGrou
 
 function compileBindingLayout(
     shader: ComputeShader,
+    compiledBindings: readonly ComputeShaderBinding[],
     maxBindGroups: number
 ): Readonly<ComputeBindingLayoutPlan> {
-    const highestGroup = shader.bindings.at(-1)?.group ?? -1;
+    const highestGroup = compiledBindings.at(-1)?.group ?? -1;
     if (highestGroup >= maxBindGroups) {
         throw new RangeError(
             `ComputeShader binding group ${String(highestGroup)} exceeds maxBindGroups ${String(maxBindGroups)}`
@@ -131,7 +132,7 @@ function compileBindingLayout(
     }
     const descriptors: RHIBindGroupLayoutDescriptor[] = [];
     for (let group = 0; group <= highestGroup; group += 1) {
-        const entries = shader.bindings
+        const entries = compiledBindings
             .filter(binding => binding.group === group)
             .map(bindingLayoutEntry);
         descriptors.push(
@@ -144,7 +145,7 @@ function compileBindingLayout(
     }
     return Object.freeze({
         bindGroupLayoutDescriptors: Object.freeze(descriptors),
-        bindings: shader.bindings
+        bindings: compiledBindings
     });
 }
 
@@ -281,6 +282,7 @@ export class ComputePipelineResourceCache {
         const shaderLabel = shader.label || 'ComputeShader';
         const bindingPlan = compileBindingLayout(
             shader,
+            compiled.bindings,
             this.registry.deviceCapabilities.limits.maxBindGroups
         );
         const shaderHandle = this.registry.register<RHIShader>({

@@ -100,6 +100,7 @@ interface ComputeModuleMetadata {
     readonly overrides: readonly Readonly<RHIShaderOverrideReflection>[];
     readonly requiresF16: boolean;
     readonly nagaValidationSource: string;
+    readonly bufferMinBindingSizes: ReadonlyMap<string, number>;
 }
 
 interface TypeLayout {
@@ -113,6 +114,15 @@ interface TypeLayoutEnvironment {
     readonly structures: ReadonlyMap<string, SourceStructDeclaration>;
     readonly constants: ReadonlyMap<string, readonly SourceToken[]>;
     readonly overrides: ReadonlyMap<string, SourceOverrideDeclaration>;
+    readonly runtimeArrayElementCount: number | null;
+}
+
+interface SourceBufferVariable {
+    readonly name: string;
+    readonly group: number;
+    readonly binding: number;
+    readonly typeTokens: readonly SourceToken[];
+    readonly offset: number;
 }
 
 export interface CompiledWgslComputeShader {
@@ -578,8 +588,13 @@ function parseOverrideDeclaration(
 function parseWorkgroupVariable(
     source: string,
     tokens: readonly SourceToken[],
-    varIndex: number
-): { readonly variable: SourceWorkgroupVariable | null; readonly nextIndex: number } {
+    varIndex: number,
+    attributes: readonly SourceAttribute[]
+): {
+    readonly variable: SourceWorkgroupVariable | null;
+    readonly bufferVariable: SourceBufferVariable | null;
+    readonly nextIndex: number;
+} {
     const varToken = tokens[varIndex];
     let cursor = varIndex + 1;
     let addressSpace: string | null = null;
@@ -604,12 +619,24 @@ function parseWorkgroupVariable(
     if (cursor + 2 === typeEnd) {
         failSource(source, name.offset, `WGSL variable ${name.value} requires a type`);
     }
+    const typeTokens = Object.freeze(tokens.slice(cursor + 2, typeEnd));
+    const resourceAddressSpace = addressSpace === 'uniform' || addressSpace === 'storage';
+    const group = resourceAddressSpace ? parseLocationAttribute(source, attributes, 'group') : null;
+    const binding = resourceAddressSpace
+        ? parseLocationAttribute(source, attributes, 'binding')
+        : null;
     return {
         variable:
             addressSpace === 'workgroup'
+                ? { name: name.value, typeTokens, offset: name.offset }
+                : null,
+        bufferVariable:
+            resourceAddressSpace && group !== null && binding !== null
                 ? {
                       name: name.value,
-                      typeTokens: Object.freeze(tokens.slice(cursor + 2, typeEnd)),
+                      group,
+                      binding,
+                      typeTokens,
                       offset: name.offset
                   }
                 : null,
@@ -1048,28 +1075,34 @@ function layoutType(
         }
     }
     if (first.value === 'array') {
-        if (arguments_.length !== 2) {
+        if (
+            arguments_.length !== 2 &&
+            !(arguments_.length === 1 && environment.runtimeArrayElementCount !== null)
+        ) {
             failSource(
                 environment.source,
                 first.offset,
-                'WGSL workgroup arrays must have a fixed element count'
+                'WGSL layout array requires a fixed element count'
             );
         }
         const elementTokens = arguments_[0] ?? [];
-        const countTokens = arguments_[1] ?? [];
         const element = layoutType(environment, elementTokens, resolving);
-        const count = evaluateLayoutInteger(
-            environment.source,
-            countTokens,
-            environment.constants,
-            environment.overrides,
-            'WGSL workgroup array element count'
-        );
+        const countTokens = arguments_[1];
+        const count =
+            countTokens === undefined
+                ? (environment.runtimeArrayElementCount ?? 0)
+                : evaluateLayoutInteger(
+                      environment.source,
+                      countTokens,
+                      environment.constants,
+                      environment.overrides,
+                      'WGSL array element count'
+                  );
         if (count < 1) {
             failSource(
                 environment.source,
-                countTokens[0]?.offset ?? first.offset,
-                'WGSL workgroup array element count must be positive'
+                countTokens?.[0]?.offset ?? first.offset,
+                'WGSL array element count must be positive'
             );
         }
         const stride = roundUpLayout(
@@ -1077,7 +1110,7 @@ function layoutType(
             first.offset,
             element.alignment,
             element.size,
-            'WGSL workgroup array stride'
+            'WGSL array stride'
         );
         return {
             alignment: element.alignment,
@@ -1086,7 +1119,7 @@ function layoutType(
                 first.offset,
                 count,
                 stride,
-                'WGSL workgroup array size'
+                'WGSL array size'
             )
         };
     }
@@ -1204,6 +1237,59 @@ function createNagaValidationSource(
     return result;
 }
 
+/**
+ * web-naga 1.0.1 parses modern f16 WGSL but its WGSL writer traps while validating it. Preserve
+ * the exact-source frontend parse, then validate an isomorphic f32 specialization through Naga's
+ * validator/writer. The exact f16 source remains the native artifact and is capability-gated by
+ * the RHI before WebGPU performs its own shader-module and pipeline validation.
+ */
+function createNagaF16ValidationSource(source: string): string {
+    const tokens = tokenize(source);
+    const rewrites: SourceRewrite[] = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+        const token = tokens[index];
+        if (token === undefined) continue;
+        if (
+            token.value === 'enable' &&
+            tokens[index + 1]?.value === 'f16' &&
+            tokens[index + 2]?.value === ';'
+        ) {
+            const end = (tokens[index + 2]?.offset ?? token.offset) + 1;
+            rewrites.push({
+                start: token.offset,
+                end,
+                text: blankSourceRange(source, token.offset, end)
+            });
+            index += 2;
+            continue;
+        }
+        let replacement: string | null = null;
+        if (token.kind === 'identifier') {
+            if (token.value === 'f16') replacement = 'f32';
+            else if (/^vec[234]h$/u.test(token.value)) {
+                replacement = `${token.value.slice(0, -1)}f`;
+            } else if (/^mat[234]x[234]h$/u.test(token.value)) {
+                replacement = `${token.value.slice(0, -1)}f`;
+            }
+        } else if (token.kind === 'number' && token.value.endsWith('h')) {
+            replacement = `${token.value.slice(0, -1)}f`;
+        }
+        if (replacement !== null) {
+            rewrites.push({
+                start: token.offset,
+                end: token.offset + token.value.length,
+                text: replacement
+            });
+        }
+    }
+    rewrites.sort((left, right) => right.start - left.start || right.end - left.end);
+    let result = source;
+    for (const rewrite of rewrites) {
+        result = `${result.slice(0, rewrite.start)}${rewrite.text}${result.slice(rewrite.end)}`;
+    }
+    return result;
+}
+
 function analyzeComputeMetadata(source: string, entryPoint: string): ComputeModuleMetadata {
     const tokens = tokenize(source);
     const requiresF16 = tokens.some(
@@ -1218,6 +1304,7 @@ function analyzeComputeMetadata(source: string, entryPoint: string): ComputeModu
     const constants = new Map<string, readonly SourceToken[]>();
     const overrides = new Map<string, SourceOverrideDeclaration>();
     const workgroupVariables: SourceWorkgroupVariable[] = [];
+    const bufferVariables: SourceBufferVariable[] = [];
     const functions = new Map<string, SourceFunctionUsage>();
     let attributes: SourceAttribute[] = [];
     let braceDepth = 0;
@@ -1266,8 +1353,9 @@ function analyzeComputeMetadata(source: string, entryPoint: string): ComputeModu
             continue;
         }
         if (token.value === 'var') {
-            const parsed = parseWorkgroupVariable(source, tokens, index);
+            const parsed = parseWorkgroupVariable(source, tokens, index, attributes);
             if (parsed.variable !== null) workgroupVariables.push(parsed.variable);
+            if (parsed.bufferVariable !== null) bufferVariables.push(parsed.bufferVariable);
             attributes = [];
             index = parsed.nextIndex;
             continue;
@@ -1303,7 +1391,8 @@ function analyzeComputeMetadata(source: string, entryPoint: string): ComputeModu
         aliases,
         structures,
         constants,
-        overrides
+        overrides,
+        runtimeArrayElementCount: null
     };
     let workgroupStorageSize = 0;
     const staticallyUsed = staticallyUsedWorkgroupVariables(
@@ -1341,11 +1430,24 @@ function analyzeComputeMetadata(source: string, entryPoint: string): ComputeModu
         }
         seenOverrideNames.add(override.name);
     }
+    const bufferMinBindingSizes = new Map<string, number>();
+    const bufferEnvironment: TypeLayoutEnvironment = {
+        ...environment,
+        runtimeArrayElementCount: 1
+    };
+    for (const variable of bufferVariables) {
+        const key = `${String(variable.group)}:${String(variable.binding)}`;
+        if (bufferMinBindingSizes.has(key)) {
+            failSource(source, variable.offset, `WGSL contains duplicate buffer binding ${key}`);
+        }
+        bufferMinBindingSizes.set(key, layoutType(bufferEnvironment, variable.typeTokens).size);
+    }
     return {
         workgroupStorageSize,
         overrides: reflectedOverrides,
         requiresF16,
-        nagaValidationSource: createNagaValidationSource(environment, overrideDeclarations)
+        nagaValidationSource: createNagaValidationSource(environment, overrideDeclarations),
+        bufferMinBindingSizes
     };
 }
 
@@ -1767,13 +1869,42 @@ function reflectionBinding(binding: ComputeShaderBinding): Readonly<RHIShaderBin
     }
 }
 
-function createReflection(
+function deriveBufferBindingSizes(
     shader: ComputeShader,
+    metadata: ComputeModuleMetadata
+): readonly ComputeShaderBinding[] {
+    return Object.freeze(
+        shader.bindings.map(binding => {
+            if (
+                binding.kind !== 'uniform-buffer' &&
+                binding.kind !== 'read-only-storage-buffer' &&
+                binding.kind !== 'storage-buffer'
+            ) {
+                return binding;
+            }
+            const key = `${String(binding.group)}:${String(binding.binding)}`;
+            const exact = metadata.bufferMinBindingSizes.get(key);
+            if (exact === undefined) {
+                throw new TypeError(`ComputeShader buffer binding ${key} has no WGSL store type`);
+            }
+            if (binding.minBindingSize !== undefined && binding.minBindingSize < exact) {
+                throw new RangeError(
+                    `ComputeShader binding ${key} minBindingSize ${String(binding.minBindingSize)} is below the shader-derived minimum ${String(exact)}`
+                );
+            }
+            return Object.freeze({ ...binding, minBindingSize: exact });
+        })
+    );
+}
+
+function createReflection(
+    bindings: readonly ComputeShaderBinding[],
+    workgroupSize: NormalizedComputeWorkgroupSize,
     metadata: ComputeModuleMetadata
 ): Readonly<RHIShaderReflection> {
     return Object.freeze({
-        bindings: Object.freeze(shader.bindings.map(reflectionBinding)),
-        workgroupSize: shader.workgroupSize,
+        bindings: Object.freeze(bindings.map(reflectionBinding)),
+        workgroupSize,
         workgroupStorageSize: metadata.workgroupStorageSize,
         overrides: metadata.overrides,
         requiresF16: metadata.requiresF16
@@ -1817,25 +1948,20 @@ export class WgslComputeShaderCompiler {
         // unsupported override-dependent workgroup footprints before some Naga versions reach an
         // internal assertion instead of returning a source diagnostic.
         const metadata = analyzeComputeMetadata(shader.source, shader.entryPoint);
-        if (metadata.requiresF16) {
-            throw new TypeError(
-                'Direct WGSL f16 is fail-closed because the required Naga WGSL validation path is unavailable'
-            );
-        }
         try {
             useNagaResource(compiler.WgslFrontend.new(), frontend => {
-                if (metadata.nagaValidationSource !== shader.source) {
+                const nagaValidationSource = metadata.requiresF16
+                    ? createNagaF16ValidationSource(metadata.nagaValidationSource)
+                    : metadata.nagaValidationSource;
+                if (nagaValidationSource !== shader.source) {
                     // web-naga 1.0.1 parses override declarations but its WGSL writer reaches an
                     // internal assertion when serializing them. Parse the original first, then run
                     // Naga's validator/backend against a metadata-derived const specialization.
                     // The native artifact remains the original Direct WGSL source.
                     useNagaShaderModule(frontend.parse(shader.source), () => undefined);
-                    useNagaShaderModule(
-                        frontend.parse(metadata.nagaValidationSource),
-                        activeModule => {
-                            void activeModule.to_wgsl();
-                        }
-                    );
+                    useNagaShaderModule(frontend.parse(nagaValidationSource), activeModule => {
+                        void activeModule.to_wgsl();
+                    });
                 } else {
                     const module = frontend.parse(shader.source);
                     useNagaShaderModule(module, activeModule => {
@@ -1853,13 +1979,14 @@ export class WgslComputeShaderCompiler {
         const sourceInterface = analyzeSource(shader.source);
         validateEntryPoint(shader, sourceInterface);
         validateBindings(shader, sourceInterface);
+        const compiledBindings = deriveBufferBindingSizes(shader, metadata);
         const cacheKey = this.allocateCacheKey();
         const compiled = Object.freeze({
             source: shader.source,
             entryPoint: shader.entryPoint,
             workgroupSize: shader.workgroupSize,
-            bindings: shader.bindings,
-            reflection: createReflection(shader, metadata),
+            bindings: compiledBindings,
+            reflection: createReflection(compiledBindings, shader.workgroupSize, metadata),
             cacheKey
         });
         this.#records.set(shader, compiled);

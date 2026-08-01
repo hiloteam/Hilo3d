@@ -1,5 +1,11 @@
 import type { RHIBindGroup, RHIComputePipeline, RHIGraphicsPipeline } from './RHIPipeline';
-import type { RHIBuffer, RHIDeviceOwnedObject, RHITexture, RHITextureView } from './RHIResources';
+import type {
+    RHIBuffer,
+    RHIDeviceOwnedObject,
+    RHIQuerySet,
+    RHITexture,
+    RHITextureView
+} from './RHIResources';
 import type {
     RHIColor,
     RHIDataSource,
@@ -38,6 +44,14 @@ export interface RHIRenderPassDescriptor {
     readonly label?: string;
     readonly colorAttachments: readonly (RHIRenderPassColorAttachment | null)[];
     readonly depthStencilAttachment?: RHIRenderPassDepthStencilAttachment;
+    readonly timestampWrites?: RHITimestampWrites;
+}
+
+/** Timestamp indices written by one native render or compute pass. */
+export interface RHITimestampWrites {
+    readonly querySet: RHIQuerySet;
+    readonly beginningOfPassWriteIndex?: number;
+    readonly endOfPassWriteIndex?: number;
 }
 
 export interface RHIImageCopyTexture {
@@ -133,13 +147,21 @@ export type RHICommandContextState = 'open' | 'render-pass' | 'compute-pass' | '
 export type RHIRenderPassState = 'open' | 'ended' | 'aborted';
 export type RHIComputePassState = 'open' | 'ended' | 'aborted';
 
+/** Debug annotations map to native markers when available and preserve validated nesting. */
+export interface RHIDebugCommands {
+    pushDebugGroup(label: string): void;
+    popDebugGroup(): void;
+    insertDebugMarker(label: string): void;
+}
+
 /** Optional debug metadata for a backend-neutral compute pass. */
 export interface RHIComputePassDescriptor {
     readonly label?: string;
+    readonly timestampWrites?: RHITimestampWrites;
 }
 
 /** Command encoder valid only while its parent context is in the compute-pass state. */
-export interface RHIComputePassEncoder extends RHIDeviceOwnedObject {
+export interface RHIComputePassEncoder extends RHIDeviceOwnedObject, RHIDebugCommands {
     readonly contextId: number;
     readonly state: RHIComputePassState;
 
@@ -153,7 +175,7 @@ export interface RHIComputePassEncoder extends RHIDeviceOwnedObject {
 }
 
 /** A render pass is valid only while both it and its parent frame context are open. */
-export interface RHIRenderPassEncoder extends RHIDeviceOwnedObject {
+export interface RHIRenderPassEncoder extends RHIDeviceOwnedObject, RHIDebugCommands {
     readonly contextId: number;
     readonly state: RHIRenderPassState;
 
@@ -208,7 +230,7 @@ export interface RHIRenderPassEncoder extends RHIDeviceOwnedObject {
  * Portable frame command scope. Implementations may execute immediately or encode native deferred
  * work; clients cannot observe or branch on that strategy.
  */
-export interface RHICommandContext extends RHIDeviceOwnedObject {
+export interface RHICommandContext extends RHIDeviceOwnedObject, RHIDebugCommands {
     readonly frameId: number;
     readonly state: RHICommandContextState;
     readonly diagnostics: RHIFrameDiagnostics;
@@ -274,5 +296,13 @@ export interface RHICommandContext extends RHIDeviceOwnedObject {
         source: RHIImageCopyTexture,
         destination: RHIImageCopyTexture,
         copySize: RHIExtent3D
+    ): void;
+    /** Resolve a contiguous query range into an unmapped QUERY_RESOLVE buffer. */
+    resolveQuerySet(
+        querySet: RHIQuerySet,
+        firstQuery: number,
+        queryCount: number,
+        destination: RHIBuffer,
+        destinationOffset?: number
     ): void;
 }
