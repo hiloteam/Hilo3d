@@ -8,7 +8,21 @@ import type Mesh from '../core/Mesh';
 const tempMatrix4 = new Matrix4();
 const tempSphere = new Sphere();
 
+/** Depth convention used by projection, depth testing, shadows, and picking. */
+export type CameraDepthMode = 'standard' | 'reversed';
+
+function assertCameraDepthMode(value: unknown): asserts value is CameraDepthMode {
+    if (value !== 'standard' && value !== 'reversed') {
+        throw new TypeError('Camera.depthMode must be "standard" or "reversed".');
+    }
+}
+
 export interface CameraParameters extends NodeParameters {
+    /**
+     * Depth convention. `reversed` maps the near plane to 1 and far/infinity to 0, improving
+     * floating-point depth precision. Defaults to `standard` for compatibility.
+     */
+    depthMode?: CameraDepthMode;
     /**
      * Camera visibility bit mask. A renderable node is collected when
      * `(camera.visibility & node.layer) !== 0`.
@@ -55,6 +69,19 @@ class Camera extends Node {
     clearDepth = true;
     /** Whether this camera clears stencil before drawing. */
     clearStencil = true;
+    private depthModeValue: CameraDepthMode = 'standard';
+    /** Active projection/depth-buffer convention. */
+    get depthMode(): CameraDepthMode {
+        return this.depthModeValue;
+    }
+    set depthMode(value: CameraDepthMode) {
+        assertCameraDepthMode(value);
+        if (value === this.depthModeValue) return;
+        this.depthModeValue = value;
+        this._needUpdateProjectionMatrix = true;
+        this._isGeometryDirty = true;
+        this.invalidateTransformHistory();
+    }
     private priorityValue = 0;
     /** Camera composition priority. Lower values render first and receive pointer input last. */
     get priority(): number {

@@ -1,4 +1,5 @@
 import type Shader from '../../shader/Shader';
+import type { CameraDepthMode } from '../../camera/Camera';
 import { TRIANGLES } from '../../constants/webgl';
 import {
     RHICacheCounter,
@@ -120,6 +121,7 @@ interface MutableVertexLayoutsMemo {
 type VertexLayoutsMemo = Readonly<PipelineResourceRecord> | MutableVertexLayoutsMemo;
 
 interface PipelineRequestVariant {
+    readonly depthMode: CameraDepthMode;
     readonly primitiveMode: number;
     readonly stripIndexFormat: RHIIndexFormat | undefined;
     readonly wireframe: boolean;
@@ -161,7 +163,8 @@ function samePipelineRequestVariant(
     material: RHIMeshDrawMaterialState,
     target: RHIMeshDrawTargetDescriptor,
     primitiveMode: number,
-    stripIndexFormat: RHIIndexFormat | undefined
+    stripIndexFormat: RHIIndexFormat | undefined,
+    depthMode: CameraDepthMode
 ): boolean {
     if (
         variant.colorFormats.length !== target.colorFormats.length ||
@@ -175,6 +178,7 @@ function samePipelineRequestVariant(
     }
     return (
         variant.primitiveMode === primitiveMode &&
+        variant.depthMode === depthMode &&
         variant.stripIndexFormat === stripIndexFormat &&
         variant.wireframe === material.wireframe &&
         variant.frontFace === material.frontFace &&
@@ -211,9 +215,11 @@ function createPipelineRequestVariant(
     primitiveMode: number,
     stripIndexFormat: RHIIndexFormat | undefined,
     pipelineState: Readonly<RHIMeshDrawPipelineState>,
-    stateSignature: string
+    stateSignature: string,
+    depthMode: CameraDepthMode
 ): PipelineRequestVariant {
     return {
+        depthMode,
         primitiveMode,
         stripIndexFormat,
         wireframe: material.wireframe,
@@ -442,7 +448,8 @@ export class PipelineResourceCache {
         fragmentOutputMode: ShaderFragmentOutputMode = 'color',
         primitiveMode = TRIANGLES,
         stripIndexFormat?: RHIIndexFormat,
-        numericDepthSamplerMask = 0
+        numericDepthSamplerMask = 0,
+        depthMode: CameraDepthMode = 'standard'
     ): Readonly<PipelineResourceRecord> {
         this.assertAlive();
         const vertexLayouts = this.normalizeVertexLayouts(vertexLayout);
@@ -491,7 +498,8 @@ export class PipelineResourceCache {
                             material,
                             target,
                             primitiveMode,
-                            stripIndexFormat
+                            stripIndexFormat,
+                            depthMode
                         )
                     ) {
                         requestVariant = candidate;
@@ -525,7 +533,8 @@ export class PipelineResourceCache {
                 this.registry.deviceCapabilities,
                 fragmentOutputMode,
                 stripIndexFormat,
-                compiled.metadata.fragmentOutputs
+                compiled.metadata.fragmentOutputs,
+                depthMode
             );
             requestVariant = createPipelineRequestVariant(
                 material,
@@ -533,7 +542,8 @@ export class PipelineResourceCache {
                 primitiveMode,
                 stripIndexFormat,
                 pipelineState,
-                pipelineStateSignature(pipelineState)
+                pipelineStateSignature(pipelineState),
+                depthMode
             );
         }
         const signature = `${vertexLayoutsSignature(vertexLayoutSnapshot)}#${requestVariant.pipelineStateSignature}`;

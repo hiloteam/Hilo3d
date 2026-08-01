@@ -53,7 +53,7 @@ export {
 } from './core/Tween';
 export { default as version } from './core/version';
 
-export { default as Camera, type CameraParameters } from './camera/Camera';
+export { default as Camera, type CameraDepthMode, type CameraParameters } from './camera/Camera';
 export { default as Camera2D, type Camera2DParameters, DEFAULT_2D_LAYER } from './camera/Camera2D';
 export {
     default as OrthographicCamera,
@@ -230,6 +230,7 @@ export {
     type RendererFrameCallback,
     type RendererOptions,
     type RendererOptionsMap,
+    type RendererRenderingProfile,
     type RendererResourceDiagnostics,
     type RendererResourceManager,
     type RendererScene,

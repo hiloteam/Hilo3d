@@ -31,6 +31,8 @@ export interface ShadowAtlasRenderOptions<Owner extends object = object> {
     /** Prebuilt queues in `plan.slices` order. Mutually exclusive with `preparer`. */
     readonly sliceDraws?: readonly (readonly PreparedDraw[])[];
     readonly preparer?: ShadowAtlasSlicePreparer<Owner>;
+    /** Clear value matching the shadow cameras' depth convention. */
+    readonly depthClearValue?: number;
 }
 
 /**
@@ -140,7 +142,7 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
                 pass.label = `${options.label ?? 'Shadow atlas'} ${slice.kind} ${String(slice.sliceIndex)}`;
                 pass.setDepthStencilAttachment({
                     texture: atlasTexture,
-                    ...(index === 0 ? { depthClearValue: 1 } : {}),
+                    ...(index === 0 ? { depthClearValue: options.depthClearValue ?? 1 } : {}),
                     depthLoadOp: index === 0 ? 'clear' : 'load',
                     depthStoreOp: 'store'
                 });

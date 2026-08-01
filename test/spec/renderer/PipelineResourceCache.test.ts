@@ -103,6 +103,35 @@ function target(colorFormat: RHITextureFormat = 'rgba8unorm'): RHIMeshDrawTarget
 }
 
 describe('PipelineResourceCache', () => {
+    it('keys otherwise identical pipelines by depth convention', () => {
+        const fixture = createFixture();
+        const source = shader(fragmentSource);
+        const layout = vertexLayout();
+        const material = new Material();
+        const drawTarget = target();
+        const standard = fixture.pipelines.prepare(source, layout, material, drawTarget);
+        const reversed = fixture.pipelines.prepare(
+            source,
+            layout,
+            material,
+            drawTarget,
+            'color',
+            TRIANGLES,
+            undefined,
+            0,
+            'reversed'
+        );
+        expect(reversed).not.toBe(standard);
+        expect(
+            fixture.pipelines.resolve(reversed).pipeline.descriptor.depthStencil?.depthCompare
+        ).toBe('greater-equal');
+        fixture.pipelines.destroy();
+        fixture.shaders.destroy();
+        fixture.registry.collect(0);
+        fixture.registry.destroy();
+        fixture.backend.destroy();
+    });
+
     it('shares the pass-global opaque texture layout across material shader variants', () => {
         const fixture = createFixture();
         const first = fixture.pipelines.prepare(

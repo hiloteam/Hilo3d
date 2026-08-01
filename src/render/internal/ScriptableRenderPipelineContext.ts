@@ -146,6 +146,7 @@ import {
 import { importSurfaceColor, importSurfaceDepthStencil } from '../renderer/SurfaceGraphBridge';
 import { SharedDrawPassParameters } from '../renderer/passes/SharedDrawPass';
 import { refreshShadowAtlasSceneBinding } from '../renderer/ShadowAtlasTextureBinding';
+import { depthClearValue } from '../renderer/DepthConvention';
 
 type TextureAccess =
     | 'attachment'
@@ -4003,7 +4004,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 this.#outputState.depthStencilFormat === null
                     ? null
                     : {
-                          depthClearValue: 1,
+                          depthClearValue: depthClearValue(camera.depthMode),
                           depthLoadOp: 'clear',
                           depthStoreOp: 'discard',
                           stencilClearValue: 0,
@@ -4026,6 +4027,12 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             this.#outputState.colorAttachmentCount = resolved.colorAttachmentCount;
             this.#outputColorFormats.length = resolved.colorFormats.length;
             const normalized = resolved.normalizedParameters;
+            const normalizedDepth = normalized.depthStencilAttachment;
+            if (normalizedDepth !== null && normalizedDepth.depthMode !== camera.depthMode) {
+                throw new TypeError(
+                    `Render target depth mode ${normalizedDepth.depthMode} does not match camera depth mode ${camera.depthMode}`
+                );
+            }
             for (let index = 0; index < resolved.colorFormats.length; index += 1) {
                 const format = resolved.colorFormats[index];
                 if (format !== undefined) this.#outputColorFormats[index] = format;
@@ -4041,7 +4048,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 );
             }
             this.#outputState.depthStencilFormat = resolved.depthStencilFormat;
-            this.configureOutputDepthStencilAttachment(normalized.depthStencilAttachment);
+            this.configureOutputDepthStencilAttachment(normalizedDepth);
             this.setViewport(0, 0, resolved.width, resolved.height);
         }
         const lease = Object.freeze({});
@@ -5094,7 +5101,15 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         );
         this.services.beginScriptableMeshPass(context);
         const draw = retained ?? new ScriptableGPUDrivenDraw();
-        draw.configure(pass, parameters, this, services, target, this.frameIndex);
+        draw.configure(
+            pass,
+            parameters,
+            this,
+            services,
+            target,
+            this.frameIndex,
+            this.camera.depthMode
+        );
         return draw;
     }
 

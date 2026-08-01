@@ -6,6 +6,7 @@ import type { Renderer } from '../render/Renderer';
 import type { RenderTarget } from '../render/RenderTarget';
 import { decodeMeshPickingId, getMeshPickingIdentity } from '../render/PickingIdentity';
 import type { ShaderOptions } from '../render/types';
+import type { CameraDepthMode } from '../camera/Camera';
 
 class MeshPickerMaterial extends BasicMaterial {
     constructor() {
@@ -53,6 +54,7 @@ class MeshPicker {
     /** Active renderer owned by this picker's Stage. */
     readonly renderer: Renderer;
     private renderTarget: RenderTarget | null = null;
+    private renderTargetDepthMode: CameraDepthMode | null = null;
     private readonly idMeshMap = new Map<number, Mesh>();
     private operation = Promise.resolve();
     private destroyed = false;
@@ -84,7 +86,7 @@ class MeshPicker {
         if (!camera) throw new Error('MeshPicker requires its Stage to have an active camera.');
 
         this.validateSelectionRectangle(x, y, width, height);
-        const target = this.requireRenderTarget();
+        const target = this.requireRenderTarget(camera.depthMode);
         const region = this.resolveReadbackRegion(x, y, width, height, target);
         if (!region) return [];
         this.collectMeshIdentities();
@@ -113,10 +115,14 @@ class MeshPicker {
         return [...meshes];
     }
 
-    private requireRenderTarget(): RenderTarget {
+    private requireRenderTarget(depthMode: CameraDepthMode): RenderTarget {
         const { renderer } = this;
         const width = renderer.width;
         const height = renderer.height;
+        if (this.renderTarget !== null && this.renderTargetDepthMode !== depthMode) {
+            this.renderTarget.destroy();
+            this.renderTarget = null;
+        }
         if (!this.renderTarget) {
             this.renderTarget = renderer.createRenderTarget({
                 width,
@@ -132,13 +138,14 @@ class MeshPicker {
                 ],
                 depthStencilAttachment: {
                     format: 'depth24plus',
-                    depthClearValue: 1,
+                    depthMode,
                     depthLoadOp: 'clear',
                     depthStoreOp: 'discard'
                 },
                 sampleCount: 1,
                 label: 'MeshPicker'
             });
+            this.renderTargetDepthMode = depthMode;
         } else if (this.renderTarget.width !== width || this.renderTarget.height !== height) {
             this.renderTarget.resize(width, height);
         }
@@ -194,6 +201,7 @@ class MeshPicker {
         this.destroyed = true;
         const target = this.renderTarget;
         this.renderTarget = null;
+        this.renderTargetDepthMode = null;
         this.idMeshMap.clear();
         if (target) {
             void this.operation.then(() => {

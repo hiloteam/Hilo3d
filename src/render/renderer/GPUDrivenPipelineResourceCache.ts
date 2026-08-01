@@ -1,4 +1,5 @@
 import { TRIANGLES } from '../../constants/webgl';
+import type { CameraDepthMode } from '../../camera/Camera';
 import type Material from '../../material/Material';
 import type { ShaderReadBinding } from '../compute/ComputeShader';
 import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
@@ -78,6 +79,7 @@ interface CompiledShaderMemo {
 }
 
 interface PipelineStateMemo {
+    readonly depthMode: CameraDepthMode;
     readonly material: Material;
     readonly primitiveMode: number;
     readonly stripIndexFormat: RHIIndexFormat | undefined;
@@ -118,10 +120,12 @@ function samePipelineStateMemo(
     material: Material,
     target: RHIMeshDrawTargetDescriptor,
     primitiveMode: number,
-    stripIndexFormat: RHIIndexFormat | undefined
+    stripIndexFormat: RHIIndexFormat | undefined,
+    depthMode: CameraDepthMode
 ): boolean {
     if (
         memo.material !== material ||
+        memo.depthMode !== depthMode ||
         memo.primitiveMode !== primitiveMode ||
         memo.stripIndexFormat !== stripIndexFormat ||
         memo.colorFormats.length !== target.colorFormats.length ||
@@ -168,9 +172,11 @@ function createPipelineStateMemo(
     target: RHIMeshDrawTargetDescriptor,
     primitiveMode: number,
     stripIndexFormat: RHIIndexFormat | undefined,
-    record: Readonly<GPUDrivenPipelineResourceRecord>
+    record: Readonly<GPUDrivenPipelineResourceRecord>,
+    depthMode: CameraDepthMode
 ): PipelineStateMemo {
     return {
+        depthMode,
         material,
         primitiveMode,
         stripIndexFormat,
@@ -475,7 +481,8 @@ export class GPUDrivenPipelineResourceCache {
         shader: StorageGraphicsShader,
         material: Material,
         publicVertexLayouts: readonly Readonly<GPUDrivenVertexBufferLayout>[],
-        target: RHIMeshDrawTargetDescriptor
+        target: RHIMeshDrawTargetDescriptor,
+        depthMode: CameraDepthMode = 'standard'
     ): Readonly<GPUDrivenPipelineResourceRecord> {
         return this.prepareLayoutIdentity(
             shader,
@@ -483,7 +490,9 @@ export class GPUDrivenPipelineResourceCache {
             publicVertexLayouts,
             'procedural',
             target,
-            TRIANGLES
+            TRIANGLES,
+            undefined,
+            depthMode
         );
     }
 
@@ -510,7 +519,8 @@ export class GPUDrivenPipelineResourceCache {
         vertexLayouts: readonly Readonly<RHIVertexBufferLayout>[],
         target: RHIMeshDrawTargetDescriptor,
         primitiveMode: number,
-        stripIndexFormat?: RHIIndexFormat
+        stripIndexFormat?: RHIIndexFormat,
+        depthMode: CameraDepthMode = 'standard'
     ): Readonly<GPUDrivenPipelineResourceRecord> {
         return this.prepareLayoutIdentity(
             shader,
@@ -519,7 +529,8 @@ export class GPUDrivenPipelineResourceCache {
             'scene',
             target,
             primitiveMode,
-            stripIndexFormat
+            stripIndexFormat,
+            depthMode
         );
     }
 
@@ -532,7 +543,8 @@ export class GPUDrivenPipelineResourceCache {
         layoutKind: 'procedural' | 'scene',
         target: RHIMeshDrawTargetDescriptor,
         primitiveMode: number,
-        stripIndexFormat?: RHIIndexFormat
+        stripIndexFormat?: RHIIndexFormat,
+        depthMode: CameraDepthMode = 'standard'
     ): Readonly<GPUDrivenPipelineResourceRecord> {
         this.assertAlive();
         if (this.registry.deviceBackend !== 'webgpu') {
@@ -546,7 +558,14 @@ export class GPUDrivenPipelineResourceCache {
         if (layoutMemo !== undefined) {
             for (const memo of layoutMemo.states) {
                 if (
-                    samePipelineStateMemo(memo, material, target, primitiveMode, stripIndexFormat)
+                    samePipelineStateMemo(
+                        memo,
+                        material,
+                        target,
+                        primitiveMode,
+                        stripIndexFormat,
+                        depthMode
+                    )
                 ) {
                     return memo.record;
                 }
@@ -572,7 +591,8 @@ export class GPUDrivenPipelineResourceCache {
             this.registry.deviceCapabilities,
             'color',
             stripIndexFormat,
-            compiled.metadata.fragmentOutputs
+            compiled.metadata.fragmentOutputs,
+            depthMode
         );
         const signature = pipelineSignature(vertexLayouts, pipelineState);
         const createdBucket = bucket === undefined;
@@ -590,7 +610,14 @@ export class GPUDrivenPipelineResourceCache {
         const cached = bucket.recordsBySignature.get(signature);
         if (cached !== undefined) {
             layoutMemo.states.push(
-                createPipelineStateMemo(material, target, primitiveMode, stripIndexFormat, cached)
+                createPipelineStateMemo(
+                    material,
+                    target,
+                    primitiveMode,
+                    stripIndexFormat,
+                    cached,
+                    depthMode
+                )
             );
             return cached;
         }
@@ -646,7 +673,14 @@ export class GPUDrivenPipelineResourceCache {
         bucket.records.add(record);
         this.#bucketByRecord.set(record, bucket);
         layoutMemo.states.push(
-            createPipelineStateMemo(material, target, primitiveMode, stripIndexFormat, record)
+            createPipelineStateMemo(
+                material,
+                target,
+                primitiveMode,
+                stripIndexFormat,
+                record,
+                depthMode
+            )
         );
         return record;
     }

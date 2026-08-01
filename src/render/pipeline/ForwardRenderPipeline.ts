@@ -37,6 +37,7 @@ import type {
     RenderPipelineExtent,
     RenderPipelineTextureDescriptor
 } from './ScriptableRenderGraph';
+import { depthClearValue } from '../renderer/DepthConvention';
 
 /** Stable stages at which a forward feature may synchronously record graph work. */
 export type ForwardRenderInjectionPoint =
@@ -1013,7 +1014,8 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     ): void {
         const operations = this.#depthOperations;
         const selected = context.output.depthStencilAttachment;
-        operations.depthClearValue = selected?.depthClearValue ?? 1;
+        operations.depthClearValue =
+            selected?.depthClearValue ?? depthClearValue(context.camera.depthMode);
         operations.stencilClearValue = selected?.stencilClearValue ?? 0;
         const writesOutput = depth !== null && depth === outputDepth;
         if (writesOutput) {

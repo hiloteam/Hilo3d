@@ -11,6 +11,9 @@ export type RendererAdapterPowerPreference = 'low-power' | 'high-performance';
 /** Backend-neutral context power policy; `default` is accepted by WebGL2 contexts. */
 export type RendererContextPowerPreference = 'default' | RendererAdapterPowerPreference;
 
+/** Shared renderer policy bundle. `high-end` enables reversed-Z cameras and camera-relative GPU transforms. */
+export type RendererRenderingProfile = 'portable' | 'high-end';
+
 /** Optional device capabilities that the renderer can request through the portable RHI. */
 export type RendererFeatureName =
     | 'texture-compression-bc'
@@ -37,6 +40,13 @@ export interface RendererCommonOptions {
     premultipliedAlpha?: boolean;
     failIfMajorPerformanceCaveat?: boolean;
     useLogDepth?: boolean;
+    /**
+     * Subtract one frame-wide camera origin from GPU camera/model transforms while preserving CPU
+     * world coordinates. This improves large-world precision and enables stable temporal inputs.
+     */
+    cameraRelative?: boolean;
+    /** Renderer policy bundle. Defaults to `portable`. */
+    renderingProfile?: RendererRenderingProfile;
     vertexPrecision?: ShaderPrecision;
     fragmentPrecision?: ShaderPrecision;
     fog?: Fog | null;

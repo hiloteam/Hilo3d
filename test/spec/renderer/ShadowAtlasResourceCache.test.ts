@@ -59,6 +59,29 @@ describe('ShadowAtlasResourceCache', () => {
         backend.destroy();
     });
 
+    it('keys comparison samplers by the atlas depth convention', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const cache = new ShadowAtlasResourceCache(registry);
+        const plan = new ShadowAtlasPlanner().build(
+            { directional: [{ owner: {}, width: 16, height: 16 }], spot: [], point: [] },
+            device.capabilities
+        );
+        const owner = {};
+        const standard = cache.prepare(owner, plan);
+        const reversed = cache.prepare(owner, plan, 'reversed');
+        expect(reversed).not.toBe(standard);
+        expect(reversed.depthMode).toBe('reversed');
+        expect(registry.resolve(reversed.comparisonSampler).descriptor.compare).toBe(
+            'greater-equal'
+        );
+        cache.destroy();
+        registry.collect(0);
+        registry.destroy();
+        backend.destroy();
+    });
+
     it('atomically replaces resized atlases and defers each release to last use', () => {
         const backend = new FakeWebGLRHIBackend();
         const device = backend.createDevice();

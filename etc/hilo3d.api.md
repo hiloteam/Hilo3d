@@ -581,6 +581,8 @@ export class Camera extends Node_2 {
     clearColor: boolean;
     clearDepth: boolean;
     clearStencil: boolean;
+    get depthMode(): CameraDepthMode;
+    set depthMode(value: CameraDepthMode);
     // (undocumented)
     protected readonly _frustum: Frustum;
     // (undocumented)
@@ -642,6 +644,9 @@ export interface Camera2DParameters extends Omit<OrthographicCameraParameters, '
 }
 
 // @public
+export type CameraDepthMode = 'standard' | 'reversed';
+
+// @public
 export class CameraHelper extends Mesh {
     constructor(params?: CameraHelperParameters);
     // (undocumented)
@@ -670,6 +675,7 @@ export interface CameraParameters extends NodeParameters {
     clearColor?: boolean;
     clearDepth?: boolean;
     clearStencil?: boolean;
+    depthMode?: CameraDepthMode;
     priority?: number;
     visibility?: number;
 }
@@ -4266,6 +4272,7 @@ class Node_2 extends EventDispatcher {
     getConcatenatedMatrix(ancestor?: Node_2): Matrix4;
     // (undocumented)
     id: string;
+    invalidateTransformHistory(): this;
     // (undocumented)
     isCamera: boolean;
     // (undocumented)
@@ -5125,6 +5132,8 @@ export class Renderer<Backend extends RendererBackend = RendererBackend> impleme
     // (undocumented)
     readonly backend: Backend;
     // (undocumented)
+    readonly cameraRelative: RendererContract['cameraRelative'];
+    // (undocumented)
     readonly className: 'Renderer';
     // (undocumented)
     clearColor: RendererContract['clearColor'];
@@ -5179,6 +5188,8 @@ export class Renderer<Backend extends RendererBackend = RendererBackend> impleme
     // (undocumented)
     readonly renderInfo: RendererContract['renderInfo'];
     // (undocumented)
+    readonly renderingProfile: RendererContract['renderingProfile'];
+    // (undocumented)
     readonly renderTarget: RendererContract['renderTarget'];
     // (undocumented)
     readonly renderToTarget: RendererContract['renderToTarget'];
@@ -5219,6 +5230,7 @@ export interface RendererCommonOptions {
     alpha?: boolean;
     // (undocumented)
     antialias?: boolean;
+    cameraRelative?: boolean;
     // (undocumented)
     clearColor?: Color;
     // (undocumented)
@@ -5243,6 +5255,7 @@ export interface RendererCommonOptions {
     pixelRatio?: number;
     // (undocumented)
     premultipliedAlpha?: boolean;
+    renderingProfile?: RendererRenderingProfile;
     renderPipeline?: RenderPipelineFactory;
     // (undocumented)
     stencil?: boolean;
@@ -5263,6 +5276,8 @@ export type RendererContextPowerPreference = 'default' | RendererAdapterPowerPre
 export interface RendererContract {
     // (undocumented)
     readonly backend: RendererBackend;
+    // (undocumented)
+    readonly cameraRelative: boolean;
     // (undocumented)
     readonly className: string;
     // (undocumented)
@@ -5302,6 +5317,8 @@ export interface RendererContract {
     renderFrame(callback: RendererFrameCallback): void;
     // (undocumented)
     readonly renderInfo: RenderInfo;
+    // (undocumented)
+    readonly renderingProfile: 'portable' | 'high-end';
     // (undocumented)
     readonly renderTarget: RenderTarget | null;
     // (undocumented)
@@ -5380,6 +5397,9 @@ export interface RendererOptionsMap {
     // (undocumented)
     readonly webgpu: RendererWebGPUOptions;
 }
+
+// @public
+export type RendererRenderingProfile = 'portable' | 'high-end';
 
 // @public
 export interface RendererResourceDiagnostics {
@@ -5844,6 +5864,7 @@ export interface RenderTargetDepthStencilAttachmentOptions {
     readonly depthClearValue?: number;
     // (undocumented)
     readonly depthLoadOp?: RenderTargetLoadOp;
+    readonly depthMode?: CameraDepthMode;
     // (undocumented)
     readonly depthStoreOp?: RenderTargetStoreOp;
     // (undocumented)

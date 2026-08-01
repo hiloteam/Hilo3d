@@ -606,6 +606,60 @@ describe('BuiltInUniformBlockManager', () => {
         );
     });
 
+    it('keeps CPU world coordinates while packing camera-relative current transforms', () => {
+        const manager = new BuiltInUniformBlockManager({
+            width: 320,
+            height: 180,
+            cameraRelative: true
+        });
+        const camera = new PerspectiveCamera({ x: 100_000 });
+        camera.updateMatrixWorld(true).updateViewProjectionMatrix();
+        const mesh = testEnv.mesh.clone();
+        mesh.setPosition(100_004, 2, -3).updateMatrixWorld(true);
+        const worldX = mesh.worldMatrix.elements[12];
+
+        manager.beginFrame(camera);
+        const model = manager.resolveUniformBlock('ModelBlock', mesh, testEnv.material, camera);
+        const cameraBlock = manager.resolveUniformBlock(
+            'CameraBlock',
+            mesh,
+            testEnv.material,
+            camera
+        );
+
+        expect(readFloatField(model, 'u_modelMatrix', 16).slice(12, 15)).toEqualishValues(4, 2, -3);
+        expect(readFloatField(cameraBlock, 'u_renderOrigin', 3)).toEqualishValues(100_000, 0, 0);
+        expect(readFloatField(cameraBlock, 'u_cameraPositionNear', 3)).toEqualishValues(0, 0, 0);
+        expect(mesh.worldMatrix.elements[12]).toBe(worldX);
+    });
+
+    it('commits previous transforms only on success and resets them after invalidation', () => {
+        const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
+        const mesh = testEnv.mesh.clone();
+        const render = (x: number): UniformBuffer => {
+            mesh.setPosition(x, 0, 0).updateMatrixWorld(true);
+            manager.beginFrame(testEnv.camera);
+            return manager.resolveUniformBlock('ModelBlock', mesh, testEnv.material);
+        };
+
+        let block = render(2);
+        expect(readFloatField(block, 'u_previousModelMatrix', 16)[12]).toBe(2);
+        manager.commit({} as never);
+
+        block = render(3);
+        expect(readFloatField(block, 'u_modelMatrix', 16)[12]).toBe(3);
+        expect(readFloatField(block, 'u_previousModelMatrix', 16)[12]).toBe(2);
+        manager.rollback();
+
+        block = render(4);
+        expect(readFloatField(block, 'u_previousModelMatrix', 16)[12]).toBe(2);
+        manager.commit({} as never);
+
+        mesh.invalidateTransformHistory();
+        block = render(20);
+        expect(readFloatField(block, 'u_previousModelMatrix', 16)[12]).toBe(20);
+    });
+
     it('packs ambient and directional lighting into LightBlock for every render pass', () => {
         const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
         const lightManager = new LightManager();

@@ -1,5 +1,6 @@
 import type Texture from '../texture/Texture';
 import type { RendererBackend } from './Renderer';
+import type { CameraDepthMode } from '../camera/Camera';
 
 export type RenderTargetSampleCount = 1 | 4;
 
@@ -45,6 +46,8 @@ export interface RenderTargetDepthStencilAttachmentOptions {
     readonly format?: RenderTargetDepthStencilFormat;
     /** Expose the depth aspect as an engine Texture. Multisampled depth cannot be sampled. */
     readonly sampled?: boolean;
+    /** Projection/depth-buffer convention. Defaults to `standard`. */
+    readonly depthMode?: CameraDepthMode;
     readonly compare?: RenderTargetCompareFunction;
     readonly depthClearValue?: number;
     readonly depthLoadOp?: RenderTargetLoadOp;
@@ -127,6 +130,7 @@ export interface NormalizedRenderTargetColorAttachment {
 export interface NormalizedRenderTargetDepthStencilAttachment {
     readonly format: RenderTargetDepthStencilFormat;
     readonly sampled: boolean;
+    readonly depthMode: CameraDepthMode;
     readonly compare: RenderTargetCompareFunction;
     readonly depthClearValue: number;
     readonly depthLoadOp: RenderTargetLoadOp;
@@ -208,6 +212,10 @@ export function normalizeRenderTargetParameters(
                   const options = depthOptions ?? {};
                   const format = options.format ?? 'depth24plus-stencil8';
                   const sampled = options.sampled ?? false;
+                  const depthMode: unknown = options.depthMode ?? 'standard';
+                  if (depthMode !== 'standard' && depthMode !== 'reversed') {
+                      throw new TypeError('Depth mode must be "standard" or "reversed"');
+                  }
                   if (sampled && sampleCount > 1) {
                       throw new TypeError(
                           'A multisampled depth attachment cannot be resolved into a sampleable depth texture'
@@ -216,7 +224,8 @@ export function normalizeRenderTargetParameters(
                   if (!sampled && options.compare !== undefined) {
                       throw new TypeError('Depth comparison sampling requires sampled: true');
                   }
-                  const depthClearValue = options.depthClearValue ?? 1;
+                  const depthClearValue =
+                      options.depthClearValue ?? (depthMode === 'reversed' ? 0 : 1);
                   const stencilClearValue = options.stencilClearValue ?? 0;
                   if (
                       !Number.isFinite(depthClearValue) ||
@@ -254,7 +263,10 @@ export function normalizeRenderTargetParameters(
                   return Object.freeze({
                       format,
                       sampled,
-                      compare: options.compare ?? 'less-equal',
+                      depthMode,
+                      compare:
+                          options.compare ??
+                          (depthMode === 'reversed' ? 'greater-equal' : 'less-equal'),
                       depthClearValue,
                       depthLoadOp,
                       depthStoreOp,

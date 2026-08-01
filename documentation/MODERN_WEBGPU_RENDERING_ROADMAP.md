@@ -1,6 +1,6 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
-> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-01，F0、F1 已落地；同日补充 E0 自动曝光、虚拟纹理术语边界和 SDF 准入门槛。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
+> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-01，F0、F1、D0 已落地；同日补充 E0 自动曝光、虚拟纹理术语边界和 SDF 准入门槛。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
 
 ## 结论先行
@@ -190,7 +190,8 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 `P0` 是“现代 WebGPU renderer”定义所需能力；`P1` 是高画质生产 profile；`P2`
 是依赖场景规模、内容管线和长期性能投入的虚拟化能力。
 
-实施状态：**F0、F1 已完成**；后续工作包可把 subresource/history 与 GPU timeline 作为现有基础使用。
+实施状态：**F0、F1、D0 已完成**；后续工作包可把 subresource/history、GPU
+timeline 与确定的前后帧坐标 ABI 作为现有基础使用。
 
 ## 6. 可落地工作包
 
@@ -251,7 +252,7 @@ f16 保留原始 native artifact，Naga validator/writer 使用等价 f32 特化
 时 RHI 明确拒绝，pipeline 可通过 `supportsFeature()` 选择 f32/workgroup
 fallback。仓库未引入新的内置 subgroup/f16 kernel，因此不存在需要伪装为双后端等价的隐式降级结果。
 
-#### D0：现代深度与帧坐标合同
+#### D0：现代深度与帧坐标合同（已完成）
 
 ![D0：Reversed-Z、相机相对坐标与远距离精度](./images/modern-webgpu-roadmap/depth-camera-relative.jpg)
 
@@ -259,16 +260,32 @@ fallback。仓库未引入新的内置 subgroup/f16 kernel，因此不存在需�
 | ------------------------------ | ------------------------------------------------------- | --------------------------------- | ------------------------------------------ |
 | 世界坐标、near/far、前后帧变换 | reversed-Z、floating far、camera-relative、previous ABI | 稳定深度、可靠 motion-vector 输入 | 大尺度场景无明显 z-fighting 与 origin 抖动 |
 
-需要增加：
+已落地：
 
-- high-end profile 使用 reversed-Z + floating/infinite far projection；
-- depth clear、compare、depth pyramid reduction、shadow depth 与 picking 坐标合同统一；
-- camera-relative GPU transform；CPU scene identity 和世界坐标不变；
-- frame/camera/mesh ABI 同时保存 current 与 previous transform；
-- camera cut、teleport、spawn/despawn、skinning/morph 和 origin shift 的 previous-state 规则。
+- `renderingProfile: 'high-end'` 启用 reversed-Z camera 与 camera-relative GPU transform；portable
+  profile 继续默认 standard depth，Camera 也可单独选择 `depthMode`。Perspective projection支持有限或
+  `far: null` 的无限远，两后端继续共享 OpenGL clip-space shader 源；
+- surface、RenderTarget、pipeline depth compare、Shadow Atlas clear/comparison
+  sampler/bias 与 MeshPicker 使用同一个 depth mode；未来 Hi-Z
+  reduction 必须按 standard=min、reversed=max 选择，不能再猜测约定；
+- camera-relative 只修改每帧 GPU view/model/instance bytes；CPU scene identity、world
+  matrix、culling、project/unproject 与 pointer 坐标不变。一个 application
+  frame 使用同一个主相机 origin，避免多 camera/pass 改写 object UBO；
+- `CameraBlock`、`ModelBlock`、`SkinningBlock`、`MorphBlock` 与 WebGPU `InstanceBlock`
+  同时携带 current/previous transform；origin 与 history-valid 也进入固定 ABI；
+- 首次出现、spawn 和显式 `Node.invalidateTransformHistory()`
+  后 previous=current；正常 motion 读取最后一次成功 submission；失败 build/prepare/execute 回滚 pending
+  history，device recovery 递增 generation。despawn 不生成 draw，重新出现按 owner
+  history 或显式 invalidation 处理；skinning/morph 遵守同一提交边界。
 
 完成标准：大 near/far 比场景不出现明显 z-fighting 回退；WebGPU/WebGL
 2 共享 shader 的坐标适配不被破坏；所有 motion vector 输入都有确定的首次出现和 invalidation 行为。
+
+验收证据：有限/无限 reversed-Z
+near/far 映射、正交相机、RenderTarget 默认 clear/compare、普通与 storage-aware pipeline
+cache、shadow sampler、camera-relative
+packing、实例 current/previous、成功提交/失败回滚和显式 invalidation 均有合同测试；真实 WebGPU/WebGL
+2 pipeline 与浏览器 lane 继续复用同一 GLSL ES 3.00 坐标适配链。
 
 ### 6.2 Milestone 1A：规模化场景主线
 

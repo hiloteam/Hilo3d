@@ -17,11 +17,18 @@ layout(std140) uniform CameraBlock {
     mat4 u_viewMatrix;
     mat4 u_projectionMatrix;
     mat4 u_viewProjectionMatrix;
+    mat4 u_previousViewMatrix;
+    mat4 u_previousProjectionMatrix;
+    mat4 u_previousViewProjectionMatrix;
     mat4 u_viewInverseMatrix;
+    mat4 u_previousViewInverseMatrix;
     mat4 u_projectionInverseMatrix;
     mat3 u_viewInverseNormalMatrix;
     vec4 u_cameraPositionNear;
     vec4 u_cameraParams;
+    vec4 u_renderOrigin;
+    vec4 u_previousRenderOrigin;
+    vec4 u_historyParams;
     vec4 u_viewport;
 };
 
@@ -30,6 +37,8 @@ layout(std140) uniform CameraBlock {
 #define u_cameraFar u_cameraParams.x
 #define u_cameraType u_cameraParams.y
 #define u_logDepth u_cameraParams.z
+#define u_reversedDepth u_cameraParams.w
+#define u_cameraHistoryValid u_historyParams.x
 
 layout(std140) uniform SceneBlock {
     vec4 u_fogColor;
@@ -121,17 +130,21 @@ layout(std140) uniform MaterialBlock {
     #ifdef HILO_WEBGPU
         layout(std140) uniform InstanceBlock {
             mat4 u_instanceModelMatrices[HILO_MAX_INSTANCES_PER_DRAW];
+            mat4 u_previousInstanceModelMatrices[HILO_MAX_INSTANCES_PER_DRAW];
             mat4 u_instanceNormalMatrices[HILO_MAX_INSTANCES_PER_DRAW];
         };
         #define u_modelMatrix u_instanceModelMatrices[gl_InstanceIndex]
+        #define u_previousModelMatrix u_previousInstanceModelMatrices[gl_InstanceIndex]
         #define u_normalWorldMatrix mat3(u_instanceNormalMatrices[gl_InstanceIndex])
     #else
         in mat4 u_modelMatrix;
         in mat3 u_normalWorldMatrix;
+        #define u_previousModelMatrix u_modelMatrix
     #endif
 #else
     layout(std140) uniform ModelBlock {
         mat4 u_modelMatrix;
+        mat4 u_previousModelMatrix;
         mat3 u_normalWorldMatrix;
         vec4 u_objectIdColor;
     };
@@ -147,6 +160,7 @@ layout(std140) uniform GeometryBlock {
 #ifdef HILO_JOINT_COUNT
     layout(std140) uniform SkinningBlock {
         mat4 u_jointMat[HILO_MAX_SKIN_JOINTS];
+        mat4 u_previousJointMat[HILO_MAX_SKIN_JOINTS];
     };
 #endif
 
@@ -154,6 +168,8 @@ layout(std140) uniform GeometryBlock {
     layout(std140) uniform MorphBlock {
         vec4 u_morphWeights0;
         vec4 u_morphWeights1;
+        vec4 u_previousMorphWeights0;
+        vec4 u_previousMorphWeights1;
     };
 
     float hiloMorphWeight(int index) {

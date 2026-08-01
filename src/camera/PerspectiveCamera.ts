@@ -99,13 +99,27 @@ class PerspectiveCamera extends Camera {
         elements[5] = f;
         elements[11] = -1;
         elements[15] = 0;
-        if (far) {
-            const nf = 1 / (near - far);
+        if (!Number.isFinite(near) || near <= 0) {
+            throw new RangeError('PerspectiveCamera.near must be finite and greater than zero.');
+        }
+        if (!Number.isFinite(aspect) || aspect <= 0) {
+            throw new RangeError('PerspectiveCamera.aspect must be finite and greater than zero.');
+        }
+        if (!Number.isFinite(fov) || fov <= 0 || fov >= 180) {
+            throw new RangeError('PerspectiveCamera.fov must be finite and between 0 and 180.');
+        }
+        if (far !== null && (!Number.isFinite(far) || far <= near)) {
+            throw new RangeError(
+                'PerspectiveCamera.far must be null or finite and greater than near.'
+            );
+        }
+        if (far !== null) {
+            const nf = this.depthMode === 'reversed' ? 1 / (far - near) : 1 / (near - far);
             elements[10] = (near + far) * nf;
             elements[14] = 2 * far * near * nf;
         } else {
-            elements[10] = -1;
-            elements[14] = -2 * near;
+            elements[10] = this.depthMode === 'reversed' ? 1 : -1;
+            elements[14] = this.depthMode === 'reversed' ? 2 * near : -2 * near;
         }
     }
     override getGeometry(forceUpdate = false): Geometry {

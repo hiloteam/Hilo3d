@@ -3,6 +3,7 @@ import type { ShaderReadBinding } from '../compute/ComputeShader';
 import ComputeSampler from '../compute/ComputeSampler';
 import type { RGBufferHandle, RGTextureAccessHandle } from '../graph/RenderGraphResource';
 import type { RGPrepareContext } from '../graph/RenderGraphExecutor';
+import type { CameraDepthMode } from '../../camera/Camera';
 import type {
     GPUDrivenRenderPassParameters,
     GPUDrivenRenderPass
@@ -257,6 +258,7 @@ export class ScriptableGPUDrivenDraw {
     #indirectOffset = 0;
     #frameIndex = -1;
     #configured = false;
+    #depthMode: CameraDepthMode = 'standard';
 
     get draw(): PreparedDraw {
         const draw = this.#draw;
@@ -270,7 +272,8 @@ export class ScriptableGPUDrivenDraw {
         resolver: ScriptableGPUDrivenGraphResolver,
         services: ScriptableGPUDrivenDrawServices,
         target: RHIMeshDrawTargetDescriptor,
-        frameIndex: number
+        frameIndex: number,
+        depthMode: CameraDepthMode = 'standard'
     ): void {
         if (!Number.isSafeInteger(frameIndex) || frameIndex < 0) {
             throw new RangeError('GPU-driven frame index must be non-negative');
@@ -282,6 +285,7 @@ export class ScriptableGPUDrivenDraw {
         this.#services = services;
         this.#pipeline = null;
         this.#frameIndex = frameIndex;
+        this.#depthMode = depthMode;
         this.#configured = false;
         this.snapshotTarget(target);
 
@@ -444,7 +448,8 @@ export class ScriptableGPUDrivenDraw {
                 pass.shader,
                 pass.material,
                 pass.vertexLayouts,
-                this.#target
+                this.#target,
+                this.#depthMode
             );
             services.resourceUses.use(record.pipeline);
             this.#pipeline = services.pipelines.resolvePipeline(record);

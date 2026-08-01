@@ -109,6 +109,38 @@ function compilerFixture(source: StorageGraphicsShader): {
 }
 
 describe('GPUDrivenPipelineResourceCache', () => {
+    it('keeps reversed-Z storage-graphics pipeline state distinct', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const registry = new ResourceRegistry(backend.createDevice());
+        const source = shader();
+        const fixture = compilerFixture(source);
+        const cache = new GPUDrivenPipelineResourceCache(registry, fixture.compiler);
+        const material = new Material({ cullFace: false });
+        const layouts: never[] = [];
+        const target = {
+            colorFormats: ['rgba8unorm' as const],
+            depthStencilFormat: 'depth24plus' as const,
+            sampleCount: 1
+        };
+        const standard = cache.prepareScene(source, material, layouts, target, 4);
+        const reversed = cache.prepareScene(
+            source,
+            material,
+            layouts,
+            target,
+            4,
+            undefined,
+            'reversed'
+        );
+        expect(reversed).not.toBe(standard);
+        expect(registry.resolve(reversed.pipeline).descriptor.depthStencil?.depthCompare).toBe(
+            'greater-equal'
+        );
+        cache.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
+
     it('memoizes ordinary scene layouts by stable vertex-layout identity', () => {
         const backend = new FakeWebGPURHIBackend();
         const device = backend.createDevice();

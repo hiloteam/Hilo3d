@@ -535,7 +535,7 @@ export class MeshDrawProcessor {
             throw new Error('Mesh draw processor frame is already active');
         }
         this.validateContext(context);
-        this.activateContext(context, true);
+        this.activateContext(context, true, uploads);
         this.buffers.beginFrame(context.frameIndex, uploads);
         this.textures.beginFrame(context.frameIndex, uploads);
         this.resourceUses.beginFrame(context.frameIndex, uploads);
@@ -586,16 +586,29 @@ export class MeshDrawProcessor {
         if (!(context.lightManager instanceof LightManager)) {
             throw new TypeError('Mesh draw lighting requires a real LightManager instance');
         }
+        if (context.renderer.useLogDepth) {
+            const far: unknown = Reflect.get(context.camera, 'far');
+            if (context.camera.depthMode === 'reversed') {
+                throw new TypeError('Logarithmic depth cannot be combined with reversed-Z.');
+            }
+            if (typeof far !== 'number' || !Number.isFinite(far)) {
+                throw new TypeError('Logarithmic depth requires a finite camera far plane.');
+            }
+        }
     }
 
-    private activateContext(context: RenderGraphFrameContext, applicationFrame: boolean): void {
+    private activateContext(
+        context: RenderGraphFrameContext,
+        applicationFrame: boolean,
+        uploads?: RHIUploadBatch
+    ): void {
         context.lightManager.updateInfo(context.camera);
         refreshShadowAtlasSceneBinding(context.lightManager);
         this.#validatedLightingFrame = -1;
         this.#validatedLightManager = null;
         this.#hasShadowSamplerDependency = false;
         this.#sampledGraphDependencies.length = 0;
-        if (applicationFrame) this.uniformBlocks.beginSemanticFrame(context.semantic);
+        if (applicationFrame) this.uniformBlocks.beginSemanticFrame(context.semantic, uploads);
         else this.uniformBlocks.beginSemanticPass(context.semantic);
         this.#programBindingInfo.semanticFrame = context.semantic;
         this.#passSemanticFrame = context.semantic;
@@ -667,7 +680,8 @@ export class MeshDrawProcessor {
             fragmentOutputMode,
             geometry.mode,
             stripIndexFormat,
-            numericDepthSamplerMask
+            numericDepthSamplerMask,
+            context.camera.depthMode
         );
 
         const uniformHandles = this.prepareUniformBuffers(
@@ -834,7 +848,8 @@ export class MeshDrawProcessor {
             vertexPlan.vertexBuffers,
             target,
             geometry.mode,
-            stripIndexFormat
+            stripIndexFormat,
+            context.camera.depthMode
         );
         const globalLayout = pipeline.bindGroupLayouts[SCENE_STORAGE_BIND_GROUP];
         if (globalLayout === undefined) {
@@ -1012,7 +1027,8 @@ export class MeshDrawProcessor {
             'depth-only',
             geometry.mode,
             stripIndexFormat,
-            numericDepthSamplerMask
+            numericDepthSamplerMask,
+            context.camera.depthMode
         );
         const uniformHandles = this.prepareUniformBuffers(
             owner,
@@ -1198,7 +1214,8 @@ export class MeshDrawProcessor {
             this.registry.deviceBackend,
             this.registry.deviceCapabilities,
             this.#programBindingInfo,
-            forcedMaterial !== null
+            forcedMaterial !== null,
+            this.uniformBlocks
         );
         const vertexPlan = this.vertexInputs.compile(
             instancePlan.perVertexInputs,
@@ -1243,7 +1260,8 @@ export class MeshDrawProcessor {
             fragmentOutputMode,
             geometry.mode,
             stripIndexFormat,
-            numericDepthSamplerMask
+            numericDepthSamplerMask,
+            context.camera.depthMode
         );
         const instanceBlock = instancePlan.webGPUInstanceBlock;
         const uniformHandles = this.prepareUniformBuffers(

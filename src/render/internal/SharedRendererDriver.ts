@@ -100,6 +100,7 @@ import { WgslComputeShaderCompiler } from '../shader/WgslComputeCompiler';
 import { StorageGraphicsShaderCompiler } from '../shader/StorageGraphicsShaderCompiler';
 import { RenderPipelineHost, type RenderPipelineHostLifecycle } from './RenderPipelineHost';
 import { cameraCompositionRequiresSingleSample } from './CameraCompositionPolicy';
+import { depthClearValue } from '../renderer/DepthConvention';
 import {
     ScriptableRenderPipelineContextImpl,
     ScriptableRenderPipelineResources,
@@ -129,10 +130,11 @@ interface RenderingResources {
     readonly shadowBinding: ShadowAtlasTextureBinding;
     readonly shadowOwner: object;
     readonly shadowPrepareOptions: { width: number; height: number };
-    readonly shadowRenderOptions: Readonly<{
+    readonly shadowRenderOptions: {
         label: string;
         preparer: ShadowAtlasMeshPreparer;
-    }>;
+        depthClearValue: number;
+    };
     readonly shadowViewport: {
         x: number;
         y: number;
@@ -281,6 +283,7 @@ class SharedRendererDriver
     #meshFrameStarted = false;
     #fullscreenFrameStarted = false;
     #surfaceRequested = false;
+    #surfaceDepthMode: Camera['depthMode'] | null = null;
     #shadowBindingAttachedThisFrame = false;
     #applicationPassCount = 0;
     #applicationFaceCount = 0;
@@ -319,6 +322,11 @@ class SharedRendererDriver
             );
         }
         Object.assign(this, options);
+        const renderingProfile: unknown = this.renderingProfile;
+        if (renderingProfile !== 'portable' && renderingProfile !== 'high-end') {
+            throw new TypeError('Renderer renderingProfile must be "portable" or "high-end"');
+        }
+        if (this.renderingProfile === 'high-end') this.cameraRelative = true;
         const optionRequiredFeatures =
             'requiredFeatures' in options ? options.requiredFeatures : undefined;
         const optionRequiredLimits =
@@ -503,6 +511,7 @@ class SharedRendererDriver
         this.#meshFrameStarted = false;
         this.#fullscreenFrameStarted = false;
         this.#surfaceRequested = false;
+        this.#surfaceDepthMode = null;
         this.#shadowBindingAttachedThisFrame = false;
         this.#applicationPassCount = 0;
         this.#applicationFaceCount = 0;
@@ -661,6 +670,7 @@ class SharedRendererDriver
         capabilities: RenderPipelineCapabilities,
         runtimeOwner: object
     ): RenderPipelineContext {
+        this.configureCameraProfile(camera);
         const resources = this.requireResources();
         if (!this.#scriptableResourcesFrameStarted) {
             const frameIndex = this.#pipelineHost.activeFrameIndex;
@@ -882,7 +892,17 @@ class SharedRendererDriver
     override createRenderTarget(parameters: RenderTargetParameters): RHIRenderTarget {
         this.assertReadyForRender();
         this.assertNoFrameMutation('createRenderTarget');
-        const target = new RHIRenderTarget(this, parameters);
+        const depth = parameters.depthStencilAttachment;
+        const resolvedParameters =
+            this.renderingProfile === 'high-end' &&
+            depth !== false &&
+            depth?.depthMode === undefined
+                ? {
+                      ...parameters,
+                      depthStencilAttachment: { ...(depth ?? {}), depthMode: 'reversed' as const }
+                  }
+                : parameters;
+        const target = new RHIRenderTarget(this, resolvedParameters);
         this.#renderTargets.add(target);
         return target;
     }
@@ -1340,10 +1360,11 @@ class SharedRendererDriver
         const shadowBinding = new ShadowAtlasTextureBinding();
         const shadowOwner = Object.freeze({ renderer: this });
         const shadowPrepareOptions = { width: 1, height: 1 };
-        const shadowRenderOptions = Object.freeze({
+        const shadowRenderOptions = {
             label: 'Shadow atlas',
-            preparer: shadowPreparer
-        });
+            preparer: shadowPreparer,
+            depthClearValue: 1
+        };
         const shadowViewport = {
             x: 0,
             y: 0,
@@ -1362,6 +1383,7 @@ class SharedRendererDriver
         recovery.registerSubmissionTracker(shadowRenderer.submissions);
         recovery.registerSynchronizer(processor.buffers);
         recovery.registerSynchronizer(processor.textures);
+        recovery.registerSynchronizer(processor.uniformBlocks);
         recovery.registerSynchronizer(postProcess.fullscreen);
         recovery.registerSynchronizer(storageBuffers);
         recovery.registerSynchronizer({
@@ -1629,6 +1651,16 @@ class SharedRendererDriver
         const viewport = this.surfaceViewport();
         const context = this.createContext(camera, viewport);
         const isOverlayCamera = this.#surfaceRequested;
+        if (
+            isOverlayCamera &&
+            !camera.clearDepth &&
+            this.#surfaceDepthMode !== null &&
+            this.#surfaceDepthMode !== camera.depthMode
+        ) {
+            throw new TypeError(
+                'Composed cameras may preserve surface depth only when their depth modes match.'
+            );
+        }
         const preservePreviousColor = isOverlayCamera && !camera.clearColor;
         const forceSingleSample = cameraCompositionRequiresSingleSample(camera);
         this.ensureMeshFrame(context);
@@ -1662,12 +1694,14 @@ class SharedRendererDriver
                         : null,
                 depthLoadOp: isOverlayCamera && !camera.clearDepth ? 'load' : 'clear',
                 depthStoreOp: 'store',
+                clearDepth: depthClearValue(camera.depthMode),
                 stencilLoadOp: isOverlayCamera && !camera.clearStencil ? 'load' : 'clear',
                 stencilStoreOp: 'store'
             },
             true
         );
         this.#surfaceRequested = true;
+        this.#surfaceDepthMode = camera.depthMode;
         this.recordSceneBuild(visible, fireEvent, shadowPassCount);
         this.#pendingPresentationStage = stage;
         this.#pendingPresentationCamera = camera;
@@ -1699,6 +1733,11 @@ class SharedRendererDriver
         );
         const normalized = target.normalizedParameters;
         const depth = normalized.depthStencilAttachment;
+        if (depth !== null && depth.depthMode !== camera.depthMode) {
+            throw new TypeError(
+                `Render target depth mode ${depth.depthMode} does not match camera depth mode ${camera.depthMode}`
+            );
+        }
         this.fireBeforeSceneEvents(visible, fireEvent);
         const record = resources.offscreen.build(
             this.#pipelineHost.requireActiveScope(),
@@ -1762,7 +1801,12 @@ class SharedRendererDriver
             return 0;
         }
 
-        const atlas = resources.shadowResources.prepare(resources.shadowOwner, plan.atlas);
+        const atlas = resources.shadowResources.prepare(
+            resources.shadowOwner,
+            plan.atlas,
+            context.camera.depthMode
+        );
+        resources.shadowRenderOptions.depthClearValue = depthClearValue(context.camera.depthMode);
         resources.shadowPreparer.configure(plan, meshes);
         const viewport = resources.shadowViewport;
         viewport.width = atlas.width;
@@ -1784,6 +1828,7 @@ class SharedRendererDriver
 
     private prepareScene(stage: RendererScene, camera: Camera): readonly Mesh[] {
         if (!this.#pipelineHost.recording) this.resetDiagnosticsFrame();
+        this.configureCameraProfile(camera);
         this.fog = stage.fog ?? null;
         stage.updateMatrixWorld();
         camera.updateViewProjectionMatrix();
@@ -1792,6 +1837,10 @@ class SharedRendererDriver
         visible.length = 0;
         this.renderList.traverse(this.#collectVisibleMesh);
         return visible;
+    }
+
+    private configureCameraProfile(camera: Camera): void {
+        if (this.renderingProfile === 'high-end') camera.depthMode = 'reversed';
     }
 
     private executeRetainedPresentation(): void {
