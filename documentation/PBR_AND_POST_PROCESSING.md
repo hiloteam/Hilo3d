@@ -125,6 +125,12 @@ Graph 分配和回收。
 默认 tone mapper 是 Khronos PBR Neutral，避免高亮压缩时过度 hue shift。Bloom 必须在 Color
 Uber 之前，不能在 sRGB/tone-mapped 结果上模糊。
 
+当前 `exposure` 是固定的手动 EV compensation；运行时尚未提供 scene luminance histogram、eye
+adaptation、GPU exposure
+history 或可调 slope/toe/shoulder 的 filmic 曲线。相关增量与时域、Bloom 和设备恢复的组合要求记录在
+[`MODERN_WEBGPU_RENDERING_ROADMAP.md`](./MODERN_WEBGPU_RENDERING_ROADMAP.md)
+的 E0 工作包中，不能把规划状态误写成当前能力。
+
 ## 推荐用法
 
 完整 HDR 管线使用 `PostProcessRenderPipelineFactory`：

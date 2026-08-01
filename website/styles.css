@@ -272,12 +272,32 @@ video {
     line-height: 1.72;
 }
 
+.heroCapabilities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 22px;
+}
+
+.heroCapabilities span {
+    padding: 7px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.035);
+    color: #9ea8b8;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 8px;
+    font-weight: 720;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
 .heroActions,
 .finalActions {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
-    margin-top: 34px;
+    margin-top: 30px;
 }
 
 .button {
@@ -430,7 +450,9 @@ video {
 .artworkScene::after {
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, transparent 68%, rgba(6, 9, 15, 0.8));
+    background:
+        linear-gradient(90deg, rgba(4, 7, 12, 0.12), transparent 34%),
+        linear-gradient(180deg, transparent 62%, rgba(6, 9, 15, 0.82));
     content: '';
     pointer-events: none;
 }
@@ -439,7 +461,9 @@ video {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    opacity: 0.94;
+    filter: saturate(0.94) contrast(1.03);
+    opacity: 0.96;
+    object-position: 56% center;
     transform: scale(1.03);
     animation: artwork-breathe 12s ease-in-out infinite alternate;
 }
@@ -1051,22 +1075,20 @@ video {
 
 .exampleGrid {
     display: grid;
-    grid-template-columns: 1.2fr 1fr 1fr;
+    height: 680px;
+    grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
     gap: 16px;
     margin-top: 55px;
 }
 
 .exampleCard {
     position: relative;
-    display: flex;
-    min-height: 430px;
     overflow: hidden;
-    flex-direction: column;
-    justify-content: flex-end;
-    padding: 27px;
     border: 1px solid var(--line);
-    border-radius: 17px;
-    background: #101620;
+    border-radius: 19px;
+    background: #0b1018;
+    isolation: isolate;
     transition:
         transform 200ms ease,
         border-color 200ms ease,
@@ -1074,9 +1096,56 @@ video {
 }
 
 .exampleCard:hover {
-    border-color: rgba(110, 231, 196, 0.3);
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+    border-color: rgba(110, 231, 196, 0.38);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
     transform: translateY(-5px);
+}
+
+.exampleCard::after {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    background:
+        linear-gradient(180deg, rgba(5, 8, 13, 0.08) 25%, rgba(5, 8, 13, 0.92) 100%),
+        linear-gradient(90deg, rgba(5, 8, 13, 0.26), transparent 56%);
+    content: '';
+    pointer-events: none;
+}
+
+.exampleCardFeatured {
+    grid-row: 1 / 3;
+}
+
+.exampleMedia {
+    position: absolute;
+    inset: 0;
+}
+
+.exampleMedia img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition:
+        transform 500ms cubic-bezier(0.2, 0.7, 0.2, 1),
+        filter 300ms ease;
+}
+
+.exampleCard:hover .exampleMedia img {
+    filter: saturate(1.08) contrast(1.03);
+    transform: scale(1.025);
+}
+
+.exampleCardBloom .exampleMedia img {
+    object-position: 63% center;
+}
+
+.exampleCardGltf .exampleMedia img {
+    object-position: 59% center;
+}
+
+.exampleCardRaytracing .exampleMedia img {
+    object-position: center;
 }
 
 .exampleCard > b {
@@ -1088,31 +1157,21 @@ video {
     width: 34px;
     height: 34px;
     place-items: center;
-    border: 1px solid var(--line);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 50%;
-    color: #aab4c3;
+    background: rgba(6, 9, 15, 0.52);
+    color: #dce3ec;
     font-size: 13px;
-}
-
-.exampleCardCompute {
-    background:
-        radial-gradient(circle at 46% 27%, rgba(110, 231, 196, 0.2), transparent 31%),
-        radial-gradient(circle at 22% 12%, rgba(107, 140, 255, 0.2), transparent 36%), #0d1420;
-}
-
-.exampleCardPbr {
-    background:
-        radial-gradient(circle at 50% 25%, rgba(255, 139, 107, 0.18), transparent 38%), #171318;
-}
-
-.exampleCardGltf {
-    background:
-        radial-gradient(circle at 48% 26%, rgba(183, 147, 255, 0.2), transparent 35%), #11131e;
+    font-weight: 520;
+    backdrop-filter: blur(10px);
 }
 
 .exampleCopy {
-    position: relative;
-    z-index: 3;
+    position: absolute;
+    z-index: 2;
+    right: 27px;
+    bottom: 27px;
+    left: 27px;
 }
 
 .exampleCopy > span {
@@ -1126,155 +1185,31 @@ video {
 
 .exampleCopy h3 {
     margin: 10px 0 0;
-    font-size: 23px;
-    font-weight: 640;
-    letter-spacing: -0.04em;
+    font-size: clamp(24px, 2.5vw, 31px);
+    font-weight: 650;
+    letter-spacing: -0.045em;
+    line-height: 1.08;
+    text-wrap: balance;
 }
 
 .exampleCopy p {
+    max-width: 520px;
     margin: 12px 0 0;
-    color: var(--muted);
-    font-size: 12px;
+    color: #aab3c1;
+    font-size: 11px;
     line-height: 1.65;
 }
 
-.computeVisual span {
-    position: absolute;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--mint);
-    box-shadow: 0 0 10px 2px rgba(110, 231, 196, 0.5);
+.exampleCardFeatured .exampleCopy {
+    right: 38px;
+    bottom: 36px;
+    left: 38px;
 }
 
-.computeVisual span:nth-child(1) {
-    top: 18%;
-    left: 18%;
-}
-.computeVisual span:nth-child(2) {
-    top: 28%;
-    left: 31%;
-    width: 2px;
-    height: 2px;
-}
-.computeVisual span:nth-child(3) {
-    top: 13%;
-    left: 52%;
-    background: var(--blue);
-}
-.computeVisual span:nth-child(4) {
-    top: 37%;
-    left: 63%;
-    width: 6px;
-    height: 6px;
-}
-.computeVisual span:nth-child(5) {
-    top: 21%;
-    left: 77%;
-    width: 2px;
-    height: 2px;
-}
-.computeVisual span:nth-child(6) {
-    top: 44%;
-    left: 22%;
-    background: var(--purple);
-}
-.computeVisual span:nth-child(7) {
-    top: 49%;
-    left: 47%;
-    width: 2px;
-    height: 2px;
-}
-.computeVisual span:nth-child(8) {
-    top: 11%;
-    left: 38%;
-    width: 3px;
-    height: 3px;
-}
-.computeVisual span:nth-child(9) {
-    top: 42%;
-    left: 81%;
-    background: var(--blue);
-}
-.computeVisual span:nth-child(10) {
-    top: 28%;
-    left: 90%;
-    width: 2px;
-    height: 2px;
-}
-
-.computeVisual::before,
-.computeVisual::after {
-    position: absolute;
-    top: 12%;
-    left: 15%;
-    width: 70%;
-    height: 40%;
-    border: 1px solid rgba(110, 231, 196, 0.11);
-    border-radius: 50%;
-    content: '';
-    transform: rotate(-12deg);
-}
-
-.computeVisual::after {
-    transform: rotate(17deg);
-}
-
-.pbrVisual {
-    position: absolute;
-    top: 68px;
-    left: 50%;
-    display: grid;
-    grid-template-columns: repeat(3, 46px);
-    gap: 10px;
-    transform: translateX(-50%) rotate(-8deg);
-}
-
-.pbrVisual span {
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 30% 28%, #ffd2b7, #d06f55 45%, #4a1c1d 92%);
-    box-shadow: inset -8px -9px 15px rgba(0, 0, 0, 0.35);
-}
-
-.pbrVisual span:nth-child(2n) {
-    background: radial-gradient(circle at 30% 28%, #e8efff, #7792ce 42%, #20283d 92%);
-}
-
-.pbrVisual span:nth-child(3n) {
-    background: radial-gradient(circle at 30% 28%, #fff1b6, #c69a3f 44%, #352918 92%);
-}
-
-.gltfVisual {
-    position: absolute;
-    top: 92px;
-    left: 50%;
-    width: 145px;
-    height: 145px;
-    transform: translateX(-50%) rotate(12deg);
-}
-
-.gltfVisual span {
-    position: absolute;
-    inset: 18px;
-    border: 1px solid rgba(183, 147, 255, 0.5);
-    background: linear-gradient(145deg, rgba(183, 147, 255, 0.2), rgba(107, 140, 255, 0.05));
-    box-shadow: 0 0 36px rgba(183, 147, 255, 0.12);
-    transform: rotate(45deg);
-}
-
-.gltfVisual span:nth-child(2) {
-    inset: 42px;
-    border-color: rgba(110, 231, 196, 0.55);
-    transform: rotate(12deg);
-}
-
-.gltfVisual span:nth-child(3) {
-    inset: 63px;
-    border-radius: 50%;
-    background: var(--mint);
-    box-shadow: 0 0 24px var(--mint);
+.exampleCardFeatured .exampleCopy h3 {
+    max-width: 580px;
+    font-size: clamp(36px, 4vw, 52px);
+    line-height: 1;
 }
 
 .quickStart {
@@ -1510,12 +1445,19 @@ video {
     }
 
     .exampleGrid {
-        grid-template-columns: 1.15fr 0.85fr;
+        height: auto;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto;
     }
 
-    .exampleCardGltf {
+    .exampleCardFeatured {
         grid-column: 1 / -1;
-        min-height: 330px;
+        grid-row: auto;
+        min-height: 520px;
+    }
+
+    .exampleCard:not(.exampleCardFeatured) {
+        min-height: 360px;
     }
 
     .quickStart {
@@ -1637,13 +1579,17 @@ video {
     }
 
     .exampleGrid {
+        height: auto;
         grid-template-columns: 1fr;
+        grid-template-rows: auto;
     }
 
     .exampleCard,
-    .exampleCardGltf {
-        min-height: 400px;
+    .exampleCardFeatured,
+    .exampleCard:not(.exampleCardFeatured) {
+        min-height: 430px;
         grid-column: auto;
+        grid-row: auto;
     }
 
     .quickStart {
@@ -1714,6 +1660,23 @@ video {
 
     .productVisual {
         height: 480px;
+    }
+
+    .exampleCard,
+    .exampleCardFeatured,
+    .exampleCard:not(.exampleCardFeatured) {
+        min-height: 400px;
+    }
+
+    .exampleCopy,
+    .exampleCardFeatured .exampleCopy {
+        right: 21px;
+        bottom: 22px;
+        left: 21px;
+    }
+
+    .exampleCardFeatured .exampleCopy h3 {
+        font-size: 34px;
     }
 
     .advantageCard {
