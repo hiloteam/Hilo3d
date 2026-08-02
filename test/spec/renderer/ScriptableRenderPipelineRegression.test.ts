@@ -911,7 +911,10 @@ describe('Scriptable render pipeline regressions', () => {
         const scene = new Node();
         const opaque = new Mesh({
             geometry: new BoxGeometry(),
-            material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+            material: new BasicMaterial({
+                lightType: 'NONE',
+                state: { depthTest: false, depthWrite: false }
+            }),
             frustumTest: false
         });
         scene.addChild(opaque);
@@ -926,8 +929,8 @@ describe('Scriptable render pipeline regressions', () => {
             geometry: new BoxGeometry(),
             material: new BasicMaterial({
                 lightType: 'NONE',
-                depthTest: false,
-                transparent: true
+                state: { depthTest: false, depthWrite: false },
+                compositing: { mode: 'alpha-blend', premultiplied: true }
             }),
             frustumTest: false
         });
@@ -956,7 +959,10 @@ describe('Scriptable render pipeline regressions', () => {
             renderPipeline: new FixedRuntimeFactory(runtime)
         });
         activeRenderers.push(renderer);
-        const material = new BasicMaterial({ lightType: 'NONE', depthTest: false });
+        const material = new BasicMaterial({
+            lightType: 'NONE',
+            state: { depthTest: false, depthWrite: false }
+        });
         const included = new Mesh({
             geometry: new BoxGeometry(),
             material,
@@ -997,7 +1003,10 @@ describe('Scriptable render pipeline regressions', () => {
         const scene = new Node();
         const mesh = new Mesh({
             geometry: new BoxGeometry(),
-            material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+            material: new BasicMaterial({
+                lightType: 'NONE',
+                state: { depthTest: false, depthWrite: false }
+            }),
             frustumTest: false
         });
         let beforeRenderFired = false;
@@ -1037,7 +1046,10 @@ describe('Scriptable render pipeline regressions', () => {
         const scene = new Node();
         const mesh = new Mesh({
             geometry: new BoxGeometry(),
-            material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+            material: new BasicMaterial({
+                lightType: 'NONE',
+                state: { depthTest: false, depthWrite: false }
+            }),
             frustumTest: false
         });
         const beforeRender = vi.fn();
@@ -1070,7 +1082,10 @@ describe('Scriptable render pipeline regressions', () => {
         const scene = new Node();
         const mesh = new Mesh({
             geometry: new BoxGeometry(),
-            material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+            material: new BasicMaterial({
+                lightType: 'NONE',
+                state: { depthTest: false, depthWrite: false }
+            }),
             frustumTest: false
         });
         const afterRender = vi.fn();
@@ -1100,7 +1115,10 @@ describe('Scriptable render pipeline regressions', () => {
         const scene = new Node();
         const mesh = new Mesh({
             geometry: new BoxGeometry(),
-            material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+            material: new BasicMaterial({
+                lightType: 'NONE',
+                state: { depthTest: false, depthWrite: false }
+            }),
             frustumTest: false
         });
         scene.addChild(mesh);
@@ -1164,7 +1182,10 @@ describe('Scriptable render pipeline regressions', () => {
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+                material: new BasicMaterial({
+                    lightType: 'NONE',
+                    state: { depthTest: false, depthWrite: false }
+                }),
                 frustumTest: false
             })
         );
@@ -1188,7 +1209,10 @@ describe('Scriptable render pipeline regressions', () => {
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+                material: new BasicMaterial({
+                    lightType: 'NONE',
+                    state: { depthTest: false, depthWrite: false }
+                }),
                 frustumTest: false
             })
         );

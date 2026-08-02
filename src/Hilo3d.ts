@@ -341,7 +341,8 @@ export {
 export {
     type BasicLightType,
     default as BasicMaterial,
-    type BasicMaterialParameters
+    type BasicMaterialParameters,
+    type MaterialColorOrTextureInput
 } from './material/BasicMaterial';
 export {
     default as GeometryMaterial,
@@ -352,16 +353,75 @@ export {
     type MaterialBinding,
     type MaterialBindingInfo,
     type MaterialBindingMap,
-    type MaterialBeforeCompile,
-    default as Material,
+    default as MaterialInstance,
     type InstancedUniform,
-    type MaterialParameters,
-    type MaterialShaderSource,
+    type MaterialInstanceParameters,
     type MaterialTexture,
     type MaterialTextureValue,
     type ProgramBindingInfo
-} from './material/Material';
-export { default as PBRMaterial, type PBRMaterialParameters } from './material/PBRMaterial';
+} from './material/MaterialInstance';
+export {
+    DEFAULT_MATERIAL_PIPELINE_STATE,
+    DEFAULT_MATERIAL_TEXTURE_CHANNELS,
+    MaterialDefinition,
+    type MaterialBlendComponent,
+    type MaterialBlendFactor,
+    type MaterialBlendOperation,
+    type MaterialBlendState,
+    type MaterialCompositing,
+    type MaterialCompareFunction,
+    type MaterialCoverage,
+    type MaterialCullMode,
+    type MaterialDefinitionParameters,
+    type MaterialFamily,
+    type MaterialFragmentOutput,
+    type MaterialFrontFace,
+    type MaterialPassDefinition,
+    type MaterialPassFallback,
+    type MaterialPassRole,
+    type MaterialPipelineState,
+    type MaterialRenderingProfile,
+    type MaterialShaderModule,
+    type MaterialStencilFaceState,
+    type MaterialStencilOperation,
+    type MaterialStencilState,
+    type MaterialSurfaceDomain,
+    type MaterialTextureChannel,
+    type MaterialTextureEncoding,
+    type MaterialTextureSlotBinding,
+    type MaterialTextureSlotDefinition,
+    type MaterialTextureSlotInput
+} from './material/MaterialDefinition';
+export {
+    MaterialAttributeSemantic,
+    MaterialTextureSemantic,
+    MaterialUniformSemantic,
+    type MaterialAttributeSemanticName,
+    type MaterialSemanticName,
+    type MaterialTextureSemanticName,
+    type MaterialUniformSemanticName
+} from './material/MaterialSemantics';
+export {
+    MATERIAL_TEXTURE_SLOT_COUNT,
+    MaterialTextureSlot,
+    type BuiltInMaterialTextureSlotName
+} from './material/MaterialTextureSlots';
+export {
+    MaterialBlendPreset,
+    MaterialCompiler,
+    resolveMaterialPassDefinition,
+    resolveMaterialPassState,
+    type MaterialCompileRequest,
+    type MaterialTargetSignature,
+    type PreparedMaterialVariant
+} from './material/MaterialCompiler';
+export {
+    type MutablePBRMaterialParameters,
+    default as PBRMaterial,
+    PBRMaterialBuilder,
+    type PBRMaterialParameters,
+    type PBRMaterialTextureInput
+} from './material/PBRMaterial';
 export {
     type SemanticMaterial,
     type SemanticMesh,
@@ -369,9 +429,10 @@ export {
     default as semantic
 } from './material/semantic';
 export {
-    type CustomRenderOptionProvider,
     default as ShaderMaterial,
-    type ShaderMaterialParameters
+    type ShaderMaterialParameters,
+    type ShaderMaterialRoleSource,
+    type ShaderMaterialTextureSlot
 } from './material/ShaderMaterial';
 
 export { default as AmbientLight, type AmbientLightParameters } from './light/AmbientLight';

@@ -90,15 +90,34 @@ Pass。后处理、显式 Present、离屏渲染和 Readback 也通过同一 Ren
 
 相关代码：[`SharedRendererDriver.ts`](../src/render/internal/SharedRendererDriver.ts)、[`RenderGraphFramePlan.ts`](../src/render/RenderGraphFramePlan.ts)、[`RenderList.ts`](../src/render/RenderList.ts)、[`MeshDrawListPlanner.ts`](../src/render/renderer/MeshDrawListPlanner.ts)、[`ForwardRenderer.ts`](../src/render/renderer/ForwardRenderer.ts)。
 
-### 1.3 RenderPipelineHost：默认快路径与可脚本化编排
+### 1.2.1 材质前端与语义 Pass
+
+`Mesh.material` 引用 `MaterialInstance`。实例持有不可变
+`MaterialDefinition`，Definition 固定 family、Shader topology、static features、texture-slot
+schema、语义 role 与 pipeline state；实例只保存运行时参数、per-slot
+texture/UV/transform/encoding/channel、stable material
+ID 和数据 revision。参数变化不改变 Definition 或 Shader resource
+layout，需要改变 topology 时构造另一个材质实例。
+
+Render Pipeline 请求 `forward`、`depth-only`、`shadow-caster` 或 `picking` role，材质不拥有 graph
+pass 顺序。Shadow Atlas 直接编译 `shadow-caster`，不创建 proxy material；role 缺失或 target
+output 不匹配会在 RHI frame 前失败。`motion-vector` 与 `material-attributes`
+已保留类型，但当前内置材质不声明，由后续时域和属性缓冲路线定义完整输出 ABI 后接入。
+
+portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
+`MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
+0/1 对应这两个 block，sampled texture/sampler 从 binding 2 开始；WebGL2 使用同一固定 block
+registry。attribute、uniform、texture 和 built-in
+slot 使用公开的类型化 semantic 常量，不以任意字符串作为公共绑定合同。完整设计、breaking
+changes 与长期 GPU material database 路线见
+[`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
+
+### 1.3 RenderPipelineHost：统一的可脚本化编排
 
 每个 Renderer 拥有一个 `RenderPipelineHost` 和一个 renderer-local `RenderPipeline`
-runtime。创建时未传 `renderPipeline` 时，进程级 `ForwardRenderPipelineFactory` 创建一个 direct
-runtime marker；host 识别它并直接调用原有
-`ForwardRenderer`/offscreen 路径，不创建公共 context、中间 scene color 或额外 present
-pass，因此默认逐 Draw 热路径不经过 feature facade。
-
-显式传入 factory 时，runtime 的同步 `record()` 获得 frame-scoped `RenderPipelineContext`：
+runtime。创建时未传 `renderPipeline` 时也由进程级 `ForwardRenderPipelineFactory`
+为该 Renderer 创建独立 runtime；默认 Forward 与显式 factory 使用同一个同步 `record()`
+边界和 frame-scoped `RenderPipelineContext`，不存在绕过 Render Graph/RHI 的 direct recorder：
 
 - `cull()` 与 `createRendererList()` 复用 shared renderer 的场景收集、排序、instancing 和 mesh
   processor；
@@ -129,16 +148,23 @@ pass，因此默认逐 Draw 热路径不经过 feature facade。
 带 feature 的 `ForwardRenderPipelineFactory` 在构造时快照配置并合并静态 capabilities/limits/format
 requirements；每个 feature 配置在 Renderer 创建时产生独立且只能附着一次的 runtime。feature
 context 暴露内置 forward/shadow 共用的 `cullingResults`，因此附加 Scene
-Pass 无需重新 cull，也不会与 Shadow Atlas 的场景 identity 分叉。只有 feature 声明需要采样 scene
-color/depth 时才创建中间资源；其中 scene color 使用公共 fullscreen 线性采样 ABI，因此要求
-`filterable-sampled` format；无 feature 的默认 factory 始终保留 direct recorder。
+Pass 无需重新 cull，也不会与 Shadow Atlas 的场景 identity 分叉。feature 声明需要采样 scene
+color/depth 时创建对应中间资源；其中 scene color 使用公共 fullscreen 线性采样 ABI，因此要求
+`filterable-sampled` format。默认 factory 也通过同一 Render Graph 路径把 surface scene
+color 保留在 renderer-owned linear composition target，到最终 output
+pass 才执行一次准确的 linear-to-sRGB transfer。多相机的 surface
+`load`、透明混合和共享 depth/stencil 都继续作用于该线性 composition target，不采样 presentation
+surface。持久 composition target 固定为 single-sample；单相机 MSAA 使用 transient
+attachment 并 resolve 到该目标，多相机 stack 则统一 single-sample，避免跨 Camera 加载已 resolve 的多采样内容。离屏 RenderTarget 不隐式套用 display
+transfer。
 
 内置 HDR 组合由 `PostProcessRenderPipelineFactory` 提供：attachment-zero scene color 使用
 `rgba16float`，opaque queue 完成后由 graph `TextureCopyPass` 捕获 opaque scene
 texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。随后
 `Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent
 upsample 与线性 composite；`ColorUber` 最后统一完成 grading、tone
-mapping、linear-to-sRGB 与 dithering。float scene target 会选择 linear-output material
+mapping、linear-to-sRGB 与 dithering，并把输出编码标记为 `srgb`，避免 surface output
+pass 重复转换。float scene target 会选择 linear-output material
 variant，禁止材质 shader 提前执行 gamma encode 或旧的局部 tone mapping。完整颜色与材质合同见
 [`PBR_AND_POST_PROCESSING.md`](./PBR_AND_POST_PROCESSING.md)。
 
@@ -177,7 +203,7 @@ state 的事务边界；current/previous object/camera transform 只在 RHI
 submission 已存在后提交，录制或提交前失败则丢弃 staged revision。当前 factory 限定 single-sample
 perspective camera 与 opaque、unskinned、indexed triangle PBR bucket；GPU fast path 接受 scalar
 factor 以及 base-color/metallic/roughness/combined-MR/occlusion/emission/normal 2D
-map，支持 UV0/UV1、material UV matrix 与 sampler
+map，支持每纹理槽独立的 UV0/UV1、UV transform、encoding、channel 与 sampler
 mutation，仍要求默认 depth/alpha 状态。未注册 mesh、对象容量 overflow、skinning/morph，以及注册 bucket 在运行时发生的不兼容 material/geometry/raster-state
 replacement 会在同一帧迁移到共享 Forward compatibility path；恢复兼容后可重新进入 GPU
 Scene。fallback 使用显式 mesh identity

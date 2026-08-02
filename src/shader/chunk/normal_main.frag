@@ -22,7 +22,7 @@
     #endif
 #endif
 
-#if HILO_SIDE == HILO_BACK_SIDE
+#ifdef HILO_BACK_FACING
     normal = -normal;
     #ifdef HILO_HAS_CLEARCOAT
         clearcoatNormal = -clearcoatNormal;

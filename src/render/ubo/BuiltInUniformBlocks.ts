@@ -1,4 +1,5 @@
 import { createStd140Layout, type Std140Layout, type Std140Value } from './Std140Layout';
+import { MATERIAL_TEXTURE_SLOT_COUNT } from '../../material/MaterialTextureSlots';
 
 export const MAX_DIRECTIONAL_LIGHTS = 8;
 export const MAX_DIRECTIONAL_SHADOW_CASCADES = 4;
@@ -90,13 +91,9 @@ export const materialBlockLayout = createStd140Layout({
     u_emissionFactor: 'vec4',
     u_diffuseEnvSphereHarmonics3: { type: 'vec3', arrayLength: 9 },
     u_specularEnvMatrix: 'mat4',
-    u_uvMatrix: 'mat3',
-    u_uvMatrix1: 'mat3',
     u_normalMapScale: 'float',
     u_transparencyFactor: 'float',
     u_alphaCutoff: 'float',
-    u_exposure: 'float',
-    u_gammaFactor: 'float',
     u_shininess: 'float',
     u_reflectivity: 'float',
     u_refractRatio: 'float',
@@ -122,6 +119,13 @@ export const materialBlockLayout = createStd140Layout({
     u_iridescenceThicknessMinimum: 'float',
     u_iridescenceThicknessMaximum: 'float',
     u_attenuationColor: 'vec4'
+});
+
+/** Per-texture-slot metadata kept separate from the stable scalar material ABI. */
+export const materialTextureBlockLayout = createStd140Layout({
+    u_materialTextureTransforms: { type: 'mat3', arrayLength: MATERIAL_TEXTURE_SLOT_COUNT },
+    u_materialTextureInfo: { type: 'vec4', arrayLength: MATERIAL_TEXTURE_SLOT_COUNT },
+    u_materialTextureChannels: { type: 'ivec4', arrayLength: MATERIAL_TEXTURE_SLOT_COUNT }
 });
 
 export const modelBlockLayout = createStd140Layout({
@@ -163,6 +167,7 @@ export const BUILT_IN_UNIFORM_BLOCK_LAYOUTS: Readonly<Record<string, Std140Layou
         SceneBlock: sceneBlockLayout,
         LightBlock: lightBlockLayout,
         MaterialBlock: materialBlockLayout,
+        MaterialTextureBlock: materialTextureBlockLayout,
         ModelBlock: modelBlockLayout,
         GeometryBlock: geometryBlockLayout,
         SkinningBlock: skinningBlockLayout,

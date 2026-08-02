@@ -5,7 +5,7 @@ import type {
     RHIBenchmarkScenarioId
 } from './result-schema';
 
-export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 11 as const;
+export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 12 as const;
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL =
     'chromium-cdp-windowed-sampling-heap-profiler-sync-render-v11' as const;
 /** The fixed quiescence proof now ends immediately before measured samples; no duplicate discard. */

@@ -254,6 +254,7 @@ export interface RHIBenchmarkQuality {
     readonly mrtColorAttachments: number;
     readonly msaaSampleCount: number;
     readonly postProcessPassCount: number;
+    readonly surfaceOutputPassCount: number;
     readonly dynamicUploadBytesPerFrame: number;
     readonly churnFrames: number;
 }
@@ -265,7 +266,7 @@ export interface RHIBenchmarkScenarioManifest {
 }
 
 export interface RHIBenchmarkManifest {
-    readonly schemaVersion: 3;
+    readonly schemaVersion: 4;
     readonly suite: 'rhi';
     readonly architecture: 'rhi';
     readonly backends: readonly RHIBenchmarkBackend[];
@@ -347,7 +348,7 @@ export interface RHIBenchmarkProductionFixtureIdentity {
 }
 
 export interface RHIBenchmarkRawCaptureResult {
-    readonly schemaVersion: 3;
+    readonly schemaVersion: 4;
     readonly suite: 'rhi';
     readonly manifestSha256: string;
     readonly commitSha: string;
@@ -381,7 +382,7 @@ export interface RHIBenchmarkRawArtifact {
 }
 
 export interface RHIBenchmarkBaselineResult {
-    readonly schemaVersion: 3;
+    readonly schemaVersion: 4;
     readonly suite: 'rhi';
     readonly architecture: 'rhi';
     readonly manifestSha256: string;

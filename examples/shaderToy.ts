@@ -623,10 +623,8 @@ const shaderToyLayout = Hilo3d.createStd140Layout({
 });
 const shaderToyBlock = Hilo3d.UniformBuffer.fromSchema(shaderToyLayout);
 const material = new Hilo3d.ShaderMaterial({
-    depthTest: false,
-    side: Hilo3d.constants.FRONT_AND_BACK,
-    needBasicUniforms: false,
-    needBasicAttributes: false,
+    state: { depthTest: false, depthWrite: false, cullMode: 'none' },
+    cullMode: 'none',
     uniforms: {
         iChannel0: { get: () => bindChannel(channel0) },
         iChannel1: { get: () => bindChannel(null) },
@@ -635,8 +633,8 @@ const material = new Hilo3d.ShaderMaterial({
     },
     uniformBlocks: { ShaderToyBlock: shaderToyBlock },
     attributes: {
-        a_position: 'POSITION',
-        a_texcoord0: 'TEXCOORD_0'
+        a_position: Hilo3d.MaterialAttributeSemantic.POSITION,
+        a_texcoord0: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
     },
     fs: `#version 300 es
         precision highp float;

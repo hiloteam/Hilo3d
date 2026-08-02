@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { addEnvironmentSkybox, applyEnvironmentMaps } from './shared/environment';
+import { addEnvironmentSkybox, environmentMaterialDefaults } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 interface MaterialFamily {
@@ -152,13 +152,13 @@ async function initializeStudio(): Promise<void> {
         for (let column = 0; column < metallicStops.length; column += 1) {
             const metallic = metallicStops[column] ?? 0;
             const material = new Hilo3d.PBRMaterial({
+                ...environmentMaterialDefaults(environment),
                 baseColor: new Hilo3d.Color(...MATERIAL_FAMILIES.copper.color),
                 metallic,
                 roughness,
                 diffuseEnvIntensity: 0.28,
                 specularEnvIntensity: 0.82
             });
-            applyEnvironmentMaps([material], environment);
             materials.push(material);
 
             new Hilo3d.Mesh({
@@ -172,13 +172,13 @@ async function initializeStudio(): Promise<void> {
     }
 
     const floorMaterial = new Hilo3d.PBRMaterial({
+        ...environmentMaterialDefaults(environment),
         baseColor: new Hilo3d.Color(0.014, 0.021, 0.042),
         metallic: 0.76,
-        roughness: 0.3
+        roughness: 0.3,
+        diffuseEnvIntensity: 0.16,
+        specularEnvIntensity: 0.45
     });
-    applyEnvironmentMaps([floorMaterial], environment);
-    floorMaterial.diffuseEnvIntensity = 0.16;
-    floorMaterial.specularEnvIntensity = 0.45;
     new Hilo3d.Mesh({
         geometry: new Hilo3d.PlaneGeometry({ width: 22, height: 11 }),
         material: floorMaterial,

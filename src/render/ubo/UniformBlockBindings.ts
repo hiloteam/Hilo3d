@@ -7,9 +7,10 @@ export const UNIFORM_BLOCK_BINDINGS = Object.freeze({
     ModelBlock: 5,
     GeometryBlock: 6,
     SkinningBlock: 7,
-    MorphBlock: 8
+    MorphBlock: 8,
+    MaterialTextureBlock: 9
 } as const);
-export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 9;
+export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 10;
 
 const bindings = new Map<string, number>(Object.entries(UNIFORM_BLOCK_BINDINGS));
 const FIRST_CUSTOM_BINDING_POINT = BUILTIN_UNIFORM_BLOCK_BINDING_COUNT;

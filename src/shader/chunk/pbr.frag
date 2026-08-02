@@ -1,5 +1,4 @@
 #include "../method/textureEnvMap.glsl"
-#include "../method/encoding.glsl"
 #include "../method/portableCoordinates.glsl"
 #include "./fixMathCrash.glsl"
 
@@ -116,9 +115,7 @@ vec3 hiloSampleSpecularEnvironment(vec3 direction, float perceptualRoughness) {
             vec4 encoded = textureEnvMap(u_specularEnvMap, direction);
         #endif
         vec3 radiance = hiloDecodeRGBD(encoded);
-        #ifdef HILO_GAMMA_CORRECTION
-            radiance = sRGBToLinear(radiance);
-        #endif
+        radiance = HILO_DECODE_MATERIAL_COLOR(radiance, HILO_SPECULAR_ENV_MAP);
         return radiance * u_specularEnvIntensity;
     #else
         return vec3(0.0);
@@ -131,9 +128,7 @@ vec3 hiloGetIBLDiffuse(vec3 N, vec3 diffuseColor, float ao) {
     #endif
     #ifdef HILO_DIFFUSE_ENV_MAP
         vec3 irradiance = textureEnvMap(u_diffuseEnvMap, N).rgb;
-        #ifdef HILO_GAMMA_CORRECTION
-            irradiance = sRGBToLinear(irradiance);
-        #endif
+        irradiance = HILO_DECODE_MATERIAL_COLOR(irradiance, HILO_DIFFUSE_ENV_MAP);
         return irradiance * diffuseColor * ao * u_diffuseEnvIntensity;
     #elif defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)
         return hiloComputeDiffuseSH(N, u_diffuseEnvSphereHarmonics3) *

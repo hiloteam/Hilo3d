@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
-import { BACK, FRONT } from '../../../src/constants/webgl';
 
 const Mesh = Hilo3d.Mesh;
 
@@ -14,7 +13,7 @@ describe('Mesh', () => {
     it('clone', () => {
         const mesh = new Mesh({
             geometry: new Hilo3d.BoxGeometry(),
-            material: new Hilo3d.Material()
+            material: new Hilo3d.BasicMaterial()
         });
 
         const clonedMesh = mesh.clone();
@@ -23,13 +22,11 @@ describe('Mesh', () => {
     });
 
     it('raycast', () => {
-        const material = new Hilo3d.Material();
+        let material = new Hilo3d.BasicMaterial({ cullMode: 'back' });
         const mesh = new Mesh({
             geometry: new Hilo3d.PlaneGeometry(),
             material
         });
-        material.side = FRONT;
-
         const ray = new Hilo3d.Ray({
             origin: new Hilo3d.Vector3(0, 0, 1),
             direction: new Hilo3d.Vector3(0, 0, -1)
@@ -38,7 +35,8 @@ describe('Mesh', () => {
         let hits = mesh.raycast(ray);
         expect(hits?.at(0)?.elements).toEqual(new Float32Array([0, 0, 0]));
 
-        material.side = BACK;
+        material = new Hilo3d.BasicMaterial({ cullMode: 'front' });
+        mesh.material = material;
         expect(mesh.raycast(ray)).toBeNull();
 
         ray.origin.z = -1;

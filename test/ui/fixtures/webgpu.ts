@@ -15,7 +15,8 @@ import {
     SpotLight,
     Stage,
     Texture,
-    Vector3
+    Vector3,
+    type MaterialStencilState
 } from '../../../src/Hilo3d';
 import type { RHIDevice, RHISurface } from '../../../src/render/rhi/core';
 import { validateExtendedTextureSampling } from './webgpu-rhi';
@@ -77,18 +78,11 @@ async function validateOffscreenStencil(): Promise<OffscreenStencilResult> {
     const material = (
         name: string,
         color: readonly [number, number, number, number],
-        renderOrder: number
+        stencil: Readonly<MaterialStencilState>
     ): ShaderMaterial =>
         new ShaderMaterial({
-            shaderName: name,
-            shaderCacheId: name,
-            needBasicAttributes: false,
-            needBasicUniforms: false,
-            depthTest: false,
-            depthMask: false,
-            cullFace: false,
-            blend: false,
-            renderOrder,
+            sourceRevision: name,
+            state: { depthTest: false, depthWrite: false, cullMode: 'none', stencil },
             attributes: { a_position: 'POSITION' },
             vs: `#version 300 es
                 in vec2 a_position;
@@ -100,29 +94,55 @@ async function validateOffscreenStencil(): Promise<OffscreenStencilResult> {
                 void main(void) { fragmentColor = vec4(${color.join(', ')}); }
             `
         });
-    const stencilWrite = material('WebGPUOffscreenStencilWrite', [1, 0, 0, 1], 0);
-    stencilWrite.stencilTest = true;
-    stencilWrite.stencilFunc = constants.ALWAYS;
-    stencilWrite.stencilFuncRef = 1;
-    stencilWrite.stencilFuncMask = 0xff;
-    stencilWrite.stencilMask = 0xff;
-    stencilWrite.stencilOpFail = constants.KEEP;
-    stencilWrite.stencilOpZFail = constants.KEEP;
-    stencilWrite.stencilOpZPass = constants.REPLACE;
-    const stencilReject = material('WebGPUOffscreenStencilReject', [0, 1, 0, 1], 1);
-    stencilReject.stencilTest = true;
-    stencilReject.stencilFunc = constants.EQUAL;
-    stencilReject.stencilFuncRef = 2;
-    stencilReject.stencilFuncMask = 0xff;
-    stencilReject.stencilMask = 0;
-    stencilReject.stencilOpFail = constants.KEEP;
-    stencilReject.stencilOpZFail = constants.KEEP;
-    stencilReject.stencilOpZPass = constants.KEEP;
+    const stencilWrite = material('WebGPUOffscreenStencilWrite', [1, 0, 0, 1], {
+        front: {
+            compare: 'always',
+            failOp: 'keep',
+            depthFailOp: 'keep',
+            passOp: 'replace'
+        },
+        back: {
+            compare: 'always',
+            failOp: 'keep',
+            depthFailOp: 'keep',
+            passOp: 'replace'
+        },
+        reference: 1,
+        readMask: 0xff,
+        writeMask: 0xff
+    });
+    const stencilReject = material('WebGPUOffscreenStencilReject', [0, 1, 0, 1], {
+        front: {
+            compare: 'equal',
+            failOp: 'keep',
+            depthFailOp: 'keep',
+            passOp: 'keep'
+        },
+        back: {
+            compare: 'equal',
+            failOp: 'keep',
+            depthFailOp: 'keep',
+            passOp: 'keep'
+        },
+        reference: 2,
+        readMask: 0xff,
+        writeMask: 0
+    });
     validationStage.addChild(
-        new Mesh({ geometry: geometry(), material: stencilWrite, frustumTest: false })
+        new Mesh({
+            geometry: geometry(),
+            material: stencilWrite,
+            frustumTest: false,
+            renderOrder: 0
+        })
     );
     validationStage.addChild(
-        new Mesh({ geometry: geometry(), material: stencilReject, frustumTest: false })
+        new Mesh({
+            geometry: geometry(),
+            material: stencilReject,
+            frustumTest: false,
+            renderOrder: 1
+        })
     );
 
     try {

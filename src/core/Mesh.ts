@@ -3,9 +3,10 @@ import Ray from '../math/Ray';
 import Matrix4 from '../math/Matrix4';
 import type Vector3 from '../math/Vector3';
 import type Geometry from '../geometry/Geometry';
-import type Material from '../material/Material';
+import type Material from '../material/MaterialInstance';
 import type { Renderer } from '../render/Renderer';
 import type { ShaderOptions } from '../render/types';
+import { BACK, FRONT, FRONT_AND_BACK } from '../constants/webgl';
 const tempRay = new Ray();
 const tempMatrix4 = new Matrix4();
 
@@ -14,6 +15,9 @@ export interface MeshParameters extends NodeParameters {
     material?: Material | null;
     useInstanced?: boolean;
     frustumTest?: boolean;
+    renderOrder?: number;
+    castShadows?: boolean;
+    receiveShadows?: boolean;
 }
 /**
  * Mesh
@@ -45,6 +49,12 @@ class Mesh extends Node {
      * 是否开启视锥体裁剪
      */
     frustumTest = true;
+    /** Object ordering policy; it is intentionally independent of material identity. */
+    renderOrder = 0;
+    /** Object participation in shadow-caster renderer lists. */
+    castShadows = true;
+    /** Whether forward shading consumes scene shadow data for this object. */
+    receiveShadows = true;
     /**
      * @param params - 初始化参数，所有params都会复制到实例上
      * - `params.geometry`: 几何体
@@ -86,7 +96,10 @@ class Mesh extends Node {
             tempMatrix4.invert(worldMatrix);
             tempRay.copy(ray);
             tempRay.transformMat4(tempMatrix4);
-            const res = geometry.raycast(tempRay, material.side, sort);
+            const cullMode = material.definition.getPass('forward')?.state.cullMode ?? 'back';
+            const raycastSide =
+                cullMode === 'back' ? FRONT : cullMode === 'front' ? BACK : FRONT_AND_BACK;
+            const res = geometry.raycast(tempRay, raycastSide, sort);
             if (res) {
                 res.forEach(point => {
                     point.transformMat4(worldMatrix);

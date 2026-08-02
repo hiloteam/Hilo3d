@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';
 import Geometry from '../../../src/geometry/Geometry';
-import Material from '../../../src/material/Material';
+import Material from '../../../src/material/BasicMaterial';
 import Vector3 from '../../../src/math/Vector3';
 import {
     MeshDrawListPlanner,
@@ -11,8 +11,11 @@ import {
 import type { Renderer } from '../../../src/render/Renderer';
 
 function material(id: string, renderOrder = 0, transparent = false): Material {
-    const value = new Material({ renderOrder, transparent });
+    const value = new Material({
+        compositing: transparent ? { mode: 'alpha-blend', premultiplied: true } : { mode: 'opaque' }
+    });
     Reflect.set(value, 'id', id);
+    Reflect.set(value, 'testRenderOrder', renderOrder);
     return value;
 }
 
@@ -29,7 +32,12 @@ function mesh(
     useInstanced = false
 ): Mesh {
     return Object.assign(
-        new Mesh({ material: meshMaterial, geometry: meshGeometry, useInstanced }),
+        new Mesh({
+            material: meshMaterial,
+            geometry: meshGeometry,
+            useInstanced,
+            renderOrder: Number(Reflect.get(meshMaterial, 'testRenderOrder') ?? 0)
+        }),
         { id }
     );
 }
@@ -264,18 +272,19 @@ describe('MeshDrawListPlanner', () => {
 
     it('observes render-order, transparency, instancing, geometry, and material mutations', () => {
         const planner = new MeshDrawListPlanner();
-        const mutableMaterial = material('mutable', 2);
+        let mutableMaterial = material('mutable', 2);
         const mutableMesh = mesh('mutable', mutableMaterial, geometry('mutable'));
         const fixedMesh = mesh('fixed', material('fixed', 0), geometry('fixed'));
 
         const plan = planner.build([mutableMesh, fixedMesh]);
         expect(plan.opaqueMeshes).toEqual([fixedMesh, mutableMesh]);
 
-        mutableMaterial.renderOrder = -1;
+        mutableMesh.renderOrder = -1;
         planner.build([mutableMesh, fixedMesh]);
         expect(plan.opaqueMeshes).toEqual([mutableMesh, fixedMesh]);
 
-        mutableMaterial.transparent = true;
+        mutableMaterial = material('mutable-transparent', -1, true);
+        mutableMesh.material = mutableMaterial;
         planner.build([mutableMesh, fixedMesh]);
         expect(plan.opaqueMeshes).toEqual([fixedMesh]);
         expect(plan.transparentMeshes).toEqual([mutableMesh]);
@@ -300,7 +309,7 @@ describe('MeshDrawListPlanner', () => {
             geometry: replacementGeometry,
             material: replacementMaterial,
             transparent: false,
-            renderOrder: -3,
+            renderOrder: -1,
             meshes: [mutableMesh]
         });
 
@@ -331,13 +340,13 @@ describe('MeshDrawListPlanner', () => {
         expect(plan.instancedBatches[0]).toMatchObject({
             material: forced,
             geometry: sharedGeometry,
-            renderOrder: -4,
+            renderOrder: 0,
             transparent: true,
             meshes: [instancedA, instancedB]
         });
 
-        forced.transparent = false;
-        planner.build([direct, instancedA, instancedB], forced);
+        const opaqueForced = material('forced-opaque', -4);
+        planner.build([direct, instancedA, instancedB], opaqueForced);
         expect(plan.opaqueMeshes).toEqual([direct]);
         expect(plan.transparentMeshes).toEqual([]);
         expect(plan.instancedBatches[0]?.transparent).toBe(false);
@@ -412,10 +421,13 @@ describe('MeshDrawListPlanner', () => {
         expect(() => planner.build([destroyed])).toThrow('is destroyed');
 
         const invalidOrderMaterial = material('invalid-order');
-        invalidOrderMaterial.renderOrder = Number.NaN;
-        expect(() =>
-            planner.build([mesh('invalid-order', invalidOrderMaterial, geometry('invalid-order'))])
-        ).toThrow('renderOrder must be finite');
+        const invalidOrderMesh = mesh(
+            'invalid-order',
+            invalidOrderMaterial,
+            geometry('invalid-order')
+        );
+        invalidOrderMesh.renderOrder = Number.NaN;
+        expect(() => planner.build([invalidOrderMesh])).toThrow('renderOrder must be finite');
 
         const sparse = new Array<Mesh>(1);
         expect(() => planner.build(sparse)).toThrow('entry 0 must be a Mesh instance');

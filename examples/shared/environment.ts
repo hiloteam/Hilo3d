@@ -1,17 +1,14 @@
 import * as Hilo3d from '../../src/Hilo3d';
 import type { EnvironmentMaps } from './init';
 
-export function applyEnvironmentMaps(
-    materials: readonly Hilo3d.Material[],
+export function environmentMaterialDefaults(
     maps: EnvironmentMaps
-): void {
-    for (const material of materials) {
-        if (!(material instanceof Hilo3d.PBRMaterial)) continue;
-        material.brdfLUT = maps.brdfLUT;
-        material.diffuseEnvMap = maps.diffuseEnvMap;
-        material.specularEnvMap = maps.specularEnvMap;
-        material.isDirty = true;
-    }
+): Readonly<Pick<Hilo3d.PBRMaterialParameters, 'brdfLUT' | 'diffuseEnvMap' | 'specularEnvMap'>> {
+    return Object.freeze({
+        brdfLUT: maps.brdfLUT,
+        diffuseEnvMap: Object.freeze({ texture: maps.diffuseEnvMap, encoding: 'srgb' as const }),
+        specularEnvMap: Object.freeze({ texture: maps.specularEnvMap, encoding: 'srgb' as const })
+    });
 }
 
 export function addEnvironmentSkybox(
@@ -23,13 +20,13 @@ export function addEnvironmentSkybox(
         geometry: new Hilo3d.BoxGeometry(),
         material: new Hilo3d.BasicMaterial({
             lightType: 'NONE',
-            side: Hilo3d.constants.BACK,
-            castShadows: false,
-            receiveShadows: false,
-            depthMask: false,
-            renderOrder: -1000,
+            cullMode: 'front',
+            state: { depthWrite: false },
             diffuse: texture
-        })
+        }),
+        castShadows: false,
+        receiveShadows: false,
+        renderOrder: -1000
     }).addTo(stage);
     skybox.setScale(scale);
     return skybox;

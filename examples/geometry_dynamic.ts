@@ -16,7 +16,7 @@ boxGeometry.setAllRectUV([
 const textureBox = new Hilo3d.Mesh({
     geometry: boxGeometry,
     material: new Hilo3d.BasicMaterial({
-        side: Hilo3d.constants.FRONT_AND_BACK,
+        cullMode: 'none',
         diffuse: new Hilo3d.LazyTexture({
             src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
         })

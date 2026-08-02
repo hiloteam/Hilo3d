@@ -1,7 +1,8 @@
 import ShaderMaterial, { type ShaderMaterialParameters } from '../material/ShaderMaterial';
-import type Material from '../material/Material';
+import type Material from '../material/MaterialInstance';
 import Texture from '../texture/Texture';
 import type Sprite from './Sprite';
+import { MaterialAttributeSemantic } from '../material/MaterialSemantics';
 
 const materialsByTexture = new WeakMap<Texture, SpriteMaterial>();
 
@@ -100,20 +101,19 @@ class SpriteMaterial extends ShaderMaterial {
         const { texture, ...materialParameters } = params;
         super({
             ...materialParameters,
-            shaderCacheId: materialParameters.shaderCacheId ?? 'Hilo3d.SpriteMaterial',
-            needBasicAttributes: false,
-            needBasicUniforms: false,
-            lightType: 'NONE',
-            transparent: true,
-            depthTest: materialParameters.depthTest ?? false,
-            depthMask: materialParameters.depthMask ?? false,
-            cullFace: materialParameters.cullFace ?? false,
-            premultiplyAlpha: materialParameters.premultiplyAlpha ?? texture.premultiplyAlpha,
-            castShadows: false,
-            receiveShadows: false,
+            sourceRevision: 'Hilo3d.SpriteMaterial:1',
+            compositing: {
+                mode: 'alpha-blend',
+                premultiplied: texture.premultiplyAlpha
+            },
+            state: {
+                depthTest: false,
+                depthWrite: false,
+                cullMode: 'none'
+            },
             attributes: {
-                a_position: 'POSITION',
-                a_texcoord0: 'TEXCOORD_0'
+                a_position: MaterialAttributeSemantic.POSITION,
+                a_texcoord0: MaterialAttributeSemantic.TEXCOORD_0
             },
             uniforms: {
                 u_modelMatrix: {

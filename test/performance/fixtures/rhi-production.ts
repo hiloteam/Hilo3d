@@ -15,7 +15,6 @@ import type {
     RHIBenchmarkBackend,
     RHIBenchmarkManifest,
     RHIBenchmarkQuality,
-    RHIBenchmarkScenarioId,
     RHIBenchmarkScenarioManifest
 } from '../../../benchmarks/rhi/result-schema';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
@@ -100,7 +99,7 @@ function fixtureManifest(value: unknown): RHIBenchmarkManifest {
     const manifest = value as Record<string, unknown>;
     const sampling = manifest['sampling'];
     if (
-        manifest['schemaVersion'] !== 3 ||
+        manifest['schemaVersion'] !== 4 ||
         manifest['suite'] !== 'rhi' ||
         !Array.isArray(manifest['scenarios']) ||
         typeof sampling !== 'object' ||
@@ -409,7 +408,6 @@ function dynamicExternalTexture(seed: number): DynamicExternalTexture {
 }
 
 function variantMaterial(
-    scenarioId: RHIBenchmarkScenarioId,
     variant: number,
     image: BenchmarkTexture | null,
     pbr: boolean,
@@ -418,25 +416,33 @@ function variantMaterial(
     const textureCount = texturePool.length;
     const pooledTexture = (offset: number): BenchmarkTexture | null =>
         textureCount === 0 ? null : (texturePool[offset % textureCount] ?? null);
-    const material = pbr
-        ? new PBRMaterial({
-              baseColor: new Color(0.35 + (variant % 5) * 0.08, 0.45, 0.7),
-              baseColorMap: pooledTexture(variant * 3) ?? image,
-              normalMap: pooledTexture(variant * 3 + 1),
-              metallicRoughnessMap: pooledTexture(variant * 3 + 2),
-              metallic: 0.3,
-              roughness: 0.6
-          })
-        : new BasicMaterial({
-              lightType: 'NONE',
-              diffuse: image ?? new Color(0.25 + (variant % 7) * 0.07, 0.55, 0.8)
-          });
-    material.shaderCacheId = `rhi-benchmark-${scenarioId}-${String(variant)}`;
-    material.onBeforeCompile = (vs, fs) => ({
-        vs: `${vs}\n// rhi benchmark variant ${String(variant)} vertex`,
-        fs: `${fs}\n// rhi benchmark variant ${String(variant)} fragment`
+    if (pbr) {
+        return new PBRMaterial({
+            baseColor: new Color(0.35 + (variant % 5) * 0.08, 0.45, 0.7),
+            baseColorMap: pooledTexture(variant * 7) ?? image,
+            normalMap: (variant & 1) !== 0 ? pooledTexture(variant * 7 + 1) : null,
+            metallicRoughnessMap: pooledTexture(variant * 7 + 2),
+            emission: (variant & 2) !== 0 ? pooledTexture(variant * 7 + 3) : null,
+            clearcoatFactor: (variant & 4) !== 0 ? 0.5 : 0,
+            anisotropyStrength: (variant & 8) !== 0 ? 0.4 : 0,
+            transmissionFactor: (variant & 16) !== 0 ? 0.25 : 0,
+            iridescenceFactor: (variant & 32) !== 0 ? 0.35 : 0,
+            metallic: 0.3,
+            roughness: 0.6
+        });
+    }
+    const lightTypes = ['NONE', 'LAMBERT', 'PHONG', 'BLINN-PHONG'] as const;
+    const variantTexture = pooledTexture(variant * 5) ?? image;
+    return new BasicMaterial({
+        lightType: lightTypes[variant & 3] ?? 'NONE',
+        diffuse:
+            (variant & 4) !== 0 && variantTexture !== null
+                ? variantTexture
+                : new Color(0.25 + (variant % 7) * 0.07, 0.55, 0.8),
+        normalMap: (variant & 8) !== 0 ? pooledTexture(variant * 5 + 1) : null,
+        emission: (variant & 16) !== 0 ? pooledTexture(variant * 5 + 2) : null,
+        specular: (variant & 32) !== 0 ? pooledTexture(variant * 5 + 3) : null
     });
-    return material;
 }
 
 function fullscreenGeometry(): Geometry {
@@ -456,10 +462,7 @@ function benchmarkBoxGeometry(): BoxGeometry {
 
 function mrtMaterial(): ShaderMaterial {
     return new ShaderMaterial({
-        needBasicUniforms: false,
-        needBasicAttributes: false,
-        depthTest: false,
-        cullFace: false,
+        state: { depthTest: false, cullMode: 'none' },
         attributes: { a_position: 'POSITION' },
         vs: `#version 300 es
             in vec3 a_position;
@@ -705,7 +708,6 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
         for (let index = 0; index < quality.shaderVariantCount; index += 1) {
             this.#materials.push(
                 variantMaterial(
-                    this.#scenario.id,
                     index,
                     this.#textures[index % Math.max(1, this.#textures.length)] ?? null,
                     isPbr,
@@ -713,11 +715,8 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                 )
             );
         }
-        if (shadowDraws > 0) {
-            if (this.#materials.length < 2) {
-                fixtureFailure('a shadow benchmark requires a dedicated caster material');
-            }
-            for (const material of this.#materials) material.castShadows = false;
+        if (shadowDraws > 0 && this.#materials.length < 2) {
+            fixtureFailure('a shadow benchmark requires a dedicated caster material');
         }
         addLights(this.#scene, quality);
         if (this.#scenario.id === 'large-instancing') {
@@ -725,10 +724,12 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
         } else {
             const primaryDraws =
                 this.#scenario.id === 'mrt-msaa-postprocess'
-                    ? mrtMSAAPostProcessPrimaryDrawCount(quality.drawCount)
+                    ? mrtMSAAPostProcessPrimaryDrawCount(
+                          quality.drawCount - quality.surfaceOutputPassCount
+                      )
                     : benchmarkPrimaryDrawCount(
                           quality.drawCount,
-                          quality.postProcessPassCount,
+                          quality.postProcessPassCount + quality.surfaceOutputPassCount,
                           shadowDraws
                       );
             const geometry =
@@ -750,12 +751,10 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                         benchmarkMaterialIndex(index, this.#materials.length, shadowDraws > 0)
                     ];
                 if (!material) fixtureFailure('scenario material set is empty');
-                if (shadowDraws > 0) {
-                    material.castShadows = benchmarkMeshCastsShadow(index, true);
-                }
                 const mesh = new Mesh({
                     geometry,
                     material,
+                    castShadows: benchmarkMeshCastsShadow(index, shadowDraws > 0),
                     frustumTest: false,
                     z: benchmarkMeshDepth(index, this.#scenario.id === 'scene-churn-10000-frame')
                 });
@@ -808,19 +807,14 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
         const quality = this.#scenario.quality;
         const batchSize = 128;
         const batchCount = Math.ceil(quality.instanceCount / batchSize);
-        if (batchCount !== quality.drawCount) {
+        if (batchCount + quality.surfaceOutputPassCount !== quality.drawCount) {
             fixtureFailure(
-                `large-instancing drawCount must equal ceil(instanceCount/${String(batchSize)})`
+                `large-instancing drawCount must equal ceil(instanceCount/${String(batchSize)}) plus surface output passes`
             );
         }
         let remaining = quality.instanceCount;
         for (let batch = 0; batch < batchCount; batch += 1) {
-            const material = variantMaterial(
-                this.#scenario.id,
-                0,
-                this.#textures[0] ?? null,
-                false
-            );
+            const material = variantMaterial(0, this.#textures[0] ?? null, false);
             this.#materials.push(material);
             const geometry = benchmarkBoxGeometry();
             const instances = Math.min(batchSize, remaining);
@@ -866,18 +860,17 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             if (!previous) fixtureFailure('scene churn mesh slot is missing');
             previous.destroy(this.#renderer as never);
             const material = variantMaterial(
-                this.#scenario.id,
                 this.#frameIndex % this.#scenario.quality.shaderVariantCount,
                 this.#textures[this.#frameIndex % Math.max(1, this.#textures.length)] ?? null,
                 false
             );
-            material.castShadows = benchmarkMeshCastsShadow(
-                slot,
-                this.#scenario.quality.shadowMapSize > 0
-            );
             const replacement = new Mesh({
                 geometry: benchmarkBoxGeometry(),
                 material,
+                castShadows: benchmarkMeshCastsShadow(
+                    slot,
+                    this.#scenario.quality.shadowMapSize > 0
+                ),
                 frustumTest: false,
                 z: benchmarkMeshDepth(slot, true)
             });

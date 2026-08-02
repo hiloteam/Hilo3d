@@ -28,9 +28,7 @@ renderer.onInit(() => {
         widthSegments: 64
     });
     const material = new Hilo3d.ShaderMaterial({
-        shaderCacheId: 'UniformBufferAnimation',
-        needBasicUniforms: false,
-        needBasicAttributes: false,
+        sourceRevision: 'UniformBufferAnimation',
         uniforms: {
             u_diffuse: {
                 get(_mesh, _material, _programInfo) {
@@ -48,8 +46,8 @@ renderer.onInit(() => {
             ExampleModelBlock: modelUniformBuffer
         },
         attributes: {
-            a_position: 'POSITION',
-            a_texcoord0: 'TEXCOORD_0'
+            a_position: Hilo3d.MaterialAttributeSemantic.POSITION,
+            a_texcoord0: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
         },
         fs: `#version 300 es
             precision highp float;

@@ -1,4 +1,7 @@
-import Material from '../../../material/Material';
+import {
+    snapshotMaterialPipelineState,
+    type MaterialPipelineState
+} from '../../../material/MaterialDefinition';
 import type UniformBuffer from '../../UniformBuffer';
 import type { UniformBufferRange } from '../../UniformBuffer';
 import ComputeSampler from '../../compute/ComputeSampler';
@@ -96,7 +99,7 @@ export interface GPUDrivenRenderPassOptions {
     /** WebGPU storage-aware GLSL ES 3.10 graphics shader. */
     readonly shader: StorageGraphicsShader;
     /** Raster/depth/blend state only; resource bindings come from pass parameters. */
-    readonly material: Material;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     /** Immutable positional vertex-buffer ABI; omit for vertex pulling. */
     readonly vertexLayouts?: readonly GPUDrivenVertexBufferLayout[];
     /** Index format required by indexed indirect draws. */
@@ -343,7 +346,7 @@ export class GPUDrivenRenderPass implements ScriptableRenderPass<GPUDrivenRender
     /** Immutable storage-aware graphics shader. */
     readonly shader: StorageGraphicsShader;
     /** Material supplying raster, depth, stencil, and blend state. */
-    readonly material: Material;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     /** Snapshotted positional vertex-buffer ABI. */
     readonly vertexLayouts: readonly Readonly<GPUDrivenVertexBufferLayout>[];
     /** Index format for indexed indirect draws, when configured. */
@@ -353,9 +356,6 @@ export class GPUDrivenRenderPass implements ScriptableRenderPass<GPUDrivenRender
         const optionRecord = requireRecord(options, 'GPUDrivenRenderPass options');
         if (!(options.shader instanceof StorageGraphicsShader)) {
             throw new TypeError('GPUDrivenRenderPass requires a StorageGraphicsShader');
-        }
-        if (!(options.material instanceof Material)) {
-            throw new TypeError('GPUDrivenRenderPass requires a Material for raster state');
         }
         const name = options.name ?? (options.shader.label || 'GPUDrivenRenderPass');
         if (typeof name !== 'string' || name.length === 0) {
@@ -380,7 +380,7 @@ export class GPUDrivenRenderPass implements ScriptableRenderPass<GPUDrivenRender
         }
         this.name = name;
         this.shader = options.shader;
-        this.material = options.material;
+        this.pipelineState = snapshotMaterialPipelineState(options.pipelineState);
         this.vertexLayouts = snapshotVertexLayouts(
             requireArray(
                 optionRecord['vertexLayouts'] ?? EMPTY_READONLY_ARRAY,

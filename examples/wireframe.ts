@@ -6,13 +6,11 @@ const { stage } = await createExampleContext();
 const loader = new Hilo3d.GLTFLoader();
 void loader
     .load({
-        src: './models/Tmall/Tmall.gltf'
+        src: './models/Tmall/Tmall.gltf',
+        pbrMaterialDefaults: { state: { wireframe: true } }
     })
     .then(model => {
         model.node.setScale(0.001);
-        model.materials.forEach(material => {
-            material.wireframe = true;
-        });
         stage.addChild(model.node);
     })
     .catch((error: unknown) => {

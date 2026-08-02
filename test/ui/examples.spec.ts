@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { PNG } from 'pngjs';
 import { createExampleCatalog } from '../../examples/shared/catalog';
 import {
     completionContractForExample,
@@ -138,46 +139,41 @@ async function readCanvasBufferPresentations(
     return framePresentations.flat();
 }
 
-async function inspectCompositorPng(
-    page: Page,
-    dataUrl: string,
-    frameUrl: string
-): Promise<CanvasPresentation> {
-    return page.evaluate(
-        async ({ encodedPng, sourceFrame }) => {
-            const response = await fetch(encodedPng);
-            const bitmap = await createImageBitmap(await response.blob());
-            const width = Math.min(128, bitmap.width);
-            const height = Math.min(128, bitmap.height);
-            const scratch = document.createElement('canvas');
-            scratch.width = width;
-            scratch.height = height;
-            const context = scratch.getContext('2d', { willReadFrequently: true });
-            if (!context) throw new Error('Unable to inspect the compositor canvas snapshot');
-            context.drawImage(bitmap, 0, 0, width, height);
-            bitmap.close();
-            const pixels = context.getImageData(0, 0, width, height).data;
-            const colors = new Set<number>();
-            let visiblePixelCount = 0;
-            for (let offset = 0; offset < pixels.length; offset += 4) {
-                const red = pixels[offset] ?? 0;
-                const green = pixels[offset + 1] ?? 0;
-                const blue = pixels[offset + 2] ?? 0;
-                const alpha = pixels[offset + 3] ?? 0;
-                if (alpha > 0) visiblePixelCount++;
-                colors.add((red << 16) | (green << 8) | blue);
-                if (colors.size > 1 && visiblePixelCount > 0) break;
+function inspectCompositorPng(png: Buffer, frameUrl: string): CanvasPresentation {
+    const decoded = PNG.sync.read(png);
+    const width = Math.min(128, decoded.width);
+    const height = Math.min(128, decoded.height);
+    const colors = new Set<number>();
+    let visiblePixelCount = 0;
+    for (let y = 0; y < height; y += 1) {
+        const sourceY = Math.min(decoded.height - 1, Math.floor((y * decoded.height) / height));
+        for (let x = 0; x < width; x += 1) {
+            const sourceX = Math.min(decoded.width - 1, Math.floor((x * decoded.width) / width));
+            const offset = (sourceY * decoded.width + sourceX) * 4;
+            const red = decoded.data[offset] ?? 0;
+            const green = decoded.data[offset + 1] ?? 0;
+            const blue = decoded.data[offset + 2] ?? 0;
+            const alpha = decoded.data[offset + 3] ?? 0;
+            if (alpha > 0) visiblePixelCount++;
+            colors.add((red << 16) | (green << 8) | blue);
+            if (colors.size > 1 && visiblePixelCount > 0) {
+                return {
+                    frameUrl,
+                    width,
+                    height,
+                    distinctColorCount: colors.size,
+                    visiblePixelCount
+                };
             }
-            return {
-                frameUrl: sourceFrame,
-                width,
-                height,
-                distinctColorCount: colors.size,
-                visiblePixelCount
-            };
-        },
-        { encodedPng: dataUrl, sourceFrame: frameUrl }
-    );
+        }
+    }
+    return {
+        frameUrl,
+        width,
+        height,
+        distinctColorCount: colors.size,
+        visiblePixelCount
+    };
 }
 
 async function readCompositorCanvasPresentations(
@@ -195,13 +191,7 @@ async function readCompositorCanvasPresentations(
                 animations: 'allow',
                 caret: 'hide'
             });
-            presentations.push(
-                await inspectCompositorPng(
-                    page,
-                    `data:image/png;base64,${png.toString('base64')}`,
-                    frame.url()
-                )
-            );
+            presentations.push(inspectCompositorPng(png, frame.url()));
         }
     }
     return presentations;

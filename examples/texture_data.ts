@@ -20,7 +20,7 @@ for (let i = 0; i < 128; i++) {
 
 const material = new Hilo3d.BasicMaterial({
     diffuse: new Hilo3d.DataTexture({ data }),
-    side: Hilo3d.constants.FRONT_AND_BACK
+    cullMode: 'none'
 });
 const colorBox = new Hilo3d.Mesh({
     geometry,

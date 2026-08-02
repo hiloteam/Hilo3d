@@ -216,13 +216,12 @@ listener 或每帧 picking 成本。
 - 大量文本优先 font atlas；`Text2D` 更适合 HUD 标签、分数和低频变化文字。
 - `Camera.priority` 数量通常很小；Stage 原地稳定排序，不创建每帧 Camera 数组。
 - 多 Camera 在一个 Render Graph/RHI frame 内记录和提交，不为每个 Camera 创建独立 submission。
-- 保留前序 color 的 overlay pass 直接写 single-sample surface；这是因为新建 MSAA
-  attachment 无法加载已 resolve 的前序 Camera
-  color。首个或显式清 color 的 Camera 仍可使用正常 MSAA。
-- 如果后续 Camera 配置 `clearDepth: false` 或 `clearStencil: false`，整个 Camera
-  stack 会在该帧使用 single-sample persistent
-  depth/stencil，以保证前序深度或模板内容确实可 load；默认会清 depth/stencil 的 2D
-  overlay 不触发这个降级。
+- Surface color、depth 和 stencil 先组合在 renderer-owned linear persistent target，最终 output
+  pass 再执行 display transfer；Camera stack 不读取 presentation surface。
+- 单 Camera 仍可使用 transient MSAA attachment 并 resolve 到 composition target。多 Camera
+  stack 整体使用 single-sample
+  color/depth/stencil，保证后续 Camera 能无损 load 前序内容，避免新建 MSAA
+  attachment 无法加载已 resolve color 的隐式降级分支。
 
 ## 示例
 

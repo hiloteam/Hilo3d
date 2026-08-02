@@ -4,7 +4,7 @@ import type Mesh from '../core/Mesh';
 import type Node from '../core/Node';
 import { EventDispatcher, type EventListener } from '../core/EventDispatcher';
 import LightManager from '../light/LightManager';
-import type Material from '../material/Material';
+import type Material from '../material/MaterialInstance';
 import Color from '../math/Color';
 import type { RendererDiagnostics, RendererDiagnosticsSnapshot } from './RendererDiagnostics';
 import type { RenderGraphTimelineSink } from './graph/RenderGraphTimeline';

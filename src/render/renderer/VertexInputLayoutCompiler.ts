@@ -1,7 +1,7 @@
 import type Mesh from '../../core/Mesh';
 import GeometryData, { type GeometryComponentSize } from '../../geometry/GeometryData';
-import type Material from '../../material/Material';
-import type { MaterialBinding, ProgramBindingInfo } from '../../material/Material';
+import type Material from '../../material/MaterialInstance';
+import type { MaterialBinding, ProgramBindingInfo } from '../../material/MaterialInstance';
 import {
     BYTE,
     FLOAT,

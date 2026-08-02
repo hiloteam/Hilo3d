@@ -91,7 +91,6 @@ class SkinnedMesh extends Mesh {
         if (currentSkeleton && geometry && material) {
             const skinIndices = geometry.skinIndices;
             if (skinIndices) {
-                material.isDirty = true;
                 geometry.isDirty = true;
                 skinIndices.isDirty = true;
                 const tempIndices = new Vector4();

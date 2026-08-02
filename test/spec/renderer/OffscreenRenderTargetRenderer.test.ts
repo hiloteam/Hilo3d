@@ -3,7 +3,7 @@ import Mesh from '../../../src/core/Mesh';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
 import LightManager from '../../../src/light/LightManager';
-import Material from '../../../src/material/Material';
+import Material from '../../../src/material/BasicMaterial';
 import type RendererCore from '../../../src/render/RendererCore';
 import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
 import type { RHIUploadBatch } from '../../../src/render/frame/RHIUploadBatch';
@@ -566,8 +566,10 @@ describe.each([
         const geometry = new Geometry({
             vertices: new GeometryData(new Float32Array([-1, -1, 0, 1, -1, 0, 0, 1, 0]), 3)
         });
-        const opaqueMaterial = new Material({ transparent: false });
-        const transparentMaterial = new Material({ transparent: true });
+        const opaqueMaterial = new Material();
+        const transparentMaterial = new Material({
+            compositing: { mode: 'alpha-blend', premultiplied: true }
+        });
         const opaqueMeshes = [
             new Mesh({ geometry, material: opaqueMaterial, useInstanced: true }),
             new Mesh({ geometry, material: opaqueMaterial, useInstanced: true })

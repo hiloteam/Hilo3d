@@ -31,13 +31,8 @@ const mesh = new Hilo3d.Mesh({
     rotationX: 90,
     geometry,
     material: new Hilo3d.ShaderMaterial({
-        shaderCacheId: 'UVAnimation',
-        getCustomRenderOption(option) {
-            option['CUSTOM_OPTION'] = 1;
-            return option;
-        },
-        needBasicUniforms: false,
-        needBasicAttributes: false,
+        sourceRevision: 'UVAnimation',
+        defines: { CUSTOM_OPTION: 1 },
         uniforms: {
             u_diffuse: {
                 get(_mesh, _material, _programInfo) {
@@ -55,8 +50,8 @@ const mesh = new Hilo3d.Mesh({
             ShaderMaterialAnimationBlock: materialBlock
         },
         attributes: {
-            a_position: 'POSITION',
-            a_texcoord0: 'TEXCOORD_0'
+            a_position: Hilo3d.MaterialAttributeSemantic.POSITION,
+            a_texcoord0: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
         },
         fs: `#version 300 es
                 precision highp float;

@@ -23,6 +23,7 @@ import type {
 } from './RenderPipeline';
 import { snapshotRenderPipelineRequirements } from './RenderPipelineFactory';
 import {
+    FullscreenRenderPass,
     PresentRenderPass,
     SceneRenderPass,
     ShadowRenderPass,
@@ -30,11 +31,16 @@ import {
     type FullscreenRenderPassParameters,
     type SceneRenderPassParameters
 } from './passes';
+import Shader from '../../shader/Shader';
+import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../material/MaterialDefinition';
+import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from './passes/internal/PortableFullscreenShader';
+import { LINEAR_TO_SRGB_FRAGMENT_SOURCE } from './passes/internal/OutputTransferShader';
 import type {
     RenderGraphTextureHandle,
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     RenderPipelineExtent,
+    RenderPipelineTargetResources,
     RenderPipelineTextureDescriptor
 } from './ScriptableRenderGraph';
 import { depthClearValue } from '../renderer/DepthConvention';
@@ -89,14 +95,19 @@ export interface ForwardRenderPipelineFeature {
     create(context: RenderPipelineCreateContext): ForwardRenderPipelineFeatureRuntime;
 }
 
+/** Color encoding carried by the current forward scene-color resource. */
+export type ForwardRenderColorEncoding = 'linear' | 'srgb';
+
 /** Callback-scoped forward resources visible only during one synchronous feature record call. */
 export interface ForwardRenderPipelineResources {
     /** Current attachment-zero scene color, or null for a depth-only output. */
     readonly color: RenderGraphTextureHandle | null;
+    /** Encoding of the current scene color. Lighting and HDR effects require `linear`. */
+    readonly colorEncoding: ForwardRenderColorEncoding;
     /** Current scene depth, or null when no depth resource was requested or configured. */
     readonly depth: RenderGraphTextureHandle | null;
     /** Replace attachment-zero scene color for subsequent features and final output. */
-    replaceColor(texture: RenderGraphTextureHandle): void;
+    replaceColor(texture: RenderGraphTextureHandle, encoding: ForwardRenderColorEncoding): void;
 }
 
 /** Callback-scoped inputs passed to one forward feature runtime. */
@@ -325,6 +336,7 @@ class ForwardFeatureState {
     #pipeline: RenderPipelineContext | null = null;
     #cullingResults = INVALID_CULLING_RESULTS_HANDLE;
     #color: RenderGraphTextureHandle | null = null;
+    #colorEncoding: ForwardRenderColorEncoding = 'linear';
     #depth: RenderGraphTextureHandle | null = null;
     #replacementAllowed = false;
     #activeCallbackLease: ForwardFeatureCallbackLease | null = null;
@@ -339,6 +351,7 @@ class ForwardFeatureState {
         this.#pipeline = pipeline;
         this.#cullingResults = cullingResults;
         this.#color = color;
+        this.#colorEncoding = 'linear';
         this.#depth = depth;
         this.#replacementAllowed = false;
     }
@@ -348,6 +361,7 @@ class ForwardFeatureState {
         this.#cullingResults = INVALID_CULLING_RESULTS_HANDLE;
         this.#pipeline = null;
         this.#color = null;
+        this.#colorEncoding = 'linear';
         this.#depth = null;
         this.#replacementAllowed = false;
     }
@@ -376,6 +390,11 @@ class ForwardFeatureState {
         return this.#color;
     }
 
+    get currentColorEncoding(): ForwardRenderColorEncoding {
+        this.assertFrameActive();
+        return this.#colorEncoding;
+    }
+
     readPipeline(lease: ForwardFeatureCallbackLease): RenderPipelineContext {
         this.assertCallbackActive(lease);
         return this.assertFrameActive();
@@ -399,7 +418,16 @@ class ForwardFeatureState {
         return this.#depth;
     }
 
-    replaceColor(lease: ForwardFeatureCallbackLease, texture: RenderGraphTextureHandle): void {
+    readColorEncoding(lease: ForwardFeatureCallbackLease): ForwardRenderColorEncoding {
+        this.assertCallbackActive(lease);
+        return this.#colorEncoding;
+    }
+
+    replaceColor(
+        lease: ForwardFeatureCallbackLease,
+        texture: RenderGraphTextureHandle,
+        encoding: ForwardRenderColorEncoding
+    ): void {
         this.assertCallbackActive(lease);
         if (!this.#replacementAllowed) {
             throw new Error('Forward scene color cannot be replaced before opaque rendering');
@@ -407,7 +435,12 @@ class ForwardFeatureState {
         if (!Number.isSafeInteger(texture) || texture <= 0) {
             throw new TypeError('Forward scene color replacement requires a graph texture handle');
         }
+        const encodingCandidate: unknown = encoding;
+        if (encodingCandidate !== 'linear' && encodingCandidate !== 'srgb') {
+            throw new TypeError('Forward scene color encoding must be linear or srgb');
+        }
         this.#color = texture;
+        this.#colorEncoding = encodingCandidate;
     }
 
     assertCallbackActive(lease: ForwardFeatureCallbackLease): void {
@@ -446,8 +479,12 @@ class ForwardFeatureResourcesLease implements ForwardRenderPipelineResources {
         return this.#state.readDepth(this.#lease);
     }
 
-    replaceColor(texture: RenderGraphTextureHandle): void {
-        this.#state.replaceColor(this.#lease, texture);
+    get colorEncoding(): ForwardRenderColorEncoding {
+        return this.#state.readColorEncoding(this.#lease);
+    }
+
+    replaceColor(texture: RenderGraphTextureHandle, encoding: ForwardRenderColorEncoding): void {
+        this.#state.replaceColor(this.#lease, texture, encoding);
     }
 }
 
@@ -593,18 +630,6 @@ function validateFeatureRuntime(
     return candidate as ForwardRenderPipelineFeatureRuntime;
 }
 
-class DirectForwardRenderPipeline implements RenderPipeline {
-    readonly name = 'forward';
-
-    record(_context: RenderPipelineContext): void {
-        throw new Error('The direct forward pipeline must be recorded by RenderPipelineHost');
-    }
-
-    destroy(): void {
-        // The direct marker has no renderer-local state.
-    }
-}
-
 class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly name = 'forward';
     readonly #groups: CompiledFeature[][] = INJECTION_POINTS.map(() => []);
@@ -613,6 +638,19 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly #shadowPass = new ShadowRenderPass('Forward shadows');
     readonly #loadPass = new PresentRenderPass('Forward output load');
     readonly #presentPass = new PresentRenderPass('Forward output');
+    readonly #linearToSRGBPass = new FullscreenRenderPass({
+        name: 'Forward linear-to-sRGB output transfer',
+        shader: new Shader({
+            vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
+            fs: LINEAR_TO_SRGB_FRAGMENT_SOURCE
+        }),
+        pipelineState: {
+            ...DEFAULT_MATERIAL_PIPELINE_STATE,
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
+        }
+    });
     readonly #opaqueCopyPass = new TextureCopyPass('Forward opaque texture');
     readonly #sceneParameters = new RenderPassParameterPool(
         () => new MutableSceneParameters(),
@@ -677,6 +715,20 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         extent: OUTPUT_EXTENT,
         sampleCount: 1,
         mipLevelCount: 1
+    };
+    readonly #surfaceCompositionKey = Object.freeze({});
+    readonly #surfaceCompositionColorFormats: RenderTargetColorFormat[] = ['rgba8unorm'];
+    readonly #surfaceCompositionDescriptor: {
+        readonly label: string;
+        readonly extent: RenderPipelineExtent;
+        readonly colorFormats: RenderTargetColorFormat[];
+        depthStencilFormat?: RenderTargetDepthStencilFormat;
+        sampleCount: RenderTargetSampleCount;
+    } = {
+        label: 'Forward linear surface composition',
+        extent: OUTPUT_EXTENT,
+        colorFormats: this.#surfaceCompositionColorFormats,
+        sampleCount: 1
     };
     readonly #compiledFeatures: readonly CompiledFeature[];
     readonly #requiresSampledColor: boolean;
@@ -743,21 +795,28 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             this.#requiresSampledDepth || this.#samplesBetweenQueues
                 ? 1
                 : context.output.sampleCount;
+        const surfaceComposition = this.acquireSurfaceComposition(context);
         const usesIntermediateColor =
-            this.#requiresSampledColor || sceneSampleCount !== context.output.sampleCount;
+            context.output.kind === 'surface' ||
+            this.#requiresSampledColor ||
+            sceneSampleCount !== context.output.sampleCount;
         this.prepareSceneColors(
             context,
             output,
             colorCount,
             sceneSampleCount,
-            usesIntermediateColor
+            usesIntermediateColor,
+            surfaceComposition
         );
-        const depth = this.prepareSceneDepth(
-            context,
-            output.depthStencil,
-            sceneSampleCount,
-            usesIntermediateColor
-        );
+        const depth =
+            surfaceComposition !== null && surfaceComposition.sampleCount === sceneSampleCount
+                ? surfaceComposition.depthStencil
+                : this.prepareSceneDepth(
+                      context,
+                      output.depthStencil,
+                      sceneSampleCount,
+                      usesIntermediateColor
+                  );
         this.recordLoadedSceneColors(context, output, colorCount);
         const culling = context.cull(EMPTY_CULLING_OPTIONS);
         this.#allListDescriptor.cullingResults = culling;
@@ -781,6 +840,9 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                 this.#featureState.allowColorReplacement();
                 this.recordFeatureGroup('after-opaque');
                 this.recordFeatureGroup('before-transparent');
+                if (this.#featureState.currentColorEncoding !== 'linear') {
+                    throw new Error('Forward transparent rendering requires linear scene color');
+                }
                 const transparent = context.createRendererList(this.#transparentListDescriptor);
                 this.recordScenePass(
                     context,
@@ -832,7 +894,8 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         output: ReturnType<RenderPipelineContext['graph']['importOutput']>,
         colorCount: number,
         sampleCount: RenderTargetSampleCount,
-        useIntermediate: boolean
+        useIntermediate: boolean,
+        surfaceComposition: RenderPipelineTargetResources | null
     ): void {
         this.#outputColors.length = colorCount;
         this.#sceneColorSources.length = colorCount;
@@ -841,6 +904,26 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         for (let index = 0; index < colorCount; index += 1) {
             const outputColor = output.color(index);
             this.#outputColors[index] = outputColor;
+            if (surfaceComposition !== null) {
+                const resolved = surfaceComposition.color(index);
+                this.#sceneColorResolved[index] = resolved;
+                if (sampleCount === 1) {
+                    this.#sceneColorSources[index] = resolved;
+                    this.#sceneColorResolveTargets[index] = null;
+                } else {
+                    const format =
+                        index === 0 && this.#sceneColorFormat !== null
+                            ? this.#sceneColorFormat
+                            : context.output.colorFormat(index);
+                    const descriptor = this.colorDescriptor(index, format, sampleCount, false);
+                    this.#sceneColorSources[index] = context.graph.createTexture(
+                        this.#colorNames[index] ?? '',
+                        descriptor
+                    );
+                    this.#sceneColorResolveTargets[index] = resolved;
+                }
+                continue;
+            }
             if (!useIntermediate) {
                 this.#sceneColorSources[index] = outputColor;
                 this.#sceneColorResolved[index] = outputColor;
@@ -897,6 +980,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         output: ReturnType<RenderPipelineContext['graph']['importOutput']>,
         colorCount: number
     ): void {
+        if (context.output.kind === 'surface') return;
         for (let index = 0; index < colorCount; index += 1) {
             const source = this.#outputColors[index];
             const destination = this.#sceneColorSources[index];
@@ -931,6 +1015,21 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             else attachment.resolveTarget = resolve;
             context.graph.addPass(this.#loadPass, parameters);
         }
+    }
+
+    private acquireSurfaceComposition(
+        context: RenderPipelineContext
+    ): RenderPipelineTargetResources | null {
+        if (context.output.kind !== 'surface') return null;
+        const descriptor = this.#surfaceCompositionDescriptor;
+        this.#surfaceCompositionColorFormats[0] =
+            this.#sceneColorFormat ?? context.output.colorFormat(0);
+        this.#surfaceCompositionColorFormats.length = 1;
+        descriptor.sampleCount = 1;
+        const depthFormat = context.output.depthStencilFormat;
+        if (depthFormat === null) delete descriptor.depthStencilFormat;
+        else descriptor.depthStencilFormat = depthFormat;
+        return context.graph.acquirePersistentTarget(this.#surfaceCompositionKey, descriptor);
     }
 
     private recordScenePass(
@@ -1018,10 +1117,10 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             selected?.depthClearValue ?? depthClearValue(context.camera.depthMode);
         operations.stencilClearValue = selected?.stencilClearValue ?? 0;
         const writesOutput = depth !== null && depth === outputDepth;
-        if (writesOutput) {
-            if (selected === null) {
+        const followsSurfacePolicy = context.output.kind === 'surface' && selected !== null;
+        if (writesOutput || followsSurfacePolicy) {
+            if (selected === null)
                 throw new Error('Forward output depth/stencil operations are unavailable');
-            }
             operations.depthLoadOp = firstScenePass ? selected.depthLoadOp : 'load';
             operations.depthStoreOp = lastScenePass ? selected.depthStoreOp : 'store';
             operations.stencilLoadOp = firstScenePass ? selected.stencilLoadOp : 'load';
@@ -1059,7 +1158,13 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             attachment.storeOp = operations.storeOp;
             if (operations.loadOp === 'clear') attachment.clearValue = operations.clearValue;
             else delete attachment.clearValue;
-            context.graph.addPass(this.#presentPass, parameters);
+            const pass =
+                context.output.kind === 'surface' &&
+                index === 0 &&
+                this.#featureState.currentColorEncoding === 'linear'
+                    ? this.#linearToSRGBPass
+                    : this.#presentPass;
+            context.graph.addPass(pass, parameters);
         }
     }
 
@@ -1107,7 +1212,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     }
 }
 
-/** Default forward pipeline factory. An empty feature set retains the direct renderer fast path. */
+/** Default forward pipeline factory with a shared linear scene and final surface transfer. */
 export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
     /** Stable factory name. */
     readonly name = 'forward';
@@ -1163,9 +1268,6 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
 
     /** Create an independent forward runtime and feature runtime set for one Renderer. */
     create(context: RenderPipelineCreateContext): RenderPipeline {
-        if (this.features.length === 0 && this.sceneColorFormat === null && !this.opaqueTexture) {
-            return new DirectForwardRenderPipeline();
-        }
         const features = this.features as readonly FeatureSnapshot[];
         const runtimes: ForwardRenderPipelineFeatureRuntime[] = [];
         try {
@@ -1246,8 +1348,3 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
 export const defaultForwardRenderPipelineFactory = Object.freeze(
     new ForwardRenderPipelineFactory()
 );
-
-/** @internal Default runtime marker used to bind the allocation-free direct recorder. */
-export function isDirectForwardRenderPipeline(runtime: RenderPipeline): boolean {
-    return runtime instanceof DirectForwardRenderPipeline;
-}

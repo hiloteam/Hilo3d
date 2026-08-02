@@ -158,7 +158,7 @@ describe('render hot-path architecture', () => {
         );
     });
 
-    it('keeps default pipeline dispatch ahead of facade creation and draw execution allocation-free', () => {
+    it('routes default rendering through the shared pipeline and keeps draw execution allocation-free', () => {
         const hostRecord = methodBody(
             sourceAt('/render/internal/RenderPipelineHost.ts'),
             'recordPipeline'
@@ -168,11 +168,10 @@ describe('render hot-path architecture', () => {
             'execute'
         );
 
-        expect(hostRecord).toMatch(
-            /if\s*\(this\.#directForward\)\s*\{\s*this\.lifecycle\.recordDefaultPipeline\([\s\S]*?\);\s*return;\s*\}/u
-        );
-        expect(hostRecord.indexOf('recordDefaultPipeline')).toBeLessThan(
-            hostRecord.indexOf('createPipelineContext')
+        expect(hostRecord).not.toContain('recordDefaultPipeline');
+        expect(hostRecord).toContain('createPipelineContext');
+        expect(hostRecord.indexOf('createPipelineContext')).toBeLessThan(
+            hostRecord.indexOf('runtime.record')
         );
         expect(drawExecute).toContain('draw.execute(');
         expect(drawExecute).not.toMatch(

@@ -1,5 +1,5 @@
 import type GeometryData from '../../geometry/GeometryData';
-import type Material from '../../material/Material';
+import type { MaterialPipelineState } from '../../material/MaterialDefinition';
 import type { CameraDepthMode } from '../../camera/Camera';
 import {
     ALWAYS,
@@ -88,35 +88,7 @@ export interface RHIMeshDrawTargetDescriptor {
 export type RHIMeshDrawTargetCapabilities = Pick<RHICapabilities, 'getTextureFormatCapabilities'>;
 
 /** Material state intentionally supported by the first sampler-free mesh-draw slice. */
-export type RHIMeshDrawMaterialState = Pick<
-    Material,
-    | 'wireframe'
-    | 'frontFace'
-    | 'cullFace'
-    | 'cullFaceType'
-    | 'depthTest'
-    | 'depthMask'
-    | 'depthRange'
-    | 'depthFunc'
-    | 'transparent'
-    | 'premultiplyAlpha'
-    | 'blend'
-    | 'blendEquation'
-    | 'blendEquationAlpha'
-    | 'blendSrc'
-    | 'blendDst'
-    | 'blendSrcAlpha'
-    | 'blendDstAlpha'
-    | 'stencilTest'
-    | 'stencilMask'
-    | 'stencilFunc'
-    | 'stencilFuncRef'
-    | 'stencilFuncMask'
-    | 'stencilOpFail'
-    | 'stencilOpZFail'
-    | 'stencilOpZPass'
-    | 'sampleAlphaToCoverage'
->;
+export type RHIMeshDrawMaterialState = Readonly<MaterialPipelineState>;
 
 export interface RHIMeshDrawPipelineState {
     readonly primitive: Readonly<RHIPrimitiveState>;
@@ -376,10 +348,11 @@ export function mapRHIMeshDrawDynamicState(
     return Object.freeze({
         minDepth,
         maxDepth,
-        stencilReference: material.stencilTest
-            ? requireUInt32(material.stencilFuncRef, 'stencilFuncRef')
-            : 0,
-        usesStencil: material.stencilTest
+        stencilReference:
+            material.stencil !== undefined
+                ? requireUInt32(material.stencil.reference, 'stencil reference')
+                : 0,
+        usesStencil: material.stencil !== undefined
     });
 }
 
@@ -435,21 +408,21 @@ export function mapRHIBlendOperation(value: number): RHIBlendOperation {
     }
 }
 
-/** Map Material's complete portable fixed-function blend state. */
+/** Map the backend-neutral material blend contract to the portable RHI. */
 export function mapRHIDefaultBlendState(
     material: RHIMeshDrawMaterialState
 ): Readonly<RHIBlendState> | undefined {
-    if (!material.blend) return undefined;
+    if (material.blend === undefined) return undefined;
     return Object.freeze({
         color: Object.freeze({
-            operation: mapRHIBlendOperation(material.blendEquation),
-            srcFactor: mapRHIBlendFactor(material.blendSrc),
-            dstFactor: mapRHIBlendFactor(material.blendDst)
+            operation: material.blend.color.operation,
+            srcFactor: material.blend.color.srcFactor,
+            dstFactor: material.blend.color.dstFactor
         }),
         alpha: Object.freeze({
-            operation: mapRHIBlendOperation(material.blendEquationAlpha),
-            srcFactor: mapRHIBlendFactor(material.blendSrcAlpha),
-            dstFactor: mapRHIBlendFactor(material.blendDstAlpha)
+            operation: material.blend.alpha.operation,
+            srcFactor: material.blend.alpha.srcFactor,
+            dstFactor: material.blend.alpha.dstFactor
         })
     });
 }
@@ -461,7 +434,7 @@ export function mapRHIDepthStencilState(
 ): Readonly<RHIDepthStencilState> | undefined {
     mapRHIMeshDrawDynamicState(material);
     if (format === null || format === undefined) {
-        if (material.depthTest || material.stencilTest) {
+        if (material.depthTest || material.depthWrite || material.stencil !== undefined) {
             throw new Error('Enabled depth or stencil testing requires a depth/stencil attachment');
         }
         return undefined;
@@ -471,7 +444,7 @@ export function mapRHIDepthStencilState(
     if (material.depthTest && !hasDepth) {
         throw new TypeError(`Mesh-draw depth state requires a depth format; received ${format}`);
     }
-    if (material.stencilTest && !hasStencil) {
+    if (material.stencil !== undefined && !hasStencil) {
         throw new TypeError(
             `Mesh-draw stencil state requires a stencil format; received ${format}`
         );
@@ -481,18 +454,12 @@ export function mapRHIDepthStencilState(
     }
     let stencilState: Partial<RHIDepthStencilState> = {};
     if (hasStencil) {
-        if (material.stencilTest) {
-            const face = Object.freeze({
-                compare: mapRHICompareFunction(material.stencilFunc),
-                failOp: mapRHIStencilOperation(material.stencilOpFail),
-                depthFailOp: mapRHIStencilOperation(material.stencilOpZFail),
-                passOp: mapRHIStencilOperation(material.stencilOpZPass)
-            });
+        if (material.stencil !== undefined) {
             stencilState = {
-                stencilFront: face,
-                stencilBack: face,
-                stencilReadMask: requireUInt32(material.stencilFuncMask, 'stencilFuncMask'),
-                stencilWriteMask: requireUInt32(material.stencilMask, 'stencilMask')
+                stencilFront: material.stencil.front,
+                stencilBack: material.stencil.back,
+                stencilReadMask: requireUInt32(material.stencil.readMask, 'stencil readMask'),
+                stencilWriteMask: requireUInt32(material.stencil.writeMask, 'stencil writeMask')
             };
         } else {
             stencilState = { stencilReadMask: 0xffffffff, stencilWriteMask: 0 };
@@ -502,9 +469,9 @@ export function mapRHIDepthStencilState(
         format,
         depthCompare:
             hasDepth && material.depthTest
-                ? applyDepthModeToComparison(mapRHICompareFunction(material.depthFunc), depthMode)
+                ? applyDepthModeToComparison(material.depthCompare, depthMode)
                 : 'always',
-        depthWriteEnabled: hasDepth && material.depthTest && material.depthMask,
+        depthWriteEnabled: hasDepth && material.depthWrite,
         ...stencilState
     });
 }
@@ -655,8 +622,8 @@ function createRHIPrimitiveState(
     return Object.freeze({
         topology,
         ...(stripIndexFormat === undefined ? {} : { stripIndexFormat }),
-        frontFace: mapRHIFrontFace(material.frontFace),
-        cullMode: mapRHICullMode(material.cullFace, material.cullFaceType)
+        frontFace: material.frontFace,
+        cullMode: material.cullMode
     });
 }
 
@@ -683,13 +650,10 @@ export function createRHIMeshDrawPipelineState(
             colorTargets: Object.freeze([]),
             depthStencil: Object.freeze({
                 ...mappedDepth,
-                depthCompare: applyDepthModeToComparison(
-                    mapRHICompareFunction(material.depthFunc),
-                    depthMode
-                ),
+                depthCompare: applyDepthModeToComparison(material.depthCompare, depthMode),
                 depthWriteEnabled: true
             }),
-            multisample: mapRHIMultisampleState(target.sampleCount, material.sampleAlphaToCoverage)
+            multisample: mapRHIMultisampleState(target.sampleCount, material.alphaToCoverage)
         });
     }
     const colorFormats = validateRHIMeshDrawColorTargets(target, capabilities);
@@ -724,7 +688,7 @@ export function createRHIMeshDrawPipelineState(
         })
     );
     const depthStencil = mapRHIDepthStencilState(material, target.depthStencilFormat, depthMode);
-    const multisample = mapRHIMultisampleState(target.sampleCount, material.sampleAlphaToCoverage);
+    const multisample = mapRHIMultisampleState(target.sampleCount, material.alphaToCoverage);
 
     return Object.freeze({
         primitive,

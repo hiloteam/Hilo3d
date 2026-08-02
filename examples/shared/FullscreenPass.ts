@@ -55,19 +55,19 @@ export class FullscreenPass {
         this.renderer = parameters.renderer;
         this.prepare = parameters.prepare;
         this.material = new Hilo3d.ShaderMaterial({
-            shaderName: label,
-            shaderCacheId: label,
-            needBasicAttributes: false,
-            needBasicUniforms: false,
-            depthTest: false,
-            depthMask: false,
-            cullFace: false,
-            blend: parameters.blend ?? false,
-            premultiplyAlpha: parameters.premultiplyAlpha ?? false,
-            side: Hilo3d.constants.FRONT_AND_BACK,
+            sourceRevision: label,
+            state: { depthTest: false, depthWrite: false, cullMode: 'none' },
+            compositing:
+                parameters.blend === true
+                    ? {
+                          mode: 'alpha-blend',
+                          premultiplied: parameters.premultiplyAlpha ?? false
+                      }
+                    : { mode: 'opaque' },
+            cullMode: 'none',
             attributes: {
-                a_position: 'POSITION',
-                a_texcoord0: 'TEXCOORD_0'
+                a_position: Hilo3d.MaterialAttributeSemantic.POSITION,
+                a_texcoord0: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
             },
             uniforms: createSamplerBindings(parameters.samplers ?? {}),
             uniformBlocks: { ...(parameters.uniformBlocks ?? {}) },

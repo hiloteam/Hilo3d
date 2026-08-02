@@ -1,4 +1,4 @@
-import Material from '../../material/Material';
+import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../material/MaterialDefinition';
 import Color from '../../math/Color';
 import Shader from '../../shader/Shader';
 import UniformBuffer from '../UniformBuffer';
@@ -343,11 +343,12 @@ class ColorUberRuntime implements ForwardRenderPipelineFeatureRuntime {
                 vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
                 fs: FRAGMENT_SOURCE
             }),
-            material: new Material({
+            pipelineState: {
+                ...DEFAULT_MATERIAL_PIPELINE_STATE,
                 depthTest: false,
-                depthMask: false,
-                cullFace: false
-            }),
+                depthWrite: false,
+                cullMode: 'none'
+            },
             uniformBuffers: [block]
         });
     }
@@ -362,7 +363,7 @@ class ColorUberRuntime implements ForwardRenderPipelineFeatureRuntime {
         const parameters = context.pipeline.acquirePassParameters(this.#parameters);
         parameters.configure(source, destination);
         context.pipeline.graph.addPass(this.#pass, parameters);
-        context.resources.replaceColor(destination);
+        context.resources.replaceColor(destination, 'srgb');
     }
 
     destroy(): void {

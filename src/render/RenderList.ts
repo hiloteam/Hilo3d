@@ -1,7 +1,7 @@
 import Vector3 from '../math/Vector3';
 import type Mesh from '../core/Mesh';
 import type Camera from '../camera/Camera';
-import type Material from '../material/Material';
+import type Material from '../material/MaterialInstance';
 const tempVector3 = new Vector3();
 const renderDepths = new WeakMap<Mesh, number>();
 
@@ -16,11 +16,11 @@ function shaderNumericId(material: Material): number {
 }
 
 const opaqueSort = function (meshA: Mesh, meshB: Mesh): number {
-    // sort by material renderOrder
+    // Object order is scene policy, not material structure.
     const materialA = materialOf(meshA);
     const materialB = materialOf(meshB);
-    const renderOrderA = materialA.renderOrder;
-    const renderOrderB = materialB.renderOrder;
+    const renderOrderA = meshA.renderOrder;
+    const renderOrderB = meshB.renderOrder;
     if (renderOrderA !== renderOrderB) {
         return renderOrderA - renderOrderB;
     }
@@ -35,8 +35,8 @@ const opaqueSort = function (meshA: Mesh, meshB: Mesh): number {
 };
 const transparentSort = function (meshA: Mesh, meshB: Mesh): number {
     // sort by material renderOrder
-    const renderOrderA = materialOf(meshA).renderOrder;
-    const renderOrderB = materialOf(meshB).renderOrder;
+    const renderOrderA = meshA.renderOrder;
+    const renderOrderB = meshB.renderOrder;
     if (renderOrderA !== renderOrderB) {
         return renderOrderA - renderOrderB;
     }
@@ -132,7 +132,7 @@ class RenderList {
                 mesh.worldMatrix.getTranslation(tempVector3);
                 tempVector3.transformMat4(camera.viewProjectionMatrix);
                 renderDepths.set(mesh, tempVector3.z);
-                if (material.transparent) {
+                if (material.forwardQueue === 'transparent') {
                     this.transparentList.push(mesh);
                 } else {
                     this.opaqueList.push(mesh);

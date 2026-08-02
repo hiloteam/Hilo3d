@@ -25,11 +25,11 @@ void loader
     .then(function (diffuse) {
         const textureMaterial = new Hilo3d.BasicMaterial({
             diffuse,
-            side: Hilo3d.constants.FRONT_AND_BACK
+            cullMode: 'none'
         });
         const colorMaterial = new Hilo3d.BasicMaterial({
             diffuse: new Hilo3d.Color(0.3, 0.6, 0.9),
-            side: Hilo3d.constants.FRONT_AND_BACK
+            cullMode: 'none'
         });
         const planeGeometry = new Hilo3d.PlaneGeometry();
         const sphereGeometry = new Hilo3d.SphereGeometry({

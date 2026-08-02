@@ -1,10 +1,14 @@
-import Material from '../../material/Material';
+import {
+    DEFAULT_MATERIAL_PIPELINE_STATE,
+    type MaterialPipelineState
+} from '../../material/MaterialDefinition';
 import ShaderClass from '../../shader/Shader';
 import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RenderGraphBuilder } from '../graph/RenderGraphBuilder';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
 import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from '../pipeline/passes/internal/PortableFullscreenShader';
+import { LINEAR_TO_SRGB_FRAGMENT_SOURCE } from '../pipeline/passes/internal/OutputTransferShader';
 import {
     RHITextureUsage,
     type RHIBuffer,
@@ -29,15 +33,6 @@ import { PostProcessPassTemplate, PresentPassTemplate, SharedDrawPassParameters 
 const DEFAULT_CLEAR_COLOR: Readonly<RHIColor> = Object.freeze({ r: 0, g: 0, b: 0, a: 1 });
 const EMPTY_UNIFORM_BUFFERS: readonly ResourceRegistryHandle<RHIBuffer>[] = Object.freeze([]);
 
-const PRESENT_FRAGMENT_SOURCE = `#version 300 es
-precision highp float;
-in vec2 v_uv;
-uniform sampler2D u_source;
-layout(location = 0) out vec4 color;
-void main() {
-    color = texture(u_source, v_uv);
-}`;
-
 export interface PostProcessOutputTarget {
     readonly owner: object;
     readonly descriptor: Readonly<RenderTargetResourceDescriptor>;
@@ -47,7 +42,7 @@ export interface PostProcessStep {
     /** Stable identity for reflected bind groups and PreparedDraw reuse. */
     readonly owner: object;
     readonly shader: ShaderClass;
-    readonly material: Material;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     readonly output: Readonly<PostProcessOutputTarget>;
     readonly uniformBuffers?: readonly ResourceRegistryHandle<RHIBuffer>[];
 }
@@ -96,12 +91,13 @@ export class PostProcessRenderer {
     readonly #presentOwner = {};
     readonly #presentShader = new ShaderClass({
         vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
-        fs: PRESENT_FRAGMENT_SOURCE
+        fs: LINEAR_TO_SRGB_FRAGMENT_SOURCE
     });
-    readonly #presentMaterial = new Material({
+    readonly #presentPipelineState: Readonly<MaterialPipelineState> = Object.freeze({
+        ...DEFAULT_MATERIAL_PIPELINE_STATE,
         depthTest: false,
-        depthMask: false,
-        cullFace: false
+        depthWrite: false,
+        cullMode: 'none'
     });
     #sampledScratch = new WeakMap<object, SampledScratch>();
     readonly #targetScratch: RenderTargetResourceRecord[] = [];
@@ -205,7 +201,7 @@ export class PostProcessRenderer {
             this.fullscreen.prepare({
                 owner: slot.owner,
                 shader: this.#presentShader,
-                material: this.#presentMaterial,
+                pipelineState: this.#presentPipelineState,
                 target: { colorFormats: [configuration.format], sampleCount: 1 },
                 sampledResources: this.sampledResources(slot.owner, sourceColor.record.readableView)
             })
@@ -286,7 +282,7 @@ export class PostProcessRenderer {
                     this.fullscreen.prepare({
                         owner: this.#presentOwner,
                         shader: this.#presentShader,
-                        material: this.#presentMaterial,
+                        pipelineState: this.#presentPipelineState,
                         target: { colorFormats: [configuration.format], sampleCount: 1 },
                         sampledResources: this.sampledResources(
                             this.#presentOwner,
@@ -394,7 +390,7 @@ export class PostProcessRenderer {
             this.fullscreen.prepare({
                 owner: step.owner,
                 shader: step.shader,
-                material: step.material,
+                pipelineState: step.pipelineState,
                 target: {
                     colorFormats: [destination.record.format],
                     sampleCount: outputRecord.sampleCount

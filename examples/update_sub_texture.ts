@@ -49,7 +49,7 @@ const colorBox = new Hilo3d.Mesh({
     material: new Hilo3d.BasicMaterial({
         lightType: 'NONE',
         diffuse: texture,
-        side: Hilo3d.constants.FRONT_AND_BACK
+        cullMode: 'none'
     })
 });
 stage.addChild(colorBox);

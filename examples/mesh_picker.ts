@@ -24,18 +24,14 @@ const meshPickerHelper = new Hilo3d.MeshPicker({
 
 interface SelectedMeshState {
     mesh: Hilo3d.Mesh;
-    material: Hilo3d.Material;
-    transparent: boolean;
-    transparency: Hilo3d.Material['transparency'];
+    scale: readonly [number, number, number];
 }
 
 let selection: SelectedMeshState | null = null;
 
 function clearSelection(): void {
     if (!selection) return;
-    selection.material.transparent = selection.transparent;
-    selection.material.transparency = selection.transparency;
-    selection.material.isDirty = true;
+    selection.mesh.setScale(selection.scale[0], selection.scale[1], selection.scale[2]);
     selection = null;
 }
 
@@ -50,17 +46,11 @@ stage.canvas.addEventListener('click', event => {
             }
 
             clearSelection();
-            const material = mesh.material;
-            if (!material) return;
             selection = {
                 mesh,
-                material,
-                transparent: material.transparent,
-                transparency: material.transparency
+                scale: [mesh.scaleX, mesh.scaleY, mesh.scaleZ]
             };
-            material.transparent = true;
-            material.transparency = 0.45;
-            material.isDirty = true;
+            mesh.setScale(mesh.scaleX * 1.08, mesh.scaleY * 1.08, mesh.scaleZ * 1.08);
         })
         .catch((error: unknown) => {
             queueMicrotask(() => {

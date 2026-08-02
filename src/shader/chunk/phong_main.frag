@@ -121,12 +121,18 @@
         if (u_reflectivity > 0.0) {
             vec3 R = reflect(I, normal);
             R = normalize(vec3(u_specularEnvMatrix * vec4(R, 1.0)));
-            lightSpecular += textureEnvMap(u_specularEnvMap, R).rgb * u_reflectivity;
+            lightSpecular += HILO_MATERIAL_SAMPLE(
+                textureEnvMap(u_specularEnvMap, R),
+                HILO_SPECULAR_ENV_MAP
+            ).rgb * u_reflectivity;
         }
         if (u_refractivity > 0.0) {
             vec3 R = refract(I, normal, u_refractRatio);
             R = normalize(vec3(u_specularEnvMatrix * vec4(R, 1.0)));
-            lightSpecular += textureEnvMap(u_specularEnvMap, R).rgb * u_refractivity;
+            lightSpecular += HILO_MATERIAL_SAMPLE(
+                textureEnvMap(u_specularEnvMap, R),
+                HILO_SPECULAR_ENV_MAP
+            ).rgb * u_refractivity;
         }
     #endif
 

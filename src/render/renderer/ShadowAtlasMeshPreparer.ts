@@ -1,6 +1,5 @@
 import type Camera from '../../camera/Camera';
 import Mesh from '../../core/Mesh';
-import Material from '../../material/Material';
 import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RHIMeshDrawTargetDescriptor } from './RHIDescriptorMapping';
@@ -14,35 +13,6 @@ interface ShadowOwnerRecord {
     readonly owner: object;
     readonly camera: Camera;
     readonly mesh: Mesh;
-}
-
-interface ShadowMaterialRecord {
-    readonly fallback: Material;
-    candidate: Material;
-    material: Material;
-}
-
-function shadowMaterialProxy(source: Material): Material {
-    const proxy = Object.create(source) as Material;
-    Object.defineProperty(proxy, 'revision', {
-        configurable: true,
-        get: () => source.revision
-    });
-    return proxy;
-}
-
-function normalizeShadowMaterial(candidate: Material): Material {
-    const material = shadowMaterialProxy(candidate);
-    material.lightType = 'NONE';
-    material.receiveShadows = false;
-    material.castShadows = true;
-    material.wireframe = false;
-    material.transparent = false;
-    material.blend = false;
-    material.depthTest = true;
-    material.depthMask = true;
-    material.sampleAlphaToCoverage = false;
-    return material;
 }
 
 /**
@@ -59,7 +29,6 @@ export class ShadowAtlasMeshPreparer
     readonly #ownerRecords = new Map<object, ShadowOwnerRecord>();
     readonly #usedOwners = new Set<object>();
     readonly #pendingDetachOwners = new Set<object>();
-    #materials = new WeakMap<Material, ShadowMaterialRecord>();
     #plan: Readonly<ShadowAtlasScenePlan> | null = null;
     #meshes: readonly Mesh[] = Object.freeze([]);
     #target: RHIMeshDrawTargetDescriptor | null = null;
@@ -122,18 +91,11 @@ export class ShadowAtlasMeshPreparer
         this.#draws.length = 0;
         for (const mesh of this.#meshes) {
             const sourceMaterial = mesh.material;
-            if (!(mesh instanceof Mesh) || sourceMaterial?.castShadows !== true) continue;
+            if (!(mesh instanceof Mesh) || sourceMaterial === null || !mesh.castShadows) continue;
             const owner = this.ownerFor(sceneSlice.camera, mesh);
             this.#usedOwners.add(owner);
             this.#pendingDetachOwners.delete(owner);
-            this.#draws.push(
-                this.processor.prepareShadow(
-                    owner,
-                    mesh,
-                    this.materialFor(sourceMaterial),
-                    this.#target
-                )
-            );
+            this.#draws.push(this.processor.prepareShadow(owner, mesh, this.#target));
         }
         return this.#draws;
     }
@@ -183,7 +145,6 @@ export class ShadowAtlasMeshPreparer
         this.#pendingDetachOwners.clear();
         this.#sceneSlicesByPhysicalIndex.length = 0;
         this.#draws.length = 0;
-        this.#materials = new WeakMap();
         this.#plan = null;
         this.#target = null;
         this.#meshes = Object.freeze([]);
@@ -203,33 +164,6 @@ export class ShadowAtlasMeshPreparer
             this.#ownerRecords.set(owner, { owner, camera, mesh });
         }
         return owner;
-    }
-
-    private materialFor(source: Material): Material {
-        let record = this.#materials.get(source);
-        if (record === undefined) {
-            const fallback = shadowMaterialProxy(source);
-            const candidate = source.getShadowMaterial(fallback);
-            if (!(candidate instanceof Material)) {
-                throw new TypeError('Material.getShadowMaterial must return a Material');
-            }
-            record = {
-                fallback,
-                candidate,
-                material: normalizeShadowMaterial(candidate)
-            };
-            this.#materials.set(source, record);
-            return record.material;
-        }
-        const candidate = source.getShadowMaterial(record.fallback);
-        if (!(candidate instanceof Material)) {
-            throw new TypeError('Material.getShadowMaterial must return a Material');
-        }
-        if (candidate !== record.candidate) {
-            record.candidate = candidate;
-            record.material = normalizeShadowMaterial(candidate);
-        }
-        return record.material;
     }
 
     private flushPendingDetachOwners(): void {

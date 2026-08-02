@@ -1,4 +1,4 @@
-import Material from '../../../src/material/Material';
+import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../../src/material/MaterialDefinition';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import LightManager from '../../../src/light/LightManager';
 import type RendererCore from '../../../src/render/RendererCore';
@@ -62,7 +62,12 @@ describe.each([
         await processor.initialize();
         const frame = new RenderGraphFrame();
         const shader = new Shader({ vs: vertexSource, fs: fragmentSource });
-        const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
+        const pipelineState = Object.freeze({
+            ...DEFAULT_MATERIAL_PIPELINE_STATE,
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none' as const
+        });
         const owner = {};
         const input = registry.registerTexture({
             size: { width: 4, height: 4 },
@@ -98,7 +103,7 @@ describe.each([
                 const draw = processor.prepare({
                     owner,
                     shader,
-                    material,
+                    pipelineState,
                     target: { colorFormats: ['rgba8unorm'], sampleCount: 1 },
                     sampledResources: [
                         { textureView: inputView, sampler: processor.defaultSampler }
@@ -135,7 +140,12 @@ describe.each([
         const processor = new FullscreenDrawProcessor(registry);
         await processor.initialize();
         const frame = new RenderGraphFrame();
-        const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
+        const pipelineState = Object.freeze({
+            ...DEFAULT_MATERIAL_PIPELINE_STATE,
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none' as const
+        });
         const beginFrame = vi.spyOn(device.graphicsQueue, 'beginFrame');
         const invalidShader = new Shader({
             vs: `#version 300 es\nin vec3 position; void main(){gl_Position=vec4(position,1.0);}`,
@@ -148,7 +158,7 @@ describe.each([
                 processor.prepare({
                     owner: {},
                     shader: invalidShader,
-                    material,
+                    pipelineState,
                     target: { colorFormats: ['rgba8unorm'], sampleCount: 1 }
                 });
             })

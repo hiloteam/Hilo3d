@@ -125,7 +125,7 @@ function metrics(
 
 function validBaseline(manifest: RHIBenchmarkManifest): RHIBenchmarkBaselineResult {
     return {
-        schemaVersion: 3,
+        schemaVersion: 4,
         suite: 'rhi',
         architecture: 'rhi',
         manifestSha256: manifestSha256(manifest),

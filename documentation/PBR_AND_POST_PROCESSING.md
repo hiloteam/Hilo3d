@@ -41,8 +41,8 @@ light。
 - rectangular area
   light 保留 LTC 积分，并拆分 diffuse/specular 贡献以正确参与 transmission 和 clearcoat 分层；
 - inverse-square punctual light attenuation、近距离稳定下限、平滑有限 range 和平滑 spot cone；
-- 线性 HDR attachment 输出；当目标是 `rgba16float`/`rgba32float` 时，材质级 gamma encode 和旧
-  `useHDR` tone mapping 自动跳过，显示变换只在后处理末端发生。
+- 线性 HDR attachment 输出；材质 Shader 不执行 gamma encode、exposure 或 tone
+  mapping，显示变换只在后处理末端发生。
 
 ## glTF layered material 扩展
 
@@ -77,12 +77,17 @@ opaque scene pass
   -> transparent scene pass (u_opaqueTexture)
 ```
 
-copy 是 Render Graph 中显式声明的 `TextureCopyPass`，不是同一 attachment 的读写 feedback。透明 PBR
-draw 在 graph prepare 阶段获得 frame-lifetime scene texture bind
+copy 是 Render Graph 中显式声明的 `TextureCopyPass`，不是同一 attachment 的读写 feedback。需要 scene
+color 的 PBR draw 即使使用 opaque compositing，也由 `forwardQueue` 放入 after-opaque renderer
+list，并在 graph prepare 阶段获得 frame-lifetime scene texture bind
 group；普通材质不承担该 binding。WebGPU 使用固定 group 3 texture/sampler pair，custom uniform
 block 从 group 3 binding 2 开始；WebGL 2 使用同一 reflection 计划映射 combined
 sampler。同一 transparent pass 内的所有 transmission shader variant 共用 renderer-owned canonical
 group 3 layout，避免不同 glTF 材质排列各自创建 native layout 后无法绑定同一 opaque scene texture。
+
+材质 texture slot 的 encoding 同时覆盖 2D、cube 与 environment sampling。示例的 LDR studio
+IBL 显式声明为 sRGB，shader 在 HDR 光照计算前解码；两后端不依赖各自 external-image
+upload 的隐式颜色转换。
 
 Transmission 使用投影后的 screen-space refraction
 ray；volume 根据折射方向修正光程，再用 Beer-Lambert attenuation 处理吸收。它是屏幕空间实现，因此：
@@ -123,7 +128,10 @@ Graph 分配和回收。
 - display-space 8-bit dithering。
 
 默认 tone mapper 是 Khronos PBR Neutral，避免高亮压缩时过度 hue shift。Bloom 必须在 Color
-Uber 之前，不能在 sRGB/tone-mapped 结果上模糊。
+Uber 之前，不能在 sRGB/tone-mapped 结果上模糊。Forward feature 资源显式携带 `linear`/`srgb`
+编码；Color Uber 将结果标记为 `srgb`，最终 surface output 因而不会再次转换。未启用 Color
+Uber 时，默认 Forward output pass 负责唯一一次准确的 linear-to-sRGB
+transfer；RenderTarget 仍保留调用方选择的线性或 sRGB 格式语义。
 
 当前 `exposure` 是固定的手动 EV compensation；运行时尚未提供 scene luminance histogram、eye
 adaptation、GPU exposure

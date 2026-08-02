@@ -82,7 +82,7 @@ loaded.forEach(({ entry, texture }, index) => {
             material: new Hilo3d.BasicMaterial({
                 lightType: 'NONE',
                 diffuse: texture,
-                side: Hilo3d.constants.FRONT_AND_BACK
+                cullMode: 'none'
             }),
             rotationX: 180,
             x: 0.72 * ((index % 3) - 1),

@@ -4,12 +4,11 @@ import RenderList from '../../../src/render/RenderList';
 import { testEnv } from '../../renderer-setup';
 
 function createMesh(transparent: boolean, options: { renderOrder?: number } = {}): Hilo3d.Mesh {
-    const material = new Hilo3d.Material({
-        transparent,
-        renderOrder: options.renderOrder ?? 0
+    const material = new Hilo3d.BasicMaterial({
+        compositing: transparent ? { mode: 'alpha-blend', premultiplied: true } : { mode: 'opaque' }
     });
     const geometry = new Hilo3d.BoxGeometry();
-    return new Hilo3d.Mesh({ material, geometry });
+    return new Hilo3d.Mesh({ material, geometry, renderOrder: options.renderOrder ?? 0 });
 }
 
 describe('RenderList', () => {
@@ -35,13 +34,25 @@ describe('RenderList', () => {
 
     it('sort', () => {
         list.sort();
-        expect(list.opaqueList.at(0)?.material?.renderOrder).toBe(-1);
-        expect(list.opaqueList.at(-1)?.material?.renderOrder).toBe(1);
+        expect(list.opaqueList.at(0)?.renderOrder).toBe(-1);
+        expect(list.opaqueList.at(-1)?.renderOrder).toBe(1);
     });
 
     it('addMesh', () => {
         expect(list.transparentList).toHaveLength(2);
         expect(list.opaqueList).toHaveLength(5);
+    });
+
+    it('queues unblended transmission after the opaque scene copy', () => {
+        const material = new Hilo3d.PBRMaterial({ transmissionFactor: 1 });
+        const mesh = new Hilo3d.Mesh({ material, geometry: new Hilo3d.BoxGeometry() });
+        list.reset();
+
+        list.addMesh(mesh, testEnv.camera);
+
+        expect(material.isTransparent).toBe(false);
+        expect(list.opaqueList).toEqual([]);
+        expect(list.transparentList).toEqual([mesh]);
     });
 
     it('traverse', () => {

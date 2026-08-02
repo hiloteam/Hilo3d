@@ -66,13 +66,9 @@ layout(std140) uniform MaterialBlock {
     vec4 u_emissionFactor;
     vec3 u_diffuseEnvSphereHarmonics3[9];
     mat4 u_specularEnvMatrix;
-    mat3 u_uvMatrix;
-    mat3 u_uvMatrix1;
     float u_normalMapScale;
     float u_transparencyFactor;
     float u_alphaCutoff;
-    float u_exposure;
-    float u_gammaFactor;
     float u_shininess;
     float u_reflectivity;
     float u_refractRatio;
@@ -98,6 +94,12 @@ layout(std140) uniform MaterialBlock {
     float u_iridescenceThicknessMinimum;
     float u_iridescenceThicknessMaximum;
     vec4 u_attenuationColor;
+};
+
+layout(std140) uniform MaterialTextureBlock {
+    mat3 u_materialTextureTransforms[24];
+    vec4 u_materialTextureInfo[24];
+    ivec4 u_materialTextureChannels[24];
 };
 
 #ifdef HILO_VERTEX_SHADER

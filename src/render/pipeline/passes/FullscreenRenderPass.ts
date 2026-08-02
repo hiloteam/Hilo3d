@@ -1,4 +1,8 @@
-import Material from '../../../material/Material';
+import {
+    DEFAULT_MATERIAL_PIPELINE_STATE,
+    snapshotMaterialPipelineState,
+    type MaterialPipelineState
+} from '../../../material/MaterialDefinition';
 import Shader from '../../../shader/Shader';
 import type UniformBuffer from '../../UniformBuffer';
 import type { RendererViewport } from '../../RendererCore';
@@ -19,7 +23,7 @@ export interface FullscreenRenderPassOptions {
     /** GLSL ES 3.00 shader with no vertex attributes. */
     readonly shader: Shader;
     /** Fixed raster, depth, blend, and culling state. */
-    readonly material: Material;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     /** std140 buffers in reflected uniform-block order. */
     readonly uniformBuffers?: readonly UniformBuffer[];
 }
@@ -53,7 +57,7 @@ export class FullscreenRenderPass implements ScriptableRenderPass<FullscreenRend
     /** Shader compiled through the shared GLSL-to-backend pipeline. */
     readonly shader: Shader;
     /** Fixed material state for the fullscreen triangle. */
-    readonly material: Material;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     /** Uniform buffers in reflected block order. */
     readonly uniformBuffers: readonly UniformBuffer[];
 
@@ -68,16 +72,13 @@ export class FullscreenRenderPass implements ScriptableRenderPass<FullscreenRend
         if (!(options.shader instanceof Shader)) {
             throw new TypeError('Fullscreen render pass requires a Shader');
         }
-        if (!(options.material instanceof Material)) {
-            throw new TypeError('Fullscreen render pass requires a Material');
-        }
         const name = options.name ?? 'FullscreenRenderPass';
         if (typeof name !== 'string' || name.length === 0) {
             throw new TypeError('Fullscreen render pass name must be non-empty');
         }
         this.name = name;
         this.shader = options.shader;
-        this.material = options.material;
+        this.pipelineState = snapshotMaterialPipelineState(options.pipelineState);
         this.uniformBuffers = Object.freeze([...(options.uniformBuffers ?? [])]);
     }
 
@@ -128,7 +129,12 @@ export class PresentRenderPass extends FullscreenRenderPass {
                 vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
                 fs: PRESENT_FRAGMENT_SOURCE
             }),
-            material: new Material({ depthTest: false, depthMask: false, cullFace: false })
+            pipelineState: {
+                ...DEFAULT_MATERIAL_PIPELINE_STATE,
+                depthTest: false,
+                depthWrite: false,
+                cullMode: 'none'
+            }
         });
     }
 }

@@ -76,8 +76,8 @@ describe('ShaderArtifactCompiler', () => {
                     arrayIndex: 0,
                     type: 'sampler2D',
                     group: 1,
-                    textureBinding: 1,
-                    samplerBinding: 2,
+                    textureBinding: 2,
+                    samplerBinding: 3,
                     stages: ['fragment']
                 }
             ]
@@ -106,7 +106,7 @@ describe('ShaderArtifactCompiler', () => {
                 },
                 {
                     group: 1,
-                    binding: 1,
+                    binding: 2,
                     kind: 'sampled-texture',
                     name: 'diffuseMap',
                     arrayIndex: 0,
@@ -116,7 +116,7 @@ describe('ShaderArtifactCompiler', () => {
                 },
                 {
                     group: 1,
-                    binding: 2,
+                    binding: 3,
                     kind: 'sampler',
                     name: 'diffuseMap',
                     arrayIndex: 0
@@ -134,8 +134,8 @@ describe('ShaderArtifactCompiler', () => {
                 {
                     name: 'diffuseMap',
                     group: 1,
-                    textureBinding: 1,
-                    samplerBinding: 2,
+                    textureBinding: 2,
+                    samplerBinding: 3,
                     arrayIndex: 0
                 }
             ]
@@ -289,7 +289,7 @@ void main() { color = vec4(1.0); }`
                 },
                 {
                     group: 1,
-                    binding: 1,
+                    binding: 2,
                     kind: 'sampled-texture',
                     name: 'diffuseMap',
                     arrayIndex: 0,
@@ -299,7 +299,7 @@ void main() { color = vec4(1.0); }`
                 },
                 {
                     group: 1,
-                    binding: 2,
+                    binding: 3,
                     kind: 'sampler',
                     name: 'diffuseMap',
                     arrayIndex: 0

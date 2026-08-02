@@ -1,6 +1,6 @@
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import LightManager from '../../../src/light/LightManager';
-import Material from '../../../src/material/Material';
+import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../../src/material/MaterialDefinition';
 import type RendererCore from '../../../src/render/RendererCore';
 import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
 import {
@@ -62,14 +62,18 @@ function step(
     owner: object,
     outputOwner: object,
     shader: Shader,
-    material: Material,
     label: string,
     sampleCount: 1 | 4
 ): Readonly<PostProcessStep> {
     return Object.freeze({
         owner,
         shader,
-        material,
+        pipelineState: Object.freeze({
+            ...DEFAULT_MATERIAL_PIPELINE_STATE,
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
+        }),
         output: Object.freeze({
             owner: outputOwner,
             descriptor: Object.freeze({
@@ -122,12 +126,11 @@ describe.each([
             colorFormats: ['rgba8unorm']
         });
         const shader = new Shader({ vs: vertexSource, fs: fragmentSource });
-        const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
         const firstOutputOwner = {};
         const secondOutputOwner = {};
         const steps = Object.freeze([
-            step({}, firstOutputOwner, shader, material, 'post-process first', 4),
-            step({}, secondOutputOwner, shader, material, 'post-process second', 1)
+            step({}, firstOutputOwner, shader, 'post-process first', 4),
+            step({}, secondOutputOwner, shader, 'post-process second', 1)
         ]);
         const createPipeline = vi.spyOn(device, 'createGraphicsPipeline');
         const createBindGroup = vi.spyOn(device, 'createBindGroup');
@@ -189,19 +192,18 @@ describe.each([
             vs: '#version 300 es\nin vec3 position; void main(){gl_Position=vec4(position,1.0);}',
             fs: fragmentSource
         });
-        const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
         const acquire = vi.spyOn(surface, 'getCurrentTexture');
         const present = vi.spyOn(surface, 'present');
         const beginFrame = vi.spyOn(device.graphicsQueue, 'beginFrame');
 
         expect(() =>
             renderer.render(context(device, 1), surface, input, {
-                steps: [step({}, inputOwner, shader, material, 'feedback target', 1)]
+                steps: [step({}, inputOwner, shader, 'feedback target', 1)]
             })
         ).toThrow('must not alias the input target');
         expect(() =>
             renderer.render(context(device, 1), surface, input, {
-                steps: [step({}, {}, invalidShader, material, 'invalid shader target', 1)]
+                steps: [step({}, {}, invalidShader, 'invalid shader target', 1)]
             })
         ).toThrow('must not declare vertex inputs');
 

@@ -487,7 +487,10 @@ describe('Renderer public entry point', () => {
         stage.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+                material: new BasicMaterial({
+                    lightType: 'NONE',
+                    state: { depthTest: false, depthWrite: false }
+                }),
                 frustumTest: false
             })
         );
@@ -528,12 +531,18 @@ describe('Renderer public entry point', () => {
         });
         const firstMesh = new Mesh({
             geometry: new BoxGeometry(),
-            material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+            material: new BasicMaterial({
+                lightType: 'NONE',
+                state: { depthTest: false, depthWrite: false }
+            }),
             frustumTest: false
         });
         const secondMesh = new Mesh({
             geometry: new BoxGeometry(),
-            material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+            material: new BasicMaterial({
+                lightType: 'NONE',
+                state: { depthTest: false, depthWrite: false }
+            }),
             frustumTest: false
         });
         const firstScene = Object.assign(new Node(), {

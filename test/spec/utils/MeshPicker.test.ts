@@ -4,7 +4,6 @@ import type Node from '../../../src/core/Node';
 import type Stage from '../../../src/core/Stage';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import BasicMaterial from '../../../src/material/BasicMaterial';
-import Material from '../../../src/material/Material';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import { decodeMeshPickingId, getMeshPickingIdentity } from '../../../src/render/PickingIdentity';
 import type { Renderer, RendererBackend } from '../../../src/render/Renderer';
@@ -52,7 +51,7 @@ function createHarness(backend: RendererBackend) {
         resize: vi.fn(),
         destroy: destroyTarget
     } as unknown as RenderTarget;
-    const previousMaterial = new Material();
+    const previousMaterial = new BasicMaterial();
     const createRenderTarget = vi.fn(() => target);
     const renderToTarget = vi.fn((selectedTarget: RenderTarget) => {
         expect(selectedTarget).toBe(target);

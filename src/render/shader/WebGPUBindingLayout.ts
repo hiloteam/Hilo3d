@@ -41,6 +41,7 @@ export const WEBGPU_UNIFORM_BLOCK_BINDINGS = Object.freeze({
     SceneBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 2),
     LightBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 3),
     MaterialBlock: binding(WEBGPU_BIND_GROUPS.MATERIAL, 0),
+    MaterialTextureBlock: binding(WEBGPU_BIND_GROUPS.MATERIAL, 1),
     ModelBlock: binding(WEBGPU_BIND_GROUPS.OBJECT, 0),
     GeometryBlock: binding(WEBGPU_BIND_GROUPS.OBJECT, 1),
     SkinningBlock: binding(WEBGPU_BIND_GROUPS.OBJECT, 2),
@@ -86,7 +87,7 @@ export function registerWebGPUCustomUniformBlockBinding(
     return getWebGPUUniformBlockBinding(name);
 }
 
-export const FIRST_MATERIAL_TEXTURE_BINDING = 1;
+export const FIRST_MATERIAL_TEXTURE_BINDING = 2;
 
 export interface WebGPUTextureSamplerBinding {
     readonly group: typeof WEBGPU_BIND_GROUPS.MATERIAL;

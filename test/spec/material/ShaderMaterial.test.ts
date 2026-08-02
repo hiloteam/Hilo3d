@@ -1,32 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 
-const ShaderMaterial = Hilo3d.ShaderMaterial;
+const VS = '#version 300 es\nin vec3 position; void main(){gl_Position=vec4(position,1.0);}';
+const FS = '#version 300 es\nprecision highp float; out vec4 color; void main(){color=vec4(1.0);}';
 
 describe('ShaderMaterial', () => {
-    it('create', () => {
-        const material = new ShaderMaterial();
+    it('stores immutable source and state in its definition', () => {
+        const material = new Hilo3d.ShaderMaterial({
+            vs: VS,
+            fs: FS,
+            state: { cullMode: 'none', depthTest: false }
+        });
+        const pass = material.definition.getPass('forward');
+
         expect(material.isShaderMaterial).toBe(true);
-        expect(material.className).toBe('ShaderMaterial');
-        expect(material.vs).toBeTypeOf('string');
-        expect(material.fs).toBeTypeOf('string');
+        expect(pass?.shader).toMatchObject({
+            kind: 'glsl',
+            vertexSource: VS,
+            fragmentSource: FS
+        });
+        expect(pass?.state).toMatchObject({ cullMode: 'none', depthTest: false });
     });
 
-    it('getRenderOption', () => {
-        const material = new ShaderMaterial({
-            getCustomRenderOption(option) {
-                return Object.assign(option, {
-                    TEST: 1
-                });
-            }
+    it('publishes typed static defines without a compile callback', () => {
+        const material = new Hilo3d.ShaderMaterial({
+            vs: VS,
+            fs: FS,
+            defines: { TEST: 1 }
         });
 
-        const options: Record<string, number> = {
-            INIT: 1
-        };
-        material.getRenderOption(options);
-
-        expect(options['INIT']).toBe(1);
-        expect(options['HILO_CUSTOM_OPTION_TEST']).toBe(1);
+        expect(material.getRenderOption({ INIT: 1 })).toMatchObject({
+            INIT: 1,
+            HILO_CUSTOM_OPTION_TEST: 1
+        });
     });
 });

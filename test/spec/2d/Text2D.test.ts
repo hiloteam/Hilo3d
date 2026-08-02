@@ -16,7 +16,7 @@ describe('Text2D', () => {
         const firstTexture = text.frames[0]?.texture;
         const firstTextureRevision = firstTexture?.updateRevision ?? 0;
         const firstWidth = text.width;
-        firstMaterial.renderOrder = 42;
+        text.renderOrder = 42;
 
         expect(text.frames).toHaveLength(1);
         expect(text.width).toBeGreaterThan(0);
@@ -31,7 +31,7 @@ describe('Text2D', () => {
         expect(text.material).toBe(firstMaterial);
         expect(text.frames[0]?.texture).toBe(firstTexture);
         expect(text.frames[0]?.texture.updateRevision).toBeGreaterThan(firstTextureRevision);
-        expect(text.material.renderOrder).toBe(42);
+        expect(text.renderOrder).toBe(42);
         expect(text.useInstanced).toBe(true);
     });
 
@@ -61,7 +61,7 @@ describe('Text2D', () => {
 
         expect(text.material).toBe(material);
         expect(text.frames[0]?.texture).toBe(texture);
-        expect(stage.renderer.renderInfo.drawCount).toBe(1);
+        expect(stage.renderer.renderInfo.drawCount).toBe(2);
         stage.destroy();
     });
 

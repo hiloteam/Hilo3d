@@ -24,6 +24,7 @@ describe('WebGPUBindingLayout', () => {
             SceneBlock: { group: 0, binding: 2 },
             LightBlock: { group: 0, binding: 3 },
             MaterialBlock: { group: 1, binding: 0 },
+            MaterialTextureBlock: { group: 1, binding: 1 },
             ModelBlock: { group: 2, binding: 0 },
             GeometryBlock: { group: 2, binding: 1 },
             SkinningBlock: { group: 2, binding: 2 },
@@ -89,16 +90,16 @@ describe('WebGPUBindingLayout', () => {
         expect(() => getWebGPUSceneTextureBinding('u_opaqueTexture', 1)).toThrow(/scalar sampler/);
     });
 
-    it('allocates deterministic separate texture and sampler bindings after MaterialBlock', () => {
+    it('allocates texture and sampler bindings after both material-owned blocks', () => {
         expect(getWebGPUMaterialTextureBinding(0)).toEqual({
             group: WEBGPU_BIND_GROUPS.MATERIAL,
-            textureBinding: 1,
-            samplerBinding: 2
+            textureBinding: 2,
+            samplerBinding: 3
         });
         expect(getWebGPUMaterialTextureBinding(3)).toEqual({
             group: WEBGPU_BIND_GROUPS.MATERIAL,
-            textureBinding: 7,
-            samplerBinding: 8
+            textureBinding: 8,
+            samplerBinding: 9
         });
         expect(() => getWebGPUMaterialTextureBinding(-1)).toThrow(/non-negative integer/);
         expect(() => getWebGPUMaterialTextureBinding(0.5)).toThrow(/non-negative integer/);

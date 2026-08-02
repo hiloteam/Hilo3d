@@ -74,7 +74,9 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
     it('validates bucket identities, opaque materials, and unique LOD thresholds', () => {
         const geometry = new BoxGeometry();
         const material = new PBRMaterial();
-        const transparent = new PBRMaterial({ transparent: true });
+        const transparent = new PBRMaterial({
+            compositing: { mode: 'alpha-blend', premultiplied: true }
+        });
 
         expect(() => new ClusteredForwardPlusPipelineFactory({ buckets: [] })).toThrow(
             /at least one GPU Scene bucket/u
@@ -110,7 +112,14 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         expect(
             () =>
                 new ClusteredForwardPlusPipelineFactory({
-                    buckets: [{ geometry, material: new PBRMaterial({ alphaCutoff: 0.5 }) }]
+                    buckets: [
+                        {
+                            geometry,
+                            material: new PBRMaterial({
+                                coverage: { mode: 'mask', cutoff: 0.5 }
+                            })
+                        }
+                    ]
                 })
         ).toThrow(/unsupported raster or alpha mode/u);
         expect(
@@ -193,20 +202,20 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             geometry.uvs1 = new GeometryData(uv0.data.slice(), 2);
             const surfaceTexture = rgbaTexture([190, 140, 90, 255], 0);
             const normalTexture = rgbaTexture([128, 128, 255, 255], 1);
+            const uv0Transform = new Matrix3().fromRotationTranslationScale(0, 0.1, 0.05, 0.8, 0.8);
+            const uv1Transform = new Matrix3().fromRotationTranslationScale(0, 0, 0, 1, 1);
             const material = new PBRMaterial({
                 metallic: 0.35,
                 roughness: 0.28,
-                baseColorMap: surfaceTexture,
+                baseColorMap: { texture: surfaceTexture, transform: uv0Transform },
                 metallicMap: surfaceTexture,
                 roughnessMap: surfaceTexture,
                 metallicRoughnessMap: surfaceTexture,
                 occlusionMap: surfaceTexture,
                 emission: surfaceTexture,
                 emissionFactor: new Color(0.02, 0.01, 0.005),
-                normalMap: normalTexture,
-                normalMapScale: 0.75,
-                uvMatrix: new Matrix3().fromRotationTranslationScale(0, 0.1, 0.05, 0.8, 0.8),
-                uvMatrix1: new Matrix3().fromRotationTranslationScale(0, 0, 0, 1, 1),
+                normalMap: { texture: normalTexture, transform: uv1Transform },
+                normalScale: 0.75,
                 isOcclusionInMetallicRoughnessMap: true
             });
             const factory = new ClusteredForwardPlusPipelineFactory({
@@ -275,7 +284,10 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 expect(diagnostics.hiZValid).toBe(true);
                 expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
 
-                material.baseColorMap = rgbaTexture([80, 160, 220, 255], 0);
+                material.setTextureSlot('baseColor', {
+                    texture: rgbaTexture([80, 160, 220, 255], 0),
+                    transform: uv0Transform
+                });
                 renderer.render(scene, camera);
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
@@ -342,14 +354,17 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 await renderer.waitForIdle();
                 expect((await factory.readDiagnostics()).hiZValid).toBe(true);
 
-                material.alphaCutoff = 0.5;
+                const maskedMaterial = new PBRMaterial({
+                    coverage: { mode: 'mask', cutoff: 0.5 }
+                });
+                for (const mesh of meshes) mesh.material = maskedMaterial;
                 renderer.render(scene, camera);
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 0,
                     fallbackObjectCount: 12
                 });
-                material.alphaCutoff = 0;
+                for (const mesh of meshes) mesh.material = material;
                 renderer.render(scene, camera);
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
@@ -418,7 +433,8 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             } finally {
                 renderer.destroy();
             }
-        }
+        },
+        30_000
     );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(

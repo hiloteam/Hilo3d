@@ -6,6 +6,7 @@ import {
     instanceBlockLayout,
     lightBlockLayout,
     materialBlockLayout,
+    materialTextureBlockLayout,
     modelBlockLayout,
     morphBlockLayout,
     paddedStd140Value,
@@ -21,6 +22,7 @@ describe('built-in std140 ABI', () => {
             SceneBlock: sceneBlockLayout.byteLength,
             LightBlock: lightBlockLayout.byteLength,
             MaterialBlock: materialBlockLayout.byteLength,
+            MaterialTextureBlock: materialTextureBlockLayout.byteLength,
             ModelBlock: modelBlockLayout.byteLength,
             GeometryBlock: geometryBlockLayout.byteLength,
             SkinningBlock: skinningBlockLayout.byteLength,
@@ -31,7 +33,8 @@ describe('built-in std140 ABI', () => {
             CameraBlock: 720,
             SceneBlock: 32,
             LightBlock: 16288,
-            MaterialBlock: 544,
+            MaterialBlock: 432,
+            MaterialTextureBlock: 1920,
             ModelBlock: 192,
             GeometryBlock: 224,
             SkinningBlock: 16384,
@@ -62,13 +65,18 @@ describe('built-in std140 ABI', () => {
         expect(materialBlockLayout.fields.u_diffuseEnvSphereHarmonics3.offset).toBe(96);
         expect(materialBlockLayout.fields.u_diffuseEnvSphereHarmonics3.arrayStride).toBe(16);
         expect(materialBlockLayout.fields.u_specularEnvMatrix.offset).toBe(240);
-        expect(materialBlockLayout.fields.u_normalMapScale.offset).toBe(400);
-        expect(materialBlockLayout.fields.u_clearcoatNormalScale.offset).toBe(472);
-        expect(materialBlockLayout.fields.u_transmissionFactor.offset).toBe(484);
-        expect(materialBlockLayout.fields.u_ior.offset).toBe(496);
-        expect(materialBlockLayout.fields.u_iridescenceFactor.offset).toBe(500);
-        expect(materialBlockLayout.fields.u_iridescenceThicknessMaximum.offset).toBe(512);
-        expect(materialBlockLayout.fields.u_attenuationColor.offset).toBe(528);
+        expect(materialBlockLayout.fields.u_normalMapScale.offset).toBe(304);
+        expect(materialBlockLayout.fields.u_clearcoatNormalScale.offset).toBe(368);
+        expect(materialBlockLayout.fields.u_transmissionFactor.offset).toBe(380);
+        expect(materialBlockLayout.fields.u_ior.offset).toBe(392);
+        expect(materialBlockLayout.fields.u_iridescenceFactor.offset).toBe(396);
+        expect(materialBlockLayout.fields.u_iridescenceThicknessMaximum.offset).toBe(408);
+        expect(materialBlockLayout.fields.u_attenuationColor.offset).toBe(416);
+
+        expect(materialTextureBlockLayout.fields.u_materialTextureTransforms.offset).toBe(0);
+        expect(materialTextureBlockLayout.fields.u_materialTextureTransforms.arrayStride).toBe(48);
+        expect(materialTextureBlockLayout.fields.u_materialTextureInfo.offset).toBe(1152);
+        expect(materialTextureBlockLayout.fields.u_materialTextureChannels.offset).toBe(1536);
 
         expect(modelBlockLayout.fields.u_modelMatrix.offset).toBe(0);
         expect(modelBlockLayout.fields.u_previousModelMatrix.offset).toBe(64);

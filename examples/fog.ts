@@ -52,9 +52,9 @@ void loader
     })
     .then(function (diffuse) {
         const material = new Hilo3d.PBRMaterial({
-            lightType: 'NONE',
+            unlit: true,
             baseColorMap: diffuse,
-            side: Hilo3d.constants.FRONT_AND_BACK
+            cullMode: 'none'
         });
         const geometry = new Hilo3d.PlaneGeometry();
 
@@ -73,7 +73,7 @@ void loader
                                   Math.random(),
                                   Math.random()
                               ),
-                              side: Hilo3d.constants.FRONT_AND_BACK
+                              cullMode: 'none'
                           }),
                 x: randInt(-r, r),
                 y: randInt(-r, r),

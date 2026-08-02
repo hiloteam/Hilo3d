@@ -170,7 +170,7 @@ test('keeps the interactive particle simulation and rendering on public GPU APIs
     expect(source).toContain('new Hilo3d.RenderPassParameterPool');
     expect(source).toContain('context.graph.importStorageBuffer');
     expect(source).toContain("recovery: 'cpu-shadow'");
-    expect(source).toContain('blendDst: Hilo3d.constants.ONE');
+    expect(source).toContain('blend: Hilo3d.MaterialBlendPreset.STRAIGHT_ALPHA_ADDITIVE');
 });
 
 declare global {

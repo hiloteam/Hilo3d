@@ -1,5 +1,5 @@
 import type Fog from '../core/Fog';
-import type Material from '../material/Material';
+import type Material from '../material/MaterialInstance';
 import type Color from '../math/Color';
 import type { RendererBackend } from './RendererCore';
 import type { RenderPipelineFactory } from './pipeline/RenderPipeline';

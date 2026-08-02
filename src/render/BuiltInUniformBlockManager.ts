@@ -3,7 +3,9 @@ import Matrix4 from '../math/Matrix4';
 import type Camera from '../camera/Camera';
 import type Mesh from '../core/Mesh';
 import type Geometry from '../geometry/Geometry';
-import Material, { type SemanticProgramBindingInfo } from '../material/Material';
+import type Material from '../material/MaterialInstance';
+import type { SemanticProgramBindingInfo } from '../material/MaterialInstance';
+import BasicMaterial from '../material/BasicMaterial';
 import UniformBuffer from './UniformBuffer';
 import {
     BUILT_IN_UNIFORM_BLOCK_LAYOUTS,
@@ -12,6 +14,7 @@ import {
     geometryBlockLayout,
     lightBlockLayout,
     materialBlockLayout,
+    materialTextureBlockLayout,
     modelBlockLayout,
     morphBlockLayout,
     MAX_SKIN_JOINTS,
@@ -104,7 +107,7 @@ interface TransformHistoryRecord {
 }
 
 type OwnedBufferRegistration =
-    | { readonly kind: 'material'; readonly owner: Material }
+    | { readonly kind: 'material' | 'material-texture'; readonly owner: Material }
     | { readonly kind: 'model'; readonly owner: Mesh }
     | { readonly kind: 'geometry'; readonly owner: Geometry }
     | { readonly kind: 'skinning'; readonly owner: Mesh }
@@ -125,14 +128,13 @@ const semanticProgramBindingInfos = new WeakMap<
     Readonly<SemanticProgramBindingInfo>
 >();
 const EMPTY_NUMERIC_VALUES: readonly unknown[] = Object.freeze([]);
-type MaterialBlockFieldName = keyof typeof materialBlockLayout.schema;
 const MATERIAL_BLOCK_FIELD_NAMES = Object.freeze(
-    (Object.keys(materialBlockLayout.fields) as MaterialBlockFieldName[]).filter(
+    Object.keys(materialBlockLayout.fields).filter(fieldName => !fieldName.endsWith('Padding'))
+);
+const MATERIAL_TEXTURE_BLOCK_FIELD_NAMES = Object.freeze(
+    Object.keys(materialTextureBlockLayout.fields).filter(
         fieldName => !fieldName.endsWith('Padding')
     )
-);
-const MATERIAL_BLOCK_FIELDS = Object.freeze(
-    MATERIAL_BLOCK_FIELD_NAMES.map(fieldName => materialBlockLayout.fields[fieldName])
 );
 
 function fieldNamesOf(layout: Std140Layout): readonly string[] {
@@ -241,17 +243,20 @@ function resolveSemanticBlockField(
             : undefined;
     }
     if (fieldName === 'u_transparencyFactor') {
-        const candidate: unknown = Reflect.get(material, 'transparency');
+        const candidate: unknown = Reflect.get(material, 'opacity');
         return typeof candidate === 'number' ? candidate : 1;
     }
     return material.getUniformData(fieldName, mesh, programBindingInfoFor(semanticFrame));
 }
 
-/** Whether packing a canonical MaterialBlock must resolve fields separately for every mesh. */
-function materialBlockDependsOnMesh(material: Material): boolean {
+/** Whether packing a material-owned block must resolve fields separately for every mesh. */
+function materialOwnedBlockDependsOnMesh(
+    material: Material,
+    fieldNames: readonly string[]
+): boolean {
     let index = 0;
-    while (index < MATERIAL_BLOCK_FIELD_NAMES.length) {
-        const fieldName = MATERIAL_BLOCK_FIELD_NAMES[index];
+    while (index < fieldNames.length) {
+        const fieldName = fieldNames[index];
         index += 1;
         if (fieldName === undefined) continue;
         if (!Object.hasOwn(material.uniforms, fieldName)) continue;
@@ -269,8 +274,11 @@ function materialBlockDependsOnMesh(material: Material): boolean {
     return false;
 }
 
-/** Pack the canonical material ABI without mutating its live UniformBuffer. */
-function packMaterialBlock(
+/** Pack one material-owned ABI without mutating its live UniformBuffer. */
+function packMaterialOwnedBlock(
+    blockName: string,
+    layout: Std140Layout,
+    fieldNames: readonly string[],
     target: ArrayBuffer,
     targetBytes: Uint8Array,
     mesh: Mesh,
@@ -279,17 +287,17 @@ function packMaterialBlock(
 ): void {
     targetBytes.fill(0);
     let index = 0;
-    while (index < MATERIAL_BLOCK_FIELD_NAMES.length) {
-        const fieldName = MATERIAL_BLOCK_FIELD_NAMES[index];
+    while (index < fieldNames.length) {
+        const fieldName = fieldNames[index];
         index += 1;
         if (fieldName === undefined) continue;
         const value = resolveSemanticBlockField(fieldName, mesh, material, semanticFrame);
-        const padded = paddedStd140Value(materialBlockLayout, fieldName, value);
+        const padded = paddedStd140Value(layout, fieldName, value);
         if (padded === null) continue;
         if (typeof padded === 'boolean') {
-            throw new TypeError(`MaterialBlock field ${fieldName} must be numeric`);
+            throw new TypeError(`${blockName} field ${fieldName} must be numeric`);
         }
-        materialBlockLayout.writeInto(target, fieldName, padded, std140WriteResult);
+        layout.writeInto(target, fieldName, padded, std140WriteResult);
     }
 }
 
@@ -360,7 +368,11 @@ function updateModelTransformBlock(
  * requiring callers to manually toggle a dirty flag. Unchanged blocks keep their revision, so
  * neither backend schedules a redundant GPU upload.
  */
-function synchronizeMaterialBlock(cached: MaterialCachedBuffer): void {
+function synchronizeMaterialOwnedBlock(
+    cached: MaterialCachedBuffer,
+    layout: Std140Layout,
+    fieldNames: readonly string[]
+): void {
     if (cached.currentBytes.buffer !== cached.buffer.data) {
         cached.currentBytes = new Uint8Array(cached.buffer.data);
         cached.initialized = false;
@@ -373,9 +385,11 @@ function synchronizeMaterialBlock(cached: MaterialCachedBuffer): void {
         return;
     }
     let index = 0;
-    while (index < MATERIAL_BLOCK_FIELDS.length) {
-        const field = MATERIAL_BLOCK_FIELDS[index];
+    while (index < fieldNames.length) {
+        const fieldName = fieldNames[index];
         index += 1;
+        if (fieldName === undefined) continue;
+        const field = layout.fields[fieldName];
         if (field === undefined) continue;
         if (!bytesEqual(current, candidate, field.offset, field.byteLength)) {
             cached.buffer.write(
@@ -412,8 +426,9 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
     private readonly renderOriginScratch = new Float32Array(4);
     private readonly historyParamsScratch = new Float32Array(4);
     /** Canonical semantic bindings for pass-global blocks, independent of draw order/material. */
-    private readonly globalSemanticMaterial = new Material();
+    private readonly globalSemanticMaterial = new BasicMaterial({ lightType: 'NONE' });
     private readonly materialBuffers = new WeakMap<Material, MaterialCachedBuffer>();
+    private readonly materialTextureBuffers = new WeakMap<Material, MaterialCachedBuffer>();
     private readonly modelBuffers = new WeakMap<Mesh, ModelFrameCachedBuffer>();
     private readonly geometryBuffers = new WeakMap<Geometry, RevisionCachedBuffer>();
     private readonly skinningBuffers = new WeakMap<Mesh, FrameCachedBuffer>();
@@ -778,11 +793,13 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
     releaseOwnerBuffers(owner: object): readonly UniformBuffer[] {
         const buffers = new Set<UniformBuffer>();
         const material = this.materialBuffers.get(owner as Material);
+        const materialTexture = this.materialTextureBuffers.get(owner as Material);
         const model = this.modelBuffers.get(owner as Mesh);
         const geometry = this.geometryBuffers.get(owner as Geometry);
         const skinning = this.skinningBuffers.get(owner as Mesh);
         const morph = this.morphBuffers.get(owner as Mesh);
         if (material) buffers.add(material.buffer);
+        if (materialTexture) buffers.add(materialTexture.buffer);
         if (model) buffers.add(model.buffer);
         if (geometry) buffers.add(geometry.buffer);
         if (skinning) buffers.add(skinning.buffer);
@@ -802,6 +819,11 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             case 'material':
                 if (this.materialBuffers.get(registration.owner)?.buffer === buffer) {
                     this.materialBuffers.delete(registration.owner);
+                }
+                break;
+            case 'material-texture':
+                if (this.materialTextureBuffers.get(registration.owner)?.buffer === buffer) {
+                    this.materialTextureBuffers.delete(registration.owner);
                 }
                 break;
             case 'model':
@@ -835,13 +857,52 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         material: Material,
         semanticFrame?: SemanticFrameState
     ): UniformBuffer {
-        let cached = this.materialBuffers.get(material);
+        return this.getMaterialOwnedBuffer(
+            'MaterialBlock',
+            materialBlockLayout,
+            MATERIAL_BLOCK_FIELD_NAMES,
+            this.materialBuffers,
+            'material',
+            mesh,
+            material,
+            semanticFrame
+        );
+    }
+
+    private getMaterialTextureBuffer(
+        mesh: Mesh,
+        material: Material,
+        semanticFrame?: SemanticFrameState
+    ): UniformBuffer {
+        return this.getMaterialOwnedBuffer(
+            'MaterialTextureBlock',
+            materialTextureBlockLayout,
+            MATERIAL_TEXTURE_BLOCK_FIELD_NAMES,
+            this.materialTextureBuffers,
+            'material-texture',
+            mesh,
+            material,
+            semanticFrame
+        );
+    }
+
+    private getMaterialOwnedBuffer(
+        blockName: 'MaterialBlock' | 'MaterialTextureBlock',
+        layout: Std140Layout,
+        fieldNames: readonly string[],
+        buffers: WeakMap<Material, MaterialCachedBuffer>,
+        registrationKind: 'material' | 'material-texture',
+        mesh: Mesh,
+        material: Material,
+        semanticFrame?: SemanticFrameState
+    ): UniformBuffer {
+        let cached = buffers.get(material);
         if (!cached) {
-            const buffer = this.createOwnedBuffer(materialBlockLayout, {
-                kind: 'material',
+            const buffer = this.createOwnedBuffer(layout, {
+                kind: registrationKind,
                 owner: material
             });
-            const candidate = new ArrayBuffer(materialBlockLayout.byteLength);
+            const candidate = new ArrayBuffer(layout.byteLength);
             cached = {
                 buffer,
                 candidate,
@@ -852,17 +913,26 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
                 packedPassEpoch: -1,
                 meshDependent: true
             };
-            this.materialBuffers.set(material, cached);
+            buffers.set(material, cached);
         }
         if (cached.classifiedPassEpoch !== this.materialPassEpoch) {
-            cached.meshDependent = materialBlockDependsOnMesh(material);
+            cached.meshDependent = materialOwnedBlockDependsOnMesh(material, fieldNames);
             cached.classifiedPassEpoch = this.materialPassEpoch;
         }
         if (!cached.meshDependent && cached.packedPassEpoch === this.materialPassEpoch) {
             return cached.buffer;
         }
-        packMaterialBlock(cached.candidate, cached.candidateBytes, mesh, material, semanticFrame);
-        synchronizeMaterialBlock(cached);
+        packMaterialOwnedBlock(
+            blockName,
+            layout,
+            fieldNames,
+            cached.candidate,
+            cached.candidateBytes,
+            mesh,
+            material,
+            semanticFrame
+        );
+        synchronizeMaterialOwnedBlock(cached, layout, fieldNames);
         cached.packedPassEpoch = this.materialPassEpoch;
         return cached.buffer;
     }
@@ -1091,6 +1161,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
                 return this.activeLightBuffer;
             case 'MaterialBlock':
                 return this.getMaterialBuffer(mesh, material, semanticFrame);
+            case 'MaterialTextureBlock':
+                return this.getMaterialTextureBuffer(mesh, material, semanticFrame);
             case 'ModelBlock':
                 return this.getModelBuffer(mesh, material, semanticFrame);
             case 'GeometryBlock':

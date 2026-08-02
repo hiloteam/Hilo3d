@@ -64,17 +64,14 @@ Hilo3d.registerUniformBlockBinding('DrawBuffersModelBlock');
 
 function createDrawBufferMaterial(modelBlock: Hilo3d.UniformBuffer): Hilo3d.ShaderMaterial {
     return new Hilo3d.ShaderMaterial({
-        shaderCacheId: 'HiloDrawBuffersWebGL2',
-        shaderName: 'HiloDrawBuffers',
-        needBasicUniforms: false,
-        needBasicAttributes: false,
+        sourceRevision: 'HiloDrawBuffersWebGL2',
         vs: vertexShader,
         fs: fragmentShader,
         uniformBlocks: { DrawBuffersModelBlock: modelBlock },
         attributes: {
-            a_position: 'POSITION',
-            a_normal: 'NORMAL',
-            a_texcoord0: 'TEXCOORD_0'
+            a_position: Hilo3d.MaterialAttributeSemantic.POSITION,
+            a_normal: Hilo3d.MaterialAttributeSemantic.NORMAL,
+            a_texcoord0: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
         },
         uniforms: {
             u_diffuse: {

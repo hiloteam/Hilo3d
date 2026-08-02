@@ -1,4 +1,4 @@
-import Material from '../../../src/material/Material';
+import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../../src/material/MaterialDefinition';
 import StorageGraphicsShader from '../../../src/render/compute/StorageGraphicsShader';
 import type { RGBufferHandle } from '../../../src/render/graph/RenderGraphResource';
 import type { RGPrepareContext } from '../../../src/render/graph/RenderGraphExecutor';
@@ -101,7 +101,12 @@ describe('ScriptableGPUDrivenDraw', () => {
         const fixture = createFixture(compiler);
         const pass = new GPUDrivenRenderPass({
             shader: shader(),
-            material: new Material({ depthTest: false, depthMask: false, cullFace: false })
+            pipelineState: {
+                ...DEFAULT_MATERIAL_PIPELINE_STATE,
+                depthTest: false,
+                depthWrite: false,
+                cullMode: 'none'
+            }
         });
         const draw = new ScriptableGPUDrivenDraw();
         draw.configure(
@@ -135,7 +140,12 @@ describe('ScriptableGPUDrivenDraw', () => {
         const fixture = createFixture(compiler);
         const pass = new GPUDrivenRenderPass({
             shader: shader(),
-            material: new Material({ depthTest: false, depthMask: false, cullFace: false }),
+            pipelineState: {
+                ...DEFAULT_MATERIAL_PIPELINE_STATE,
+                depthTest: false,
+                depthWrite: false,
+                cullMode: 'none'
+            },
             indexFormat: 'uint32'
         });
         const draw = new ScriptableGPUDrivenDraw();

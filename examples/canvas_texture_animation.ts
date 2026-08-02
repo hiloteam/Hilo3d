@@ -31,7 +31,7 @@ const screen = new Hilo3d.Mesh({
     material: new Hilo3d.BasicMaterial({
         diffuse: texture,
         lightType: 'NONE',
-        side: Hilo3d.constants.FRONT_AND_BACK
+        cullMode: 'none'
     })
 });
 screen.addTo(stage);

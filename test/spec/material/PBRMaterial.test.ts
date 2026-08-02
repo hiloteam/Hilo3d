@@ -1,61 +1,70 @@
 import { describe, expect, it } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 
-const PBRMaterial = Hilo3d.PBRMaterial;
-
 describe('PBRMaterial', () => {
-    it('create', () => {
-        const material = new PBRMaterial();
+    it('creates a definition-backed standard-surface instance', () => {
+        const material = new Hilo3d.PBRMaterial();
         expect(material.isPBRMaterial).toBe(true);
         expect(material.className).toBe('PBRMaterial');
+        expect(material.definition.family).toBe('pbr');
     });
 
-    it('getRenderOption', () => {
-        const material = new PBRMaterial({
-            metallicRoughnessMap: new Hilo3d.Texture({
-                uv: 0
-            }),
-            baseColorMap: new Hilo3d.Texture({
-                uv: 1
-            }),
-            specularEnvMap: new Hilo3d.Texture(),
+    it('compiles texture layout and environment topology once', () => {
+        const material = new Hilo3d.PBRMaterial({
+            metallicRoughnessMap: new Hilo3d.Texture({ uv: 0 }),
+            baseColorMap: new Hilo3d.Texture({ uv: 1 }),
+            brdfLUT: new Hilo3d.Texture(),
+            diffuseEnvMap: new Hilo3d.CubeTexture(),
+            specularEnvMap: new Hilo3d.CubeTexture(),
             isSpecularGlossiness: true
         });
 
-        const option = material.getRenderOption();
-        expect(option['HAS_TEXCOORD0']).toBe(1);
-        expect(option['METALLIC_ROUGHNESS_MAP']).toBe(0);
-
-        expect(option['HAS_TEXCOORD1']).toBe(1);
-        expect(option['BASE_COLOR_MAP']).toBe(1);
-
-        expect(option['PBR_SPECULAR_GLOSSINESS']).toBe(1);
-        expect(option['SPECULAR_ENV_MAP']).toBeUndefined();
-
-        material.brdfLUT = new Hilo3d.Texture();
-        expect(material.getRenderOption()['SPECULAR_ENV_MAP']).toBe(0);
-        expect(material.getRenderOption()['SPECULAR_ENV_MAP_CUBE']).toBeUndefined();
-
-        material.specularEnvMap = new Hilo3d.CubeTexture();
-        expect(material.getRenderOption()['SPECULAR_ENV_MAP_CUBE']).toBe(1);
+        expect(material.getRenderOption()).toMatchObject({
+            HAS_TEXCOORD0: 1,
+            METALLIC_ROUGHNESS_MAP: material.definition.getTextureSlot('metallicRoughness')?.index,
+            HAS_TEXCOORD1: 1,
+            BASE_COLOR_MAP: material.definition.getTextureSlot('baseColor')?.index,
+            PBR_SPECULAR_GLOSSINESS: 1,
+            DIFFUSE_ENV_MAP: material.definition.getTextureSlot('diffuseEnvironment')?.index,
+            DIFFUSE_ENV_MAP_CUBE: 1,
+            SPECULAR_ENV_MAP: material.definition.getTextureSlot('specularEnvironment')?.index,
+            SPECULAR_ENV_MAP_CUBE: 1
+        });
+        expect(material.getTextureSlot('baseColor')?.encoding).toBe('srgb');
+        expect(material.getTextureSlot('metallicRoughness')?.encoding).toBe('data');
+        expect(material.definition.getTextureSlot('specularEnvironment')?.viewDimension).toBe(
+            'cube'
+        );
+        expect(material.definition.getTextureSlot('diffuseEnvironment')?.viewDimension).toBe(
+            'cube'
+        );
     });
 
-    it('gammaCorrection', () => {
-        const material = new PBRMaterial();
+    it('keeps transmission separate from alpha compositing', () => {
+        const material = new Hilo3d.PBRMaterial({
+            transmissionFactor: 0.9,
+            thicknessFactor: 0.4
+        });
 
-        expect(material.gammaCorrection).toBe(true);
-        expect(material.getRenderOption()['GAMMA_CORRECTION']).toBe(1);
-
-        material.gammaCorrection = false;
-        expect(material.gammaCorrection).toBe(false);
-        expect(material.getRenderOption()['GAMMA_CORRECTION']).toBeUndefined();
-
-        material.gammaCorrection = true;
-        expect(material.getRenderOption()['GAMMA_CORRECTION']).toBe(1);
+        expect(material.requiresOpaqueSceneTexture).toBe(true);
+        expect(material.isTransparent).toBe(false);
+        expect(material.forwardQueue).toBe('transparent');
+        expect(material.getRenderOption()).toMatchObject({
+            HAS_TRANSMISSION: 1,
+            HAS_VOLUME: 1
+        });
     });
 
-    it('enables layered anisotropy, clearcoat, transmission and volume variants', () => {
-        const material = new PBRMaterial({
+    it('keeps ordinary opaque surfaces in the opaque forward queue', () => {
+        const material = new Hilo3d.PBRMaterial();
+
+        expect(material.requiresOpaqueSceneTexture).toBe(false);
+        expect(material.isTransparent).toBe(false);
+        expect(material.forwardQueue).toBe('opaque');
+    });
+
+    it('enables layered anisotropy, clearcoat, volume and iridescence variants', () => {
+        const material = new Hilo3d.PBRMaterial({
             clearcoatFactor: 0.8,
             clearcoatMap: new Hilo3d.Texture({ uv: 0 }),
             clearcoatNormalMap: new Hilo3d.Texture({ uv: 1 }),
@@ -70,23 +79,31 @@ describe('PBRMaterial', () => {
             iridescenceThicknessMap: new Hilo3d.Texture({ uv: 1 })
         });
 
-        const option = material.getRenderOption();
-        expect(option).toMatchObject({
+        expect(material.getRenderOption()).toMatchObject({
             HAS_CLEARCOAT: 1,
-            CLEARCOAT_MAP: 0,
-            CLEARCOAT_NORMAL_MAP: 1,
             HAS_ANISOTROPY: 1,
-            ANISOTROPY_MAP: 1,
             NEED_TANGENT_BASIS: 1,
             HAS_TRANSMISSION: 1,
-            TRANSMISSION_MAP: 0,
             HAS_VOLUME: 1,
-            THICKNESS_MAP: 1,
-            HAS_IRIDESCENCE: 1,
-            IRIDESCENCE_MAP: 0,
-            IRIDESCENCE_THICKNESS_MAP: 1
+            HAS_IRIDESCENCE: 1
         });
-        expect(material.transparent).toBe(true);
-        expect(material.uniforms['u_opaqueTexture']).toBe('OPAQUETEXTURE');
+    });
+
+    it('tracks scalar data and rejects runtime topology activation', () => {
+        const plain = new Hilo3d.PBRMaterial();
+        const plainDefinition = plain.definition;
+        const plainRevision = plain.revision;
+
+        plain.metallic = 0.25;
+        expect(plain.definition).toBe(plainDefinition);
+        expect(plain.revision).toBe(plainRevision + 1);
+        expect(() => {
+            plain.clearcoatFactor = 0.5;
+        }).toThrow(/construct a new PBRMaterial/u);
+
+        const layered = new Hilo3d.PBRMaterial({ clearcoatFactor: 1 });
+        const layeredRevision = layered.revision;
+        layered.clearcoatFactor = 0.25;
+        expect(layered.revision).toBe(layeredRevision + 1);
     });
 });

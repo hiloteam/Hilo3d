@@ -1,6 +1,12 @@
 import * as Hilo3d from '../../../src/Hilo3d';
 import Stats from '../../shared/stats';
-import { loadEnvironmentMaps, parseQuery, resolveExampleBackend } from '../../shared/init';
+import {
+    loadEnvironmentMaps,
+    parseQuery,
+    resolveExampleBackend,
+    type EnvironmentMaps
+} from '../../shared/init';
+import { environmentMaterialDefaults } from '../../shared/environment';
 import { hashReadback } from '../../shared/readbackDiagnostics';
 
 function requireElement<ElementType extends Element>(
@@ -138,19 +144,17 @@ function queryEnabled(name: string): boolean {
     return value !== undefined && value !== 'false';
 }
 
-async function initializeModel(model: Hilo3d.GLTFModel, generation: number): Promise<void> {
+function initializeModel(
+    model: Hilo3d.GLTFModel,
+    generation: number,
+    environment: EnvironmentMaps
+): void {
     if (generation !== modelLoadGeneration) {
         destroyModel(model);
         return;
     }
     currentModel = model;
     stage.addChild(model.node);
-    if (!queryEnabled('depthMask')) {
-        model.materials.forEach(material => {
-            material.depthMask = true;
-        });
-    }
-
     const bounds = model.node.getBounds();
     if (!queryEnabled('noResize')) {
         if (!bounds) throw new Error('The glTF model has no renderable bounds.');
@@ -182,34 +186,11 @@ async function initializeModel(model: Hilo3d.GLTFModel, generation: number): Pro
     }
 
     if (query['addLight'] !== undefined || model.lights.length === 0) {
-        const environment = await loadEnvironmentMaps();
-        if (generation !== modelLoadGeneration) {
-            environment.brdfLUT.destroy();
-            environment.diffuseEnvMap.destroy();
-            environment.specularEnvMap.destroy();
-            environment.skyboxMap.destroy();
-            return;
-        }
-        viewerOwnedTextures.add(environment.brdfLUT);
-        viewerOwnedTextures.add(environment.diffuseEnvMap);
-        viewerOwnedTextures.add(environment.specularEnvMap);
-        viewerOwnedTextures.add(environment.skyboxMap);
-        model.materials.forEach(material => {
-            if (material instanceof Hilo3d.PBRMaterial) {
-                material.brdfLUT = environment.brdfLUT;
-                material.diffuseEnvMap = environment.diffuseEnvMap;
-                material.specularEnvMap = environment.specularEnvMap;
-                material.isDirty = true;
-            } else if (material instanceof Hilo3d.BasicMaterial) {
-                material.specularEnvMap = environment.specularEnvMap;
-                material.isDirty = true;
-            }
-        });
         const skybox = new Hilo3d.Mesh({
             geometry: new Hilo3d.BoxGeometry(),
             material: new Hilo3d.BasicMaterial({
                 lightType: 'NONE',
-                side: Hilo3d.constants.BACK,
+                cullMode: 'front',
                 diffuse: environment.skyboxMap
             })
         }).addTo(stage);
@@ -232,9 +213,22 @@ async function loadModel(source: string, fromLocalFiles = false): Promise<void> 
     const resolveBuffer = (uri: string): string => resolveModelResource(uri, modelSourcePath);
     const resolveShader = (uri: string): string => resolveModelResource(uri, modelSourcePath);
     try {
+        const environment = await loadEnvironmentMaps();
+        if (generation !== modelLoadGeneration) {
+            environment.brdfLUT.destroy();
+            environment.diffuseEnvMap.destroy();
+            environment.specularEnvMap.destroy();
+            environment.skyboxMap.destroy();
+            return;
+        }
+        viewerOwnedTextures.add(environment.brdfLUT);
+        viewerOwnedTextures.add(environment.diffuseEnvMap);
+        viewerOwnedTextures.add(environment.specularEnvMap);
+        viewerOwnedTextures.add(environment.skyboxMap);
         const model = await loader.load({
             src: source,
             isUnQuantizeInShader: false,
+            pbrMaterialDefaults: environmentMaterialDefaults(environment),
             ...(fromLocalFiles
                 ? {
                       preHandlerImageURI: resolveImage,
@@ -248,7 +242,7 @@ async function loadModel(source: string, fromLocalFiles = false): Promise<void> 
             destroyModel(model);
             return;
         }
-        await initializeModel(model, generation);
+        initializeModel(model, generation, environment);
     } catch (error: unknown) {
         if (generation === modelLoadGeneration) releaseCurrentModel();
         throw error;

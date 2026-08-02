@@ -1,7 +1,7 @@
 import Mesh from '../../../src/core/Mesh';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
-import Material from '../../../src/material/Material';
+import Material from '../../../src/material/BasicMaterial';
 import { MeshDrawRevisionTracker } from '../../../src/render/renderer/MeshDrawRevisionTracker';
 import type { RHIMeshDrawTargetDescriptor } from '../../../src/render/renderer/RHIDescriptorMapping';
 import { describe, expect, it } from 'vitest';
@@ -103,17 +103,18 @@ describe('MeshDrawRevisionTracker', () => {
         expect(changed.resourceBindings).toBe(first.resourceBindings);
     });
 
-    it('separates shader/material invalidation from exact render-state invalidation', () => {
+    it('separates immutable definition replacement from instance-data invalidation', () => {
         const tracker = new MeshDrawRevisionTracker();
-        const { mesh, material } = createMesh();
+        const { mesh } = createMesh();
         const first = capture(tracker, mesh);
 
-        material.depthMask = false;
+        const material = new Material({ state: { depthWrite: false } });
+        mesh.material = material;
         const renderState = capture(tracker, mesh);
         expect(renderState.renderState).not.toBe(first.renderState);
-        expect(renderState.materialVariant).toBe(first.materialVariant);
+        expect(renderState.materialVariant).not.toBe(first.materialVariant);
 
-        material.isDirty = true;
+        material.invalidateData();
         const materialRevision = capture(tracker, mesh);
         expect(materialRevision.materialVariant).not.toBe(renderState.materialVariant);
         expect(materialRevision.renderState).toBe(renderState.renderState);

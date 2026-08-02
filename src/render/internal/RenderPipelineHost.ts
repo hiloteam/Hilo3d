@@ -7,7 +7,6 @@ import type { RHICapabilities } from '../rhi/core';
 import type { RenderTarget } from '../RenderTarget';
 import type { RendererScene } from '../RendererCore';
 import type { StorageBuffer, StorageBufferDescriptor } from '../StorageBuffer';
-import { isDirectForwardRenderPipeline } from '../pipeline/ForwardRenderPipeline';
 import {
     createRenderPipelineCapabilities,
     validateRenderPipelineCapabilitySuperset,
@@ -31,12 +30,6 @@ export interface RenderPipelineHostLifecycle {
     failFrame(error: unknown): void;
     endFrame(submitted: boolean): void;
     createPipelineStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
-    recordDefaultPipeline(
-        scene: RendererScene,
-        camera: Camera,
-        target: RenderTarget | null,
-        fireEvent: boolean
-    ): void;
     createPipelineContext(
         scene: RendererScene,
         camera: Camera,
@@ -86,7 +79,6 @@ export class RenderPipelineHost {
     #capabilities: RenderPipelineCapabilities | null = null;
     #minimumCapabilities: RenderPipelineCapabilities | null = null;
     #requirements: Readonly<RenderPipelineRequirements> | null = null;
-    #directForward = false;
     #pipelineInvocationActive = false;
     readonly #runtimeOwner = Object.freeze({});
 
@@ -182,7 +174,6 @@ export class RenderPipelineHost {
         this.#capabilities = capabilities;
         this.#minimumCapabilities = capabilities;
         this.#requirements = requirements;
-        this.#directForward = isDirectForwardRenderPipeline(runtime);
     }
 
     validateReplacementDevice(deviceCapabilities: RHICapabilities): void {
@@ -247,10 +238,6 @@ export class RenderPipelineHost {
         let completed = false;
         let contextCreated = false;
         try {
-            if (this.#directForward) {
-                this.lifecycle.recordDefaultPipeline(scene, camera, target, fireEvent);
-                return;
-            }
             const context = this.lifecycle.createPipelineContext(
                 scene,
                 camera,

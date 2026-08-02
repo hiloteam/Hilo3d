@@ -18,10 +18,9 @@ new Hilo3d.Mesh({
         baseColorMap: floorTexture,
         baseColor: new Hilo3d.Color(0.24, 0.28, 0.38),
         metallic: 0.35,
-        roughness: 0.62,
-        castShadows: false,
-        receiveShadows: true
-    })
+        roughness: 0.62
+    }),
+    castShadows: false
 })
     .setScale(7)
     .addTo(stage);

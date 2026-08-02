@@ -1,5 +1,5 @@
 import type Mesh from '../../core/Mesh';
-import Material from '../../material/Material';
+import Material from '../../material/MaterialInstance';
 import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';

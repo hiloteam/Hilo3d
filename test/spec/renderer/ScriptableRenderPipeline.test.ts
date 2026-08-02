@@ -1200,7 +1200,7 @@ class SampledColorFeatureRuntime implements ForwardRenderPipelineFeatureRuntime 
                 }
             ]
         });
-        context.resources.replaceColor(filtered);
+        context.resources.replaceColor(filtered, 'linear');
         this.recordCount++;
     }
 
@@ -1330,7 +1330,7 @@ describe('Scriptable render pipeline', () => {
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+                material: new BasicMaterial({ lightType: 'NONE', state: { depthTest: false } }),
                 frustumTest: false
             })
         );
@@ -1454,9 +1454,7 @@ describe('Scriptable render pipeline', () => {
             const geometry = new BoxGeometry();
             const material = new BasicMaterial({
                 lightType: 'NONE',
-                depthTest: false,
-                depthMask: false,
-                cullFace: false
+                state: { depthTest: false, depthWrite: false, cullMode: 'none' }
             });
             const first = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
             const second = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
@@ -1465,10 +1463,8 @@ describe('Scriptable render pipeline', () => {
             const transparentGeometry = new BoxGeometry();
             const transparentMaterial = new BasicMaterial({
                 lightType: 'NONE',
-                transparent: true,
-                depthTest: false,
-                depthMask: false,
-                cullFace: false
+                compositing: { mode: 'alpha-blend', premultiplied: true },
+                state: { depthTest: false, depthWrite: false, cullMode: 'none' }
             });
             const transparentFirst = new Mesh({
                 geometry: transparentGeometry,
@@ -2362,7 +2358,7 @@ describe('Scriptable render pipeline', () => {
         expect(device.destroyed).toBe(true);
     });
 
-    it('records non-sampling forward features without replacing the direct output', async () => {
+    it('records non-sampling forward features before the final surface transfer', async () => {
         const feature = new CountingForwardFeature();
         const renderer = await Renderer.create({
             backend: 'webgl2',
@@ -2373,11 +2369,13 @@ describe('Scriptable render pipeline', () => {
             renderPipeline: new ForwardRenderPipelineFactory({ features: [feature] })
         });
         activeRenderers.push(renderer);
+        const descriptors: RHIRenderPassDescriptor[] = [];
+        captureRenderPassDescriptors(renderer, descriptors);
         const scene = new Node();
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+                material: new BasicMaterial({ lightType: 'NONE', state: { depthTest: false } }),
                 frustumTest: false
             })
         );
@@ -2387,6 +2385,11 @@ describe('Scriptable render pipeline', () => {
 
         expect(feature.runtimes).toHaveLength(1);
         expect(feature.runtimes[0]?.recordCount).toBe(2);
+        expect(
+            descriptors.some(
+                descriptor => descriptor.label === 'Forward linear-to-sRGB output transfer'
+            )
+        ).toBe(true);
         expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
     });
 
@@ -2454,6 +2457,52 @@ describe('Scriptable render pipeline', () => {
 
         renderer.setRenderTarget(null);
         target.destroy();
+    });
+
+    it('loads persistent surface color, depth and stencil for a later camera', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 8,
+            antialias: false,
+            depth: true,
+            stencil: true
+        });
+        activeRenderers.push(renderer);
+        const descriptors: RHIRenderPassDescriptor[] = [];
+        captureRenderPassDescriptors(renderer, descriptors);
+        const scene = new Node();
+        scene.addChild(
+            new Mesh({
+                geometry: new BoxGeometry(),
+                material: new BasicMaterial({ lightType: 'NONE' }),
+                frustumTest: false
+            })
+        );
+        const first = new PerspectiveCamera();
+        const overlay = new PerspectiveCamera();
+        overlay.clearColor = false;
+        overlay.clearDepth = false;
+        overlay.clearStencil = false;
+
+        renderer.renderFrame(frame => {
+            frame.render(scene, first);
+            frame.render(scene, overlay);
+        });
+
+        const scenePasses = descriptors.filter(descriptor => descriptor.label === 'Forward scene');
+        expect(scenePasses).toHaveLength(2);
+        expect(scenePasses[0]?.colorAttachments[0]).toMatchObject({ loadOp: 'clear' });
+        expect(scenePasses[0]?.depthStencilAttachment).toMatchObject({
+            depthLoadOp: 'clear',
+            stencilLoadOp: 'clear'
+        });
+        expect(scenePasses[1]?.colorAttachments[0]).toMatchObject({ loadOp: 'load' });
+        expect(scenePasses[1]?.depthStencilAttachment).toMatchObject({
+            depthLoadOp: 'load',
+            stencilLoadOp: 'load'
+        });
     });
 
     it('loads selected RenderTarget color into an intermediate sampled scene color', async () => {
@@ -2552,7 +2601,7 @@ describe('Scriptable render pipeline', () => {
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ depthTest: false }),
+                material: new BasicMaterial({ state: { depthTest: false, depthWrite: false } }),
                 frustumTest: false
             })
         );
@@ -2674,7 +2723,8 @@ describe('Scriptable render pipeline', () => {
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ receiveShadows: false }),
+                material: new BasicMaterial(),
+                receiveShadows: false,
                 frustumTest: false
             })
         );
@@ -2711,7 +2761,7 @@ describe('Scriptable render pipeline', () => {
             scene.addChild(
                 new Mesh({
                     geometry: new BoxGeometry(),
-                    material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+                    material: new BasicMaterial({ lightType: 'NONE', state: { depthTest: false } }),
                     frustumTest: false
                 })
             );

@@ -6,7 +6,12 @@ import type Geometry from '../../geometry/Geometry';
 import GeometryData from '../../geometry/GeometryData';
 import MorphGeometry from '../../geometry/MorphGeometry';
 import LightManager from '../../light/LightManager';
-import type { default as Material, SemanticProgramBindingInfo } from '../../material/Material';
+import type {
+    default as Material,
+    SemanticProgramBindingInfo
+} from '../../material/MaterialInstance';
+import type { MaterialPassRole, MaterialPipelineState } from '../../material/MaterialDefinition';
+import { resolveMaterialPassState } from '../../material/MaterialCompiler';
 import Shader from '../../shader/Shader';
 import Texture from '../../texture/Texture';
 import BuiltInUniformBlockManager from '../BuiltInUniformBlockManager';
@@ -154,34 +159,16 @@ function sampledTextureElement(value: unknown, arrayIndex: number): unknown {
     return arrayIndex === 0 ? value : undefined;
 }
 
-const SHADER_MATERIAL_OPTION_FIELDS = Object.freeze([
-    'vs',
-    'fs',
-    'useHeaderCache',
-    'getCustomRenderOption',
-    'shaderCacheId',
-    'shaderName',
-    'lightType',
-    'side',
-    'premultiplyAlpha',
-    'enableTextureLod',
-    'enableDrawBuffers',
-    'normalMap',
-    'normalMapScale',
-    'parallaxMap',
-    'emission',
-    'transparency',
-    'ignoreTransparent',
-    'alphaCutoff',
-    'useHDR',
-    'gammaCorrection',
-    'receiveShadows',
-    'castShadows',
-    'uvMatrix',
-    'uvMatrix1',
-    'usePhysicsLight',
-    'isDiffuseEnvAndAmbientLightWorkTogether'
-] as const);
+function requireMaterialPassState(
+    material: Material,
+    role: MaterialPassRole
+): Readonly<MaterialPipelineState> {
+    const state = resolveMaterialPassState(material, role);
+    if (state === null) {
+        throw new TypeError(`Material definition ${material.definition.id} has no ${role} pass`);
+    }
+    return state;
+}
 
 const SHADER_GEOMETRY_OPTION_FIELDS = Object.freeze([
     'positionDecodeMat',
@@ -198,8 +185,6 @@ interface MeshShaderSnapshot {
     readonly geometry: Geometry;
     readonly geometryRevision: number;
     readonly material: Material;
-    readonly materialRevision: number;
-    readonly materialOptionValues: readonly unknown[];
     readonly geometryOptionValues: readonly unknown[];
     readonly colorSize: unknown;
     readonly fog: RenderGraphFrameContext['fog'];
@@ -210,6 +195,7 @@ interface MeshShaderSnapshot {
     readonly commonOptions: Readonly<Record<string, number>>;
     readonly instanced: boolean;
     readonly linearOutput: boolean;
+    readonly role: MaterialPassRole;
     readonly shader: Shader;
 }
 
@@ -407,6 +393,7 @@ export class MeshDrawProcessor {
     #pendingMesh: Mesh | null = null;
     #pendingOwner: object | null = null;
     #pendingMaterial: Material | null = null;
+    #pendingMaterialState: Readonly<MaterialPipelineState> | null = null;
     #pendingGraphicsPipeline: RHIGraphicsPipeline | null = null;
     #pendingBindingPlan: Readonly<PipelineResourceRecord['bindingPlan']> | null = null;
     #pendingDeferredBindGroup = -1;
@@ -421,6 +408,7 @@ export class MeshDrawProcessor {
         const mesh = this.#pendingMesh;
         const owner = this.#pendingOwner;
         const material = this.#pendingMaterial;
+        const materialState = this.#pendingMaterialState;
         const pipeline = this.#pendingGraphicsPipeline;
         const bindingPlan = this.#pendingBindingPlan;
         if (
@@ -428,6 +416,7 @@ export class MeshDrawProcessor {
             !owner ||
             !material ||
             !pipeline ||
+            !materialState ||
             !bindingPlan ||
             this.#pendingVertexBufferCount === 0
         ) {
@@ -463,7 +452,7 @@ export class MeshDrawProcessor {
         } else {
             draw.setDraw(this.#pendingElementCount, this.#pendingInstanceCount);
         }
-        draw.setDynamicState(mapRHIMeshDrawDynamicState(material));
+        draw.setDynamicState(mapRHIMeshDrawDynamicState(materialState));
         draw.setSortKey(0, 0);
     };
 
@@ -619,7 +608,8 @@ export class MeshDrawProcessor {
         mesh: Mesh,
         target: RHIMeshDrawTargetDescriptor,
         materialOverride: Material | null = null,
-        sceneTexturePreparation: SceneTexturePreparationState | null = null
+        sceneTexturePreparation: SceneTexturePreparationState | null = null,
+        materialPass?: MaterialPassRole
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireActiveContext();
@@ -632,10 +622,14 @@ export class MeshDrawProcessor {
         if (mesh.useInstanced) {
             throw new TypeError('Instanced meshes are outside the first mesh-draw slice');
         }
-        this.validateLighting(material, context);
+        const fragmentOutputMode = this.fragmentOutputModeFor(target);
+        const role =
+            materialPass ?? (fragmentOutputMode === 'depth-only' ? 'depth-only' : 'forward');
+        const materialState = requireMaterialPassState(material, role);
+        this.validateLighting(mesh, material, context);
         this.validateDeformation(mesh, geometry);
         geometry.normalizePrimitiveTopology();
-        if (material.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
+        if (materialState.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
         mapRHIPrimitiveTopology(geometry.mode);
         const indices = geometry.indices;
         const primitiveRestart =
@@ -643,8 +637,7 @@ export class MeshDrawProcessor {
         const indexFormat = indices ? mapPortableRHIIndexFormat(indices) : 'uint16';
         const stripIndexFormat = primitiveRestart ? indexFormat : undefined;
 
-        const shader = this.resolveShader(mesh, geometry, material, context, false, target);
-        const fragmentOutputMode = this.fragmentOutputModeFor(target);
+        const shader = this.resolveShader(mesh, geometry, material, context, false, target, role);
         const baseCompiled =
             fragmentOutputMode === 'depth-only'
                 ? this.compiler.compile(
@@ -675,7 +668,7 @@ export class MeshDrawProcessor {
         const pipeline = this.pipelines.prepare(
             shader,
             vertexPlan.vertexBuffers,
-            material,
+            materialState,
             target,
             fragmentOutputMode,
             geometry.mode,
@@ -733,6 +726,7 @@ export class MeshDrawProcessor {
         const revision = this.#revisions.capture({
             mesh,
             material,
+            materialPass: role,
             shaderToken: pipeline.shaderToken,
             resourceBindings: bindingSet.token,
             vertexLayoutIdentity: vertexPlan,
@@ -742,6 +736,7 @@ export class MeshDrawProcessor {
         this.#pendingMesh = mesh;
         this.#pendingOwner = mesh;
         this.#pendingMaterial = material;
+        this.#pendingMaterialState = materialState;
         this.#pendingGraphicsPipeline = this.registry.resolve(pipeline.pipeline);
         this.#pendingBindingPlan = pipeline.bindingPlan;
         this.#pendingDeferredBindGroup = deferSceneTexture ? SCENE_STORAGE_BIND_GROUP : -1;
@@ -817,11 +812,12 @@ export class MeshDrawProcessor {
         if (!geometry || !material) {
             throw new Error(`Mesh ${mesh.id} requires geometry and material`);
         }
-        this.validateLighting(material, context);
+        const materialState = requireMaterialPassState(material, 'forward');
+        this.validateLighting(mesh, material, context);
         this.validateSceneStorageShader(shader);
         this.validateDeformation(mesh, geometry);
         geometry.normalizePrimitiveTopology();
-        if (material.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
+        if (materialState.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
         mapRHIPrimitiveTopology(geometry.mode);
         const indices = geometry.indices;
         const primitiveRestart =
@@ -844,7 +840,7 @@ export class MeshDrawProcessor {
         );
         const pipeline = storagePipelines.prepareScene(
             shader,
-            material,
+            materialState,
             vertexPlan.vertexBuffers,
             target,
             geometry.mode,
@@ -910,6 +906,7 @@ export class MeshDrawProcessor {
         this.#pendingMesh = mesh;
         this.#pendingOwner = mesh;
         this.#pendingMaterial = material;
+        this.#pendingMaterialState = materialState;
         this.#pendingGraphicsPipeline = storagePipelines.resolvePipeline(pipeline);
         this.#pendingBindingPlan = pipeline.bindingPlan;
         this.#pendingDeferredBindGroup = SCENE_STORAGE_BIND_GROUP;
@@ -939,12 +936,7 @@ export class MeshDrawProcessor {
     }
 
     /** Prepare one cast-shadow mesh variant for a depth-only atlas slice. */
-    prepareShadow(
-        owner: object,
-        mesh: Mesh,
-        shadowMaterial: Material,
-        target: RHIMeshDrawTargetDescriptor
-    ): PreparedDraw {
+    prepareShadow(owner: object, mesh: Mesh, target: RHIMeshDrawTargetDescriptor): PreparedDraw {
         this.assertAlive();
         const context = this.requireActiveContext();
         if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
@@ -953,9 +945,11 @@ export class MeshDrawProcessor {
         if (!geometry || !sourceMaterial) {
             throw new Error(`Mesh ${mesh.id} requires geometry and material`);
         }
-        if (!sourceMaterial.castShadows) {
-            throw new TypeError(`Mesh ${mesh.id} material does not cast shadows`);
+        if (!mesh.castShadows) {
+            throw new TypeError(`Mesh ${mesh.id} does not participate in shadow casting`);
         }
+        const shadowMaterial = sourceMaterial;
+        const materialState = requireMaterialPassState(shadowMaterial, 'shadow-caster');
         if (
             target.colorFormats.length !== 0 ||
             target.depthStencilFormat === undefined ||
@@ -970,7 +964,7 @@ export class MeshDrawProcessor {
 
         this.validateDeformation(mesh, geometry);
         geometry.normalizePrimitiveTopology();
-        if (shadowMaterial.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
+        if (materialState.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
         mapRHIPrimitiveTopology(geometry.mode);
         const indices = geometry.indices;
         const primitiveRestart =
@@ -985,7 +979,9 @@ export class MeshDrawProcessor {
             context.lightManager,
             context.fog,
             context.renderer.useLogDepth,
-            context.renderer
+            context.renderer,
+            false,
+            'shadow-caster'
         );
         if (!shader) {
             throw new Error(`Shadow material ${shadowMaterial.className} has no renderable shader`);
@@ -1022,7 +1018,7 @@ export class MeshDrawProcessor {
         const pipeline = this.pipelines.prepare(
             shader,
             vertexPlan.vertexBuffers,
-            shadowMaterial,
+            materialState,
             target,
             'depth-only',
             geometry.mode,
@@ -1077,6 +1073,7 @@ export class MeshDrawProcessor {
             owner,
             mesh,
             material: shadowMaterial,
+            materialPass: 'shadow-caster',
             shaderToken: pipeline.shaderToken,
             resourceBindings: bindingSet.token,
             vertexLayoutIdentity: vertexPlan,
@@ -1086,6 +1083,7 @@ export class MeshDrawProcessor {
         this.#pendingMesh = mesh;
         this.#pendingOwner = owner;
         this.#pendingMaterial = shadowMaterial;
+        this.#pendingMaterialState = materialState;
         this.#pendingGraphicsPipeline = this.registry.resolve(pipeline.pipeline);
         this.#pendingBindingPlan = pipeline.bindingPlan;
         this.#pendingDeferredBindGroup = -1;
@@ -1120,7 +1118,8 @@ export class MeshDrawProcessor {
         meshes: readonly Mesh[],
         target: RHIMeshDrawTargetDescriptor,
         materialOverride: Material | null = null,
-        sceneTexturePreparation: SceneTexturePreparationState | null = null
+        sceneTexturePreparation: SceneTexturePreparationState | null = null,
+        materialPass?: MaterialPassRole
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireActiveContext();
@@ -1163,9 +1162,13 @@ export class MeshDrawProcessor {
                 );
             }
         }
-        this.validateLighting(material, context);
+        const fragmentOutputMode = this.fragmentOutputModeFor(target);
+        const role =
+            materialPass ?? (fragmentOutputMode === 'depth-only' ? 'depth-only' : 'forward');
+        const materialState = requireMaterialPassState(material, role);
+        this.validateLighting(representative, material, context);
         geometry.normalizePrimitiveTopology();
-        if (material.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
+        if (materialState.wireframe && geometry.mode !== LINES) geometry.convertToLinesMode();
         mapRHIPrimitiveTopology(geometry.mode);
         const indices = geometry.indices;
         const primitiveRestart =
@@ -1179,9 +1182,9 @@ export class MeshDrawProcessor {
             material,
             context,
             true,
-            target
+            target,
+            role
         );
-        const fragmentOutputMode = this.fragmentOutputModeFor(target);
         const baseCompiled =
             fragmentOutputMode === 'depth-only'
                 ? this.compiler.compile(
@@ -1255,7 +1258,7 @@ export class MeshDrawProcessor {
         const pipeline = this.pipelines.prepare(
             shader,
             combinedLayouts,
-            material,
+            materialState,
             target,
             fragmentOutputMode,
             geometry.mode,
@@ -1325,6 +1328,7 @@ export class MeshDrawProcessor {
         const baseRevision = this.#revisions.capture({
             mesh: representative,
             material,
+            materialPass: role,
             shaderToken: pipeline.shaderToken,
             resourceBindings: bindingSet.token,
             vertexLayoutIdentity: combinedLayouts,
@@ -1335,6 +1339,7 @@ export class MeshDrawProcessor {
         this.#pendingMesh = representative;
         this.#pendingOwner = owner;
         this.#pendingMaterial = material;
+        this.#pendingMaterialState = materialState;
         this.#pendingGraphicsPipeline = this.registry.resolve(pipeline.pipeline);
         this.#pendingBindingPlan = pipeline.bindingPlan;
         this.#pendingDeferredBindGroup = deferSceneTexture ? SCENE_STORAGE_BIND_GROUP : -1;
@@ -1552,11 +1557,10 @@ export class MeshDrawProcessor {
         material: Material,
         context: RenderGraphFrameContext,
         instanced: boolean,
-        target: RHIMeshDrawTargetDescriptor
+        target: RHIMeshDrawTargetDescriptor,
+        role: MaterialPassRole
     ): Shader {
-        const canUseSnapshot =
-            Reflect.get(material, 'isShaderMaterial') === true &&
-            Reflect.get(material, 'getCustomRenderOption') === null;
+        const canUseSnapshot = Reflect.get(material, 'isShaderMaterial') === true;
         const snapshot = canUseSnapshot ? this.#shaderSnapshots.get(mesh) : undefined;
         const linearOutput =
             target.colorFormats[0] === 'rgba16float' || target.colorFormats[0] === 'rgba32float';
@@ -1565,12 +1569,6 @@ export class MeshDrawProcessor {
             snapshot?.geometry === geometry &&
             snapshot.geometryRevision === geometry.revision &&
             snapshot.material === material &&
-            snapshot.materialRevision === material.revision &&
-            optionFieldsMatch(
-                material,
-                SHADER_MATERIAL_OPTION_FIELDS,
-                snapshot.materialOptionValues
-            ) &&
             optionFieldsMatch(
                 geometry,
                 SHADER_GEOMETRY_OPTION_FIELDS,
@@ -1584,6 +1582,7 @@ export class MeshDrawProcessor {
             snapshot.fragmentPrecision === context.renderer.fragmentPrecision &&
             snapshot.instanced === instanced &&
             snapshot.linearOutput === linearOutput &&
+            snapshot.role === role &&
             commonShaderOptionsMatch(snapshot.commonOptions)
         ) {
             return snapshot.shader;
@@ -1597,7 +1596,8 @@ export class MeshDrawProcessor {
             context.fog,
             context.renderer.useLogDepth,
             context.renderer,
-            linearOutput
+            linearOutput,
+            role
         );
         if (!shader) throw new Error(`Material ${material.className} has no renderable shader`);
         if (!canUseSnapshot) {
@@ -1608,8 +1608,6 @@ export class MeshDrawProcessor {
             geometry,
             geometryRevision: geometry.revision,
             material,
-            materialRevision: material.revision,
-            materialOptionValues: snapshotOptionFields(material, SHADER_MATERIAL_OPTION_FIELDS),
             geometryOptionValues: snapshotOptionFields(geometry, SHADER_GEOMETRY_OPTION_FIELDS),
             colorSize: optionalColorSize(colors),
             fog: context.fog,
@@ -1620,6 +1618,7 @@ export class MeshDrawProcessor {
             commonOptions: snapshotCommonShaderOptions(),
             instanced,
             linearOutput,
+            role,
             shader
         });
         return shader;
@@ -1706,7 +1705,11 @@ export class MeshDrawProcessor {
         }
     }
 
-    private validateLighting(material: Material, context: RenderGraphFrameContext): void {
+    private validateLighting(
+        mesh: Mesh,
+        material: Material,
+        context: RenderGraphFrameContext
+    ): void {
         if (material.lightType === 'NONE') return;
         const manager = context.lightManager;
         if (
@@ -1723,7 +1726,7 @@ export class MeshDrawProcessor {
                     manager.lightInfo.SHADOW_SPOT_LIGHTS > 0);
         }
         if (
-            material.receiveShadows &&
+            mesh.receiveShadows &&
             this.#hasShadowSamplerDependency &&
             manager.shadowAtlas === null
         ) {

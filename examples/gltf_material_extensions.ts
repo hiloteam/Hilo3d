@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { addEnvironmentSkybox, applyEnvironmentMaps } from './shared/environment';
+import { addEnvironmentSkybox, environmentMaterialDefaults } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 const ASSETS = {
@@ -176,11 +176,11 @@ const environment = await loadEnvironmentMaps();
 addEnvironmentSkybox(stage, environment.skyboxMap);
 
 const floorMaterial = new Hilo3d.PBRMaterial({
+    ...environmentMaterialDefaults(environment),
     baseColor: new Hilo3d.Color(0.018, 0.026, 0.052),
     metallic: 0.78,
     roughness: 0.38
 });
-applyEnvironmentMaps([floorMaterial], environment);
 new Hilo3d.Mesh({
     geometry: new Hilo3d.PlaneGeometry({ width: 18, height: 12 }),
     material: floorMaterial,
@@ -269,17 +269,16 @@ async function getAsset(key: AssetKey): Promise<LoadedAsset> {
     if (cached) return cached;
     const asset = ASSETS[key];
     const model = await loader.load({
-        src: new URL(`./models/KhronosPBR/${asset.file}`, import.meta.url).href
+        src: new URL(`./models/KhronosPBR/${asset.file}`, import.meta.url).href,
+        pbrMaterialDefaults: {
+            ...environmentMaterialDefaults(environment),
+            diffuseEnvIntensity: asset.diffuseEnvIntensity,
+            specularEnvIntensity: asset.specularEnvIntensity
+        }
     });
     await model.ready;
     if (model.resourceErrors.length > 0) {
         throw new AggregateError(model.resourceErrors, `${asset.name} has resource failures`);
-    }
-    applyEnvironmentMaps(model.materials, environment);
-    for (const material of model.materials) {
-        if (!(material instanceof Hilo3d.PBRMaterial)) continue;
-        material.diffuseEnvIntensity = asset.diffuseEnvIntensity;
-        material.specularEnvIntensity = asset.specularEnvIntensity;
     }
     const loaded = Object.freeze({
         model,

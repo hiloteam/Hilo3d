@@ -58,11 +58,12 @@ class GrayscaleFeatureRuntime implements Hilo3d.ForwardRenderPipelineFeatureRunt
             vs: FULLSCREEN_VERTEX_SOURCE,
             fs: GRAYSCALE_FRAGMENT_SOURCE
         }),
-        material: new Hilo3d.Material({
+        pipelineState: {
+            ...Hilo3d.DEFAULT_MATERIAL_PIPELINE_STATE,
             depthTest: false,
-            depthMask: false,
-            cullFace: false
-        })
+            depthWrite: false,
+            cullMode: 'none'
+        }
     });
     readonly #parameters = new Hilo3d.RenderPassParameterPool(
         () => new GrayscaleParameters(),
@@ -89,7 +90,7 @@ class GrayscaleFeatureRuntime implements Hilo3d.ForwardRenderPipelineFeatureRunt
         const parameters = context.pipeline.acquirePassParameters(this.#parameters);
         parameters.configure(source, destination);
         context.pipeline.graph.addPass(this.#pass, parameters);
-        context.resources.replaceColor(destination);
+        context.resources.replaceColor(destination, 'linear');
     }
 
     destroy(): void {

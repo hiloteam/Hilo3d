@@ -2,7 +2,7 @@ import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';
 import Geometry from '../../../src/geometry/Geometry';
 import LightManager from '../../../src/light/LightManager';
-import Material from '../../../src/material/Material';
+import Material from '../../../src/material/BasicMaterial';
 import type RendererCore from '../../../src/render/RendererCore';
 import type { RHIUploadBatch } from '../../../src/render/frame/RHIUploadBatch';
 import {
@@ -147,7 +147,12 @@ function classifiedMesh(
 ): Mesh {
     const value = new Mesh({
         geometry: new Geometry(),
-        material: new Material({ renderOrder, transparent }),
+        material: new Material({
+            compositing: transparent
+                ? { mode: 'alpha-blend', premultiplied: true }
+                : { mode: 'opaque' }
+        }),
+        renderOrder,
         useInstanced
     });
     value.id = id;
@@ -378,9 +383,7 @@ describe.each([
         expect(backend.executionLog.indexOf('draw:6')).toBeGreaterThan(transparentPassIndex);
         expect(backend.executionLog.at(-1)).toBe(`present:${String(surface.id)}`);
 
-        const transparentMaterial = transparent.material;
-        if (transparentMaterial === null) throw new Error('Classified test Mesh lost its material');
-        transparentMaterial.transparent = false;
+        transparent.material = new Material();
         calls.length = 0;
         const previousLogLength = backend.executionLog.length;
         const second = renderer.render(frameContext(device, 18), surface, {

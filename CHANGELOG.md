@@ -2,12 +2,47 @@
 
 ### Breaking changes
 
+- Replace the mutable `Material` monolith with immutable `MaterialDefinition` plus
+  `MaterialInstance`. Remove legacy topology mutation, WebGL-style blend/side fields, material-owned
+  render order and shadow participation, material display transforms, shared UV matrices, shadow
+  proxy materials, `onBeforeCompile`, and `shaderCacheId`. Move object ordering and shadow flags to
+  `Mesh`; require construction-time topology, explicit coverage/compositing, typed
+  `MaterialAttributeSemantic`/`MaterialUniformSemantic`/`MaterialTextureSemantic` bindings, and
+  explicit pass pipeline state. This is a direct migration with no compatibility adapter.
+- Split per-texture-slot std140 metadata out of `MaterialBlock` into the fixed
+  `MaterialTextureBlock`. The material scalar block is now 432 bytes, the texture-slot block is
+  1,920 bytes, WebGPU material textures begin at binding 2, and custom uniform block registrations
+  begin after ten built-in WebGL2 binding points.
 - Expand the fixed Camera/Model/Skinning/Morph/Instance std140 ABI with current/previous transforms,
   render origins, and history/depth flags. Custom shaders that redeclare built-in blocks must use
   the updated field order and capacities.
+- Make forward feature color encoding explicit. `replaceColor()` now requires `linear` or `srgb`,
+  and the default Forward pipeline always routes surface presentation through the Render Graph so
+  the final output transfer is owned by the output stage rather than individual materials.
 
 ### Changes
 
+- Add canonical built-in material definitions, stable material IDs and revisions, explicit
+  forward/depth-only/shadow-caster/picking roles, role-aware shader variants, per-slot texture/UV
+  transform/encoding/channel data, and deterministic coverage/transmission/compositing ownership.
+  Shadow rendering now requests the original material's shadow role, glTF constructs layered PBR
+  topology and all texture transforms before instantiation, and display conversion remains solely in
+  post-processing/output.
+- Keep default Forward lighting, clear colors, transparent blending, and intermediate effects in
+  linear space, then apply one exact linear-to-sRGB transfer at the browser surface. Multi-camera
+  load/blend stays in a renderer-owned linear composition target, while already transformed Color
+  Uber output is presented without a second conversion. Single-camera MSAA resolves into the
+  persistent single-sample composition target; multi-camera stacks use one single-sample
+  color/depth/stencil composition contract so later cameras can load prior contents exactly.
+- Advance the RHI benchmark manifest to schema 4 and model fixed surface-output draws separately
+  from primary scene and post-process draws; immutable snapshots from earlier schemas remain
+  historical evidence and are not rewritten.
+- Route opaque-composited transmission surfaces through the after-opaque forward queue so their
+  scene-color dependency is satisfied without conflating transmission with alpha blending. Apply
+  texture-slot encoding consistently to 2D, cube, and environment samples, including explicit sRGB
+  decoding for the LDR studio IBL. WebGPU shader lowering now retains the managed material sampler
+  for single-UV shaders instead of bypassing texture transforms, decoding, and channel remapping,
+  restoring WebGL2/WebGPU material parity.
 - Add the `high-end` rendering profile, per-camera standard/reversed depth modes, finite/infinite
   reversed-Z projection, depth-convention-aware surfaces, render targets, shadows, storage graphics,
   and GPU picking. Add optional camera-relative GPU transforms while preserving CPU world identity,

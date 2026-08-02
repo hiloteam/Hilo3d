@@ -44,9 +44,10 @@ class CameraHelper extends Mesh {
         Object.assign(this, params);
         this.material = new BasicMaterial({
             lightType: 'NONE',
-            diffuse: this.color,
-            castShadows: false
+            diffuse: this.color
         });
+        this.castShadows = false;
+        this.receiveShadows = false;
         this.geometry = new Geometry({
             mode: LINES,
             isStatic: false,

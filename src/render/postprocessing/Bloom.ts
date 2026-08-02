@@ -1,4 +1,4 @@
-import Material from '../../material/Material';
+import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../material/MaterialDefinition';
 import Color from '../../math/Color';
 import Shader from '../../shader/Shader';
 import UniformBuffer from '../UniformBuffer';
@@ -288,16 +288,16 @@ class BloomRuntime implements ForwardRenderPipelineFeatureRuntime {
             u_scatter: settings.scatter,
             u_tint: settings.tint
         });
-        const material = new Material({
-            depthTest: false,
-            depthMask: false,
-            cullFace: false
-        });
         const pass = (name: string, fs: string): FullscreenRenderPass =>
             new FullscreenRenderPass({
                 name,
                 shader: new Shader({ vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE, fs }),
-                material,
+                pipelineState: {
+                    ...DEFAULT_MATERIAL_PIPELINE_STATE,
+                    depthTest: false,
+                    depthWrite: false,
+                    cullMode: 'none'
+                },
                 uniformBuffers: [this.#block]
             });
         this.#prefilter = pass('Bloom prefilter', PREFILTER_FRAGMENT);
@@ -375,7 +375,7 @@ class BloomRuntime implements ForwardRenderPipelineFeatureRuntime {
         const parameters = context.pipeline.acquirePassParameters(this.#parameters);
         parameters.configure([scene, bloom], destination);
         context.pipeline.graph.addPass(this.#composite, parameters);
-        context.resources.replaceColor(destination);
+        context.resources.replaceColor(destination, 'linear');
     }
 
     destroy(): void {

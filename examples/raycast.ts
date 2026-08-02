@@ -20,17 +20,17 @@ const texture = new Hilo3d.LazyTexture({
 });
 const material = new Hilo3d.BasicMaterial({ diffuse: texture });
 const doubleSidedMaterial = new Hilo3d.BasicMaterial({
-    side: Hilo3d.constants.FRONT_AND_BACK,
+    cullMode: 'none',
     diffuse: texture
 });
 const backSidedMaterial = new Hilo3d.BasicMaterial({
-    side: Hilo3d.constants.BACK,
+    cullMode: 'front',
     diffuse: texture
 });
 
 function addRotatingMesh(
     geometry: Hilo3d.Geometry,
-    meshMaterial: Hilo3d.Material,
+    meshMaterial: Hilo3d.MaterialInstance,
     x: number,
     y: number,
     scale: number

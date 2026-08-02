@@ -1,4 +1,4 @@
-import Material from '../../../src/material/Material';
+import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../../src/material/MaterialDefinition';
 import ComputeSampler from '../../../src/render/compute/ComputeSampler';
 import StorageGraphicsShader from '../../../src/render/compute/StorageGraphicsShader';
 import GPUDrivenRenderPass from '../../../src/render/pipeline/passes/GPUDrivenRenderPass';
@@ -69,7 +69,12 @@ void main() { color = texture(albedo, vec2(0.5)); }`,
 function createPass(): GPUDrivenRenderPass {
     return new GPUDrivenRenderPass({
         shader: shader(),
-        material: new Material({ depthTest: false, depthMask: false, cullFace: false })
+        pipelineState: Object.freeze({
+            ...DEFAULT_MATERIAL_PIPELINE_STATE,
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
+        })
     });
 }
 
@@ -77,7 +82,7 @@ describe('GPUDrivenRenderPass', () => {
     it('derives storage, sampled, vertex, and indirect graph dependencies', () => {
         const pass = new GPUDrivenRenderPass({
             shader: shader(),
-            material: new Material(),
+            pipelineState: DEFAULT_MATERIAL_PIPELINE_STATE,
             vertexLayouts: [
                 {
                     arrayStride: 16,
@@ -112,7 +117,7 @@ describe('GPUDrivenRenderPass', () => {
     it('declares indexed and indirect inputs without inspecting argument contents', () => {
         const pass = new GPUDrivenRenderPass({
             shader: shader(),
-            material: new Material(),
+            pipelineState: DEFAULT_MATERIAL_PIPELINE_STATE,
             indexFormat: 'uint32'
         });
         const builder = createBuilder();
@@ -191,7 +196,7 @@ void main() { color = texture(environmentMap, vec3(0.0, 0.0, 1.0)); }`,
             () =>
                 new GPUDrivenRenderPass({
                     shader: non2dShader,
-                    material: new Material()
+                    pipelineState: DEFAULT_MATERIAL_PIPELINE_STATE
                 })
         ).toThrow(/complete 2d view/u);
     });
@@ -229,7 +234,7 @@ void main() { color = vec4(texture(integerTexture, vec2(0.5))); }`,
             () =>
                 new GPUDrivenRenderPass({
                     shader: integerShader,
-                    material: new Material()
+                    pipelineState: DEFAULT_MATERIAL_PIPELINE_STATE
                 })
         ).toThrow(/cannot use uint/u);
 
@@ -244,7 +249,7 @@ void main() { color = vec4(texture(integerTexture, vec2(0.5))); }`,
                         : binding
                 )
             }),
-            material: new Material()
+            pipelineState: DEFAULT_MATERIAL_PIPELINE_STATE
         });
         expect(() => {
             pass.setup(createBuilder(), {
@@ -264,7 +269,7 @@ void main() { color = vec4(texture(integerTexture, vec2(0.5))); }`,
         };
         const pass = new GPUDrivenRenderPass({
             shader: shader(),
-            material: new Material(),
+            pipelineState: DEFAULT_MATERIAL_PIPELINE_STATE,
             vertexLayouts: [mutable]
         });
         mutable.attributes[0] = {
@@ -278,7 +283,7 @@ void main() { color = vec4(texture(integerTexture, vec2(0.5))); }`,
             () =>
                 new GPUDrivenRenderPass({
                     shader: shader(),
-                    material: new Material(),
+                    pipelineState: DEFAULT_MATERIAL_PIPELINE_STATE,
                     vertexLayouts: [
                         {
                             arrayStride: 8,

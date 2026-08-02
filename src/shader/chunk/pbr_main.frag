@@ -2,11 +2,7 @@ vec4 baseColorSample = vec4(1.0);
 vec3 emissionColor = u_emissionFactor.rgb;
 
 #ifdef HILO_BASE_COLOR_MAP
-    #ifdef HILO_GAMMA_CORRECTION
-        baseColorSample = sRGBToLinear(HILO_TEXTURE_2D(u_baseColorMap, HILO_BASE_COLOR_MAP));
-    #else
-        baseColorSample = HILO_TEXTURE_2D(u_baseColorMap, HILO_BASE_COLOR_MAP);
-    #endif
+    baseColorSample = HILO_TEXTURE_2D(u_baseColorMap, HILO_BASE_COLOR_MAP);
 #endif
 vec4 baseColor = hiloEvaluatePBRBaseColor(u_baseColor, baseColorSample);
 
@@ -31,9 +27,8 @@ float ao = 1.0;
     vec3 specularColor = u_specularColor.rgb;
     float glossiness = u_glossiness;
     #ifdef HILO_SPECULAR_GLOSSINESS_MAP
-        vec4 specularGlossiness = sRGBToLinear(
-            HILO_TEXTURE_2D(u_specularGlossinessMap, HILO_SPECULAR_GLOSSINESS_MAP)
-        );
+        vec4 specularGlossiness =
+            HILO_TEXTURE_2D(u_specularGlossinessMap, HILO_SPECULAR_GLOSSINESS_MAP);
         specularColor *= specularGlossiness.rgb;
         glossiness *= specularGlossiness.a;
     #endif
@@ -409,17 +404,10 @@ indirectDiffuse += baseColor.rgb * hiloDecodeRGBD(lightMapColor);
 #endif
 
 #ifdef HILO_EMISSION_MAP
-    #ifdef HILO_GAMMA_CORRECTION
-        emissionColor = hiloEvaluatePBREmission(
-            emissionColor,
-            sRGBToLinear(HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP)).rgb
-        );
-    #else
-        emissionColor = hiloEvaluatePBREmission(
-            emissionColor,
-            HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP).rgb
-        );
-    #endif
+    emissionColor = hiloEvaluatePBREmission(
+        emissionColor,
+        HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP).rgb
+    );
 #endif
 
 vec3 diffuseLighting = directDiffuse + indirectDiffuse;

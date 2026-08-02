@@ -11,7 +11,7 @@ const sphereGeometry = new Hilo3d.PlaneGeometry();
 const material = new Hilo3d.BasicMaterial({
     lightType: 'NONE',
     diffuse: new Hilo3d.Color(1, 1, 1),
-    wireframe: true
+    state: { wireframe: true }
 });
 
 camera.lookAt(new Hilo3d.Vector3(0, 0, 0));

@@ -714,13 +714,12 @@ void main() {
             }
         ]
     }),
-    material: new Hilo3d.Material({
-        transparent: false,
-        blend: false,
+    pipelineState: {
+        ...Hilo3d.DEFAULT_MATERIAL_PIPELINE_STATE,
         depthTest: false,
-        depthMask: false,
-        cullFace: false
-    })
+        depthWrite: false,
+        cullMode: 'none'
+    }
 });
 
 const AMBIENT_PARTICLE_PASS = new Hilo3d.GPUDrivenRenderPass({
@@ -907,18 +906,13 @@ void main() {
             }
         ]
     }),
-    material: new Hilo3d.Material({
-        transparent: true,
-        premultiplyAlpha: false,
-        blend: true,
-        blendSrc: Hilo3d.constants.SRC_ALPHA,
-        blendDst: Hilo3d.constants.ONE,
-        blendSrcAlpha: Hilo3d.constants.ONE,
-        blendDstAlpha: Hilo3d.constants.ONE,
+    pipelineState: {
+        ...Hilo3d.DEFAULT_MATERIAL_PIPELINE_STATE,
         depthTest: false,
-        depthMask: false,
-        cullFace: false
-    })
+        depthWrite: false,
+        cullMode: 'none',
+        blend: Hilo3d.MaterialBlendPreset.STRAIGHT_ALPHA_ADDITIVE
+    }
 });
 
 function particleDrawPass(
@@ -1088,18 +1082,15 @@ void main() {
                 }
             ]
         }),
-        material: new Hilo3d.Material({
-            transparent: true,
-            premultiplyAlpha: false,
-            blend: true,
-            blendSrc: Hilo3d.constants.SRC_ALPHA,
-            blendDst: halo ? Hilo3d.constants.ONE : Hilo3d.constants.ONE_MINUS_SRC_ALPHA,
-            blendSrcAlpha: Hilo3d.constants.ONE,
-            blendDstAlpha: halo ? Hilo3d.constants.ONE : Hilo3d.constants.ONE_MINUS_SRC_ALPHA,
+        pipelineState: {
+            ...Hilo3d.DEFAULT_MATERIAL_PIPELINE_STATE,
             depthTest: false,
-            depthMask: false,
-            cullFace: false
-        })
+            depthWrite: false,
+            cullMode: 'none',
+            blend: halo
+                ? Hilo3d.MaterialBlendPreset.STRAIGHT_ALPHA_ADDITIVE
+                : Hilo3d.MaterialBlendPreset.STRAIGHT_ALPHA
+        }
     });
 }
 
