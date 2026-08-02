@@ -90,7 +90,7 @@ class GrayscaleFeatureRuntime implements Hilo3d.ForwardRenderPipelineFeatureRunt
         const parameters = context.pipeline.acquirePassParameters(this.#parameters);
         parameters.configure(source, destination);
         context.pipeline.graph.addPass(this.#pass, parameters);
-        context.resources.replaceColor(destination);
+        context.resources.replaceColor(destination, 'linear');
     }
 
     destroy(): void {

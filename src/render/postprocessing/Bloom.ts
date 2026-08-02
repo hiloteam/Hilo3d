@@ -375,7 +375,7 @@ class BloomRuntime implements ForwardRenderPipelineFeatureRuntime {
         const parameters = context.pipeline.acquirePassParameters(this.#parameters);
         parameters.configure([scene, bloom], destination);
         context.pipeline.graph.addPass(this.#composite, parameters);
-        context.resources.replaceColor(destination);
+        context.resources.replaceColor(destination, 'linear');
     }
 
     destroy(): void {

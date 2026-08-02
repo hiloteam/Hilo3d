@@ -16,6 +16,9 @@
 - Expand the fixed Camera/Model/Skinning/Morph/Instance std140 ABI with current/previous transforms,
   render origins, and history/depth flags. Custom shaders that redeclare built-in blocks must use
   the updated field order and capacities.
+- Make forward feature color encoding explicit. `replaceColor()` now requires `linear` or `srgb`,
+  and the default Forward pipeline always routes surface presentation through the Render Graph so
+  the final output transfer is owned by the output stage rather than individual materials.
 
 ### Changes
 
@@ -25,6 +28,12 @@
   Shadow rendering now requests the original material's shadow role, glTF constructs layered PBR
   topology and all texture transforms before instantiation, and display conversion remains solely in
   post-processing/output.
+- Keep default Forward lighting, clear colors, transparent blending, and intermediate effects in
+  linear space, then apply one exact linear-to-sRGB transfer at the browser surface. Multi-camera
+  load/blend stays in a renderer-owned linear composition target, while already transformed Color
+  Uber output is presented without a second conversion. Single-camera MSAA resolves into the
+  persistent single-sample composition target; multi-camera stacks use one single-sample
+  color/depth/stencil composition contract so later cameras can load prior contents exactly.
 - Route opaque-composited transmission surfaces through the after-opaque forward queue so their
   scene-color dependency is satisfied without conflating transmission with alpha blending. Apply
   texture-slot encoding consistently to 2D, cube, and environment samples, including explicit sRGB

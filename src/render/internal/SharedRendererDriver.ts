@@ -65,7 +65,6 @@ import {
     type RHIViewport
 } from '../rhi/core';
 import { externalTextureBindingRegistry } from '../renderer/ExternalTextureBindingRegistry';
-import { ForwardRenderer } from '../renderer/ForwardRenderer';
 import type { FullscreenDrawProcessor } from '../renderer/FullscreenDrawProcessor';
 import { MeshDrawProcessor } from '../renderer/MeshDrawProcessor';
 import { OffscreenRenderTargetRenderer } from '../renderer/OffscreenRenderTargetRenderer';
@@ -104,7 +103,8 @@ import { depthClearValue } from '../renderer/DepthConvention';
 import {
     ScriptableRenderPipelineContextImpl,
     ScriptableRenderPipelineResources,
-    type ScriptableRenderPipelineServices
+    type ScriptableRenderPipelineServices,
+    type ScriptableSurfaceFramePolicy
 } from './ScriptableRenderPipelineContext';
 
 type SharedRendererOptions =
@@ -112,7 +112,6 @@ type SharedRendererOptions =
 
 interface RenderingResources {
     readonly processor: MeshDrawProcessor;
-    readonly forward: ForwardRenderer;
     readonly targets: RenderTargetResourceCache;
     readonly offscreen: OffscreenRenderTargetRenderer;
     readonly postProcess: PostProcessRenderer;
@@ -306,7 +305,6 @@ class SharedRendererDriver
         if (typeof mesh !== 'object' || mesh === null) return;
         const resources = this.#resources;
         if (resources === null) return;
-        resources.forward.detachMesh(mesh as Mesh);
         resources.processor.detachMesh(mesh as Mesh);
     };
 
@@ -354,7 +352,7 @@ class SharedRendererDriver
         this.#webGLContextOptions = Object.freeze({
             alpha: this.alpha,
             // RHI owns multisampling explicitly. An antialiased default framebuffer cannot be
-            // the destination of the WebGL multisample resolve used by ForwardRenderer.
+            // the destination of the Render Graph's explicit WebGL multisample resolve.
             antialias: false,
             depth: this.depth,
             stencil: this.stencil,
@@ -522,7 +520,6 @@ class SharedRendererDriver
         this.#activeScriptablePipelineContext = null;
         this.#scriptableResourcesFrameStarted = false;
         this.clearAfterSceneEvents();
-        resources.forward.beginComposition();
         resources.offscreen.beginComposition();
         resources.shadowRenderer.beginComposition();
         resources.postProcess.beginComposition();
@@ -615,11 +612,6 @@ class SharedRendererDriver
             failures.push(error);
         }
         try {
-            resources.forward.endComposition();
-        } catch (error) {
-            failures.push(error);
-        }
-        try {
             this.clearAfterSceneEvents();
         } catch (error) {
             failures.push(error);
@@ -647,19 +639,6 @@ class SharedRendererDriver
             failures.length = 0;
             throw failure;
         }
-    }
-
-    recordDefaultPipeline(
-        scene: RendererScene,
-        camera: Camera,
-        target: RenderTarget | null,
-        fireEvent: boolean
-    ): void {
-        if (target === null) {
-            this.renderSceneToSurface(scene, camera, fireEvent);
-            return;
-        }
-        this.renderSceneToTarget(this.requireOwnedTarget(target), scene, camera, fireEvent);
     }
 
     createPipelineContext(
@@ -736,6 +715,30 @@ class SharedRendererDriver
 
     getScriptableSurface(): RHISurface {
         return this.requireSurface();
+    }
+
+    getScriptableSurfaceFramePolicy(camera: Camera): Readonly<ScriptableSurfaceFramePolicy> {
+        const isOverlayCamera = this.#surfaceRequested;
+        if (
+            isOverlayCamera &&
+            !camera.clearDepth &&
+            this.#surfaceDepthMode !== null &&
+            this.#surfaceDepthMode !== camera.depthMode
+        ) {
+            throw new TypeError(
+                'Composed cameras may preserve surface depth only when their depth modes match.'
+            );
+        }
+        this.#surfaceDepthMode = camera.depthMode;
+        const preservePreviousColor = isOverlayCamera && !camera.clearColor;
+        return Object.freeze({
+            sampleCount: cameraCompositionRequiresSingleSample(camera) ? 1 : this.antialias ? 4 : 1,
+            colorLoadOp: preservePreviousColor ? 'load' : 'clear',
+            depthLoadOp: isOverlayCamera && !camera.clearDepth ? 'load' : 'clear',
+            depthStoreOp: 'store',
+            stencilLoadOp: isOverlayCamera && !camera.clearStencil ? 'load' : 'clear',
+            stencilStoreOp: 'store'
+        });
     }
 
     getScriptableMeshProcessor(): MeshDrawProcessor {
@@ -1347,7 +1350,6 @@ class SharedRendererDriver
         const processor = new MeshDrawProcessor(this, device, this.#compiler);
         const targets = new RenderTargetResourceCache(processor.registry);
         const offscreen = new OffscreenRenderTargetRenderer(targets, processor.submissions);
-        const forward = new ForwardRenderer(0, undefined, offscreen.bridge);
         const postProcess = new PostProcessRenderer(targets, 0, this.#compiler);
         const readback = new RenderTargetReadback(targets, processor.submissions);
         const storageBuffers = new StorageBufferResourceCache(processor.registry);
@@ -1423,7 +1425,6 @@ class SharedRendererDriver
         });
         const renderingResources: RenderingResources = {
             processor,
-            forward,
             targets,
             offscreen,
             postProcess,
@@ -1501,9 +1502,6 @@ class SharedRendererDriver
         };
         attempt(() => {
             resources.recovery.destroy();
-        });
-        attempt(() => {
-            resources.forward.destroy();
         });
         attempt(() => {
             resources.offscreen.destroy();
@@ -1661,68 +1659,6 @@ class SharedRendererDriver
         } catch (reason) {
             reportListenerFailure(reason);
         }
-    }
-
-    private renderSceneToSurface(stage: RendererScene, camera: Camera, fireEvent: boolean): void {
-        const resources = this.requireResources();
-        const visible = this.prepareScene(stage, camera);
-        const viewport = this.surfaceViewport();
-        const context = this.createContext(camera, viewport);
-        const isOverlayCamera = this.#surfaceRequested;
-        if (
-            isOverlayCamera &&
-            !camera.clearDepth &&
-            this.#surfaceDepthMode !== null &&
-            this.#surfaceDepthMode !== camera.depthMode
-        ) {
-            throw new TypeError(
-                'Composed cameras may preserve surface depth only when their depth modes match.'
-            );
-        }
-        const preservePreviousColor = isOverlayCamera && !camera.clearColor;
-        const forceSingleSample = cameraCompositionRequiresSingleSample(camera);
-        this.ensureMeshFrame(context);
-        const shadowPassCount = this.renderSceneShadows(
-            resources,
-            context,
-            visible,
-            viewport.width,
-            viewport.height
-        );
-        this.fireBeforeSceneEvents(visible, fireEvent);
-        resources.forward.build(
-            this.#pipelineHost.requireActiveScope(),
-            context,
-            this.requireSurface(),
-            {
-                classifiedMeshes: visible,
-                meshProcessor: resources.processor,
-                // A newly allocated multisample attachment cannot load the previous camera's
-                // resolved surface color. Overlay cameras therefore render directly to the
-                // single-sample surface while the first/clearing camera keeps normal MSAA.
-                sampleCount:
-                    forceSingleSample || preservePreviousColor ? 1 : this.antialias ? 4 : 1,
-                colorLoadOp: preservePreviousColor ? 'load' : 'clear',
-                clearColor: this.clearColor,
-                depthStencilFormat:
-                    this.depth || this.stencil
-                        ? this.stencil
-                            ? 'depth24plus-stencil8'
-                            : 'depth24plus'
-                        : null,
-                depthLoadOp: isOverlayCamera && !camera.clearDepth ? 'load' : 'clear',
-                depthStoreOp: 'store',
-                clearDepth: depthClearValue(camera.depthMode),
-                stencilLoadOp: isOverlayCamera && !camera.clearStencil ? 'load' : 'clear',
-                stencilStoreOp: 'store'
-            },
-            true
-        );
-        this.#surfaceRequested = true;
-        this.#surfaceDepthMode = camera.depthMode;
-        this.recordSceneBuild(visible, fireEvent, shadowPassCount);
-        this.#pendingPresentationStage = stage;
-        this.#pendingPresentationCamera = camera;
     }
 
     private renderSceneToTarget(
@@ -2185,7 +2121,6 @@ class SharedRendererDriver
         const resources = this.#resources;
         if (
             this.#pipelineHost.recording ||
-            resources?.forward.active === true ||
             resources?.offscreen.active === true ||
             resources?.shadowRenderer.active === true ||
             resources?.postProcess.active === true ||

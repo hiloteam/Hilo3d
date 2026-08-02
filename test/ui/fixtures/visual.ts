@@ -131,7 +131,7 @@ async function runReadbackDiagnostics(): Promise<void> {
                 }),
                 material: new ShaderMaterial({
                     sourceRevision: 'ViewportSemanticDiagnostics',
-                    state: { depthTest: false, cullMode: 'none' },
+                    state: { depthTest: false, depthWrite: false, cullMode: 'none' },
                     attributes: { a_position: 'POSITION' },
                     vs: `#version 300 es
                         in vec3 a_position;

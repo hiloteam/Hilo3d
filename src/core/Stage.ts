@@ -558,23 +558,11 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
             const camera = cameras[0];
             if (camera) this.renderer.render(this, camera, true);
         } else if (cameras.length > 1) {
-            let preserveDepthStencil = false;
-            for (let index = 1; index < cameras.length; index += 1) {
-                const camera = cameras[index];
-                if (camera && (!camera.clearDepth || !camera.clearStencil)) {
-                    preserveDepthStencil = true;
-                    break;
-                }
-            }
-            if (preserveDepthStencil) {
-                for (const camera of cameras) setCameraCompositionSingleSample(camera, true);
-            }
+            for (const camera of cameras) setCameraCompositionSingleSample(camera, true);
             try {
                 this.renderer.renderFrame(this._renderCameraComposition);
             } finally {
-                if (preserveDepthStencil) {
-                    for (const camera of cameras) setCameraCompositionSingleSample(camera, false);
-                }
+                for (const camera of cameras) setCameraCompositionSingleSample(camera, false);
             }
         }
         return this;

@@ -8,6 +8,7 @@ import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RenderGraphBuilder } from '../graph/RenderGraphBuilder';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
 import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from '../pipeline/passes/internal/PortableFullscreenShader';
+import { LINEAR_TO_SRGB_FRAGMENT_SOURCE } from '../pipeline/passes/internal/OutputTransferShader';
 import {
     RHITextureUsage,
     type RHIBuffer,
@@ -31,15 +32,6 @@ import { PostProcessPassTemplate, PresentPassTemplate, SharedDrawPassParameters 
 
 const DEFAULT_CLEAR_COLOR: Readonly<RHIColor> = Object.freeze({ r: 0, g: 0, b: 0, a: 1 });
 const EMPTY_UNIFORM_BUFFERS: readonly ResourceRegistryHandle<RHIBuffer>[] = Object.freeze([]);
-
-const PRESENT_FRAGMENT_SOURCE = `#version 300 es
-precision highp float;
-in vec2 v_uv;
-uniform sampler2D u_source;
-layout(location = 0) out vec4 color;
-void main() {
-    color = texture(u_source, v_uv);
-}`;
 
 export interface PostProcessOutputTarget {
     readonly owner: object;
@@ -99,7 +91,7 @@ export class PostProcessRenderer {
     readonly #presentOwner = {};
     readonly #presentShader = new ShaderClass({
         vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
-        fs: PRESENT_FRAGMENT_SOURCE
+        fs: LINEAR_TO_SRGB_FRAGMENT_SOURCE
     });
     readonly #presentPipelineState: Readonly<MaterialPipelineState> = Object.freeze({
         ...DEFAULT_MATERIAL_PIPELINE_STATE,

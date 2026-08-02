@@ -148,7 +148,8 @@ pipeline、fullscreen 和 GPU-driven path 必须传入显式 pipeline state，�
   copy 之后执行，但不等同于 alpha compositing；
 - compositing：`opaque`、straight/premultiplied alpha、straight/premultiplied additive 或 custom
   blend；
-- display transform：exposure、tone mapping 和 gamma，由 output/post-process 负责。
+- display transform：exposure、tone mapping 和 gamma，由 output/post-process 负责；Forward feature
+  replacement 显式声明 `linear`/`srgb`，surface 边界只执行一次最终 transfer。
 
 因此 transmissive PBR 材质可以仍属于 opaque compositing；`isTransparent`
 只反映 compositing，不反映 transmission 或 alpha cutoff。`forwardQueue` 还会纳入 pass resource

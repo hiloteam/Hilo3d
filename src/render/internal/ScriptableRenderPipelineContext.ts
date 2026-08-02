@@ -192,6 +192,16 @@ interface MutablePipelineOutputDepthStencilAttachmentState {
     stencilStoreOp: RenderTargetStoreOp;
 }
 
+/** @internal Surface load/store and multisample policy for one camera invocation. */
+export interface ScriptableSurfaceFramePolicy {
+    readonly sampleCount: 1 | 4;
+    readonly colorLoadOp: RenderTargetLoadOp;
+    readonly depthLoadOp: RenderTargetLoadOp;
+    readonly depthStoreOp: RenderTargetStoreOp;
+    readonly stencilLoadOp: RenderTargetLoadOp;
+    readonly stencilStoreOp: RenderTargetStoreOp;
+}
+
 interface MutableTextureGraphDescriptor {
     label: string;
     readonly size: { width: number; height: number; depthOrArrayLayers: number };
@@ -433,6 +443,7 @@ export interface ScriptableRenderPipelineServices {
     readonly renderer: RendererCore;
     readonly lightManager: LightManager;
     readonly antialias: boolean;
+    getScriptableSurfaceFramePolicy(camera: Camera): Readonly<ScriptableSurfaceFramePolicy>;
     getScriptableSurface(): RHISurface;
     getScriptableMeshProcessor(): MeshDrawProcessor;
     getScriptableFullscreenProcessor(): FullscreenDrawProcessor;
@@ -4025,27 +4036,33 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.#clearColorState.a = rendererClearColor.a;
         if (target === null) {
             const configuration = servicesConfiguration(this.services.getScriptableSurface());
+            const surfacePolicy = this.services.getScriptableSurfaceFramePolicy(camera);
             this.#outputState.kind = 'surface';
             this.#outputState.width = configuration.width;
             this.#outputState.height = configuration.height;
-            this.#outputState.sampleCount = this.services.antialias ? 4 : 1;
+            this.#outputState.sampleCount = surfacePolicy.sampleCount;
             this.#outputState.colorAttachmentCount = 1;
             this.#outputColorFormats.length = 1;
             this.#outputColorFormats[0] = pipelineColorFormat(configuration.format);
             this.#outputState.depthStencilFormat = pipelineDepthFormat(
                 configuration.depthStencilFormat
             );
-            this.configureOutputColorAttachment(0, this.#clearColorState, 'clear', 'store');
+            this.configureOutputColorAttachment(
+                0,
+                this.#clearColorState,
+                surfacePolicy.colorLoadOp,
+                'store'
+            );
             this.configureOutputDepthStencilAttachment(
                 this.#outputState.depthStencilFormat === null
                     ? null
                     : {
                           depthClearValue: depthClearValue(camera.depthMode),
-                          depthLoadOp: 'clear',
-                          depthStoreOp: 'discard',
+                          depthLoadOp: surfacePolicy.depthLoadOp,
+                          depthStoreOp: surfacePolicy.depthStoreOp,
                           stencilClearValue: 0,
-                          stencilLoadOp: 'clear',
-                          stencilStoreOp: 'discard'
+                          stencilLoadOp: surfacePolicy.stencilLoadOp,
+                          stencilStoreOp: surfacePolicy.stencilStoreOp
                       }
             );
             this.setViewport(

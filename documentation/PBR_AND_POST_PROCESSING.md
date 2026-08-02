@@ -128,7 +128,10 @@ Graph 分配和回收。
 - display-space 8-bit dithering。
 
 默认 tone mapper 是 Khronos PBR Neutral，避免高亮压缩时过度 hue shift。Bloom 必须在 Color
-Uber 之前，不能在 sRGB/tone-mapped 结果上模糊。
+Uber 之前，不能在 sRGB/tone-mapped 结果上模糊。Forward feature 资源显式携带 `linear`/`srgb`
+编码；Color Uber 将结果标记为 `srgb`，最终 surface output 因而不会再次转换。未启用 Color
+Uber 时，默认 Forward output pass 负责唯一一次准确的 linear-to-sRGB
+transfer；RenderTarget 仍保留调用方选择的线性或 sRGB 格式语义。
 
 当前 `exposure` 是固定的手动 EV compensation；运行时尚未提供 scene luminance histogram、eye
 adaptation、GPU exposure

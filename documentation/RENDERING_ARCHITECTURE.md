@@ -112,15 +112,12 @@ slot 使用公开的类型化 semantic 常量，不以任意字符串作为公�
 changes 与长期 GPU material database 路线见
 [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 
-### 1.3 RenderPipelineHost：默认快路径与可脚本化编排
+### 1.3 RenderPipelineHost：统一的可脚本化编排
 
 每个 Renderer 拥有一个 `RenderPipelineHost` 和一个 renderer-local `RenderPipeline`
-runtime。创建时未传 `renderPipeline` 时，进程级 `ForwardRenderPipelineFactory` 创建一个 direct
-runtime marker；host 识别它并直接调用原有
-`ForwardRenderer`/offscreen 路径，不创建公共 context、中间 scene color 或额外 present
-pass，因此默认逐 Draw 热路径不经过 feature facade。
-
-显式传入 factory 时，runtime 的同步 `record()` 获得 frame-scoped `RenderPipelineContext`：
+runtime。创建时未传 `renderPipeline` 时也由进程级 `ForwardRenderPipelineFactory`
+为该 Renderer 创建独立 runtime；默认 Forward 与显式 factory 使用同一个同步 `record()`
+边界和 frame-scoped `RenderPipelineContext`，不存在绕过 Render Graph/RHI 的 direct recorder：
 
 - `cull()` 与 `createRendererList()` 复用 shared renderer 的场景收集、排序、instancing 和 mesh
   processor；
@@ -151,16 +148,23 @@ pass，因此默认逐 Draw 热路径不经过 feature facade。
 带 feature 的 `ForwardRenderPipelineFactory` 在构造时快照配置并合并静态 capabilities/limits/format
 requirements；每个 feature 配置在 Renderer 创建时产生独立且只能附着一次的 runtime。feature
 context 暴露内置 forward/shadow 共用的 `cullingResults`，因此附加 Scene
-Pass 无需重新 cull，也不会与 Shadow Atlas 的场景 identity 分叉。只有 feature 声明需要采样 scene
-color/depth 时才创建中间资源；其中 scene color 使用公共 fullscreen 线性采样 ABI，因此要求
-`filterable-sampled` format；无 feature 的默认 factory 始终保留 direct recorder。
+Pass 无需重新 cull，也不会与 Shadow Atlas 的场景 identity 分叉。feature 声明需要采样 scene
+color/depth 时创建对应中间资源；其中 scene color 使用公共 fullscreen 线性采样 ABI，因此要求
+`filterable-sampled` format。默认 factory 也通过同一 Render Graph 路径把 surface scene
+color 保留在 renderer-owned linear composition target，到最终 output
+pass 才执行一次准确的 linear-to-sRGB transfer。多相机的 surface
+`load`、透明混合和共享 depth/stencil 都继续作用于该线性 composition target，不采样 presentation
+surface。持久 composition target 固定为 single-sample；单相机 MSAA 使用 transient
+attachment 并 resolve 到该目标，多相机 stack 则统一 single-sample，避免跨 Camera 加载已 resolve 的多采样内容。离屏 RenderTarget 不隐式套用 display
+transfer。
 
 内置 HDR 组合由 `PostProcessRenderPipelineFactory` 提供：attachment-zero scene color 使用
 `rgba16float`，opaque queue 完成后由 graph `TextureCopyPass` 捕获 opaque scene
 texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。随后
 `Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent
 upsample 与线性 composite；`ColorUber` 最后统一完成 grading、tone
-mapping、linear-to-sRGB 与 dithering。float scene target 会选择 linear-output material
+mapping、linear-to-sRGB 与 dithering，并把输出编码标记为 `srgb`，避免 surface output
+pass 重复转换。float scene target 会选择 linear-output material
 variant，禁止材质 shader 提前执行 gamma encode 或旧的局部 tone mapping。完整颜色与材质合同见
 [`PBR_AND_POST_PROCESSING.md`](./PBR_AND_POST_PROCESSING.md)。
 
