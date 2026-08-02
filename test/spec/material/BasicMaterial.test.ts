@@ -45,7 +45,7 @@ describe('BasicMaterial', () => {
         });
 
         expect(material.getRenderOption()).toMatchObject({
-            SPECULAR_ENV_MAP: 1,
+            SPECULAR_ENV_MAP: Hilo3d.MaterialTextureSlot.SPECULAR_ENVIRONMENT,
             SPECULAR_ENV_MAP_CUBE: 1
         });
         expect(material.definition.getTextureSlot('specularEnvironment')?.viewDimension).toBe(

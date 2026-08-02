@@ -8,6 +8,7 @@ import {
 import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from '../../../src/render/pipeline/passes/internal/PortableFullscreenShader';
 import { getWebGPUUniformBlockBinding } from '../../../src/render/shader/WebGPUBindingLayout';
 import { registerUniformBlockBinding } from '../../../src/render/ubo/UniformBlockBindings';
+import { MaterialTextureSlot } from '../../../src/material/MaterialTextureSlots';
 import Shader from '../../../src/shader/Shader';
 import { testEnv } from '../../renderer-setup';
 
@@ -229,6 +230,46 @@ void main() {
             'texture(sampler2D(diffuseMap__texture, diffuseMap__sampler), uv)'
         );
         expect(prepared.fragment.glsl).not.toContain('unusedMap__texture');
+    });
+
+    it('preserves managed material sampling when only one UV set is active', async () => {
+        const managedVertex = `#version 300 es
+#define HILO_HAS_TEXCOORD0 1
+in vec2 position;
+out vec2 v_texcoord0;
+void main() {
+    v_texcoord0 = position;
+    gl_Position = vec4(position, 0.0, 1.0);
+}`;
+        const managedFragment = `#version 300 es
+precision highp float;
+#define HILO_HAS_TEXCOORD0 1
+#define HILO_BASE_COLOR_MAP ${String(MaterialTextureSlot.BASE_COLOR)}
+in vec2 v_texcoord0;
+uniform sampler2D baseColorMap;
+layout(location = 0) out vec4 color;
+vec4 hiloTexture2D(sampler2D sourceTexture, int slot) {
+    vec4 sampled = texture(sourceTexture, v_texcoord0);
+    return slot == ${String(MaterialTextureSlot.BASE_COLOR)}
+        ? vec4(sampled.rgb * 0.5, sampled.a)
+        : sampled;
+}
+#define HILO_TEXTURE_2D(SAMPLER, SLOT) hiloTexture2D(SAMPLER, SLOT)
+void main() { color = HILO_TEXTURE_2D(baseColorMap, HILO_BASE_COLOR_MAP); }`;
+        const translator = new NagaShaderTranslator();
+        await translator.initialize();
+        const translated = translator.translate(managedVertex, managedFragment);
+
+        expect(translated.fragment.glsl).toContain(
+            'hiloTexture2D(baseColorMap__texture, baseColorMap__sampler, HILO_BASE_COLOR_MAP)'
+        );
+        expect(translated.fragment.glsl).not.toContain(
+            'texture(sampler2D(baseColorMap__texture, baseColorMap__sampler), v_texcoord0)'
+        );
+        expect(translated.fragment.wgsl).toContain(
+            `hiloTexture2D(baseColorMap_texture, baseColorMap_sampler, ${String(MaterialTextureSlot.BASE_COLOR)}i)`
+        );
+        await validateWgslOnDevice('single-UV managed material sampling', translated.fragment.wgsl);
     });
 
     it('normalizes reordered uniform-block layouts and rejects implicit host ABIs', () => {
@@ -907,12 +948,12 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
             HILO_HAS_TANGENT: 1,
             HILO_HAS_TEXCOORD0: 1,
             HILO_HAS_TEXCOORD1: 1,
-            HILO_DIFFUSE_MAP: 0,
-            HILO_SPECULAR_MAP: 0,
-            HILO_AMBIENT_MAP: 1,
-            HILO_NORMAL_MAP: 0,
-            HILO_EMISSION_MAP: 1,
-            HILO_TRANSPARENCY_MAP: 0,
+            HILO_DIFFUSE_MAP: MaterialTextureSlot.DIFFUSE,
+            HILO_SPECULAR_MAP: MaterialTextureSlot.SPECULAR,
+            HILO_AMBIENT_MAP: MaterialTextureSlot.AMBIENT,
+            HILO_NORMAL_MAP: MaterialTextureSlot.NORMAL,
+            HILO_EMISSION_MAP: MaterialTextureSlot.EMISSION,
+            HILO_TRANSPARENCY_MAP: MaterialTextureSlot.OPACITY,
             HILO_DIRECTIONAL_LIGHTS: 2,
             HILO_SPOT_LIGHTS: 1,
             HILO_POINT_LIGHTS: 2,
@@ -936,33 +977,33 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
             HILO_HAS_TEXCOORD0: 1,
             HILO_HAS_TEXCOORD1: 1,
             HILO_NEED_WORLD_NORMAL: 1,
-            HILO_BASE_COLOR_MAP: 0,
-            HILO_METALLIC_MAP: 0,
-            HILO_ROUGHNESS_MAP: 1,
-            HILO_METALLIC_ROUGHNESS_MAP: 0,
-            HILO_OCCLUSION_MAP: 1,
+            HILO_BASE_COLOR_MAP: MaterialTextureSlot.BASE_COLOR,
+            HILO_METALLIC_MAP: MaterialTextureSlot.METALLIC,
+            HILO_ROUGHNESS_MAP: MaterialTextureSlot.ROUGHNESS,
+            HILO_METALLIC_ROUGHNESS_MAP: MaterialTextureSlot.METALLIC_ROUGHNESS,
+            HILO_OCCLUSION_MAP: MaterialTextureSlot.OCCLUSION,
             HILO_OCCLUSION_STRENGTH: 1,
-            HILO_DIFFUSE_ENV_MAP: 0,
+            HILO_DIFFUSE_ENV_MAP: MaterialTextureSlot.DIFFUSE_ENVIRONMENT,
             HILO_DIFFUSE_ENV_MAP_CUBE: 1,
-            HILO_SPECULAR_ENV_MAP: 0,
+            HILO_SPECULAR_ENV_MAP: MaterialTextureSlot.SPECULAR_ENVIRONMENT,
             HILO_SPECULAR_ENV_MAP_CUBE: 1,
             HILO_USE_SHADER_TEXTURE_LOD: 1,
-            HILO_EMISSION_MAP: 0,
-            HILO_LIGHT_MAP: 1,
+            HILO_EMISSION_MAP: MaterialTextureSlot.EMISSION,
+            HILO_LIGHT_MAP: MaterialTextureSlot.LIGHT,
             HILO_HAS_CLEARCOAT: 1,
-            HILO_CLEARCOAT_MAP: 0,
-            HILO_CLEARCOAT_ROUGHNESS_MAP: 1,
-            HILO_CLEARCOAT_NORMAL_MAP: 0,
+            HILO_CLEARCOAT_MAP: MaterialTextureSlot.CLEARCOAT,
+            HILO_CLEARCOAT_ROUGHNESS_MAP: MaterialTextureSlot.CLEARCOAT_ROUGHNESS,
+            HILO_CLEARCOAT_NORMAL_MAP: MaterialTextureSlot.CLEARCOAT_NORMAL,
             HILO_HAS_ANISOTROPY: 1,
-            HILO_ANISOTROPY_MAP: 1,
+            HILO_ANISOTROPY_MAP: MaterialTextureSlot.ANISOTROPY,
             HILO_HAS_TRANSMISSION: 1,
-            HILO_TRANSMISSION_MAP: 0,
+            HILO_TRANSMISSION_MAP: MaterialTextureSlot.TRANSMISSION,
             HILO_HAS_VOLUME: 1,
-            HILO_THICKNESS_MAP: 1,
+            HILO_THICKNESS_MAP: MaterialTextureSlot.THICKNESS,
             HILO_HAS_IRIDESCENCE: 1,
-            HILO_IRIDESCENCE_MAP: 0,
-            HILO_IRIDESCENCE_THICKNESS_MAP: 1,
-            HILO_NORMAL_MAP: 0,
+            HILO_IRIDESCENCE_MAP: MaterialTextureSlot.IRIDESCENCE,
+            HILO_IRIDESCENCE_THICKNESS_MAP: MaterialTextureSlot.IRIDESCENCE_THICKNESS,
+            HILO_NORMAL_MAP: MaterialTextureSlot.NORMAL,
             HILO_DIRECTIONAL_LIGHTS: 2,
             HILO_SPOT_LIGHTS: 1,
             HILO_POINT_LIGHTS: 2,
@@ -1016,13 +1057,13 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
             HILO_HAS_NORMAL: 1,
             HILO_HAS_TANGENT: 1,
             HILO_HAS_TEXCOORD1: 1,
-            HILO_NORMAL_MAP: 1,
-            HILO_BASE_COLOR_MAP: 1,
+            HILO_NORMAL_MAP: MaterialTextureSlot.NORMAL,
+            HILO_BASE_COLOR_MAP: MaterialTextureSlot.BASE_COLOR,
             HILO_PBR_SPECULAR_GLOSSINESS: 1,
-            HILO_SPECULAR_GLOSSINESS_MAP: 1,
+            HILO_SPECULAR_GLOSSINESS_MAP: MaterialTextureSlot.SPECULAR_GLOSSINESS,
             HILO_DIFFUSE_ENV_SPHERE_HARMONICS3: 1,
             HILO_NEED_WORLD_NORMAL: 1,
-            HILO_SPECULAR_ENV_MAP: 1,
+            HILO_SPECULAR_ENV_MAP: MaterialTextureSlot.SPECULAR_ENVIRONMENT,
             HILO_IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS: 1,
             HILO_DIRECTIONAL_LIGHTS: 1,
             HILO_USE_LOG_DEPTH: 1,
@@ -1051,7 +1092,7 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
             HILO_HAS_NORMAL: 1,
             HILO_HAS_TANGENT: 1,
             HILO_HAS_TEXCOORD0: 1,
-            HILO_NORMAL_MAP: 0,
+            HILO_NORMAL_MAP: MaterialTextureSlot.NORMAL,
             HILO_JOINT_COUNT: 32,
             HILO_MORPH_TARGET_COUNT: 8,
             HILO_MORPH_HAS_POSITION: 1,
@@ -1098,7 +1139,7 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
             HILO_NORMAL_QUANTIZED: 1,
             HILO_UV_QUANTIZED: 1,
             HILO_UV1_QUANTIZED: 1,
-            HILO_DIFFUSE_MAP: 0,
+            HILO_DIFFUSE_MAP: MaterialTextureSlot.DIFFUSE,
             HILO_DIRECTIONAL_LIGHTS: 1
         }
     },
@@ -1108,7 +1149,7 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
         defines: {
             HILO_LIGHT_TYPE_NONE: 1,
             HILO_SIDE: 1028,
-            HILO_DIFFUSE_CUBE_MAP: 1
+            HILO_DIFFUSE_CUBE_MAP: MaterialTextureSlot.DIFFUSE
         }
     },
     {

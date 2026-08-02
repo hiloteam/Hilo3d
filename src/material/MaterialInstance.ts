@@ -247,9 +247,24 @@ export class MaterialInstance {
         this.markDataChanged();
     }
 
-    /** Queue classification derives only from compositing, not from transmission or coverage. */
+    /** Whether the forward pass composites this surface with an existing color attachment. */
     get isTransparent(): boolean {
         return this.compositing.mode !== 'opaque';
+    }
+
+    /** Whether the forward shader samples the opaque scene-color copy. */
+    get requiresOpaqueSceneTexture(): boolean {
+        return this.definition.staticFeatures['HAS_TRANSMISSION'] === 1;
+    }
+
+    /**
+     * Forward renderer queue selected from compositing and pass resource dependencies.
+     *
+     * An unblended transmission surface remains compositionally opaque, but it must execute after
+     * the opaque scene copy exists and therefore belongs to the transparent/after-opaque queue.
+     */
+    get forwardQueue(): 'opaque' | 'transparent' {
+        return this.isTransparent || this.requiresOpaqueSceneTexture ? 'transparent' : 'opaque';
     }
 
     get lightType(): string {

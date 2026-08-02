@@ -25,6 +25,12 @@
   Shadow rendering now requests the original material's shadow role, glTF constructs layered PBR
   topology and all texture transforms before instantiation, and display conversion remains solely in
   post-processing/output.
+- Route opaque-composited transmission surfaces through the after-opaque forward queue so their
+  scene-color dependency is satisfied without conflating transmission with alpha blending. Apply
+  texture-slot encoding consistently to 2D, cube, and environment samples, including explicit sRGB
+  decoding for the LDR studio IBL. WebGPU shader lowering now retains the managed material sampler
+  for single-UV shaders instead of bypassing texture transforms, decoding, and channel remapping,
+  restoring WebGL2/WebGPU material parity.
 - Add the `high-end` rendering profile, per-camera standard/reversed depth modes, finite/infinite
   reversed-Z projection, depth-convention-aware surfaces, render targets, shadows, storage graphics,
   and GPU picking. Add optional camera-relative GPU transforms while preserving CPU world identity,

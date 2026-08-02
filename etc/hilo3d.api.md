@@ -4019,6 +4019,7 @@ export class MaterialInstance {
     readonly definition: MaterialDefinition;
     // (undocumented)
     destroyTextures(): void;
+    get forwardQueue(): 'opaque' | 'transparent';
     // (undocumented)
     getAttributeData(name: string, mesh: Mesh, programInfo: ProgramBindingInfo): unknown;
     // (undocumented)
@@ -4061,6 +4062,7 @@ export class MaterialInstance {
     // (undocumented)
     get opacity(): number;
     set opacity(value: number);
+    get requiresOpaqueSceneTexture(): boolean;
     get revision(): number;
     setTextureSlot(name: string, value: Texture<unknown> | MaterialTextureSlotInput | null): void;
     // (undocumented)
@@ -5194,7 +5196,6 @@ export class PBRMaterial extends MaterialInstance {
     // (undocumented)
     get occlusionStrength(): number;
     set occlusionStrength(value: number);
-    get requiresOpaqueSceneTexture(): boolean;
     // (undocumented)
     get roughness(): number;
     set roughness(value: number);

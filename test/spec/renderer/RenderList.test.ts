@@ -43,6 +43,18 @@ describe('RenderList', () => {
         expect(list.opaqueList).toHaveLength(5);
     });
 
+    it('queues unblended transmission after the opaque scene copy', () => {
+        const material = new Hilo3d.PBRMaterial({ transmissionFactor: 1 });
+        const mesh = new Hilo3d.Mesh({ material, geometry: new Hilo3d.BoxGeometry() });
+        list.reset();
+
+        list.addMesh(mesh, testEnv.camera);
+
+        expect(material.isTransparent).toBe(false);
+        expect(list.opaqueList).toEqual([]);
+        expect(list.transparentList).toEqual([mesh]);
+    });
+
     it('traverse', () => {
         const callback = vi.fn<(mesh: Hilo3d.Mesh) => void>();
         list.traverse(callback);

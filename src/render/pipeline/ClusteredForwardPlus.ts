@@ -3283,7 +3283,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const material = mesh.material;
         if (material === null) return;
         this.#fallbackObjectCount++;
-        if (material.isTransparent) this.#fallbackHasTransparent = true;
+        if (material.forwardQueue === 'transparent') this.#fallbackHasTransparent = true;
         else this.#fallbackHasOpaque = true;
     }
 

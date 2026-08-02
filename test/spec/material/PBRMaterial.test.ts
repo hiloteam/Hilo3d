@@ -48,10 +48,19 @@ describe('PBRMaterial', () => {
 
         expect(material.requiresOpaqueSceneTexture).toBe(true);
         expect(material.isTransparent).toBe(false);
+        expect(material.forwardQueue).toBe('transparent');
         expect(material.getRenderOption()).toMatchObject({
             HAS_TRANSMISSION: 1,
             HAS_VOLUME: 1
         });
+    });
+
+    it('keeps ordinary opaque surfaces in the opaque forward queue', () => {
+        const material = new Hilo3d.PBRMaterial();
+
+        expect(material.requiresOpaqueSceneTexture).toBe(false);
+        expect(material.isTransparent).toBe(false);
+        expect(material.forwardQueue).toBe('opaque');
     });
 
     it('enables layered anisotropy, clearcoat, volume and iridescence variants', () => {

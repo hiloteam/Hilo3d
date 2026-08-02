@@ -77,12 +77,17 @@ opaque scene pass
   -> transparent scene pass (u_opaqueTexture)
 ```
 
-copy 是 Render Graph 中显式声明的 `TextureCopyPass`，不是同一 attachment 的读写 feedback。透明 PBR
-draw 在 graph prepare 阶段获得 frame-lifetime scene texture bind
+copy 是 Render Graph 中显式声明的 `TextureCopyPass`，不是同一 attachment 的读写 feedback。需要 scene
+color 的 PBR draw 即使使用 opaque compositing，也由 `forwardQueue` 放入 after-opaque renderer
+list，并在 graph prepare 阶段获得 frame-lifetime scene texture bind
 group；普通材质不承担该 binding。WebGPU 使用固定 group 3 texture/sampler pair，custom uniform
 block 从 group 3 binding 2 开始；WebGL 2 使用同一 reflection 计划映射 combined
 sampler。同一 transparent pass 内的所有 transmission shader variant 共用 renderer-owned canonical
 group 3 layout，避免不同 glTF 材质排列各自创建 native layout 后无法绑定同一 opaque scene texture。
+
+材质 texture slot 的 encoding 同时覆盖 2D、cube 与 environment sampling。示例的 LDR studio
+IBL 显式声明为 sRGB，shader 在 HDR 光照计算前解码；两后端不依赖各自 external-image
+upload 的隐式颜色转换。
 
 Transmission 使用投影后的 screen-space refraction
 ray；volume 根据折射方向修正光程，再用 Beer-Lambert attenuation 处理吸收。它是屏幕空间实现，因此：

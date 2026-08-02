@@ -144,14 +144,17 @@ pipeline、fullscreen 和 GPU-driven path 必须传入显式 pipeline state，�
 这三种概念互不替代：
 
 - coverage：`opaque`、`mask` 或 `alpha-to-coverage`，决定表面是否存在；
-- transmission：PBR shading 数据，需要 opaque scene texture，但不自动进入透明排序；
+- transmission：PBR shading 数据，需要 opaque scene texture，因此在 opaque
+  copy 之后执行，但不等同于 alpha compositing；
 - compositing：`opaque`、straight/premultiplied alpha、straight/premultiplied additive 或 custom
   blend；
 - display transform：exposure、tone mapping 和 gamma，由 output/post-process 负责。
 
 因此 transmissive PBR 材质可以仍属于 opaque compositing；`isTransparent`
-只反映 compositing，不反映 transmission 或 alpha cutoff。alpha compositing 会确定性地关闭 depth
-write 并应用标准 blend preset，除非选择显式 custom compositing。
+只反映 compositing，不反映 transmission 或 alpha cutoff。`forwardQueue` 还会纳入 pass resource
+dependency：需要 opaque scene texture 的材质进入 `transparent`/after-opaque
+queue，但不会因此启用 blend。alpha compositing 会确定性地关闭 depth write 并应用标准 blend
+preset，除非选择显式 custom compositing。
 
 ## 6. TextureSlot 与材质 UBO ABI
 
@@ -163,7 +166,11 @@ texture + sampler state + UV set + mat3 transform + encoding + rgba channel mapp
 
 glTF core texture 和 layered PBR extension 都通过同一 slot builder 进入材质；
 `KHR_texture_transform` 不再写共享的 `uvMatrix` /
-`uvMatrix1`。一个材质中的不同纹理可以安全使用不同 UV 集与变换。
+`uvMatrix1`。一个材质中的不同纹理可以安全使用不同 UV 集与变换。2D、cube 和 environment
+sampler 都必须应用同一 slot encoding；尤其 LDR sRGB
+IBL 必须在线性 PBR 计算前解码，不能依赖 WebGL/WebGPU 的外部图片上传颜色转换。WebGPU 的 GLSL-to-WGSL
+lowering 即使只启用一个 UV 集，也必须保留 managed material sampler 调用；直接改写成裸 `texture()`
+会绕过 slot transform、encoding 和 channel mapping。
 
 WebGL2/WebGPU portable uniform ABI 分成两个 material-frequency block：
 

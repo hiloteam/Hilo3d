@@ -1904,9 +1904,10 @@ function rewriteNamedFunctionCalls(
 }
 
 /**
- * Lower Hilo's UV-selection macro before lowering user functions. With two UV
- * sets the macro forwards to a sampler-taking helper; with one UV set it maps
- * directly to the GLSL texture builtin.
+ * Lower Hilo's managed material-texture macro before lowering user functions.
+ * Every texture-coordinate configuration must keep the sampler-taking helper:
+ * besides UV selection it owns texture transforms, color decoding, and channel
+ * remapping. Bypassing it for a single UV set changes material semantics.
  */
 function lowerHiloTextureCalls(source: string, analysis: PreprocessorAnalysis): string {
     const hasUv0 = analysis.macros.has('HILO_HAS_TEXCOORD0');
@@ -1917,14 +1918,10 @@ function lowerHiloTextureCalls(source: string, analysis: PreprocessorAnalysis): 
         const combined = samplerConstructorArguments(arguments_[0]?.text ?? '');
         const uvSet = arguments_[1]?.text.trim();
         if (!combined || !uvSet) return null;
-        if (hasUv0 && hasUv1) {
+        if (hasUv0 || hasUv1) {
             return `hiloTexture2D(${combined.texture}, ${combined.sampler}, ${uvSet})`;
         }
-        if (!hasUv0 && !hasUv1) {
-            throw new Error('HILO_TEXTURE_2D is active without a texture-coordinate attribute');
-        }
-        const coordinates = hasUv1 ? 'v_texcoord1' : 'v_texcoord0';
-        return `texture(${combined.type}(${combined.texture}, ${combined.sampler}), ${coordinates})`;
+        throw new Error('HILO_TEXTURE_2D is active without a texture-coordinate attribute');
     });
 }
 

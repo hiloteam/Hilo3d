@@ -823,11 +823,6 @@ class PBRMaterial extends MaterialInstance {
         }
     }
 
-    /** Transmission is a shading property, not an alias for alpha compositing. */
-    get requiresOpaqueSceneTexture(): boolean {
-        return this.definition.staticFeatures['HAS_TRANSMISSION'] === 1;
-    }
-
     override getRenderOption(option: ShaderOptions = {}): ShaderOptions {
         return super.getRenderOption(option);
     }

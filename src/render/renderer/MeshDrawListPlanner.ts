@@ -400,9 +400,9 @@ export class MeshDrawListPlanner {
         record.geometry = geometry;
         record.material = material;
         record.renderOrder = mesh.renderOrder;
-        record.transparent = material.isTransparent;
+        record.transparent = material.forwardQueue === 'transparent';
         record.transparentDepth = 0;
-        if (material.isTransparent && this.#transparentSortCamera !== null) {
+        if (record.transparent && this.#transparentSortCamera !== null) {
             mesh.worldMatrix.getTranslation(this.#transparentPosition);
             this.#transparentPosition.transformMat4(
                 this.#transparentSortCamera.viewProjectionMatrix
@@ -410,7 +410,7 @@ export class MeshDrawListPlanner {
             record.transparentDepth = this.#transparentPosition.z;
         }
 
-        if (mesh.useInstanced && material.isTransparent) {
+        if (mesh.useInstanced && record.transparent) {
             if (record.batch !== null) {
                 const oldBatch = record.batch;
                 record.batch = null;
@@ -459,7 +459,7 @@ export class MeshDrawListPlanner {
             if (batch.meshes.length > this.#diagnosticState.largestInstancedBatchCapacity) {
                 this.#diagnosticState.largestInstancedBatchCapacity = batch.meshes.length;
             }
-        } else if (material.isTransparent) {
+        } else if (record.transparent) {
             this.#transparentMeshes.push(mesh);
         } else {
             this.#opaqueMeshes.push(mesh);
@@ -549,7 +549,7 @@ export class MeshDrawListPlanner {
         batch.material = material;
         batch.meshes.length = 0;
         batch.renderOrder = renderOrder;
-        batch.transparent = material.isTransparent;
+        batch.transparent = material.forwardQueue === 'transparent';
         batch.ownerReferenceCount = 0;
         batch.epoch = 0;
         batch.identityOrder = ++this.#nextBatchIdentityOrder;
@@ -571,7 +571,7 @@ export class MeshDrawListPlanner {
         batch.epoch = this.#epoch;
         batch.meshes.length = 0;
         batch.renderOrder = renderOrder;
-        batch.transparent = material.isTransparent;
+        batch.transparent = material.forwardQueue === 'transparent';
         batch.inputIndex = inputIndex;
         batch.orderPreserving = false;
         this.#instancedBatches.push(batch);

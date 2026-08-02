@@ -6,8 +6,8 @@ export function environmentMaterialDefaults(
 ): Readonly<Pick<Hilo3d.PBRMaterialParameters, 'brdfLUT' | 'diffuseEnvMap' | 'specularEnvMap'>> {
     return Object.freeze({
         brdfLUT: maps.brdfLUT,
-        diffuseEnvMap: maps.diffuseEnvMap,
-        specularEnvMap: maps.specularEnvMap
+        diffuseEnvMap: Object.freeze({ texture: maps.diffuseEnvMap, encoding: 'srgb' as const }),
+        specularEnvMap: Object.freeze({ texture: maps.specularEnvMap, encoding: 'srgb' as const })
     });
 }
 

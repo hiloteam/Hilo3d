@@ -97,7 +97,7 @@ function createDefinition(parameters: Readonly<BasicMaterialParameters>) {
             ...(diffuse !== null && !(diffuse.texture instanceof CubeTexture)
                 ? { DIFFUSE_MAP: MaterialTextureSlot.DIFFUSE }
                 : diffuse?.texture instanceof CubeTexture
-                  ? { DIFFUSE_CUBE_MAP: 1 }
+                  ? { DIFFUSE_CUBE_MAP: MaterialTextureSlot.DIFFUSE }
                   : {}),
             ...(ambient !== null ? { AMBIENT_MAP: MaterialTextureSlot.AMBIENT } : {}),
             ...(specular !== null ? { SPECULAR_MAP: MaterialTextureSlot.SPECULAR } : {}),
@@ -110,7 +110,7 @@ function createDefinition(parameters: Readonly<BasicMaterialParameters>) {
             ...(specularEnvironment === null
                 ? {}
                 : {
-                      SPECULAR_ENV_MAP: 1,
+                      SPECULAR_ENV_MAP: MaterialTextureSlot.SPECULAR_ENVIRONMENT,
                       ...(specularEnvironment.texture instanceof CubeTexture
                           ? { SPECULAR_ENV_MAP_CUBE: 1 }
                           : {})

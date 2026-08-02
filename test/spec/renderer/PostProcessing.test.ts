@@ -51,7 +51,15 @@ describe('built-in post-processing', () => {
             /vec3 hiloTextureCubeDirection\(vec3 direction\)\s*\{\s*return direction;\s*\}/u
         );
         expect(uv).toContain('texture(sourceTexture, hiloTextureUV(hiloMaterialUV(slot)))');
+        expect(uv).toContain('vec3 hiloDecodeMaterialColor(vec3 sampled, int slot)');
+        expect(uv).toContain('vec4 hiloMaterialSample(vec4 sampled, int slot)');
         expect(environment).toContain('texture(uTexture, hiloTextureCubeDirection(position))');
+        expect(pbr).toContain(
+            'radiance = HILO_DECODE_MATERIAL_COLOR(radiance, HILO_SPECULAR_ENV_MAP);'
+        );
+        expect(pbr).toContain(
+            'irradiance = HILO_DECODE_MATERIAL_COLOR(irradiance, HILO_DIFFUSE_ENV_MAP);'
+        );
         expect(pbr).toContain('hiloTextureUV(vec2(NdotV, 1.0 - perceptualRoughness))');
         expect(areaLight).toContain('texture(areaLightsLtcTexture1, hiloTextureUV(uv))');
     });

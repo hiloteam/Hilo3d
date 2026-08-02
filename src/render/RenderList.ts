@@ -132,7 +132,7 @@ class RenderList {
                 mesh.worldMatrix.getTranslation(tempVector3);
                 tempVector3.transformMat4(camera.viewProjectionMatrix);
                 renderDepths.set(mesh, tempVector3.z);
-                if (material.isTransparent) {
+                if (material.forwardQueue === 'transparent') {
                     this.transparentList.push(mesh);
                 } else {
                     this.opaqueList.push(mesh);

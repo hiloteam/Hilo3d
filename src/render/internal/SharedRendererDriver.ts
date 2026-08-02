@@ -1911,7 +1911,7 @@ class SharedRendererDriver
         let hasTransparent = false;
         for (const mesh of meshes) {
             faces += countMeshFaces(mesh);
-            if (mesh.material?.isTransparent === true) hasTransparent = true;
+            if (mesh.material?.forwardQueue === 'transparent') hasTransparent = true;
         }
         this.#applicationFaceCount += faces;
         this.#applicationPassCount +=

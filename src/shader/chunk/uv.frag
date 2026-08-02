@@ -17,6 +17,23 @@ float hiloMaterialChannel(vec4 value, int channel) {
     return channel == 5 ? 1.0 : 0.0;
 }
 
+vec3 hiloDecodeMaterialColor(vec3 sampled, int slot) {
+    return int(u_materialTextureInfo[slot].y) == 1 ? sRGBToLinear(sampled) : sampled;
+}
+
+vec4 hiloMaterialSample(vec4 sampled, int slot) {
+    sampled = vec4(hiloDecodeMaterialColor(sampled.rgb, slot), sampled.a);
+    ivec4 channels = u_materialTextureChannels[slot];
+    return vec4(
+        hiloMaterialChannel(sampled, channels.x),
+        hiloMaterialChannel(sampled, channels.y),
+        hiloMaterialChannel(sampled, channels.z),
+        hiloMaterialChannel(sampled, channels.w)
+    );
+}
+
+#define HILO_MATERIAL_SAMPLE(SAMPLED, SLOT) hiloMaterialSample(SAMPLED, SLOT)
+
 #if defined(HILO_HAS_TEXCOORD0) || defined(HILO_HAS_TEXCOORD1)
     vec2 hiloMaterialUV(int slot) {
         int uvSet = int(u_materialTextureInfo[slot].x);
@@ -32,18 +49,13 @@ float hiloMaterialChannel(vec4 value, int channel) {
 
     vec4 hiloTexture2D(sampler2D sourceTexture, int slot) {
         vec4 sampled = texture(sourceTexture, hiloTextureUV(hiloMaterialUV(slot)));
-        if (int(u_materialTextureInfo[slot].y) == 1) sampled = sRGBToLinear(sampled);
-        ivec4 channels = u_materialTextureChannels[slot];
-        return vec4(
-            hiloMaterialChannel(sampled, channels.x),
-            hiloMaterialChannel(sampled, channels.y),
-            hiloMaterialChannel(sampled, channels.z),
-            hiloMaterialChannel(sampled, channels.w)
-        );
+        return hiloMaterialSample(sampled, slot);
     }
 
     #define HILO_TEXTURE_2D(SAMPLER, SLOT) hiloTexture2D(SAMPLER, SLOT)
 #endif
+
+#define HILO_DECODE_MATERIAL_COLOR(SAMPLED, SLOT) hiloDecodeMaterialColor(SAMPLED, SLOT)
 
 #ifdef HILO_DIFFUSE_CUBE_MAP
     in vec3 v_position;

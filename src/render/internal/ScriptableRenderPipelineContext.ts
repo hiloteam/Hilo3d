@@ -1415,8 +1415,8 @@ class RendererListSlot {
             const material = this.overrideMaterial ?? mesh.material;
             if (material === null) continue;
             if (descriptor.castShadowsOnly === true && !mesh.castShadows) continue;
-            if (queue === 'opaque' && material.isTransparent) continue;
-            if (queue === 'transparent' && !material.isTransparent) continue;
+            if (queue === 'opaque' && material.forwardQueue !== 'opaque') continue;
+            if (queue === 'transparent' && material.forwardQueue !== 'transparent') continue;
             selected.push(mesh);
         }
         this.plan = this.planner.build(
