@@ -365,7 +365,7 @@ export async function collectRHIProductionCapture(
         await options.sessions.close();
     }
     const raw: RHIBenchmarkRawCaptureResult = {
-        schemaVersion: 3,
+        schemaVersion: 4,
         suite: 'rhi',
         manifestSha256: manifestSha256(manifest),
         commitSha: options.commitSha,

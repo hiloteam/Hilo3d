@@ -88,7 +88,7 @@ function rawMetrics(drawCount: number): RHIBenchmarkRawMetricSamples {
 
 function rawCapture(manifest: RHIBenchmarkManifest): RHIBenchmarkRawCaptureResult {
     return {
-        schemaVersion: 3,
+        schemaVersion: 4,
         suite: 'rhi',
         manifestSha256: manifestSha256(manifest),
         commitSha: 'a'.repeat(40),

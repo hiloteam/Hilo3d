@@ -319,7 +319,11 @@ describe('RHI Phase 0 mutation preflight', () => {
         expect(manifest.sampling.rounds).toBe(7);
         expect(
             manifest.scenarios.find(value => value.id === 'large-instancing')?.quality
-        ).toMatchObject({ drawCount: 79, instanceCount: 10_000 });
+        ).toMatchObject({
+            drawCount: 80,
+            instanceCount: 10_000,
+            surfaceOutputPassCount: 1
+        });
     });
 
     it('exposes explicit package scripts for each guarded pipeline stage', async () => {

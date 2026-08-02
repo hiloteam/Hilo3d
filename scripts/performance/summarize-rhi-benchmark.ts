@@ -120,8 +120,8 @@ export function verifyRHIRawBenchmarkCapture(
         ],
         'raw'
     );
-    if (raw['schemaVersion'] !== 3 || raw['suite'] !== 'rhi') {
-        rawFailure('schemaVersion must be 3 and suite must be rhi');
+    if (raw['schemaVersion'] !== 4 || raw['suite'] !== 'rhi') {
+        rawFailure('schemaVersion must be 4 and suite must be rhi');
     }
     if (sha256Value(raw['manifestSha256'], 'raw.manifestSha256') !== manifestSha256(manifest)) {
         rawFailure('manifest checksum mismatch');
@@ -251,7 +251,7 @@ export function summarizeRHIRawBenchmarkCapture(
     const manifest = parseRHIBenchmarkManifest(manifestValue);
     const raw = verifyRHIRawBenchmarkCapture(manifest, rawValue);
     return {
-        schemaVersion: 3,
+        schemaVersion: 4,
         suite: 'rhi',
         architecture: 'rhi',
         manifestSha256: raw.manifestSha256,

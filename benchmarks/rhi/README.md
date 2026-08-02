@@ -7,7 +7,7 @@ SharedRendererDriver -> Render Graph -> RHI -> WebGL2 / WebGPU backend
 ```
 
 The removed feature-driver and pre-refactor RHI implementations are not benchmark dependencies.
-`RendererArchitecture` therefore has one valid value, `rhi`, and manifest schema version 3 records a
+`RendererArchitecture` therefore has one valid value, `rhi`, and manifest schema version 4 records a
 single architecture across both supported backends.
 
 ## Baseline policy
@@ -21,7 +21,9 @@ same-commit A/B testing.
 The suite covers ten fixed scenarios, WebGL2 and WebGPU, seven isolated rounds, 2,000 timing/GPU
 samples per round, and 21 allocation profiles. Every backend/round opens a fresh page, renderer,
 graphics context/device, scene, shader cache, and diagnostics sink. Pixel hashes and observed draw
-counts must remain stable across rounds.
+counts must remain stable across rounds. `quality.surfaceOutputPassCount` explicitly accounts for
+the final linear-to-sRGB surface transfer, so primary scene draw counts are not inflated to absorb
+fixed output work.
 
 An empty `acceptedFingerprintSha256` list is intentionally fail-closed. Audit and explicitly enroll
 the physical rig before collecting evidence; do not weaken the manifest to make a workstation pass.
@@ -78,7 +80,7 @@ pixel hash, and stay within the temporary RHI hot-path allocation budget. It doe
 verify a performance baseline.
 
 Only an enrolled-rig capture that passes preflight and is frozen by `benchmark:rhi:freeze` is
-baseline evidence. Cross-commit comparison/gating should consume two verified schema-v3 snapshots.
+baseline evidence. Cross-commit comparison/gating should consume two verified schema-v4 snapshots.
 The old same-commit legacy/RHI candidate gate was removed with the legacy renderer.
 
 ## Files

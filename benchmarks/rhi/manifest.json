@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "suite": "rhi",
   "architecture": "rhi",
   "backends": ["webgl2", "webgpu"],
@@ -29,13 +29,13 @@
   "scenarios": [
     {
       "id": "static-unlit-single-draw",
-      "purpose": "Fixed renderer and empty-graph overhead",
+      "purpose": "Fixed renderer and surface-output overhead",
       "quality": {
         "width": 1280,
         "height": 720,
         "devicePixelRatio": 1,
         "cameraId": "fixed-perspective-v1",
-        "drawCount": 1,
+        "drawCount": 2,
         "instanceCount": 1,
         "shaderVariantCount": 1,
         "textureCount": 0,
@@ -44,6 +44,7 @@
         "mrtColorAttachments": 1,
         "msaaSampleCount": 1,
         "postProcessPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 0,
         "churnFrames": 0
       }
@@ -56,7 +57,7 @@
         "height": 720,
         "devicePixelRatio": 1,
         "cameraId": "fixed-perspective-v1",
-        "drawCount": 1000,
+        "drawCount": 1001,
         "instanceCount": 1,
         "shaderVariantCount": 1,
         "textureCount": 1,
@@ -65,6 +66,7 @@
         "mrtColorAttachments": 1,
         "msaaSampleCount": 1,
         "postProcessPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 0,
         "churnFrames": 0
       }
@@ -77,7 +79,7 @@
         "height": 720,
         "devicePixelRatio": 1,
         "cameraId": "fixed-perspective-v1",
-        "drawCount": 10000,
+        "drawCount": 10001,
         "instanceCount": 1,
         "shaderVariantCount": 1,
         "textureCount": 1,
@@ -86,6 +88,7 @@
         "mrtColorAttachments": 1,
         "msaaSampleCount": 1,
         "postProcessPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 0,
         "churnFrames": 0
       }
@@ -98,7 +101,7 @@
         "height": 720,
         "devicePixelRatio": 1,
         "cameraId": "fixed-perspective-v1",
-        "drawCount": 2000,
+        "drawCount": 2001,
         "instanceCount": 1,
         "shaderVariantCount": 32,
         "textureCount": 32,
@@ -107,6 +110,7 @@
         "mrtColorAttachments": 1,
         "msaaSampleCount": 1,
         "postProcessPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 0,
         "churnFrames": 0
       }
@@ -119,7 +123,7 @@
         "height": 720,
         "devicePixelRatio": 1,
         "cameraId": "fixed-perspective-v1",
-        "drawCount": 79,
+        "drawCount": 80,
         "instanceCount": 10000,
         "shaderVariantCount": 1,
         "textureCount": 1,
@@ -128,6 +132,7 @@
         "mrtColorAttachments": 1,
         "msaaSampleCount": 1,
         "postProcessPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 640000,
         "churnFrames": 0
       }
@@ -140,7 +145,7 @@
         "height": 720,
         "devicePixelRatio": 1,
         "cameraId": "fixed-perspective-v1",
-        "drawCount": 512,
+        "drawCount": 513,
         "instanceCount": 1,
         "shaderVariantCount": 8,
         "textureCount": 24,
@@ -149,6 +154,7 @@
         "mrtColorAttachments": 1,
         "msaaSampleCount": 1,
         "postProcessPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 0,
         "churnFrames": 0
       }
@@ -161,7 +167,7 @@
         "height": 720,
         "devicePixelRatio": 1,
         "cameraId": "fixed-perspective-v1",
-        "drawCount": 256,
+        "drawCount": 257,
         "instanceCount": 1,
         "shaderVariantCount": 6,
         "textureCount": 12,
@@ -170,6 +176,7 @@
         "mrtColorAttachments": 4,
         "msaaSampleCount": 4,
         "postProcessPassCount": 3,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 0,
         "churnFrames": 0
       }
@@ -182,7 +189,7 @@
         "height": 720,
         "devicePixelRatio": 1,
         "cameraId": "fixed-perspective-v1",
-        "drawCount": 512,
+        "drawCount": 513,
         "instanceCount": 1,
         "shaderVariantCount": 2,
         "textureCount": 8,
@@ -191,6 +198,7 @@
         "mrtColorAttachments": 1,
         "msaaSampleCount": 1,
         "postProcessPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 4194304,
         "churnFrames": 0
       }
@@ -212,6 +220,7 @@
         "mrtColorAttachments": 4,
         "msaaSampleCount": 4,
         "postProcessPassCount": 3,
+        "surfaceOutputPassCount": 0,
         "dynamicUploadBytesPerFrame": 4194304,
         "churnFrames": 0
       }
@@ -224,7 +233,7 @@
         "height": 720,
         "devicePixelRatio": 1,
         "cameraId": "fixed-perspective-v1",
-        "drawCount": 256,
+        "drawCount": 257,
         "instanceCount": 1,
         "shaderVariantCount": 16,
         "textureCount": 32,
@@ -233,6 +242,7 @@
         "mrtColorAttachments": 1,
         "msaaSampleCount": 1,
         "postProcessPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 1048576,
         "churnFrames": 10000
       }

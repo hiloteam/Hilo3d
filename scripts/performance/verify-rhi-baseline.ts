@@ -43,6 +43,7 @@ const QUALITY_KEYS = [
     'mrtColorAttachments',
     'msaaSampleCount',
     'postProcessPassCount',
+    'surfaceOutputPassCount',
     'dynamicUploadBytesPerFrame',
     'churnFrames'
 ] as const;
@@ -316,6 +317,10 @@ function parseQuality(value: unknown, context: string): RHIBenchmarkQuality {
             quality['postProcessPassCount'],
             `${context}.postProcessPassCount`
         ),
+        surfaceOutputPassCount: safeInteger(
+            quality['surfaceOutputPassCount'],
+            `${context}.surfaceOutputPassCount`
+        ),
         dynamicUploadBytesPerFrame: safeInteger(
             quality['dynamicUploadBytesPerFrame'],
             `${context}.dynamicUploadBytesPerFrame`
@@ -346,7 +351,7 @@ export function parseRHIBenchmarkManifest(value: unknown): RHIBenchmarkManifest 
         ['schemaVersion', 'suite', 'architecture', 'backends', 'sampling', 'rig', 'scenarios'],
         'manifest'
     );
-    if (manifest['schemaVersion'] !== 3) failure('manifest.schemaVersion must equal 3');
+    if (manifest['schemaVersion'] !== 4) failure('manifest.schemaVersion must equal 4');
     if (manifest['suite'] !== 'rhi') failure('manifest.suite must equal rhi');
     if (manifest['architecture'] !== 'rhi') failure('manifest.architecture must equal rhi');
     if (!Array.isArray(manifest['backends'])) failure('manifest.backends must be an array');
@@ -367,7 +372,7 @@ export function parseRHIBenchmarkManifest(value: unknown): RHIBenchmarkManifest 
         failure('manifest.scenarios must contain each of the 10 required scenarios exactly once');
     }
     return {
-        schemaVersion: 3,
+        schemaVersion: 4,
         suite: 'rhi',
         architecture: 'rhi',
         backends: RHI_BENCHMARK_BACKENDS,
@@ -775,7 +780,7 @@ function parseBaseline(value: unknown, manifest: RHIBenchmarkManifest): RHIBench
         ],
         'baseline'
     );
-    if (baseline['schemaVersion'] !== 3) failure('baseline.schemaVersion must equal 3');
+    if (baseline['schemaVersion'] !== 4) failure('baseline.schemaVersion must equal 4');
     if (baseline['suite'] !== 'rhi') failure('baseline.suite must equal rhi');
     if (baseline['architecture'] !== manifest.architecture) {
         failure('baseline architecture must equal rhi');
@@ -791,7 +796,7 @@ function parseBaseline(value: unknown, manifest: RHIBenchmarkManifest): RHIBench
         parseCase(benchmarkCase, index, manifest)
     );
     return {
-        schemaVersion: 3,
+        schemaVersion: 4,
         suite: 'rhi',
         architecture: 'rhi',
         manifestSha256: sha256Value(baseline['manifestSha256'], 'baseline.manifestSha256'),

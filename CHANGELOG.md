@@ -34,6 +34,9 @@
   Uber output is presented without a second conversion. Single-camera MSAA resolves into the
   persistent single-sample composition target; multi-camera stacks use one single-sample
   color/depth/stencil composition contract so later cameras can load prior contents exactly.
+- Advance the RHI benchmark manifest to schema 4 and model fixed surface-output draws separately
+  from primary scene and post-process draws; immutable snapshots from earlier schemas remain
+  historical evidence and are not rewritten.
 - Route opaque-composited transmission surfaces through the after-opaque forward queue so their
   scene-color dependency is satisfied without conflating transmission with alpha blending. Apply
   texture-slot encoding consistently to 2D, cube, and environment samples, including explicit sRGB

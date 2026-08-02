@@ -99,7 +99,7 @@ function fixtureManifest(value: unknown): RHIBenchmarkManifest {
     const manifest = value as Record<string, unknown>;
     const sampling = manifest['sampling'];
     if (
-        manifest['schemaVersion'] !== 3 ||
+        manifest['schemaVersion'] !== 4 ||
         manifest['suite'] !== 'rhi' ||
         !Array.isArray(manifest['scenarios']) ||
         typeof sampling !== 'object' ||
@@ -724,10 +724,12 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
         } else {
             const primaryDraws =
                 this.#scenario.id === 'mrt-msaa-postprocess'
-                    ? mrtMSAAPostProcessPrimaryDrawCount(quality.drawCount)
+                    ? mrtMSAAPostProcessPrimaryDrawCount(
+                          quality.drawCount - quality.surfaceOutputPassCount
+                      )
                     : benchmarkPrimaryDrawCount(
                           quality.drawCount,
-                          quality.postProcessPassCount,
+                          quality.postProcessPassCount + quality.surfaceOutputPassCount,
                           shadowDraws
                       );
             const geometry =
@@ -805,9 +807,9 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
         const quality = this.#scenario.quality;
         const batchSize = 128;
         const batchCount = Math.ceil(quality.instanceCount / batchSize);
-        if (batchCount !== quality.drawCount) {
+        if (batchCount + quality.surfaceOutputPassCount !== quality.drawCount) {
             fixtureFailure(
-                `large-instancing drawCount must equal ceil(instanceCount/${String(batchSize)})`
+                `large-instancing drawCount must equal ceil(instanceCount/${String(batchSize)}) plus surface output passes`
             );
         }
         let remaining = quality.instanceCount;
