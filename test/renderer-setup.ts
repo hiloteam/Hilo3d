@@ -7,7 +7,7 @@ export interface RendererTestEnvironment {
     renderer: Hilo3d.Renderer<'webgl2'>;
     shaderRenderer: Hilo3d.ShaderRenderer;
     geometry: Hilo3d.MorphGeometry;
-    material: Hilo3d.Material;
+    material: Hilo3d.BasicMaterial;
     mesh: Hilo3d.Mesh;
     fog: Hilo3d.Fog;
 }
@@ -28,7 +28,7 @@ export function createHilo3dEnvironment(forceNew = false): RendererTestEnvironme
             fragmentPrecision: 'highp',
             resourceManager: renderer.resourceManager
         };
-        const material = new Hilo3d.Material();
+        const material = new Hilo3d.BasicMaterial();
         const geometry = new Hilo3d.MorphGeometry();
         const mesh = new Hilo3d.Mesh({ material, geometry });
         const fog = new Hilo3d.Fog();

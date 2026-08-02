@@ -446,7 +446,7 @@ export class ScriptableGPUDrivenDraw {
         try {
             const record = services.pipelines.prepare(
                 pass.shader,
-                pass.material,
+                pass.pipelineState,
                 pass.vertexLayouts,
                 this.#target,
                 this.#depthMode
@@ -693,7 +693,7 @@ export class ScriptableGPUDrivenDraw {
                 draw.setDrawIndirect(buffer, this.#indirectOffset);
             } else draw.setDrawIndexedIndirect(buffer, this.#indirectOffset);
         }
-        draw.setDynamicState(mapRHIMeshDrawDynamicState(pass.material));
+        draw.setDynamicState(mapRHIMeshDrawDynamicState(pass.pipelineState));
         draw.setSortKey(0, 0);
         draw.finishUpdate({
             geometry: this.#frameIndex,

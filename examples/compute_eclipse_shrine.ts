@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { applyEnvironmentMaps } from './shared/environment';
+import { environmentMaterialDefaults } from './shared/environment';
 import { loadEnvironmentMaps } from './shared/init';
 
 const PARTICLE_COUNT = 65_536;
@@ -437,35 +437,30 @@ void main() {
     });
 }
 
-function particleMaterial(depthTest: boolean): Hilo3d.Material {
-    return new Hilo3d.Material({
-        transparent: true,
-        premultiplyAlpha: false,
-        blend: true,
-        blendSrc: Hilo3d.constants.SRC_ALPHA,
-        blendDst: Hilo3d.constants.ONE,
-        blendSrcAlpha: Hilo3d.constants.ONE,
-        blendDstAlpha: Hilo3d.constants.ONE,
+function particlePipelineState(depthTest: boolean): Hilo3d.MaterialPipelineState {
+    return {
+        ...Hilo3d.DEFAULT_MATERIAL_PIPELINE_STATE,
         depthTest,
-        depthMask: false,
-        cullFace: false
-    });
+        depthWrite: false,
+        cullMode: 'none',
+        blend: Hilo3d.MaterialBlendPreset.STRAIGHT_ALPHA_ADDITIVE
+    };
 }
 
 const PARTICLE_HALO_PASS = new Hilo3d.GPUDrivenRenderPass({
     name: 'Eclipse atmospheric particle corona',
     shader: particleRasterShader('Eclipse atmospheric particle corona', 0),
-    material: particleMaterial(true)
+    pipelineState: particlePipelineState(true)
 });
 const PARTICLE_RIBBON_PASS = new Hilo3d.GPUDrivenRenderPass({
     name: 'Eclipse velocity filament ribbons',
     shader: particleRasterShader('Eclipse velocity filament ribbons', 1),
-    material: particleMaterial(true)
+    pipelineState: particlePipelineState(true)
 });
 const PARTICLE_SPARK_PASS = new Hilo3d.GPUDrivenRenderPass({
     name: 'Eclipse spectral particle sparks',
     shader: particleRasterShader('Eclipse spectral particle sparks', 2),
-    material: particleMaterial(true)
+    pipelineState: particlePipelineState(true)
 });
 
 class MutableBufferBinding implements Hilo3d.ComputeBufferBinding {
@@ -748,15 +743,10 @@ function particleInitialData(): Float32Array {
 
 function createSkyMaterial(): Hilo3d.ShaderMaterial {
     return new Hilo3d.ShaderMaterial({
-        shaderCacheId: 'EclipseShrineProceduralSky',
-        attributes: { a_position: 'POSITION' },
-        depthTest: false,
-        depthMask: false,
-        cullFace: true,
-        side: Hilo3d.constants.BACK,
-        castShadows: false,
-        receiveShadows: false,
-        renderOrder: -1000,
+        sourceRevision: 'EclipseShrineProceduralSky',
+        attributes: { a_position: Hilo3d.MaterialAttributeSemantic.POSITION },
+        state: { depthTest: false, depthWrite: false, cullMode: 'back' },
+        cullMode: 'front',
         vs: `#version 300 es
 precision highp float;
 in vec3 a_position;
@@ -875,11 +865,10 @@ function createScene(stage: Hilo3d.Stage): Promise<Hilo3d.Node> {
     return loadEnvironmentMaps().then(environment => {
         const root = new Hilo3d.Node({ name: 'Eclipse Shrine sculptural assembly' }).addTo(stage);
         const coreMaterial = new Hilo3d.PBRMaterial({
+            ...environmentMaterialDefaults(environment),
             baseColor: new Hilo3d.Color(0.008, 0.012, 0.025),
             metallic: 0.98,
             roughness: 0.1,
-            castShadows: true,
-            receiveShadows: true,
             clearcoatFactor: 1,
             clearcoatRoughnessFactor: 0.055,
             iridescenceFactor: 0.78,
@@ -888,16 +877,13 @@ function createScene(stage: Hilo3d.Stage): Promise<Hilo3d.Node> {
             iridescenceThicknessMaximum: 520
         });
         const relicMaterial = new Hilo3d.PBRMaterial({
+            ...environmentMaterialDefaults(environment),
             baseColor: new Hilo3d.Color(0.42, 0.18, 0.045),
             metallic: 1,
             roughness: 0.2,
-            castShadows: true,
-            receiveShadows: true,
             clearcoatFactor: 0.68,
             clearcoatRoughnessFactor: 0.12
         });
-        applyEnvironmentMaps([coreMaterial, relicMaterial], environment);
-
         const core = new Hilo3d.Mesh({
             name: 'Black iridescent eclipse core',
             geometry: new Hilo3d.SphereGeometry({
@@ -911,12 +897,9 @@ function createScene(stage: Hilo3d.Stage): Promise<Hilo3d.Node> {
         const wireMaterial = new Hilo3d.BasicMaterial({
             lightType: 'NONE',
             diffuse: new Hilo3d.Color(2.3, 0.84, 0.18),
-            wireframe: true,
-            transparent: true,
-            transparency: 0.42,
-            depthMask: false,
-            castShadows: false,
-            receiveShadows: false
+            compositing: { mode: 'alpha-blend', premultiplied: true },
+            opacity: 0.42,
+            state: { wireframe: true, depthWrite: false }
         });
         const wireShell = new Hilo3d.Mesh({
             name: 'Golden geodesic event horizon',
@@ -926,6 +909,8 @@ function createScene(stage: Hilo3d.Stage): Promise<Hilo3d.Node> {
                 widthSegments: 24
             }),
             material: wireMaterial,
+            castShadows: false,
+            receiveShadows: false,
             rotationX: 18,
             rotationY: 32
         }).addTo(root);
@@ -934,20 +919,16 @@ function createScene(stage: Hilo3d.Stage): Promise<Hilo3d.Node> {
         const warmRingMaterial = new Hilo3d.BasicMaterial({
             lightType: 'NONE',
             diffuse: new Hilo3d.Color(2.8, 0.82, 0.16),
-            transparent: true,
-            transparency: 0.72,
-            depthMask: false,
-            castShadows: false,
-            receiveShadows: false
+            compositing: { mode: 'alpha-blend', premultiplied: true },
+            opacity: 0.72,
+            state: { depthWrite: false }
         });
         const coolRingMaterial = new Hilo3d.BasicMaterial({
             lightType: 'NONE',
             diffuse: new Hilo3d.Color(0.12, 1.25, 2.7),
-            transparent: true,
-            transparency: 0.55,
-            depthMask: false,
-            castShadows: false,
-            receiveShadows: false
+            compositing: { mode: 'alpha-blend', premultiplied: true },
+            opacity: 0.55,
+            state: { depthWrite: false }
         });
         const ringA = new Hilo3d.Mesh({
             geometry: ringGeometry,
@@ -1008,9 +989,7 @@ function createScene(stage: Hilo3d.Stage): Promise<Hilo3d.Node> {
         });
         const satelliteMaterial = new Hilo3d.BasicMaterial({
             lightType: 'NONE',
-            diffuse: new Hilo3d.Color(1.9, 1.18, 0.42),
-            castShadows: false,
-            receiveShadows: false
+            diffuse: new Hilo3d.Color(1.9, 1.18, 0.42)
         });
         for (let index = 0; index < 48; index += 1) {
             const progress = index / 48;
@@ -1024,7 +1003,9 @@ function createScene(stage: Hilo3d.Stage): Promise<Hilo3d.Node> {
                 z: Math.sin(angle) * radius,
                 useInstanced: true,
                 frustumTest: false,
-                pointerEnabled: false
+                pointerEnabled: false,
+                castShadows: false,
+                receiveShadows: false
             }).addTo(root);
         }
 
@@ -1391,7 +1372,10 @@ async function main(): Promise<void> {
             geometry: new Hilo3d.BoxGeometry(),
             material: createSkyMaterial(),
             frustumTest: false,
-            pointerEnabled: false
+            pointerEnabled: false,
+            castShadows: false,
+            receiveShadows: false,
+            renderOrder: -1000
         })
             .setScale(42)
             .addTo(stage);

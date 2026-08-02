@@ -90,6 +90,28 @@ Pass。后处理、显式 Present、离屏渲染和 Readback 也通过同一 Ren
 
 相关代码：[`SharedRendererDriver.ts`](../src/render/internal/SharedRendererDriver.ts)、[`RenderGraphFramePlan.ts`](../src/render/RenderGraphFramePlan.ts)、[`RenderList.ts`](../src/render/RenderList.ts)、[`MeshDrawListPlanner.ts`](../src/render/renderer/MeshDrawListPlanner.ts)、[`ForwardRenderer.ts`](../src/render/renderer/ForwardRenderer.ts)。
 
+### 1.2.1 材质前端与语义 Pass
+
+`Mesh.material` 引用 `MaterialInstance`。实例持有不可变
+`MaterialDefinition`，Definition 固定 family、Shader topology、static features、texture-slot
+schema、语义 role 与 pipeline state；实例只保存运行时参数、per-slot
+texture/UV/transform/encoding/channel、stable material
+ID 和数据 revision。参数变化不改变 Definition 或 Shader resource
+layout，需要改变 topology 时构造另一个材质实例。
+
+Render Pipeline 请求 `forward`、`depth-only`、`shadow-caster` 或 `picking` role，材质不拥有 graph
+pass 顺序。Shadow Atlas 直接编译 `shadow-caster`，不创建 proxy material；role 缺失或 target
+output 不匹配会在 RHI frame 前失败。`motion-vector` 与 `material-attributes`
+已保留类型，但当前内置材质不声明，由后续时域和属性缓冲路线定义完整输出 ABI 后接入。
+
+portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
+`MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
+0/1 对应这两个 block，sampled texture/sampler 从 binding 2 开始；WebGL2 使用同一固定 block
+registry。attribute、uniform、texture 和 built-in
+slot 使用公开的类型化 semantic 常量，不以任意字符串作为公共绑定合同。完整设计、breaking
+changes 与长期 GPU material database 路线见
+[`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
+
 ### 1.3 RenderPipelineHost：默认快路径与可脚本化编排
 
 每个 Renderer 拥有一个 `RenderPipelineHost` 和一个 renderer-local `RenderPipeline`
@@ -177,7 +199,7 @@ state 的事务边界；current/previous object/camera transform 只在 RHI
 submission 已存在后提交，录制或提交前失败则丢弃 staged revision。当前 factory 限定 single-sample
 perspective camera 与 opaque、unskinned、indexed triangle PBR bucket；GPU fast path 接受 scalar
 factor 以及 base-color/metallic/roughness/combined-MR/occlusion/emission/normal 2D
-map，支持 UV0/UV1、material UV matrix 与 sampler
+map，支持每纹理槽独立的 UV0/UV1、UV transform、encoding、channel 与 sampler
 mutation，仍要求默认 depth/alpha 状态。未注册 mesh、对象容量 overflow、skinning/morph，以及注册 bucket 在运行时发生的不兼容 material/geometry/raster-state
 replacement 会在同一帧迁移到共享 Forward compatibility path；恢复兼容后可重新进入 GPU
 Scene。fallback 使用显式 mesh identity

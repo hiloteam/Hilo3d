@@ -37,7 +37,10 @@ describe('display:geometry', () => {
     });
 
     beforeEach(() => {
-        material.diffuse = new Hilo3d.Color(0.3, 0.6, 0.9);
+        if (!(material.diffuse instanceof Hilo3d.Color)) {
+            throw new TypeError('Expected the fixture to use a color diffuse value');
+        }
+        material.diffuse.set(0.3, 0.6, 0.9, 1);
     });
 
     it.each([

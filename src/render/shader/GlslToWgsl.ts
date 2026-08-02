@@ -1,5 +1,9 @@
 import type * as Naga from 'web-naga';
-import { getWebGPUUniformBlockBinding, type WebGPUResourceBinding } from './WebGPUBindingLayout';
+import {
+    FIRST_MATERIAL_TEXTURE_BINDING,
+    getWebGPUUniformBlockBinding,
+    type WebGPUResourceBinding
+} from './WebGPUBindingLayout';
 import { makeWgslUniformLayoutsPortable } from './WgslUniformLayout';
 import {
     getInitializedNagaModule,
@@ -2064,7 +2068,8 @@ function createSamplerResources(
         stages.set(declaration.name, declarationStages);
     }
     const resources: SamplerResource[] = [];
-    let binding = 1;
+    // Bindings 0 and 1 are the scalar and per-texture-slot material uniform blocks.
+    let binding = FIRST_MATERIAL_TEXTURE_BINDING;
     for (const name of order) {
         const declaration = declarations.find(item => item.name === name);
         if (!declaration) continue;

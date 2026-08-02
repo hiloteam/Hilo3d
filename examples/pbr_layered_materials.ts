@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { addEnvironmentSkybox, applyEnvironmentMaps } from './shared/environment';
+import { addEnvironmentSkybox, environmentMaterialDefaults } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 type FeatureName = 'anisotropy' | 'clearcoat' | 'transmission';
@@ -111,49 +111,61 @@ const environment = await loadEnvironmentMaps();
 addEnvironmentSkybox(stage, environment.skyboxMap);
 
 const clearcoatNormalMap = createWrinkledNormalTexture();
-const anisotropyMaterial = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.42, 0.12, 0.04),
-    metallic: 1,
-    roughness: 0.34,
-    anisotropyStrength: 0.88,
-    anisotropyRotation: Math.PI * 0.18,
-    clearcoatFactor: 0.22,
-    clearcoatRoughnessFactor: 0.12
-});
-const clearcoatMaterial = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.035, 0.17, 0.72),
-    metallic: 0.08,
-    roughness: 0.48,
-    clearcoatFactor: 1,
-    clearcoatRoughnessFactor: 0.08,
-    clearcoatNormalMap,
-    clearcoatNormalScale: 0.58
-});
-const transmissionMaterial = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.48, 0.94, 1),
-    metallic: 0,
-    roughness: 0.08,
-    transmissionFactor: 0.94,
-    thicknessFactor: 1.15,
-    attenuationDistance: 1.45,
-    attenuationColor: new Hilo3d.Color(0.12, 0.78, 1),
-    ior: 1.46
-});
+function createFeatureMaterial(name: FeatureName, enabled: boolean): Hilo3d.PBRMaterial {
+    const environmentDefaults = environmentMaterialDefaults(environment);
+    switch (name) {
+        case 'anisotropy':
+            return new Hilo3d.PBRMaterial({
+                ...environmentDefaults,
+                baseColor: new Hilo3d.Color(0.42, 0.12, 0.04),
+                metallic: 1,
+                roughness: 0.34,
+                anisotropyStrength: enabled ? 0.88 : 0,
+                anisotropyRotation: Math.PI * 0.18,
+                clearcoatFactor: 0.22,
+                clearcoatRoughnessFactor: 0.12
+            });
+        case 'clearcoat':
+            return new Hilo3d.PBRMaterial({
+                ...environmentDefaults,
+                baseColor: new Hilo3d.Color(0.035, 0.17, 0.72),
+                metallic: 0.08,
+                roughness: 0.48,
+                clearcoatFactor: enabled ? 1 : 0,
+                clearcoatRoughnessFactor: 0.08,
+                clearcoatNormalMap: enabled ? clearcoatNormalMap : null,
+                clearcoatNormalScale: 0.58
+            });
+        case 'transmission':
+            return new Hilo3d.PBRMaterial({
+                ...environmentDefaults,
+                baseColor: new Hilo3d.Color(0.48, 0.94, 1),
+                metallic: 0,
+                roughness: 0.08,
+                transmissionFactor: enabled ? 0.94 : 0,
+                thicknessFactor: enabled ? 1.15 : 0,
+                attenuationDistance: 1.45,
+                attenuationColor: new Hilo3d.Color(0.12, 0.78, 1),
+                ior: 1.46
+            });
+    }
+}
+
+const anisotropyMaterial = createFeatureMaterial('anisotropy', true);
+const clearcoatMaterial = createFeatureMaterial('clearcoat', true);
+const transmissionMaterial = createFeatureMaterial('transmission', true);
 const pedestalMaterial = new Hilo3d.PBRMaterial({
+    ...environmentMaterialDefaults(environment),
     baseColor: new Hilo3d.Color(0.035, 0.045, 0.075),
     metallic: 0.88,
     roughness: 0.32
 });
 const floorMaterial = new Hilo3d.PBRMaterial({
+    ...environmentMaterialDefaults(environment),
     baseColor: new Hilo3d.Color(0.018, 0.024, 0.046),
     metallic: 0.72,
     roughness: 0.42
 });
-
-applyEnvironmentMaps(
-    [anisotropyMaterial, clearcoatMaterial, transmissionMaterial, pedestalMaterial, floorMaterial],
-    environment
-);
 
 const sphereGeometry = new Hilo3d.SphereGeometry({
     radius: 1,
@@ -269,19 +281,15 @@ const featureState: Record<FeatureName, boolean> = {
     clearcoat: true,
     transmission: true
 };
-const featureMaterials: Readonly<Record<FeatureName, Hilo3d.PBRMaterial>> = {
-    anisotropy: anisotropyMaterial,
-    clearcoat: clearcoatMaterial,
-    transmission: transmissionMaterial
+const featureMeshes: Readonly<Record<FeatureName, Hilo3d.Mesh>> = {
+    anisotropy: materialMeshes[0],
+    clearcoat: materialMeshes[1],
+    transmission: materialMeshes[2]
 };
 
 function setFeature(name: FeatureName, enabled: boolean): void {
     featureState[name] = enabled;
-    const material = featureMaterials[name];
-    if (name === 'anisotropy') material.anisotropyStrength = enabled ? 0.88 : 0;
-    else if (name === 'clearcoat') material.clearcoatFactor = enabled ? 1 : 0;
-    else material.transmissionFactor = enabled ? 0.94 : 0;
-    material.isDirty = true;
+    featureMeshes[name].material = createFeatureMaterial(name, enabled);
     const button = requireButton(name);
     button.setAttribute('aria-pressed', String(enabled));
     button.textContent = `${name} · ${enabled ? 'on' : 'off'}`;

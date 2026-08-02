@@ -33,7 +33,7 @@ const texMesh = new Hilo3d.Mesh({
 });
 
 const uvMaterial = new Hilo3d.ShaderMaterial({
-    wireframe: true,
+    state: { wireframe: true },
     vs: `#version 300 es
                 in vec2 a_texcoord0;
                 out vec2 v_uv;

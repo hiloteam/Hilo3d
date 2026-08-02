@@ -249,7 +249,9 @@ function createRenderer(): RendererCore {
 }
 
 function createMesh(
-    indices?: Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array
+    indices?: Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array,
+    fragmentSource = FRAGMENT_SOURCE,
+    cullMode: 'none' | 'back' = 'none'
 ): MeshFixture {
     const vertices = new GeometryData(new Float32Array([-1, -1, 0, 1, -1, 0, 0, 1, 0]), 3);
     const geometry = new Geometry({
@@ -257,14 +259,10 @@ function createMesh(
         ...(indices === undefined ? {} : { indices: new GeometryData(indices, 1) })
     });
     const material = new ShaderMaterial({
-        needBasicAttributes: false,
-        needBasicUniforms: false,
-        depthTest: false,
-        depthMask: false,
-        cullFace: false,
+        state: { depthTest: false, depthWrite: false, cullMode },
         attributes: { position: 'POSITION' },
         vs: VERTEX_SOURCE,
-        fs: FRAGMENT_SOURCE
+        fs: fragmentSource
     });
     return {
         mesh: new Mesh({ geometry, material }),
@@ -295,11 +293,7 @@ function createTexturedMesh(): MeshFixture & {
     const texture = createTexture(new Uint8Array([255, 64, 32, 255]));
     const geometry = new Geometry({ vertices, uvs: texCoords });
     const material = new ShaderMaterial({
-        needBasicAttributes: false,
-        needBasicUniforms: false,
-        depthTest: false,
-        depthMask: false,
-        cullFace: false,
+        state: { depthTest: false, depthWrite: false, cullMode: 'none' },
         attributes: { position: 'POSITION', texCoord: 'TEXCOORD_0' },
         uniforms: {
             diffuseMap: {
@@ -322,9 +316,7 @@ function createTexturedMesh(): MeshFixture & {
 function createDeformationMaterial(): BasicMaterial {
     return new BasicMaterial({
         lightType: 'NONE',
-        depthTest: false,
-        depthMask: false,
-        cullFace: false
+        state: { depthTest: false, depthWrite: false, cullMode: 'none' }
     });
 }
 
@@ -380,10 +372,7 @@ function createLitMaterial(
     kind: 'LAMBERT' | 'PHONG' | 'BLINN-PHONG' | 'PBR'
 ): BasicMaterial | PBRMaterial {
     const common = {
-        depthTest: false,
-        depthMask: false,
-        cullFace: false,
-        receiveShadows: true
+        state: { depthTest: false, depthWrite: false, cullMode: 'none' }
     } as const;
     if (kind === 'PBR') {
         return new PBRMaterial({
@@ -841,11 +830,7 @@ describe.each([
         const transform = new GeometryData(new Float32Array(48).fill(1), 16);
         const geometry = new Geometry({ vertices });
         const material = new ShaderMaterial({
-            needBasicAttributes: false,
-            needBasicUniforms: false,
-            depthTest: false,
-            depthMask: false,
-            cullFace: false,
+            state: { depthTest: false, depthWrite: false, cullMode: 'none' },
             attributes: {
                 position: 'POSITION',
                 planar: { get: () => planar },
@@ -958,8 +943,7 @@ describe.each([
                 .fragmentOutputs
         ).toEqual([{ location: 0, name: 'hilo_FragColor' }]);
 
-        const custom = createMesh();
-        custom.material.fs = MRT_FRAGMENT_SOURCE;
+        const custom = createMesh(undefined, MRT_FRAGMENT_SOURCE);
         const customExecution = executeMeshFrame(fixture, custom.mesh, 2, target);
         await finishSubmission(fixture.backend, customExecution);
         expect(
@@ -975,8 +959,7 @@ describe.each([
         ]);
         expect(customExecution.result.diagnostics.drawCount).toBe(1);
 
-        const sparse = createMesh();
-        sparse.material.fs = SPARSE_MRT_FRAGMENT_SOURCE;
+        const sparse = createMesh(undefined, SPARSE_MRT_FRAGMENT_SOURCE);
         let sparseDraw: PreparedDraw | undefined;
         const sparseFrame = fixture.frame.execute(createContext(fixture, 3), scope => {
             fixture.processor.beginFrame(scope.context, scope.uploads);
@@ -1014,12 +997,16 @@ describe.each([
         const fixture = await createProcessorFixture(createBackend());
         const source = createMesh();
         const forcedMaterial = new ShaderMaterial({
-            needBasicAttributes: false,
-            needBasicUniforms: false,
-            depthTest: false,
-            depthMask: false,
-            cullFace: false,
+            state: { depthTest: false, depthWrite: false, cullMode: 'none' },
             attributes: { position: 'POSITION' },
+            roles: [
+                {
+                    role: 'depth-only',
+                    vertexSource: VERTEX_SOURCE,
+                    fragmentSource: FRAGMENT_SOURCE,
+                    fragmentOutput: 'depth-only'
+                }
+            ],
             vs: VERTEX_SOURCE,
             fs: FRAGMENT_SOURCE
         });
@@ -1041,7 +1028,8 @@ describe.each([
             null,
             false,
             fixture.renderer,
-            false
+            false,
+            'depth-only'
         );
         expect(execution.draw.pipeline.descriptor.fragment?.targets).toEqual([]);
         expect(
@@ -1111,12 +1099,16 @@ describe.each([
             useInstanced: true
         });
         const forcedMaterial = new ShaderMaterial({
-            needBasicAttributes: false,
-            needBasicUniforms: false,
-            depthTest: true,
-            depthMask: true,
-            cullFace: false,
+            state: { depthTest: true, depthWrite: true, cullMode: 'none' },
             attributes: { position: 'POSITION' },
+            roles: [
+                {
+                    role: 'depth-only',
+                    vertexSource: VERTEX_SOURCE,
+                    fragmentSource: FRAGMENT_SOURCE,
+                    fragmentOutput: 'depth-only'
+                }
+            ],
             vs: VERTEX_SOURCE,
             fs: FRAGMENT_SOURCE
         });
@@ -1147,11 +1139,7 @@ describe.each([
         const geometry = new Geometry({ vertices });
         const values = new WeakMap<Mesh, number>();
         const material = new ShaderMaterial({
-            needBasicAttributes: false,
-            needBasicUniforms: false,
-            depthTest: false,
-            depthMask: false,
-            cullFace: false,
+            state: { depthTest: false, depthWrite: false, cullMode: 'none' },
             attributes: { position: 'POSITION' },
             uniforms: {
                 u_modelMatrix: {
@@ -1351,7 +1339,7 @@ void main() {
 
     it('binds sampler-array elements and numeric depth specialization without per-element resolves', async () => {
         const fixture = await createProcessorFixture(createBackend());
-        const { mesh, material, texture } = createTexturedMesh();
+        const { mesh, texture } = createTexturedMesh();
         const depthIdentity = createTexture(new Uint8Array([0, 0, 0, 255]));
         const targets = new RenderTargetResourceCache(fixture.processor.registry);
         const depthTarget = targets.prepare(
@@ -1389,9 +1377,17 @@ void main() {
         const shadowValues: readonly Texture<unknown>[] = [depthIdentity, depthIdentity];
         const resolveMaps = vi.fn(() => mapValues);
         const resolveShadows = vi.fn(() => shadowValues);
-        material.fs = ARRAY_TEXTURED_FRAGMENT_SOURCE;
-        material.uniforms['maps'] = { get: resolveMaps };
-        material.uniforms['shadowMaps'] = { get: resolveShadows };
+        const material = new ShaderMaterial({
+            state: { depthTest: false, depthWrite: false, cullMode: 'none' },
+            attributes: { position: 'POSITION', texCoord: 'TEXCOORD_0' },
+            uniforms: {
+                maps: { get: resolveMaps },
+                shadowMaps: { get: resolveShadows }
+            },
+            vs: TEXTURED_VERTEX_SOURCE,
+            fs: ARRAY_TEXTURED_FRAGMENT_SOURCE
+        });
+        mesh.material = material;
 
         const first = executeMeshFrame(fixture, mesh, 1);
         await finishSubmission(fixture.backend, first);
@@ -1430,13 +1426,13 @@ void main() {
         if (firstGroup === null) throw new Error('Sampler-array fixture lost material bind group');
         const resourceAt = (binding: number) =>
             firstGroup.entries.find(entry => entry.binding === binding)?.resource;
-        expect(resourceAt(1)).toBe(fixture.processor.textures.resolveView(texture));
-        expect(resourceAt(3)).toBe(fixture.processor.registry.resolve(depthView));
-        expect(resourceAt(4)).toBe(fixture.processor.registry.resolve(ordinarySampler));
-        expect(resourceAt(5)).toBe(fixture.processor.registry.resolve(depthView));
-        expect(resourceAt(6)).toBe(fixture.processor.registry.resolve(comparisonSampler));
-        expect(resourceAt(7)).toBe(fixture.processor.registry.resolve(depthView));
-        expect(resourceAt(8)).toBe(fixture.processor.registry.resolve(comparisonSampler));
+        expect(resourceAt(2)).toBe(fixture.processor.textures.resolveView(texture));
+        expect(resourceAt(4)).toBe(fixture.processor.registry.resolve(depthView));
+        expect(resourceAt(5)).toBe(fixture.processor.registry.resolve(ordinarySampler));
+        expect(resourceAt(6)).toBe(fixture.processor.registry.resolve(depthView));
+        expect(resourceAt(7)).toBe(fixture.processor.registry.resolve(comparisonSampler));
+        expect(resourceAt(8)).toBe(fixture.processor.registry.resolve(depthView));
+        expect(resourceAt(9)).toBe(fixture.processor.registry.resolve(comparisonSampler));
 
         const steady = executeMeshFrame(fixture, mesh, 2);
         await finishSubmission(fixture.backend, steady);
@@ -1455,10 +1451,10 @@ void main() {
             throw new Error('Sampler-array rebound lost material bind group');
         expect(rebound.draw.pipeline).toBe(first.draw.pipeline);
         expect(reboundGroup).not.toBe(firstGroup);
-        expect(reboundGroup.entries.find(entry => entry.binding === 1)?.resource).toBe(
+        expect(reboundGroup.entries.find(entry => entry.binding === 2)?.resource).toBe(
             fixture.processor.textures.resolveView(replacement)
         );
-        expect(reboundGroup.entries.find(entry => entry.binding === 3)?.resource).toBe(
+        expect(reboundGroup.entries.find(entry => entry.binding === 4)?.resource).toBe(
             fixture.processor.registry.resolve(depthView)
         );
 
@@ -2017,7 +2013,7 @@ describe('MeshDrawProcessor cache and failure boundaries', () => {
 
     it('keeps the steady draw/pipeline and invalidates only the affected preparation layers', async () => {
         const fixture = await createProcessorFixture(new FakeWebGLRHIBackend());
-        const { mesh, vertices, material } = createMesh();
+        const { mesh, vertices } = createMesh();
         const createPipeline = vi.spyOn(fixture.device, 'createGraphicsPipeline');
         const getShader = vi.spyOn(Shader, 'getShader');
         const first = executeMeshFrame(fixture, mesh, 1);
@@ -2046,7 +2042,7 @@ describe('MeshDrawProcessor cache and failure boundaries', () => {
             fixture.backend.executionLog.some(command => command.startsWith('write-buffer:'))
         ).toBe(true);
 
-        material.cullFace = true;
+        mesh.material = createMesh(undefined, FRAGMENT_SOURCE, 'back').material;
         const stateRevision = executeMeshFrame(fixture, mesh, 4);
         await finishSubmission(fixture.backend, stateRevision);
         expect(stateRevision.draw).toBe(first.draw);
@@ -2056,7 +2052,11 @@ describe('MeshDrawProcessor cache and failure boundaries', () => {
         expect(getShader).toHaveBeenCalledTimes(2);
         const statePipeline = stateRevision.draw.pipeline;
 
-        material.fs = `${material.fs}\n// exact shader-source revision`;
+        mesh.material = createMesh(
+            undefined,
+            `${FRAGMENT_SOURCE}\n// exact shader-source revision`,
+            'back'
+        ).material;
         const shaderRevision = executeMeshFrame(fixture, mesh, 5);
         await finishSubmission(fixture.backend, shaderRevision);
         expect(shaderRevision.draw).toBe(first.draw);
@@ -2295,7 +2295,7 @@ describe('MeshDrawProcessor cache and failure boundaries', () => {
 
     it('separates Phase 5 shadow samplers from unshadowed lit material preparation', async () => {
         const fixture = await createProcessorFixture(new FakeWebGLRHIBackend());
-        const { mesh, material } = createLitMesh('BLINN-PHONG');
+        const { mesh } = createLitMesh('BLINN-PHONG');
         const manager = new LightManager();
         manager.addLight(new DirectionalLight({ shadow: {} }));
         const compile = vi.spyOn(fixture.processor.compiler, 'compile');
@@ -2313,7 +2313,7 @@ describe('MeshDrawProcessor cache and failure boundaries', () => {
         expect(compile).not.toHaveBeenCalled();
         expect(beginFrame).not.toHaveBeenCalled();
 
-        material.receiveShadows = false;
+        mesh.receiveShadows = false;
         const unshadowed = executeMeshFrame(fixture, mesh, 2, createTarget(), fixture.device, {
             lightManager: manager
         });

@@ -26,7 +26,7 @@ void cubeTextureLoader
             geometry: new Hilo3d.BoxGeometry(),
             material: new Hilo3d.BasicMaterial({
                 lightType: 'NONE',
-                side: Hilo3d.constants.BACK,
+                cullMode: 'front',
                 diffuse: skyboxMap
             })
         }).addTo(stage);

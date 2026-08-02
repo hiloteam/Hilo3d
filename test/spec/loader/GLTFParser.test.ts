@@ -186,9 +186,9 @@ describe('GLTFParser', () => {
             iridescenceFactor: 0.93,
             iridescenceIor: 1.33,
             iridescenceThicknessMinimum: 180,
-            iridescenceThicknessMaximum: 620,
-            transparent: true
+            iridescenceThicknessMaximum: 620
         });
+        expect(material.isTransparent).toBe(false);
         expect(material.attenuationColor.r).toBeCloseTo(0.8);
         expect(material.attenuationColor.g).toBeCloseTo(0.9);
         expect(material.attenuationColor.b).toBe(1);

@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { applyEnvironmentMaps } from './shared/environment';
+import { environmentMaterialDefaults } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 type ShadowMode = 0 | 1 | 2 | 4;
@@ -219,7 +219,7 @@ function requireElement<ElementType extends HTMLElement>(
 function place(
     parent: Hilo3d.Node,
     geometry: Hilo3d.Geometry,
-    material: Hilo3d.Material,
+    material: Hilo3d.MaterialInstance,
     position: readonly [number, number, number],
     scale: readonly [number, number, number],
     rotation: readonly [number, number, number] = [0, 0, 0]
@@ -308,8 +308,11 @@ const shadowConfiguration: Hilo3d.DirectionalLightShadowOptions = {
 };
 directionLight.shadow = shadowConfiguration;
 
+const environmentMaps = await loadEnvironmentMaps();
+
 function ceramic(red: number, green: number, blue: number, roughness = 0.61): Hilo3d.PBRMaterial {
     return new Hilo3d.PBRMaterial({
+        ...environmentMaterialDefaults(environmentMaps),
         baseColor: new Hilo3d.Color(red, green, blue),
         metallic: 0,
         roughness,
@@ -317,9 +320,7 @@ function ceramic(red: number, green: number, blue: number, roughness = 0.61): Hi
         clearcoatRoughnessFactor: 0.76,
         ior: 1.42,
         specularEnvIntensity: 0.34,
-        diffuseEnvIntensity: 0.86,
-        castShadows: true,
-        receiveShadows: true
+        diffuseEnvIntensity: 0.86
     });
 }
 
@@ -333,23 +334,11 @@ const lilac = ceramic(0.57, 0.42, 0.8, 0.59);
 const rose = ceramic(0.88, 0.48, 0.58, 0.6);
 const underside = ceramic(0.24, 0.19, 0.38, 0.76);
 
-const environmentMaps = await loadEnvironmentMaps();
-applyEnvironmentMaps(
-    [porcelain, porcelainLight, coral, saffron, mint, cobalt, lilac, rose, underside],
-    environmentMaps
-);
-
 const skyMaterial = new Hilo3d.ShaderMaterial({
-    shaderCacheId: 'FourCourtsProceduralSky',
-    depthTest: false,
-    depthMask: false,
-    renderOrder: -1000,
-    castShadows: false,
-    receiveShadows: false,
-    needBasicUniforms: false,
-    needBasicAttributes: false,
+    sourceRevision: 'FourCourtsProceduralSky',
+    state: { depthTest: false, depthWrite: false },
     attributes: {
-        a_position: 'POSITION'
+        a_position: Hilo3d.MaterialAttributeSemantic.POSITION
     },
     vs: `#version 300 es
         precision highp float;
@@ -434,7 +423,10 @@ const screenGeometry = new Hilo3d.Geometry({
 new Hilo3d.Mesh({
     geometry: screenGeometry,
     material: skyMaterial,
-    frustumTest: false
+    frustumTest: false,
+    renderOrder: -1000,
+    castShadows: false,
+    receiveShadows: false
 }).addTo(stage);
 
 const unitBox = new Hilo3d.BoxGeometry().setAllRectUV([
@@ -480,7 +472,7 @@ function addPillar(
     z: number,
     radius: number,
     height: number,
-    material: Hilo3d.Material
+    material: Hilo3d.MaterialInstance
 ): void {
     place(parent, pillar, material, [x, height * 0.5 + 0.55, z], [radius, height, radius]);
 }
@@ -491,7 +483,7 @@ function addOrb(
     y: number,
     z: number,
     radius: number,
-    material: Hilo3d.Material
+    material: Hilo3d.MaterialInstance
 ): void {
     place(parent, sphere, material, [x, y, z], [radius, radius, radius]);
 }

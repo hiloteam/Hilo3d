@@ -32,11 +32,11 @@ new Hilo3d.Mesh({
     rotationX: -90,
     geometry: new Hilo3d.PlaneGeometry(),
     material: new Hilo3d.PBRMaterial({
-        castShadows: false,
         baseColorMap: new Hilo3d.LazyTexture({
             src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
         })
-    })
+    }),
+    castShadows: false
 }).addTo(stage);
 
 const box = new Hilo3d.Mesh({

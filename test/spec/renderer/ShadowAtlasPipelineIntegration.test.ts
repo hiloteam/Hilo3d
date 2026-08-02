@@ -84,8 +84,8 @@ function alphaCutoutMesh(): { readonly mesh: Mesh; readonly texture: Texture<Uin
     const material = new BasicMaterial({
         lightType: 'NONE',
         diffuse: texture,
-        alphaCutoff: 0.5,
-        cullFace: false
+        coverage: { mode: 'mask', cutoff: 0.5 },
+        cullMode: 'none'
     });
     return { mesh: new Mesh({ geometry: triangleGeometry(), material }), texture };
 }
@@ -103,7 +103,7 @@ function morphMesh(): Mesh {
     });
     return new Mesh({
         geometry,
-        material: new BasicMaterial({ lightType: 'NONE', cullFace: false })
+        material: new BasicMaterial({ lightType: 'NONE', cullMode: 'none' })
     });
 }
 
@@ -119,7 +119,7 @@ function skinnedMesh(): SkinnedMesh {
     joint.updateMatrixWorld(true);
     const mesh = new SkinnedMesh({
         geometry,
-        material: new BasicMaterial({ lightType: 'NONE', cullFace: false }),
+        material: new BasicMaterial({ lightType: 'NONE', cullMode: 'none' }),
         skeleton: new Skeleton({
             jointNodeList: [joint],
             jointNames: ['root'],
@@ -136,10 +136,8 @@ function receiverMesh(): Mesh {
         material: new BasicMaterial({
             lightType: 'LAMBERT',
             diffuse: new Color(0.5, 0.75, 1, 1),
-            receiveShadows: true,
-            depthTest: false,
-            depthMask: false,
-            cullFace: false
+            cullMode: 'none',
+            state: { depthTest: false, depthWrite: false }
         })
     });
 }
@@ -148,8 +146,7 @@ function instancedMeshes(): readonly [Mesh, Mesh, Mesh] {
     const geometry = triangleGeometry();
     const material = new BasicMaterial({
         lightType: 'NONE',
-        castShadows: true,
-        cullFace: false
+        cullMode: 'none'
     });
     const first = new Mesh({ geometry, material, useInstanced: true });
     const second = new Mesh({ geometry, material, useInstanced: true });
@@ -456,8 +453,7 @@ describe.each([
             geometry: triangleGeometry(),
             material: new BasicMaterial({
                 lightType: 'NONE',
-                castShadows: true,
-                cullFace: false
+                cullMode: 'none'
             })
         });
         const secondMesh = meshes[1];

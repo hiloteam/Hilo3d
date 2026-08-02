@@ -41,8 +41,8 @@ light。
 - rectangular area
   light 保留 LTC 积分，并拆分 diffuse/specular 贡献以正确参与 transmission 和 clearcoat 分层；
 - inverse-square punctual light attenuation、近距离稳定下限、平滑有限 range 和平滑 spot cone；
-- 线性 HDR attachment 输出；当目标是 `rgba16float`/`rgba32float` 时，材质级 gamma encode 和旧
-  `useHDR` tone mapping 自动跳过，显示变换只在后处理末端发生。
+- 线性 HDR attachment 输出；材质 Shader 不执行 gamma encode、exposure 或 tone
+  mapping，显示变换只在后处理末端发生。
 
 ## glTF layered material 扩展
 

@@ -130,11 +130,8 @@ async function runReadbackDiagnostics(): Promise<void> {
                     vertices: new GeometryData(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3)
                 }),
                 material: new ShaderMaterial({
-                    shaderCacheId: 'ViewportSemanticDiagnostics',
-                    needBasicUniforms: false,
-                    needBasicAttributes: false,
-                    depthTest: false,
-                    cullFace: false,
+                    sourceRevision: 'ViewportSemanticDiagnostics',
+                    state: { depthTest: false, cullMode: 'none' },
                     attributes: { a_position: 'POSITION' },
                     vs: `#version 300 es
                         in vec3 a_position;

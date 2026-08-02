@@ -11,14 +11,9 @@ function createFullscreenPass(
     const scene = new Hilo3d.Node();
     const camera = new Hilo3d.Camera();
     const material = new Hilo3d.ShaderMaterial({
-        shaderName: label,
-        shaderCacheId: label,
-        needBasicAttributes: false,
-        needBasicUniforms: false,
-        depthTest: false,
-        depthMask: false,
-        cullFace: false,
-        side: Hilo3d.constants.FRONT_AND_BACK,
+        sourceRevision: label,
+        state: { depthTest: false, depthWrite: false, cullMode: 'none' },
+        cullMode: 'none',
         attributes: { a_position: 'POSITION', a_texcoord0: 'TEXCOORD_0' },
         uniforms: Object.fromEntries(
             Object.entries(samplers).map(([name, provider]) => [name, { get: provider }])
@@ -167,9 +162,7 @@ const renderManaged2D = createManagedMaterialPass(
     new Hilo3d.BasicMaterial({
         lightType: 'NONE',
         diffuse: managedTexture,
-        depthTest: false,
-        depthMask: false,
-        cullFace: false
+        state: { depthTest: false, depthWrite: false, cullMode: 'none' }
     }),
     quadPositions,
     new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
@@ -194,9 +187,7 @@ const renderManagedCube = createManagedMaterialPass(
     new Hilo3d.BasicMaterial({
         lightType: 'NONE',
         diffuse: managedCubeTexture,
-        depthTest: false,
-        depthMask: false,
-        cullFace: false
+        state: { depthTest: false, depthWrite: false, cullMode: 'none' }
     }),
     new Float32Array([-1, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1])
 );

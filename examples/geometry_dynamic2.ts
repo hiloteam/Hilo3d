@@ -23,7 +23,7 @@ g4.addFace([0, 0.577, 0], [0, 0, 0.9], [0.5, -0.289, 0]);
 const gs = [g1, g2, g3, g4];
 const m = new Hilo3d.BasicMaterial({
     diffuse: new Hilo3d.Color(0.4, 0.6, 1),
-    side: Hilo3d.constants.FRONT_AND_BACK
+    cullMode: 'none'
 });
 
 const g = new Hilo3d.BoxGeometry({

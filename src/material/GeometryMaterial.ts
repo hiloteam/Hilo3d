@@ -1,69 +1,58 @@
-import BasicMaterial, { type BasicMaterialParameters } from './BasicMaterial';
-import { DEPTH, DISTANCE, NORMAL, POSITION } from '../constants/Hilo';
+import { DISTANCE, NORMAL, POSITION, type DEPTH } from '../constants/Hilo';
 import type { ShaderOptions } from '../render/types';
+import MaterialInstance, { type MaterialInstanceParameters } from './MaterialInstance';
+import type { MaterialCullMode, MaterialFrontFace } from './MaterialDefinition';
+import { getBuiltInMaterialDefinition } from './BuiltInMaterialDefinitions';
+import { MaterialUniformSemantic } from './MaterialSemantics';
 
 export type GeometryVertexType = typeof POSITION | typeof NORMAL | typeof DEPTH | typeof DISTANCE;
 
-export interface GeometryMaterialParameters extends BasicMaterialParameters {
-    vertexType?: GeometryVertexType;
-    writeOriginData?: boolean;
+export interface GeometryMaterialParameters extends MaterialInstanceParameters {
+    readonly vertexType?: GeometryVertexType;
+    readonly writeOriginData?: boolean;
+    readonly frontFace?: MaterialFrontFace;
+    readonly cullMode?: MaterialCullMode;
 }
-/**
- * 几何材质，支持 POSITION, NORMAL, DEPTH, DISTANCE 顶点类型
- * @example
- * ```ts
- * const material = new Hilo3d.GeometryMaterial({
- *     diffuse: new Hilo3d.Color(1, 0, 0, 1)
- * });
- * ```
- */
-class GeometryMaterial extends BasicMaterial {
-    isGeometryMaterial = true;
-    override readonly className: string = 'GeometryMaterial';
-    /**
-     * 顶点类型 POSITION, NORMAL, DEPTH, DISTANCE
-     */
-    vertexType: GeometryVertexType = POSITION;
-    override lightType = 'NONE' as const;
-    /**
-     * 是否直接存储
-     */
-    writeOriginData = false;
-    /**
-     * @param params - 初始化参数，所有params都会复制到实例上
-     */
-    constructor(params: GeometryMaterialParameters = {}) {
-        super();
-        Object.assign(this, params);
-        this.initializeBasicMaterialBindings();
+
+function definitionFor(parameters: Readonly<GeometryMaterialParameters>) {
+    const vertexType = parameters.vertexType ?? POSITION;
+    return getBuiltInMaterialDefinition({
+        family: 'geometry',
+        lightModel: 0,
+        ...(parameters.frontFace === undefined ? {} : { frontFace: parameters.frontFace }),
+        ...(parameters.cullMode === undefined ? {} : { cullMode: parameters.cullMode }),
+        ...(parameters.coverage === undefined ? {} : { coverage: parameters.coverage }),
+        ...(parameters.compositing === undefined ? {} : { compositing: parameters.compositing }),
+        staticFeatures: {
+            [`VERTEX_TYPE_${vertexType}`]: 1,
+            ...(vertexType === POSITION || vertexType === DISTANCE ? { HAS_FRAG_POS: 1 } : {}),
+            ...(vertexType === NORMAL ? { HAS_NORMAL: 1 } : {}),
+            ...(parameters.writeOriginData === true ? { WRITE_ORIGIN_DATA: 1 } : {})
+        }
+    });
+}
+
+/** Immutable-topology material for position, normal, depth and distance outputs. */
+class GeometryMaterial extends MaterialInstance {
+    readonly isGeometryMaterial = true;
+    override readonly className = 'GeometryMaterial';
+    readonly vertexType: GeometryVertexType;
+    readonly writeOriginData: boolean;
+
+    constructor(params: Readonly<GeometryMaterialParameters> = {}) {
+        super(definitionFor(params), params);
+        this.vertexType = params.vertexType ?? POSITION;
+        this.writeOriginData = params.writeOriginData ?? false;
         Object.assign(this.uniforms, {
-            u_cameraFar: 'CAMERAFAR',
-            u_cameraNear: 'CAMERANEAR',
-            u_cameraType: 'CAMERATYPE'
+            u_cameraFar: MaterialUniformSemantic.CAMERA_FAR,
+            u_cameraNear: MaterialUniformSemantic.CAMERA_NEAR,
+            u_cameraType: MaterialUniformSemantic.CAMERA_TYPE
         });
     }
+
     override getRenderOption(option: ShaderOptions = {}): ShaderOptions {
-        super.getRenderOption(option);
-        option[`VERTEX_TYPE_${this.vertexType}`] = 1;
-        switch (this.vertexType) {
-            case POSITION:
-                option['HAS_FRAG_POS'] = 1;
-                break;
-            case NORMAL:
-                option['HAS_NORMAL'] = 1;
-                break;
-            case DEPTH:
-                break;
-            case DISTANCE:
-                option['HAS_FRAG_POS'] = 1;
-                break;
-            default:
-                break;
-        }
-        if (this.writeOriginData) {
-            option['WRITE_ORIGIN_DATA'] = 1;
-        }
-        return option;
+        return super.getRenderOption(option);
     }
 }
+
 export default GeometryMaterial;

@@ -351,55 +351,72 @@ export interface BasicLoadRequest extends LoaderRequest {
 }
 
 // @public
-export class BasicMaterial extends Material {
-    constructor(params?: BasicMaterialParameters);
-    ambient: MaterialTextureValue;
+export class BasicMaterial extends MaterialInstance {
+    constructor(params?: Readonly<BasicMaterialParameters>);
+    // (undocumented)
+    readonly ambient: MaterialTextureValue;
     // (undocumented)
     readonly className: string;
-    diffuse: MaterialTextureValue;
-    emission: MaterialTextureValue;
+    // (undocumented)
+    readonly diffuse: MaterialTextureValue;
+    // (undocumented)
+    readonly emission: MaterialTextureValue;
     // (undocumented)
     getRenderOption(option?: ShaderOptions): ShaderOptions;
     // (undocumented)
     protected initializeBasicMaterialBindings(): void;
     // (undocumented)
-    isBasicMaterial: boolean;
-    lightType: BasicLightType;
-    reflectivity: number;
-    refractivity: number;
-    refractRatio: number;
-    shininess: number;
-    specular: MaterialTextureValue;
-    specularEnvMap: MaterialTexture | null;
-    specularEnvMatrix: Matrix4 | null;
+    readonly isBasicMaterial = true;
     // (undocumented)
-    usedUniformVectors: number;
+    get reflectivity(): number;
+    set reflectivity(value: number);
+    // (undocumented)
+    get refractivity(): number;
+    set refractivity(value: number);
+    // (undocumented)
+    get refractRatio(): number;
+    set refractRatio(value: number);
+    // (undocumented)
+    get shininess(): number;
+    set shininess(value: number);
+    // (undocumented)
+    readonly specular: MaterialTextureValue;
+    // (undocumented)
+    readonly specularEnvMap: MaterialTexture | null;
+    // (undocumented)
+    readonly specularEnvMatrix: Matrix4 | null;
 }
 
 // @public (undocumented)
-export interface BasicMaterialParameters extends MaterialParameters {
+export interface BasicMaterialParameters extends MaterialInstanceParameters {
     // (undocumented)
-    ambient?: MaterialTextureValue;
+    readonly ambient?: MaterialColorOrTextureInput;
     // (undocumented)
-    diffuse?: MaterialTextureValue;
+    readonly cullMode?: MaterialCullMode;
     // (undocumented)
-    emission?: MaterialTextureValue;
+    readonly diffuse?: MaterialColorOrTextureInput;
     // (undocumented)
-    lightType?: BasicLightType;
+    readonly emission?: MaterialColorOrTextureInput;
     // (undocumented)
-    reflectivity?: number;
+    readonly frontFace?: MaterialFrontFace;
     // (undocumented)
-    refractivity?: number;
+    readonly lightType?: BasicLightType;
     // (undocumented)
-    refractRatio?: number;
+    readonly reflectivity?: number;
     // (undocumented)
-    shininess?: number;
+    readonly refractivity?: number;
     // (undocumented)
-    specular?: MaterialTextureValue;
+    readonly refractRatio?: number;
     // (undocumented)
-    specularEnvMap?: MaterialTexture | null;
+    readonly shininess?: number;
     // (undocumented)
-    specularEnvMatrix?: Matrix4 | null;
+    readonly specular?: MaterialColorOrTextureInput;
+    // (undocumented)
+    readonly specularEnvMap?: MaterialTexture | MaterialTextureSlotInput | null;
+    // (undocumented)
+    readonly specularEnvMatrix?: Matrix4 | null;
+    // (undocumented)
+    readonly state?: Partial<Readonly<MaterialPipelineState>>;
 }
 
 // @public (undocumented)
@@ -547,10 +564,13 @@ export interface BrowserFeatures {
 }
 
 // @public (undocumented)
-export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 9;
+export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 10;
 
 // @public (undocumented)
 export type BuiltInAnimationStateType = (typeof STATE_TYPES)[keyof typeof STATE_TYPES];
+
+// @public (undocumented)
+export type BuiltInMaterialTextureSlotName = keyof typeof MaterialTextureSlot;
 
 // @public
 class Cache_2<Value = unknown> {
@@ -1661,9 +1681,6 @@ export type CullingResultsHandle = number & {
 // @public (undocumented)
 const cullingResultsHandleBrand: unique symbol;
 
-// @public (undocumented)
-export type CustomRenderOptionProvider = (option: ShaderOptions) => ShaderOptions;
-
 // @public
 export class DataTexture extends Texture<TypedArray> {
     constructor(params?: DataTextureParameters);
@@ -1687,6 +1704,12 @@ export interface DataTextureParameters extends Omit<TextureParameters<TypedArray
 
 // @public
 export const DEFAULT_2D_LAYER: number;
+
+// @public (undocumented)
+export const DEFAULT_MATERIAL_PIPELINE_STATE: Readonly<MaterialPipelineState>;
+
+// @public (undocumented)
+export const DEFAULT_MATERIAL_TEXTURE_CHANNELS: readonly ["r", "g", "b", "a"];
 
 // @public (undocumented)
 const DEPTH$1 = "DEPTH";
@@ -1981,8 +2004,8 @@ export class Frustum {
 export class FullscreenRenderPass implements ScriptableRenderPass<FullscreenRenderPassParameters> {
     constructor(options: Readonly<FullscreenRenderPassOptions>);
     execute(context: ScriptableRenderPassContext, parameters: FullscreenRenderPassParameters): void;
-    readonly material: Material;
     readonly name: string;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     setup(builder: ScriptableRenderPassBuilder, parameters: FullscreenRenderPassParameters): void;
     readonly shader: Shader;
     readonly uniformBuffers: readonly UniformBuffer[];
@@ -1990,8 +2013,8 @@ export class FullscreenRenderPass implements ScriptableRenderPass<FullscreenRend
 
 // @public
 export interface FullscreenRenderPassOptions {
-    readonly material: Material;
     readonly name?: string;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     readonly shader: Shader;
     readonly uniformBuffers?: readonly UniformBuffer[];
 }
@@ -2174,26 +2197,30 @@ export interface GeometryDataParameters {
 export type GeometryDataTraverseCallback = (attribute: GeometryAttributeValue, index: number, offset: number) => boolean | undefined;
 
 // @public
-export class GeometryMaterial extends BasicMaterial {
-    constructor(params?: GeometryMaterialParameters);
+export class GeometryMaterial extends MaterialInstance {
+    constructor(params?: Readonly<GeometryMaterialParameters>);
     // (undocumented)
-    readonly className: string;
+    readonly className = "GeometryMaterial";
     // (undocumented)
     getRenderOption(option?: ShaderOptions): ShaderOptions;
     // (undocumented)
-    isGeometryMaterial: boolean;
+    readonly isGeometryMaterial = true;
     // (undocumented)
-    lightType: "NONE";
-    vertexType: GeometryVertexType;
-    writeOriginData: boolean;
+    readonly vertexType: GeometryVertexType;
+    // (undocumented)
+    readonly writeOriginData: boolean;
 }
 
 // @public (undocumented)
-export interface GeometryMaterialParameters extends BasicMaterialParameters {
+export interface GeometryMaterialParameters extends MaterialInstanceParameters {
     // (undocumented)
-    vertexType?: GeometryVertexType;
+    readonly cullMode?: MaterialCullMode;
     // (undocumented)
-    writeOriginData?: boolean;
+    readonly frontFace?: MaterialFrontFace;
+    // (undocumented)
+    readonly vertexType?: GeometryVertexType;
+    // (undocumented)
+    readonly writeOriginData?: boolean;
 }
 
 // @public (undocumented)
@@ -2629,7 +2656,7 @@ export interface GLTFModel {
     // (undocumented)
     lights: Light[];
     // (undocumented)
-    materials: Material[];
+    materials: MaterialInstance[];
     // (undocumented)
     meshes: Mesh[];
     // (undocumented)
@@ -2701,7 +2728,7 @@ export class GLTFParser {
     // (undocumented)
     createMorphGeometry(primitive: GLTFPrimitive, weights?: readonly number[]): MorphGeometry;
     // (undocumented)
-    createPBRMaterial(materialData: GLTFMaterial): PBRMaterial;
+    createPBRMaterial(materialData: GLTFMaterial): PBRMaterialBuilder;
     // (undocumented)
     customMaterialCreator: GLTFParserParameters['customMaterialCreator'];
     // (undocumented)
@@ -2738,6 +2765,8 @@ export class GLTFParser {
     getImageUri(imageName: GLTFIndex): string;
     // (undocumented)
     getTexture(textureInfo: GLTFTextureInfo): Texture | null;
+    // (undocumented)
+    getTextureSlot(textureInfo: GLTFTextureInfo): MaterialTextureSlotInput | null;
     // (undocumented)
     getUsedTextureNameMap(): Record<string, true>;
     // (undocumented)
@@ -2781,7 +2810,7 @@ export class GLTFParser {
     // (undocumented)
     static readonly MAGIC = "glTF";
     // (undocumented)
-    materials: Record<string, Material>;
+    materials: Record<string, MaterialInstance>;
     // (undocumented)
     meshes: Mesh[];
     // (undocumented)
@@ -2805,8 +2834,6 @@ export class GLTFParser {
     // (undocumented)
     parseGeometries(): Promise<void>;
     // (undocumented)
-    parseMaterialCommonProps(material: Material, materialData: GLTFMaterial): void;
-    // (undocumented)
     parseMaterials(): void;
     // (undocumented)
     parseMesh(meshName: GLTFIndex, node: Node_2, nodeData: GLTFNode): void;
@@ -2817,7 +2844,7 @@ export class GLTFParser {
     // (undocumented)
     parseSkins(): void;
     // (undocumented)
-    parseTechnique(materialData: GLTFMaterial, material: Material): void;
+    pbrMaterialDefaults: Readonly<PBRMaterialParameters>;
     // (undocumented)
     preHandlerBufferURI: GLTFParserParameters['preHandlerBufferURI'];
     // (undocumented)
@@ -2855,7 +2882,7 @@ export class GLTFParser {
 // @public (undocumented)
 export interface GLTFParserParameters {
     // (undocumented)
-    customMaterialCreator?: ((name: string, material: GLTFMaterial, json: GLTFRoot, parser: GLTFParser) => Material | null | undefined) | null;
+    customMaterialCreator?: ((name: string, material: GLTFMaterial, json: GLTFRoot, parser: GLTFParser) => MaterialInstance | null | undefined) | null;
     // (undocumented)
     defaultScene?: GLTFIndex;
     // (undocumented)
@@ -2872,6 +2899,7 @@ export interface GLTFParserParameters {
     isProgressive?: boolean;
     // (undocumented)
     isUnQuantizeInShader?: boolean;
+    pbrMaterialDefaults?: Readonly<PBRMaterialParameters>;
     // (undocumented)
     preHandlerBufferURI?: ((uri: string, buffer: GLTFBuffer) => string) | null;
     // (undocumented)
@@ -3236,8 +3264,8 @@ export class GPUDrivenRenderPass implements ScriptableRenderPass<GPUDrivenRender
     constructor(options: Readonly<GPUDrivenRenderPassOptions>);
     execute(context: ScriptableRenderPassContext, parameters: GPUDrivenRenderPassParameters): void;
     readonly indexFormat: 'uint16' | 'uint32' | undefined;
-    readonly material: Material;
     readonly name: string;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     setup(builder: ScriptableRenderPassBuilder, parameters: GPUDrivenRenderPassParameters): void;
     readonly shader: StorageGraphicsShader;
     readonly vertexLayouts: readonly Readonly<GPUDrivenVertexBufferLayout>[];
@@ -3246,8 +3274,8 @@ export class GPUDrivenRenderPass implements ScriptableRenderPass<GPUDrivenRender
 // @public
 export interface GPUDrivenRenderPassOptions {
     readonly indexFormat?: 'uint16' | 'uint32';
-    readonly material: Material;
     readonly name?: string;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     readonly shader: StorageGraphicsShader;
     readonly vertexLayouts?: readonly GPUDrivenVertexBufferLayout[];
 }
@@ -3334,9 +3362,9 @@ export type ImageCrossOrigin = boolean | '' | 'anonymous' | 'use-credentials';
 // @public (undocumented)
 export interface InstancedUniform {
     // (undocumented)
-    info: MaterialBindingInfo;
+    readonly info: MaterialBindingInfo;
     // (undocumented)
-    name: string;
+    readonly name: string;
 }
 
 // @public (undocumented)
@@ -3770,121 +3798,30 @@ export const LogLevel: {
 export type LogLevelValue = (typeof LogLevel)[keyof typeof LogLevel];
 
 // @public
-export class Material {
-    constructor(params?: MaterialParameters, initializeBindings?: boolean);
-    addBasicAttributes(): void;
-    addBasicUniforms(): void;
-    addTextureUniforms(textureUniforms: Readonly<Record<string, string>>): void;
-    alphaCutoff: number;
-    // (undocumented)
-    attributes: MaterialBindingMap;
-    blend: boolean;
-    blendDst: number;
-    blendDstAlpha: number;
-    blendEquation: number;
-    blendEquationAlpha: number;
-    blendSrc: number;
-    blendSrcAlpha: number;
-    castShadows: boolean;
-    // (undocumented)
-    readonly className: string;
-    clone(): Material;
-    protected copyBindings(origin: MaterialBindingMap, data: Readonly<MaterialBindingMap>): void;
-    get cullFace(): boolean;
-    set cullFace(value: boolean);
-    get cullFaceType(): GLenum;
-    set cullFaceType(value: GLenum);
-    depthFunc: number;
-    depthMask: boolean;
-    depthRange: [number, number];
-    depthTest: boolean;
-    destroyTextures(): void;
-    // (undocumented)
-    emission: MaterialTextureValue;
-    enableDrawBuffers: boolean;
-    enableTextureLod: boolean;
-    exposure: number;
-    frontFace: number;
-    gammaCorrection: boolean;
-    gammaFactor: number;
-    // (undocumented)
-    getAttributeData(name: string, mesh: Mesh, programInfo: ProgramBindingInfo): unknown;
-    // (undocumented)
-    getAttributeInfo(name: string): MaterialBindingInfo;
-    getInstancedUniforms(): InstancedUniform[];
-    getRenderOption(option?: ShaderOptions): ShaderOptions;
-    getShadowMaterial(shadowMaterial: Material): Material;
-    getTextures(): MaterialTexture[];
-    // (undocumented)
-    getUniformData(name: string, mesh: Mesh, programInfo: ProgramBindingInfo): unknown;
-    // (undocumented)
-    getUniformInfo(name: string): MaterialBindingInfo;
-    // (undocumented)
-    readonly id: string;
-    ignoreTransparent: boolean;
-    // (undocumented)
-    protected initializeBindings(): void;
-    isDiffuseEnvAndAmbientLightWorkTogether: boolean;
-    get isDirty(): boolean;
-    set isDirty(value: boolean);
-    // (undocumented)
-    readonly isMaterial = true;
-    lightType: string;
-    name: string | null;
-    needBasicAttributes: boolean;
-    needBasicUniforms: boolean;
-    normalMap: Texture | null;
-    normalMapScale: number;
-    // (undocumented)
-    onBeforeCompile: MaterialBeforeCompile | null;
-    parallaxMap: Texture | null;
-    get premultiplyAlpha(): boolean;
-    set premultiplyAlpha(value: boolean);
-    receiveShadows: boolean;
-    renderOrder: number;
-    get revision(): number;
-    sampleAlphaToCoverage: boolean;
-    // (undocumented)
-    setDefaultTransparentBlend(): void;
-    shaderCacheId: string | null;
-    shaderName: string | null;
-    get side(): GLenum;
-    set side(value: GLenum);
-    stencilFunc: number;
-    stencilFuncMask: number;
-    stencilFuncRef: number;
-    stencilMask: number;
-    stencilOpFail: number;
-    stencilOpZFail: number;
-    stencilOpZPass: number;
-    stencilTest: boolean;
-    // Warning: (ae-forgotten-export) The symbol "TextureOptionBuilder" needs to be exported by the entry point Hilo3d.d.ts
-    //
-    // (undocumented)
-    protected readonly textureOption: TextureOptionBuilder;
-    transparency: number | Texture;
-    get transparent(): boolean;
-    set transparent(value: boolean);
-    uniformBlocks: Record<string, UniformBuffer>;
-    uniforms: MaterialBindingMap;
-    useHDR: boolean;
-    usePhysicsLight: boolean;
-    userData: unknown;
-    uvMatrix: Matrix3 | null;
-    uvMatrix1: Matrix3 | null;
-    wireframe: boolean;
-}
+export const MATERIAL_TEXTURE_SLOT_COUNT = 24;
+
+// @public
+export const MaterialAttributeSemantic: Readonly<{
+    readonly POSITION: "POSITION";
+    readonly NORMAL: "NORMAL";
+    readonly TANGENT: "TANGENT";
+    readonly TEXCOORD_0: "TEXCOORD_0";
+    readonly TEXCOORD_1: "TEXCOORD_1";
+    readonly COLOR_0: "COLOR_0";
+    readonly SKIN_INDICES: "SKININDICES";
+    readonly SKIN_WEIGHTS: "SKINWEIGHTS";
+}>;
 
 // @public (undocumented)
-export type MaterialBeforeCompile = (vs: string, fs: string) => MaterialShaderSource;
+export type MaterialAttributeSemanticName = (typeof MaterialAttributeSemantic)[keyof typeof MaterialAttributeSemantic] | `MORPH${'POSITION' | 'NORMAL' | 'TANGENT'}${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}`;
 
 // @public (undocumented)
-export type MaterialBinding = string | MaterialBindingInfo;
+export type MaterialBinding = MaterialSemanticName | MaterialBindingInfo;
 
 // @public (undocumented)
 export interface MaterialBindingInfo {
     // (undocumented)
-    get(mesh: Mesh, material: Material, programInfo: ProgramBindingInfo): unknown;
+    get(mesh: Mesh, material: MaterialInstance, programInfo: ProgramBindingInfo): unknown;
     // (undocumented)
     readonly isBlankInfo?: boolean;
     // (undocumented)
@@ -3897,138 +3834,607 @@ export interface MaterialBindingInfo {
 export type MaterialBindingMap = Record<string, MaterialBinding>;
 
 // @public (undocumented)
-export interface MaterialParameters {
+export interface MaterialBlendComponent {
     // (undocumented)
-    alphaCutoff?: number;
+    readonly dstFactor: MaterialBlendFactor;
     // (undocumented)
-    attributes?: MaterialBindingMap;
+    readonly operation: MaterialBlendOperation;
     // (undocumented)
-    blend?: boolean;
-    // (undocumented)
-    blendDst?: GLenum;
-    // (undocumented)
-    blendDstAlpha?: GLenum;
-    // (undocumented)
-    blendEquation?: GLenum;
-    // (undocumented)
-    blendEquationAlpha?: GLenum;
-    // (undocumented)
-    blendSrc?: GLenum;
-    // (undocumented)
-    blendSrcAlpha?: GLenum;
-    // (undocumented)
-    castShadows?: boolean;
-    // (undocumented)
-    cullFace?: boolean;
-    // (undocumented)
-    cullFaceType?: GLenum;
-    // (undocumented)
-    depthFunc?: GLenum;
-    // (undocumented)
-    depthMask?: boolean;
-    // (undocumented)
-    depthRange?: [number, number];
-    // (undocumented)
-    depthTest?: boolean;
-    // (undocumented)
-    emission?: MaterialTextureValue;
-    // (undocumented)
-    enableDrawBuffers?: boolean;
-    // (undocumented)
-    enableTextureLod?: boolean;
-    // (undocumented)
-    exposure?: number;
-    // (undocumented)
-    frontFace?: GLenum;
-    // (undocumented)
-    gammaCorrection?: boolean;
-    // (undocumented)
-    gammaFactor?: number;
-    // (undocumented)
-    ignoreTransparent?: boolean;
-    // (undocumented)
-    isDiffuseEnvAndAmbientLightWorkTogether?: boolean;
-    // (undocumented)
-    isDirty?: boolean;
-    // (undocumented)
-    lightType?: string;
-    // (undocumented)
-    name?: string | null;
-    // (undocumented)
-    needBasicAttributes?: boolean;
-    // (undocumented)
-    needBasicUniforms?: boolean;
-    // (undocumented)
-    normalMap?: Texture | null;
-    // (undocumented)
-    normalMapScale?: number;
-    // (undocumented)
-    onBeforeCompile?: MaterialBeforeCompile | null;
-    // (undocumented)
-    parallaxMap?: Texture | null;
-    // (undocumented)
-    premultiplyAlpha?: boolean;
-    // (undocumented)
-    receiveShadows?: boolean;
-    // (undocumented)
-    renderOrder?: number;
-    // (undocumented)
-    sampleAlphaToCoverage?: boolean;
-    // (undocumented)
-    shaderCacheId?: string | null;
-    // (undocumented)
-    shaderName?: string | null;
-    // (undocumented)
-    side?: GLenum;
-    // (undocumented)
-    stencilFunc?: GLenum;
-    // (undocumented)
-    stencilFuncMask?: number;
-    // (undocumented)
-    stencilFuncRef?: number;
-    // (undocumented)
-    stencilMask?: number;
-    // (undocumented)
-    stencilOpFail?: GLenum;
-    // (undocumented)
-    stencilOpZFail?: GLenum;
-    // (undocumented)
-    stencilOpZPass?: GLenum;
-    // (undocumented)
-    stencilTest?: boolean;
-    // (undocumented)
-    transparency?: number | Texture;
-    // (undocumented)
-    transparent?: boolean;
-    uniformBlocks?: Record<string, UniformBuffer>;
-    uniforms?: MaterialBindingMap;
-    // (undocumented)
-    useHDR?: boolean;
-    // (undocumented)
-    usePhysicsLight?: boolean;
-    // (undocumented)
-    userData?: unknown;
-    // (undocumented)
-    uvMatrix?: Matrix3 | null;
-    // (undocumented)
-    uvMatrix1?: Matrix3 | null;
-    // (undocumented)
-    wireframe?: boolean;
+    readonly srcFactor: MaterialBlendFactor;
 }
 
 // @public (undocumented)
-export interface MaterialShaderSource {
+export type MaterialBlendFactor = 'zero' | 'one' | 'src' | 'one-minus-src' | 'src-alpha' | 'one-minus-src-alpha' | 'dst' | 'one-minus-dst' | 'dst-alpha' | 'one-minus-dst-alpha' | 'src-alpha-saturated' | 'constant' | 'one-minus-constant';
+
+// @public (undocumented)
+export type MaterialBlendOperation = 'add' | 'subtract' | 'reverse-subtract' | 'min' | 'max';
+
+// @public
+export const MaterialBlendPreset: Readonly<{
+    PREMULTIPLIED_ALPHA: Readonly<MaterialBlendState>;
+    STRAIGHT_ALPHA: Readonly<MaterialBlendState>;
+    PREMULTIPLIED_ADDITIVE: Readonly<MaterialBlendState>;
+    STRAIGHT_ALPHA_ADDITIVE: Readonly<MaterialBlendState>;
+}>;
+
+// @public (undocumented)
+export interface MaterialBlendState {
     // (undocumented)
-    fs: string;
+    readonly alpha: Readonly<MaterialBlendComponent>;
     // (undocumented)
-    vs: string;
+    readonly color: Readonly<MaterialBlendComponent>;
+}
+
+// @public (undocumented)
+export type MaterialColorOrTextureInput = Color | Texture<unknown> | MaterialTextureSlotInput | null;
+
+// @public (undocumented)
+export type MaterialCompareFunction = 'never' | 'less' | 'equal' | 'less-equal' | 'greater' | 'not-equal' | 'greater-equal' | 'always';
+
+// @public
+export class MaterialCompiler {
+    // (undocumented)
+    compile(request: Readonly<MaterialCompileRequest>): PreparedMaterialVariant | null;
+}
+
+// @public (undocumented)
+export interface MaterialCompileRequest {
+    // (undocumented)
+    readonly backend: RendererBackend;
+    // (undocumented)
+    readonly instance: MaterialInstance;
+    // (undocumented)
+    readonly renderingProfile: MaterialRenderingProfile;
+    // (undocumented)
+    readonly role: MaterialPassRole;
+    // (undocumented)
+    readonly target: Readonly<MaterialTargetSignature>;
+    // (undocumented)
+    readonly vertexLayoutClass: string;
+}
+
+// @public
+export type MaterialCompositing = Readonly<{
+    mode: 'opaque';
+}> | Readonly<{
+    mode: 'alpha-blend';
+    premultiplied: boolean;
+}> | Readonly<{
+    mode: 'additive';
+    premultiplied: boolean;
+}> | Readonly<{
+    mode: 'custom';
+    blend: Readonly<MaterialBlendState>;
+    depthWrite: boolean;
+}>;
+
+// @public
+export type MaterialCoverage = Readonly<{
+    mode: 'opaque';
+}> | Readonly<{
+    mode: 'mask';
+    cutoff: number;
+}> | Readonly<{
+    mode: 'alpha-to-coverage';
+    cutoff: number;
+}>;
+
+// @public (undocumented)
+export type MaterialCullMode = 'none' | 'front' | 'back';
+
+// @public
+export class MaterialDefinition {
+    constructor(parameters: Readonly<MaterialDefinitionParameters>);
+    // (undocumented)
+    readonly compositing: MaterialCompositing;
+    // (undocumented)
+    readonly coverage: MaterialCoverage;
+    // (undocumented)
+    readonly domain: MaterialSurfaceDomain;
+    // (undocumented)
+    readonly family: MaterialFamily;
+    // (undocumented)
+    getPass(role: MaterialPassRole): Readonly<MaterialPassDefinition> | null;
+    // (undocumented)
+    getTextureSlot(name: string): Readonly<MaterialTextureSlotDefinition> | null;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly instanceOverrides: Readonly<{
+        coverage: boolean;
+        compositing: boolean;
+    }>;
+    // (undocumented)
+    readonly passes: readonly Readonly<MaterialPassDefinition>[];
+    // (undocumented)
+    readonly profiles: readonly MaterialRenderingProfile[];
+    // (undocumented)
+    readonly shaderRevision: string;
+    // (undocumented)
+    readonly staticFeatures: Readonly<Record<string, number>>;
+    // (undocumented)
+    readonly textureSlots: readonly Readonly<MaterialTextureSlotDefinition>[];
+}
+
+// @public (undocumented)
+export interface MaterialDefinitionParameters {
+    // (undocumented)
+    readonly compositing?: MaterialCompositing;
+    // (undocumented)
+    readonly coverage?: MaterialCoverage;
+    // (undocumented)
+    readonly domain?: MaterialSurfaceDomain;
+    // (undocumented)
+    readonly family: MaterialFamily;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly instanceOverrides?: Readonly<{
+        coverage?: boolean;
+        compositing?: boolean;
+    }>;
+    // (undocumented)
+    readonly passes: readonly Readonly<MaterialPassDefinition>[];
+    // (undocumented)
+    readonly profiles?: readonly MaterialRenderingProfile[];
+    // (undocumented)
+    readonly shaderRevision?: string;
+    // (undocumented)
+    readonly staticFeatures?: Readonly<Record<string, number>>;
+    // (undocumented)
+    readonly textureSlots?: readonly Readonly<MaterialTextureSlotDefinition>[];
+}
+
+// @public
+export type MaterialFamily = 'basic' | 'pbr' | 'geometry' | 'sprite' | 'custom';
+
+// @public
+export type MaterialFragmentOutput = 'color' | 'depth-only' | 'motion-vector' | 'material-attributes' | 'picking';
+
+// @public
+export type MaterialFrontFace = 'ccw' | 'cw';
+
+// @public
+export class MaterialInstance {
+    constructor(definition: MaterialDefinition, parameters?: Readonly<MaterialInstanceParameters>, initializeBindings?: boolean);
+    // (undocumented)
+    protected addBasicAttributes(): void;
+    // (undocumented)
+    protected addBasicUniforms(): void;
+    // (undocumented)
+    protected addTextureUniforms(textureUniforms: Readonly<Record<string, MaterialTextureSemanticName>>): void;
+    // (undocumented)
+    readonly attributes: MaterialBindingMap;
+    // (undocumented)
+    readonly className: string;
+    // @internal
+    commitTextureSlotRevision(revision: number): void;
+    // (undocumented)
+    readonly compositing: MaterialCompositing;
+    // (undocumented)
+    protected copyBindings(origin: MaterialBindingMap, data: Readonly<MaterialBindingMap>): void;
+    // (undocumented)
+    readonly coverage: MaterialCoverage;
+    // (undocumented)
+    readonly definition: MaterialDefinition;
+    // (undocumented)
+    destroyTextures(): void;
+    // (undocumented)
+    getAttributeData(name: string, mesh: Mesh, programInfo: ProgramBindingInfo): unknown;
+    // (undocumented)
+    getAttributeInfo(name: string): MaterialBindingInfo;
+    // @internal
+    getDirtyTextureSlots(): readonly number[];
+    // (undocumented)
+    getInstancedUniforms(): readonly InstancedUniform[];
+    // (undocumented)
+    getRenderOption(option?: ShaderOptions): ShaderOptions;
+    // (undocumented)
+    getTextures(): readonly MaterialTexture[];
+    // (undocumented)
+    getTextureSlot(name: string): MaterialTextureSlotBinding | null;
+    // @internal
+    getTextureSlotByIndex(index: number): MaterialTextureSlotBinding | null;
+    // (undocumented)
+    getUniformData(name: string, mesh: Mesh, programInfo: ProgramBindingInfo): unknown;
+    // (undocumented)
+    getUniformInfo(name: string): MaterialBindingInfo;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    protected initializeBindings(): void;
+    invalidateData(): void;
+    // (undocumented)
+    readonly isMaterialInstance = true;
+    get isTransparent(): boolean;
+    // (undocumented)
+    get lightType(): string;
+    // (undocumented)
+    protected markDataChanged(): void;
+    // (undocumented)
+    readonly materialId: number;
+    // (undocumented)
+    name: string | null;
+    // (undocumented)
+    get normalScale(): number;
+    set normalScale(value: number);
+    // (undocumented)
+    get opacity(): number;
+    set opacity(value: number);
+    get revision(): number;
+    setTextureSlot(name: string, value: Texture<unknown> | MaterialTextureSlotInput | null): void;
+    // (undocumented)
+    readonly uniformBlocks: Record<string, UniformBuffer>;
+    // (undocumented)
+    readonly uniforms: MaterialBindingMap;
+    // (undocumented)
+    userData: unknown;
+}
+
+// @public (undocumented)
+export interface MaterialInstanceParameters {
+    // (undocumented)
+    readonly compositing?: MaterialCompositing;
+    // (undocumented)
+    readonly coverage?: MaterialCoverage;
+    // (undocumented)
+    readonly name?: string | null;
+    // (undocumented)
+    readonly normalMap?: Texture<unknown> | MaterialTextureSlotInput | null;
+    // (undocumented)
+    readonly normalScale?: number;
+    // (undocumented)
+    readonly opacity?: number;
+    // (undocumented)
+    readonly opacityMap?: Texture<unknown> | MaterialTextureSlotInput | null;
+    // (undocumented)
+    readonly parallaxMap?: Texture<unknown> | MaterialTextureSlotInput | null;
+    readonly uniformBlocks?: Readonly<Record<string, UniformBuffer>>;
+    // (undocumented)
+    readonly userData?: unknown;
+}
+
+// @public (undocumented)
+export interface MaterialPassDefinition {
+    // (undocumented)
+    readonly fallback: MaterialPassFallback;
+    // (undocumented)
+    readonly fragmentOutput: MaterialFragmentOutput;
+    // (undocumented)
+    readonly role: MaterialPassRole;
+    // (undocumented)
+    readonly shader: MaterialShaderModule;
+    // (undocumented)
+    readonly state: Readonly<MaterialPipelineState>;
+}
+
+// @public
+export type MaterialPassFallback = 'required' | 'safe-fallback' | 'skip';
+
+// @public
+export type MaterialPassRole = 'forward' | 'depth-only' | 'shadow-caster' | 'motion-vector' | 'material-attributes' | 'picking' | `user:${string}`;
+
+// @public
+export interface MaterialPipelineState {
+    // (undocumented)
+    readonly alphaToCoverage: boolean;
+    // (undocumented)
+    readonly blend?: Readonly<MaterialBlendState>;
+    // (undocumented)
+    readonly cullMode: MaterialCullMode;
+    // (undocumented)
+    readonly depthCompare: MaterialCompareFunction;
+    // (undocumented)
+    readonly depthRange: readonly [number, number];
+    // (undocumented)
+    readonly depthTest: boolean;
+    // (undocumented)
+    readonly depthWrite: boolean;
+    // (undocumented)
+    readonly frontFace: MaterialFrontFace;
+    // (undocumented)
+    readonly stencil?: Readonly<MaterialStencilState>;
+    readonly wireframe: boolean;
+}
+
+// @public
+export type MaterialRenderingProfile = 'portable' | 'webgpu-high-end';
+
+// @public
+export type MaterialSemanticName = MaterialAttributeSemanticName | MaterialUniformSemanticName | MaterialTextureSemanticName;
+
+// @public
+export type MaterialShaderModule = Readonly<{
+    kind: 'builtin';
+    family: Exclude<MaterialFamily, 'custom'>;
+}> | Readonly<{
+    kind: 'glsl';
+    vertexSource: string;
+    fragmentSource: string;
+    sourceRevision: string;
+}>;
+
+// @public (undocumented)
+export interface MaterialStencilFaceState {
+    // (undocumented)
+    readonly compare: MaterialCompareFunction;
+    // (undocumented)
+    readonly depthFailOp: MaterialStencilOperation;
+    // (undocumented)
+    readonly failOp: MaterialStencilOperation;
+    // (undocumented)
+    readonly passOp: MaterialStencilOperation;
+}
+
+// @public (undocumented)
+export type MaterialStencilOperation = 'keep' | 'zero' | 'replace' | 'invert' | 'increment-clamp' | 'decrement-clamp' | 'increment-wrap' | 'decrement-wrap';
+
+// @public (undocumented)
+export interface MaterialStencilState {
+    // (undocumented)
+    readonly back: Readonly<MaterialStencilFaceState>;
+    // (undocumented)
+    readonly front: Readonly<MaterialStencilFaceState>;
+    // (undocumented)
+    readonly readMask: number;
+    // (undocumented)
+    readonly reference: number;
+    // (undocumented)
+    readonly writeMask: number;
+}
+
+// @public
+export type MaterialSurfaceDomain = 'surface' | 'unlit' | 'post-process';
+
+// @public (undocumented)
+export interface MaterialTargetSignature {
+    // (undocumented)
+    readonly colorFormats: readonly (string | null)[];
+    // (undocumented)
+    readonly depthStencilFormat: string | null;
+    // (undocumented)
+    readonly sampleCount: number;
 }
 
 // @public (undocumented)
 export type MaterialTexture = Texture<unknown>;
 
+// @public
+export type MaterialTextureChannel = 'r' | 'g' | 'b' | 'a' | 'zero' | 'one';
+
+// @public
+export type MaterialTextureEncoding = 'linear' | 'srgb' | 'data';
+
+// @public
+export const MaterialTextureSemantic: Readonly<{
+    readonly SHADOW_ATLAS: "SHADOWATLAS";
+    readonly DIRECTIONAL_LIGHTS_SHADOW_MAP: "DIRECTIONALLIGHTSSHADOWMAP";
+    readonly POINT_LIGHTS_SHADOW_MAP: "POINTLIGHTSSHADOWMAP";
+    readonly SPOT_LIGHTS_SHADOW_MAP: "SPOTLIGHTSSHADOWMAP";
+    readonly AREA_LIGHTS_LTC_TEXTURE_1: "AREALIGHTSLTCTEXTURE1";
+    readonly AREA_LIGHTS_LTC_TEXTURE_2: "AREALIGHTSLTCTEXTURE2";
+    readonly DIFFUSE: "DIFFUSE";
+    readonly SPECULAR: "SPECULAR";
+    readonly EMISSION: "EMISSION";
+    readonly AMBIENT: "AMBIENT";
+    readonly NORMAL_MAP: "NORMALMAP";
+    readonly PARALLAX_MAP: "PARALLAXMAP";
+    readonly OPACITY: "TRANSPARENCY";
+    readonly BASE_COLOR_MAP: "BASECOLORMAP";
+    readonly METALLIC_MAP: "METALLICMAP";
+    readonly ROUGHNESS_MAP: "ROUGHNESSMAP";
+    readonly METALLIC_ROUGHNESS_MAP: "METALLICROUGHNESSMAP";
+    readonly OCCLUSION_MAP: "OCCLUSIONMAP";
+    readonly SPECULAR_GLOSSINESS_MAP: "SPECULARGLOSSINESSMAP";
+    readonly LIGHT_MAP: "LIGHTMAP";
+    readonly CLEARCOAT_MAP: "CLEARCOATMAP";
+    readonly CLEARCOAT_ROUGHNESS_MAP: "CLEARCOATROUGHNESSMAP";
+    readonly CLEARCOAT_NORMAL_MAP: "CLEARCOATNORMALMAP";
+    readonly ANISOTROPY_MAP: "ANISOTROPYMAP";
+    readonly TRANSMISSION_MAP: "TRANSMISSIONMAP";
+    readonly THICKNESS_MAP: "THICKNESSMAP";
+    readonly IRIDESCENCE_MAP: "IRIDESCENCEMAP";
+    readonly IRIDESCENCE_THICKNESS_MAP: "IRIDESCENCETHICKNESSMAP";
+    readonly DIFFUSE_ENV_MAP: "DIFFUSEENVMAP";
+    readonly BRDF_LUT: "BRDFLUT";
+    readonly SPECULAR_ENV_MAP: "SPECULARENVMAP";
+    readonly OPAQUE_SCENE_TEXTURE: "OPAQUETEXTURE";
+}>;
+
+// @public (undocumented)
+export type MaterialTextureSemanticName = (typeof MaterialTextureSemantic)[keyof typeof MaterialTextureSemantic] | `${'DIFFUSE' | 'SPECULAR' | 'EMISSION' | 'AMBIENT'}UV` | `${'NORMALMAP' | 'PARALLAXMAP' | 'BASECOLORMAP' | 'METALLICMAP' | 'ROUGHNESSMAP' | 'METALLICROUGHNESSMAP' | 'OCCLUSIONMAP' | 'SPECULARGLOSSINESSMAP' | 'LIGHTMAP' | 'CLEARCOATMAP' | 'CLEARCOATROUGHNESSMAP' | 'CLEARCOATNORMALMAP' | 'ANISOTROPYMAP' | 'TRANSMISSIONMAP' | 'THICKNESSMAP' | 'IRIDESCENCEMAP' | 'IRIDESCENCETHICKNESSMAP'}UV` | 'TRANSPARENCYUV';
+
+// @public (undocumented)
+export const MaterialTextureSlot: Readonly<{
+    readonly NORMAL: 0;
+    readonly PARALLAX: 1;
+    readonly EMISSION: 2;
+    readonly OPACITY: 3;
+    readonly DIFFUSE: 4;
+    readonly SPECULAR: 5;
+    readonly AMBIENT: 6;
+    readonly BASE_COLOR: 7;
+    readonly METALLIC: 8;
+    readonly ROUGHNESS: 9;
+    readonly METALLIC_ROUGHNESS: 10;
+    readonly OCCLUSION: 11;
+    readonly SPECULAR_GLOSSINESS: 12;
+    readonly LIGHT: 13;
+    readonly CLEARCOAT: 14;
+    readonly CLEARCOAT_ROUGHNESS: 15;
+    readonly CLEARCOAT_NORMAL: 16;
+    readonly ANISOTROPY: 17;
+    readonly TRANSMISSION: 18;
+    readonly THICKNESS: 19;
+    readonly IRIDESCENCE: 20;
+    readonly IRIDESCENCE_THICKNESS: 21;
+    readonly DIFFUSE_ENVIRONMENT: 22;
+    readonly SPECULAR_ENVIRONMENT: 23;
+}>;
+
+// @public
+export interface MaterialTextureSlotBinding {
+    // (undocumented)
+    readonly channels: MaterialTextureSlotDefinition['channels'];
+    // (undocumented)
+    readonly encoding: MaterialTextureEncoding;
+    // (undocumented)
+    readonly texture: Texture<unknown>;
+    // (undocumented)
+    readonly transform: Matrix3 | null;
+    // (undocumented)
+    readonly uvSet: 0 | 1;
+}
+
+// @public (undocumented)
+export interface MaterialTextureSlotDefinition {
+    // (undocumented)
+    readonly channels: readonly [
+    MaterialTextureChannel,
+    MaterialTextureChannel,
+    MaterialTextureChannel,
+    MaterialTextureChannel
+    ];
+    // (undocumented)
+    readonly encoding: MaterialTextureEncoding;
+    // (undocumented)
+    readonly index: number;
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly presence: 'static' | 'fallback';
+    // (undocumented)
+    readonly sampleType: 'float' | 'depth' | 'sint' | 'uint';
+    readonly uvSets: readonly (0 | 1)[];
+    // (undocumented)
+    readonly viewDimension: '2d' | 'cube' | '3d' | '2d-array';
+}
+
+// @public (undocumented)
+export interface MaterialTextureSlotInput {
+    // (undocumented)
+    readonly channels?: MaterialTextureSlotDefinition['channels'];
+    // (undocumented)
+    readonly encoding?: MaterialTextureEncoding;
+    // (undocumented)
+    readonly texture: Texture<unknown>;
+    // (undocumented)
+    readonly transform?: Matrix3 | null;
+    // (undocumented)
+    readonly uvSet?: 0 | 1;
+}
+
 // @public (undocumented)
 export type MaterialTextureValue = MaterialTexture | Color | null;
+
+// @public
+export const MaterialUniformSemantic: Readonly<{
+    readonly LOCAL: "LOCAL";
+    readonly MODEL: "MODEL";
+    readonly OBJECT_ID_COLOR: "OBJECTIDCOLOR";
+    readonly VIEW: "VIEW";
+    readonly PROJECTION: "PROJECTION";
+    readonly VIEW_PROJECTION: "VIEWPROJECTION";
+    readonly MODEL_VIEW: "MODELVIEW";
+    readonly MODEL_VIEW_PROJECTION: "MODELVIEWPROJECTION";
+    readonly MODEL_INVERSE: "MODELINVERSE";
+    readonly VIEW_INVERSE: "VIEWINVERSE";
+    readonly VIEW_INVERSE_NORMAL: "VIEWINVERSEINVERSETRANSPOSE";
+    readonly PROJECTION_INVERSE: "PROJECTIONINVERSE";
+    readonly MODEL_VIEW_INVERSE: "MODELVIEWINVERSE";
+    readonly MODEL_VIEW_PROJECTION_INVERSE: "MODELVIEWPROJECTIONINVERSE";
+    readonly MODEL_NORMAL: "MODELINVERSETRANSPOSE";
+    readonly MODEL_VIEW_NORMAL: "MODELVIEWINVERSETRANSPOSE";
+    readonly VIEWPORT: "VIEWPORT";
+    readonly CAMERA_FAR: "CAMERAFAR";
+    readonly CAMERA_NEAR: "CAMERANEAR";
+    readonly CAMERA_TYPE: "CAMERATYPE";
+    readonly CAMERA_POSITION: "CAMERAPOSITION";
+    readonly RENDERER_SIZE: "RENDERERSIZE";
+    readonly JOINT_MATRIX: "JOINTMATRIX";
+    readonly NORMAL_MAP_SCALE: "NORMALMAPSCALE";
+    readonly DIFFUSE_COLOR: "DIFFUSE";
+    readonly SPECULAR_COLOR: "SPECULAR";
+    readonly AMBIENT_COLOR: "AMBIENT";
+    readonly EMISSION_COLOR: "EMISSION";
+    readonly OPACITY: "TRANSPARENCY";
+    readonly OCCLUSION_STRENGTH: "OCCLUSIONSTRENGTH";
+    readonly SHININESS: "SHININESS";
+    readonly SPECULAR_ENV_MATRIX: "SPECULARENVMATRIX";
+    readonly REFLECTIVITY: "REFLECTIVITY";
+    readonly REFRACT_RATIO: "REFRACTRATIO";
+    readonly REFRACTIVITY: "REFRACTIVITY";
+    readonly LOG_DEPTH: "LOGDEPTH";
+    readonly AMBIENT_LIGHTS_COLOR: "AMBIENTLIGHTSCOLOR";
+    readonly DIRECTIONAL_LIGHTS_COLOR: "DIRECTIONALLIGHTSCOLOR";
+    readonly DIRECTIONAL_LIGHTS_INFO: "DIRECTIONALLIGHTSINFO";
+    readonly DIRECTIONAL_LIGHTS_SHADOW_MAP_SIZE: "DIRECTIONALLIGHTSSHADOWMAPSIZE";
+    readonly DIRECTIONAL_LIGHTS_SHADOW_BIAS: "DIRECTIONALLIGHTSSHADOWBIAS";
+    readonly DIRECTIONAL_LIGHT_SPACE_MATRIX: "DIRECTIONALLIGHTSPACEMATRIX";
+    readonly DIRECTIONAL_CASCADE_SPLITS: "DIRECTIONALCASCADESPLITS";
+    readonly DIRECTIONAL_CASCADE_PARAMS: "DIRECTIONALCASCADEPARAMS";
+    readonly DIRECTIONAL_CASCADE_MATRICES: "DIRECTIONALCASCADEMATRICES";
+    readonly POINT_LIGHTS_POSITION: "POINTLIGHTSPOS";
+    readonly POINT_LIGHTS_COLOR: "POINTLIGHTSCOLOR";
+    readonly POINT_LIGHTS_INFO: "POINTLIGHTSINFO";
+    readonly POINT_LIGHTS_RANGE: "POINTLIGHTSRANGE";
+    readonly POINT_LIGHTS_SHADOW_BIAS: "POINTLIGHTSSHADOWBIAS";
+    readonly POINT_LIGHT_SPACE_MATRIX: "POINTLIGHTSPACEMATRIX";
+    readonly POINT_LIGHT_CAMERA: "POINTLIGHTCAMERA";
+    readonly SPOT_LIGHTS_POSITION: "SPOTLIGHTSPOS";
+    readonly SPOT_LIGHTS_DIRECTION: "SPOTLIGHTSDIR";
+    readonly SPOT_LIGHTS_COLOR: "SPOTLIGHTSCOLOR";
+    readonly SPOT_LIGHTS_CUTOFFS: "SPOTLIGHTSCUTOFFS";
+    readonly SPOT_LIGHTS_INFO: "SPOTLIGHTSINFO";
+    readonly SPOT_LIGHTS_RANGE: "SPOTLIGHTSRANGE";
+    readonly SPOT_LIGHTS_SHADOW_MAP_SIZE: "SPOTLIGHTSSHADOWMAPSIZE";
+    readonly SPOT_LIGHTS_SHADOW_BIAS: "SPOTLIGHTSSHADOWBIAS";
+    readonly SPOT_LIGHT_SPACE_MATRIX: "SPOTLIGHTSPACEMATRIX";
+    readonly AREA_LIGHTS_POSITION: "AREALIGHTSPOS";
+    readonly AREA_LIGHTS_COLOR: "AREALIGHTSCOLOR";
+    readonly AREA_LIGHTS_WIDTH: "AREALIGHTSWIDTH";
+    readonly AREA_LIGHTS_HEIGHT: "AREALIGHTSHEIGHT";
+    readonly FOG_COLOR: "FOGCOLOR";
+    readonly FOG_INFO: "FOGINFO";
+    readonly SHADOW_ATLAS_SIZE: "SHADOWATLASSIZE";
+    readonly SHADOW_ATLAS_RECTS: "SHADOWATLASRECTS";
+    readonly POINT_SHADOW_MATRICES: "POINTSHADOWMATRICES";
+    readonly POSITION_DECODE_MATRIX: "POSITIONDECODEMAT";
+    readonly NORMAL_DECODE_MATRIX: "NORMALDECODEMAT";
+    readonly UV_DECODE_MATRIX: "UVDECODEMAT";
+    readonly UV1_DECODE_MATRIX: "UV1DECODEMAT";
+    readonly BASE_COLOR: "BASECOLOR";
+    readonly EMISSION_FACTOR: "EMISSIONFACTOR";
+    readonly METALLIC: "METALLIC";
+    readonly ROUGHNESS: "ROUGHNESS";
+    readonly DIFFUSE_ENV_INTENSITY: "DIFFUSEENVINTENSITY";
+    readonly SPECULAR_ENV_INTENSITY: "SPECULARENVINTENSITY";
+    readonly SPECULAR_ENV_MIP_COUNT: "SPECULARENVMAPMIPCOUNT";
+    readonly DIFFUSE_ENV_SPHERICAL_HARMONICS: "DIFFUSEENVSPHEREHARMONICS3";
+    readonly GLOSSINESS: "GLOSSINESS";
+    readonly ALPHA_CUTOFF: "ALPHACUTOFF";
+    readonly MORPH_WEIGHTS: "MORPHWEIGHTS";
+    readonly CLEARCOAT_FACTOR: "CLEARCOATFACTOR";
+    readonly CLEARCOAT_ROUGHNESS_FACTOR: "CLEARCOATROUGHNESSFACTOR";
+    readonly CLEARCOAT_NORMAL_SCALE: "CLEARCOATNORMALSCALE";
+    readonly ANISOTROPY_STRENGTH: "ANISOTROPYSTRENGTH";
+    readonly ANISOTROPY_ROTATION: "ANISOTROPYROTATION";
+    readonly TRANSMISSION_FACTOR: "TRANSMISSIONFACTOR";
+    readonly THICKNESS_FACTOR: "THICKNESSFACTOR";
+    readonly ATTENUATION_DISTANCE: "ATTENUATIONDISTANCE";
+    readonly ATTENUATION_COLOR: "ATTENUATIONCOLOR";
+    readonly IOR: "IOR";
+    readonly IRIDESCENCE_FACTOR: "IRIDESCENCEFACTOR";
+    readonly IRIDESCENCE_IOR: "IRIDESCENCEIOR";
+    readonly IRIDESCENCE_THICKNESS_MINIMUM: "IRIDESCENCETHICKNESSMINIMUM";
+    readonly IRIDESCENCE_THICKNESS_MAXIMUM: "IRIDESCENCETHICKNESSMAXIMUM";
+    readonly MATERIAL_TEXTURE_TRANSFORMS: "MATERIALTEXTURETRANSFORMS";
+    readonly MATERIAL_TEXTURE_INFO: "MATERIALTEXTUREINFO";
+    readonly MATERIAL_TEXTURE_CHANNELS: "MATERIALTEXTURECHANNELS";
+}>;
+
+// @public (undocumented)
+export type MaterialUniformSemanticName = (typeof MaterialUniformSemantic)[keyof typeof MaterialUniformSemantic];
 
 // @public
 export const math: {
@@ -4196,6 +4602,7 @@ export class Matrix4Notifier extends Matrix4 {
 // @public
 export class Mesh extends Node_2 {
     constructor(params?: MeshParameters);
+    castShadows: boolean;
     // (undocumented)
     className: string;
     clone(isChild?: boolean): Mesh;
@@ -4210,8 +4617,10 @@ export class Mesh extends Node_2 {
     // (undocumented)
     isMesh: boolean;
     // (undocumented)
-    material: Material | null;
+    material: MaterialInstance | null;
     raycast(ray: Ray, sort?: boolean): Vector3[] | null;
+    receiveShadows: boolean;
+    renderOrder: number;
     // (undocumented)
     static readonly typeName: string;
     useInstanced: boolean;
@@ -4220,11 +4629,17 @@ export class Mesh extends Node_2 {
 // @public (undocumented)
 export interface MeshParameters extends NodeParameters {
     // (undocumented)
+    castShadows?: boolean;
+    // (undocumented)
     frustumTest?: boolean;
     // (undocumented)
     geometry?: Geometry | null;
     // (undocumented)
-    material?: Material | null;
+    material?: MaterialInstance | null;
+    // (undocumented)
+    receiveShadows?: boolean;
+    // (undocumented)
+    renderOrder?: number;
     // (undocumented)
     useInstanced?: boolean;
 }
@@ -4287,6 +4702,11 @@ export interface MutableArrayLike<Value> {
 
 // @public (undocumented)
 export type MutableNumberArray = number[] | Float32Array | Float64Array | Int8Array | Uint8Array | Uint8ClampedArray | Int16Array | Uint16Array | Int32Array | Uint32Array;
+
+// @public (undocumented)
+export type MutablePBRMaterialParameters = {
+    -readonly [Name in keyof PBRMaterialParameters]: PBRMaterialParameters[Name];
+};
 
 // @public (undocumented)
 export type NetworkResourceType = Exclude<BasicResourceType, 'img'>;
@@ -4679,166 +5099,242 @@ export interface OrthographicCameraParameters extends CameraParameters {
 export function parseRadianceHDR(input: ArrayBuffer | Uint8Array): RadianceHDRImage;
 
 // @public
-export class PBRMaterial extends Material {
-    constructor(params?: PBRMaterialParameters);
-    anisotropyMap: Texture | null;
-    anisotropyRotation: number;
-    anisotropyStrength: number;
-    attenuationColor: Color;
-    attenuationDistance: number;
-    baseColor: Color;
-    baseColorMap: Texture | null;
-    brdfLUT: Texture | null;
+export class PBRMaterial extends MaterialInstance {
+    constructor(params?: Readonly<PBRMaterialParameters>);
+    // (undocumented)
+    readonly anisotropyMap: Texture<unknown> | null;
+    // (undocumented)
+    get anisotropyRotation(): number;
+    set anisotropyRotation(value: number);
+    // (undocumented)
+    get anisotropyStrength(): number;
+    set anisotropyStrength(value: number);
+    // (undocumented)
+    readonly attenuationColor: Color;
+    // (undocumented)
+    get attenuationDistance(): number;
+    set attenuationDistance(value: number);
+    // (undocumented)
+    readonly baseColor: Color;
+    // (undocumented)
+    readonly baseColorMap: Texture<unknown> | null;
+    // (undocumented)
+    readonly brdfLUT: Texture<unknown> | null;
     // (undocumented)
     readonly className: string;
-    clearcoatFactor: number;
-    clearcoatMap: Texture | null;
-    clearcoatNormalMap: Texture | null;
-    clearcoatNormalScale: number;
-    clearcoatRoughnessFactor: number;
-    clearcoatRoughnessMap: Texture | null;
-    diffuseEnvIntensity: number;
-    diffuseEnvMap: MaterialTexture | null;
-    diffuseEnvSphereHarmonics3: SphericalHarmonics3 | null;
-    emission: MaterialTextureValue;
-    emissionFactor: Color;
-    gammaCorrection: boolean;
+    // (undocumented)
+    get clearcoatFactor(): number;
+    set clearcoatFactor(value: number);
+    // (undocumented)
+    readonly clearcoatMap: Texture<unknown> | null;
+    // (undocumented)
+    readonly clearcoatNormalMap: Texture<unknown> | null;
+    // (undocumented)
+    get clearcoatNormalScale(): number;
+    set clearcoatNormalScale(value: number);
+    // (undocumented)
+    get clearcoatRoughnessFactor(): number;
+    set clearcoatRoughnessFactor(value: number);
+    // (undocumented)
+    readonly clearcoatRoughnessMap: Texture<unknown> | null;
+    // (undocumented)
+    get diffuseEnvIntensity(): number;
+    set diffuseEnvIntensity(value: number);
+    // (undocumented)
+    readonly diffuseEnvMap: MaterialTexture | null;
+    // (undocumented)
+    readonly diffuseEnvSphereHarmonics3: SphericalHarmonics3 | null;
+    // (undocumented)
+    readonly emission: MaterialTextureValue;
+    // (undocumented)
+    readonly emissionFactor: Color;
     // (undocumented)
     getRenderOption(option?: ShaderOptions): ShaderOptions;
-    glossiness: number;
-    ior: number;
-    iridescenceFactor: number;
-    iridescenceIor: number;
-    iridescenceMap: Texture | null;
-    iridescenceThicknessMap: Texture | null;
-    iridescenceThicknessMaximum: number;
-    iridescenceThicknessMinimum: number;
-    isOcclusionInMetallicRoughnessMap: boolean;
     // (undocumented)
-    isPBRMaterial: boolean;
-    isSpecularEnvMapIncludeMipmaps: boolean;
-    isSpecularGlossiness: boolean;
+    get glossiness(): number;
+    set glossiness(value: number);
     // (undocumented)
-    lightMap: Texture | null;
-    lightType: 'PBR' | 'NONE';
-    metallic: number;
-    metallicMap: Texture | null;
-    metallicRoughnessMap: Texture | null;
-    occlusionMap: Texture | null;
-    occlusionStrength: number;
-    roughness: number;
-    roughnessMap: Texture | null;
-    specular: Color;
-    specularEnvIntensity: number;
-    specularEnvMap: MaterialTexture | null;
-    specularGlossinessMap: Texture | null;
-    thicknessFactor: number;
-    thicknessMap: Texture | null;
+    get ior(): number;
+    set ior(value: number);
+    // (undocumented)
+    get iridescenceFactor(): number;
+    set iridescenceFactor(value: number);
+    // (undocumented)
+    get iridescenceIor(): number;
+    set iridescenceIor(value: number);
+    // (undocumented)
+    readonly iridescenceMap: Texture<unknown> | null;
+    // (undocumented)
+    readonly iridescenceThicknessMap: Texture<unknown> | null;
+    // (undocumented)
+    get iridescenceThicknessMaximum(): number;
+    set iridescenceThicknessMaximum(value: number);
+    // (undocumented)
+    get iridescenceThicknessMinimum(): number;
+    set iridescenceThicknessMinimum(value: number);
+    // (undocumented)
+    readonly isOcclusionInMetallicRoughnessMap: boolean;
+    // (undocumented)
+    readonly isPBRMaterial = true;
+    // (undocumented)
+    readonly isSpecularEnvMapIncludeMipmaps: boolean;
+    // (undocumented)
+    readonly isSpecularGlossiness: boolean;
+    // (undocumented)
+    readonly lightMap: Texture<unknown> | null;
+    // (undocumented)
+    get metallic(): number;
+    set metallic(value: number);
+    // (undocumented)
+    readonly metallicMap: Texture<unknown> | null;
+    // (undocumented)
+    readonly metallicRoughnessMap: Texture<unknown> | null;
+    // (undocumented)
+    readonly occlusionMap: Texture<unknown> | null;
+    // (undocumented)
+    get occlusionStrength(): number;
+    set occlusionStrength(value: number);
+    get requiresOpaqueSceneTexture(): boolean;
+    // (undocumented)
+    get roughness(): number;
+    set roughness(value: number);
+    // (undocumented)
+    readonly roughnessMap: Texture<unknown> | null;
+    // (undocumented)
+    readonly specular: Color;
+    // (undocumented)
+    get specularEnvIntensity(): number;
+    set specularEnvIntensity(value: number);
+    // (undocumented)
+    readonly specularEnvMap: MaterialTexture | null;
+    // (undocumented)
+    readonly specularGlossinessMap: Texture<unknown> | null;
+    // (undocumented)
+    get thicknessFactor(): number;
+    set thicknessFactor(value: number);
+    // (undocumented)
+    readonly thicknessMap: Texture<unknown> | null;
+    // (undocumented)
     get transmissionFactor(): number;
     set transmissionFactor(value: number);
-    transmissionMap: Texture | null;
     // (undocumented)
-    usedUniformVectors: number;
-    usePhysicsLight: boolean;
+    readonly transmissionMap: Texture<unknown> | null;
+}
+
+// @public
+export class PBRMaterialBuilder {
+    constructor(initial?: Readonly<PBRMaterialParameters>);
+    // (undocumented)
+    build(): PBRMaterial;
+    // (undocumented)
+    readonly parameters: MutablePBRMaterialParameters;
 }
 
 // @public (undocumented)
-export interface PBRMaterialParameters extends MaterialParameters {
+export interface PBRMaterialParameters extends MaterialInstanceParameters {
     // (undocumented)
-    anisotropyMap?: Texture | null;
+    readonly anisotropyMap?: PBRMaterialTextureInput;
     // (undocumented)
-    anisotropyRotation?: number;
+    readonly anisotropyRotation?: number;
     // (undocumented)
-    anisotropyStrength?: number;
+    readonly anisotropyStrength?: number;
     // (undocumented)
-    attenuationColor?: Color;
+    readonly attenuationColor?: Color;
     // (undocumented)
-    attenuationDistance?: number;
+    readonly attenuationDistance?: number;
     // (undocumented)
-    baseColor?: Color;
+    readonly baseColor?: Color;
     // (undocumented)
-    baseColorMap?: Texture | null;
+    readonly baseColorMap?: PBRMaterialTextureInput;
     // (undocumented)
-    brdfLUT?: Texture | null;
+    readonly brdfLUT?: Texture | null;
     // (undocumented)
-    clearcoatFactor?: number;
+    readonly clearcoatFactor?: number;
     // (undocumented)
-    clearcoatMap?: Texture | null;
+    readonly clearcoatMap?: PBRMaterialTextureInput;
     // (undocumented)
-    clearcoatNormalMap?: Texture | null;
+    readonly clearcoatNormalMap?: PBRMaterialTextureInput;
     // (undocumented)
-    clearcoatNormalScale?: number;
+    readonly clearcoatNormalScale?: number;
     // (undocumented)
-    clearcoatRoughnessFactor?: number;
+    readonly clearcoatRoughnessFactor?: number;
     // (undocumented)
-    clearcoatRoughnessMap?: Texture | null;
+    readonly clearcoatRoughnessMap?: PBRMaterialTextureInput;
     // (undocumented)
-    diffuseEnvIntensity?: number;
+    readonly cullMode?: MaterialCullMode;
     // (undocumented)
-    diffuseEnvMap?: MaterialTexture | null;
+    readonly diffuseEnvIntensity?: number;
     // (undocumented)
-    diffuseEnvSphereHarmonics3?: SphericalHarmonics3 | null;
+    readonly diffuseEnvMap?: MaterialTexture | MaterialTextureSlotInput | null;
     // (undocumented)
-    emission?: MaterialTextureValue;
+    readonly diffuseEnvSphereHarmonics3?: SphericalHarmonics3 | null;
     // (undocumented)
-    emissionFactor?: Color;
+    readonly emission?: MaterialTextureValue | MaterialTextureSlotInput;
     // (undocumented)
-    glossiness?: number;
+    readonly emissionFactor?: Color;
     // (undocumented)
-    ior?: number;
+    readonly frontFace?: MaterialFrontFace;
     // (undocumented)
-    iridescenceFactor?: number;
+    readonly glossiness?: number;
     // (undocumented)
-    iridescenceIor?: number;
+    readonly ior?: number;
     // (undocumented)
-    iridescenceMap?: Texture | null;
+    readonly iridescenceFactor?: number;
     // (undocumented)
-    iridescenceThicknessMap?: Texture | null;
+    readonly iridescenceIor?: number;
     // (undocumented)
-    iridescenceThicknessMaximum?: number;
+    readonly iridescenceMap?: PBRMaterialTextureInput;
     // (undocumented)
-    iridescenceThicknessMinimum?: number;
+    readonly iridescenceThicknessMap?: PBRMaterialTextureInput;
     // (undocumented)
-    isOcclusionInMetallicRoughnessMap?: boolean;
+    readonly iridescenceThicknessMaximum?: number;
     // (undocumented)
-    isSpecularEnvMapIncludeMipmaps?: boolean;
+    readonly iridescenceThicknessMinimum?: number;
     // (undocumented)
-    isSpecularGlossiness?: boolean;
+    readonly isOcclusionInMetallicRoughnessMap?: boolean;
     // (undocumented)
-    lightMap?: Texture | null;
+    readonly isSpecularEnvMapIncludeMipmaps?: boolean;
     // (undocumented)
-    lightType?: 'PBR' | 'NONE';
+    readonly isSpecularGlossiness?: boolean;
     // (undocumented)
-    metallic?: number;
+    readonly lightMap?: PBRMaterialTextureInput;
     // (undocumented)
-    metallicMap?: Texture | null;
+    readonly metallic?: number;
     // (undocumented)
-    metallicRoughnessMap?: Texture | null;
+    readonly metallicMap?: PBRMaterialTextureInput;
     // (undocumented)
-    occlusionMap?: Texture | null;
+    readonly metallicRoughnessMap?: PBRMaterialTextureInput;
     // (undocumented)
-    occlusionStrength?: number;
+    readonly occlusionMap?: PBRMaterialTextureInput;
     // (undocumented)
-    roughness?: number;
+    readonly occlusionStrength?: number;
     // (undocumented)
-    roughnessMap?: Texture | null;
+    readonly roughness?: number;
     // (undocumented)
-    specular?: Color;
+    readonly roughnessMap?: PBRMaterialTextureInput;
     // (undocumented)
-    specularEnvIntensity?: number;
+    readonly specular?: Color;
     // (undocumented)
-    specularEnvMap?: MaterialTexture | null;
+    readonly specularEnvIntensity?: number;
     // (undocumented)
-    specularGlossinessMap?: Texture | null;
+    readonly specularEnvMap?: MaterialTexture | MaterialTextureSlotInput | null;
     // (undocumented)
-    thicknessFactor?: number;
+    readonly specularGlossinessMap?: PBRMaterialTextureInput;
     // (undocumented)
-    thicknessMap?: Texture | null;
+    readonly state?: Partial<Readonly<MaterialPipelineState>>;
     // (undocumented)
-    transmissionFactor?: number;
+    readonly thicknessFactor?: number;
     // (undocumented)
-    transmissionMap?: Texture | null;
+    readonly thicknessMap?: PBRMaterialTextureInput;
+    // (undocumented)
+    readonly transmissionFactor?: number;
+    // (undocumented)
+    readonly transmissionMap?: PBRMaterialTextureInput;
+    readonly unlit?: boolean;
 }
+
+// @public (undocumented)
+export type PBRMaterialTextureInput = Texture<unknown> | MaterialTextureSlotInput | null;
 
 // @public
 export class PerspectiveCamera extends Camera {
@@ -4983,6 +5479,24 @@ export interface PostProcessRenderPipelineOptions {
     readonly colorUber?: Readonly<ColorUberOptions>;
     readonly features?: readonly ForwardRenderPipelineFeature[];
     readonly opaqueTexture?: boolean;
+}
+
+// @public (undocumented)
+export interface PreparedMaterialVariant {
+    // (undocumented)
+    readonly definitionId: string;
+    // (undocumented)
+    readonly fragmentOutput: MaterialFragmentOutput;
+    // (undocumented)
+    readonly key: string;
+    // (undocumented)
+    readonly materialId: number;
+    // (undocumented)
+    readonly role: MaterialPassRole;
+    // (undocumented)
+    readonly shader: MaterialShaderModule;
+    // (undocumented)
+    readonly state: Readonly<MaterialPipelineState>;
 }
 
 // @public
@@ -5294,7 +5808,7 @@ export interface RendererCommonOptions {
     // (undocumented)
     fog?: Fog | null;
     // (undocumented)
-    forceMaterial?: Material | null;
+    forceMaterial?: MaterialInstance | null;
     // (undocumented)
     fragmentPrecision?: ShaderPrecision;
     // (undocumented)
@@ -5342,7 +5856,7 @@ export interface RendererContract {
     // (undocumented)
     domElement: HTMLCanvasElement | null;
     // (undocumented)
-    forceMaterial: Material | null;
+    forceMaterial: MaterialInstance | null;
     getExtension(name: string): object | null;
     getViewport(): RendererViewport;
     // (undocumented)
@@ -5421,7 +5935,8 @@ export interface RendererListDescriptor {
     readonly castShadowsOnly?: boolean;
     readonly cullingResults: CullingResultsHandle;
     readonly excludeMeshes?: readonly Mesh[];
-    readonly overrideMaterial?: Material;
+    readonly materialPass?: MaterialPassRole;
+    readonly overrideMaterial?: MaterialInstance;
     readonly queue: RendererListQueue;
     readonly sorting: RendererListSorting;
 }
@@ -5985,6 +6500,12 @@ export type RenderTargetStoreOp = 'store' | 'discard';
 // @public (undocumented)
 export type ResizableTextureImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap | OffscreenCanvas | HTMLVideoElement;
 
+// @public
+export function resolveMaterialPassDefinition(instance: MaterialInstance, role: MaterialPassRole): MaterialPassDefinition | null;
+
+// @public
+export function resolveMaterialPassState(instance: MaterialInstance, role: MaterialPassRole): Readonly<MaterialPipelineState> | null;
+
 // @public (undocumented)
 export interface Resource {
     // (undocumented)
@@ -6153,11 +6674,14 @@ export const semantic: {
     TEXCOORD_1: {
         get(mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
-    UVMATRIX_0: {
+    MATERIALTEXTURETRANSFORMS: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
+    };
+    MATERIALTEXTUREINFO: {
         get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
-    UVMATRIX_1: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
+    MATERIALTEXTURECHANNELS: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     CAMERAFAR: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
@@ -6447,10 +6971,10 @@ export const semantic: {
         get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     EXPOSURE: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     GAMMAFACTOR: {
-        get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
+        get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     MORPHWEIGHTS: {
         isDependMesh: boolean;
@@ -6509,7 +7033,7 @@ export const semantic: {
 };
 
 // @public (undocumented)
-export interface SemanticMaterial extends Material {
+export interface SemanticMaterial extends MaterialInstance {
     // (undocumented)
     [property: string]: unknown;
     // (undocumented)
@@ -6644,11 +7168,11 @@ export class Shader {
     destroy(): this;
     destroyIfNoRef(renderer: ShaderRenderer): this;
     fs: string;
-    static getBasicShader(material: Material, isUseInstance: boolean, header: string, renderer?: ShaderPrecisionProvider): Shader;
+    static getBasicShader(material: MaterialInstance, isUseInstance: boolean, header: string, renderer?: ShaderPrecisionProvider, role?: MaterialPassRole): Shader;
     static getCustomShader(vs: string, fs: string, header?: string, cacheKey?: string, useHeaderCache?: boolean, renderer?: ShaderPrecisionProvider): Shader;
-    static getHeader(mesh: Mesh, material: Material, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean): string;
-    static getHeaderKey(mesh: Mesh, material: Material, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean): string;
-    static getShader(mesh: Mesh, material: Material, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, renderer?: ShaderPrecisionProvider, linearOutput?: boolean): Shader | null;
+    static getHeader(mesh: Mesh, material: MaterialInstance, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, role?: MaterialPassRole): string;
+    static getHeaderKey(mesh: Mesh, material: MaterialInstance, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, role?: MaterialPassRole): string;
+    static getShader(mesh: Mesh, material: MaterialInstance, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, renderer?: ShaderPrecisionProvider, linearOutput?: boolean, role?: MaterialPassRole): Shader | null;
     static get headerCache(): Cache_2<string>;
     // (undocumented)
     readonly id: string;
@@ -6666,18 +7190,12 @@ export class Shader {
 export type ShaderDefineValue = string | number | boolean | undefined;
 
 // @public
-export class ShaderMaterial extends Material {
-    constructor(params?: ShaderMaterialParameters);
+export class ShaderMaterial extends MaterialInstance {
+    constructor(params: Readonly<ShaderMaterialParameters>);
     // (undocumented)
     readonly className: string;
-    fs: string;
-    getCustomRenderOption: CustomRenderOptionProvider | null;
     // (undocumented)
-    getRenderOption(option?: ShaderOptions): ShaderOptions;
-    // (undocumented)
-    isShaderMaterial: boolean;
-    useHeaderCache: boolean;
-    vs: string;
+    readonly isShaderMaterial = true;
 }
 
 // @public
@@ -6697,15 +7215,51 @@ export type ShaderMaterialLoadRequest = Omit<ShaderMaterialParameters, 'fs' | 'v
 };
 
 // @public (undocumented)
-export interface ShaderMaterialParameters extends MaterialParameters {
+export interface ShaderMaterialParameters extends MaterialInstanceParameters {
     // (undocumented)
-    fs?: string;
+    readonly attributes?: Readonly<MaterialBindingMap>;
     // (undocumented)
-    getCustomRenderOption?: CustomRenderOptionProvider | null;
+    readonly cullMode?: MaterialCullMode;
     // (undocumented)
-    useHeaderCache?: boolean;
+    readonly defines?: Readonly<Record<string, number>>;
     // (undocumented)
-    vs?: string;
+    readonly frontFace?: MaterialFrontFace;
+    // (undocumented)
+    readonly fs: string;
+    // (undocumented)
+    readonly roles?: readonly Readonly<ShaderMaterialRoleSource>[];
+    // (undocumented)
+    readonly sourceRevision?: string;
+    // (undocumented)
+    readonly state?: Partial<Readonly<MaterialPipelineState>>;
+    // (undocumented)
+    readonly textureSlots?: readonly Readonly<ShaderMaterialTextureSlot>[];
+    // (undocumented)
+    readonly uniforms?: Readonly<MaterialBindingMap>;
+    // (undocumented)
+    readonly vs: string;
+}
+
+// @public (undocumented)
+export interface ShaderMaterialRoleSource {
+    // (undocumented)
+    readonly fallback?: MaterialPassFallback;
+    // (undocumented)
+    readonly fragmentOutput: MaterialFragmentOutput;
+    // (undocumented)
+    readonly fragmentSource: string;
+    // (undocumented)
+    readonly role: MaterialPassRole;
+    // (undocumented)
+    readonly vertexSource: string;
+}
+
+// @public (undocumented)
+export interface ShaderMaterialTextureSlot {
+    // (undocumented)
+    readonly binding: MaterialTextureSlotInput;
+    // (undocumented)
+    readonly definition: Readonly<MaterialTextureSlotDefinition>;
 }
 
 // @public (undocumented)
@@ -7701,16 +8255,6 @@ export interface TextureMipmap {
 }
 
 // @public (undocumented)
-class TextureOptionBuilder {
-    // (undocumented)
-    add(texture: unknown, optionName: string, callback?: () => void): this;
-    // (undocumented)
-    reset(option: ShaderOptions): this;
-    // (undocumented)
-    update(): this;
-}
-
-// @public (undocumented)
 export interface TextureParameters<Image = TextureImageSource> {
     // (undocumented)
     anisotropic?: number;
@@ -8053,6 +8597,7 @@ export const UNIFORM_BLOCK_BINDINGS: Readonly<{
     readonly GeometryBlock: 6;
     readonly SkinningBlock: 7;
     readonly MorphBlock: 8;
+    readonly MaterialTextureBlock: 9;
 }>;
 
 // @public

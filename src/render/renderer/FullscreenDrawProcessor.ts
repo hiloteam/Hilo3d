@@ -1,4 +1,4 @@
-import type Material from '../../material/Material';
+import type { MaterialPipelineState } from '../../material/MaterialDefinition';
 import type Shader from '../../shader/Shader';
 import type { RHIUploadBatch } from '../frame/RHIUploadBatch';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
@@ -30,7 +30,7 @@ interface FullscreenOwnerRecord {
 export interface FullscreenDrawPrepareOptions {
     readonly owner: object;
     readonly shader: Shader;
-    readonly material: Material;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     readonly target: RHIMeshDrawTargetDescriptor;
     /** Handles follow `pipeline.bindingPlan.uniformBlocks` order exactly. */
     readonly uniformBuffers?: readonly ResourceRegistryHandle<RHIBuffer>[];
@@ -137,7 +137,7 @@ export class FullscreenDrawProcessor {
         }
         const pipeline = this.prepareGraphPipeline(
             options.shader,
-            options.material,
+            options.pipelineState,
             options.target
         );
         const uniformBuffers = options.uniformBuffers ?? EMPTY_UNIFORM_BUFFERS;
@@ -180,7 +180,7 @@ export class FullscreenDrawProcessor {
     /** @internal Prepare reusable shader/pipeline state before graph resources are resolved. */
     prepareGraphPipeline(
         shader: Shader,
-        material: Material,
+        pipelineState: Readonly<MaterialPipelineState>,
         target: RHIMeshDrawTargetDescriptor
     ): Readonly<PipelineResourceRecord> {
         this.assertAlive();
@@ -192,7 +192,12 @@ export class FullscreenDrawProcessor {
             throw new TypeError('Fullscreen shaders must not declare vertex inputs');
         }
         this.validateFragmentOutputs(compiled.metadata.fragmentOutputs, target);
-        const pipeline = this.pipelines.prepare(shader, EMPTY_VERTEX_LAYOUTS, material, target);
+        const pipeline = this.pipelines.prepare(
+            shader,
+            EMPTY_VERTEX_LAYOUTS,
+            pipelineState,
+            target
+        );
         this.resourceUses.use(pipeline.pipeline);
         return pipeline;
     }

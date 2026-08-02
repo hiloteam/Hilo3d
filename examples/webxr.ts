@@ -45,11 +45,11 @@ stage.addChild(objects);
 const materials = [
     new Hilo3d.BasicMaterial({
         diffuse: new Hilo3d.Color(0.3, 0.6, 0.9),
-        side: Hilo3d.constants.FRONT_AND_BACK
+        cullMode: 'none'
     }),
     new Hilo3d.BasicMaterial({
         diffuse: new Hilo3d.Color(0.9, 0.45, 0.2),
-        side: Hilo3d.constants.FRONT_AND_BACK
+        cullMode: 'none'
     })
 ];
 const planeGeometry = new Hilo3d.PlaneGeometry();
@@ -110,7 +110,7 @@ const controllerLine = new Hilo3d.Mesh({
     }),
     material: new Hilo3d.BasicMaterial({
         lightType: 'NONE',
-        side: Hilo3d.constants.FRONT_AND_BACK
+        cullMode: 'none'
     })
 });
 const controller = new Hilo3d.Node();

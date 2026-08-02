@@ -19,9 +19,6 @@ glTFLoader
     .then(model => {
         model.node.y = 0.2;
         model.node.setScale(0.0015);
-        model.materials.forEach(material => {
-            material.side = Hilo3d.constants.FRONT_AND_BACK;
-        });
         model.node.onUpdate = function () {
             this.rotationY += 1;
         };
@@ -39,7 +36,7 @@ const plane = new Hilo3d.Mesh({
     geometry: new Hilo3d.PlaneGeometry(),
     material: new Hilo3d.BasicMaterial({
         lightType: 'LAMBERT',
-        side: Hilo3d.constants.FRONT_AND_BACK,
+        cullMode: 'none',
         diffuse: new Hilo3d.Color(0.612, 0.612, 0.612)
     })
 });

@@ -1,4 +1,7 @@
-import Material from '../../material/Material';
+import {
+    DEFAULT_MATERIAL_PIPELINE_STATE,
+    type MaterialPipelineState
+} from '../../material/MaterialDefinition';
 import ShaderClass from '../../shader/Shader';
 import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
@@ -47,7 +50,7 @@ export interface PostProcessStep {
     /** Stable identity for reflected bind groups and PreparedDraw reuse. */
     readonly owner: object;
     readonly shader: ShaderClass;
-    readonly material: Material;
+    readonly pipelineState: Readonly<MaterialPipelineState>;
     readonly output: Readonly<PostProcessOutputTarget>;
     readonly uniformBuffers?: readonly ResourceRegistryHandle<RHIBuffer>[];
 }
@@ -98,10 +101,11 @@ export class PostProcessRenderer {
         vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
         fs: PRESENT_FRAGMENT_SOURCE
     });
-    readonly #presentMaterial = new Material({
+    readonly #presentPipelineState: Readonly<MaterialPipelineState> = Object.freeze({
+        ...DEFAULT_MATERIAL_PIPELINE_STATE,
         depthTest: false,
-        depthMask: false,
-        cullFace: false
+        depthWrite: false,
+        cullMode: 'none'
     });
     #sampledScratch = new WeakMap<object, SampledScratch>();
     readonly #targetScratch: RenderTargetResourceRecord[] = [];
@@ -205,7 +209,7 @@ export class PostProcessRenderer {
             this.fullscreen.prepare({
                 owner: slot.owner,
                 shader: this.#presentShader,
-                material: this.#presentMaterial,
+                pipelineState: this.#presentPipelineState,
                 target: { colorFormats: [configuration.format], sampleCount: 1 },
                 sampledResources: this.sampledResources(slot.owner, sourceColor.record.readableView)
             })
@@ -286,7 +290,7 @@ export class PostProcessRenderer {
                     this.fullscreen.prepare({
                         owner: this.#presentOwner,
                         shader: this.#presentShader,
-                        material: this.#presentMaterial,
+                        pipelineState: this.#presentPipelineState,
                         target: { colorFormats: [configuration.format], sampleCount: 1 },
                         sampledResources: this.sampledResources(
                             this.#presentOwner,
@@ -394,7 +398,7 @@ export class PostProcessRenderer {
             this.fullscreen.prepare({
                 owner: step.owner,
                 shader: step.shader,
-                material: step.material,
+                pipelineState: step.pipelineState,
                 target: {
                     colorFormats: [destination.record.format],
                     sampleCount: outputRecord.sampleCount

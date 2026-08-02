@@ -21,7 +21,7 @@ new Hilo3d.Mesh({
     geometry: new Hilo3d.PlaneGeometry(),
     material: new Hilo3d.PBRMaterial({
         baseColor: new Hilo3d.Color(1, 1, 1),
-        side: Hilo3d.constants.FRONT_AND_BACK
+        cullMode: 'none'
     }),
     rotationX: 90
 })
@@ -56,7 +56,7 @@ while (num--) {
         material: new Hilo3d.BasicMaterial({
             diffuse: areaLight.color,
             lightType: 'NONE',
-            side: Hilo3d.constants.FRONT_AND_BACK
+            cullMode: 'none'
         })
     });
     areaLightMesh.scaleX = areaLight.width;

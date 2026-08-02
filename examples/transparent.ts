@@ -20,8 +20,8 @@ while (n--) {
     const box = new Hilo3d.Mesh({
         geometry: boxGeometry,
         material: new Hilo3d.BasicMaterial({
-            transparent: true,
-            transparency: 0.5,
+            compositing: { mode: 'alpha-blend', premultiplied: true },
+            opacity: 0.5,
             diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random())
         }),
         x: -totalNum * 0.5 + n + 0.2,

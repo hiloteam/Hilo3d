@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { addEnvironmentSkybox, applyEnvironmentMaps } from './shared/environment';
+import { addEnvironmentSkybox, environmentMaterialDefaults } from './shared/environment';
 import { loadEnvironmentMaps, resolveExampleBackend } from './shared/init';
 
 const cameraTarget = new Hilo3d.Vector3(0, 0.35, 0);
@@ -34,26 +34,27 @@ const environment = await loadEnvironmentMaps();
 addEnvironmentSkybox(stage, environment.skyboxMap);
 
 const floorMaterial = new Hilo3d.PBRMaterial({
+    ...environmentMaterialDefaults(environment),
     baseColor: new Hilo3d.Color(0.26, 0.3, 0.42),
     baseColorMap: new Hilo3d.LazyTexture({
         src: new URL('./image/hilo-showroom-grid-v2.jpg', import.meta.url).href
     }),
     metallic: 0.35,
-    roughness: 0.64,
-    castShadows: false,
-    receiveShadows: true
+    roughness: 0.64
 });
 new Hilo3d.Mesh({
     y: -1,
     rotationX: -90,
     geometry: new Hilo3d.PlaneGeometry(),
-    material: floorMaterial
+    material: floorMaterial,
+    castShadows: false
 })
     .setScale(8)
     .addTo(stage);
 
 const hero = new Hilo3d.Node({ y: 0.05 }).addTo(stage);
 const coreMaterial = new Hilo3d.PBRMaterial({
+    ...environmentMaterialDefaults(environment),
     baseColor: new Hilo3d.Color(0.18, 0.9, 0.78),
     metallic: 0.74,
     roughness: 0.2
@@ -74,6 +75,7 @@ const satelliteMaterials: Hilo3d.PBRMaterial[] = [];
 for (let index = 0; index < 10; index += 1) {
     const angle = (index / 10) * Math.PI * 2;
     const material = new Hilo3d.PBRMaterial({
+        ...environmentMaterialDefaults(environment),
         baseColor:
             index % 2 === 0 ? new Hilo3d.Color(0.5, 0.42, 1) : new Hilo3d.Color(0.25, 0.78, 1),
         metallic: 0.42,
@@ -88,7 +90,6 @@ for (let index = 0; index < 10; index += 1) {
         material
     }).addTo(hero);
 }
-applyEnvironmentMaps([floorMaterial, coreMaterial, ...satelliteMaterials], environment);
 hero.onUpdate = deltaTime => {
     hero.rotationY += deltaTime * 0.018;
     core.rotationX += deltaTime * 0.013;

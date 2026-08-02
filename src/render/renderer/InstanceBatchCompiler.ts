@@ -5,7 +5,7 @@ import Material, {
     type MaterialBinding,
     type MaterialBindingInfo,
     type ProgramBindingInfo
-} from '../../material/Material';
+} from '../../material/MaterialInstance';
 import Matrix3 from '../../math/Matrix3';
 import Matrix4 from '../../math/Matrix4';
 import UniformBuffer from '../UniformBuffer';

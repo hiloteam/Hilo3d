@@ -149,6 +149,8 @@ class Sprite extends Mesh {
             geometry: sharedSpriteGeometry,
             material: params.material ?? SpriteMaterial.forTexture(initialFrame.texture),
             useInstanced: true,
+            castShadows: false,
+            receiveShadows: false,
             // The shared unit geometry does not describe the instance-sized bounds.
             frustumTest: false
         });

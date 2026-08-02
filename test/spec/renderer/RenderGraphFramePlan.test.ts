@@ -5,7 +5,7 @@ import Node from '../../../src/core/Node';
 import Geometry from '../../../src/geometry/Geometry';
 import DirectionalLight from '../../../src/light/DirectionalLight';
 import LightManager from '../../../src/light/LightManager';
-import Material from '../../../src/material/Material';
+import Material from '../../../src/material/BasicMaterial';
 import { RenderGraphFramePlanner } from '../../../src/render/RenderGraphFramePlan';
 import RenderList from '../../../src/render/RenderList';
 import type { Renderer } from '../../../src/render/Renderer';

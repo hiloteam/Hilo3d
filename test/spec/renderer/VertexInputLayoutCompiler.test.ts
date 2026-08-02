@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import Mesh from '../../../src/core/Mesh';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
-import Material, { type MaterialBindingMap } from '../../../src/material/Material';
+import BasicMaterial from '../../../src/material/BasicMaterial';
+import type Material from '../../../src/material/MaterialInstance';
+import type { MaterialBindingMap } from '../../../src/material/MaterialInstance';
 import { UNSIGNED_INT } from '../../../src/constants/webgl';
 import {
     VertexInputLayoutCompiler,
@@ -33,11 +35,9 @@ function binding(value: unknown) {
 function materialWith(values: Readonly<Record<string, unknown>>): Material {
     const attributes: MaterialBindingMap = {};
     for (const [name, value] of Object.entries(values)) attributes[name] = binding(value);
-    return new Material({
-        needBasicAttributes: false,
-        needBasicUniforms: false,
-        attributes
-    });
+    const material = new BasicMaterial();
+    Object.assign(material.attributes, attributes);
+    return material;
 }
 
 function meshWith(vertices: GeometryData, material: Material): Mesh {

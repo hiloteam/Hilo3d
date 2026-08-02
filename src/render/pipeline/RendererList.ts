@@ -1,6 +1,7 @@
 import type Camera from '../../camera/Camera';
 import type Mesh from '../../core/Mesh';
-import type Material from '../../material/Material';
+import type Material from '../../material/MaterialInstance';
+import type { MaterialPassRole } from '../../material/MaterialDefinition';
 
 declare const cullingResultsHandleBrand: unique symbol;
 declare const rendererListHandleBrand: unique symbol;
@@ -44,6 +45,8 @@ export interface RendererListDescriptor {
     readonly sorting: RendererListSorting;
     /** Optional material used for every selected mesh. */
     readonly overrideMaterial?: Material;
+    /** Semantic material pass compiled for every selected draw. Defaults to `forward`. */
+    readonly materialPass?: MaterialPassRole;
     /** Include only meshes whose effective material casts shadows. */
     readonly castShadowsOnly?: boolean;
     /**

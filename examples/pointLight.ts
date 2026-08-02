@@ -19,10 +19,9 @@ new Hilo3d.Mesh({
         }),
         baseColor: new Hilo3d.Color(0.2, 0.24, 0.34),
         metallic: 0.28,
-        roughness: 0.6,
-        castShadows: false,
-        receiveShadows: true
-    })
+        roughness: 0.6
+    }),
+    castShadows: false
 })
     .setScale(8)
     .addTo(stage);

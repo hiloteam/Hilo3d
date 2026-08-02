@@ -8,6 +8,7 @@ import {
     ComputeShader,
     constants,
     createStorageLayout,
+    DEFAULT_MATERIAL_PIPELINE_STATE,
     DirectionalLight,
     EventDispatcher,
     GLTFLoader,
@@ -321,7 +322,7 @@ const integerArrayTextureParameters = {
 const materialParameters = {
     lightType: 'NONE',
     diffuse: texture,
-    transparent: false
+    compositing: { mode: 'opaque' }
 } satisfies BasicMaterialParameters;
 const material = new BasicMaterial(materialParameters);
 const meshParameters = {
@@ -416,7 +417,7 @@ const storageGraphicsShader = new StorageGraphicsShader({
 });
 const gpuDrivenPass = new GPUDrivenRenderPass({
     shader: storageGraphicsShader,
-    material,
+    pipelineState: DEFAULT_MATERIAL_PIPELINE_STATE,
     vertexLayouts: []
 });
 scriptableGraph.addPass(gpuDrivenPass, {

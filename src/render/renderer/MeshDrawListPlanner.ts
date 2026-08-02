@@ -1,7 +1,7 @@
 import type Camera from '../../camera/Camera';
 import Mesh from '../../core/Mesh';
 import type Geometry from '../../geometry/Geometry';
-import type Material from '../../material/Material';
+import type Material from '../../material/MaterialInstance';
 import Vector3 from '../../math/Vector3';
 import { MAX_INSTANCES_PER_DRAW } from '../ubo/BuiltInUniformBlocks';
 
@@ -161,13 +161,14 @@ export class MeshDrawListPlanner {
     readonly #compareInputOrder = (a: Mesh, b: Mesh): number => {
         const displayOrder = compare2DOrder(a, b);
         if (displayOrder !== 0) return displayOrder;
-        const materialA = this.#inputMaterialOverride ?? a.material;
-        const materialB = this.#inputMaterialOverride ?? b.material;
-        if (materialA === null || materialB === null) {
+        if (
+            (this.#inputMaterialOverride ?? a.material) === null ||
+            (this.#inputMaterialOverride ?? b.material) === null
+        ) {
             throw new Error('Validated Mesh lost its material while sorting draw-list input');
         }
-        const renderOrderA = isSpriteMesh(a) ? 0 : materialA.renderOrder;
-        const renderOrderB = isSpriteMesh(b) ? 0 : materialB.renderOrder;
+        const renderOrderA = isSpriteMesh(a) ? 0 : a.renderOrder;
+        const renderOrderB = isSpriteMesh(b) ? 0 : b.renderOrder;
         return renderOrderA - renderOrderB;
     };
 
@@ -365,8 +366,8 @@ export class MeshDrawListPlanner {
                 if (material === null) {
                     throw new Error(`Mesh ${mesh.id} must have material before draw-list planning`);
                 }
-                if (!Number.isFinite(material.renderOrder)) {
-                    throw new RangeError(`Mesh ${mesh.id} material renderOrder must be finite`);
+                if (!Number.isFinite(mesh.renderOrder)) {
+                    throw new RangeError(`Mesh ${mesh.id} renderOrder must be finite`);
                 }
                 if (this.#seenMeshes.has(mesh)) {
                     throw new TypeError(`Mesh ${mesh.id} appears more than once in a draw list`);
@@ -398,10 +399,10 @@ export class MeshDrawListPlanner {
         record.inputIndex = inputIndex;
         record.geometry = geometry;
         record.material = material;
-        record.renderOrder = material.renderOrder;
-        record.transparent = material.transparent;
+        record.renderOrder = mesh.renderOrder;
+        record.transparent = material.isTransparent;
         record.transparentDepth = 0;
-        if (material.transparent && this.#transparentSortCamera !== null) {
+        if (material.isTransparent && this.#transparentSortCamera !== null) {
             mesh.worldMatrix.getTranslation(this.#transparentPosition);
             this.#transparentPosition.transformMat4(
                 this.#transparentSortCamera.viewProjectionMatrix
@@ -409,13 +410,18 @@ export class MeshDrawListPlanner {
             record.transparentDepth = this.#transparentPosition.z;
         }
 
-        if (mesh.useInstanced && material.transparent) {
+        if (mesh.useInstanced && material.isTransparent) {
             if (record.batch !== null) {
                 const oldBatch = record.batch;
                 record.batch = null;
                 this.releaseBatchReference(oldBatch);
             }
-            const batch = this.acquireOrderPreservingBatch(geometry, material, inputIndex);
+            const batch = this.acquireOrderPreservingBatch(
+                geometry,
+                material,
+                mesh.renderOrder,
+                inputIndex
+            );
             batch.meshes.push(mesh);
             if (batch.meshes.length > this.#diagnosticState.largestInstancedBatchCapacity) {
                 this.#diagnosticState.largestInstancedBatchCapacity = batch.meshes.length;
@@ -436,14 +442,14 @@ export class MeshDrawListPlanner {
             }
             batch = null;
             if (mesh.useInstanced) {
-                batch = this.acquireBatch(geometry, material);
+                batch = this.acquireBatch(geometry, material, mesh.renderOrder);
                 batch.ownerReferenceCount++;
                 record.batch = batch;
             }
         }
 
         if (batch !== null) {
-            this.activateBatch(batch, material, inputIndex);
+            this.activateBatch(batch, material, mesh.renderOrder, inputIndex);
             if (batch.meshes.length >= MAX_INSTANCES_PER_DRAW) {
                 throw new Error(
                     `Instanced draw batch exceeded MAX_INSTANCES_PER_DRAW ${String(MAX_INSTANCES_PER_DRAW)}`
@@ -453,7 +459,7 @@ export class MeshDrawListPlanner {
             if (batch.meshes.length > this.#diagnosticState.largestInstancedBatchCapacity) {
                 this.#diagnosticState.largestInstancedBatchCapacity = batch.meshes.length;
             }
-        } else if (material.transparent) {
+        } else if (material.isTransparent) {
             this.#transparentMeshes.push(mesh);
         } else {
             this.#opaqueMeshes.push(mesh);
@@ -495,7 +501,11 @@ export class MeshDrawListPlanner {
         return record;
     }
 
-    private acquireBatch(geometry: Geometry, material: Material): MutableMeshDrawInstanceBatch {
+    private acquireBatch(
+        geometry: Geometry,
+        material: Material,
+        renderOrder: number
+    ): MutableMeshDrawInstanceBatch {
         let materialGroups = this.#geometryGroups.get(geometry);
         if (materialGroups === undefined) {
             materialGroups = this.#geometryGroupPool.pop();
@@ -509,7 +519,11 @@ export class MeshDrawListPlanner {
         let batch = materialGroups.get(material);
         let tail: MutableMeshDrawInstanceBatch | null = null;
         while (batch !== undefined) {
-            if (batch.ownerReferenceCount < MAX_INSTANCES_PER_DRAW) return batch;
+            if (
+                batch.ownerReferenceCount < MAX_INSTANCES_PER_DRAW &&
+                batch.renderOrder === renderOrder
+            )
+                return batch;
             tail = batch;
             batch = batch.nextInGroup ?? undefined;
         }
@@ -534,8 +548,8 @@ export class MeshDrawListPlanner {
         batch.geometry = geometry;
         batch.material = material;
         batch.meshes.length = 0;
-        batch.renderOrder = material.renderOrder;
-        batch.transparent = material.transparent;
+        batch.renderOrder = renderOrder;
+        batch.transparent = material.isTransparent;
         batch.ownerReferenceCount = 0;
         batch.epoch = 0;
         batch.identityOrder = ++this.#nextBatchIdentityOrder;
@@ -550,13 +564,14 @@ export class MeshDrawListPlanner {
     private activateBatch(
         batch: MutableMeshDrawInstanceBatch,
         material: Material,
+        renderOrder: number,
         inputIndex: number
     ): void {
         if (batch.epoch === this.#epoch) return;
         batch.epoch = this.#epoch;
         batch.meshes.length = 0;
-        batch.renderOrder = material.renderOrder;
-        batch.transparent = material.transparent;
+        batch.renderOrder = renderOrder;
+        batch.transparent = material.isTransparent;
         batch.inputIndex = inputIndex;
         batch.orderPreserving = false;
         this.#instancedBatches.push(batch);
@@ -565,6 +580,7 @@ export class MeshDrawListPlanner {
     private acquireOrderPreservingBatch(
         geometry: Geometry,
         material: Material,
+        renderOrder: number,
         inputIndex: number
     ): MutableMeshDrawInstanceBatch {
         const tail = this.#orderPreservingBatchTail;
@@ -573,6 +589,7 @@ export class MeshDrawListPlanner {
             this.#orderPreservingBatchTailInputIndex + 1 === inputIndex &&
             tail.geometry === geometry &&
             tail.material === material &&
+            tail.renderOrder === renderOrder &&
             tail.meshes.length < MAX_INSTANCES_PER_DRAW
         ) {
             this.#orderPreservingBatchTailInputIndex = inputIndex;
@@ -602,7 +619,7 @@ export class MeshDrawListPlanner {
         batch.geometry = geometry;
         batch.material = material;
         batch.meshes.length = 0;
-        batch.renderOrder = material.renderOrder;
+        batch.renderOrder = renderOrder;
         batch.transparent = true;
         batch.ownerReferenceCount = 0;
         batch.epoch = this.#epoch;

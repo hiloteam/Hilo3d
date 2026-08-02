@@ -1,152 +1,289 @@
-import Material, {
-    type MaterialParameters,
-    type MaterialTexture,
-    type MaterialTextureValue
-} from './Material';
 import Color from '../math/Color';
 import type Matrix4 from '../math/Matrix4';
 import Texture from '../texture/Texture';
 import CubeTexture from '../texture/CubeTexture';
+import MaterialInstance, {
+    type MaterialInstanceParameters,
+    type MaterialTexture,
+    type MaterialTextureValue
+} from './MaterialInstance';
+import type {
+    MaterialCullMode,
+    MaterialFrontFace,
+    MaterialPipelineState,
+    MaterialTextureSlotInput
+} from './MaterialDefinition';
+import { getBuiltInMaterialDefinition } from './BuiltInMaterialDefinitions';
+import { MaterialTextureSlot } from './MaterialTextureSlots';
+import { MaterialTextureSemantic, MaterialUniformSemantic } from './MaterialSemantics';
 import type { ShaderOptions } from '../render/types';
 
 export type BasicLightType = 'NONE' | 'PHONG' | 'BLINN-PHONG' | 'LAMBERT';
+export type MaterialColorOrTextureInput =
+    Color | Texture<unknown> | MaterialTextureSlotInput | null;
 
-export interface BasicMaterialParameters extends MaterialParameters {
-    lightType?: BasicLightType;
-    diffuse?: MaterialTextureValue;
-    ambient?: MaterialTextureValue;
-    specular?: MaterialTextureValue;
-    emission?: MaterialTextureValue;
-    specularEnvMap?: MaterialTexture | null;
-    specularEnvMatrix?: Matrix4 | null;
-    reflectivity?: number;
-    refractRatio?: number;
-    refractivity?: number;
-    shininess?: number;
+export interface BasicMaterialParameters extends MaterialInstanceParameters {
+    readonly lightType?: BasicLightType;
+    readonly diffuse?: MaterialColorOrTextureInput;
+    readonly ambient?: MaterialColorOrTextureInput;
+    readonly specular?: MaterialColorOrTextureInput;
+    readonly emission?: MaterialColorOrTextureInput;
+    readonly specularEnvMap?: MaterialTexture | MaterialTextureSlotInput | null;
+    readonly specularEnvMatrix?: Matrix4 | null;
+    readonly reflectivity?: number;
+    readonly refractRatio?: number;
+    readonly refractivity?: number;
+    readonly shininess?: number;
+    readonly frontFace?: MaterialFrontFace;
+    readonly cullMode?: MaterialCullMode;
+    readonly state?: Partial<Readonly<MaterialPipelineState>>;
 }
-/**
- * 基础材质，支持 NONE, PHONG, BLINN-PHONG, LAMBERT光照模型
- * @example
- * ```ts
- * const material = new Hilo3d.BasicMaterial({
- *     diffuse: new Hilo3d.Color(1, 0, 0, 1)
- * });
- * ```
- */
-class BasicMaterial extends Material {
-    isBasicMaterial = true;
+
+function textureInput(value: MaterialColorOrTextureInput): MaterialTextureSlotInput | null {
+    if (value === null || value instanceof Color) return null;
+    return value instanceof Texture ? { texture: value } : value;
+}
+
+function textureValue(value: MaterialColorOrTextureInput): Texture<unknown> | null {
+    const input = textureInput(value);
+    return input?.texture ?? null;
+}
+
+function colorValue(value: MaterialColorOrTextureInput, fallback: Color): Color {
+    return value instanceof Color ? value : fallback;
+}
+
+function lightModel(lightType: BasicLightType): 0 | 1 | 2 | 3 {
+    switch (lightType) {
+        case 'LAMBERT':
+            return 1;
+        case 'PHONG':
+            return 2;
+        case 'BLINN-PHONG':
+            return 3;
+        default:
+            return 0;
+    }
+}
+
+function requireFiniteNonNegative(value: number, name: string): number {
+    if (!Number.isFinite(value) || value < 0) {
+        throw new RangeError(`${name} must be finite and non-negative`);
+    }
+    return value;
+}
+
+function createDefinition(parameters: Readonly<BasicMaterialParameters>) {
+    const lightType = parameters.lightType ?? 'BLINN-PHONG';
+    const diffuse = textureInput(parameters.diffuse ?? null);
+    const ambient = textureInput(parameters.ambient ?? null);
+    const specular = textureInput(parameters.specular ?? null);
+    const emission = textureInput(parameters.emission ?? null);
+    const specularEnvironment = textureInput(parameters.specularEnvMap ?? null);
+    const normal = parameters.normalMap ?? null;
+    const parallax = parameters.parallaxMap ?? null;
+    const opacity = parameters.opacityMap ?? null;
+    return getBuiltInMaterialDefinition({
+        family: 'basic',
+        lightModel: lightModel(lightType),
+        ...(parameters.coverage === undefined ? {} : { coverage: parameters.coverage }),
+        ...(parameters.compositing === undefined ? {} : { compositing: parameters.compositing }),
+        ...(parameters.frontFace === undefined ? {} : { frontFace: parameters.frontFace }),
+        ...(parameters.cullMode === undefined ? {} : { cullMode: parameters.cullMode }),
+        ...(parameters.state === undefined ? {} : { state: parameters.state }),
+        staticFeatures: {
+            ...(lightType === 'NONE' ? {} : { HAS_NORMAL: 1 }),
+            ...(lightType === 'PHONG' || lightType === 'BLINN-PHONG' ? { HAS_SPECULAR: 1 } : {}),
+            ...(diffuse !== null && !(diffuse.texture instanceof CubeTexture)
+                ? { DIFFUSE_MAP: MaterialTextureSlot.DIFFUSE }
+                : diffuse?.texture instanceof CubeTexture
+                  ? { DIFFUSE_CUBE_MAP: 1 }
+                  : {}),
+            ...(ambient !== null ? { AMBIENT_MAP: MaterialTextureSlot.AMBIENT } : {}),
+            ...(specular !== null ? { SPECULAR_MAP: MaterialTextureSlot.SPECULAR } : {}),
+            ...(emission !== null ? { EMISSION_MAP: MaterialTextureSlot.EMISSION } : {}),
+            ...(normal !== null
+                ? { NORMAL_MAP: MaterialTextureSlot.NORMAL, HAS_NORMAL: 1, HAS_TANGENT: 1 }
+                : {}),
+            ...(parallax !== null ? { PARALLAX_MAP: MaterialTextureSlot.PARALLAX } : {}),
+            ...(opacity !== null ? { TRANSPARENCY_MAP: MaterialTextureSlot.OPACITY } : {}),
+            ...(specularEnvironment === null
+                ? {}
+                : {
+                      SPECULAR_ENV_MAP: 1,
+                      ...(specularEnvironment.texture instanceof CubeTexture
+                          ? { SPECULAR_ENV_MAP_CUBE: 1 }
+                          : {})
+                  })
+        },
+        textureSlots: [
+            { name: 'normal', index: MaterialTextureSlot.NORMAL, value: normal, encoding: 'data' },
+            {
+                name: 'parallax',
+                index: MaterialTextureSlot.PARALLAX,
+                value: parallax,
+                encoding: 'data'
+            },
+            {
+                name: 'emission',
+                index: MaterialTextureSlot.EMISSION,
+                value: emission,
+                encoding: 'srgb'
+            },
+            {
+                name: 'opacity',
+                index: MaterialTextureSlot.OPACITY,
+                value: opacity,
+                encoding: 'data'
+            },
+            {
+                name: 'diffuse',
+                index: MaterialTextureSlot.DIFFUSE,
+                value: diffuse,
+                encoding: 'srgb'
+            },
+            {
+                name: 'specular',
+                index: MaterialTextureSlot.SPECULAR,
+                value: specular,
+                encoding: 'srgb'
+            },
+            {
+                name: 'ambient',
+                index: MaterialTextureSlot.AMBIENT,
+                value: ambient,
+                encoding: 'srgb'
+            },
+            {
+                name: 'specularEnvironment',
+                index: MaterialTextureSlot.SPECULAR_ENVIRONMENT,
+                value: specularEnvironment,
+                encoding: 'linear'
+            }
+        ]
+    });
+}
+
+/** Built-in Blinn/Phong/Lambert or unlit material instance. */
+class BasicMaterial extends MaterialInstance {
+    readonly isBasicMaterial = true;
     override readonly className: string = 'BasicMaterial';
-    /**
-     * 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
-     */
-    override lightType: BasicLightType = 'BLINN-PHONG';
-    /**
-     * 漫反射贴图，或颜色
-     */
-    diffuse: MaterialTextureValue = null;
-    /**
-     * 环境光贴图，或颜色
-     */
-    ambient: MaterialTextureValue = null;
-    /**
-     * 镜面贴图，或颜色
-     */
-    specular: MaterialTextureValue = null;
-    /**
-     * 放射光贴图，或颜色
-     */
-    override emission: MaterialTextureValue = null;
-    /**
-     * 环境贴图
-     */
-    specularEnvMap: MaterialTexture | null = null;
-    /**
-     * 环境贴图变化矩阵，如旋转等
-     */
-    specularEnvMatrix: Matrix4 | null = null;
-    /**
-     * 反射率
-     */
-    reflectivity = 0;
-    /**
-     * 折射比率
-     */
-    refractRatio = 0;
-    /**
-     * 折射率
-     */
-    refractivity = 0;
-    /**
-     * 高光发光值
-     */
-    shininess = 32;
-    usedUniformVectors = 11;
-    /**
-     * @param params - 初始化参数，所有params都会复制到实例上
-     * - `params.lightType`: 光照类型，支持: NONE, PHONG, BLINN-PHONG, LAMBERT
-     * - `params.diffuse`: 漫反射贴图，或颜色
-     * - `params.ambient`: 环境光贴图，或颜色
-     * - `params.specular`: 镜面贴图，或颜色
-     * - `params.emission`: 放射光贴图，或颜色
-     * - `params.specularEnvMap`: 环境贴图
-     * - `params.specularEnvMatrix`: 环境贴图变化矩阵，如旋转等
-     * - `params.reflectivity`: 反射率
-     * - `params.refractRatio`: 折射比率
-     * - `params.refractivity`: 折射率
-     * - `params.shininess`: 高光发光值
-     */
-    constructor(params: BasicMaterialParameters = {}) {
-        super({}, false);
-        this.diffuse = new Color(0.5, 0.5, 0.5);
-        this.specular = new Color(1, 1, 1);
-        this.emission = new Color(0, 0, 0);
-        if (new.target === BasicMaterial) {
-            Object.assign(this, params);
-            this.initializeBasicMaterialBindings();
+    readonly diffuse: MaterialTextureValue;
+    readonly ambient: MaterialTextureValue;
+    readonly specular: MaterialTextureValue;
+    readonly emission: MaterialTextureValue;
+    readonly specularEnvMap: MaterialTexture | null;
+    readonly specularEnvMatrix: Matrix4 | null;
+    #reflectivity = 0;
+    #refractRatio = 0;
+    #refractivity = 0;
+    #shininess = 32;
+
+    constructor(params: Readonly<BasicMaterialParameters> = {}) {
+        super(createDefinition(params), params, false);
+        this.diffuse =
+            textureValue(params.diffuse ?? null) ??
+            colorValue(params.diffuse ?? null, new Color(0.5, 0.5, 0.5));
+        this.ambient =
+            textureValue(params.ambient ?? null) ?? colorValue(params.ambient ?? null, new Color());
+        this.specular =
+            textureValue(params.specular ?? null) ??
+            colorValue(params.specular ?? null, new Color(1, 1, 1));
+        this.emission =
+            textureValue(params.emission ?? null) ??
+            colorValue(params.emission ?? null, new Color(0, 0, 0));
+        this.specularEnvMap =
+            params.specularEnvMap instanceof Texture
+                ? params.specularEnvMap
+                : (params.specularEnvMap?.texture ?? null);
+        this.specularEnvMatrix = params.specularEnvMatrix ?? null;
+        this.#reflectivity = requireFiniteNonNegative(params.reflectivity ?? 0, 'reflectivity');
+        this.#refractRatio = requireFiniteNonNegative(params.refractRatio ?? 0, 'refractRatio');
+        this.#refractivity = requireFiniteNonNegative(params.refractivity ?? 0, 'refractivity');
+        this.#shininess = requireFiniteNonNegative(params.shininess ?? 32, 'shininess');
+        for (const [name, value] of [
+            ['diffuse', params.diffuse],
+            ['ambient', params.ambient],
+            ['specular', params.specular],
+            ['emission', params.emission],
+            ['specularEnvironment', params.specularEnvMap]
+        ] as const) {
+            if (value !== null && value !== undefined && !(value instanceof Color)) {
+                this.setTextureSlot(name, value);
+            }
         }
+        this.initializeBasicMaterialBindings();
+    }
+
+    get reflectivity(): number {
+        return this.#reflectivity;
+    }
+
+    set reflectivity(value: number) {
+        value = requireFiniteNonNegative(value, 'reflectivity');
+        if (value === this.#reflectivity) return;
+        this.#reflectivity = value;
+        this.markDataChanged();
+    }
+
+    get refractRatio(): number {
+        return this.#refractRatio;
+    }
+
+    set refractRatio(value: number) {
+        value = requireFiniteNonNegative(value, 'refractRatio');
+        if (value === this.#refractRatio) return;
+        this.#refractRatio = value;
+        this.markDataChanged();
+    }
+
+    get refractivity(): number {
+        return this.#refractivity;
+    }
+
+    set refractivity(value: number) {
+        value = requireFiniteNonNegative(value, 'refractivity');
+        if (value === this.#refractivity) return;
+        this.#refractivity = value;
+        this.markDataChanged();
+    }
+
+    get shininess(): number {
+        return this.#shininess;
+    }
+
+    set shininess(value: number) {
+        value = requireFiniteNonNegative(value, 'shininess');
+        if (value === this.#shininess) return;
+        this.#shininess = value;
+        this.markDataChanged();
     }
 
     protected initializeBasicMaterialBindings(): void {
         this.initializeBindings();
         Object.assign(this.uniforms, {
-            u_diffuseColor: 'DIFFUSE',
-            u_specularColor: 'SPECULAR',
-            u_ambientColor: 'AMBIENT',
-            u_shininess: 'SHININESS',
-            u_reflectivity: 'REFLECTIVITY',
-            u_refractRatio: 'REFRACTRATIO',
-            u_refractivity: 'REFRACTIVITY',
-            u_specularEnvMap: 'SPECULARENVMAP',
-            u_specularEnvMatrix: 'SPECULARENVMATRIX'
+            u_diffuseColor: MaterialUniformSemantic.DIFFUSE_COLOR,
+            u_specularColor: MaterialUniformSemantic.SPECULAR_COLOR,
+            u_ambientColor: MaterialUniformSemantic.AMBIENT_COLOR,
+            u_shininess: MaterialUniformSemantic.SHININESS,
+            u_reflectivity: MaterialUniformSemantic.REFLECTIVITY,
+            u_refractRatio: MaterialUniformSemantic.REFRACT_RATIO,
+            u_refractivity: MaterialUniformSemantic.REFRACTIVITY,
+            u_specularEnvMap: MaterialTextureSemantic.SPECULAR_ENV_MAP,
+            u_specularEnvMatrix: MaterialUniformSemantic.SPECULAR_ENV_MATRIX,
+            u_emission: MaterialUniformSemantic.EMISSION_COLOR
         });
         this.addTextureUniforms({
-            u_diffuse: 'DIFFUSE',
-            u_specular: 'SPECULAR',
-            u_ambient: 'AMBIENT'
+            u_diffuse: MaterialTextureSemantic.DIFFUSE,
+            u_specular: MaterialTextureSemantic.SPECULAR,
+            u_ambient: MaterialTextureSemantic.AMBIENT,
+            u_emission: MaterialTextureSemantic.EMISSION
         });
     }
+
     override getRenderOption(option: ShaderOptions = {}): ShaderOptions {
-        super.getRenderOption(option);
-        const textureOption = this.textureOption.reset(option);
-        const lightType = this.lightType;
-        if (lightType === 'PHONG' || lightType === 'BLINN-PHONG') {
-            option['HAS_SPECULAR'] = 1;
-        }
-        const diffuse = this.diffuse;
-        if (diffuse instanceof Texture) {
-            if (diffuse instanceof CubeTexture) {
-                option['DIFFUSE_CUBE_MAP'] = 1;
-            } else {
-                textureOption.add(this.diffuse, 'DIFFUSE_MAP');
-            }
-        }
-        if (option['HAS_LIGHT']) {
-            textureOption.add(this.specular, 'SPECULAR_MAP');
-            textureOption.add(this.ambient, 'AMBIENT_MAP');
-            textureOption.add(this.specularEnvMap, 'SPECULAR_ENV_MAP');
-        }
-        textureOption.update();
-        return option;
+        return super.getRenderOption(option);
     }
 }
+
 export default BasicMaterial;

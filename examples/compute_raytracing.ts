@@ -1060,11 +1060,12 @@ void main() {
             }
         ]
     }),
-    material: new Hilo3d.Material({
+    pipelineState: {
+        ...Hilo3d.DEFAULT_MATERIAL_PIPELINE_STATE,
         depthTest: false,
-        depthMask: false,
-        cullFace: false
-    })
+        depthWrite: false,
+        cullMode: 'none'
+    }
 });
 
 interface RayTracingResources {

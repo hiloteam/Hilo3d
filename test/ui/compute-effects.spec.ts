@@ -150,7 +150,7 @@ test('keeps count, reorder, and indirect arguments GPU-only in the public exampl
     expect(source).toContain('fn curlNoise(');
     expect(source).toContain('let breathingTarget = homePosition');
     expect(source).toContain('let vortex = tangent');
-    expect(source).toContain('blendDst: Hilo3d.constants.ONE');
+    expect(source).toContain('blend: Hilo3d.MaterialBlendPreset.STRAIGHT_ALPHA_ADDITIVE');
     expect(source).toContain('new Hilo3d.Ticker(60)');
     expect(source.match(/new Hilo3d\.RenderPassParameterPool/gu)).toHaveLength(3);
     expect(source).toContain('context.acquirePassParameters');

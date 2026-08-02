@@ -329,24 +329,26 @@ WebGPU-only storage-aware raster 仍不接受 graphics WGSL。`StorageGraphicsSh
 所有内置数值 shader 数据按所有权和更新频率进入固定 std140 block。WebGL 2 使用稳定的 flat
 binding；WebGPU 将同一逻辑 ABI 分到四个 bind group，避免高频对象数据导致全局或材质资源重新绑定：
 
-| Block           | 数据所有者与典型内容                                                                           | 更新时机                      | WebGL 2 | WebGPU |
-| --------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | ------: | -----: |
-| `FrameBlock`    | render size、时间与帧序号                                                                      | 每个 renderer frame 一次      |       0 |    0/0 |
-| `CameraBlock`   | current/previous view/projection、逆矩阵、render origin、history/depth 标志、物理像素 viewport | 每个 camera/render pass 一次  |       1 |    0/1 |
-| `SceneBlock`    | fog 等 scene-owned 状态                                                                        | scene revision 变化时         |       2 |    0/2 |
-| `LightBlock`    | view-space 灯光、衰减、阴影 atlas 参数                                                         | 每个 camera/render pass 一次  |       3 |    0/3 |
-| `MaterialBlock` | Basic/PBR、IBL、UV 变换与材质标志                                                              | 最终 std140 字段变化时        |       4 |    1/0 |
-| `ModelBlock`    | current/previous model 与 world-normal 变换                                                    | 非实例对象 transform 变化时   |       5 |    2/0 |
-| `GeometryBlock` | position/normal/UV decode 变换                                                                 | geometry revision 变化时      |       6 |    2/1 |
-| `SkinningBlock` | current/previous joint palette                                                                 | skeleton pose 变化时          |       7 |    2/2 |
-| `MorphBlock`    | current/previous morph weights 与 target 状态                                                  | morph pose 变化时             |       8 |    2/3 |
-| `InstanceBlock` | 每批 current/previous model 与 normal matrix array                                             | WebGPU instanced batch 变化时 |       — |    2/4 |
+| Block                  | 数据所有者与典型内容                                                                           | 更新时机                      | WebGL 2 | WebGPU |
+| ---------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------- | ------: | -----: |
+| `FrameBlock`           | render size、时间与帧序号                                                                      | 每个 renderer frame 一次      |       0 |    0/0 |
+| `CameraBlock`          | current/previous view/projection、逆矩阵、render origin、history/depth 标志、物理像素 viewport | 每个 camera/render pass 一次  |       1 |    0/1 |
+| `SceneBlock`           | fog 等 scene-owned 状态                                                                        | scene revision 变化时         |       2 |    0/2 |
+| `LightBlock`           | view-space 灯光、衰减、阴影 atlas 参数                                                         | 每个 camera/render pass 一次  |       3 |    0/3 |
+| `MaterialBlock`        | Basic/PBR scalar、color、IBL 与材质标志                                                        | 最终 std140 字段变化时        |       4 |    1/0 |
+| `MaterialTextureBlock` | 24 个独立 texture slot 的 UV/transform/encoding/channel metadata                               | texture-slot 数据变化时       |       9 |    1/1 |
+| `ModelBlock`           | current/previous model 与 world-normal 变换                                                    | 非实例对象 transform 变化时   |       5 |    2/0 |
+| `GeometryBlock`        | position/normal/UV decode 变换                                                                 | geometry revision 变化时      |       6 |    2/1 |
+| `SkinningBlock`        | current/previous joint palette                                                                 | skeleton pose 变化时          |       7 |    2/2 |
+| `MorphBlock`           | current/previous morph weights 与 target 状态                                                  | morph pose 变化时             |       8 |    2/3 |
+| `InstanceBlock`        | 每批 current/previous model 与 normal matrix array                                             | WebGPU instanced batch 变化时 |       — |    2/4 |
 
 WebGPU group 0 是 frame/pass/scene 全局域，group 1 是 material 与纹理域，group
 2 是 object/geometry/pose 域，group
 3 专供应用自定义 block。自定义 block 仍先通过共享 registry 注册：WebGL 2 flat binding
-9 映射到 WebGPU group 3 binding 0，后续依次递增。内置名称和位置不允许按 shader variant 临时分配。
-`CameraBlock.u_viewport` 的语义固定为当前 attachment 的物理像素
+10 映射到 WebGPU group 3 binding 2，group 3 binding 0/1 保留给 pass-global scene
+texture，后续依次递增。内置名称和位置不允许按 shader variant 临时分配。 `CameraBlock.u_viewport`
+的语义固定为当前 attachment 的物理像素
 `(x, y, width, height)`；canvas、RenderTarget、平面阴影与点光六面阴影切换 camera/pass 时都更新同一 std140 字段，不保留 classic
 `uniform` 兼容路径。
 
@@ -366,8 +368,9 @@ group 数量、纹理/vertex 资源上限和显式 required feature/limit。std1
 stride、array stride 与固定 ABI 测试锁定；CPU revision 与 dirty byte
 range 驱动上传，禁止为了“统一”而在每次 draw 重建或整块重传所有 block。
 
-GeometryData、Geometry、Material 与 Texture 都发布单调 revision；每个 renderer/device 分别记录自己已经上传的版本，不清除会影响另一个 backend 的全局脏标记。`MaterialBlock`
-还会把最终 std140 byte image 写入复用的候选区并直接逐字节比较，因此直接修改
+GeometryData、Geometry、MaterialInstance 与 Texture 都发布单调 revision；每个 renderer/device 分别记录自己已经上传的版本，不清除会影响另一个 backend 的全局脏标记。`MaterialBlock`
+与 `MaterialTextureBlock` 分别把最终 std140 byte
+image 写入复用的候选区并直接逐字节比较，因此直接修改
 `Color`/`Matrix`、纹理派生的 mip 数量或其他嵌套数值也会自动刷新；字节未变时不推进
 `UniformBuffer.revision`，两后端都不会重复上传，也不要求应用手工设置 `isDirty`。WebGL
 2 还为每个 VAO 单独记录 attribute/index 的 revision、shape 与 count，不能让阴影 VAO 的首次上传吞掉主渲染 VAO 的绑定更新。partial
@@ -516,7 +519,7 @@ recovery 都会取消旧 callback 并重建观察。捕获、copy 或 queue 失�
 backing 的 video、不停止播放伪造静态纹理、不回退 WebGL。
 
 任何 block 外的 float、vector、matrix、integer、boolean 或其数组都会被拒绝，不能借
-`ShaderMaterial`、`onBeforeCompile`、示例代码或 backend 分支绕过。纹理 UV
+`ShaderMaterial`、示例代码或 backend 分支绕过。纹理 UV
 channel、强度、尺寸、阈值和 kernel 等数值元数据必须进入 Scene、Light、Material 或注册过的自定义 block；opaque
 resource 例外不是保留通用逐项 uniform 系统的理由。
 

@@ -25,11 +25,9 @@ const modelViewProjection = new Hilo3d.Matrix4();
 const mesh = new Hilo3d.Mesh({
     geometry,
     material: new Hilo3d.ShaderMaterial({
-        shaderCacheId: 'UVAnimation',
-        needBasicUniforms: false,
-        needBasicAttributes: false,
-        side: Hilo3d.constants.BACK,
-        enableTextureLod: true,
+        sourceRevision: 'UVAnimation',
+        cullMode: 'front',
+        defines: { USE_SHADER_TEXTURE_LOD: 1 },
         uniforms: {
             u_diffuse: {
                 get: (_mesh, _material, _programInfo) =>
@@ -41,8 +39,8 @@ const mesh = new Hilo3d.Mesh({
             TextureLodMaterialBlock: materialBlock
         },
         attributes: {
-            a_position: 'POSITION',
-            a_texcoord0: 'TEXCOORD_0'
+            a_position: Hilo3d.MaterialAttributeSemantic.POSITION,
+            a_texcoord0: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
         },
         fs: `#version 300 es
                 precision highp float;

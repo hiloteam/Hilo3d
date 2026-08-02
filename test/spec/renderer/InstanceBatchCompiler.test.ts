@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import Mesh from '../../../src/core/Mesh';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
-import Material, {
-    type MaterialBindingInfo,
-    type MaterialBindingMap,
-    type ProgramBindingInfo
-} from '../../../src/material/Material';
+import BasicMaterial from '../../../src/material/BasicMaterial';
+import type Material from '../../../src/material/MaterialInstance';
+import type {
+    MaterialBindingInfo,
+    MaterialBindingMap,
+    ProgramBindingInfo
+} from '../../../src/material/MaterialInstance';
 import {
     InstanceBatchCompiler,
     type InstanceBatchCompilerCapabilities,
@@ -69,7 +71,8 @@ function createFixture(count = 2): {
 } {
     const vertices = new GeometryData(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), 3);
     const geometry = new Geometry({ vertices });
-    const material = new Material({ uniforms: customUniforms() });
+    const material = new BasicMaterial();
+    Object.assign(material.uniforms, customUniforms());
     const meshes = new Array<Mesh>(count);
     for (let index = 0; index < count; index += 1) {
         const mesh = new Mesh({ geometry, material, useInstanced: true });
@@ -376,17 +379,14 @@ describe('InstanceBatchCompiler WebGPU planning', () => {
     it('forwards the exact program info to custom mesh-dependent bindings', () => {
         const { geometry } = createFixture(1);
         const seen = vi.fn();
-        const material = new Material({
-            uniforms: {
-                i_value: {
-                    isDependMesh: true,
-                    get(_mesh, _material, programInfo): number {
-                        seen(programInfo);
-                        return 3;
-                    }
-                }
+        const material = new BasicMaterial();
+        material.uniforms['i_value'] = {
+            isDependMesh: true,
+            get(_mesh, _material, programInfo): number {
+                seen(programInfo);
+                return 3;
             }
-        });
+        };
         const mesh = new Mesh({ geometry, material, useInstanced: true });
         const programInfo: ProgramBindingInfo = { name: 'prepared-program' };
 
@@ -641,7 +641,7 @@ describe('InstanceBatchCompiler atomic validation', () => {
             compiler.compile(owner, [direct], material, CUSTOM_INPUTS, 'webgl2', capabilities())
         ).toThrow(/opted into instancing/u);
 
-        const otherMaterial = new Material();
+        const otherMaterial = new BasicMaterial();
         const wrongMaterial = new Mesh({ geometry, material: otherMaterial, useInstanced: true });
         expect(() =>
             compiler.compile(

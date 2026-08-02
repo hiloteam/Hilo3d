@@ -3,7 +3,7 @@ import type Camera from '../camera/Camera';
 import type Geometry from '../geometry/Geometry';
 import type GeometryData from '../geometry/GeometryData';
 import type Light from '../light/Light';
-import type Material from '../material/Material';
+import type Material from '../material/MaterialInstance';
 import type Mesh from '../core/Mesh';
 import type Node from '../core/Node';
 import type Texture from '../texture/Texture';

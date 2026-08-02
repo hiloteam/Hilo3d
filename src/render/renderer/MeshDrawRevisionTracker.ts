@@ -1,7 +1,9 @@
 import type Mesh from '../../core/Mesh';
 import type Geometry from '../../geometry/Geometry';
 import type GeometryData from '../../geometry/GeometryData';
-import type Material from '../../material/Material';
+import type Material from '../../material/MaterialInstance';
+import type { MaterialPassRole, MaterialPipelineState } from '../../material/MaterialDefinition';
+import { resolveMaterialPassState } from '../../material/MaterialCompiler';
 import type { RHITextureFormat } from '../rhi/core';
 import type { PreparedDrawRevision } from './PreparedDraw';
 import type { RHIMeshDrawTargetDescriptor } from './RHIDescriptorMapping';
@@ -32,33 +34,7 @@ interface MeshRevisionRecord {
     materialRevision: number;
     shaderToken: number;
 
-    wireframe: boolean;
-    frontFace: number;
-    cullFace: boolean;
-    cullFaceType: number;
-    depthTest: boolean;
-    depthMask: boolean;
-    depthRangeMin: number;
-    depthRangeMax: number;
-    depthFunc: number;
-    transparent: boolean;
-    premultiplyAlpha: boolean;
-    blend: boolean;
-    blendEquation: number;
-    blendEquationAlpha: number;
-    blendSrc: number;
-    blendDst: number;
-    blendSrcAlpha: number;
-    blendDstAlpha: number;
-    stencilTest: boolean;
-    stencilMask: number;
-    stencilFunc: number;
-    stencilFuncRef: number;
-    stencilFuncMask: number;
-    stencilOpFail: number;
-    stencilOpZFail: number;
-    stencilOpZPass: number;
-    sampleAlphaToCoverage: boolean;
+    materialState: Readonly<MaterialPipelineState>;
 
     resourceBindings: number;
     colorFormats: readonly (RHITextureFormat | null)[];
@@ -74,6 +50,8 @@ export interface MeshDrawRevisionInputs {
     readonly owner?: object;
     /** Material used by this prepared variant. Defaults to `mesh.material`. */
     readonly material?: Material;
+    /** Semantic role whose immutable pipeline state is being tracked. */
+    readonly materialPass?: MaterialPassRole;
     /** Monotonic identity of the exact backend shader artifact pair. */
     readonly shaderToken: number;
     /** Binding-cache identity. Buffer content updates do not change bind-group identity. */
@@ -150,67 +128,19 @@ function storeGeometry(
     record.indexOffset = indices?.offset ?? 0;
 }
 
-function renderStateChanged(record: MeshRevisionRecord, material: Material): boolean {
-    return (
-        record.material !== material ||
-        record.wireframe !== material.wireframe ||
-        record.frontFace !== material.frontFace ||
-        record.cullFace !== material.cullFace ||
-        record.cullFaceType !== material.cullFaceType ||
-        record.depthTest !== material.depthTest ||
-        record.depthMask !== material.depthMask ||
-        record.depthRangeMin !== material.depthRange[0] ||
-        record.depthRangeMax !== material.depthRange[1] ||
-        record.depthFunc !== material.depthFunc ||
-        record.transparent !== material.transparent ||
-        record.premultiplyAlpha !== material.premultiplyAlpha ||
-        record.blend !== material.blend ||
-        record.blendEquation !== material.blendEquation ||
-        record.blendEquationAlpha !== material.blendEquationAlpha ||
-        record.blendSrc !== material.blendSrc ||
-        record.blendDst !== material.blendDst ||
-        record.blendSrcAlpha !== material.blendSrcAlpha ||
-        record.blendDstAlpha !== material.blendDstAlpha ||
-        record.stencilTest !== material.stencilTest ||
-        record.stencilMask !== material.stencilMask ||
-        record.stencilFunc !== material.stencilFunc ||
-        record.stencilFuncRef !== material.stencilFuncRef ||
-        record.stencilFuncMask !== material.stencilFuncMask ||
-        record.stencilOpFail !== material.stencilOpFail ||
-        record.stencilOpZFail !== material.stencilOpZFail ||
-        record.stencilOpZPass !== material.stencilOpZPass ||
-        record.sampleAlphaToCoverage !== material.sampleAlphaToCoverage
-    );
+function renderStateChanged(
+    record: MeshRevisionRecord,
+    material: Material,
+    materialState: Readonly<MaterialPipelineState>
+): boolean {
+    return record.material !== material || record.materialState !== materialState;
 }
 
-function storeRenderState(record: MeshRevisionRecord, material: Material): void {
-    record.wireframe = material.wireframe;
-    record.frontFace = material.frontFace;
-    record.cullFace = material.cullFace;
-    record.cullFaceType = material.cullFaceType;
-    record.depthTest = material.depthTest;
-    record.depthMask = material.depthMask;
-    record.depthRangeMin = material.depthRange[0];
-    record.depthRangeMax = material.depthRange[1];
-    record.depthFunc = material.depthFunc;
-    record.transparent = material.transparent;
-    record.premultiplyAlpha = material.premultiplyAlpha;
-    record.blend = material.blend;
-    record.blendEquation = material.blendEquation;
-    record.blendEquationAlpha = material.blendEquationAlpha;
-    record.blendSrc = material.blendSrc;
-    record.blendDst = material.blendDst;
-    record.blendSrcAlpha = material.blendSrcAlpha;
-    record.blendDstAlpha = material.blendDstAlpha;
-    record.stencilTest = material.stencilTest;
-    record.stencilMask = material.stencilMask;
-    record.stencilFunc = material.stencilFunc;
-    record.stencilFuncRef = material.stencilFuncRef;
-    record.stencilFuncMask = material.stencilFuncMask;
-    record.stencilOpFail = material.stencilOpFail;
-    record.stencilOpZFail = material.stencilOpZFail;
-    record.stencilOpZPass = material.stencilOpZPass;
-    record.sampleAlphaToCoverage = material.sampleAlphaToCoverage;
+function storeRenderState(
+    record: MeshRevisionRecord,
+    materialState: Readonly<MaterialPipelineState>
+): void {
+    record.materialState = materialState;
 }
 
 function targetColorFormatsChanged(
@@ -244,6 +174,13 @@ export class MeshDrawRevisionTracker {
             throw new Error(`Mesh ${inputs.mesh.id} requires geometry with a position stream`);
         }
         if (!material) throw new Error(`Mesh ${inputs.mesh.id} requires a material`);
+        const materialPass = inputs.materialPass ?? 'forward';
+        const materialState = resolveMaterialPassState(material, materialPass);
+        if (materialState === null) {
+            throw new TypeError(
+                `Material definition ${material.definition.id} has no ${materialPass} pass`
+            );
+        }
         const indices = geometry.indices;
         const vertexLayoutIdentity = inputs.vertexLayoutIdentity ?? vertices;
         const colorFormats = inputs.target.colorFormats;
@@ -280,33 +217,7 @@ export class MeshDrawRevisionTracker {
                 material,
                 materialRevision: material.revision,
                 shaderToken: inputs.shaderToken,
-                wireframe: material.wireframe,
-                frontFace: material.frontFace,
-                cullFace: material.cullFace,
-                cullFaceType: material.cullFaceType,
-                depthTest: material.depthTest,
-                depthMask: material.depthMask,
-                depthRangeMin: material.depthRange[0],
-                depthRangeMax: material.depthRange[1],
-                depthFunc: material.depthFunc,
-                transparent: material.transparent,
-                premultiplyAlpha: material.premultiplyAlpha,
-                blend: material.blend,
-                blendEquation: material.blendEquation,
-                blendEquationAlpha: material.blendEquationAlpha,
-                blendSrc: material.blendSrc,
-                blendDst: material.blendDst,
-                blendSrcAlpha: material.blendSrcAlpha,
-                blendDstAlpha: material.blendDstAlpha,
-                stencilTest: material.stencilTest,
-                stencilMask: material.stencilMask,
-                stencilFunc: material.stencilFunc,
-                stencilFuncRef: material.stencilFuncRef,
-                stencilFuncMask: material.stencilFuncMask,
-                stencilOpFail: material.stencilOpFail,
-                stencilOpZFail: material.stencilOpZFail,
-                stencilOpZPass: material.stencilOpZPass,
-                sampleAlphaToCoverage: material.sampleAlphaToCoverage,
+                materialState,
                 resourceBindings: inputs.resourceBindings,
                 colorFormats: Object.freeze([...colorFormats]),
                 depthStencilFormat,
@@ -348,8 +259,8 @@ export class MeshDrawRevisionTracker {
             materialVariantRevision = this.allocateRevision();
             changed = true;
         }
-        if (renderStateChanged(record, material)) {
-            storeRenderState(record, material);
+        if (renderStateChanged(record, material, materialState)) {
+            storeRenderState(record, materialState);
             renderStateRevision = this.allocateRevision();
             changed = true;
         }

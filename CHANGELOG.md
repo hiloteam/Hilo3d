@@ -2,12 +2,29 @@
 
 ### Breaking changes
 
+- Replace the mutable `Material` monolith with immutable `MaterialDefinition` plus
+  `MaterialInstance`. Remove legacy topology mutation, WebGL-style blend/side fields, material-owned
+  render order and shadow participation, material display transforms, shared UV matrices, shadow
+  proxy materials, `onBeforeCompile`, and `shaderCacheId`. Move object ordering and shadow flags to
+  `Mesh`; require construction-time topology, explicit coverage/compositing, typed
+  `MaterialAttributeSemantic`/`MaterialUniformSemantic`/`MaterialTextureSemantic` bindings, and
+  explicit pass pipeline state. This is a direct migration with no compatibility adapter.
+- Split per-texture-slot std140 metadata out of `MaterialBlock` into the fixed
+  `MaterialTextureBlock`. The material scalar block is now 432 bytes, the texture-slot block is
+  1,920 bytes, WebGPU material textures begin at binding 2, and custom uniform block registrations
+  begin after ten built-in WebGL2 binding points.
 - Expand the fixed Camera/Model/Skinning/Morph/Instance std140 ABI with current/previous transforms,
   render origins, and history/depth flags. Custom shaders that redeclare built-in blocks must use
   the updated field order and capacities.
 
 ### Changes
 
+- Add canonical built-in material definitions, stable material IDs and revisions, explicit
+  forward/depth-only/shadow-caster/picking roles, role-aware shader variants, per-slot texture/UV
+  transform/encoding/channel data, and deterministic coverage/transmission/compositing ownership.
+  Shadow rendering now requests the original material's shadow role, glTF constructs layered PBR
+  topology and all texture transforms before instantiation, and display conversion remains solely in
+  post-processing/output.
 - Add the `high-end` rendering profile, per-camera standard/reversed depth modes, finite/infinite
   reversed-Z projection, depth-convention-aware surfaces, render targets, shadows, storage graphics,
   and GPU picking. Add optional camera-relative GPU transforms while preserving CPU world identity,

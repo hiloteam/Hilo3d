@@ -49,22 +49,21 @@ loader
     });
 
 const picker = new Hilo3d.MeshPicker({ stage });
-const selectedMeshes = new Set<Hilo3d.Mesh>();
+const selectedMeshes = new Map<Hilo3d.Mesh, readonly [number, number, number]>();
 stage.canvas.addEventListener('click', event => {
     void picker
         .getSelection(event.offsetX, event.offsetY)
         .then(meshes => {
             const mesh = meshes[0];
-            const material = mesh?.material;
-            if (!mesh || !material || typeof material.transparency !== 'number') return;
-            if (selectedMeshes.delete(mesh)) {
-                material.transparency = 1;
+            if (!mesh) return;
+            const previousScale = selectedMeshes.get(mesh);
+            if (previousScale) {
+                mesh.setScale(previousScale[0], previousScale[1], previousScale[2]);
+                selectedMeshes.delete(mesh);
             } else {
-                selectedMeshes.add(mesh);
-                material.transparent = true;
-                material.transparency = 0.5;
+                selectedMeshes.set(mesh, [mesh.scaleX, mesh.scaleY, mesh.scaleZ]);
+                mesh.setScale(mesh.scaleX * 1.08, mesh.scaleY * 1.08, mesh.scaleZ * 1.08);
             }
-            material.isDirty = true;
         })
         .catch((error: unknown) => {
             queueMicrotask(() => {

@@ -1,7 +1,8 @@
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import type Mesh from '../../../src/core/Mesh';
 import LightManager from '../../../src/light/LightManager';
-import Material, { type SemanticProgramBindingInfo } from '../../../src/material/Material';
+import BasicMaterial from '../../../src/material/BasicMaterial';
+import type { SemanticProgramBindingInfo } from '../../../src/material/MaterialInstance';
 import semantic from '../../../src/material/semantic';
 import { createSemanticFrameState } from '../../../src/render/frame/SemanticFrameState';
 import { describe, expect, it } from 'vitest';
@@ -46,17 +47,14 @@ describe('explicit semantic frame state', () => {
         });
         const firstBinding: SemanticProgramBindingInfo = { semanticFrame: first };
         const secondBinding: SemanticProgramBindingInfo = { semanticFrame: second };
-        const material = new Material({
-            needBasicAttributes: false,
-            needBasicUniforms: false,
-            uniforms: {
-                cameraPosition: 'CAMERAPOSITION',
-                viewport: 'VIEWPORT',
-                rendererSize: 'RENDERERSIZE',
-                shadowAtlasSize: 'SHADOWATLASSIZE',
-                shadowAtlasRects: 'SHADOWATLASRECTS',
-                pointShadowMatrices: 'POINTSHADOWMATRICES'
-            }
+        const material = new BasicMaterial();
+        Object.assign(material.uniforms, {
+            cameraPosition: 'CAMERAPOSITION',
+            viewport: 'VIEWPORT',
+            rendererSize: 'RENDERERSIZE',
+            shadowAtlasSize: 'SHADOWATLASSIZE',
+            shadowAtlasRects: 'SHADOWATLASRECTS',
+            pointShadowMatrices: 'POINTSHADOWMATRICES'
         });
         const mesh = {} as Mesh;
 

@@ -138,7 +138,8 @@ describe('uniform block binding ABI', () => {
         expect(UNIFORM_BLOCK_BINDINGS.ModelBlock).toBe(5);
         expect(UNIFORM_BLOCK_BINDINGS.GeometryBlock).toBe(6);
         expect(UNIFORM_BLOCK_BINDINGS.MorphBlock).toBe(8);
-        expect(registerUniformBlockBinding('TestCustomBlock')).toBeGreaterThanOrEqual(9);
+        expect(UNIFORM_BLOCK_BINDINGS.MaterialTextureBlock).toBe(9);
+        expect(registerUniformBlockBinding('TestCustomBlock')).toBeGreaterThanOrEqual(10);
         expect(getUniformBlockBinding('TestCustomBlock')).toBe(
             registerUniformBlockBinding('TestCustomBlock')
         );

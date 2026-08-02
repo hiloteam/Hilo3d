@@ -48,19 +48,16 @@ export function createScreenMesh(parameters: ScreenMeshParameters): Hilo3d.Mesh 
         ])
     );
     const material = new Hilo3d.ShaderMaterial({
-        shaderName: label,
-        shaderCacheId: label,
-        needBasicAttributes: false,
-        needBasicUniforms: false,
-        depthTest: false,
-        depthMask: false,
-        cullFace: false,
-        blend: parameters.blend ?? false,
-        side: Hilo3d.constants.FRONT_AND_BACK,
-        renderOrder: parameters.renderOrder ?? 10_000,
+        sourceRevision: label,
+        state: { depthTest: false, depthWrite: false, cullMode: 'none' },
+        compositing:
+            parameters.blend === true
+                ? { mode: 'alpha-blend', premultiplied: false }
+                : { mode: 'opaque' },
+        cullMode: 'none',
         attributes: {
-            a_position: 'POSITION',
-            a_texcoord0: 'TEXCOORD_0'
+            a_position: Hilo3d.MaterialAttributeSemantic.POSITION,
+            a_texcoord0: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
         },
         uniforms,
         uniformBlocks: { ...(parameters.uniformBlocks ?? {}) },
@@ -77,6 +74,7 @@ export function createScreenMesh(parameters: ScreenMeshParameters): Hilo3d.Mesh 
             uvs: new Hilo3d.GeometryData(new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), 2)
         }),
         material,
+        renderOrder: parameters.renderOrder ?? 10_000,
         frustumTest: false
     });
 }

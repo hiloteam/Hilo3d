@@ -1,4 +1,7 @@
-import Material from '../../../src/material/Material';
+import {
+    DEFAULT_MATERIAL_PIPELINE_STATE,
+    type MaterialPipelineState
+} from '../../../src/material/MaterialDefinition';
 import StorageGraphicsShader from '../../../src/render/compute/StorageGraphicsShader';
 import { GPUDrivenPipelineResourceCache } from '../../../src/render/renderer/GPUDrivenPipelineResourceCache';
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
@@ -108,6 +111,12 @@ function compilerFixture(source: StorageGraphicsShader): {
     return { compiler, compile };
 }
 
+function materialState(
+    overrides: Partial<MaterialPipelineState> = {}
+): Readonly<MaterialPipelineState> {
+    return Object.freeze({ ...DEFAULT_MATERIAL_PIPELINE_STATE, ...overrides });
+}
+
 describe('GPUDrivenPipelineResourceCache', () => {
     it('keeps reversed-Z storage-graphics pipeline state distinct', () => {
         const backend = new FakeWebGPURHIBackend();
@@ -115,7 +124,7 @@ describe('GPUDrivenPipelineResourceCache', () => {
         const source = shader();
         const fixture = compilerFixture(source);
         const cache = new GPUDrivenPipelineResourceCache(registry, fixture.compiler);
-        const material = new Material({ cullFace: false });
+        const material = materialState({ cullMode: 'none' });
         const layouts: never[] = [];
         const target = {
             colorFormats: ['rgba8unorm' as const],
@@ -149,7 +158,12 @@ describe('GPUDrivenPipelineResourceCache', () => {
         const source = shader();
         const fixture = compilerFixture(source);
         const cache = new GPUDrivenPipelineResourceCache(registry, fixture.compiler);
-        const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
+        const baseMaterial = materialState({
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
+        });
+        const material = baseMaterial;
         const layouts: never[] = [];
         const snapshotLayouts = vi.spyOn(layouts, 'map');
         const target = { colorFormats: ['rgba8unorm' as const], sampleCount: 1 };
@@ -173,7 +187,12 @@ describe('GPUDrivenPipelineResourceCache', () => {
         const source = shader();
         const fixture = compilerFixture(source);
         const cache = new GPUDrivenPipelineResourceCache(registry, fixture.compiler);
-        const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
+        const baseMaterial = materialState({
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
+        });
+        const material = baseMaterial;
         const target = { colorFormats: ['rgba8unorm' as const], sampleCount: 1 };
         const record = cache.prepare(source, material, [], target);
 
@@ -209,7 +228,12 @@ describe('GPUDrivenPipelineResourceCache', () => {
         const source = shader();
         const fixture = compilerFixture(source);
         const cache = new GPUDrivenPipelineResourceCache(registry, fixture.compiler);
-        const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
+        const baseMaterial = materialState({
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
+        });
+        let material = baseMaterial;
         const layouts: never[] = [];
         const snapshotLayouts = vi.spyOn(layouts, 'map');
         const target = { colorFormats: ['rgba8unorm' as const], sampleCount: 1 };
@@ -220,14 +244,14 @@ describe('GPUDrivenPipelineResourceCache', () => {
         expect(createPipeline).toHaveBeenCalledTimes(1);
         expect(snapshotLayouts).toHaveBeenCalledTimes(1);
 
-        material.cullFace = true;
+        material = materialState({ depthTest: false, depthWrite: false, cullMode: 'back' });
         const changed = cache.prepare(source, material, layouts, target);
         expect(changed).not.toBe(first);
         expect(fixture.compile).toHaveBeenCalledTimes(1);
         expect(createPipeline).toHaveBeenCalledTimes(2);
         expect(snapshotLayouts).toHaveBeenCalledTimes(1);
 
-        material.cullFace = false;
+        material = baseMaterial;
         expect(cache.prepare(source, material, layouts, target)).toBe(first);
         expect(fixture.compile).toHaveBeenCalledTimes(1);
         expect(createPipeline).toHaveBeenCalledTimes(2);
@@ -244,7 +268,7 @@ describe('GPUDrivenPipelineResourceCache', () => {
         const source = shader();
         const fixture = compilerFixture(source);
         const cache = new GPUDrivenPipelineResourceCache(registry, fixture.compiler);
-        const material = new Material({ depthTest: false, depthMask: false, cullFace: false });
+        const material = materialState({ depthTest: false, depthWrite: false, cullMode: 'none' });
         const layouts = Object.freeze([]);
         const target = { colorFormats: ['rgba8unorm' as const], sampleCount: 1 };
         const first = cache.prepare(source, material, layouts, target);
@@ -269,7 +293,7 @@ describe('GPUDrivenPipelineResourceCache', () => {
         const cache = new GPUDrivenPipelineResourceCache(registry, fixture.compiler);
         const record = cache.prepare(
             source,
-            new Material({ depthTest: false, depthMask: false, cullFace: false }),
+            materialState({ depthTest: false, depthWrite: false, cullMode: 'none' }),
             [],
             { colorFormats: ['rgba8unorm'], sampleCount: 1 }
         );
@@ -294,7 +318,7 @@ describe('GPUDrivenPipelineResourceCache', () => {
         const cache = new GPUDrivenPipelineResourceCache(registry, fixture.compiler);
 
         expect(() =>
-            cache.prepare(source, new Material(), [], {
+            cache.prepare(source, materialState(), [], {
                 colorFormats: ['rgba8unorm'],
                 sampleCount: 1
             })

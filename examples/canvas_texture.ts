@@ -22,7 +22,7 @@ const texture = new Hilo3d.Texture({
 const material = new Hilo3d.BasicMaterial({
     diffuse: texture,
     lightType: 'NONE',
-    side: Hilo3d.constants.FRONT_AND_BACK
+    cullMode: 'none'
 });
 const display = new Hilo3d.Mesh({
     geometry: new Hilo3d.PlaneGeometry({ width: 1.5, height: 2.668 }),

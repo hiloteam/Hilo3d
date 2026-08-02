@@ -17,8 +17,8 @@ for (let i = 0; i < 100; i++) {
         material: new Hilo3d.BasicMaterial({
             lightType: 'NONE',
             diffuse: new Hilo3d.Color(Math.random(), Math.random(), Math.random()),
-            transparent: true,
-            side: Hilo3d.constants.FRONT_AND_BACK
+            compositing: { mode: 'alpha-blend', premultiplied: true },
+            cullMode: 'none'
         }),
         x: rand(-0.5, 0.5),
         y: rand(-0.5, 0.5),
@@ -39,7 +39,7 @@ stage.enableDOMEvent([
 stage.on('mouseover', e => {
     const eventTarget = 'eventTarget' in e ? e.eventTarget : undefined;
     if (eventTarget instanceof Hilo3d.Mesh && eventTarget.material) {
-        eventTarget.material.transparency = 0.5;
+        eventTarget.material.opacity = 0.5;
         const hitPoint = 'hitPoint' in e ? e.hitPoint : undefined;
         if (hitPoint instanceof Hilo3d.Vector3) console.log('mesh', hitPoint.elements);
     }
@@ -48,6 +48,6 @@ stage.on('mouseover', e => {
 stage.on('mouseout', e => {
     const eventTarget = 'eventTarget' in e ? e.eventTarget : undefined;
     if (eventTarget instanceof Hilo3d.Mesh && eventTarget.material) {
-        eventTarget.material.transparency = 1;
+        eventTarget.material.opacity = 1;
     }
 });

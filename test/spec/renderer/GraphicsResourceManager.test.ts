@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
 import Geometry from '../../../src/geometry/Geometry';
-import Material from '../../../src/material/Material';
+import Material from '../../../src/material/BasicMaterial';
 import GraphicsResourceManager, {
     type ManagedResource
 } from '../../../src/render/GraphicsResourceManager';

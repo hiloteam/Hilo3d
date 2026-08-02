@@ -538,13 +538,13 @@ void main() {
             }
         ]
     }),
-    material: new Hilo3d.Material({
-        transparent: true,
-        premultiplyAlpha: false,
+    pipelineState: {
+        ...Hilo3d.DEFAULT_MATERIAL_PIPELINE_STATE,
         depthTest: false,
-        depthMask: false,
-        cullFace: false
-    })
+        depthWrite: false,
+        cullMode: 'none',
+        blend: Hilo3d.MaterialBlendPreset.STRAIGHT_ALPHA
+    }
 });
 
 const PARTICLE_DRAW_PASS = new Hilo3d.GPUDrivenRenderPass({
@@ -616,18 +616,13 @@ void main() {
             }
         ]
     }),
-    material: new Hilo3d.Material({
-        transparent: true,
-        premultiplyAlpha: false,
-        blend: true,
-        blendSrc: Hilo3d.constants.SRC_ALPHA,
-        blendDst: Hilo3d.constants.ONE,
-        blendSrcAlpha: Hilo3d.constants.ONE,
-        blendDstAlpha: Hilo3d.constants.ONE,
+    pipelineState: {
+        ...Hilo3d.DEFAULT_MATERIAL_PIPELINE_STATE,
         depthTest: false,
-        depthMask: false,
-        cullFace: false
-    })
+        depthWrite: false,
+        cullMode: 'none',
+        blend: Hilo3d.MaterialBlendPreset.STRAIGHT_ALPHA_ADDITIVE
+    }
 });
 
 interface EffectBuffers {

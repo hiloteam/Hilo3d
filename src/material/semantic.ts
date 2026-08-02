@@ -14,17 +14,20 @@ import MorphGeometry from '../geometry/MorphGeometry';
 import type LightManager from '../light/LightManager';
 import { getDirectionalCascadeState } from '../light/DirectionalCascadeState';
 import type SphericalHarmonics3 from '../math/SphericalHarmonics3';
-import type Material from './Material';
+import type Material from './MaterialInstance';
 import type {
     MaterialBindingInfo,
     MaterialTexture,
     MaterialTextureValue,
     ProgramBindingInfo,
     SemanticProgramBindingInfo
-} from './Material';
+} from './MaterialInstance';
 import { getMeshPickingIdentity } from '../render/PickingIdentity';
 import type { RendererViewport } from '../render/Renderer';
 import type { SemanticFrameState } from '../render/frame/SemanticFrameState';
+import { MATERIAL_TEXTURE_SLOT_COUNT } from './MaterialTextureSlots';
+import type { MaterialTextureChannel, MaterialTextureEncoding } from './MaterialDefinition';
+import { MaterialAttributeSemantic } from './MaterialSemantics';
 
 const tempVector3 = new Vector3();
 const tempMatrix3 = new Matrix3();
@@ -33,6 +36,78 @@ const tempFloat32Array4 = new Float32Array([0.5, 0.5, 0.5, 1]);
 const tempFloat32Array2 = new Float32Array([0, 0]);
 const activeViewport = new Float32Array(4);
 const legacyViewport: [number, number, number, number] = [0, 0, 0, 0];
+const materialTextureTransforms = new Float32Array(MATERIAL_TEXTURE_SLOT_COUNT * 9);
+const materialTextureInfo = new Float32Array(MATERIAL_TEXTURE_SLOT_COUNT * 4);
+const materialTextureChannels = new Int32Array(MATERIAL_TEXTURE_SLOT_COUNT * 4);
+const identityTextureTransform = new Matrix3().elements;
+
+function textureEncodingCode(encoding: MaterialTextureEncoding): number {
+    return encoding === 'linear' ? 0 : encoding === 'srgb' ? 1 : 2;
+}
+
+function textureChannelCode(channel: MaterialTextureChannel): number {
+    switch (channel) {
+        case 'r':
+            return 0;
+        case 'g':
+            return 1;
+        case 'b':
+            return 2;
+        case 'a':
+            return 3;
+        case 'zero':
+            return 4;
+        case 'one':
+            return 5;
+    }
+}
+
+function fillMaterialTextureMetadata(material: Material): void {
+    for (let index = 0; index < MATERIAL_TEXTURE_SLOT_COUNT; index += 1) {
+        const transformOffset = index * 9;
+        for (let component = 0; component < 9; component += 1) {
+            materialTextureTransforms[transformOffset + component] =
+                identityTextureTransform[component] ?? 0;
+        }
+        const infoOffset = index * 4;
+        materialTextureInfo[infoOffset] = 0;
+        materialTextureInfo[infoOffset + 1] = 2;
+        materialTextureInfo[infoOffset + 2] = 0;
+        materialTextureInfo[infoOffset + 3] = 0;
+        materialTextureChannels[infoOffset] = 0;
+        materialTextureChannels[infoOffset + 1] = 1;
+        materialTextureChannels[infoOffset + 2] = 2;
+        materialTextureChannels[infoOffset + 3] = 3;
+    }
+    for (const slot of material.definition.textureSlots) {
+        const binding = material.getTextureSlotByIndex(slot.index);
+        const transform = binding?.transform?.elements ?? identityTextureTransform;
+        const transformOffset = slot.index * 9;
+        for (let component = 0; component < 9; component += 1) {
+            materialTextureTransforms[transformOffset + component] = transform[component] ?? 0;
+        }
+        const infoOffset = slot.index * 4;
+        materialTextureInfo[infoOffset] = binding?.uvSet ?? slot.uvSets[0] ?? 0;
+        materialTextureInfo[infoOffset + 1] = textureEncodingCode(
+            binding?.encoding ?? slot.encoding
+        );
+        materialTextureInfo[infoOffset + 2] = binding === null ? 0 : 1;
+        materialTextureInfo[infoOffset + 3] =
+            slot.viewDimension === '2d'
+                ? 0
+                : slot.viewDimension === 'cube'
+                  ? 1
+                  : slot.viewDimension === '3d'
+                    ? 2
+                    : 3;
+        const channels = binding?.channels ?? slot.channels;
+        for (let component = 0; component < 4; component += 1) {
+            const channel = channels[component];
+            materialTextureChannels[infoOffset + component] =
+                channel === undefined ? component : textureChannelCode(channel);
+        }
+    }
+}
 const blankInfo = {
     get(
         _mesh: SemanticMesh,
@@ -322,8 +397,9 @@ const semantic = {
             material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            const normalMap = material.normalMap ?? material.clearcoatNormalMap;
-            if (normalMap?.uv === 1) {
+            const normal =
+                material.getTextureSlot('normal') ?? material.getTextureSlot('clearcoatNormal');
+            if (normal?.uvSet === 1) {
                 return mesh.geometry.tangents1;
             }
             return mesh.geometry.tangents;
@@ -356,29 +432,36 @@ const semantic = {
         }
     },
 
-    UVMATRIX_0: {
+    MATERIALTEXTURETRANSFORMS: {
         get(
-            mesh: SemanticMesh,
+            _mesh: SemanticMesh,
             material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            if (!material.uvMatrix) {
-                return undefined;
-            }
-            return material.uvMatrix.elements;
+            fillMaterialTextureMetadata(material);
+            return materialTextureTransforms;
         }
     },
 
-    UVMATRIX_1: {
+    MATERIALTEXTUREINFO: {
         get(
             mesh: SemanticMesh,
             material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            if (!material.uvMatrix1) {
-                return undefined;
-            }
-            return material.uvMatrix1.elements;
+            fillMaterialTextureMetadata(material);
+            return materialTextureInfo;
+        }
+    },
+
+    MATERIALTEXTURECHANNELS: {
+        get(
+            _mesh: SemanticMesh,
+            material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
+        ): unknown {
+            fillMaterialTextureMetadata(material);
+            return materialTextureChannels;
         }
     },
 
@@ -714,7 +797,7 @@ const semantic = {
             material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return material.normalMapScale;
+            return material.normalScale;
         }
     },
 
@@ -1355,25 +1438,25 @@ const semantic = {
             material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return material.alphaCutoff;
+            return material.coverage.mode === 'opaque' ? 0 : material.coverage.cutoff;
         }
     },
     EXPOSURE: {
         get(
-            mesh: SemanticMesh,
-            material: SemanticMaterial,
+            _mesh: SemanticMesh,
+            _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return material.exposure;
+            return 1;
         }
     },
     GAMMAFACTOR: {
         get(
-            mesh: SemanticMesh,
-            material: SemanticMaterial,
+            _mesh: SemanticMesh,
+            _material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return material.gammaFactor;
+            return 1;
         }
     },
 
@@ -1584,9 +1667,9 @@ registerSemantic(
 
 // Morph Animation Attributes
 const morphAttributes: readonly (readonly [string, string])[] = [
-    ['POSITION', 'vertices'],
-    ['NORMAL', 'normals'],
-    ['TANGENT', 'tangents']
+    [MaterialAttributeSemantic.POSITION, 'vertices'],
+    [MaterialAttributeSemantic.NORMAL, 'normals'],
+    [MaterialAttributeSemantic.TANGENT, 'tangents']
 ];
 for (const [attributeName, targetName] of morphAttributes) {
     for (let i = 0; i < 8; i++) {
@@ -1635,33 +1718,35 @@ for (const [semanticName, textureName] of colorOrTextureSemantics) {
 }
 
 // Texture
-const textureSemantics: readonly (readonly [string, string])[] = [
-    ['NORMALMAP', 'normalMap'],
-    ['PARALLAXMAP', 'parallaxMap'],
-    ['BASECOLORMAP', 'baseColorMap'],
-    ['METALLICMAP', 'metallicMap'],
-    ['ROUGHNESSMAP', 'roughnessMap'],
-    ['METALLICROUGHNESSMAP', 'metallicRoughnessMap'],
-    ['OCCLUSIONMAP', 'occlusionMap'],
-    ['SPECULARGLOSSINESSMAP', 'specularGlossinessMap'],
-    ['LIGHTMAP', 'lightMap'],
-    ['CLEARCOATMAP', 'clearcoatMap'],
-    ['CLEARCOATROUGHNESSMAP', 'clearcoatRoughnessMap'],
-    ['CLEARCOATNORMALMAP', 'clearcoatNormalMap'],
-    ['ANISOTROPYMAP', 'anisotropyMap'],
-    ['TRANSMISSIONMAP', 'transmissionMap'],
-    ['THICKNESSMAP', 'thicknessMap'],
-    ['IRIDESCENCEMAP', 'iridescenceMap'],
-    ['IRIDESCENCETHICKNESSMAP', 'iridescenceThicknessMap']
+const textureSemantics: readonly (readonly [string, string, string])[] = [
+    ['NORMALMAP', 'normalMap', 'normal'],
+    ['PARALLAXMAP', 'parallaxMap', 'parallax'],
+    ['BASECOLORMAP', 'baseColorMap', 'baseColor'],
+    ['METALLICMAP', 'metallicMap', 'metallic'],
+    ['ROUGHNESSMAP', 'roughnessMap', 'roughness'],
+    ['METALLICROUGHNESSMAP', 'metallicRoughnessMap', 'metallicRoughness'],
+    ['OCCLUSIONMAP', 'occlusionMap', 'occlusion'],
+    ['SPECULARGLOSSINESSMAP', 'specularGlossinessMap', 'specularGlossiness'],
+    ['LIGHTMAP', 'lightMap', 'light'],
+    ['CLEARCOATMAP', 'clearcoatMap', 'clearcoat'],
+    ['CLEARCOATROUGHNESSMAP', 'clearcoatRoughnessMap', 'clearcoatRoughness'],
+    ['CLEARCOATNORMALMAP', 'clearcoatNormalMap', 'clearcoatNormal'],
+    ['ANISOTROPYMAP', 'anisotropyMap', 'anisotropy'],
+    ['TRANSMISSIONMAP', 'transmissionMap', 'transmission'],
+    ['THICKNESSMAP', 'thicknessMap', 'thickness'],
+    ['IRIDESCENCEMAP', 'iridescenceMap', 'iridescence'],
+    ['IRIDESCENCETHICKNESSMAP', 'iridescenceThicknessMap', 'iridescenceThickness']
 ];
-for (const [semanticName, textureName] of textureSemantics) {
+for (const [semanticName, textureName, slotName] of textureSemantics) {
     registerSemantic(semanticName, {
         get(
             _mesh: SemanticMesh,
             material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerTexture(materialTexture(material, textureName));
+            return semantic.handlerTexture(
+                material.getTextureSlot(slotName)?.texture ?? materialTexture(material, textureName)
+            );
         }
     });
 
@@ -1671,25 +1756,20 @@ for (const [semanticName, textureName] of textureSemantics) {
             material: SemanticMaterial,
             _programInfo: ProgramBindingInfo
         ): unknown {
-            return semantic.handlerUV(materialTexture(material, textureName));
+            const slot = material.getTextureSlot(slotName);
+            return slot?.uvSet ?? semantic.handlerUV(materialTexture(material, textureName));
         }
     });
 }
 
 // TRANSPARENCY
 registerSemantic('TRANSPARENCY', {
-    get(
-        _mesh: SemanticMesh,
-        material: SemanticMaterial,
-        _programInfo: ProgramBindingInfo
-    ): unknown {
-        const value: unknown = Reflect.get(material, 'transparency');
-        if (value instanceof Texture) {
-            return semantic.handlerTexture(value);
+    get(_mesh: SemanticMesh, material: SemanticMaterial, programInfo: ProgramBindingInfo): unknown {
+        const opacityTexture = material.getTextureSlot('opacity')?.texture;
+        if (programInfo.textureIndex !== undefined) {
+            return semantic.handlerTexture(opacityTexture ?? null);
         }
-
-        if (typeof value === 'number') return value;
-        return 1;
+        return material.opacity;
     }
 });
 
@@ -1699,7 +1779,7 @@ registerSemantic('TRANSPARENCYUV', {
         material: SemanticMaterial,
         _programInfo: ProgramBindingInfo
     ): unknown {
-        return semantic.handlerUV(materialTexture(material, 'transparency'));
+        return material.getTextureSlot('opacity')?.uvSet ?? 0;
     }
 });
 

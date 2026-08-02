@@ -31,8 +31,8 @@ void loader
         fs: './test.frag',
         vs: './test.vert',
         attributes: {
-            a_pos: 'POSITION',
-            a_uv: 'TEXCOORD_0'
+            a_pos: Hilo3d.MaterialAttributeSemantic.POSITION,
+            a_uv: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
         },
         uniforms: {
             u_diffuse: {
@@ -42,7 +42,7 @@ void loader
         },
         uniformBlocks: { ShaderLoaderBlock: shaderBlock },
         // cullFace: true,
-        wireframe: true
+        state: { wireframe: true }
     })
     .then(function (material) {
         const geometry = new Hilo3d.PlaneGeometry({

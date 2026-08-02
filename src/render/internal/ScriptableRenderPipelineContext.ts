@@ -2,7 +2,8 @@ import Camera from '../../camera/Camera';
 import Mesh from '../../core/Mesh';
 import type Light from '../../light/Light';
 import type LightManager from '../../light/LightManager';
-import type Material from '../../material/Material';
+import type Material from '../../material/MaterialInstance';
+import type { MaterialPassRole } from '../../material/MaterialDefinition';
 import Texture from '../../texture/Texture';
 import type { RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
@@ -1355,6 +1356,7 @@ class RendererListSlot {
     frameIndex = -1;
     culling: CullingSlot | null = null;
     overrideMaterial: Material | null = null;
+    materialPass: MaterialPassRole = 'forward';
     plan: Readonly<MeshDrawListPlan> | null = null;
 
     build(
@@ -1389,6 +1391,7 @@ class RendererListSlot {
         this.frameIndex = frameIndex;
         this.culling = culling;
         this.overrideMaterial = descriptor.overrideMaterial ?? null;
+        this.materialPass = descriptor.materialPass ?? 'forward';
         this.excludedMeshes.clear();
         const excludedMeshes: unknown = descriptor.excludeMeshes;
         if (excludedMeshes !== undefined) {
@@ -1411,9 +1414,9 @@ class RendererListSlot {
             if (this.excludedMeshes.has(mesh)) continue;
             const material = this.overrideMaterial ?? mesh.material;
             if (material === null) continue;
-            if (descriptor.castShadowsOnly === true && !material.castShadows) continue;
-            if (queue === 'opaque' && material.transparent) continue;
-            if (queue === 'transparent' && !material.transparent) continue;
+            if (descriptor.castShadowsOnly === true && !mesh.castShadows) continue;
+            if (queue === 'opaque' && material.isTransparent) continue;
+            if (queue === 'transparent' && !material.isTransparent) continue;
             selected.push(mesh);
         }
         this.plan = this.planner.build(
@@ -1431,6 +1434,7 @@ class RendererListSlot {
         this.frameIndex = -1;
         this.culling = null;
         this.overrideMaterial = null;
+        this.materialPass = 'forward';
         this.plan = null;
     }
 }
@@ -4979,6 +4983,11 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.services.beginScriptableMeshPass(context);
         const processor = this.services.getScriptableMeshProcessor();
         const storagePipelines = this.services.getScriptableGPUDrivenPipelineResources();
+        if (storageVariant !== null && list.materialPass !== 'forward') {
+            throw new TypeError(
+                `Storage scene draws do not support material pass ${list.materialPass}`
+            );
+        }
         for (const mesh of plan.opaqueMeshes) {
             drawPass.addDrawSnapshot(
                 storageVariant === null
@@ -4986,7 +4995,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                           mesh,
                           target,
                           list.overrideMaterial,
-                          sceneTexturePreparation
+                          sceneTexturePreparation,
+                          list.materialPass
                       )
                     : processor.prepareStorageScene(
                           mesh,
@@ -5007,7 +5017,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                         batch.meshes,
                         target,
                         list.overrideMaterial,
-                        sceneTexturePreparation
+                        sceneTexturePreparation,
+                        list.materialPass
                     )
                 );
                 continue;
@@ -5033,7 +5044,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                           mesh,
                           target,
                           list.overrideMaterial,
-                          sceneTexturePreparation
+                          sceneTexturePreparation,
+                          list.materialPass
                       )
                     : processor.prepareStorageScene(
                           mesh,
@@ -5054,7 +5066,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                         batch.meshes,
                         target,
                         list.overrideMaterial,
-                        sceneTexturePreparation
+                        sceneTexturePreparation,
+                        list.materialPass
                     )
                 );
                 continue;
@@ -5112,7 +5125,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.services.beginScriptableMeshPass(context);
         this.services.beginScriptableFullscreenPass(context);
         const fullscreen = this.services.getScriptableFullscreenProcessor();
-        const pipeline = fullscreen.prepareGraphPipeline(pass.shader, pass.material, target);
+        const pipeline = fullscreen.prepareGraphPipeline(pass.shader, pass.pipelineState, target);
         const inputs = this.#fullscreenInputScratch;
         inputs.length = parameters.inputTextures.length;
         for (let index = 0; index < parameters.inputTextures.length; index += 1) {

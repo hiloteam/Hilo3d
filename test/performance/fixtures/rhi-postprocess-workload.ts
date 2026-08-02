@@ -127,15 +127,8 @@ function createMRTMSAAPostProcessPass(
         );
     }
     const material = new ShaderMaterial({
-        shaderName: `RHI benchmark MRT post-process ${String(index)}`,
-        shaderCacheId: `rhi-benchmark-mrt-post-process-${String(index)}`,
-        needBasicUniforms: false,
-        needBasicAttributes: false,
-        depthTest: false,
-        depthMask: false,
-        cullFace: false,
-        blend: false,
-        premultiplyAlpha: false,
+        sourceRevision: `rhi-benchmark-mrt-post-process-${String(index)}`,
+        state: { depthTest: false, depthWrite: false, cullMode: 'none' },
         attributes: { a_position: 'POSITION' },
         uniforms: isMRTCombine
             ? {

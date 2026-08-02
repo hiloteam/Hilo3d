@@ -2,9 +2,17 @@ import Node from '../core/Node';
 import Skeleton from '../core/Skeleton';
 import Mesh from '../core/Mesh';
 import SkinnedMesh from '../core/SkinnedMesh';
-import BasicMaterial, { type BasicLightType } from '../material/BasicMaterial';
-import Material from '../material/Material';
-import PBRMaterial from '../material/PBRMaterial';
+import BasicMaterial, {
+    type BasicLightType,
+    type BasicMaterialParameters
+} from '../material/BasicMaterial';
+import Material from '../material/MaterialInstance';
+import { PBRMaterialBuilder, type PBRMaterialParameters } from '../material/PBRMaterial';
+import type {
+    MaterialCompositing,
+    MaterialCoverage,
+    MaterialTextureSlotInput
+} from '../material/MaterialDefinition';
 import Geometry from '../geometry/Geometry';
 import MorphGeometry, { type MorphTargets } from '../geometry/MorphGeometry';
 import GeometryData, { type GeometryComponentSize } from '../geometry/GeometryData';
@@ -23,7 +31,6 @@ import type Light from '../light/Light';
 import BasicLoader from './BasicLoader';
 import * as util from '../utils/util';
 import * as builtInExtensionHandlers from './GLTFExtensions';
-import { BACK, BLEND, CULL_FACE, DEPTH_TEST, FRONT, FRONT_AND_BACK } from '../constants/webgl';
 import type { TypedArray } from '../render/types';
 import type { BasicLoaderResource, GLTFResourceLoader } from './GLTFLoader';
 import {
@@ -102,22 +109,21 @@ type GeometryAttributeSemantic =
     | 'COLOR_0';
 
 interface GeometryAttributeInfo {
-    readonly semantic: GeometryAttributeSemantic;
     readonly decodeMatrix?:
         'positionDecodeMat' | 'uvDecodeMat' | 'uv1DecodeMat' | 'normalDecodeMat';
 }
 
 const GEOMETRY_ATTRIBUTES: Readonly<Record<GeometryAttributeSemantic, GeometryAttributeInfo>> = {
-    POSITION: { semantic: 'POSITION', decodeMatrix: 'positionDecodeMat' },
-    TEXCOORD_0: { semantic: 'TEXCOORD_0', decodeMatrix: 'uvDecodeMat' },
-    TEXCOORD_1: { semantic: 'TEXCOORD_1', decodeMatrix: 'uv1DecodeMat' },
-    NORMAL: { semantic: 'NORMAL', decodeMatrix: 'normalDecodeMat' },
-    JOINT: { semantic: 'JOINT' },
-    JOINTS_0: { semantic: 'JOINTS_0' },
-    WEIGHT: { semantic: 'WEIGHT' },
-    WEIGHTS_0: { semantic: 'WEIGHTS_0' },
-    TANGENT: { semantic: 'TANGENT' },
-    COLOR_0: { semantic: 'COLOR_0' }
+    POSITION: { decodeMatrix: 'positionDecodeMat' },
+    TEXCOORD_0: { decodeMatrix: 'uvDecodeMat' },
+    TEXCOORD_1: { decodeMatrix: 'uv1DecodeMat' },
+    NORMAL: { decodeMatrix: 'normalDecodeMat' },
+    JOINT: {},
+    JOINTS_0: {},
+    WEIGHT: {},
+    WEIGHTS_0: {},
+    TANGENT: {},
+    COLOR_0: {}
 };
 
 export type GLTFExtensionMethodName = 'parse' | 'parseOnLoad' | 'parseOnEnd';
@@ -175,6 +181,8 @@ export interface GLTFParserParameters {
     ignoreTextureError?: boolean;
     forceCreateNewBuffer?: boolean;
     useInstanced?: boolean;
+    /** Defaults copied into every glTF 2 PBR material before asset data and extensions apply. */
+    pbrMaterialDefaults?: Readonly<PBRMaterialParameters>;
     preHandlerImageURI?: ((uri: string, image: GLTFImage) => string) | null;
     preHandlerBufferURI?: ((uri: string, buffer: GLTFBuffer) => string) | null;
     preHandlerShaderURI?: ((uri: string, index: GLTFIndex, shader: unknown) => string) | null;
@@ -400,7 +408,10 @@ function getKHRMaterialsCommonInfo(
     return technique === undefined ? { values } : { technique, values };
 }
 
-function getTextureTransformInfo(textureInfo: GLTFTextureInfo): TextureTransformInfo | null {
+function getTextureTransformInfo(
+    textureInfo: GLTFTextureInfo | undefined
+): TextureTransformInfo | null {
+    if (textureInfo === undefined) return null;
     const value = textureInfo.extensions?.['KHR_texture_transform'];
     if (value === undefined) return null;
     if (!isRecord(value)) throw new TypeError('KHR_texture_transform must be an object.');
@@ -502,6 +513,7 @@ class GLTFParser {
     ignoreTextureError = false;
     forceCreateNewBuffer = false;
     useInstanced = false;
+    pbrMaterialDefaults: Readonly<PBRMaterialParameters> = Object.freeze({});
     preHandlerImageURI: GLTFParserParameters['preHandlerImageURI'] = null;
     preHandlerBufferURI: GLTFParserParameters['preHandlerBufferURI'] = null;
     preHandlerShaderURI: GLTFParserParameters['preHandlerShaderURI'] = null;
@@ -552,6 +564,7 @@ class GLTFParser {
         this.ignoreTextureError = params.ignoreTextureError ?? false;
         this.forceCreateNewBuffer = params.forceCreateNewBuffer ?? false;
         this.useInstanced = params.useInstanced ?? false;
+        this.pbrMaterialDefaults = Object.freeze({ ...(params.pbrMaterialDefaults ?? {}) });
         this.preHandlerImageURI = params.preHandlerImageURI ?? null;
         this.preHandlerBufferURI = params.preHandlerBufferURI ?? null;
         this.preHandlerShaderURI = params.preHandlerShaderURI ?? null;
@@ -990,56 +1003,70 @@ class GLTFParser {
         return index === undefined ? null : (this.textures[String(index)] ?? null);
     }
 
-    parseMaterialCommonProps(material: Material, materialData: GLTFMaterial): void {
+    private parseMaterialCommonProps(materialData: GLTFMaterial): Readonly<{
+        coverage: MaterialCoverage;
+        compositing: MaterialCompositing;
+        cullMode: 'none' | 'back';
+        opacityMap: MaterialTextureSlotInput | null;
+    }> {
+        let coverage: MaterialCoverage = { mode: 'opaque' };
+        let compositing: MaterialCompositing = { mode: 'opaque' };
         switch (materialData.alphaMode ?? 'OPAQUE') {
             case 'BLEND':
-                material.transparent = true;
+                compositing = { mode: 'alpha-blend', premultiplied: false };
                 break;
             case 'MASK':
-                material.alphaCutoff = materialData.alphaCutoff ?? 0.5;
+                coverage = { mode: 'mask', cutoff: materialData.alphaCutoff ?? 0.5 };
                 break;
             case 'OPAQUE':
-                material.ignoreTransparent = true;
                 break;
             default:
                 throw new RangeError(
                     `Unsupported material alpha mode ${String(materialData.alphaMode)}.`
                 );
         }
-        material.side = materialData.doubleSided ? FRONT_AND_BACK : FRONT;
-        if (materialData.transparencyTexture) {
-            material.transparency = this.getTexture(materialData.transparencyTexture) ?? 1;
-        }
+        return {
+            coverage,
+            compositing,
+            cullMode: materialData.doubleSided ? 'none' : 'back',
+            opacityMap: materialData.transparencyTexture
+                ? this.getTextureSlot(materialData.transparencyTexture)
+                : null
+        };
     }
 
-    createPBRMaterial(materialData: GLTFMaterial): PBRMaterial {
-        let material = new PBRMaterial();
+    createPBRMaterial(materialData: GLTFMaterial): PBRMaterialBuilder {
         const needLight = !this.isUseExtension(materialData, 'KHR_materials_unlit');
+        let material = new PBRMaterialBuilder({
+            ...this.pbrMaterialDefaults,
+            unlit: !needLight
+        });
+        const parameters = material.parameters;
         if (needLight) {
             const normal = materialData.normalTexture;
             if (normal) {
-                material.normalMap = this.getTexture(normal);
-                material.normalMapScale = normal.scale ?? 1;
+                parameters.normalMap = this.getTextureSlot(normal);
+                parameters.normalScale = normal.scale ?? 1;
             }
             const occlusion = materialData.occlusionTexture;
             if (occlusion) {
-                material.occlusionMap = this.getTexture(occlusion);
-                material.occlusionStrength = occlusion.strength ?? 1;
+                parameters.occlusionMap = this.getTextureSlot(occlusion);
+                parameters.occlusionStrength = occlusion.strength ?? 1;
             }
             if (materialData.emissiveTexture)
-                material.emission = this.getTexture(materialData.emissiveTexture);
+                parameters.emission = this.getTextureSlot(materialData.emissiveTexture);
             if (materialData.emissiveFactor) {
-                material.emissionFactor.set(
+                parameters.emissionFactor?.set(
                     requiredNumber(materialData.emissiveFactor, 0, 'emissiveFactor'),
                     requiredNumber(materialData.emissiveFactor, 1, 'emissiveFactor'),
                     requiredNumber(materialData.emissiveFactor, 2, 'emissiveFactor'),
                     1
                 );
             }
-        } else material.lightType = 'NONE';
+        }
 
         if (this.isUseExtension(materialData, 'KHR_materials_pbrSpecularGlossiness')) {
-            material = this.requirePBRMaterial(
+            material = this.requirePBRMaterialBuilder(
                 this.parseExtension(
                     materialData.extensions,
                     'KHR_materials_pbrSpecularGlossiness',
@@ -1048,44 +1075,65 @@ class GLTFParser {
             );
         } else if (materialData.pbrMetallicRoughness) {
             const pbr = materialData.pbrMetallicRoughness;
-            if (pbr.baseColorFactor) material.baseColor.fromArray(pbr.baseColorFactor);
-            if (pbr.baseColorTexture) material.baseColorMap = this.getTexture(pbr.baseColorTexture);
+            if (pbr.baseColorFactor) parameters.baseColor?.fromArray(pbr.baseColorFactor);
+            if (pbr.baseColorTexture) {
+                parameters.baseColorMap = this.getTextureSlot(pbr.baseColorTexture);
+            }
             if (needLight) {
                 if (pbr.metallicRoughnessTexture) {
-                    material.metallicRoughnessMap = this.getTexture(pbr.metallicRoughnessTexture);
-                    if (material.occlusionMap === material.metallicRoughnessMap) {
-                        material.occlusionMap = null;
-                        material.isOcclusionInMetallicRoughnessMap = true;
+                    parameters.metallicRoughnessMap = this.getTextureSlot(
+                        pbr.metallicRoughnessTexture
+                    );
+                    const occlusionTexture =
+                        parameters.occlusionMap instanceof Texture
+                            ? parameters.occlusionMap
+                            : parameters.occlusionMap?.texture;
+                    const metallicRoughnessTexture =
+                        parameters.metallicRoughnessMap instanceof Texture
+                            ? parameters.metallicRoughnessMap
+                            : parameters.metallicRoughnessMap?.texture;
+                    if (
+                        occlusionTexture !== undefined &&
+                        occlusionTexture === metallicRoughnessTexture
+                    ) {
+                        parameters.occlusionMap = null;
+                        parameters.isOcclusionInMetallicRoughnessMap = true;
                     }
                 }
-                material.roughness = pbr.roughnessFactor ?? material.roughness;
-                material.metallic = pbr.metallicFactor ?? material.metallic;
+                parameters.roughness = pbr.roughnessFactor ?? 1;
+                parameters.metallic = pbr.metallicFactor ?? 1;
             }
         }
-        if (material.baseColorMap) this.parseTextureTransform(material, material.baseColorMap);
         return material;
     }
 
-    private requirePBRMaterial(value: unknown): PBRMaterial {
-        if (value instanceof PBRMaterial) return value;
-        throw new TypeError('PBR material extension must return a PBRMaterial.');
+    private requirePBRMaterialBuilder(value: unknown): PBRMaterialBuilder {
+        if (value instanceof PBRMaterialBuilder) return value;
+        throw new TypeError('PBR material extension must return a PBRMaterialBuilder.');
     }
 
-    private parseTextureTransform(material: Material, texture: unknown): void {
-        if (!isEngineTexture(texture)) return;
-        const textureInfo = this.textureInfos.get(texture);
-        if (!textureInfo) return;
+    getTextureSlot(textureInfo: GLTFTextureInfo): MaterialTextureSlotInput | null {
+        const texture = this.getTexture(textureInfo);
+        if (texture === null) return null;
+        return this.createTextureSlot(texture, this.textureInfos.get(texture) ?? textureInfo);
+    }
+
+    private slotForTexture(texture: Texture): MaterialTextureSlotInput {
+        return this.createTextureSlot(texture, this.textureInfos.get(texture));
+    }
+
+    private createTextureSlot(
+        texture: Texture,
+        textureInfo: GLTFTextureInfo | undefined
+    ): MaterialTextureSlotInput {
         const transform = getTextureTransformInfo(textureInfo);
-        if (!transform) return;
-        if (transform.texCoord !== undefined) {
-            if (transform.texCoord !== 0 && transform.texCoord !== 1) {
-                throw new RangeError(
-                    `Texture coordinate set ${String(transform.texCoord)} is unsupported.`
-                );
-            }
-            texture.uv = transform.texCoord;
+        const uvSet = transform?.texCoord ?? texture.uv;
+        if (uvSet !== 0 && uvSet !== 1) {
+            throw new RangeError(`Texture coordinate set ${String(uvSet)} is unsupported.`);
         }
-        if (!transform.offset && transform.rotation === undefined && !transform.scale) return;
+        if (!transform?.offset && transform?.rotation === undefined && !transform?.scale) {
+            return { texture, uvSet };
+        }
         const offset = transform.offset ?? [0, 0];
         const scale = transform.scale ?? [1, 1];
         const uvMatrix = new Matrix3().fromRotationTranslationScale(
@@ -1095,37 +1143,33 @@ class GLTFParser {
             requiredNumber(scale, 0, 'Texture transform scale'),
             requiredNumber(scale, 1, 'Texture transform scale')
         );
-        if (texture.uv === 0) material.uvMatrix = uvMatrix;
-        else material.uvMatrix1 = uvMatrix;
+        return { texture, uvSet, transform: uvMatrix };
     }
 
     private createKMCMaterial(
         materialData: GLTFMaterial,
         common: KHRMaterialsCommonInfo | null
     ): BasicMaterial {
-        const material = new BasicMaterial();
         const values = common?.values ?? materialData.values ?? {};
-        if (common?.technique) material.lightType = common.technique;
-        material.diffuse = this.getColorOrTexture(values['diffuse']) ?? material.diffuse;
-        material.specular = this.getColorOrTexture(values['specular']) ?? material.specular;
-        material.emission = this.getColorOrTexture(values['emission']) ?? material.emission;
-        material.ambient = this.getColorOrTexture(values['ambient']) ?? material.ambient;
-        if (values['normalMap'] !== undefined) {
-            const normalMap = this.getColorOrTexture(values['normalMap']);
-            material.normalMap = isEngineTexture(normalMap) ? normalMap : null;
-        }
-        const transparency = values['transparency'];
-        if (typeof transparency === 'number') {
-            material.transparency = transparency;
-            material.transparent = transparency < 1;
-        } else if (typeof transparency === 'string') {
-            material.transparency = this.textures[transparency] ?? 1;
-            material.transparent = true;
-        }
-        if (values['transparent'] === true) material.transparent = true;
-        if (typeof values['shininess'] === 'number') material.shininess = values['shininess'];
-        this.parseTextureTransform(material, material.diffuse);
-        return material;
+        const commonProps = this.parseMaterialCommonProps(materialData);
+        const normalValue =
+            values['normalMap'] === undefined ? null : this.getColorOrTexture(values['normalMap']);
+        const parameters: BasicMaterialParameters = {
+            lightType: common?.technique ?? 'BLINN-PHONG',
+            diffuse: this.getColorOrTexture(values['diffuse']),
+            specular: this.getColorOrTexture(values['specular']),
+            emission: this.getColorOrTexture(values['emission']),
+            ambient: this.getColorOrTexture(values['ambient']),
+            coverage: commonProps.coverage,
+            compositing: commonProps.compositing,
+            cullMode: commonProps.cullMode,
+            opacityMap: commonProps.opacityMap,
+            ...(isEngineTexture(normalValue)
+                ? { normalMap: this.slotForTexture(normalValue) }
+                : {}),
+            ...(typeof values['shininess'] === 'number' ? { shininess: values['shininess'] } : {})
+        };
+        return new BasicMaterial(parameters);
     }
 
     parseMaterials(): void {
@@ -1133,27 +1177,43 @@ class GLTFParser {
         for (const [name, materialData] of collectionEntries(this.json.materials)) {
             const custom = this.customMaterialCreator?.(name, materialData, this.json, this);
             let material: Material;
-            if (custom) material = custom;
-            else {
+            if (custom) {
+                material = requireMaterial(
+                    this.parseExtensions(materialData.extensions, custom, {
+                        ignoreExtensions: { KHR_materials_common: true },
+                        isMaterial: true
+                    }),
+                    `Material ${name} extensions`
+                );
+            } else {
                 const common = getKHRMaterialsCommonInfo(materialData.extensions);
                 if (this.isGLTF2 && !common) {
-                    material = this.createPBRMaterial(materialData);
-                    this.parseMaterialCommonProps(material, materialData);
-                } else material = this.createKMCMaterial(materialData, common);
+                    let builder = this.createPBRMaterial(materialData);
+                    const commonProps = this.parseMaterialCommonProps(materialData);
+                    Object.assign(builder.parameters, commonProps);
+                    builder = this.requirePBRMaterialBuilder(
+                        this.parseExtensions(materialData.extensions, builder, {
+                            ignoreExtensions: {
+                                KHR_materials_common: true,
+                                KHR_materials_pbrSpecularGlossiness: true
+                            },
+                            isMaterial: true
+                        })
+                    );
+                    material = builder.build();
+                } else {
+                    material = this.createKMCMaterial(materialData, common);
+                    material = requireMaterial(
+                        this.parseExtensions(materialData.extensions, material, {
+                            ignoreExtensions: { KHR_materials_common: true },
+                            isMaterial: true
+                        }),
+                        `Material ${name} extensions`
+                    );
+                }
             }
-            material = requireMaterial(
-                this.parseExtensions(materialData.extensions, material, {
-                    ignoreExtensions: {
-                        KHR_materials_common: true,
-                        KHR_materials_pbrSpecularGlossiness: true
-                    },
-                    isMaterial: true
-                }),
-                `Material ${name} extensions`
-            );
             material.name = materialData.name ?? name;
             this.materials[name] = material;
-            this.parseTechnique(materialData, material);
         }
     }
 
@@ -1343,45 +1403,6 @@ class GLTFParser {
         });
         cache.set(name, result);
         return result;
-    }
-
-    parseTechnique(materialData: GLTFMaterial, material: Material): void {
-        if (materialData.technique === undefined) return;
-        const technique = getCollectionItem(this.json.techniques, materialData.technique);
-        if (!technique?.states) return;
-        for (const flag of technique.states.enable ?? []) {
-            if (flag === BLEND) material.blend = true;
-            else if (flag === DEPTH_TEST) material.depthTest = true;
-            else if (flag === CULL_FACE) material.cullFace = true;
-            else throw new RangeError(`Unsupported glTF technique state ${String(flag)}.`);
-        }
-        for (const [name, value] of Object.entries(technique.states.functions ?? {})) {
-            switch (name) {
-                case 'blendEquationSeparate':
-                    material.blendEquation = requiredNumber(value, 0, name);
-                    material.blendEquationAlpha = requiredNumber(value, 1, name);
-                    break;
-                case 'blendFuncSeparate':
-                    material.blendSrc = requiredNumber(value, 0, name);
-                    material.blendDst = requiredNumber(value, 1, name);
-                    material.blendSrcAlpha = requiredNumber(value, 2, name);
-                    material.blendDstAlpha = requiredNumber(value, 3, name);
-                    break;
-                case 'depthMask':
-                    material.depthMask = requiredNumber(value, 0, name) !== 0;
-                    break;
-                case 'cullFace':
-                    material.cullFaceType = requiredNumber(value, 0, name);
-                    break;
-                default:
-                    throw new RangeError(`Unsupported glTF technique state function ${name}.`);
-            }
-        }
-        material.side = material.cullFace
-            ? material.cullFaceType === FRONT
-                ? BACK
-                : FRONT
-            : FRONT_AND_BACK;
     }
 
     createMorphGeometry(primitive: GLTFPrimitive, weights?: readonly number[]): MorphGeometry {

@@ -12,7 +12,9 @@ import {
 import type Mesh from '../core/Mesh';
 import type Fog from '../core/Fog';
 import type LightManager from '../light/LightManager';
-import type Material from '../material/Material';
+import type Material from '../material/MaterialInstance';
+import type { MaterialPassRole } from '../material/MaterialDefinition';
+import { resolveMaterialPassDefinition } from '../material/MaterialCompiler';
 import type { RendererResourceManager } from '../render/RendererCore';
 import type { ShaderPrecision } from '../render/types';
 import {
@@ -34,7 +36,6 @@ const MESH_HEADER_SNAPSHOT_LIMIT = 4;
 const trackedHeaderVariantKeys = new Map<string, true>();
 const trackedShaderVariants = new Map<string, Shader>();
 let meshHeaderSnapshots = new WeakMap<Mesh, HeaderVariantSnapshot[]>();
-let beforeCompileSnapshots = new WeakMap<Material, BeforeCompileSnapshot>();
 const rendererHeaderCache = new WeakMap<ShaderPrecisionProvider, RendererHeaderSnapshot>();
 const CUSTOM_OPTION_PREFIX = 'HILO_CUSTOM_OPTION_';
 const DEFAULT_COMMON_HEADER = `
@@ -96,7 +97,6 @@ interface HeaderVariant {
 
 interface HeaderVariantSnapshot {
     readonly material: Material;
-    readonly materialRevision: number;
     readonly geometry: NonNullable<Mesh['geometry']>;
     readonly geometryRevision: number;
     readonly lightManager: LightManager;
@@ -104,6 +104,8 @@ interface HeaderVariantSnapshot {
     readonly fog: Fog | null;
     readonly fogMode: Fog['mode'] | null;
     readonly useLogDepth: boolean;
+    readonly role: MaterialPassRole;
+    readonly receiveShadows: boolean;
     readonly jointCount: number | null;
     readonly unsignedSkinIndices: boolean;
     readonly shaderName: string;
@@ -112,75 +114,11 @@ interface HeaderVariantSnapshot {
     readonly variant: HeaderVariant;
 }
 
-interface BeforeCompileSnapshot {
-    readonly callback: NonNullable<Material['onBeforeCompile']>;
-    readonly materialRevision: number;
-    readonly shaderFamily: string;
-    readonly vs: string;
-    readonly fs: string;
-}
-
-interface BasicShaderMaterial extends Material {
-    readonly isBasicMaterial: true;
-    readonly isGeometryMaterial?: boolean;
-}
-
-interface PBRShaderMaterial extends Material {
-    readonly isPBRMaterial: true;
-}
-
-interface CustomShaderMaterial extends Material {
-    readonly isShaderMaterial: true;
-    vs: string;
-    fs: string;
-    useHeaderCache: boolean;
-}
-
 function hasTrueFlag<Name extends string>(
     value: object,
     name: Name
 ): value is object & Record<Name, true> {
     return Reflect.get(value, name) === true;
-}
-
-function isBasicMaterial(material: Material): material is BasicShaderMaterial {
-    return hasTrueFlag(material, 'isBasicMaterial');
-}
-
-function isPBRMaterial(material: Material): material is PBRShaderMaterial {
-    return hasTrueFlag(material, 'isPBRMaterial');
-}
-
-function isCustomMaterial(material: Material): material is CustomShaderMaterial {
-    return (
-        hasTrueFlag(material, 'isShaderMaterial') &&
-        typeof Reflect.get(material, 'vs') === 'string' &&
-        typeof Reflect.get(material, 'fs') === 'string' &&
-        typeof Reflect.get(material, 'useHeaderCache') === 'boolean'
-    );
-}
-
-function runBeforeCompile(
-    material: Material,
-    callback: NonNullable<Material['onBeforeCompile']>,
-    vs: string,
-    fs: string
-): MaterialShaderSource {
-    const result: unknown = callback.call(material, vs, fs);
-    if (typeof result !== 'object' || result === null) {
-        throw new TypeError('Material.onBeforeCompile must return shader source strings');
-    }
-    const nextVS: unknown = Reflect.get(result, 'vs');
-    const nextFS: unknown = Reflect.get(result, 'fs');
-    if (typeof nextVS !== 'string' || typeof nextFS !== 'string') {
-        throw new TypeError('Material.onBeforeCompile must return { vs, fs }');
-    }
-    return { vs: nextVS, fs: nextFS };
-}
-
-interface MaterialShaderSource {
-    readonly vs: string;
-    readonly fs: string;
 }
 
 function skeletonJointCount(mesh: Mesh): number | null {
@@ -280,7 +218,6 @@ class Shader {
         stringFingerprints.clear();
         trackedHeaderVariantKeys.clear();
         meshHeaderSnapshots = new WeakMap<Mesh, HeaderVariantSnapshot[]>();
-        beforeCompileSnapshots = new WeakMap<Material, BeforeCompileSnapshot>();
     }
     /**
      * 获取header缓存的key
@@ -295,9 +232,11 @@ class Shader {
         material: Material,
         lightManager: LightManager,
         fog: Fog | null,
-        useLogDepth: boolean
+        useLogDepth: boolean,
+        role: MaterialPassRole = 'forward'
     ): string {
-        return this.getHeaderVariant(mesh, material, lightManager, fog, useLogDepth).headerKey;
+        return this.getHeaderVariant(mesh, material, lightManager, fog, useLogDepth, role)
+            .headerKey;
     }
     /**
      * 获取header
@@ -311,9 +250,10 @@ class Shader {
         material: Material,
         lightManager: LightManager,
         fog: Fog | null,
-        useLogDepth: boolean
+        useLogDepth: boolean,
+        role: MaterialPassRole = 'forward'
     ): string {
-        const variant = this.getHeaderVariant(mesh, material, lightManager, fog, useLogDepth);
+        const variant = this.getHeaderVariant(mesh, material, lightManager, fog, useLogDepth, role);
         const cached = headerCache.get(variant.headerKey);
         if (cached) return cached;
 
@@ -335,20 +275,20 @@ class Shader {
         material: Material,
         lightManager: LightManager,
         fog: Fog | null,
-        useLogDepth: boolean
+        useLogDepth: boolean,
+        role: MaterialPassRole
     ): HeaderVariant {
         const geometry = mesh.geometry;
         if (!geometry) {
             throw new Error('Cannot create a shader header for a mesh without geometry');
         }
 
-        const materialRevision = material.revision;
         const geometryRevision = geometry.revision;
         const lightUid = lightManager.lightInfo.uid;
         const fogMode = fog?.mode ?? null;
         const jointCount = skeletonJointCount(mesh);
         const unsignedSkinIndices = usesUnsignedSkinIndices(mesh);
-        const shaderName = material.shaderName ?? material.className;
+        const shaderName = material.className;
         const lightType = material.lightType;
         const snapshots = meshHeaderSnapshots.get(mesh);
         let cachedSnapshot: HeaderVariantSnapshot | undefined;
@@ -356,7 +296,6 @@ class Shader {
             for (const snapshot of snapshots) {
                 if (
                     snapshot.material === material &&
-                    snapshot.materialRevision === materialRevision &&
                     snapshot.geometry === geometry &&
                     snapshot.geometryRevision === geometryRevision &&
                     snapshot.lightManager === lightManager &&
@@ -364,6 +303,8 @@ class Shader {
                     snapshot.fog === fog &&
                     snapshot.fogMode === fogMode &&
                     snapshot.useLogDepth === useLogDepth &&
+                    snapshot.role === role &&
+                    snapshot.receiveShadows === mesh.receiveShadows &&
                     snapshot.jointCount === jointCount &&
                     snapshot.unsignedSkinIndices === unsignedSkinIndices &&
                     snapshot.shaderName === shaderName &&
@@ -381,7 +322,7 @@ class Shader {
         }
 
         const options: Record<string, number> = { ...this.commonOptions };
-        if (lightType && lightType !== 'NONE') {
+        if (role === 'forward' && lightType && lightType !== 'NONE') {
             lightManager.getRenderOption(options);
             const limits: readonly (readonly [string, number])[] = [
                 ['DIRECTIONAL_LIGHTS', MAX_DIRECTIONAL_LIGHTS],
@@ -400,7 +341,8 @@ class Shader {
         }
         material.getRenderOption(options);
         mesh.getRenderOption(options);
-        if (fog) {
+        if (role === 'forward' && mesh.receiveShadows) options['RECEIVE_SHADOWS'] = 1;
+        if (role === 'forward' && fog) {
             options['HAS_FOG'] = 1;
             fog.getRenderOption(options);
         }
@@ -447,7 +389,6 @@ class Shader {
         if (replacedIndex >= 0) currentSnapshots.splice(replacedIndex, 1);
         currentSnapshots.unshift({
             material,
-            materialRevision,
             geometry,
             geometryRevision,
             lightManager,
@@ -455,6 +396,8 @@ class Shader {
             fog,
             fogMode,
             useLogDepth,
+            role,
+            receiveShadows: mesh.receiveShadows,
             jointCount,
             unsignedSkinIndices,
             shaderName,
@@ -531,24 +474,28 @@ class Shader {
         fog: Fog | null,
         useLogDepth: boolean,
         renderer?: ShaderPrecisionProvider,
-        linearOutput = false
+        linearOutput = false,
+        role: MaterialPassRole = 'forward'
     ): Shader | null {
-        let header = this.getHeader(mesh, material, lightManager, fog, useLogDepth);
+        let header = this.getHeader(mesh, material, lightManager, fog, useLogDepth, role);
+        header += `#define HILO_MATERIAL_ROLE_${role.replaceAll('-', '_').replaceAll(':', '_').toUpperCase()} 1\n`;
+        if (role === 'depth-only') header += '#define HILO_DEPTH_ONLY_PASS 1\n';
+        else if (role === 'shadow-caster') header += '#define HILO_SHADOW_CASTER_PASS 1\n';
+        else if (role === 'picking') header += '#define HILO_PICKING_PASS 1\n';
         if (linearOutput) header += '#define HILO_LINEAR_OUTPUT 1\n';
-        if (isBasicMaterial(material) || isPBRMaterial(material)) {
-            return this.getBasicShader(material, isUseInstance, header, renderer);
-        }
-        if (isCustomMaterial(material)) {
+        const pass = resolveMaterialPassDefinition(material, role);
+        if (pass === null) return null;
+        if (pass.shader.kind === 'glsl') {
             return this.getCustomShader(
-                material.vs,
-                material.fs,
+                pass.shader.vertexSource,
+                pass.shader.fragmentSource,
                 header,
-                material.shaderCacheId ?? material.id,
-                material.useHeaderCache,
+                `${material.definition.id}:${role}:${pass.shader.sourceRevision}`,
+                true,
                 renderer
             );
         }
-        return null;
+        return this.getBasicShader(material, isUseInstance, header, renderer, role);
     }
     /**
      * 获取基础 shader
@@ -560,49 +507,21 @@ class Shader {
         material: Material,
         isUseInstance: boolean,
         header: string,
-        renderer?: ShaderPrecisionProvider
+        renderer?: ShaderPrecisionProvider,
+        role: MaterialPassRole = 'forward'
     ): Shader {
         if (isUseInstance) {
             header += '#define HILO_INSTANCED 1\n';
         }
-        const shaderFamily = isPBRMaterial(material)
-            ? 'pbr'
-            : isBasicMaterial(material) && material.isGeometryMaterial
-              ? 'geometry'
-              : 'basic';
-        let key = `${shaderFamily}:${material.className}:${isUseInstance ? 'instanced' : 'single'}`;
-        let fs = '';
-        let vs = basicVertCode;
-        if (isBasicMaterial(material)) {
-            fs = material.isGeometryMaterial ? geometryFragCode : basicFragCode;
-        } else if (isPBRMaterial(material)) {
-            fs = pbrFragCode;
-        }
-
-        const compile = material.onBeforeCompile;
-        if (compile) {
-            key += `:${material.shaderCacheId ?? material.id}`;
-            const snapshot = beforeCompileSnapshots.get(material);
-            if (
-                snapshot?.callback === compile &&
-                snapshot.materialRevision === material.revision &&
-                snapshot.shaderFamily === shaderFamily
-            ) {
-                vs = snapshot.vs;
-                fs = snapshot.fs;
-            } else {
-                const compiled = runBeforeCompile(material, compile, vs, fs);
-                vs = compiled.vs;
-                fs = compiled.fs;
-                beforeCompileSnapshots.set(material, {
-                    callback: compile,
-                    materialRevision: material.revision,
-                    shaderFamily,
-                    vs,
-                    fs
-                });
-            }
-        }
+        const shaderFamily = material.definition.family;
+        const key = `${material.definition.id}:${shaderFamily}:${role}:${isUseInstance ? 'instanced' : 'single'}`;
+        const vs = basicVertCode;
+        const fs =
+            shaderFamily === 'pbr'
+                ? pbrFragCode
+                : shaderFamily === 'geometry'
+                  ? geometryFragCode
+                  : basicFragCode;
         const commonHeader = this.getRendererHeader(renderer);
         const variantValues: VariantHashValue[] = [key, commonHeader, header, true, vs, fs];
         const hashedValues: VariantHashValue[] = [

@@ -1,10 +1,6 @@
 import * as Hilo3d from '../../src/Hilo3d';
-import {
-    createExampleContext,
-    type EnvironmentMaps,
-    loadEnvironmentMaps,
-    parseQuery
-} from '../shared/init';
+import { createExampleContext, loadEnvironmentMaps, parseQuery } from '../shared/init';
+import { environmentMaterialDefaults } from '../shared/environment';
 
 const { camera, stage, ambientLight } = await createExampleContext();
 new Hilo3d.AxisHelper({ size: 1 }).addTo(stage);
@@ -78,23 +74,12 @@ const cameraSelect = requireSelect('cameraSelect');
 const query = parseQuery();
 let currentModel: Hilo3d.GLTFModel | null = null;
 
-function applyEnvironment(model: Hilo3d.GLTFModel, environment: EnvironmentMaps): void {
-    model.materials.forEach(material => {
-        if (material instanceof Hilo3d.PBRMaterial) {
-            material.brdfLUT = environment.brdfLUT;
-            material.diffuseEnvMap = environment.diffuseEnvMap;
-            material.specularEnvMap = environment.specularEnvMap;
-            material.isDirty = true;
-        } else if (material instanceof Hilo3d.BasicMaterial) {
-            material.specularEnvMap = environment.specularEnvMap;
-            material.isDirty = true;
-        }
-    });
+function addEnvironmentSkybox(environment: Awaited<ReturnType<typeof loadEnvironmentMaps>>): void {
     const skybox = new Hilo3d.Mesh({
         geometry: new Hilo3d.BoxGeometry(),
         material: new Hilo3d.BasicMaterial({
             lightType: 'NONE',
-            side: Hilo3d.constants.BACK,
+            cullMode: 'front',
             diffuse: environment.skyboxMap
         })
     }).addTo(stage);
@@ -123,7 +108,7 @@ function addDebugBounds(model: Hilo3d.GLTFModel): void {
             material: new Hilo3d.BasicMaterial({
                 lightType: 'NONE',
                 diffuse: new Hilo3d.Color(1, 0, 0),
-                wireframe: true
+                state: { wireframe: true }
             }),
             geometry: new Hilo3d.SphereGeometry({ radius: sphere.radius })
         })
@@ -134,12 +119,16 @@ function addDebugBounds(model: Hilo3d.GLTFModel): void {
 
 async function showModel(modelInfo: ModelInfo): Promise<void> {
     const loader = new Hilo3d.GLTFLoader();
-    const model = await loader.load(modelInfo);
+    const environment = await loadEnvironmentMaps();
+    const model = await loader.load({
+        ...modelInfo,
+        pbrMaterialDefaults: environmentMaterialDefaults(environment)
+    });
     await model.ready;
     currentModel = model;
     stage.addChild(model.node);
     model.node.setScale(modelInfo.scale);
-    applyEnvironment(model, await loadEnvironmentMaps());
+    addEnvironmentSkybox(environment);
     populateCameras(model, modelInfo.camera);
     if (query['showSphere'] !== undefined) addDebugBounds(model);
 }

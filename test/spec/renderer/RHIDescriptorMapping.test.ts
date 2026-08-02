@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import GeometryData from '../../../src/geometry/GeometryData';
-import Material from '../../../src/material/Material';
+import {
+    DEFAULT_MATERIAL_PIPELINE_STATE,
+    type MaterialPipelineState
+} from '../../../src/material/MaterialDefinition';
 import {
     ALWAYS,
     BACK,
@@ -10,12 +13,9 @@ import {
     EQUAL,
     FRONT,
     FRONT_AND_BACK,
-    FUNC_REVERSE_SUBTRACT,
     FUNC_SUBTRACT,
     GEQUAL,
     GREATER,
-    INCR_WRAP,
-    KEEP,
     LEQUAL,
     LESS,
     LINES,
@@ -23,15 +23,12 @@ import {
     LINE_STRIP,
     NEVER,
     NOTEQUAL,
-    ONE,
-    ONE_MINUS_DST_ALPHA,
     POINTS,
     REPLACE,
     TRIANGLES,
     TRIANGLE_FAN,
     TRIANGLE_STRIP,
-    UNSIGNED_INT,
-    ZERO
+    UNSIGNED_INT
 } from '../../../src/constants/webgl';
 import type { RHITextureFormat, RHITextureFormatCapabilities } from '../../../src/render/rhi/core';
 import {
@@ -97,6 +94,12 @@ function targetCapabilities(
             });
         }
     };
+}
+
+function materialState(
+    overrides: Partial<MaterialPipelineState> = {}
+): Readonly<MaterialPipelineState> {
+    return Object.freeze({ ...DEFAULT_MATERIAL_PIPELINE_STATE, ...overrides });
 }
 
 describe('RHIDescriptorMapping geometry', () => {
@@ -233,47 +236,78 @@ describe('RHIDescriptorMapping material state', () => {
     });
 
     it('maps depth, stencil, and validated per-draw dynamic state', () => {
-        expect(mapRHIDepthStencilState(new Material(), 'depth24plus')).toEqual({
+        expect(mapRHIDepthStencilState(materialState(), 'depth24plus')).toEqual({
             format: 'depth24plus',
             depthCompare: 'less-equal',
             depthWriteEnabled: true
         });
-        expect(mapRHIDepthStencilState(new Material(), 'depth24plus', 'reversed')).toEqual({
+        expect(mapRHIDepthStencilState(materialState(), 'depth24plus', 'reversed')).toEqual({
             format: 'depth24plus',
             depthCompare: 'greater-equal',
             depthWriteEnabled: true
         });
         expect(
             mapRHIDepthStencilState(
-                new Material({ depthTest: false, depthMask: true }),
+                materialState({ depthTest: false, depthWrite: true }),
                 'depth24plus'
             )
         ).toEqual({
             format: 'depth24plus',
             depthCompare: 'always',
-            depthWriteEnabled: false
+            depthWriteEnabled: true
         });
-        expect(mapRHIDepthStencilState(new Material({ depthTest: false }), null)).toBeUndefined();
-        expect(() => mapRHIDepthStencilState(new Material(), null)).toThrow(
+        expect(
+            mapRHIDepthStencilState(materialState({ depthTest: false, depthWrite: false }), null)
+        ).toBeUndefined();
+        expect(() => mapRHIDepthStencilState(materialState(), null)).toThrow(
             /depth\/stencil attachment/
         );
         expect(
             mapRHIMeshDrawDynamicState(
-                new Material({ depthRange: [0.1, 0.9], stencilTest: true, stencilFuncRef: 17 })
+                materialState({
+                    depthRange: [0.1, 0.9],
+                    stencil: {
+                        front: {
+                            compare: 'always',
+                            failOp: 'keep',
+                            depthFailOp: 'keep',
+                            passOp: 'keep'
+                        },
+                        back: {
+                            compare: 'always',
+                            failOp: 'keep',
+                            depthFailOp: 'keep',
+                            passOp: 'keep'
+                        },
+                        readMask: 0xffffffff,
+                        writeMask: 0xffffffff,
+                        reference: 17
+                    }
+                })
             )
         ).toEqual({ minDepth: 0.1, maxDepth: 0.9, stencilReference: 17, usesStencil: true });
-        expect(() => mapRHIMeshDrawDynamicState(new Material({ depthRange: [0.9, 0.1] }))).toThrow(
+        expect(() => mapRHIMeshDrawDynamicState(materialState({ depthRange: [0.9, 0.1] }))).toThrow(
             /depthRange/
         );
 
-        const stencil = new Material({
-            stencilTest: true,
-            stencilFunc: EQUAL,
-            stencilFuncMask: 0x0f,
-            stencilMask: 0xf0,
-            stencilOpFail: KEEP,
-            stencilOpZFail: INCR_WRAP,
-            stencilOpZPass: REPLACE
+        const stencil = materialState({
+            stencil: {
+                front: {
+                    compare: 'equal',
+                    failOp: 'keep',
+                    depthFailOp: 'increment-wrap',
+                    passOp: 'replace'
+                },
+                back: {
+                    compare: 'equal',
+                    failOp: 'keep',
+                    depthFailOp: 'increment-wrap',
+                    passOp: 'replace'
+                },
+                readMask: 0x0f,
+                writeMask: 0xf0,
+                reference: 0
+            }
         });
         expect(mapRHIDepthStencilState(stencil, 'depth24plus-stencil8')).toEqual({
             format: 'depth24plus-stencil8',
@@ -297,7 +331,7 @@ describe('RHIDescriptorMapping material state', () => {
         expect(() => mapRHIDepthStencilState(stencil, 'depth24plus')).toThrow(/stencil format/);
         expect(mapRHIStencilOperation(REPLACE)).toBe('replace');
         expect(() => mapRHIStencilOperation(-1)).toThrow(/Unsupported stencil operation/);
-        expect(mapRHIDepthStencilState(new Material({ depthTest: false }), 'stencil8')).toEqual({
+        expect(mapRHIDepthStencilState(materialState({ depthTest: false }), 'stencil8')).toEqual({
             format: 'stencil8',
             depthCompare: 'always',
             depthWriteEnabled: false,
@@ -308,8 +342,26 @@ describe('RHIDescriptorMapping material state', () => {
     });
 
     it('maps disabled, canonical alpha, and custom portable blend modes', () => {
-        expect(mapRHIDefaultBlendState(new Material())).toBeUndefined();
-        expect(mapRHIDefaultBlendState(new Material({ transparent: true }))).toEqual({
+        expect(mapRHIDefaultBlendState(materialState())).toBeUndefined();
+        expect(
+            mapRHIDefaultBlendState(
+                materialState({
+                    depthWrite: false,
+                    blend: {
+                        color: {
+                            operation: 'add',
+                            srcFactor: 'one',
+                            dstFactor: 'one-minus-src-alpha'
+                        },
+                        alpha: {
+                            operation: 'add',
+                            srcFactor: 'one',
+                            dstFactor: 'one-minus-src-alpha'
+                        }
+                    }
+                })
+            )
+        ).toEqual({
             color: {
                 operation: 'add',
                 srcFactor: 'one',
@@ -322,7 +374,23 @@ describe('RHIDescriptorMapping material state', () => {
             }
         });
         expect(
-            mapRHIDefaultBlendState(new Material({ premultiplyAlpha: false, transparent: true }))
+            mapRHIDefaultBlendState(
+                materialState({
+                    depthWrite: false,
+                    blend: {
+                        color: {
+                            operation: 'add',
+                            srcFactor: 'src-alpha',
+                            dstFactor: 'one-minus-src-alpha'
+                        },
+                        alpha: {
+                            operation: 'add',
+                            srcFactor: 'src-alpha',
+                            dstFactor: 'one-minus-src-alpha'
+                        }
+                    }
+                })
+            )
         ).toEqual({
             color: {
                 operation: 'add',
@@ -336,13 +404,20 @@ describe('RHIDescriptorMapping material state', () => {
             }
         });
 
-        const customBlend = new Material({ blend: true });
-        customBlend.blendSrc = DST_ALPHA;
-        customBlend.blendDst = ONE_MINUS_DST_ALPHA;
-        customBlend.blendEquation = FUNC_SUBTRACT;
-        customBlend.blendSrcAlpha = ONE;
-        customBlend.blendDstAlpha = ZERO;
-        customBlend.blendEquationAlpha = FUNC_REVERSE_SUBTRACT;
+        const customBlend = materialState({
+            blend: {
+                color: {
+                    operation: 'subtract',
+                    srcFactor: 'dst-alpha',
+                    dstFactor: 'one-minus-dst-alpha'
+                },
+                alpha: {
+                    operation: 'reverse-subtract',
+                    srcFactor: 'one',
+                    dstFactor: 'zero'
+                }
+            }
+        });
         expect(mapRHIDefaultBlendState(customBlend)).toEqual({
             color: {
                 operation: 'subtract',
@@ -445,7 +520,7 @@ describe('RHIDescriptorMapping target and composed state', () => {
     });
 
     it('creates one immutable backend-neutral opaque pipeline-state descriptor', () => {
-        const state = createRHIMeshDrawPipelineState(new Material(), TRIANGLES, {
+        const state = createRHIMeshDrawPipelineState(materialState(), TRIANGLES, {
             colorFormats: ['rgba8unorm'],
             depthStencilFormat: 'depth24plus',
             sampleCount: 1
@@ -487,7 +562,7 @@ describe('RHIDescriptorMapping target and composed state', () => {
             'rgba16float'
         ]);
         const state = createRHIMeshDrawPipelineState(
-            new Material(),
+            materialState(),
             TRIANGLES,
             target,
             targetCapabilities()
@@ -509,7 +584,7 @@ describe('RHIDescriptorMapping target and composed state', () => {
         ).toEqual(['rgba8unorm', null, 'bgra8unorm']);
         expect(
             createRHIMeshDrawPipelineState(
-                new Material(),
+                materialState(),
                 TRIANGLES,
                 {
                     colorFormats: ['rgba8unorm', null, 'bgra8unorm'],
@@ -527,7 +602,7 @@ describe('RHIDescriptorMapping target and composed state', () => {
 
     it('disables writes for bound MRT attachments without a reflected fragment output', () => {
         const state = createRHIMeshDrawPipelineState(
-            new Material(),
+            materialState(),
             TRIANGLES,
             {
                 colorFormats: ['rgba8unorm', 'rgba16float'],
@@ -555,7 +630,7 @@ describe('RHIDescriptorMapping target and composed state', () => {
         };
         expect(validateRHIMeshDepthOnlyTarget(target, targetCapabilities())).toBe('depth24plus');
         const state = createRHIMeshDrawPipelineState(
-            new Material({ depthTest: false, depthMask: false, transparent: true }),
+            materialState({ depthTest: false, depthWrite: false }),
             TRIANGLES,
             target,
             targetCapabilities(),
@@ -591,7 +666,21 @@ describe('RHIDescriptorMapping target and composed state', () => {
 
     it('creates default transparent state and rejects excluded material features', () => {
         const transparent = createRHIMeshDrawPipelineState(
-            new Material({ transparent: true }),
+            materialState({
+                depthWrite: false,
+                blend: {
+                    color: {
+                        operation: 'add',
+                        srcFactor: 'one',
+                        dstFactor: 'one-minus-src-alpha'
+                    },
+                    alpha: {
+                        operation: 'add',
+                        srcFactor: 'one',
+                        dstFactor: 'one-minus-src-alpha'
+                    }
+                }
+            }),
             TRIANGLES,
             {
                 colorFormats: ['rgba8unorm'],
@@ -619,15 +708,15 @@ describe('RHIDescriptorMapping target and composed state', () => {
             sampleCount: 1
         };
         expect(
-            createRHIMeshDrawPipelineState(new Material({ wireframe: true }), LINES, target)
+            createRHIMeshDrawPipelineState(materialState({ wireframe: true }), LINES, target)
                 .primitive.topology
         ).toBe('line-list');
         expect(() =>
-            createRHIMeshDrawPipelineState(new Material({ wireframe: true }), TRIANGLES, target)
+            createRHIMeshDrawPipelineState(materialState({ wireframe: true }), TRIANGLES, target)
         ).toThrow(/converted to a line list/);
         expect(
             createRHIMeshDrawPipelineState(
-                new Material(),
+                materialState(),
                 TRIANGLE_STRIP,
                 target,
                 undefined,
@@ -637,7 +726,7 @@ describe('RHIDescriptorMapping target and composed state', () => {
         ).toMatchObject({ topology: 'triangle-strip', stripIndexFormat: 'uint16' });
         expect(() =>
             createRHIMeshDrawPipelineState(
-                new Material(),
+                materialState(),
                 TRIANGLES,
                 target,
                 undefined,
@@ -646,18 +735,53 @@ describe('RHIDescriptorMapping target and composed state', () => {
             )
         ).toThrow(/stripIndexFormat/);
         expect(() =>
-            createRHIMeshDrawPipelineState(new Material({ stencilTest: true }), TRIANGLES, target)
+            createRHIMeshDrawPipelineState(
+                materialState({
+                    stencil: {
+                        front: {
+                            compare: 'always',
+                            failOp: 'keep',
+                            depthFailOp: 'keep',
+                            passOp: 'keep'
+                        },
+                        back: {
+                            compare: 'always',
+                            failOp: 'keep',
+                            depthFailOp: 'keep',
+                            passOp: 'keep'
+                        },
+                        readMask: 0xffffffff,
+                        writeMask: 0xffffffff,
+                        reference: 0
+                    }
+                }),
+                TRIANGLES,
+                target
+            )
         ).toThrow(/stencil format/);
         expect(
-            createRHIMeshDrawPipelineState(
-                new Material({ sampleAlphaToCoverage: true }),
-                TRIANGLES,
-                { ...target, sampleCount: 4 }
-            ).multisample.alphaToCoverageEnabled
+            createRHIMeshDrawPipelineState(materialState({ alphaToCoverage: true }), TRIANGLES, {
+                ...target,
+                sampleCount: 4
+            }).multisample.alphaToCoverageEnabled
         ).toBe(true);
         expect(() =>
             createRHIMeshDrawPipelineState(
-                new Material({ transparent: true }),
+                materialState({
+                    depthWrite: false,
+                    blend: {
+                        color: {
+                            operation: 'add',
+                            srcFactor: 'one',
+                            dstFactor: 'one-minus-src-alpha'
+                        },
+                        alpha: {
+                            operation: 'add',
+                            srcFactor: 'one',
+                            dstFactor: 'one-minus-src-alpha'
+                        }
+                    }
+                }),
                 TRIANGLES,
                 target,
                 targetCapabilities({ colorBlendable: false })

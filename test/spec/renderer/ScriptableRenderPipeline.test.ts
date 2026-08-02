@@ -1330,7 +1330,7 @@ describe('Scriptable render pipeline', () => {
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+                material: new BasicMaterial({ lightType: 'NONE', state: { depthTest: false } }),
                 frustumTest: false
             })
         );
@@ -1454,9 +1454,7 @@ describe('Scriptable render pipeline', () => {
             const geometry = new BoxGeometry();
             const material = new BasicMaterial({
                 lightType: 'NONE',
-                depthTest: false,
-                depthMask: false,
-                cullFace: false
+                state: { depthTest: false, depthWrite: false, cullMode: 'none' }
             });
             const first = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
             const second = new Mesh({ geometry, material, useInstanced: true, frustumTest: false });
@@ -1465,10 +1463,8 @@ describe('Scriptable render pipeline', () => {
             const transparentGeometry = new BoxGeometry();
             const transparentMaterial = new BasicMaterial({
                 lightType: 'NONE',
-                transparent: true,
-                depthTest: false,
-                depthMask: false,
-                cullFace: false
+                compositing: { mode: 'alpha-blend', premultiplied: true },
+                state: { depthTest: false, depthWrite: false, cullMode: 'none' }
             });
             const transparentFirst = new Mesh({
                 geometry: transparentGeometry,
@@ -2377,7 +2373,7 @@ describe('Scriptable render pipeline', () => {
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+                material: new BasicMaterial({ lightType: 'NONE', state: { depthTest: false } }),
                 frustumTest: false
             })
         );
@@ -2552,7 +2548,7 @@ describe('Scriptable render pipeline', () => {
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ depthTest: false }),
+                material: new BasicMaterial({ state: { depthTest: false, depthWrite: false } }),
                 frustumTest: false
             })
         );
@@ -2674,7 +2670,8 @@ describe('Scriptable render pipeline', () => {
         scene.addChild(
             new Mesh({
                 geometry: new BoxGeometry(),
-                material: new BasicMaterial({ receiveShadows: false }),
+                material: new BasicMaterial(),
+                receiveShadows: false,
                 frustumTest: false
             })
         );
@@ -2711,7 +2708,7 @@ describe('Scriptable render pipeline', () => {
             scene.addChild(
                 new Mesh({
                     geometry: new BoxGeometry(),
-                    material: new BasicMaterial({ lightType: 'NONE', depthTest: false }),
+                    material: new BasicMaterial({ lightType: 'NONE', state: { depthTest: false } }),
                     frustumTest: false
                 })
             );

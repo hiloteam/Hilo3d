@@ -39,10 +39,9 @@ new Hilo3d.Mesh({
     geometry: new Hilo3d.PlaneGeometry(),
     material: new Hilo3d.BasicMaterial({
         lightType: 'LAMBERT',
-        diffuse: new Hilo3d.Color(0.85, 0.85, 0.85),
-        castShadows: false,
-        receiveShadows: true
-    })
+        diffuse: new Hilo3d.Color(0.85, 0.85, 0.85)
+    }),
+    castShadows: false
 })
     .setScale(6)
     .addTo(stage);

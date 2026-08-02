@@ -1,6 +1,6 @@
 import { TRIANGLES } from '../../constants/webgl';
 import type { CameraDepthMode } from '../../camera/Camera';
-import type Material from '../../material/Material';
+import type { MaterialPipelineState } from '../../material/MaterialDefinition';
 import type { ShaderReadBinding } from '../compute/ComputeShader';
 import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
 import type { GPUDrivenVertexBufferLayout } from '../pipeline/passes/GPUDrivenRenderPass';
@@ -80,35 +80,9 @@ interface CompiledShaderMemo {
 
 interface PipelineStateMemo {
     readonly depthMode: CameraDepthMode;
-    readonly material: Material;
+    readonly material: Readonly<MaterialPipelineState>;
     readonly primitiveMode: number;
     readonly stripIndexFormat: RHIIndexFormat | undefined;
-    readonly wireframe: boolean;
-    readonly frontFace: number;
-    readonly cullFace: boolean;
-    readonly cullFaceType: number;
-    readonly depthTest: boolean;
-    readonly depthMask: boolean;
-    readonly depthRangeMin: number;
-    readonly depthRangeMax: number;
-    readonly depthFunc: number;
-    readonly transparent: boolean;
-    readonly premultiplyAlpha: boolean;
-    readonly blend: boolean;
-    readonly blendEquation: number;
-    readonly blendEquationAlpha: number;
-    readonly blendSrc: number;
-    readonly blendDst: number;
-    readonly blendSrcAlpha: number;
-    readonly blendDstAlpha: number;
-    readonly stencilTest: boolean;
-    readonly stencilMask: number;
-    readonly stencilFunc: number;
-    readonly stencilFuncMask: number;
-    readonly stencilOpFail: number;
-    readonly stencilOpZFail: number;
-    readonly stencilOpZPass: number;
-    readonly sampleAlphaToCoverage: boolean;
     readonly colorFormats: readonly RHIMeshDrawTargetDescriptor['colorFormats'][number][];
     readonly depthStencilFormat: RHIMeshDrawTargetDescriptor['depthStencilFormat'];
     readonly sampleCount: number;
@@ -117,7 +91,7 @@ interface PipelineStateMemo {
 
 function samePipelineStateMemo(
     memo: PipelineStateMemo,
-    material: Material,
+    material: Readonly<MaterialPipelineState>,
     target: RHIMeshDrawTargetDescriptor,
     primitiveMode: number,
     stripIndexFormat: RHIIndexFormat | undefined,
@@ -137,38 +111,11 @@ function samePipelineStateMemo(
     for (let index = 0; index < memo.colorFormats.length; index += 1) {
         if (memo.colorFormats[index] !== target.colorFormats[index]) return false;
     }
-    return (
-        memo.wireframe === material.wireframe &&
-        memo.frontFace === material.frontFace &&
-        memo.cullFace === material.cullFace &&
-        memo.cullFaceType === material.cullFaceType &&
-        memo.depthTest === material.depthTest &&
-        memo.depthMask === material.depthMask &&
-        memo.depthRangeMin === material.depthRange[0] &&
-        memo.depthRangeMax === material.depthRange[1] &&
-        memo.depthFunc === material.depthFunc &&
-        memo.transparent === material.transparent &&
-        memo.premultiplyAlpha === material.premultiplyAlpha &&
-        memo.blend === material.blend &&
-        memo.blendEquation === material.blendEquation &&
-        memo.blendEquationAlpha === material.blendEquationAlpha &&
-        memo.blendSrc === material.blendSrc &&
-        memo.blendDst === material.blendDst &&
-        memo.blendSrcAlpha === material.blendSrcAlpha &&
-        memo.blendDstAlpha === material.blendDstAlpha &&
-        memo.stencilTest === material.stencilTest &&
-        memo.stencilMask === material.stencilMask &&
-        memo.stencilFunc === material.stencilFunc &&
-        memo.stencilFuncMask === material.stencilFuncMask &&
-        memo.stencilOpFail === material.stencilOpFail &&
-        memo.stencilOpZFail === material.stencilOpZFail &&
-        memo.stencilOpZPass === material.stencilOpZPass &&
-        memo.sampleAlphaToCoverage === material.sampleAlphaToCoverage
-    );
+    return memo.material === material;
 }
 
 function createPipelineStateMemo(
-    material: Material,
+    material: Readonly<MaterialPipelineState>,
     target: RHIMeshDrawTargetDescriptor,
     primitiveMode: number,
     stripIndexFormat: RHIIndexFormat | undefined,
@@ -180,32 +127,6 @@ function createPipelineStateMemo(
         material,
         primitiveMode,
         stripIndexFormat,
-        wireframe: material.wireframe,
-        frontFace: material.frontFace,
-        cullFace: material.cullFace,
-        cullFaceType: material.cullFaceType,
-        depthTest: material.depthTest,
-        depthMask: material.depthMask,
-        depthRangeMin: material.depthRange[0],
-        depthRangeMax: material.depthRange[1],
-        depthFunc: material.depthFunc,
-        transparent: material.transparent,
-        premultiplyAlpha: material.premultiplyAlpha,
-        blend: material.blend,
-        blendEquation: material.blendEquation,
-        blendEquationAlpha: material.blendEquationAlpha,
-        blendSrc: material.blendSrc,
-        blendDst: material.blendDst,
-        blendSrcAlpha: material.blendSrcAlpha,
-        blendDstAlpha: material.blendDstAlpha,
-        stencilTest: material.stencilTest,
-        stencilMask: material.stencilMask,
-        stencilFunc: material.stencilFunc,
-        stencilFuncMask: material.stencilFuncMask,
-        stencilOpFail: material.stencilOpFail,
-        stencilOpZFail: material.stencilOpZFail,
-        stencilOpZPass: material.stencilOpZPass,
-        sampleAlphaToCoverage: material.sampleAlphaToCoverage,
         colorFormats: Object.freeze([...target.colorFormats]),
         depthStencilFormat: target.depthStencilFormat,
         sampleCount: target.sampleCount,
@@ -479,7 +400,7 @@ export class GPUDrivenPipelineResourceCache {
 
     prepare(
         shader: StorageGraphicsShader,
-        material: Material,
+        material: Readonly<MaterialPipelineState>,
         publicVertexLayouts: readonly Readonly<GPUDrivenVertexBufferLayout>[],
         target: RHIMeshDrawTargetDescriptor,
         depthMode: CameraDepthMode = 'standard'
@@ -515,7 +436,7 @@ export class GPUDrivenPipelineResourceCache {
     /** @internal Prepare a storage-aware pipeline for ordinary scene geometry and topology. */
     prepareScene(
         shader: StorageGraphicsShader,
-        material: Material,
+        material: Readonly<MaterialPipelineState>,
         vertexLayouts: readonly Readonly<RHIVertexBufferLayout>[],
         target: RHIMeshDrawTargetDescriptor,
         primitiveMode: number,
@@ -536,7 +457,7 @@ export class GPUDrivenPipelineResourceCache {
 
     private prepareLayoutIdentity(
         shader: StorageGraphicsShader,
-        material: Material,
+        material: Readonly<MaterialPipelineState>,
         sourceLayouts:
             | readonly Readonly<GPUDrivenVertexBufferLayout>[]
             | readonly Readonly<RHIVertexBufferLayout>[],

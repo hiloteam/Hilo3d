@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TRIANGLES, TRIANGLE_STRIP } from '../../../src/constants/webgl';
-import Material from '../../../src/material/Material';
+import {
+    DEFAULT_MATERIAL_PIPELINE_STATE,
+    type MaterialPipelineState
+} from '../../../src/material/MaterialDefinition';
 import type { RHITextureFormat, RHIVertexBufferLayout } from '../../../src/render/rhi/core';
 import { PipelineResourceCache } from '../../../src/render/renderer/PipelineResourceCache';
 import type { RHIMeshDrawTargetDescriptor } from '../../../src/render/renderer/RHIDescriptorMapping';
@@ -102,12 +105,18 @@ function target(colorFormat: RHITextureFormat = 'rgba8unorm'): RHIMeshDrawTarget
     };
 }
 
+function materialState(
+    overrides: Partial<MaterialPipelineState> = {}
+): Readonly<MaterialPipelineState> {
+    return Object.freeze({ ...DEFAULT_MATERIAL_PIPELINE_STATE, ...overrides });
+}
+
 describe('PipelineResourceCache', () => {
     it('keys otherwise identical pipelines by depth convention', () => {
         const fixture = createFixture();
         const source = shader(fragmentSource);
         const layout = vertexLayout();
-        const material = new Material();
+        const material = materialState();
         const drawTarget = target();
         const standard = fixture.pipelines.prepare(source, layout, material, drawTarget);
         const reversed = fixture.pipelines.prepare(
@@ -137,13 +146,13 @@ describe('PipelineResourceCache', () => {
         const first = fixture.pipelines.prepare(
             shader(sceneTextureFragmentSource),
             vertexLayout(),
-            new Material(),
+            materialState(),
             target()
         );
         const second = fixture.pipelines.prepare(
             shader(layeredSceneTextureFragmentSource),
             vertexLayout(),
-            new Material(),
+            materialState(),
             target()
         );
 
@@ -172,7 +181,7 @@ describe('PipelineResourceCache', () => {
     it('keeps ordinary-color and numeric-depth sampler pipeline buckets independent', () => {
         const fixture = createFixture();
         const source = shader(sampledFragmentSource);
-        const material = new Material();
+        const material = materialState();
         const layout = vertexLayout();
         const renderTarget = target();
 
@@ -192,12 +201,12 @@ describe('PipelineResourceCache', () => {
         expect(numericDepth.bindingLayoutToken).not.toBe(color.bindingLayoutToken);
         expect(numericDepth.bindingPlan.bindGroupLayoutDescriptors[1]?.entries).toEqual([
             {
-                binding: 1,
+                binding: 2,
                 visibility: 2,
                 texture: { sampleType: 'depth' }
             },
             {
-                binding: 2,
+                binding: 3,
                 visibility: 2,
                 sampler: { type: 'non-filtering' }
             }
@@ -229,7 +238,7 @@ describe('PipelineResourceCache', () => {
         const createGraphicsPipeline = vi.spyOn(fixture.device, 'createGraphicsPipeline');
         const source = shader();
 
-        const record = fixture.pipelines.prepare(source, vertexLayout(), new Material(), target());
+        const record = fixture.pipelines.prepare(source, vertexLayout(), materialState(), target());
         const resolved = fixture.pipelines.resolve(record);
 
         expect(Object.isFrozen(record)).toBe(true);
@@ -249,7 +258,7 @@ describe('PipelineResourceCache', () => {
         expect(createPipelineLayout).toHaveBeenCalledTimes(1);
         expect(createGraphicsPipeline).toHaveBeenCalledTimes(1);
 
-        const equivalent = fixture.pipelines.prepare(source, vertexLayout(), new Material(), {
+        const equivalent = fixture.pipelines.prepare(source, vertexLayout(), materialState(), {
             colorFormats: ['rgba8unorm'],
             depthStencilFormat: 'depth24plus',
             sampleCount: 1
@@ -277,7 +286,7 @@ describe('PipelineResourceCache', () => {
         const fixture = createFixture();
         const source = shader();
         const layout = vertexLayout();
-        const material = new Material();
+        let material = materialState();
         const renderTarget = target();
         const getFormatCapabilities = vi.spyOn(
             fixture.device.capabilities,
@@ -289,7 +298,7 @@ describe('PipelineResourceCache', () => {
         expect(fixture.pipelines.prepare(source, layout, material, renderTarget)).toBe(record);
         expect(getFormatCapabilities).not.toHaveBeenCalled();
 
-        material.cullFace = false;
+        material = materialState({ cullMode: 'none' });
         expect(fixture.pipelines.prepare(source, layout, material, renderTarget)).not.toBe(record);
         expect(getFormatCapabilities).toHaveBeenCalled();
 
@@ -305,7 +314,7 @@ describe('PipelineResourceCache', () => {
         const source = shader();
         const firstLayout = vertexLayout();
         const secondLayout = vertexLayout();
-        const material = new Material();
+        let material = materialState();
         const renderTarget = target();
         const getFormatCapabilities = vi.spyOn(
             fixture.device.capabilities,
@@ -321,7 +330,7 @@ describe('PipelineResourceCache', () => {
         expect(fixture.pipelines.prepare(source, secondLayout, material, renderTarget)).toBe(first);
         expect(getFormatCapabilities).not.toHaveBeenCalled();
 
-        material.cullFace = false;
+        material = materialState({ cullMode: 'none' });
         expect(fixture.pipelines.prepare(source, firstLayout, material, renderTarget)).not.toBe(
             first
         );
@@ -338,7 +347,7 @@ describe('PipelineResourceCache', () => {
         const fixture = createFixture();
         const source = shader();
         const layout = vertexLayout();
-        const material = new Material();
+        const material = materialState();
         const renderTarget = target();
         const getFormatCapabilities = vi.spyOn(
             fixture.device.capabilities,
@@ -374,7 +383,8 @@ describe('PipelineResourceCache', () => {
         const fixture = createFixture();
         const source = shader();
         const layout = vertexLayout();
-        const material = new Material();
+        const baseMaterial = materialState();
+        let material = baseMaterial;
         const renderTarget = target();
         const getFormatCapabilities = vi.spyOn(
             fixture.device.capabilities,
@@ -382,10 +392,10 @@ describe('PipelineResourceCache', () => {
         );
         const base = fixture.pipelines.prepare(source, layout, material, renderTarget);
 
-        material.cullFace = false;
+        material = materialState({ cullMode: 'none' });
         const stateVariant = fixture.pipelines.prepare(source, layout, material, renderTarget);
         expect(stateVariant).not.toBe(base);
-        material.cullFace = true;
+        material = baseMaterial;
         getFormatCapabilities.mockClear();
         expect(fixture.pipelines.prepare(source, layout, material, renderTarget)).toBe(base);
         expect(getFormatCapabilities).not.toHaveBeenCalled();
@@ -408,7 +418,7 @@ describe('PipelineResourceCache', () => {
     it('shares one state variant across 10k deep-frozen vertex-layout identities', () => {
         const fixture = createFixture();
         const source = shader();
-        const material = new Material();
+        const material = materialState();
         const renderTarget = target();
         const getFormatCapabilities = vi.spyOn(
             fixture.device.capabilities,
@@ -460,7 +470,7 @@ describe('PipelineResourceCache', () => {
         const fixture = createFixture();
         const source = shader();
         const layout = vertexLayout();
-        const material = new Material();
+        const material = materialState();
         const createGraphicsPipeline = vi.spyOn(fixture.device, 'createGraphicsPipeline');
 
         const colorRecord = fixture.pipelines.prepare(source, layout, material, target());
@@ -506,7 +516,7 @@ describe('PipelineResourceCache', () => {
 
     it('maps compiled fragment reflection onto sparse MRT write masks', () => {
         const fixture = createFixture();
-        const record = fixture.pipelines.prepare(shader(), vertexLayout(), new Material(), {
+        const record = fixture.pipelines.prepare(shader(), vertexLayout(), materialState(), {
             colorFormats: ['rgba8unorm', 'rgba16float'],
             depthStencilFormat: 'depth24plus',
             sampleCount: 1
@@ -527,7 +537,7 @@ describe('PipelineResourceCache', () => {
     it('preserves multiple vertex-buffer slots and reuses an exact layout plan', () => {
         const fixture = createFixture();
         const source = shader();
-        const material = new Material();
+        const material = materialState();
         const renderTarget = target();
         const layouts = Object.freeze([
             vertexLayout(),
@@ -566,7 +576,7 @@ describe('PipelineResourceCache', () => {
         const fixture = createFixture();
         const source = shader();
         const layout = vertexLayout();
-        const material = new Material();
+        const material = materialState();
         const renderTarget = target();
         const triangle = fixture.pipelines.prepare(source, layout, material, renderTarget);
         const strip = fixture.pipelines.prepare(
@@ -608,7 +618,7 @@ describe('PipelineResourceCache', () => {
         const createBindGroup = vi.spyOn(fixture.device, 'createBindGroup');
         const source = shader(uniformFragmentSource);
 
-        const record = fixture.pipelines.prepare(source, vertexLayout(), new Material(), target());
+        const record = fixture.pipelines.prepare(source, vertexLayout(), materialState(), target());
         const resolved = fixture.pipelines.resolve(record);
 
         expect(record.bindingPlan.activeGroupIndices).toEqual([1]);
@@ -644,24 +654,24 @@ describe('PipelineResourceCache', () => {
         const createPipelineLayout = vi.spyOn(fixture.device, 'createPipelineLayout');
         const createGraphicsPipeline = vi.spyOn(fixture.device, 'createGraphicsPipeline');
         const source = shader();
-        const base = fixture.pipelines.prepare(source, vertexLayout(), new Material(), target());
+        const base = fixture.pipelines.prepare(source, vertexLayout(), materialState(), target());
 
         const layoutMiss = fixture.pipelines.prepare(
             source,
             vertexLayout(16),
-            new Material(),
+            materialState(),
             target()
         );
         const stateMiss = fixture.pipelines.prepare(
             source,
             vertexLayout(),
-            new Material({ cullFace: false }),
+            materialState({ cullMode: 'none' }),
             target()
         );
         const targetMiss = fixture.pipelines.prepare(
             source,
             vertexLayout(),
-            new Material(),
+            materialState(),
             target('bgra8unorm')
         );
 
@@ -690,14 +700,14 @@ describe('PipelineResourceCache', () => {
         const fixture = createFixture();
         const source = shader();
         const layout = vertexLayout();
-        const material = new Material();
+        const material = materialState();
         const renderTarget = target();
         const firstRecord = fixture.pipelines.prepare(source, layout, material, renderTarget);
         const first = fixture.pipelines.resolve(firstRecord);
         const stateVariantRecord = fixture.pipelines.prepare(
             source,
             vertexLayout(),
-            new Material({ cullFace: false }),
+            materialState({ cullMode: 'none' }),
             target()
         );
         const stateVariant = fixture.pipelines.resolve(stateVariantRecord);
@@ -737,7 +747,7 @@ describe('PipelineResourceCache', () => {
     it('rebuilds the full logical dependency chain through registry recipes', () => {
         const fixture = createFixture();
         const source = shader(uniformFragmentSource);
-        const record = fixture.pipelines.prepare(source, vertexLayout(), new Material(), target());
+        const record = fixture.pipelines.prepare(source, vertexLayout(), materialState(), target());
         const first = fixture.pipelines.resolve(record);
         const secondDevice = fixture.backend.createDevice();
         const createBindGroupLayout = vi.spyOn(secondDevice, 'createBindGroupLayout');
@@ -782,7 +792,7 @@ describe('PipelineResourceCache', () => {
         const detachedRecord = fixture.pipelines.prepare(
             detachedShader,
             vertexLayout(),
-            new Material(),
+            materialState(),
             target()
         );
         const detached = fixture.pipelines.resolve(detachedRecord);
@@ -801,11 +811,11 @@ describe('PipelineResourceCache', () => {
         expect(detached.pipelineLayout.destroyed).toBe(true);
 
         const remainingShader = shader();
-        fixture.pipelines.prepare(remainingShader, vertexLayout(), new Material(), target());
+        fixture.pipelines.prepare(remainingShader, vertexLayout(), materialState(), target());
         fixture.pipelines.destroy();
         fixture.pipelines.destroy();
         expect(() => {
-            fixture.pipelines.prepare(remainingShader, vertexLayout(), new Material(), target());
+            fixture.pipelines.prepare(remainingShader, vertexLayout(), materialState(), target());
         }).toThrow('Pipeline resource cache is destroyed');
         expect(fixture.registry.collect(0)).toBe(2);
 

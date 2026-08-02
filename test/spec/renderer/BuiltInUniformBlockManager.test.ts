@@ -6,6 +6,7 @@ import BuiltInUniformBlockManager, {
 } from '../../../src/render/BuiltInUniformBlockManager';
 import Color from '../../../src/math/Color';
 import CubeTexture from '../../../src/texture/CubeTexture';
+import Texture from '../../../src/texture/Texture';
 import DirectionalLight from '../../../src/light/DirectionalLight';
 import LightManager from '../../../src/light/LightManager';
 import Matrix3 from '../../../src/math/Matrix3';
@@ -55,15 +56,19 @@ function readFloatField(buffer: UniformBuffer, fieldName: string, count: number)
     );
 }
 
-function readMatrix3Field(buffer: UniformBuffer, fieldName: string): number[] {
+function readMatrix3Field(buffer: UniformBuffer, fieldName: string, arrayIndex = 0): number[] {
     const field = buffer.layout.fields[fieldName];
     if (!field || field.matrixStride === 0) {
         throw new Error(`Uniform block does not contain matrix field ${fieldName}.`);
     }
     const view = new DataView(buffer.data);
+    const arrayOffset = arrayIndex * field.arrayStride;
     return Array.from({ length: 3 }, (_columnValue, column) =>
         Array.from({ length: 3 }, (_rowValue, row) =>
-            view.getFloat32(field.offset + column * field.matrixStride + row * 4, true)
+            view.getFloat32(
+                field.offset + arrayOffset + column * field.matrixStride + row * 4,
+                true
+            )
         )
     ).flat();
 }
@@ -98,7 +103,7 @@ describe('BuiltInUniformBlockManager', () => {
 
     it('resolves a custom material uniform block by identity', () => {
         const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
-        const material = testEnv.material.clone();
+        const material = new BasicMaterial();
         const custom = UniformBuffer.fromSchema(cameraBlockLayout);
         material.uniformBlocks['CustomBlock'] = custom;
         manager.beginFrame(testEnv.camera);
@@ -243,11 +248,10 @@ describe('BuiltInUniformBlockManager', () => {
         const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
         const sceneProgram = blockProgram('scene-program', 'SceneBlock', ['u_fogInfo']);
         const materialProgram = blockProgram('material-program', 'MaterialBlock', [
-            'u_alphaCutoff'
+            'u_transparencyFactor'
         ]);
         const modelProgram = blockProgram('model-program', 'ModelBlock', ['u_modelMatrix']);
         const transformMesh = testEnv.mesh.clone();
-        testEnv.material.isDirty = false;
         manager.beginFrame(testEnv.camera);
 
         manager.bind(sceneProgram, testEnv.mesh, testEnv.material, false);
@@ -269,13 +273,13 @@ describe('BuiltInUniformBlockManager', () => {
         const stableMaterialRevision = materialBlock.revision;
         manager.bind(materialProgram, testEnv.mesh, testEnv.material, false);
         expect(materialBlock.revision).toBe(stableMaterialRevision);
-        const previousAlphaCutoff = testEnv.material.alphaCutoff;
-        testEnv.material.alphaCutoff = 0.375;
+        const previousOpacity = testEnv.material.opacity;
+        testEnv.material.opacity = 0.375;
         manager.beginPass(testEnv.camera);
         manager.bind(materialProgram, testEnv.mesh, testEnv.material, false);
         expect(materialBlock.revision).toBe(stableMaterialRevision + 1);
-        expect(readFloatField(materialBlock, 'u_alphaCutoff', 1)).toEqualishValues(0.375);
-        testEnv.material.alphaCutoff = previousAlphaCutoff;
+        expect(readFloatField(materialBlock, 'u_transparencyFactor', 1)).toEqualishValues(0.375);
+        testEnv.material.opacity = previousOpacity;
 
         manager.bind(modelProgram, transformMesh, testEnv.material, false);
         const modelBlock = manager.getUniformBlocks(
@@ -359,7 +363,7 @@ describe('BuiltInUniformBlockManager', () => {
         );
     });
 
-    it('tracks scalar, color, in-place matrix and texture-derived MaterialBlock changes', () => {
+    it('tracks scalar and texture-slot material block changes independently', () => {
         const first = new BuiltInUniformBlockManager({ width: 320, height: 180 });
         const second = new BuiltInUniformBlockManager({ width: 320, height: 180 });
         const environmentMap = new CubeTexture({ width: 4, height: 4 });
@@ -368,9 +372,8 @@ describe('BuiltInUniformBlockManager', () => {
         const environmentMatrix = new Matrix4();
         const material = new BasicMaterial({
             diffuse,
-            exposure: 2,
-            transparency: 1,
-            uvMatrix,
+            opacity: 1,
+            normalMap: { texture: new Texture(), transform: uvMatrix },
             specularEnvMap: environmentMap,
             specularEnvMatrix: environmentMatrix
         });
@@ -379,66 +382,57 @@ describe('BuiltInUniformBlockManager', () => {
         first.beginFrame(testEnv.camera);
         second.beginFrame(testEnv.camera);
 
-        const firstBlock = first.getUniformBlocks(['MaterialBlock'], mesh, material)[
-            'MaterialBlock'
-        ];
-        const secondBlock = second.getUniformBlocks(['MaterialBlock'], mesh, material)[
-            'MaterialBlock'
-        ];
-        if (!firstBlock || !secondBlock) throw new Error('MaterialBlock was not resolved.');
+        const blockNames = ['MaterialBlock', 'MaterialTextureBlock'];
+        const firstBlocks = first.getUniformBlocks(blockNames, mesh, material);
+        const secondBlocks = second.getUniformBlocks(blockNames, mesh, material);
+        const firstBlock = firstBlocks['MaterialBlock'];
+        const secondBlock = secondBlocks['MaterialBlock'];
+        const firstTextureBlock = firstBlocks['MaterialTextureBlock'];
+        const secondTextureBlock = secondBlocks['MaterialTextureBlock'];
+        if (!firstBlock || !secondBlock || !firstTextureBlock || !secondTextureBlock) {
+            throw new Error('Material blocks were not resolved.');
+        }
         const firstInitialRevision = firstBlock.revision;
         const secondInitialRevision = secondBlock.revision;
 
-        first.getUniformBlocks(['MaterialBlock'], mesh, material);
-        second.getUniformBlocks(['MaterialBlock'], mesh, material);
+        first.getUniformBlocks(blockNames, mesh, material);
+        second.getUniformBlocks(blockNames, mesh, material);
         expect(firstBlock.revision).toBe(firstInitialRevision);
         expect(secondBlock.revision).toBe(secondInitialRevision);
 
-        material.exposure = 10;
+        material.opacity = 0.75;
         first.beginPass(testEnv.camera);
         second.beginPass(testEnv.camera);
-        first.getUniformBlocks(['MaterialBlock'], mesh, material);
-        second.getUniformBlocks(['MaterialBlock'], mesh, material);
-        expect(readFloatField(firstBlock, 'u_exposure', 1)).toEqualishValues(10);
-        expect(readFloatField(secondBlock, 'u_exposure', 1)).toEqualishValues(10);
+        first.getUniformBlocks(blockNames, mesh, material);
+        second.getUniformBlocks(blockNames, mesh, material);
+        expect(readFloatField(firstBlock, 'u_transparencyFactor', 1)).toEqualishValues(0.75);
+        expect(readFloatField(secondBlock, 'u_transparencyFactor', 1)).toEqualishValues(0.75);
         expect(firstBlock.revision).toBe(firstInitialRevision + 1);
         expect(secondBlock.revision).toBe(secondInitialRevision + 1);
 
         uvMatrix.set(0.5, 0, 0, 0, 0.25, 0, 0.125, 0.75, 1);
+        material.invalidateData();
         first.beginPass(testEnv.camera);
         second.beginPass(testEnv.camera);
-        first.getUniformBlocks(['MaterialBlock'], mesh, material);
-        second.getUniformBlocks(['MaterialBlock'], mesh, material);
-        expect(readMatrix3Field(firstBlock, 'u_uvMatrix')).toEqualishValues(
-            0.5,
-            0,
-            0,
-            0,
-            0.25,
-            0,
-            0.125,
-            0.75,
-            1
-        );
-        expect(readMatrix3Field(secondBlock, 'u_uvMatrix')).toEqualishValues(
-            0.5,
-            0,
-            0,
-            0,
-            0.25,
-            0,
-            0.125,
-            0.75,
-            1
-        );
+        first.getUniformBlocks(blockNames, mesh, material);
+        second.getUniformBlocks(blockNames, mesh, material);
+        const normalSlotIndex = material.definition.getTextureSlot('normal')?.index;
+        if (normalSlotIndex === undefined) throw new Error('Normal texture slot is unavailable.');
+        expect(
+            readMatrix3Field(firstTextureBlock, 'u_materialTextureTransforms', normalSlotIndex)
+        ).toEqualishValues(0.5, 0, 0, 0, 0.25, 0, 0.125, 0.75, 1);
+        expect(
+            readMatrix3Field(secondTextureBlock, 'u_materialTextureTransforms', normalSlotIndex)
+        ).toEqualishValues(0.5, 0, 0, 0, 0.25, 0, 0.125, 0.75, 1);
 
-        material.transparency = 0.5;
+        material.opacity = 0.5;
         diffuse.set(0.8, 0.1, 0.6, 0.4);
         environmentMatrix.set(1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+        material.invalidateData();
         first.beginPass(testEnv.camera);
         second.beginPass(testEnv.camera);
-        first.getUniformBlocks(['MaterialBlock'], mesh, material);
-        second.getUniformBlocks(['MaterialBlock'], mesh, material);
+        first.getUniformBlocks(blockNames, mesh, material);
+        second.getUniformBlocks(blockNames, mesh, material);
         expect(readFloatField(firstBlock, 'u_transparencyFactor', 1)).toEqualishValues(0.5);
         expect(readFloatField(firstBlock, 'u_diffuseColor', 4)).toEqualishValues(
             0.8,
@@ -455,15 +449,15 @@ describe('BuiltInUniformBlockManager', () => {
 
         const firstStableRevision = firstBlock.revision;
         const secondStableRevision = secondBlock.revision;
-        first.getUniformBlocks(['MaterialBlock'], mesh, material);
-        second.getUniformBlocks(['MaterialBlock'], mesh, material);
+        first.getUniformBlocks(blockNames, mesh, material);
+        second.getUniformBlocks(blockNames, mesh, material);
         expect(firstBlock.revision).toBe(firstStableRevision);
         expect(secondBlock.revision).toBe(secondStableRevision);
     });
 
     it('packs a mesh-independent MaterialBlock once per pass across meshes', () => {
         const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
-        const material = new BasicMaterial({ alphaCutoff: 0.375 });
+        const material = new BasicMaterial({ coverage: { mode: 'mask', cutoff: 0.375 } });
         const firstMesh = testEnv.mesh.clone();
         const secondMesh = testEnv.mesh.clone();
         const getUniformData = vi.spyOn(material, 'getUniformData');
@@ -675,8 +669,10 @@ describe('BuiltInUniformBlockManager', () => {
         lightManager.addLight(ambient).addLight(directional).updateInfo(testEnv.camera);
         semantic.init(testEnv.renderer, testEnv.camera, lightManager, null);
         manager.beginFrame(testEnv.camera);
-        const customFirstDrawMaterial = testEnv.material.clone();
-        customFirstDrawMaterial.uniforms = {};
+        const customFirstDrawMaterial = new BasicMaterial();
+        for (const name of Object.keys(customFirstDrawMaterial.uniforms)) {
+            Reflect.deleteProperty(customFirstDrawMaterial.uniforms, name);
+        }
 
         const first = manager.getUniformBlocks(
             ['LightBlock'],
@@ -717,8 +713,10 @@ describe('BuiltInUniformBlockManager', () => {
 
     it('writes a stable picking identity into every per-mesh ModelBlock', () => {
         const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
-        const materialWithoutBasicBindings = testEnv.material.clone();
-        materialWithoutBasicBindings.uniforms = {};
+        const materialWithoutBasicBindings = new BasicMaterial();
+        for (const name of Object.keys(materialWithoutBasicBindings.uniforms)) {
+            Reflect.deleteProperty(materialWithoutBasicBindings.uniforms, name);
+        }
         const modelProgram = blockProgram('picking-model', 'ModelBlock', ['u_objectIdColor']);
         manager.beginFrame(testEnv.camera);
 
@@ -798,8 +796,8 @@ describe('BuiltInUniformBlockManager', () => {
         const firstGeometryRevision = firstGeometryBlock.revision;
         const secondGeometryRevision = secondGeometryBlock.revision;
 
-        const previousAlphaCutoff = testEnv.material.alphaCutoff;
-        testEnv.material.alphaCutoff = 0.625;
+        const previousOpacity = testEnv.material.opacity;
+        testEnv.material.opacity = 0.625;
         const changedDecodeMatrix = new Float32Array([
             2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 4, 0, 5, 6, 7, 1
         ]);
@@ -813,8 +811,12 @@ describe('BuiltInUniformBlockManager', () => {
 
         expect(firstMaterialBlock.revision).toBe(firstMaterialRevision + 1);
         expect(secondMaterialBlock.revision).toBe(secondMaterialRevision + 1);
-        expect(readFloatField(firstMaterialBlock, 'u_alphaCutoff', 1)).toEqualishValues(0.625);
-        expect(readFloatField(secondMaterialBlock, 'u_alphaCutoff', 1)).toEqualishValues(0.625);
+        expect(readFloatField(firstMaterialBlock, 'u_transparencyFactor', 1)).toEqualishValues(
+            0.625
+        );
+        expect(readFloatField(secondMaterialBlock, 'u_transparencyFactor', 1)).toEqualishValues(
+            0.625
+        );
         expect(firstGeometryBlock.revision).toBe(firstGeometryRevision + 1);
         expect(secondGeometryBlock.revision).toBe(secondGeometryRevision + 1);
         expect(readFloatField(firstGeometryBlock, 'u_positionDecodeMat', 16)).toEqualishValues(
@@ -823,7 +825,7 @@ describe('BuiltInUniformBlockManager', () => {
         expect(readFloatField(secondGeometryBlock, 'u_positionDecodeMat', 16)).toEqualishValues(
             ...changedDecodeMatrix
         );
-        testEnv.material.alphaCutoff = previousAlphaCutoff;
+        testEnv.material.opacity = previousOpacity;
         testEnv.geometry.positionDecodeMat = previousDecodeMatrix;
     });
 

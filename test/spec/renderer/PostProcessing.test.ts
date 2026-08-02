@@ -50,7 +50,7 @@ describe('built-in post-processing', () => {
         expect(coordinates).toMatch(
             /vec3 hiloTextureCubeDirection\(vec3 direction\)\s*\{\s*return direction;\s*\}/u
         );
-        expect(uv).toContain('texture(sourceTexture, hiloTextureUV(uv))');
+        expect(uv).toContain('texture(sourceTexture, hiloTextureUV(hiloMaterialUV(slot)))');
         expect(environment).toContain('texture(uTexture, hiloTextureCubeDirection(position))');
         expect(pbr).toContain('hiloTextureUV(vec2(NdotV, 1.0 - perceptualRoughness))');
         expect(areaLight).toContain('texture(areaLightsLtcTexture1, hiloTextureUV(uv))');

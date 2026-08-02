@@ -16,9 +16,13 @@ Hilo3d.AnimationStates.registerStateHandler('UV_Translate', (node, state) => {
     if (!isNumberArray(state)) {
         throw new TypeError('UV animation state must be a numeric array');
     }
-    mesh.material.uvMatrix ??= new Hilo3d.Matrix3();
+    const diffuseSlot = mesh.material.getTextureSlot('diffuse');
+    if (diffuseSlot?.transform === null || diffuseSlot === null) {
+        throw new Error('UV animation requires a diffuse slot with a mutable transform');
+    }
     const [x = 0, y = 0, scaleX = 1, scaleY = 1] = state;
-    mesh.material.uvMatrix.set(scaleX, 0, 0, 0, scaleY, 0, x, y, 1);
+    diffuseSlot.transform.set(scaleX, 0, 0, 0, scaleY, 0, x, y, 1);
+    mesh.material.invalidateData();
 });
 
 const geometry = new Hilo3d.PlaneGeometry();
@@ -58,13 +62,15 @@ function createSpriteSheet(): HTMLCanvasElement {
 
 const mat = new Hilo3d.BasicMaterial({
     lightType: 'NONE',
-    side: Hilo3d.constants.FRONT_AND_BACK,
-    diffuse: new Hilo3d.Texture({
-        flipY: true,
-        image: createSpriteSheet()
-    }),
-    uvMatrix: new Hilo3d.Matrix3(),
-    transparent: true
+    cullMode: 'none',
+    diffuse: {
+        texture: new Hilo3d.Texture({
+            flipY: true,
+            image: createSpriteSheet()
+        }),
+        transform: new Hilo3d.Matrix3()
+    },
+    compositing: { mode: 'alpha-blend', premultiplied: true }
 });
 
 const rect = new Hilo3d.Mesh({

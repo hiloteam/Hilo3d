@@ -124,32 +124,7 @@ interface PipelineRequestVariant {
     readonly depthMode: CameraDepthMode;
     readonly primitiveMode: number;
     readonly stripIndexFormat: RHIIndexFormat | undefined;
-    readonly wireframe: boolean;
-    readonly frontFace: number;
-    readonly cullFace: boolean;
-    readonly cullFaceType: number;
-    readonly depthTest: boolean;
-    readonly depthMask: boolean;
-    readonly depthRangeMin: number;
-    readonly depthRangeMax: number;
-    readonly depthFunc: number;
-    readonly transparent: boolean;
-    readonly premultiplyAlpha: boolean;
-    readonly blend: boolean;
-    readonly blendEquation: number;
-    readonly blendEquationAlpha: number;
-    readonly blendSrc: number;
-    readonly blendDst: number;
-    readonly blendSrcAlpha: number;
-    readonly blendDstAlpha: number;
-    readonly stencilTest: boolean;
-    readonly stencilMask: number;
-    readonly stencilFunc: number;
-    readonly stencilFuncMask: number;
-    readonly stencilOpFail: number;
-    readonly stencilOpZFail: number;
-    readonly stencilOpZPass: number;
-    readonly sampleAlphaToCoverage: boolean;
+    readonly materialState: RHIMeshDrawMaterialState;
     readonly colorFormats: readonly RHIMeshDrawTargetDescriptor['colorFormats'][number][];
     readonly depthStencilFormat: RHIMeshDrawTargetDescriptor['depthStencilFormat'];
     readonly sampleCount: number;
@@ -180,32 +155,7 @@ function samePipelineRequestVariant(
         variant.primitiveMode === primitiveMode &&
         variant.depthMode === depthMode &&
         variant.stripIndexFormat === stripIndexFormat &&
-        variant.wireframe === material.wireframe &&
-        variant.frontFace === material.frontFace &&
-        variant.cullFace === material.cullFace &&
-        variant.cullFaceType === material.cullFaceType &&
-        variant.depthTest === material.depthTest &&
-        variant.depthMask === material.depthMask &&
-        variant.depthRangeMin === material.depthRange[0] &&
-        variant.depthRangeMax === material.depthRange[1] &&
-        variant.depthFunc === material.depthFunc &&
-        variant.transparent === material.transparent &&
-        variant.premultiplyAlpha === material.premultiplyAlpha &&
-        variant.blend === material.blend &&
-        variant.blendEquation === material.blendEquation &&
-        variant.blendEquationAlpha === material.blendEquationAlpha &&
-        variant.blendSrc === material.blendSrc &&
-        variant.blendDst === material.blendDst &&
-        variant.blendSrcAlpha === material.blendSrcAlpha &&
-        variant.blendDstAlpha === material.blendDstAlpha &&
-        variant.stencilTest === material.stencilTest &&
-        variant.stencilMask === material.stencilMask &&
-        variant.stencilFunc === material.stencilFunc &&
-        variant.stencilFuncMask === material.stencilFuncMask &&
-        variant.stencilOpFail === material.stencilOpFail &&
-        variant.stencilOpZFail === material.stencilOpZFail &&
-        variant.stencilOpZPass === material.stencilOpZPass &&
-        variant.sampleAlphaToCoverage === material.sampleAlphaToCoverage
+        variant.materialState === material
     );
 }
 
@@ -222,32 +172,7 @@ function createPipelineRequestVariant(
         depthMode,
         primitiveMode,
         stripIndexFormat,
-        wireframe: material.wireframe,
-        frontFace: material.frontFace,
-        cullFace: material.cullFace,
-        cullFaceType: material.cullFaceType,
-        depthTest: material.depthTest,
-        depthMask: material.depthMask,
-        depthRangeMin: material.depthRange[0],
-        depthRangeMax: material.depthRange[1],
-        depthFunc: material.depthFunc,
-        transparent: material.transparent,
-        premultiplyAlpha: material.premultiplyAlpha,
-        blend: material.blend,
-        blendEquation: material.blendEquation,
-        blendEquationAlpha: material.blendEquationAlpha,
-        blendSrc: material.blendSrc,
-        blendDst: material.blendDst,
-        blendSrcAlpha: material.blendSrcAlpha,
-        blendDstAlpha: material.blendDstAlpha,
-        stencilTest: material.stencilTest,
-        stencilMask: material.stencilMask,
-        stencilFunc: material.stencilFunc,
-        stencilFuncMask: material.stencilFuncMask,
-        stencilOpFail: material.stencilOpFail,
-        stencilOpZFail: material.stencilOpZFail,
-        stencilOpZPass: material.stencilOpZPass,
-        sampleAlphaToCoverage: material.sampleAlphaToCoverage,
+        materialState: material,
         colorFormats: Object.freeze([...target.colorFormats]),
         depthStencilFormat: target.depthStencilFormat,
         sampleCount: target.sampleCount,

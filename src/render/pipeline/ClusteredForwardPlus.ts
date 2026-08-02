@@ -10,8 +10,14 @@ import AreaLight from '../../light/AreaLight';
 import DirectionalLight from '../../light/DirectionalLight';
 import PointLight from '../../light/PointLight';
 import SpotLight from '../../light/SpotLight';
-import Material from '../../material/Material';
 import PBRMaterial from '../../material/PBRMaterial';
+import {
+    DEFAULT_MATERIAL_PIPELINE_STATE,
+    type MaterialCullMode,
+    type MaterialFrontFace,
+    type MaterialPipelineState
+} from '../../material/MaterialDefinition';
+import { resolveMaterialPassState } from '../../material/MaterialCompiler';
 import Matrix3 from '../../math/Matrix3';
 import Matrix4 from '../../math/Matrix4';
 import Vector3 from '../../math/Vector3';
@@ -19,10 +25,9 @@ import Shader from '../../shader/Shader';
 import pbrBrdfSource from '../../shader/chunk/pbr_brdf.glsl';
 import pbrSurfaceSource from '../../shader/chunk/pbr_surface.glsl';
 import encodingSource from '../../shader/method/encoding.glsl';
-import Texture from '../../texture/Texture';
+import type Texture from '../../texture/Texture';
 import {
     CLAMP_TO_EDGE,
-    LEQUAL,
     LINEAR,
     LINEAR_MIPMAP_LINEAR,
     LINEAR_MIPMAP_NEAREST,
@@ -197,9 +202,8 @@ interface NormalizedBucket {
     readonly geometry: Geometry;
     readonly material: PBRMaterial;
     readonly lods: readonly NormalizedLOD[];
-    readonly frontFace: number;
-    readonly cullFace: boolean;
-    readonly cullFaceType: number;
+    readonly frontFace: MaterialFrontFace;
+    readonly cullMode: MaterialCullMode;
 }
 
 interface NormalizedOptions {
@@ -333,27 +337,28 @@ function safeProduct(name: string, ...values: readonly number[]): number {
 }
 
 function bucketMaterialIssue(material: PBRMaterial): string | null {
-    if (material.transparent || material.blend) {
+    const state = resolveMaterialPassState(material, 'forward');
+    if (state === null) return 'has no forward pass';
+    if (material.isTransparent || state.blend !== undefined) {
         return 'must be opaque and unblended';
     }
     if (
         material.lightType !== 'PBR' ||
-        material.wireframe ||
-        !material.depthTest ||
-        !material.depthMask ||
-        material.depthFunc !== LEQUAL ||
-        material.depthRange[0] !== 0 ||
-        material.depthRange[1] !== 1 ||
-        material.stencilTest ||
-        material.sampleAlphaToCoverage ||
-        material.alphaCutoff !== 0 ||
-        material.transparency !== 1 ||
-        material.onBeforeCompile !== null
+        state.wireframe ||
+        !state.depthTest ||
+        !state.depthWrite ||
+        state.depthCompare !== 'less-equal' ||
+        state.depthRange[0] !== 0 ||
+        state.depthRange[1] !== 1 ||
+        state.stencil !== undefined ||
+        state.alphaToCoverage ||
+        material.coverage.mode !== 'opaque' ||
+        material.opacity !== 1
     ) {
         return 'uses an unsupported raster or alpha mode';
     }
     const textureFeature =
-        material.parallaxMap !== null
+        material.getTextureSlot('parallax') !== null
             ? 'parallaxMap'
             : material.diffuseEnvMap !== null
               ? 'diffuseEnvMap'
@@ -413,6 +418,17 @@ function validateBucketMaterial(material: PBRMaterial, bucketIndex: number): voi
     }
 }
 
+function requireBucketPassState(
+    material: PBRMaterial,
+    role: 'forward' | 'depth-only'
+): Readonly<MaterialPipelineState> {
+    const state = resolveMaterialPassState(material, role);
+    if (state === null) {
+        throw new TypeError(`Clustered material ${material.definition.id} has no ${role} pass`);
+    }
+    return state;
+}
+
 const PBR_TEXTURE_ROLES: readonly Readonly<{
     role: PBRTextureRole;
     shaderName: string;
@@ -427,8 +443,21 @@ const PBR_TEXTURE_ROLES: readonly Readonly<{
 ]);
 
 function materialTexture(material: PBRMaterial, role: PBRTextureRole): Texture<unknown> | null {
-    const value = material[role];
-    return value instanceof Texture ? value : null;
+    const slotName =
+        role === 'baseColorMap'
+            ? 'baseColor'
+            : role === 'metallicMap'
+              ? 'metallic'
+              : role === 'roughnessMap'
+                ? 'roughness'
+                : role === 'metallicRoughnessMap'
+                  ? 'metallicRoughness'
+                  : role === 'occlusionMap'
+                    ? 'occlusion'
+                    : role === 'normalMap'
+                      ? 'normal'
+                      : 'emission';
+    return material.getTextureSlot(slotName)?.texture ?? null;
 }
 
 function pbrMaterialVariant(material: PBRMaterial): Readonly<PBRMaterialVariant> {
@@ -439,7 +468,21 @@ function pbrMaterialVariant(material: PBRMaterial): Readonly<PBRMaterialVariant>
     for (const definition of PBR_TEXTURE_ROLES) {
         const texture = materialTexture(material, definition.role);
         if (texture === null) continue;
-        const uv = texture.uv === 1 ? 1 : 0;
+        const slotName =
+            definition.role === 'baseColorMap'
+                ? 'baseColor'
+                : definition.role === 'metallicMap'
+                  ? 'metallic'
+                  : definition.role === 'roughnessMap'
+                    ? 'roughness'
+                    : definition.role === 'metallicRoughnessMap'
+                      ? 'metallicRoughness'
+                      : definition.role === 'occlusionMap'
+                        ? 'occlusion'
+                        : definition.role === 'normalMap'
+                          ? 'normal'
+                          : 'emission';
+        const uv = material.getTextureSlot(slotName)?.uvSet ?? 0;
         usesUV0 ||= uv === 0;
         usesUV1 ||= uv === 1;
         if (definition.role === 'normalMap') normalUV = uv;
@@ -452,7 +495,7 @@ function pbrMaterialVariant(material: PBRMaterial): Readonly<PBRMaterialVariant>
             })
         );
     }
-    const gammaCorrection = material.gammaCorrection;
+    const gammaCorrection = material.getTextureSlot('baseColor')?.encoding === 'srgb';
     const occlusionInMetallicRoughness = material.isOcclusionInMetallicRoughnessMap;
     return Object.freeze({
         key: [
@@ -705,9 +748,9 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
             geometry: bucketInput.geometry,
             material: bucketInput.material,
             lods: Object.freeze(lods),
-            frontFace: bucketInput.material.frontFace,
-            cullFace: bucketInput.material.cullFace,
-            cullFaceType: bucketInput.material.cullFaceType
+            frontFace:
+                resolveMaterialPassState(bucketInput.material, 'forward')?.frontFace ?? 'ccw',
+            cullMode: resolveMaterialPassState(bucketInput.material, 'forward')?.cullMode ?? 'back'
         });
     });
     const materialIdentities = new Map<Geometry, Set<PBRMaterial>>();
@@ -1858,7 +1901,12 @@ void main() {
     color = vec4(value, 1.0);
 }`
     }),
-    material: new Material({ depthTest: false, depthMask: false, cullFace: false })
+    pipelineState: {
+        ...DEFAULT_MATERIAL_PIPELINE_STATE,
+        depthTest: false,
+        depthWrite: false,
+        cullMode: 'none'
+    }
 });
 
 const BLOOM_BLUR_PASS = new FullscreenRenderPass({
@@ -1880,7 +1928,12 @@ void main() {
     color = vec4(value, 1.0);
 }`
     }),
-    material: new Material({ depthTest: false, depthMask: false, cullFace: false })
+    pipelineState: {
+        ...DEFAULT_MATERIAL_PIPELINE_STATE,
+        depthTest: false,
+        depthWrite: false,
+        cullMode: 'none'
+    }
 });
 
 function displayPass(exposure: number, bloomStrength: number): FullscreenRenderPass {
@@ -1910,7 +1963,12 @@ void main() {
     color = vec4(pow(mapped, vec3(1.0 / 2.2)), 1.0);
 }`
         }),
-        material: new Material({ depthTest: false, depthMask: false, cullFace: false })
+        pipelineState: {
+            ...DEFAULT_MATERIAL_PIPELINE_STATE,
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
+        }
     });
 }
 
@@ -3000,14 +3058,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     depthPass: new GPUDrivenRenderPass({
                         name: `GPU Scene depth bucket ${String(physicalIndex)}`,
                         shader: GPU_SCENE_DEPTH_SHADER,
-                        material: new Material({
-                            frontFace: logical.frontFace,
-                            cullFace: logical.cullFace,
-                            cullFaceType: logical.cullFaceType,
-                            depthTest: true,
-                            depthMask: true,
-                            depthFunc: logical.material.depthFunc
-                        }),
+                        pipelineState: requireBucketPassState(logical.material, 'depth-only'),
                         vertexLayouts: GPU_SCENE_DEPTH_VERTEX_LAYOUTS,
                         indexFormat: validated.indexFormat
                     }),
@@ -3034,13 +3085,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         return new GPUDrivenRenderPass({
             name: `Clustered PBR bucket ${String(physicalIndex)}`,
             shader: gpuScenePBRShader(variant),
-            material: new Material({
-                frontFace: logical.frontFace,
-                cullFace: logical.cullFace,
-                cullFaceType: logical.cullFaceType,
-                depthTest: true,
-                depthMask: false,
-                depthFunc: LEQUAL
+            pipelineState: Object.freeze({
+                ...requireBucketPassState(logical.material, 'forward'),
+                depthWrite: false
             }),
             vertexLayouts: gpuSceneVertexLayouts(variant),
             indexFormat
@@ -3056,9 +3103,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             variants[logicalIndex] = pbrMaterialVariant(bucket.material);
             if (
                 bucketMaterialIssue(bucket.material) !== null ||
-                bucket.material.frontFace !== bucket.frontFace ||
-                bucket.material.cullFace !== bucket.cullFace ||
-                bucket.material.cullFaceType !== bucket.cullFaceType
+                requireBucketPassState(bucket.material, 'forward').frontFace !== bucket.frontFace ||
+                requireBucketPassState(bucket.material, 'forward').cullMode !== bucket.cullMode
             ) {
                 this.#logicalGPUCompatible[logicalIndex] = 0;
             }
@@ -3237,7 +3283,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const material = mesh.material;
         if (material === null) return;
         this.#fallbackObjectCount++;
-        if (material.transparent) this.#fallbackHasTransparent = true;
+        if (material.isTransparent) this.#fallbackHasTransparent = true;
         else this.#fallbackHasOpaque = true;
     }
 
@@ -3358,10 +3404,18 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             target[base + 7] = material.roughness;
             target[base + 8] = material.ior;
             target[base + 9] = material.occlusionStrength;
-            target[base + 10] = material.normalMapScale;
+            target[base + 10] = material.normalScale;
             target[base + 11] = 0;
-            packMaterialUVMatrix(material.uvMatrix, target, base + 12);
-            packMaterialUVMatrix(material.uvMatrix1, target, base + 24);
+            packMaterialUVMatrix(
+                material.getTextureSlot('baseColor')?.transform ?? null,
+                target,
+                base + 12
+            );
+            packMaterialUVMatrix(
+                material.getTextureSlot('normal')?.transform ?? null,
+                target,
+                base + 24
+            );
         }
     }
 

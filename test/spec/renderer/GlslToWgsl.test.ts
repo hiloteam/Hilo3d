@@ -161,8 +161,8 @@ describe('GLSL to Naga preparation', () => {
             arrayIndex: 0,
             type: 'sampler2D',
             group: 1,
-            textureBinding: 1,
-            samplerBinding: 2,
+            textureBinding: 2,
+            samplerBinding: 3,
             stages: ['fragment']
         });
         await Promise.all([
@@ -223,7 +223,7 @@ void main() {
             `layout(std140, set = 3, binding = ${String(effectBinding.binding)}) uniform EffectBlock`
         );
         expect(prepared.fragment.glsl).toContain(
-            'layout(set = 1, binding = 1) uniform texture2D diffuseMap__texture;'
+            'layout(set = 1, binding = 2) uniform texture2D diffuseMap__texture;'
         );
         expect(prepared.fragment.glsl).toContain(
             'texture(sampler2D(diffuseMap__texture, diffuseMap__sampler), uv)'
@@ -596,8 +596,8 @@ void main() { color = ${samplerCase.output}; }`;
             expect(translated.samplers[0]).toMatchObject({
                 type: samplerCase.type,
                 group: 1,
-                textureBinding: 1,
-                samplerBinding: 2
+                textureBinding: 2,
+                samplerBinding: 3
             });
             expect(translated.fragment.glsl).toContain(
                 `uniform ${samplerCase.vulkanTexture} uTexture__texture;`
@@ -637,8 +637,8 @@ void main() { color = vec4(readMap(maps[0], ivec3(0)) + readMap(maps[1], ivec3(0
                 binding.samplerBinding
             ])
         ).toEqual([
-            ['usampler2DArray', 0, 1, 2],
-            ['usampler2DArray', 1, 3, 4]
+            ['usampler2DArray', 0, 2, 3],
+            ['usampler2DArray', 1, 4, 5]
         ]);
         expect(translated.fragment.wgsl).toContain('texture_2d_array<u32>');
         await validateWgslOnDevice('usampler2DArray array fragment', translated.fragment.wgsl);

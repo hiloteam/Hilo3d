@@ -1,28 +1,20 @@
 import Mesh from '../core/Mesh';
 import Node from '../core/Node';
 import type Stage from '../core/Stage';
-import BasicMaterial from '../material/BasicMaterial';
+import ShaderMaterial from '../material/ShaderMaterial';
 import type { Renderer } from '../render/Renderer';
 import type { RenderTarget } from '../render/RenderTarget';
 import { decodeMeshPickingId, getMeshPickingIdentity } from '../render/PickingIdentity';
-import type { ShaderOptions } from '../render/types';
 import type { CameraDepthMode } from '../camera/Camera';
+import basicVertexSource from '../shader/basic.vert';
+import basicFragmentSource from '../shader/basic.frag';
 
-class MeshPickerMaterial extends BasicMaterial {
-    constructor() {
-        super();
-        this.lightType = 'NONE';
-        this.initializeBasicMaterialBindings();
-    }
-
-    override getRenderOption(option: ShaderOptions = {}): ShaderOptions {
-        super.getRenderOption(option);
-        option['PICKING_PASS'] = 1;
-        return option;
-    }
-}
-
-const meshPickerMaterial = new MeshPickerMaterial();
+const meshPickerMaterial = new ShaderMaterial({
+    vs: `#define HILO_PICKING_PASS 1\n${basicVertexSource}`,
+    fs: `#define HILO_PICKING_PASS 1\n${basicFragmentSource}`,
+    sourceRevision: 'mesh-picker:2',
+    state: { cullMode: 'none' }
+});
 
 /** Construction parameters for the backend-neutral GPU picker. */
 export interface MeshPickerParameters {

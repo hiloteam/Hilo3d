@@ -135,14 +135,11 @@ const material = new Hilo3d.ShaderMaterial({
         }
     },
     attributes: {
-        a_corner: 'POSITION',
-        a_uv: 'TEXCOORD_0'
+        a_corner: Hilo3d.MaterialAttributeSemantic.POSITION,
+        a_uv: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
     },
-    castShadows: false,
-    receiveShadows: false,
-    premultiplyAlpha: false,
-    side: Hilo3d.constants.FRONT_AND_BACK,
-    transparent: true,
+    compositing: { mode: 'alpha-blend', premultiplied: false },
+    cullMode: 'none',
     fs: fragmentShader,
     vs: vertexShader
 });
@@ -166,6 +163,8 @@ for (let index = 0; index < particleCount; index++) {
         frustumTest: false,
         pointerEnabled: false,
         autoUpdateWorldMatrix: false,
+        castShadows: false,
+        receiveShadows: false,
         userData: new SnowParticle(
             Math.random() * 2000 - 1000,
             Math.random() * 2000 - 1000,

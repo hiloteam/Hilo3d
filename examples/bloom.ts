@@ -1,6 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { BloomParticleField } from './shared/bloomParticles';
-import { applyEnvironmentMaps } from './shared/environment';
+import { environmentMaterialDefaults } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 const TAU = Math.PI * 2;
@@ -119,15 +119,10 @@ function createGlowPlaneGeometry(
 function createSkyMaterial(): Hilo3d.ShaderMaterial {
     return new Hilo3d.ShaderMaterial({
         name: 'Nocturne procedural sky',
-        shaderCacheId: 'BloomNocturneSky',
-        attributes: { a_position: 'POSITION' },
-        depthTest: false,
-        depthMask: false,
-        cullFace: true,
-        side: Hilo3d.constants.BACK,
-        castShadows: false,
-        receiveShadows: false,
-        renderOrder: -1000,
+        sourceRevision: 'BloomNocturneSky',
+        attributes: { a_position: Hilo3d.MaterialAttributeSemantic.POSITION },
+        state: { depthTest: false, depthWrite: false, cullMode: 'back' },
+        cullMode: 'front',
         vs: `#version 300 es
 precision highp float;
 in vec3 a_position;
@@ -207,17 +202,13 @@ void main() {
 function createAuraMaterial(): Hilo3d.ShaderMaterial {
     return new Hilo3d.ShaderMaterial({
         name: 'Premultiplied celestial aura',
-        shaderCacheId: 'BloomNocturneAura',
+        sourceRevision: 'BloomNocturneAura',
         attributes: {
-            a_position: 'POSITION',
-            a_texcoord0: 'TEXCOORD_0'
+            a_position: Hilo3d.MaterialAttributeSemantic.POSITION,
+            a_texcoord0: Hilo3d.MaterialAttributeSemantic.TEXCOORD_0
         },
-        transparent: true,
-        premultiplyAlpha: true,
-        depthMask: false,
-        castShadows: false,
-        receiveShadows: false,
-        renderOrder: -120,
+        compositing: { mode: 'alpha-blend', premultiplied: true },
+        state: { depthWrite: false },
         vs: `#version 300 es
 precision highp float;
 in vec3 a_position;
@@ -258,11 +249,10 @@ function createGlowMaterial(
     return new Hilo3d.BasicMaterial({
         lightType: 'NONE',
         diffuse: new Hilo3d.Color(red, green, blue),
-        transparent: opacity < 1,
-        transparency: opacity,
-        depthMask: opacity >= 1,
-        castShadows: false,
-        receiveShadows: false
+        compositing:
+            opacity < 1 ? { mode: 'alpha-blend', premultiplied: true } : { mode: 'opaque' },
+        opacity,
+        state: { depthWrite: opacity >= 1 }
     });
 }
 
@@ -487,7 +477,10 @@ new Hilo3d.Mesh({
     }),
     material: createSkyMaterial(),
     frustumTest: false,
-    pointerEnabled: false
+    pointerEnabled: false,
+    castShadows: false,
+    receiveShadows: false,
+    renderOrder: -1000
 }).addTo(stage);
 
 new Hilo3d.Mesh({
@@ -495,7 +488,10 @@ new Hilo3d.Mesh({
     geometry: createGlowPlaneGeometry(ARTWORK_CENTER_X, ARTWORK_CENTER_Y + 0.16, -1.42, 5.8, 5.8),
     material: createAuraMaterial(),
     frustumTest: false,
-    pointerEnabled: false
+    pointerEnabled: false,
+    renderOrder: -120,
+    castShadows: false,
+    receiveShadows: false
 }).addTo(stage);
 
 const environment = await loadEnvironmentMaps();
@@ -506,6 +502,7 @@ sceneRoot.x = ARTWORK_CENTER_X;
 sceneRoot.y = ARTWORK_CENTER_Y;
 
 const obsidianMaterial = new Hilo3d.PBRMaterial({
+    ...environmentMaterialDefaults(environment),
     baseColor: new Hilo3d.Color(0.004, 0.008, 0.02),
     metallic: 0.94,
     roughness: 0.12,
@@ -514,39 +511,30 @@ const obsidianMaterial = new Hilo3d.PBRMaterial({
     iridescenceFactor: 0.72,
     iridescenceIor: 1.36,
     iridescenceThicknessMinimum: 210,
-    iridescenceThicknessMaximum: 470,
-    castShadows: true,
-    receiveShadows: true
+    iridescenceThicknessMaximum: 470
 });
 const goldMaterial = new Hilo3d.PBRMaterial({
+    ...environmentMaterialDefaults(environment),
     baseColor: new Hilo3d.Color(0.62, 0.24, 0.045),
     metallic: 1,
     roughness: 0.2,
     clearcoatFactor: 0.54,
-    clearcoatRoughnessFactor: 0.12,
-    castShadows: true,
-    receiveShadows: true
+    clearcoatRoughnessFactor: 0.12
 });
 const blueMetalMaterial = new Hilo3d.PBRMaterial({
+    ...environmentMaterialDefaults(environment),
     baseColor: new Hilo3d.Color(0.018, 0.12, 0.26),
     metallic: 0.9,
     roughness: 0.26,
     clearcoatFactor: 0.72,
-    clearcoatRoughnessFactor: 0.1,
-    castShadows: true,
-    receiveShadows: true
+    clearcoatRoughnessFactor: 0.1
 });
 const floorMaterial = new Hilo3d.PBRMaterial({
+    ...environmentMaterialDefaults(environment),
     baseColor: new Hilo3d.Color(0.006, 0.01, 0.022),
     metallic: 0.82,
-    roughness: 0.28,
-    castShadows: false,
-    receiveShadows: true
+    roughness: 0.28
 });
-applyEnvironmentMaps(
-    [obsidianMaterial, goldMaterial, blueMetalMaterial, floorMaterial],
-    environment
-);
 obsidianMaterial.diffuseEnvIntensity = 0.12;
 obsidianMaterial.specularEnvIntensity = 1.35;
 goldMaterial.diffuseEnvIntensity = 0.18;
@@ -611,13 +599,12 @@ const wireShell = new Hilo3d.Mesh({
     material: new Hilo3d.BasicMaterial({
         lightType: 'NONE',
         diffuse: new Hilo3d.Color(2.5, 0.7, 0.14),
-        wireframe: true,
-        transparent: true,
-        transparency: 0.34,
-        depthMask: false,
-        castShadows: false,
-        receiveShadows: false
+        compositing: { mode: 'alpha-blend', premultiplied: true },
+        opacity: 0.34,
+        state: { wireframe: true, depthWrite: false }
     }),
+    castShadows: false,
+    receiveShadows: false,
     rotationX: 18,
     rotationY: 31
 }).addTo(eclipseRoot);
