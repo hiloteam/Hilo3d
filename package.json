@@ -135,7 +135,7 @@
     "@eslint/js": "^10.0.1",
     "@microsoft/api-extractor": "^7.58.11",
     "@playwright/test": "^1.61.1",
-    "@types/node": "^20.19.43",
+    "@types/node": "^26.1.2",
     "@types/pngjs": "^6.0.5",
     "@types/webxr": "0.5.24",
     "@vitest/browser-playwright": "^4.1.10",
