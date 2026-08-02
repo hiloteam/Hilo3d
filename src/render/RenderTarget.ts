@@ -1,6 +1,7 @@
 import type Texture from '../texture/Texture';
 import type { RendererBackend } from './Renderer';
 import type { CameraDepthMode } from '../camera/Camera';
+import type { RenderColorEncoding } from './RenderColorEncoding';
 
 export type RenderTargetSampleCount = 1 | 4;
 
@@ -71,7 +72,16 @@ export interface RenderTargetParameters {
     readonly label?: string;
 }
 
-export interface RenderTargetSelectionOptions {
+/** Color contract used when attachment zero is copied to the browser presentation surface. */
+export interface RenderTargetPresentationOptions {
+    /**
+     * Encoding stored in attachment zero. Linear input receives the final sRGB transfer. Defaults
+     * to `linear`; a selection's value is reused by `present()` when that target is implicit.
+     */
+    readonly colorEncoding?: RenderColorEncoding;
+}
+
+export interface RenderTargetSelectionOptions extends RenderTargetPresentationOptions {
     /** Present attachment zero after each render. */
     readonly present?: boolean;
     /** Destroy the target when it is replaced or when the renderer is destroyed. */

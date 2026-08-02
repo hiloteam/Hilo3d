@@ -1250,6 +1250,7 @@ describe('modern example WebGPU shader corpus', () => {
         registerUniformBlockBinding('ShaderToyBlock');
         const source = Object.values(shaderToyExampleModules)[0];
         if (!source) throw new Error('ShaderToy example source was not loaded');
+        expect(source).not.toContain('col = pow( col, vec3(0.4545) )');
         const translator = new NagaShaderTranslator();
         await translator.initialize();
         const translated = translator.translate(screenVertexSource, shaderToyFragment(source));

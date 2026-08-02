@@ -51,6 +51,7 @@ import {
     type RendererSupportOptions,
     type RendererWebGL2Options,
     type RendererWebGPUOptions,
+    type RenderColorEncoding,
     type RenderTarget,
     type RenderTargetColorAttachmentReadback,
     type RenderTargetParameters,
@@ -217,13 +218,19 @@ const compressionSupport: readonly boolean[] = renderers.map(currentRenderer =>
 );
 const webglRenderTarget: RenderTarget = renderer.createRenderTarget(renderTargetParameters);
 const webgpuRenderTarget: RenderTarget = webgpuRenderer.createRenderTarget(renderTargetParameters);
-renderer.setRenderTarget(webglRenderTarget, { present: true, takeOwnership: true });
+const displayEncoding: RenderColorEncoding = 'srgb';
+renderer.setRenderTarget(webglRenderTarget, {
+    present: true,
+    takeOwnership: true,
+    colorEncoding: displayEncoding
+});
 webgpuRenderer.setRenderTarget(webgpuRenderTarget, { present: true, takeOwnership: true });
 renderer.renderToTarget(webglRenderTarget, stage, camera);
 webgpuRenderer.renderToTarget(webgpuRenderTarget, webgpuStage, camera);
 renderers.forEach(currentRenderer => {
     currentRenderer.present(
-        currentRenderer.backend === 'webgl2' ? webglRenderTarget : webgpuRenderTarget
+        currentRenderer.backend === 'webgl2' ? webglRenderTarget : webgpuRenderTarget,
+        { colorEncoding: 'linear' }
     );
 });
 const colorReadbacks: readonly Promise<RenderTargetColorAttachmentReadback>[] = [

@@ -536,9 +536,6 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
         // render   
         vec3 col = render( ro, rd );
 
-        // gamma
-        col = pow( col, vec3(0.4545) );
-
         tot += col;
 #if AA>1
     }

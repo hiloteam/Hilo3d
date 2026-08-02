@@ -119,6 +119,7 @@ export {
 } from './2d/UiButton';
 
 export { default as RenderInfo } from './render/RenderInfo';
+export type { RenderColorEncoding } from './render/RenderColorEncoding';
 export type {
     StorageBuffer,
     StorageBufferDescriptor,
@@ -138,6 +139,7 @@ export type {
     RenderTargetDepthStencilFormat,
     RenderTargetLoadOp,
     RenderTargetParameters,
+    RenderTargetPresentationOptions,
     RenderTargetReadColorAttachmentOptions,
     RenderTargetSampleCount,
     RenderTargetSelectionOptions,

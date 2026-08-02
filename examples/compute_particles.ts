@@ -1858,7 +1858,12 @@ const particles = stage.renderer.createStorageBuffer({
     recovery: 'cpu-shadow'
 });
 factory.runtime.attachResources({ particles });
-stage.renderer.setRenderTarget(target, { present: true, takeOwnership: true });
+stage.renderer.setRenderTarget(target, {
+    present: true,
+    takeOwnership: true,
+    // The custom pipeline authors and blends its final field in display-referred space.
+    colorEncoding: 'srgb'
+});
 
 const controller = new InteractionController();
 controller.attach(stage.canvas);

@@ -7,7 +7,6 @@ export {
 } from './ClusteredForwardPlus';
 export {
     ForwardRenderPipelineFactory,
-    type ForwardRenderColorEncoding,
     type ForwardRenderFeatureContext,
     type ForwardRenderFeatureRequirements,
     type ForwardRenderInjectionPoint,

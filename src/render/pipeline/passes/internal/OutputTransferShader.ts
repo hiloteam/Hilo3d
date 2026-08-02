@@ -15,3 +15,13 @@ void main() {
     vec4 source = texture(u_source, v_uv);
     color = vec4(linearToSRGB(max(source.rgb, vec3(0.0))), source.a);
 }`;
+
+/** @internal Preserve display-encoded values that already underwent a display transform. */
+export const SRGB_PASSTHROUGH_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform sampler2D u_source;
+layout(location = 0) out vec4 color;
+void main() {
+    color = texture(u_source, v_uv);
+}`;

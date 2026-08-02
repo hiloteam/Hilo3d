@@ -533,6 +533,12 @@ texture、resize、所有权、显式 present 选择与异步区域 readback；�
 target、非法 attachment、MSAA depth sampling、无附件 target、销毁后复用和 depth-only
 present 均直接报错。
 
+RenderTarget attachment format 与其当前内容的颜色编码是两个独立合同。`present()` 或
+`setRenderTarget(..., { present: true })` 默认把 attachment
+zero 解释为线性颜色，并只在写入浏览器 surface 时执行一次 linear-to-sRGB transfer。已经自行完成 tone
+mapping/display transform 的自定义 pipeline 必须通过 `colorEncoding: 'srgb'`
+显式声明；该路径只做原样采样呈现，不会再次提亮。
+
 WebGPU MRT pipeline target 与 attachment location 一一对应，支持中间为 `null` 的 sparse color
 slot；depth-only target 不声明颜色输出。resize 在新 color/depth/MSAA
 allocation 全部成功后才提交，失败会销毁新资源并保留旧 target

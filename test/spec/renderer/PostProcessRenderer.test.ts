@@ -10,6 +10,10 @@ import {
 import { RenderTargetResourceCache } from '../../../src/render/renderer/RenderTargetResourceCache';
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
 import { RHITextureUsage } from '../../../src/render/rhi/core';
+import {
+    LINEAR_TO_SRGB_FRAGMENT_SOURCE,
+    SRGB_PASSTHROUGH_FRAGMENT_SOURCE
+} from '../../../src/render/pipeline/passes/internal/OutputTransferShader';
 import Shader from '../../../src/shader/Shader';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -215,5 +219,44 @@ describe.each([
         expect(renderer.fullscreen.active).toBe(false);
 
         destroyFixture(backend, registry, resources, renderer, 1);
+    });
+
+    it('transfers linear presentation input once and preserves display-encoded input', async () => {
+        const backend = createBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const resources = new RenderTargetResourceCache(registry);
+        const renderer = new PostProcessRenderer(resources);
+        await renderer.initialize();
+        const surface = configuredSurface(device);
+        const input = resources.prepare(
+            {},
+            {
+                width: 8,
+                height: 8,
+                colorFormats: ['rgba8unorm']
+            }
+        );
+        const compile = vi.spyOn(renderer.fullscreen.compiler, 'compile');
+
+        const linear = renderer.render(context(device, 1), surface, input, {
+            colorEncoding: 'linear'
+        });
+        await complete(backend, linear.tracking);
+        const srgb = renderer.render(context(device, 2), surface, input, {
+            colorEncoding: 'srgb'
+        });
+        await complete(backend, srgb.tracking);
+
+        const fragmentSources = compile.mock.calls.map(([shader]) => shader.fs);
+        expect(fragmentSources).toContain(LINEAR_TO_SRGB_FRAGMENT_SOURCE);
+        expect(fragmentSources).toContain(SRGB_PASSTHROUGH_FRAGMENT_SOURCE);
+        expect(() =>
+            renderer.render(context(device, 3), surface, input, {
+                colorEncoding: 'display-p3' as 'linear'
+            })
+        ).toThrow(/must be linear or srgb/u);
+
+        destroyFixture(backend, registry, resources, renderer, 3);
     });
 });

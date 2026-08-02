@@ -17,6 +17,7 @@ import { getRegisteredRendererDiagnostics } from './diagnostics/RendererDiagnost
 import type {
     RenderTarget,
     RenderTargetParameters,
+    RenderTargetPresentationOptions,
     RenderTargetSelectionOptions
 } from './RenderTarget';
 import type { StorageBuffer, StorageBufferDescriptor } from './StorageBuffer';
@@ -60,7 +61,7 @@ export interface RendererFrame {
         camera: Camera,
         fireEvent?: boolean
     ): void;
-    present(target?: RenderTarget): void;
+    present(target?: RenderTarget, options?: RenderTargetPresentationOptions): void;
 }
 
 /** Synchronous frame recorder. Returning a Promise is rejected at runtime. */
@@ -95,10 +96,9 @@ export function createRendererFrame(
             assertActive();
             renderer.renderToTarget(target, stage, camera, fireEvent);
         },
-        present(target?: RenderTarget) {
+        present(target?: RenderTarget, options?: RenderTargetPresentationOptions) {
             assertActive();
-            if (target) renderer.present(target);
-            else renderer.present();
+            renderer.present(target, options);
         }
     });
 }
@@ -154,7 +154,7 @@ export interface RendererContract {
     createRenderTarget(parameters: RenderTargetParameters): RenderTarget;
     setRenderTarget(target: RenderTarget | null, options?: RenderTargetSelectionOptions): this;
     /** Present the first color attachment of a renderer-owned target to the canvas. */
-    present(target?: RenderTarget): void;
+    present(target?: RenderTarget, options?: RenderTargetPresentationOptions): void;
     renderToTarget(
         target: RenderTarget,
         stage: RendererScene,
@@ -273,7 +273,7 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
         target: RenderTarget | null,
         options?: RenderTargetSelectionOptions
     ): this;
-    abstract present(target?: RenderTarget): void;
+    abstract present(target?: RenderTarget, options?: RenderTargetPresentationOptions): void;
     abstract renderToTarget(
         target: RenderTarget,
         stage: RendererScene,
