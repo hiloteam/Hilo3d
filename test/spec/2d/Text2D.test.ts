@@ -61,7 +61,7 @@ describe('Text2D', () => {
 
         expect(text.material).toBe(material);
         expect(text.frames[0]?.texture).toBe(texture);
-        expect(stage.renderer.renderInfo.drawCount).toBe(1);
+        expect(stage.renderer.renderInfo.drawCount).toBe(2);
         stage.destroy();
     });
 

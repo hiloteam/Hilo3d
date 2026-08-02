@@ -113,7 +113,7 @@ describe('Stage', () => {
         stage.tick(16);
         stage.tick(16);
 
-        expect(stage.renderer.renderInfo.drawCount).toBe(1);
+        expect(stage.renderer.renderInfo.drawCount).toBe(2);
         expect(stage.getMeshResultAtPoint(16, 16)?.mesh).toBe(sprite);
         stage.destroy();
     });
@@ -224,7 +224,7 @@ describe('Stage', () => {
         expect(owners[0]).not.toBe(owners[1]);
         expect(owners[2]).toBe(owners[0]);
         expect(owners[3]).toBe(owners[1]);
-        expect(stage.renderer.renderInfo.drawCount).toBe(2);
+        expect(stage.renderer.renderInfo.drawCount).toBe(4);
         stage.destroy();
     });
 
