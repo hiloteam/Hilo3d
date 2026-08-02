@@ -1280,8 +1280,9 @@ compatibility layer 掩盖。
 - 省略 `renderPipeline` 时仍得到当前 forward 行为。
 - `Renderer.create()` / `Stage.create()` 仍是唯一创建入口；省略 backend 的 WebGPU-first `auto`
   策略、显式 backend fail-closed 和选中后的不回退规则不变。
-- `render()`、`renderToTarget()`、`renderFrame()`、`setRenderTarget()`、`present()`
-  和 readback 签名不变。
+- `render()`、`renderToTarget()`、`renderFrame()` 和 readback 的职责不变；`setRenderTarget()` 与
+  `present()` 的 presentation options 显式携带 attachment-zero
+  `colorEncoding`，不再从自定义 shader 或 attachment format 猜测显示语义。
 - clear、MSAA、depth/stencil、events、diagnostics、resource manager 和 recovery 可观察语义不变。
 - 已使用 async `create()` 的应用无需为默认 SRP 迁移；`renderPipeline` 本身是 additive public API。
 

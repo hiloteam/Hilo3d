@@ -19,6 +19,9 @@
 - Make forward feature color encoding explicit. `replaceColor()` now requires `linear` or `srgb`,
   and the default Forward pipeline always routes surface presentation through the Render Graph so
   the final output transfer is owned by the output stage rather than individual materials.
+- Replace the Forward-specific color-encoding type with the shared `RenderColorEncoding`. Manual
+  RenderTarget presentation now accepts an explicit `colorEncoding`; linear inputs receive the final
+  sRGB transfer, while display-transformed `srgb` inputs are preserved without a second conversion.
 
 ### Changes
 
@@ -34,6 +37,10 @@
   Uber output is presented without a second conversion. Single-camera MSAA resolves into the
   persistent single-sample composition target; multi-camera stacks use one single-sample
   color/depth/stencil composition contract so later cameras can load prior contents exactly.
+- Keep ShaderMaterial scene output linear and make custom pipeline presentation encoding explicit.
+  ShaderToy now relies on the shared Forward output transfer, while the compute particle field and
+  crystal path tracer declare their display-referred output so their authored grading is not
+  transferred twice.
 - Advance the RHI benchmark manifest to schema 4 and model fixed surface-output draws separately
   from primary scene and post-process draws; immutable snapshots from earlier schemas remain
   historical evidence and are not rewritten.

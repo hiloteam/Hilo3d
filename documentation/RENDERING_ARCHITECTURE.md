@@ -541,6 +541,11 @@ pass，不创建这些原生对象。
   `hiloBottomLeftFragCoord()`。不依赖方向的随机 dither 可以继续直接使用 native fragment position。
 - compute/storage image 的 row 0 是顶部；compute presenter 只在 storage-row 到 fullscreen native
   UV 的边界转换一次。CPU readback 仍返回 top-to-bottom rows。
+- 普通 Forward/ShaderMaterial scene color 必须保持线性，surface
+  output 负责唯一一次 linear-to-sRGB。自定义 RenderTarget pipeline 若已经完成 display
+  transform，必须在 presentation options 中声明
+  `colorEncoding: 'srgb'`；未声明时按线性输入处理，不能依赖 backend 或 attachment
+  format 猜测内容编码。
 
 这套合同覆盖 ShaderToy、Life Game、Bloom/Color Uber、opaque scene texture transmission、Shadow
 Atlas、compute particles、compute path tracer、普通 glTF 材质与 cube

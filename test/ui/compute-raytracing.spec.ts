@@ -135,6 +135,7 @@ test('keeps path tracing on the public compute and Render Graph APIs', () => {
     expect(source).toContain('accumulation[radianceIndex] =');
     expect(source).toContain("recovery: 'cpu-shadow'");
     expect(source).toContain('new Hilo3d.RenderPassParameterPool');
+    expect(source).toContain("colorEncoding: 'srgb'");
 });
 
 declare global {

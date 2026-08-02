@@ -500,7 +500,7 @@ describe('Renderer public entry point', () => {
             frame.renderToTarget(firstTarget, stage, camera);
             frame.renderToTarget(secondTarget, stage, camera);
             frame.present(firstTarget);
-            frame.present(firstTarget);
+            frame.present(firstTarget, { colorEncoding: 'srgb' });
         });
 
         expect(beginFrame).toHaveBeenCalledOnce();

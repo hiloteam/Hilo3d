@@ -7,6 +7,7 @@ import {
     type RenderTargetSampleCount,
     type RenderTargetStoreOp
 } from '../RenderTarget';
+import type { RenderColorEncoding } from '../RenderColorEncoding';
 import type {
     CullingResultsHandle,
     RendererListDescriptor,
@@ -95,19 +96,16 @@ export interface ForwardRenderPipelineFeature {
     create(context: RenderPipelineCreateContext): ForwardRenderPipelineFeatureRuntime;
 }
 
-/** Color encoding carried by the current forward scene-color resource. */
-export type ForwardRenderColorEncoding = 'linear' | 'srgb';
-
 /** Callback-scoped forward resources visible only during one synchronous feature record call. */
 export interface ForwardRenderPipelineResources {
     /** Current attachment-zero scene color, or null for a depth-only output. */
     readonly color: RenderGraphTextureHandle | null;
     /** Encoding of the current scene color. Lighting and HDR effects require `linear`. */
-    readonly colorEncoding: ForwardRenderColorEncoding;
+    readonly colorEncoding: RenderColorEncoding;
     /** Current scene depth, or null when no depth resource was requested or configured. */
     readonly depth: RenderGraphTextureHandle | null;
     /** Replace attachment-zero scene color for subsequent features and final output. */
-    replaceColor(texture: RenderGraphTextureHandle, encoding: ForwardRenderColorEncoding): void;
+    replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void;
 }
 
 /** Callback-scoped inputs passed to one forward feature runtime. */
@@ -336,7 +334,7 @@ class ForwardFeatureState {
     #pipeline: RenderPipelineContext | null = null;
     #cullingResults = INVALID_CULLING_RESULTS_HANDLE;
     #color: RenderGraphTextureHandle | null = null;
-    #colorEncoding: ForwardRenderColorEncoding = 'linear';
+    #colorEncoding: RenderColorEncoding = 'linear';
     #depth: RenderGraphTextureHandle | null = null;
     #replacementAllowed = false;
     #activeCallbackLease: ForwardFeatureCallbackLease | null = null;
@@ -390,7 +388,7 @@ class ForwardFeatureState {
         return this.#color;
     }
 
-    get currentColorEncoding(): ForwardRenderColorEncoding {
+    get currentColorEncoding(): RenderColorEncoding {
         this.assertFrameActive();
         return this.#colorEncoding;
     }
@@ -418,7 +416,7 @@ class ForwardFeatureState {
         return this.#depth;
     }
 
-    readColorEncoding(lease: ForwardFeatureCallbackLease): ForwardRenderColorEncoding {
+    readColorEncoding(lease: ForwardFeatureCallbackLease): RenderColorEncoding {
         this.assertCallbackActive(lease);
         return this.#colorEncoding;
     }
@@ -426,7 +424,7 @@ class ForwardFeatureState {
     replaceColor(
         lease: ForwardFeatureCallbackLease,
         texture: RenderGraphTextureHandle,
-        encoding: ForwardRenderColorEncoding
+        encoding: RenderColorEncoding
     ): void {
         this.assertCallbackActive(lease);
         if (!this.#replacementAllowed) {
@@ -479,11 +477,11 @@ class ForwardFeatureResourcesLease implements ForwardRenderPipelineResources {
         return this.#state.readDepth(this.#lease);
     }
 
-    get colorEncoding(): ForwardRenderColorEncoding {
+    get colorEncoding(): RenderColorEncoding {
         return this.#state.readColorEncoding(this.#lease);
     }
 
-    replaceColor(texture: RenderGraphTextureHandle, encoding: ForwardRenderColorEncoding): void {
+    replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void {
         this.#state.replaceColor(this.#lease, texture, encoding);
     }
 }

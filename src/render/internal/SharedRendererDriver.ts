@@ -31,9 +31,11 @@ import type {
     RenderTargetColorAttachmentReadback,
     RenderTargetCompareFunction,
     RenderTargetParameters,
+    RenderTargetPresentationOptions,
     RenderTargetReadColorAttachmentOptions,
     RenderTargetSelectionOptions
 } from '../RenderTarget';
+import type { RenderColorEncoding } from '../RenderColorEncoding';
 import {
     RendererStorageBuffer,
     type StorageBuffer,
@@ -203,6 +205,14 @@ function countMeshFaces(mesh: Mesh): number {
     return 0;
 }
 
+function resolvePresentationColorEncoding(value: unknown): RenderColorEncoding {
+    const encoding = value ?? 'linear';
+    if (encoding !== 'linear' && encoding !== 'srgb') {
+        throw new TypeError('Render-target presentation color encoding must be linear or srgb');
+    }
+    return encoding;
+}
+
 function reportListenerFailure(reason: unknown): void {
     const error = asError(reason, 'Renderer lifecycle listener failed');
     queueMicrotask(() => {
@@ -292,6 +302,7 @@ class SharedRendererDriver
     #afterSceneEventCount = 0;
     #ownsRenderTarget = false;
     #autoPresentRenderTarget = false;
+    #selectedTargetColorEncoding: RenderColorEncoding = 'linear';
     #pipelineCacheMetrics: RHICacheCounterContinuation | null = null;
     #bindGroupCacheMetrics: RHICacheCounterContinuation | null = null;
     #vertexInputCacheMetrics: RHICacheCounterContinuation | null = null;
@@ -467,7 +478,7 @@ class SharedRendererDriver
             const selected = this.renderTarget;
             this.#pipelineHost.recordPipeline(stage, camera, selected, fireEvent);
             if (selected !== null && this.#autoPresentRenderTarget) {
-                this.presentInternal(selected);
+                this.presentInternal(selected, this.#selectedTargetColorEncoding);
             }
         });
     }
@@ -940,17 +951,28 @@ class SharedRendererDriver
         this.renderTarget = resolved;
         this.#ownsRenderTarget = resolved !== null && options.takeOwnership === true;
         this.#autoPresentRenderTarget = resolved !== null && options.present === true;
+        this.#selectedTargetColorEncoding = resolvePresentationColorEncoding(options.colorEncoding);
         if (destroyPrevious) previous.destroy();
         return this;
     }
 
-    override present(target?: RenderTarget): void {
+    override present(target?: RenderTarget, options: RenderTargetPresentationOptions = {}): void {
+        const explicitColorEncoding =
+            options.colorEncoding === undefined
+                ? null
+                : resolvePresentationColorEncoding(options.colorEncoding);
         this.recordFrameCommand(() => {
-            this.presentInternal(target ?? this.requireSelectedRenderTarget());
+            const resolvedTarget = target ?? this.requireSelectedRenderTarget();
+            const colorEncoding =
+                explicitColorEncoding ??
+                (resolvedTarget === this.renderTarget
+                    ? this.#selectedTargetColorEncoding
+                    : 'linear');
+            this.presentInternal(resolvedTarget, colorEncoding);
         });
     }
 
-    private presentInternal(target: RenderTarget): void {
+    private presentInternal(target: RenderTarget, colorEncoding: RenderColorEncoding): void {
         const resolved = this.requireOwnedTarget(target);
         if (resolved.colorAttachmentCount === 0) {
             throw new TypeError('A depth-only render target cannot be presented');
@@ -965,7 +987,7 @@ class SharedRendererDriver
             context,
             this.requireSurface(),
             resolved.resourceRecord,
-            { clearColor: this.clearColor },
+            { clearColor: this.clearColor, colorEncoding },
             this.#fullscreenFrameStarted
         );
         this.#fullscreenFrameStarted = true;
@@ -1264,6 +1286,7 @@ class SharedRendererDriver
         this.renderTarget = null;
         this.#ownsRenderTarget = false;
         this.#autoPresentRenderTarget = false;
+        this.#selectedTargetColorEncoding = 'linear';
     }
 
     private async initializeWebGL2(): Promise<void> {
@@ -2046,6 +2069,7 @@ class SharedRendererDriver
         this.renderTarget = null;
         this.#ownsRenderTarget = false;
         this.#autoPresentRenderTarget = false;
+        this.#selectedTargetColorEncoding = 'linear';
     }
 
     private destroyAllStorageBuffers(): void {

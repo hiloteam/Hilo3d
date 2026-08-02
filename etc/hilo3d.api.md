@@ -1932,9 +1932,6 @@ export interface FogParameters {
 }
 
 // @public
-export type ForwardRenderColorEncoding = 'linear' | 'srgb';
-
-// @public
 export interface ForwardRenderFeatureContext {
     readonly cullingResults: CullingResultsHandle;
     readonly pipeline: RenderPipelineContext;
@@ -1985,9 +1982,9 @@ export interface ForwardRenderPipelineFeatureRuntime {
 // @public
 export interface ForwardRenderPipelineResources {
     readonly color: RenderGraphTextureHandle | null;
-    readonly colorEncoding: ForwardRenderColorEncoding;
+    readonly colorEncoding: RenderColorEncoding;
     readonly depth: RenderGraphTextureHandle | null;
-    replaceColor(texture: RenderGraphTextureHandle, encoding: ForwardRenderColorEncoding): void;
+    replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void;
 }
 
 // @public
@@ -5697,6 +5694,9 @@ type RegistryLoadMethod = {
 }['load'];
 
 // @public
+export type RenderColorEncoding = 'linear' | 'srgb';
+
+// @public
 export class Renderer<Backend extends RendererBackend = RendererBackend> implements RendererContract {
     // (undocumented)
     static [Symbol.hasInstance](value: unknown): boolean;
@@ -5878,7 +5878,7 @@ export interface RendererContract {
     onInit(callback: (renderer: this) => void): void;
     // (undocumented)
     pixelRatio: number;
-    present(target?: RenderTarget): void;
+    present(target?: RenderTarget, options?: RenderTargetPresentationOptions): void;
     // (undocumented)
     readonly ready: Promise<void>;
     // (undocumented)
@@ -5925,7 +5925,7 @@ export interface RendererFrame {
     // (undocumented)
     readonly backend: RendererBackend;
     // (undocumented)
-    present(target?: RenderTarget): void;
+    present(target?: RenderTarget, options?: RenderTargetPresentationOptions): void;
     // (undocumented)
     render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
     // (undocumented)
@@ -6477,6 +6477,11 @@ export interface RenderTargetParameters {
     readonly width: number;
 }
 
+// @public
+export interface RenderTargetPresentationOptions {
+    readonly colorEncoding?: RenderColorEncoding;
+}
+
 // @public (undocumented)
 export interface RenderTargetReadColorAttachmentOptions {
     // (undocumented)
@@ -6494,7 +6499,7 @@ export interface RenderTargetReadColorAttachmentOptions {
 export type RenderTargetSampleCount = 1 | 4;
 
 // @public (undocumented)
-export interface RenderTargetSelectionOptions {
+export interface RenderTargetSelectionOptions extends RenderTargetPresentationOptions {
     readonly present?: boolean;
     readonly takeOwnership?: boolean;
 }

@@ -8,7 +8,11 @@ import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RenderGraphBuilder } from '../graph/RenderGraphBuilder';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
 import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from '../pipeline/passes/internal/PortableFullscreenShader';
-import { LINEAR_TO_SRGB_FRAGMENT_SOURCE } from '../pipeline/passes/internal/OutputTransferShader';
+import {
+    LINEAR_TO_SRGB_FRAGMENT_SOURCE,
+    SRGB_PASSTHROUGH_FRAGMENT_SOURCE
+} from '../pipeline/passes/internal/OutputTransferShader';
+import type { RenderColorEncoding } from '../RenderColorEncoding';
 import {
     RHITextureUsage,
     type RHIBuffer,
@@ -51,6 +55,8 @@ export interface PostProcessFrameOptions {
     readonly steps?: readonly Readonly<PostProcessStep>[];
     readonly label?: string;
     readonly clearColor?: RHIColor;
+    /** Encoding of the final source color presented to the browser surface. Defaults to linear. */
+    readonly colorEncoding?: RenderColorEncoding;
 }
 
 export interface PostProcessFrameResult {
@@ -77,6 +83,14 @@ function surfaceHasAcquiredTexture(surface: RHISurface): boolean {
     return surface.state === 'acquired';
 }
 
+function resolveColorEncoding(value: unknown): RenderColorEncoding {
+    const encoding = value ?? 'linear';
+    if (encoding !== 'linear' && encoding !== 'srgb') {
+        throw new TypeError('Post-process source color encoding must be linear or srgb');
+    }
+    return encoding;
+}
+
 /** Shared post-process chain followed by an explicit fullscreen present pass. */
 export class PostProcessRenderer {
     readonly frame: RenderGraphFrame;
@@ -89,9 +103,13 @@ export class PostProcessRenderer {
         readTextures: 1
     });
     readonly #presentOwner = {};
-    readonly #presentShader = new ShaderClass({
+    readonly #linearPresentShader = new ShaderClass({
         vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
         fs: LINEAR_TO_SRGB_FRAGMENT_SOURCE
+    });
+    readonly #srgbPresentShader = new ShaderClass({
+        vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
+        fs: SRGB_PASSTHROUGH_FRAGMENT_SOURCE
     });
     readonly #presentPipelineState: Readonly<MaterialPipelineState> = Object.freeze({
         ...DEFAULT_MATERIAL_PIPELINE_STATE,
@@ -168,6 +186,7 @@ export class PostProcessRenderer {
             throw new TypeError('Composed post-process effects require explicit output scheduling');
         }
         const configuration = this.validateInputs(context, surface, input, options);
+        const colorEncoding = resolveColorEncoding(options.colorEncoding);
         if (!fullscreenFrameStarted) this.fullscreen.beginFrame(context, scope.uploads);
         const currentImport = this.bridge.import(scope.graph, input);
         const surfaceTexture = importSurfaceColor(scope.graph, surface, 'post-process surface');
@@ -200,7 +219,10 @@ export class PostProcessRenderer {
         present.addDraw(
             this.fullscreen.prepare({
                 owner: slot.owner,
-                shader: this.#presentShader,
+                shader:
+                    colorEncoding === 'linear'
+                        ? this.#linearPresentShader
+                        : this.#srgbPresentShader,
                 pipelineState: this.#presentPipelineState,
                 target: { colorFormats: [configuration.format], sampleCount: 1 },
                 sampledResources: this.sampledResources(slot.owner, sourceColor.record.readableView)
@@ -220,6 +242,7 @@ export class PostProcessRenderer {
         this.assertAlive();
         if (this.#active) throw new Error('Nested PostProcessRenderer execution is not allowed');
         const configuration = this.validateInputs(context, surface, input, options);
+        const colorEncoding = resolveColorEncoding(options.colorEncoding);
         const steps = options.steps ?? [];
         this.prepareOutputTargets(input, steps);
         this.#active = true;
@@ -281,7 +304,10 @@ export class PostProcessRenderer {
                 present.addDraw(
                     this.fullscreen.prepare({
                         owner: this.#presentOwner,
-                        shader: this.#presentShader,
+                        shader:
+                            colorEncoding === 'linear'
+                                ? this.#linearPresentShader
+                                : this.#srgbPresentShader,
                         pipelineState: this.#presentPipelineState,
                         target: { colorFormats: [configuration.format], sampleCount: 1 },
                         sampledResources: this.sampledResources(

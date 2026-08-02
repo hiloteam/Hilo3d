@@ -1350,7 +1350,12 @@ const accumulation = stage.renderer.createStorageBuffer({
     recovery: 'cpu-shadow'
 });
 factory.runtime.attachResources({ accumulation });
-stage.renderer.setRenderTarget(target, { present: true, takeOwnership: true });
+stage.renderer.setRenderTarget(target, {
+    present: true,
+    takeOwnership: true,
+    // PRESENT_PASS already applies ACES and its display transfer.
+    colorEncoding: 'srgb'
+});
 
 const controller = new OrbitController(sampleElement);
 controller.attach(stage.canvas);
