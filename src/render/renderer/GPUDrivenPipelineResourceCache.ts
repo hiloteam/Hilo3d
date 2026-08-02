@@ -584,12 +584,14 @@ export class GPUDrivenPipelineResourceCache {
                   ));
         if (layoutMemo === undefined) validateVertexLayouts(compiled, vertexLayouts, this.registry);
         validateFragmentOutputs(compiled, target);
+        const fragmentOutputMode =
+            target.colorFormats.length === 0 ? ('depth-only' as const) : ('color' as const);
         const pipelineState = createRHIMeshDrawPipelineState(
             material,
             primitiveMode,
             target,
             this.registry.deviceCapabilities,
-            'color',
+            fragmentOutputMode,
             stripIndexFormat,
             compiled.metadata.fragmentOutputs,
             depthMode

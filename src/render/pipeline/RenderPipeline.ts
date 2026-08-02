@@ -10,6 +10,7 @@ import type {
     RenderTargetSampleCount
 } from '../RenderTarget';
 import type { RenderPassParameterPool } from './RenderPassParameterPool';
+import type { StorageBuffer, StorageBufferDescriptor } from '../StorageBuffer';
 import type {
     CullingOptions,
     CullingResultsHandle,
@@ -41,6 +42,8 @@ export interface RenderPipelineLimits {
     readonly maxColorAttachments: number;
     /** Maximum sampled textures visible to one shader stage. */
     readonly maxSampledTexturesPerShaderStage: number;
+    /** Maximum samplers visible to one shader stage. */
+    readonly maxSamplersPerShaderStage: number;
     /** Maximum bind groups in one pipeline layout. */
     readonly maxBindGroups: number;
     /** Maximum bindings declared by one bind group. */
@@ -117,6 +120,14 @@ export interface RenderPipelineRequirements {
 export interface RenderPipelineCreateContext {
     /** Capabilities for the selected device generation. */
     readonly capabilities: RenderPipelineCapabilities;
+    /**
+     * Create a renderer-owned persistent storage buffer during pipeline initialization.
+     *
+     * The returned identity participates in normal device-loss recovery and must be destroyed by
+     * the pipeline runtime. Creation-time allocation keeps fixed GPU databases out of frame
+     * recording while avoiding native backend access.
+     */
+    createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
 }
 
 /** Attachment operations selected for one physical output color attachment. */
@@ -199,6 +210,11 @@ export interface RenderPipelineContext {
     recordShadows(cullingResults: CullingResultsHandle): void;
     /** Acquire one runtime-owned, high-water reusable parameter slot. */
     acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P;
+    /**
+     * Stage a dirty upload to a pipeline-owned storage buffer before importing it into this graph.
+     * Failed frames retain the dirty CPU shadow for a later valid submission.
+     */
+    writeStorageBuffer(buffer: StorageBuffer, byteOffset: number, data: ArrayBufferView): void;
 }
 
 /** Renderer-local runtime created exactly once by a RenderPipelineFactory. */
@@ -211,6 +227,10 @@ export interface RenderPipeline {
      * @returns An ignored synchronous value. Promise-like values are rejected before RHI execution.
      */
     record(context: RenderPipelineContext): unknown;
+    /** Commit CPU-side temporal state after the frame has submitted successfully. */
+    frameSubmitted?(frameIndex: number): void;
+    /** Roll back staged CPU-side temporal state after recording or submission failure. */
+    frameDiscarded?(frameIndex: number): void;
     /** Release runtime-owned state exactly once during Renderer destruction. */
     destroy(): void;
 }

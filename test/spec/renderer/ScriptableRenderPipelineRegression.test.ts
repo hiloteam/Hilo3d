@@ -217,13 +217,15 @@ class ReleasablePersistentTargetPipeline implements RenderPipeline {
 class OpaqueOnlyPipeline implements RenderPipeline {
     readonly name = 'opaque-only';
     readonly pass = new SceneRenderPass('Opaque-only scene');
+    readonly excludedMeshes: Mesh[] = [];
 
     record(context: RenderPipelineContext): void {
         const culling = context.cull();
         const opaque = context.createRendererList({
             cullingResults: culling,
             queue: 'opaque',
-            sorting: 'material-front-to-back'
+            sorting: 'material-front-to-back',
+            excludeMeshes: this.excludedMeshes
         });
         const output = context.graph.importOutput();
         context.graph.addPass(this.pass, {
@@ -941,6 +943,45 @@ describe('Scriptable render pipeline regressions', () => {
         expect(renderer.renderInfo.faceCount).toBe(opaqueFaceCount);
         expect(beforeRender).not.toHaveBeenCalled();
         expect(afterRender).not.toHaveBeenCalled();
+    });
+
+    it('excludes explicit mesh identities from a shared renderer list', async () => {
+        const runtime = new OpaqueOnlyPipeline();
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 8,
+            antialias: false,
+            renderPipeline: new FixedRuntimeFactory(runtime)
+        });
+        activeRenderers.push(renderer);
+        const material = new BasicMaterial({ lightType: 'NONE', depthTest: false });
+        const included = new Mesh({
+            geometry: new BoxGeometry(),
+            material,
+            frustumTest: false
+        });
+        const excluded = new Mesh({
+            geometry: new BoxGeometry(),
+            material,
+            frustumTest: false
+        });
+        const includedAfterRender = vi.fn();
+        const excludedAfterRender = vi.fn();
+        included.on('afterRender', includedAfterRender);
+        excluded.on('afterRender', excludedAfterRender);
+        const scene = new Node();
+        scene.addChild(included).addChild(excluded);
+        runtime.excludedMeshes.push(excluded);
+        const camera = new PerspectiveCamera();
+
+        renderer.render(scene, camera, true);
+        renderer.render(scene, camera, true);
+
+        expect(renderer.renderInfo.drawCount).toBe(1);
+        expect(includedAfterRender).toHaveBeenCalledTimes(2);
+        expect(excludedAfterRender).not.toHaveBeenCalled();
     });
 
     it('fires Mesh beforeRender before preparing the current frame draw snapshot', async () => {

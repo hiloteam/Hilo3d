@@ -1,4 +1,5 @@
 import type Camera from '../../camera/Camera';
+import type Mesh from '../../core/Mesh';
 import type Material from '../../material/Material';
 
 declare const cullingResultsHandleBrand: unique symbol;
@@ -45,4 +46,9 @@ export interface RendererListDescriptor {
     readonly overrideMaterial?: Material;
     /** Include only meshes whose effective material casts shadows. */
     readonly castShadowsOnly?: boolean;
+    /**
+     * Mesh identities omitted from this list after culling. This supports hybrid pipelines that
+     * draw a GPU-managed subset separately while retaining the shared Forward path as a fallback.
+     */
+    readonly excludeMeshes?: readonly Mesh[];
 }

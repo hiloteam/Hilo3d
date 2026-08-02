@@ -1,13 +1,14 @@
-vec4 baseColor = u_baseColor;
+vec4 baseColorSample = vec4(1.0);
 vec3 emissionColor = u_emissionFactor.rgb;
 
 #ifdef HILO_BASE_COLOR_MAP
     #ifdef HILO_GAMMA_CORRECTION
-        baseColor *= sRGBToLinear(HILO_TEXTURE_2D(u_baseColorMap, HILO_BASE_COLOR_MAP));
+        baseColorSample = sRGBToLinear(HILO_TEXTURE_2D(u_baseColorMap, HILO_BASE_COLOR_MAP));
     #else
-        baseColor *= HILO_TEXTURE_2D(u_baseColorMap, HILO_BASE_COLOR_MAP);
+        baseColorSample = HILO_TEXTURE_2D(u_baseColorMap, HILO_BASE_COLOR_MAP);
     #endif
 #endif
+vec4 baseColor = hiloEvaluatePBRBaseColor(u_baseColor, baseColorSample);
 
 #ifdef HILO_HAS_COLOR
 baseColor *= v_color;
@@ -61,14 +62,21 @@ float ao = 1.0;
         roughness *= metallicRoughness.g;
         metallic *= metallicRoughness.b;
     #endif
-    roughness = clamp(roughness, 0.045, 1.0);
-    metallic = clamp(metallic, 0.0, 1.0);
-    float dielectricF0Value =
-        (u_ior - 1.0) / max(u_ior + 1.0, 1e-4);
-    vec3 dielectricF0 = vec3(dielectricF0Value * dielectricF0Value);
-    vec3 diffuseColor = baseColor.rgb * (1.0 - metallic);
-    vec3 specularColor = mix(dielectricF0, baseColor.rgb, metallic);
-    vec3 iblDiffuseColor = diffuseColor * (vec3(1.0) - specularColor);
+    HiloMetallicRoughnessSurface metallicRoughnessSurface =
+        hiloEvaluateMetallicRoughnessSurface(
+            baseColor,
+            emissionColor,
+            metallic,
+            roughness,
+            ao,
+            0.0,
+            u_ior
+        );
+    metallic = metallicRoughnessSurface.metallic;
+    roughness = metallicRoughnessSurface.roughness;
+    vec3 diffuseColor = metallicRoughnessSurface.diffuseColor;
+    vec3 specularColor = metallicRoughnessSurface.specularColor;
+    vec3 iblDiffuseColor = metallicRoughnessSurface.iblDiffuseColor;
 #endif
 
 float iridescenceFactor = 0.0;
@@ -131,7 +139,7 @@ vec3 areaSpecularColor = specularColor;
 #endif
 
 #ifdef HILO_OCCLUSION_STRENGTH
-ao = mix(1.0, ao, u_occlusionStrength);
+ao = hiloEvaluatePBROcclusion(ao, u_occlusionStrength);
 #endif
 
 vec3 anisotropyT = N;
@@ -402,9 +410,15 @@ indirectDiffuse += baseColor.rgb * hiloDecodeRGBD(lightMapColor);
 
 #ifdef HILO_EMISSION_MAP
     #ifdef HILO_GAMMA_CORRECTION
-        emissionColor *= sRGBToLinear(HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP)).rgb;
+        emissionColor = hiloEvaluatePBREmission(
+            emissionColor,
+            sRGBToLinear(HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP)).rgb
+        );
     #else
-        emissionColor *= HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP).rgb;
+        emissionColor = hiloEvaluatePBREmission(
+            emissionColor,
+            HILO_TEXTURE_2D(u_emission, HILO_EMISSION_MAP).rgb
+        );
     #endif
 #endif
 

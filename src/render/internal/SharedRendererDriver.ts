@@ -706,6 +706,24 @@ class SharedRendererDriver
         );
     }
 
+    createPipelineStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer {
+        if (this.#destroyed) throw new Error('Renderer is destroyed');
+        if (this.#pipelineHost.recording) {
+            throw new Error('Pipeline storage buffers must be created during initialization');
+        }
+        const features = this.requireDevice().capabilities.features;
+        if (
+            this.backend !== 'webgpu' ||
+            !features.has('storage-buffers') ||
+            !features.has('compute-pipelines')
+        ) {
+            throw new Error('Pipeline storage buffers require a compute-capable WebGPU renderer');
+        }
+        const buffer = new RendererStorageBuffer(this, descriptor);
+        this.#storageBuffers.add(buffer);
+        return buffer;
+    }
+
     endPipelineInvocation(completed: boolean): void {
         const context = this.#activeScriptablePipelineContext;
         this.#activeScriptablePipelineContext = null;

@@ -9,6 +9,7 @@ import type {
 } from '../RenderTarget';
 import type { RendererViewport } from '../RendererCore';
 import type { StorageBuffer } from '../StorageBuffer';
+import type Texture from '../../texture/Texture';
 import type { RenderPipelineCapabilities } from './RenderPipeline';
 import type {
     RenderPipelineTextureAspect,
@@ -326,6 +327,14 @@ export interface ScriptableRenderGraph {
     ): RenderGraphBufferHandle;
     /** Import one renderer-owned persistent StorageBuffer into the active graph. */
     importStorageBuffer(buffer: StorageBuffer): RenderGraphBufferHandle;
+    /**
+     * Import one engine Texture as a sampled, renderer-owned persistent graph resource.
+     *
+     * The texture upload, sampler-independent image identity, device recovery, and submission
+     * lifetime remain owned by the renderer. Storage and attachment access are intentionally not
+     * exposed through this import.
+     */
+    importTexture(texture: Texture<unknown>): RenderGraphTextureHandle;
     /** Import the current surface or selected RenderTarget output. */
     importOutput(): RenderPipelineOutputResources;
     /** Import a RenderTarget owned by the current Renderer. */

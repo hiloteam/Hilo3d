@@ -1,4 +1,11 @@
 export {
+    ClusteredForwardPlusPipelineFactory,
+    type ClusteredForwardPlusDiagnostics,
+    type ClusteredForwardPlusPipelineOptions,
+    type GPUSceneBucket,
+    type GPUSceneLOD
+} from './ClusteredForwardPlus';
+export {
     ForwardRenderPipelineFactory,
     type ForwardRenderFeatureContext,
     type ForwardRenderFeatureRequirements,

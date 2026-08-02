@@ -103,10 +103,9 @@ pass，因此默认逐 Draw 热路径不经过 feature facade。
 - `cull()` 与 `createRendererList()` 复用 shared renderer 的场景收集、排序、instancing 和 mesh
   processor；
 - `recordShadows()` 复用同一 Shadow Atlas、LightBlock、resource owner 和恢复链路；
-- `ScriptableRenderGraph` 可创建 transient
-  texture/buffer，导入 output、RenderTarget 和 renderer-owned `StorageBuffer`，获取 recovery-aware
-  persistent target、按 stable key 释放单个 persistent
-  target，并添加 scene/fullscreen/copy/compute/GPU-driven pass；单 key
+- `ScriptableRenderGraph` 可创建 transient texture/buffer，导入 output、RenderTarget、renderer-owned
+  `StorageBuffer` 和 sampled engine `Texture`，获取 recovery-aware persistent target、按 stable
+  key 释放单个 persistent target，并添加 scene/fullscreen/copy/compute/GPU-driven pass；单 key
   release 仅在有效 submission 后提交，失败帧会回滚；
 - graph buffer 的 storage、vertex、index、copy、indirect、read-write 和 clear access 都在 `setup`
   显式声明。资源 usage 由存活 pass 汇总，imported `StorageBuffer` 必须提供 usage
@@ -153,6 +152,44 @@ frame 开始前明确失败。scene color sampling 只允许在 opaque writer �
 仍保持 fail-closed；需要完整 Forward+ 深度预处理/采样链路时，应使用自定义 `RenderPipeline`
 显式记录 depth Scene Pass、compute Pass 与最终 storage-aware Scene
 Pass，而不是假定内置 feature 已经自动改写 forward shader。
+
+WebGPU high-end profile 现在提供公开的
+`ClusteredForwardPlusPipelineFactory`。应用注册稳定的 geometry/material/LOD
+bucket 后，runtime 在创建阶段通过 `RenderPipelineCreateContext.createStorageBuffer()`
+建立 renderer-owned object、geometry、material、light、visible、indirect、cluster 和 diagnostics
+database；帧内 dirty 数据必须通过 `RenderPipelineContext.writeStorageBuffer()` 在 graph
+import 前提交。注册的不透明普通 `Mesh` 仍使用共享 Scene 遍历和矩阵更新，但不创建 CPU renderer
+list 或 `PreparedDraw`：compute 完成 frustum/previous-Hi-Z cull、projected-radius LOD、bucket
+compact 和 indirect arguments，随后同一 Render Graph 记录 depth、current Hi-Z、3D cluster
+allocator、storage-aware GGX PBR、HDR Bloom 与 ACES
+display。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD bucket 发一个 indirect
+draw，GPU 为不可见 bucket 写零 instance count。Hi-Z 对 standard depth 取区块最远值
+`max`、对 reversed depth 取区块最远值 `min`；previous-frame occlusion 同时读取已提交的 previous
+view/projection/depth 参数，不把上一帧 VP 与当前帧投影约定混用。颜色阶段 load 深度预通过结果，物体 record 携带 model
+basis 的 inverse-transpose normal matrix，因此 non-uniform scale 不改变法线方向。普通 Forward
+PBR 与 clustered storage variant 共用 `pbr_surface.glsl` 和 `pbr_brdf.glsl`；后者只把 light
+provider 换成 cluster grid/list，不复制材质模型。GPU Scene geometry
+database 可携带 UV0/UV1 与对应 tangent stream，sampled engine `Texture` 通过 graph
+import 复用 renderer 的上传、恢复与 submission 生命周期。
+
+pipeline runtime 的 `frameSubmitted()` / `frameDiscarded()` 是 CPU-side temporal
+state 的事务边界；current/previous object/camera transform 只在 RHI
+submission 已存在后提交，录制或提交前失败则丢弃 staged revision。当前 factory 限定 single-sample
+perspective camera 与 opaque、unskinned、indexed triangle PBR bucket；GPU fast path 接受 scalar
+factor 以及 base-color/metallic/roughness/combined-MR/occlusion/emission/normal 2D
+map，支持 UV0/UV1、material UV matrix 与 sampler
+mutation，仍要求默认 depth/alpha 状态。未注册 mesh、对象容量 overflow、skinning/morph，以及注册 bucket 在运行时发生的不兼容 material/geometry/raster-state
+replacement 会在同一帧迁移到共享 Forward compatibility path；恢复兼容后可重新进入 GPU
+Scene。fallback 使用显式 mesh identity
+exclusion 避免重复绘制，按 opaque/transparent 分开排序，复用共享 shadow 录制，并为 transmission 提供已经完成 display 与 fallback
+opaque 的 scene-color copy。由于 fallback 发生在 Clustered HDR/Bloom/ACES
+display 之后，它保留普通 Forward 材质正确性但不获得 clustered light
+list 或同一 HDR 后处理；这是可通过 `fallbackObjectCount`
+观测的性能/画质边界，而不是静默丢失。初始 bucket 声明不合法、非 perspective/multisample
+output 或不支持的 WebGPU 设备仍 fail-closed；shadow/cookie/IES 和精确 LTC area
+light 的 clustered-native 实现继续走后续 high-end 扩展，不会静默退化到 WebGL 2。factory 的 required
+limits 覆盖 object/geometry/visible/cluster/light-index 全部 buffer 与最坏 dispatch
+dimension，在 runtime 分配前完成设备准入。
 
 设备恢复必须保留 runtime 创建时可见的完整公共 capability 超集，包括 limits 和全部公共 format/use/sample-count 查询；能力缩减会使恢复明确失败，而不是让旧 runtime 在后续 pass 中延迟出错。
 
@@ -614,17 +651,28 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
   fail-closed 为单 sample、单 mip、单 layer 的 2D color
   texture。history 只在有效 submission 且 current 确有 writer 时轮换；resize/format/quality
   revision、显式 invalidation 和 device
-  recovery 都递增 generation 并使旧内容失效。跨帧 buffer 继续通过 `importStorageBuffer()` 导入。
+  recovery 都递增 generation 并使旧内容失效。跨帧 buffer 继续通过 `importStorageBuffer()`
+  导入；engine-managed sampled 2D texture 通过 `importTexture()` 导入，并沿用 `TextureResourceCache`
+  的上传、sampler-independent image identity、恢复与 submission transaction。
 - 每个 Renderer 同时只处理一个 `StorageBuffer.read()`；并发 readback 会明确拒绝。`cpu-shadow`
   恢复 CPU 快照而不保留 GPU mutation；需要保留或重算 GPU-only 状态时选择合适策略并显式重建。
 - `SceneRenderPass` 已能让普通 renderer list 在 group 3 读取 pass-global storage；命中 instancing
   batch 时会展开为 direct per-mesh draw。需要 storage
   instancing 的后续优化不能改变这个确定性正确性合同。
-- 自定义 SRP 可以组合 depth prepass、compute tile/cluster culling 与 storage-aware Scene
-  Pass 实现完整 Forward+。内置 Forward feature 的 `sampledDepth: true` 仍关闭，也不会自动生成 PBR
-  storage shader variant。
-- WebGPU-only effect 页面同时是可展示 example 与真实浏览器验收：depth prepass → sampled-depth tile
-  cull → Scene group-3 storage、Gaussian cull/reorder/indirect draw，以及 1024 粒子 Hilo3D
+- 自定义 SRP 可以直接使用 `ClusteredForwardPlusPipelineFactory` 获得已注册 opaque PBR bucket 的 GPU
+  Scene、Hi-Z、3D cluster allocator 和共享 surface/BRDF 的 storage PBR；常用 metallic/roughness
+  PBR 贴图已原生进入 GPU path，clustered variant 只替换 light iteration。内置 Forward feature 的
+  `sampledDepth: true` 仍关闭，也不会把任意 layered/transparent material 自动改写为 clustered
+  variant。未注册、runtime-incompatible、deformed、transparent 或超过 GPU
+  Scene 容量的 mesh 使用共享 Forward compatibility path；renderer list 的 identity
+  exclusion 保证 GPU-managed mesh 不会被重复绘制。
+- G0/L0 renderer browser fixture 直接构造普通 `Mesh` 与动态局部光，覆盖 dirty
+  database、previous-frame Hi-Z cull/LOD/compact、fixed bucket indirect depth/color、depth-driven 3D
+  cluster count/prefix/write、HDR/Bloom/ACES 和按需 diagnostics；readback 不参与 draw 或 light
+  allocation。独立 scale fixture 覆盖 100k static + 10k dynamic、256 lights 和 device
+  recovery 的规模正确性；可比较的物理 GPU 性能回归阈值仍使用单独的受控基线协议。
+- 旧的 WebGPU-only effect 页面同时是可展示 example 与真实浏览器验收：depth prepass → sampled-depth
+  tile cull → Scene group-3 storage、Gaussian cull/reorder/indirect draw，以及 1024 粒子 Hilo3D
   wordmark 的 fractal value/curl noise、呼吸、涡旋、回归、compact、GPU indirect additive
   glow。Forward+/Gaussian 算法仍是 acceptance-scale，整个页面也不是生产性能 baseline。
 - 独立交互式粒子页面使用 65,536 个持久 storage body，其中 4096 个组成连续可读的 Hilo3D word

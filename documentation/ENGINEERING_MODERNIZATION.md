@@ -858,6 +858,12 @@ validation error 均为空，全部纹理解析出的 dimension 正确，并且 
 还让压缩纹理示例分别通过两个后端渲染各自声明支持的 source，确认 WebGPU 原生 BC/ETC2/ASTC 路径且明确跳过 PVRTC，并让异步 GPU
 `MeshPicker` 在两个后端选择同一 mesh。
 
+G0/L0 的 renderer browser fixture 直接构造注册的 opaque `Mesh`、GPU Scene
+bucket 与动态局部光，验证 previous-frame Hi-Z、frustum/occlusion/LOD/compact、fixed indexed-indirect
+arguments、3D cluster allocator、storage GGX PBR 与 diagnostics
+readback。该测试不把 diagnostics 数据用于 draw 或 light
+allocation，也不替代受控硬件上的 100k/10k 性能 baseline。
+
 Compute/storage 另有 WebGPU-only showcase/acceptance fixture：它通过公共 SRP 记录 depth
 prepass、sampled-depth tile culling、Scene group-3 readonly storage、Gaussian
 reorder 与 1024 粒子 Hilo3D wordmark 的 fractal value/curl

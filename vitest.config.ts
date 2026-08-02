@@ -24,9 +24,11 @@ export default mergeConfig(
             // coverage process. The dedicated RHI suite runs it immediately afterward.
             exclude: coverageRun ? ['test/spec/**/*.native.test.ts'] : [],
             // Coverage instrumentation already adds substantial Chromium/SwiftShader pressure.
-            // Keep one browser file active at a time so WebGPU devices are not lost to parallel
-            // software-adapter workloads on hosted CI runners.
-            fileParallelism: !coverageRun,
+            // Hosted CI keeps one browser file active at a time. Local coverage uses exactly two
+            // workers so one long-lived renderer does not accumulate all isolated test files and
+            // lose its browser RPC connection before the suite completes.
+            fileParallelism: !githubActionsCoverageRun,
+            ...(coverageRun ? { maxWorkers: githubActionsCoverageRun ? 1 : 2 } : {}),
             testTimeout: 10_000,
             hookTimeout: 10_000,
             coverage: {
