@@ -1,38 +1,47 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
 > 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-02，F0、F1、D0 已落地，G0/L0 的 WebGPU
-> high-end 不透明场景切片已落地；同日补充 E0 自动曝光、虚拟纹理术语边界和 SDF 准入门槛。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
+> high-end 不透明场景切片已落地，并增加 MAT0 材质系统前置工作及专项设计。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
 
 ## 结论先行
 
 Hilo3D 当前最强的部分是渲染底座：共享 Renderer、Scriptable Render Pipeline、Render Graph、portable
 RHI、WebGPU/WebGL 2 双后端、Compute/Storage/Indirect
-Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前主要缺口不在“能不能向 WebGPU 发命令”，而在以下五个生产级系统：
+Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前主要缺口不在“能不能向 WebGPU 发命令”，而在以下六个生产级系统：
 
-1. **GPU Scene 与 GPU 可见性**：high-end profile 已让注册的普通不透明 `Mesh` 进入常驻 GPU
+1. **材质系统前置层**：G0/L0 已验证 pipeline-local material bucket、storage record、PBR
+   variant 与共享 surface/BRDF，但当前 `Material`
+   尚未拆分不可变结构与运行时实例，也没有跨 Forward、GPU
+   Scene、shadow、motion 和 attributes 的统一语义 Pass 合同；详见
+   [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
+2. **GPU Scene 与 GPU 可见性**：high-end profile 已让注册的普通不透明 `Mesh` 进入常驻 GPU
    database、previous-frame Hi-Z、GPU cull/LOD/compact 和固定 bucket indirect
    draw；透明、蒙皮、morph、alpha-test 和 100k/10k 性能基线仍是后续完成门禁。
-2. **生产级 Clustered Forward+**：high-end profile 已提供 depth-driven 3D cluster、GPU
+3. **生产级 Clustered Forward+**：high-end profile 已提供 depth-driven 3D cluster、GPU
    count/prefix/write allocator、有界 overflow 与 storage-aware GGX
    PBR；完整材质层、阴影、cookie/IES、精确 area-light 和透明路径仍需接入。
-3. **时域渲染框架**：已有 recovery-aware history owner 与显式 invalidation，但仍没有 motion
-   vector、projection jitter、TAA/TAAU、动态分辨率和 reactive mask。
-4. **自动曝光与可控显示变换**：已有手动 EV exposure、PBR Neutral、ACES fitted、Reinhard 和 Color
+4. **时域渲染框架**：已有 recovery-aware history owner、current/previous transform
+   ABI 与显式 invalidation，但仍没有 motion vector、projection
+   jitter、TAA/TAAU、动态分辨率和 reactive mask。
+5. **自动曝光与可控显示变换**：已有手动 EV exposure、PBR Neutral、ACES fitted、Reinhard 和 Color
    Uber，但没有 GPU 亮度统计、eye adaptation、exposure history 或参数化 filmic toe/shoulder。
-5. **现代资源与几何虚拟化**：已有 mip/array/aspect subresource graph view，但仍没有 GPU
+6. **现代资源与几何虚拟化**：已有 mip/array/aspect subresource graph view，但仍没有 GPU
    meshlet/LOD、纹理流送、KTX 2/Basis、虚拟纹理或虚拟阴影页系统。
 
-最值得先做的不是直接复刻 Nanite 或 Lumen，而是完成两条可以并行推进的 P0 主线；E0 是可独立交付的显示质量切片，可以复用已经完成的 F0/F1，但不能抢占或阻塞这两条主线：
+最值得先做的不是直接复刻 Nanite 或 Lumen，而是把 G0/L0 已验证的材质垂直切片抽取为 MAT0 共享合同，同时继续推进时域主线和 G0/L0 剩余门禁。E0 是可独立交付的显示质量切片，可以复用已经完成的 F0/F1，但不能抢占或阻塞这些主线：
 
 ```mermaid
 flowchart LR
   F["WebGPU / Render Graph 基础"] --> G["GPU Scene"]
+  F --> MAT["共享材质 Definition / Pass / GPU ABI"]
   F --> T["时域资源与帧坐标"]
   F --> E["自动曝光 / Filmic"]
   G --> H["Previous-frame Hi-Z"]
   H --> C["GPU Cull / LOD"]
   C --> L["Clustered Forward+"]
+  L --> MAT
+  MAT --> M["Motion Vector"]
   T --> M["Motion Vector"]
   M --> U["TAAU / 动态分辨率"]
   L --> Q["GTAO / SSR / SSGI"]
@@ -62,6 +71,8 @@ Graph、RHI 和生命周期系统，但不应为了 WebGL 2 对等而限制设�
   raster 和验收场景；
 - [`PBR_AND_POST_PROCESSING.md`](./PBR_AND_POST_PROCESSING.md)：PBR、HDR、opaque scene
   texture、Bloom 和 Color Uber；
+- [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)：材质审计、G0/L0 原型抽取、语义多 Pass、Definition/Instance、variant、GPU
+  material ABI 和迁移门禁；
 - [`src/render/`](../src/render)：SRP、Graph、RHI、Compute、Renderer 和 Post-processing；
 - [`src/shader/`](../src/shader)、[`src/material/`](../src/material)：当前 PBR 和 shader ABI；
 - [`examples/compute_gpu_driven.ts`](../examples/compute_gpu_driven.ts)：Forward+、Gaussian、GPU
@@ -89,9 +100,10 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 | Raster PBR / HDR                     | 生产可用      | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径       |
 | Shadow                               | 可用基线      | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页            |
 | Compute / Storage / Indirect         | 底座生产可用  | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环  |
+| Material architecture                | 局部原型      | G0/L0 有专用 material record/variant；缺共享 Definition/Instance、语义 Pass 和跨 pipeline material DB      |
 | GPU-driven ordinary scene            | high-end 切片 | 注册的不透明 indexed `Mesh` 走 dirty GPU database、Hi-Z/LOD/compact 与固定 bucket indirect；透明/变形待补  |
 | Forward+                             | high-end 切片 | 3D cluster count/prefix/write、有界预算和 storage GGX PBR 已闭环；阴影/完整 layered PBR/透明待补           |
-| Temporal rendering                   | 缺失          | Camera/mesh 没有 previous-frame ABI；无 jitter、motion vector、history 或 TAAU                             |
+| Temporal rendering                   | 部分基础      | current/previous transform ABI 已完成；仍无 jitter、motion vector pass、temporal resolve 或 TAAU           |
 | Exposure / display transform         | 部分可用      | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制 |
 | Screen-space lighting                | 缺失          | 无 depth pyramid、normal/roughness attribute buffer、GTAO、SSR、SSGI                                       |
 | Volumetrics / atmosphere             | 缺失          | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                  |
@@ -104,19 +116,19 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
   shader 按 active light count 循环。见
   [`BuiltInUniformBlocks.ts`](../src/render/ubo/BuiltInUniformBlocks.ts) 和
   [`pbr_main.frag`](../src/shader/chunk/pbr_main.frag)。
-- `SceneRenderPass.storageShaderVariant` 会替换整个 graphics
-  shader，不会自动把内置 PBR 改写为 clustered lighting；命中 instancing 时还会确定性展开为逐 Mesh
-  direct draw。
-- 公共 graph texture 虽有 `mipLevelCount`，但 pass 只能引用整张 2D texture；Compute storage
-  texture 也是 transient、write-only、完整 2D view。没有 mip/layer/aspect view 或独立 persistent
-  storage texture。
+- 通用 `SceneRenderPass.storageShaderVariant` 仍会替换整个 graphics
+  shader，命中 instancing 时还会展开为逐 Mesh direct draw；G0/L0 专用 factory 已有内置 clustered
+  PBR，但只覆盖注册的不透明 PBR bucket，尚未形成跨 pipeline 的材质编译合同。
+- graph texture subresource view 与 persistent history 已落地；当前 history
+  recipe 仍限定单 sample、单 mip、单 layer 的 2D color texture，多 subresource
+  history 需要持久化 validity 后再开放。
 - Direct WGSL `f16`、`subgroups`
   与 timestamp-query 已进入 capability/compiler/RHI 闭环；当前 WebGPU 标准未暴露
   `subgroup-size-control` feature，因此只记录 adapter 的 subgroup min/max，不虚构非标准 gate。
 - Render Graph 每帧 Build/Compile，已有 pass culling 和跨帧 transient pool，但没有 compiled graph
   reuse 或同帧物理 alias。
-- Camera 只有当前 `view/projection/viewProjection`；普通 mesh/frame ABI 没有 previous
-  transform、camera jitter 或 history generation。
+- Camera/mesh current/previous transform 与 history-valid ABI 已完成；仍缺 projection
+  jitter、motion-vector material pass、temporal resolve 和 TAAU policy。
 - 当前 turnkey post-processing 只有 Bloom 与 Color Uber；exposure 是手动 EV compensation，固定 tone
   mapper 没有参数化 filmic toe/shoulder，也没有 histogram、eye adaptation 或 GPU exposure
   history。Opaque scene texture 只能支持最低边界的屏幕空间 transmission。
@@ -174,29 +186,31 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 
 ## 5. 缺口优先级矩阵
 
-| ID  | 能力                                                                     | 优先级 | 收益                                          | 工作量 | 前置依赖                            |
-| --- | ------------------------------------------------------------------------ | ------ | --------------------------------------------- | ------ | ----------------------------------- |
-| F0  | Graph texture subresource view、persistent texture/history               | P0     | 解锁 Hi-Z、TAAU、volumetric、SSR、虚拟页      | L      | 当前 Graph/RHI                      |
-| F1  | `f16`、subgroup、timestamp/query、debug marker 的 capability 与 RHI 闭环 | P0     | compute 性能、真实 GPU 性能证据、调优基础     | M      | WebGPU compiler/RHI                 |
-| D0  | Reversed-Z、camera-relative rendering、current/previous frame ABI        | P0     | 深度精度、大世界稳定性、motion vector 基础    | L      | Camera/shader ABI                   |
-| G0  | GPU Scene、dirty upload、GPU frustum/Hi-Z culling、LOD/compact           | P0     | 解除 CPU scene/draw preparation 瓶颈          | XL     | F0、D0                              |
-| L0  | 生产级 Clustered Forward+ + 内置 PBR storage lighting                    | P0     | 大量动态光、稳定 shader variant 和 light list | XL     | F0、F1、G0 的 light database 可并行 |
-| T0  | Motion Vector、history、TAA/TAAU、dynamic resolution                     | P0     | 现代抗锯齿、稳定细节和后续时域效果底座        | XL     | F0、D0                              |
-| E0  | Auto exposure、exposure history、参数化 filmic display transform         | P1     | HDR 明暗适应、稳定高光与可控显示对比          | M      | F0、F1；与 T0 history 集成          |
-| Q0  | Material attribute buffer、GTAO、Hi-Z SSR、temporal SSGI                 | P1     | 接触、反射和间接光质量                        | XL     | T0、F0；SSR/SSGI 还需 G0 Hi-Z       |
-| S0  | Shadow cache/invalidation、GPU caster cull、virtual shadow pages         | P1→P2  | 大场景高分辨率动态阴影                        | XL     | G0、F0、F1                          |
-| V0  | Froxel volumetric fog/lighting/cloud foundation                          | P1     | 现代大气与局部光体积表现                      | XL     | L0、T0、F0                          |
-| A0  | KTX 2/Basis、mip residency、texture/geometry streaming budget            | P1     | 下载、显存、首帧和大场景可扩展性              | XL     | F0、diagnostics                     |
-| M0  | Offline meshlet build、cluster LOD、GPU material bin、geometry streaming | P2     | 高几何密度和高 instance count                 | XXL    | G0、A0                              |
-| GI0 | Screen/probe/software-BVH hybrid GI                                      | P2     | 动态间接光与反射 fallback                     | XXL    | T0、Q0、G0、A0                      |
+| ID   | 能力                                                                     | 优先级 | 收益                                            | 工作量 | 前置依赖                                |
+| ---- | ------------------------------------------------------------------------ | ------ | ----------------------------------------------- | ------ | --------------------------------------- |
+| F0   | Graph texture subresource view、persistent texture/history               | P0     | 解锁 Hi-Z、TAAU、volumetric、SSR、虚拟页        | L      | 当前 Graph/RHI                          |
+| F1   | `f16`、subgroup、timestamp/query、debug marker 的 capability 与 RHI 闭环 | P0     | compute 性能、真实 GPU 性能证据、调优基础       | M      | WebGPU compiler/RHI                     |
+| D0   | Reversed-Z、camera-relative rendering、current/previous frame ABI        | P0     | 深度精度、大世界稳定性、motion vector 基础      | L      | Camera/shader ABI                       |
+| MAT0 | Material Definition/Instance、语义 Pass、稳定 variant、共享 material ABI | P0     | 泛化 G0/L0 原型，为 TAA、属性、阴影统一材质合同 | XL     | 当前 Renderer/SRP 与 G0/L0 材质垂直切片 |
+| G0   | GPU Scene、dirty upload、GPU frustum/Hi-Z culling、LOD/compact           | P0     | 解除 CPU scene/draw preparation 瓶颈            | XL     | F0、D0；材质/变形扩展使用 MAT0          |
+| L0   | 生产级 Clustered Forward+ + 内置 PBR storage lighting                    | P0     | 大量动态光、稳定 shader variant 和 light list   | XL     | F0、F1、G0；完整材质接入使用 MAT0       |
+| T0   | Motion Vector、history、TAA/TAAU、dynamic resolution                     | P0     | 现代抗锯齿、稳定细节和后续时域效果底座          | XL     | F0、D0、MAT0                            |
+| E0   | Auto exposure、exposure history、参数化 filmic display transform         | P1     | HDR 明暗适应、稳定高光与可控显示对比            | M      | F0、F1；与 T0 history 集成              |
+| Q0   | Material attribute buffer、GTAO、Hi-Z SSR、temporal SSGI                 | P1     | 接触、反射和间接光质量                          | XL     | MAT0、T0、F0；SSR/SSGI 还需 G0 Hi-Z     |
+| S0   | Shadow cache/invalidation、GPU caster cull、virtual shadow pages         | P1→P2  | 大场景高分辨率动态阴影                          | XL     | MAT0、G0、F0、F1                        |
+| V0   | Froxel volumetric fog/lighting/cloud foundation                          | P1     | 现代大气与局部光体积表现                        | XL     | L0、T0、F0                              |
+| A0   | KTX 2/Basis、mip residency、texture/geometry streaming budget            | P1     | 下载、显存、首帧和大场景可扩展性                | XL     | F0、diagnostics                         |
+| M0   | Offline meshlet build、cluster LOD、GPU material bin、geometry streaming | P2     | 高几何密度和高 instance count                   | XXL    | MAT0、G0、A0                            |
+| GI0  | Screen/probe/software-BVH hybrid GI                                      | P2     | 动态间接光与反射 fallback                       | XXL    | T0、Q0、G0、A0                          |
 
 `P0` 是“现代 WebGPU renderer”定义所需能力；`P1` 是高画质生产 profile；`P2`
 是依赖场景规模、内容管线和长期性能投入的虚拟化能力。
 
 实施状态：**F0、F1、D0 已完成；G0/L0 的首个 WebGPU
-high-end 不透明场景切片已完成**。后续工作包可把 subresource/history、GPU
-timeline、确定的前后帧坐标 ABI、GPU Scene object/light database 和 3D cluster
-allocator 作为现有基础使用；G0/L0 在本节列出的透明、变形、阴影和规模性能门禁仍保留。
+high-end 不透明场景切片已完成；MAT0 通用层尚未完成**。后续工作包可把 subresource/history、GPU
+timeline、确定的前后帧坐标 ABI、GPU Scene object/light/material database、PBR variant 与 3D cluster
+allocator 作为现有原型使用；MAT0 应抽取并泛化这些能力，而不是重建并行实现。G0/L0 的透明、变形、阴影和物理性能门禁仍保留。MAT0 的子工作包、迁移顺序与验收详见
+[`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 
 ## 6. 可落地工作包
 
@@ -291,6 +305,27 @@ near/far 映射、正交相机、RenderTarget 默认 clear/compare、普通与 s
 cache、shadow sampler、camera-relative
 packing、实例 current/previous、成功提交/失败回滚和显式 invalidation 均有合同测试；真实 WebGPU/WebGL
 2 pipeline 与浏览器 lane 继续复用同一 GLSL ES 3.00 坐标适配链。
+
+#### MAT0：材质系统前置层（G0/L0 原型可复用，通用层未完成）
+
+| 输入                                                        | 核心处理                                                            | 输出                                             | 首要验收                                                     |
+| ----------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
+| 当前 Material/PBR/Shader、SRP、PreparedDraw、G0/L0 材质切片 | 抽取 Definition/Instance、语义 Pass、稳定 variant、共享 material DB | material ID、pass variant、dirty upload 与兼容层 | 参数变化不重编译；跨 Pass coverage 一致；默认路径不增加 Pass |
+
+`ClusteredForwardPlusPipelineFactory` 已经验证了注册 geometry/material bucket、紧凑 material storage
+record、dirty upload、PBR texture variant、固定 indirect bucket，以及 `pbr_surface.glsl` /
+`pbr_brdf.glsl`
+共享表面与光照迭代分离。这些是 MAT0 的实现证据，但当前仍是 pipeline-local、预注册、opaque
+metallic/roughness
+PBR 的受限切片，不能替代跨 Forward、shadow、motion、attributes 和 picking 的通用材质合同。
+
+MAT0 不采用有序 `material.passes[]`。Pipeline/Render
+Graph 继续拥有 Pass 顺序、attachment 和资源依赖；材质只声明能为
+`forward`、`depth-only`、`shadow-caster`、`motion-vector`、 `material-attributes` 与 `picking`
+等语义角色生成什么 Shader、状态和绑定。实施顺序拆成 MAT0 diagnostics、MAT1 Definition/Instance、MAT2
+semantic pass、MAT3 surface/texture/variant、MAT4 共享 GPU Material Database、MAT5 renderer
+integration。完整设计、兼容策略和验收矩阵见
+[`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 
 ### 6.2 Milestone 1A：规模化场景主线
 
@@ -677,16 +712,18 @@ time、确定的资源预算和失败时的可观察行为。
 1. Graph texture view + persistent history resource；
 2. timestamp/query/debug marker + GPU timeline，同时补 subgroup/f16 capability；
 3. reversed-Z、camera-relative、current/previous transform ABI；
-4. 原生分辨率 TAA，再扩为 TAAU/dynamic resolution；
-5. GPUScene dirty database + previous Hi-Z culling + fixed bucket indirect draw；
-6. current Hi-Z + production Clustered Forward+ + built-in storage PBR；
-7. Auto exposure + exposure history + 参数化 filmic display
+4. GPUScene dirty database + previous Hi-Z + 3D Clustered Forward+ 不透明 PBR 切片；
+5. MAT0：把 G0/L0 的 material
+   record/variant/surface 原型抽取为共享 Definition/Instance、语义 Pass 和 material ABI；
+6. 原生分辨率 TAA，再扩为 TAAU/dynamic resolution；
+7. 完成 G0/L0 的透明、变形、阴影、完整 layered PBR 与物理性能门禁；
+8. Auto exposure + exposure history + 参数化 filmic display
    transform；该 M 级切片可在 F0/F1 之后并行，但不能阻塞 D0/G0/L0/T0；
-8. material attribute buffer + GTAO/SSR/SSGI；
-9. shadow cache/GPU caster cull，再决定是否进入 virtual shadow page；
-10. froxel volumetrics；
-11. KTX 2/Basis/mip streaming，之后再进入 meshlet/geometry streaming；
-12. 基于真实产品内容决定 GI、virtual texture、SDF clipmap 和完整 virtual shadow 的投入。
+9. material attribute buffer + GTAO/SSR/SSGI；
+10. shadow cache/GPU caster cull，再决定是否进入 virtual shadow page；
+11. froxel volumetrics；
+12. KTX 2/Basis/mip streaming，之后再进入 meshlet/geometry streaming；
+13. 基于真实产品内容决定 GI、virtual texture、SDF clipmap 和完整 virtual shadow 的投入。
 
 ```mermaid
 flowchart LR
@@ -698,31 +735,40 @@ flowchart LR
   D0 --> G0["G0 GPU Scene / Hi-Z"]
   F1 --> G0
   G0 --> L0["L0 Clustered Forward+"]
+  G0 --> MAT0["MAT0 Shared Material Contract"]
+  L0 --> MAT0
+  MAT0 --> T0
   T0 --> Q0["Q0 GTAO / SSR / SSGI"]
   G0 --> Q0
+  MAT0 --> Q0
   G0 --> S0["S0 Shadow Cache / Pages"]
+  MAT0 --> S0
   L0 --> V0["V0 Froxel Volumetrics"]
   T0 --> V0
   E0 --> V0
   F0 --> A0["A0 Asset Streaming"]
   G0 --> M0["M0 Meshlets"]
+  MAT0 --> M0
   A0 --> M0
   Q0 --> GI0["GI0 Hybrid GI"]
   A0 --> GI0
 ```
 
-第 1–6 项完成后，Hilo3D 才从“有现代 WebGPU 底座”进入“有现代 WebGPU 生产渲染器”；第 7–12 项是在这个生产框架上增加高端画质和超大场景能力。E0 是可独立验收的显示质量切片，不改变 P0 主线的完成标准。
+第 1–4 项已经形成现代 WebGPU 底座和首个 high-end 不透明场景垂直切片；完成 MAT0、T0 与 G0/L0 剩余门禁后，Hilo3D 才进入覆盖通用材质和时域画质的现代 WebGPU 生产渲染器阶段。E0 是可独立验收的显示质量切片，不改变 P0 主线的完成标准。
 
 ## 12. 外部参照
 
 - [WebGPU specification：Feature Index](https://www.w3.org/TR/webgpu/#feature-index)
 - [WGSL specification：Shader Stage Attributes](https://www.w3.org/TR/WGSL/#shader-stage-attr)
-- [Unity 6.1 HDRP：面向 compute 平台的 Tile/Cluster Forward/Deferred 架构](https://docs.unity3d.com/6000.1/Documentation/Manual/com.unity.render-pipelines.high-definition.html)
-- [Unity 6：GPU Resident Drawer 与 GPU Occlusion Culling](https://docs.unity3d.com/6000.1/Documentation/Manual/WhatsNewUnity6Preview.html)
+- [Unity 6 当前文档：URP Render Graph](https://docs.unity3d.com/kr/current/Manual/urp/render-graph.html)
+- [Unity 6 当前文档：GPU Resident Drawer](https://docs.unity3d.com/kr/current/Manual/urp/gpu-resident-drawer.html)
+- [Unreal Engine 5.8：Mesh Drawing Pipeline](https://dev.epicgames.com/documentation/en-us/unreal-engine/mesh-drawing-pipeline-in-unreal-engine)
+- [Unreal Engine 5.8：Material Instances](https://dev.epicgames.com/documentation/unreal-engine/instanced-materials-in-unreal-engine)
+- [Unreal Engine 5.8：Substrate Materials](https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-substrate-materials-in-unreal-engine)
 - [Unreal Engine：Nanite Virtualized Geometry](https://dev.epicgames.com/documentation/unreal-engine/nanite-in-unreal-engine?lang=en-US)
 - [Unreal Engine：Virtual Shadow Maps](https://dev.epicgames.com/documentation/en-us/unreal-engine/virtual-shadow-maps-in-unreal-engine)
 - [Unreal Engine：Temporal Super Resolution](https://dev.epicgames.com/documentation/en-us/unreal-engine/temporal-super-resolution-in-unreal-engine)
-- [Unreal Engine：Auto Exposure / Eye Adaptation](https://dev.epicgames.com/documentation/unreal-engine/auto-exposure-eye-adaptation?application_version=4.27)
+- [Unreal Engine：Auto Exposure / Eye Adaptation](https://dev.epicgames.com/documentation/en-us/unreal-engine/auto-exposure-in-unreal-engine)
 - [Unreal Engine：Color Grading 与 Filmic Tonemapper](https://dev.epicgames.com/documentation/en-us/unreal-engine/color-grading-and-the-filmic-tonemapper-in-unreal-engine)
 - [Unreal Engine：Streaming Virtual Texturing](https://dev.epicgames.com/documentation/unreal-engine/streaming-virtual-texturing-in-unreal-engine?lang=en-US)
 - [Unreal Engine：Runtime Virtual Texturing](https://dev.epicgames.com/documentation/en-us/unreal-engine/runtime-virtual-texturing-in-unreal-engine)
