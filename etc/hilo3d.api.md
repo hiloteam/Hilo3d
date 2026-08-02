@@ -1932,7 +1932,7 @@ export interface FogParameters {
 }
 
 // @public
-type ForwardRenderColorEncoding = 'linear' | 'srgb';
+export type ForwardRenderColorEncoding = 'linear' | 'srgb';
 
 // @public
 export interface ForwardRenderFeatureContext {
@@ -1985,7 +1985,6 @@ export interface ForwardRenderPipelineFeatureRuntime {
 // @public
 export interface ForwardRenderPipelineResources {
     readonly color: RenderGraphTextureHandle | null;
-    // Warning: (ae-forgotten-export) The symbol "ForwardRenderColorEncoding" needs to be exported by the entry point Hilo3d.d.ts
     readonly colorEncoding: ForwardRenderColorEncoding;
     readonly depth: RenderGraphTextureHandle | null;
     replaceColor(texture: RenderGraphTextureHandle, encoding: ForwardRenderColorEncoding): void;
