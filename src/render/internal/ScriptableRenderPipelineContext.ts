@@ -1,8 +1,9 @@
 import Camera from '../../camera/Camera';
-import type Mesh from '../../core/Mesh';
+import Mesh from '../../core/Mesh';
 import type Light from '../../light/Light';
 import type LightManager from '../../light/LightManager';
 import type Material from '../../material/Material';
+import Texture from '../../texture/Texture';
 import type { RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGPassBuilder, RenderPassTemplate } from '../graph/RenderGraphBuilder';
@@ -1349,6 +1350,7 @@ class CullingSlot {
 class RendererListSlot {
     readonly planner = new MeshDrawListPlanner();
     readonly selectedMeshes: Mesh[] = [];
+    readonly excludedMeshes = new Set<Mesh>();
     handle = 0 as RendererListHandle;
     frameIndex = -1;
     culling: CullingSlot | null = null;
@@ -1387,9 +1389,26 @@ class RendererListSlot {
         this.frameIndex = frameIndex;
         this.culling = culling;
         this.overrideMaterial = descriptor.overrideMaterial ?? null;
+        this.excludedMeshes.clear();
+        const excludedMeshes: unknown = descriptor.excludeMeshes;
+        if (excludedMeshes !== undefined) {
+            if (!Array.isArray(excludedMeshes)) {
+                throw new TypeError('Renderer-list excludeMeshes must be an array');
+            }
+            for (let index = 0; index < excludedMeshes.length; index += 1) {
+                const mesh: unknown = excludedMeshes[index];
+                if (!(mesh instanceof Mesh)) {
+                    throw new TypeError(
+                        `Renderer-list excludeMeshes[${String(index)}] must be a Mesh`
+                    );
+                }
+                this.excludedMeshes.add(mesh);
+            }
+        }
         const selected = this.selectedMeshes;
         selected.length = 0;
         for (const mesh of culling.visibleMeshes) {
+            if (this.excludedMeshes.has(mesh)) continue;
             const material = this.overrideMaterial ?? mesh.material;
             if (material === null) continue;
             if (descriptor.castShadowsOnly === true && !material.castShadows) continue;
@@ -1408,6 +1427,7 @@ class RendererListSlot {
     releaseFrameReferences(): void {
         this.planner.reset();
         this.selectedMeshes.length = 0;
+        this.excludedMeshes.clear();
         this.frameIndex = -1;
         this.culling = null;
         this.overrideMaterial = null;
@@ -3777,6 +3797,11 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
         return this.#owner.importStorageBuffer(buffer);
     }
 
+    importTexture(texture: Texture<unknown>): RenderGraphTextureHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.importTexture(texture);
+    }
+
     importOutput(): RenderPipelineTargetResources {
         this.#owner.assertLeaseActive(this.#lease);
         return this.#owner.importOutput();
@@ -3908,6 +3933,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     #active = false;
     #outputFacade: TargetResourcesFacade | null = null;
     #storageBufferBySource = new WeakMap<RendererStorageBuffer, BufferRecord>();
+    #sampledTextureBySource = new WeakMap<Texture<unknown>, TextureRecord>();
 
     constructor(
         readonly services: ScriptableRenderPipelineServices,
@@ -3986,6 +4012,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.#historyFacadeByState.clear();
         this.#bufferByHandle.clear();
         this.#storageBufferBySource = new WeakMap();
+        this.#sampledTextureBySource = new WeakMap();
         this.#passByHandle.clear();
         const rendererClearColor = this.services.renderer.clearColor;
         this.#clearColorState.r = rendererClearColor.r;
@@ -4155,6 +4182,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.#historyFacadeByState.clear();
         this.#bufferByHandle.clear();
         this.#storageBufferBySource = new WeakMap();
+        this.#sampledTextureBySource = new WeakMap();
         this.#passByHandle.clear();
         this.#outputFacade = null;
         this.#beforeEventMeshSet.clear();
@@ -4423,6 +4451,51 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             initialized
         });
         this.#storageBufferBySource.set(source, record);
+        return record.handle;
+    }
+
+    importTexture(texture: Texture<unknown>): RenderGraphTextureHandle {
+        this.assertActive();
+        if (!(texture instanceof Texture)) {
+            throw new TypeError('RenderPipeline texture import requires a Texture');
+        }
+        const existing = this.#sampledTextureBySource.get(texture);
+        if (existing !== undefined) return existing.handle;
+        const processor = this.services.getScriptableMeshProcessor();
+        const handles = processor.textures.prepare(texture);
+        const resource = processor.registry.resolve(handles.texture);
+        const descriptor = resource.descriptor;
+        if (descriptor.sampleCount !== 1) {
+            throw new RangeError('RenderPipeline sampled Texture imports must be single-sample');
+        }
+        const internal = this.requireScope().graph.importTextureProvider(
+            texture.name || texture.id,
+            descriptor,
+            () => processor.registry.resolve(handles.texture),
+            'persistent',
+            true
+        );
+        const record = this.acquireTextureRecord({
+            name: texture.name || texture.id,
+            format: descriptor.format,
+            width: descriptor.size.width,
+            height: descriptor.size.height,
+            depthOrArrayLayers: descriptor.size.depthOrArrayLayers,
+            sampleCount: 1,
+            mipLevelCount: descriptor.mipLevelCount,
+            textureDimension: descriptor.dimension,
+            viewDimension: descriptor.viewDimension,
+            viewFormats: descriptor.viewFormats,
+            attachment: null,
+            readable: internal,
+            writable: null,
+            resolveTarget: null,
+            outputRoot: null,
+            transient: false,
+            historyState: null,
+            historyCurrent: false
+        });
+        this.#sampledTextureBySource.set(texture, record);
         return record.handle;
     }
 

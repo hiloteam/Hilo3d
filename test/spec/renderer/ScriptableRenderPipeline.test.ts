@@ -759,6 +759,7 @@ class LifecycleSurfaceClearPipeline extends SurfaceClearPipeline {
     readonly submittedFrames: number[] = [];
     readonly discardedFrames: number[] = [];
     failRecording = false;
+    failSubmissionCallback = false;
 
     override record(context: RenderPipelineContext): void {
         if (this.failRecording) throw new Error('lifecycle recording failed');
@@ -767,6 +768,9 @@ class LifecycleSurfaceClearPipeline extends SurfaceClearPipeline {
 
     frameSubmitted(frameIndex: number): void {
         this.submittedFrames.push(frameIndex);
+        if (this.failSubmissionCallback) {
+            throw new Error('lifecycle submission callback failed');
+        }
     }
 
     frameDiscarded(frameIndex: number): void {
@@ -1358,6 +1362,19 @@ describe('Scriptable render pipeline', () => {
         const camera = new PerspectiveCamera();
 
         renderer.render(scene, camera);
+        let completedSubmissionCallbackFrame = false;
+        const completeSubmittedFrame = (): void => {
+            completedSubmissionCallbackFrame = true;
+        };
+        renderer.on('afterRender', completeSubmittedFrame);
+        runtime.failSubmissionCallback = true;
+        expect(() => {
+            renderer.render(scene, camera, true);
+        }).toThrow(/lifecycle submission callback failed/u);
+        runtime.failSubmissionCallback = false;
+        renderer.off('afterRender', completeSubmittedFrame);
+        expect(completedSubmissionCallbackFrame).toBe(true);
+
         const failAfterRender = (): void => {
             throw new Error('lifecycle after-render failed');
         };
@@ -1372,8 +1389,8 @@ describe('Scriptable render pipeline', () => {
             renderer.render(scene, camera);
         }).toThrow(/lifecycle recording failed/u);
 
-        expect(runtime.submittedFrames).toEqual([0, 1]);
-        expect(runtime.discardedFrames).toEqual([2]);
+        expect(runtime.submittedFrames).toEqual([0, 1, 2]);
+        expect(runtime.discardedFrames).toEqual([3]);
     });
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(

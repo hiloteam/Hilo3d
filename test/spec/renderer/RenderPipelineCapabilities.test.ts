@@ -279,7 +279,11 @@ describe('RenderPipelineCapabilities', () => {
             'rgba16float',
             formatCapabilities(source, 'rgba16float', { sampleCounts: [1] })
         );
-        const host = new RenderPipelineHost({} as RenderPipelineHostLifecycle);
+        const host = new RenderPipelineHost({
+            createPipelineStorageBuffer() {
+                throw new Error('Capability replacement test does not create storage buffers');
+            }
+        } as unknown as RenderPipelineHostLifecycle);
         await host.initialize(runtimeFactory(), source);
 
         expect(() => {

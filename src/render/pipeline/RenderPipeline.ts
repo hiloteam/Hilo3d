@@ -42,6 +42,8 @@ export interface RenderPipelineLimits {
     readonly maxColorAttachments: number;
     /** Maximum sampled textures visible to one shader stage. */
     readonly maxSampledTexturesPerShaderStage: number;
+    /** Maximum samplers visible to one shader stage. */
+    readonly maxSamplersPerShaderStage: number;
     /** Maximum bind groups in one pipeline layout. */
     readonly maxBindGroups: number;
     /** Maximum bindings declared by one bind group. */

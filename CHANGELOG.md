@@ -18,11 +18,30 @@
   occlusion, projected-size LOD compaction, fixed indexed-indirect draws, depth-driven logarithmic
   3D clusters, a bounded count/prefix/write light allocator, storage GGX PBR, HDR Bloom, ACES
   display, and on-demand visibility/overflow diagnostics. Add real WebGPU renderer coverage for the
-  compute/dispatch/indirect-draw path.
+  compute/dispatch/indirect-draw path. Make Hi-Z conservative for both standard and reversed depth,
+  use the committed previous view/projection/depth convention for temporal occlusion, preserve the
+  depth prepass during color shading, and use inverse-transpose object normal matrices. Registered
+  buckets now migrate at runtime between the GPU path and a shared Forward compatibility path for
+  material/geometry replacement, alpha, transparency, skinning, morphing, unregistered meshes, and
+  object-capacity overflow; the fallback preserves normal opaque/transparent sorting, shadows, and
+  transmission scene-color input without double-drawing GPU-managed meshes. Device limit
+  requirements cover every configured geometry/cluster buffer and dispatch dimension. Add a real
+  WebGPU 100k-static + 10k-dynamic + 256-light scale/recovery acceptance fixture and deterministic
+  cluster-overflow coverage. Share metallic/roughness surface evaluation and the BRDF between
+  ordinary Forward and clustered storage shaders so Forward+ replaces only light-list iteration. Add
+  native GPU Scene base-color, metallic, roughness, combined metallic-roughness, occlusion,
+  emission, and normal maps with UV0/UV1, UV matrices, tangent streams, sampler mutation, runtime
+  texture replacement, and device-recovery coverage; incompatible alpha/layered/deformed inputs
+  continue to use the Forward fallback.
 - Let scriptable pipeline factories create persistent renderer-owned storage buffers, stage dirty
   writes before graph import, and commit or discard CPU temporal state at the actual submission
   boundary through `frameSubmitted()` and `frameDiscarded()`. Pipeline-owned buffers retain normal
-  device-loss recipes and submission-aware destruction.
+  device-loss recipes and submission-aware destruction. Frame completion still runs when a
+  post-submission pipeline callback throws, so presentation, events, diagnostics, and temporal
+  cleanup are not skipped after GPU work has already been submitted.
+- Let scriptable render graphs import engine-managed `Texture` objects as sampled persistent
+  resources while preserving renderer upload/recovery/submission ownership. Expose the public
+  per-stage sampler limit alongside the existing sampled-texture limit.
 
 - Add modern WebGPU capability discovery for `subgroups`, adapter subgroup-size limits,
   `shader-f16`, and `timestamp-query`; expose renderer feature queries for explicit f32/workgroup

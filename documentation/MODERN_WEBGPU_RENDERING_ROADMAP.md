@@ -304,14 +304,19 @@ packing、实例 current/previous、成功提交/失败回滚和显式 invalidat
 
 已落地的 `ClusteredForwardPlusPipelineFactory` 以注册的 geometry/material
 identity 建立稳定对象槽和 LOD bucket；对象 current/previous transform、world bounds、layer 与 active
-flag 使用 160-byte storage record。CPU 只合并 dirty slot/geometry/material
-range，GPU 执行 frustum、六级 previous-frame Hi-Z、projected-radius LOD、按 bucket
-compact，并写固定 indexed-indirect
+flag 以及 inverse-transpose normal basis 使用 208-byte storage record。CPU 只合并 dirty
+slot/geometry/material range，GPU 执行 frustum、六级 previous-frame Hi-Z、projected-radius
+LOD、按 bucket compact，并写固定 indexed-indirect
 arguments。每个 bucket 的可见表使用满足 storage-offset 对齐的独立 range，不依赖
 `firstInstance`；生产帧不读取 visible count。camera cut、失败帧和提交后的时域推进分别通过 history
-invalidation、`frameDiscarded()` 与 `frameSubmitted()`
-处理。当前公开切片限定为单相机、single-sample、opaque、unskinned、indexed triangle PBR
-bucket；以下 100k + 10k fixture、变形/alpha-test/透明和材质/几何替换的完整规模证据仍是 G0 最终门禁。
+invalidation、`frameDiscarded()` 与 `frameSubmitted()` 处理。previous-frame
+culling 使用同一已提交帧的 VP、view、projection 与 depth convention；Hi-Z 对 standard/reversed
+depth 分别保留区块 `max`/`min`
+最远值。当前公开切片限定为单相机、single-sample、opaque、unskinned、indexed triangle PBR bucket GPU
+fast path；未注册 mesh、容量 overflow、skinning/morph、alpha/transparent/layered
+material 以及运行时 material/geometry replacement 会进入共享 Forward compatibility path，并通过 mesh
+identity exclusion 避免重复绘制。真实 WebGPU scale fixture 已覆盖 100k static + 10k dynamic、256
+lights、dirty dynamic upload 与 device recovery；物理 GPU 上可比较的长期性能基线仍是 G0 发布门禁。
 
 建议内部建立稳定、后端中立的 `GPUScene` 数据库：
 
@@ -328,15 +333,18 @@ WebGPU 没有 multi-draw-indirect-count，因此第一版应控制 bucket 数量
 draw；无可见实例的 bucket 由 GPU 写零 instance count。不要以为“GPU
 cull”会自动消除 CPU 侧无界 draw-call 数量。
 
-完成标准：至少提供 100k static instances + 10k dynamic
-instances 的确定性 fixture；生产循环没有 visible-count readback；camera cut、resize、device
-loss、material/geometry replacement 和 object removal 均可恢复。
+完成标准：100k static instances + 10k dynamic
+instances 的确定性 fixture 已落地；生产循环没有 visible-count readback；camera cut、portrait
+resize、depth-convention switch、device loss、material/geometry replacement、capacity
+fallback 和 object
+removal 均有恢复覆盖。尚需把该规模 fixture 纳入登记的物理 GPU 基线协议，建立可比较的 frame-time/显存回归阈值。
 
 #### Hi-Z：深度金字塔
 
 - previous-frame Hi-Z 服务早期 occlusion culling；
 - current depth 构建 current-frame pyramid，供 clustered light、SSR、SSGI 和下一帧 culling；
-- 每 mip 独立 graph view，reversed-Z 使用一致的 max reduction；
+- 每 mip 独立 graph view，standard-Z 使用 conservative max reduction，reversed-Z 使用 conservative
+  min reduction；
 - conservative bounds、mip selection、temporal hysteresis 和 camera-cut bypass 明确测试。
 
 完成标准：无遮挡场景不产生 false negative；遮挡 fixture 的普通 Mesh
@@ -354,11 +362,20 @@ draw/instance 数显著下降；构建过程无逐 mip CPU 资源创建。
 cluster。光源分配使用 count → 256-entry workgroup scan → block prefix → bounded finalize → index
 write；全局 index budget 与 per-cluster ceiling 都有 deterministic truncation 和 overflow
 counter。点光、聚光、方向光与 area-light 近似共享固定 64-byte light record，fragment
-shader 只按 cluster grid/list 迭代，不产生 light-count variant。结果进入 `rgba16float`
-HDR、Bloom 和 ACES display transform；`readDiagnostics()`
-仅用于显式、按需的验收读回，不参与生产帧调度。当前 storage PBR 覆盖 base
-color、metallic、roughness、emission 与 GGX punctual-light core；shadow/cookie/IES、LTC area
-light、完整 layered PBR、alpha-test/transparent 和 transmission 仍是 L0 最终兼容门禁。
+shader 只按 cluster grid/list 迭代，不产生 light-count variant。普通 Forward 与 clustered
+variant 现在共用 `pbr_surface.glsl`/`pbr_brdf.glsl`；Forward+ 只替换 light-list provider 与 light
+iteration，不再维护第二套材质模型。结果进入 `rgba16float` HDR、Bloom 和 ACES display
+transform；`readDiagnostics()` 仅用于显式、按需的验收读回，不参与生产帧调度。当前 storage
+PBR 原生覆盖 base color、metallic、roughness、combined
+metallic-roughness、occlusion、emission、normal map，支持 UV0/UV1、UV
+matrix、sampler 状态与 tangent-space normal；颜色阶段复用 depth prepass，non-uniform
+scale 通过每对象 inverse-transpose normal
+basis 正确着色。贴图身份或同能力 variant 的运行时变化保留 GPU path；custom compile、layered
+PBR、alpha-test、transparent、transmission、parallax/environment 和变形输入由共享 Forward
+fallback 保持功能正确；fallback 的 opaque/transparent split、shadow 录制和 transmission opaque scene
+copy 已有真实 WebGPU 覆盖。它们尚未获得 clustered-native light
+list 或同一 HDR/Bloom/ACES 链；shadow/cookie/IES、LTC area light、完整 layered
+PBR 与透明的 clustered-native 像素/性能证据仍是 L0 最终画质门禁。
 
 第一版不应继续扩充固定 LightBlock，而应：
 
@@ -366,8 +383,9 @@ light、完整 layered PBR、alpha-test/transparent 和 transmission 仍是 L0 �
 - depth/Hi-Z 驱动 tile/cluster bounds，支持 3D cluster 而不只是固定 2D tile；
 - count → prefix/allocate → write light index 的有界多 pass allocator；
 - 明确 overflow counter、最大 index budget 和 deterministic overflow policy；
-- 把 built-in PBR 的 BRDF/material evaluation 与 light iteration 解耦，生成内置 storage-aware PBR
-  variant，而不是要求应用重写整个 shader；
+- built-in PBR 的 BRDF/material evaluation 已与 light iteration 解耦；storage-aware
+  variant 复用同一 surface/BRDF chunk，只注入 clustered light
+  provider，而不是要求应用重写整个 shader；
 - opaque 和 alpha-tested material 使用 clustered list；透明先使用独立 coarse cluster 或 CPU-selected
   light list；
 - shadow index、area light、light layer、cookie/IES 索引进入同一 light record；

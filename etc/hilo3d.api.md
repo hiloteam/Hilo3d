@@ -685,6 +685,7 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly clusterLightIndexCount: number;
     readonly clusterOverflowCount: number;
     readonly droppedLightCount: number;
+    readonly fallbackObjectCount: number;
     readonly hiZValid: boolean;
     readonly lightCount: number;
     readonly lodObjectCount: number;
@@ -5419,6 +5420,7 @@ export type RendererFrameCallback = (frame: RendererFrame) => unknown;
 export interface RendererListDescriptor {
     readonly castShadowsOnly?: boolean;
     readonly cullingResults: CullingResultsHandle;
+    readonly excludeMeshes?: readonly Mesh[];
     readonly overrideMaterial?: Material;
     readonly queue: RendererListQueue;
     readonly sorting: RendererListSorting;
@@ -5715,6 +5717,7 @@ export interface RenderPipelineLimits {
     readonly maxComputeWorkgroupStorageSize?: number;
     readonly maxDynamicStorageBuffersPerPipelineLayout?: number;
     readonly maxSampledTexturesPerShaderStage: number;
+    readonly maxSamplersPerShaderStage: number;
     readonly maxStorageBufferBindingSize?: number;
     readonly maxStorageBuffersPerShaderStage?: number;
     readonly maxStorageTexturesPerShaderStage?: number;
@@ -6077,6 +6080,7 @@ export interface ScriptableRenderGraph {
     importOutput(): RenderPipelineOutputResources;
     importRenderTarget(target: RenderTarget): RenderPipelineTargetResources;
     importStorageBuffer(buffer: StorageBuffer): RenderGraphBufferHandle;
+    importTexture(texture: Texture<unknown>): RenderGraphTextureHandle;
     invalidateHistoryTexture(key: object): boolean;
     releaseHistoryTexture(key: object): boolean;
     releasePersistentTarget(key: object): boolean;

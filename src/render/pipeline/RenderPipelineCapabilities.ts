@@ -129,6 +129,8 @@ function publicPipelineLimit(
             return limits.maxColorAttachments;
         case 'maxSampledTexturesPerShaderStage':
             return limits.maxSampledTexturesPerShaderStage;
+        case 'maxSamplersPerShaderStage':
+            return limits.maxSamplersPerShaderStage;
         case 'maxBindGroups':
             return limits.maxBindGroups;
         case 'maxBindingsPerBindGroup':
@@ -178,6 +180,7 @@ export function createRenderPipelineCapabilities(
         maxTextureDimension2D: capabilities.limits.maxTextureDimension2D,
         maxColorAttachments: capabilities.limits.maxColorAttachments,
         maxSampledTexturesPerShaderStage: capabilities.limits.maxSampledTexturesPerShaderStage,
+        maxSamplersPerShaderStage: capabilities.limits.maxSamplersPerShaderStage,
         maxBindGroups: capabilities.limits.maxBindGroups,
         maxBindingsPerBindGroup: capabilities.limits.maxBindingsPerBindGroup,
         maxBufferSize: capabilities.limits.maxBufferSize,

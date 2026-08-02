@@ -307,8 +307,35 @@ export class RenderPipelineHost {
                 this.lifecycle.getRenderGraphTimelineSink?.() ?? null
             );
             submitted = true;
-            this.#runtime?.frameSubmitted?.(frameIndex);
-            this.lifecycle.completeFrame(frameIndex, execution, this.#frame.uploads.pendingCount);
+            let submissionCallbackFailed = false;
+            let submissionCallbackFailure: unknown;
+            try {
+                this.#runtime?.frameSubmitted?.(frameIndex);
+            } catch (error) {
+                submissionCallbackFailed = true;
+                submissionCallbackFailure = error;
+            }
+            let completionFailed = false;
+            let completionFailure: unknown;
+            try {
+                this.lifecycle.completeFrame(
+                    frameIndex,
+                    execution,
+                    this.#frame.uploads.pendingCount
+                );
+            } catch (error) {
+                completionFailed = true;
+                completionFailure = error;
+            }
+            if (submissionCallbackFailed && completionFailed) {
+                throw new AggregateError(
+                    [submissionCallbackFailure, completionFailure],
+                    'Render pipeline submission callback and frame completion both failed',
+                    { cause: submissionCallbackFailure }
+                );
+            }
+            if (completionFailed) throw completionFailure;
+            if (submissionCallbackFailed) throw submissionCallbackFailure;
         } catch (error) {
             firstFailure = error;
             failureCount = 1;

@@ -130,10 +130,10 @@ const forbiddenCommonRendererRules = [
     },
     {
         label: 'native graphics handle declared by the shared render layer',
-        // `GPUDriven*` names describe a backend-neutral rendering technique, not native WebGPU
-        // ownership. All other `GPU*` identifiers remain confined to backend implementation code.
+        // `GPUDriven*` and `GPUScene*` describe backend-neutral rendering techniques, not native
+        // WebGPU ownership. All other `GPU*` identifiers remain confined to implementation code.
         pattern:
-            /\b(?:GPU(?!Driven)[A-Z][A-Za-z0-9_]*|WebGL(?:2[A-Z][A-Za-z0-9_]*|[A-Z][A-Za-z0-9_]*)|GL(?:bitfield|boolean|char|enum|float|int|intptr|sizei|sizeiptr|uint))\b/u
+            /\b(?:GPU(?!(?:Driven|Scene))[A-Z][A-Za-z0-9_]*|WebGL(?:2[A-Z][A-Za-z0-9_]*|[A-Z][A-Za-z0-9_]*)|GL(?:bitfield|boolean|char|enum|float|int|intptr|sizei|sizeiptr|uint))\b/u
     },
     {
         label: 'native graphics API called by the shared render layer',
