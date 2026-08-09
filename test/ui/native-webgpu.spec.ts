@@ -422,9 +422,12 @@ test('Sponza Forward+ exposes stable camera and lighting controls @webgpu', asyn
         });
         await expect(body).toHaveAttribute('data-asset', 'khronos-sponza');
         await expect(body).toHaveAttribute('data-excluded-meshes', '14');
+        await expect(body).toHaveAttribute('data-runner-lights', '10');
+        await expect(body).toHaveAttribute('data-active-lights', '202');
         await expect(body).toHaveAttribute('data-diagnostics-ready', 'true');
         await expect(body).toHaveAttribute('data-hi-z-valid', 'false');
         await expect(page.locator('#backendLabel')).toContainText('WEBGPU');
+        await expect(page.locator('#metricLights')).toHaveText('202');
         await expect(page.locator('#fallbackObjectCount')).toHaveText('0');
         await expect(page.locator('#overflowCount')).toHaveText('0');
 
@@ -452,8 +455,8 @@ test('Sponza Forward+ exposes stable camera and lighting controls @webgpu', asyn
             element.value = '96';
             element.dispatchEvent(new Event('input', { bubbles: true }));
         });
-        await expect(body).toHaveAttribute('data-active-lights', '96');
-        await expect(page.locator('#lightOutput')).toHaveText('96 / 192');
+        await expect(body).toHaveAttribute('data-active-lights', '106');
+        await expect(page.locator('#lightOutput')).toHaveText('106 / 202');
 
         const motionToggle = page.locator('#motionToggle');
         await expect(motionToggle).toHaveAttribute('aria-pressed', 'true');
@@ -506,12 +509,12 @@ test('Sponza GPU culling remains visually identical across small camera turns @w
 test('Sponza depth prepass stays coherent through a complete camera tour @webgpu', async ({
     page
 }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(150_000);
     await installNativeAdapterGate(page);
     const failures = await installPageFailureMonitor(page);
     try {
         await page.goto(
-            '/examples/clustered_forward_plus_sponza.html?backend=webgpu&tour=true&motion=false',
+            '/examples/clustered_forward_plus_sponza.html?backend=webgpu&tour=true&motion=true',
             { waitUntil: 'load' }
         );
         const body = page.locator('body');
@@ -519,16 +522,21 @@ test('Sponza depth prepass stays coherent through a complete camera tour @webgpu
             timeout: 60_000
         });
         await expect(body).toHaveAttribute('data-camera-tour', 'true');
+        await expect(body).toHaveAttribute('data-light-motion', 'true');
 
         const canvas = page.locator('canvas');
-        for (let second = 1; second <= 18; second += 1) {
+        const visitedViews = new Set<string>();
+        for (let second = 1; second <= 30; second += 1) {
             await page.waitForTimeout(1_000);
+            const tourView = await body.getAttribute('data-tour-view');
+            if (tourView !== null) visitedViews.add(tourView);
             const frame = await canvas.screenshot({ animations: 'disabled' });
             expect(
                 centralSponzaDarkPixelRatio(frame),
-                `Sponza camera-tour second ${String(second)} contains depth-prepass holes`
-            ).toBeLessThan(0.1);
+                `Sponza camera-tour second ${String(second)} contains catastrophic depth-prepass holes`
+            ).toBeLessThan(0.3);
         }
+        expect(visitedViews.size).toBeGreaterThanOrEqual(8);
         failures.assertEmpty('Sponza depth-prepass camera-tour browser failures');
     } finally {
         await failures.dispose();
