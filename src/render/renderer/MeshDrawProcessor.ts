@@ -384,6 +384,7 @@ export class MeshDrawProcessor {
     readonly #preparedMeshes = new Set<Mesh>();
     readonly #programBindingInfo: SemanticProgramBindingInfo = {};
     #context: RenderGraphFrameContext | null = null;
+    #resourceFrameUploads: RHIUploadBatch | null = null;
     #passSemanticFrame: Readonly<SemanticFrameState> | null = null;
     #validatedLightingFrame = -1;
     #validatedLightManager: LightManager | null = null;
@@ -519,15 +520,44 @@ export class MeshDrawProcessor {
 
     /** Enlist recoverable buffer and texture uploads in one RenderGraphFrame transaction. */
     beginFrame(context: RenderGraphFrameContext, uploads: RHIUploadBatch): void {
+        this.beginResourceFrame(context, uploads);
+        this.beginSemanticFrame(context);
+    }
+
+    /**
+     * Enlist shared renderer resources without preparing scene, camera, lighting, or uniform-block
+     * semantics. Compute, GPU-driven, and fullscreen work use this path when they only need the
+     * processor's transactional caches.
+     */
+    beginResourceFrame(context: RenderGraphFrameContext, uploads: RHIUploadBatch): void {
         this.assertAlive();
         if (this.active) {
             throw new Error('Mesh draw processor frame is already active');
         }
         this.validateContext(context);
-        this.activateContext(context, true, uploads);
+        this.#context = context;
+        this.#resourceFrameUploads = uploads;
+        this.#passSemanticFrame = null;
+        this.#sampledGraphDependencies.length = 0;
         this.buffers.beginFrame(context.frameIndex, uploads);
         this.textures.beginFrame(context.frameIndex, uploads);
         this.resourceUses.beginFrame(context.frameIndex, uploads);
+    }
+
+    /** Activate scene-owned semantics after a resource-only frame has already been enlisted. */
+    beginSemanticFrame(context: RenderGraphFrameContext): void {
+        this.assertAlive();
+        const activeContext = this.requireResourceContext();
+        const uploads = this.#resourceFrameUploads;
+        if (uploads === null) throw new Error('Mesh draw resource frame has no upload transaction');
+        this.validateContext(context);
+        if (context.frameIndex !== activeContext.frameIndex) {
+            throw new Error('Mesh draw semantic frame belongs to another application frame');
+        }
+        if (this.#passSemanticFrame !== null) {
+            throw new Error('Mesh draw semantic frame is already active');
+        }
+        this.activateContext(context, true, uploads);
     }
 
     /**
@@ -536,7 +566,7 @@ export class MeshDrawProcessor {
      */
     beginContextPass(context: RenderGraphFrameContext): void {
         this.assertAlive();
-        const activeContext = this.requireActiveContext();
+        const activeContext = this.requireSemanticContext();
         this.validateContext(context);
         if (context.frameIndex !== activeContext.frameIndex) {
             throw new Error('Mesh draw context pass belongs to another application frame');
@@ -547,7 +577,7 @@ export class MeshDrawProcessor {
     /** Select the camera/viewport semantics for one pass without advancing frame-scoped state. */
     beginPass(camera: RenderGraphFrameContext['camera'], viewport: Readonly<RHIViewport>): void {
         this.assertAlive();
-        const context = this.requireActiveContext();
+        const context = this.requireSemanticContext();
         this.#sampledGraphDependencies.length = 0;
         const semanticFrame = createSemanticFrameState({
             renderer: context.renderer,
@@ -612,7 +642,7 @@ export class MeshDrawProcessor {
         materialPass?: MaterialPassRole
     ): PreparedDraw {
         this.assertAlive();
-        const context = this.requireActiveContext();
+        const context = this.requireSemanticContext();
         if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
         const geometry = mesh.geometry;
         const material = materialOverride ?? context.renderer.forceMaterial ?? mesh.material;
@@ -791,7 +821,7 @@ export class MeshDrawProcessor {
         plannerInstancedFallback = false
     ): PreparedDraw {
         this.assertAlive();
-        const context = this.requireActiveContext();
+        const context = this.requireSemanticContext();
         if (storagePipelines.registry !== this.registry) {
             throw new Error('Scene storage pipeline cache must share the mesh resource registry');
         }
@@ -938,7 +968,7 @@ export class MeshDrawProcessor {
     /** Prepare one cast-shadow mesh variant for a depth-only atlas slice. */
     prepareShadow(owner: object, mesh: Mesh, target: RHIMeshDrawTargetDescriptor): PreparedDraw {
         this.assertAlive();
-        const context = this.requireActiveContext();
+        const context = this.requireSemanticContext();
         if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
         const geometry = mesh.geometry;
         const sourceMaterial = mesh.material;
@@ -1122,7 +1152,7 @@ export class MeshDrawProcessor {
         materialPass?: MaterialPassRole
     ): PreparedDraw {
         this.assertAlive();
-        const context = this.requireActiveContext();
+        const context = this.requireSemanticContext();
         if (meshes.length < 1 || meshes.length > MAX_INSTANCES_PER_DRAW) {
             throw new RangeError(
                 `Instanced mesh draw count must be between 1 and ${String(MAX_INSTANCES_PER_DRAW)}`
@@ -1415,6 +1445,7 @@ export class MeshDrawProcessor {
         this.buffers.synchronizeAfterRecovery();
         this.textures.synchronizeAfterRecovery();
         this.#context = null;
+        this.#resourceFrameUploads = null;
         this.#passSemanticFrame = null;
     }
 
@@ -1544,6 +1575,7 @@ export class MeshDrawProcessor {
         this.#vertexSourcesByGeometry = new WeakMap();
         this.#shaderSnapshots = new WeakMap();
         this.#context = null;
+        this.#resourceFrameUploads = null;
         this.#passSemanticFrame = null;
         this.#validatedLightingFrame = -1;
         this.#validatedLightManager = null;
@@ -2354,10 +2386,18 @@ export class MeshDrawProcessor {
         return this.textures.detach(source) ? 1 : 0;
     }
 
-    private requireActiveContext(): RenderGraphFrameContext {
+    private requireResourceContext(): RenderGraphFrameContext {
         const context = this.#context;
         if (!context || !this.active) {
             throw new Error('Mesh draw processor requires beginFrame before preparation');
+        }
+        return context;
+    }
+
+    private requireSemanticContext(): RenderGraphFrameContext {
+        const context = this.requireResourceContext();
+        if (this.#passSemanticFrame === null) {
+            throw new Error('Mesh draw processor requires scene semantics before preparation');
         }
         return context;
     }

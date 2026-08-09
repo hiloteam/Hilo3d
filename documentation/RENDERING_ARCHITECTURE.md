@@ -109,8 +109,16 @@ portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
 0/1 对应这两个 block，sampled texture/sampler 从 binding 2 开始；WebGL2 使用同一固定 block
 registry。attribute、uniform、texture 和 built-in
 slot 使用公开的类型化 semantic 常量，不以任意字符串作为公共绑定合同。完整设计、breaking
-changes 与长期 GPU material database 路线见
+changes 与 GPU material database 路线见
 [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
+
+WebGPU high-end 路径复用 renderer-local `SharedMaterialRecordDatabase`。数据库按 material
+identity 去重，保留公共 `materialId` 并分配按 family/layout 分类的 dense
+handle；`MaterialInstance.revision` 驱动 record 重打包，相邻 dirty record 合并上传。staged
+revision 和 texture-slot dirtiness 只在成功 submission 后提交，失败帧重试；renderer-owned
+`cpu-shadow` buffer 在 device recovery 后重建而不替换材质或 handle identity。首个
+`builtin-pbr-storage-v1` record 由 GPU Scene 与 clustered indirect draw 共享，logical geometry
+bucket 与 material handle 在对象 record 中保持为两个独立字段。
 
 ### 1.3 RenderPipelineHost：统一的可脚本化编排
 
@@ -134,6 +142,11 @@ runtime。创建时未传 `renderPipeline` 时也由进程级 `ForwardRenderPipe
 - fullscreen 输入使用固定线性 sampler，因此 capability 明确区分 sampleable 与 `filterable-sampled`；
 - fullscreen bind-group descriptor/entry 使用高水位复用，但绑定 graph-transient view 的 native bind
   group 保持 frame lifetime，并由 submission fence 后确定性销毁；
+- compute、GPU-driven 与 fullscreen 的 prepare 只 enlist 共享 buffer/texture/resource-use
+  transaction，不重复刷新 scene
+  matrix、camera、LightManager 或内置语义块；renderer-list、shadow 和普通 mesh
+  pass 首次出现时才激活完整 scene semantics，后续相机/viewport pass 继续用 `beginContextPass()`
+  切换语义而不重启资源事务；
 - pipeline invocation 与 feature/setup/prepare/execute callback 的公开 facade 都绑定不可复用 lease
   shell；内部高水位 storage 可跨帧复用，但旧引用不会在后续 callback 重新有效。各阶段必须同步，返回 Promise-like 或在回调外使用 context/handle 会中止并回滚整帧；
 - renderer-list 的 Mesh `beforeRender` 在首个声明该 Mesh 的 list 准备 draw
@@ -182,21 +195,31 @@ Pass，而不是假定内置 feature 已经自动改写 forward shader。
 WebGPU high-end profile 现在提供公开的
 `ClusteredForwardPlusPipelineFactory`。应用注册稳定的 geometry/material/LOD
 bucket 后，runtime 在创建阶段通过 `RenderPipelineCreateContext.createStorageBuffer()`
-建立 renderer-owned object、geometry、material、light、visible、indirect、cluster 和 diagnostics
-database；帧内 dirty 数据必须通过 `RenderPipelineContext.writeStorageBuffer()` 在 graph
+建立 renderer-owned object、geometry、light、visible、indirect、cluster 和 diagnostics
+database，并通过共享 `SharedMaterialRecordDatabase` 建立去重的 PBR material
+record；帧内 dirty 数据必须通过 `RenderPipelineContext.writeStorageBuffer()` 在 graph
 import 前提交。注册的不透明普通 `Mesh` 仍使用共享 Scene 遍历和矩阵更新，但不创建 CPU renderer
 list 或 `PreparedDraw`：compute 完成 frustum/previous-Hi-Z cull、projected-radius LOD、bucket
 compact 和 indirect arguments，随后同一 Render Graph 记录 depth、current Hi-Z、3D cluster
 allocator、storage-aware GGX PBR、HDR Bloom 与 ACES
 display。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD bucket 发一个 indirect
-draw，GPU 为不可见 bucket 写零 instance count。Hi-Z 对 standard depth 取区块最远值
-`max`、对 reversed depth 取区块最远值 `min`；previous-frame occlusion 同时读取已提交的 previous
+draw，GPU 为不可见 bucket 写零 instance count；这些 bucket draw 在共享层分别合并到一个 depth render
+pass 和一个 color render pass，仍可逐 draw 切换 pipeline、bind group、vertex/index
+buffer，但不再为每个 bucket 重开 attachment。Hi-Z 对 standard depth 取区块最远值 `max`、对 reversed
+depth 取区块最远值 `min`；previous-frame occlusion 同时读取已提交的 previous
 view/projection/depth 参数，不把上一帧 VP 与当前帧投影约定混用。颜色阶段 load 深度预通过结果，物体 record 携带 model
-basis 的 inverse-transpose normal matrix，因此 non-uniform scale 不改变法线方向。普通 Forward
-PBR 与 clustered storage variant 共用 `pbr_surface.glsl` 和 `pbr_brdf.glsl`；后者只把 light
-provider 换成 cluster grid/list，不复制材质模型。GPU Scene geometry
-database 可携带 UV0/UV1 与对应 tangent stream，sampled engine `Texture` 通过 graph
-import 复用 renderer 的上传、恢复与 submission 生命周期。
+basis 的 inverse-transpose normal matrix，因此 non-uniform scale 不改变法线方向。depth
+prepass 与 color pass 通过同一段 byte-identical clip-space transform 计算
+`gl_Position`，避免相机移动时跨 shader 浮点舍入差异被 reversed-depth
+test 放大成缺面。相机的 view-projection 或 depth 参数相对已提交帧发生变化时，runtime 会暂时关闭一帧 previous-frame
+Hi-Z 遮挡判定以避免视角移动造成 disocclusion 误剔除，同时仍生成当帧 pyramid，使静止后的下一帧即可恢复遮挡剔除。静止帧从包围球最近深度和 view-space 包围立方体的八个角计算保守的屏幕投影，避免偏离画面中心时低估范围，并向上选择覆盖完整投影的 mip；投影大于最粗 pyramid
+footprint 的物体不参与 Hi-Z 遮挡剔除，避免稀疏采样把大块局部几何误判为完全遮挡。GPU
+Scene 的 frustum 阶段使用 view-space side plane 的完整法线长度计算球体半径，不以 projection
+scale 近似斜平面距离；`Mesh.frustumTest = false` 与普通 renderer
+list 一样关闭该 mesh 的视锥剔除。普通 Forward PBR 与 clustered storage variant 共用
+`pbr_surface.glsl` 和 `pbr_brdf.glsl`；后者只把 light provider 换成 cluster
+grid/list，不复制材质模型。GPU Scene geometry database 可携带 UV0/UV1 与对应 tangent stream，sampled
+engine `Texture` 通过 graph import 复用 renderer 的上传、恢复与 submission 生命周期。
 
 pipeline runtime 的 `frameSubmitted()` / `frameDiscarded()` 是 CPU-side temporal
 state 的事务边界；current/previous object/camera transform 只在 RHI
@@ -597,6 +620,15 @@ Hit/Miss、Pipeline/BindGroup/Vertex Buffer Switch、Native State Call 和 Trans
 Allocation，并分别公开 indirect draw、dispatch、精确 direct workgroup、buffer clear、compute
 pipeline/bind-group switch；indirect dispatch 不从 CPU 猜测 workgroup 数。
 
+Mesh processor 的资源事务与场景语义激活是两个有序阶段。只使用其 buffer、texture 和 resource-use
+cache 的 scriptable pass 可先走 resource-only 阶段；如果同一帧稍后出现真实 mesh
+draw，再补一次 application-frame semantics。这样既保持 submission
+commit/rollback 和 device-loss 恢复边界不变，也避免多 pass
+pipeline 为每个 bucket 重复遍历场景并打包全部灯光。Clustered
+Forward+ 进一步把同 attachment 的 fixed-bucket indirect draws 汇入高水位复用的内部 batch
+pass：Render Graph 仍声明全部 storage/vertex/index/indirect 依赖并准备独立 draw
+packet，但 depth/color 各只打开一次原生 render pass。
+
 ### 5.2 提交感知的生命周期
 
 `ResourceRegistry`
@@ -740,7 +772,7 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 | 场景与可见队列                 | [`RenderGraphFramePlan.ts`](../src/render/RenderGraphFramePlan.ts)、[`RenderList.ts`](../src/render/RenderList.ts)                                                       |
 | 帧事务                         | [`frame/`](../src/render/frame)                                                                                                                                          |
 | RenderGraph                    | [`graph/`](../src/render/graph)                                                                                                                                          |
-| Draw/Pass/资源准备             | [`renderer/`](../src/render/renderer)                                                                                                                                    |
+| Draw/Pass/材质数据库/资源准备  | [`renderer/`](../src/render/renderer)                                                                                                                                    |
 | RHI Core                       | [`rhi/core/`](../src/render/rhi/core)                                                                                                                                    |
 | RHI Factory                    | [`RHIFactory.ts`](../src/render/rhi/RHIFactory.ts)                                                                                                                       |
 | WebGPU 后端                    | [`backends/webgpu/`](../src/render/rhi/backends/webgpu)                                                                                                                  |

@@ -50,7 +50,17 @@ import ComputeShader, {
     type ShaderReadBinding
 } from '../compute/ComputeShader';
 import StorageGraphicsShader from '../compute/StorageGraphicsShader';
+import {
+    GPUDrivenRenderBatchPass,
+    type GPUDrivenRenderBatchPassParameters
+} from './passes/internal/GPUDrivenRenderBatchPass';
 import { depthClearValue } from '../renderer/DepthConvention';
+import SharedMaterialRecordDatabase from '../renderer/SharedMaterialRecordDatabase';
+import {
+    packPBRGPUMaterialRecord,
+    PBR_GPU_MATERIAL_RECORD_BYTES,
+    PBR_GPU_MATERIAL_RECORD_LAYOUT
+} from '../renderer/PBRGPUMaterialRecord';
 import type { StorageBuffer } from '../StorageBuffer';
 import type {
     RenderPipeline,
@@ -94,12 +104,14 @@ import type {
 
 const OBJECT_RECORD_BYTES = 208;
 const LIGHT_RECORD_BYTES = 64;
-const MATERIAL_RECORD_BYTES = 144;
 const BUCKET_RECORD_BYTES = 48;
 const FRAME_RECORD_BYTES = 496;
 const INDIRECT_ARGUMENT_BYTES = 20;
 const STATS_BYTES = 16;
 const HIZ_LEVEL_COUNT = 6;
+const MAX_HIZ_OCCLUSION_DIAMETER = 1 << HIZ_LEVEL_COUNT;
+const OBJECT_ACTIVE_FLAG = 1;
+const OBJECT_FRUSTUM_CULLING_FLAG = 2;
 const CULL_WORKGROUP_SIZE = 64;
 const PREFIX_WORKGROUP_SIZE = 256;
 const DEFAULT_MAX_OBJECTS = 16_384;
@@ -301,6 +313,8 @@ interface GPUSceneObjectRecord {
     seenFrame: number;
     pendingWorldVersion: number;
     committedWorldVersion: number;
+    pendingFrustumTest: boolean;
+    committedFrustumTest: boolean;
     readonly committedMatrix: Float32Array;
     readonly pendingMatrix: Float32Array;
 }
@@ -606,14 +620,15 @@ function bufferRequirementPlan(
     physicalCount: number
 ): Readonly<BufferRequirementPlan> {
     const capacity = clusterCapacityPlan(options);
+    const materialCount = new Set(options.buckets.map(bucket => bucket.material)).size;
     const storageBufferLengths = [
         FRAME_RECORD_BYTES,
         safeProduct('GPU Scene object database size', options.maxObjects, OBJECT_RECORD_BYTES),
         safeProduct('GPU Scene bucket database size', options.buckets.length, BUCKET_RECORD_BYTES),
         safeProduct(
             'GPU Scene material database size',
-            options.buckets.length,
-            MATERIAL_RECORD_BYTES
+            materialCount,
+            PBR_GPU_MATERIAL_RECORD_BYTES
         ),
         safeProduct(
             'Clustered Forward+ light database size',
@@ -920,31 +935,39 @@ fn occludedByPreviousHiZ(
     motion: f32
 ) -> bool {
     if (frame.budgets.z == 0u || motion > radius * 0.25 || radius <= 0.0) { return false; }
-    let clip = frame.previousViewProjection * vec4<f32>(previousCenter, 1.0);
-    if (clip.w <= 0.0) { return false; }
-    let ndc = clip.xy / clip.w;
     let viewCenter = frame.previousView * vec4<f32>(previousCenter, 1.0);
     let viewDepth = max(-viewCenter.z, frame.previousDepth.x);
-    let radiusPixels = projectedRadiusPixels(
-        frame.previousProjection, frame.viewport.zw, frame.previousDepth.x, viewDepth, radius
-    );
-    if (max(radiusPixels.x, radiusPixels.y) > 96.0) { return false; }
-    let diameter = max(max(radiusPixels.x, radiusPixels.y) * 2.0, 1.0);
-    let level = u32(clamp(floor(log2(diameter)) - 1.0, 0.0, ${String(HIZ_LEVEL_COUNT - 1)}.0));
+    let nearestViewDepth = max(viewDepth - radius, frame.previousDepth.x);
+    if (-viewCenter.z - radius <= frame.previousDepth.x) { return false; }
+    var minimumUv = vec2<f32>(1.0);
+    var maximumUv = vec2<f32>(0.0);
+    for (var cornerIndex = 0u; cornerIndex < 8u; cornerIndex += 1u) {
+        let signs = vec3<f32>(
+            select(-1.0, 1.0, (cornerIndex & 1u) != 0u),
+            select(-1.0, 1.0, (cornerIndex & 2u) != 0u),
+            select(-1.0, 1.0, (cornerIndex & 4u) != 0u)
+        );
+        let corner = frame.previousProjection * vec4<f32>(viewCenter.xyz + signs * radius, 1.0);
+        if (corner.w <= 0.0) { return false; }
+        let cornerNdc = corner.xy / corner.w;
+        let cornerUv = cornerNdc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+        minimumUv = min(minimumUv, cornerUv);
+        maximumUv = max(maximumUv, cornerUv);
+    }
+    minimumUv = clamp(minimumUv, vec2<f32>(0.0), vec2<f32>(0.999999));
+    maximumUv = clamp(maximumUv, vec2<f32>(0.0), vec2<f32>(0.999999));
+    let extentPixels = max((maximumUv - minimumUv) * frame.viewport.zw, vec2<f32>(1.0));
+    let diameter = max(extentPixels.x, extentPixels.y);
+    if (diameter > ${String(MAX_HIZ_OCCLUSION_DIAMETER)}.0) { return false; }
+    let level = u32(clamp(ceil(log2(diameter)) - 1.0, 0.0, ${String(HIZ_LEVEL_COUNT - 1)}.0));
     let dimensions = hiZDimensions(level);
-    let centerUv = ndc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
-    let radiusUv = radiusPixels / frame.viewport.zw;
-    let nearestDepth = depthFromDistance(
-        frame.previousDepth, max(viewDepth - radius, frame.previousDepth.x)
-    );
+    let nearestDepth = depthFromDistance(frame.previousDepth, nearestViewDepth);
     var hidden = true;
-    for (var sampleIndex = 0u; sampleIndex < 5u; sampleIndex += 1u) {
-        var offset = vec2<f32>(0.0);
-        if (sampleIndex == 1u) { offset = vec2<f32>(-radiusUv.x, -radiusUv.y); }
-        if (sampleIndex == 2u) { offset = vec2<f32>( radiusUv.x, -radiusUv.y); }
-        if (sampleIndex == 3u) { offset = vec2<f32>(-radiusUv.x,  radiusUv.y); }
-        if (sampleIndex == 4u) { offset = vec2<f32>( radiusUv.x,  radiusUv.y); }
-        let uv = clamp(centerUv + offset, vec2<f32>(0.0), vec2<f32>(0.999999));
+    for (var sampleIndex = 0u; sampleIndex < 4u; sampleIndex += 1u) {
+        let uv = vec2<f32>(
+            select(minimumUv.x, maximumUv.x, (sampleIndex & 1u) != 0u),
+            select(minimumUv.y, maximumUv.y, (sampleIndex & 2u) != 0u)
+        );
         let pixel = vec2<i32>(uv * vec2<f32>(dimensions));
         let depth = hiZLoad(level, pixel);
         let sampleHidden = select(
@@ -982,7 +1005,8 @@ ${textureSample}
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= frameData.counts.x || id.x >= frameData.budgets.x) { return; }
     let object = objects[id.x];
-    if (object.metadata.z == 0u || (object.metadata.y & frameData.budgets.w) == 0u) { return; }
+    let objectFlags = object.metadata.z;
+    if ((objectFlags & ${String(OBJECT_ACTIVE_FLAG)}u) == 0u || (object.metadata.y & frameData.budgets.w) == 0u) { return; }
     let model = objectModel(object);
     let previousModel = objectPreviousModel(object);
     let localCenter = vec4<f32>(object.bounds.xyz, 1.0);
@@ -990,15 +1014,17 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let previousCenter = (previousModel * localCenter).xyz;
     let radius = object.bounds.w * maximumScale(model);
     let previousRadius = object.bounds.w * maximumScale(previousModel);
-    let clip = frameData.currentViewProjection * vec4<f32>(center, 1.0);
-    if (clip.w <= 0.0) { return; }
-    let radiusClip = vec2<f32>(
-        abs(frameData.projection[0][0]), abs(frameData.projection[1][1])
-    ) * radius;
-    if (abs(clip.x) > clip.w + radiusClip.x || abs(clip.y) > clip.w + radiusClip.y) { return; }
     let viewCenter = frameData.view * vec4<f32>(center, 1.0);
     let viewDepth = -viewCenter.z;
-    if (viewDepth + radius < frameData.depth.x || viewDepth - radius > frameData.depth.y) { return; }
+    if ((objectFlags & ${String(OBJECT_FRUSTUM_CULLING_FLAG)}u) != 0u) {
+        let projectionScale = vec2<f32>(
+            abs(frameData.projection[0][0]), abs(frameData.projection[1][1])
+        );
+        let sidePlaneDistance = abs(viewCenter.xy) * projectionScale - vec2<f32>(viewDepth);
+        let sidePlaneRadius = sqrt(projectionScale * projectionScale + vec2<f32>(1.0)) * radius;
+        if (any(sidePlaneDistance > sidePlaneRadius)) { return; }
+        if (viewDepth + radius < frameData.depth.x || viewDepth - radius > frameData.depth.y) { return; }
+    }
     let motion = distance(center, previousCenter) + abs(radius - previousRadius);
     if (occludedByPreviousHiZ(frameData, previousCenter, previousRadius, motion)) {
         _ = atomicAdd(&cullStats[1], 1u);
@@ -1566,6 +1592,21 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     })
 );
 
+// The depth prepass and color pass must use a byte-identical clip-space expression. Splitting the
+// multiplication at worldPosition changes floating-point rounding and makes the later depth test
+// reject fragments as camera matrices move, producing holes even though both passes draw the same
+// geometry.
+const GPU_SCENE_POSITION_TRANSFORM_SOURCE = `
+mat4 readObjectMatrix(uint base) {
+    return mat4(objects.values[base], objects.values[base + 1u], objects.values[base + 2u], objects.values[base + 3u]);
+}
+mat4 readFrameMatrix(uint base) {
+    return mat4(frameData.values[base], frameData.values[base + 1u], frameData.values[base + 2u], frameData.values[base + 3u]);
+}
+vec4 gpuSceneClipPosition(uint objectBase, vec3 position) {
+    return readFrameMatrix(0u) * readObjectMatrix(objectBase) * vec4(position, 1.0);
+}`;
+
 const GPU_SCENE_DEPTH_SHADER = new StorageGraphicsShader({
     label: 'GPU Scene indirect depth prepass',
     vertexSource: `#version 310 es
@@ -1576,16 +1617,11 @@ layout(std430) readonly buffer FrameDataBlock { vec4 values[]; } frameData;
 layout(std430) readonly buffer ObjectBlock { vec4 values[]; } objects;
 layout(std430) readonly buffer VisibleBlock { uint values[]; } visibleIndices;
 layout(location=0) in vec3 a_position;
-mat4 readMatrix(uint base) {
-    return mat4(objects.values[base], objects.values[base + 1u], objects.values[base + 2u], objects.values[base + 3u]);
-}
-mat4 frameMatrix(uint base) {
-    return mat4(frameData.values[base], frameData.values[base + 1u], frameData.values[base + 2u], frameData.values[base + 3u]);
-}
+${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
 void main() {
     uint objectIndex = visibleIndices.values[uint(gl_InstanceIndex)];
-    mat4 model = readMatrix(objectIndex * 13u);
-    gl_Position = frameMatrix(0u) * model * vec4(a_position, 1.0);
+    uint objectBase = objectIndex * 13u;
+    gl_Position = gpuSceneClipPosition(objectBase, a_position);
 }`,
     fragmentSource: `#version 310 es
 precision highp float;
@@ -1700,14 +1736,9 @@ ${vertexUVDeclarations}
 out vec3 v_viewPosition;
 out vec3 v_viewNormal;
 flat out uint v_materialIndex;
-mat4 readObjectMatrix(uint base) {
-    return mat4(objects.values[base], objects.values[base + 1u], objects.values[base + 2u], objects.values[base + 3u]);
-}
+${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
 mat3 readObjectNormalMatrix(uint base) {
     return mat3(objects.values[base + 8u].xyz, objects.values[base + 9u].xyz, objects.values[base + 10u].xyz);
-}
-mat4 readFrameMatrix(uint base) {
-    return mat4(frameData.values[base], frameData.values[base + 1u], frameData.values[base + 2u], frameData.values[base + 3u]);
 }
 mat3 readMaterialMatrix(uint base) {
     return mat3(materials.values[base].xyz, materials.values[base + 1u].xyz, materials.values[base + 2u].xyz);
@@ -1722,10 +1753,10 @@ void main() {
     vec3 viewNormal = normalize(viewNormalMatrix * a_normal);
     v_viewPosition = (view * worldPosition).xyz;
     v_viewNormal = viewNormal;
-    v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].x);
+    v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
     uint materialBase = v_materialIndex * 9u;
     ${vertexUVWrites}
-    gl_Position = readFrameMatrix(0u) * worldPosition;
+    gl_Position = gpuSceneClipPosition(objectBase, a_position);
 }`,
         fragmentSource: `#version 310 es
 precision highp float;
@@ -2127,6 +2158,25 @@ class MutableGPUDrivenParameters implements GPUDrivenRenderPassParameters {
     }
 }
 
+class MutableGPUDrivenBatchParameters implements GPUDrivenRenderBatchPassParameters {
+    readonly passes: GPUDrivenRenderPass[] = [];
+    readonly parameters: GPUDrivenRenderPassParameters[] = [];
+    readonly colorAttachments: RenderPipelineColorAttachment[] = [];
+    depthStencilAttachment?: RenderPipelineDepthStencilAttachment;
+
+    add(pass: GPUDrivenRenderPass, parameters: GPUDrivenRenderPassParameters): void {
+        this.passes.push(pass);
+        this.parameters.push(parameters);
+    }
+
+    reset(): void {
+        this.passes.length = 0;
+        this.parameters.length = 0;
+        this.colorAttachments.length = 0;
+        delete this.depthStencilAttachment;
+    }
+}
+
 class MutableFullscreenParameters implements FullscreenRenderPassParameters {
     readonly inputTextures: RenderGraphTextureAccessHandle[] = [];
     readonly colorAttachments: RenderPipelineColorAttachment[] = [
@@ -2346,24 +2396,15 @@ function arraysDiffer(first: Float32Array, second: Float32Array): boolean {
     return false;
 }
 
-function colorComponents(value: Readonly<{ r: number; g: number; b: number }>): readonly number[] {
-    return [value.r, value.g, value.b];
-}
-
-function materialEmission(material: PBRMaterial): readonly number[] {
-    const emission = material.emissionFactor;
-    return colorComponents(emission);
-}
-
-function packMaterialUVMatrix(matrix: Matrix3 | null, target: Float32Array, offset: number): void {
-    const elements = matrix?.elements;
-    for (let column = 0; column < 3; column += 1) {
-        for (let row = 0; row < 3; row += 1) {
-            const index = column * 3 + row;
-            target[offset + column * 4 + row] = elements?.[index] ?? (column === row ? 1 : 0);
-        }
-        target[offset + column * 4 + 3] = 0;
+function arrayRangeDiffers(
+    committed: Float32Array,
+    current: Float32Array,
+    currentOffset: number
+): boolean {
+    for (let index = 0; index < committed.length; index += 1) {
+        if (committed[index] !== current[currentOffset + index]) return true;
     }
+    return false;
 }
 
 /**
@@ -2377,7 +2418,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #frameData: StorageBuffer;
     readonly #objects: StorageBuffer;
     readonly #bucketData: StorageBuffer;
-    readonly #materials: StorageBuffer;
+    readonly #materialDatabase: SharedMaterialRecordDatabase<PBRMaterial>;
     readonly #lights: StorageBuffer;
     readonly #visibleIndices: StorageBuffer;
     readonly #indirectArguments: StorageBuffer;
@@ -2404,8 +2445,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #frameFloats = new Float32Array(this.#frameBytes);
     readonly #frameUInts = new Uint32Array(this.#frameBytes);
     readonly #lightFloats: Float32Array;
-    readonly #materialFloats: Float32Array;
-    readonly #materialScratch: Float32Array;
     readonly #samplerByTexture = new WeakMap<
         Texture<unknown>,
         Readonly<{ key: string; sampler: ComputeSampler }>
@@ -2453,8 +2492,20 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #depthDrawPool = new RenderPassParameterPool(
         () => new MutableGPUDrivenParameters(3, 1)
     );
+    readonly #depthBatchPool = new RenderPassParameterPool(
+        () => new MutableGPUDrivenBatchParameters(),
+        parameters => {
+            parameters.reset();
+        }
+    );
     readonly #colorDrawPool = new RenderPassParameterPool(
         () => new MutableGPUDrivenParameters(7, 2)
+    );
+    readonly #colorBatchPool = new RenderPassParameterPool(
+        () => new MutableGPUDrivenBatchParameters(),
+        parameters => {
+            parameters.reset();
+        }
     );
     readonly #fullscreenPool = new RenderPassParameterPool(() => new MutableFullscreenParameters());
     readonly #fallbackPool = new RenderPassParameterPool(
@@ -2470,6 +2521,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
     );
     readonly #displayPass: FullscreenRenderPass;
+    readonly #depthBatchPass = new GPUDrivenRenderBatchPass('GPU Scene depth buckets');
+    readonly #colorBatchPass = new GPUDrivenRenderBatchPass('Clustered PBR buckets');
     readonly #fallbackPass = new SceneRenderPass('Clustered Forward+ compatibility fallback');
     readonly #fallbackCopyPass = new TextureCopyPass(
         'Clustered Forward+ compatibility opaque copy'
@@ -2549,17 +2602,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             initialData: bucketBytes,
             recovery: 'cpu-shadow'
         });
-        this.#materialFloats = new Float32Array(
-            (options.buckets.length * MATERIAL_RECORD_BYTES) / 4
-        );
-        this.#materialScratch = new Float32Array(this.#materialFloats.length);
-        this.packMaterials(this.#materialFloats);
-        this.#materials = create({
+        this.#materialDatabase = new SharedMaterialRecordDatabase(context, {
             label: 'GPU Scene PBR material database',
-            byteLength: this.#materialFloats.byteLength,
-            usage: ['storage', 'copy-destination'],
-            initialData: this.#materialFloats,
-            recovery: 'cpu-shadow'
+            family: 'pbr',
+            layout: PBR_GPU_MATERIAL_RECORD_LAYOUT,
+            recordByteLength: PBR_GPU_MATERIAL_RECORD_BYTES,
+            materials: options.buckets.map(bucket => bucket.material),
+            packRecord: packPBRGPUMaterialRecord
         });
         this.#lightFloats = new Float32Array(options.maxLights * 16);
         this.#lights = create({
@@ -2709,7 +2758,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             fallbackCulling = context.cull();
             context.recordShadows(fallbackCulling);
         }
-        this.syncMaterialDatabase(context);
+        this.#materialDatabase.stage(context);
         this.syncGeometryDatabases(context);
         const frame = this.packFrame(context);
         context.writeStorageBuffer(this.#frameData, 0, new Uint8Array(this.#frameBytes));
@@ -2747,7 +2796,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const frameBuffer = context.graph.importStorageBuffer(this.#frameData);
         const objects = context.graph.importStorageBuffer(this.#objects);
         const bucketData = context.graph.importStorageBuffer(this.#bucketData);
-        const materials = context.graph.importStorageBuffer(this.#materials);
+        const materials = context.graph.importStorageBuffer(this.#materialDatabase.buffer);
         const lights = context.graph.importStorageBuffer(this.#lights);
         const visible = context.graph.importStorageBuffer(this.#visibleIndices);
         const indirect = context.graph.importStorageBuffer(this.#indirectArguments);
@@ -2840,11 +2889,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
 
     frameSubmitted(frameIndex: number): void {
         if (frameIndex !== this.#lastRecordedFrame) return;
+        this.#materialDatabase.frameSubmitted(frameIndex);
         for (const record of this.#objectByMesh.values()) {
             if (record.pendingWorldVersion < 0) continue;
             const moved = arraysDiffer(record.committedMatrix, record.pendingMatrix);
             record.committedMatrix.set(record.pendingMatrix);
             record.committedWorldVersion = record.pendingWorldVersion;
+            record.committedFrustumTest = record.pendingFrustumTest;
             record.pendingWorldVersion = -1;
             // One following upload makes previous == current after motion stops.
             if (moved) record.committedWorldVersion = -1;
@@ -2860,6 +2911,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
 
     frameDiscarded(frameIndex: number): void {
         if (frameIndex !== this.#lastRecordedFrame) return;
+        this.#materialDatabase.frameDiscarded(frameIndex);
         for (const record of this.#objectByMesh.values()) record.pendingWorldVersion = -1;
         this.#pendingCamera = null;
     }
@@ -2899,7 +2951,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             this.#frameData,
             this.#objects,
             this.#bucketData,
-            this.#materials,
             this.#lights,
             this.#visibleIndices,
             this.#indirectArguments,
@@ -2920,6 +2971,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             }
         }
         const failures: unknown[] = [];
+        try {
+            this.#materialDatabase.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
         for (const buffer of buffers) {
             try {
                 buffer.destroy();
@@ -3197,6 +3253,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                                 seenFrame: this.#frameSerial,
                                 pendingWorldVersion: -1,
                                 committedWorldVersion: -1,
+                                pendingFrustumTest: node.frustumTest,
+                                committedFrustumTest: node.frustumTest,
                                 committedMatrix: initial.slice(),
                                 pendingMatrix: initial
                             };
@@ -3212,7 +3270,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                         record.seenFrame = this.#frameSerial;
                         const dirty =
                             record.logicalBucket !== logicalIndex ||
-                            record.committedWorldVersion !== node.worldMatrixVersion;
+                            record.committedWorldVersion !== node.worldMatrixVersion ||
+                            record.committedFrustumTest !== node.frustumTest;
                         record.logicalBucket = logicalIndex;
                         if (dirty) {
                             this.packObject(record, node, logicalIndex);
@@ -3331,10 +3390,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#objectFloats[floatOffset + 47] = sphere.radius;
         this.#objectUInts[floatOffset + 48] = logicalIndex;
         this.#objectUInts[floatOffset + 49] = mesh.layer >>> 0;
-        this.#objectUInts[floatOffset + 50] = 1;
-        this.#objectUInts[floatOffset + 51] = 0;
+        this.#objectUInts[floatOffset + 50] =
+            OBJECT_ACTIVE_FLAG | (mesh.frustumTest ? OBJECT_FRUSTUM_CULLING_FLAG : 0);
+        this.#objectUInts[floatOffset + 51] = this.#materialDatabase.getHandle(
+            bucket.material
+        ).recordIndex;
         matrixElements(mesh.worldMatrix, record.pendingMatrix, 0);
         record.pendingWorldVersion = mesh.worldMatrixVersion;
+        record.pendingFrustumTest = mesh.frustumTest;
     }
 
     private packLight(
@@ -3386,44 +3449,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#lightFloats[base + 14] = light.quadraticAttenuation;
         this.#lightFloats[base + 15] = inner;
         this.#lightCount++;
-    }
-
-    private packMaterials(target: Float32Array): void {
-        for (let index = 0; index < this.#options.buckets.length; index += 1) {
-            const material = this.#options.buckets[index]?.material;
-            if (material === undefined) continue;
-            const base = index * 36;
-            target[base] = material.baseColor.r;
-            target[base + 1] = material.baseColor.g;
-            target[base + 2] = material.baseColor.b;
-            target[base + 3] = material.metallic;
-            const emission = materialEmission(material);
-            target[base + 4] = emission[0] ?? 0;
-            target[base + 5] = emission[1] ?? 0;
-            target[base + 6] = emission[2] ?? 0;
-            target[base + 7] = material.roughness;
-            target[base + 8] = material.ior;
-            target[base + 9] = material.occlusionStrength;
-            target[base + 10] = material.normalScale;
-            target[base + 11] = 0;
-            packMaterialUVMatrix(
-                material.getTextureSlot('baseColor')?.transform ?? null,
-                target,
-                base + 12
-            );
-            packMaterialUVMatrix(
-                material.getTextureSlot('normal')?.transform ?? null,
-                target,
-                base + 24
-            );
-        }
-    }
-
-    private syncMaterialDatabase(context: RenderPipelineContext): void {
-        this.packMaterials(this.#materialScratch);
-        if (!arraysDiffer(this.#materialFloats, this.#materialScratch)) return;
-        this.#materialFloats.set(this.#materialScratch);
-        context.writeStorageBuffer(this.#materials, 0, this.#materialFloats);
     }
 
     private syncGeometryDatabases(context: RenderPipelineContext): void {
@@ -3547,6 +3572,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameFloats[101] = far;
         this.#frameFloats[102] = Math.log(far / near);
         this.#frameFloats[103] = camera.depthMode === 'reversed' ? 1 : 0;
+        const cameraOcclusionStable =
+            cameraHistoryValid &&
+            !arrayRangeDiffers(this.#committedCameraMatrix, this.#frameFloats, 0) &&
+            !arrayRangeDiffers(this.#committedDepth, this.#frameFloats, 100);
         const previousDepth = cameraHistoryValid ? this.#committedDepth : this.#frameFloats;
         const previousDepthOffset = cameraHistoryValid ? 0 : 100;
         for (let index = 0; index < 4; index += 1) {
@@ -3563,7 +3592,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameUInts[115] = this.#lightCount;
         this.#frameUInts[116] = this.#visibleBucketCapacity;
         this.#frameUInts[117] = this.#options.maxLightsPerCluster;
-        this.#frameUInts[118] = cameraHistoryValid && this.#options.hiZ ? 1 : 0;
+        this.#frameUInts[118] = cameraOcclusionStable && this.#options.hiZ ? 1 : 0;
         this.#frameUInts[119] = camera.visibility >>> 0;
         this.#frameFloats[120] = Math.min(this.#frameFloats[120] ?? 0, 4);
         this.#frameFloats[121] = Math.min(this.#frameFloats[121] ?? 0, 4);
@@ -3633,6 +3662,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneDepth: RenderGraphTextureHandle;
         }>
     ): void {
+        const batch = context.acquirePassParameters(this.#depthBatchPool);
+        const depthAttachment: RenderPipelineDepthStencilAttachment = {
+            texture: resources.sceneDepth,
+            depthLoadOp: 'clear',
+            depthStoreOp: 'store',
+            depthClearValue: depthClearValue(context.camera.depthMode)
+        };
+        batch.depthStencilAttachment = depthAttachment;
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
             if (bucket === undefined) continue;
@@ -3650,14 +3687,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
             parameters.colorAttachments.length = 0;
-            parameters.depthStencilAttachment = {
-                texture: resources.sceneDepth,
-                depthLoadOp: index === 0 ? 'clear' : 'load',
-                depthStoreOp: 'store',
-                depthClearValue: depthClearValue(context.camera.depthMode)
-            };
-            context.graph.addPass(bucket.depthPass, parameters);
+            parameters.depthStencilAttachment = depthAttachment;
+            batch.add(bucket.depthPass, parameters);
         }
+        context.graph.addPass(this.#depthBatchPass, batch);
     }
 
     private recordCurrentHiZ(
@@ -3773,6 +3806,21 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneDepth: RenderGraphTextureHandle;
         }>
     ): void {
+        const batch = context.acquirePassParameters(this.#colorBatchPool);
+        const colorAttachment: RenderPipelineColorAttachment = {
+            texture: resources.sceneColor,
+            loadOp: 'clear',
+            storeOp: 'store',
+            clearValue: { r: 0.004, g: 0.008, b: 0.022, a: 1 }
+        };
+        const depthAttachment: RenderPipelineDepthStencilAttachment = {
+            texture: resources.sceneDepth,
+            depthLoadOp: 'load',
+            depthStoreOp: 'store',
+            depthClearValue: depthClearValue(context.camera.depthMode)
+        };
+        batch.colorAttachments[0] = colorAttachment;
+        batch.depthStencilAttachment = depthAttachment;
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
             if (bucket === undefined) continue;
@@ -3829,20 +3877,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
             parameters.colorAttachments.length = 1;
-            parameters.colorAttachments[0] = {
-                texture: resources.sceneColor,
-                loadOp: index === 0 ? 'clear' : 'load',
-                storeOp: 'store',
-                clearValue: { r: 0.004, g: 0.008, b: 0.022, a: 1 }
-            };
-            parameters.depthStencilAttachment = {
-                texture: resources.sceneDepth,
-                depthLoadOp: 'load',
-                depthStoreOp: 'store',
-                depthClearValue: depthClearValue(context.camera.depthMode)
-            };
-            context.graph.addPass(bucket.colorPass, parameters);
+            parameters.colorAttachments[0] = colorAttachment;
+            parameters.depthStencilAttachment = depthAttachment;
+            batch.add(bucket.colorPass, parameters);
         }
+        context.graph.addPass(this.#colorBatchPass, batch);
     }
 
     private samplerFor(texture: Texture<unknown>): ComputeSampler {

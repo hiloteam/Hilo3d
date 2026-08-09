@@ -31,6 +31,32 @@
   Shadow rendering now requests the original material's shadow role, glTF constructs layered PBR
   topology and all texture transforms before instantiation, and display conversion remains solely in
   post-processing/output.
+- Add the renderer-local shared GPU Material Database. Deduplicate material identities into stable
+  family/layout handles, coalesce revision-driven dirty record uploads, commit texture slot state
+  only after valid submission, retry discarded frames, and retain recovery through the
+  renderer-owned CPU shadow. Migrate Clustered Forward+ from its private per-bucket PBR table so GPU
+  Scene objects keep independent geometry-bucket and shared-material indices.
+- Add a repository-bundled Khronos Sponza Clustered Forward+ lighting lab with 202 animated local
+  lights, including 10 slow chromatic runners that curve through a wall-height central volume, GPU
+  Scene diagnostics, HDR bloom, a multi-region OrbitControls camera tour, responsive controls, and
+  an offline-friendly asset path with native WebGPU release coverage.
+- Avoid repeated scene traversal, camera refresh, LightManager packing, and built-in semantic-block
+  activation while preparing resource-only compute, GPU-driven, and fullscreen passes. Their shared
+  buffer/texture/resource-use transaction remains submission-aware; scene passes activate semantics
+  only when an actual renderer list or mesh draw needs them. Clustered Forward+ now also batches all
+  fixed-bucket depth draws and all color draws into one native render pass each while retaining
+  independent indirect arguments, pipelines, bindings, and graph-declared dependencies.
+- Make previous-frame Hi-Z occlusion conservative for moving and stationary cameras. Disable it for
+  the first frame after a view-projection or depth change, project bounds from the sphere's nearest
+  depth and all eight corners of its view-space bounding cube, select a mip covering the full
+  projected extent, and skip objects larger than the coarsest pyramid footprint. The current pyramid
+  is still retained so culling resumes immediately on the next stable frame without temporal
+  disocclusion holes, off-axis under-bounds, or large-geometry false positives. GPU Scene frustum
+  culling now tests the exact view-space side-plane radius instead of underestimating large spheres
+  near a screen edge, and honors each mesh's `frustumTest` opt-out.
+- Keep GPU Scene depth-prepass and color-pass clip-space transforms byte-identical so reversed-depth
+  testing remains stable while the camera moves instead of exposing stippled, checkerboard, or large
+  missing regions from cross-program floating-point rounding.
 - Keep default Forward lighting, clear colors, transparent blending, and intermediate effects in
   linear space, then apply one exact linear-to-sRGB transfer at the browser surface. Multi-camera
   load/blend stays in a renderer-owned linear composition target, while already transformed Color

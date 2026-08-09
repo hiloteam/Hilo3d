@@ -290,6 +290,7 @@ class SharedRendererDriver
     #initialized = false;
     #destroyed = false;
     #meshFrameStarted = false;
+    #meshSemanticFrameStarted = false;
     #fullscreenFrameStarted = false;
     #surfaceRequested = false;
     #surfaceDepthMode: Camera['depthMode'] | null = null;
@@ -518,6 +519,7 @@ class SharedRendererDriver
         // frame so multiple camera or scriptable-pipeline passes accumulate into one snapshot.
         this.renderInfo.reset();
         this.#meshFrameStarted = false;
+        this.#meshSemanticFrameStarted = false;
         this.#fullscreenFrameStarted = false;
         this.#surfaceRequested = false;
         this.#surfaceDepthMode = null;
@@ -629,6 +631,7 @@ class SharedRendererDriver
         }
         this.#usedTargets.length = 0;
         this.#meshFrameStarted = false;
+        this.#meshSemanticFrameStarted = false;
         this.#fullscreenFrameStarted = false;
         this.#surfaceRequested = false;
         this.#shadowBindingAttachedThisFrame = false;
@@ -805,6 +808,15 @@ class SharedRendererDriver
         frameIndex: number
     ): RenderGraphFrameContext {
         return this.createContext(camera, viewport, frameIndex);
+    }
+
+    beginScriptableResourcePass(context: RenderGraphFrameContext): void {
+        if (this.#meshFrameStarted) return;
+        this.requireResources().processor.beginResourceFrame(
+            context,
+            this.#pipelineHost.requireActiveScope().uploads
+        );
+        this.#meshFrameStarted = true;
     }
 
     beginScriptableMeshPass(context: RenderGraphFrameContext): void {
@@ -1852,12 +1864,21 @@ class SharedRendererDriver
 
     private ensureMeshFrame(context: RenderGraphFrameContext): void {
         const resources = this.requireResources();
-        if (this.#meshFrameStarted) {
-            resources.processor.beginContextPass(context);
+        if (!this.#meshFrameStarted) {
+            resources.processor.beginFrame(
+                context,
+                this.#pipelineHost.requireActiveScope().uploads
+            );
+            this.#meshFrameStarted = true;
+            this.#meshSemanticFrameStarted = true;
             return;
         }
-        resources.processor.beginFrame(context, this.#pipelineHost.requireActiveScope().uploads);
-        this.#meshFrameStarted = true;
+        if (!this.#meshSemanticFrameStarted) {
+            resources.processor.beginSemanticFrame(context);
+            this.#meshSemanticFrameStarted = true;
+        } else {
+            resources.processor.beginContextPass(context);
+        }
     }
 
     private recordSceneBuild(

@@ -40,6 +40,10 @@ const dedicatedReleaseTestSource = readFileSync(
     fileURLToPath(new URL('./runtime-parity.spec.ts', import.meta.url)),
     'utf8'
 );
+const nativeReleaseTestSource = readFileSync(
+    fileURLToPath(new URL('./native-webgpu.spec.ts', import.meta.url)),
+    'utf8'
+);
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -59,11 +63,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(75);
+        expect(examplePaths).toHaveLength(76);
     });
 
-    it('expands 75 pages into the complete 144-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(144);
+    it('expands 76 pages into the complete 145-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(145);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -72,6 +76,7 @@ describe('example release matrix contract', () => {
                 path === 'webxr.html'
                     ? ['webgl2']
                     : path === 'bloom.html' ||
+                        path === 'clustered_forward_plus_sponza.html' ||
                         path === 'compute_gpu_driven.html' ||
                         path === 'compute_eclipse_shrine.html' ||
                         path === 'compute_particles.html' ||
@@ -88,7 +93,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(73);
+        expect(catalog).toHaveLength(74);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -98,11 +103,16 @@ describe('example release matrix contract', () => {
         );
         expect(catalog[0]?.id).toBe('quickStart');
         expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(68);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(72);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(73);
         expect(catalog.filter(entry => entry.featured).length).toBeGreaterThan(12);
         expect(catalog.filter(entry => entry.featured).length).toBeLessThan(catalog.length);
         expect(
             examplesForBackend(catalog, 'webgpu').some(entry => entry.path === 'webxr.html')
+        ).toBe(false);
+        expect(
+            examplesForBackend(catalog, 'webgl2').some(
+                entry => entry.path === 'clustered_forward_plus_sponza.html'
+            )
         ).toBe(false);
         expect(
             examplesForBackend(catalog, 'webgl2').some(
@@ -199,13 +209,18 @@ describe('example release matrix contract', () => {
         expect(WEBGL2_ONLY_EXAMPLE_PATHS).toEqual(['webxr.html']);
         expect(WEBGPU_ONLY_EXAMPLE_PATHS).toEqual([
             'bloom.html',
+            'clustered_forward_plus_sponza.html',
             'compute_gpu_driven.html',
             'compute_eclipse_shrine.html',
             'compute_particles.html',
             'compute_raytracing.html'
         ]);
         expect(NON_RENDERING_EXAMPLE_PATHS).toEqual([]);
-        expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual(['shaderToy.html']);
+        expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
+            'clustered_forward_plus_sponza.html',
+            'shaderToy.html'
+        ]);
+        expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_sponza.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('shaderToy.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('quickStart.html')).toBe(false);
         const genericCases = exampleCases.filter(
@@ -220,6 +235,9 @@ describe('example release matrix contract', () => {
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());
         expect(genericReleaseTestSource).toContain(
             'if (exampleUsesDedicatedReleaseTest(examplePath)) continue;'
+        );
+        expect(nativeReleaseTestSource).toContain(
+            'Sponza Forward+ exposes stable camera and lighting controls @webgpu'
         );
         expect(dedicatedReleaseTestSource).toContain(
             "for (const backend of ['webgl2', 'webgpu'] as const)"

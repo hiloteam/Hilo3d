@@ -82,6 +82,10 @@ import {
     type GPUDrivenRenderPassParameters
 } from '../pipeline/passes/GPUDrivenRenderPass';
 import {
+    GPUDrivenRenderBatchPass,
+    type GPUDrivenRenderBatchPassParameters
+} from '../pipeline/passes/internal/GPUDrivenRenderBatchPass';
+import {
     SCENE_STORAGE_BIND_GROUP,
     SceneRenderPass,
     type SceneRenderPassParameters,
@@ -461,6 +465,7 @@ export interface ScriptableRenderPipelineServices {
         viewport: Readonly<RHIViewport>,
         frameIndex: number
     ): RenderGraphFrameContext;
+    beginScriptableResourcePass(context: RenderGraphFrameContext): void;
     beginScriptableMeshPass(context: RenderGraphFrameContext): void;
     beginScriptableFullscreenPass(context: RenderGraphFrameContext): void;
     prepareScriptableCullingScene(scene: RendererScene, camera: Camera): void;
@@ -2001,7 +2006,8 @@ class ScriptablePassSlot {
     #activeFullscreenDraw = false;
     #computeDispatch: ScriptableComputeDispatch | null = null;
     #activeComputeDispatch = false;
-    #gpuDrivenDraw: ScriptableGPUDrivenDraw | null = null;
+    readonly #gpuDrivenDraws: ScriptableGPUDrivenDraw[] = [];
+    #gpuDrivenDrawCount = 0;
     #activeGPUDrivenDraw = false;
     #sceneStorageVariant: Readonly<SceneStorageShaderVariant> | null = null;
     #sceneStorageBindingCount = 0;
@@ -2049,9 +2055,12 @@ class ScriptablePassSlot {
         );
     };
     readonly #prepareGPUDrivenDraw = (context: RGPrepareContext): void => {
-        const draw = this.#gpuDrivenDraw;
-        if (!this.#activeGPUDrivenDraw || draw === null) return;
-        draw.prepare(context);
+        if (!this.#activeGPUDrivenDraw) return;
+        for (let index = 0; index < this.#gpuDrivenDrawCount; index += 1) {
+            const draw = this.#gpuDrivenDraws[index];
+            if (draw === undefined) throw new Error('GPU-driven batch draw is unavailable');
+            draw.prepare(context);
+        }
     };
     readonly #prepareSceneStorage = (context: RGPrepareContext): void => {
         if (!this.#activeSceneStorage) return;
@@ -2098,6 +2107,7 @@ class ScriptablePassSlot {
         this.#hasTargetShape = false;
         this.#activeFullscreenDraw = false;
         this.#activeComputeDispatch = false;
+        this.#gpuDrivenDrawCount = 0;
         this.#activeGPUDrivenDraw = false;
         this.#activeSceneStorage = false;
         this.#activeSceneTexture = false;
@@ -2140,7 +2150,7 @@ class ScriptablePassSlot {
                     this.#computeDispatch?.releaseFrameReferences();
                 } finally {
                     try {
-                        this.#gpuDrivenDraw?.releaseFrameReferences();
+                        this.releaseGPUDrivenFrameReferences();
                     } finally {
                         try {
                             this.cleanupSceneStorage(resources);
@@ -2185,6 +2195,7 @@ class ScriptablePassSlot {
             this.partialStorageBufferWrites.clear();
             this.#activeFullscreenDraw = false;
             this.#activeComputeDispatch = false;
+            this.#gpuDrivenDrawCount = 0;
             this.#activeGPUDrivenDraw = false;
             this.#activeSceneStorage = false;
             this.#activeSceneTexture = false;
@@ -2270,15 +2281,32 @@ class ScriptablePassSlot {
                 throw new Error('GPUDrivenRenderPass cannot declare renderer lists');
             }
             this.#gpuDrivenServices.configure(owner);
-            this.#gpuDrivenDraw = owner.configureGPUDrivenDraw(
-                this.#gpuDrivenDraw,
+            this.addGPUDrivenDraw(
+                owner,
                 pass,
-                this.requireParameters() as GPUDrivenRenderPassParameters,
-                this.targetDescriptor,
-                this.#gpuDrivenServices
+                this.requireParameters() as GPUDrivenRenderPassParameters
             );
             this.#activeGPUDrivenDraw = true;
-            this.draw.addDraw(this.#gpuDrivenDraw.draw);
+            this.draw.setPrepare(this.#prepareGPUDrivenDraw);
+        }
+        if (pass instanceof GPUDrivenRenderBatchPass) {
+            if (!this.#hasRasterAttachments) {
+                throw new Error('GPUDrivenRenderBatchPass requires raster attachments');
+            }
+            if (this.rendererListHandles.size !== 0) {
+                throw new Error('GPUDrivenRenderBatchPass cannot declare renderer lists');
+            }
+            const parameters = this.requireParameters() as GPUDrivenRenderBatchPassParameters;
+            this.#gpuDrivenServices.configure(owner);
+            for (let index = 0; index < parameters.passes.length; index += 1) {
+                const drawPass = parameters.passes[index];
+                const drawParameters = parameters.parameters[index];
+                if (drawPass === undefined || drawParameters === undefined) {
+                    throw new Error('GPU-driven batch configuration is incomplete');
+                }
+                this.addGPUDrivenDraw(owner, drawPass, drawParameters);
+            }
+            this.#activeGPUDrivenDraw = true;
             this.draw.setPrepare(this.#prepareGPUDrivenDraw);
         }
         if (pass instanceof SceneRenderPass) {
@@ -2353,6 +2381,72 @@ class ScriptablePassSlot {
         this.executionScissor.height = Math.max(1, Math.floor(this.executionViewport.height));
         this.draw.setViewport(this.executionViewport);
         this.draw.setScissor(this.executionScissor);
+    }
+
+    private addGPUDrivenDraw(
+        owner: ScriptableRenderPipelineContextImpl,
+        pass: GPUDrivenRenderPass,
+        parameters: GPUDrivenRenderPassParameters
+    ): void {
+        const retained =
+            this.#gpuDrivenDraws[this.#gpuDrivenDrawCount] ?? new ScriptableGPUDrivenDraw();
+        this.#gpuDrivenDraws[this.#gpuDrivenDrawCount++] = retained;
+        const draw = owner.configureGPUDrivenDraw(
+            retained,
+            pass,
+            parameters,
+            this.targetDescriptor,
+            this.#gpuDrivenServices
+        );
+        this.#gpuDrivenDraws[this.#gpuDrivenDrawCount - 1] = draw;
+        this.draw.addDraw(draw.draw);
+    }
+
+    private cleanupGPUDrivenDraws(): void {
+        const resources = this.requireOwner().resources;
+        let failure: unknown = null;
+        for (let index = 0; index < this.#gpuDrivenDrawCount; index += 1) {
+            try {
+                this.#gpuDrivenDraws[index]?.cleanup(resources);
+            } catch (error) {
+                failure =
+                    failure === null
+                        ? error
+                        : new AggregateError(
+                              [failure, error],
+                              'GPU-driven batch draw cleanup failed',
+                              { cause: failure }
+                          );
+            }
+        }
+        if (failure !== null) {
+            throw failure instanceof Error
+                ? failure
+                : new Error('GPU-driven batch draw cleanup failed', { cause: failure });
+        }
+    }
+
+    private releaseGPUDrivenFrameReferences(): void {
+        let failure: unknown = null;
+        for (let index = 0; index < this.#gpuDrivenDrawCount; index += 1) {
+            try {
+                this.#gpuDrivenDraws[index]?.releaseFrameReferences();
+            } catch (error) {
+                failure =
+                    failure === null
+                        ? error
+                        : new AggregateError(
+                              [failure, error],
+                              'GPU-driven batch frame-reference cleanup failed',
+                              { cause: failure }
+                          );
+            }
+        }
+        if (failure !== null) {
+            throw failure instanceof Error
+                ? failure
+                : new Error('GPU-driven batch frame-reference cleanup failed', { cause: failure });
+        }
     }
 
     private configureSceneStorage(
@@ -2667,7 +2761,7 @@ class ScriptablePassSlot {
             }
             if (this.#activeGPUDrivenDraw) {
                 try {
-                    this.#gpuDrivenDraw?.cleanup(this.requireOwner().resources);
+                    this.cleanupGPUDrivenDraws();
                 } catch (error) {
                     failures.push(error);
                 }
@@ -5133,13 +5227,12 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         target: RHIMeshDrawTargetDescriptor,
         declaredInputs: ReadonlyMap<RenderGraphTextureAccessHandle, RGTextureAccessHandle>
     ): ScriptableFullscreenDraw {
-        this.services.prepareScriptableCullingScene(this.scene, this.camera);
         const context = this.services.createScriptableFrameContext(
             this.camera,
             this.rhiViewport,
             this.frameIndex
         );
-        this.services.beginScriptableMeshPass(context);
+        this.services.beginScriptableResourcePass(context);
         this.services.beginScriptableFullscreenPass(context);
         const fullscreen = this.services.getScriptableFullscreenProcessor();
         const pipeline = fullscreen.prepareGraphPipeline(pass.shader, pass.pipelineState, target);
@@ -5193,13 +5286,12 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         if (this.services.renderer.backend !== 'webgpu') {
             throw new Error('ComputeRenderPass is supported only by the WebGPU renderer');
         }
-        this.services.prepareScriptableCullingScene(this.scene, this.camera);
         const context = this.services.createScriptableFrameContext(
             this.camera,
             this.rhiViewport,
             this.frameIndex
         );
-        this.services.beginScriptableMeshPass(context);
+        this.services.beginScriptableResourcePass(context);
         const dispatch = retained ?? new ScriptableComputeDispatch();
         dispatch.configure(pass, parameters, this, services, this.frameIndex);
         return dispatch;
@@ -5215,13 +5307,12 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         if (this.services.renderer.backend !== 'webgpu') {
             throw new Error('GPUDrivenRenderPass is supported only by the WebGPU renderer');
         }
-        this.services.prepareScriptableCullingScene(this.scene, this.camera);
         const context = this.services.createScriptableFrameContext(
             this.camera,
             this.rhiViewport,
             this.frameIndex
         );
-        this.services.beginScriptableMeshPass(context);
+        this.services.beginScriptableResourcePass(context);
         const draw = retained ?? new ScriptableGPUDrivenDraw();
         draw.configure(
             pass,

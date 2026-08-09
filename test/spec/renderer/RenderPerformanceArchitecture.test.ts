@@ -85,6 +85,35 @@ function functionBody(source: string, functionName: string): string {
 }
 
 describe('render hot-path architecture', () => {
+    it('keeps resource-only scriptable passes out of scene semantic activation', () => {
+        const pipeline = sourceAt('/render/internal/ScriptableRenderPipelineContext.ts');
+        for (const methodName of [
+            'configureFullscreenDraw',
+            'configureComputeDispatch',
+            'configureGPUDrivenDraw'
+        ]) {
+            const body = methodBody(pipeline, methodName);
+            expect(body).toContain('beginScriptableResourcePass(context)');
+            expect(body).not.toContain('beginScriptableMeshPass(context)');
+            expect(body).not.toContain('prepareScriptableCullingScene');
+        }
+
+        const rendererList = methodBody(pipeline, 'appendRendererListDraws');
+        expect(rendererList).toContain('beginScriptableMeshPass(context)');
+        expect(rendererList).not.toContain('beginScriptableResourcePass(context)');
+    });
+
+    it('batches Clustered Forward+ bucket draws into one depth and one color graph pass', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+        const depth = methodBody(clustered, 'recordDepthPrepass');
+        const color = methodBody(clustered, 'recordColorPasses');
+
+        expect(depth).toContain('this.#depthBatchPass');
+        expect(color).toContain('this.#colorBatchPass');
+        expect(depth.match(/context\.graph\.addPass\s*\(/gu)).toHaveLength(1);
+        expect(color.match(/context\.graph\.addPass\s*\(/gu)).toHaveLength(1);
+    });
+
     it('keeps RHI under render and backend renderer implementations internal', () => {
         expect(Object.keys(legacyRenderRoots)).toEqual([]);
         expect(
@@ -177,5 +206,51 @@ describe('render hot-path architecture', () => {
         expect(drawExecute).not.toMatch(
             /\bnew\s+|Object\.freeze|\.(?:map|filter|flatMap|forEach|slice)\s*\(|\.\.\./u
         );
+    });
+
+    it('keeps GPU Scene geometry buckets independent from shared material handles', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+        const packObject = methodBody(clustered, 'packObject');
+
+        expect(clustered).toContain(
+            "import SharedMaterialRecordDatabase from '../renderer/SharedMaterialRecordDatabase'"
+        );
+        expect(packObject).toContain('this.#objectUInts[floatOffset + 48] = logicalIndex');
+        expect(packObject).toContain(
+            'this.#objectUInts[floatOffset + 51] = this.#materialDatabase'
+        );
+        expect(clustered).toContain('buckets[object.metadata.x]');
+        expect(clustered).toContain(
+            'v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w)'
+        );
+        expect(clustered).not.toContain('private packMaterials(');
+    });
+
+    it('keeps previous-frame Hi-Z bounds conservative for large projected objects', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+
+        expect(clustered).toContain('const MAX_HIZ_OCCLUSION_DIAMETER = 1 << HIZ_LEVEL_COUNT');
+        expect(clustered).toContain(
+            'frame.previousProjection * vec4<f32>(viewCenter.xyz + signs * radius, 1.0)'
+        );
+        expect(clustered).toContain('for (var cornerIndex = 0u; cornerIndex < 8u;');
+        expect(clustered).toContain('(maximumUv - minimumUv) * frame.viewport.zw');
+        expect(clustered).toContain('diameter > ${String(MAX_HIZ_OCCLUSION_DIAMETER)}.0');
+        expect(clustered).toContain('ceil(log2(diameter)) - 1.0');
+        expect(clustered).not.toContain('floor(log2(diameter)) - 1.0');
+        expect(clustered).toContain(
+            'sqrt(projectionScale * projectionScale + vec2<f32>(1.0)) * radius'
+        );
+        expect(clustered).toContain('mesh.frustumTest ? OBJECT_FRUSTUM_CULLING_FLAG : 0');
+    });
+
+    it('shares one invariant GPU Scene clip transform across depth and color passes', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+
+        expect(clustered.match(/\$\{GPU_SCENE_POSITION_TRANSFORM_SOURCE\}/gu)).toHaveLength(2);
+        expect(
+            clustered.match(/gl_Position = gpuSceneClipPosition\(objectBase, a_position\);/gu)
+        ).toHaveLength(2);
+        expect(clustered).not.toContain('gl_Position = readFrameMatrix(0u) * worldPosition;');
     });
 });

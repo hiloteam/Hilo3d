@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { PNG } from 'pngjs';
 import { installPageFailureMonitor } from './page-failure-monitor';
 import {
     assertStableInstrumentationHealth,
@@ -35,6 +36,120 @@ interface NativeComputeEffectsResult {
         hash: number;
         simulatedParticles: number;
     }>;
+}
+
+interface SponzaVisualAngle {
+    readonly label: string;
+    readonly frames: readonly Buffer[];
+}
+
+interface SponzaCameraStep {
+    readonly label: string;
+    readonly x: number;
+    readonly y: number;
+    readonly nextView?: boolean;
+}
+
+const SPONZA_CAMERA_DRAGS: readonly SponzaCameraStep[] = Object.freeze([
+    { label: 'hero', x: 0, y: 0 },
+    { label: 'right-12', x: 12, y: 4 },
+    { label: 'left-12', x: -24, y: 5 },
+    { label: 'raised-right', x: 18, y: -10 },
+    { label: 'corridor', nextView: true, x: 0, y: 0 },
+    { label: 'corridor-left', x: -14, y: 3 }
+]);
+
+function differingPixelRatio(referencePng: Buffer, candidatePng: Buffer): number {
+    const reference = PNG.sync.read(referencePng);
+    const candidate = PNG.sync.read(candidatePng);
+    expect(candidate.width).toBe(reference.width);
+    expect(candidate.height).toBe(reference.height);
+    let differentPixels = 0;
+    const pixelCount = reference.width * reference.height;
+    for (let offset = 0; offset < reference.data.length; offset += 4) {
+        const redDelta = Math.abs((reference.data[offset] ?? 0) - (candidate.data[offset] ?? 0));
+        const greenDelta = Math.abs(
+            (reference.data[offset + 1] ?? 0) - (candidate.data[offset + 1] ?? 0)
+        );
+        const blueDelta = Math.abs(
+            (reference.data[offset + 2] ?? 0) - (candidate.data[offset + 2] ?? 0)
+        );
+        if (Math.max(redDelta, greenDelta, blueDelta) > 4) differentPixels++;
+    }
+    return differentPixels / pixelCount;
+}
+
+function centralSponzaDarkPixelRatio(pngBuffer: Buffer): number {
+    const png = PNG.sync.read(pngBuffer);
+    const minimumX = Math.floor(png.width * 0.4);
+    const maximumX = Math.floor(png.width * 0.7);
+    const minimumY = Math.floor(png.height * 0.25);
+    const maximumY = Math.floor(png.height * 0.8);
+    let darkPixels = 0;
+    let sampledPixels = 0;
+    for (let y = minimumY; y < maximumY; y += 1) {
+        for (let x = minimumX; x < maximumX; x += 1) {
+            const offset = (y * png.width + x) * 4;
+            const luminance =
+                (png.data[offset] ?? 0) * 0.2126 +
+                (png.data[offset + 1] ?? 0) * 0.7152 +
+                (png.data[offset + 2] ?? 0) * 0.0722;
+            if (luminance < 25) darkPixels += 1;
+            sampledPixels += 1;
+        }
+    }
+    return darkPixels / sampledPixels;
+}
+
+async function captureSponzaAngles(
+    page: Page,
+    hiZEnabled: boolean,
+    cullingEnabled: boolean,
+    framesPerAngle: number
+): Promise<readonly SponzaVisualAngle[]> {
+    await page.goto(
+        `/examples/clustered_forward_plus_sponza.html?backend=webgpu&hiZ=${String(hiZEnabled)}&culling=${String(cullingEnabled)}&tour=false&motion=false`,
+        { waitUntil: 'load' }
+    );
+    const body = page.locator('body');
+    await expect(body).toHaveAttribute('data-forward-plus-ready', 'true', { timeout: 60_000 });
+    await expect(body).toHaveAttribute('data-hi-z-enabled', String(hiZEnabled));
+    await expect(body).toHaveAttribute('data-culling-enabled', String(cullingEnabled));
+    await expect(body).toHaveAttribute('data-hi-z-valid', String(hiZEnabled), {
+        timeout: 15_000
+    });
+    const canvas = page.locator('canvas');
+    const bounds = await canvas.boundingBox();
+    if (bounds === null) throw new Error('Sponza canvas does not expose browser bounds');
+    const startX = bounds.x + bounds.width * 0.62;
+    const startY = bounds.y + bounds.height * 0.5;
+    const angles: SponzaVisualAngle[] = [];
+    for (const drag of SPONZA_CAMERA_DRAGS) {
+        if (drag.nextView === true) {
+            await page.locator('#viewButton').click();
+            await page.waitForTimeout(1_350);
+            await expect(body).toHaveAttribute('data-hi-z-valid', String(hiZEnabled), {
+                timeout: 15_000
+            });
+        }
+        if (drag.x !== 0 || drag.y !== 0) {
+            await page.mouse.move(startX, startY);
+            await page.mouse.down();
+            await page.mouse.move(startX + drag.x, startY + drag.y, { steps: 4 });
+            await page.mouse.up();
+            await page.waitForTimeout(1_350);
+            await expect(body).toHaveAttribute('data-hi-z-valid', String(hiZEnabled), {
+                timeout: 15_000
+            });
+        }
+        const frames: Buffer[] = [];
+        for (let frameIndex = 0; frameIndex < framesPerAngle; frameIndex += 1) {
+            await waitForStableAnimationFrames(page);
+            frames.push(await canvas.screenshot({ animations: 'disabled' }));
+        }
+        angles.push({ label: drag.label, frames: Object.freeze(frames) });
+    }
+    return Object.freeze(angles);
 }
 
 declare global {
@@ -288,6 +403,142 @@ test('runs public compute and GPU-driven effects on a non-fallback native adapte
         failures.assertEmpty('native compute effects browser failures');
     } finally {
         if (pageErrorHandler) page.off('pageerror', pageErrorHandler);
+        await failures.dispose();
+    }
+});
+
+test('Sponza Forward+ exposes stable camera and lighting controls @webgpu', async ({ page }) => {
+    test.setTimeout(120_000);
+    await installNativeAdapterGate(page);
+    await installRenderHealthProbe(page);
+    const failures = await installPageFailureMonitor(page);
+    try {
+        await page.goto('/examples/clustered_forward_plus_sponza.html?backend=webgpu', {
+            waitUntil: 'load'
+        });
+        const body = page.locator('body');
+        await expect(body).toHaveAttribute('data-forward-plus-ready', 'true', {
+            timeout: 60_000
+        });
+        await expect(body).toHaveAttribute('data-asset', 'khronos-sponza');
+        await expect(body).toHaveAttribute('data-excluded-meshes', '14');
+        await expect(body).toHaveAttribute('data-runner-lights', '10');
+        await expect(body).toHaveAttribute('data-active-lights', '202');
+        await expect(body).toHaveAttribute('data-diagnostics-ready', 'true');
+        await expect(body).toHaveAttribute('data-hi-z-valid', 'false');
+        await expect(page.locator('#backendLabel')).toContainText('WEBGPU');
+        await expect(page.locator('#metricLights')).toHaveText('202');
+        await expect(page.locator('#fallbackObjectCount')).toHaveText('0');
+        await expect(page.locator('#overflowCount')).toHaveText('0');
+
+        const audit = await page.evaluate(() => window.__HILO3D_NATIVE_WEBGPU_AUDIT__);
+        expect(audit?.failure).toBeNull();
+        expect(audit?.observations.length).toBeGreaterThan(0);
+        expect(
+            audit?.observations.every(
+                observation =>
+                    observation.requestedForceFallbackAdapter !== true &&
+                    observation.isFallbackAdapter === false
+            )
+        ).toBe(true);
+
+        const tourToggle = page.locator('#tourToggle');
+        await expect(tourToggle).toHaveAttribute('aria-pressed', 'true');
+        await tourToggle.click();
+        await expect(body).toHaveAttribute('data-camera-tour', 'false');
+        await expect(body).toHaveAttribute('data-hi-z-valid', 'true', { timeout: 15_000 });
+
+        await page.locator('#lightControl').evaluate(element => {
+            if (!(element instanceof HTMLInputElement)) {
+                throw new Error('Expected #lightControl to be an input element');
+            }
+            element.value = '96';
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await expect(body).toHaveAttribute('data-active-lights', '106');
+        await expect(page.locator('#lightOutput')).toHaveText('106 / 202');
+
+        const motionToggle = page.locator('#motionToggle');
+        await expect(motionToggle).toHaveAttribute('aria-pressed', 'true');
+        await motionToggle.click();
+        await expect(motionToggle).toHaveAttribute('aria-pressed', 'false');
+
+        await assertStableInstrumentationHealth('webgpu', 'Sponza Forward+ native health', {
+            waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
+            awaitTrackedGPUQueues: () => awaitTrackedGPUQueues(page),
+            readRenderHealth: () => readRenderHealth(page)
+        });
+        failures.assertEmpty('Sponza Forward+ native browser failures');
+    } finally {
+        await failures.dispose();
+    }
+});
+
+test('Sponza GPU culling remains visually identical across small camera turns @webgpu', async ({
+    page
+}) => {
+    test.setTimeout(180_000);
+    await installNativeAdapterGate(page);
+    const failures = await installPageFailureMonitor(page);
+    try {
+        const withGPUCulling = await captureSponzaAngles(page, true, true, 4);
+        const withoutGPUCulling = await captureSponzaAngles(page, false, false, 1);
+        expect(withGPUCulling).toHaveLength(withoutGPUCulling.length);
+        for (let angleIndex = 0; angleIndex < withGPUCulling.length; angleIndex += 1) {
+            const testedAngle = withGPUCulling[angleIndex];
+            const referenceAngle = withoutGPUCulling[angleIndex];
+            expect(testedAngle?.label).toBe(referenceAngle?.label);
+            const reference = referenceAngle?.frames[0];
+            if (testedAngle === undefined || reference === undefined) {
+                throw new Error(`Missing Sponza visual angle ${String(angleIndex)}`);
+            }
+            for (const frame of testedAngle.frames) {
+                const ratio = differingPixelRatio(reference, frame);
+                expect(
+                    ratio,
+                    `${testedAngle.label} GPU-culled frame differs from the unculled reference`
+                ).toBeLessThan(0.002);
+            }
+        }
+        failures.assertEmpty('Sponza GPU-culling camera-turn browser failures');
+    } finally {
+        await failures.dispose();
+    }
+});
+
+test('Sponza depth prepass stays coherent through a complete camera tour @webgpu', async ({
+    page
+}) => {
+    test.setTimeout(150_000);
+    await installNativeAdapterGate(page);
+    const failures = await installPageFailureMonitor(page);
+    try {
+        await page.goto(
+            '/examples/clustered_forward_plus_sponza.html?backend=webgpu&tour=true&motion=true',
+            { waitUntil: 'load' }
+        );
+        const body = page.locator('body');
+        await expect(body).toHaveAttribute('data-forward-plus-ready', 'true', {
+            timeout: 60_000
+        });
+        await expect(body).toHaveAttribute('data-camera-tour', 'true');
+        await expect(body).toHaveAttribute('data-light-motion', 'true');
+
+        const canvas = page.locator('canvas');
+        const visitedViews = new Set<string>();
+        for (let second = 1; second <= 30; second += 1) {
+            await page.waitForTimeout(1_000);
+            const tourView = await body.getAttribute('data-tour-view');
+            if (tourView !== null) visitedViews.add(tourView);
+            const frame = await canvas.screenshot({ animations: 'disabled' });
+            expect(
+                centralSponzaDarkPixelRatio(frame),
+                `Sponza camera-tour second ${String(second)} contains catastrophic depth-prepass holes`
+            ).toBeLessThan(0.3);
+        }
+        expect(visitedViews.size).toBeGreaterThanOrEqual(8);
+        failures.assertEmpty('Sponza depth-prepass camera-tour browser failures');
+    } finally {
         await failures.dispose();
     }
 });

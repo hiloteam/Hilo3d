@@ -407,10 +407,10 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                 items.map(item => (item as HTMLElement).dataset['examplePath'])
             )
         ).toEqual(expected.map(entry => entry.path));
-        await expect(page.locator('.exampleBackendBadge[data-backend="webgpu"]')).toHaveCount(5);
+        await expect(page.locator('.exampleBackendBadge[data-backend="webgpu"]')).toHaveCount(6);
         await expect(page.locator('.exampleBackendBadge[data-backend="webgl2"]')).toHaveCount(1);
         await expect(page.locator('.exampleButton[data-backend-compatible="false"]')).toHaveCount(
-            backend === 'webgl2' ? 5 : 1
+            backend === 'webgl2' ? 6 : 1
         );
 
         const exampleFrame = page.locator('#exampleFrame');
