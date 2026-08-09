@@ -47,6 +47,9 @@
   disocclusion holes, off-axis under-bounds, or large-geometry false positives. GPU Scene frustum
   culling now tests the exact view-space side-plane radius instead of underestimating large spheres
   near a screen edge, and honors each mesh's `frustumTest` opt-out.
+- Keep GPU Scene depth-prepass and color-pass clip-space transforms byte-identical so reversed-depth
+  testing remains stable while the camera moves instead of exposing stippled, checkerboard, or large
+  missing regions from cross-program floating-point rounding.
 - Keep default Forward lighting, clear colors, transparent blending, and intermediate effects in
   linear space, then apply one exact linear-to-sRGB transfer at the browser surface. Multi-camera
   load/blend stays in a renderer-owned linear composition target, while already transformed Color

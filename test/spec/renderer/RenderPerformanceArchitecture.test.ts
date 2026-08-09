@@ -214,4 +214,14 @@ describe('render hot-path architecture', () => {
         );
         expect(clustered).toContain('mesh.frustumTest ? OBJECT_FRUSTUM_CULLING_FLAG : 0');
     });
+
+    it('shares one invariant GPU Scene clip transform across depth and color passes', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+
+        expect(clustered.match(/\$\{GPU_SCENE_POSITION_TRANSFORM_SOURCE\}/gu)).toHaveLength(2);
+        expect(
+            clustered.match(/gl_Position = gpuSceneClipPosition\(objectBase, a_position\);/gu)
+        ).toHaveLength(2);
+        expect(clustered).not.toContain('gl_Position = readFrameMatrix(0u) * worldPosition;');
+    });
 });

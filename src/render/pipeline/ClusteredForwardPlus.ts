@@ -1588,6 +1588,21 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     })
 );
 
+// The depth prepass and color pass must use a byte-identical clip-space expression. Splitting the
+// multiplication at worldPosition changes floating-point rounding and makes the later depth test
+// reject fragments as camera matrices move, producing holes even though both passes draw the same
+// geometry.
+const GPU_SCENE_POSITION_TRANSFORM_SOURCE = `
+mat4 readObjectMatrix(uint base) {
+    return mat4(objects.values[base], objects.values[base + 1u], objects.values[base + 2u], objects.values[base + 3u]);
+}
+mat4 readFrameMatrix(uint base) {
+    return mat4(frameData.values[base], frameData.values[base + 1u], frameData.values[base + 2u], frameData.values[base + 3u]);
+}
+vec4 gpuSceneClipPosition(uint objectBase, vec3 position) {
+    return readFrameMatrix(0u) * readObjectMatrix(objectBase) * vec4(position, 1.0);
+}`;
+
 const GPU_SCENE_DEPTH_SHADER = new StorageGraphicsShader({
     label: 'GPU Scene indirect depth prepass',
     vertexSource: `#version 310 es
@@ -1598,16 +1613,11 @@ layout(std430) readonly buffer FrameDataBlock { vec4 values[]; } frameData;
 layout(std430) readonly buffer ObjectBlock { vec4 values[]; } objects;
 layout(std430) readonly buffer VisibleBlock { uint values[]; } visibleIndices;
 layout(location=0) in vec3 a_position;
-mat4 readMatrix(uint base) {
-    return mat4(objects.values[base], objects.values[base + 1u], objects.values[base + 2u], objects.values[base + 3u]);
-}
-mat4 frameMatrix(uint base) {
-    return mat4(frameData.values[base], frameData.values[base + 1u], frameData.values[base + 2u], frameData.values[base + 3u]);
-}
+${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
 void main() {
     uint objectIndex = visibleIndices.values[uint(gl_InstanceIndex)];
-    mat4 model = readMatrix(objectIndex * 13u);
-    gl_Position = frameMatrix(0u) * model * vec4(a_position, 1.0);
+    uint objectBase = objectIndex * 13u;
+    gl_Position = gpuSceneClipPosition(objectBase, a_position);
 }`,
     fragmentSource: `#version 310 es
 precision highp float;
@@ -1722,14 +1732,9 @@ ${vertexUVDeclarations}
 out vec3 v_viewPosition;
 out vec3 v_viewNormal;
 flat out uint v_materialIndex;
-mat4 readObjectMatrix(uint base) {
-    return mat4(objects.values[base], objects.values[base + 1u], objects.values[base + 2u], objects.values[base + 3u]);
-}
+${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
 mat3 readObjectNormalMatrix(uint base) {
     return mat3(objects.values[base + 8u].xyz, objects.values[base + 9u].xyz, objects.values[base + 10u].xyz);
-}
-mat4 readFrameMatrix(uint base) {
-    return mat4(frameData.values[base], frameData.values[base + 1u], frameData.values[base + 2u], frameData.values[base + 3u]);
 }
 mat3 readMaterialMatrix(uint base) {
     return mat3(materials.values[base].xyz, materials.values[base + 1u].xyz, materials.values[base + 2u].xyz);
@@ -1747,7 +1752,7 @@ void main() {
     v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
     uint materialBase = v_materialIndex * 9u;
     ${vertexUVWrites}
-    gl_Position = readFrameMatrix(0u) * worldPosition;
+    gl_Position = gpuSceneClipPosition(objectBase, a_position);
 }`,
         fragmentSource: `#version 310 es
 precision highp float;

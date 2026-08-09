@@ -79,6 +79,28 @@ function differingPixelRatio(referencePng: Buffer, candidatePng: Buffer): number
     return differentPixels / pixelCount;
 }
 
+function centralSponzaDarkPixelRatio(pngBuffer: Buffer): number {
+    const png = PNG.sync.read(pngBuffer);
+    const minimumX = Math.floor(png.width * 0.4);
+    const maximumX = Math.floor(png.width * 0.7);
+    const minimumY = Math.floor(png.height * 0.25);
+    const maximumY = Math.floor(png.height * 0.8);
+    let darkPixels = 0;
+    let sampledPixels = 0;
+    for (let y = minimumY; y < maximumY; y += 1) {
+        for (let x = minimumX; x < maximumX; x += 1) {
+            const offset = (y * png.width + x) * 4;
+            const luminance =
+                (png.data[offset] ?? 0) * 0.2126 +
+                (png.data[offset + 1] ?? 0) * 0.7152 +
+                (png.data[offset + 2] ?? 0) * 0.0722;
+            if (luminance < 25) darkPixels += 1;
+            sampledPixels += 1;
+        }
+    }
+    return darkPixels / sampledPixels;
+}
+
 async function captureSponzaAngles(
     page: Page,
     hiZEnabled: boolean,
@@ -476,6 +498,38 @@ test('Sponza GPU culling remains visually identical across small camera turns @w
             }
         }
         failures.assertEmpty('Sponza GPU-culling camera-turn browser failures');
+    } finally {
+        await failures.dispose();
+    }
+});
+
+test('Sponza depth prepass stays coherent through a complete camera tour @webgpu', async ({
+    page
+}) => {
+    test.setTimeout(120_000);
+    await installNativeAdapterGate(page);
+    const failures = await installPageFailureMonitor(page);
+    try {
+        await page.goto(
+            '/examples/clustered_forward_plus_sponza.html?backend=webgpu&tour=true&motion=false',
+            { waitUntil: 'load' }
+        );
+        const body = page.locator('body');
+        await expect(body).toHaveAttribute('data-forward-plus-ready', 'true', {
+            timeout: 60_000
+        });
+        await expect(body).toHaveAttribute('data-camera-tour', 'true');
+
+        const canvas = page.locator('canvas');
+        for (let second = 1; second <= 18; second += 1) {
+            await page.waitForTimeout(1_000);
+            const frame = await canvas.screenshot({ animations: 'disabled' });
+            expect(
+                centralSponzaDarkPixelRatio(frame),
+                `Sponza camera-tour second ${String(second)} contains depth-prepass holes`
+            ).toBeLessThan(0.1);
+        }
+        failures.assertEmpty('Sponza depth-prepass camera-tour browser failures');
     } finally {
         await failures.dispose();
     }
