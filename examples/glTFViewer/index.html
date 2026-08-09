@@ -3,27 +3,671 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>glTF Viewer - rendered by Hilo3d</title>
+        <meta name="theme-color" content="#080a0f" />
+        <title>glTF Viewer · Hilo3D</title>
         <link rel="stylesheet" href="../example.css" />
         <link rel="stylesheet" href="./css/index.css" />
     </head>
-    <body>
-        <input type="file" multiple id="input" />
-        <div id="inputContainer">
-            <div class="title">
-                It's a glTF Viewer rendered by
-                <a href="https://github.com/hiloteam/Hilo3d">Hilo3d</a>.
-            </div>
-            <div class="dropArea">
-                <div class="info">Drag glTF 2.0 files or folder here</div>
-                <div class="iconfont" id="uploadIcon" aria-label="Choose glTF files">⇧</div>
-            </div>
-            <div class="linkInputArea">
-                <input id="linkInput" type="text" placeholder="Copy the glTF model url here!" />
-                <button id="showLinkBtn">show the model</button>
-            </div>
+    <body data-view-state="empty" data-inspector-open="false">
+        <input
+            id="input"
+            type="file"
+            accept=".gltf,.glb,model/gltf+json,model/gltf-binary"
+            multiple
+        />
+
+        <div class="viewerBackdrop" aria-hidden="true">
+            <div class="viewerGlow viewerGlowPrimary"></div>
+            <div class="viewerGlow viewerGlowSecondary"></div>
+            <div class="viewerGrid"></div>
         </div>
-        <div id="stageContainer"></div>
+
+        <main class="viewerShell">
+            <div id="stageContainer" role="img" aria-label="Interactive 3D model viewport"></div>
+
+            <header class="viewerTopbar">
+                <a
+                    class="brand"
+                    href="https://github.com/hiloteam/Hilo3d"
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Hilo3D on GitHub"
+                >
+                    <span class="brandMark" aria-hidden="true">
+                        <span>H</span>
+                    </span>
+                    <span class="brandType">Hilo<span>3D</span></span>
+                    <span class="brandProduct">Viewer</span>
+                </a>
+
+                <div class="modelIdentity modelOnly" aria-live="polite">
+                    <span class="modelName" id="modelName">Untitled model</span>
+                    <span class="modelMeta" id="modelFormat">glTF 2.0</span>
+                </div>
+
+                <div class="topbarActions">
+                    <span class="backendBadge modelOnly" id="backendBadge">WebGL 2</span>
+                    <button
+                        class="iconButton modelOnly"
+                        id="openUrlDialogButton"
+                        type="button"
+                        aria-label="Load model from URL"
+                        data-tooltip="Open URL"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                                d="M10.4 13.6a4 4 0 0 0 5.66 0l2.12-2.12a4 4 0 0 0-5.66-5.66l-1.2 1.2"
+                            />
+                            <path
+                                d="M13.6 10.4a4 4 0 0 0-5.66 0l-2.12 2.12a4 4 0 0 0 5.66 5.66l1.2-1.2"
+                            />
+                        </svg>
+                    </button>
+                    <button
+                        class="primaryButton compactButton modelOnly"
+                        id="openFileButton"
+                        type="button"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
+                            <path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+                        </svg>
+                        Open model
+                    </button>
+                    <button
+                        class="iconButton modelOnly"
+                        id="toggleInspectorButton"
+                        type="button"
+                        aria-label="Show model information"
+                        aria-controls="inspectorPanel"
+                        aria-expanded="false"
+                        data-tooltip="Model info"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M12 10.5V17m0-10v.2" />
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <section id="inputContainer" class="importer" aria-labelledby="importerTitle">
+                <div class="importerEyebrow">
+                    <span class="eyebrowLine"></span>
+                    Browser-based 3D inspection
+                </div>
+                <h1 id="importerTitle">Put your model<br /><span>in the spotlight.</span></h1>
+                <p class="importerIntro">
+                    Review glTF assets in a focused, physically based viewport powered by Hilo3D.
+                </p>
+
+                <div class="dropArea">
+                    <div class="dropIcon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                            <path d="m12 3 7 4v8l-7 4-7-4V7l7-4Z" />
+                            <path d="m5.4 7.2 6.6 3.9 6.6-3.9M12 11v8" />
+                        </svg>
+                    </div>
+                    <div class="dropCopy">
+                        <strong>Drop your model here</strong>
+                        <span class="info">glTF, GLB, or a complete asset folder</span>
+                    </div>
+                    <button class="primaryButton" id="uploadIcon" type="button">
+                        Browse files
+                    </button>
+                </div>
+
+                <div class="importDivider"><span>or load from the web</span></div>
+                <div class="linkInputArea">
+                    <label class="srOnly" for="linkInput">glTF model URL</label>
+                    <div class="urlField">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                                d="M10.4 13.6a4 4 0 0 0 5.66 0l2.12-2.12a4 4 0 0 0-5.66-5.66l-1.2 1.2"
+                            />
+                            <path
+                                d="M13.6 10.4a4 4 0 0 0-5.66 0l-2.12 2.12a4 4 0 0 0 5.66 5.66l1.2-1.2"
+                            />
+                        </svg>
+                        <input
+                            id="linkInput"
+                            type="url"
+                            inputmode="url"
+                            placeholder="https://example.com/model.glb"
+                            autocomplete="url"
+                        />
+                        <button id="showLinkBtn" type="button" aria-label="Load model URL">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="m9 18 6-6-6-6" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button class="sampleButton" id="loadSampleButton" type="button">
+                    <span class="samplePreview" aria-hidden="true">
+                        <svg viewBox="0 0 40 40">
+                            <path d="M20 7 31 13.5v13L20 33 9 26.5v-13L20 7Z" />
+                            <path d="m9.7 13.8 10.3 6 10.3-6M20 19.8V33" />
+                        </svg>
+                    </span>
+                    <span
+                        ><strong>No model handy?</strong> Explore the iridescent glass sample</span
+                    >
+                    <svg class="sampleArrow" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m9 18 6-6-6-6" />
+                    </svg>
+                </button>
+            </section>
+
+            <div class="loadingOverlay" role="status" aria-live="polite">
+                <div class="loadingMark"><span></span><span></span><span></span></div>
+                <strong>Preparing your model</strong>
+                <span id="loadingSource">Loading geometry, materials, and textures…</span>
+            </div>
+
+            <div class="dropOverlay" aria-hidden="true">
+                <div class="dropOverlayCard">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
+                        <path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+                    </svg>
+                    <strong>Drop to replace model</strong>
+                    <span>All linked files will be resolved locally</span>
+                </div>
+            </div>
+
+            <aside id="inspectorPanel" class="inspectorPanel" aria-hidden="true">
+                <div class="inspectorHeader">
+                    <div>
+                        <span class="panelEyebrow">Workspace</span>
+                        <h2>Model inspector</h2>
+                    </div>
+                    <button
+                        class="iconButton"
+                        id="closeInspectorButton"
+                        type="button"
+                        aria-label="Close model information"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="m7 7 10 10M17 7 7 17" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="inspectorTabs" role="tablist" aria-label="Inspector sections">
+                    <button
+                        id="sceneTab"
+                        type="button"
+                        role="tab"
+                        aria-selected="true"
+                        aria-controls="scenePanel"
+                        data-inspector-tab="scene"
+                    >
+                        Scene
+                    </button>
+                    <button
+                        id="materialTab"
+                        type="button"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="materialPanel"
+                        data-inspector-tab="material"
+                    >
+                        Material
+                    </button>
+                    <button
+                        id="postTab"
+                        type="button"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="postPanel"
+                        data-inspector-tab="post"
+                    >
+                        Post
+                    </button>
+                </div>
+
+                <div class="inspectorContent">
+                    <section id="scenePanel" role="tabpanel" aria-labelledby="sceneTab">
+                        <div class="modelCard">
+                            <div class="modelGlyph" aria-hidden="true">
+                                <svg viewBox="0 0 48 48">
+                                    <path d="M24 6 40 15v18l-16 9-16-9V15L24 6Z" />
+                                    <path d="m8.9 15.4 15.1 9 15.1-9M24 24.4V42" />
+                                </svg>
+                            </div>
+                            <div>
+                                <strong id="panelModelName">Untitled model</strong>
+                                <span id="sourceValue">Local asset</span>
+                            </div>
+                        </div>
+
+                        <div class="statGrid" aria-label="Model statistics">
+                            <div><strong id="meshCount">0</strong><span>Meshes</span></div>
+                            <div><strong id="materialCount">0</strong><span>Materials</span></div>
+                            <div><strong id="textureCount">0</strong><span>Textures</span></div>
+                            <div><strong id="animationCount">0</strong><span>Animations</span></div>
+                        </div>
+
+                        <section class="detailSection">
+                            <h3>Asset</h3>
+                            <dl>
+                                <div>
+                                    <dt>Version</dt>
+                                    <dd id="versionValue">glTF 2.0</dd>
+                                </div>
+                                <div>
+                                    <dt>Generator</dt>
+                                    <dd id="generatorValue">Unknown</dd>
+                                </div>
+                                <div>
+                                    <dt>Scenes</dt>
+                                    <dd id="sceneCount">0</dd>
+                                </div>
+                                <div>
+                                    <dt>Dimensions</dt>
+                                    <dd id="dimensionsValue">—</dd>
+                                </div>
+                            </dl>
+                        </section>
+
+                        <section class="detailSection cameraSection" id="cameraSection" hidden>
+                            <h3>Camera</h3>
+                            <label class="selectControl" for="cameraSelect">
+                                <span>Active camera</span>
+                                <span class="selectWrap">
+                                    <select id="cameraSelect"></select>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="m8 10 4 4 4-4" />
+                                    </svg>
+                                </span>
+                            </label>
+                            <p class="cameraHint" id="cameraHint">Interactive viewer camera</p>
+                        </section>
+
+                        <section class="detailSection extensionSection">
+                            <h3>Extensions</h3>
+                            <div class="extensionList" id="extensionList">
+                                <span class="emptyExtension">No extensions declared</span>
+                            </div>
+                        </section>
+
+                        <section class="detailSection controlSection">
+                            <h3>Navigation</h3>
+                            <div class="controlRows">
+                                <span><kbd>Drag</kbd> Orbit</span>
+                                <span><kbd>Scroll</kbd> Zoom</span>
+                                <span><kbd>Shift + drag</kbd> Pan</span>
+                            </div>
+                        </section>
+                    </section>
+
+                    <section
+                        id="materialPanel"
+                        role="tabpanel"
+                        aria-labelledby="materialTab"
+                        hidden
+                    >
+                        <div class="panelLead">
+                            <span class="panelEyebrow">Surface controls</span>
+                            <h3>Material properties</h3>
+                            <p>Factors multiply the asset textures and update live.</p>
+                        </div>
+
+                        <label class="selectControl" for="materialSelect">
+                            <span>Target material</span>
+                            <span class="selectWrap">
+                                <select id="materialSelect">
+                                    <option value="">No PBR materials</option>
+                                </select>
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="m8 10 4 4 4-4" />
+                                </svg>
+                            </span>
+                        </label>
+
+                        <div class="materialSummary">
+                            <span id="materialModeBadge">Opaque</span>
+                            <span id="materialCountLabel">No material selected</span>
+                        </div>
+
+                        <div class="propertyGroup">
+                            <label class="colorControl" for="baseColorInput">
+                                <span>
+                                    <strong>Base color</strong>
+                                    <small>Texture tint</small>
+                                </span>
+                                <input id="baseColorInput" type="color" value="#ffffff" />
+                            </label>
+
+                            <label class="rangeControl" for="metallicInput">
+                                <span
+                                    ><strong>Metallic</strong
+                                    ><output id="metallicValue">1.00</output></span
+                                >
+                                <input
+                                    id="metallicInput"
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value="1"
+                                />
+                            </label>
+
+                            <label class="rangeControl" for="roughnessInput">
+                                <span
+                                    ><strong>Roughness</strong
+                                    ><output id="roughnessValue">1.00</output></span
+                                >
+                                <input
+                                    id="roughnessInput"
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value="1"
+                                />
+                            </label>
+
+                            <label class="rangeControl" for="normalScaleInput">
+                                <span
+                                    ><strong>Normal strength</strong
+                                    ><output id="normalScaleValue">1.00</output></span
+                                >
+                                <input
+                                    id="normalScaleInput"
+                                    type="range"
+                                    min="0"
+                                    max="2"
+                                    step="0.01"
+                                    value="1"
+                                />
+                            </label>
+
+                            <label class="rangeControl" for="opacityInput">
+                                <span
+                                    ><strong>Opacity</strong
+                                    ><output id="opacityValue">1.00</output></span
+                                >
+                                <input
+                                    id="opacityInput"
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value="1"
+                                />
+                                <small id="opacityHint">Available for alpha-blend materials.</small>
+                            </label>
+
+                            <label class="rangeControl" for="transmissionInput">
+                                <span
+                                    ><strong>Transmission</strong
+                                    ><output id="transmissionValue">0.00</output></span
+                                >
+                                <input
+                                    id="transmissionInput"
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value="0"
+                                />
+                            </label>
+
+                            <label class="rangeControl" for="iridescenceInput">
+                                <span
+                                    ><strong>Iridescence</strong
+                                    ><output id="iridescenceValue">0.00</output></span
+                                >
+                                <input
+                                    id="iridescenceInput"
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value="0"
+                                />
+                            </label>
+
+                            <label class="rangeControl" for="iorInput">
+                                <span
+                                    ><strong>Index of refraction</strong
+                                    ><output id="iorValue">1.50</output></span
+                                >
+                                <input
+                                    id="iorInput"
+                                    type="range"
+                                    min="1"
+                                    max="2.5"
+                                    step="0.01"
+                                    value="1.5"
+                                />
+                            </label>
+                        </div>
+
+                        <button class="panelResetButton" id="resetMaterialButton" type="button">
+                            Reset material values
+                        </button>
+                    </section>
+
+                    <section id="postPanel" role="tabpanel" aria-labelledby="postTab" hidden>
+                        <div class="panelLead">
+                            <span class="panelEyebrow">Display pipeline</span>
+                            <h3>Post processing</h3>
+                            <p>HDR grading runs after transparent and transmission rendering.</p>
+                        </div>
+
+                        <div class="lookPresets" role="group" aria-label="Color look preset">
+                            <button type="button" data-look-preset="neutral" aria-pressed="true">
+                                Neutral
+                            </button>
+                            <button type="button" data-look-preset="studio" aria-pressed="false">
+                                Studio
+                            </button>
+                            <button type="button" data-look-preset="cinematic" aria-pressed="false">
+                                Film
+                            </button>
+                        </div>
+
+                        <div class="featureStatus" id="bloomFeatureStatus" data-enabled="true">
+                            <span class="featureIcon" aria-hidden="true">✦</span>
+                            <span
+                                ><strong>HDR bloom</strong><small>Soft-knee · 6 levels</small></span
+                            >
+                            <label class="featureSwitch" for="bloomEnabledInput">
+                                <input
+                                    id="bloomEnabledInput"
+                                    type="checkbox"
+                                    aria-label="Enable HDR bloom"
+                                    checked
+                                />
+                                <span class="switchTrack" aria-hidden="true"></span>
+                                <span id="bloomStateLabel">On</span>
+                            </label>
+                        </div>
+
+                        <div class="propertyGroup">
+                            <label class="selectControl" for="toneMappingSelect">
+                                <span>Tone mapping</span>
+                                <span class="selectWrap">
+                                    <select id="toneMappingSelect">
+                                        <option value="pbr-neutral">PBR Neutral</option>
+                                        <option value="aces">ACES</option>
+                                        <option value="reinhard">Reinhard</option>
+                                        <option value="none">None</option>
+                                    </select>
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="m8 10 4 4 4-4" />
+                                    </svg>
+                                </span>
+                            </label>
+
+                            <label class="rangeControl" for="exposureInput">
+                                <span
+                                    ><strong>Exposure</strong
+                                    ><output id="exposureValue">-0.30 EV</output></span
+                                >
+                                <input
+                                    id="exposureInput"
+                                    type="range"
+                                    min="-2"
+                                    max="2"
+                                    step="0.01"
+                                    value="-0.3"
+                                />
+                            </label>
+
+                            <label class="rangeControl" for="contrastInput">
+                                <span
+                                    ><strong>Contrast</strong
+                                    ><output id="contrastValue">+0.04</output></span
+                                >
+                                <input
+                                    id="contrastInput"
+                                    type="range"
+                                    min="-0.5"
+                                    max="0.5"
+                                    step="0.01"
+                                    value="0.04"
+                                />
+                            </label>
+
+                            <label class="rangeControl" for="saturationInput">
+                                <span
+                                    ><strong>Saturation</strong
+                                    ><output id="saturationValue">0.00</output></span
+                                >
+                                <input
+                                    id="saturationInput"
+                                    type="range"
+                                    min="-1"
+                                    max="1"
+                                    step="0.01"
+                                    value="0"
+                                />
+                            </label>
+
+                            <label class="rangeControl" for="vignetteInput">
+                                <span
+                                    ><strong>Vignette</strong
+                                    ><output id="vignetteValue">0.12</output></span
+                                >
+                                <input
+                                    id="vignetteInput"
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value="0.12"
+                                />
+                            </label>
+                        </div>
+
+                        <button class="panelResetButton" id="resetPostButton" type="button">
+                            Reset post processing
+                        </button>
+                    </section>
+                </div>
+            </aside>
+
+            <div class="viewportStatus modelOnly" aria-live="polite">
+                <span class="statusDot"></span>
+                <span id="viewportStatusText">Model ready</span>
+            </div>
+
+            <nav class="viewportToolbar modelOnly" aria-label="Viewport controls">
+                <button
+                    class="toolButton"
+                    id="zoomOutButton"
+                    type="button"
+                    aria-label="Zoom out"
+                    data-tooltip="Zoom out"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="10.5" cy="10.5" r="6.5" />
+                        <path d="M6.5 10.5h8M15.5 15.5 20 20" />
+                    </svg>
+                </button>
+                <button
+                    class="toolButton"
+                    id="resetViewButton"
+                    type="button"
+                    aria-label="Reset view"
+                    data-tooltip="Reset view"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 12a8 8 0 1 0 2.3-5.65L4 8.65" />
+                        <path d="M4 4v4.65h4.65" />
+                    </svg>
+                </button>
+                <button
+                    class="toolButton"
+                    id="zoomInButton"
+                    type="button"
+                    aria-label="Zoom in"
+                    data-tooltip="Zoom in"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="10.5" cy="10.5" r="6.5" />
+                        <path d="M6.5 10.5h8m-4-4v8M15.5 15.5 20 20" />
+                    </svg>
+                </button>
+                <span class="toolbarDivider"></span>
+                <button
+                    class="toolButton"
+                    id="fullscreenButton"
+                    type="button"
+                    aria-label="Enter fullscreen"
+                    data-tooltip="Fullscreen"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M8.5 4H4v4.5M15.5 4H20v4.5M20 15.5V20h-4.5M4 15.5V20h4.5" />
+                    </svg>
+                </button>
+            </nav>
+        </main>
+
+        <dialog id="sourceDialog" class="sourceDialog" aria-labelledby="sourceDialogTitle">
+            <div class="dialogHeader">
+                <div>
+                    <span class="panelEyebrow">Remote asset</span>
+                    <h2 id="sourceDialogTitle">Open model URL</h2>
+                </div>
+                <button
+                    class="iconButton"
+                    id="closeSourceDialogButton"
+                    type="button"
+                    aria-label="Close dialog"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m7 7 10 10M17 7 7 17" />
+                    </svg>
+                </button>
+            </div>
+            <p>
+                Paste a public URL to a .gltf or .glb file. Cross-origin assets must allow access.
+            </p>
+            <label for="dialogLinkInput">Model URL</label>
+            <input
+                id="dialogLinkInput"
+                type="url"
+                inputmode="url"
+                placeholder="https://example.com/model.glb"
+                autocomplete="url"
+            />
+            <div class="dialogActions">
+                <button class="secondaryButton" id="cancelSourceDialogButton" type="button">
+                    Cancel
+                </button>
+                <button class="primaryButton" id="dialogShowLinkBtn" type="button">
+                    Open model
+                </button>
+            </div>
+        </dialog>
+
         <script type="module" src="./app/index.ts"></script>
     </body>
 </html>
