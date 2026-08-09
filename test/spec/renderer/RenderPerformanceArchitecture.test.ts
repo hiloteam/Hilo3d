@@ -85,6 +85,35 @@ function functionBody(source: string, functionName: string): string {
 }
 
 describe('render hot-path architecture', () => {
+    it('keeps resource-only scriptable passes out of scene semantic activation', () => {
+        const pipeline = sourceAt('/render/internal/ScriptableRenderPipelineContext.ts');
+        for (const methodName of [
+            'configureFullscreenDraw',
+            'configureComputeDispatch',
+            'configureGPUDrivenDraw'
+        ]) {
+            const body = methodBody(pipeline, methodName);
+            expect(body).toContain('beginScriptableResourcePass(context)');
+            expect(body).not.toContain('beginScriptableMeshPass(context)');
+            expect(body).not.toContain('prepareScriptableCullingScene');
+        }
+
+        const rendererList = methodBody(pipeline, 'appendRendererListDraws');
+        expect(rendererList).toContain('beginScriptableMeshPass(context)');
+        expect(rendererList).not.toContain('beginScriptableResourcePass(context)');
+    });
+
+    it('batches Clustered Forward+ bucket draws into one depth and one color graph pass', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+        const depth = methodBody(clustered, 'recordDepthPrepass');
+        const color = methodBody(clustered, 'recordColorPasses');
+
+        expect(depth).toContain('this.#depthBatchPass');
+        expect(color).toContain('this.#colorBatchPass');
+        expect(depth.match(/context\.graph\.addPass\s*\(/gu)).toHaveLength(1);
+        expect(color.match(/context\.graph\.addPass\s*\(/gu)).toHaveLength(1);
+    });
+
     it('keeps RHI under render and backend renderer implementations internal', () => {
         expect(Object.keys(legacyRenderRoots)).toEqual([]);
         expect(

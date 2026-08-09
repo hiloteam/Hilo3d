@@ -36,9 +36,16 @@
   only after valid submission, retry discarded frames, and retain recovery through the
   renderer-owned CPU shadow. Migrate Clustered Forward+ from its private per-bucket PBR table so GPU
   Scene objects keep independent geometry-bucket and shared-material indices.
-- Add a repository-bundled Khronos Sponza Clustered Forward+ lighting lab with 192 animated local
-  lights, GPU Scene diagnostics, HDR bloom, OrbitControls camera views, responsive controls, and an
-  offline-friendly asset path with native WebGPU release coverage.
+- Add a repository-bundled Khronos Sponza Clustered Forward+ lighting lab with 202 animated local
+  lights, including 10 slow chromatic runners that curve through a wall-height central volume, GPU
+  Scene diagnostics, HDR bloom, a multi-region OrbitControls camera tour, responsive controls, and
+  an offline-friendly asset path with native WebGPU release coverage.
+- Avoid repeated scene traversal, camera refresh, LightManager packing, and built-in semantic-block
+  activation while preparing resource-only compute, GPU-driven, and fullscreen passes. Their shared
+  buffer/texture/resource-use transaction remains submission-aware; scene passes activate semantics
+  only when an actual renderer list or mesh draw needs them. Clustered Forward+ now also batches all
+  fixed-bucket depth draws and all color draws into one native render pass each while retaining
+  independent indirect arguments, pipelines, bindings, and graph-declared dependencies.
 - Make previous-frame Hi-Z occlusion conservative for moving and stationary cameras. Disable it for
   the first frame after a view-projection or depth change, project bounds from the sphere's nearest
   depth and all eight corners of its view-space bounding cube, select a mip covering the full

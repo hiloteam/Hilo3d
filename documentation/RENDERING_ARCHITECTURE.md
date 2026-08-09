@@ -142,6 +142,11 @@ runtime。创建时未传 `renderPipeline` 时也由进程级 `ForwardRenderPipe
 - fullscreen 输入使用固定线性 sampler，因此 capability 明确区分 sampleable 与 `filterable-sampled`；
 - fullscreen bind-group descriptor/entry 使用高水位复用，但绑定 graph-transient view 的 native bind
   group 保持 frame lifetime，并由 submission fence 后确定性销毁；
+- compute、GPU-driven 与 fullscreen 的 prepare 只 enlist 共享 buffer/texture/resource-use
+  transaction，不重复刷新 scene
+  matrix、camera、LightManager 或内置语义块；renderer-list、shadow 和普通 mesh
+  pass 首次出现时才激活完整 scene semantics，后续相机/viewport pass 继续用 `beginContextPass()`
+  切换语义而不重启资源事务；
 - pipeline invocation 与 feature/setup/prepare/execute callback 的公开 facade 都绑定不可复用 lease
   shell；内部高水位 storage 可跨帧复用，但旧引用不会在后续 callback 重新有效。各阶段必须同步，返回 Promise-like 或在回调外使用 context/handle 会中止并回滚整帧；
 - renderer-list 的 Mesh `beforeRender` 在首个声明该 Mesh 的 list 准备 draw
@@ -198,8 +203,10 @@ list 或 `PreparedDraw`：compute 完成 frustum/previous-Hi-Z cull、projected-
 compact 和 indirect arguments，随后同一 Render Graph 记录 depth、current Hi-Z、3D cluster
 allocator、storage-aware GGX PBR、HDR Bloom 与 ACES
 display。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD bucket 发一个 indirect
-draw，GPU 为不可见 bucket 写零 instance count。Hi-Z 对 standard depth 取区块最远值
-`max`、对 reversed depth 取区块最远值 `min`；previous-frame occlusion 同时读取已提交的 previous
+draw，GPU 为不可见 bucket 写零 instance count；这些 bucket draw 在共享层分别合并到一个 depth render
+pass 和一个 color render pass，仍可逐 draw 切换 pipeline、bind group、vertex/index
+buffer，但不再为每个 bucket 重开 attachment。Hi-Z 对 standard depth 取区块最远值 `max`、对 reversed
+depth 取区块最远值 `min`；previous-frame occlusion 同时读取已提交的 previous
 view/projection/depth 参数，不把上一帧 VP 与当前帧投影约定混用。颜色阶段 load 深度预通过结果，物体 record 携带 model
 basis 的 inverse-transpose normal matrix，因此 non-uniform scale 不改变法线方向。depth
 prepass 与 color pass 通过同一段 byte-identical clip-space transform 计算
@@ -612,6 +619,15 @@ Texture View 不跨帧复用，因为 `present()` 后对应 Canvas Texture 已�
 Hit/Miss、Pipeline/BindGroup/Vertex Buffer Switch、Native State Call 和 Transient
 Allocation，并分别公开 indirect draw、dispatch、精确 direct workgroup、buffer clear、compute
 pipeline/bind-group switch；indirect dispatch 不从 CPU 猜测 workgroup 数。
+
+Mesh processor 的资源事务与场景语义激活是两个有序阶段。只使用其 buffer、texture 和 resource-use
+cache 的 scriptable pass 可先走 resource-only 阶段；如果同一帧稍后出现真实 mesh
+draw，再补一次 application-frame semantics。这样既保持 submission
+commit/rollback 和 device-loss 恢复边界不变，也避免多 pass
+pipeline 为每个 bucket 重复遍历场景并打包全部灯光。Clustered
+Forward+ 进一步把同 attachment 的 fixed-bucket indirect draws 汇入高水位复用的内部 batch
+pass：Render Graph 仍声明全部 storage/vertex/index/indirect 依赖并准备独立 draw
+packet，但 depth/color 各只打开一次原生 render pass。
 
 ### 5.2 提交感知的生命周期
 

@@ -50,6 +50,10 @@ import ComputeShader, {
     type ShaderReadBinding
 } from '../compute/ComputeShader';
 import StorageGraphicsShader from '../compute/StorageGraphicsShader';
+import {
+    GPUDrivenRenderBatchPass,
+    type GPUDrivenRenderBatchPassParameters
+} from './passes/internal/GPUDrivenRenderBatchPass';
 import { depthClearValue } from '../renderer/DepthConvention';
 import SharedMaterialRecordDatabase from '../renderer/SharedMaterialRecordDatabase';
 import {
@@ -2154,6 +2158,25 @@ class MutableGPUDrivenParameters implements GPUDrivenRenderPassParameters {
     }
 }
 
+class MutableGPUDrivenBatchParameters implements GPUDrivenRenderBatchPassParameters {
+    readonly passes: GPUDrivenRenderPass[] = [];
+    readonly parameters: GPUDrivenRenderPassParameters[] = [];
+    readonly colorAttachments: RenderPipelineColorAttachment[] = [];
+    depthStencilAttachment?: RenderPipelineDepthStencilAttachment;
+
+    add(pass: GPUDrivenRenderPass, parameters: GPUDrivenRenderPassParameters): void {
+        this.passes.push(pass);
+        this.parameters.push(parameters);
+    }
+
+    reset(): void {
+        this.passes.length = 0;
+        this.parameters.length = 0;
+        this.colorAttachments.length = 0;
+        delete this.depthStencilAttachment;
+    }
+}
+
 class MutableFullscreenParameters implements FullscreenRenderPassParameters {
     readonly inputTextures: RenderGraphTextureAccessHandle[] = [];
     readonly colorAttachments: RenderPipelineColorAttachment[] = [
@@ -2469,8 +2492,20 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #depthDrawPool = new RenderPassParameterPool(
         () => new MutableGPUDrivenParameters(3, 1)
     );
+    readonly #depthBatchPool = new RenderPassParameterPool(
+        () => new MutableGPUDrivenBatchParameters(),
+        parameters => {
+            parameters.reset();
+        }
+    );
     readonly #colorDrawPool = new RenderPassParameterPool(
         () => new MutableGPUDrivenParameters(7, 2)
+    );
+    readonly #colorBatchPool = new RenderPassParameterPool(
+        () => new MutableGPUDrivenBatchParameters(),
+        parameters => {
+            parameters.reset();
+        }
     );
     readonly #fullscreenPool = new RenderPassParameterPool(() => new MutableFullscreenParameters());
     readonly #fallbackPool = new RenderPassParameterPool(
@@ -2486,6 +2521,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
     );
     readonly #displayPass: FullscreenRenderPass;
+    readonly #depthBatchPass = new GPUDrivenRenderBatchPass('GPU Scene depth buckets');
+    readonly #colorBatchPass = new GPUDrivenRenderBatchPass('Clustered PBR buckets');
     readonly #fallbackPass = new SceneRenderPass('Clustered Forward+ compatibility fallback');
     readonly #fallbackCopyPass = new TextureCopyPass(
         'Clustered Forward+ compatibility opaque copy'
@@ -3625,6 +3662,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneDepth: RenderGraphTextureHandle;
         }>
     ): void {
+        const batch = context.acquirePassParameters(this.#depthBatchPool);
+        const depthAttachment: RenderPipelineDepthStencilAttachment = {
+            texture: resources.sceneDepth,
+            depthLoadOp: 'clear',
+            depthStoreOp: 'store',
+            depthClearValue: depthClearValue(context.camera.depthMode)
+        };
+        batch.depthStencilAttachment = depthAttachment;
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
             if (bucket === undefined) continue;
@@ -3642,14 +3687,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
             parameters.colorAttachments.length = 0;
-            parameters.depthStencilAttachment = {
-                texture: resources.sceneDepth,
-                depthLoadOp: index === 0 ? 'clear' : 'load',
-                depthStoreOp: 'store',
-                depthClearValue: depthClearValue(context.camera.depthMode)
-            };
-            context.graph.addPass(bucket.depthPass, parameters);
+            parameters.depthStencilAttachment = depthAttachment;
+            batch.add(bucket.depthPass, parameters);
         }
+        context.graph.addPass(this.#depthBatchPass, batch);
     }
 
     private recordCurrentHiZ(
@@ -3765,6 +3806,21 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneDepth: RenderGraphTextureHandle;
         }>
     ): void {
+        const batch = context.acquirePassParameters(this.#colorBatchPool);
+        const colorAttachment: RenderPipelineColorAttachment = {
+            texture: resources.sceneColor,
+            loadOp: 'clear',
+            storeOp: 'store',
+            clearValue: { r: 0.004, g: 0.008, b: 0.022, a: 1 }
+        };
+        const depthAttachment: RenderPipelineDepthStencilAttachment = {
+            texture: resources.sceneDepth,
+            depthLoadOp: 'load',
+            depthStoreOp: 'store',
+            depthClearValue: depthClearValue(context.camera.depthMode)
+        };
+        batch.colorAttachments[0] = colorAttachment;
+        batch.depthStencilAttachment = depthAttachment;
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
             if (bucket === undefined) continue;
@@ -3821,20 +3877,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
             parameters.colorAttachments.length = 1;
-            parameters.colorAttachments[0] = {
-                texture: resources.sceneColor,
-                loadOp: index === 0 ? 'clear' : 'load',
-                storeOp: 'store',
-                clearValue: { r: 0.004, g: 0.008, b: 0.022, a: 1 }
-            };
-            parameters.depthStencilAttachment = {
-                texture: resources.sceneDepth,
-                depthLoadOp: 'load',
-                depthStoreOp: 'store',
-                depthClearValue: depthClearValue(context.camera.depthMode)
-            };
-            context.graph.addPass(bucket.colorPass, parameters);
+            parameters.colorAttachments[0] = colorAttachment;
+            parameters.depthStencilAttachment = depthAttachment;
+            batch.add(bucket.colorPass, parameters);
         }
+        context.graph.addPass(this.#colorBatchPass, batch);
     }
 
     private samplerFor(texture: Texture<unknown>): ComputeSampler {

@@ -749,6 +749,69 @@ describe.each([
     ['WebGL immediate', () => new FakeWebGLRHIBackend()],
     ['WebGPU deferred', () => new FakeWebGPURHIBackend()]
 ] as const)('MeshDrawProcessor on %s', (_name, createBackend) => {
+    it('defers scene semantics until a resource-only frame needs mesh preparation', async () => {
+        const fixture = await createProcessorFixture(createBackend());
+        const lightManager = new LightManager();
+        const updateInfo = vi.spyOn(lightManager, 'updateInfo');
+        const context = createContext(fixture, 1, fixture.device, { lightManager });
+        const { mesh } = createMesh();
+        const result = fixture.frame.execute(context, scope => {
+            fixture.processor.beginResourceFrame(scope.context, scope.uploads);
+            expect(updateInfo).not.toHaveBeenCalled();
+
+            expect(() => {
+                fixture.processor.beginContextPass(scope.context);
+            }).toThrow(/requires scene semantics/u);
+            expect(() => {
+                fixture.processor.beginPass(scope.context.camera, scope.context.viewport);
+            }).toThrow(/requires scene semantics/u);
+            expect(() => {
+                fixture.processor.prepare(mesh, createTarget());
+            }).toThrow(/requires scene semantics/u);
+
+            fixture.processor.beginSemanticFrame(scope.context);
+            expect(updateInfo).toHaveBeenCalledTimes(1);
+
+            fixture.processor.beginContextPass(scope.context);
+            expect(updateInfo).toHaveBeenCalledTimes(2);
+        });
+        void fixture.processor.trackSubmission(1, result.submission);
+        if (fixture.backend.executionMode === 'deferred') fixture.backend.completeNextSubmission();
+        await result.submission.done;
+
+        destroyFixture(fixture);
+    });
+
+    it('retries cleanly after resource-only semantic activation rolls back', async () => {
+        const fixture = await createProcessorFixture(createBackend());
+        const lightManager = new LightManager();
+        const updateInfo = vi.spyOn(lightManager, 'updateInfo').mockImplementationOnce(() => {
+            throw new Error('semantic activation failed');
+        });
+        expect(() =>
+            fixture.frame.execute(
+                createContext(fixture, 1, fixture.device, { lightManager }),
+                scope => {
+                    fixture.processor.beginResourceFrame(scope.context, scope.uploads);
+                    fixture.processor.beginSemanticFrame(scope.context);
+                }
+            )
+        ).toThrow(/semantic activation failed/u);
+        updateInfo.mockRestore();
+
+        const retry = fixture.frame.execute(
+            createContext(fixture, 2, fixture.device, { lightManager }),
+            scope => {
+                fixture.processor.beginFrame(scope.context, scope.uploads);
+            }
+        );
+        void fixture.processor.trackSubmission(2, retry.submission);
+        if (fixture.backend.executionMode === 'deferred') fixture.backend.completeNextSubmission();
+        await retry.submission.done;
+
+        destroyFixture(fixture);
+    });
+
     it('reuses one Uint8 source as ordinary and widened Uint16 strip-restart data', async () => {
         const fixture = await createProcessorFixture(createBackend());
         const { mesh, geometry } = createMesh(new Uint8Array([0, 1, 2, 0xff, 0, 2]));
