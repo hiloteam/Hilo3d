@@ -82,15 +82,17 @@ function differingPixelRatio(referencePng: Buffer, candidatePng: Buffer): number
 async function captureSponzaAngles(
     page: Page,
     hiZEnabled: boolean,
+    cullingEnabled: boolean,
     framesPerAngle: number
 ): Promise<readonly SponzaVisualAngle[]> {
     await page.goto(
-        `/examples/clustered_forward_plus_sponza.html?backend=webgpu&hiZ=${String(hiZEnabled)}&tour=false&motion=false`,
+        `/examples/clustered_forward_plus_sponza.html?backend=webgpu&hiZ=${String(hiZEnabled)}&culling=${String(cullingEnabled)}&tour=false&motion=false`,
         { waitUntil: 'load' }
     );
     const body = page.locator('body');
     await expect(body).toHaveAttribute('data-forward-plus-ready', 'true', { timeout: 60_000 });
     await expect(body).toHaveAttribute('data-hi-z-enabled', String(hiZEnabled));
+    await expect(body).toHaveAttribute('data-culling-enabled', String(cullingEnabled));
     await expect(body).toHaveAttribute('data-hi-z-valid', String(hiZEnabled), {
         timeout: 15_000
     });
@@ -447,19 +449,19 @@ test('Sponza Forward+ exposes stable camera and lighting controls @webgpu', asyn
     }
 });
 
-test('Sponza previous-frame Hi-Z remains visually identical across small camera turns @webgpu', async ({
+test('Sponza GPU culling remains visually identical across small camera turns @webgpu', async ({
     page
 }) => {
     test.setTimeout(180_000);
     await installNativeAdapterGate(page);
     const failures = await installPageFailureMonitor(page);
     try {
-        const withHiZ = await captureSponzaAngles(page, true, 4);
-        const withoutHiZ = await captureSponzaAngles(page, false, 1);
-        expect(withHiZ).toHaveLength(withoutHiZ.length);
-        for (let angleIndex = 0; angleIndex < withHiZ.length; angleIndex += 1) {
-            const testedAngle = withHiZ[angleIndex];
-            const referenceAngle = withoutHiZ[angleIndex];
+        const withGPUCulling = await captureSponzaAngles(page, true, true, 4);
+        const withoutGPUCulling = await captureSponzaAngles(page, false, false, 1);
+        expect(withGPUCulling).toHaveLength(withoutGPUCulling.length);
+        for (let angleIndex = 0; angleIndex < withGPUCulling.length; angleIndex += 1) {
+            const testedAngle = withGPUCulling[angleIndex];
+            const referenceAngle = withoutGPUCulling[angleIndex];
             expect(testedAngle?.label).toBe(referenceAngle?.label);
             const reference = referenceAngle?.frames[0];
             if (testedAngle === undefined || reference === undefined) {
@@ -469,11 +471,11 @@ test('Sponza previous-frame Hi-Z remains visually identical across small camera 
                 const ratio = differingPixelRatio(reference, frame);
                 expect(
                     ratio,
-                    `${testedAngle.label} Hi-Z frame differs from the unculled reference`
+                    `${testedAngle.label} GPU-culled frame differs from the unculled reference`
                 ).toBeLessThan(0.002);
             }
         }
-        failures.assertEmpty('Sponza Hi-Z camera-turn browser failures');
+        failures.assertEmpty('Sponza GPU-culling camera-turn browser failures');
     } finally {
         await failures.dispose();
     }

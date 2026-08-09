@@ -265,7 +265,8 @@ function createLampRig(
     stage: Hilo3d.Stage<'webgpu'>,
     geometry: Hilo3d.Geometry,
     materials: readonly Hilo3d.PBRMaterial[],
-    descriptors: readonly LampDescriptor[]
+    descriptors: readonly LampDescriptor[],
+    frustumTest: boolean
 ): readonly LampRuntime[] {
     const rig = new Hilo3d.Node({ name: 'Sponza clustered light installation' }).addTo(stage);
     return Object.freeze(
@@ -290,7 +291,7 @@ function createLampRig(
                 geometry,
                 material,
                 useInstanced: true,
-                frustumTest: true
+                frustumTest
             })
                 .setScale(descriptor.markerScale)
                 .addTo(rig);
@@ -329,6 +330,7 @@ function viewportPixelRatio(): number {
 async function run(): Promise<void> {
     const searchParameters = new URLSearchParams(location.search);
     const hiZEnabled = searchParameters.get('hiZ') !== 'false';
+    const cullingEnabled = searchParameters.get('culling') !== 'false';
     const motionPreference = !matchMedia('(prefers-reduced-motion: reduce)').matches;
     const container = requireElement('#container', HTMLElement);
     const controlsFieldset = requireElement('#controlsFieldset', HTMLFieldSetElement);
@@ -380,6 +382,7 @@ async function run(): Promise<void> {
     loadingProgress.style.width = '78%';
     await model.ready;
     normalizeModel(model);
+    for (const mesh of model.meshes) mesh.frustumTest = cullingEnabled;
 
     const bulbGeometry = new Hilo3d.SphereGeometry({
         radius: 0.07,
@@ -416,6 +419,7 @@ async function run(): Promise<void> {
     loadingProgress.style.width = '92%';
     document.body.dataset['excludedMeshes'] = String(modelBucketPlan.excludedMeshCount);
     document.body.dataset['hiZEnabled'] = String(hiZEnabled);
+    document.body.dataset['cullingEnabled'] = String(cullingEnabled);
     excludedMeshCount.textContent = String(modelBucketPlan.excludedMeshCount);
 
     const camera = new Hilo3d.PerspectiveCamera({
@@ -453,7 +457,13 @@ async function run(): Promise<void> {
     }).addTo(stage);
 
     const lampDescriptors = createLampDescriptors();
-    const lamps = createLampRig(stage, bulbGeometry, bulbMaterials, lampDescriptors);
+    const lamps = createLampRig(
+        stage,
+        bulbGeometry,
+        bulbMaterials,
+        lampDescriptors,
+        cullingEnabled
+    );
     const initialLightCount = MAX_LIGHTS;
     lightControl.value = String(initialLightCount);
 

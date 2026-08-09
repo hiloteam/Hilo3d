@@ -204,11 +204,13 @@ view/projection/depth 参数，不把上一帧 VP 与当前帧投影约定混用
 basis 的 inverse-transpose normal matrix，因此 non-uniform
 scale 不改变法线方向。相机的 view-projection 或 depth 参数相对已提交帧发生变化时，runtime 会暂时关闭一帧 previous-frame
 Hi-Z 遮挡判定以避免视角移动造成 disocclusion 误剔除，同时仍生成当帧 pyramid，使静止后的下一帧即可恢复遮挡剔除。静止帧从包围球最近深度和 view-space 包围立方体的八个角计算保守的屏幕投影，避免偏离画面中心时低估范围，并向上选择覆盖完整投影的 mip；投影大于最粗 pyramid
-footprint 的物体不参与 Hi-Z 遮挡剔除，避免稀疏采样把大块局部几何误判为完全遮挡。普通 Forward
-PBR 与 clustered storage variant 共用 `pbr_surface.glsl` 和 `pbr_brdf.glsl`；后者只把 light
-provider 换成 cluster grid/list，不复制材质模型。GPU Scene geometry
-database 可携带 UV0/UV1 与对应 tangent stream，sampled engine `Texture` 通过 graph
-import 复用 renderer 的上传、恢复与 submission 生命周期。
+footprint 的物体不参与 Hi-Z 遮挡剔除，避免稀疏采样把大块局部几何误判为完全遮挡。GPU
+Scene 的 frustum 阶段使用 view-space side plane 的完整法线长度计算球体半径，不以 projection
+scale 近似斜平面距离；`Mesh.frustumTest = false` 与普通 renderer
+list 一样关闭该 mesh 的视锥剔除。普通 Forward PBR 与 clustered storage variant 共用
+`pbr_surface.glsl` 和 `pbr_brdf.glsl`；后者只把 light provider 换成 cluster
+grid/list，不复制材质模型。GPU Scene geometry database 可携带 UV0/UV1 与对应 tangent stream，sampled
+engine `Texture` 通过 graph import 复用 renderer 的上传、恢复与 submission 生命周期。
 
 pipeline runtime 的 `frameSubmitted()` / `frameDiscarded()` 是 CPU-side temporal
 state 的事务边界；current/previous object/camera transform 只在 RHI

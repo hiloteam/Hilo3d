@@ -106,6 +106,8 @@ const INDIRECT_ARGUMENT_BYTES = 20;
 const STATS_BYTES = 16;
 const HIZ_LEVEL_COUNT = 6;
 const MAX_HIZ_OCCLUSION_DIAMETER = 1 << HIZ_LEVEL_COUNT;
+const OBJECT_ACTIVE_FLAG = 1;
+const OBJECT_FRUSTUM_CULLING_FLAG = 2;
 const CULL_WORKGROUP_SIZE = 64;
 const PREFIX_WORKGROUP_SIZE = 256;
 const DEFAULT_MAX_OBJECTS = 16_384;
@@ -307,6 +309,8 @@ interface GPUSceneObjectRecord {
     seenFrame: number;
     pendingWorldVersion: number;
     committedWorldVersion: number;
+    pendingFrustumTest: boolean;
+    committedFrustumTest: boolean;
     readonly committedMatrix: Float32Array;
     readonly pendingMatrix: Float32Array;
 }
@@ -997,7 +1001,8 @@ ${textureSample}
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= frameData.counts.x || id.x >= frameData.budgets.x) { return; }
     let object = objects[id.x];
-    if (object.metadata.z == 0u || (object.metadata.y & frameData.budgets.w) == 0u) { return; }
+    let objectFlags = object.metadata.z;
+    if ((objectFlags & ${String(OBJECT_ACTIVE_FLAG)}u) == 0u || (object.metadata.y & frameData.budgets.w) == 0u) { return; }
     let model = objectModel(object);
     let previousModel = objectPreviousModel(object);
     let localCenter = vec4<f32>(object.bounds.xyz, 1.0);
@@ -1005,15 +1010,17 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let previousCenter = (previousModel * localCenter).xyz;
     let radius = object.bounds.w * maximumScale(model);
     let previousRadius = object.bounds.w * maximumScale(previousModel);
-    let clip = frameData.currentViewProjection * vec4<f32>(center, 1.0);
-    if (clip.w <= 0.0) { return; }
-    let radiusClip = vec2<f32>(
-        abs(frameData.projection[0][0]), abs(frameData.projection[1][1])
-    ) * radius;
-    if (abs(clip.x) > clip.w + radiusClip.x || abs(clip.y) > clip.w + radiusClip.y) { return; }
     let viewCenter = frameData.view * vec4<f32>(center, 1.0);
     let viewDepth = -viewCenter.z;
-    if (viewDepth + radius < frameData.depth.x || viewDepth - radius > frameData.depth.y) { return; }
+    if ((objectFlags & ${String(OBJECT_FRUSTUM_CULLING_FLAG)}u) != 0u) {
+        let projectionScale = vec2<f32>(
+            abs(frameData.projection[0][0]), abs(frameData.projection[1][1])
+        );
+        let sidePlaneDistance = abs(viewCenter.xy) * projectionScale - vec2<f32>(viewDepth);
+        let sidePlaneRadius = sqrt(projectionScale * projectionScale + vec2<f32>(1.0)) * radius;
+        if (any(sidePlaneDistance > sidePlaneRadius)) { return; }
+        if (viewDepth + radius < frameData.depth.x || viewDepth - radius > frameData.depth.y) { return; }
+    }
     let motion = distance(center, previousCenter) + abs(radius - previousRadius);
     if (occludedByPreviousHiZ(frameData, previousCenter, previousRadius, motion)) {
         _ = atomicAdd(&cullStats[1], 1u);
@@ -2846,6 +2853,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             const moved = arraysDiffer(record.committedMatrix, record.pendingMatrix);
             record.committedMatrix.set(record.pendingMatrix);
             record.committedWorldVersion = record.pendingWorldVersion;
+            record.committedFrustumTest = record.pendingFrustumTest;
             record.pendingWorldVersion = -1;
             // One following upload makes previous == current after motion stops.
             if (moved) record.committedWorldVersion = -1;
@@ -3203,6 +3211,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                                 seenFrame: this.#frameSerial,
                                 pendingWorldVersion: -1,
                                 committedWorldVersion: -1,
+                                pendingFrustumTest: node.frustumTest,
+                                committedFrustumTest: node.frustumTest,
                                 committedMatrix: initial.slice(),
                                 pendingMatrix: initial
                             };
@@ -3218,7 +3228,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                         record.seenFrame = this.#frameSerial;
                         const dirty =
                             record.logicalBucket !== logicalIndex ||
-                            record.committedWorldVersion !== node.worldMatrixVersion;
+                            record.committedWorldVersion !== node.worldMatrixVersion ||
+                            record.committedFrustumTest !== node.frustumTest;
                         record.logicalBucket = logicalIndex;
                         if (dirty) {
                             this.packObject(record, node, logicalIndex);
@@ -3337,12 +3348,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#objectFloats[floatOffset + 47] = sphere.radius;
         this.#objectUInts[floatOffset + 48] = logicalIndex;
         this.#objectUInts[floatOffset + 49] = mesh.layer >>> 0;
-        this.#objectUInts[floatOffset + 50] = 1;
+        this.#objectUInts[floatOffset + 50] =
+            OBJECT_ACTIVE_FLAG | (mesh.frustumTest ? OBJECT_FRUSTUM_CULLING_FLAG : 0);
         this.#objectUInts[floatOffset + 51] = this.#materialDatabase.getHandle(
             bucket.material
         ).recordIndex;
         matrixElements(mesh.worldMatrix, record.pendingMatrix, 0);
         record.pendingWorldVersion = mesh.worldMatrixVersion;
+        record.pendingFrustumTest = mesh.frustumTest;
     }
 
     private packLight(

@@ -44,7 +44,9 @@
   depth and all eight corners of its view-space bounding cube, select a mip covering the full
   projected extent, and skip objects larger than the coarsest pyramid footprint. The current pyramid
   is still retained so culling resumes immediately on the next stable frame without temporal
-  disocclusion holes, off-axis under-bounds, or large-geometry false positives.
+  disocclusion holes, off-axis under-bounds, or large-geometry false positives. GPU Scene frustum
+  culling now tests the exact view-space side-plane radius instead of underestimating large spheres
+  near a screen edge, and honors each mesh's `frustumTest` opt-out.
 - Keep default Forward lighting, clear colors, transparent blending, and intermediate effects in
   linear space, then apply one exact linear-to-sRGB transfer at the browser surface. Multi-camera
   load/blend stays in a renderer-owned linear composition target, while already transformed Color

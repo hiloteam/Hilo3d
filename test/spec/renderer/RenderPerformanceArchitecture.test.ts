@@ -209,5 +209,9 @@ describe('render hot-path architecture', () => {
         expect(clustered).toContain('diameter > ${String(MAX_HIZ_OCCLUSION_DIAMETER)}.0');
         expect(clustered).toContain('ceil(log2(diameter)) - 1.0');
         expect(clustered).not.toContain('floor(log2(diameter)) - 1.0');
+        expect(clustered).toContain(
+            'sqrt(projectionScale * projectionScale + vec2<f32>(1.0)) * radius'
+        );
+        expect(clustered).toContain('mesh.frustumTest ? OBJECT_FRUSTUM_CULLING_FLAG : 0');
     });
 });
