@@ -53,8 +53,11 @@ npm run preview
 ## Adaptation rules
 
 - Preserve the generated exact version until compatibility with another Hilo3D release is verified.
-- Keep `src/main.ts` small while prototyping; split into `game/`, `systems/`, `entities/`, `ui/`,
-  and `assets/` when features become independently testable.
+- Keep `src/main.ts` small while prototyping. When features become independently testable, split
+  authoritative rules into `game/`, Hilo3D presentation into `hilo/`, and dense or accessible web
+  surfaces into `ui/`; follow [Game architecture](game-architecture.md) for the concrete layout.
+- Centralize application-owned asset URLs and semantic keys in a manifest instead of embedding paths
+  across systems and views.
 - Replace generated Canvas textures with local assets using `TextureLoader`, `BasicLoader`, or
   `GLTFLoader`.
 - Keep URL construction relative to modules:
