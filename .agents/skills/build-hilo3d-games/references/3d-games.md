@@ -161,6 +161,21 @@ const cameraRig = new Hilo3d.Node().addTo(stage);
 camera.addTo(cameraRig);
 ```
 
+For player-controlled orbit, dolly, and pan, use the public controls instead of implementing local
+pointer, wheel, and touch gestures:
+
+```ts
+const controls = new Hilo3d.OrbitControls(stage, {
+    camera,
+    target: new Hilo3d.Vector3(0, 1, 0),
+    minDistance: 2,
+    maxDistance: 12
+});
+```
+
+Use `controls.setView(position, target)` for scripted tours that should retain the same orbit
+contract. Call `controls.dispose()` during application teardown.
+
 For follow cameras, smooth toward a target position with a frame-rate-independent factor:
 
 ```ts

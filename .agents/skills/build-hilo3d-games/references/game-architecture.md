@@ -3,9 +3,13 @@
 ## Contents
 
 - [Organize by ownership](#organize-by-ownership)
+- [Scale the module layout with complexity](#scale-the-module-layout-with-complexity)
+- [Keep render objects disposable](#keep-render-objects-disposable)
 - [Model game states explicitly](#model-game-states-explicitly)
 - [Use one scheduler](#use-one-scheduler)
 - [Record input state](#record-input-state)
+- [Centralize asset identity](#centralize-asset-identity)
+- [Choose camera and UI boundaries early](#choose-camera-and-ui-boundaries-early)
 - [Keep collision appropriate to the game](#keep-collision-appropriate-to-the-game)
 - [Load before play](#load-before-play)
 - [Resize deliberately](#resize-deliberately)
@@ -24,6 +28,54 @@ Keep four boundaries:
 
 For a prototype, these may be classes in one file. Split them once each boundary has independent
 state or tests.
+
+## Scale the module layout with complexity
+
+Keep a small vertical slice compact. When rules, view state, content, or UI become independently
+testable, prefer an ownership-based split:
+
+```text
+src/
+  game/
+    simulation/
+      state.ts
+      systems/
+      rules/
+    content/
+    input/
+      actions.ts
+      bindings.ts
+    assets/
+      manifest.ts
+  hilo/
+    stage/
+    view/
+      entities/
+      fx/
+      camera/
+    adapters/
+      stageBridge.ts
+  ui/
+    hud/
+    menus/
+    overlays/
+  main.ts
+```
+
+Keep `game/` free of DOM and GPU dependencies where practical. Let `hilo/` adapt game snapshots to
+nodes and convert picked or browser input into game actions. Use `ui/` for either DOM surfaces or
+Hilo3D HUD composition; keep the ownership explicit when both exist.
+
+## Keep render objects disposable
+
+Treat Hilo3D nodes, materials, animations, tweens, emitters, camera rigs, and DOM elements as
+presentation state. The simulation must not require one of them to stay alive. Use one adapter
+boundary where presentation reads simulation state and input emits actions back.
+
+Derive animation playback, hit effects, camera shake, and labels from authoritative game events or
+state. Do not create a second state machine from sprite flags, tween completion, or scene-graph
+lifetime. View objects may cache the last presented value to avoid redundant GPU or Canvas work, but
+that cache is not saveable game state.
 
 ## Model game states explicitly
 
@@ -134,6 +186,41 @@ sprite.on('pointerdown', event => {
 For a 3D surface, use `event.hitPoint` from a picked Mesh or
 `stage.getMeshResultAtPoint(stageX, stageY, true)`. A screen coordinate alone does not identify a
 unique 3D world position; intersect the camera ray with the intended plane or collision geometry.
+
+## Centralize asset identity
+
+Use stable, human-readable manifest keys instead of embedding file paths throughout gameplay and
+presentation code:
+
+```ts
+export const assets = {
+    playerAtlas: new URL('../../assets/characters/player.png', import.meta.url).href,
+    level: new URL('../../assets/environment/level.glb', import.meta.url).href,
+    click: new URL('../../assets/audio/click.ogg', import.meta.url).href
+} as const;
+```
+
+Organize shipped assets by purpose, for example `characters/`, `environment/`, `ui/`, `fx/`,
+`audio/`, `data/`, and `models/`. Keep gameplay code dependent on semantic keys or loaded resource
+handles, not deployment paths. Validate duplicate keys and required asset failures at the loading
+boundary.
+
+## Choose camera and UI boundaries early
+
+Choose a camera contract before building movement and interaction:
+
+- 2D: locked, follow, room-based, or tactical-pan;
+- 3D: follow, orbit, first-person, or scripted;
+- hybrid: a world camera plus one or more higher-priority `Camera2D` layers.
+
+Keep camera logic in presentation. Simulation may expose a focus target, facing, room, or event, but
+must not depend on camera interpolation or shake. Use `OrbitControls` for perspective-camera orbit,
+dolly, and pan instead of adding local pointer, wheel, or touch gesture handlers.
+
+Use Hilo3D `Sprite`, `Text2D`, `SlicedSprite`, and `UiButton` for low-density HUD and effects that
+must share camera, layer, picking, or render composition. Use DOM overlays for dense text,
+responsive menus, forms, settings, and accessible navigation. Keep secondary panels from covering
+the active playfield and give canvas and DOM input one explicit focus policy.
 
 ## Keep collision appropriate to the game
 

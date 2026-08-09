@@ -1,43 +1,96 @@
 ---
 name: build-hilo3d-games
 description:
-    Build, extend, debug, and optimize browser games with the published ESM package hilo3d 2.0.0 or
-    its current alpha prerelease. Use for standalone TypeScript/Vite game projects involving Hilo3D
-    2D sprites, atlas animation, Canvas text, 3D scenes, PBR materials, glTF assets, cameras,
-    lighting, input, picking, physics integration, hybrid 2D UI over 3D worlds, WebGPU/WebGL2
-    backend selection, rendering performance, or game architecture. Also use to scaffold a complete
-    runnable 2D, 3D, or hybrid Hilo3D game without cloning the Hilo3D repository.
+    Plan, scaffold, build, extend, debug, and optimize standalone browser games with the published
+    ESM package hilo3d 2.0.0 or its current alpha prerelease. Use when Hilo3D is selected for a
+    strict TypeScript/Vite 2D sprite game, 3D game, or hybrid 3D world with 2D UI; when work
+    involves gameplay architecture, cameras, input, picking, physics, asset loading, PBR, glTF,
+    Canvas text, WebGPU/WebGL2 selection, or rendering performance; or when Codex should generate a
+    complete runnable Hilo3D game without cloning the engine repository.
 ---
 
 # Build Hilo3D Games
 
-Build standalone browser games against the Hilo3D 2.0.0 release line. Do not require a Hilo3D source
-checkout. Prefer strict TypeScript, native ESM, Vite, reusable resources, and a small playable
-vertical slice before expanding content.
+Use this skill as the Hilo3D specialist track. If the user has not selected an engine, choose the
+game stack before committing to Hilo3D. Once Hilo3D is selected, keep the gameplay, camera, UI,
+asset, and validation decisions in one coherent plan.
 
-## Work from the 2.0.0 contract
+## Work from the published 2.0.0 contract
 
-- Resolve the dependency from the official npm registry: use exact `2.0.0` when published; otherwise
-  use the highest exact `2.0.0-alpha.N`. Never substitute a 1.x, beta, or release candidate.
-- Keep the generated exact version and package lock. Change it only when the user requests a version
-  or after verifying compatibility with a newer 2.0.0 release.
+- Resolve `hilo3d` from the official npm registry. Use exact `2.0.0` when published; otherwise use
+  the highest exact `2.0.0-alpha.N`. Never substitute 1.x, beta, or release-candidate builds.
+- Keep the exact dependency version and package lock. Change them only at the user's request or
+  after verifying compatibility with a newer 2.0.0 release.
 - Use Node.js 20.19.0 or newer for the bundled starter.
-- Import public API only from `hilo3d`.
-- Treat installed declarations at `node_modules/hilo3d/dist/Hilo3d.d.ts` as the final local source
-  of truth when a signature is uncertain.
+- Import public API only from `hilo3d`. When a signature is uncertain, treat
+  `node_modules/hilo3d/dist/Hilo3d.d.ts` as the final local source of truth.
 - Never copy private engine internals, generated documentation, or repository-relative examples into
   a consumer game.
-- Use only the public rendering backends `webgpu` and `webgl2`; use `backend: 'auto'` by default.
+- Use only `webgpu` and `webgl2`; default to `backend: 'auto'`.
 
-## Choose the game shape
+## Classify the work before coding
 
-Select one primary shape before writing code:
+Identify the request mode:
 
-- **2D**: `Camera2D`, `Sprite`, `SpriteFrame`, `Text2D`, layers, and pointer events.
-- **3D**: `PerspectiveCamera`, `Mesh`, geometry, PBR materials, lights, glTF, and optional physics.
-- **Hybrid**: one 3D world camera plus a higher-priority `Camera2D` HUD in the same `Stage`.
+- **Plan**: return a game-specific plan covering the player verbs, core loop, game states, camera,
+  UI surface, asset workflow, controls, and test approach.
+- **Scaffold**: choose a game shape, generate the smallest runnable project, and preserve the exact
+  Hilo3D version.
+- **Implement or extend**: preserve a valid existing ESM project's framework and conventions; add
+  only the boundaries the game now needs.
+- **Debug or optimize**: reproduce and measure the problem before changing architecture or render
+  policy. Keep gameplay correctness separate from rendering evidence.
 
-If starting from nothing, run:
+Then select one primary Hilo3D shape:
+
+- **2D**: use `Camera2D`, `Sprite`, `SpriteFrame`, `Text2D`, layers, and pointer events for sprite,
+  grid, top-down, side-view, tactics, or lightweight management games.
+- **3D**: use `PerspectiveCamera`, `Mesh`, reusable geometry, materials, lights, glTF, picking, and
+  optional physics for world-space games.
+- **Hybrid**: use a 3D world camera plus a higher-priority `Camera2D` in the same `Stage` when the
+  HUD or 2D effects must participate in Hilo3D composition.
+
+Do not revisit the engine choice once the request or existing project makes it explicit.
+
+## Plan the playable slice
+
+Before expanding content:
+
+1. Lock the game fantasy and the player's main verbs.
+2. Define the core loop, success and failure states, progression, restart behavior, and target
+   session length.
+3. Choose the camera model: locked, follow, room-based, or tactical-pan for 2D; follow, orbit,
+   first-person, or scripted for 3D.
+4. Choose the UI surface early. Use Hilo3D 2D composition for low-density, scene-integrated HUD and
+   effects. Use a DOM overlay when dense text, responsive menus, forms, settings, or accessibility
+   benefit from normal web layout.
+5. Decide which assets are generated placeholders and which are shipping sprites, atlases, audio,
+   data, textures, or glTF/GLB files. Address them through stable manifest keys.
+6. Define the task-scoped playtest and evidence needed before calling the slice complete.
+
+Keep secondary UI collapsed or out of the playfield. Avoid turning the game shell into a generic
+dashboard.
+
+## Separate rules from Hilo3D presentation
+
+Keep four ownership boundaries, even if a prototype starts in one file:
+
+1. **Input** records actions, axes, pointer positions, and one-shot commands.
+2. **Simulation** owns authoritative state, movement, combat, collision, objectives, score, and
+   progression.
+3. **Presentation** maps simulation state to Hilo3D nodes, animation, materials, cameras, text, and
+   effects.
+4. **Lifecycle** owns loading, start/pause/resume/restart, resize, listeners, and teardown.
+
+Keep `Stage`, nodes, emitters, tweens, materials, and camera rigs disposable as view state. Do not
+make game rules depend on a node, animation, or GPU resource remaining alive. Use one bridge where
+presentation reads simulation snapshots and input produces actions. Derive animation and camera
+effects from gameplay state rather than maintaining competing flags.
+
+Read [Game architecture](references/game-architecture.md) for the module split, state machine,
+scheduler, asset manifest, input, collision, lifecycle, and testing patterns.
+
+## Scaffold when starting from nothing
 
 ```sh
 node <skill-root>/scripts/create-hilo3d-game.mjs \
@@ -49,119 +102,76 @@ npm install
 npm run dev
 ```
 
-Valid types are `2d`, `3d`, and `hybrid`. The generator refuses to overwrite a non-empty output
-directory. Its default `auto` version lookup prefers stable `2.0.0` and otherwise selects the latest
-numbered alpha. Pass `--hilo-version 2.0.0-alpha.1` only to reproduce or test that exact release.
-Read [Starter generator](references/starter-generator.md) when scaffolding or adapting the starter.
+Valid types are `2d`, `3d`, and `hybrid`. The generator refuses to overwrite a non-empty directory.
+Its `auto` lookup prefers stable `2.0.0` and otherwise selects the latest numbered alpha. Pass an
+explicit `--hilo-version` only to reproduce or test that exact published release. Read
+[Starter generator](references/starter-generator.md) when scaffolding or adapting the output.
 
-## Follow the implementation workflow
+## Implement in dependency order
 
-1. Define the smallest playable loop: player action, world response, success/failure feedback, and
-   restart.
-2. Scaffold or inspect the existing application. Preserve its framework and build conventions when
-   it is already a valid modern ESM project.
-3. Create all stages asynchronously with `await Stage.create(...)`.
-4. Separate input state, simulation, presentation, and lifecycle cleanup.
-5. Register simulation tickables before `stage` so state updates before rendering.
-6. Load or generate assets before exposing gameplay. Surface load failures; do not silently render
-   missing content.
-7. Make resize behavior explicit for the Stage and every active camera.
-8. Add interaction only for objects that need it, and enable only the necessary DOM event types.
-9. Reuse geometry, materials, textures, atlas frames, and scratch math objects in steady-state code.
-10. Validate type safety, the production build, and task-scoped behavior. Defer general browser-game
-    playtesting policy to the containing project's QA workflow.
+1. Scaffold or inspect the application and define explicit game states.
+2. Load or generate required assets before play; surface failures in the page instead of silently
+   rendering missing content.
+3. Create every `Stage` or `Renderer` through its asynchronous `create()` factory.
+4. Register input, simulation, presentation, tween/animation, and `stage` tickables in dependency
+   order so authoritative state updates before rendering.
+5. Make resize behavior explicit for the Stage, every active camera, and both Hilo3D and DOM UI.
+6. Add picking only to interactive objects and enable only the required DOM event types.
+7. Reuse geometry, materials, textures, atlas frames, bindings, and scratch math objects in
+   steady-state code.
+8. Implement deterministic restart and one complete teardown path without reloading the page.
 
-## Avoid high-frequency mistakes
+## Preserve Hilo3D invariants
 
-- **Never infer Sprite positioning from the Camera origin.** `Camera2D` uses a top-left screen
-  origin, but `Sprite` and `Text2D` default to the center anchor `(0.5, 0.5)`. `sprite.x/y` is the
-  anchor position in the parent's local coordinate system; it is not the image's top-left corner.
-  For UI layouts expressed as left/top coordinates, always set `anchorX: 0, anchorY: 0`; otherwise
-  add half the rendered width/height to the position. Parent transforms still apply. Apply this
-  contract consistently to backgrounds, panels, portraits, titles, and responsive edge layouts; a
-  mismatch commonly clips exactly half of the visual.
-- Hilo3D event listeners receive the base `DispatchEvent` type. Narrow optional pointer fields with
-  runtime checks before reading `stageX`, `stageY`, `hitPoint`, or propagation helpers.
-- Pass render-target operations in target-first order:
-  `renderer.renderToTarget(target, scene, camera)`.
-- Keep gameplay state authoritative outside render callbacks. Update simulation before ticking
-  `stage`.
-- Show initialization and required-asset failures in the page, not only in the developer console.
-- Keep generated games independent from this skill after scaffolding; runtime code and build scripts
-  must depend only on published packages and application-owned assets.
-
-## Respect core API rules
-
-Use this baseline:
-
-```ts
-import * as Hilo3d from 'hilo3d';
-
-const camera = new Hilo3d.PerspectiveCamera({
-    aspect: innerWidth / innerHeight,
-    near: 0.1,
-    far: 200,
-    z: 6
-});
-
-const stage = await Hilo3d.Stage.create({
-    backend: 'auto',
-    container: document.querySelector<HTMLElement>('#app')!,
-    camera,
-    width: innerWidth,
-    height: innerHeight,
-    pixelRatio: Math.min(devicePixelRatio || 1, 2)
-});
-
-const ticker = new Hilo3d.Ticker(60);
-ticker.addTick(stage);
-ticker.start();
-```
-
-Keep these invariants:
-
-- `Stage` and `Renderer` are created only through their asynchronous `create()` factories.
-- `auto` prefers WebGPU and falls back to WebGL2 only during capability selection. Explicit `webgpu`
-  failure must remain visible.
-- `Ticker` deltas are milliseconds. Convert with `dt / 1000` for units-per-second movement.
-- Clamp long deltas after tab suspension and use a fixed step for deterministic physics.
+- `auto` prefers WebGPU and falls back to WebGL2 only during capability selection. Keep later WebGPU
+  initialization, shader, pipeline, and resource failures visible.
+- `Ticker` deltas are milliseconds. Convert with `dt / 1000`, clamp long deltas after tab
+  suspension, and use a fixed step for deterministic rules or physics.
 - `Node` rotations are degrees. Do not feed radians into `rotationX/Y/Z`.
 - Update `PerspectiveCamera.aspect` or call `Camera2D.resize()` whenever the Stage size changes.
-- Call `stage.destroy()` and remove application-owned DOM listeners during teardown.
+- For orbit, dolly, and pan on a perspective camera, use public `OrbitControls`; use `setView()` for
+  scripted views that share the same contract, and call `dispose()` during teardown.
+- Never infer Sprite positioning from the Camera origin. `Camera2D` is top-left, but `Sprite` and
+  `Text2D` anchors default to `(0.5, 0.5)`. Set both anchors to `0` when `x/y` are left/top layout
+  coordinates.
+- Narrow optional Hilo3D pointer fields at runtime before reading `stageX`, `stageY`, `hitPoint`, or
+  propagation helpers from the base `DispatchEvent` type.
+- Pass render-target operations in target-first order:
+  `renderer.renderToTarget(target, scene, camera)`.
+- Call `stage.destroy()`, dispose controls, and remove application-owned DOM, audio, gamepad, and
+  other external listeners during teardown.
+- Keep generated games independent from this skill. Runtime code must depend only on published
+  packages and application-owned assets.
 
-Read [Public API](references/public-api.md) for the practical interface map and
-[Game architecture](references/game-architecture.md) for state, loop, input, collision, lifecycle,
-and testing patterns.
+Read [Public API](references/public-api.md) when exact construction, loading, scene graph, material,
+camera, or renderer behavior is needed.
 
 ## Route to focused guidance
 
-- Read [2D games](references/2d-games.md) for sprite atlases, animation, UI text, batching, layers,
-  pointer events, and pixel-space layout.
-- Read [3D games](references/3d-games.md) for meshes, materials, lighting, shadows, glTF, animation,
-  environment assets, and `cannon-es` physics.
-- Read [Rendering and performance](references/rendering-performance.md) for camera composition,
-  backend policy, draw-call control, transparency, shaders, render targets, diagnostics, and
-  WebGPU-only compute.
+- Read [2D games](references/2d-games.md) for coordinates and anchors, sprite atlases, animation,
+  display order, batching, Canvas text, scalable controls, picking, and hybrid composition.
+- Read [3D games](references/3d-games.md) for world scale, reusable meshes, materials, lighting,
+  shadows, glTF, camera controls, picking, animation, and `cannon-es` physics.
+- Read [Rendering and performance](references/rendering-performance.md) for backend policy,
+  multi-camera composition, draw-call control, transparency, shaders, render targets, diagnostics,
+  and WebGPU-only compute.
 
-Load only the references needed for the current task. Do not read every reference by default.
+Load only the references required for the current task.
 
-## Build a real game, not a rendering demo
+## Deliver a game, not a rendering demo
 
-Every generated game should have:
+For implementation work, require:
 
 - a clear objective and immediate player agency;
-- start, playing, paused, won, or lost states as appropriate;
+- explicit loading, playing, paused, won, or lost states as appropriate;
 - readable feedback through motion, color, text, or sound hooks;
-- keyboard and pointer/touch behavior suitable for its controls;
-- deterministic restart without reloading the page;
-- responsive layout and capped device pixel ratio;
-- no per-frame object churn in hot paths;
-- explicit cleanup;
-- a concise control hint visible in the game.
+- keyboard and suitable pointer/touch controls with a visible control hint;
+- deterministic restart, responsive layout, and a capped device pixel ratio;
+- no avoidable per-frame object churn; and
+- explicit cleanup.
 
-Use DOM overlays only for accessibility-heavy menus, forms, and settings. Use `Text2D` and sprites
-for in-world or canvas-composited HUD elements that should participate in Hilo3D camera/layer
-composition.
+Implement the smallest playable vertical slice before broad content. Keep the chosen 2D, 3D, or
+hybrid track obvious in the code boundaries and asset organization.
 
 ## Verify completion
 
@@ -172,6 +182,7 @@ npm run typecheck
 npm run build
 ```
 
-Use the containing project's general browser-game QA workflow for runtime, interaction, resize,
-lifecycle, and backend coverage. Keep validation claims precise: do not claim a backend or runtime
-path passed unless it was actually exercised.
+Use the containing project's browser-game QA workflow for runtime, controls, resize, lifecycle,
+assets, and backend coverage. Exercise the specific backend when a backend-specific claim matters.
+Do not report a runtime path, backend, or performance result as passing unless it was actually
+tested or measured.
