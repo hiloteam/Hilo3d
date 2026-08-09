@@ -284,6 +284,14 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 expect(diagnostics.hiZValid).toBe(true);
                 expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
 
+                camera.setPosition(0.25, 0, 8).lookAt(new Vector3(0, 0, 0));
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect((await factory.readDiagnostics()).hiZValid).toBe(false);
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect((await factory.readDiagnostics()).hiZValid).toBe(true);
+
                 material.setTextureSlot('baseColor', {
                     texture: rgbaTexture([80, 160, 220, 255], 0),
                     transform: uv0Transform

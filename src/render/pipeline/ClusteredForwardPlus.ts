@@ -105,6 +105,7 @@ const FRAME_RECORD_BYTES = 496;
 const INDIRECT_ARGUMENT_BYTES = 20;
 const STATS_BYTES = 16;
 const HIZ_LEVEL_COUNT = 6;
+const MAX_HIZ_OCCLUSION_DIAMETER = 1 << HIZ_LEVEL_COUNT;
 const CULL_WORKGROUP_SIZE = 64;
 const PREFIX_WORKGROUP_SIZE = 256;
 const DEFAULT_MAX_OBJECTS = 16_384;
@@ -926,31 +927,39 @@ fn occludedByPreviousHiZ(
     motion: f32
 ) -> bool {
     if (frame.budgets.z == 0u || motion > radius * 0.25 || radius <= 0.0) { return false; }
-    let clip = frame.previousViewProjection * vec4<f32>(previousCenter, 1.0);
-    if (clip.w <= 0.0) { return false; }
-    let ndc = clip.xy / clip.w;
     let viewCenter = frame.previousView * vec4<f32>(previousCenter, 1.0);
     let viewDepth = max(-viewCenter.z, frame.previousDepth.x);
-    let radiusPixels = projectedRadiusPixels(
-        frame.previousProjection, frame.viewport.zw, frame.previousDepth.x, viewDepth, radius
-    );
-    if (max(radiusPixels.x, radiusPixels.y) > 96.0) { return false; }
-    let diameter = max(max(radiusPixels.x, radiusPixels.y) * 2.0, 1.0);
-    let level = u32(clamp(floor(log2(diameter)) - 1.0, 0.0, ${String(HIZ_LEVEL_COUNT - 1)}.0));
+    let nearestViewDepth = max(viewDepth - radius, frame.previousDepth.x);
+    if (-viewCenter.z - radius <= frame.previousDepth.x) { return false; }
+    var minimumUv = vec2<f32>(1.0);
+    var maximumUv = vec2<f32>(0.0);
+    for (var cornerIndex = 0u; cornerIndex < 8u; cornerIndex += 1u) {
+        let signs = vec3<f32>(
+            select(-1.0, 1.0, (cornerIndex & 1u) != 0u),
+            select(-1.0, 1.0, (cornerIndex & 2u) != 0u),
+            select(-1.0, 1.0, (cornerIndex & 4u) != 0u)
+        );
+        let corner = frame.previousProjection * vec4<f32>(viewCenter.xyz + signs * radius, 1.0);
+        if (corner.w <= 0.0) { return false; }
+        let cornerNdc = corner.xy / corner.w;
+        let cornerUv = cornerNdc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+        minimumUv = min(minimumUv, cornerUv);
+        maximumUv = max(maximumUv, cornerUv);
+    }
+    minimumUv = clamp(minimumUv, vec2<f32>(0.0), vec2<f32>(0.999999));
+    maximumUv = clamp(maximumUv, vec2<f32>(0.0), vec2<f32>(0.999999));
+    let extentPixels = max((maximumUv - minimumUv) * frame.viewport.zw, vec2<f32>(1.0));
+    let diameter = max(extentPixels.x, extentPixels.y);
+    if (diameter > ${String(MAX_HIZ_OCCLUSION_DIAMETER)}.0) { return false; }
+    let level = u32(clamp(ceil(log2(diameter)) - 1.0, 0.0, ${String(HIZ_LEVEL_COUNT - 1)}.0));
     let dimensions = hiZDimensions(level);
-    let centerUv = ndc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
-    let radiusUv = radiusPixels / frame.viewport.zw;
-    let nearestDepth = depthFromDistance(
-        frame.previousDepth, max(viewDepth - radius, frame.previousDepth.x)
-    );
+    let nearestDepth = depthFromDistance(frame.previousDepth, nearestViewDepth);
     var hidden = true;
-    for (var sampleIndex = 0u; sampleIndex < 5u; sampleIndex += 1u) {
-        var offset = vec2<f32>(0.0);
-        if (sampleIndex == 1u) { offset = vec2<f32>(-radiusUv.x, -radiusUv.y); }
-        if (sampleIndex == 2u) { offset = vec2<f32>( radiusUv.x, -radiusUv.y); }
-        if (sampleIndex == 3u) { offset = vec2<f32>(-radiusUv.x,  radiusUv.y); }
-        if (sampleIndex == 4u) { offset = vec2<f32>( radiusUv.x,  radiusUv.y); }
-        let uv = clamp(centerUv + offset, vec2<f32>(0.0), vec2<f32>(0.999999));
+    for (var sampleIndex = 0u; sampleIndex < 4u; sampleIndex += 1u) {
+        let uv = vec2<f32>(
+            select(minimumUv.x, maximumUv.x, (sampleIndex & 1u) != 0u),
+            select(minimumUv.y, maximumUv.y, (sampleIndex & 2u) != 0u)
+        );
         let pixel = vec2<i32>(uv * vec2<f32>(dimensions));
         let depth = hiZLoad(level, pixel);
         let sampleHidden = select(
@@ -2352,6 +2361,17 @@ function arraysDiffer(first: Float32Array, second: Float32Array): boolean {
     return false;
 }
 
+function arrayRangeDiffers(
+    committed: Float32Array,
+    current: Float32Array,
+    currentOffset: number
+): boolean {
+    for (let index = 0; index < committed.length; index += 1) {
+        if (committed[index] !== current[currentOffset + index]) return true;
+    }
+    return false;
+}
+
 /**
  * Renderer-local G0/L0 runtime. It consumes registered opaque PBR bucket identities, keeps their
  * ordinary Mesh transforms in a dirty GPU database, and emits one fixed indirect draw per LOD
@@ -3497,6 +3517,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameFloats[101] = far;
         this.#frameFloats[102] = Math.log(far / near);
         this.#frameFloats[103] = camera.depthMode === 'reversed' ? 1 : 0;
+        const cameraOcclusionStable =
+            cameraHistoryValid &&
+            !arrayRangeDiffers(this.#committedCameraMatrix, this.#frameFloats, 0) &&
+            !arrayRangeDiffers(this.#committedDepth, this.#frameFloats, 100);
         const previousDepth = cameraHistoryValid ? this.#committedDepth : this.#frameFloats;
         const previousDepthOffset = cameraHistoryValid ? 0 : 100;
         for (let index = 0; index < 4; index += 1) {
@@ -3513,7 +3537,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameUInts[115] = this.#lightCount;
         this.#frameUInts[116] = this.#visibleBucketCapacity;
         this.#frameUInts[117] = this.#options.maxLightsPerCluster;
-        this.#frameUInts[118] = cameraHistoryValid && this.#options.hiZ ? 1 : 0;
+        this.#frameUInts[118] = cameraOcclusionStable && this.#options.hiZ ? 1 : 0;
         this.#frameUInts[119] = camera.visibility >>> 0;
         this.#frameFloats[120] = Math.min(this.#frameFloats[120] ?? 0, 4);
         this.#frameFloats[121] = Math.min(this.#frameFloats[121] ?? 0, 4);

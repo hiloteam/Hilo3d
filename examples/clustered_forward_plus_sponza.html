@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+        <meta
+            name="description"
+            content="A cinematic WebGPU Clustered Forward+ lighting study using Khronos Sponza."
+        />
+        <title>Sponza — Clustered Forward+ Lighting Lab</title>
+        <link rel="stylesheet" type="text/css" href="./example.css" />
+        <link rel="stylesheet" type="text/css" href="./clustered_forward_plus_sponza.css" />
+    </head>
+    <body data-forward-plus-ready="false">
+        <div id="container" aria-label="Interactive Sponza rendering"></div>
+
+        <header class="heroPanel">
+            <div class="eyebrow"><span></span> WebGPU lighting lab</div>
+            <h1>Sponza <em>/</em> Forward+</h1>
+            <p>
+                A dense field of local lights, GPU-scene culling, clustered shading, and HDR bloom
+                inside the classic atrium.
+            </p>
+        </header>
+
+        <section class="metrics" aria-label="Forward Plus diagnostics">
+            <article>
+                <span>Local lights</span>
+                <strong id="metricLights">—</strong>
+            </article>
+            <article>
+                <span>GPU-visible</span>
+                <strong id="metricObjects">—</strong>
+            </article>
+            <article>
+                <span>Cluster links</span>
+                <strong id="metricLinks">—</strong>
+            </article>
+            <article>
+                <span>Frame rate</span>
+                <strong id="metricFps">—</strong>
+            </article>
+        </section>
+
+        <aside class="controlDock" aria-label="Lighting and camera controls">
+            <fieldset id="controlsFieldset" disabled>
+                <div class="dockHeader">
+                    <div>
+                        <span>Live controls</span>
+                        <strong id="backendLabel">WebGPU</strong>
+                    </div>
+                    <button id="viewButton" type="button">Next view</button>
+                </div>
+
+                <label class="rangeControl" for="lightControl">
+                    <span>Active local lights</span>
+                    <output id="lightOutput" for="lightControl">192 / 192</output>
+                </label>
+                <input id="lightControl" type="range" min="24" max="192" step="24" value="192" />
+
+                <div class="toggleRow">
+                    <button id="tourToggle" type="button" aria-pressed="true">
+                        <span class="toggleIndicator"></span>
+                        Camera tour
+                    </button>
+                    <button id="motionToggle" type="button" aria-pressed="true">
+                        <span class="toggleIndicator"></span>
+                        Light pulse
+                    </button>
+                </div>
+
+                <dl class="pipelineReadout">
+                    <div>
+                        <dt>GPU objects</dt>
+                        <dd id="gpuObjectCount">—</dd>
+                    </div>
+                    <div>
+                        <dt>Fallback</dt>
+                        <dd id="fallbackObjectCount">—</dd>
+                    </div>
+                    <div>
+                        <dt>Cutouts omitted</dt>
+                        <dd id="excludedMeshCount">—</dd>
+                    </div>
+                    <div>
+                        <dt>Cluster overflow</dt>
+                        <dd id="overflowCount">—</dd>
+                    </div>
+                </dl>
+            </fieldset>
+        </aside>
+
+        <footer class="sceneFooter">
+            <div class="controlHint">
+                <span><kbd>Drag</kbd> orbit</span>
+                <span><kbd>Shift + drag</kbd> pan</span>
+                <span><kbd>Wheel</kbd> dolly</span>
+                <span><kbd>T</kbd> tour</span>
+                <span><kbd>V</kbd> view</span>
+            </div>
+            <div class="credit">
+                Sponza by Crytek ·
+                <a
+                    href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Sponza"
+                    target="_blank"
+                    rel="noreferrer"
+                    >Khronos glTF Sample Assets</a
+                >
+                ·
+                <a
+                    href="https://github.com/KhronosGroup/glTF-Sample-Assets/blob/main/Models/Sponza/LICENSE.md"
+                    target="_blank"
+                    rel="noreferrer"
+                    >license</a
+                >
+            </div>
+        </footer>
+
+        <section id="loadingPanel" class="loadingPanel" aria-live="polite">
+            <div class="loadingMark"><span></span><span></span><span></span></div>
+            <p class="loadingEyebrow">Preparing the atrium</p>
+            <h2 id="loadingTitle">Streaming Sponza geometry</h2>
+            <p id="loadingDetail">Loading the repository-bundled original PBR texture set.</p>
+            <div class="progressTrack"><span id="loadingProgress"></span></div>
+        </section>
+
+        <section id="errorPanel" class="errorPanel" hidden role="alert">
+            <span>Unable to start the lighting lab</span>
+            <h2>WebGPU Forward+ is unavailable</h2>
+            <p id="errorMessage"></p>
+            <a href="./list.html?backend=webgl2">Browse portable examples</a>
+        </section>
+
+        <script type="module" src="./clustered_forward_plus_sponza.ts"></script>
+    </body>
+</html>

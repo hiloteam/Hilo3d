@@ -36,6 +36,15 @@
   only after valid submission, retry discarded frames, and retain recovery through the
   renderer-owned CPU shadow. Migrate Clustered Forward+ from its private per-bucket PBR table so GPU
   Scene objects keep independent geometry-bucket and shared-material indices.
+- Add a repository-bundled Khronos Sponza Clustered Forward+ lighting lab with 192 animated local
+  lights, GPU Scene diagnostics, HDR bloom, OrbitControls camera views, responsive controls, and an
+  offline-friendly asset path with native WebGPU release coverage.
+- Make previous-frame Hi-Z occlusion conservative for moving and stationary cameras. Disable it for
+  the first frame after a view-projection or depth change, project bounds from the sphere's nearest
+  depth and all eight corners of its view-space bounding cube, select a mip covering the full
+  projected extent, and skip objects larger than the coarsest pyramid footprint. The current pyramid
+  is still retained so culling resumes immediately on the next stable frame without temporal
+  disocclusion holes, off-axis under-bounds, or large-geometry false positives.
 - Keep default Forward lighting, clear colors, transparent blending, and intermediate effects in
   linear space, then apply one exact linear-to-sRGB transfer at the browser surface. Multi-camera
   load/blend stays in a renderer-owned linear composition target, while already transformed Color

@@ -196,4 +196,18 @@ describe('render hot-path architecture', () => {
         );
         expect(clustered).not.toContain('private packMaterials(');
     });
+
+    it('keeps previous-frame Hi-Z bounds conservative for large projected objects', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+
+        expect(clustered).toContain('const MAX_HIZ_OCCLUSION_DIAMETER = 1 << HIZ_LEVEL_COUNT');
+        expect(clustered).toContain(
+            'frame.previousProjection * vec4<f32>(viewCenter.xyz + signs * radius, 1.0)'
+        );
+        expect(clustered).toContain('for (var cornerIndex = 0u; cornerIndex < 8u;');
+        expect(clustered).toContain('(maximumUv - minimumUv) * frame.viewport.zw');
+        expect(clustered).toContain('diameter > ${String(MAX_HIZ_OCCLUSION_DIAMETER)}.0');
+        expect(clustered).toContain('ceil(log2(diameter)) - 1.0');
+        expect(clustered).not.toContain('floor(log2(diameter)) - 1.0');
+    });
 });

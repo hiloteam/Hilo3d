@@ -99,6 +99,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'update_sub_texture.html': 'Update Sub-texture',
     'webgl_support.html': 'Graphics Backend Support',
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
+    'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
     'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
     'compute_particles.html': 'Hilo3D Compute Particle Field',
     'compute_raytracing.html': 'Hilo3D Crystal Compute Path Tracer',
@@ -121,6 +122,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'glTFViewer/index.html': 'Load glTF 2.0 models from a URL, files, or a dropped folder.',
     'compute_gpu_driven.html':
         'See Forward+, Gaussian splats, and a curl-noise Hilo3D GPU particle wordmark stay on the public Render Graph.',
+    'clustered_forward_plus_sponza.html':
+        'Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.',
     'compute_eclipse_shrine.html':
         'Orbit a cinematic eclipse built from 65,536 compute-simulated bodies, three indirect spectral layers, PBR relics, HDR bloom, and interactive gravity.',
     'compute_particles.html':
@@ -191,6 +194,7 @@ const FEATURED_PATHS = new Set([
     'physics/cannon.html',
     'video.html',
     'compute_gpu_driven.html',
+    'clustered_forward_plus_sponza.html',
     'compute_eclipse_shrine.html',
     'compute_particles.html',
     'compute_raytracing.html'
@@ -221,7 +225,7 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'textures';
     }
     if (
-        /(?:post_process|bloom|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
+        /(?:post_process|bloom|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
             normalized
         )
     ) {
@@ -305,6 +309,7 @@ function createEntry(path: string): ExampleCatalogEntry {
         path === 'webxr.html'
             ? WEBGL2_ONLY
             : path === 'bloom.html' ||
+                path === 'clustered_forward_plus_sponza.html' ||
                 path === 'compute_gpu_driven.html' ||
                 path === 'compute_eclipse_shrine.html' ||
                 path === 'compute_particles.html' ||

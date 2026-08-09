@@ -201,7 +201,10 @@ display。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个�
 draw，GPU 为不可见 bucket 写零 instance count。Hi-Z 对 standard depth 取区块最远值
 `max`、对 reversed depth 取区块最远值 `min`；previous-frame occlusion 同时读取已提交的 previous
 view/projection/depth 参数，不把上一帧 VP 与当前帧投影约定混用。颜色阶段 load 深度预通过结果，物体 record 携带 model
-basis 的 inverse-transpose normal matrix，因此 non-uniform scale 不改变法线方向。普通 Forward
+basis 的 inverse-transpose normal matrix，因此 non-uniform
+scale 不改变法线方向。相机的 view-projection 或 depth 参数相对已提交帧发生变化时，runtime 会暂时关闭一帧 previous-frame
+Hi-Z 遮挡判定以避免视角移动造成 disocclusion 误剔除，同时仍生成当帧 pyramid，使静止后的下一帧即可恢复遮挡剔除。静止帧从包围球最近深度和 view-space 包围立方体的八个角计算保守的屏幕投影，避免偏离画面中心时低估范围，并向上选择覆盖完整投影的 mip；投影大于最粗 pyramid
+footprint 的物体不参与 Hi-Z 遮挡剔除，避免稀疏采样把大块局部几何误判为完全遮挡。普通 Forward
 PBR 与 clustered storage variant 共用 `pbr_surface.glsl` 和 `pbr_brdf.glsl`；后者只把 light
 provider 换成 cluster grid/list，不复制材质模型。GPU Scene geometry
 database 可携带 UV0/UV1 与对应 tangent stream，sampled engine `Texture` 通过 graph
