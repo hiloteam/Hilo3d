@@ -388,6 +388,15 @@ LRU；pipeline 把不可淘汰的 in-flight 去重层与已完成的有界 LRU �
 identity 变化只失效 bind group，不重建稳定的 pipeline
 layout，资源 churn 不会让历史 variant 永久常驻、重复并发编译或触发无关 pipeline 重编译。
 
+WebGPU high-end storage shading 还使用 renderer-local `SharedMaterialRecordDatabase`。它按公共
+`MaterialInstance.materialId` 去重为 family/layout dense handle，每个 renderer 独立保存 committed
+revision；只重打包 revision 变化的 record，并合并相邻 upload range。数据库不会依赖全局 texture-slot
+dirty set 决定是否上传，因此某个 renderer 在成功 submission 后提交 slot
+dirtiness 不会让另一个 renderer 漏传。失败帧保留旧 committed revision，下一帧重试；`cpu-shadow`
+recipe 在 device recovery 后恢复同一 record/handle identity。storage record 遵守
+`MaterialInstance.invalidateData()` 合同；默认 Forward 的 std140
+byte-image 比较仍保留上文所述的嵌套值自动检测。
+
 WebGPU geometry 上传同样消费有界 dirty history：interleaved
 attribute 只重打包受影响的 AoS 顶点区间，支持 matrix
 column、normalized、stride/offset、多 source 与离散 range；只命中 padding 时不产生

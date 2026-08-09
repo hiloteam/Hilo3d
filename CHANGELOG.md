@@ -31,6 +31,11 @@
   Shadow rendering now requests the original material's shadow role, glTF constructs layered PBR
   topology and all texture transforms before instantiation, and display conversion remains solely in
   post-processing/output.
+- Add the renderer-local shared GPU Material Database. Deduplicate material identities into stable
+  family/layout handles, coalesce revision-driven dirty record uploads, commit texture slot state
+  only after valid submission, retry discarded frames, and retain recovery through the
+  renderer-owned CPU shadow. Migrate Clustered Forward+ from its private per-bucket PBR table so GPU
+  Scene objects keep independent geometry-bucket and shared-material indices.
 - Keep default Forward lighting, clear colors, transparent blending, and intermediate effects in
   linear space, then apply one exact linear-to-sRGB transfer at the browser surface. Multi-camera
   load/blend stays in a renderer-owned linear composition target, while already transformed Color

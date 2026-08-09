@@ -1,6 +1,6 @@
 # Hilo3D 材质系统现代化架构
 
-> 状态：当前架构文档，更新于 2026-08-02。本文描述已经进入生产路径的材质合同、明确的 breaking
+> 状态：当前架构文档，更新于 2026-08-09。本文描述已经进入生产路径的材质合同、明确的 breaking
 > changes，以及后续演进边界。源码、测试与 [`RENDERING_ARCHITECTURE.md`](./RENDERING_ARCHITECTURE.md)
 > 共同构成事实来源。
 
@@ -10,6 +10,8 @@ Hilo3D 的材质前端由不可变结构和可变数据两层组成：
 
 - `MaterialDefinition` 描述 Shader topology、资源布局、静态特性、语义 Pass 和固定功能状态；
 - `MaterialInstance` 保存参数、纹理槽绑定、稳定材质 ID 和数据 revision；
+- renderer-local `SharedMaterialRecordDatabase`
+  把实例 identity 映射为按 family/layout 分类的紧凑 GPU record；
 - Render Pipeline 请求语义 `MaterialPassRole`，材质不能创建或排序 Render Graph Pass；
 - Shared Renderer 将 role、geometry、target 和 backend profile 降低为 Shader、pipeline、binding 与
   `PreparedDraw`；
@@ -39,7 +41,7 @@ flowchart LR
 | `MaterialDefinition`           | family、domain、static features、texture-slot schema、role、默认 state      | 运行时数值、Pass 顺序、native 资源 |
 | `MaterialInstance`             | scalar/vector/matrix、texture slot、coverage/compositing override、revision | 修改 Definition、创建 graph pass   |
 | `Mesh`                         | `renderOrder`、`castShadows`、`receiveShadows`、材质引用                    | 材质 pipeline state                |
-| Renderer                       | role 解析、Shader 编译、排序、instancing、资源和 pipeline cache             | 显示变换的材质级覆写               |
+| Renderer                       | role 解析、Shader 编译、排序、instancing、GPU record、资源和 pipeline cache | 显示变换的材质级覆写               |
 | Post process / output          | exposure、tone mapping、gamma/display transform                             | 表面 BRDF                          |
 
 `renderOrder`
@@ -183,6 +185,19 @@ WebGL2/WebGPU portable uniform ABI 分成两个 material-frequency block：
 material bind group 的 binding 0/1 分别保留给两个 UBO，sampled texture/sampler pair 从 binding
 2 开始；WebGL2 使用相同的固定 block registry。
 
+WebGPU high-end 路径的 `SharedMaterialRecordDatabase` 不复制一套材质对象模型。它直接消费
+`MaterialInstance.materialId` 与 `revision`，按 material identity 去重为 renderer-local dense
+handle，并把 family/layout 写入稳定 record。首个 `builtin-pbr-storage-v1`
+布局保存 metallic/roughness PBR 标量与 base-color/normal UV matrix；GPU
+Scene 对象 record 分别持有 logical bucket 与 material handle，同一材质跨多个 geometry
+bucket 不再复制 storage record。
+
+数据库只重打包 revision 变化的 record，相邻 dirty record 合并为一个 upload。staged
+revision 与 texture-slot dirtiness 只在有效 submission 后提交；失败帧保留旧 committed
+revision 并在下一帧重试。底层 renderer-owned `StorageBuffer` 使用 `cpu-shadow` recipe，device
+recovery 后保持公共材质 identity 和 dense handle 不变。直接修改引用型 `Color`/matrix 后仍必须调用
+`invalidateData()`，不能绕过 `MaterialInstance` 的 revision 合同。
+
 ## 7. Variant 与缓存合同
 
 稳定 variant 至少由以下维度组成：
@@ -235,28 +250,29 @@ default 对象而发生串改。
 
 ## 10. 当前完成度与长期路线
 
-| 工作包                       | 状态       | 当前结果 / 下一步                                                               |
-| ---------------------------- | ---------- | ------------------------------------------------------------------------------- |
-| Definition / Instance        | 已完成     | 内置与自定义材质都使用不可变结构和实例数据                                      |
-| Semantic pass                | 已完成基础 | forward/depth/shadow/picking 已接生产路径；motion/attributes 待对应渲染功能实现 |
-| Texture slot                 | 已完成     | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                |
-| Typed semantics              | 已完成     | attribute/uniform/texture/slot 常量与联合类型公开                               |
-| UBO lowering                 | 已完成     | scalar 与 slot block 分离，双后端固定 ABI                                       |
-| Shared GPU Material Database | 未完成     | 从 Clustered Forward+ 私有 table 抽取 stable shared material record             |
-| Variant manifest / warmup    | 未完成     | 增加资产收集、异步 warmup、预算与诊断                                           |
-| Motion vectors               | 未完成     | 定义 previous skin/morph/coverage 输出并接 TAA/TAAU                             |
-| Material attributes          | 未完成     | 定义 compact normal/roughness/flags ABI，按 feature 创建附件                    |
-| Advanced surface families    | 后续       | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进              |
+| 工作包                       | 状态          | 当前结果 / 下一步                                                               |
+| ---------------------------- | ------------- | ------------------------------------------------------------------------------- |
+| Definition / Instance        | 已完成        | 内置与自定义材质都使用不可变结构和实例数据                                      |
+| Semantic pass                | 已完成基础    | forward/depth/shadow/picking 已接生产路径；motion/attributes 待对应渲染功能实现 |
+| Texture slot                 | 已完成        | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                |
+| Typed semantics              | 已完成        | attribute/uniform/texture/slot 常量与联合类型公开                               |
+| UBO lowering                 | 已完成        | scalar 与 slot block 分离，双后端固定 ABI                                       |
+| Shared GPU Material Database | 已完成（PBR） | 私有 PBR table 已抽取、共享、去重，并具备 dirty upload、提交回滚与 recovery     |
+| Variant manifest / warmup    | 未完成        | 增加资产收集、异步 warmup、预算与诊断                                           |
+| Motion vectors               | 未完成        | 定义 previous skin/morph/coverage 输出并接 TAA/TAAU                             |
+| Material attributes          | 未完成        | 定义 compact normal/roughness/flags ABI，按 feature 创建附件                    |
+| Advanced surface families    | 后续          | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进              |
 
-共享 GPU Material Database 的长期合同是：
+首个共享 GPU Material Database 已满足：
 
-- renderer 分配 stable material ID；
-- 按 family/layout 分类紧凑 record；
+- renderer-local stable handle 保留公共 `materialId`，并按 family/layout 分类紧凑 record；
 - dirty-range/coalesced upload 与 submission commit/rollback；
-- recovery 后保持公共材质 identity；
-- GPU Scene、indirect bucket、shadow 和后续时域 Pass 消费同一 material handle；
-- WebGL2 从同一 schema lower 到 UBO，WebGPU 可 lower 到 storage table；
+- recovery 后保持公共材质 identity 与 handle；
+- GPU Scene 与 indirect bucket 消费同一 material handle；
 - 不宣称或依赖浏览器 API 不具备的无限 bindless。
+
+shadow、motion、material-attributes、更多 surface family、variant manifest/warmup，以及统一的 WebGL2
+UBO/WebGPU storage family schema 属于后续独立工作包，不在本次 PBR database 抽取范围内。
 
 ## 11. 架构不变量
 

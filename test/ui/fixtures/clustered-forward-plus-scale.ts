@@ -117,6 +117,7 @@ for (let index = 0; index < dynamicMeshes.length; index += 1) {
     const mesh = dynamicMeshes[index];
     if (mesh !== undefined) mesh.x += index % 2 === 0 ? 0.01 : -0.01;
 }
+material.roughness = 0.46;
 await renderFrame();
 const diagnostics = await factory.readDiagnostics();
 const rhi = renderer.getExtension('rhi') as { readonly device: RHIDevice } | null;

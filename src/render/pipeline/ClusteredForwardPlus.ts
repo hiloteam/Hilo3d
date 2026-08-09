@@ -51,6 +51,12 @@ import ComputeShader, {
 } from '../compute/ComputeShader';
 import StorageGraphicsShader from '../compute/StorageGraphicsShader';
 import { depthClearValue } from '../renderer/DepthConvention';
+import SharedMaterialRecordDatabase from '../renderer/SharedMaterialRecordDatabase';
+import {
+    packPBRGPUMaterialRecord,
+    PBR_GPU_MATERIAL_RECORD_BYTES,
+    PBR_GPU_MATERIAL_RECORD_LAYOUT
+} from '../renderer/PBRGPUMaterialRecord';
 import type { StorageBuffer } from '../StorageBuffer';
 import type {
     RenderPipeline,
@@ -94,7 +100,6 @@ import type {
 
 const OBJECT_RECORD_BYTES = 208;
 const LIGHT_RECORD_BYTES = 64;
-const MATERIAL_RECORD_BYTES = 144;
 const BUCKET_RECORD_BYTES = 48;
 const FRAME_RECORD_BYTES = 496;
 const INDIRECT_ARGUMENT_BYTES = 20;
@@ -606,14 +611,15 @@ function bufferRequirementPlan(
     physicalCount: number
 ): Readonly<BufferRequirementPlan> {
     const capacity = clusterCapacityPlan(options);
+    const materialCount = new Set(options.buckets.map(bucket => bucket.material)).size;
     const storageBufferLengths = [
         FRAME_RECORD_BYTES,
         safeProduct('GPU Scene object database size', options.maxObjects, OBJECT_RECORD_BYTES),
         safeProduct('GPU Scene bucket database size', options.buckets.length, BUCKET_RECORD_BYTES),
         safeProduct(
             'GPU Scene material database size',
-            options.buckets.length,
-            MATERIAL_RECORD_BYTES
+            materialCount,
+            PBR_GPU_MATERIAL_RECORD_BYTES
         ),
         safeProduct(
             'Clustered Forward+ light database size',
@@ -1722,7 +1728,7 @@ void main() {
     vec3 viewNormal = normalize(viewNormalMatrix * a_normal);
     v_viewPosition = (view * worldPosition).xyz;
     v_viewNormal = viewNormal;
-    v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].x);
+    v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
     uint materialBase = v_materialIndex * 9u;
     ${vertexUVWrites}
     gl_Position = readFrameMatrix(0u) * worldPosition;
@@ -2346,26 +2352,6 @@ function arraysDiffer(first: Float32Array, second: Float32Array): boolean {
     return false;
 }
 
-function colorComponents(value: Readonly<{ r: number; g: number; b: number }>): readonly number[] {
-    return [value.r, value.g, value.b];
-}
-
-function materialEmission(material: PBRMaterial): readonly number[] {
-    const emission = material.emissionFactor;
-    return colorComponents(emission);
-}
-
-function packMaterialUVMatrix(matrix: Matrix3 | null, target: Float32Array, offset: number): void {
-    const elements = matrix?.elements;
-    for (let column = 0; column < 3; column += 1) {
-        for (let row = 0; row < 3; row += 1) {
-            const index = column * 3 + row;
-            target[offset + column * 4 + row] = elements?.[index] ?? (column === row ? 1 : 0);
-        }
-        target[offset + column * 4 + 3] = 0;
-    }
-}
-
 /**
  * Renderer-local G0/L0 runtime. It consumes registered opaque PBR bucket identities, keeps their
  * ordinary Mesh transforms in a dirty GPU database, and emits one fixed indirect draw per LOD
@@ -2377,7 +2363,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #frameData: StorageBuffer;
     readonly #objects: StorageBuffer;
     readonly #bucketData: StorageBuffer;
-    readonly #materials: StorageBuffer;
+    readonly #materialDatabase: SharedMaterialRecordDatabase<PBRMaterial>;
     readonly #lights: StorageBuffer;
     readonly #visibleIndices: StorageBuffer;
     readonly #indirectArguments: StorageBuffer;
@@ -2404,8 +2390,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #frameFloats = new Float32Array(this.#frameBytes);
     readonly #frameUInts = new Uint32Array(this.#frameBytes);
     readonly #lightFloats: Float32Array;
-    readonly #materialFloats: Float32Array;
-    readonly #materialScratch: Float32Array;
     readonly #samplerByTexture = new WeakMap<
         Texture<unknown>,
         Readonly<{ key: string; sampler: ComputeSampler }>
@@ -2549,17 +2533,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             initialData: bucketBytes,
             recovery: 'cpu-shadow'
         });
-        this.#materialFloats = new Float32Array(
-            (options.buckets.length * MATERIAL_RECORD_BYTES) / 4
-        );
-        this.#materialScratch = new Float32Array(this.#materialFloats.length);
-        this.packMaterials(this.#materialFloats);
-        this.#materials = create({
+        this.#materialDatabase = new SharedMaterialRecordDatabase(context, {
             label: 'GPU Scene PBR material database',
-            byteLength: this.#materialFloats.byteLength,
-            usage: ['storage', 'copy-destination'],
-            initialData: this.#materialFloats,
-            recovery: 'cpu-shadow'
+            family: 'pbr',
+            layout: PBR_GPU_MATERIAL_RECORD_LAYOUT,
+            recordByteLength: PBR_GPU_MATERIAL_RECORD_BYTES,
+            materials: options.buckets.map(bucket => bucket.material),
+            packRecord: packPBRGPUMaterialRecord
         });
         this.#lightFloats = new Float32Array(options.maxLights * 16);
         this.#lights = create({
@@ -2709,7 +2689,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             fallbackCulling = context.cull();
             context.recordShadows(fallbackCulling);
         }
-        this.syncMaterialDatabase(context);
+        this.#materialDatabase.stage(context);
         this.syncGeometryDatabases(context);
         const frame = this.packFrame(context);
         context.writeStorageBuffer(this.#frameData, 0, new Uint8Array(this.#frameBytes));
@@ -2747,7 +2727,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const frameBuffer = context.graph.importStorageBuffer(this.#frameData);
         const objects = context.graph.importStorageBuffer(this.#objects);
         const bucketData = context.graph.importStorageBuffer(this.#bucketData);
-        const materials = context.graph.importStorageBuffer(this.#materials);
+        const materials = context.graph.importStorageBuffer(this.#materialDatabase.buffer);
         const lights = context.graph.importStorageBuffer(this.#lights);
         const visible = context.graph.importStorageBuffer(this.#visibleIndices);
         const indirect = context.graph.importStorageBuffer(this.#indirectArguments);
@@ -2840,6 +2820,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
 
     frameSubmitted(frameIndex: number): void {
         if (frameIndex !== this.#lastRecordedFrame) return;
+        this.#materialDatabase.frameSubmitted(frameIndex);
         for (const record of this.#objectByMesh.values()) {
             if (record.pendingWorldVersion < 0) continue;
             const moved = arraysDiffer(record.committedMatrix, record.pendingMatrix);
@@ -2860,6 +2841,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
 
     frameDiscarded(frameIndex: number): void {
         if (frameIndex !== this.#lastRecordedFrame) return;
+        this.#materialDatabase.frameDiscarded(frameIndex);
         for (const record of this.#objectByMesh.values()) record.pendingWorldVersion = -1;
         this.#pendingCamera = null;
     }
@@ -2899,7 +2881,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             this.#frameData,
             this.#objects,
             this.#bucketData,
-            this.#materials,
             this.#lights,
             this.#visibleIndices,
             this.#indirectArguments,
@@ -2920,6 +2901,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             }
         }
         const failures: unknown[] = [];
+        try {
+            this.#materialDatabase.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
         for (const buffer of buffers) {
             try {
                 buffer.destroy();
@@ -3332,7 +3318,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#objectUInts[floatOffset + 48] = logicalIndex;
         this.#objectUInts[floatOffset + 49] = mesh.layer >>> 0;
         this.#objectUInts[floatOffset + 50] = 1;
-        this.#objectUInts[floatOffset + 51] = 0;
+        this.#objectUInts[floatOffset + 51] = this.#materialDatabase.getHandle(
+            bucket.material
+        ).recordIndex;
         matrixElements(mesh.worldMatrix, record.pendingMatrix, 0);
         record.pendingWorldVersion = mesh.worldMatrixVersion;
     }
@@ -3386,44 +3374,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#lightFloats[base + 14] = light.quadraticAttenuation;
         this.#lightFloats[base + 15] = inner;
         this.#lightCount++;
-    }
-
-    private packMaterials(target: Float32Array): void {
-        for (let index = 0; index < this.#options.buckets.length; index += 1) {
-            const material = this.#options.buckets[index]?.material;
-            if (material === undefined) continue;
-            const base = index * 36;
-            target[base] = material.baseColor.r;
-            target[base + 1] = material.baseColor.g;
-            target[base + 2] = material.baseColor.b;
-            target[base + 3] = material.metallic;
-            const emission = materialEmission(material);
-            target[base + 4] = emission[0] ?? 0;
-            target[base + 5] = emission[1] ?? 0;
-            target[base + 6] = emission[2] ?? 0;
-            target[base + 7] = material.roughness;
-            target[base + 8] = material.ior;
-            target[base + 9] = material.occlusionStrength;
-            target[base + 10] = material.normalScale;
-            target[base + 11] = 0;
-            packMaterialUVMatrix(
-                material.getTextureSlot('baseColor')?.transform ?? null,
-                target,
-                base + 12
-            );
-            packMaterialUVMatrix(
-                material.getTextureSlot('normal')?.transform ?? null,
-                target,
-                base + 24
-            );
-        }
-    }
-
-    private syncMaterialDatabase(context: RenderPipelineContext): void {
-        this.packMaterials(this.#materialScratch);
-        if (!arraysDiffer(this.#materialFloats, this.#materialScratch)) return;
-        this.#materialFloats.set(this.#materialScratch);
-        context.writeStorageBuffer(this.#materials, 0, this.#materialFloats);
     }
 
     private syncGeometryDatabases(context: RenderPipelineContext): void {

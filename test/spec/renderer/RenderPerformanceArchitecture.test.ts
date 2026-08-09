@@ -178,4 +178,22 @@ describe('render hot-path architecture', () => {
             /\bnew\s+|Object\.freeze|\.(?:map|filter|flatMap|forEach|slice)\s*\(|\.\.\./u
         );
     });
+
+    it('keeps GPU Scene geometry buckets independent from shared material handles', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+        const packObject = methodBody(clustered, 'packObject');
+
+        expect(clustered).toContain(
+            "import SharedMaterialRecordDatabase from '../renderer/SharedMaterialRecordDatabase'"
+        );
+        expect(packObject).toContain('this.#objectUInts[floatOffset + 48] = logicalIndex');
+        expect(packObject).toContain(
+            'this.#objectUInts[floatOffset + 51] = this.#materialDatabase'
+        );
+        expect(clustered).toContain('buckets[object.metadata.x]');
+        expect(clustered).toContain(
+            'v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w)'
+        );
+        expect(clustered).not.toContain('private packMaterials(');
+    });
 });

@@ -109,8 +109,16 @@ portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
 0/1 对应这两个 block，sampled texture/sampler 从 binding 2 开始；WebGL2 使用同一固定 block
 registry。attribute、uniform、texture 和 built-in
 slot 使用公开的类型化 semantic 常量，不以任意字符串作为公共绑定合同。完整设计、breaking
-changes 与长期 GPU material database 路线见
+changes 与 GPU material database 路线见
 [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
+
+WebGPU high-end 路径复用 renderer-local `SharedMaterialRecordDatabase`。数据库按 material
+identity 去重，保留公共 `materialId` 并分配按 family/layout 分类的 dense
+handle；`MaterialInstance.revision` 驱动 record 重打包，相邻 dirty record 合并上传。staged
+revision 和 texture-slot dirtiness 只在成功 submission 后提交，失败帧重试；renderer-owned
+`cpu-shadow` buffer 在 device recovery 后重建而不替换材质或 handle identity。首个
+`builtin-pbr-storage-v1` record 由 GPU Scene 与 clustered indirect draw 共享，logical geometry
+bucket 与 material handle 在对象 record 中保持为两个独立字段。
 
 ### 1.3 RenderPipelineHost：统一的可脚本化编排
 
@@ -182,8 +190,9 @@ Pass，而不是假定内置 feature 已经自动改写 forward shader。
 WebGPU high-end profile 现在提供公开的
 `ClusteredForwardPlusPipelineFactory`。应用注册稳定的 geometry/material/LOD
 bucket 后，runtime 在创建阶段通过 `RenderPipelineCreateContext.createStorageBuffer()`
-建立 renderer-owned object、geometry、material、light、visible、indirect、cluster 和 diagnostics
-database；帧内 dirty 数据必须通过 `RenderPipelineContext.writeStorageBuffer()` 在 graph
+建立 renderer-owned object、geometry、light、visible、indirect、cluster 和 diagnostics
+database，并通过共享 `SharedMaterialRecordDatabase` 建立去重的 PBR material
+record；帧内 dirty 数据必须通过 `RenderPipelineContext.writeStorageBuffer()` 在 graph
 import 前提交。注册的不透明普通 `Mesh` 仍使用共享 Scene 遍历和矩阵更新，但不创建 CPU renderer
 list 或 `PreparedDraw`：compute 完成 frustum/previous-Hi-Z cull、projected-radius LOD、bucket
 compact 和 indirect arguments，随后同一 Render Graph 记录 depth、current Hi-Z、3D cluster
@@ -740,7 +749,7 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 | 场景与可见队列                 | [`RenderGraphFramePlan.ts`](../src/render/RenderGraphFramePlan.ts)、[`RenderList.ts`](../src/render/RenderList.ts)                                                       |
 | 帧事务                         | [`frame/`](../src/render/frame)                                                                                                                                          |
 | RenderGraph                    | [`graph/`](../src/render/graph)                                                                                                                                          |
-| Draw/Pass/资源准备             | [`renderer/`](../src/render/renderer)                                                                                                                                    |
+| Draw/Pass/材质数据库/资源准备  | [`renderer/`](../src/render/renderer)                                                                                                                                    |
 | RHI Core                       | [`rhi/core/`](../src/render/rhi/core)                                                                                                                                    |
 | RHI Factory                    | [`RHIFactory.ts`](../src/render/rhi/RHIFactory.ts)                                                                                                                       |
 | WebGPU 后端                    | [`backends/webgpu/`](../src/render/rhi/backends/webgpu)                                                                                                                  |

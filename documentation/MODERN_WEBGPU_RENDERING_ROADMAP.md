@@ -1,7 +1,8 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
-> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-02，F0、F1、D0 已落地，G0/L0 的 WebGPU
-> high-end 不透明场景切片已落地，并增加 MAT0 材质系统前置工作及专项设计。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
+> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-09，F0、F1、D0、G0/L0 的 WebGPU
+> high-end 不透明场景切片，以及 MAT0 的 Definition/Instance、语义 Pass 基础与共享 PBR GPU Material
+> Database 已落地。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
 
 ## 结论先行
@@ -10,10 +11,9 @@ Hilo3D 当前最强的部分是渲染底座：共享 Renderer、Scriptable Rende
 RHI、WebGPU/WebGL 2 双后端、Compute/Storage/Indirect
 Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前主要缺口不在“能不能向 WebGPU 发命令”，而在以下六个生产级系统：
 
-1. **材质系统前置层**：G0/L0 已验证 pipeline-local material bucket、storage record、PBR
-   variant 与共享 surface/BRDF，但当前 `Material`
-   尚未拆分不可变结构与运行时实例，也没有跨 Forward、GPU
-   Scene、shadow、motion 和 attributes 的统一语义 Pass 合同；详见
+1. **材质系统后续层**：`MaterialDefinition`/`MaterialInstance`、forward/depth/shadow/picking 语义 Pass、共享 surface/BRDF，以及 renderer-local、按 identity 去重且 submission-aware 的 PBR
+   GPU Material Database 已落地；motion/attributes role、更多 surface family、variant
+   manifest/warmup 与跨 shadow/时域消费者仍待完成。详见
    [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 2. **GPU Scene 与 GPU 可见性**：high-end profile 已让注册的普通不透明 `Mesh` 进入常驻 GPU
    database、previous-frame Hi-Z、GPU cull/LOD/compact 和固定 bucket indirect
@@ -29,7 +29,9 @@ Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前
 6. **现代资源与几何虚拟化**：已有 mip/array/aspect subresource graph view，但仍没有 GPU
    meshlet/LOD、纹理流送、KTX 2/Basis、虚拟纹理或虚拟阴影页系统。
 
-最值得先做的不是直接复刻 Nanite 或 Lumen，而是把 G0/L0 已验证的材质垂直切片抽取为 MAT0 共享合同，同时继续推进时域主线和 G0/L0 剩余门禁。E0 是可独立交付的显示质量切片，可以复用已经完成的 F0/F1，但不能抢占或阻塞这些主线：
+最值得先做的不是直接复刻 Nanite 或 Lumen，而是在已经完成的 MAT0 前端与共享 PBR
+record 基础上推进 T0 原生分辨率 motion
+vector/TAA，同时继续完成 G0/L0 的剩余门禁。E0 是可独立交付的显示质量切片，可以复用已经完成的 F0/F1，但不能抢占或阻塞这些主线：
 
 ```mermaid
 flowchart LR
@@ -94,21 +96,21 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 
 ## 2. 当前渲染能力基线
 
-| 领域                                 | 当前状态      | 证据与边界                                                                                                 |
-| ------------------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------- |
-| Shared Renderer / Render Graph / RHI | 生产可用      | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                  |
-| Raster PBR / HDR                     | 生产可用      | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径       |
-| Shadow                               | 可用基线      | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页            |
-| Compute / Storage / Indirect         | 底座生产可用  | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环  |
-| Material architecture                | 局部原型      | G0/L0 有专用 material record/variant；缺共享 Definition/Instance、语义 Pass 和跨 pipeline material DB      |
-| GPU-driven ordinary scene            | high-end 切片 | 注册的不透明 indexed `Mesh` 走 dirty GPU database、Hi-Z/LOD/compact 与固定 bucket indirect；透明/变形待补  |
-| Forward+                             | high-end 切片 | 3D cluster count/prefix/write、有界预算和 storage GGX PBR 已闭环；阴影/完整 layered PBR/透明待补           |
-| Temporal rendering                   | 部分基础      | current/previous transform ABI 已完成；仍无 jitter、motion vector pass、temporal resolve 或 TAAU           |
-| Exposure / display transform         | 部分可用      | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制 |
-| Screen-space lighting                | 缺失          | 无 depth pyramid、normal/roughness attribute buffer、GTAO、SSR、SSGI                                       |
-| Volumetrics / atmosphere             | 缺失          | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                  |
-| Geometry / texture streaming         | 缺失          | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                    |
-| GPU profiling / graph debugging      | 生产基线      | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query    |
+| 领域                                 | 当前状态      | 证据与边界                                                                                                  |
+| ------------------------------------ | ------------- | ----------------------------------------------------------------------------------------------------------- |
+| Shared Renderer / Render Graph / RHI | 生产可用      | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                   |
+| Raster PBR / HDR                     | 生产可用      | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径        |
+| Shadow                               | 可用基线      | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页             |
+| Compute / Storage / Indirect         | 底座生产可用  | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环   |
+| Material architecture                | 生产基础      | Definition/Instance、基础语义 Pass 与共享 PBR GPU record 已落地；motion/attributes、更多 family/warmup 待补 |
+| GPU-driven ordinary scene            | high-end 切片 | 注册的不透明 indexed `Mesh` 走 dirty GPU database、Hi-Z/LOD/compact 与固定 bucket indirect；透明/变形待补   |
+| Forward+                             | high-end 切片 | 3D cluster count/prefix/write、有界预算和 storage GGX PBR 已闭环；阴影/完整 layered PBR/透明待补            |
+| Temporal rendering                   | 部分基础      | current/previous transform ABI 已完成；仍无 jitter、motion vector pass、temporal resolve 或 TAAU            |
+| Exposure / display transform         | 部分可用      | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制  |
+| Screen-space lighting                | 缺失          | 无 depth pyramid、normal/roughness attribute buffer、GTAO、SSR、SSGI                                        |
+| Volumetrics / atmosphere             | 缺失          | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                   |
+| Geometry / texture streaming         | 缺失          | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                     |
+| GPU profiling / graph debugging      | 生产基线      | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query     |
 
 ### 2.1 现有实现中最关键的限制
 
@@ -117,8 +119,9 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
   [`BuiltInUniformBlocks.ts`](../src/render/ubo/BuiltInUniformBlocks.ts) 和
   [`pbr_main.frag`](../src/shader/chunk/pbr_main.frag)。
 - 通用 `SceneRenderPass.storageShaderVariant` 仍会替换整个 graphics
-  shader，命中 instancing 时还会展开为逐 Mesh direct draw；G0/L0 专用 factory 已有内置 clustered
-  PBR，但只覆盖注册的不透明 PBR bucket，尚未形成跨 pipeline 的材质编译合同。
+  shader，命中 instancing 时还会展开为逐 Mesh direct draw；G0/L0 专用 factory 已消费共享 PBR GPU
+  record，但当前 native storage shading 仍只覆盖注册的不透明 PBR
+  bucket，motion/attributes 和更多 surface family 尚未接入同一 handle。
 - graph texture subresource view 与 persistent history 已落地；当前 history
   recipe 仍限定单 sample、单 mip、单 layer 的 2D color texture，多 subresource
   history 需要持久化 validity 后再开放。
@@ -207,9 +210,11 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 是依赖场景规模、内容管线和长期性能投入的虚拟化能力。
 
 实施状态：**F0、F1、D0 已完成；G0/L0 的首个 WebGPU
-high-end 不透明场景切片已完成；MAT0 通用层尚未完成**。后续工作包可把 subresource/history、GPU
-timeline、确定的前后帧坐标 ABI、GPU Scene object/light/material database、PBR variant 与 3D cluster
-allocator 作为现有原型使用；MAT0 应抽取并泛化这些能力，而不是重建并行实现。G0/L0 的透明、变形、阴影和物理性能门禁仍保留。MAT0 的子工作包、迁移顺序与验收详见
+high-end 不透明场景切片已完成；MAT0 的共享材质前端与本工作包限定的 PBR GPU Material
+Database 已完成**。后续工作包可直接复用 subresource/history、GPU timeline、确定的前后帧坐标 ABI、GPU
+Scene object/light database、共享 PBR material handle/variant 与 3D cluster
+allocator。G0/L0 的透明、变形、阴影和物理性能门禁仍保留；MAT0 仍需随 T0/Q0 增加 motion/attributes
+role，并继续扩展 family schema 与 variant warmup。详见
 [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 
 ## 6. 可落地工作包
@@ -306,25 +311,24 @@ cache、shadow sampler、camera-relative
 packing、实例 current/previous、成功提交/失败回滚和显式 invalidation 均有合同测试；真实 WebGPU/WebGL
 2 pipeline 与浏览器 lane 继续复用同一 GLSL ES 3.00 坐标适配链。
 
-#### MAT0：材质系统前置层（G0/L0 原型可复用，通用层未完成）
+#### MAT0：材质系统前置层（共享前端与 PBR GPU Database 已完成）
 
 | 输入                                                        | 核心处理                                                            | 输出                                             | 首要验收                                                     |
 | ----------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
 | 当前 Material/PBR/Shader、SRP、PreparedDraw、G0/L0 材质切片 | 抽取 Definition/Instance、语义 Pass、稳定 variant、共享 material DB | material ID、pass variant、dirty upload 与兼容层 | 参数变化不重编译；跨 Pass coverage 一致；默认路径不增加 Pass |
 
-`ClusteredForwardPlusPipelineFactory` 已经验证了注册 geometry/material bucket、紧凑 material storage
-record、dirty upload、PBR texture variant、固定 indirect bucket，以及 `pbr_surface.glsl` /
-`pbr_brdf.glsl`
-共享表面与光照迭代分离。这些是 MAT0 的实现证据，但当前仍是 pipeline-local、预注册、opaque
-metallic/roughness
-PBR 的受限切片，不能替代跨 Forward、shadow、motion、attributes 和 picking 的通用材质合同。
+`MaterialDefinition`/`MaterialInstance`、类型化 semantic、forward/depth/shadow/picking
+role、稳定 variant key 与双后端 UBO 已进入生产路径。renderer-local `SharedMaterialRecordDatabase`
+进一步把 `ClusteredForwardPlusPipelineFactory` 的私有 PBR
+table 抽成按 family/layout 分类的共享 record：同一 material identity 跨 geometry
+bucket 去重，revision 驱动 dirty record，相邻范围合并上传，提交失败会回滚 CPU committed
+revision，device recovery 由 renderer-owned `cpu-shadow` recipe 重建。
 
 MAT0 不采用有序 `material.passes[]`。Pipeline/Render
 Graph 继续拥有 Pass 顺序、attachment 和资源依赖；材质只声明能为
 `forward`、`depth-only`、`shadow-caster`、`motion-vector`、 `material-attributes` 与 `picking`
-等语义角色生成什么 Shader、状态和绑定。实施顺序拆成 MAT0 diagnostics、MAT1 Definition/Instance、MAT2
-semantic pass、MAT3 surface/texture/variant、MAT4 共享 GPU Material Database、MAT5 renderer
-integration。完整设计、兼容策略和验收矩阵见
+等语义角色生成什么 Shader、状态和绑定。当前剩余项是随 T0/Q0 定义 motion/attributes 输出 ABI，让 shadow 与后续时域/属性消费者复用同一 material
+handle，扩展更多 surface family，并增加 variant manifest/warmup。完整设计、兼容策略和验收矩阵见
 [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 
 ### 6.2 Milestone 1A：规模化场景主线
@@ -714,7 +718,8 @@ time、确定的资源预算和失败时的可观察行为。
 3. reversed-Z、camera-relative、current/previous transform ABI；
 4. GPUScene dirty database + previous Hi-Z + 3D Clustered Forward+ 不透明 PBR 切片；
 5. MAT0：把 G0/L0 的 material
-   record/variant/surface 原型抽取为共享 Definition/Instance、语义 Pass 和 material ABI；
+   record/variant/surface 原型抽取为共享 Definition/Instance、语义 Pass 和 material
+   ABI（基础已完成）；
 6. 原生分辨率 TAA，再扩为 TAAU/dynamic resolution；
 7. 完成 G0/L0 的透明、变形、阴影、完整 layered PBR 与物理性能门禁；
 8. Auto exposure + exposure history + 参数化 filmic display
@@ -754,7 +759,7 @@ flowchart LR
   A0 --> GI0
 ```
 
-第 1–4 项已经形成现代 WebGPU 底座和首个 high-end 不透明场景垂直切片；完成 MAT0、T0 与 G0/L0 剩余门禁后，Hilo3D 才进入覆盖通用材质和时域画质的现代 WebGPU 生产渲染器阶段。E0 是可独立验收的显示质量切片，不改变 P0 主线的完成标准。
+第 1–5 项已经形成现代 WebGPU 底座、首个 high-end 不透明场景垂直切片和共享材质基础。完成 T0、MAT0 的 motion/attributes 扩展与 G0/L0 剩余门禁后，Hilo3D 才进入覆盖通用材质和时域画质的现代 WebGPU 生产渲染器阶段。E0 是可独立验收的显示质量切片，不改变 P0 主线的完成标准。
 
 ## 12. 外部参照
 
