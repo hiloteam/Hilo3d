@@ -18,6 +18,11 @@ import {
 type ViewerState = 'empty' | 'error' | 'loading' | 'ready';
 type InspectorSection = 'scene' | 'material' | 'post';
 
+const BACKEND_LABELS: Readonly<Record<Hilo3d.RendererBackend, string>> = Object.freeze({
+    webgl2: 'WebGL 2',
+    webgpu: 'WebGPU'
+});
+
 interface MaterialSnapshot {
     readonly baseColor: readonly [number, number, number, number];
     readonly ior: number;
@@ -855,7 +860,7 @@ function updateModelInterface(model: Hilo3d.GLTFModel, bounds: Hilo3d.Bounds): v
     modelFormat.textContent = `${sourceFormat} · glTF ${version}`;
     sourceValue.textContent = currentSourceLabel;
     sourceValue.title = currentSourceLabel;
-    backendBadge.textContent = stage.renderer.backend === 'webgpu' ? 'WebGPU' : 'WebGL 2';
+    backendBadge.textContent = BACKEND_LABELS[stage.renderer.backend];
     viewportStatusText.textContent = `${String(meshTotal)} ${meshTotal === 1 ? 'mesh' : 'meshes'} · ${transmissionTotal > 0 ? `${String(transmissionTotal)} transmission` : 'Ready'}`;
     meshCount.textContent = String(meshTotal);
     materialCount.textContent = String(model.materials.length);
