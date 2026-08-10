@@ -13,6 +13,7 @@ committed.
 | [Material system modernization](./MATERIAL_SYSTEM_MODERNIZATION.md)        | Current Definition/Instance architecture, semantic passes, typed bindings, texture-slot ABI, breaking changes, and roadmap |
 | [Modern WebGPU rendering roadmap](./MODERN_WEBGPU_RENDERING_ROADMAP.md)    | Current rendering gaps and an actionable GPU Scene, temporal, lighting, virtualization, and high-end WebGPU roadmap        |
 | [Forward+ remediation](./FORWARD_PLUS_REMEDIATION.md)                      | Audited Forward+/Clustered/Hi-Z/batching correctness, performance fixes, and executable acceptance matrix                  |
+| [Temporal rendering remediation](./TEMPORAL_RENDERING_REMEDIATION.md)      | Production Motion Vector/TAA ABI, history validity, Clustered integration, performance contract, and release evidence      |
 | [2D rendering and multi-camera composition](./2D_RENDERING.md)             | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks               |
 | [Compute/storage implementation](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md) | Implemented Direct WGSL compute, storage resources, GPU-driven raster contract, first-release boundaries, and evidence     |
 | [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)  | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration            |

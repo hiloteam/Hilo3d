@@ -58,7 +58,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         ]);
         expect(factory.requirements.requiredLimits).toMatchObject({
             maxBindingsPerBindGroup: 18,
-            maxStorageBuffersPerShaderStage: 7,
+            maxStorageBuffersPerShaderStage: 8,
             maxStorageTexturesPerShaderStage: 1,
             maxSampledTexturesPerShaderStage: 12,
             maxSamplersPerShaderStage: 7,
@@ -70,6 +70,18 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         expect(factory.requirements.requiredTextureFormats).toContainEqual({
             format: 'r32float',
             use: 'storage'
+        });
+
+        const withTemporalAA = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            temporalAA: {}
+        });
+        expect(withTemporalAA.requirements.requiredLimits).toMatchObject({
+            maxColorAttachments: 3
+        });
+        expect(withTemporalAA.requirements.requiredTextureFormats).toContainEqual({
+            format: 'r32float',
+            use: 'color-attachment'
         });
 
         const withoutHiZ = new ClusteredForwardPlusPipelineFactory({
@@ -173,6 +185,13 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     typeof ClusteredForwardPlusPipelineFactory
                 >[0])
         ).toThrow(/hiZ must be a boolean/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    temporalAA: { varianceGamma: 8 }
+                })
+        ).toThrow(/varianceGamma/u);
     });
 
     it('requests limits for every configured cluster, geometry, and dispatch allocation', () => {
@@ -224,6 +243,103 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
     });
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'renders every compacted material bucket without indirect-first-instance',
+        async () => {
+            const geometry = new BoxGeometry();
+            const materials = [
+                new PBRMaterial({
+                    baseColor: new Color(0, 0, 0),
+                    emissionFactor: new Color(3, 0, 0)
+                }),
+                new PBRMaterial({
+                    baseColor: new Color(0, 0, 0),
+                    emissionFactor: new Color(0, 3, 0)
+                }),
+                new PBRMaterial({
+                    baseColor: new Color(0, 0, 0),
+                    emissionFactor: new Color(0, 0, 3)
+                })
+            ] as const;
+            const factory = new ClusteredForwardPlusPipelineFactory({
+                buckets: materials.map(material => ({ geometry, material })),
+                maxObjects: materials.length,
+                maxLights: 1,
+                maxLightIndices: 1,
+                maxLightsPerCluster: 1,
+                maxViewportWidth: 96,
+                maxViewportHeight: 48,
+                hiZ: false,
+                bloomStrength: 0
+            });
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: document.createElement('canvas'),
+                width: 96,
+                height: 48,
+                antialias: false,
+                renderingProfile: 'high-end',
+                renderPipeline: factory
+            });
+            const target = renderer.createRenderTarget({
+                width: 96,
+                height: 48,
+                colorAttachments: [{ format: 'rgba8unorm' }],
+                depthStencilAttachment: { format: 'depth32float', depthMode: 'reversed' }
+            });
+            try {
+                const scene = new Node();
+                for (let index = 0; index < materials.length; index += 1) {
+                    const material = materials[index];
+                    if (material === undefined) throw new Error('Expected a bucket material');
+                    new Mesh({
+                        geometry,
+                        material,
+                        x: (index - 1) * 2,
+                        frustumTest: false
+                    }).addTo(scene);
+                }
+                const camera = new PerspectiveCamera({
+                    aspect: 2,
+                    fov: 45,
+                    near: 0.1,
+                    far: 20,
+                    depthMode: 'reversed'
+                });
+                camera.setPosition(0, 0, 6).lookAt(new Vector3(0, 0, 0));
+
+                renderer.renderToTarget(target, scene, camera);
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const readback = await target.readColorAttachment();
+                const dominant: [number, number, number] = [0, 0, 0];
+                for (let offset = 0; offset < readback.data.length; offset += 4) {
+                    const red = readback.data[offset] ?? 0;
+                    const green = readback.data[offset + 1] ?? 0;
+                    const blue = readback.data[offset + 2] ?? 0;
+                    const maximum = Math.max(red, green, blue);
+                    if (maximum < 32) continue;
+                    if (red > green * 1.5 && red > blue * 1.5) dominant[0]++;
+                    if (green > red * 1.5 && green > blue * 1.5) dominant[1]++;
+                    if (blue > red * 1.5 && blue > green * 1.5) dominant[2]++;
+                }
+
+                expect(dominant[0]).toBeGreaterThan(20);
+                expect(dominant[1]).toBeGreaterThan(20);
+                expect(dominant[2]).toBeGreaterThan(20);
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    objectCount: 3,
+                    fallbackObjectCount: 0,
+                    visibleObjectCount: 3
+                });
+            } finally {
+                target.destroy();
+                renderer.destroy();
+            }
+        },
+        20_000
+    );
+
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
         'renders GPU Scene culling, indirect buckets and clustered lighting on real WebGPU',
         async () => {
             const geometry = new BoxGeometry({ widthSegments: 2 });
@@ -255,7 +371,8 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 maxLightIndices: 4_096,
                 maxLightsPerCluster: 8,
                 maxViewportWidth: 128,
-                maxViewportHeight: 128
+                maxViewportHeight: 128,
+                temporalAA: {}
             });
             const renderer = await Renderer.create({
                 backend: 'webgpu',

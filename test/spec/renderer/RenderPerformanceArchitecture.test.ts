@@ -261,15 +261,16 @@ describe('render hot-path architecture', () => {
         );
     });
 
-    it('uses one compact visible table and preserves indirect firstInstance bucket ranges', () => {
+    it('uses one compact visible table without requiring indirect-first-instance', () => {
         const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
 
         expect(clustered).toContain("label: 'GPU Scene visible compact table'");
         expect(clustered).toContain('byteLength: this.#visibleBucketCapacity * 4');
         expect(clustered).not.toContain('this.#visibleBucketCapacity * physicalCount * 4');
-        expect(clustered).toContain('atomicStore(&indirectArguments[bucket * 5u + 4u], offset)');
+        expect(clustered).toContain('atomicStore(&indirectArguments[bucket * 5u + 4u], 0u)');
+        expect(clustered).toContain('bucketOffsets[bucket *');
         expect(clustered).toContain(
-            'uint objectIndex = visibleIndices.values[uint(gl_InstanceIndex)]'
+            'visibleIndices.values[visibleOffset.value + uint(gl_InstanceIndex)]'
         );
     });
 
@@ -306,10 +307,10 @@ describe('render hot-path architecture', () => {
     it('shares one invariant GPU Scene clip transform across depth and color passes', () => {
         const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
 
-        expect(clustered.match(/\$\{GPU_SCENE_POSITION_TRANSFORM_SOURCE\}/gu)).toHaveLength(2);
+        expect(clustered.match(/\$\{GPU_SCENE_POSITION_TRANSFORM_SOURCE\}/gu)).toHaveLength(3);
         expect(
             clustered.match(/gl_Position = gpuSceneClipPosition\(objectBase, a_position\);/gu)
-        ).toHaveLength(2);
+        ).toHaveLength(3);
         expect(clustered).not.toContain('gl_Position = readFrameMatrix(0u) * worldPosition;');
     });
 });

@@ -190,11 +190,11 @@ export class MaterialCompiler {
         if (
             pass.fragmentOutput === 'motion-vector' &&
             (request.target.colorFormats.length !== 1 ||
-                request.target.colorFormats[0] !== 'rg16float' ||
+                request.target.colorFormats[0] !== 'rgba16float' ||
                 request.target.sampleCount !== 1)
         ) {
             throw new TypeError(
-                'Material motion-vector role requires one single-sample rg16float color target'
+                'Material motion-vector role requires one single-sample rgba16float color target'
             );
         }
         const state = role === 'forward' ? resolveForwardState(instance, pass) : pass.state;

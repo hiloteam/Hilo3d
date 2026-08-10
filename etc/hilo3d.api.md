@@ -740,6 +740,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly maxObjects?: number;
     readonly maxViewportHeight?: number;
     readonly maxViewportWidth?: number;
+    readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     readonly tileSize?: number;
     readonly zSlices?: number;
 }
@@ -8129,8 +8130,6 @@ export class TemporalAA implements ForwardRenderPipelineFeature {
     readonly name = "temporal-aa";
     // (undocumented)
     readonly requirements: Readonly<{
-        sampledSceneColor: true;
-        sampledDepth: true;
         requiredLimits: Readonly<{
             maxColorAttachments: 3;
         }>;
@@ -8141,18 +8140,14 @@ export class TemporalAA implements ForwardRenderPipelineFeature {
             format: "rgba16float";
             use: "filterable-sampled";
         }> | Readonly<{
-            format: "rg16float";
+            format: "r32float";
             use: "color-attachment";
         }> | Readonly<{
-            format: "rg16float";
-            use: "filterable-sampled";
-        }> | Readonly<{
-            format: "r16float";
-            use: "color-attachment";
-        }> | Readonly<{
-            format: "r16float";
-            use: "filterable-sampled";
+            format: "r32float";
+            use: "sampled";
         }>)[];
+        sampledSceneColor: true;
+        sampledDepth: true;
     }>;
 }
 
@@ -8160,6 +8155,8 @@ export class TemporalAA implements ForwardRenderPipelineFeature {
 export interface TemporalAAOptions {
     readonly depthThreshold?: number;
     readonly historyWeight?: number;
+    readonly sharpness?: number;
+    readonly varianceGamma?: number;
 }
 
 // @public

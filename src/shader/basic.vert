@@ -19,6 +19,8 @@ out vec4 v_objectIdColor;
 #ifdef HILO_MOTION_VECTOR_PASS
 out vec4 v_currentClipPosition;
 out vec4 v_previousClipPosition;
+out float v_currentViewDepth;
+out float v_previousViewDepth;
 flat out float v_motionHistoryValid;
 #endif
 void main(void) {
@@ -61,6 +63,9 @@ void main(void) {
         v_currentClipPosition = currentClipPosition;
         v_previousClipPosition =
             u_previousViewProjectionMatrix * u_previousModelMatrix * previousPos;
+        v_currentViewDepth = abs((u_viewMatrix * u_modelMatrix * pos).z);
+        v_previousViewDepth =
+            abs((u_previousViewMatrix * u_previousModelMatrix * previousPos).z);
         v_motionHistoryValid = min(u_cameraHistoryValid, u_modelHistoryValid);
         #ifdef HILO_JOINT_COUNT
             v_motionHistoryValid = min(v_motionHistoryValid, u_skinHistoryValid);

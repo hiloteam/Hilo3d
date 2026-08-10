@@ -633,6 +633,7 @@ describe('BuiltInUniformBlockManager', () => {
         const render = (x: number): UniformBuffer => {
             mesh.setPosition(x, 0, 0).updateMatrixWorld(true);
             manager.beginFrame(testEnv.camera);
+            manager.markMotionVectorParticipation(mesh);
             return manager.resolveUniformBlock('ModelBlock', mesh, testEnv.material);
         };
 
@@ -649,6 +650,14 @@ describe('BuiltInUniformBlockManager', () => {
 
         block = render(4);
         expect(readFloatField(block, 'u_previousModelMatrix', 16)[12]).toBe(2);
+        manager.commit({} as never);
+
+        manager.beginFrame(testEnv.camera);
+        manager.commit({} as never);
+        manager.beginFrame(testEnv.camera);
+        block = manager.resolveUniformBlock('ModelBlock', mesh, testEnv.material);
+        expect(readFloatField(block, 'u_previousModelMatrix', 16)[12]).toBe(4);
+        expect(readFloatField(block, 'u_modelHistoryParams', 1)[0]).toBe(0);
         manager.commit({} as never);
 
         mesh.invalidateTransformHistory();

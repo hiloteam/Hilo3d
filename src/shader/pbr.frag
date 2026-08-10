@@ -26,7 +26,7 @@ void main(void) {
                 color *= v_color;
             #endif
             #include "./chunk/transparency_main.frag"
-            hilo_FragColor = vec4(hiloMotionVector(), 0.0, 1.0);
+            hilo_FragColor = hiloMotionData();
             #include "./chunk/logDepth_main.frag"
         }
     #else

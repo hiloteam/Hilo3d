@@ -26,13 +26,18 @@
 ### Changes
 
 - Add the native-resolution `TemporalAA` Forward feature. Built-in opaque/masked materials now
-  expose a strict single-sample `rg16float` motion-vector pass using submission-aware
-  current/previous camera, model, instance, skin, and morph state. TAA runs after opaque and before
-  transparent/Bloom, with `rgba16float` double-buffer color history, depth history, reprojection,
-  disocclusion, neighborhood clamp, camera-cut/resize/device-loss invalidation, and failed-frame
-  rollback. Add stable CPU projection matrices beside raster jitter and portable non-filtering depth
-  sampling for fullscreen passes. TAAU, dynamic resolution, reactive masks, and transparent history
-  remain deferred.
+  expose a strict single-sample `rgba16float` motion pass containing current-to-previous UV
+  velocity, expected previous logarithmic view depth, and current logarithmic view depth. Camera,
+  model, instance, skin, morph, visibility, and failed-frame history are submission-aware. TAA runs
+  after opaque and before transparent/Bloom with `rgba16float` color history, `r32float`
+  logarithmic-depth history, conservative depth rejection, YCoCg variance clipping,
+  motion/luminance-reactive history weight, resolve-only sharpening,
+  projection-cut/resize/device-loss invalidation, and deterministic jitter rollback. Clustered
+  Forward+ can opt into the same resolve; GPU Scene fuses motion output into its existing depth
+  prepass, double-buffers visibility, and composes ordinary Forward fallback opaque before TAA and
+  fallback transparent afterward. Add the WebGPU Temporal Observatory example and real-pixel
+  convergence/camera-cut/GPU-validation coverage. TAAU, dynamic resolution, authored reactive masks,
+  and transparent history remain deferred.
 
 - Add canonical built-in material definitions, stable material IDs and revisions, explicit
   forward/depth-only/shadow-caster/picking roles, role-aware shader variants, per-slot texture/UV
@@ -46,12 +51,13 @@
   renderer-owned CPU shadow. Migrate Clustered Forward+ from its private per-bucket PBR table so GPU
   Scene objects keep independent geometry-bucket and shared-material indices.
 - Complete the Forward+/Clustered/Hi-Z/batching remediation audit. Preserve one global direct/batch
-  draw order, pack per-slot PBR texture metadata, use a single compact visible table with indirect
-  `firstInstance`, make overflow membership deterministic, keep directional lights global, route
-  AreaLight and shadow-enabled lights through exact Forward fallback, restrict previous-frame Hi-Z
-  to stable conservative LOD bounds, compose fallback in linear HDR before separable Bloom/display,
-  elide Bloom resources and passes at zero strength, cache static batch normal matrices, and
-  separate CPU record timing from GPU completion in the 110k-object scale fixture.
+  draw order, pack per-slot PBR texture metadata, use a single compact visible table with aligned
+  per-bucket storage offsets and zero indirect `firstInstance`, make overflow membership
+  deterministic, keep directional lights global, route AreaLight and shadow-enabled lights through
+  exact Forward fallback, restrict previous-frame Hi-Z to stable conservative LOD bounds, compose
+  fallback in linear HDR before separable Bloom/display, elide Bloom resources and passes at zero
+  strength, cache static batch normal matrices, and separate CPU record timing from GPU completion
+  in the 110k-object scale fixture.
 - Add a repository-bundled Khronos Sponza Clustered Forward+ lighting lab with 202 animated local
   lights, including 10 slow chromatic runners that curve through a wall-height central volume, GPU
   Scene diagnostics, HDR bloom, a multi-region OrbitControls camera tour, responsive controls, and

@@ -104,9 +104,11 @@ layout，需要改变 topology 时构造另一个材质实例。
 Render Pipeline 请求 `forward`、`depth-only`、`shadow-caster`、`motion-vector` 或 `picking`
 role，材质不拥有 graph pass 顺序。Shadow Atlas 直接编译 `shadow-caster`，不创建 proxy
 material；role 缺失或 target output 不匹配会在 RHI frame 前失败。内置 Basic/PBR/Geometry 的
-`motion-vector` pass 只接受 single-sample `rg16float` target，复用 current/previous
-camera、model、instance、skin、morph 与 coverage ABI；首次出现或任一 transform
-history 失效时写零。`material-attributes` 仍保留给后续属性缓冲路线。
+`motion-vector` pass 只接受 single-sample `rgba16float` target：XY 是 current-to-previous UV
+velocity，Z 是 expected previous `log2(1 + viewDepth)`，W 是 current
+`log2(1 + viewDepth)`。它复用 current/previous camera、model、instance、skin、morph 与 coverage
+ABI；首次出现、显隐/提交间断或任一 transform history 失效时写 invalid history
+marker，不能消费陈旧 pose。`material-attributes` 仍保留给后续属性缓冲路线。
 
 portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
 `MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
@@ -181,13 +183,16 @@ transfer。
 内置 HDR 组合由 `PostProcessRenderPipelineFactory` 提供：attachment-zero scene color 使用
 `rgba16float`，opaque queue 完成后由 graph `TextureCopyPass` 捕获 opaque scene
 texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。可选
-`TemporalAA` 在 opaque 后记录 `rg16float` velocity，并用 sampled depth、`rgba16float` 双缓冲 color
-history 和 `r16float` 双缓冲 depth history 完成原生分辨率 reprojection、disocclusion 与 neighborhood
-clamp。resolved opaque color 随后才接受 transparent composition，因此透明不写入 TAA history。之后
-`Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent
-upsample 与线性 composite；`ColorUber` 最后统一完成 grading、tone
-mapping、linear-to-sRGB 与 dithering，并把输出编码标记为 `srgb`，避免 surface output
-pass 重复转换。float scene target 会选择 linear-output material
+`TemporalAA` 在 opaque 后记录 `rgba16float` motion/log-depth，并用 `rgba16float` 双缓冲 color
+history 和 `r32float` 双缓冲 log-view-depth history 完成原生分辨率 reprojection、relative-depth
+disocclusion、YCoCg variance clipping 与 reactive resolve。resolved opaque
+color 随后才接受 transparent composition，因此透明不写入 TAA history。Clustered Forward+ opt-in
+TAA 时把 GPU Scene motion 融入 depth prepass，以前一已提交帧的 visibility
+buffer 拒绝重现物体的陈旧 history；fallback opaque/masked 在 resolve 前补写同一 motion
+target，fallback transparent 在 resolve 后合成。之后 `Bloom` 在 tone mapping 前记录 soft-knee/Karis
+prefilter、13-tap downsample pyramid、tent upsample 与线性 composite；`ColorUber`
+最后统一完成 grading、tone mapping、linear-to-sRGB 与 dithering，并把输出编码标记为
+`srgb`，避免 surface output pass 重复转换。float scene target 会选择 linear-output material
 variant，禁止材质 shader 提前执行 gamma encode 或旧的局部 tone mapping。完整颜色与材质合同见
 [`PBR_AND_POST_PROCESSING.md`](./PBR_AND_POST_PROCESSING.md)。
 
@@ -215,9 +220,12 @@ display。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个�
 draw，GPU 为不可见 bucket 写零 instance count；这些 bucket draw 在共享层分别合并到一个 depth render
 pass 和一个 color render pass，仍可逐 draw 切换 pipeline、bind group、vertex/index
 buffer，但不再为每个 bucket 重开 attachment。可见对象先写 selected-bucket table，再通过 bucket
-prefix 产生 indirect `firstInstance`，最终压缩到一份与 `maxObjects` 同阶的连续 visible
-table，不再按 object × physical-bucket 放大。Hi-Z 对 standard depth 取区块最远值 `max`、对 reversed
-depth 取区块最远值 `min`；previous-frame occlusion 同时读取已提交的 previous
+prefix 产生连续 range offset，最终压缩到一份与 `maxObjects` 同阶的 visible table，不再按 object ×
+physical-bucket 放大。所有 indexed-indirect command 的 `firstInstance` 保持为零；每个 bucket
+draw 通过 256-byte 对齐的只读 storage range 取得自己的 compact base，再与本地 `gl_InstanceIndex`
+相加，因此 baseline 不依赖 WebGPU 可选的 `indirect-first-instance` feature。Hi-Z 对 standard
+depth 取区块最远值 `max`、对 reversed depth 取区块最远值 `min`；previous-frame
+occlusion 同时读取已提交的 previous
 view/projection/depth 参数，不把上一帧 VP 与当前帧投影约定混用。颜色阶段 load 深度预通过结果，物体 record 携带 model
 basis 的 inverse-transpose normal matrix，因此 non-uniform scale 不改变法线方向。depth
 prepass 与 color pass 通过同一段 byte-identical clip-space transform 计算

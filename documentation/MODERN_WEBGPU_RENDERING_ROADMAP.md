@@ -348,7 +348,9 @@ slot/geometry/material
 range，GPU 执行 frustum、按声明 viewport 专门化（最多 13 级）的 previous-frame
 Hi-Z、projected-radius LOD、bucket prefix/compact，并写固定 indexed-indirect
 arguments。全部 bucket 共享一份与 `maxObjects` 同阶的 compact visible table，indirect
-`firstInstance` 指向各自连续 range；生产帧不读取 visible count。对象只有在 transform 与所有 LOD
+`firstInstance` 固定为零；prefix offset 写入 256-byte 对齐的 bucket storage record，raster
+draw 通过静态对齐 binding range 取得 base 后再索引 compact table。这样不要求可选
+`indirect-first-instance` feature，生产帧也不读取 visible count。对象只有在 transform 与所有 LOD
 bounds revision 都稳定时才使用 previous-frame occlusion。camera
 cut、失败帧和提交后的时域推进分别通过 history invalidation、`frameDiscarded()` 与 `frameSubmitted()`
 处理。previous-frame culling 使用同一已提交帧的 VP、view、projection 与 depth
@@ -449,11 +451,14 @@ light、transmission 和 device recovery 有真实 WebGPU 像素证据；overflo
 | 低分辨率当前帧、velocity、depth、history | reprojection、disocclusion、clamp、reactive mask、upscale | 稳定高分辨率画面与分辨率控制器 | camera cut 无旧帧闪回，运动物体不持续拖影 |
 
 当前已交付 T0 的原生分辨率首切片：内置 opaque/masked Basic/PBR/Geometry 输出 single-sample
-`rg16float` velocity；Camera 同时保留 jittered raster 与 non-jittered CPU projection； `TemporalAA`
-在 opaque 后、transparent/Bloom 前使用 `rgba16float` color history、`r16float` depth
-history、reprojection、depth disocclusion 和 3×3 neighborhood clamp。首次出现、camera
-cut、resize、失败帧和 device recovery 均进入提交事务与 history
-invalidation 验收。transparent、TAAU、动态分辨率和 reactive mask 保留到后续切片。
+`rgba16float` velocity/previous-current log-view-depth；Camera 同时保留 jittered
+raster 与 non-jittered CPU projection；`TemporalAA` 在 opaque 后、transparent/Bloom 前使用
+`rgba16float` color history、`r32float` log-view-depth history、relative-depth rejection、YCoCg
+variance clipping、motion/luminance-reactive weighting 和 resolve-only
+sharpen。普通 Forward 使用独立 motion semantic pass，Clustered Forward+ 则把 GPU Scene
+motion 融入 depth prepass并记录前一已提交帧 visibility。首次出现、显隐间断、camera/projection
+cut、resize、失败帧和 device recovery 均进入提交事务与 history invalidation 验收。transparent
+history、TAAU、动态分辨率和 authored reactive mask 保留到后续切片。
 
 - opaque/alpha-tested geometry 输出 motion vector；skinning/morph 必须有 previous pose；
 - camera jitter 不污染 CPU picking/frustum；提供 jittered 与 non-jittered matrix；

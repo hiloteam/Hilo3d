@@ -94,6 +94,7 @@ interface CameraHistoryRecord {
     committedDepthMode: Camera['depthMode'];
     pendingDepthMode: Camera['depthMode'];
     committedGeneration: number;
+    committedSubmission: number;
     pendingFrame: number;
 }
 
@@ -103,6 +104,11 @@ interface TransformHistoryRecord {
     committedRevision: number;
     pendingRevision: number;
     committedGeneration: number;
+    pendingFrame: number;
+}
+
+interface MotionParticipationRecord {
+    committedSubmission: number;
     pendingFrame: number;
 }
 
@@ -447,10 +453,12 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
     private readonly modelHistory = new WeakMap<Mesh, TransformHistoryRecord>();
     private readonly skinningHistory = new WeakMap<Mesh, TransformHistoryRecord>();
     private readonly morphHistory = new WeakMap<Mesh, TransformHistoryRecord>();
+    private readonly motionParticipation = new WeakMap<Mesh, MotionParticipationRecord>();
     private readonly stagedCameras: CameraHistoryRecord[] = [];
     private readonly stagedModels: TransformHistoryRecord[] = [];
     private readonly stagedSkinning: TransformHistoryRecord[] = [];
     private readonly stagedMorphs: TransformHistoryRecord[] = [];
+    private readonly stagedMotionParticipation: MotionParticipationRecord[] = [];
     private readonly bufferOwners = new WeakMap<UniformBuffer, OwnedBufferRegistration>();
     private camera: Camera | null = null;
     private semanticFrame: SemanticFrameState | null = null;
@@ -459,6 +467,7 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
     private sceneRevision = -1;
     private lightRevision = -1;
     private historyGeneration = 1;
+    private submissionIndex = 0;
 
     constructor(renderer: RendererSize) {
         this.renderer = renderer;
@@ -517,6 +526,7 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
     }
 
     commit(_submission: RHISubmission): void {
+        const committedSubmission = this.submissionIndex + 1;
         for (const record of this.stagedCameras) {
             record.committedView.set(record.pendingView);
             record.committedProjection.set(record.pendingProjection);
@@ -526,11 +536,17 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             record.committedRevision = record.pendingRevision;
             record.committedDepthMode = record.pendingDepthMode;
             record.committedGeneration = this.historyGeneration;
+            record.committedSubmission = committedSubmission;
             record.pendingFrame = -1;
         }
         this.commitTransformRecords(this.stagedModels);
         this.commitTransformRecords(this.stagedSkinning);
         this.commitTransformRecords(this.stagedMorphs);
+        for (const record of this.stagedMotionParticipation) {
+            record.committedSubmission = committedSubmission;
+            record.pendingFrame = -1;
+        }
+        this.submissionIndex = committedSubmission;
         this.clearStagedHistory();
     }
 
@@ -539,12 +555,25 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         for (const record of this.stagedModels) record.pendingFrame = -1;
         for (const record of this.stagedSkinning) record.pendingFrame = -1;
         for (const record of this.stagedMorphs) record.pendingFrame = -1;
+        for (const record of this.stagedMotionParticipation) record.pendingFrame = -1;
         this.clearStagedHistory();
     }
 
     /** Invalidate every previous transform at a device-generation boundary. */
     synchronizeAfterRecovery(): void {
         this.historyGeneration += 1;
+    }
+
+    /** @internal Record that a visible mesh emitted motion data in this submitted frame. */
+    markMotionVectorParticipation(mesh: Mesh): void {
+        let record = this.motionParticipation.get(mesh);
+        if (record === undefined) {
+            record = { committedSubmission: -1, pendingFrame: -1 };
+            this.motionParticipation.set(mesh, record);
+        }
+        if (record.pendingFrame === this.frameIndex) return;
+        record.pendingFrame = this.frameIndex;
+        this.stagedMotionParticipation.push(record);
     }
 
     /** @internal Stage and write one current/previous camera-relative instance transform. */
@@ -568,7 +597,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         current.set(history.pending, offset);
         const valid =
             history.committedGeneration === this.historyGeneration &&
-            history.committedRevision === getTransformHistoryRevision(mesh);
+            history.committedRevision === getTransformHistoryRevision(mesh) &&
+            this.hasConsecutiveMotionParticipation(mesh);
         previous.set(valid ? history.committed : history.pending, offset);
         return valid;
     }
@@ -672,7 +702,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         const historyValid =
             history.committedGeneration === this.historyGeneration &&
             history.committedRevision === getTransformHistoryRevision(camera) &&
-            history.committedDepthMode === camera.depthMode;
+            history.committedDepthMode === camera.depthMode &&
+            history.committedSubmission === this.submissionIndex;
         const previousView = historyValid ? history.committedView : history.pendingView;
         const previousProjection = historyValid
             ? history.committedProjection
@@ -984,7 +1015,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             }
             const historyValid =
                 history.committedGeneration === this.historyGeneration &&
-                history.committedRevision === getTransformHistoryRevision(mesh);
+                history.committedRevision === getTransformHistoryRevision(mesh) &&
+                this.hasConsecutiveMotionParticipation(mesh);
             updateModelTransformBlock(
                 cached.buffer,
                 mesh,
@@ -1070,7 +1102,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             this.stagedSkinning.push(history);
             const historyValid =
                 history.committedGeneration === this.historyGeneration &&
-                history.committedRevision === history.pendingRevision;
+                history.committedRevision === history.pendingRevision &&
+                this.hasConsecutiveMotionParticipation(mesh);
             cached.buffer
                 .set('u_jointMat', history.pending)
                 .set('u_previousJointMat', historyValid ? history.committed : history.pending)
@@ -1132,7 +1165,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         this.stagedMorphs.push(history);
         const historyValid =
             history.committedGeneration === this.historyGeneration &&
-            history.committedRevision === history.pendingRevision;
+            history.committedRevision === history.pendingRevision &&
+            this.hasConsecutiveMotionParticipation(mesh);
         const previous = historyValid ? history.committed : history.pending;
         cached.buffer
             .set('u_morphWeights0', cached.weights0)
@@ -1220,6 +1254,7 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             committedDepthMode: 'standard',
             pendingDepthMode: 'standard',
             committedGeneration: 0,
+            committedSubmission: -1,
             pendingFrame: -1
         };
         this.cameraHistory.set(camera, record);
@@ -1254,11 +1289,16 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         }
     }
 
+    private hasConsecutiveMotionParticipation(mesh: Mesh): boolean {
+        return this.motionParticipation.get(mesh)?.committedSubmission === this.submissionIndex;
+    }
+
     private clearStagedHistory(): void {
         this.stagedCameras.length = 0;
         this.stagedModels.length = 0;
         this.stagedSkinning.length = 0;
         this.stagedMorphs.length = 0;
+        this.stagedMotionParticipation.length = 0;
     }
 
     private createBuffer(layout: Std140Layout): UniformBuffer {
