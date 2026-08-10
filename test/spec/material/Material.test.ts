@@ -109,6 +109,45 @@ describe('modern material model', () => {
                 depthWrite: false
             }
         });
-        expect(material.definition.getPass('material-attributes')).toBeNull();
+        expect(material.definition.getPass('material-attributes')).toMatchObject({
+            fragmentOutput: 'material-attributes',
+            state: {
+                depthCompare: 'equal',
+                depthWrite: false
+            }
+        });
+    });
+
+    it('enforces the material-attributes target ABI before RHI frame creation', () => {
+        const material = new Hilo3d.PBRMaterial();
+        const compiler = new Hilo3d.MaterialCompiler();
+        const request = {
+            instance: material,
+            role: 'material-attributes' as const,
+            vertexLayoutClass: 'static-mesh',
+            renderingProfile: 'portable' as const,
+            backend: 'webgpu' as const
+        };
+
+        expect(
+            compiler.compile({
+                ...request,
+                target: {
+                    colorFormats: ['rgba16float'],
+                    depthStencilFormat: 'depth32float',
+                    sampleCount: 1
+                }
+            })
+        ).not.toBeNull();
+        expect(() =>
+            compiler.compile({
+                ...request,
+                target: {
+                    colorFormats: ['rgba8unorm'],
+                    depthStencilFormat: 'depth32float',
+                    sampleCount: 1
+                }
+            })
+        ).toThrow(/Material attributes role requires one single-sample rgba16float/u);
     });
 });

@@ -17,6 +17,7 @@ export const WEBGL2_ONLY_EXAMPLE_PATHS = ['webxr.html'] as const;
 export const WEBGPU_ONLY_EXAMPLE_PATHS = [
     'bloom.html',
     'clustered_forward_plus_sponza.html',
+    'screen_space_reflections_palace.html',
     'temporal_aa_observatory.html',
     'compute_gpu_driven.html',
     'compute_eclipse_shrine.html',
@@ -32,6 +33,7 @@ export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     Partial<Record<string, Readonly<Record<string, string>>>>
 > = {
     'compute_eclipse_shrine.html': { test: '1' },
+    'screen_space_reflections_palace.html': { test: '1' },
     'temporal_aa_observatory.html': { test: '1' },
     'glTFViewer/index.html': { url: '/examples/models/Tmall/Tmall.gltf' }
 };

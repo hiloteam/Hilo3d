@@ -129,6 +129,22 @@ opaque 在 resolve 前参与 color、depth 和 motion，transparent
 fallback 在 resolve 后合成。未启用时不分配 visibility-history
 buffer，也不执行对应 clear/write，保持默认 Clustered 路径无 TAA 带宽成本。
 
+## 内置 Screen-space reflections
+
+`ClusteredForwardPlusPipelineFactory.screenSpaceReflections` 显式启用 WebGPU high-end Hi-Z
+SSR，并要求同时启用 `hiZ` 与 `temporalAA`。GPU Scene opaque PBR 在 color MRT 写 view
+normal、roughness 和 receiver/metallic；ordinary Forward opaque PBR 通过同一 `material-attributes`
+semantic pass 补写。current-frame RG32F min/max Hi-Z 驱动 hierarchical coarse-to-fine
+trace，四级 HDR radiance cone 近似粗糙反射；screen edge、distance、roughness 共同生成 hit
+confidence。
+
+SSR 使用 motion/log-depth 做 history reprojection、relative-depth reject 和 neighborhood
+clamp，在线性 HDR opaque color 中合成后再进入 TAA/TAAU。camera cut、camera
+identity、projection/depth convention、resize、失败 submission 与 device
+recovery 都遵守 history 初始化/回滚合同。默认关闭时没有 attribute、trace、cone 或 history 成本。屏幕外和完全遮挡内容返回零贡献；当前没有 probe/BVH/SDF
+fallback，也没有 SSGI。完整参数、packing 和证据见
+[`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md)。
+
 ## 内置 Bloom
 
 `Bloom` 是 `after-transparent` forward feature，在线性 `rgba16float` scene color 上执行：

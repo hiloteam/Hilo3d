@@ -174,14 +174,14 @@ function validateMaterialPassTarget(
     role: MaterialPassRole,
     target: RHIMeshDrawTargetDescriptor
 ): void {
-    if (role !== 'motion-vector') return;
+    if (role !== 'motion-vector' && role !== 'material-attributes') return;
     if (
         target.colorFormats.length !== 1 ||
         target.colorFormats[0] !== 'rgba16float' ||
         target.sampleCount !== 1
     ) {
         throw new TypeError(
-            'Motion-vector mesh draws require one single-sample rgba16float color target'
+            `${role === 'motion-vector' ? 'Motion-vector' : 'Material-attributes'} mesh draws require one single-sample rgba16float color target`
         );
     }
 }

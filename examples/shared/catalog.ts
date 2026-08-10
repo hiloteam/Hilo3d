@@ -100,6 +100,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'webgl_support.html': 'Graphics Backend Support',
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
+    'screen_space_reflections_palace.html': 'Nocturne Pavilion — Screen-space Reflections',
     'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
     'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
     'compute_particles.html': 'Hilo3D Compute Particle Field',
@@ -125,6 +126,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'See Forward+, Gaussian splats, and a curl-noise Hilo3D GPU particle wordmark stay on the public Render Graph.',
     'clustered_forward_plus_sponza.html':
         'Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.',
+    'screen_space_reflections_palace.html':
+        'Stage the Khronos Car Concept in a cinematic mirror hall with hierarchical ray tracing, temporal reflection resolve, and three visible roughness tiers.',
     'temporal_aa_observatory.html':
         'Stress fused motion vectors, visibility-aware history, logarithmic depth rejection, and fixed-scale TAAU in a kinetic WebGPU constellation.',
     'compute_eclipse_shrine.html':
@@ -198,6 +201,7 @@ const FEATURED_PATHS = new Set([
     'video.html',
     'compute_gpu_driven.html',
     'clustered_forward_plus_sponza.html',
+    'screen_space_reflections_palace.html',
     'temporal_aa_observatory.html',
     'compute_eclipse_shrine.html',
     'compute_particles.html',
@@ -229,7 +233,7 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'textures';
     }
     if (
-        /(?:post_process|bloom|temporal_aa|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
+        /(?:post_process|bloom|temporal_aa|screen_space_reflections|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
             normalized
         )
     ) {
@@ -314,6 +318,7 @@ function createEntry(path: string): ExampleCatalogEntry {
             ? WEBGL2_ONLY
             : path === 'bloom.html' ||
                 path === 'clustered_forward_plus_sponza.html' ||
+                path === 'screen_space_reflections_palace.html' ||
                 path === 'temporal_aa_observatory.html' ||
                 path === 'compute_gpu_driven.html' ||
                 path === 'compute_eclipse_shrine.html' ||

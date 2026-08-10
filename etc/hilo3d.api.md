@@ -740,6 +740,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly maxObjects?: number;
     readonly maxViewportHeight?: number;
     readonly maxViewportWidth?: number;
+    readonly screenSpaceReflections?: Readonly<ScreenSpaceReflectionsOptions> | false;
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     readonly tileSize?: number;
     readonly zSlices?: number;
@@ -980,7 +981,7 @@ export interface ComputeShaderDescriptor {
 export type ComputeStorageBufferAccess = 'read-write' | 'write-discard';
 
 // @public
-export type ComputeStorageTextureFormat = 'r32float' | 'rgba8unorm' | 'rgba16float' | 'rgba32float';
+export type ComputeStorageTextureFormat = 'r32float' | 'rg32float' | 'rgba8unorm' | 'rgba16float' | 'rgba32float';
 
 // @public
 export type ComputeStorageTextureViewDimension = '2d';
@@ -6600,6 +6601,20 @@ export interface SceneStorageBufferBinding {
 export interface SceneStorageShaderVariant {
     readonly buffers: readonly Readonly<SceneStorageBufferBinding>[];
     readonly shader: StorageGraphicsShader;
+}
+
+// @public
+export interface ScreenSpaceReflectionsOptions {
+    readonly depthThreshold?: number;
+    readonly edgeFade?: number;
+    readonly historyWeight?: number;
+    readonly intensity?: number;
+    readonly maxRayDistance?: number;
+    readonly maxSteps?: number;
+    readonly resolutionScale?: number;
+    readonly roughnessCutoff?: number;
+    readonly stride?: number;
+    readonly thickness?: number;
 }
 
 // @public

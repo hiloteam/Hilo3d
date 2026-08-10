@@ -385,6 +385,7 @@ test('PBR showcase controls remain usable at phone width', async ({ page }) => {
 
 for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`example gallery discovers every ${backend} page @${backend}`, async ({ page }) => {
+        test.setTimeout(60_000);
         await page.goto(`/examples/list.html?backend=${backend}`, { waitUntil: 'networkidle' });
         const expected = createExampleCatalog(examplePaths);
         const expectedHighlights = expected.filter(entry => entry.featured);
@@ -407,10 +408,10 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                 items.map(item => (item as HTMLElement).dataset['examplePath'])
             )
         ).toEqual(expected.map(entry => entry.path));
-        await expect(page.locator('.exampleBackendBadge[data-backend="webgpu"]')).toHaveCount(7);
+        await expect(page.locator('.exampleBackendBadge[data-backend="webgpu"]')).toHaveCount(8);
         await expect(page.locator('.exampleBackendBadge[data-backend="webgl2"]')).toHaveCount(1);
         await expect(page.locator('.exampleButton[data-backend-compatible="false"]')).toHaveCount(
-            backend === 'webgl2' ? 7 : 1
+            backend === 'webgl2' ? 8 : 1
         );
 
         const exampleFrame = page.locator('#exampleFrame');

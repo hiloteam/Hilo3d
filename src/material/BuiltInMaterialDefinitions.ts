@@ -108,6 +108,9 @@ function buildPasses(
         depthCompare: 'equal',
         alphaToCoverage: false
     });
+    const materialAttributesState: Readonly<MaterialPipelineState> = Object.freeze({
+        ...motionVectorState
+    });
     return Object.freeze([
         Object.freeze({
             role: 'forward' as const,
@@ -135,6 +138,13 @@ function buildPasses(
             shader: module,
             fragmentOutput: 'motion-vector' as const,
             state: motionVectorState,
+            fallback: 'required' as const
+        }),
+        Object.freeze({
+            role: 'material-attributes' as const,
+            shader: module,
+            fragmentOutput: 'material-attributes' as const,
+            state: materialAttributesState,
             fallback: 'required' as const
         }),
         Object.freeze({

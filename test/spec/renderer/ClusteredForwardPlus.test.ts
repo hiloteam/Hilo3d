@@ -68,7 +68,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             factory.requirements.requiredLimits?.['maxComputeWorkgroupsPerDimension']
         ).toBeGreaterThan(0);
         expect(factory.requirements.requiredTextureFormats).toContainEqual({
-            format: 'r32float',
+            format: 'rg32float',
             use: 'storage'
         });
 
@@ -94,7 +94,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         });
         expect(withoutHiZ.requirements.requiredCapabilities).not.toContain('storage-texture');
         expect(withoutHiZ.requirements.requiredTextureFormats).not.toContainEqual({
-            format: 'r32float',
+            format: 'rg32float',
             use: 'storage'
         });
         expect(withoutHiZ.requirements.requiredLimits).toMatchObject({
@@ -111,6 +111,24 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             maxBindingsPerBindGroup: 19,
             maxSampledTexturesPerShaderStage: 13
         });
+
+        const withReflections = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            temporalAA: {},
+            screenSpaceReflections: {}
+        });
+        expect(withReflections.requirements.requiredLimits).toMatchObject({
+            maxStorageTexturesPerShaderStage: 2,
+            maxSampledTexturesPerShaderStage: 14,
+            maxColorAttachments: 3
+        });
+        expect(withReflections.requirements.requiredTextureFormats).toEqual(
+            expect.arrayContaining([
+                { format: 'rgba16float', use: 'storage' },
+                { format: 'r32float', use: 'storage' },
+                { format: 'rg32float', use: 'storage' }
+            ])
+        );
     });
 
     it('validates bucket identities, opaque materials, and unique LOD thresholds', () => {
@@ -192,6 +210,30 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     temporalAA: { varianceGamma: 8 }
                 })
         ).toThrow(/varianceGamma/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    screenSpaceReflections: {}
+                })
+        ).toThrow(/require temporalAA/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    hiZ: false,
+                    temporalAA: {},
+                    screenSpaceReflections: {}
+                })
+        ).toThrow(/require hiZ/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    temporalAA: {},
+                    screenSpaceReflections: { maxSteps: 7 }
+                })
+        ).toThrow(/maxSteps/u);
     });
 
     it('requests limits for every configured cluster, geometry, and dispatch allocation', () => {
@@ -372,7 +414,8 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 maxLightsPerCluster: 8,
                 maxViewportWidth: 128,
                 maxViewportHeight: 128,
-                temporalAA: { renderScale: 0.75 }
+                temporalAA: { renderScale: 0.75 },
+                screenSpaceReflections: { resolutionScale: 0.5, maxSteps: 8 }
             });
             const renderer = await Renderer.create({
                 backend: 'webgpu',

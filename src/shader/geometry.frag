@@ -26,10 +26,18 @@ vec4 transformDataToColor(vec3 data){
 
 #include "./chunk/logDepth.frag"
 #include "./chunk/motionVector.frag"
+#include "./chunk/materialAttributes.frag"
 
 void main(void) {
     #ifdef HILO_MOTION_VECTOR_PASS
         hilo_FragColor = hiloMotionData();
+        #include "./chunk/logDepth_main.frag"
+    #elif defined(HILO_MATERIAL_ATTRIBUTES_PASS)
+        #if defined(HILO_VERTEX_TYPE_NORMAL)
+            hilo_FragColor = hiloMaterialAttributes(normalize(v_normal), 1.0, 0.0, 0.0);
+        #else
+            hilo_FragColor = hiloMaterialAttributes(vec3(0.0, 0.0, 1.0), 1.0, 0.0, 0.0);
+        #endif
         #include "./chunk/logDepth_main.frag"
     #else
         #if defined(HILO_VERTEX_TYPE_POSITION)

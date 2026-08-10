@@ -482,7 +482,9 @@ class Shader {
         if (role === 'depth-only') header += '#define HILO_DEPTH_ONLY_PASS 1\n';
         else if (role === 'shadow-caster') header += '#define HILO_SHADOW_CASTER_PASS 1\n';
         else if (role === 'motion-vector') header += '#define HILO_MOTION_VECTOR_PASS 1\n';
-        else if (role === 'picking') header += '#define HILO_PICKING_PASS 1\n';
+        else if (role === 'material-attributes') {
+            header += '#define HILO_MATERIAL_ATTRIBUTES_PASS 1\n';
+        } else if (role === 'picking') header += '#define HILO_PICKING_PASS 1\n';
         if (linearOutput) header += '#define HILO_LINEAR_OUTPUT 1\n';
         const pass = resolveMaterialPassDefinition(material, role);
         if (pass === null) return null;
