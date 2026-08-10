@@ -99,6 +99,7 @@ import type {
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     RenderPipelineHistoryTextureDescriptor,
+    RenderPipelineTextureDescriptor,
     ScriptableRenderPass,
     ScriptableRenderPassBuilder,
     ScriptableRenderPassContext
@@ -106,9 +107,9 @@ import type {
 import {
     TEMPORAL_AA_REQUIREMENTS,
     TEMPORAL_MOTION_CLEAR,
-    TEMPORAL_MOTION_DESCRIPTOR,
     TemporalResolveController,
     snapshotTemporalAAOptions,
+    temporalMotionDescriptor,
     type TemporalAAOptions,
     type TemporalAASettings
 } from '../postprocessing/TemporalAA';
@@ -200,7 +201,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly bloomStrength?: number;
     /** Exposure multiplier applied before the ACES display transform. Defaults to 1. */
     readonly exposure?: number;
-    /** Integrated native-resolution temporal AA. Disabled by default; `false` explicitly disables it. */
+    /** Integrated temporal AA/TAAU. Disabled by default; `false` explicitly disables it. */
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
 }
 
@@ -2829,6 +2830,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #hizDescriptors: readonly Readonly<RenderPipelineHistoryTextureDescriptor>[];
     readonly #hizCullPass: ComputeRenderPass | null;
     readonly #temporal: TemporalResolveController | null;
+    readonly #temporalMotionDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
     readonly #clearPass = new ClearBuffersPass();
     readonly #clearPool = new RenderPassParameterPool(
         () => new ClearBuffersParameters(),
@@ -2964,6 +2966,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#onDestroy = onDestroy;
         this.#temporal =
             options.temporalAA === null ? null : new TemporalResolveController(options.temporalAA);
+        this.#temporalMotionDescriptor =
+            options.temporalAA === null
+                ? null
+                : temporalMotionDescriptor(options.temporalAA.renderScale);
         this.#hizKeys = Object.freeze(
             Array.from({ length: options.hiZLevelCount }, () => Object.freeze({}))
         );
@@ -3143,7 +3149,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     format: 'r32float' as const,
                     extent: Object.freeze({
                         relativeTo: 'output' as const,
-                        scale: 1 / 2 ** (index + 1),
+                        scale: (options.temporalAA?.renderScale ?? 1) / 2 ** (index + 1),
                         minWidth: 1,
                         minHeight: 1
                     }),
@@ -3201,6 +3207,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         // visibility ownership; a CPU cull is built only when fallback meshes actually exist.
         context.prepareScene();
         const temporalFrame = this.#temporal?.begin(context) ?? null;
+        const sceneScale = this.#options.temporalAA?.renderScale ?? 1;
+        const renderWidth = Math.max(1, Math.floor(context.output.width * sceneScale));
+        const renderHeight = Math.max(1, Math.floor(context.output.height * sceneScale));
         this.refreshGPUCompatibility();
         this.collectScene(context);
         let fallbackCulling: CullingResultsHandle | null = null;
@@ -3210,27 +3219,31 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.#materialDatabase.stage(context);
         this.syncGeometryDatabases(context);
-        const frame = this.packFrame(context);
+        const frame = this.packFrame(context, renderWidth, renderHeight);
         context.writeStorageBuffer(this.#frameData, 0, new Uint8Array(this.#frameBytes));
 
         const output = context.graph.importOutput();
         const outputColor = output.color(0);
         const sceneColor = context.graph.createTexture('Clustered Forward+ HDR scene', {
             format: 'rgba16float',
-            extent: { relativeTo: 'output', scale: 1 },
+            extent: { relativeTo: 'output', scale: sceneScale },
             sampleCount: 1
         });
         const sceneDepth = context.graph.createTexture('GPU Scene depth', {
             format: 'depth32float',
-            extent: { relativeTo: 'output', scale: 1 },
+            extent: { relativeTo: 'output', scale: sceneScale },
             sampleCount: 1
         });
+        const motionDescriptor = this.#temporalMotionDescriptor;
+        if (temporalFrame !== null && motionDescriptor === null) {
+            throw new Error('Clustered Forward+ temporal motion descriptor is missing');
+        }
         const temporalMotion =
-            temporalFrame === null
+            temporalFrame === null || motionDescriptor === null
                 ? null
                 : context.graph.createTexture(
                       'Clustered Forward+ temporal motion and view depth',
-                      TEMPORAL_MOTION_DESCRIPTOR
+                      motionDescriptor
                   );
         const bloomEnabled = this.#options.bloomStrength > 0;
         const createBloomTexture = (label: string): RenderGraphTextureHandle | null =>
@@ -3356,7 +3369,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             previousVisibility,
             temporalMotion
         });
-        this.recordCurrentHiZ(context, frameBuffer, sceneDepth, histories.current);
+        this.recordCurrentHiZ(
+            context,
+            frameBuffer,
+            sceneDepth,
+            histories.current,
+            renderWidth,
+            renderHeight
+        );
         this.recordClusterAllocation(context, {
             frame,
             frameBuffer,
@@ -3387,20 +3407,28 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             this.recordFallbackOpaque(context, fallbackCulling, sceneColor, sceneDepth);
         }
         let resolvedSceneColor = sceneColor;
+        let resolvedSceneDepth = sceneDepth;
         if (temporalFrame !== null && temporalMotion !== null) {
             if (fallbackCulling !== null && this.#fallbackHasOpaque) {
                 this.recordFallbackMotion(context, fallbackCulling, temporalMotion, sceneDepth);
             }
-            resolvedSceneColor =
-                this.#temporal?.resolve(context, temporalFrame, sceneColor, temporalMotion) ??
-                sceneColor;
+            const resolved = this.#temporal?.resolve(
+                context,
+                temporalFrame,
+                sceneColor,
+                temporalMotion,
+                sceneDepth,
+                'depth32float'
+            );
+            resolvedSceneColor = resolved?.color ?? sceneColor;
+            resolvedSceneDepth = resolved?.depth ?? sceneDepth;
         }
         if (fallbackCulling !== null && this.#fallbackHasTransparent) {
             this.recordFallbackTransparent(
                 context,
                 fallbackCulling,
                 resolvedSceneColor,
-                sceneDepth
+                resolvedSceneDepth
             );
         }
         this.recordDisplay(context, resolvedSceneColor, bloomA, bloomB, bloomC, outputColor);
@@ -4272,7 +4300,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         return source.revision;
     }
 
-    private packFrame(context: RenderPipelineContext): Readonly<{
+    private packFrame(
+        context: RenderPipelineContext,
+        renderWidth: number,
+        renderHeight: number
+    ): Readonly<{
         tilesX: number;
         tilesY: number;
         clusterCount: number;
@@ -4280,8 +4312,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const camera = context.camera;
         const near = camera instanceof PerspectiveCamera ? camera.near : 0.1;
         const far = this.cameraFar(camera);
-        const tilesX = Math.ceil(context.output.width / this.#options.tileSize);
-        const tilesY = Math.ceil(context.output.height / this.#options.tileSize);
+        const tilesX = Math.ceil(renderWidth / this.#options.tileSize);
+        const tilesY = Math.ceil(renderHeight / this.#options.tileSize);
         const clusterCount = tilesX * tilesY * this.#options.zSlices;
         matrixElements(camera.jitteredViewProjectionMatrix, this.#frameFloats, 0);
         const cameraRevision = getTransformHistoryRevision(camera);
@@ -4307,8 +4339,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         matrixElements(camera.projectionMatrix, this.#frameFloats, 48);
         this.#frameFloats[96] = context.viewport[0];
         this.#frameFloats[97] = context.viewport[1];
-        this.#frameFloats[98] = context.output.width;
-        this.#frameFloats[99] = context.output.height;
+        this.#frameFloats[98] = renderWidth;
+        this.#frameFloats[99] = renderHeight;
         this.#frameFloats[100] = near;
         this.#frameFloats[101] = far;
         this.#frameFloats[102] = Math.log(far / near);
@@ -4466,7 +4498,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         context: RenderPipelineContext,
         frameBuffer: RenderGraphBufferHandle,
         sceneDepth: RenderGraphTextureHandle,
-        current: readonly RenderGraphTextureHandle[]
+        current: readonly RenderGraphTextureHandle[],
+        renderWidth: number,
+        renderHeight: number
     ): void {
         if (!this.#options.hiZ) return;
         let source: RenderGraphTextureAccessHandle = sceneDepth;
@@ -4479,8 +4513,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.setTexture(0, source);
             parameters.setTexture(1, destination);
             parameters.setDispatch(
-                Math.max(1, Math.ceil(context.output.width / 2 ** (index + 1) / 8)),
-                Math.max(1, Math.ceil(context.output.height / 2 ** (index + 1) / 8))
+                Math.max(1, Math.ceil(renderWidth / 2 ** (index + 1) / 8)),
+                Math.max(1, Math.ceil(renderHeight / 2 ** (index + 1) / 8))
             );
             context.graph.addPass(
                 index === 0 ? HIZ_DEPTH_REDUCE_PASS : HIZ_FLOAT_REDUCE_PASS,

@@ -31,7 +31,7 @@ function pixelDifference(referenceBuffer: Buffer, candidateBuffer: Buffer): Pixe
     };
 }
 
-test('keeps the fused Clustered motion/TAA example stable across convergence and camera cuts', async ({
+test('keeps the fused Clustered motion/TAAU example stable across convergence and camera cuts', async ({
     page
 }) => {
     test.setTimeout(60_000);
@@ -67,7 +67,8 @@ test('keeps the fused Clustered motion/TAA example stable across convergence and
         objectCount: 100,
         fallbackObjectCount: 2,
         hiZValid: true,
-        temporalAA: true
+        temporalAA: true,
+        renderScale: 0.75
     });
     expect(evidence?.visibleObjectCount).toBeGreaterThan(0);
 
@@ -112,6 +113,7 @@ declare global {
             readonly visibleObjectCount: number;
             readonly hiZValid: boolean;
             readonly temporalAA: true;
+            readonly renderScale: 0.75;
         };
         __HILO3D_TEMPORAL_OBSERVATORY_TEST_API__?: {
             settle(frames?: number): Promise<void>;

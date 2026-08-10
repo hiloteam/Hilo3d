@@ -2356,6 +2356,7 @@ class ScriptablePassSlot {
             owner.appendRendererListDraws(
                 list,
                 this.draw,
+                this.executionViewport,
                 this.targetDescriptor,
                 this.#sceneStorageVariant,
                 this.#sceneStoragePreparation,
@@ -5086,6 +5087,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     appendRendererListDraws(
         handle: RendererListHandle,
         drawPass: SharedDrawPassParameters,
+        viewport: Readonly<RHIViewport>,
         target: RHIMeshDrawTargetDescriptor,
         storageVariant: Readonly<SceneStorageShaderVariant> | null,
         storagePreparation: StorageScenePreparationState,
@@ -5112,7 +5114,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.services.fireScriptableBeforeScene(beforeEventMeshes, this.#fireEvent, false);
         const context = this.services.createScriptableFrameContext(
             camera,
-            this.rhiViewport,
+            viewport,
             this.frameIndex
         );
         this.services.beginScriptableMeshPass(context);

@@ -41,8 +41,7 @@ import type {
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     RenderPipelineExtent,
-    RenderPipelineTargetResources,
-    RenderPipelineTextureDescriptor
+    RenderPipelineTargetResources
 } from './ScriptableRenderGraph';
 import { depthClearValue } from '../renderer/DepthConvention';
 
@@ -62,11 +61,13 @@ export type ForwardRenderInjectionPoint =
 export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirements {
     /** Route scene color through a linearly filterable sampled graph texture. */
     readonly sampledSceneColor: boolean;
-    /**
-     * Reserved scene-depth sampling requirement. `true` is rejected until the public fullscreen
-     * binding ABI supports portable non-filtering depth sampling end to end.
-     */
+    /** Route scene depth through a single-sample graph texture that feature passes may sample. */
     readonly sampledDepth: boolean;
+    /**
+     * Fixed built-in scene color/depth resolution relative to the physical output. Omit or use one
+     * for native resolution. Conflicting sub-native requests are rejected by the factory.
+     */
+    readonly sceneScale?: number;
 }
 
 /** Renderer-local feature state created by a reusable feature configuration. */
@@ -110,6 +111,8 @@ export interface ForwardRenderPipelineResources {
     readonly depth: RenderGraphTextureHandle | null;
     /** Replace attachment-zero scene color for subsequent features and final output. */
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void;
+    /** Replace scene depth for subsequent scene passes, for example after temporal upscaling. */
+    replaceDepth(texture: RenderGraphTextureHandle): void;
 }
 
 /** Callback-scoped inputs passed to one forward feature runtime. */
@@ -169,9 +172,11 @@ interface MutableDepthStencilAttachment extends RenderPipelineDepthStencilAttach
     stencilClearValue?: number;
 }
 
-interface MutableTextureDescriptor extends RenderPipelineTextureDescriptor {
+interface MutableTextureDescriptor {
     format: RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+    extent: RenderPipelineExtent;
     sampleCount: RenderTargetSampleCount;
+    mipLevelCount: number;
 }
 
 type MutableOutputDepthStencilAttachment = {
@@ -397,6 +402,11 @@ class ForwardFeatureState {
         return this.#colorEncoding;
     }
 
+    get currentDepth(): RenderGraphTextureHandle | null {
+        this.assertFrameActive();
+        return this.#depth;
+    }
+
     readPipeline(lease: ForwardFeatureCallbackLease): RenderPipelineContext {
         this.assertCallbackActive(lease);
         return this.assertFrameActive();
@@ -445,6 +455,17 @@ class ForwardFeatureState {
         this.#colorEncoding = encodingCandidate;
     }
 
+    replaceDepth(lease: ForwardFeatureCallbackLease, texture: RenderGraphTextureHandle): void {
+        this.assertCallbackActive(lease);
+        if (!this.#replacementAllowed) {
+            throw new Error('Forward scene depth cannot be replaced before opaque rendering');
+        }
+        if (!Number.isSafeInteger(texture) || texture <= 0) {
+            throw new TypeError('Forward scene depth replacement requires a graph texture handle');
+        }
+        this.#depth = texture;
+    }
+
     assertCallbackActive(lease: ForwardFeatureCallbackLease): void {
         if (this.#activeCallbackLease !== lease) {
             throw new Error(
@@ -487,6 +508,10 @@ class ForwardFeatureResourcesLease implements ForwardRenderPipelineResources {
 
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void {
         this.#state.replaceColor(this.#lease, texture, encoding);
+    }
+
+    replaceDepth(texture: RenderGraphTextureHandle): void {
+        this.#state.replaceDepth(this.#lease, texture);
     }
 }
 
@@ -549,6 +574,17 @@ function snapshotFeature(feature: ForwardRenderPipelineFeature): FeatureSnapshot
             `Forward render feature ${feature.name} must declare sampledSceneColor and sampledDepth`
         );
     }
+    const sceneScale = feature.requirements.sceneScale ?? 1;
+    if (!Number.isFinite(sceneScale) || sceneScale <= 0 || sceneScale > 1) {
+        throw new RangeError(
+            `Forward render feature ${feature.name} sceneScale must be finite and greater than zero up to one`
+        );
+    }
+    if (sceneScale < 1 && (!sampledSceneColor || !sampledDepth)) {
+        throw new Error(
+            `Forward render feature ${feature.name} must sample scene color and depth to use a sub-native sceneScale`
+        );
+    }
     if (
         sampledSceneColor &&
         injectionPointIndex(injectionPoint) < injectionPointIndex('after-opaque')
@@ -560,7 +596,8 @@ function snapshotFeature(feature: ForwardRenderPipelineFeature): FeatureSnapshot
     const requirements = Object.freeze({
         ...snapshotRenderPipelineRequirements(feature.requirements),
         sampledSceneColor,
-        sampledDepth
+        sampledDepth,
+        sceneScale
     });
     const create = feature.create.bind(feature);
     return Object.freeze({
@@ -717,7 +754,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly #surfaceCompositionColorFormats: RenderTargetColorFormat[] = ['rgba8unorm'];
     readonly #surfaceCompositionDescriptor: {
         readonly label: string;
-        readonly extent: RenderPipelineExtent;
+        extent: RenderPipelineExtent;
         readonly colorFormats: RenderTargetColorFormat[];
         depthStencilFormat?: RenderTargetDepthStencilFormat;
         depthStencilSampled?: boolean;
@@ -735,6 +772,8 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly #splitScene: boolean;
     readonly #sceneColorFormat: RenderTargetColorFormat | null;
     readonly #opaqueTextureEnabled: boolean;
+    readonly #sceneScale: number;
+    readonly #sceneExtent: RenderPipelineExtent;
     #destroyed = false;
 
     constructor(
@@ -743,6 +782,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         options: Readonly<{
             sceneColorFormat: RenderTargetColorFormat | null;
             opaqueTexture: boolean;
+            sceneScale: number;
         }>
     ) {
         const compiled: CompiledFeature[] = [];
@@ -770,6 +810,14 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         }
         this.#sceneColorFormat = options.sceneColorFormat;
         this.#opaqueTextureEnabled = options.opaqueTexture;
+        this.#sceneScale = options.sceneScale;
+        this.#sceneExtent = Object.freeze({
+            relativeTo: 'output' as const,
+            scale: this.#sceneScale
+        });
+        this.#depthDescriptor.extent = this.#sceneExtent;
+        this.#opaqueTextureDescriptor.extent = this.#sceneExtent;
+        this.#surfaceCompositionDescriptor.extent = this.#sceneExtent;
         sampledColor ||= options.opaqueTexture || options.sceneColorFormat !== null;
         samplesBetweenQueues ||= options.opaqueTexture;
         this.#compiledFeatures = Object.freeze(compiled);
@@ -846,7 +894,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                     context,
                     output,
                     transparent,
-                    depth,
+                    this.#featureState.currentDepth,
                     false,
                     true,
                     sceneSampleCount,
@@ -1209,7 +1257,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         if (descriptor === undefined) {
             descriptor = {
                 format,
-                extent: OUTPUT_EXTENT,
+                extent: this.#sceneExtent,
                 sampleCount,
                 mipLevelCount: 1
             };
@@ -1235,6 +1283,7 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
     readonly sceneColorFormat: RenderTargetColorFormat | null;
     /** Whether the forward pipeline captures opaque scene color for transparent materials. */
     readonly opaqueTexture: boolean;
+    readonly #sceneScale: number;
 
     constructor(options: ForwardRenderPipelineFactoryOptions = {}) {
         const features = (options.features ?? []).map(snapshotFeature);
@@ -1246,6 +1295,15 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
             names.add(feature.name);
         }
         this.features = Object.freeze(features);
+        const requestedSceneScales = new Set<number>();
+        for (const feature of features) {
+            const sceneScale = feature.requirements.sceneScale ?? 1;
+            if (sceneScale < 1) requestedSceneScales.add(sceneScale);
+        }
+        if (requestedSceneScales.size > 1) {
+            throw new Error('Forward render features request conflicting sub-native scene scales');
+        }
+        this.#sceneScale = requestedSceneScales.values().next().value ?? 1;
         const sceneColorFormat: unknown = options.sceneColorFormat ?? null;
         if (
             sceneColorFormat !== null &&
@@ -1332,7 +1390,8 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
             }
             return new ScriptableForwardRenderPipeline(features, runtimes, {
                 sceneColorFormat: this.sceneColorFormat,
-                opaqueTexture: this.opaqueTexture
+                opaqueTexture: this.opaqueTexture,
+                sceneScale: this.#sceneScale
             });
         } catch (creationError) {
             const failures: unknown[] = [creationError];

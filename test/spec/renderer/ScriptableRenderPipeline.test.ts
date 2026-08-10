@@ -2790,6 +2790,45 @@ describe('Scriptable render pipeline', () => {
         expect(() => new ForwardRenderPipelineFactory({ features: [feature] })).not.toThrow();
     });
 
+    it('validates fixed sub-native scene scale ownership across forward features', () => {
+        const feature = (name: string, sceneScale: number): ForwardRenderPipelineFeature => ({
+            name,
+            injectionPoint: 'after-opaque',
+            requirements: {
+                sampledSceneColor: true,
+                sampledDepth: true,
+                sceneScale
+            },
+            create(): ForwardRenderPipelineFeatureRuntime {
+                return new CountingForwardFeatureRuntime();
+            }
+        });
+        expect(
+            () => new ForwardRenderPipelineFactory({ features: [feature('valid', 0.75)] })
+        ).not.toThrow();
+        expect(() => new ForwardRenderPipelineFactory({ features: [feature('zero', 0)] })).toThrow(
+            /sceneScale/u
+        );
+        expect(
+            () =>
+                new ForwardRenderPipelineFactory({
+                    features: [feature('three-quarter', 0.75), feature('half', 0.5)]
+                })
+        ).toThrow(/conflicting sub-native scene scales/u);
+
+        const missingDepth: ForwardRenderPipelineFeature = {
+            ...feature('missing-depth', 0.75),
+            requirements: {
+                sampledSceneColor: true,
+                sampledDepth: false,
+                sceneScale: 0.75
+            }
+        };
+        expect(() => new ForwardRenderPipelineFactory({ features: [missingDepth] })).toThrow(
+            /must sample scene color and depth/u
+        );
+    });
+
     it('rejects scene-color sampling before opaque rendering initializes it', () => {
         const feature: ForwardRenderPipelineFeature = {
             name: 'early-scene-color-feature',

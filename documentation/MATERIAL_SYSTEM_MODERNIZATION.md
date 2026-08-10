@@ -250,18 +250,18 @@ default 对象而发生串改。
 
 ## 10. 当前完成度与长期路线
 
-| 工作包                       | 状态          | 当前结果 / 下一步                                                               |
-| ---------------------------- | ------------- | ------------------------------------------------------------------------------- |
-| Definition / Instance        | 已完成        | 内置与自定义材质都使用不可变结构和实例数据                                      |
-| Semantic pass                | 已完成基础    | forward/depth/shadow/picking/motion 已接生产路径；attributes 待对应渲染功能实现 |
-| Texture slot                 | 已完成        | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                |
-| Typed semantics              | 已完成        | attribute/uniform/texture/slot 常量与联合类型公开                               |
-| UBO lowering                 | 已完成        | scalar 与 slot block 分离，双后端固定 ABI                                       |
-| Shared GPU Material Database | 已完成（PBR） | 私有 PBR table 已抽取、共享、去重，并具备 dirty upload、提交回滚与 recovery     |
-| Variant manifest / warmup    | 未完成        | 增加资产收集、异步 warmup、预算与诊断                                           |
-| Motion vectors               | 已完成首版    | opaque/masked、skin/morph/instance history 与原生分辨率 TAA；透明/TAAU 后续     |
-| Material attributes          | 未完成        | 定义 compact normal/roughness/flags ABI，按 feature 创建附件                    |
-| Advanced surface families    | 后续          | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进              |
+| 工作包                       | 状态          | 当前结果 / 下一步                                                                 |
+| ---------------------------- | ------------- | --------------------------------------------------------------------------------- |
+| Definition / Instance        | 已完成        | 内置与自定义材质都使用不可变结构和实例数据                                        |
+| Semantic pass                | 已完成基础    | forward/depth/shadow/picking/motion 已接生产路径；attributes 待对应渲染功能实现   |
+| Texture slot                 | 已完成        | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                  |
+| Typed semantics              | 已完成        | attribute/uniform/texture/slot 常量与联合类型公开                                 |
+| UBO lowering                 | 已完成        | scalar 与 slot block 分离，双后端固定 ABI                                         |
+| Shared GPU Material Database | 已完成（PBR） | 私有 PBR table 已抽取、共享、去重，并具备 dirty upload、提交回滚与 recovery       |
+| Variant manifest / warmup    | 未完成        | 增加资产收集、异步 warmup、预算与诊断                                             |
+| Motion vectors               | 已完成首版    | opaque/masked、skin/morph/instance history 与 TAA/固定比例 TAAU；透明时域策略后续 |
+| Material attributes          | 未完成        | 定义 compact normal/roughness/flags ABI，按 feature 创建附件                      |
+| Advanced surface families    | 后续          | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进                |
 
 首个共享 GPU Material Database 已满足：
 
