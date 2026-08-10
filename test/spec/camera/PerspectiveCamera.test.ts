@@ -45,4 +45,30 @@ describe('PerspectiveCamera', () => {
         expect(() => new PerspectiveCamera({ near: 0 })).toThrow(/near/);
         expect(() => new PerspectiveCamera({ near: 2, far: 1 })).toThrow(/far/);
     });
+
+    it('separates raster jitter from the stable CPU projection', () => {
+        const camera = new PerspectiveCamera({ aspect: 16 / 9 });
+        camera.updateViewProjectionMatrix();
+        const stableProjection = Array.from(camera.projectionMatrix.elements);
+        const stableViewProjection = Array.from(camera.viewProjectionMatrix.elements);
+
+        camera.setProjectionJitter(0.01, -0.02);
+
+        expect(Array.from(camera.projectionMatrix.elements)).toEqual(stableProjection);
+        expect(Array.from(camera.viewProjectionMatrix.elements)).toEqual(stableViewProjection);
+        expect(camera.jitteredProjectionMatrix.elements).not.toEqual(
+            camera.projectionMatrix.elements
+        );
+        expect(camera.jitteredViewProjectionMatrix.elements).not.toEqual(
+            camera.viewProjectionMatrix.elements
+        );
+        expect(camera.projectionJitterX).toBe(0.01);
+        expect(camera.projectionJitterY).toBe(-0.02);
+
+        camera.clearProjectionJitter();
+        expect(camera.jitteredProjectionMatrix.elements).toEqual(camera.projectionMatrix.elements);
+        expect(camera.jitteredViewProjectionMatrix.elements).toEqual(
+            camera.viewProjectionMatrix.elements
+        );
+    });
 });

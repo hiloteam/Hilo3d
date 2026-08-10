@@ -170,6 +170,22 @@ function requireMaterialPassState(
     return state;
 }
 
+function validateMaterialPassTarget(
+    role: MaterialPassRole,
+    target: RHIMeshDrawTargetDescriptor
+): void {
+    if (role !== 'motion-vector') return;
+    if (
+        target.colorFormats.length !== 1 ||
+        target.colorFormats[0] !== 'rg16float' ||
+        target.sampleCount !== 1
+    ) {
+        throw new TypeError(
+            'Motion-vector mesh draws require one single-sample rg16float color target'
+        );
+    }
+}
+
 const SHADER_GEOMETRY_OPTION_FIELDS = Object.freeze([
     'positionDecodeMat',
     'normalDecodeMat',
@@ -655,6 +671,7 @@ export class MeshDrawProcessor {
         const fragmentOutputMode = this.fragmentOutputModeFor(target);
         const role =
             materialPass ?? (fragmentOutputMode === 'depth-only' ? 'depth-only' : 'forward');
+        validateMaterialPassTarget(role, target);
         const materialState = requireMaterialPassState(material, role);
         this.validateLighting(mesh, material, context);
         this.validateDeformation(mesh, geometry);
@@ -1195,6 +1212,7 @@ export class MeshDrawProcessor {
         const fragmentOutputMode = this.fragmentOutputModeFor(target);
         const role =
             materialPass ?? (fragmentOutputMode === 'depth-only' ? 'depth-only' : 'forward');
+        validateMaterialPassTarget(role, target);
         const materialState = requireMaterialPassState(material, role);
         this.validateLighting(representative, material, context);
         geometry.normalizePrimitiveTopology();

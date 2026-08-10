@@ -99,10 +99,12 @@ texture/UV/transform/encoding/channel、stable material
 ID 和数据 revision。参数变化不改变 Definition 或 Shader resource
 layout，需要改变 topology 时构造另一个材质实例。
 
-Render Pipeline 请求 `forward`、`depth-only`、`shadow-caster` 或 `picking` role，材质不拥有 graph
-pass 顺序。Shadow Atlas 直接编译 `shadow-caster`，不创建 proxy material；role 缺失或 target
-output 不匹配会在 RHI frame 前失败。`motion-vector` 与 `material-attributes`
-已保留类型，但当前内置材质不声明，由后续时域和属性缓冲路线定义完整输出 ABI 后接入。
+Render Pipeline 请求 `forward`、`depth-only`、`shadow-caster`、`motion-vector` 或 `picking`
+role，材质不拥有 graph pass 顺序。Shadow Atlas 直接编译 `shadow-caster`，不创建 proxy
+material；role 缺失或 target output 不匹配会在 RHI frame 前失败。内置 Basic/PBR/Geometry 的
+`motion-vector` pass 只接受 single-sample `rg16float` target，复用 current/previous
+camera、model、instance、skin、morph 与 coverage ABI；首次出现或任一 transform
+history 失效时写零。`material-attributes` 仍保留给后续属性缓冲路线。
 
 portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
 `MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
@@ -173,7 +175,10 @@ transfer。
 
 内置 HDR 组合由 `PostProcessRenderPipelineFactory` 提供：attachment-zero scene color 使用
 `rgba16float`，opaque queue 完成后由 graph `TextureCopyPass` 捕获 opaque scene
-texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。随后
+texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。可选
+`TemporalAA` 在 opaque 后记录 `rg16float` velocity，并用 sampled depth、`rgba16float` 双缓冲 color
+history 和 `r16float` 双缓冲 depth history 完成原生分辨率 reprojection、disocclusion 与 neighborhood
+clamp。resolved opaque color 随后才接受 transparent composition，因此透明不写入 TAA history。之后
 `Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent
 upsample 与线性 composite；`ColorUber` 最后统一完成 grading、tone
 mapping、linear-to-sRGB 与 dithering，并把输出编码标记为 `srgb`，避免 surface output
@@ -187,10 +192,9 @@ Pass；中间队列 Pass 强制 store/load 以保持内容。当 filterable samp
 color 需要中间纹理且 output 选择 `load`
 时，先把旧 output 搬入中间纹理；若中间 color 无法无损搬运 multisample/non-filterable 内容，则在 RHI
 frame 开始前明确失败。scene color sampling 只允许在 opaque writer 之后。内置
-`ForwardRenderPipelineFeature.requirements.sampledDepth`
-仍保持 fail-closed；需要完整 Forward+ 深度预处理/采样链路时，应使用自定义 `RenderPipeline`
-显式记录 depth Scene Pass、compute Pass 与最终 storage-aware Scene
-Pass，而不是假定内置 feature 已经自动改写 forward shader。
+`ForwardRenderPipelineFeature.requirements.sampledDepth` 会创建 single-sample、sampleable
+depth；公共 fullscreen ABI 对普通 depth `sampler2D` 自动选择 non-filtering sampler，并在 WebGPU
+lowering 中专门化为 numeric depth texture。comparison sampling 仍要求显式 comparison 合同。
 
 WebGPU high-end profile 现在提供公开的
 `ClusteredForwardPlusPipelineFactory`。应用注册稳定的 geometry/material/LOD
@@ -724,8 +728,9 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
   instancing 的后续优化不能改变这个确定性正确性合同。
 - 自定义 SRP 可以直接使用 `ClusteredForwardPlusPipelineFactory` 获得已注册 opaque PBR bucket 的 GPU
   Scene、Hi-Z、3D cluster allocator 和共享 surface/BRDF 的 storage PBR；常用 metallic/roughness
-  PBR 贴图已原生进入 GPU path，clustered variant 只替换 light iteration。内置 Forward feature 的
-  `sampledDepth: true` 仍关闭，也不会把任意 layered/transparent material 自动改写为 clustered
+  PBR 贴图已原生进入 GPU path，clustered variant 只替换 light iteration。内置 Forward
+  feature 已支持 portable sampled depth，但不会把任意 layered/transparent
+  material 自动改写为 clustered
   variant。未注册、runtime-incompatible、deformed、transparent 或超过 GPU
   Scene 容量的 mesh 使用共享 Forward compatibility path；renderer list 的 identity
   exclusion 保证 GPU-managed mesh 不会被重复绘制。

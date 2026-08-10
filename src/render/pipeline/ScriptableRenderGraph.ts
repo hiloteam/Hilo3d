@@ -141,6 +141,8 @@ export interface RenderPipelinePersistentTargetDescriptor {
     readonly colorFormats: readonly RenderTargetColorFormat[];
     /** Optional depth/stencil attachment format. */
     readonly depthStencilFormat?: RenderTargetDepthStencilFormat;
+    /** Create a persistent depth-only sampled view for a single-sample depth attachment. */
+    readonly depthStencilSampled?: boolean;
     /** Raster sample count, defaulting to one. */
     readonly sampleCount?: RenderTargetSampleCount;
 }

@@ -1110,6 +1110,23 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
         expectedUniformBlocks: ['SkinningBlock', 'MorphBlock']
     },
     {
+        name: 'masked skinned and morphed motion vectors',
+        fragment: basicFragmentSource,
+        defines: {
+            HILO_LIGHT_TYPE_NONE: 1,
+            HILO_SIDE: 1028,
+            HILO_MOTION_VECTOR_PASS: 1,
+            HILO_HAS_TEXCOORD0: 1,
+            HILO_DIFFUSE_MAP: MaterialTextureSlot.DIFFUSE,
+            HILO_ALPHA_CUTOFF: 1,
+            HILO_JOINT_COUNT: 32,
+            HILO_MORPH_TARGET_COUNT: 8,
+            HILO_MORPH_HAS_POSITION: 1
+        },
+        expectedVertexInputs: ['a_skinIndices', 'a_skinWeights', 'a_morphPosition7'],
+        expectedUniformBlocks: ['CameraBlock', 'ModelBlock', 'SkinningBlock', 'MorphBlock']
+    },
+    {
         name: 'instanced model and normal matrices',
         fragment: basicFragmentSource,
         defines: {
@@ -1122,6 +1139,17 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
             HILO_DIRECTIONAL_LIGHTS: 1
         },
         expectedUniformBlocks: ['InstanceBlock']
+    },
+    {
+        name: 'instanced motion vectors',
+        fragment: basicFragmentSource,
+        defines: {
+            HILO_LIGHT_TYPE_NONE: 1,
+            HILO_SIDE: 1028,
+            HILO_INSTANCED: 1,
+            HILO_MOTION_VECTOR_PASS: 1
+        },
+        expectedUniformBlocks: ['CameraBlock', 'InstanceBlock', 'GeometryBlock']
     },
     {
         name: 'quantized position, normal and both UV sets',

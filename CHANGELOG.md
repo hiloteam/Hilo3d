@@ -14,8 +14,8 @@
   1,920 bytes, WebGPU material textures begin at binding 2, and custom uniform block registrations
   begin after ten built-in WebGL2 binding points.
 - Expand the fixed Camera/Model/Skinning/Morph/Instance std140 ABI with current/previous transforms,
-  render origins, and history/depth flags. Custom shaders that redeclare built-in blocks must use
-  the updated field order and capacities.
+  stable and jittered camera projections, render origins, and per-domain history/depth flags. Custom
+  shaders that redeclare built-in blocks must use the updated field order and capacities.
 - Make forward feature color encoding explicit. `replaceColor()` now requires `linear` or `srgb`,
   and the default Forward pipeline always routes surface presentation through the Render Graph so
   the final output transfer is owned by the output stage rather than individual materials.
@@ -24,6 +24,15 @@
   sRGB transfer, while display-transformed `srgb` inputs are preserved without a second conversion.
 
 ### Changes
+
+- Add the native-resolution `TemporalAA` Forward feature. Built-in opaque/masked materials now
+  expose a strict single-sample `rg16float` motion-vector pass using submission-aware
+  current/previous camera, model, instance, skin, and morph state. TAA runs after opaque and before
+  transparent/Bloom, with `rgba16float` double-buffer color history, depth history, reprojection,
+  disocclusion, neighborhood clamp, camera-cut/resize/device-loss invalidation, and failed-frame
+  rollback. Add stable CPU projection matrices beside raster jitter and portable non-filtering depth
+  sampling for fullscreen passes. TAAU, dynamic resolution, reactive masks, and transparent history
+  remain deferred.
 
 - Add canonical built-in material definitions, stable material IDs and revisions, explicit
   forward/depth-only/shadow-caster/picking roles, role-aware shader variants, per-slot texture/UV
@@ -303,9 +312,10 @@
 - Expose the built-in forward culling results to features, reject feature runtimes shared across
   Renderers, and preserve selected RenderTarget color/depth/stencil clear/load/store operations
   across feature-enabled scene, intermediate-color, and output passes.
-- Reject pre-opaque scene-color sampling and keep the built-in forward feature's `sampledDepth`
-  option fail-closed; a custom SRP can explicitly compose depth prepass, compute culling, and a
-  storage-aware Scene pass for Forward+.
+- Reject pre-opaque scene-color sampling and support built-in Forward `sampledDepth` through
+  single-sample sampleable depth plus portable non-filtering fullscreen bindings. A custom SRP can
+  still explicitly compose depth prepass, compute culling, and a storage-aware Scene pass for
+  Forward+.
 - Add backend-neutral `Renderer.waitForIdle()` for application completion fences. Native WebGL 2 or
   WebGPU interoperability is opt-in through `Renderer.getExtension()` instead of public `gl` or
   `gpuDevice` fields.

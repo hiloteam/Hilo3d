@@ -94,4 +94,35 @@
             in vec3 a_morphTangent7;
         #endif
     #endif
+
+    #ifdef HILO_MORPH_HAS_POSITION
+        vec3 hiloPreviousMorphPositionOffset() {
+            vec3 offset = vec3(0.0);
+            #if HILO_MORPH_TARGET_COUNT > 0
+                offset += a_morphPosition0 * hiloPreviousMorphWeight(0);
+            #endif
+            #if HILO_MORPH_TARGET_COUNT > 1
+                offset += a_morphPosition1 * hiloPreviousMorphWeight(1);
+            #endif
+            #if HILO_MORPH_TARGET_COUNT > 2
+                offset += a_morphPosition2 * hiloPreviousMorphWeight(2);
+            #endif
+            #if HILO_MORPH_TARGET_COUNT > 3
+                offset += a_morphPosition3 * hiloPreviousMorphWeight(3);
+            #endif
+            #if HILO_MORPH_TARGET_COUNT > 4
+                offset += a_morphPosition4 * hiloPreviousMorphWeight(4);
+            #endif
+            #if HILO_MORPH_TARGET_COUNT > 5
+                offset += a_morphPosition5 * hiloPreviousMorphWeight(5);
+            #endif
+            #if HILO_MORPH_TARGET_COUNT > 6
+                offset += a_morphPosition6 * hiloPreviousMorphWeight(6);
+            #endif
+            #if HILO_MORPH_TARGET_COUNT > 7
+                offset += a_morphPosition7 * hiloPreviousMorphWeight(7);
+            #endif
+            return offset;
+        }
+    #endif
 #endif

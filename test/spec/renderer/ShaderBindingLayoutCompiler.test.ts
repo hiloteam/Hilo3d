@@ -129,6 +129,8 @@ describe('ShaderBindingLayoutCompiler', () => {
                 textureBinding: 0,
                 samplerBinding: 1,
                 samplerKind: 'sampler',
+                sampleType: 'depth',
+                samplerType: 'non-filtering',
                 visibility: RHIShaderStage.FRAGMENT
             }
         ]);
@@ -283,6 +285,8 @@ describe('ShaderBindingLayoutCompiler', () => {
                 textureBinding: 3,
                 samplerBinding: 4,
                 samplerKind: 'sampler',
+                sampleType: 'float',
+                samplerType: 'filtering',
                 visibility: RHIShaderStage.VERTEX | RHIShaderStage.FRAGMENT
             },
             {
@@ -292,6 +296,8 @@ describe('ShaderBindingLayoutCompiler', () => {
                 textureBinding: 5,
                 samplerBinding: 6,
                 samplerKind: 'sampler',
+                sampleType: 'float',
+                samplerType: 'filtering',
                 visibility: RHIShaderStage.VERTEX
             },
             {
@@ -301,6 +307,8 @@ describe('ShaderBindingLayoutCompiler', () => {
                 textureBinding: 1,
                 samplerBinding: 2,
                 samplerKind: 'comparison-sampler',
+                sampleType: 'depth',
+                samplerType: 'comparison',
                 visibility: RHIShaderStage.FRAGMENT
             }
         ]);
@@ -501,6 +509,8 @@ describe('ShaderBindingLayoutCompiler', () => {
                 textureBinding: 0,
                 samplerBinding: 1,
                 samplerKind: 'sampler',
+                sampleType: 'float',
+                samplerType: 'filtering',
                 visibility: RHIShaderStage.VERTEX
             },
             {
@@ -510,6 +520,8 @@ describe('ShaderBindingLayoutCompiler', () => {
                 textureBinding: 2,
                 samplerBinding: 3,
                 samplerKind: 'sampler',
+                sampleType: 'float',
+                samplerType: 'filtering',
                 visibility: RHIShaderStage.VERTEX
             }
         ]);

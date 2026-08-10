@@ -600,6 +600,7 @@ export class Camera extends Node_2 {
     className: string;
     clearColor: boolean;
     clearDepth: boolean;
+    clearProjectionJitter(): this;
     clearStencil: boolean;
     get depthMode(): CameraDepthMode;
     set depthMode(value: CameraDepthMode);
@@ -621,22 +622,26 @@ export class Camera extends Node_2 {
     // (undocumented)
     isPerspectiveCamera: boolean;
     isPointVisible(point: Vector3): boolean;
+    readonly jitteredProjectionMatrix: Matrix4;
+    readonly jitteredViewProjectionMatrix: Matrix4;
     protected _needUpdateProjectionMatrix: boolean;
     get priority(): number;
     set priority(value: number);
-    // (undocumented)
+    get projectionJitterX(): number;
+    get projectionJitterY(): number;
     readonly projectionMatrix: Matrix4;
     projectVector(vector: Vector3, width?: number, height?: number): Vector3;
+    setProjectionJitter(x: number, y: number): this;
     // (undocumented)
     static readonly typeName: string;
     unprojectVector(vector: Vector3, width?: number, height?: number): Vector3;
     updateFrustum(matrix: Matrix4): this;
+    protected updateJitteredProjectionMatrix(): void;
     updateProjectionMatrix(): void;
     updateViewMatrix(): this;
     updateViewProjectionMatrix(): this;
     // (undocumented)
     readonly viewMatrix: Matrix4;
-    // (undocumented)
     readonly viewProjectionMatrix: Matrix4;
     visibility: number;
 }
@@ -1976,6 +1981,8 @@ export interface ForwardRenderPipelineFeature {
 // @public
 export interface ForwardRenderPipelineFeatureRuntime {
     destroy(): void;
+    frameDiscarded?(frameIndex: number): void;
+    frameSubmitted?(frameIndex: number): void;
     record(context: ForwardRenderFeatureContext): unknown;
 }
 
@@ -5481,6 +5488,7 @@ export interface PostProcessRenderPipelineOptions {
     readonly colorUber?: Readonly<ColorUberOptions>;
     readonly features?: readonly ForwardRenderPipelineFeature[];
     readonly opaqueTexture?: boolean;
+    readonly temporalAA?: Readonly<TemporalAAOptions> | false;
 }
 
 // @public (undocumented)
@@ -6284,6 +6292,7 @@ export type RenderPipelineOutputResources = RenderPipelineTargetResources;
 export interface RenderPipelinePersistentTargetDescriptor {
     readonly colorFormats: readonly RenderTargetColorFormat[];
     readonly depthStencilFormat?: RenderTargetDepthStencilFormat;
+    readonly depthStencilSampled?: boolean;
     readonly extent: RenderPipelineExtent;
     readonly label?: string;
     readonly sampleCount?: RenderTargetSampleCount;
@@ -8106,6 +8115,50 @@ export interface SubDataUpdate {
     readonly data: TypedArray;
     // (undocumented)
     readonly revision: number;
+}
+
+// @public
+export class TemporalAA implements ForwardRenderPipelineFeature {
+    constructor(options?: Readonly<TemporalAAOptions>);
+    // (undocumented)
+    create(): ForwardRenderPipelineFeatureRuntime;
+    // (undocumented)
+    readonly injectionPoint: "after-opaque";
+    // (undocumented)
+    readonly name = "temporal-aa";
+    // (undocumented)
+    readonly requirements: Readonly<{
+        sampledSceneColor: true;
+        sampledDepth: true;
+        requiredLimits: Readonly<{
+            maxColorAttachments: 3;
+        }>;
+        requiredTextureFormats: readonly (Readonly<{
+            format: "rgba16float";
+            use: "color-attachment";
+        }> | Readonly<{
+            format: "rgba16float";
+            use: "filterable-sampled";
+        }> | Readonly<{
+            format: "rg16float";
+            use: "color-attachment";
+        }> | Readonly<{
+            format: "rg16float";
+            use: "filterable-sampled";
+        }> | Readonly<{
+            format: "r16float";
+            use: "color-attachment";
+        }> | Readonly<{
+            format: "r16float";
+            use: "filterable-sampled";
+        }>)[];
+    }>;
+}
+
+// @public
+export interface TemporalAAOptions {
+    readonly depthThreshold?: number;
+    readonly historyWeight?: number;
 }
 
 // @public

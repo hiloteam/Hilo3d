@@ -101,6 +101,13 @@ function buildPasses(
         alphaToCoverage: false
     });
     const outputState: Readonly<MaterialPipelineState> = Object.freeze({ ...unblendedState });
+    const motionVectorState: Readonly<MaterialPipelineState> = Object.freeze({
+        ...unblendedState,
+        depthTest: true,
+        depthWrite: false,
+        depthCompare: 'equal',
+        alphaToCoverage: false
+    });
     return Object.freeze([
         Object.freeze({
             role: 'forward' as const,
@@ -121,6 +128,13 @@ function buildPasses(
             shader: module,
             fragmentOutput: 'depth-only' as const,
             state: depthState,
+            fallback: 'required' as const
+        }),
+        Object.freeze({
+            role: 'motion-vector' as const,
+            shader: module,
+            fragmentOutput: 'motion-vector' as const,
+            state: motionVectorState,
             fallback: 'required' as const
         }),
         Object.freeze({

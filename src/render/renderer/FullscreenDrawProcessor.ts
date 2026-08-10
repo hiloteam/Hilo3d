@@ -54,6 +54,7 @@ export class FullscreenDrawProcessor {
     readonly resourceUses: FrameResourceUseTracker;
     readonly submissions: SubmissionResourceTracker;
     readonly defaultSampler: ResourceRegistryHandle<RHISampler>;
+    readonly nonFilteringSampler: ResourceRegistryHandle<RHISampler>;
 
     readonly #draws: PreparedDrawCache<object>;
     #records = new WeakMap<object, FullscreenOwnerRecord>();
@@ -97,6 +98,19 @@ export class FullscreenDrawProcessor {
             addressModeW: 'clamp-to-edge',
             magFilter: 'linear',
             minFilter: 'linear',
+            mipmapFilter: 'nearest',
+            lodMinClamp: 0,
+            lodMaxClamp: 0,
+            maxAnisotropy: 1
+        });
+        this.nonFilteringSampler = registry.registerSampler({
+            label: 'Shared fullscreen non-filtering sampler',
+            lifetime: 'persistent',
+            addressModeU: 'clamp-to-edge',
+            addressModeV: 'clamp-to-edge',
+            addressModeW: 'clamp-to-edge',
+            magFilter: 'nearest',
+            minFilter: 'nearest',
             mipmapFilter: 'nearest',
             lodMinClamp: 0,
             lodMaxClamp: 0,
@@ -181,13 +195,16 @@ export class FullscreenDrawProcessor {
     prepareGraphPipeline(
         shader: Shader,
         pipelineState: Readonly<MaterialPipelineState>,
-        target: RHIMeshDrawTargetDescriptor
+        target: RHIMeshDrawTargetDescriptor,
+        numericDepthSamplerMask = 0
     ): Readonly<PipelineResourceRecord> {
         this.assertAlive();
         if (!this.active) {
             throw new Error('Fullscreen draw processor requires beginFrame before preparation');
         }
-        const compiled = this.compiler.compile(shader, this.registry.deviceBackend);
+        const compiled = this.compiler.compile(shader, this.registry.deviceBackend, {
+            numericDepthSamplerMask
+        });
         if (compiled.metadata.vertexInputs.length !== 0) {
             throw new TypeError('Fullscreen shaders must not declare vertex inputs');
         }
@@ -196,7 +213,11 @@ export class FullscreenDrawProcessor {
             shader,
             EMPTY_VERTEX_LAYOUTS,
             pipelineState,
-            target
+            target,
+            'color',
+            undefined,
+            undefined,
+            numericDepthSamplerMask
         );
         this.resourceUses.use(pipeline.pipeline);
         return pipeline;
@@ -240,6 +261,7 @@ export class FullscreenDrawProcessor {
         this.resourceUses.destroy();
         this.submissions.destroy();
         this.registry.release(this.defaultSampler);
+        this.registry.release(this.nonFilteringSampler);
         this.#pendingOwner = null;
         this.#pendingPipeline = null;
         this.#destroyed = true;

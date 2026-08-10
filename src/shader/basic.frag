@@ -13,6 +13,7 @@
 #include "./chunk/transparency.frag"
 #include "./chunk/fog.frag"
 #include "./chunk/logDepth.frag"
+#include "./chunk/motionVector.frag"
 #ifdef HILO_PICKING_PASS
 in vec4 v_objectIdColor;
 #endif
@@ -20,17 +21,25 @@ in vec4 v_objectIdColor;
 void main(void) {
     #ifdef HILO_PICKING_PASS
         hilo_FragColor = v_objectIdColor;
-        return;
+    #elif defined(HILO_MOTION_VECTOR_PASS)
+        {
+            vec4 diffuse = vec4(0.0, 0.0, 0.0, 1.0);
+            vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
+            #include "./chunk/diffuse_main.frag"
+            #include "./chunk/transparency_main.frag"
+            hilo_FragColor = vec4(hiloMotionVector(), 0.0, 1.0);
+            #include "./chunk/logDepth_main.frag"
+        }
+    #else
+        vec4 diffuse = vec4(0., 0., 0., 1.);
+        vec4 color = vec4(0., 0., 0., 1.);
+
+        #include "./chunk/normal_main.frag"
+        #include "./chunk/lightFog_main.frag"
+        #include "./chunk/diffuse_main.frag"
+        #include "./chunk/phong_main.frag"
+        #include "./chunk/transparency_main.frag"
+        #include "./chunk/frag_color.frag"
+        #include "./chunk/logDepth_main.frag"
     #endif
-
-    vec4 diffuse = vec4(0., 0., 0., 1.);
-    vec4 color = vec4(0., 0., 0., 1.);
-
-    #include "./chunk/normal_main.frag"
-    #include "./chunk/lightFog_main.frag"
-    #include "./chunk/diffuse_main.frag"
-    #include "./chunk/phong_main.frag"
-    #include "./chunk/transparency_main.frag"
-    #include "./chunk/frag_color.frag"
-    #include "./chunk/logDepth_main.frag"
 }

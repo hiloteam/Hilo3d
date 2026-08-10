@@ -16,6 +16,11 @@ in vec3 a_position;
 #ifdef HILO_PICKING_PASS
 out vec4 v_objectIdColor;
 #endif
+#ifdef HILO_MOTION_VECTOR_PASS
+out vec4 v_currentClipPosition;
+out vec4 v_previousClipPosition;
+flat out float v_motionHistoryValid;
+#endif
 void main(void) {
     vec4 pos = vec4(a_position, 1.0);
     #ifdef HILO_HAS_TEXCOORD0
@@ -34,13 +39,36 @@ void main(void) {
 
     #include "./chunk/color_main.vert"
     #include "./chunk/unQuantize_main.vert"
+    #ifdef HILO_MOTION_VECTOR_PASS
+        vec4 previousPos = pos;
+    #endif
     #include "./chunk/morph_main.vert"
     #include "./chunk/joint_main.vert"
     #include "./chunk/uv_main.vert"
     #include "./chunk/normal_main.vert"
     #include "./chunk/lightFog_main.vert"
 
-    gl_Position = u_viewProjectionMatrix * u_modelMatrix * pos;
+    vec4 currentClipPosition = u_viewProjectionMatrix * u_modelMatrix * pos;
+    gl_Position = currentClipPosition;
+
+    #ifdef HILO_MOTION_VECTOR_PASS
+        #if defined(HILO_MORPH_TARGET_COUNT) && defined(HILO_MORPH_HAS_POSITION)
+            previousPos.xyz += hiloPreviousMorphPositionOffset();
+        #endif
+        #ifdef HILO_JOINT_COUNT
+            previousPos = getPreviousJointMat(a_skinWeights, a_skinIndices) * previousPos;
+        #endif
+        v_currentClipPosition = currentClipPosition;
+        v_previousClipPosition =
+            u_previousViewProjectionMatrix * u_previousModelMatrix * previousPos;
+        v_motionHistoryValid = min(u_cameraHistoryValid, u_modelHistoryValid);
+        #ifdef HILO_JOINT_COUNT
+            v_motionHistoryValid = min(v_motionHistoryValid, u_skinHistoryValid);
+        #endif
+        #if defined(HILO_MORPH_TARGET_COUNT) && defined(HILO_MORPH_HAS_POSITION)
+            v_motionHistoryValid = min(v_motionHistoryValid, u_morphHistoryValid);
+        #endif
+    #endif
 
     #ifdef HILO_PICKING_PASS
         v_objectIdColor = u_objectIdColor;

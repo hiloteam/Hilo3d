@@ -25,25 +25,31 @@ vec4 transformDataToColor(vec3 data){
 }
 
 #include "./chunk/logDepth.frag"
+#include "./chunk/motionVector.frag"
 
 void main(void) {
-    #if defined(HILO_VERTEX_TYPE_POSITION)
-        hilo_FragColor = transformDataToColor(v_fragPos);
-    #elif defined(HILO_VERTEX_TYPE_NORMAL)
-        hilo_FragColor = transformDataToColor(v_normal);
-    #elif defined(HILO_VERTEX_TYPE_DEPTH)
-        #ifdef HILO_WRITE_ORIGIN_DATA
-            hilo_FragColor = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);
-        #else
-            hilo_FragColor = packFloat(gl_FragCoord.z);
+    #ifdef HILO_MOTION_VECTOR_PASS
+        hilo_FragColor = vec4(hiloMotionVector(), 0.0, 1.0);
+        #include "./chunk/logDepth_main.frag"
+    #else
+        #if defined(HILO_VERTEX_TYPE_POSITION)
+            hilo_FragColor = transformDataToColor(v_fragPos);
+        #elif defined(HILO_VERTEX_TYPE_NORMAL)
+            hilo_FragColor = transformDataToColor(v_normal);
+        #elif defined(HILO_VERTEX_TYPE_DEPTH)
+            #ifdef HILO_WRITE_ORIGIN_DATA
+                hilo_FragColor = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);
+            #else
+                hilo_FragColor = packFloat(gl_FragCoord.z);
+            #endif
+        #elif defined(HILO_VERTEX_TYPE_DISTANCE)
+            float distance = length(v_fragPos);
+            #ifdef HILO_WRITE_ORIGIN_DATA
+                hilo_FragColor = vec4(distance, distance, distance, 1.0);
+            #else
+                hilo_FragColor = packFloat((distance - u_cameraNear)/(u_cameraFar - u_cameraNear));
+            #endif
         #endif
-    #elif defined(HILO_VERTEX_TYPE_DISTANCE)
-        float distance = length(v_fragPos);
-        #ifdef HILO_WRITE_ORIGIN_DATA
-            hilo_FragColor = vec4(distance, distance, distance, 1.0);
-        #else
-            hilo_FragColor = packFloat((distance - u_cameraNear)/(u_cameraFar - u_cameraNear));
-        #endif
+        #include "./chunk/logDepth_main.frag"
     #endif
-    #include "./chunk/logDepth_main.frag"
 }

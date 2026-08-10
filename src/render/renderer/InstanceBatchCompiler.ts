@@ -31,13 +31,12 @@ export interface InstanceBatchCompilerCapabilities {
 
 /** Internal bridge to the submission-transactional current/previous transform store. */
 export interface InstanceTransformHistory {
-    readonly renderOrigin: Readonly<Float32Array>;
     writeInstanceModelMatrices(
         mesh: Mesh,
         current: Float32Array,
         previous: Float32Array,
         offset: number
-    ): void;
+    ): boolean;
 }
 
 /** One interleaved, high-water CPU stream appended after the per-vertex streams. */
@@ -104,7 +103,7 @@ interface MutablePerVertexInput {
 
 interface MutableInstanceInput {
     input: InstanceBatchVertexInputReflection;
-    binding: MaterialBindingInfo;
+    binding: MaterialBindingInfo | undefined;
     name: string;
     type: string;
     location: number;
@@ -114,7 +113,7 @@ interface MutableInstanceInput {
     rows: number;
     format: RHIVertexFormat;
     componentOffset: number;
-    builtIn: 0 | 1 | 2;
+    builtIn: 0 | 1 | 2 | 3 | 4;
 }
 
 interface InputSnapshot {
@@ -129,7 +128,7 @@ interface InputSnapshot {
     columns: number;
     rows: number;
     componentOffset: number;
-    builtIn: 0 | 1 | 2;
+    builtIn: 0 | 1 | 2 | 3 | 4;
 }
 
 interface OwnerRecords {
@@ -140,6 +139,8 @@ interface OwnerRecords {
 const EMPTY_PROGRAM_INFO: ProgramBindingInfo = Object.freeze({});
 const MODEL_MATRIX_INPUT = 'u_modelMatrix';
 const NORMAL_MATRIX_INPUT = 'u_normalWorldMatrix';
+const PREVIOUS_MODEL_MATRIX_INPUT = 'u_previousModelMatrix';
+const MODEL_HISTORY_VALID_INPUT = 'u_modelHistoryValid';
 const FLOAT_BYTES = Float32Array.BYTES_PER_ELEMENT;
 
 const FLOAT_SHAPE: InstanceShape = Object.freeze({
@@ -567,7 +568,7 @@ function emptyPerVertexInput(): MutablePerVertexInput {
 function emptyInstanceInput(): MutableInstanceInput {
     return {
         input: { name: '', type: '', location: 0 },
-        binding: null as unknown as MaterialBindingInfo,
+        binding: undefined,
         name: '',
         type: '',
         location: 0,
@@ -623,8 +624,11 @@ class BatchRecord {
     private modelScratch: Float32Array | null = null;
     private previousModelScratch: Float32Array | null = null;
     private normalScratch: Float32Array | null = null;
+    private historyScratch: Float32Array | null = null;
     private readonly normalMatrix3 = new Matrix3();
     private readonly normalMatrix4 = new Matrix4();
+    private readonly webGLCurrentModel = new Float32Array(16);
+    private readonly webGLPreviousModel = new Float32Array(16);
 
     constructor(backend: RHIBackend, diagnostics: MutableDiagnostics) {
         this.backend = backend;
@@ -822,7 +826,7 @@ class BatchRecord {
                 meshes,
                 material,
                 programInfo,
-                transformHistory?.renderOrigin
+                transformHistory
             );
         }
 
@@ -839,19 +843,25 @@ class BatchRecord {
                 this.normalScratch,
                 'normal-matrix staging storage'
             );
+            const historyScratch = requirePresent(
+                this.historyScratch,
+                'instance-history staging storage'
+            );
             modelScratch.fill(0);
             previousModelScratch.fill(0);
             normalScratch.fill(0);
+            historyScratch.fill(0);
             for (let meshIndex = 0; meshIndex < meshes.length; meshIndex += 1) {
                 const mesh = requirePresent(meshes[meshIndex], 'instance mesh');
                 const matrixOffset = meshIndex * 16;
                 if (transformHistory !== undefined) {
-                    transformHistory.writeInstanceModelMatrices(
+                    const historyValid = transformHistory.writeInstanceModelMatrices(
                         mesh,
                         modelScratch,
                         previousModelScratch,
                         matrixOffset
                     );
+                    historyScratch[meshIndex * 4] = historyValid ? 1 : 0;
                 } else {
                     const world = validateWorldMatrix(mesh);
                     for (let component = 0; component < 16; component += 1) {
@@ -883,6 +893,8 @@ class BatchRecord {
                     instanceBlockLayout.fields.u_instanceNormalMatrices.offset / FLOAT_BYTES;
                 const previousModelOffset =
                     instanceBlockLayout.fields.u_previousInstanceModelMatrices.offset / FLOAT_BYTES;
+                const historyOffset =
+                    instanceBlockLayout.fields.u_instanceHistoryParams.offset / FLOAT_BYTES;
                 modelChanged =
                     !arraysEqual(
                         modelScratch,
@@ -895,6 +907,12 @@ class BatchRecord {
                         this.uniformBufferFloats,
                         previousModelScratch.length,
                         previousModelOffset
+                    ) ||
+                    !arraysEqual(
+                        historyScratch,
+                        this.uniformBufferFloats,
+                        historyScratch.length,
+                        historyOffset
                     );
                 normalChanged = !arraysEqual(
                     normalScratch,
@@ -986,6 +1004,10 @@ class BatchRecord {
                         'previous model-matrix staging storage'
                     )
                 );
+                this.uniformBuffer.set(
+                    'u_instanceHistoryParams',
+                    requirePresent(this.historyScratch, 'instance-history staging storage')
+                );
             }
             if (normalChanged) {
                 this.uniformBuffer.set(
@@ -1042,6 +1064,7 @@ class BatchRecord {
         this.modelScratch = null;
         this.previousModelScratch = null;
         this.normalScratch = null;
+        this.historyScratch = null;
     }
 
     private classify(
@@ -1081,16 +1104,23 @@ class BatchRecord {
                 this.perVertexScratch.push(candidate);
                 continue;
             }
+            const builtIn =
+                name === MODEL_MATRIX_INPUT
+                    ? 1
+                    : name === NORMAL_MATRIX_INPUT
+                      ? 2
+                      : name === PREVIOUS_MODEL_MATRIX_INPUT
+                        ? 3
+                        : name === MODEL_HISTORY_VALID_INPUT
+                          ? 4
+                          : 0;
             const binding = findInstancedBinding(instancedBindings, name);
-            if (binding === undefined) {
+            if (binding === undefined && builtIn === 0) {
                 throw new TypeError(
                     `Vertex input ${name} has neither a per-vertex attribute nor a mesh-dependent instanced binding`
                 );
             }
-            if (
-                this.backend === 'webgpu' &&
-                (name === MODEL_MATRIX_INPUT || name === NORMAL_MATRIX_INPUT)
-            ) {
+            if (this.backend === 'webgpu' && builtIn !== 0) {
                 throw new TypeError(
                     `WebGPU built-in input ${name} must be supplied by InstanceBlock, not reflected as a vertex input`
                 );
@@ -1112,6 +1142,16 @@ class BatchRecord {
                     'u_normalWorldMatrix must be reflected as mat3 for WebGL2 instancing'
                 );
             }
+            if (name === PREVIOUS_MODEL_MATRIX_INPUT && (shape.columns !== 4 || shape.rows !== 4)) {
+                throw new TypeError(
+                    'u_previousModelMatrix must be reflected as mat4 for WebGL2 instancing'
+                );
+            }
+            if (name === MODEL_HISTORY_VALID_INPUT && (shape.columns !== 1 || shape.rows !== 1)) {
+                throw new TypeError(
+                    'u_modelHistoryValid must be reflected as float for WebGL2 instancing'
+                );
+            }
             const candidate = this.requireInstanceScratch(instanceIndex++);
             candidate.input = input;
             candidate.binding = binding;
@@ -1124,8 +1164,7 @@ class BatchRecord {
             candidate.rows = shape.rows;
             candidate.format = shape.format;
             candidate.componentOffset = 0;
-            candidate.builtIn =
-                name === MODEL_MATRIX_INPUT ? 1 : name === NORMAL_MATRIX_INPUT ? 2 : 0;
+            candidate.builtIn = builtIn;
             this.instanceScratch.push(candidate);
         }
         this.instanceScratch.sort(compareInstanceInputs);
@@ -1213,28 +1252,39 @@ class BatchRecord {
         meshes: readonly Mesh[],
         material: Material,
         programInfo: ProgramBindingInfo,
-        renderOrigin?: Readonly<Float32Array>
+        transformHistory?: InstanceTransformHistory
     ): void {
         let componentsPerInstance = 0;
         const last = this.instanceScratch.at(-1);
         if (last !== undefined) componentsPerInstance = last.componentOffset + last.components;
+        const needsModelHistory = this.instanceScratch.some(
+            input => input.builtIn === 1 || input.builtIn === 3 || input.builtIn === 4
+        );
         for (let meshIndex = 0; meshIndex < meshes.length; meshIndex += 1) {
             const mesh = requirePresent(meshes[meshIndex], 'instance mesh');
             const instanceOffset = meshIndex * componentsPerInstance;
+            let historyValid = false;
+            if (needsModelHistory) {
+                if (transformHistory === undefined) {
+                    const world = validateWorldMatrix(mesh);
+                    this.webGLCurrentModel.set(world);
+                    this.webGLPreviousModel.set(world);
+                } else {
+                    historyValid = transformHistory.writeInstanceModelMatrices(
+                        mesh,
+                        this.webGLCurrentModel,
+                        this.webGLPreviousModel,
+                        0
+                    );
+                }
+            }
             for (const input of this.instanceScratch) {
                 const targetOffset = instanceOffset + input.componentOffset;
                 if (input.builtIn === 1) {
-                    const world = validateWorldMatrix(mesh);
-                    if (renderOrigin !== undefined) {
-                        this.normalMatrix4.fromArray(world);
-                        this.normalMatrix4.elements[12] -= renderOrigin[0] ?? 0;
-                        this.normalMatrix4.elements[13] -= renderOrigin[1] ?? 0;
-                        this.normalMatrix4.elements[14] -= renderOrigin[2] ?? 0;
-                    }
                     copyResolvedValue(
                         target,
                         targetOffset,
-                        renderOrigin === undefined ? world : this.normalMatrix4.elements,
+                        this.webGLCurrentModel,
                         16,
                         input.name,
                         mesh
@@ -1251,8 +1301,29 @@ class BatchRecord {
                         input.name,
                         mesh
                     );
+                } else if (input.builtIn === 3) {
+                    copyResolvedValue(
+                        target,
+                        targetOffset,
+                        this.webGLPreviousModel,
+                        16,
+                        input.name,
+                        mesh
+                    );
+                } else if (input.builtIn === 4) {
+                    copyResolvedValue(
+                        target,
+                        targetOffset,
+                        historyValid ? 1 : 0,
+                        1,
+                        input.name,
+                        mesh
+                    );
                 } else {
-                    const value = input.binding.get(mesh, material, programInfo);
+                    const value = requirePresent(
+                        input.binding,
+                        `instanced binding ${input.name}`
+                    ).get(mesh, material, programInfo);
                     copyResolvedValue(
                         target,
                         targetOffset,
@@ -1270,14 +1341,16 @@ class BatchRecord {
         if (
             this.modelScratch !== null &&
             this.previousModelScratch !== null &&
-            this.normalScratch !== null
+            this.normalScratch !== null &&
+            this.historyScratch !== null
         )
             return;
         const componentCount = MAX_INSTANCES_PER_DRAW * 16;
         this.modelScratch = new Float32Array(componentCount);
         this.previousModelScratch = new Float32Array(componentCount);
         this.normalScratch = new Float32Array(componentCount);
-        this.diagnostics.storageAllocationCount += 3;
+        this.historyScratch = new Float32Array(MAX_INSTANCES_PER_DRAW * 4);
+        this.diagnostics.storageAllocationCount += 4;
     }
 
     private buildStreamLayout(stride: number): Readonly<RHIVertexBufferLayout> {

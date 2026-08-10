@@ -187,6 +187,16 @@ export class MaterialCompiler {
         if (pass.fragmentOutput !== 'depth-only' && request.target.colorFormats.length === 0) {
             throw new TypeError(`Material role ${role} requires at least one color target`);
         }
+        if (
+            pass.fragmentOutput === 'motion-vector' &&
+            (request.target.colorFormats.length !== 1 ||
+                request.target.colorFormats[0] !== 'rg16float' ||
+                request.target.sampleCount !== 1)
+        ) {
+            throw new TypeError(
+                'Material motion-vector role requires one single-sample rg16float color target'
+            );
+        }
         const state = role === 'forward' ? resolveForwardState(instance, pass) : pass.state;
         const sourceRevision =
             pass.shader.kind === 'glsl'

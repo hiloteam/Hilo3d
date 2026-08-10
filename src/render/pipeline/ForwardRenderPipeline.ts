@@ -77,6 +77,10 @@ export interface ForwardRenderPipelineFeatureRuntime {
      * @returns An ignored synchronous value. Promise-like values are rejected before RHI execution.
      */
     record(context: ForwardRenderFeatureContext): unknown;
+    /** Commit feature-owned temporal CPU state after a valid frame submission. */
+    frameSubmitted?(frameIndex: number): void;
+    /** Roll back feature-owned temporal CPU state when recording or submission is discarded. */
+    frameDiscarded?(frameIndex: number): void;
     /** Release renderer-local feature state exactly once. */
     destroy(): void;
 }
@@ -545,11 +549,6 @@ function snapshotFeature(feature: ForwardRenderPipelineFeature): FeatureSnapshot
             `Forward render feature ${feature.name} must declare sampledSceneColor and sampledDepth`
         );
     }
-    if (sampledDepth) {
-        throw new Error(
-            `Forward render feature ${feature.name} sampledDepth is not implemented end to end`
-        );
-    }
     if (
         sampledSceneColor &&
         injectionPointIndex(injectionPoint) < injectionPointIndex('after-opaque')
@@ -721,6 +720,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         readonly extent: RenderPipelineExtent;
         readonly colorFormats: RenderTargetColorFormat[];
         depthStencilFormat?: RenderTargetDepthStencilFormat;
+        depthStencilSampled?: boolean;
         sampleCount: RenderTargetSampleCount;
     } = {
         label: 'Forward linear surface composition',
@@ -865,6 +865,18 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             this.recordOutputPasses(context, output, colorCount);
         } finally {
             this.#featureState.endFrame();
+        }
+    }
+
+    frameSubmitted(frameIndex: number): void {
+        for (const feature of this.#compiledFeatures) {
+            feature.runtime.frameSubmitted?.(frameIndex);
+        }
+    }
+
+    frameDiscarded(frameIndex: number): void {
+        for (const feature of this.#compiledFeatures) {
+            feature.runtime.frameDiscarded?.(frameIndex);
         }
     }
 
@@ -1024,6 +1036,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             this.#sceneColorFormat ?? context.output.colorFormat(0);
         this.#surfaceCompositionColorFormats.length = 1;
         descriptor.sampleCount = 1;
+        descriptor.depthStencilSampled = this.#requiresSampledDepth;
         const depthFormat = context.output.depthStencilFormat;
         if (depthFormat === null) delete descriptor.depthStencilFormat;
         else descriptor.depthStencilFormat = depthFormat;
