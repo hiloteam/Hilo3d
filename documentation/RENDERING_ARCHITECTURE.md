@@ -184,10 +184,13 @@ transfer。
 `rgba16float`，opaque queue 完成后由 graph `TextureCopyPass` 捕获 opaque scene
 texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。可选
 `TemporalAA` 在 opaque 后记录 `rgba16float` motion/log-depth，并用 `rgba16float` 双缓冲 color
-history 和 `r32float` 双缓冲 log-view-depth history 完成原生分辨率 reprojection、relative-depth
-disocclusion、YCoCg variance clipping 与 reactive resolve。resolved opaque
-color 随后才接受 transparent composition，因此透明不写入 TAA history。Clustered Forward+ opt-in
-TAA 时把 GPU Scene motion 融入 depth prepass，以前一已提交帧的 visibility
+history 和 `r32float` 双缓冲 log-view-depth history 完成 reprojection、relative-depth
+disocclusion、YCoCg variance clipping 与 reactive resolve。默认 `renderScale=1`
+是原生分辨率 TAA；固定 0.5–1 的 sub-native scale 会同步缩放 opaque
+color/depth/motion、Hi-Z 与 cluster viewport，用 Catmull-Rom 重建当前帧，并写 output-resolution
+color/depth history、resolved color 和供后续 scene pass 使用的 full-resolution depth。resolved
+opaque color 随后才接受 transparent composition，因此透明不写入 TAA/TAAU history。Clustered Forward+
+opt-in TAA 时把 GPU Scene motion 融入 depth prepass，以前一已提交帧的 visibility
 buffer 拒绝重现物体的陈旧 history；fallback opaque/masked 在 resolve 前补写同一 motion
 target，fallback transparent 在 resolve 后合成。之后 `Bloom` 在 tone mapping 前记录 soft-knee/Karis
 prefilter、13-tap downsample pyramid、tent upsample 与线性 composite；`ColorUber`

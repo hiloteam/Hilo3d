@@ -15,6 +15,7 @@ interface TemporalObservatoryEvidence {
     readonly visibleObjectCount: number;
     readonly hiZValid: boolean;
     readonly temporalAA: true;
+    readonly renderScale: 0.75;
 }
 
 const search = new URLSearchParams(location.search);
@@ -91,6 +92,7 @@ const factory = new Hilo3d.ClusteredForwardPlusPipelineFactory({
     bloomStrength: 0.45,
     exposure: 1,
     temporalAA: {
+        renderScale: 0.75,
         historyWeight: 0.92,
         depthThreshold: 0.02,
         varianceGamma: 1.25,
@@ -335,7 +337,8 @@ window.__HILO3D_TEMPORAL_OBSERVATORY_RESULT__ = {
     fallbackObjectCount: diagnostics.fallbackObjectCount,
     visibleObjectCount: diagnostics.visibleObjectCount,
     hiZValid: diagnostics.hiZValid,
-    temporalAA: true
+    temporalAA: true,
+    renderScale: 0.75
 };
 window.__HILO3D_TEMPORAL_OBSERVATORY_TEST_API__ = {
     async settle(frames = 8): Promise<void> {

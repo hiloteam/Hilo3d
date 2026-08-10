@@ -1,6 +1,6 @@
 # Motion Vector 与 TemporalAA 上线整改规范
 
-本文记录 2026-08 在最新 `origin/dev` 基线上对 Motion Vector、TemporalAA、Clustered
+本文记录 2026-08 在最新 `origin/dev` 基线上对 Motion Vector、TemporalAA、固定比例 TAAU、Clustered
 Forward+ 时域集成、Hi-Z 显隐连续性和兼容 Forward
 fallback 的专项审查。目标不是增加一个仅在 demo 中可用的滤镜，而是形成可回滚、可恢复、可验证且默认无性能回归的生产合同。
 
@@ -11,8 +11,12 @@ fallback 的专项审查。目标不是增加一个仅在 demo 中可用的滤�
   generation 不能推进 camera、model、instance、skin、morph、GPU Scene object 或 visibility history。
 - Camera 的 raster jitter 不改变 CPU
   frustum、picking、project/unproject；成功和失败路径都必须在 frame 边界清零 jitter。
-- TAA
-  history 只包含 opaque/masked 线性 HDR 结果。transparent/transmission 在 resolve 后合成，Bloom/display 再消费完整场景。
+- TAA/TAAU
+  history 只包含 opaque/masked 线性 HDR 结果。transparent/transmission 在 resolve 后以 output
+  resolution 合成，Bloom/display 再消费完整场景。
+- `renderScale` 是 0.5–1 的固定配置。sub-native 模式同步缩放 scene
+  color、depth、motion、Hi-Z 和 cluster viewport，但 color/depth
+  history、resolve 与后续透明组合保持 output resolution。
 - Clustered GPU Scene 复用已有 depth prepass 输出 motion，不为 GPU-managed
   object 增加第二次几何 replay；ordinary Forward 与 Clustered fallback 继续使用材质 `motion-vector`
   pass。
@@ -54,7 +58,7 @@ revision 不连续或上一提交未参与 motion pass 时，Z 必须写 `-1`，
 
 ## 帧序
 
-启用 Clustered TAA 后，一个 camera frame 的关键顺序是：
+启用 Clustered TAA/TAAU 后，一个 camera frame 的关键顺序是：
 
 1. 更新 stable camera/scene transform，并暂存 jitter；
 2. GPU frustum/Hi-Z cull、bucket prefix 与 visible compact，同时写 current visibility；
@@ -62,7 +66,8 @@ revision 不连续或上一提交未参与 motion pass 时，Z 必须写 `-1`，
 4. Cluster allocation 与 Clustered PBR opaque；
 5. ordinary Forward fallback opaque 写入同一 HDR/depth，随后用材质 motion role 补写同一 motion
    target；
-6. TAA initialize 或 resolve，写 current color/depth history 与未进入 history 的 sharpened output；
+6. TAA initialize 或 resolve；TAAU 先以 Catmull-Rom 重建当前颜色，并写 output-resolution color/depth
+   history、未进入 history 的 sharpened output 与 full-resolution scene depth；
 7. ordinary Forward fallback transparent/transmission 合成；
 8. Bloom、display transform、present；
 9. 只有 queue 接受 submission 后才轮换 color/depth/visibility history 并提交 previous transforms。
@@ -80,26 +85,31 @@ index 和 previous transform 都保持最后成功状态。
 - 大 motion 最多只保留 60%
   history；当前/上一亮度差进一步降低 weight。该 response 是安全默认，不是 authored reactive
   mask 的替代品。
-- transparent、particle、UI 不写当前 history。它们保持清晰的当前帧 composition，后续 TAAU 工作包再定义单独的 reactive/composition
-  policy。
+- transparent、particle、UI 不写当前 history。它们在 TAAU 后保持 output-resolution 的当前帧 composition；per-material
+  reactive/composition policy 仍是后续质量切片。
+- TAAU full-resolution depth 使用对应 internal depth texel；stencil 从零开始。依赖 opaque
+  stencil 标记的透明自定义 pass 必须保持原生 `renderScale=1`。
 
 ## 性能与内存
 
-TAA 是明确 opt-in。以不含 backend row-pitch/alignment 的格式字节估算：
+TAA/TAAU 是明确 opt-in。以不含 backend row-pitch/alignment 的格式字节估算：
 
-| 资源/工作          | ordinary Forward                                        | Clustered Forward+                                                                    |
-| ------------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Motion target      | `8 B/pixel` transient；额外 opaque/masked motion replay | `8 B/pixel` transient；GPU object 融入已有 depth prepass，只有 fallback opaque replay |
-| Color history      | 双缓冲 `rgba16float`，合计 `16 B/pixel` persistent      | 相同                                                                                  |
-| Depth history      | 双缓冲 `r32float`，合计 `8 B/pixel` persistent          | 相同                                                                                  |
-| Resolved target    | `8 B/pixel` transient                                   | 相同                                                                                  |
-| Visibility history | 无                                                      | 双缓冲 `uint`，合计 `8 B/object`；只在启用时存在                                      |
+| 资源/工作           | ordinary Forward                                                     | Clustered Forward+                                                                             |
+| ------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Motion target       | `8 B/internal pixel` transient；额外 opaque/masked motion replay     | `8 B/internal pixel` transient；GPU object 融入已有 depth prepass，只有 fallback opaque replay |
+| Color history       | 双缓冲 output-resolution `rgba16float`，合计 `16 B/pixel` persistent | 相同                                                                                           |
+| Depth history       | 双缓冲 output-resolution `r32float`，合计 `8 B/pixel` persistent     | 相同                                                                                           |
+| Resolved target     | output-resolution `8 B/pixel` transient                              | 相同                                                                                           |
+| TAAU resolved depth | sub-native 模式额外一张 output-resolution depth transient            | 相同                                                                                           |
+| Visibility history  | 无                                                                   | 双缓冲 `uint`，合计 `8 B/object`；只在启用时存在                                               |
 
-1080p 下，上述 history 加 motion/resolved 的理论额外峰值约 83 MB；其中约 50 MB 是跨帧 persistent
-history。resolve 每像素读取 3×3 current neighborhood、一个 color history、一个 motion
-sample 和最多四个 depth history texel，并输出三张 attachment。它适合 high-end/native-resolution
-profile，不应在内存受限设备上默认开启。TAAU、动态分辨率、history packing 或 half-resolution
-variant 必须作为独立质量档设计，不能偷偷改变当前 ABI。
+原生 1080p 下，上述 history 加 motion/resolved 的理论额外峰值约 83 MB；其中约 50
+MB 是跨帧 persistent history。TAAU 的 current scene/motion/depth 成本按 `renderScale²`
+下降，但 output history、resolved color 与新增 resolved depth 不缩放。原生 resolve 每像素读取 3×3
+current neighborhood；TAAU 额外用 16-tap Catmull-Rom 重建当前颜色。两者还读取一个 color
+history、一个 motion sample 和最多四个 depth history texel，并输出三张 color
+attachment。它适合 high-end profile，不应在内存受限设备上默认开启。动态分辨率、history
+packing 或更低质量 tier 必须作为独立设计，不能偷偷改变当前 ABI。
 
 ## 自动化验收
 
@@ -114,12 +124,12 @@ variant 必须作为独立质量档设计，不能偷偷改变当前 ABI。
 用于人工审阅和自动化像素验收的页面是
 [`examples/temporal_aa_observatory.html`](../examples/temporal_aa_observatory.html)。它同时覆盖 100 个 GPU
 Scene object、ordinary Forward opaque/transmission fallback、动态局部光、Hi-Z、Bloom、camera
-cut 和 motion pause，测试模式固定内部 640×360 以保持软件 WebGPU 的确定性。
+cut 和 motion pause；测试模式固定 output 640×360，并以 `renderScale=0.75` 覆盖 TAAU。
 
 ## 明确保留到后续版本
 
 - transparent/particle history 与 per-material authored reactive mask；
-- TAAU、动态分辨率、exposure-compensated history 和 resolution-scale controller；
+- 动态分辨率、exposure-compensated history 和 resolution-scale controller；
 - normal/material ID rejection、velocity dilation 和专用 thin-feature reconstruction；
 - memory-constrained quality tier 与 history format packing。
 

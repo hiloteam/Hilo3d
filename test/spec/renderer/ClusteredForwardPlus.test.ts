@@ -372,7 +372,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 maxLightsPerCluster: 8,
                 maxViewportWidth: 128,
                 maxViewportHeight: 128,
-                temporalAA: {}
+                temporalAA: { renderScale: 0.75 }
             });
             const renderer = await Renderer.create({
                 backend: 'webgpu',

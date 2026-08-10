@@ -185,11 +185,13 @@ describe('built-in post-processing', () => {
         expect(() => new TemporalAA({ depthThreshold: -1 })).toThrow(/depthThreshold/u);
         expect(() => new TemporalAA({ varianceGamma: 0 })).toThrow(/varianceGamma/u);
         expect(() => new TemporalAA({ sharpness: 1 })).toThrow(/sharpness/u);
+        expect(() => new TemporalAA({ renderScale: 0.49 })).toThrow(/renderScale/u);
+        expect(() => new TemporalAA({ renderScale: 1.01 })).toThrow(/renderScale/u);
         expect(() => new ColorUber({ temperature: 2 }).create()).toThrow(/temperature/u);
     });
 
     it.each(['webgl2', 'webgpu'] as const)(
-        'renders HDR bloom and a transmissive volume through the opaque scene texture on %s',
+        'renders fixed-scale TAAU, HDR bloom, and transmissive composition on %s',
         async backend => {
             const renderer = await Renderer.create({
                 backend,
@@ -198,7 +200,7 @@ describe('built-in post-processing', () => {
                 height: 24,
                 antialias: false,
                 renderPipeline: new PostProcessRenderPipelineFactory({
-                    temporalAA: {},
+                    temporalAA: { renderScale: 0.75 },
                     bloom: {
                         threshold: 0.7,
                         intensity: 0.8,
@@ -280,13 +282,20 @@ describe('built-in post-processing', () => {
                 })
             );
             const camera = new PerspectiveCamera({ aspect: 4 / 3, z: 3 });
+            const observed = observePassLabels(rhiDevice(renderer));
 
             expect(() => {
                 renderer.render(scene, camera);
             }).not.toThrow();
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA upscale initialize history');
+            observed.labels.length = 0;
             expect(() => {
                 renderer.render(scene, camera);
             }).not.toThrow();
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA temporal upscale');
+            observed.restore();
             expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
         }
     );

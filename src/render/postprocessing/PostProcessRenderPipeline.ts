@@ -14,7 +14,7 @@ import { TemporalAA, type TemporalAAOptions } from './TemporalAA';
 
 /** Turnkey HDR forward/post-processing pipeline configuration. */
 export interface PostProcessRenderPipelineOptions {
-    /** Native-resolution temporal anti-aliasing settings, or false to omit TAA. */
+    /** Temporal anti-aliasing/upscaling settings, or false to omit the temporal pass. */
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     /** Bloom settings, or false to omit bloom. Bloom is enabled by default. */
     readonly bloom?: Readonly<BloomOptions> | false;

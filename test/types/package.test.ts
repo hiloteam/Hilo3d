@@ -24,6 +24,7 @@ import {
     SceneRenderPass,
     Stage,
     StorageGraphicsShader,
+    TemporalAA,
     Texture,
     Tween,
     Vector3,
@@ -68,6 +69,7 @@ import {
     type RendererListHandle,
     type StorageBuffer,
     type StorageBufferReadback,
+    type TemporalAAOptions,
     type ShaderTextureSampleType,
     type ShaderTextureViewDimension,
     type ScriptableRenderGraph,
@@ -270,6 +272,9 @@ const persistentTargetReleased: boolean = scriptableGraph.releasePersistentTarge
     Object.freeze({})
 );
 const featureCullingResults: CullingResultsHandle = forwardFeatureContext.cullingResults;
+forwardFeatureContext.resources.replaceDepth(graphMipChain);
+const temporalAAOptions = { renderScale: 0.75, sharpness: 0.1 } satisfies TemporalAAOptions;
+const temporalAA = new TemporalAA(temporalAAOptions);
 const outputColorPolicy: Readonly<RenderPipelineOutputColorAttachment> =
     pipelineOutput.colorAttachment(0);
 const outputDepthStencilPolicy: Readonly<RenderPipelineOutputDepthStencilAttachment> | null =
@@ -509,6 +514,7 @@ void webglIdlePromise;
 void webgpuIdlePromise;
 void persistentTargetReleased;
 void featureCullingResults;
+void temporalAA;
 void outputColorPolicy;
 void outputDepthStencilPolicy;
 void rawTextureStorage;

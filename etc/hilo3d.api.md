@@ -1948,6 +1948,7 @@ export interface ForwardRenderFeatureContext {
 export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirements {
     readonly sampledDepth: boolean;
     readonly sampledSceneColor: boolean;
+    readonly sceneScale?: number;
 }
 
 // @public
@@ -1993,6 +1994,7 @@ export interface ForwardRenderPipelineResources {
     readonly colorEncoding: RenderColorEncoding;
     readonly depth: RenderGraphTextureHandle | null;
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void;
+    replaceDepth(texture: RenderGraphTextureHandle): void;
 }
 
 // @public
@@ -8129,32 +8131,14 @@ export class TemporalAA implements ForwardRenderPipelineFeature {
     // (undocumented)
     readonly name = "temporal-aa";
     // (undocumented)
-    readonly requirements: Readonly<{
-        requiredLimits: Readonly<{
-            maxColorAttachments: 3;
-        }>;
-        requiredTextureFormats: readonly (Readonly<{
-            format: "rgba16float";
-            use: "color-attachment";
-        }> | Readonly<{
-            format: "rgba16float";
-            use: "filterable-sampled";
-        }> | Readonly<{
-            format: "r32float";
-            use: "color-attachment";
-        }> | Readonly<{
-            format: "r32float";
-            use: "sampled";
-        }>)[];
-        sampledSceneColor: true;
-        sampledDepth: true;
-    }>;
+    readonly requirements: Readonly<ForwardRenderFeatureRequirements>;
 }
 
 // @public
 export interface TemporalAAOptions {
     readonly depthThreshold?: number;
     readonly historyWeight?: number;
+    readonly renderScale?: number;
     readonly sharpness?: number;
     readonly varianceGamma?: number;
 }

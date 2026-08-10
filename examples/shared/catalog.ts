@@ -126,7 +126,7 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'clustered_forward_plus_sponza.html':
         'Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.',
     'temporal_aa_observatory.html':
-        'Stress fused motion vectors, visibility-aware history, logarithmic depth rejection, and native-resolution TAA in a kinetic WebGPU constellation.',
+        'Stress fused motion vectors, visibility-aware history, logarithmic depth rejection, and fixed-scale TAAU in a kinetic WebGPU constellation.',
     'compute_eclipse_shrine.html':
         'Orbit a cinematic eclipse built from 65,536 compute-simulated bodies, three indirect spectral layers, PBR relics, HDR bloom, and interactive gravity.',
     'compute_particles.html':

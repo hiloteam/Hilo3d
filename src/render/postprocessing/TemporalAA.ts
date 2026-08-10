@@ -3,9 +3,11 @@ import { getTransformHistoryRevision } from '../../core/TransformHistory';
 import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../material/MaterialDefinition';
 import Shader from '../../shader/Shader';
 import UniformBuffer from '../UniformBuffer';
-import { renderTargetFormatHasStencil } from '../RenderTarget';
+import { renderTargetFormatHasStencil, type RenderTargetDepthStencilFormat } from '../RenderTarget';
+import { depthClearValue } from '../renderer/DepthConvention';
 import type {
     ForwardRenderFeatureContext,
+    ForwardRenderFeatureRequirements,
     ForwardRenderPipelineFeature,
     ForwardRenderPipelineFeatureRuntime
 } from '../pipeline/ForwardRenderPipeline';
@@ -24,7 +26,9 @@ import type {
     RenderGraphTextureHandle,
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
-    RenderPipelineHistoryTextureResources
+    RenderPipelineExtent,
+    RenderPipelineHistoryTextureResources,
+    RenderPipelineTextureDescriptor
 } from '../pipeline/ScriptableRenderGraph';
 import { createStd140Layout } from '../ubo/Std140Layout';
 import { registerUniformBlockBinding } from '../ubo/UniformBlockBindings';
@@ -161,6 +165,184 @@ void main() {
     historyDepth = motion.w;
 }`;
 
+const TAAU_RECONSTRUCTION = `
+vec4 sampleReconstructedScene(vec2 uv) {
+    ivec2 dimensions = textureSize(u_scene, 0);
+    vec2 position = uv * vec2(dimensions) - 0.5;
+    ivec2 base = ivec2(floor(position));
+    vec2 fraction = fract(position);
+    vec4 weightX = vec4(
+        -0.5 * fraction.x + fraction.x * fraction.x - 0.5 * fraction.x * fraction.x * fraction.x,
+        1.0 - 2.5 * fraction.x * fraction.x + 1.5 * fraction.x * fraction.x * fraction.x,
+        0.5 * fraction.x + 2.0 * fraction.x * fraction.x - 1.5 * fraction.x * fraction.x * fraction.x,
+        -0.5 * fraction.x * fraction.x + 0.5 * fraction.x * fraction.x * fraction.x
+    );
+    vec4 weightY = vec4(
+        -0.5 * fraction.y + fraction.y * fraction.y - 0.5 * fraction.y * fraction.y * fraction.y,
+        1.0 - 2.5 * fraction.y * fraction.y + 1.5 * fraction.y * fraction.y * fraction.y,
+        0.5 * fraction.y + 2.0 * fraction.y * fraction.y - 1.5 * fraction.y * fraction.y * fraction.y,
+        -0.5 * fraction.y * fraction.y + 0.5 * fraction.y * fraction.y * fraction.y
+    );
+    vec4 result = vec4(0.0);
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            ivec2 coordinate = clamp(
+                base + ivec2(x - 1, y - 1),
+                ivec2(0),
+                dimensions - ivec2(1)
+            );
+            result += texelFetch(u_scene, coordinate, 0) * weightX[x] * weightY[y];
+        }
+    }
+    return result;
+}
+
+ivec2 currentPixel(vec2 uv) {
+    ivec2 dimensions = textureSize(u_scene, 0);
+    return clamp(ivec2(uv * vec2(dimensions)), ivec2(0), dimensions - ivec2(1));
+}`;
+
+const TAAU_INITIALIZE_FRAGMENT = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform sampler2D u_scene;
+uniform sampler2D u_velocity;
+uniform sampler2D u_sceneDepth;
+layout(location = 0) out vec4 historyColor;
+layout(location = 1) out vec4 resolvedColor;
+layout(location = 2) out float historyDepth;
+${TAAU_RECONSTRUCTION}
+void main() {
+    ivec2 pixel = currentPixel(v_uv);
+    vec4 current = sampleReconstructedScene(v_uv);
+    vec4 motion = texelFetch(u_velocity, pixel, 0);
+    historyColor = vec4(max(current.rgb, vec3(0.0)), clamp(current.a, 0.0, 1.0));
+    resolvedColor = historyColor;
+    historyDepth = motion.w;
+    gl_FragDepth = texelFetch(u_sceneDepth, pixel, 0).r;
+}`;
+
+const TAAU_RESOLVE_FRAGMENT = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform sampler2D u_scene;
+uniform sampler2D u_history;
+uniform sampler2D u_velocity;
+uniform sampler2D u_historyDepth;
+uniform sampler2D u_sceneDepth;
+${TEMPORAL_AA_BLOCK}
+layout(location = 0) out vec4 historyColor;
+layout(location = 1) out vec4 resolvedColor;
+layout(location = 2) out float historyDepth;
+${TAAU_RECONSTRUCTION}
+
+vec3 rgbToYCoCg(vec3 value) {
+    return vec3(
+        dot(value, vec3(0.25, 0.5, 0.25)),
+        dot(value, vec3(0.5, 0.0, -0.5)),
+        dot(value, vec3(-0.25, 0.5, -0.25))
+    );
+}
+
+vec3 yCoCgToRgb(vec3 value) {
+    return vec3(value.x + value.y - value.z, value.x + value.z, value.x - value.y - value.z);
+}
+
+float relativeDepthError(float historyLogDepth, float expectedLogDepth) {
+    float historyLinear = exp2(max(historyLogDepth, 0.0)) - 1.0;
+    float expectedLinear = exp2(max(expectedLogDepth, 0.0)) - 1.0;
+    return abs(historyLinear - expectedLinear) / max(expectedLinear, 1e-3);
+}
+
+float minimumHistoryDepthError(vec2 historyUV, float expectedLogDepth) {
+    ivec2 dimensions = textureSize(u_historyDepth, 0);
+    vec2 samplePosition = historyUV * vec2(dimensions) - 0.5;
+    ivec2 base = ivec2(floor(samplePosition));
+    float error = 1e20;
+    for (int y = 0; y <= 1; y++) {
+        for (int x = 0; x <= 1; x++) {
+            ivec2 coordinate = clamp(base + ivec2(x, y), ivec2(0), dimensions - ivec2(1));
+            error = min(
+                error,
+                relativeDepthError(texelFetch(u_historyDepth, coordinate, 0).r, expectedLogDepth)
+            );
+        }
+    }
+    return error;
+}
+
+void main() {
+    ivec2 currentDimensions = textureSize(u_scene, 0);
+    ivec2 historyDimensions = textureSize(u_history, 0);
+    ivec2 pixel = currentPixel(v_uv);
+    vec4 current = sampleReconstructedScene(v_uv);
+    vec4 motion = texelFetch(u_velocity, pixel, 0);
+    vec2 historyUV = v_uv - motion.xy;
+    vec2 halfHistoryTexel = 0.5 / vec2(historyDimensions);
+    bool inside = all(greaterThanEqual(historyUV, halfHistoryTexel)) &&
+        all(lessThanEqual(historyUV, vec2(1.0) - halfHistoryTexel));
+
+    vec3 currentWorking = rgbToYCoCg(current.rgb);
+    vec3 neighborhoodMin = currentWorking;
+    vec3 neighborhoodMax = currentWorking;
+    vec3 moment1 = currentWorking;
+    vec3 moment2 = currentWorking * currentWorking;
+    vec3 crossSum = vec3(0.0);
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            if (x == 0 && y == 0) continue;
+            ivec2 coordinate = clamp(
+                pixel + ivec2(x, y),
+                ivec2(0),
+                currentDimensions - ivec2(1)
+            );
+            vec3 sampleWorking = rgbToYCoCg(texelFetch(u_scene, coordinate, 0).rgb);
+            neighborhoodMin = min(neighborhoodMin, sampleWorking);
+            neighborhoodMax = max(neighborhoodMax, sampleWorking);
+            moment1 += sampleWorking;
+            moment2 += sampleWorking * sampleWorking;
+            if (abs(x) + abs(y) == 1) crossSum += sampleWorking;
+        }
+    }
+
+    vec3 mean = moment1 / 9.0;
+    vec3 deviation = sqrt(max(moment2 / 9.0 - mean * mean, vec3(0.0)));
+    vec3 clipMin = max(neighborhoodMin, mean - deviation * u_varianceGamma);
+    vec3 clipMax = min(neighborhoodMax, mean + deviation * u_varianceGamma);
+    vec2 sampledHistoryUV = clamp(
+        historyUV,
+        halfHistoryTexel,
+        vec2(1.0) - halfHistoryTexel
+    );
+    vec4 sampledPrevious = textureLod(u_history, sampledHistoryUV, 0.0);
+    vec4 previous = inside ? sampledPrevious : current;
+    vec3 previousWorking = clamp(rgbToYCoCg(previous.rgb), clipMin, clipMax);
+
+    bool velocityValid = motion.z >= 0.0;
+    float depthError = velocityValid && inside
+        ? minimumHistoryDepthError(historyUV, motion.z)
+        : 1e20;
+    float accepted = velocityValid && inside && depthError <= u_depthThreshold ? 1.0 : 0.0;
+    float velocityPixels = length(motion.xy * vec2(historyDimensions));
+    float motionResponse = clamp(velocityPixels / 32.0, 0.0, 1.0);
+    float temporalWeight = mix(u_historyWeight, min(u_historyWeight, 0.6), motionResponse);
+    float luminanceDelta = abs(previousWorking.x - currentWorking.x) /
+        max(max(abs(previousWorking.x), abs(currentWorking.x)), 0.1);
+    float reactive = clamp(luminanceDelta * 1.5, 0.0, 1.0);
+    temporalWeight *= 1.0 - reactive * 0.8;
+
+    vec3 resolvedWorking = mix(currentWorking, previousWorking, temporalWeight * accepted);
+    vec3 resolved = max(yCoCgToRgb(resolvedWorking), vec3(0.0));
+    vec3 crossAverage = crossSum * 0.25;
+    vec3 sharpenedWorking = resolvedWorking +
+        (resolvedWorking - crossAverage) * u_sharpness;
+    vec3 sharpened = max(yCoCgToRgb(sharpenedWorking), vec3(0.0));
+    historyColor = vec4(resolved, clamp(current.a, 0.0, 1.0));
+    resolvedColor = vec4(sharpened, clamp(current.a, 0.0, 1.0));
+    historyDepth = motion.w;
+    gl_FragDepth = texelFetch(u_sceneDepth, pixel, 0).r;
+}`;
+
 registerUniformBlockBinding('TemporalAABlock');
 
 const temporalAALayout = createStd140Layout({
@@ -170,12 +352,27 @@ const temporalAALayout = createStd140Layout({
     u_sharpness: 'float'
 });
 
-const OUTPUT_EXTENT = Object.freeze({ relativeTo: 'output' as const, scale: 1 });
-/** @internal Motion XY, expected previous log2 view depth, and current log2 view depth. */
-export const TEMPORAL_MOTION_DESCRIPTOR = Object.freeze({
-    format: 'rgba16float' as const,
-    extent: OUTPUT_EXTENT
+const OUTPUT_EXTENT: RenderPipelineExtent = Object.freeze({
+    relativeTo: 'output' as const,
+    scale: 1
 });
+/** @internal Return the fixed internal extent used by one temporal configuration. */
+export function temporalInputExtent(renderScale: number): RenderPipelineExtent {
+    return Object.freeze({ relativeTo: 'output' as const, scale: renderScale });
+}
+
+/** @internal Return the motion/depth descriptor matching one temporal input scale. */
+export function temporalMotionDescriptor(
+    renderScale: number
+): Readonly<RenderPipelineTextureDescriptor> {
+    return Object.freeze({
+        format: 'rgba16float' as const,
+        extent: temporalInputExtent(renderScale)
+    });
+}
+
+/** @internal Motion XY, expected previous log2 view depth, and current log2 view depth. */
+export const TEMPORAL_MOTION_DESCRIPTOR = temporalMotionDescriptor(1);
 const RESOLVED_DESCRIPTOR = Object.freeze({
     format: 'rgba16float' as const,
     extent: OUTPUT_EXTENT
@@ -278,6 +475,16 @@ interface MutableTemporalColorAttachment extends RenderPipelineColorAttachment {
     texture: RenderGraphTextureHandle;
 }
 
+interface MutableTemporalDepthAttachment extends RenderPipelineDepthStencilAttachment {
+    texture: RenderGraphTextureHandle;
+    depthLoadOp: 'clear';
+    depthStoreOp: 'store';
+    depthClearValue: number;
+    stencilLoadOp?: 'clear';
+    stencilStoreOp?: 'store';
+    stencilClearValue?: number;
+}
+
 class TemporalResolveParameters implements FullscreenRenderPassParameters {
     readonly inputTextures: RenderGraphTextureAccessHandle[] = [];
     readonly colorAttachments: MutableTemporalColorAttachment[] = [
@@ -300,12 +507,22 @@ class TemporalResolveParameters implements FullscreenRenderPassParameters {
             clearValue: CLEAR_ZERO
         }
     ];
+    readonly #resolvedDepth: MutableTemporalDepthAttachment = {
+        texture: 0 as RenderGraphTextureHandle,
+        depthLoadOp: 'clear',
+        depthStoreOp: 'store',
+        depthClearValue: 1
+    };
+    depthStencilAttachment?: MutableTemporalDepthAttachment;
 
     configure(
         inputs: readonly RenderGraphTextureAccessHandle[],
         colorHistory: RenderGraphTextureHandle,
         resolved: RenderGraphTextureHandle,
-        depthHistory: RenderGraphTextureHandle
+        depthHistory: RenderGraphTextureHandle,
+        resolvedDepth: RenderGraphTextureHandle | null,
+        resolvedDepthFormat: RenderTargetDepthStencilFormat | null,
+        resolvedDepthClearValue: number
     ): void {
         this.inputTextures.length = inputs.length;
         for (let index = 0; index < inputs.length; index += 1) {
@@ -327,15 +544,38 @@ class TemporalResolveParameters implements FullscreenRenderPassParameters {
         colorAttachment.texture = colorHistory;
         resolvedAttachment.texture = resolved;
         depthAttachment.texture = depthHistory;
+        if (resolvedDepth === null || resolvedDepthFormat === null) {
+            delete this.depthStencilAttachment;
+            return;
+        }
+        const attachment = this.#resolvedDepth;
+        attachment.texture = resolvedDepth;
+        attachment.depthClearValue = resolvedDepthClearValue;
+        if (renderTargetFormatHasStencil(resolvedDepthFormat)) {
+            attachment.stencilLoadOp = 'clear';
+            attachment.stencilStoreOp = 'store';
+            attachment.stencilClearValue = 0;
+        } else {
+            delete attachment.stencilLoadOp;
+            delete attachment.stencilStoreOp;
+            delete attachment.stencilClearValue;
+        }
+        this.depthStencilAttachment = attachment;
     }
 
     reset(): void {
         this.inputTextures.length = 0;
+        delete this.depthStencilAttachment;
     }
 }
 
-/** Native-resolution temporal resolve controls. */
+/** Temporal anti-aliasing and fixed-resolution temporal-upscaling controls. */
 export interface TemporalAAOptions {
+    /**
+     * Fixed internal scene resolution relative to the output. Values below one enable TAAU.
+     * Defaults to 1 and is currently constrained to the inclusive range 0.5–1.
+     */
+    readonly renderScale?: number;
     /** Maximum accepted history contribution after rejection. Defaults to 0.92. */
     readonly historyWeight?: number;
     /** Maximum relative previous-view-depth error. Defaults to 0.02. */
@@ -348,6 +588,7 @@ export interface TemporalAAOptions {
 
 /** @internal Immutable temporal settings shared by Forward and GPU Scene pipelines. */
 export interface TemporalAASettings {
+    readonly renderScale: number;
     readonly historyWeight: number;
     readonly depthThreshold: number;
     readonly varianceGamma: number;
@@ -368,6 +609,7 @@ export function snapshotTemporalAAOptions(
     options: Readonly<TemporalAAOptions>
 ): TemporalAASettings {
     return Object.freeze({
+        renderScale: finiteRange(options.renderScale ?? 1, 0.5, 1, 'TemporalAA renderScale'),
         historyWeight: finiteRange(options.historyWeight ?? 0.92, 0, 1, 'TemporalAA historyWeight'),
         depthThreshold: finiteRange(
             options.depthThreshold ?? 0.02,
@@ -418,6 +660,18 @@ export class TemporalResolveController {
     readonly #block: UniformBuffer<typeof temporalAALayout.schema>;
     readonly #initializePass: FullscreenRenderPass;
     readonly #resolvePass: FullscreenRenderPass;
+    readonly #upscaleInitializePass: FullscreenRenderPass;
+    readonly #upscaleResolvePass: FullscreenRenderPass;
+    readonly #renderScale: number;
+    readonly #resolvedDepthDescriptor: {
+        format: RenderTargetDepthStencilFormat;
+        readonly extent: RenderPipelineExtent;
+        readonly sampleCount: 1;
+    } = {
+        format: 'depth24plus',
+        extent: OUTPUT_EXTENT,
+        sampleCount: 1
+    };
     readonly #resolveParameters = new RenderPassParameterPool(
         () => new TemporalResolveParameters(),
         parameters => {
@@ -432,26 +686,44 @@ export class TemporalResolveController {
     #submissionIndex = 0;
 
     constructor(settings: TemporalAASettings) {
+        this.#renderScale = settings.renderScale;
         this.#block = UniformBuffer.fromSchema(temporalAALayout, {
             u_historyWeight: settings.historyWeight,
             u_depthThreshold: settings.depthThreshold,
             u_varianceGamma: settings.varianceGamma,
             u_sharpness: settings.sharpness
         });
-        const pass = (name: string, fs: string, uniformBuffers: readonly UniformBuffer[]) =>
+        const pass = (
+            name: string,
+            fs: string,
+            uniformBuffers: readonly UniformBuffer[],
+            writesDepth = false
+        ) =>
             new FullscreenRenderPass({
                 name,
                 shader: new Shader({ vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE, fs }),
                 pipelineState: {
                     ...DEFAULT_MATERIAL_PIPELINE_STATE,
                     depthTest: false,
-                    depthWrite: false,
+                    depthWrite: writesDepth,
                     cullMode: 'none'
                 },
                 uniformBuffers
             });
         this.#initializePass = pass('TemporalAA initialize history', INITIALIZE_FRAGMENT, []);
         this.#resolvePass = pass('TemporalAA production resolve', RESOLVE_FRAGMENT, [this.#block]);
+        this.#upscaleInitializePass = pass(
+            'TemporalAA upscale initialize history',
+            TAAU_INITIALIZE_FRAGMENT,
+            [],
+            true
+        );
+        this.#upscaleResolvePass = pass(
+            'TemporalAA temporal upscale',
+            TAAU_RESOLVE_FRAGMENT,
+            [this.#block],
+            true
+        );
     }
 
     begin(context: RenderPipelineContext): TemporalResolveFrame {
@@ -466,7 +738,9 @@ export class TemporalResolveController {
             throw new Error('TemporalAA currently requires a full-output viewport');
         }
         this.sweepInactiveStates(context, context.camera);
-        const state = this.stageCamera(context.camera, context.frameIndex, width, height);
+        const inputWidth = Math.max(1, Math.floor(width * this.#renderScale));
+        const inputHeight = Math.max(1, Math.floor(height * this.#renderScale));
+        const state = this.stageCamera(context.camera, context.frameIndex, inputWidth, inputHeight);
         const transformRevision = getTransformHistoryRevision(context.camera);
         const discontinuous =
             state.committedSubmission >= 0 &&
@@ -498,8 +772,10 @@ export class TemporalResolveController {
         context: RenderPipelineContext,
         frame: TemporalResolveFrame,
         scene: RenderGraphTextureHandle,
-        velocity: RenderGraphTextureHandle
-    ): RenderGraphTextureHandle {
+        velocity: RenderGraphTextureHandle,
+        depth: RenderGraphTextureHandle,
+        depthFormat: RenderTargetDepthStencilFormat
+    ): TemporalResolveResult {
         if (frame.state.pendingFrame !== context.frameIndex) {
             throw new Error('TemporalAA resolve frame belongs to another application frame');
         }
@@ -507,20 +783,43 @@ export class TemporalResolveController {
             'TemporalAA resolved color',
             RESOLVED_DESCRIPTOR
         );
+        const upscales = this.#renderScale < 1;
+        this.#resolvedDepthDescriptor.format = depthFormat;
+        const resolvedDepth = upscales
+            ? context.graph.createTexture(
+                  'TemporalAA resolved full-resolution depth',
+                  this.#resolvedDepthDescriptor
+              )
+            : null;
         const parameters = context.acquirePassParameters(this.#resolveParameters);
         parameters.configure(
             frame.historyValid
-                ? [scene, frame.colorHistory.history(), velocity, frame.depthHistory.history()]
-                : [scene, velocity],
+                ? [
+                      scene,
+                      frame.colorHistory.history(),
+                      velocity,
+                      frame.depthHistory.history(),
+                      ...(upscales ? [depth] : [])
+                  ]
+                : [scene, velocity, ...(upscales ? [depth] : [])],
             frame.colorHistory.current,
             resolved,
-            frame.depthHistory.current
+            frame.depthHistory.current,
+            resolvedDepth,
+            upscales ? depthFormat : null,
+            depthClearValue(context.camera.depthMode)
         );
         context.graph.addPass(
-            frame.historyValid ? this.#resolvePass : this.#initializePass,
+            upscales
+                ? frame.historyValid
+                    ? this.#upscaleResolvePass
+                    : this.#upscaleInitializePass
+                : frame.historyValid
+                  ? this.#resolvePass
+                  : this.#initializePass,
             parameters
         );
-        return resolved;
+        return Object.freeze({ color: resolved, depth: resolvedDepth ?? depth });
     }
 
     frameSubmitted(frameIndex: number): void {
@@ -631,10 +930,17 @@ export class TemporalResolveController {
     }
 }
 
+/** @internal Full-resolution temporal resolve outputs. */
+export interface TemporalResolveResult {
+    readonly color: RenderGraphTextureHandle;
+    readonly depth: RenderGraphTextureHandle;
+}
+
 class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
     readonly #resolve: TemporalResolveController;
     readonly #velocityPass = new SceneRenderPass('TemporalAA motion vectors');
     readonly #velocityParameters = new RenderPassParameterPool(() => new VelocityPassParameters());
+    readonly #motionDescriptor: Readonly<RenderPipelineTextureDescriptor>;
     readonly #rendererListDescriptor: {
         cullingResults: CullingResultsHandle;
         readonly queue: 'opaque';
@@ -649,6 +955,7 @@ class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
 
     constructor(settings: TemporalAASettings) {
         this.#resolve = new TemporalResolveController(settings);
+        this.#motionDescriptor = temporalMotionDescriptor(settings.renderScale);
     }
 
     record(context: ForwardRenderFeatureContext): void {
@@ -661,7 +968,7 @@ class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
         const frame = this.#resolve.begin(pipeline);
         const velocity = pipeline.graph.createTexture(
             'TemporalAA rgba16float motion and view depth',
-            TEMPORAL_MOTION_DESCRIPTOR
+            this.#motionDescriptor
         );
         this.#rendererListDescriptor.cullingResults = context.cullingResults;
         const velocityList = pipeline.createRendererList(this.#rendererListDescriptor);
@@ -674,10 +981,16 @@ class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
                 renderTargetFormatHasStencil(pipeline.output.depthStencilFormat)
         );
         pipeline.graph.addPass(this.#velocityPass, velocityParameters);
-        context.resources.replaceColor(
-            this.#resolve.resolve(pipeline, frame, scene, velocity),
-            'linear'
+        const resolved = this.#resolve.resolve(
+            pipeline,
+            frame,
+            scene,
+            velocity,
+            depth,
+            pipeline.output.depthStencilFormat ?? 'depth24plus'
         );
+        context.resources.replaceColor(resolved.color, 'linear');
+        if (resolved.depth !== depth) context.resources.replaceDepth(resolved.depth);
     }
 
     frameSubmitted(frameIndex: number): void {
@@ -694,7 +1007,7 @@ class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
 }
 
 /**
- * Native-resolution temporal anti-aliasing feature.
+ * Temporal anti-aliasing and fixed-resolution temporal-upscaling feature.
  *
  * The feature records built-in opaque/masked motion and logarithmic view-depth data after opaque
  * shading, resolves only opaque scene color, then lets transparent rendering and Bloom compose
@@ -704,15 +1017,17 @@ class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
 export class TemporalAA implements ForwardRenderPipelineFeature {
     readonly name = 'temporal-aa';
     readonly injectionPoint = 'after-opaque' as const;
-    readonly requirements = Object.freeze({
-        sampledSceneColor: true,
-        sampledDepth: true,
-        ...TEMPORAL_AA_REQUIREMENTS
-    });
+    readonly requirements: Readonly<ForwardRenderFeatureRequirements>;
     readonly #settings: TemporalAASettings;
 
     constructor(options: Readonly<TemporalAAOptions> = {}) {
         this.#settings = snapshotTemporalAAOptions(options);
+        this.requirements = Object.freeze({
+            sampledSceneColor: true,
+            sampledDepth: true,
+            sceneScale: this.#settings.renderScale,
+            ...TEMPORAL_AA_REQUIREMENTS
+        });
     }
 
     create(): ForwardRenderPipelineFeatureRuntime {

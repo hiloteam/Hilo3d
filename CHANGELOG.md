@@ -25,19 +25,22 @@
 
 ### Changes
 
-- Add the native-resolution `TemporalAA` Forward feature. Built-in opaque/masked materials now
-  expose a strict single-sample `rgba16float` motion pass containing current-to-previous UV
-  velocity, expected previous logarithmic view depth, and current logarithmic view depth. Camera,
-  model, instance, skin, morph, visibility, and failed-frame history are submission-aware. TAA runs
-  after opaque and before transparent/Bloom with `rgba16float` color history, `r32float`
-  logarithmic-depth history, conservative depth rejection, YCoCg variance clipping,
-  motion/luminance-reactive history weight, resolve-only sharpening,
+- Add the `TemporalAA` Forward feature with native-resolution TAA and fixed-scale TAAU. Built-in
+  opaque/masked materials now expose a strict single-sample `rgba16float` motion pass containing
+  current-to-previous UV velocity, expected previous logarithmic view depth, and current logarithmic
+  view depth. Camera, model, instance, skin, morph, visibility, and failed-frame history are
+  submission-aware. TAA runs after opaque and before transparent/Bloom with `rgba16float` color
+  history, `r32float` logarithmic-depth history, conservative depth rejection, YCoCg variance
+  clipping, motion/luminance-reactive history weight, resolve-only sharpening,
   projection-cut/resize/device-loss invalidation, and deterministic jitter rollback. Clustered
   Forward+ can opt into the same resolve; GPU Scene fuses motion output into its existing depth
   prepass, double-buffers visibility, and composes ordinary Forward fallback opaque before TAA and
   fallback transparent afterward. Add the WebGPU Temporal Observatory example and real-pixel
-  convergence/camera-cut/GPU-validation coverage. TAAU, dynamic resolution, authored reactive masks,
-  and transparent history remain deferred.
+  convergence/camera-cut/GPU-validation coverage. `TemporalAAOptions.renderScale` accepts 0.5–1;
+  sub-native modes render opaque color, depth, motion, Clustered Forward+ Hi-Z, and cluster sizing
+  at the fixed internal scale, then reconstruct Catmull-Rom current color into output-resolution
+  color/depth history and a full-resolution depth attachment before transparent composition. Dynamic
+  resolution, authored reactive masks, and transparent history remain deferred.
 
 - Add canonical built-in material definitions, stable material IDs and revisions, explicit
   forward/depth-only/shadow-caster/picking roles, role-aware shader variants, per-slot texture/UV
