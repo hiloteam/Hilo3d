@@ -31,6 +31,9 @@ import type { RHIDevice } from '../../../src/render/rhi/core';
 declare const __HILO3D_GITHUB_ACTIONS_COVERAGE__: boolean;
 
 const activeRenderers: Renderer[] = [];
+const taaIntegrationBackends = __HILO3D_GITHUB_ACTIONS_COVERAGE__
+    ? (['webgl2'] as const)
+    : (['webgl2', 'webgpu'] as const);
 
 interface TemporalFailureParameters {
     readonly attachment: RenderPipelineColorAttachment;
@@ -190,7 +193,7 @@ describe('built-in post-processing', () => {
         expect(() => new ColorUber({ temperature: 2 }).create()).toThrow(/temperature/u);
     });
 
-    it.each(['webgl2', 'webgpu'] as const)(
+    it.each(taaIntegrationBackends)(
         'renders fixed-scale TAAU, HDR bloom, and transmissive composition on %s',
         async backend => {
             const renderer = await Renderer.create({
