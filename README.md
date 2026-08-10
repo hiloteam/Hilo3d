@@ -54,6 +54,14 @@ npm install hilo3d
 Hilo3D is ESM-only. It targets modern browsers with WebGPU or WebGL 2; WebGL 1 and legacy global
 builds are outside the 2.0 contract.
 
+## Build games with Codex
+
+The standalone
+[`hilo3d-game` Agent Skill](https://github.com/hiloteam/Hilo3d/tree/dev/skills/hilo3d-game) helps
+Codex plan, scaffold, implement, debug, and optimize Hilo3D 2D, 3D, and hybrid browser games. It
+uses the published `hilo3d` package and is kept outside `.agents/skills` so it is distributed from
+this repository without becoming guidance for contributors working on the engine itself.
+
 ## Create your first scene
 
 ```ts
@@ -149,6 +157,7 @@ resource, shader, and recovery contracts.
 
 - [Getting started and API documentation](https://hilo3d.js.org/docs/)
 - [Example gallery](https://hilo3d.js.org/examples/list.html)
+- [`hilo3d-game` Agent Skill](https://github.com/hiloteam/Hilo3d/tree/dev/skills/hilo3d-game)
 - [Engineering documentation index](./documentation/README.md)
 - [Rendering architecture](./documentation/RENDERING_ARCHITECTURE.md)
 - [PBR, HDR, and post-processing](./documentation/PBR_AND_POST_PROCESSING.md)

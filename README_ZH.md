@@ -29,6 +29,13 @@ npm install hilo3d
 包只提供一个 ESM 入口，面向现代 bundler 与浏览器原生 ESM。WebGL
 1、CommonJS、UMD 和全局脚本构建不属于 vNext 契约。
 
+## 使用 Codex 构建游戏
+
+独立的 [`hilo3d-game` Agent Skill](https://github.com/hiloteam/Hilo3d/tree/dev/skills/hilo3d-game)
+可帮助 Codex 规划、搭建、实现、调试和优化 Hilo3D 2D、3D 与 hybrid 浏览器游戏。它使用已发布的
+`hilo3d` 包，并特意放在 `.agents/skills`
+之外，因此由本仓库分发，但不会成为维护引擎源码时自动加载的仓库级指引。
+
 ## WebGPU 快速开始
 
 `Stage.create()` 默认使用
@@ -316,6 +323,7 @@ API。
 
 - [API 文档](https://hilo3d.js.org/docs/)
 - [完整示例库](https://hilo3d.js.org/examples/list.html)
+- [`hilo3d-game` Agent Skill](https://github.com/hiloteam/Hilo3d/tree/dev/skills/hilo3d-game)
 - [glTF Viewer](https://hilo3d.js.org/examples/glTFViewer/index.html)
 - [工程文档索引](./documentation/README.md)
 - [当前渲染架构](./documentation/RENDERING_ARCHITECTURE.md)

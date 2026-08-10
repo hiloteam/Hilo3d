@@ -1,5 +1,0 @@
-interface:
-  display_name: 'Hilo3D Game Development'
-  short_description: 'Plan and build Hilo3D 2D, 3D, and hybrid games'
-  default_prompt:
-    'Use $build-hilo3d-games to plan, build, and verify a playable Hilo3D 2.0 browser game.'
