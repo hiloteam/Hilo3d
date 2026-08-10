@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
@@ -6,16 +6,110 @@ import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import PBRMaterial from '../../../src/material/PBRMaterial';
 import Color from '../../../src/math/Color';
+import Vector3 from '../../../src/math/Vector3';
 import Renderer from '../../../src/render/Renderer';
+import type {
+    ForwardRenderFeatureContext,
+    ForwardRenderPipelineFeature,
+    ForwardRenderPipelineFeatureRuntime
+} from '../../../src/render/pipeline/ForwardRenderPipeline';
 import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from '../../../src/render/pipeline/passes/internal/PortableFullscreenShader';
+import type {
+    RenderPipelineColorAttachment,
+    ScriptableRenderPass,
+    ScriptableRenderPassBuilder
+} from '../../../src/render/pipeline/ScriptableRenderGraph';
 import {
     Bloom,
     ColorUber,
-    PostProcessRenderPipelineFactory
+    PostProcessRenderPipelineFactory,
+    TemporalAA
 } from '../../../src/render/postprocessing';
 import Shader from '../../../src/shader/Shader';
+import type { RHIDevice } from '../../../src/render/rhi/core';
+
+declare const __HILO3D_GITHUB_ACTIONS_COVERAGE__: boolean;
 
 const activeRenderers: Renderer[] = [];
+
+interface TemporalFailureParameters {
+    readonly attachment: RenderPipelineColorAttachment;
+}
+
+class TemporalAcceptanceRuntime implements ForwardRenderPipelineFeatureRuntime {
+    fail = false;
+    readonly jitterSamples: { readonly x: number; readonly y: number }[] = [];
+    readonly pass: ScriptableRenderPass<TemporalFailureParameters> = {
+        name: 'TemporalAA acceptance failure boundary',
+        setup(builder: ScriptableRenderPassBuilder, parameters: TemporalFailureParameters): void {
+            builder.useColorAttachment(parameters.attachment);
+        },
+        execute: (): void => {
+            if (this.fail) throw new Error('forced TemporalAA submission failure');
+        }
+    };
+
+    record(context: ForwardRenderFeatureContext): void {
+        const color = context.resources.color;
+        if (color === null) throw new Error('TemporalAA acceptance color is unavailable');
+        this.jitterSamples.push({
+            x: context.pipeline.camera.projectionJitterX,
+            y: context.pipeline.camera.projectionJitterY
+        });
+        context.pipeline.graph.addPass(this.pass, {
+            attachment: {
+                texture: color,
+                loadOp: 'load',
+                storeOp: 'store'
+            }
+        });
+    }
+
+    destroy(): void {
+        // No renderer-local GPU objects.
+    }
+}
+
+class TemporalAcceptanceFeature implements ForwardRenderPipelineFeature {
+    readonly name = 'temporal-aa-acceptance-boundary';
+    readonly injectionPoint = 'after-opaque' as const;
+    readonly requirements = Object.freeze({ sampledSceneColor: false, sampledDepth: false });
+    readonly runtime = new TemporalAcceptanceRuntime();
+
+    create(): ForwardRenderPipelineFeatureRuntime {
+        return this.runtime;
+    }
+}
+
+function observePassLabels(device: RHIDevice): {
+    readonly labels: string[];
+    restore(): void;
+} {
+    const labels: string[] = [];
+    const queue = device.graphicsQueue;
+    const beginFrame = queue.beginFrame.bind(queue);
+    const spy = vi.spyOn(queue, 'beginFrame').mockImplementation(descriptor => {
+        const commands = beginFrame(descriptor);
+        const beginRenderPass = commands.beginRenderPass.bind(commands);
+        vi.spyOn(commands, 'beginRenderPass').mockImplementation(pass => {
+            labels.push(pass.label ?? '');
+            return beginRenderPass(pass);
+        });
+        return commands;
+    });
+    return {
+        labels,
+        restore: () => {
+            spy.mockRestore();
+        }
+    };
+}
+
+function rhiDevice(renderer: Renderer): RHIDevice {
+    const extension = renderer.getExtension('rhi') as { readonly device: RHIDevice } | null;
+    if (extension === null) throw new Error('Expected the public RHI extension');
+    return extension.device;
+}
 
 afterEach(() => {
     for (const renderer of activeRenderers.splice(0)) renderer.destroy();
@@ -67,14 +161,18 @@ describe('built-in post-processing', () => {
     it('declares the linear HDR feature requirements before renderer creation', () => {
         const bloom = new Bloom();
         const colorUber = new ColorUber();
-        const factory = new PostProcessRenderPipelineFactory();
+        const temporalAA = new TemporalAA();
+        const factory = new PostProcessRenderPipelineFactory({ temporalAA: {} });
 
+        expect(temporalAA.injectionPoint).toBe('after-opaque');
         expect(bloom.injectionPoint).toBe('after-transparent');
         expect(colorUber.injectionPoint).toBe('after-post-process');
         expect(factory.requirements.requiredTextureFormats).toEqual(
             expect.arrayContaining([
                 { format: 'rgba16float', use: 'color-attachment' },
                 { format: 'rgba16float', use: 'filterable-sampled' },
+                { format: 'rg16float', use: 'color-attachment' },
+                { format: 'r16float', use: 'color-attachment' },
                 { format: 'rgba8unorm', use: 'color-attachment' }
             ])
         );
@@ -83,6 +181,8 @@ describe('built-in post-processing', () => {
     it('validates bloom and grading ranges at construction time', () => {
         expect(() => new Bloom({ maxLevels: 0 })).toThrow(/maxLevels/u);
         expect(() => new Bloom({ knee: 0 })).toThrow(/knee/u);
+        expect(() => new TemporalAA({ historyWeight: 2 })).toThrow(/historyWeight/u);
+        expect(() => new TemporalAA({ depthThreshold: -1 })).toThrow(/depthThreshold/u);
         expect(() => new ColorUber({ temperature: 2 }).create()).toThrow(/temperature/u);
     });
 
@@ -96,6 +196,7 @@ describe('built-in post-processing', () => {
                 height: 24,
                 antialias: false,
                 renderPipeline: new PostProcessRenderPipelineFactory({
+                    temporalAA: {},
                     bloom: {
                         threshold: 0.7,
                         intensity: 0.8,
@@ -119,6 +220,44 @@ describe('built-in post-processing', () => {
                         diffuse: new Color(2.5, 0.3, 0.08)
                     }),
                     z: -1,
+                    frustumTest: false
+                })
+            );
+            const instancedGeometry = new BoxGeometry({
+                width: 0.25,
+                height: 0.25,
+                depth: 0.25
+            });
+            const instancedMaterial = new BasicMaterial({ lightType: 'NONE' });
+            scene.addChild(
+                new Mesh({
+                    geometry: instancedGeometry,
+                    material: instancedMaterial,
+                    x: -1,
+                    y: 0.7,
+                    useInstanced: true,
+                    frustumTest: false
+                })
+            );
+            scene.addChild(
+                new Mesh({
+                    geometry: instancedGeometry,
+                    material: instancedMaterial,
+                    x: -0.65,
+                    y: 0.7,
+                    useInstanced: true,
+                    frustumTest: false
+                })
+            );
+            scene.addChild(
+                new Mesh({
+                    geometry: new BoxGeometry({ width: 0.35, height: 0.35, depth: 0.35 }),
+                    material: new BasicMaterial({
+                        lightType: 'NONE',
+                        coverage: { mode: 'mask', cutoff: 0.5 },
+                        opacity: 0.75
+                    }),
+                    x: 1.1,
                     frustumTest: false
                 })
             );
@@ -147,6 +286,125 @@ describe('built-in post-processing', () => {
                 renderer.render(scene, camera);
             }).not.toThrow();
             expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
+        }
+    );
+
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'covers the native-resolution TemporalAA acceptance lifecycle on WebGPU',
+        async () => {
+            const boundary = new TemporalAcceptanceFeature();
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: document.createElement('canvas'),
+                width: 24,
+                height: 16,
+                antialias: false,
+                renderPipeline: new PostProcessRenderPipelineFactory({
+                    temporalAA: {},
+                    bloom: false,
+                    features: [boundary]
+                })
+            });
+            activeRenderers.push(renderer);
+            const scene = new Node();
+            const material = new BasicMaterial({ lightType: 'NONE' });
+            const moving = new Mesh({
+                geometry: new BoxGeometry(),
+                material,
+                frustumTest: false
+            });
+            scene.addChild(moving);
+            const camera = new PerspectiveCamera({ aspect: 3 / 2, z: 4 });
+            let observed = observePassLabels(rhiDevice(renderer));
+
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA initialize history');
+
+            observed.labels.length = 0;
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA resolve');
+
+            moving.x = 0.4;
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+
+            camera.setPosition(0.25, 0, 4).lookAt(new Vector3(0, 0, 0));
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+
+            scene.addChild(
+                new Mesh({
+                    geometry: new BoxGeometry({ width: 0.5, height: 0.5, depth: 0.5 }),
+                    material,
+                    x: -0.75,
+                    frustumTest: false
+                })
+            );
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+
+            observed.labels.length = 0;
+            camera.invalidateTransformHistory();
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA initialize history');
+
+            observed.labels.length = 0;
+            renderer.resize(30, 18, true);
+            camera.aspect = 30 / 18;
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA initialize history');
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+
+            boundary.runtime.fail = true;
+            expect(() => {
+                renderer.render(scene, camera);
+            }).toThrow(/forced TemporalAA submission failure/u);
+            const failedSample = boundary.runtime.jitterSamples.at(-1);
+            expect(camera.projectionJitterX).toBe(0);
+            expect(camera.projectionJitterY).toBe(0);
+
+            boundary.runtime.fail = false;
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(boundary.runtime.jitterSamples.at(-1)).toEqual(failedSample);
+
+            observed.restore();
+            const deviceLost = new Promise<void>(resolve => {
+                renderer.on(
+                    'webgpuDeviceLost',
+                    () => {
+                        resolve();
+                    },
+                    true
+                );
+            });
+            const deviceRestored = new Promise<void>(resolve => {
+                renderer.on(
+                    'webgpuDeviceRestored',
+                    () => {
+                        resolve();
+                    },
+                    true
+                );
+            });
+            rhiDevice(renderer).destroy();
+            await deviceLost;
+            await Promise.all([renderer.waitForIdle(), deviceRestored]);
+
+            observed = observePassLabels(rhiDevice(renderer));
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA initialize history');
+            observed.labels.length = 0;
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA resolve');
+            observed.restore();
         }
     );
 });

@@ -1,6 +1,6 @@
 # Hilo3D 材质系统现代化架构
 
-> 状态：当前架构文档，更新于 2026-08-09。本文描述已经进入生产路径的材质合同、明确的 breaking
+> 状态：当前架构文档，更新于 2026-08-10。本文描述已经进入生产路径的材质合同、明确的 breaking
 > changes，以及后续演进边界。源码、测试与 [`RENDERING_ARCHITECTURE.md`](./RENDERING_ARCHITECTURE.md)
 > 共同构成事实来源。
 
@@ -121,15 +121,15 @@ const material = new Hilo3d.ShaderMaterial({
 
 Pipeline 通过 role 请求材质，而不是读取 `material.passes[]` 并让材质控制执行顺序。
 
-| Role                  | 当前内置支持               | 合同                                                  |
-| --------------------- | -------------------------- | ----------------------------------------------------- |
-| `forward`             | 是                         | 普通 surface/unlit color 输出                         |
-| `depth-only`          | 是                         | 复用 deformation 与 coverage，无 color attachment     |
-| `shadow-caster`       | 是                         | 复用 deformation、coverage、cull 和 alpha cutoff      |
-| `picking`             | 是                         | 复用 geometry/coverage，输出稳定对象 ID               |
-| `motion-vector`       | 保留类型，未由内置材质声明 | 后续 TAA/TAAU 工作包实现 current/previous deformation |
-| `material-attributes` | 保留类型，未由内置材质声明 | 后续 GTAO/SSR/SSGI 工作包定义输出 ABI                 |
-| `user:*`              | 自定义 Definition 可声明   | 只有自定义 Pipeline 显式请求才运行                    |
+| Role                  | 当前内置支持 | 合同                                                                      |
+| --------------------- | ------------ | ------------------------------------------------------------------------- |
+| `forward`             | 是           | 普通 surface/unlit color 输出                                             |
+| `depth-only`          | 是           | 复用 deformation 与 coverage，无 color attachment                         |
+| `shadow-caster`       | 是           | 复用 deformation、coverage、cull 和 alpha cutoff                          |
+| `picking`             | 是           | 复用 geometry/coverage，输出稳定对象 ID                                   |
+| `motion-vector`       | 是           | opaque/masked 输出 single-sample `rg16float` current-to-previous velocity |
+| `material-attributes` | 保留类型     | 后续 GTAO/SSR/SSGI 工作包定义输出 ABI                                     |
+| `user:*`              | 自定义       | 只有自定义 Pipeline 显式请求才运行                                        |
 
 [`MaterialCompiler.ts`](../src/material/MaterialCompiler.ts) 负责 role 解析、target
 contract 验证和稳定 variant key。fallback 只有三种：
@@ -253,13 +253,13 @@ default 对象而发生串改。
 | 工作包                       | 状态          | 当前结果 / 下一步                                                               |
 | ---------------------------- | ------------- | ------------------------------------------------------------------------------- |
 | Definition / Instance        | 已完成        | 内置与自定义材质都使用不可变结构和实例数据                                      |
-| Semantic pass                | 已完成基础    | forward/depth/shadow/picking 已接生产路径；motion/attributes 待对应渲染功能实现 |
+| Semantic pass                | 已完成基础    | forward/depth/shadow/picking/motion 已接生产路径；attributes 待对应渲染功能实现 |
 | Texture slot                 | 已完成        | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                |
 | Typed semantics              | 已完成        | attribute/uniform/texture/slot 常量与联合类型公开                               |
 | UBO lowering                 | 已完成        | scalar 与 slot block 分离，双后端固定 ABI                                       |
 | Shared GPU Material Database | 已完成（PBR） | 私有 PBR table 已抽取、共享、去重，并具备 dirty upload、提交回滚与 recovery     |
 | Variant manifest / warmup    | 未完成        | 增加资产收集、异步 warmup、预算与诊断                                           |
-| Motion vectors               | 未完成        | 定义 previous skin/morph/coverage 输出并接 TAA/TAAU                             |
+| Motion vectors               | 已完成首版    | opaque/masked、skin/morph/instance history 与原生分辨率 TAA；透明/TAAU 后续     |
 | Material attributes          | 未完成        | 定义 compact normal/roughness/flags ABI，按 feature 创建附件                    |
 | Advanced surface families    | 后续          | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进              |
 

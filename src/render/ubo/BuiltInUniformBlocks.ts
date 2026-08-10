@@ -36,7 +36,9 @@ export const cameraBlockLayout = createStd140Layout({
     u_renderOrigin: 'vec4',
     u_previousRenderOrigin: 'vec4',
     u_historyParams: 'vec4',
-    u_viewport: 'vec4'
+    u_viewport: 'vec4',
+    u_nonJitteredProjectionMatrix: 'mat4',
+    u_nonJitteredViewProjectionMatrix: 'mat4'
 });
 
 export const sceneBlockLayout = createStd140Layout({
@@ -132,7 +134,8 @@ export const modelBlockLayout = createStd140Layout({
     u_modelMatrix: 'mat4',
     u_previousModelMatrix: 'mat4',
     u_normalWorldMatrix: 'mat3',
-    u_objectIdColor: 'vec4'
+    u_objectIdColor: 'vec4',
+    u_modelHistoryParams: 'vec4'
 });
 
 export const geometryBlockLayout = createStd140Layout({
@@ -144,20 +147,23 @@ export const geometryBlockLayout = createStd140Layout({
 
 export const skinningBlockLayout = createStd140Layout({
     u_jointMat: { type: 'mat4', arrayLength: MAX_SKIN_JOINTS },
-    u_previousJointMat: { type: 'mat4', arrayLength: MAX_SKIN_JOINTS }
+    u_previousJointMat: { type: 'mat4', arrayLength: MAX_SKIN_JOINTS },
+    u_skinHistoryParams: 'vec4'
 });
 
 export const morphBlockLayout = createStd140Layout({
     u_morphWeights0: 'vec4',
     u_morphWeights1: 'vec4',
     u_previousMorphWeights0: 'vec4',
-    u_previousMorphWeights1: 'vec4'
+    u_previousMorphWeights1: 'vec4',
+    u_morphHistoryParams: 'vec4'
 });
 
 export const instanceBlockLayout = createStd140Layout({
     u_instanceModelMatrices: { type: 'mat4', arrayLength: MAX_INSTANCES_PER_DRAW },
     u_previousInstanceModelMatrices: { type: 'mat4', arrayLength: MAX_INSTANCES_PER_DRAW },
-    u_instanceNormalMatrices: { type: 'mat4', arrayLength: MAX_INSTANCES_PER_DRAW }
+    u_instanceNormalMatrices: { type: 'mat4', arrayLength: MAX_INSTANCES_PER_DRAW },
+    u_instanceHistoryParams: { type: 'vec4', arrayLength: MAX_INSTANCES_PER_DRAW }
 });
 
 export const BUILT_IN_UNIFORM_BLOCK_LAYOUTS: Readonly<Record<string, Std140Layout>> = Object.freeze(

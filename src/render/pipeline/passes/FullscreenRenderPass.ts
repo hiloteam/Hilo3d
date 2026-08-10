@@ -30,7 +30,7 @@ export interface FullscreenRenderPassOptions {
 
 /** Frame-scoped graph resources and dynamic state for one fullscreen draw. */
 export interface FullscreenRenderPassParameters {
-    /** Linear-filterable sampled textures in reflected sampler order. */
+    /** Sampled textures in reflected sampler order; numeric depth uses nearest sampling. */
     readonly inputTextures: readonly RenderGraphTextureAccessHandle[];
     /** Color attachments in fragment-output location order. */
     readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
@@ -48,8 +48,9 @@ export interface FullscreenRenderPassParameters {
  * Draws a `gl_VertexID` fullscreen triangle with graph textures resolved during prepare.
  *
  * The vertex shader must declare no vertex attributes. GLSL samplers and registered std140
- * blocks are matched to the fixed arrays captured by this pass instance. Input formats must
- * support filterable sampling because the shared fullscreen path uses one fixed linear sampler.
+ * blocks are matched to the fixed arrays captured by this pass instance. Color inputs use the
+ * shared linear sampler; ordinary depth inputs are specialized to numeric depth and use the
+ * shared non-filtering sampler on both rendering backends.
  */
 export class FullscreenRenderPass implements ScriptableRenderPass<FullscreenRenderPassParameters> {
     /** Stable diagnostic pass name. */

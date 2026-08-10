@@ -109,14 +109,22 @@ layout(std140) uniform MaterialTextureBlock {
             mat4 u_instanceModelMatrices[HILO_MAX_INSTANCES_PER_DRAW];
             mat4 u_previousInstanceModelMatrices[HILO_MAX_INSTANCES_PER_DRAW];
             mat4 u_instanceNormalMatrices[HILO_MAX_INSTANCES_PER_DRAW];
+            vec4 u_instanceHistoryParams[HILO_MAX_INSTANCES_PER_DRAW];
         };
         #define u_modelMatrix u_instanceModelMatrices[gl_InstanceIndex]
         #define u_previousModelMatrix u_previousInstanceModelMatrices[gl_InstanceIndex]
         #define u_normalWorldMatrix mat3(u_instanceNormalMatrices[gl_InstanceIndex])
+        #define u_modelHistoryValid u_instanceHistoryParams[gl_InstanceIndex].x
     #else
         in mat4 u_modelMatrix;
         in mat3 u_normalWorldMatrix;
-        #define u_previousModelMatrix u_modelMatrix
+        #ifdef HILO_MOTION_VECTOR_PASS
+            in mat4 u_previousModelMatrix;
+            in float u_modelHistoryValid;
+        #else
+            #define u_previousModelMatrix u_modelMatrix
+            #define u_modelHistoryValid 0.0
+        #endif
     #endif
 #else
     layout(std140) uniform ModelBlock {
@@ -124,7 +132,9 @@ layout(std140) uniform MaterialTextureBlock {
         mat4 u_previousModelMatrix;
         mat3 u_normalWorldMatrix;
         vec4 u_objectIdColor;
+        vec4 u_modelHistoryParams;
     };
+    #define u_modelHistoryValid u_modelHistoryParams.x
 #endif
 
 layout(std140) uniform GeometryBlock {
@@ -138,7 +148,9 @@ layout(std140) uniform GeometryBlock {
     layout(std140) uniform SkinningBlock {
         mat4 u_jointMat[HILO_MAX_SKIN_JOINTS];
         mat4 u_previousJointMat[HILO_MAX_SKIN_JOINTS];
+        vec4 u_skinHistoryParams;
     };
+    #define u_skinHistoryValid u_skinHistoryParams.x
 #endif
 
 #ifdef HILO_MORPH_TARGET_COUNT
@@ -147,10 +159,18 @@ layout(std140) uniform GeometryBlock {
         vec4 u_morphWeights1;
         vec4 u_previousMorphWeights0;
         vec4 u_previousMorphWeights1;
+        vec4 u_morphHistoryParams;
     };
+    #define u_morphHistoryValid u_morphHistoryParams.x
 
     float hiloMorphWeight(int index) {
         return index < 4 ? u_morphWeights0[index] : u_morphWeights1[index - 4];
+    }
+
+    float hiloPreviousMorphWeight(int index) {
+        return index < 4
+            ? u_previousMorphWeights0[index]
+            : u_previousMorphWeights1[index - 4];
     }
 #endif
 #endif

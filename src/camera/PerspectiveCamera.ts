@@ -121,6 +121,7 @@ class PerspectiveCamera extends Camera {
             elements[10] = this.depthMode === 'reversed' ? 1 : -1;
             elements[14] = this.depthMode === 'reversed' ? 2 * near : -2 * near;
         }
+        this.updateJitteredProjectionMatrix();
     }
     override getGeometry(forceUpdate = false): Geometry {
         if (forceUpdate || !this._geometry || this._isGeometryDirty) {

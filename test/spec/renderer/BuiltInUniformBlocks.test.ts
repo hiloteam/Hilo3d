@@ -30,16 +30,16 @@ describe('built-in std140 ABI', () => {
             InstanceBlock: instanceBlockLayout.byteLength
         }).toEqual({
             FrameBlock: 16,
-            CameraBlock: 720,
+            CameraBlock: 848,
             SceneBlock: 32,
             LightBlock: 16288,
             MaterialBlock: 432,
             MaterialTextureBlock: 1920,
-            ModelBlock: 192,
+            ModelBlock: 208,
             GeometryBlock: 224,
-            SkinningBlock: 16384,
-            MorphBlock: 64,
-            InstanceBlock: 24576
+            SkinningBlock: 16400,
+            MorphBlock: 80,
+            InstanceBlock: 26624
         });
     });
 
@@ -61,6 +61,8 @@ describe('built-in std140 ABI', () => {
         expect(cameraBlockLayout.fields.u_previousRenderOrigin.offset).toBe(672);
         expect(cameraBlockLayout.fields.u_historyParams.offset).toBe(688);
         expect(cameraBlockLayout.fields.u_viewport.offset).toBe(704);
+        expect(cameraBlockLayout.fields.u_nonJitteredProjectionMatrix.offset).toBe(720);
+        expect(cameraBlockLayout.fields.u_nonJitteredViewProjectionMatrix.offset).toBe(784);
 
         expect(materialBlockLayout.fields.u_diffuseEnvSphereHarmonics3.offset).toBe(96);
         expect(materialBlockLayout.fields.u_diffuseEnvSphereHarmonics3.arrayStride).toBe(16);
@@ -82,6 +84,7 @@ describe('built-in std140 ABI', () => {
         expect(modelBlockLayout.fields.u_previousModelMatrix.offset).toBe(64);
         expect(modelBlockLayout.fields.u_normalWorldMatrix.offset).toBe(128);
         expect(modelBlockLayout.fields.u_objectIdColor.offset).toBe(176);
+        expect(modelBlockLayout.fields.u_modelHistoryParams.offset).toBe(192);
         expect(geometryBlockLayout.fields.u_positionDecodeMat.offset).toBe(0);
         expect(geometryBlockLayout.fields.u_uvDecodeMat.offset).toBe(128);
         expect(geometryBlockLayout.fields.u_uv1DecodeMat.offset).toBe(176);
@@ -104,11 +107,14 @@ describe('built-in std140 ABI', () => {
 
         expect(skinningBlockLayout.fields.u_jointMat.arrayStride).toBe(64);
         expect(skinningBlockLayout.fields.u_previousJointMat.offset).toBe(8192);
+        expect(skinningBlockLayout.fields.u_skinHistoryParams.offset).toBe(16384);
         expect(morphBlockLayout.fields.u_morphWeights1.offset).toBe(16);
         expect(morphBlockLayout.fields.u_previousMorphWeights0.offset).toBe(32);
         expect(morphBlockLayout.fields.u_previousMorphWeights1.offset).toBe(48);
+        expect(morphBlockLayout.fields.u_morphHistoryParams.offset).toBe(64);
         expect(instanceBlockLayout.fields.u_previousInstanceModelMatrices.offset).toBe(8192);
         expect(instanceBlockLayout.fields.u_instanceNormalMatrices.offset).toBe(16384);
+        expect(instanceBlockLayout.fields.u_instanceHistoryParams.offset).toBe(24576);
     });
 
     it('pads dynamic semantic arrays to the fixed ABI capacity and rejects overflow', () => {

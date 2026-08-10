@@ -118,6 +118,7 @@ const tempViewNormal = new Matrix3();
 const tempRelativeViewInverse = new Matrix4();
 const tempRelativeView = new Matrix4();
 const tempRelativeViewProjection = new Matrix4();
+const tempRelativeNonJitteredViewProjection = new Matrix4();
 const std140WriteResult: Std140WriteResult = { byteOffset: 0, byteLength: 0 };
 const semanticBlockScratch = new WeakMap<UniformBuffer, Uint8Array>();
 const uniformBufferByteViews = new WeakMap<UniformBuffer, Uint8Array>();
@@ -136,6 +137,8 @@ const MATERIAL_TEXTURE_BLOCK_FIELD_NAMES = Object.freeze(
         fieldName => !fieldName.endsWith('Padding')
     )
 );
+const MODEL_HISTORY_INVALID = new Float32Array(4);
+const MODEL_HISTORY_VALID = new Float32Array([1, 0, 0, 0]);
 
 function fieldNamesOf(layout: Std140Layout): readonly string[] {
     let names = layoutFieldNames.get(layout);
@@ -330,7 +333,8 @@ function updateModelTransformBlock(
     mesh: Mesh,
     current: Float32Array,
     previous: Float32Array,
-    normal: Matrix3
+    normal: Matrix3,
+    historyValid: boolean
 ): void {
     let candidate = semanticBlockScratch.get(buffer);
     if (candidate?.byteLength !== modelBlockLayout.byteLength) {
@@ -349,6 +353,12 @@ function updateModelTransformBlock(
         target,
         'u_normalWorldMatrix',
         normal.normalFromMat4(mesh.worldMatrix).elements,
+        std140WriteResult
+    );
+    modelBlockLayout.writeInto(
+        target,
+        'u_modelHistoryParams',
+        historyValid ? MODEL_HISTORY_VALID : MODEL_HISTORY_INVALID,
         std140WriteResult
     );
     modelBlockLayout.writeInto(
@@ -537,18 +547,13 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         this.historyGeneration += 1;
     }
 
-    /** @internal Frame-wide origin used by instanced GPU transforms. */
-    get renderOrigin(): Readonly<Float32Array> {
-        return this.renderOriginScratch;
-    }
-
     /** @internal Stage and write one current/previous camera-relative instance transform. */
     writeInstanceModelMatrices(
         mesh: Mesh,
         current: Float32Array,
         previous: Float32Array,
         offset: number
-    ): void {
+    ): boolean {
         const history = this.transformHistoryRecord(this.modelHistory, mesh, 16);
         if (history.pendingFrame !== this.frameIndex) {
             copyRelativeMatrix(
@@ -565,6 +570,7 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             history.committedGeneration === this.historyGeneration &&
             history.committedRevision === getTransformHistoryRevision(mesh);
         previous.set(valid ? history.committed : history.pending, offset);
+        return valid;
     }
 
     /** Start a camera/render pass without advancing animation-frame scoped buffers. */
@@ -653,8 +659,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         tempRelativeViewInverse.fromArray(history.pendingViewInverse);
         tempRelativeView.invert(tempRelativeViewInverse);
         history.pendingView.set(tempRelativeView.elements);
-        history.pendingProjection.set(camera.projectionMatrix.elements);
-        tempRelativeViewProjection.multiply(camera.projectionMatrix, tempRelativeView);
+        history.pendingProjection.set(camera.jitteredProjectionMatrix.elements);
+        tempRelativeViewProjection.multiply(camera.jitteredProjectionMatrix, tempRelativeView);
         history.pendingViewProjection.set(tempRelativeViewProjection.elements);
         history.pendingOrigin.set(this.renderOriginScratch);
         history.pendingRevision = getTransformHistoryRevision(camera);
@@ -694,6 +700,14 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             .set('u_viewMatrix', history.pendingView)
             .set('u_projectionMatrix', history.pendingProjection)
             .set('u_viewProjectionMatrix', history.pendingViewProjection)
+            .set('u_nonJitteredProjectionMatrix', camera.projectionMatrix.elements)
+            .set(
+                'u_nonJitteredViewProjectionMatrix',
+                tempRelativeNonJitteredViewProjection.multiply(
+                    camera.projectionMatrix,
+                    tempRelativeView
+                ).elements
+            )
             .set('u_previousViewMatrix', previousView)
             .set('u_previousProjectionMatrix', previousProjection)
             .set('u_previousViewProjectionMatrix', previousViewProjection)
@@ -701,7 +715,7 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             .set('u_previousViewInverseMatrix', previousViewInverse)
             .set(
                 'u_projectionInverseMatrix',
-                tempInverseProjection.invert(camera.projectionMatrix).elements
+                tempInverseProjection.invert(camera.jitteredProjectionMatrix).elements
             )
             .set(
                 'u_viewInverseNormalMatrix',
@@ -976,7 +990,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
                 mesh,
                 history.pending,
                 historyValid ? history.committed : history.pending,
-                cached.normal
+                cached.normal,
+                historyValid
             );
             cached.frameIndex = this.frameIndex;
             cached.revision = mesh.worldMatrixVersion;
@@ -1058,7 +1073,11 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
                 history.committedRevision === history.pendingRevision;
             cached.buffer
                 .set('u_jointMat', history.pending)
-                .set('u_previousJointMat', historyValid ? history.committed : history.pending);
+                .set('u_previousJointMat', historyValid ? history.committed : history.pending)
+                .set(
+                    'u_skinHistoryParams',
+                    historyValid ? MODEL_HISTORY_VALID : MODEL_HISTORY_INVALID
+                );
             cached.frameIndex = this.frameIndex;
         }
         return cached.buffer;
@@ -1119,7 +1138,11 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             .set('u_morphWeights0', cached.weights0)
             .set('u_morphWeights1', cached.weights1)
             .set('u_previousMorphWeights0', previous.subarray(0, 4))
-            .set('u_previousMorphWeights1', previous.subarray(4, 8));
+            .set('u_previousMorphWeights1', previous.subarray(4, 8))
+            .set(
+                'u_morphHistoryParams',
+                historyValid ? MODEL_HISTORY_VALID : MODEL_HISTORY_INVALID
+            );
         cached.frameIndex = this.frameIndex;
         return cached.buffer;
     }

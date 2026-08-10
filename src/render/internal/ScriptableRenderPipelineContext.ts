@@ -232,7 +232,7 @@ interface MutablePersistentTargetResourceDescriptor extends RenderTargetResource
     sampleCount: 1 | 4;
     multisampleAttachmentLifetime: 'persistent';
     depthStencilFormat: RHITextureFormat | null;
-    depthStencilSampled: false;
+    depthStencilSampled: boolean;
 }
 
 interface TextureAccessRecordBase {
@@ -1601,8 +1601,6 @@ class ScriptableFullscreenDraw {
         if (pipeline === null) throw new Error('Fullscreen draw pipeline is not configured');
         const registry = fullscreen.registry;
         const plan = pipeline.bindingPlan;
-        const sampler = registry.resolve(fullscreen.defaultSampler);
-        fullscreen.resourceUses.use(fullscreen.defaultSampler);
         try {
             for (const groupIndex of plan.activeGroupIndices) {
                 const layoutHandle = pipeline.bindGroupLayouts[groupIndex];
@@ -1637,6 +1635,17 @@ class ScriptableFullscreenDraw {
                     if (context.getTexture(handle).sampleCount !== 1) {
                         throw new Error('Fullscreen sampled textures must be single-sample');
                     }
+                    if (sampled.samplerType === 'comparison') {
+                        throw new TypeError(
+                            'Fullscreen comparison sampling requires an explicit comparison contract'
+                        );
+                    }
+                    const samplerHandle =
+                        sampled.samplerType === 'non-filtering'
+                            ? fullscreen.nonFilteringSampler
+                            : fullscreen.defaultSampler;
+                    const sampler = registry.resolve(samplerHandle);
+                    fullscreen.resourceUses.use(samplerHandle);
                     this.addEntry(group, sampled.textureBinding, context.getTextureView(handle));
                     this.addEntry(group, sampled.samplerBinding, sampler);
                 }
@@ -4660,6 +4669,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         }
         targetDescriptor.sampleCount = descriptor.sampleCount ?? 1;
         targetDescriptor.depthStencilFormat = descriptor.depthStencilFormat ?? null;
+        targetDescriptor.depthStencilSampled = descriptor.depthStencilSampled ?? false;
         const record = this.resources.preparePersistentTarget(
             runtimeOwner,
             key,
@@ -5235,9 +5245,9 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.services.beginScriptableResourcePass(context);
         this.services.beginScriptableFullscreenPass(context);
         const fullscreen = this.services.getScriptableFullscreenProcessor();
-        const pipeline = fullscreen.prepareGraphPipeline(pass.shader, pass.pipelineState, target);
         const inputs = this.#fullscreenInputScratch;
         inputs.length = parameters.inputTextures.length;
+        let numericDepthSamplerMask = 0;
         for (let index = 0; index < parameters.inputTextures.length; index += 1) {
             const publicHandle = parameters.inputTextures[index];
             if (publicHandle === undefined) {
@@ -5248,13 +5258,31 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 throw new Error('Fullscreen input texture was not declared during setup');
             }
             const format = this.requireTexture(publicHandle).format;
-            if (!this.capabilities.supportsTextureFormat(format, 'filterable-sampled')) {
+            const numericDepth = rhiTextureFormatHasDepth(format);
+            const use = numericDepth ? 'sampled' : 'filterable-sampled';
+            if (!this.capabilities.supportsTextureFormat(format, use)) {
                 throw new Error(
-                    `Fullscreen input texture format ${format} does not support linear filtering`
+                    numericDepth
+                        ? `Fullscreen depth input texture format ${format} does not support sampling`
+                        : `Fullscreen input texture format ${format} does not support linear filtering`
                 );
+            }
+            if (numericDepth) {
+                if (index >= 52) {
+                    throw new RangeError(
+                        'Fullscreen numeric depth specialization supports at most 52 inputs'
+                    );
+                }
+                numericDepthSamplerMask += 2 ** index;
             }
             inputs[index] = internal;
         }
+        const pipeline = fullscreen.prepareGraphPipeline(
+            pass.shader,
+            pass.pipelineState,
+            target,
+            numericDepthSamplerMask
+        );
         const processor = this.services.getScriptableMeshProcessor();
         const uniformHandles = this.#fullscreenUniformScratch;
         uniformHandles.length = pass.uniformBuffers.length;

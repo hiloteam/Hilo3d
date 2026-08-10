@@ -638,11 +638,13 @@ describe('BuiltInUniformBlockManager', () => {
 
         let block = render(2);
         expect(readFloatField(block, 'u_previousModelMatrix', 16)[12]).toBe(2);
+        expect(readFloatField(block, 'u_modelHistoryParams', 1)[0]).toBe(0);
         manager.commit({} as never);
 
         block = render(3);
         expect(readFloatField(block, 'u_modelMatrix', 16)[12]).toBe(3);
         expect(readFloatField(block, 'u_previousModelMatrix', 16)[12]).toBe(2);
+        expect(readFloatField(block, 'u_modelHistoryParams', 1)[0]).toBe(1);
         manager.rollback();
 
         block = render(4);
@@ -652,6 +654,30 @@ describe('BuiltInUniformBlockManager', () => {
         mesh.invalidateTransformHistory();
         block = render(20);
         expect(readFloatField(block, 'u_previousModelMatrix', 16)[12]).toBe(20);
+        expect(readFloatField(block, 'u_modelHistoryParams', 1)[0]).toBe(0);
+    });
+
+    it('packs jittered raster matrices beside stable CPU camera matrices', () => {
+        const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
+        const camera = new PerspectiveCamera({ aspect: 16 / 9 });
+        camera.setProjectionJitter(0.01, -0.02).updateViewProjectionMatrix();
+        manager.beginFrame(camera);
+        const block = manager.resolveUniformBlock(
+            'CameraBlock',
+            testEnv.mesh,
+            testEnv.material,
+            camera
+        );
+
+        expect(readFloatField(block, 'u_projectionMatrix', 16)).toEqualishValues(
+            ...camera.jitteredProjectionMatrix.elements
+        );
+        expect(readFloatField(block, 'u_nonJitteredProjectionMatrix', 16)).toEqualishValues(
+            ...camera.projectionMatrix.elements
+        );
+        expect(readFloatField(block, 'u_viewProjectionMatrix', 16)).not.toEqualishValues(
+            ...readFloatField(block, 'u_nonJitteredViewProjectionMatrix', 16)
+        );
     });
 
     it('packs ambient and directional lighting into LightBlock for every render pass', () => {

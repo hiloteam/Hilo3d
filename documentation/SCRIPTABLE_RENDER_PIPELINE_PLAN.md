@@ -782,8 +782,9 @@ export interface ForwardRenderFeatureContext {
   policy。
 - `sampledSceneColor` 只允许 `after-opaque` 及更晚的 injection point，避免 feature 在 scene
   writer 之前读取未初始化资源。
-- `sampledDepth` 当前保持 fail-closed；公共 fullscreen binding ABI 尚未完成 non-filtering depth
-  sampling 的双后端垂直实现，声明 `true` 会在 factory 构造时明确失败。
+- `sampledDepth` 会让 Forward depth attachment 保持 single-sample/sampleable；fullscreen 普通 depth
+  `sampler2D` 使用 non-filtering sampler，并在 WebGPU artifact 中专门化为 numeric depth
+  texture。comparison sampler 仍需独立显式合同。
 - feature 未产生 terminal output 时，由默认 pipeline 继续写入原 output；重复 terminal
   writer 或悬空 output 由 graph validation 拒绝。
 - 动态禁用 feature 时其 pass 可被 graph culling 删除；feature set 和 attachment
@@ -1460,8 +1461,8 @@ GLSL 转换”和“先公开部分 storage binding”的实施顺序；本节�
    dispatch/draw、graph hazard、readback、device-loss recovery、真实 WebGPU 和负向 WebGL 2
    policy 原子开放。
 9. 首发 graph compute texture 只表达完整 2D subresource，storage texture 仅 transient
-   write-only；跨帧 state 使用 renderer-owned `StorageBuffer`。内置 Forward feature 的
-   `sampledDepth` 仍关闭，但完整自定义 SRP 可显式组合 depth prepass、compute 与 Scene group-3
+   write-only；跨帧 state 使用 renderer-owned `StorageBuffer`。内置 Forward feature 已支持 portable
+   non-filtering depth sampling；完整自定义 SRP 仍可显式组合 depth prepass、compute 与 Scene group-3
    storage。
 
 这样扩展不会重写 SRP：factory requirements、renderer-local runtime、同步 record、graph

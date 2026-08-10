@@ -2774,7 +2774,7 @@ describe('Scriptable render pipeline', () => {
         }
     );
 
-    it('rejects sampled depth requirements until the public binding path supports them', () => {
+    it('accepts portable sampled-depth requirements', () => {
         const runtime = new CountingForwardFeatureRuntime();
         const feature: ForwardRenderPipelineFeature = {
             name: 'sampled-depth-feature',
@@ -2787,9 +2787,7 @@ describe('Scriptable render pipeline', () => {
                 return runtime;
             }
         };
-        expect(() => {
-            new ForwardRenderPipelineFactory({ features: [feature] });
-        }).toThrow(/sampledDepth is not implemented end to end/u);
+        expect(() => new ForwardRenderPipelineFactory({ features: [feature] })).not.toThrow();
     });
 
     it('rejects scene-color sampling before opaque rendering initializes it', () => {

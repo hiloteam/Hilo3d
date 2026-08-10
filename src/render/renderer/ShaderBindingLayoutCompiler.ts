@@ -46,6 +46,8 @@ export interface ShaderSampledBindingPlan {
     readonly textureBinding: number;
     readonly samplerBinding: number;
     readonly samplerKind: 'sampler' | 'comparison-sampler';
+    readonly sampleType: RHITextureSampleType;
+    readonly samplerType: 'filtering' | 'non-filtering' | 'comparison';
     readonly visibility: RHIShaderStageFlags;
 }
 
@@ -477,6 +479,8 @@ function sampledBindingPlan(binding: MutableSampledBinding): Readonly<ShaderSamp
         textureBinding: binding.textureBinding,
         samplerBinding: binding.samplerBinding,
         samplerKind: binding.samplerKind,
+        sampleType: binding.sampleType,
+        samplerType: binding.samplerType,
         visibility: binding.visibility
     });
 }

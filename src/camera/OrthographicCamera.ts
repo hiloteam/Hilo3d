@@ -105,6 +105,7 @@ class OrthographicCamera extends Camera {
             this.depthMode === 'reversed' ? far : near,
             this.depthMode === 'reversed' ? near : far
         );
+        this.updateJitteredProjectionMatrix();
     }
     override getGeometry(forceUpdate = false): Geometry {
         if (forceUpdate || !this._geometry || this._isGeometryDirty) {

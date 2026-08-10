@@ -98,6 +98,20 @@ ray；volume 根据折射方向修正光程，再用 Beer-Lambert attenuation �
 
 这些限制是显式的最低实现边界，不会通过 backend 私有 framebuffer 抓取绕过 Render Graph。
 
+## 内置 TemporalAA
+
+`TemporalAA` 是可选的 `after-opaque` feature。它先用内置材质的 `motion-vector` semantic
+pass 把 opaque/masked velocity 写入 single-sample `rg16float`，再用当前 sampled depth、上一帧
+`rgba16float` color history 与 `r16float` depth history 做原生分辨率 reprojection、depth
+disocclusion 和 3×3 neighborhood clamp。history 双缓冲只在有效 submission 后轮换；camera
+cut、resize、显式 transform invalidation 和 device
+recovery 会让下一帧重新初始化，失败帧保留上一份已提交 history 和 jitter index。
+
+Camera 同时维护 jittered raster projection 与 non-jittered CPU
+projection；frustum、picking、project/unproject 不读取 jitter。TAA
+resolve 只处理 opaque 结果，transparent/transmission 在它之后合成，Bloom 再消费完整线性 HDR 颜色。TAAU、动态分辨率和 reactive
+mask 不属于当前首版。
+
 ## 内置 Bloom
 
 `Bloom` 是 `after-transparent` forward feature，在线性 `rgba16float` scene color 上执行：
@@ -151,6 +165,7 @@ const stage = await Hilo3d.Stage.create({
     camera,
     container,
     renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
+        temporalAA: {},
         bloom: {
             threshold: 1,
             knee: 0.5,
@@ -168,8 +183,10 @@ const stage = await Hilo3d.Stage.create({
 ```
 
 该 factory 固定 attachment-zero scene color 为 `rgba16float`，默认启用 Bloom、Color Uber 和 opaque
-texture。需要自行组合时，也可以把 `Bloom`/`ColorUber` 作为 `ForwardRenderPipelineFactory.features`
-使用；调用方必须保证 Bloom 输入仍是线性 HDR 格式，并让 Color Uber 位于所有 HDR effect 之后。
+texture；`temporalAA` 需要显式提供配置启用。需要自行组合时，也可以把
+`TemporalAA`/`Bloom`/`ColorUber` 作为 `ForwardRenderPipelineFactory.features`
+使用；调用方必须保证 TemporalAA 位于 opaque 后和 transparent 前、Bloom 输入仍是线性 HDR 格式，并让 Color
+Uber 位于所有 HDR effect 之后。
 
 三个示例覆盖基础参数矩阵、直接 layered material API 和真实 glTF 资产路径：
 
@@ -193,7 +210,7 @@ reference，不替代应用在生产中提供经过正式卷积的 HDR IBL。
 
 ## 验证要求
 
-改动 PBR、Bloom、Color Uber 或 scene texture ABI 时至少需要：
+改动 PBR、TemporalAA、Bloom、Color Uber 或 scene texture ABI 时至少需要：
 
 - WebGL 2 GLSL compile/link；
 - Naga GLSL -> WGSL 转换；

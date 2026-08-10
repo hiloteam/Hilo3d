@@ -46,8 +46,14 @@ export interface CameraParameters extends NodeParameters {
 class Camera extends Node {
     static override readonly typeName: string = 'Camera';
     readonly viewMatrix = new Matrix4();
+    /** Stable non-jittered projection used by CPU culling, picking, and project/unproject. */
     readonly projectionMatrix = new Matrix4();
+    /** Raster projection with the current sub-pixel clip-space jitter applied. */
+    readonly jitteredProjectionMatrix = new Matrix4();
+    /** Stable non-jittered view-projection used by CPU visibility and interaction queries. */
     readonly viewProjectionMatrix = new Matrix4();
+    /** Raster view-projection with the current sub-pixel clip-space jitter applied. */
+    readonly jitteredViewProjectionMatrix = new Matrix4();
     protected readonly _frustum = new Frustum();
     protected _geometry: Geometry | null = null;
     override isCamera = true;
@@ -98,6 +104,8 @@ class Camera extends Node {
      */
     protected _needUpdateProjectionMatrix = true;
     protected _isGeometryDirty = false;
+    private projectionJitterXValue = 0;
+    private projectionJitterYValue = 0;
     /**
      * @param params - 创建对象的属性参数。可包含此类的所有属性。
      */
@@ -126,6 +134,40 @@ class Camera extends Node {
      */
     updateProjectionMatrix(): void {
         this.projectionMatrix.identity();
+        this.updateJitteredProjectionMatrix();
+    }
+    /** Horizontal raster jitter in normalized-device coordinates. */
+    get projectionJitterX(): number {
+        return this.projectionJitterXValue;
+    }
+    /** Vertical raster jitter in normalized-device coordinates. */
+    get projectionJitterY(): number {
+        return this.projectionJitterYValue;
+    }
+    /**
+     * Apply a sub-pixel raster offset without changing the stable CPU projection.
+     *
+     * Temporal render features use normalized-device coordinates, where one physical pixel is
+     * `2 / attachmentSize`. Culling, picking, project/unproject, and camera helpers continue to
+     * consume `projectionMatrix` and `viewProjectionMatrix`.
+     * @param x - Horizontal normalized-device offset.
+     * @param y - Vertical normalized-device offset.
+     * @returns this
+     */
+    setProjectionJitter(x: number, y: number): this {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            throw new RangeError('Camera projection jitter must contain finite values.');
+        }
+        if (x === this.projectionJitterXValue && y === this.projectionJitterYValue) return this;
+        this.projectionJitterXValue = x;
+        this.projectionJitterYValue = y;
+        this.updateJitteredProjectionMatrix();
+        this.jitteredViewProjectionMatrix.multiply(this.jitteredProjectionMatrix, this.viewMatrix);
+        return this;
+    }
+    /** Clear the raster jitter while preserving transform history. */
+    clearProjectionJitter(): this {
+        return this.setProjectionJitter(0, 0);
     }
     /**
      * 获取几何体，子类必须重写
@@ -146,8 +188,25 @@ class Camera extends Node {
         }
         this.updateViewMatrix();
         this.viewProjectionMatrix.multiply(this.projectionMatrix, this.viewMatrix);
+        this.jitteredViewProjectionMatrix.multiply(this.jitteredProjectionMatrix, this.viewMatrix);
         this.updateFrustum(this.viewProjectionMatrix);
         return this;
+    }
+    /** Rebuild the raster projection by translating clip coordinates before perspective divide. */
+    protected updateJitteredProjectionMatrix(): void {
+        const source = this.projectionMatrix.elements;
+        this.jitteredProjectionMatrix.copy(this.projectionMatrix);
+        const destination = this.jitteredProjectionMatrix.elements;
+        const x = this.projectionJitterXValue;
+        const y = this.projectionJitterYValue;
+        destination[0] = source[0] + x * source[3];
+        destination[4] = source[4] + x * source[7];
+        destination[8] = source[8] + x * source[11];
+        destination[12] = source[12] + x * source[15];
+        destination[1] = source[1] + y * source[3];
+        destination[5] = source[5] + y * source[7];
+        destination[9] = source[9] + y * source[11];
+        destination[13] = source[13] + y * source[15];
     }
     /**
      * 获取元素相对于当前Camera的矩阵

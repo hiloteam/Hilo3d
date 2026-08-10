@@ -15,6 +15,8 @@ layout(std140) uniform CameraBlock {
     vec4 u_previousRenderOrigin;
     vec4 u_historyParams;
     vec4 u_viewport;
+    mat4 u_nonJitteredProjectionMatrix;
+    mat4 u_nonJitteredViewProjectionMatrix;
 };
 
 #define u_cameraPosition u_cameraPositionNear.xyz

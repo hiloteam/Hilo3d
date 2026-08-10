@@ -95,14 +95,20 @@ describe('modern material model', () => {
         expect(Object.isFrozen(Hilo3d.MaterialTextureSlot)).toBe(true);
     });
 
-    it('only declares semantic passes that built-in shaders implement today', () => {
+    it('declares the implemented built-in semantic passes', () => {
         const material = new Hilo3d.BasicMaterial();
 
         expect(material.definition.getPass('forward')).not.toBeNull();
         expect(material.definition.getPass('depth-only')).not.toBeNull();
         expect(material.definition.getPass('shadow-caster')).not.toBeNull();
         expect(material.definition.getPass('picking')).not.toBeNull();
-        expect(material.definition.getPass('motion-vector')).toBeNull();
+        expect(material.definition.getPass('motion-vector')).toMatchObject({
+            fragmentOutput: 'motion-vector',
+            state: {
+                depthCompare: 'equal',
+                depthWrite: false
+            }
+        });
         expect(material.definition.getPass('material-attributes')).toBeNull();
     });
 });
