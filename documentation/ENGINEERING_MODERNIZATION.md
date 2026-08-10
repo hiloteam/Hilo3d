@@ -1058,10 +1058,11 @@ npm publish --tag next --access public --otp=<current-otp>
 `release:check` 是完整 `validate`
 的显式别名，仍执行全部单元、覆盖率、RHI、浏览器、视觉、文档、API 和包消费门禁。它应在 CI 通过的提交上、生成发布 OTP 之前完成。
 
-`npm publish` 的 `prepublishOnly` 只运行 `publish:check`：现代性门禁与 Hilo3D Skill 回归。随后
-`prepack` 从当前源码重新构建 JS、source
+`npm publish` 的 `prepublishOnly` 只运行 `publish:check`：现代性门禁。Hilo3D
+Skill 作为仓库承载但独立分发的内容，由 `validate` 与 `validate:ci` 中的 `test:skill`
+回归，不阻塞 npm 上传阶段。随后 `prepack` 从当前源码重新构建 JS、source
 map 和声明。这个轻量生命周期不会重复 coverage 或 Playwright 矩阵，也不替代
-`release:check`；它只防止上传阶段重新引入明显的源码、Skill 或构建错误。正式版使用对应的稳定 dist-tag，2.0.0
+`release:check`；它只防止上传阶段重新引入明显的源码或构建错误。正式版使用对应的稳定 dist-tag，2.0.0
 prerelease 使用 `next`，不得让 prerelease 覆盖 `latest`。
 
 ## 后续维护规则

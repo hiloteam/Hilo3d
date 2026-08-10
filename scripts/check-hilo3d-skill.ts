@@ -10,7 +10,7 @@ import ts from 'typescript';
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, '..');
-const skillRoot = join(repositoryRoot, '.agents', 'skills', 'build-hilo3d-games');
+const skillRoot = join(repositoryRoot, 'skills', 'hilo3d-game');
 const generator = join(skillRoot, 'scripts', 'create-hilo3d-game.mjs');
 const temporaryDirectories: string[] = [];
 
@@ -162,7 +162,7 @@ async function checkStructure(): Promise<void> {
     const markdownFiles = files.filter(file => file.endsWith('.md'));
     const skill = await readFile(join(skillRoot, 'SKILL.md'), 'utf8');
     assert(skill.split('\n').length < 500, 'SKILL.md must stay below 500 lines.');
-    assert.match(skill, /^---\nname: build-hilo3d-games\n/u);
+    assert.match(skill, /^---\nname: hilo3d-game\n/u);
 
     for (const markdownFile of markdownFiles) {
         const markdown = await readFile(markdownFile, 'utf8');
@@ -193,7 +193,7 @@ async function checkStructure(): Promise<void> {
     }
 
     const openAiMetadata = await readFile(join(skillRoot, 'agents', 'openai.yaml'), 'utf8');
-    assert(openAiMetadata.includes('$build-hilo3d-games'));
+    assert(openAiMetadata.includes('$hilo3d-game'));
 }
 
 async function checkDocumentationContracts(): Promise<void> {

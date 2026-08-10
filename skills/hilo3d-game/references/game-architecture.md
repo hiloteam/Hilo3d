@@ -36,6 +36,8 @@ testable, prefer an ownership-based split:
 
 ```text
 src/
+  app/
+    GameApp.ts
   game/
     simulation/
       state.ts
@@ -59,12 +61,15 @@ src/
     hud/
     menus/
     overlays/
+  diagnostics/
   main.ts
 ```
 
-Keep `game/` free of DOM and GPU dependencies where practical. Let `hilo/` adapt game snapshots to
-nodes and convert picked or browser input into game actions. Use `ui/` for either DOM surfaces or
-Hilo3D HUD composition; keep the ownership explicit when both exist.
+Let `app/` own loading, scheduling, resize, pause, restart, and teardown. Keep `game/` free of DOM
+and GPU dependencies where practical. Let `hilo/` adapt game snapshots to nodes and convert picked
+or browser input into game actions. Use `ui/` for either DOM surfaces or Hilo3D HUD composition;
+keep the ownership explicit when both exist. Keep optional debug overlays, performance probes, and
+backend diagnostics under `diagnostics/` rather than mixing them into gameplay modules.
 
 ## Keep render objects disposable
 

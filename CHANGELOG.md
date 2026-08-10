@@ -252,9 +252,10 @@
 
 ### Changes
 
-- Add a portable `build-hilo3d-games` Agent Skill with strict TypeScript/Vite starters for 2D, 3D,
-  and hybrid games, stable-first `2.0.0` dependency resolution, focused public-API references, and
-  repository checks that keep bundled examples and version-selection behavior valid.
+- Add a portable `hilo3d-game` Agent Skill under `skills/` with strict TypeScript/Vite starters for
+  2D, 3D, and hybrid games, stable-first `2.0.0` dependency resolution, focused public-API
+  references, and repository checks that keep bundled examples and version-selection behavior valid
+  without treating the skill as repository-scoped Codex guidance.
 - Separate the full release gate from npm's publish lifecycle: `npm run release:check` retains the
   complete validation matrix, while `prepublishOnly` performs only fast deterministic checks before
   `prepack` builds the tarball, avoiding repeated browser suites and expired publish OTPs.
