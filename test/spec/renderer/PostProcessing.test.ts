@@ -171,8 +171,8 @@ describe('built-in post-processing', () => {
             expect.arrayContaining([
                 { format: 'rgba16float', use: 'color-attachment' },
                 { format: 'rgba16float', use: 'filterable-sampled' },
-                { format: 'rg16float', use: 'color-attachment' },
-                { format: 'r16float', use: 'color-attachment' },
+                { format: 'r32float', use: 'color-attachment' },
+                { format: 'r32float', use: 'sampled' },
                 { format: 'rgba8unorm', use: 'color-attachment' }
             ])
         );
@@ -183,6 +183,8 @@ describe('built-in post-processing', () => {
         expect(() => new Bloom({ knee: 0 })).toThrow(/knee/u);
         expect(() => new TemporalAA({ historyWeight: 2 })).toThrow(/historyWeight/u);
         expect(() => new TemporalAA({ depthThreshold: -1 })).toThrow(/depthThreshold/u);
+        expect(() => new TemporalAA({ varianceGamma: 0 })).toThrow(/varianceGamma/u);
+        expect(() => new TemporalAA({ sharpness: 1 })).toThrow(/sharpness/u);
         expect(() => new ColorUber({ temperature: 2 }).create()).toThrow(/temperature/u);
     });
 
@@ -320,11 +322,28 @@ describe('built-in post-processing', () => {
             renderer.render(scene, camera);
             await renderer.waitForIdle();
             expect(observed.labels).toContain('TemporalAA initialize history');
+            expect(camera.projectionJitterX).toBe(0);
+            expect(camera.projectionJitterY).toBe(0);
 
             observed.labels.length = 0;
             renderer.render(scene, camera);
             await renderer.waitForIdle();
-            expect(observed.labels).toContain('TemporalAA resolve');
+            expect(observed.labels).toContain('TemporalAA production resolve');
+            expect(camera.projectionJitterX).toBe(0);
+            expect(camera.projectionJitterY).toBe(0);
+
+            observed.labels.length = 0;
+            camera.fov = 72;
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA initialize history');
+            expect(camera.projectionJitterX).toBe(0);
+            expect(camera.projectionJitterY).toBe(0);
+
+            observed.labels.length = 0;
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('TemporalAA production resolve');
 
             moving.x = 0.4;
             renderer.render(scene, camera);
@@ -403,7 +422,7 @@ describe('built-in post-processing', () => {
             observed.labels.length = 0;
             renderer.render(scene, camera);
             await renderer.waitForIdle();
-            expect(observed.labels).toContain('TemporalAA resolve');
+            expect(observed.labels).toContain('TemporalAA production resolve');
             observed.restore();
         }
     );

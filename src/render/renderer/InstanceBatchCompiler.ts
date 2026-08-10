@@ -73,6 +73,8 @@ export interface InstanceBatchCompilerDiagnostics {
     readonly resolvedInputCapacity: number;
     readonly maxInstanceCapacity: number;
     readonly storageAllocationCount: number;
+    /** Total inverse-transpose matrices recomputed since compiler creation. */
+    readonly normalMatrixRecomputeCount: number;
 }
 
 interface MutableDiagnostics {
@@ -82,6 +84,7 @@ interface MutableDiagnostics {
     resolvedInputCapacity: number;
     maxInstanceCapacity: number;
     storageAllocationCount: number;
+    normalMatrixRecomputeCount: number;
 }
 
 interface InstanceShape {
@@ -625,6 +628,8 @@ class BatchRecord {
     private previousModelScratch: Float32Array | null = null;
     private normalScratch: Float32Array | null = null;
     private historyScratch: Float32Array | null = null;
+    private readonly normalMatrixMeshes: Mesh[] = [];
+    private readonly normalMatrixVersions: number[] = [];
     private readonly normalMatrix3 = new Matrix3();
     private readonly normalMatrix4 = new Matrix4();
     private readonly webGLCurrentModel = new Float32Array(16);
@@ -849,7 +854,6 @@ class BatchRecord {
             );
             modelScratch.fill(0);
             previousModelScratch.fill(0);
-            normalScratch.fill(0);
             historyScratch.fill(0);
             for (let meshIndex = 0; meshIndex < meshes.length; meshIndex += 1) {
                 const mesh = requirePresent(meshes[meshIndex], 'instance mesh');
@@ -870,19 +874,29 @@ class BatchRecord {
                         previousModelScratch[matrixOffset + component] = value;
                     }
                 }
-                requireInvertibleWorldMatrix(mesh);
-                this.normalMatrix4.invert(mesh.worldMatrix).transpose();
-                const normal = this.normalMatrix4.elements;
-                for (let component = 0; component < 16; component += 1) {
-                    const value = requirePresent(normal[component], 'normal-matrix component');
-                    if (!Number.isFinite(value)) {
-                        throw new TypeError(
-                            `Mesh ${mesh.name || mesh.id} produced a non-finite normal matrix`
-                        );
+                if (
+                    this.normalMatrixMeshes[meshIndex] !== mesh ||
+                    this.normalMatrixVersions[meshIndex] !== mesh.worldMatrixVersion
+                ) {
+                    requireInvertibleWorldMatrix(mesh);
+                    this.normalMatrix4.invert(mesh.worldMatrix).transpose();
+                    const normal = this.normalMatrix4.elements;
+                    for (let component = 0; component < 16; component += 1) {
+                        const value = requirePresent(normal[component], 'normal-matrix component');
+                        if (!Number.isFinite(value)) {
+                            throw new TypeError(
+                                `Mesh ${mesh.name || mesh.id} produced a non-finite normal matrix`
+                            );
+                        }
+                        normalScratch[matrixOffset + component] = value;
                     }
-                    normalScratch[matrixOffset + component] = value;
+                    this.normalMatrixMeshes[meshIndex] = mesh;
+                    this.normalMatrixVersions[meshIndex] = mesh.worldMatrixVersion;
+                    this.diagnostics.normalMatrixRecomputeCount++;
                 }
             }
+            this.normalMatrixMeshes.length = meshes.length;
+            this.normalMatrixVersions.length = meshes.length;
             if (this.uniformBufferFloats === null) {
                 modelChanged = true;
                 normalChanged = true;
@@ -1065,6 +1079,8 @@ class BatchRecord {
         this.previousModelScratch = null;
         this.normalScratch = null;
         this.historyScratch = null;
+        this.normalMatrixMeshes.length = 0;
+        this.normalMatrixVersions.length = 0;
     }
 
     private classify(
@@ -1425,7 +1441,8 @@ export class InstanceBatchCompiler {
         planCapacity: 0,
         resolvedInputCapacity: 0,
         maxInstanceCapacity: 0,
-        storageAllocationCount: 0
+        storageAllocationCount: 0,
+        normalMatrixRecomputeCount: 0
     };
     readonly diagnostics: Readonly<InstanceBatchCompilerDiagnostics>;
 
@@ -1449,6 +1466,9 @@ export class InstanceBatchCompiler {
             },
             get storageAllocationCount() {
                 return state.storageAllocationCount;
+            },
+            get normalMatrixRecomputeCount() {
+                return state.normalMatrixRecomputeCount;
             }
         });
     }

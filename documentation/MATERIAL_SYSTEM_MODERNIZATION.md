@@ -121,15 +121,15 @@ const material = new Hilo3d.ShaderMaterial({
 
 Pipeline 通过 role 请求材质，而不是读取 `material.passes[]` 并让材质控制执行顺序。
 
-| Role                  | 当前内置支持 | 合同                                                                      |
-| --------------------- | ------------ | ------------------------------------------------------------------------- |
-| `forward`             | 是           | 普通 surface/unlit color 输出                                             |
-| `depth-only`          | 是           | 复用 deformation 与 coverage，无 color attachment                         |
-| `shadow-caster`       | 是           | 复用 deformation、coverage、cull 和 alpha cutoff                          |
-| `picking`             | 是           | 复用 geometry/coverage，输出稳定对象 ID                                   |
-| `motion-vector`       | 是           | opaque/masked 输出 single-sample `rg16float` current-to-previous velocity |
-| `material-attributes` | 保留类型     | 后续 GTAO/SSR/SSGI 工作包定义输出 ABI                                     |
-| `user:*`              | 自定义       | 只有自定义 Pipeline 显式请求才运行                                        |
+| Role                  | 当前内置支持 | 合同                                                                                          |
+| --------------------- | ------------ | --------------------------------------------------------------------------------------------- |
+| `forward`             | 是           | 普通 surface/unlit color 输出                                                                 |
+| `depth-only`          | 是           | 复用 deformation 与 coverage，无 color attachment                                             |
+| `shadow-caster`       | 是           | 复用 deformation、coverage、cull 和 alpha cutoff                                              |
+| `picking`             | 是           | 复用 geometry/coverage，输出稳定对象 ID                                                       |
+| `motion-vector`       | 是           | opaque/masked 输出 single-sample `rgba16float` UV velocity 与 previous/current log-view-depth |
+| `material-attributes` | 保留类型     | 后续 GTAO/SSR/SSGI 工作包定义输出 ABI                                                         |
+| `user:*`              | 自定义       | 只有自定义 Pipeline 显式请求才运行                                                            |
 
 [`MaterialCompiler.ts`](../src/material/MaterialCompiler.ts) 负责 role 解析、target
 contract 验证和稳定 variant key。fallback 只有三种：

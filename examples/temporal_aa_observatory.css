@@ -1,0 +1,204 @@
+:root {
+    color-scheme: dark;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+}
+
+body {
+    overflow: hidden;
+    background: #03050a;
+}
+
+#container,
+#container canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.temporalPanel {
+    position: fixed;
+    z-index: 4;
+    top: clamp(22px, 5vw, 70px);
+    left: clamp(20px, 5vw, 76px);
+    width: min(390px, calc(100vw - 40px));
+    padding: 28px 30px 24px;
+    border: 1px solid rgb(182 218 255 / 18%);
+    border-radius: 2px;
+    background: linear-gradient(145deg, rgb(4 8 17 / 83%), rgb(4 7 13 / 58%));
+    box-shadow:
+        0 28px 90px rgb(0 0 0 / 44%),
+        inset 0 1px rgb(255 255 255 / 5%);
+    backdrop-filter: blur(20px) saturate(120%);
+}
+
+.temporalPanel::before {
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    width: 82px;
+    height: 1px;
+    content: '';
+    background: #7ce8ff;
+    box-shadow: 0 0 20px #38cfff;
+}
+
+.temporalEyebrow,
+.temporalCaption span {
+    margin: 0;
+    color: #7ce8ff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.19em;
+    text-transform: uppercase;
+}
+
+.temporalPanel h1 {
+    margin: 15px 0 13px;
+    color: #f5f7ff;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(44px, 5.2vw, 72px);
+    font-weight: 400;
+    letter-spacing: -0.055em;
+    line-height: 0.86;
+}
+
+.temporalIntro {
+    max-width: 340px;
+    margin: 22px 0 26px;
+    color: rgb(220 231 255 / 68%);
+    font-size: 12px;
+    line-height: 1.75;
+}
+
+.temporalMetrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    margin: 0 0 22px;
+    background: rgb(157 199 255 / 12%);
+}
+
+.temporalMetrics div {
+    padding: 12px 10px;
+    background: rgb(4 8 16 / 88%);
+}
+
+.temporalMetrics dt {
+    color: rgb(186 205 235 / 44%);
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.temporalMetrics dd {
+    margin: 5px 0 0;
+    color: #eef4ff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+}
+
+.temporalActions {
+    display: flex;
+    gap: 9px;
+}
+
+.temporalActions button {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid rgb(151 205 255 / 20%);
+    border-radius: 999px;
+    color: rgb(231 240 255 / 82%);
+    background: rgb(28 55 86 / 23%);
+    font: inherit;
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+        border-color 160ms ease,
+        background 160ms ease,
+        color 160ms ease;
+}
+
+.temporalActions button:hover,
+.temporalActions button:focus-visible {
+    border-color: rgb(124 232 255 / 70%);
+    color: white;
+    background: rgb(29 108 144 / 28%);
+    outline: none;
+}
+
+.temporalActions button[aria-pressed='false'] {
+    color: #ffca82;
+}
+
+.temporalStatus {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 18px;
+    color: rgb(210 226 250 / 47%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.temporalPulse {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #7ce8ff;
+    box-shadow: 0 0 11px #34d9ff;
+}
+
+.temporalCaption {
+    position: fixed;
+    z-index: 4;
+    right: clamp(20px, 4vw, 62px);
+    bottom: clamp(20px, 4vw, 48px);
+    text-align: right;
+}
+
+.temporalCaption p {
+    margin: 8px 0 0;
+    color: rgb(220 230 250 / 48%);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+
+.temporalGrain {
+    position: fixed;
+    z-index: 3;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+    mix-blend-mode: soft-light;
+}
+
+@media (max-width: 720px) {
+    .temporalPanel {
+        top: 16px;
+        left: 16px;
+        width: min(330px, calc(100vw - 32px));
+        padding: 20px;
+    }
+
+    .temporalPanel h1 {
+        font-size: 43px;
+    }
+    .temporalIntro {
+        margin: 16px 0 18px;
+    }
+    .temporalCaption {
+        display: none;
+    }
+}

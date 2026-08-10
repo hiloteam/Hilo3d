@@ -18,7 +18,11 @@ import {
 } from '../rhi/core';
 import { assertRHIObjectOwnedBy } from '../rhi/core/RHIValidation';
 import type { MeshDrawProcessor } from './MeshDrawProcessor';
-import { MeshDrawListPlanner, type MeshDrawInstanceBatch } from './MeshDrawListPlanner';
+import {
+    isMeshDrawInstanceBatch,
+    MeshDrawListPlanner,
+    type MeshDrawListItem
+} from './MeshDrawListPlanner';
 import type { PreparedDraw } from './PreparedDraw';
 import type { RHIMeshDrawTargetDescriptor } from './RHIDescriptorMapping';
 import {
@@ -38,7 +42,7 @@ import { MainPassTemplate, SharedDrawPassParameters, TransparentPassTemplate } f
 const DEFAULT_CLEAR_COLOR: Readonly<RHIColor> = Object.freeze({ r: 0, g: 0, b: 0, a: 1 });
 const EMPTY_DRAWS: readonly PreparedDraw[] = Object.freeze([]);
 const EMPTY_MESHES: readonly Mesh[] = Object.freeze([]);
-const EMPTY_INSTANCE_BATCHES: readonly Readonly<MeshDrawInstanceBatch>[] = Object.freeze([]);
+const EMPTY_DRAW_ITEMS: readonly MeshDrawListItem[] = Object.freeze([]);
 const EMPTY_COPY_OPTIONS: Readonly<OffscreenColorAttachmentCopyOptions> = Object.freeze({});
 
 export interface OffscreenRenderTargetColorOperations {
@@ -122,9 +126,11 @@ interface NormalizedDrawInputs {
     transparentDraws: readonly PreparedDraw[];
     opaqueMeshes: readonly Mesh[];
     transparentMeshes: readonly Mesh[];
-    instancedBatches: readonly Readonly<MeshDrawInstanceBatch>[];
+    opaqueItems: readonly MeshDrawListItem[];
+    transparentItems: readonly MeshDrawListItem[];
     meshProcessor: MeshDrawProcessor | null;
     usesMeshes: boolean;
+    classified: boolean;
 }
 
 interface MutableMeshTargetDescriptor extends RHIMeshDrawTargetDescriptor {
@@ -208,7 +214,8 @@ function normalizeDrawInputs(
     const classified = options.classifiedMeshes;
     let opaqueMeshes = options.opaqueMeshes ?? options.meshes ?? EMPTY_MESHES;
     let transparentMeshes = options.transparentMeshes ?? EMPTY_MESHES;
-    let instancedBatches = EMPTY_INSTANCE_BATCHES;
+    let opaqueItems = EMPTY_DRAW_ITEMS;
+    let transparentItems = EMPTY_DRAW_ITEMS;
     if (classified === undefined) {
         planner.reset();
     } else {
@@ -220,15 +227,18 @@ function normalizeDrawInputs(
         );
         opaqueMeshes = plan.opaqueMeshes;
         transparentMeshes = plan.transparentMeshes;
-        instancedBatches = plan.instancedBatches;
+        opaqueItems = plan.opaqueItems;
+        transparentItems = plan.transparentItems;
     }
     result.opaqueDraws = options.opaqueDraws ?? options.draws ?? EMPTY_DRAWS;
     result.transparentDraws = options.transparentDraws ?? EMPTY_DRAWS;
     result.opaqueMeshes = opaqueMeshes;
     result.transparentMeshes = transparentMeshes;
-    result.instancedBatches = instancedBatches;
+    result.opaqueItems = opaqueItems;
+    result.transparentItems = transparentItems;
     result.meshProcessor = options.meshProcessor ?? null;
     result.usesMeshes = hasMeshInput;
+    result.classified = classified !== undefined;
     return result;
 }
 
@@ -396,9 +406,11 @@ export class OffscreenRenderTargetRenderer {
         transparentDraws: EMPTY_DRAWS,
         opaqueMeshes: EMPTY_MESHES,
         transparentMeshes: EMPTY_MESHES,
-        instancedBatches: EMPTY_INSTANCE_BATCHES,
+        opaqueItems: EMPTY_DRAW_ITEMS,
+        transparentItems: EMPTY_DRAW_ITEMS,
         meshProcessor: null,
-        usesMeshes: false
+        usesMeshes: false,
+        classified: false
     };
     readonly #meshColorFormats: (RHITextureFormat | null)[] = [];
     readonly #meshTarget: MutableMeshTargetDescriptor = {
@@ -533,14 +545,10 @@ export class OffscreenRenderTargetRenderer {
             multisampleAttachmentLifetime
         );
         const meshTarget = inputs.meshProcessor === null ? null : this.configureMeshTarget(target);
-        let hasTransparentInstanceBatch = false;
-        for (const batch of inputs.instancedBatches) {
-            if (!batch.transparent) continue;
-            hasTransparentInstanceBatch = true;
-            break;
-        }
         const hasTransparentPass = inputs.meshProcessor
-            ? inputs.transparentMeshes.length > 0 || hasTransparentInstanceBatch
+            ? inputs.classified
+                ? inputs.transparentItems.length > 0
+                : inputs.transparentMeshes.length > 0
             : inputs.transparentDraws.length > 0;
         const passes = this.acquireCompositionPassSet();
         if (inputs.meshProcessor !== null) {
@@ -562,20 +570,20 @@ export class OffscreenRenderTargetRenderer {
         );
         this.setFullTargetViewport(opaquePass, target);
         if (inputs.meshProcessor !== null && meshTarget !== null) {
-            for (const mesh of inputs.opaqueMeshes) {
-                const draw = inputs.meshProcessor.prepare(mesh, meshTarget);
-                if (meshFrameStarted) opaquePass.addDrawSnapshot(draw);
-                else opaquePass.addDraw(draw);
-            }
-            for (const batch of inputs.instancedBatches) {
-                if (batch.transparent) continue;
-                const draw = inputs.meshProcessor.prepareInstancedBatch(
-                    batch,
-                    batch.meshes,
-                    meshTarget
-                );
-                if (meshFrameStarted) opaquePass.addDrawSnapshot(draw);
-                else opaquePass.addDraw(draw);
+            if (inputs.classified) {
+                for (const item of inputs.opaqueItems) {
+                    const draw = isMeshDrawInstanceBatch(item)
+                        ? inputs.meshProcessor.prepareInstancedBatch(item, item.meshes, meshTarget)
+                        : inputs.meshProcessor.prepare(item, meshTarget);
+                    if (meshFrameStarted) opaquePass.addDrawSnapshot(draw);
+                    else opaquePass.addDraw(draw);
+                }
+            } else {
+                for (const mesh of inputs.opaqueMeshes) {
+                    const draw = inputs.meshProcessor.prepare(mesh, meshTarget);
+                    if (meshFrameStarted) opaquePass.addDrawSnapshot(draw);
+                    else opaquePass.addDraw(draw);
+                }
             }
         } else {
             for (const draw of inputs.opaqueDraws) opaquePass.addDraw(draw);
@@ -608,20 +616,24 @@ export class OffscreenRenderTargetRenderer {
             this.setFullTargetViewport(transparentPass, target);
             if (inputs.meshProcessor !== null && meshTarget !== null) {
                 inputs.meshProcessor.beginPass(context.camera, context.viewport);
-                for (const mesh of inputs.transparentMeshes) {
-                    const draw = inputs.meshProcessor.prepare(mesh, meshTarget);
-                    if (meshFrameStarted) transparentPass.addDrawSnapshot(draw);
-                    else transparentPass.addDraw(draw);
-                }
-                for (const batch of inputs.instancedBatches) {
-                    if (!batch.transparent) continue;
-                    const draw = inputs.meshProcessor.prepareInstancedBatch(
-                        batch,
-                        batch.meshes,
-                        meshTarget
-                    );
-                    if (meshFrameStarted) transparentPass.addDrawSnapshot(draw);
-                    else transparentPass.addDraw(draw);
+                if (inputs.classified) {
+                    for (const item of inputs.transparentItems) {
+                        const draw = isMeshDrawInstanceBatch(item)
+                            ? inputs.meshProcessor.prepareInstancedBatch(
+                                  item,
+                                  item.meshes,
+                                  meshTarget
+                              )
+                            : inputs.meshProcessor.prepare(item, meshTarget);
+                        if (meshFrameStarted) transparentPass.addDrawSnapshot(draw);
+                        else transparentPass.addDraw(draw);
+                    }
+                } else {
+                    for (const mesh of inputs.transparentMeshes) {
+                        const draw = inputs.meshProcessor.prepare(mesh, meshTarget);
+                        if (meshFrameStarted) transparentPass.addDrawSnapshot(draw);
+                        else transparentPass.addDraw(draw);
+                    }
                 }
             } else {
                 for (const draw of inputs.transparentDraws) transparentPass.addDraw(draw);
@@ -726,14 +738,10 @@ export class OffscreenRenderTargetRenderer {
             );
             const meshTarget =
                 inputs.meshProcessor === null ? null : this.configureMeshTarget(target);
-            let hasTransparentInstanceBatch = false;
-            for (const batch of inputs.instancedBatches) {
-                if (!batch.transparent) continue;
-                hasTransparentInstanceBatch = true;
-                break;
-            }
             const hasTransparentPass = inputs.meshProcessor
-                ? inputs.transparentMeshes.length > 0 || hasTransparentInstanceBatch
+                ? inputs.classified
+                    ? inputs.transparentItems.length > 0
+                    : inputs.transparentMeshes.length > 0
                 : inputs.transparentDraws.length > 0;
             const copyState: {
                 extractedStaging: RGBufferHandle | null;
@@ -758,18 +766,22 @@ export class OffscreenRenderTargetRenderer {
                 );
                 this.setFullTargetViewport(opaquePass, target);
                 if (inputs.meshProcessor !== null && meshTarget !== null) {
-                    for (const mesh of inputs.opaqueMeshes) {
-                        opaquePass.addDraw(inputs.meshProcessor.prepare(mesh, meshTarget));
-                    }
-                    for (const batch of inputs.instancedBatches) {
-                        if (batch.transparent) continue;
-                        opaquePass.addDraw(
-                            inputs.meshProcessor.prepareInstancedBatch(
-                                batch,
-                                batch.meshes,
-                                meshTarget
-                            )
-                        );
+                    if (inputs.classified) {
+                        for (const item of inputs.opaqueItems) {
+                            opaquePass.addDraw(
+                                isMeshDrawInstanceBatch(item)
+                                    ? inputs.meshProcessor.prepareInstancedBatch(
+                                          item,
+                                          item.meshes,
+                                          meshTarget
+                                      )
+                                    : inputs.meshProcessor.prepare(item, meshTarget)
+                            );
+                        }
+                    } else {
+                        for (const mesh of inputs.opaqueMeshes) {
+                            opaquePass.addDraw(inputs.meshProcessor.prepare(mesh, meshTarget));
+                        }
                     }
                 } else {
                     for (const draw of inputs.opaqueDraws) opaquePass.addDraw(draw);
@@ -802,18 +814,24 @@ export class OffscreenRenderTargetRenderer {
                     this.setFullTargetViewport(transparentPass, target);
                     if (inputs.meshProcessor !== null && meshTarget !== null) {
                         inputs.meshProcessor.beginPass(context.camera, context.viewport);
-                        for (const mesh of inputs.transparentMeshes) {
-                            transparentPass.addDraw(inputs.meshProcessor.prepare(mesh, meshTarget));
-                        }
-                        for (const batch of inputs.instancedBatches) {
-                            if (!batch.transparent) continue;
-                            transparentPass.addDraw(
-                                inputs.meshProcessor.prepareInstancedBatch(
-                                    batch,
-                                    batch.meshes,
-                                    meshTarget
-                                )
-                            );
+                        if (inputs.classified) {
+                            for (const item of inputs.transparentItems) {
+                                transparentPass.addDraw(
+                                    isMeshDrawInstanceBatch(item)
+                                        ? inputs.meshProcessor.prepareInstancedBatch(
+                                              item,
+                                              item.meshes,
+                                              meshTarget
+                                          )
+                                        : inputs.meshProcessor.prepare(item, meshTarget)
+                                );
+                            }
+                        } else {
+                            for (const mesh of inputs.transparentMeshes) {
+                                transparentPass.addDraw(
+                                    inputs.meshProcessor.prepare(mesh, meshTarget)
+                                );
+                            }
                         }
                     } else {
                         for (const draw of inputs.transparentDraws) {

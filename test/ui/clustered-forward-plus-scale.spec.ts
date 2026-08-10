@@ -43,10 +43,14 @@ test('keeps the 100k static + 10k dynamic GPU Scene scale contract GPU-only', as
         recoveredFallbackObjectCount: 0
     });
     expect(result?.visibleObjectCount).toBeGreaterThan(0);
-    expect(result?.frameMilliseconds).toHaveLength(5);
-    expect(result?.frameMilliseconds.every(value => Number.isFinite(value) && value > 0)).toBe(
-        true
-    );
+    expect(result?.cpuFrameRecordMilliseconds).toHaveLength(5);
+    expect(
+        result?.cpuFrameRecordMilliseconds.every(value => Number.isFinite(value) && value >= 0)
+    ).toBe(true);
+    expect(result?.gpuBatchCompletionMilliseconds).toHaveLength(2);
+    expect(
+        result?.gpuBatchCompletionMilliseconds.every(value => Number.isFinite(value) && value > 0)
+    ).toBe(true);
 });
 
 declare global {
@@ -59,7 +63,8 @@ declare global {
             readonly visibleObjectCount: number;
             readonly clusterOverflowCount: number;
             readonly hiZValid: boolean;
-            readonly frameMilliseconds: readonly number[];
+            readonly cpuFrameRecordMilliseconds: readonly number[];
+            readonly gpuBatchCompletionMilliseconds: readonly number[];
             readonly recoveryDeviceChanged: boolean;
             readonly recoveredObjectCount: number;
             readonly recoveredFallbackObjectCount: number;

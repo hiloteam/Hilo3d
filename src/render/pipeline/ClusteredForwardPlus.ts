@@ -25,6 +25,7 @@ import Shader from '../../shader/Shader';
 import pbrBrdfSource from '../../shader/chunk/pbr_brdf.glsl';
 import pbrSurfaceSource from '../../shader/chunk/pbr_surface.glsl';
 import encodingSource from '../../shader/method/encoding.glsl';
+import portableCoordinatesSource from '../../shader/method/portableCoordinates.glsl';
 import type Texture from '../../texture/Texture';
 import {
     CLAMP_TO_EDGE,
@@ -59,7 +60,8 @@ import SharedMaterialRecordDatabase from '../renderer/SharedMaterialRecordDataba
 import {
     packPBRGPUMaterialRecord,
     PBR_GPU_MATERIAL_RECORD_BYTES,
-    PBR_GPU_MATERIAL_RECORD_LAYOUT
+    PBR_GPU_MATERIAL_RECORD_LAYOUT,
+    type PBR_GPU_MATERIAL_TEXTURE_SLOTS
 } from '../renderer/PBRGPUMaterialRecord';
 import type { StorageBuffer } from '../StorageBuffer';
 import type {
@@ -75,11 +77,11 @@ import type {
     RendererListHandle
 } from './RendererList';
 import { RenderPassParameterPool } from './RenderPassParameterPool';
+import { snapshotRenderPipelineRequirements } from './RenderPipelineFactory';
 import {
     ComputeRenderPass,
     FullscreenRenderPass,
     GPUDrivenRenderPass,
-    PresentRenderPass,
     SceneRenderPass,
     TextureCopyPass,
     type ComputeRenderPassParameters,
@@ -101,17 +103,36 @@ import type {
     ScriptableRenderPassBuilder,
     ScriptableRenderPassContext
 } from './ScriptableRenderGraph';
+import {
+    TEMPORAL_AA_REQUIREMENTS,
+    TEMPORAL_MOTION_CLEAR,
+    TEMPORAL_MOTION_DESCRIPTOR,
+    TemporalResolveController,
+    snapshotTemporalAAOptions,
+    type TemporalAAOptions,
+    type TemporalAASettings
+} from '../postprocessing/TemporalAA';
 
 const OBJECT_RECORD_BYTES = 208;
 const LIGHT_RECORD_BYTES = 64;
 const BUCKET_RECORD_BYTES = 48;
-const FRAME_RECORD_BYTES = 496;
+const FRAME_RECORD_BYTES = 512;
 const INDIRECT_ARGUMENT_BYTES = 20;
+// The draw-local visible-range base is exposed through a statically aligned storage binding.
+// WebGPU's default/minimum storage offset alignment is at most 256 bytes, so one record per
+// aligned stride is portable without requesting the optional indirect-first-instance feature.
+const BUCKET_OFFSET_STRIDE_BYTES = 256;
+const BUCKET_OFFSET_STRIDE_WORDS = BUCKET_OFFSET_STRIDE_BYTES / 4;
 const STATS_BYTES = 16;
-const HIZ_LEVEL_COUNT = 6;
-const MAX_HIZ_OCCLUSION_DIAMETER = 1 << HIZ_LEVEL_COUNT;
+// WebGPU guarantees at least an 8192-wide 2D texture. Factories specialize the shader and graph
+// to the exact configured viewport pyramid while this remains the portable upper bound.
+const MAX_HIZ_LEVEL_COUNT = 13;
+const MAX_HIZ_OCCLUSION_DIAMETER = 1 << MAX_HIZ_LEVEL_COUNT;
 const OBJECT_ACTIVE_FLAG = 1;
 const OBJECT_FRUSTUM_CULLING_FLAG = 2;
+const OBJECT_HIZ_STABLE_FLAG = 4;
+const OBJECT_MOTION_HISTORY_FLAG = 8;
+const OBJECT_MOTION_CHANGED_FLAG = 16;
 const CULL_WORKGROUP_SIZE = 64;
 const PREFIX_WORKGROUP_SIZE = 256;
 const DEFAULT_MAX_OBJECTS = 16_384;
@@ -179,6 +200,8 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly bloomStrength?: number;
     /** Exposure multiplier applied before the ACES display transform. Defaults to 1. */
     readonly exposure?: number;
+    /** Integrated native-resolution temporal AA. Disabled by default; `false` explicitly disables it. */
+    readonly temporalAA?: Readonly<TemporalAAOptions> | false;
 }
 
 /** On-demand GPU counters plus current CPU database occupancy. */
@@ -229,8 +252,10 @@ interface NormalizedOptions {
     readonly maxViewportWidth: number;
     readonly maxViewportHeight: number;
     readonly hiZ: boolean;
+    readonly hiZLevelCount: number;
     readonly bloomStrength: number;
     readonly exposure: number;
+    readonly temporalAA: TemporalAASettings | null;
 }
 
 interface ClusterCapacityPlan {
@@ -294,6 +319,7 @@ interface PBRTextureBinding {
     readonly shaderName: string;
     readonly texture: Texture<unknown>;
     readonly uv: 0 | 1;
+    readonly slotIndex: number;
 }
 
 interface PBRMaterialVariant {
@@ -302,7 +328,6 @@ interface PBRMaterialVariant {
     readonly usesUV0: boolean;
     readonly usesUV1: boolean;
     readonly normalUV: 0 | 1 | null;
-    readonly gammaCorrection: boolean;
     readonly occlusionInMetallicRoughness: boolean;
 }
 
@@ -315,8 +340,26 @@ interface GPUSceneObjectRecord {
     committedWorldVersion: number;
     pendingFrustumTest: boolean;
     committedFrustumTest: boolean;
+    pendingBoundsRevision: number;
+    committedBoundsRevision: number;
+    pendingOcclusionStable: boolean;
+    committedOcclusionStable: boolean;
+    pendingMotionChanged: boolean;
+    committedMotionChanged: boolean;
+    pendingMotionHistoryValid: boolean;
+    committedMotionHistoryValid: boolean;
+    pendingHistoryRevision: number;
+    committedHistoryRevision: number;
+    committedSubmission: number;
     readonly committedMatrix: Float32Array;
     readonly pendingMatrix: Float32Array;
+}
+
+interface LogicalBucketBounds {
+    readonly center: Vector3;
+    radius: number;
+    revision: number;
+    readonly positionRevisions: number[];
 }
 
 function positiveInteger(value: unknown, name: string): number {
@@ -446,32 +489,57 @@ function requireBucketPassState(
 const PBR_TEXTURE_ROLES: readonly Readonly<{
     role: PBRTextureRole;
     shaderName: string;
+    slotName: (typeof PBR_GPU_MATERIAL_TEXTURE_SLOTS)[number];
+    slotIndex: number;
 }>[] = Object.freeze([
-    Object.freeze({ role: 'baseColorMap', shaderName: 'u_baseColorMap' }),
-    Object.freeze({ role: 'metallicMap', shaderName: 'u_metallicMap' }),
-    Object.freeze({ role: 'roughnessMap', shaderName: 'u_roughnessMap' }),
-    Object.freeze({ role: 'metallicRoughnessMap', shaderName: 'u_metallicRoughnessMap' }),
-    Object.freeze({ role: 'occlusionMap', shaderName: 'u_occlusionMap' }),
-    Object.freeze({ role: 'emission', shaderName: 'u_emission' }),
-    Object.freeze({ role: 'normalMap', shaderName: 'u_normalMap' })
+    Object.freeze({
+        role: 'baseColorMap',
+        shaderName: 'u_baseColorMap',
+        slotName: 'baseColor',
+        slotIndex: 0
+    }),
+    Object.freeze({
+        role: 'metallicMap',
+        shaderName: 'u_metallicMap',
+        slotName: 'metallic',
+        slotIndex: 1
+    }),
+    Object.freeze({
+        role: 'roughnessMap',
+        shaderName: 'u_roughnessMap',
+        slotName: 'roughness',
+        slotIndex: 2
+    }),
+    Object.freeze({
+        role: 'metallicRoughnessMap',
+        shaderName: 'u_metallicRoughnessMap',
+        slotName: 'metallicRoughness',
+        slotIndex: 3
+    }),
+    Object.freeze({
+        role: 'occlusionMap',
+        shaderName: 'u_occlusionMap',
+        slotName: 'occlusion',
+        slotIndex: 4
+    }),
+    Object.freeze({
+        role: 'emission',
+        shaderName: 'u_emission',
+        slotName: 'emission',
+        slotIndex: 5
+    }),
+    Object.freeze({
+        role: 'normalMap',
+        shaderName: 'u_normalMap',
+        slotName: 'normal',
+        slotIndex: 6
+    })
 ]);
 
 function materialTexture(material: PBRMaterial, role: PBRTextureRole): Texture<unknown> | null {
-    const slotName =
-        role === 'baseColorMap'
-            ? 'baseColor'
-            : role === 'metallicMap'
-              ? 'metallic'
-              : role === 'roughnessMap'
-                ? 'roughness'
-                : role === 'metallicRoughnessMap'
-                  ? 'metallicRoughness'
-                  : role === 'occlusionMap'
-                    ? 'occlusion'
-                    : role === 'normalMap'
-                      ? 'normal'
-                      : 'emission';
-    return material.getTextureSlot(slotName)?.texture ?? null;
+    const definition = PBR_TEXTURE_ROLES.find(candidate => candidate.role === role);
+    if (definition === undefined) throw new Error(`Unknown clustered PBR texture role ${role}`);
+    return material.getTextureSlot(definition.slotName)?.texture ?? null;
 }
 
 function pbrMaterialVariant(material: PBRMaterial): Readonly<PBRMaterialVariant> {
@@ -482,21 +550,7 @@ function pbrMaterialVariant(material: PBRMaterial): Readonly<PBRMaterialVariant>
     for (const definition of PBR_TEXTURE_ROLES) {
         const texture = materialTexture(material, definition.role);
         if (texture === null) continue;
-        const slotName =
-            definition.role === 'baseColorMap'
-                ? 'baseColor'
-                : definition.role === 'metallicMap'
-                  ? 'metallic'
-                  : definition.role === 'roughnessMap'
-                    ? 'roughness'
-                    : definition.role === 'metallicRoughnessMap'
-                      ? 'metallicRoughness'
-                      : definition.role === 'occlusionMap'
-                        ? 'occlusion'
-                        : definition.role === 'normalMap'
-                          ? 'normal'
-                          : 'emission';
-        const uv = material.getTextureSlot(slotName)?.uvSet ?? 0;
+        const uv = material.getTextureSlot(definition.slotName)?.uvSet ?? 0;
         usesUV0 ||= uv === 0;
         usesUV1 ||= uv === 1;
         if (definition.role === 'normalMap') normalUV = uv;
@@ -505,15 +559,14 @@ function pbrMaterialVariant(material: PBRMaterial): Readonly<PBRMaterialVariant>
                 role: definition.role,
                 shaderName: definition.shaderName,
                 texture,
-                uv
+                uv,
+                slotIndex: definition.slotIndex
             })
         );
     }
-    const gammaCorrection = material.getTextureSlot('baseColor')?.encoding === 'srgb';
     const occlusionInMetallicRoughness = material.isOcclusionInMetallicRoughnessMap;
     return Object.freeze({
         key: [
-            gammaCorrection ? 'gamma' : 'linear',
             occlusionInMetallicRoughness ? 'mrao' : 'separate-ao',
             ...textures.map(binding => `${binding.role}:${String(binding.uv)}`)
         ].join('|'),
@@ -521,7 +574,6 @@ function pbrMaterialVariant(material: PBRMaterial): Readonly<PBRMaterialVariant>
         usesUV0,
         usesUV1,
         normalUV,
-        gammaCorrection,
         occlusionInMetallicRoughness
     });
 }
@@ -638,14 +690,19 @@ function bufferRequirementPlan(
         safeProduct(
             'GPU Scene visible database size',
             visibleBucketCapacity(options.maxObjects),
-            physicalCount,
             4
+        ),
+        safeProduct('GPU Scene selected-bucket database size', options.maxObjects, 4),
+        safeProduct('GPU Scene bucket-cursor database size', physicalCount, 4),
+        safeProduct(
+            'GPU Scene bucket-offset database size',
+            physicalCount,
+            BUCKET_OFFSET_STRIDE_BYTES
         ),
         safeProduct('GPU Scene indirect database size', physicalCount, INDIRECT_ARGUMENT_BYTES),
         safeProduct('Clustered Forward+ tile-depth database size', capacity.maxTiles, 8),
         safeProduct('Clustered Forward+ cluster-count database size', capacity.maxClusters, 4),
         safeProduct('Clustered Forward+ cluster-grid database size', capacity.maxClusters, 8),
-        safeProduct('Clustered Forward+ cluster-cursor database size', capacity.maxClusters, 4),
         safeProduct('Clustered Forward+ cluster-block database size', capacity.maxClusterBlocks, 4),
         safeProduct('Clustered Forward+ light-index database size', options.maxLightIndices, 4),
         STATS_BYTES
@@ -788,6 +845,19 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         input.maxViewportHeight ?? DEFAULT_MAX_VIEWPORT_HEIGHT,
         'Clustered Forward+ maxViewportHeight'
     );
+    if (input.hiZ !== undefined && typeof input.hiZ !== 'boolean') {
+        throw new TypeError('Clustered Forward+ hiZ must be a boolean');
+    }
+    const hiZ = input.hiZ ?? true;
+    if (
+        hiZ &&
+        (maxViewportWidth > MAX_HIZ_OCCLUSION_DIAMETER ||
+            maxViewportHeight > MAX_HIZ_OCCLUSION_DIAMETER)
+    ) {
+        throw new RangeError(
+            `Clustered Forward+ maximum viewport cannot exceed ${String(MAX_HIZ_OCCLUSION_DIAMETER)} pixels`
+        );
+    }
     const tileSize = positiveInteger(
         input.tileSize ?? DEFAULT_TILE_SIZE,
         'Clustered Forward+ tileSize'
@@ -800,9 +870,10 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         'Clustered Forward+ zSlices'
     );
     if (zSlices > 64) throw new RangeError('Clustered Forward+ zSlices cannot exceed 64');
-    if (input.hiZ !== undefined && typeof input.hiZ !== 'boolean') {
-        throw new TypeError('Clustered Forward+ hiZ must be a boolean');
-    }
+    const temporalAA =
+        input.temporalAA === undefined || input.temporalAA === false
+            ? null
+            : snapshotTemporalAAOptions(input.temporalAA);
     return Object.freeze({
         buckets: Object.freeze(buckets),
         maxObjects: positiveInteger(
@@ -825,12 +896,16 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         zSlices,
         maxViewportWidth,
         maxViewportHeight,
-        hiZ: input.hiZ ?? true,
+        hiZ,
+        hiZLevelCount: hiZ
+            ? Math.max(1, Math.ceil(Math.log2(Math.max(maxViewportWidth, maxViewportHeight))))
+            : 0,
         bloomStrength: finiteNonNegative(
             input.bloomStrength ?? 0.7,
             'Clustered Forward+ bloomStrength'
         ),
-        exposure: finitePositive(input.exposure ?? 1, 'Clustered Forward+ exposure')
+        exposure: finitePositive(input.exposure ?? 1, 'Clustered Forward+ exposure'),
+        temporalAA
     });
 }
 
@@ -852,6 +927,7 @@ struct FrameData {
     cluster: vec4<u32>,
     counts: vec4<u32>,
     budgets: vec4<u32>,
+    directional: vec4<u32>,
     ambient: vec4<f32>,
 };
 struct ObjectRecord {
@@ -891,34 +967,39 @@ fn selectPhysicalBucket(bucket: BucketRecord, radiusPixels: f32) -> u32 {
 }
 `;
 
-function gpuSceneCullShader(withHiZ: boolean): ComputeShader {
+function gpuSceneCullShader(hiZLevelCount: number): ComputeShader {
+    const withHiZ = hiZLevelCount > 0;
+    const maxHiZOcclusionDiameter = 2 ** hiZLevelCount;
     const textureDeclarations = withHiZ
         ? Array.from(
-              { length: HIZ_LEVEL_COUNT },
+              { length: hiZLevelCount },
               (_unused, index) =>
                   `@group(0) @binding(${String(6 + index)}) var previousHiZ${String(index)}: texture_2d<f32>;`
           ).join('\n')
         : '';
+    const dimensionCases = Array.from(
+        { length: Math.max(0, hiZLevelCount - 1) },
+        (_unused, index) =>
+            `        case ${String(index)}u: { return textureDimensions(previousHiZ${String(index)}); }`
+    ).join('\n');
+    const loadCases = Array.from(
+        { length: Math.max(0, hiZLevelCount - 1) },
+        (_unused, index) =>
+            `        case ${String(index)}u: { return textureLoad(previousHiZ${String(index)}, pixel, 0).x; }`
+    ).join('\n');
+    const lastHiZLevel = Math.max(0, hiZLevelCount - 1);
     const textureSample = withHiZ
         ? `
 fn hiZDimensions(level: u32) -> vec2<u32> {
     switch level {
-        case 0u: { return textureDimensions(previousHiZ0); }
-        case 1u: { return textureDimensions(previousHiZ1); }
-        case 2u: { return textureDimensions(previousHiZ2); }
-        case 3u: { return textureDimensions(previousHiZ3); }
-        case 4u: { return textureDimensions(previousHiZ4); }
-        default: { return textureDimensions(previousHiZ5); }
+${dimensionCases}
+        default: { return textureDimensions(previousHiZ${String(lastHiZLevel)}); }
     }
 }
 fn hiZLoad(level: u32, pixel: vec2<i32>) -> f32 {
     switch level {
-        case 0u: { return textureLoad(previousHiZ0, pixel, 0).x; }
-        case 1u: { return textureLoad(previousHiZ1, pixel, 0).x; }
-        case 2u: { return textureLoad(previousHiZ2, pixel, 0).x; }
-        case 3u: { return textureLoad(previousHiZ3, pixel, 0).x; }
-        case 4u: { return textureLoad(previousHiZ4, pixel, 0).x; }
-        default: { return textureLoad(previousHiZ5, pixel, 0).x; }
+${loadCases}
+        default: { return textureLoad(previousHiZ${String(lastHiZLevel)}, pixel, 0).x; }
     }
 }
 fn depthFromDistance(depthParameters: vec4<f32>, distance: f32) -> f32 {
@@ -931,10 +1012,9 @@ fn depthFromDistance(depthParameters: vec4<f32>, distance: f32) -> f32 {
 fn occludedByPreviousHiZ(
     frame: FrameData,
     previousCenter: vec3<f32>,
-    radius: f32,
-    motion: f32
+    radius: f32
 ) -> bool {
-    if (frame.budgets.z == 0u || motion > radius * 0.25 || radius <= 0.0) { return false; }
+    if (frame.budgets.z == 0u || radius <= 0.0) { return false; }
     let viewCenter = frame.previousView * vec4<f32>(previousCenter, 1.0);
     let viewDepth = max(-viewCenter.z, frame.previousDepth.x);
     let nearestViewDepth = max(viewDepth - radius, frame.previousDepth.x);
@@ -958,8 +1038,8 @@ fn occludedByPreviousHiZ(
     maximumUv = clamp(maximumUv, vec2<f32>(0.0), vec2<f32>(0.999999));
     let extentPixels = max((maximumUv - minimumUv) * frame.viewport.zw, vec2<f32>(1.0));
     let diameter = max(extentPixels.x, extentPixels.y);
-    if (diameter > ${String(MAX_HIZ_OCCLUSION_DIAMETER)}.0) { return false; }
-    let level = u32(clamp(ceil(log2(diameter)) - 1.0, 0.0, ${String(HIZ_LEVEL_COUNT - 1)}.0));
+    if (diameter > ${String(maxHiZOcclusionDiameter)}.0) { return false; }
+    let level = u32(clamp(ceil(log2(diameter)) - 1.0, 0.0, ${String(lastHiZLevel)}.0));
     let dimensions = hiZDimensions(level);
     let nearestDepth = depthFromDistance(frame.previousDepth, nearestViewDepth);
     var hidden = true;
@@ -983,8 +1063,7 @@ fn occludedByPreviousHiZ(
 fn occludedByPreviousHiZ(
     frame: FrameData,
     previousCenter: vec3<f32>,
-    radius: f32,
-    motion: f32
+    radius: f32
 ) -> bool {
     return false;
 }`;
@@ -996,7 +1075,7 @@ fn occludedByPreviousHiZ(
 @group(0) @binding(0) var<storage, read> frameData: FrameData;
 @group(0) @binding(1) var<storage, read> objects: array<ObjectRecord>;
 @group(0) @binding(2) var<storage, read> buckets: array<BucketRecord>;
-@group(0) @binding(3) var<storage, read_write> visibleIndices: array<u32>;
+@group(0) @binding(3) var<storage, read_write> selectedPhysicalBuckets: array<u32>;
 @group(0) @binding(4) var<storage, read_write> indirectArguments: array<atomic<u32>>;
 @group(0) @binding(5) var<storage, read_write> cullStats: array<atomic<u32>>;
 ${textureDeclarations}
@@ -1004,6 +1083,7 @@ ${textureSample}
 @compute @workgroup_size(${String(CULL_WORKGROUP_SIZE)})
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= frameData.counts.x || id.x >= frameData.budgets.x) { return; }
+    selectedPhysicalBuckets[id.x] = 0xffffffffu;
     let object = objects[id.x];
     let objectFlags = object.metadata.z;
     if ((objectFlags & ${String(OBJECT_ACTIVE_FLAG)}u) == 0u || (object.metadata.y & frameData.budgets.w) == 0u) { return; }
@@ -1025,8 +1105,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         if (any(sidePlaneDistance > sidePlaneRadius)) { return; }
         if (viewDepth + radius < frameData.depth.x || viewDepth - radius > frameData.depth.y) { return; }
     }
-    let motion = distance(center, previousCenter) + abs(radius - previousRadius);
-    if (occludedByPreviousHiZ(frameData, previousCenter, previousRadius, motion)) {
+    if (
+        (objectFlags & ${String(OBJECT_HIZ_STABLE_FLAG)}u) != 0u &&
+        occludedByPreviousHiZ(frameData, previousCenter, previousRadius)
+    ) {
         _ = atomicAdd(&cullStats[1], 1u);
         return;
     }
@@ -1039,26 +1121,22 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (physicalBucket != buckets[object.metadata.x].indices0.x) {
         _ = atomicAdd(&cullStats[2], 1u);
     }
-    let localIndex = atomicAdd(&indirectArguments[physicalBucket * 5u + 1u], 1u);
-    if (localIndex >= frameData.budgets.x) {
-        _ = atomicAdd(&cullStats[3], 1u);
-        return;
-    }
-    visibleIndices[physicalBucket * frameData.budgets.x + localIndex] = id.x;
+    _ = atomicAdd(&indirectArguments[physicalBucket * 5u + 1u], 1u);
+    selectedPhysicalBuckets[id.x] = physicalBucket;
     _ = atomicAdd(&cullStats[0], 1u);
 }`,
         workgroupSize: [CULL_WORKGROUP_SIZE],
-        bindings: gpuSceneCullBindings(withHiZ)
+        bindings: gpuSceneCullBindings(hiZLevelCount)
     });
 }
 
-function gpuSceneCullBindings(withHiZ: boolean): readonly ComputeShaderBinding[] {
+function gpuSceneCullBindings(hiZLevelCount: number): readonly ComputeShaderBinding[] {
     const bindings: ComputeShaderBinding[] = [
         { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
         { name: 'objects', group: 0, binding: 1, kind: 'read-only-storage-buffer' },
         { name: 'buckets', group: 0, binding: 2, kind: 'read-only-storage-buffer' },
         {
-            name: 'visibleIndices',
+            name: 'selectedPhysicalBuckets',
             group: 0,
             binding: 3,
             kind: 'storage-buffer',
@@ -1079,8 +1157,8 @@ function gpuSceneCullBindings(withHiZ: boolean): readonly ComputeShaderBinding[]
             access: 'read-write'
         }
     ];
-    if (withHiZ) {
-        for (let index = 0; index < HIZ_LEVEL_COUNT; index += 1) {
+    if (hiZLevelCount > 0) {
+        for (let index = 0; index < hiZLevelCount; index += 1) {
             bindings.push({
                 name: `previousHiZ${String(index)}`,
                 group: 0,
@@ -1093,9 +1171,127 @@ function gpuSceneCullBindings(withHiZ: boolean): readonly ComputeShaderBinding[]
     return Object.freeze(bindings);
 }
 
-const GPU_SCENE_CULL_PASS = computePass(gpuSceneCullShader(false));
+const GPU_SCENE_CULL_PASS = computePass(gpuSceneCullShader(0));
 
-const GPU_SCENE_HIZ_CULL_PASS = computePass(gpuSceneCullShader(true));
+const GPU_SCENE_BUCKET_PREFIX_PASS = computePass(
+    new ComputeShader({
+        label: 'GPU Scene visible bucket prefix',
+        source: `
+${FRAME_WGSL}
+@group(0) @binding(0) var<storage, read> frameData: FrameData;
+@group(0) @binding(1) var<storage, read_write> indirectArguments: array<atomic<u32>>;
+@group(0) @binding(2) var<storage, read_write> bucketCursors: array<atomic<u32>>;
+@group(0) @binding(3) var<storage, read_write> bucketOffsets: array<u32>;
+@compute @workgroup_size(1)
+fn main() {
+    var offset = 0u;
+    for (var bucket = 0u; bucket < frameData.counts.y; bucket += 1u) {
+        let count = atomicLoad(&indirectArguments[bucket * 5u + 1u]);
+        bucketOffsets[bucket * ${String(BUCKET_OFFSET_STRIDE_WORDS)}u] = offset;
+        atomicStore(&indirectArguments[bucket * 5u + 4u], 0u);
+        atomicStore(&bucketCursors[bucket], 0u);
+        offset += count;
+    }
+}`,
+        workgroupSize: [1],
+        bindings: [
+            { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
+            {
+                name: 'indirectArguments',
+                group: 0,
+                binding: 1,
+                kind: 'storage-buffer',
+                access: 'read-write'
+            },
+            {
+                name: 'bucketCursors',
+                group: 0,
+                binding: 2,
+                kind: 'storage-buffer',
+                access: 'write-discard'
+            },
+            {
+                name: 'bucketOffsets',
+                group: 0,
+                binding: 3,
+                kind: 'storage-buffer',
+                access: 'read-write'
+            }
+        ]
+    })
+);
+
+function gpuSceneVisibleCompactPass(trackVisibility: boolean): ComputeRenderPass {
+    return computePass(
+        new ComputeShader({
+            label: trackVisibility
+                ? 'GPU Scene visible compact and temporal visibility write'
+                : 'GPU Scene visible compact write',
+            source: `
+${FRAME_WGSL}
+@group(0) @binding(0) var<storage, read> frameData: FrameData;
+@group(0) @binding(1) var<storage, read> selectedPhysicalBuckets: array<u32>;
+@group(0) @binding(2) var<storage, read_write> bucketCursors: array<atomic<u32>>;
+@group(0) @binding(3) var<storage, read> bucketOffsets: array<u32>;
+@group(0) @binding(4) var<storage, read_write> visibleIndices: array<u32>;
+${trackVisibility ? '@group(0) @binding(5) var<storage, read_write> currentVisibility: array<u32>;' : ''}
+@compute @workgroup_size(${String(CULL_WORKGROUP_SIZE)})
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= frameData.counts.x || id.x >= frameData.budgets.x) { return; }
+    let bucket = selectedPhysicalBuckets[id.x];
+    if (bucket == 0xffffffffu) { return; }
+    let localIndex = atomicAdd(&bucketCursors[bucket], 1u);
+    let offset = bucketOffsets[bucket * ${String(BUCKET_OFFSET_STRIDE_WORDS)}u];
+    visibleIndices[offset + localIndex] = id.x;
+    ${trackVisibility ? 'currentVisibility[id.x] = 1u;' : ''}
+}`,
+            workgroupSize: [CULL_WORKGROUP_SIZE],
+            bindings: [
+                { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
+                {
+                    name: 'selectedPhysicalBuckets',
+                    group: 0,
+                    binding: 1,
+                    kind: 'read-only-storage-buffer'
+                },
+                {
+                    name: 'bucketCursors',
+                    group: 0,
+                    binding: 2,
+                    kind: 'storage-buffer',
+                    access: 'read-write'
+                },
+                {
+                    name: 'bucketOffsets',
+                    group: 0,
+                    binding: 3,
+                    kind: 'read-only-storage-buffer'
+                },
+                {
+                    name: 'visibleIndices',
+                    group: 0,
+                    binding: 4,
+                    kind: 'storage-buffer',
+                    access: 'write-discard'
+                },
+                ...(trackVisibility
+                    ? ([
+                          {
+                              name: 'currentVisibility',
+                              group: 0,
+                              binding: 5,
+                              kind: 'storage-buffer',
+                              access: 'read-write'
+                          }
+                      ] as const)
+                    : [])
+            ]
+        })
+    );
+}
+
+const GPU_SCENE_VISIBLE_COMPACT_PASS = gpuSceneVisibleCompactPass(false);
+const GPU_SCENE_TEMPORAL_VISIBLE_COMPACT_PASS = gpuSceneVisibleCompactPass(true);
 
 const HIZ_DEPTH_REDUCE_PASS = computePass(
     new ComputeShader({
@@ -1243,7 +1439,7 @@ fn main(
         let minimumDistance = bitcast<f32>(atomicLoad(&minimumDepthBits));
         let maximumDistance = bitcast<f32>(atomicLoad(&maximumDepthBits));
         tileDepthBounds[tileIndex] = select(
-            vec2<u32>(0u, frameData.cluster.z - 1u),
+            vec2<u32>(frameData.cluster.z, 0u),
             vec2<u32>(depthSlice(frameData, minimumDistance), depthSlice(frameData, maximumDistance)),
             covered
         );
@@ -1287,9 +1483,17 @@ fn lightTileBounds(frame: FrameData, light: LightRecord) -> vec4<u32> {
     if (lightType == 2u) {
         return vec4<u32>(0u, 0u, frame.cluster.x - 1u, frame.cluster.y - 1u);
     }
-    let depth = max(-light.positionRange.z, frame.depth.x);
+    let viewDepth = -light.positionRange.z;
+    let radius = light.positionRange.w;
+    if (viewDepth + radius <= frame.depth.x) {
+        return vec4<u32>(frame.cluster.x, frame.cluster.y, 0u, 0u);
+    }
+    if (viewDepth - radius <= frame.depth.x) {
+        return vec4<u32>(0u, 0u, frame.cluster.x - 1u, frame.cluster.y - 1u);
+    }
+    let depth = viewDepth;
     let clip = frame.projection * vec4<f32>(light.positionRange.xyz, 1.0);
-    let center = clip.xy / max(clip.w, 0.0001);
+    let center = clip.xy / clip.w;
     let radiusNdc = vec2<f32>(
         abs(frame.projection[0][0]), abs(frame.projection[1][1])
     ) * light.positionRange.w / depth;
@@ -1332,9 +1536,10 @@ ${LIGHT_CLUSTER_COMMON}
 @group(0) @binding(3) var<storage, read_write> clusterCounts: array<atomic<u32>>;
 @compute @workgroup_size(${String(CULL_WORKGROUP_SIZE)})
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= frameData.counts.w) { return; }
-    let light = lights[id.x];
+    if (id.x >= frameData.directional.y) { return; }
+    let light = lights[frameData.directional.x + id.x];
     let tiles = lightTileBounds(frameData, light);
+    if (tiles.x > tiles.z || tiles.y > tiles.w) { return; }
     let slices = lightSliceBounds(frameData, light);
     let tileCount = frameData.cluster.x * frameData.cluster.y;
     for (var y = tiles.y; y <= tiles.w; y += 1u) {
@@ -1485,8 +1690,7 @@ ${FRAME_WGSL}
 @group(0) @binding(1) var<storage, read> clusterCounts: array<u32>;
 @group(0) @binding(2) var<storage, read_write> clusterGrid: array<vec2<u32>>;
 @group(0) @binding(3) var<storage, read> blockOffsets: array<u32>;
-@group(0) @binding(4) var<storage, read_write> clusterCursors: array<atomic<u32>>;
-@group(0) @binding(5) var<storage, read_write> clusterStats: array<atomic<u32>>;
+@group(0) @binding(4) var<storage, read_write> clusterStats: array<atomic<u32>>;
 @compute @workgroup_size(${String(PREFIX_WORKGROUP_SIZE)})
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let clusterCount = frameData.cluster.x * frameData.cluster.y * frameData.cluster.z;
@@ -1497,7 +1701,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let offset = min(rawOffset, frameData.counts.z);
     let available = min(localAllocation.y, frameData.counts.z - offset);
     clusterGrid[id.x] = vec2<u32>(offset, available);
-    atomicStore(&clusterCursors[id.x], 0u);
     _ = atomicAdd(&clusterStats[1], available);
     _ = atomicAdd(&clusterStats[2], clusterCounts[id.x] - available);
 }`,
@@ -1514,18 +1717,37 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             },
             { name: 'blockOffsets', group: 0, binding: 3, kind: 'read-only-storage-buffer' },
             {
-                name: 'clusterCursors',
+                name: 'clusterStats',
                 group: 0,
                 binding: 4,
                 kind: 'storage-buffer',
-                access: 'write-discard'
-            },
-            {
-                name: 'clusterStats',
-                group: 0,
-                binding: 5,
-                kind: 'storage-buffer',
                 access: 'read-write'
+            }
+        ]
+    })
+);
+
+const CLUSTER_INDEX_RESET_PASS = computePass(
+    new ComputeShader({
+        label: 'Clustered Forward+ deterministic light-index reset',
+        source: `
+${FRAME_WGSL}
+@group(0) @binding(0) var<storage, read> frameData: FrameData;
+@group(0) @binding(1) var<storage, read_write> clusterLightIndices: array<atomic<u32>>;
+@compute @workgroup_size(${String(PREFIX_WORKGROUP_SIZE)})
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= frameData.counts.z) { return; }
+    atomicStore(&clusterLightIndices[id.x], 0xffffffffu);
+}`,
+        workgroupSize: [PREFIX_WORKGROUP_SIZE],
+        bindings: [
+            { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
+            {
+                name: 'clusterLightIndices',
+                group: 0,
+                binding: 1,
+                kind: 'storage-buffer',
+                access: 'write-discard'
             }
         ]
     })
@@ -1540,13 +1762,14 @@ ${LIGHT_CLUSTER_COMMON}
 @group(0) @binding(1) var<storage, read> lights: array<LightRecord>;
 @group(0) @binding(2) var<storage, read> tileDepthBounds: array<vec2<u32>>;
 @group(0) @binding(3) var<storage, read> clusterGrid: array<vec2<u32>>;
-@group(0) @binding(4) var<storage, read_write> clusterCursors: array<atomic<u32>>;
-@group(0) @binding(5) var<storage, read_write> clusterLightIndices: array<u32>;
+@group(0) @binding(4) var<storage, read_write> clusterLightIndices: array<atomic<u32>>;
 @compute @workgroup_size(${String(CULL_WORKGROUP_SIZE)})
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= frameData.counts.w) { return; }
-    let light = lights[id.x];
+    if (id.x >= frameData.directional.y) { return; }
+    let lightIndex = frameData.directional.x + id.x;
+    let light = lights[lightIndex];
     let tiles = lightTileBounds(frameData, light);
+    if (tiles.x > tiles.z || tiles.y > tiles.w) { return; }
     let slices = lightSliceBounds(frameData, light);
     let tileCount = frameData.cluster.x * frameData.cluster.y;
     for (var y = tiles.y; y <= tiles.w; y += 1u) {
@@ -1558,10 +1781,14 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             if (firstSlice <= lastSlice) {
                 for (var z = firstSlice; z <= lastSlice; z += 1u) {
                     let cluster = z * tileCount + tile;
-                    let cursor = atomicAdd(&clusterCursors[cluster], 1u);
                     let allocation = clusterGrid[cluster];
-                    if (cursor < allocation.y) {
-                        clusterLightIndices[allocation.x + cursor] = id.x;
+                    var candidate = lightIndex;
+                    for (var slot = 0u; slot < allocation.y; slot += 1u) {
+                        let previous = atomicMin(
+                            &clusterLightIndices[allocation.x + slot], candidate
+                        );
+                        candidate = max(candidate, previous);
+                        if (candidate == 0xffffffffu) { break; }
                     }
                 }
             }
@@ -1575,18 +1802,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             { name: 'tileDepthBounds', group: 0, binding: 2, kind: 'read-only-storage-buffer' },
             { name: 'clusterGrid', group: 0, binding: 3, kind: 'read-only-storage-buffer' },
             {
-                name: 'clusterCursors',
+                name: 'clusterLightIndices',
                 group: 0,
                 binding: 4,
                 kind: 'storage-buffer',
                 access: 'read-write'
-            },
-            {
-                name: 'clusterLightIndices',
-                group: 0,
-                binding: 5,
-                kind: 'storage-buffer',
-                access: 'write-discard'
             }
         ]
     })
@@ -1607,6 +1827,11 @@ vec4 gpuSceneClipPosition(uint objectBase, vec3 position) {
     return readFrameMatrix(0u) * readObjectMatrix(objectBase) * vec4(position, 1.0);
 }`;
 
+const GPU_SCENE_VISIBLE_INDEX_SOURCE = `
+uint gpuSceneVisibleObjectIndex() {
+    return visibleIndices.values[visibleOffset.value + uint(gl_InstanceIndex)];
+}`;
+
 const GPU_SCENE_DEPTH_SHADER = new StorageGraphicsShader({
     label: 'GPU Scene indirect depth prepass',
     vertexSource: `#version 310 es
@@ -1616,10 +1841,12 @@ invariant gl_Position;
 layout(std430) readonly buffer FrameDataBlock { vec4 values[]; } frameData;
 layout(std430) readonly buffer ObjectBlock { vec4 values[]; } objects;
 layout(std430) readonly buffer VisibleBlock { uint values[]; } visibleIndices;
+layout(std430) readonly buffer VisibleOffsetBlock { uint value; } visibleOffset;
 layout(location=0) in vec3 a_position;
 ${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
+${GPU_SCENE_VISIBLE_INDEX_SOURCE}
 void main() {
-    uint objectIndex = visibleIndices.values[uint(gl_InstanceIndex)];
+    uint objectIndex = gpuSceneVisibleObjectIndex();
     uint objectBase = objectIndex * 13u;
     gl_Position = gpuSceneClipPosition(objectBase, a_position);
 }`,
@@ -1629,7 +1856,101 @@ void main() {}`,
     bindings: [
         { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
         { name: 'objects', group: 0, binding: 1, kind: 'read-only-storage-buffer' },
-        { name: 'visibleIndices', group: 0, binding: 2, kind: 'read-only-storage-buffer' }
+        { name: 'visibleIndices', group: 0, binding: 2, kind: 'read-only-storage-buffer' },
+        {
+            name: 'visibleOffset',
+            group: 0,
+            binding: 3,
+            kind: 'read-only-storage-buffer',
+            minBindingSize: 4
+        }
+    ]
+});
+
+const GPU_SCENE_TEMPORAL_DEPTH_SHADER = new StorageGraphicsShader({
+    label: 'GPU Scene fused depth and temporal motion prepass',
+    vertexSource: `#version 310 es
+precision highp float;
+precision highp int;
+invariant gl_Position;
+layout(std430) readonly buffer FrameDataBlock { vec4 values[]; } frameData;
+layout(std430) readonly buffer ObjectBlock { vec4 values[]; } objects;
+layout(std430) readonly buffer VisibleBlock { uint values[]; } visibleIndices;
+layout(std430) readonly buffer VisibleOffsetBlock { uint value; } visibleOffset;
+layout(std430) readonly buffer PreviousVisibilityBlock { uint values[]; } previousVisibility;
+layout(location=0) in vec3 a_position;
+out vec4 v_currentClipPosition;
+out vec4 v_previousClipPosition;
+out float v_currentViewDepth;
+out float v_previousViewDepth;
+flat out float v_motionHistoryValid;
+${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
+${GPU_SCENE_VISIBLE_INDEX_SOURCE}
+void main() {
+    uint objectIndex = gpuSceneVisibleObjectIndex();
+    uint objectBase = objectIndex * 13u;
+    uint flags = floatBitsToUint(objects.values[objectBase + 12u].z);
+    mat4 currentModel = readObjectMatrix(objectBase);
+    mat4 previousModel = (flags & ${String(OBJECT_MOTION_CHANGED_FLAG)}u) != 0u
+        ? readObjectMatrix(objectBase + 4u)
+        : currentModel;
+    vec4 localPosition = vec4(a_position, 1.0);
+    gl_Position = gpuSceneClipPosition(objectBase, a_position);
+    v_currentClipPosition = gl_Position;
+    v_previousClipPosition = readFrameMatrix(4u) * previousModel * localPosition;
+    v_currentViewDepth = abs((readFrameMatrix(8u) * currentModel * localPosition).z);
+    v_previousViewDepth = abs((readFrameMatrix(16u) * previousModel * localPosition).z);
+    bool cameraHistoryValid = floatBitsToUint(frameData.values[30u].z) != 0u;
+    v_motionHistoryValid =
+        cameraHistoryValid &&
+        (flags & ${String(OBJECT_MOTION_HISTORY_FLAG)}u) != 0u &&
+        previousVisibility.values[objectIndex] != 0u
+            ? 1.0
+            : 0.0;
+}`,
+    fragmentSource: `#version 310 es
+precision highp float;
+${portableCoordinatesSource}
+in vec4 v_currentClipPosition;
+in vec4 v_previousClipPosition;
+in float v_currentViewDepth;
+in float v_previousViewDepth;
+flat in float v_motionHistoryValid;
+layout(location=0) out vec4 motionData;
+void main() {
+    float currentLogDepth = log2(1.0 + max(v_currentViewDepth, 0.0));
+    if (
+        v_motionHistoryValid < 0.5 ||
+        v_currentClipPosition.w <= 1e-6 ||
+        v_previousClipPosition.w <= 1e-6
+    ) {
+        motionData = vec4(0.0, 0.0, -1.0, currentLogDepth);
+        return;
+    }
+    vec2 currentUV = hiloRenderTargetUV(
+        v_currentClipPosition.xy / v_currentClipPosition.w * 0.5 + 0.5
+    );
+    vec2 previousUV = hiloRenderTargetUV(
+        v_previousClipPosition.xy / v_previousClipPosition.w * 0.5 + 0.5
+    );
+    motionData = vec4(
+        currentUV - previousUV,
+        log2(1.0 + max(v_previousViewDepth, 0.0)),
+        currentLogDepth
+    );
+}`,
+    bindings: [
+        { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
+        { name: 'objects', group: 0, binding: 1, kind: 'read-only-storage-buffer' },
+        { name: 'visibleIndices', group: 0, binding: 2, kind: 'read-only-storage-buffer' },
+        {
+            name: 'visibleOffset',
+            group: 0,
+            binding: 3,
+            kind: 'read-only-storage-buffer',
+            minBindingSize: 4
+        },
+        { name: 'previousVisibility', group: 0, binding: 4, kind: 'read-only-storage-buffer' }
     ]
 });
 
@@ -1667,12 +1988,8 @@ function gpuScenePBRShader(variant: Readonly<PBRMaterialVariant>): StorageGraphi
         .filter(Boolean)
         .join('\n');
     const vertexUVWrites = [
-        variant.usesUV0
-            ? 'v_uv0 = (readMaterialMatrix(materialBase + 3u) * vec3(a_uv0, 1.0)).xy;'
-            : '',
-        variant.usesUV1
-            ? 'v_uv1 = (readMaterialMatrix(materialBase + 6u) * vec3(a_uv1, 1.0)).xy;'
-            : '',
+        variant.usesUV0 ? 'v_uv0 = a_uv0;' : '',
+        variant.usesUV1 ? 'v_uv1 = a_uv1;' : '',
         variant.normalUV === null
             ? ''
             : `vec3 tangent = normalize(viewNormalMatrix * a_tangent.xyz);
@@ -1689,8 +2006,8 @@ function gpuScenePBRShader(variant: Readonly<PBRMaterialVariant>): StorageGraphi
     const occlusionMap = variantTexture(variant, 'occlusionMap');
     const emissionMap = variantTexture(variant, 'emission');
     const normalMap = variantTexture(variant, 'normalMap');
-    const decode = (sample: string): string =>
-        variant.gammaCorrection ? `sRGBToLinear(${sample})` : sample;
+    const materialSample = (binding: Readonly<PBRTextureBinding>): string =>
+        `hiloMaterialSample(${binding.shaderName}, materialBase, ${String(binding.slotIndex)}u, ${variantSampleUV(binding)})`;
     const bindings: ShaderReadBinding[] = [
         { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
         { name: 'objects', group: 0, binding: 1, kind: 'read-only-storage-buffer' },
@@ -1698,7 +2015,14 @@ function gpuScenePBRShader(variant: Readonly<PBRMaterialVariant>): StorageGraphi
         { name: 'materials', group: 0, binding: 3, kind: 'read-only-storage-buffer' },
         { name: 'lights', group: 0, binding: 4, kind: 'read-only-storage-buffer' },
         { name: 'clusterGrid', group: 0, binding: 5, kind: 'read-only-storage-buffer' },
-        { name: 'clusterIndices', group: 0, binding: 6, kind: 'read-only-storage-buffer' }
+        { name: 'clusterIndices', group: 0, binding: 6, kind: 'read-only-storage-buffer' },
+        {
+            name: 'visibleOffset',
+            group: 0,
+            binding: 7,
+            kind: 'read-only-storage-buffer',
+            minBindingSize: 4
+        }
     ];
     for (let index = 0; index < variant.textures.length; index += 1) {
         const texture = variant.textures[index];
@@ -1730,6 +2054,7 @@ layout(std430) readonly buffer MaterialDataBlock { vec4 values[]; } materials;
 layout(std430) readonly buffer LightDataBlock { vec4 values[]; } lights;
 layout(std430) readonly buffer ClusterGridBlock { uvec2 values[]; } clusterGrid;
 layout(std430) readonly buffer ClusterIndexBlock { uint values[]; } clusterIndices;
+layout(std430) readonly buffer VisibleOffsetBlock { uint value; } visibleOffset;
 layout(location=0) in vec3 a_position;
 layout(location=1) in vec3 a_normal;
 ${vertexUVDeclarations}
@@ -1737,14 +2062,12 @@ out vec3 v_viewPosition;
 out vec3 v_viewNormal;
 flat out uint v_materialIndex;
 ${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
+${GPU_SCENE_VISIBLE_INDEX_SOURCE}
 mat3 readObjectNormalMatrix(uint base) {
     return mat3(objects.values[base + 8u].xyz, objects.values[base + 9u].xyz, objects.values[base + 10u].xyz);
 }
-mat3 readMaterialMatrix(uint base) {
-    return mat3(materials.values[base].xyz, materials.values[base + 1u].xyz, materials.values[base + 2u].xyz);
-}
 void main() {
-    uint objectIndex = visibleIndices.values[uint(gl_InstanceIndex)];
+    uint objectIndex = gpuSceneVisibleObjectIndex();
     uint objectBase = objectIndex * 13u;
     mat4 model = readObjectMatrix(objectBase);
     mat4 view = readFrameMatrix(8u);
@@ -1754,7 +2077,6 @@ void main() {
     v_viewPosition = (view * worldPosition).xyz;
     v_viewNormal = viewNormal;
     v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
-    uint materialBase = v_materialIndex * 9u;
     ${vertexUVWrites}
     gl_Position = gpuSceneClipPosition(objectBase, a_position);
 }`,
@@ -1777,51 +2099,109 @@ ${fragmentUVDeclarations}
 flat in uint v_materialIndex;
 layout(location=0) out vec4 color;
 ${encodingSource}
+float hiloMaterialChannel(vec4 value, int channel) {
+    if (channel == 0) return value.r;
+    if (channel == 1) return value.g;
+    if (channel == 2) return value.b;
+    if (channel == 3) return value.a;
+    return channel == 5 ? 1.0 : 0.0;
+}
+vec4 hiloMaterialSample(sampler2D source, uint materialBase, uint slotIndex, vec2 uv) {
+    uint slotBase = materialBase + 3u + slotIndex * 5u;
+    mat3 transform = mat3(
+        materials.values[slotBase].xyz,
+        materials.values[slotBase + 1u].xyz,
+        materials.values[slotBase + 2u].xyz
+    );
+    vec4 info = materials.values[slotBase + 3u];
+    vec4 sampled = texture(source, (transform * vec3(uv, 1.0)).xy);
+    if (int(info.y) == 1) sampled = sRGBToLinear(sampled);
+    ivec4 channels = ivec4(materials.values[slotBase + 4u]);
+    return vec4(
+        hiloMaterialChannel(sampled, channels.x),
+        hiloMaterialChannel(sampled, channels.y),
+        hiloMaterialChannel(sampled, channels.z),
+        hiloMaterialChannel(sampled, channels.w)
+    );
+}
 ${pbrSurfaceSource}
 ${pbrBrdfSource}
+vec3 hiloEvaluateClusteredLight(
+    uint lightIndex,
+    vec3 viewPosition,
+    vec3 normal,
+    vec3 viewDirection,
+    HiloMetallicRoughnessSurface surface
+) {
+    uint lightBase = lightIndex * 4u;
+    vec4 positionRange = lights.values[lightBase];
+    vec4 colorType = lights.values[lightBase + 1u];
+    vec4 directionOuter = lights.values[lightBase + 2u];
+    vec4 attenuationInner = lights.values[lightBase + 3u];
+    uint lightType = uint(colorType.w + 0.5);
+    vec3 lightDirection;
+    vec3 radiance = colorType.rgb;
+    if (lightType == 2u) {
+        lightDirection = normalize(-directionOuter.xyz);
+    } else {
+        vec3 delta = positionRange.xyz - viewPosition;
+        float distanceToLight = max(length(delta), 0.0001);
+        lightDirection = delta / distanceToLight;
+        float attenuation = 1.0 / max(
+            attenuationInner.x + attenuationInner.y * distanceToLight +
+                attenuationInner.z * distanceToLight * distanceToLight,
+            0.0001
+        );
+        float rangeFade = clamp(
+            1.0 - pow(distanceToLight / max(positionRange.w, 0.0001), 4.0),
+            0.0,
+            1.0
+        );
+        radiance *= attenuation * rangeFade * rangeFade;
+        if (lightType == 1u) {
+            float theta = dot(lightDirection, normalize(-directionOuter.xyz));
+            radiance *= smoothstep(directionOuter.w, attenuationInner.w, theta);
+        }
+    }
+    vec3 lightDiffuse;
+    vec3 lightSpecular;
+    hiloEvaluateBaseBRDF(
+        normal,
+        viewDirection,
+        lightDirection,
+        normal,
+        normal,
+        surface.specularColor,
+        surface.diffuseColor,
+        surface.roughness,
+        0.0,
+        0.0,
+        1.3,
+        0.0,
+        lightDiffuse,
+        lightSpecular
+    );
+    return radiance * (lightDiffuse + lightSpecular);
+}
 void main() {
-    uint materialBase = v_materialIndex * 9u;
+    uint materialBase = v_materialIndex * ${String(PBR_GPU_MATERIAL_RECORD_BYTES / 16)}u;
     vec4 baseMetallic = materials.values[materialBase];
     vec4 emissionRoughness = materials.values[materialBase + 1u];
     vec4 materialParameters = materials.values[materialBase + 2u];
     vec4 baseColorSample = vec4(1.0);
-    ${
-        baseColorMap === null
-            ? ''
-            : `baseColorSample = ${decode(
-                  `texture(${baseColorMap.shaderName}, ${variantSampleUV(baseColorMap)})`
-              )};`
-    }
+    ${baseColorMap === null ? '' : `baseColorSample = ${materialSample(baseColorMap)};`}
     vec3 emissionSample = vec3(1.0);
-    ${
-        emissionMap === null
-            ? ''
-            : `emissionSample = ${decode(
-                  `texture(${emissionMap.shaderName}, ${variantSampleUV(emissionMap)})`
-              )}.rgb;`
-    }
+    ${emissionMap === null ? '' : `emissionSample = ${materialSample(emissionMap)}.rgb;`}
     float metallic = baseMetallic.a;
-    ${
-        metallicMap === null
-            ? ''
-            : `metallic *= texture(${metallicMap.shaderName}, ${variantSampleUV(metallicMap)}).r;`
-    }
+    ${metallicMap === null ? '' : `metallic *= ${materialSample(metallicMap)}.r;`}
     float roughness = emissionRoughness.a;
-    ${
-        roughnessMap === null
-            ? ''
-            : `roughness *= texture(${roughnessMap.shaderName}, ${variantSampleUV(roughnessMap)}).r;`
-    }
+    ${roughnessMap === null ? '' : `roughness *= ${materialSample(roughnessMap)}.r;`}
     float occlusion = 1.0;
-    ${
-        occlusionMap === null
-            ? ''
-            : `occlusion = texture(${occlusionMap.shaderName}, ${variantSampleUV(occlusionMap)}).r;`
-    }
+    ${occlusionMap === null ? '' : `occlusion = ${materialSample(occlusionMap)}.r;`}
     ${
         metallicRoughnessMap === null
             ? ''
-            : `vec4 metallicRoughnessSample = texture(${metallicRoughnessMap.shaderName}, ${variantSampleUV(metallicRoughnessMap)});
+            : `vec4 metallicRoughnessSample = ${materialSample(metallicRoughnessMap)};
     roughness *= metallicRoughnessSample.g;
     metallic *= metallicRoughnessSample.b;
     ${variant.occlusionInMetallicRoughness ? 'occlusion = metallicRoughnessSample.r;' : ''}`
@@ -1839,7 +2219,7 @@ void main() {
     ${
         normalMap === null
             ? ''
-            : `vec3 tangentNormal = texture(${normalMap.shaderName}, ${variantSampleUV(normalMap)}).rgb * 2.0 - 1.0;
+            : `vec3 tangentNormal = ${materialSample(normalMap)}.rgb * 2.0 - 1.0;
     tangentNormal.xy *= materialParameters.z;
     normal = normalize(v_TBN * tangentNormal);`
     }
@@ -1852,55 +2232,19 @@ void main() {
     uint slice = min(uint(clamp(log(depth / frameData.values[25u].x) / logScale, 0.0, 0.999999) * float(cluster.z)), cluster.z - 1u);
     uint clusterIndex = slice * cluster.x * cluster.y + tileY * cluster.x + tileX;
     uvec2 allocation = clusterGrid.values[clusterIndex];
-    vec3 lighting = frameData.values[30u].rgb * surface.iblDiffuseColor *
+    uvec4 directional = floatBitsToUint(frameData.values[30u]);
+    vec3 lighting = frameData.values[31u].rgb * surface.iblDiffuseColor *
         surface.occlusion * HILO_INVERSE_PI;
+    for (uint lightIndex = 0u; lightIndex < directional.x; lightIndex += 1u) {
+        lighting += hiloEvaluateClusteredLight(
+            lightIndex, v_viewPosition, normal, viewDirection, surface
+        );
+    }
     for (uint localIndex = 0u; localIndex < allocation.y; localIndex += 1u) {
         uint lightIndex = clusterIndices.values[allocation.x + localIndex];
-        uint lightBase = lightIndex * 4u;
-        vec4 positionRange = lights.values[lightBase];
-        vec4 colorType = lights.values[lightBase + 1u];
-        vec4 directionOuter = lights.values[lightBase + 2u];
-        vec4 attenuationInner = lights.values[lightBase + 3u];
-        uint lightType = uint(colorType.w + 0.5);
-        vec3 lightDirection;
-        vec3 radiance = colorType.rgb;
-        if (lightType == 2u) {
-            lightDirection = normalize(-directionOuter.xyz);
-        } else {
-            vec3 delta = positionRange.xyz - v_viewPosition;
-            float distanceToLight = max(length(delta), 0.0001);
-            lightDirection = delta / distanceToLight;
-            float attenuation = 1.0 / max(
-                attenuationInner.x + attenuationInner.y * distanceToLight +
-                    attenuationInner.z * distanceToLight * distanceToLight,
-                0.0001
-            );
-            float rangeFade = clamp(1.0 - pow(distanceToLight / max(positionRange.w, 0.0001), 4.0), 0.0, 1.0);
-            radiance *= attenuation * rangeFade * rangeFade;
-            if (lightType == 1u) {
-                float theta = dot(lightDirection, normalize(-directionOuter.xyz));
-                radiance *= smoothstep(directionOuter.w, attenuationInner.w, theta);
-            }
-        }
-        vec3 lightDiffuse;
-        vec3 lightSpecular;
-        hiloEvaluateBaseBRDF(
-            normal,
-            viewDirection,
-            lightDirection,
-            normal,
-            normal,
-            surface.specularColor,
-            surface.diffuseColor,
-            surface.roughness,
-            0.0,
-            0.0,
-            1.3,
-            0.0,
-            lightDiffuse,
-            lightSpecular
+        lighting += hiloEvaluateClusteredLight(
+            lightIndex, v_viewPosition, normal, viewDirection, surface
         );
-        lighting += radiance * (lightDiffuse + lightSpecular);
     }
     color = vec4(lighting + surface.emissionColor, 1.0);
 }`,
@@ -1940,34 +2284,42 @@ void main() {
     }
 });
 
-const BLOOM_BLUR_PASS = new FullscreenRenderPass({
-    name: 'Clustered Forward+ bloom blur',
-    shader: new Shader({
-        vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
-        fs: `#version 300 es
+function bloomBlurPass(name: string, axis: 'x' | 'y'): FullscreenRenderPass {
+    const offset = axis === 'x' ? 'vec2(texel.x, 0.0)' : 'vec2(0.0, texel.y)';
+    return new FullscreenRenderPass({
+        name,
+        shader: new Shader({
+            vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
+            fs: `#version 300 es
 precision highp float;
 in vec2 v_uv;
 uniform sampler2D u_source;
 layout(location=0) out vec4 color;
 void main() {
     vec2 texel = 1.0 / vec2(textureSize(u_source, 0));
+    vec2 axisOffset = ${offset};
     vec3 value = texture(u_source, v_uv).rgb * 0.227027;
-    value += texture(u_source, v_uv + vec2(texel.x * 1.384615, 0.0)).rgb * 0.316216;
-    value += texture(u_source, v_uv - vec2(texel.x * 1.384615, 0.0)).rgb * 0.316216;
-    value += texture(u_source, v_uv + vec2(0.0, texel.y * 3.230769)).rgb * 0.070270;
-    value += texture(u_source, v_uv - vec2(0.0, texel.y * 3.230769)).rgb * 0.070270;
+    value += texture(u_source, v_uv + axisOffset * 1.384615).rgb * 0.316216;
+    value += texture(u_source, v_uv - axisOffset * 1.384615).rgb * 0.316216;
+    value += texture(u_source, v_uv + axisOffset * 3.230769).rgb * 0.070270;
+    value += texture(u_source, v_uv - axisOffset * 3.230769).rgb * 0.070270;
     color = vec4(value, 1.0);
 }`
-    }),
-    pipelineState: {
-        ...DEFAULT_MATERIAL_PIPELINE_STATE,
-        depthTest: false,
-        depthWrite: false,
-        cullMode: 'none'
-    }
-});
+        }),
+        pipelineState: {
+            ...DEFAULT_MATERIAL_PIPELINE_STATE,
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
+        }
+    });
+}
+
+const BLOOM_HORIZONTAL_PASS = bloomBlurPass('Clustered Forward+ bloom horizontal blur', 'x');
+const BLOOM_VERTICAL_PASS = bloomBlurPass('Clustered Forward+ bloom vertical blur', 'y');
 
 function displayPass(exposure: number, bloomStrength: number): FullscreenRenderPass {
+    const withBloom = bloomStrength > 0;
     return new FullscreenRenderPass({
         name: 'Clustered Forward+ ACES display transform',
         shader: new Shader({
@@ -1976,7 +2328,7 @@ function displayPass(exposure: number, bloomStrength: number): FullscreenRenderP
 precision highp float;
 in vec2 v_uv;
 uniform sampler2D u_scene;
-uniform sampler2D u_bloom;
+${withBloom ? 'uniform sampler2D u_bloom;' : ''}
 layout(location=0) out vec4 color;
 vec3 aces(vec3 value) {
     const float a = 2.51;
@@ -1987,8 +2339,7 @@ vec3 aces(vec3 value) {
     return clamp((value * (a * value + b)) / (value * (c * value + d) + e), 0.0, 1.0);
 }
 void main() {
-    vec3 hdr = texture(u_scene, v_uv).rgb * ${String(exposure)} +
-        texture(u_bloom, v_uv).rgb * ${String(bloomStrength)};
+    vec3 hdr = texture(u_scene, v_uv).rgb * ${String(exposure)}${withBloom ? ` + texture(u_bloom, v_uv).rgb * ${String(bloomStrength)}` : ''};
     float vignette = smoothstep(0.9, 0.22, length(v_uv - vec2(0.5)));
     vec3 mapped = aces(hdr) * mix(0.78, 1.0, vignette);
     color = vec4(pow(mapped, vec3(1.0 / 2.2)), 1.0);
@@ -2122,6 +2473,13 @@ class MutableGPUDrivenParameters implements GPUDrivenRenderPassParameters {
         }
         this.textures.length = textureCount;
         this.samplers.length = textureCount;
+    }
+
+    configureStorageBufferCount(bufferCount: number): void {
+        while (this.buffers.length < bufferCount) {
+            this.buffers.push({ buffer: INVALID_BUFFER });
+        }
+        this.buffers.length = bufferCount;
     }
 
     setBuffer(index: number, buffer: RenderGraphBufferHandle): void {
@@ -2389,7 +2747,7 @@ function matrixElements(source: Matrix4, target: Float32Array, offset: number): 
     }
 }
 
-function arraysDiffer(first: Float32Array, second: Float32Array): boolean {
+function arraysDiffer(first: ArrayLike<number>, second: ArrayLike<number>): boolean {
     for (let index = 0; index < first.length; index += 1) {
         if (first[index] !== second[index]) return true;
     }
@@ -2421,21 +2779,27 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #materialDatabase: SharedMaterialRecordDatabase<PBRMaterial>;
     readonly #lights: StorageBuffer;
     readonly #visibleIndices: StorageBuffer;
+    readonly #selectedPhysicalBuckets: StorageBuffer;
+    readonly #visibilityHistory: readonly [StorageBuffer, StorageBuffer] | null;
+    readonly #visibleBucketCursors: StorageBuffer;
+    readonly #visibleBucketOffsets: StorageBuffer;
     readonly #indirectArguments: StorageBuffer;
     readonly #cullStats: StorageBuffer;
     readonly #tileDepthBounds: StorageBuffer;
     readonly #clusterCounts: StorageBuffer;
     readonly #clusterGrid: StorageBuffer;
-    readonly #clusterCursors: StorageBuffer;
     readonly #clusterBlockSums: StorageBuffer;
     readonly #clusterBlockOffsets: StorageBuffer;
     readonly #clusterLightIndices: StorageBuffer;
     readonly #clusterStats: StorageBuffer;
     readonly #visibleBucketCapacity: number;
     readonly #physicalBuckets: readonly PhysicalBucket[];
+    readonly #logicalBounds: readonly LogicalBucketBounds[];
     readonly #logicalBucketByGeometry = new Map<Geometry, Map<PBRMaterial, number>>();
     readonly #logicalGPUCompatible: Uint8Array;
     readonly #gpuManagedMeshes: Mesh[] = [];
+    readonly #fallbackTemporalParticipation = new WeakMap<Mesh, number>();
+    readonly #pendingFallbackTemporalMeshes = new Set<Mesh>();
     readonly #objectByMesh = new Map<Mesh, GPUSceneObjectRecord>();
     readonly #freeObjectSlots: number[] = [];
     readonly #objectData: ArrayBuffer;
@@ -2445,20 +2809,26 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #frameFloats = new Float32Array(this.#frameBytes);
     readonly #frameUInts = new Uint32Array(this.#frameBytes);
     readonly #lightFloats: Float32Array;
+    readonly #localLightFloats: Float32Array;
+    readonly #directionalLightFloats: Float32Array;
     readonly #samplerByTexture = new WeakMap<
         Texture<unknown>,
         Readonly<{ key: string; sampler: ComputeSampler }>
     >();
     readonly #stagedCameraMatrix = new Float32Array(16);
     readonly #committedCameraMatrix = new Float32Array(16);
+    readonly #stagedRasterCameraMatrix = new Float32Array(16);
+    readonly #committedRasterCameraMatrix = new Float32Array(16);
     readonly #stagedViewMatrix = new Float32Array(16);
     readonly #committedViewMatrix = new Float32Array(16);
     readonly #stagedProjectionMatrix = new Float32Array(16);
     readonly #committedProjectionMatrix = new Float32Array(16);
     readonly #stagedDepth = new Float32Array(4);
     readonly #committedDepth = new Float32Array(4);
-    readonly #hizKeys = Array.from({ length: HIZ_LEVEL_COUNT }, () => Object.freeze({}));
+    readonly #hizKeys: readonly object[];
     readonly #hizDescriptors: readonly Readonly<RenderPipelineHistoryTextureDescriptor>[];
+    readonly #hizCullPass: ComputeRenderPass | null;
+    readonly #temporal: TemporalResolveController | null;
     readonly #clearPass = new ClearBuffersPass();
     readonly #clearPool = new RenderPassParameterPool(
         () => new ClearBuffersParameters(),
@@ -2467,8 +2837,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
     );
     readonly #cullPool = new RenderPassParameterPool(() => new MutableComputeParameters(6, 0));
-    readonly #hizCullPool = new RenderPassParameterPool(
-        () => new MutableComputeParameters(6, HIZ_LEVEL_COUNT)
+    readonly #hizCullPool: RenderPassParameterPool<MutableComputeParameters>;
+    readonly #bucketPrefixPool = new RenderPassParameterPool(
+        () => new MutableComputeParameters(4, 0)
+    );
+    readonly #visibleCompactPool = new RenderPassParameterPool(
+        () => new MutableComputeParameters(5, 0)
+    );
+    readonly #temporalVisibleCompactPool = new RenderPassParameterPool(
+        () => new MutableComputeParameters(6, 0)
     );
     readonly #hizPool = new RenderPassParameterPool(() => new MutableComputeParameters(1, 2));
     readonly #clusterDepthPool = new RenderPassParameterPool(
@@ -2484,13 +2861,16 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         () => new MutableComputeParameters(4, 0)
     );
     readonly #clusterPrefixFinalizePool = new RenderPassParameterPool(
-        () => new MutableComputeParameters(6, 0)
+        () => new MutableComputeParameters(5, 0)
+    );
+    readonly #clusterIndexResetPool = new RenderPassParameterPool(
+        () => new MutableComputeParameters(2, 0)
     );
     readonly #clusterWritePool = new RenderPassParameterPool(
-        () => new MutableComputeParameters(6, 0)
+        () => new MutableComputeParameters(5, 0)
     );
     readonly #depthDrawPool = new RenderPassParameterPool(
-        () => new MutableGPUDrivenParameters(3, 1)
+        () => new MutableGPUDrivenParameters(4, 1)
     );
     readonly #depthBatchPool = new RenderPassParameterPool(
         () => new MutableGPUDrivenBatchParameters(),
@@ -2499,7 +2879,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
     );
     readonly #colorDrawPool = new RenderPassParameterPool(
-        () => new MutableGPUDrivenParameters(7, 2)
+        () => new MutableGPUDrivenParameters(8, 2)
     );
     readonly #colorBatchPool = new RenderPassParameterPool(
         () => new MutableGPUDrivenBatchParameters(),
@@ -2524,11 +2904,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #depthBatchPass = new GPUDrivenRenderBatchPass('GPU Scene depth buckets');
     readonly #colorBatchPass = new GPUDrivenRenderBatchPass('Clustered PBR buckets');
     readonly #fallbackPass = new SceneRenderPass('Clustered Forward+ compatibility fallback');
+    readonly #fallbackMotionPass = new SceneRenderPass(
+        'Clustered Forward+ fallback temporal motion'
+    );
     readonly #fallbackCopyPass = new TextureCopyPass(
         'Clustered Forward+ compatibility opaque copy'
-    );
-    readonly #fallbackPresentPass = new PresentRenderPass(
-        'Clustered Forward+ compatibility output'
     );
     readonly #fallbackOpaqueListDescriptor: MutableFallbackRendererListDescriptor = {
         cullingResults: INVALID_CULLING_RESULTS,
@@ -2542,6 +2922,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         sorting: 'back-to-front',
         excludeMeshes: this.#gpuManagedMeshes
     };
+    readonly #fallbackMotionListDescriptor: MutableFallbackRendererListDescriptor = {
+        cullingResults: INVALID_CULLING_RESULTS,
+        queue: 'opaque',
+        sorting: 'material-front-to-back',
+        materialPass: 'motion-vector',
+        excludeMeshes: this.#gpuManagedMeshes
+    };
     readonly #normalMatrix = new Matrix3();
     readonly #tempMatrix = new Matrix4();
     readonly #tempVector = new Vector3();
@@ -2553,12 +2940,18 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     #fallbackHasOpaque = false;
     #fallbackHasTransparent = false;
     #lightCount = 0;
+    #localLightCount = 0;
+    #directionalLightCount = 0;
     #droppedLightCount = 0;
+    #forceFullFallback = false;
     #lastRecordedFrame = -1;
     #pendingCamera: Camera | null = null;
     #committedCamera: Camera | null = null;
     #pendingCameraRevision = -1;
     #committedCameraRevision = -1;
+    #committedCameraSubmission = -1;
+    #submissionIndex = 0;
+    #visibilityHistoryIndex: 0 | 1 = 0;
     #hiZValid = false;
     #destroyed = false;
 
@@ -2569,12 +2962,32 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     ) {
         this.#options = options;
         this.#onDestroy = onDestroy;
+        this.#temporal =
+            options.temporalAA === null ? null : new TemporalResolveController(options.temporalAA);
+        this.#hizKeys = Object.freeze(
+            Array.from({ length: options.hiZLevelCount }, () => Object.freeze({}))
+        );
+        this.#hizCullPass = options.hiZ
+            ? computePass(gpuSceneCullShader(options.hiZLevelCount))
+            : null;
+        this.#hizCullPool = new RenderPassParameterPool(
+            () => new MutableComputeParameters(6, options.hiZLevelCount)
+        );
         const physicalCount = options.buckets.reduce(
             (count, bucket) => count + 1 + bucket.lods.length,
             0
         );
         this.#visibleBucketCapacity = visibleBucketCapacity(options.maxObjects);
         this.#logicalGPUCompatible = new Uint8Array(options.buckets.length);
+        this.#logicalBounds = Object.freeze(
+            options.buckets.map(() => ({
+                center: new Vector3(),
+                radius: 0,
+                revision: 0,
+                positionRevisions: []
+            }))
+        );
+        this.refreshLogicalBounds();
         const capacity = clusterCapacityPlan(options);
         const create = (
             descriptor: Parameters<RenderPipelineCreateContext['createStorageBuffer']>[0]
@@ -2611,6 +3024,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             packRecord: packPBRGPUMaterialRecord
         });
         this.#lightFloats = new Float32Array(options.maxLights * 16);
+        this.#localLightFloats = new Float32Array(options.maxLights * 16);
+        this.#directionalLightFloats = new Float32Array(options.maxLights * 16);
         this.#lights = create({
             label: 'Clustered Forward+ light database',
             byteLength: this.#lightFloats.byteLength,
@@ -2619,9 +3034,49 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         });
         this.#visibleIndices = create({
             label: 'GPU Scene visible compact table',
-            byteLength: this.#visibleBucketCapacity * physicalCount * 4,
+            byteLength: this.#visibleBucketCapacity * 4,
             usage: ['storage'],
             recovery: 'reinitialize'
+        });
+        this.#selectedPhysicalBuckets = create({
+            label: 'GPU Scene selected physical bucket table',
+            byteLength: options.maxObjects * 4,
+            usage: ['storage'],
+            recovery: 'reinitialize'
+        });
+        if (this.#temporal === null) {
+            this.#visibilityHistory = null;
+        } else {
+            const visibilityInitialData = new Uint32Array(options.maxObjects);
+            this.#visibilityHistory = Object.freeze([
+                create({
+                    label: 'GPU Scene visibility history A',
+                    byteLength: visibilityInitialData.byteLength,
+                    usage: ['storage', 'copy-destination'],
+                    initialData: visibilityInitialData,
+                    recovery: 'cpu-shadow'
+                }),
+                create({
+                    label: 'GPU Scene visibility history B',
+                    byteLength: visibilityInitialData.byteLength,
+                    usage: ['storage', 'copy-destination'],
+                    initialData: visibilityInitialData,
+                    recovery: 'cpu-shadow'
+                })
+            ]);
+        }
+        this.#visibleBucketCursors = create({
+            label: 'GPU Scene visible bucket compact cursors',
+            byteLength: physicalCount * 4,
+            usage: ['storage'],
+            recovery: 'reinitialize'
+        });
+        this.#visibleBucketOffsets = create({
+            label: 'GPU Scene aligned visible bucket offsets',
+            byteLength: physicalCount * BUCKET_OFFSET_STRIDE_BYTES,
+            usage: ['storage'],
+            initialData: new Uint32Array(physicalCount * BUCKET_OFFSET_STRIDE_WORDS),
+            recovery: 'cpu-shadow'
         });
         const indirectData = new Uint32Array(physicalCount * 5);
         this.#physicalBuckets = Object.freeze(this.createPhysicalBuckets(context, indirectData));
@@ -2657,12 +3112,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             usage: ['storage'],
             recovery: 'reinitialize'
         });
-        this.#clusterCursors = create({
-            label: 'Clustered Forward+ cluster write cursors',
-            byteLength: capacity.maxClusters * 4,
-            usage: ['storage'],
-            recovery: 'reinitialize'
-        });
         this.#clusterBlockSums = create({
             label: 'Clustered Forward+ cluster block sums',
             byteLength: capacity.maxClusterBlocks * 4,
@@ -2688,7 +3137,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             recovery: 'reinitialize'
         });
         this.#hizDescriptors = Object.freeze(
-            Array.from({ length: HIZ_LEVEL_COUNT }, (_unused, index) =>
+            Array.from({ length: options.hiZLevelCount }, (_unused, index) =>
                 Object.freeze({
                     label: `GPU Scene Hi-Z level ${String(index)}`,
                     format: 'r32float' as const,
@@ -2748,9 +3197,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             throw new RangeError('Clustered Forward+ currently requires a single-sample output');
         }
 
-        // This performs canonical scene/camera matrix updates while GPU Scene retains visibility
-        // ownership for compatible registered buckets.
-        context.cull({ frustumCulling: false });
+        // Update canonical transforms without constructing a CPU render list. GPU Scene retains
+        // visibility ownership; a CPU cull is built only when fallback meshes actually exist.
+        context.prepareScene();
+        const temporalFrame = this.#temporal?.begin(context) ?? null;
         this.refreshGPUCompatibility();
         this.collectScene(context);
         let fallbackCulling: CullingResultsHandle | null = null;
@@ -2765,13 +3215,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
 
         const output = context.graph.importOutput();
         const outputColor = output.color(0);
-        const displayColor = this.#fallbackHasTransparent
-            ? context.graph.createTexture('Clustered Forward+ compatibility display', {
-                  format: context.output.colorFormat(0),
-                  extent: { relativeTo: 'output', scale: 1 },
-                  sampleCount: 1
-              })
-            : outputColor;
         const sceneColor = context.graph.createTexture('Clustered Forward+ HDR scene', {
             format: 'rgba16float',
             extent: { relativeTo: 'output', scale: 1 },
@@ -2782,16 +3225,30 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             extent: { relativeTo: 'output', scale: 1 },
             sampleCount: 1
         });
-        const bloomA = context.graph.createTexture('Clustered Forward+ bloom half A', {
-            format: 'rgba16float',
-            extent: { relativeTo: 'output', scale: 0.5, minWidth: 1, minHeight: 1 },
-            sampleCount: 1
-        });
-        const bloomB = context.graph.createTexture('Clustered Forward+ bloom half B', {
-            format: 'rgba16float',
-            extent: { relativeTo: 'output', scale: 0.5, minWidth: 1, minHeight: 1 },
-            sampleCount: 1
-        });
+        const temporalMotion =
+            temporalFrame === null
+                ? null
+                : context.graph.createTexture(
+                      'Clustered Forward+ temporal motion and view depth',
+                      TEMPORAL_MOTION_DESCRIPTOR
+                  );
+        const bloomEnabled = this.#options.bloomStrength > 0;
+        const createBloomTexture = (label: string): RenderGraphTextureHandle | null =>
+            bloomEnabled
+                ? context.graph.createTexture(label, {
+                      format: 'rgba16float',
+                      extent: {
+                          relativeTo: 'output',
+                          scale: 0.5,
+                          minWidth: 1,
+                          minHeight: 1
+                      },
+                      sampleCount: 1
+                  })
+                : null;
+        const bloomA = createBloomTexture('Clustered Forward+ bloom half A');
+        const bloomB = createBloomTexture('Clustered Forward+ bloom half B');
+        const bloomC = createBloomTexture('Clustered Forward+ bloom half C');
 
         const frameBuffer = context.graph.importStorageBuffer(this.#frameData);
         const objects = context.graph.importStorageBuffer(this.#objects);
@@ -2799,12 +3256,28 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const materials = context.graph.importStorageBuffer(this.#materialDatabase.buffer);
         const lights = context.graph.importStorageBuffer(this.#lights);
         const visible = context.graph.importStorageBuffer(this.#visibleIndices);
+        const selectedPhysicalBuckets = context.graph.importStorageBuffer(
+            this.#selectedPhysicalBuckets
+        );
+        const visibilityHistory = this.#visibilityHistory;
+        const currentVisibilityBuffer = visibilityHistory?.[this.#visibilityHistoryIndex] ?? null;
+        const previousVisibilityBuffer =
+            visibilityHistory?.[this.#visibilityHistoryIndex === 0 ? 1 : 0] ?? null;
+        const currentVisibility =
+            currentVisibilityBuffer === null
+                ? null
+                : context.graph.importStorageBuffer(currentVisibilityBuffer);
+        const previousVisibility =
+            previousVisibilityBuffer === null
+                ? null
+                : context.graph.importStorageBuffer(previousVisibilityBuffer);
+        const visibleBucketCursors = context.graph.importStorageBuffer(this.#visibleBucketCursors);
+        const visibleBucketOffsets = context.graph.importStorageBuffer(this.#visibleBucketOffsets);
         const indirect = context.graph.importStorageBuffer(this.#indirectArguments);
         const cullStats = context.graph.importStorageBuffer(this.#cullStats);
         const tileDepthBounds = context.graph.importStorageBuffer(this.#tileDepthBounds);
         const clusterCounts = context.graph.importStorageBuffer(this.#clusterCounts);
         const clusterGrid = context.graph.importStorageBuffer(this.#clusterGrid);
-        const clusterCursors = context.graph.importStorageBuffer(this.#clusterCursors);
         const clusterBlockSums = context.graph.importStorageBuffer(this.#clusterBlockSums);
         const clusterBlockOffsets = context.graph.importStorageBuffer(this.#clusterBlockOffsets);
         const clusterIndices = context.graph.importStorageBuffer(this.#clusterLightIndices);
@@ -2817,6 +3290,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         // uses only a prefix of the configured maximum cluster capacity.
         clear.add(clusterCounts, 0, this.#clusterCounts.byteLength);
         clear.add(cullStats, 0, STATS_BYTES);
+        if (currentVisibility !== null && currentVisibilityBuffer !== null) {
+            clear.add(currentVisibility, 0, currentVisibilityBuffer.byteLength);
+        }
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             clear.add(indirect, index * INDIRECT_ARGUMENT_BYTES + 4, 4);
         }
@@ -2828,28 +3304,57 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         cull.setBuffer(0, frameBuffer);
         cull.setBuffer(1, objects);
         cull.setBuffer(2, bucketData);
-        cull.setBuffer(3, visible);
+        cull.setBuffer(3, selectedPhysicalBuckets);
         cull.setBuffer(4, indirect);
         cull.setBuffer(5, cullStats);
         if (histories.valid) {
-            for (let index = 0; index < HIZ_LEVEL_COUNT; index += 1) {
+            for (let index = 0; index < this.#options.hiZLevelCount; index += 1) {
                 const texture = histories.previous[index];
                 if (texture === undefined) throw new Error('GPU Scene Hi-Z history is incomplete');
                 cull.setTexture(index, texture);
             }
         }
         cull.setDispatch(Math.max(1, Math.ceil(this.#activeObjectHighWater / CULL_WORKGROUP_SIZE)));
+        const cullPass = histories.valid ? this.#hizCullPass : GPU_SCENE_CULL_PASS;
+        if (cullPass === null) throw new Error('GPU Scene Hi-Z cull pass is unavailable');
+        context.graph.addPass(cullPass, cull);
+
+        const bucketPrefix = context.acquirePassParameters(this.#bucketPrefixPool);
+        bucketPrefix.setBuffer(0, frameBuffer);
+        bucketPrefix.setBuffer(1, indirect);
+        bucketPrefix.setBuffer(2, visibleBucketCursors);
+        bucketPrefix.setBuffer(3, visibleBucketOffsets);
+        bucketPrefix.setDispatch(1);
+        context.graph.addPass(GPU_SCENE_BUCKET_PREFIX_PASS, bucketPrefix);
+
+        const compact = context.acquirePassParameters(
+            currentVisibility === null ? this.#visibleCompactPool : this.#temporalVisibleCompactPool
+        );
+        compact.setBuffer(0, frameBuffer);
+        compact.setBuffer(1, selectedPhysicalBuckets);
+        compact.setBuffer(2, visibleBucketCursors);
+        compact.setBuffer(3, visibleBucketOffsets);
+        compact.setBuffer(4, visible);
+        if (currentVisibility !== null) compact.setBuffer(5, currentVisibility);
+        compact.setDispatch(
+            Math.max(1, Math.ceil(this.#activeObjectHighWater / CULL_WORKGROUP_SIZE))
+        );
         context.graph.addPass(
-            histories.valid ? GPU_SCENE_HIZ_CULL_PASS : GPU_SCENE_CULL_PASS,
-            cull
+            currentVisibility === null
+                ? GPU_SCENE_VISIBLE_COMPACT_PASS
+                : GPU_SCENE_TEMPORAL_VISIBLE_COMPACT_PASS,
+            compact
         );
 
         this.recordDepthPrepass(context, {
             frameBuffer,
             objects,
             visible,
+            visibleBucketOffsets,
             indirect,
-            sceneDepth
+            sceneDepth,
+            previousVisibility,
+            temporalMotion
         });
         this.recordCurrentHiZ(context, frameBuffer, sceneDepth, histories.current);
         this.recordClusterAllocation(context, {
@@ -2860,7 +3365,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             tileDepthBounds,
             clusterCounts,
             clusterGrid,
-            clusterCursors,
             clusterBlockSums,
             clusterBlockOffsets,
             clusterIndices,
@@ -2870,6 +3374,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             frameBuffer,
             objects,
             visible,
+            visibleBucketOffsets,
             materials,
             lights,
             clusterGrid,
@@ -2878,42 +3383,81 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneColor,
             sceneDepth
         });
-        this.recordDisplay(context, sceneColor, bloomA, bloomB, displayColor);
-        if (fallbackCulling !== null) {
-            this.recordFallback(context, fallbackCulling, displayColor, sceneDepth);
+        if (fallbackCulling !== null && this.#fallbackHasOpaque) {
+            this.recordFallbackOpaque(context, fallbackCulling, sceneColor, sceneDepth);
         }
-        if (displayColor !== outputColor) {
-            this.recordFallbackPresent(context, displayColor, outputColor);
+        let resolvedSceneColor = sceneColor;
+        if (temporalFrame !== null && temporalMotion !== null) {
+            if (fallbackCulling !== null && this.#fallbackHasOpaque) {
+                this.recordFallbackMotion(context, fallbackCulling, temporalMotion, sceneDepth);
+            }
+            resolvedSceneColor =
+                this.#temporal?.resolve(context, temporalFrame, sceneColor, temporalMotion) ??
+                sceneColor;
         }
+        if (fallbackCulling !== null && this.#fallbackHasTransparent) {
+            this.recordFallbackTransparent(
+                context,
+                fallbackCulling,
+                resolvedSceneColor,
+                sceneDepth
+            );
+        }
+        this.recordDisplay(context, resolvedSceneColor, bloomA, bloomB, bloomC, outputColor);
     }
 
     frameSubmitted(frameIndex: number): void {
         if (frameIndex !== this.#lastRecordedFrame) return;
+        const committedSubmission = this.#submissionIndex + 1;
         this.#materialDatabase.frameSubmitted(frameIndex);
+        for (const mesh of this.#pendingFallbackTemporalMeshes) {
+            this.#fallbackTemporalParticipation.set(mesh, committedSubmission);
+        }
+        this.#pendingFallbackTemporalMeshes.clear();
         for (const record of this.#objectByMesh.values()) {
-            if (record.pendingWorldVersion < 0) continue;
-            const moved = arraysDiffer(record.committedMatrix, record.pendingMatrix);
-            record.committedMatrix.set(record.pendingMatrix);
-            record.committedWorldVersion = record.pendingWorldVersion;
-            record.committedFrustumTest = record.pendingFrustumTest;
-            record.pendingWorldVersion = -1;
-            // One following upload makes previous == current after motion stops.
-            if (moved) record.committedWorldVersion = -1;
+            if (record.seenFrame !== this.#frameSerial || this.#forceFullFallback) continue;
+            if (record.pendingWorldVersion >= 0) {
+                record.committedMatrix.set(record.pendingMatrix);
+                record.committedWorldVersion = record.pendingWorldVersion;
+                record.committedFrustumTest = record.pendingFrustumTest;
+                record.committedBoundsRevision = record.pendingBoundsRevision;
+                record.committedOcclusionStable = record.pendingOcclusionStable;
+                record.committedMotionChanged = record.pendingMotionChanged;
+                record.committedMotionHistoryValid = record.pendingMotionHistoryValid;
+                record.pendingWorldVersion = -1;
+            }
+            record.committedHistoryRevision = record.pendingHistoryRevision;
+            record.committedSubmission = committedSubmission;
         }
         this.#committedCameraMatrix.set(this.#stagedCameraMatrix);
+        this.#committedRasterCameraMatrix.set(this.#stagedRasterCameraMatrix);
         this.#committedViewMatrix.set(this.#stagedViewMatrix);
         this.#committedProjectionMatrix.set(this.#stagedProjectionMatrix);
         this.#committedDepth.set(this.#stagedDepth);
         this.#committedCamera = this.#pendingCamera;
         this.#committedCameraRevision = this.#pendingCameraRevision;
+        this.#committedCameraSubmission = committedSubmission;
         this.#pendingCamera = null;
+        this.#submissionIndex = committedSubmission;
+        if (this.#visibilityHistory !== null) {
+            this.#visibilityHistoryIndex = this.#visibilityHistoryIndex === 0 ? 1 : 0;
+        }
+        this.#temporal?.frameSubmitted(frameIndex);
     }
 
     frameDiscarded(frameIndex: number): void {
         if (frameIndex !== this.#lastRecordedFrame) return;
         this.#materialDatabase.frameDiscarded(frameIndex);
-        for (const record of this.#objectByMesh.values()) record.pendingWorldVersion = -1;
+        this.#pendingFallbackTemporalMeshes.clear();
+        for (const record of this.#objectByMesh.values()) {
+            record.pendingWorldVersion = -1;
+            record.pendingBoundsRevision = -1;
+            record.pendingOcclusionStable = false;
+            record.pendingMotionChanged = false;
+            record.pendingMotionHistoryValid = false;
+        }
         this.#pendingCamera = null;
+        this.#temporal?.frameDiscarded(frameIndex);
     }
 
     async readDiagnostics(): Promise<Readonly<ClusteredForwardPlusDiagnostics>> {
@@ -2953,12 +3497,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             this.#bucketData,
             this.#lights,
             this.#visibleIndices,
+            this.#selectedPhysicalBuckets,
+            ...(this.#visibilityHistory ?? []),
+            this.#visibleBucketCursors,
+            this.#visibleBucketOffsets,
             this.#indirectArguments,
             this.#cullStats,
             this.#tileDepthBounds,
             this.#clusterCounts,
             this.#clusterGrid,
-            this.#clusterCursors,
             this.#clusterBlockSums,
             this.#clusterBlockOffsets,
             this.#clusterLightIndices,
@@ -2971,6 +3518,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             }
         }
         const failures: unknown[] = [];
+        try {
+            this.#temporal?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
         try {
             this.#materialDatabase.destroy();
         } catch (error) {
@@ -3113,7 +3665,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     indexRevision: validated.index.revision,
                     depthPass: new GPUDrivenRenderPass({
                         name: `GPU Scene depth bucket ${String(physicalIndex)}`,
-                        shader: GPU_SCENE_DEPTH_SHADER,
+                        shader:
+                            this.#options.temporalAA === null
+                                ? GPU_SCENE_DEPTH_SHADER
+                                : GPU_SCENE_TEMPORAL_DEPTH_SHADER,
                         pipelineState: requireBucketPassState(logical.material, 'depth-only'),
                         vertexLayouts: GPU_SCENE_DEPTH_VERTEX_LAYOUTS,
                         indexFormat: validated.indexFormat
@@ -3214,6 +3769,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
 
     private collectScene(context: RenderPipelineContext): void {
         this.#frameSerial++;
+        this.refreshLogicalBounds();
         let dirtyStart = this.#options.maxObjects;
         let dirtyEnd = 0;
         let activeCount = 0;
@@ -3224,11 +3780,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#fallbackObjectCount = 0;
         this.#fallbackHasOpaque = false;
         this.#fallbackHasTransparent = false;
-        ambient[120] = 0;
-        ambient[121] = 0;
-        ambient[122] = 0;
+        ambient[124] = 0;
+        ambient[125] = 0;
+        ambient[126] = 0;
         this.#lightCount = 0;
+        this.#localLightCount = 0;
+        this.#directionalLightCount = 0;
         this.#droppedLightCount = 0;
+        this.#forceFullFallback = false;
+        const temporalEnabled = this.#temporal !== null;
 
         context.scene.traverse(node => {
             if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
@@ -3255,6 +3815,19 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                                 committedWorldVersion: -1,
                                 pendingFrustumTest: node.frustumTest,
                                 committedFrustumTest: node.frustumTest,
+                                pendingBoundsRevision: -1,
+                                committedBoundsRevision: -1,
+                                pendingOcclusionStable: false,
+                                committedOcclusionStable: false,
+                                pendingMotionChanged: false,
+                                committedMotionChanged: false,
+                                pendingMotionHistoryValid: false,
+                                committedMotionHistoryValid: false,
+                                pendingHistoryRevision: temporalEnabled
+                                    ? getTransformHistoryRevision(node)
+                                    : -1,
+                                committedHistoryRevision: -1,
+                                committedSubmission: -1,
                                 committedMatrix: initial.slice(),
                                 pendingMatrix: initial
                             };
@@ -3268,13 +3841,42 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     } else {
                         this.#gpuManagedMeshes.push(node);
                         record.seenFrame = this.#frameSerial;
+                        const bounds = this.#logicalBounds[logicalIndex];
+                        if (bounds === undefined) {
+                            throw new Error('GPU Scene logical bounds are unavailable');
+                        }
+                        const transformStable =
+                            record.committedWorldVersion === node.worldMatrixVersion &&
+                            !arraysDiffer(record.committedMatrix, node.worldMatrix.elements);
+                        const motionChanged = temporalEnabled && !transformStable;
+                        const historyRevision = temporalEnabled
+                            ? getTransformHistoryRevision(node)
+                            : record.committedHistoryRevision;
+                        const motionHistoryValid =
+                            temporalEnabled &&
+                            record.committedSubmission === this.#submissionIndex &&
+                            record.committedHistoryRevision === historyRevision;
+                        const boundsStable = record.committedBoundsRevision === bounds.revision;
+                        const occlusionStable = transformStable && boundsStable;
                         const dirty =
                             record.logicalBucket !== logicalIndex ||
                             record.committedWorldVersion !== node.worldMatrixVersion ||
-                            record.committedFrustumTest !== node.frustumTest;
+                            record.committedFrustumTest !== node.frustumTest ||
+                            !boundsStable ||
+                            record.committedOcclusionStable !== occlusionStable ||
+                            record.committedMotionChanged !== motionChanged ||
+                            record.committedMotionHistoryValid !== motionHistoryValid;
                         record.logicalBucket = logicalIndex;
+                        record.pendingHistoryRevision = historyRevision;
                         if (dirty) {
-                            this.packObject(record, node, logicalIndex);
+                            this.packObject(
+                                record,
+                                node,
+                                logicalIndex,
+                                occlusionStable,
+                                motionHistoryValid,
+                                motionChanged
+                            );
                             dirtyStart = Math.min(dirtyStart, record.slot);
                             dirtyEnd = Math.max(dirtyEnd, record.slot + 1);
                         }
@@ -3291,9 +3893,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             } else if ((cameraVisibility & (node.layer >>> 0)) !== 0) {
                 if (node instanceof AmbientLight && node.enabled) {
                     const color = node.getRealColor();
-                    ambient[120] = (ambient[120] ?? 0) + color.r;
-                    ambient[121] = (ambient[121] ?? 0) + color.g;
-                    ambient[122] = (ambient[122] ?? 0) + color.b;
+                    ambient[124] = (ambient[124] ?? 0) + color.r;
+                    ambient[125] = (ambient[125] ?? 0) + color.g;
+                    ambient[126] = (ambient[126] ?? 0) + color.b;
                 } else if (
                     node instanceof PointLight ||
                     node instanceof SpotLight ||
@@ -3305,6 +3907,24 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             }
             return Node.TRAVERSE_STOP_NONE;
         });
+
+        const forceFullFallback = this.readForceFullFallback();
+        if (forceFullFallback) {
+            for (const mesh of this.#gpuManagedMeshes) {
+                this.trackFallbackMesh(mesh);
+                const record = this.#objectByMesh.get(mesh);
+                if (record === undefined) continue;
+                const metaOffset = record.slot * (OBJECT_RECORD_BYTES / 4) + 48;
+                this.#objectUInts[metaOffset + 2] = 0;
+                record.committedWorldVersion = -1;
+                record.pendingWorldVersion = -1;
+                dirtyStart = Math.min(dirtyStart, record.slot);
+                dirtyEnd = Math.max(dirtyEnd, record.slot + 1);
+            }
+            this.#gpuManagedMeshes.length = 0;
+            activeCount = 0;
+            highWater = 0;
+        }
 
         for (const [mesh, record] of this.#objectByMesh) {
             if (record.seenFrame === this.#frameSerial) continue;
@@ -3320,7 +3940,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             highWater = Math.max(highWater, record.slot + 1);
         }
         this.#objectCount = activeCount;
-        this.#activeObjectHighWater = highWater;
+        this.#activeObjectHighWater = forceFullFallback ? 0 : highWater;
         if (dirtyEnd > dirtyStart) {
             const byteOffset = dirtyStart * OBJECT_RECORD_BYTES;
             const byteLength = (dirtyEnd - dirtyStart) * OBJECT_RECORD_BYTES;
@@ -3330,6 +3950,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 new Uint8Array(this.#objectData, byteOffset, byteLength)
             );
         }
+        this.#lightFloats.set(
+            this.#directionalLightFloats.subarray(0, this.#directionalLightCount * 16),
+            0
+        );
+        this.#lightFloats.set(
+            this.#localLightFloats.subarray(0, this.#localLightCount * 16),
+            this.#directionalLightCount * 16
+        );
         const lightBytes = Math.max(1, this.#lightCount) * LIGHT_RECORD_BYTES;
         context.writeStorageBuffer(
             this.#lights,
@@ -3338,9 +3966,20 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         );
     }
 
+    private readForceFullFallback(): boolean {
+        return this.#forceFullFallback;
+    }
+
     private trackFallbackMesh(mesh: Mesh): void {
         const material = mesh.material;
         if (material === null) return;
+        if (this.#temporal !== null && !this.#pendingFallbackTemporalMeshes.has(mesh)) {
+            const previousSubmission = this.#fallbackTemporalParticipation.get(mesh);
+            if (previousSubmission !== undefined && previousSubmission !== this.#submissionIndex) {
+                mesh.invalidateTransformHistory();
+            }
+            this.#pendingFallbackTemporalMeshes.add(mesh);
+        }
         this.#fallbackObjectCount++;
         if (material.forwardQueue === 'transparent') this.#fallbackHasTransparent = true;
         else this.#fallbackHasOpaque = true;
@@ -3353,14 +3992,95 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         return this.#logicalBucketByGeometry.get(geometry)?.get(material) ?? null;
     }
 
-    private packObject(record: GPUSceneObjectRecord, mesh: Mesh, logicalIndex: number): void {
+    private refreshLogicalBounds(): void {
+        for (let logicalIndex = 0; logicalIndex < this.#options.buckets.length; logicalIndex += 1) {
+            const bucket = this.#options.buckets[logicalIndex];
+            const bounds = this.#logicalBounds[logicalIndex];
+            if (bucket === undefined || bounds === undefined) {
+                throw new Error('GPU Scene logical bounds configuration is incomplete');
+            }
+            const geometryCount = 1 + bucket.lods.length;
+            let changed = bounds.positionRevisions.length !== geometryCount;
+            for (let geometryIndex = 0; geometryIndex < geometryCount; geometryIndex += 1) {
+                const geometry =
+                    geometryIndex === 0
+                        ? bucket.geometry
+                        : bucket.lods[geometryIndex - 1]?.geometry;
+                const revision = geometry?.vertices?.revision ?? -1;
+                changed ||= bounds.positionRevisions[geometryIndex] !== revision;
+            }
+            if (!changed) continue;
+
+            let centerX = 0;
+            let centerY = 0;
+            let centerZ = 0;
+            let radius = 0;
+            let initialized = false;
+            bounds.positionRevisions.length = geometryCount;
+            for (let geometryIndex = 0; geometryIndex < geometryCount; geometryIndex += 1) {
+                const geometry =
+                    geometryIndex === 0
+                        ? bucket.geometry
+                        : bucket.lods[geometryIndex - 1]?.geometry;
+                if (geometry === undefined) {
+                    throw new Error('GPU Scene LOD geometry configuration is incomplete');
+                }
+                const vertices = geometry.vertices;
+                if (vertices === null) {
+                    throw new Error('GPU Scene bounds require position data');
+                }
+                bounds.positionRevisions[geometryIndex] = vertices.revision;
+                const sphere = geometry.getLocalSphereBounds(true);
+                if (!initialized) {
+                    centerX = sphere.center.x;
+                    centerY = sphere.center.y;
+                    centerZ = sphere.center.z;
+                    radius = sphere.radius;
+                    initialized = true;
+                    continue;
+                }
+                const deltaX = sphere.center.x - centerX;
+                const deltaY = sphere.center.y - centerY;
+                const deltaZ = sphere.center.z - centerZ;
+                const distance = Math.hypot(deltaX, deltaY, deltaZ);
+                if (distance + sphere.radius <= radius) continue;
+                if (distance + radius <= sphere.radius) {
+                    centerX = sphere.center.x;
+                    centerY = sphere.center.y;
+                    centerZ = sphere.center.z;
+                    radius = sphere.radius;
+                    continue;
+                }
+                const nextRadius = (radius + distance + sphere.radius) * 0.5;
+                if (distance > 0) {
+                    const shift = (nextRadius - radius) / distance;
+                    centerX += deltaX * shift;
+                    centerY += deltaY * shift;
+                    centerZ += deltaZ * shift;
+                }
+                radius = nextRadius;
+            }
+            bounds.center.set(centerX, centerY, centerZ);
+            bounds.radius = radius;
+            bounds.revision++;
+        }
+    }
+
+    private packObject(
+        record: GPUSceneObjectRecord,
+        mesh: Mesh,
+        logicalIndex: number,
+        occlusionStable: boolean,
+        motionHistoryValid: boolean,
+        motionChanged: boolean
+    ): void {
         const bucket = this.#options.buckets[logicalIndex];
         if (bucket === undefined) throw new Error('GPU Scene logical bucket is unavailable');
-        const sphere = bucket.geometry.getSphereBounds();
+        const sphere = this.#logicalBounds[logicalIndex];
+        if (sphere === undefined) throw new Error('GPU Scene logical bounds are unavailable');
         const floatOffset = record.slot * (OBJECT_RECORD_BYTES / 4);
         matrixElements(mesh.worldMatrix, this.#objectFloats, floatOffset);
-        const hasCommitted = record.committedWorldVersion >= 0;
-        const previous = hasCommitted ? record.committedMatrix : mesh.worldMatrix.elements;
+        const previous = motionHistoryValid ? record.committedMatrix : mesh.worldMatrix.elements;
         for (let index = 0; index < 16; index += 1) {
             this.#objectFloats[floatOffset + 16 + index] = previous[index] ?? 0;
         }
@@ -3391,33 +4111,51 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#objectUInts[floatOffset + 48] = logicalIndex;
         this.#objectUInts[floatOffset + 49] = mesh.layer >>> 0;
         this.#objectUInts[floatOffset + 50] =
-            OBJECT_ACTIVE_FLAG | (mesh.frustumTest ? OBJECT_FRUSTUM_CULLING_FLAG : 0);
+            OBJECT_ACTIVE_FLAG |
+            (mesh.frustumTest ? OBJECT_FRUSTUM_CULLING_FLAG : 0) |
+            (occlusionStable ? OBJECT_HIZ_STABLE_FLAG : 0) |
+            (motionHistoryValid ? OBJECT_MOTION_HISTORY_FLAG : 0) |
+            (motionChanged ? OBJECT_MOTION_CHANGED_FLAG : 0);
         this.#objectUInts[floatOffset + 51] = this.#materialDatabase.getHandle(
             bucket.material
         ).recordIndex;
         matrixElements(mesh.worldMatrix, record.pendingMatrix, 0);
         record.pendingWorldVersion = mesh.worldMatrixVersion;
         record.pendingFrustumTest = mesh.frustumTest;
+        record.pendingBoundsRevision = sphere.revision;
+        record.pendingOcclusionStable = occlusionStable;
+        record.pendingMotionHistoryValid = motionHistoryValid;
+        record.pendingMotionChanged = motionChanged;
     }
 
     private packLight(
         light: PointLight | SpotLight | DirectionalLight | AreaLight,
         camera: Camera
     ): void {
+        if (light instanceof AreaLight || light.shadow !== null) {
+            // The clustered BRDF has neither LTC area-light evaluation nor shadow-atlas sampling.
+            // Preserve exact ordinary Forward semantics for the whole camera instead of silently
+            // approximating the light or dropping its shadow.
+            this.#forceFullFallback = true;
+            return;
+        }
         if (this.#lightCount >= this.#options.maxLights) {
             this.#droppedLightCount++;
             return;
         }
-        const base = this.#lightCount * 16;
+        const directional = light instanceof DirectionalLight;
+        const target = directional ? this.#directionalLightFloats : this.#localLightFloats;
+        const lightIndex = directional ? this.#directionalLightCount : this.#localLightCount;
+        const base = lightIndex * 16;
         let type = 0;
         let range = light.range;
         let inner = 1;
         let outer = -1;
         camera.getModelViewMatrix(light, this.#tempMatrix).getTranslation(this.#tempVector);
-        this.#lightFloats[base] = this.#tempVector.x;
-        this.#lightFloats[base + 1] = this.#tempVector.y;
-        this.#lightFloats[base + 2] = this.#tempVector.z;
-        if (light instanceof DirectionalLight) {
+        const positionX = this.#tempVector.x;
+        const positionY = this.#tempVector.y;
+        const positionZ = this.#tempVector.z;
+        if (directional) {
             type = 2;
             range = this.cameraFar(camera);
             this.#tempVector.copy(light.getViewDirection(camera));
@@ -3426,28 +4164,29 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             inner = light.cutoffCos;
             outer = light.outerCutoffCos;
             this.#tempVector.copy(light.getViewDirection(camera));
-        } else if (light instanceof AreaLight) {
-            type = 3;
-            range ||= Math.max(light.width, light.height) * 2;
-            this.#tempVector.set(0, 0, 1).transformDirection(this.#tempMatrix).normalize();
         } else {
             this.#tempVector.set(0, 0, 0);
         }
         range ||= this.cameraFar(camera);
-        this.#lightFloats[base + 3] = range;
+        target[base] = positionX;
+        target[base + 1] = positionY;
+        target[base + 2] = positionZ;
+        target[base + 3] = range;
         const color = light.getRealColor();
-        this.#lightFloats[base + 4] = color.r;
-        this.#lightFloats[base + 5] = color.g;
-        this.#lightFloats[base + 6] = color.b;
-        this.#lightFloats[base + 7] = type;
-        this.#lightFloats[base + 8] = this.#tempVector.x;
-        this.#lightFloats[base + 9] = this.#tempVector.y;
-        this.#lightFloats[base + 10] = this.#tempVector.z;
-        this.#lightFloats[base + 11] = outer;
-        this.#lightFloats[base + 12] = light.constantAttenuation;
-        this.#lightFloats[base + 13] = light.linearAttenuation;
-        this.#lightFloats[base + 14] = light.quadraticAttenuation;
-        this.#lightFloats[base + 15] = inner;
+        target[base + 4] = color.r;
+        target[base + 5] = color.g;
+        target[base + 6] = color.b;
+        target[base + 7] = type;
+        target[base + 8] = this.#tempVector.x;
+        target[base + 9] = this.#tempVector.y;
+        target[base + 10] = this.#tempVector.z;
+        target[base + 11] = outer;
+        target[base + 12] = light.constantAttenuation;
+        target[base + 13] = light.linearAttenuation;
+        target[base + 14] = light.quadraticAttenuation;
+        target[base + 15] = inner;
+        if (directional) this.#directionalLightCount++;
+        else this.#localLightCount++;
         this.#lightCount++;
     }
 
@@ -3544,13 +4283,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const tilesX = Math.ceil(context.output.width / this.#options.tileSize);
         const tilesY = Math.ceil(context.output.height / this.#options.tileSize);
         const clusterCount = tilesX * tilesY * this.#options.zSlices;
-        matrixElements(camera.viewProjectionMatrix, this.#frameFloats, 0);
+        matrixElements(camera.jitteredViewProjectionMatrix, this.#frameFloats, 0);
         const cameraRevision = getTransformHistoryRevision(camera);
         const cameraHistoryValid =
-            this.#committedCamera === camera && this.#committedCameraRevision === cameraRevision;
+            this.#committedCamera === camera &&
+            this.#committedCameraRevision === cameraRevision &&
+            this.#committedCameraSubmission === this.#submissionIndex;
         const previousViewProjection = cameraHistoryValid
-            ? this.#committedCameraMatrix
-            : camera.viewProjectionMatrix.elements;
+            ? this.#committedRasterCameraMatrix
+            : camera.jitteredViewProjectionMatrix.elements;
         const previousView = cameraHistoryValid
             ? this.#committedViewMatrix
             : camera.viewMatrix.elements;
@@ -3574,7 +4315,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameFloats[103] = camera.depthMode === 'reversed' ? 1 : 0;
         const cameraOcclusionStable =
             cameraHistoryValid &&
-            !arrayRangeDiffers(this.#committedCameraMatrix, this.#frameFloats, 0) &&
+            !arraysDiffer(this.#committedViewMatrix, camera.viewMatrix.elements) &&
+            !arraysDiffer(this.#committedProjectionMatrix, camera.projectionMatrix.elements) &&
             !arrayRangeDiffers(this.#committedDepth, this.#frameFloats, 100);
         const previousDepth = cameraHistoryValid ? this.#committedDepth : this.#frameFloats;
         const previousDepthOffset = cameraHistoryValid ? 0 : 100;
@@ -3587,18 +4329,23 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameUInts[110] = this.#options.zSlices;
         this.#frameUInts[111] = this.#options.tileSize;
         this.#frameUInts[112] = this.#activeObjectHighWater;
-        this.#frameUInts[113] = this.#options.buckets.length;
+        this.#frameUInts[113] = this.#physicalBuckets.length;
         this.#frameUInts[114] = this.#options.maxLightIndices;
         this.#frameUInts[115] = this.#lightCount;
         this.#frameUInts[116] = this.#visibleBucketCapacity;
         this.#frameUInts[117] = this.#options.maxLightsPerCluster;
         this.#frameUInts[118] = cameraOcclusionStable && this.#options.hiZ ? 1 : 0;
         this.#frameUInts[119] = camera.visibility >>> 0;
-        this.#frameFloats[120] = Math.min(this.#frameFloats[120] ?? 0, 4);
-        this.#frameFloats[121] = Math.min(this.#frameFloats[121] ?? 0, 4);
-        this.#frameFloats[122] = Math.min(this.#frameFloats[122] ?? 0, 4);
-        this.#frameFloats[123] = 0;
+        this.#frameUInts[120] = this.#directionalLightCount;
+        this.#frameUInts[121] = this.#localLightCount;
+        this.#frameUInts[122] = cameraHistoryValid ? 1 : 0;
+        this.#frameUInts[123] = 0;
+        this.#frameFloats[124] = Math.min(this.#frameFloats[124] ?? 0, 4);
+        this.#frameFloats[125] = Math.min(this.#frameFloats[125] ?? 0, 4);
+        this.#frameFloats[126] = Math.min(this.#frameFloats[126] ?? 0, 4);
+        this.#frameFloats[127] = 0;
         matrixElements(camera.viewProjectionMatrix, this.#stagedCameraMatrix, 0);
+        matrixElements(camera.jitteredViewProjectionMatrix, this.#stagedRasterCameraMatrix, 0);
         matrixElements(camera.viewMatrix, this.#stagedViewMatrix, 0);
         matrixElements(camera.projectionMatrix, this.#stagedProjectionMatrix, 0);
         this.#pendingCamera = camera;
@@ -3632,7 +4379,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const previous: RenderGraphTextureHandle[] = [];
         const current: RenderGraphTextureHandle[] = [];
         let valid = true;
-        for (let index = 0; index < HIZ_LEVEL_COUNT; index += 1) {
+        for (let index = 0; index < this.#options.hiZLevelCount; index += 1) {
             const key = this.#hizKeys[index];
             const descriptor = this.#hizDescriptors[index];
             if (key === undefined || descriptor === undefined) {
@@ -3658,8 +4405,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             frameBuffer: RenderGraphBufferHandle;
             objects: RenderGraphBufferHandle;
             visible: RenderGraphBufferHandle;
+            visibleBucketOffsets: RenderGraphBufferHandle;
             indirect: RenderGraphBufferHandle;
             sceneDepth: RenderGraphTextureHandle;
+            previousVisibility: RenderGraphBufferHandle | null;
+            temporalMotion: RenderGraphTextureHandle | null;
         }>
     ): void {
         const batch = context.acquirePassParameters(this.#depthBatchPool);
@@ -3670,23 +4420,42 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             depthClearValue: depthClearValue(context.camera.depthMode)
         };
         batch.depthStencilAttachment = depthAttachment;
+        const motionAttachment: RenderPipelineColorAttachment | null =
+            resources.temporalMotion === null
+                ? null
+                : {
+                      texture: resources.temporalMotion,
+                      loadOp: 'clear',
+                      storeOp: 'store',
+                      clearValue: TEMPORAL_MOTION_CLEAR
+                  };
+        if (motionAttachment !== null) batch.colorAttachments[0] = motionAttachment;
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
             if (bucket === undefined) continue;
             const parameters = context.acquirePassParameters(this.#depthDrawPool);
+            parameters.configureStorageBufferCount(resources.temporalMotion === null ? 4 : 5);
             parameters.setBuffer(0, resources.frameBuffer);
             parameters.setBuffer(1, resources.objects);
+            parameters.setBuffer(2, resources.visible);
             parameters.setBufferRange(
-                2,
-                resources.visible,
-                index * this.#visibleBucketCapacity * 4,
-                this.#visibleBucketCapacity * 4
+                3,
+                resources.visibleBucketOffsets,
+                index * BUCKET_OFFSET_STRIDE_BYTES,
+                4
             );
+            if (resources.temporalMotion !== null) {
+                if (resources.previousVisibility === null) {
+                    throw new Error('GPU Scene temporal visibility history is unavailable');
+                }
+                parameters.setBuffer(4, resources.previousVisibility);
+            }
             parameters.setVertexBuffer(0, context.graph.importStorageBuffer(bucket.position));
             parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
-            parameters.colorAttachments.length = 0;
+            parameters.colorAttachments.length = motionAttachment === null ? 0 : 1;
+            if (motionAttachment !== null) parameters.colorAttachments[0] = motionAttachment;
             parameters.depthStencilAttachment = depthAttachment;
             batch.add(bucket.depthPass, parameters);
         }
@@ -3701,7 +4470,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     ): void {
         if (!this.#options.hiZ) return;
         let source: RenderGraphTextureAccessHandle = sceneDepth;
-        for (let index = 0; index < HIZ_LEVEL_COUNT; index += 1) {
+        for (let index = 0; index < this.#options.hiZLevelCount; index += 1) {
             const destination = current[index];
             if (destination === undefined)
                 throw new Error('GPU Scene Hi-Z current slot is missing');
@@ -3731,7 +4500,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             tileDepthBounds: RenderGraphBufferHandle;
             clusterCounts: RenderGraphBufferHandle;
             clusterGrid: RenderGraphBufferHandle;
-            clusterCursors: RenderGraphBufferHandle;
             clusterBlockSums: RenderGraphBufferHandle;
             clusterBlockOffsets: RenderGraphBufferHandle;
             clusterIndices: RenderGraphBufferHandle;
@@ -3750,7 +4518,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         count.setBuffer(1, resources.lights);
         count.setBuffer(2, resources.tileDepthBounds);
         count.setBuffer(3, resources.clusterCounts);
-        count.setDispatch(Math.max(1, Math.ceil(this.#lightCount / CULL_WORKGROUP_SIZE)));
+        count.setDispatch(Math.max(1, Math.ceil(this.#localLightCount / CULL_WORKGROUP_SIZE)));
         context.graph.addPass(CLUSTER_LIGHT_COUNT_PASS, count);
 
         const blockCount = Math.ceil(resources.frame.clusterCount / PREFIX_WORKGROUP_SIZE);
@@ -3775,19 +4543,25 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         finalize.setBuffer(1, resources.clusterCounts);
         finalize.setBuffer(2, resources.clusterGrid);
         finalize.setBuffer(3, resources.clusterBlockOffsets);
-        finalize.setBuffer(4, resources.clusterCursors);
-        finalize.setBuffer(5, resources.clusterStats);
+        finalize.setBuffer(4, resources.clusterStats);
         finalize.setDispatch(blockCount);
         context.graph.addPass(CLUSTER_PREFIX_FINALIZE_PASS, finalize);
+
+        const reset = context.acquirePassParameters(this.#clusterIndexResetPool);
+        reset.setBuffer(0, resources.frameBuffer);
+        reset.setBuffer(1, resources.clusterIndices);
+        reset.setDispatch(
+            Math.max(1, Math.ceil(this.#options.maxLightIndices / PREFIX_WORKGROUP_SIZE))
+        );
+        context.graph.addPass(CLUSTER_INDEX_RESET_PASS, reset);
 
         const write = context.acquirePassParameters(this.#clusterWritePool);
         write.setBuffer(0, resources.frameBuffer);
         write.setBuffer(1, resources.lights);
         write.setBuffer(2, resources.tileDepthBounds);
         write.setBuffer(3, resources.clusterGrid);
-        write.setBuffer(4, resources.clusterCursors);
-        write.setBuffer(5, resources.clusterIndices);
-        write.setDispatch(Math.max(1, Math.ceil(this.#lightCount / CULL_WORKGROUP_SIZE)));
+        write.setBuffer(4, resources.clusterIndices);
+        write.setDispatch(Math.max(1, Math.ceil(this.#localLightCount / CULL_WORKGROUP_SIZE)));
         context.graph.addPass(CLUSTER_LIGHT_WRITE_PASS, write);
     }
 
@@ -3797,6 +4571,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             frameBuffer: RenderGraphBufferHandle;
             objects: RenderGraphBufferHandle;
             visible: RenderGraphBufferHandle;
+            visibleBucketOffsets: RenderGraphBufferHandle;
             materials: RenderGraphBufferHandle;
             lights: RenderGraphBufferHandle;
             clusterGrid: RenderGraphBufferHandle;
@@ -3811,7 +4586,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             texture: resources.sceneColor,
             loadOp: 'clear',
             storeOp: 'store',
-            clearValue: { r: 0.004, g: 0.008, b: 0.022, a: 1 }
+            clearValue: context.clearColor
         };
         const depthAttachment: RenderPipelineDepthStencilAttachment = {
             texture: resources.sceneDepth,
@@ -3835,16 +4610,17 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.configure(bucket.colorPass.vertexLayouts.length, variant.textures.length);
             parameters.setBuffer(0, resources.frameBuffer);
             parameters.setBuffer(1, resources.objects);
-            parameters.setBufferRange(
-                2,
-                resources.visible,
-                index * this.#visibleBucketCapacity * 4,
-                this.#visibleBucketCapacity * 4
-            );
+            parameters.setBuffer(2, resources.visible);
             parameters.setBuffer(3, resources.materials);
             parameters.setBuffer(4, resources.lights);
             parameters.setBuffer(5, resources.clusterGrid);
             parameters.setBuffer(6, resources.clusterIndices);
+            parameters.setBufferRange(
+                7,
+                resources.visibleBucketOffsets,
+                index * BUCKET_OFFSET_STRIDE_BYTES,
+                4
+            );
             parameters.setVertexBuffer(0, context.graph.importStorageBuffer(bucket.position));
             parameters.setVertexBuffer(1, context.graph.importStorageBuffer(bucket.normal));
             let vertexSlot = 2;
@@ -3896,64 +4672,87 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     private recordDisplay(
         context: RenderPipelineContext,
         sceneColor: RenderGraphTextureHandle,
-        bloomA: RenderGraphTextureHandle,
-        bloomB: RenderGraphTextureHandle,
+        bloomA: RenderGraphTextureHandle | null,
+        bloomB: RenderGraphTextureHandle | null,
+        bloomC: RenderGraphTextureHandle | null,
         outputColor: RenderGraphTextureHandle
     ): void {
-        const prefilter = context.acquirePassParameters(this.#fullscreenPool);
-        prefilter.inputTextures.length = 1;
-        prefilter.inputTextures[0] = sceneColor;
-        prefilter.colorAttachments[0] = {
-            texture: bloomA,
-            loadOp: 'clear',
-            storeOp: 'store',
-            clearValue: { r: 0, g: 0, b: 0, a: 1 }
-        };
-        context.graph.addPass(BLOOM_PREFILTER_PASS, prefilter);
+        if (this.#options.bloomStrength > 0) {
+            if (bloomA === null || bloomB === null || bloomC === null) {
+                throw new Error('Clustered Forward+ Bloom textures are unavailable');
+            }
+            const prefilter = context.acquirePassParameters(this.#fullscreenPool);
+            prefilter.inputTextures.length = 1;
+            prefilter.inputTextures[0] = sceneColor;
+            prefilter.colorAttachments[0] = {
+                texture: bloomA,
+                loadOp: 'clear',
+                storeOp: 'store',
+                clearValue: { r: 0, g: 0, b: 0, a: 1 }
+            };
+            context.graph.addPass(BLOOM_PREFILTER_PASS, prefilter);
 
-        const blur = context.acquirePassParameters(this.#fullscreenPool);
-        blur.inputTextures.length = 1;
-        blur.inputTextures[0] = bloomA;
-        blur.colorAttachments[0] = {
-            texture: bloomB,
-            loadOp: 'clear',
-            storeOp: 'store',
-            clearValue: { r: 0, g: 0, b: 0, a: 1 }
-        };
-        context.graph.addPass(BLOOM_BLUR_PASS, blur);
+            const horizontal = context.acquirePassParameters(this.#fullscreenPool);
+            horizontal.inputTextures.length = 1;
+            horizontal.inputTextures[0] = bloomA;
+            horizontal.colorAttachments[0] = {
+                texture: bloomB,
+                loadOp: 'clear',
+                storeOp: 'store',
+                clearValue: { r: 0, g: 0, b: 0, a: 1 }
+            };
+            context.graph.addPass(BLOOM_HORIZONTAL_PASS, horizontal);
+
+            const vertical = context.acquirePassParameters(this.#fullscreenPool);
+            vertical.inputTextures.length = 1;
+            vertical.inputTextures[0] = bloomB;
+            vertical.colorAttachments[0] = {
+                texture: bloomC,
+                loadOp: 'clear',
+                storeOp: 'store',
+                clearValue: { r: 0, g: 0, b: 0, a: 1 }
+            };
+            context.graph.addPass(BLOOM_VERTICAL_PASS, vertical);
+        }
 
         const display = context.acquirePassParameters(this.#fullscreenPool);
-        display.inputTextures.length = 2;
+        display.inputTextures.length = this.#options.bloomStrength > 0 ? 2 : 1;
         display.inputTextures[0] = sceneColor;
-        display.inputTextures[1] = bloomB;
+        if (bloomC !== null) display.inputTextures[1] = bloomC;
+        const outputPolicy = context.output.colorAttachment(0);
         display.colorAttachments[0] = {
             texture: outputColor,
-            loadOp: 'clear',
-            storeOp: 'store',
-            clearValue: { r: 0, g: 0, b: 0, a: 1 }
+            loadOp: outputPolicy.loadOp,
+            storeOp: outputPolicy.storeOp,
+            ...(outputPolicy.loadOp === 'clear' ? { clearValue: outputPolicy.clearValue } : {})
         };
         context.graph.addPass(this.#displayPass, display);
     }
 
-    private recordFallback(
+    private recordFallbackOpaque(
         context: RenderPipelineContext,
         cullingResults: CullingResultsHandle,
         outputColor: RenderGraphTextureHandle,
         sceneDepth: RenderGraphTextureHandle
     ): void {
-        if (this.#fallbackHasOpaque) {
-            this.recordFallbackList(
-                context,
-                cullingResults,
-                this.#fallbackOpaqueListDescriptor,
-                outputColor,
-                sceneDepth,
-                null
-            );
-        }
-        if (!this.#fallbackHasTransparent) return;
+        this.recordFallbackList(
+            context,
+            cullingResults,
+            this.#fallbackOpaqueListDescriptor,
+            outputColor,
+            sceneDepth,
+            null
+        );
+    }
+
+    private recordFallbackTransparent(
+        context: RenderPipelineContext,
+        cullingResults: CullingResultsHandle,
+        outputColor: RenderGraphTextureHandle,
+        sceneDepth: RenderGraphTextureHandle
+    ): void {
         const opaqueTexture = context.graph.createTexture('Forward fallback opaque scene color', {
-            format: context.output.colorFormat(0),
+            format: 'rgba16float',
             extent: { relativeTo: 'output', scale: 1 },
             sampleCount: 1
         });
@@ -3969,6 +4768,28 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneDepth,
             opaqueTexture
         );
+    }
+
+    private recordFallbackMotion(
+        context: RenderPipelineContext,
+        cullingResults: CullingResultsHandle,
+        temporalMotion: RenderGraphTextureHandle,
+        sceneDepth: RenderGraphTextureHandle
+    ): void {
+        this.#fallbackMotionListDescriptor.cullingResults = cullingResults;
+        const rendererList = context.createRendererList(this.#fallbackMotionListDescriptor);
+        const parameters = context.acquirePassParameters(this.#fallbackPool);
+        parameters.rendererList = rendererList;
+        const color = parameters.colorAttachments[0];
+        if (color === undefined) {
+            throw new Error('Forward fallback motion attachment is unavailable');
+        }
+        color.texture = temporalMotion;
+        parameters.depthStencilAttachment = {
+            texture: sceneDepth,
+            depthReadOnly: true
+        };
+        context.graph.addPass(this.#fallbackMotionPass, parameters);
     }
 
     private recordFallbackList(
@@ -3995,23 +4816,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         };
         if (opaqueTexture !== null) parameters.opaqueTexture = opaqueTexture;
         context.graph.addPass(this.#fallbackPass, parameters);
-    }
-
-    private recordFallbackPresent(
-        context: RenderPipelineContext,
-        source: RenderGraphTextureHandle,
-        output: RenderGraphTextureHandle
-    ): void {
-        const parameters = context.acquirePassParameters(this.#fullscreenPool);
-        parameters.inputTextures.length = 1;
-        parameters.inputTextures[0] = source;
-        parameters.colorAttachments[0] = {
-            texture: output,
-            loadOp: 'clear',
-            storeOp: 'store',
-            clearValue: { r: 0, g: 0, b: 0, a: 1 }
-        };
-        context.graph.addPass(this.#fallbackPresentPass, parameters);
     }
 }
 
@@ -4041,10 +4845,11 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
             0
         );
         const requirements = bufferRequirementPlan(this.#options, physicalCount);
-        this.requirements = Object.freeze({
+        const hiZ = this.#options.hiZ;
+        this.requirements = snapshotRenderPipelineRequirements({
             requiredCapabilities: Object.freeze([
                 'storage-buffer' as const,
-                'storage-texture' as const,
+                ...(hiZ ? (['storage-texture' as const] as const) : []),
                 'compute-pass' as const,
                 'indirect-draw' as const
             ]),
@@ -4054,30 +4859,44 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     use: 'depth-stencil-attachment' as const
                 }),
                 Object.freeze({ format: 'depth32float' as const, use: 'sampled' as const }),
-                Object.freeze({ format: 'r32float' as const, use: 'sampled' as const }),
-                Object.freeze({ format: 'r32float' as const, use: 'storage' as const }),
+                ...(hiZ
+                    ? [
+                          Object.freeze({
+                              format: 'r32float' as const,
+                              use: 'sampled' as const
+                          }),
+                          Object.freeze({
+                              format: 'r32float' as const,
+                              use: 'storage' as const
+                          })
+                      ]
+                    : []),
                 Object.freeze({ format: 'rgba16float' as const, use: 'color-attachment' as const }),
                 Object.freeze({
                     format: 'rgba16float' as const,
                     use: 'filterable-sampled' as const
-                })
+                }),
+                ...(this.#options.temporalAA === null
+                    ? []
+                    : TEMPORAL_AA_REQUIREMENTS.requiredTextureFormats)
             ]),
             requiredLimits: Object.freeze({
                 maxBindingsPerBindGroup: Math.max(
-                    6 + HIZ_LEVEL_COUNT,
+                    hiZ ? 6 + this.#options.hiZLevelCount : 6,
                     PBR_TEXTURE_ROLES.length * 2
                 ),
-                maxStorageBuffersPerShaderStage: 7,
-                maxStorageTexturesPerShaderStage: 1,
+                maxStorageBuffersPerShaderStage: 8,
                 maxSampledTexturesPerShaderStage: Math.max(
-                    HIZ_LEVEL_COUNT,
+                    hiZ ? this.#options.hiZLevelCount : 0,
                     PBR_TEXTURE_ROLES.length
                 ),
                 maxSamplersPerShaderStage: PBR_TEXTURE_ROLES.length,
+                ...(hiZ ? { maxStorageTexturesPerShaderStage: 1 } : {}),
                 maxStorageBufferBindingSize: requirements.maxStorageBufferBindingSize,
                 maxBufferSize: requirements.maxBufferSize,
                 maxComputeInvocationsPerWorkgroup: PREFIX_WORKGROUP_SIZE,
-                maxComputeWorkgroupsPerDimension: requirements.maxComputeWorkgroupsPerDimension
+                maxComputeWorkgroupsPerDimension: requirements.maxComputeWorkgroupsPerDimension,
+                ...(this.#options.temporalAA === null ? {} : { maxColorAttachments: 3 })
             })
         });
     }

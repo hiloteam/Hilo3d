@@ -225,6 +225,42 @@ describe('packPBRGPUMaterialRecord', () => {
     it('rejects an incompatible destination layout', () => {
         expect(() => {
             packPBRGPUMaterialRecord(new PBRMaterial(), new Uint8Array(16));
-        }).toThrow(/must be 144 bytes/u);
+        }).toThrow(`must be ${String(PBR_GPU_MATERIAL_RECORD_BYTES)} bytes`);
+    });
+
+    it('packs transform, UV set, encoding, presence, and channel mapping per texture slot', () => {
+        const transform = new Matrix3().fromRotationTranslationScale(0.25, 0.2, 0.3, 0.5, 0.75);
+        const material = new PBRMaterial({
+            baseColorMap: {
+                texture: new Texture({ uv: 1 }),
+                uvSet: 1,
+                transform,
+                encoding: 'linear',
+                channels: ['b', 'g', 'r', 'one']
+            }
+        });
+        const target = new Uint8Array(PBR_GPU_MATERIAL_RECORD_BYTES);
+
+        packPBRGPUMaterialRecord(material, target);
+
+        const values = new Float32Array(target.buffer);
+        const matrix = transform.elements;
+        expect(Array.from(values.slice(12, 24))).toEqual([
+            matrix[0],
+            matrix[1],
+            matrix[2],
+            0,
+            matrix[3],
+            matrix[4],
+            matrix[5],
+            0,
+            matrix[6],
+            matrix[7],
+            matrix[8],
+            0
+        ]);
+        expect(Array.from(values.slice(24, 28))).toEqual([1, 0, 1, 0]);
+        expect(Array.from(values.slice(28, 32))).toEqual([2, 1, 0, 5]);
+        expect(values[44]).toBe(0);
     });
 });

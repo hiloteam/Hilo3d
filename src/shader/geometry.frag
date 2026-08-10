@@ -29,7 +29,7 @@ vec4 transformDataToColor(vec3 data){
 
 void main(void) {
     #ifdef HILO_MOTION_VECTOR_PASS
-        hilo_FragColor = vec4(hiloMotionVector(), 0.0, 1.0);
+        hilo_FragColor = hiloMotionData();
         #include "./chunk/logDepth_main.frag"
     #else
         #if defined(HILO_VERTEX_TYPE_POSITION)

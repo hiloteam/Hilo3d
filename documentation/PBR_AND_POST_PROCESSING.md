@@ -101,16 +101,27 @@ ray；volume 根据折射方向修正光程，再用 Beer-Lambert attenuation �
 ## 内置 TemporalAA
 
 `TemporalAA` 是可选的 `after-opaque` feature。它先用内置材质的 `motion-vector` semantic
-pass 把 opaque/masked velocity 写入 single-sample `rg16float`，再用当前 sampled depth、上一帧
-`rgba16float` color history 与 `r16float` depth history 做原生分辨率 reprojection、depth
-disocclusion 和 3×3 neighborhood clamp。history 双缓冲只在有效 submission 后轮换；camera
-cut、resize、显式 transform invalidation 和 device
+pass 把 opaque/masked 的 current-to-previous UV velocity、expected previous
+log-view-depth 与 current log-view-depth 写入 single-sample `rgba16float`。resolve 使用上一帧
+`rgba16float` color history 与 `r32float` log-view-depth history 做原生分辨率 reprojection、保守 2×2
+relative-depth disocclusion、YCoCg 3×3 variance clipping、motion/luminance-reactive history
+weight 和只作用于输出的轻量 sharpen；未经 sharpen 的 resolved
+color 才回写 history，避免逐帧反馈过锐。history 双缓冲只在有效 submission 后轮换；camera
+cut、显著 projection 变化、resize、显隐间断、显式 transform invalidation 和 device
 recovery 会让下一帧重新初始化，失败帧保留上一份已提交 history 和 jitter index。
 
 Camera 同时维护 jittered raster projection 与 non-jittered CPU
 projection；frustum、picking、project/unproject 不读取 jitter。TAA
 resolve 只处理 opaque 结果，transparent/transmission 在它之后合成，Bloom 再消费完整线性 HDR 颜色。TAAU、动态分辨率和 reactive
-mask 不属于当前首版。
+mask 不属于当前首版；当前 luminance reactive
+response 是 resolve 内部启发式，不等同于材质提供的 authored reactive mask。
+
+`ClusteredForwardPlusPipelineFactory` 通过 `temporalAA` 显式 opt-in 同一 resolve。GPU
+Scene 把 motion/depth 输出融合到已有 depth prepass，并用双缓冲 object
+visibility 防止 Hi-Z/frustum 剔除后重现的物体读取陈旧 velocity；ordinary Forward fallback
+opaque 在 resolve 前参与 color、depth 和 motion，transparent
+fallback 在 resolve 后合成。未启用时不分配 visibility-history
+buffer，也不执行对应 clear/write，保持默认 Clustered 路径无 TAA 带宽成本。
 
 ## 内置 Bloom
 

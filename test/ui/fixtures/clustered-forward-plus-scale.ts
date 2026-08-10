@@ -26,7 +26,8 @@ interface ClusteredForwardPlusScaleResult {
     readonly visibleObjectCount: number;
     readonly clusterOverflowCount: number;
     readonly hiZValid: boolean;
-    readonly frameMilliseconds: readonly number[];
+    readonly cpuFrameRecordMilliseconds: readonly number[];
+    readonly gpuBatchCompletionMilliseconds: readonly number[];
     readonly recoveryDeviceChanged: boolean;
     readonly recoveredObjectCount: number;
     readonly recoveredFallbackObjectCount: number;
@@ -103,22 +104,30 @@ const camera = new PerspectiveCamera({
 });
 camera.setPosition(0, 0, 40).lookAt(new Vector3(0, 0, 0));
 
-const frameMilliseconds: number[] = [];
-const renderFrame = async (): Promise<void> => {
+const cpuFrameRecordMilliseconds: number[] = [];
+const gpuBatchCompletionMilliseconds: number[] = [];
+const recordFrame = (): void => {
     const start = performance.now();
     renderer.render(scene, camera);
+    cpuFrameRecordMilliseconds.push(performance.now() - start);
+};
+const measureSubmittedBatch = async (frameCount: number): Promise<void> => {
+    const completionStart = performance.now();
+    for (let frame = 0; frame < frameCount; frame += 1) recordFrame();
     await renderer.waitForIdle();
-    frameMilliseconds.push(performance.now() - start);
+    gpuBatchCompletionMilliseconds.push(performance.now() - completionStart);
 };
 
-await renderFrame();
-await renderFrame();
+// Warm pipelines and high-water frame storage without counting compilation/recovery startup.
+renderer.render(scene, camera);
+renderer.render(scene, camera);
+await renderer.waitForIdle();
 for (let index = 0; index < dynamicMeshes.length; index += 1) {
     const mesh = dynamicMeshes[index];
     if (mesh !== undefined) mesh.x += index % 2 === 0 ? 0.01 : -0.01;
 }
 material.roughness = 0.46;
-await renderFrame();
+await measureSubmittedBatch(3);
 const diagnostics = await factory.readDiagnostics();
 const rhi = renderer.getExtension('rhi') as { readonly device: RHIDevice } | null;
 if (rhi === null) throw new Error('GPU Scene scale acceptance requires the public RHI extension');
@@ -144,8 +153,7 @@ const deviceRestored = new Promise<void>(resolve => {
 deviceBeforeRecovery.destroy();
 await deviceLost;
 await Promise.all([renderer.waitForIdle(), deviceRestored]);
-await renderFrame();
-await renderFrame();
+await measureSubmittedBatch(2);
 const recoveredDiagnostics = await factory.readDiagnostics();
 window.__HILO3D_CLUSTERED_FORWARD_PLUS_SCALE_RESULT__ = {
     objectCount: diagnostics.objectCount,
@@ -155,7 +163,8 @@ window.__HILO3D_CLUSTERED_FORWARD_PLUS_SCALE_RESULT__ = {
     visibleObjectCount: diagnostics.visibleObjectCount,
     clusterOverflowCount: diagnostics.clusterOverflowCount,
     hiZValid: diagnostics.hiZValid,
-    frameMilliseconds,
+    cpuFrameRecordMilliseconds,
+    gpuBatchCompletionMilliseconds,
     recoveryDeviceChanged: rhi.device !== deviceBeforeRecovery,
     recoveredObjectCount: recoveredDiagnostics.objectCount,
     recoveredFallbackObjectCount: recoveredDiagnostics.fallbackObjectCount

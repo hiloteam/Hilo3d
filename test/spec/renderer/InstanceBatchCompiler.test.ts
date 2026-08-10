@@ -428,6 +428,8 @@ describe('InstanceBatchCompiler revisions and high-water storage', () => {
         const blockRevision = block.revision;
         const storageAllocations = compiler.diagnostics.storageAllocationCount;
         const resolvedCapacity = compiler.diagnostics.resolvedInputCapacity;
+        const initialNormalRecomputes = compiler.diagnostics.normalMatrixRecomputeCount;
+        expect(initialNormalRecomputes).toBe(meshes.length);
 
         for (let iteration = 0; iteration < 32; iteration += 1) {
             const stable = compiler.compile(
@@ -450,18 +452,20 @@ describe('InstanceBatchCompiler revisions and high-water storage', () => {
         expect(block.revision).toBe(blockRevision);
         expect(compiler.diagnostics.storageAllocationCount).toBe(storageAllocations);
         expect(compiler.diagnostics.resolvedInputCapacity).toBe(resolvedCapacity);
+        expect(compiler.diagnostics.normalMatrixRecomputeCount).toBe(initialNormalRecomputes);
 
         const firstMesh = meshAt(meshes, 0);
         const secondMesh = meshAt(meshes, 1);
         const secondValues = required(values.get(secondMesh), 'second mesh values');
         secondValues.scalar = 99;
-        secondMesh.worldMatrix.set(3, 0, 0, 0, 0, 4, 0, 0, 0, 0, 5, 0, 0, 0, 0, 1);
+        secondMesh.setScale(3, 4, 5).updateMatrixWorld(true);
         compiler.compile(owner, meshes, material, CUSTOM_INPUTS, 'webgpu', capabilities());
         expect(first.layoutRevision).toBe(layoutRevision);
         expect(first.resourceRevision).toBe(resourceRevision + 1);
         expect(floatData(source)[5]).toBe(99);
         expect(source.revision).toBeGreaterThan(sourceRevision);
         expect(block.revision).toBeGreaterThan(blockRevision);
+        expect(compiler.diagnostics.normalMatrixRecomputeCount).toBe(initialNormalRecomputes + 1);
 
         compiler.compile(
             owner,

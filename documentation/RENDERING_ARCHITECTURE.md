@@ -82,7 +82,9 @@ Sprite 仍是 Mesh：共享单位 quad、按 atlas Texture 共享 SpriteMaterial
 `sortingLayer / zIndex / stable scene traversal` 确定显示顺序，再仅对相邻兼容项合批，并把 UV
 rect、size/anchor、tint 与 transform 编译成 portable instance batch。WebGL 2 使用 instance vertex
 stream，WebGPU 使用固定 InstanceBlock 加 Sprite instance
-stream；没有 2D 专用 backend 或第二套 shader 树。
+stream；没有 2D 专用 backend 或第二套 shader 树。普通 Forward 与离屏路径也消费同一份 direct/instance-batch
+ordered item list；透明 batch 只能合并深度排序后相邻的兼容项，不能跨 direct draw、`renderOrder`
+或 blending 顺序移动。
 
 普通前向渲染至少包含 Main Pass；存在透明物体时增加 Transparent
 Pass；存在投影灯光时在它们之前加入 Shadow
@@ -102,9 +104,11 @@ layout，需要改变 topology 时构造另一个材质实例。
 Render Pipeline 请求 `forward`、`depth-only`、`shadow-caster`、`motion-vector` 或 `picking`
 role，材质不拥有 graph pass 顺序。Shadow Atlas 直接编译 `shadow-caster`，不创建 proxy
 material；role 缺失或 target output 不匹配会在 RHI frame 前失败。内置 Basic/PBR/Geometry 的
-`motion-vector` pass 只接受 single-sample `rg16float` target，复用 current/previous
-camera、model、instance、skin、morph 与 coverage ABI；首次出现或任一 transform
-history 失效时写零。`material-attributes` 仍保留给后续属性缓冲路线。
+`motion-vector` pass 只接受 single-sample `rgba16float` target：XY 是 current-to-previous UV
+velocity，Z 是 expected previous `log2(1 + viewDepth)`，W 是 current
+`log2(1 + viewDepth)`。它复用 current/previous camera、model、instance、skin、morph 与 coverage
+ABI；首次出现、显隐/提交间断或任一 transform history 失效时写 invalid history
+marker，不能消费陈旧 pose。`material-attributes` 仍保留给后续属性缓冲路线。
 
 portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
 `MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
@@ -119,8 +123,9 @@ identity 去重，保留公共 `materialId` 并分配按 family/layout 分类的
 handle；`MaterialInstance.revision` 驱动 record 重打包，相邻 dirty record 合并上传。staged
 revision 和 texture-slot dirtiness 只在成功 submission 后提交，失败帧重试；renderer-owned
 `cpu-shadow` buffer 在 device recovery 后重建而不替换材质或 handle identity。首个
-`builtin-pbr-storage-v1` record 由 GPU Scene 与 clustered indirect draw 共享，logical geometry
-bucket 与 material handle 在对象 record 中保持为两个独立字段。
+`builtin-pbr-storage-v2` record 由 GPU Scene 与 clustered indirect draw 共享；除 surface
+scalar 外，它为每个内置 PBR texture slot 保存独立 UV matrix、UV set、encoding、presence 与 channel
+mapping。logical geometry bucket 与 material handle 在对象 record 中保持为两个独立字段。
 
 ### 1.3 RenderPipelineHost：统一的可脚本化编排
 
@@ -131,6 +136,8 @@ runtime。创建时未传 `renderPipeline` 时也由进程级 `ForwardRenderPipe
 
 - `cull()` 与 `createRendererList()` 复用 shared renderer 的场景收集、排序、instancing 和 mesh
   processor；
+- `prepareScene()` 只更新 scene world matrix 与 active camera，不构造 CPU render list；GPU-driven
+  pipeline 可先完成一次自有 scene collection，仅在确有 compatibility mesh 时再调用一次 `cull()`；
 - `recordShadows()` 复用同一 Shadow Atlas、LightBlock、resource owner 和恢复链路；
 - `ScriptableRenderGraph` 可创建 transient texture/buffer，导入 output、RenderTarget、renderer-owned
   `StorageBuffer` 和 sampled engine `Texture`，获取 recovery-aware persistent target、按 stable
@@ -176,13 +183,16 @@ transfer。
 内置 HDR 组合由 `PostProcessRenderPipelineFactory` 提供：attachment-zero scene color 使用
 `rgba16float`，opaque queue 完成后由 graph `TextureCopyPass` 捕获 opaque scene
 texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。可选
-`TemporalAA` 在 opaque 后记录 `rg16float` velocity，并用 sampled depth、`rgba16float` 双缓冲 color
-history 和 `r16float` 双缓冲 depth history 完成原生分辨率 reprojection、disocclusion 与 neighborhood
-clamp。resolved opaque color 随后才接受 transparent composition，因此透明不写入 TAA history。之后
-`Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent
-upsample 与线性 composite；`ColorUber` 最后统一完成 grading、tone
-mapping、linear-to-sRGB 与 dithering，并把输出编码标记为 `srgb`，避免 surface output
-pass 重复转换。float scene target 会选择 linear-output material
+`TemporalAA` 在 opaque 后记录 `rgba16float` motion/log-depth，并用 `rgba16float` 双缓冲 color
+history 和 `r32float` 双缓冲 log-view-depth history 完成原生分辨率 reprojection、relative-depth
+disocclusion、YCoCg variance clipping 与 reactive resolve。resolved opaque
+color 随后才接受 transparent composition，因此透明不写入 TAA history。Clustered Forward+ opt-in
+TAA 时把 GPU Scene motion 融入 depth prepass，以前一已提交帧的 visibility
+buffer 拒绝重现物体的陈旧 history；fallback opaque/masked 在 resolve 前补写同一 motion
+target，fallback transparent 在 resolve 后合成。之后 `Bloom` 在 tone mapping 前记录 soft-knee/Karis
+prefilter、13-tap downsample pyramid、tent upsample 与线性 composite；`ColorUber`
+最后统一完成 grading、tone mapping、linear-to-sRGB 与 dithering，并把输出编码标记为
+`srgb`，避免 surface output pass 重复转换。float scene target 会选择 linear-output material
 variant，禁止材质 shader 提前执行 gamma encode 或旧的局部 tone mapping。完整颜色与材质合同见
 [`PBR_AND_POST_PROCESSING.md`](./PBR_AND_POST_PROCESSING.md)。
 
@@ -209,18 +219,25 @@ allocator、storage-aware GGX PBR、HDR Bloom 与 ACES
 display。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD bucket 发一个 indirect
 draw，GPU 为不可见 bucket 写零 instance count；这些 bucket draw 在共享层分别合并到一个 depth render
 pass 和一个 color render pass，仍可逐 draw 切换 pipeline、bind group、vertex/index
-buffer，但不再为每个 bucket 重开 attachment。Hi-Z 对 standard depth 取区块最远值 `max`、对 reversed
-depth 取区块最远值 `min`；previous-frame occlusion 同时读取已提交的 previous
+buffer，但不再为每个 bucket 重开 attachment。可见对象先写 selected-bucket table，再通过 bucket
+prefix 产生连续 range offset，最终压缩到一份与 `maxObjects` 同阶的 visible table，不再按 object ×
+physical-bucket 放大。所有 indexed-indirect command 的 `firstInstance` 保持为零；每个 bucket
+draw 通过 256-byte 对齐的只读 storage range 取得自己的 compact base，再与本地 `gl_InstanceIndex`
+相加，因此 baseline 不依赖 WebGPU 可选的 `indirect-first-instance` feature。Hi-Z 对 standard
+depth 取区块最远值 `max`、对 reversed depth 取区块最远值 `min`；previous-frame
+occlusion 同时读取已提交的 previous
 view/projection/depth 参数，不把上一帧 VP 与当前帧投影约定混用。颜色阶段 load 深度预通过结果，物体 record 携带 model
 basis 的 inverse-transpose normal matrix，因此 non-uniform scale 不改变法线方向。depth
 prepass 与 color pass 通过同一段 byte-identical clip-space transform 计算
 `gl_Position`，避免相机移动时跨 shader 浮点舍入差异被 reversed-depth
 test 放大成缺面。相机的 view-projection 或 depth 参数相对已提交帧发生变化时，runtime 会暂时关闭一帧 previous-frame
-Hi-Z 遮挡判定以避免视角移动造成 disocclusion 误剔除，同时仍生成当帧 pyramid，使静止后的下一帧即可恢复遮挡剔除。静止帧从包围球最近深度和 view-space 包围立方体的八个角计算保守的屏幕投影，避免偏离画面中心时低估范围，并向上选择覆盖完整投影的 mip；投影大于最粗 pyramid
-footprint 的物体不参与 Hi-Z 遮挡剔除，避免稀疏采样把大块局部几何误判为完全遮挡。GPU
-Scene 的 frustum 阶段使用 view-space side plane 的完整法线长度计算球体半径，不以 projection
-scale 近似斜平面距离；`Mesh.frustumTest = false` 与普通 renderer
-list 一样关闭该 mesh 的视锥剔除。普通 Forward PBR 与 clustered storage variant 共用
+Hi-Z 遮挡判定以避免视角移动造成 disocclusion 误剔除，同时仍生成当帧 pyramid，使静止后的下一帧即可恢复遮挡剔除。对象只有在 transform 和 bounds
+revision 都相对提交帧稳定时才允许使用 previous-frame Hi-Z；动态对象至少跳过一帧。logical
+bucket 的 bounds 是 base geometry 与全部 LOD geometry 的保守 union，并在 position
+revision 变化时刷新。静止帧从包围球最近深度和 view-space 包围立方体的八个角计算保守的屏幕投影，避免偏离画面中心时低估范围；半分辨率 history 按工厂声明的最大 viewport 专门化，最多 13 级覆盖允许的 8192-pixel
+viewport。GPU Scene 的 frustum 阶段使用 view-space side
+plane 的完整法线长度计算球体半径，不以 projection scale 近似斜平面距离；`Mesh.frustumTest = false`
+与普通 renderer list 一样关闭该 mesh 的视锥剔除。普通 Forward PBR 与 clustered storage variant 共用
 `pbr_surface.glsl` 和 `pbr_brdf.glsl`；后者只把 light provider 换成 cluster
 grid/list，不复制材质模型。GPU Scene geometry database 可携带 UV0/UV1 与对应 tangent stream，sampled
 engine `Texture` 通过 graph import 复用 renderer 的上传、恢复与 submission 生命周期。
@@ -234,13 +251,18 @@ map，支持每纹理槽独立的 UV0/UV1、UV transform、encoding、channel �
 mutation，仍要求默认 depth/alpha 状态。未注册 mesh、对象容量 overflow、skinning/morph，以及注册 bucket 在运行时发生的不兼容 material/geometry/raster-state
 replacement 会在同一帧迁移到共享 Forward compatibility path；恢复兼容后可重新进入 GPU
 Scene。fallback 使用显式 mesh identity
-exclusion 避免重复绘制，按 opaque/transparent 分开排序，复用共享 shadow 录制，并为 transmission 提供已经完成 display 与 fallback
-opaque 的 scene-color copy。由于 fallback 发生在 Clustered HDR/Bloom/ACES
-display 之后，它保留普通 Forward 材质正确性但不获得 clustered light
-list 或同一 HDR 后处理；这是可通过 `fallbackObjectCount`
-观测的性能/画质边界，而不是静默丢失。初始 bucket 声明不合法、非 perspective/multisample
-output 或不支持的 WebGPU 设备仍 fail-closed；shadow/cookie/IES 和精确 LTC area
-light 的 clustered-native 实现继续走后续 high-end 扩展，不会静默退化到 WebGL 2。factory 的 required
+exclusion 避免重复绘制，按 opaque/transparent 分开排序并复用共享 shadow 录制。compatibility
+opaque/transparent 与 GPU Scene color 都写同一 linear `rgba16float` scene
+color/depth；transmission 读取 HDR opaque copy，最后统一经过 separable horizontal/vertical
+Bloom 与一次 ACES display；`bloomStrength: 0` 不创建 Bloom transient
+texture，也不记录其 pass。方向光走独立全局列表，不复制到每个 cluster；局部光与 near
+plane 相交时使用保守 full-screen tile bounds，空 depth tile 使用 invalid slice range；index
+budget 通过 sentinel + `atomicMin` 插入链确定性保留最低 light id。当前 clustered
+BRDF 没有精确 LTC 或 shadow-atlas 采样，因此检测到 AreaLight 或启用 shadow 的 light 时，整相机明确转入 ordinary
+Forward fallback，而不是近似 area
+light 或静默丢阴影。初始 bucket 声明不合法、非 perspective/multisample
+output 或不支持的 WebGPU 设备仍 fail-closed；native clustered
+LTC、shadow、cookie/IES 继续走后续 high-end 扩展，不会静默退化到 WebGL 2。factory 的 required
 limits 覆盖 object/geometry/visible/cluster/light-index 全部 buffer 与最坏 dispatch
 dimension，在 runtime 分配前完成设备准入。
 
@@ -631,7 +653,9 @@ commit/rollback 和 device-loss 恢复边界不变，也避免多 pass
 pipeline 为每个 bucket 重复遍历场景并打包全部灯光。Clustered
 Forward+ 进一步把同 attachment 的 fixed-bucket indirect draws 汇入高水位复用的内部 batch
 pass：Render Graph 仍声明全部 storage/vertex/index/indirect 依赖并准备独立 draw
-packet，但 depth/color 各只打开一次原生 render pass。
+packet，但 depth/color 各只打开一次原生 render pass。普通 WebGPU instance batch 按 Mesh identity 与
+`worldMatrixVersion` 缓存 inverse-transpose normal matrix；静止 batch 不再每帧清空并重算全部 normal
+matrix，diagnostics 可观测累计重算数。
 
 ### 5.2 提交感知的生命周期
 
@@ -738,7 +762,9 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
   database、previous-frame Hi-Z cull/LOD/compact、fixed bucket indirect depth/color、depth-driven 3D
   cluster count/prefix/write、HDR/Bloom/ACES 和按需 diagnostics；readback 不参与 draw 或 light
   allocation。独立 scale fixture 覆盖 100k static + 10k dynamic、256 lights 和 device
-  recovery 的规模正确性；可比较的物理 GPU 性能回归阈值仍使用单独的受控基线协议。
+  recovery 的规模正确性；fixture 将连续提交的 CPU frame-record 时间与 batch GPU
+  completion 分开报告，不在每个采样帧内
+  `waitForIdle()`。可比较的物理 GPU 性能回归阈值仍使用单独的受控基线协议。
 - 旧的 WebGPU-only effect 页面同时是可展示 example 与真实浏览器验收：depth prepass → sampled-depth
   tile cull → Scene group-3 storage、Gaussian cull/reorder/indirect draw，以及 1024 粒子 Hilo3D
   wordmark 的 fractal value/curl noise、呼吸、涡旋、回归、compact、GPU indirect additive
