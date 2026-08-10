@@ -14,14 +14,28 @@ export interface MeshDrawInstanceBatch {
     readonly transparent: boolean;
 }
 
+/** One item in the final backend-neutral draw order produced by the shared planner. */
+export type MeshDrawListItem = Mesh | Readonly<MeshDrawInstanceBatch>;
+
+/** Narrow one ordered draw-list item without relying on private batch fields. */
+export function isMeshDrawInstanceBatch(
+    item: MeshDrawListItem
+): item is Readonly<MeshDrawInstanceBatch> {
+    return !(item instanceof Mesh);
+}
+
 /**
- * Stable draw-list result. The object and its three arrays retain their identities across builds;
+ * Stable draw-list result. The object and all arrays retain their identities across builds;
  * callers must consume their contents before the next build or reset.
  */
 export interface MeshDrawListPlan {
     readonly opaqueMeshes: readonly Mesh[];
     readonly transparentMeshes: readonly Mesh[];
     readonly instancedBatches: readonly Readonly<MeshDrawInstanceBatch>[];
+    /** Final opaque order, including direct and instanced items. */
+    readonly opaqueItems: readonly MeshDrawListItem[];
+    /** Final transparent order, including direct and instanced items. */
+    readonly transparentItems: readonly MeshDrawListItem[];
 }
 
 /** Stable diagnostics object used to verify bounded high-water storage. */
@@ -126,6 +140,8 @@ export class MeshDrawListPlanner {
     readonly #opaqueMeshes: Mesh[] = [];
     readonly #transparentMeshes: Mesh[] = [];
     readonly #instancedBatches: MutableMeshDrawInstanceBatch[] = [];
+    readonly #opaqueItems: MeshDrawListItem[] = [];
+    readonly #transparentItems: MeshDrawListItem[] = [];
     readonly #seenMeshes = new Set<Mesh>();
     readonly #owners = new Map<Mesh, OwnerRecord>();
     readonly #ownerSlots: OwnerRecord[] = [];
@@ -169,7 +185,19 @@ export class MeshDrawListPlanner {
         }
         const renderOrderA = isSpriteMesh(a) ? 0 : a.renderOrder;
         const renderOrderB = isSpriteMesh(b) ? 0 : b.renderOrder;
-        return renderOrderA - renderOrderB;
+        if (renderOrderA !== renderOrderB) return renderOrderA - renderOrderB;
+        const materialA = this.#inputMaterialOverride ?? a.material;
+        const materialB = this.#inputMaterialOverride ?? b.material;
+        if (
+            materialA?.forwardQueue === 'transparent' &&
+            materialB?.forwardQueue === 'transparent' &&
+            this.#transparentSortCamera !== null
+        ) {
+            const depthA = this.transparentDepth(a);
+            const depthB = this.transparentDepth(b);
+            if (depthA !== depthB) return depthB - depthA;
+        }
+        return 0;
     };
 
     readonly #compareOpaque = (a: Mesh, b: Mesh): number => {
@@ -200,13 +228,48 @@ export class MeshDrawListPlanner {
         if (renderOrderA !== renderOrderB) {
             return renderOrderA - renderOrderB;
         }
-        if (
-            this.#transparentSortCamera !== null &&
-            recordA.transparentDepth !== recordB.transparentDepth
-        ) {
-            return recordB.transparentDepth - recordA.transparentDepth;
-        }
         return recordA.inputIndex - recordB.inputIndex;
+    };
+
+    readonly #compareOpaqueItem = (a: MeshDrawListItem, b: MeshDrawListItem): number => {
+        const batchA = isMeshDrawInstanceBatch(a);
+        const batchB = isMeshDrawInstanceBatch(b);
+        const recordA = batchA ? null : this.requireOwnerRecord(a);
+        const recordB = batchB ? null : this.requireOwnerRecord(b);
+        const renderOrderA = batchA ? a.renderOrder : (recordA?.renderOrder ?? 0);
+        const renderOrderB = batchB ? b.renderOrder : (recordB?.renderOrder ?? 0);
+        if (renderOrderA !== renderOrderB) return renderOrderA - renderOrderB;
+        const materialA = batchA
+            ? a.material
+            : requireRecordValue(recordA?.material ?? null, 'material');
+        const materialB = batchB
+            ? b.material
+            : requireRecordValue(recordB?.material ?? null, 'material');
+        let order = compareStringIdentity(materialA.id, materialB.id);
+        if (order !== 0) return order;
+        const geometryA = batchA
+            ? a.geometry
+            : requireRecordValue(recordA?.geometry ?? null, 'geometry');
+        const geometryB = batchB
+            ? b.geometry
+            : requireRecordValue(recordB?.geometry ?? null, 'geometry');
+        order = compareStringIdentity(geometryA.id, geometryB.id);
+        if (order !== 0) return order;
+        if (batchA !== batchB) return batchA ? 1 : -1;
+        if (!batchA && !batchB) return this.#compareOpaque(a, b);
+        const mutableA = a as MutableMeshDrawInstanceBatch;
+        const mutableB = b as MutableMeshDrawInstanceBatch;
+        return mutableA.identityOrder - mutableB.identityOrder;
+    };
+
+    readonly #compareTransparentItem = (a: MeshDrawListItem, b: MeshDrawListItem): number => {
+        const inputIndexA = isMeshDrawInstanceBatch(a)
+            ? (a as MutableMeshDrawInstanceBatch).inputIndex
+            : this.requireOwnerRecord(a).inputIndex;
+        const inputIndexB = isMeshDrawInstanceBatch(b)
+            ? (b as MutableMeshDrawInstanceBatch).inputIndex
+            : this.requireOwnerRecord(b).inputIndex;
+        return inputIndexA - inputIndexB;
     };
 
     readonly #compareInstanced = (
@@ -226,7 +289,9 @@ export class MeshDrawListPlanner {
         this.#plan = Object.freeze({
             opaqueMeshes: this.#opaqueMeshes,
             transparentMeshes: this.#transparentMeshes,
-            instancedBatches: this.#instancedBatches
+            instancedBatches: this.#instancedBatches,
+            opaqueItems: this.#opaqueItems,
+            transparentItems: this.#transparentItems
         });
         const state = this.#diagnosticState;
         this.#diagnostics = Object.freeze({
@@ -290,6 +355,7 @@ export class MeshDrawListPlanner {
                 this.#transparentMeshes.sort(this.#compareTransparent);
                 this.#instancedBatches.sort(this.#compareInstanced);
             }
+            this.buildOrderedItems(sort);
             this.updateDiagnostics();
             return this.#plan;
         } finally {
@@ -309,6 +375,8 @@ export class MeshDrawListPlanner {
         if (record === undefined) return false;
         removeIdentity(this.#opaqueMeshes, mesh);
         removeIdentity(this.#transparentMeshes, mesh);
+        removeIdentity(this.#opaqueItems, mesh);
+        removeIdentity(this.#transparentItems, mesh);
         for (const batch of this.#instancedBatches) {
             if (!batch.orderPreserving) continue;
             if (!removeIdentity(batch.meshes, mesh)) continue;
@@ -434,7 +502,8 @@ export class MeshDrawListPlanner {
             mesh.useInstanced &&
             batch !== null &&
             batch.geometry === geometry &&
-            batch.material === material;
+            batch.material === material &&
+            batch.renderOrder === mesh.renderOrder;
         if (!batchMatches) {
             if (batch !== null) {
                 record.batch = null;
@@ -723,6 +792,8 @@ export class MeshDrawListPlanner {
         this.#opaqueMeshes.length = 0;
         this.#transparentMeshes.length = 0;
         this.#instancedBatches.length = 0;
+        this.#opaqueItems.length = 0;
+        this.#transparentItems.length = 0;
         this.#orderPreservingBatchCursor = 0;
         this.#orderPreservingBatchTail = null;
         this.#orderPreservingBatchTailInputIndex = -2;
@@ -743,6 +814,27 @@ export class MeshDrawListPlanner {
             index++;
         }
         if (index < this.#input.length) this.#input.sort(this.#compareInputOrder);
+    }
+
+    private transparentDepth(mesh: Mesh): number {
+        mesh.worldMatrix.getTranslation(this.#transparentPosition);
+        this.#transparentPosition.transformMat4(
+            requireRecordValue(this.#transparentSortCamera, 'transparent sort camera')
+                .viewProjectionMatrix
+        );
+        return this.#transparentPosition.z;
+    }
+
+    private buildOrderedItems(sort: boolean): void {
+        for (const mesh of this.#opaqueMeshes) this.#opaqueItems.push(mesh);
+        for (const mesh of this.#transparentMeshes) this.#transparentItems.push(mesh);
+        for (const batch of this.#instancedBatches) {
+            if (batch.transparent) this.#transparentItems.push(batch);
+            else this.#opaqueItems.push(batch);
+        }
+        if (!sort) return;
+        this.#opaqueItems.sort(this.#compareOpaqueItem);
+        this.#transparentItems.sort(this.#compareTransparentItem);
     }
 
     private advanceEpoch(): void {

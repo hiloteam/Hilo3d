@@ -202,6 +202,8 @@ export interface RenderPipelineContext {
     /** Backend-neutral graph facade for this invocation. */
     readonly graph: ScriptableRenderGraph;
 
+    /** Update scene world matrices and the active camera without building a CPU render list. */
+    prepareScene(): void;
     /** Collect camera-visible scene meshes and lights into a frame-scoped handle. */
     cull(options?: Readonly<CullingOptions>): CullingResultsHandle;
     /** Select and sort a reusable draw list from current-frame culling results. */

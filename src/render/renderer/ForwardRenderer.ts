@@ -14,7 +14,11 @@ import {
     type RHITextureFormat
 } from '../rhi/core';
 import { assertRHIObjectOwnedBy } from '../rhi/core/RHIValidation';
-import { MeshDrawListPlanner, type MeshDrawInstanceBatch } from './MeshDrawListPlanner';
+import {
+    isMeshDrawInstanceBatch,
+    MeshDrawListPlanner,
+    type MeshDrawListItem
+} from './MeshDrawListPlanner';
 import type { MeshDrawProcessor } from './MeshDrawProcessor';
 import type { PreparedDraw } from './PreparedDraw';
 import type { RHIMeshDrawTargetDescriptor } from './RHIDescriptorMapping';
@@ -25,7 +29,7 @@ import { MainPassTemplate, SharedDrawPassParameters, TransparentPassTemplate } f
 const DEFAULT_CLEAR_COLOR: Readonly<RHIColor> = Object.freeze({ r: 0, g: 0, b: 0, a: 1 });
 const EMPTY_DRAWS: readonly PreparedDraw[] = Object.freeze([]);
 const EMPTY_MESHES: readonly Mesh[] = Object.freeze([]);
-const EMPTY_INSTANCE_BATCHES: readonly Readonly<MeshDrawInstanceBatch>[] = Object.freeze([]);
+const EMPTY_DRAW_ITEMS: readonly MeshDrawListItem[] = Object.freeze([]);
 
 function requireSampleCount(value: number | undefined): number {
     const sampleCount = value ?? 1;
@@ -272,7 +276,8 @@ export class ForwardRenderer {
         const meshDrawListPlanner = passes.meshDrawListPlanner;
         let opaqueMeshes = options.opaqueMeshes ?? options.meshes ?? EMPTY_MESHES;
         let transparentMeshes = options.transparentMeshes ?? EMPTY_MESHES;
-        let instancedBatches = EMPTY_INSTANCE_BATCHES;
+        let opaqueItems = EMPTY_DRAW_ITEMS;
+        let transparentItems = EMPTY_DRAW_ITEMS;
         if (options.classifiedMeshes !== undefined) {
             const plan = meshDrawListPlanner.build(
                 options.classifiedMeshes,
@@ -282,21 +287,18 @@ export class ForwardRenderer {
             );
             opaqueMeshes = plan.opaqueMeshes;
             transparentMeshes = plan.transparentMeshes;
-            instancedBatches = plan.instancedBatches;
+            opaqueItems = plan.opaqueItems;
+            transparentItems = plan.transparentItems;
         } else {
             meshDrawListPlanner.reset();
         }
         const meshProcessor = options.meshProcessor;
-        let hasTransparentInstanceBatch = false;
-        for (const batch of instancedBatches) {
-            if (!batch.transparent) continue;
-            hasTransparentInstanceBatch = true;
-            break;
-        }
         const hasTransparentPass =
             meshProcessor === undefined
                 ? transparentDraws.length > 0
-                : transparentMeshes.length > 0 || hasTransparentInstanceBatch;
+                : options.classifiedMeshes === undefined
+                  ? transparentMeshes.length > 0
+                  : transparentItems.length > 0;
         const depthStencilFormat = options.depthStencilFormat;
         requireDepthStencilFormat(depthStencilFormat);
         const meshTarget: RHIMeshDrawTargetDescriptor | null = meshProcessor
@@ -399,16 +401,20 @@ export class ForwardRenderer {
             });
         }
         if (meshProcessor && meshTarget) {
-            for (const mesh of opaqueMeshes) {
-                const draw = meshProcessor.prepare(mesh, meshTarget);
-                if (meshFrameStarted) mainPass.addDrawSnapshot(draw);
-                else mainPass.addDraw(draw);
-            }
-            for (const batch of instancedBatches) {
-                if (batch.transparent) continue;
-                const draw = meshProcessor.prepareInstancedBatch(batch, batch.meshes, meshTarget);
-                if (meshFrameStarted) mainPass.addDrawSnapshot(draw);
-                else mainPass.addDraw(draw);
+            if (options.classifiedMeshes === undefined) {
+                for (const mesh of opaqueMeshes) {
+                    const draw = meshProcessor.prepare(mesh, meshTarget);
+                    if (meshFrameStarted) mainPass.addDrawSnapshot(draw);
+                    else mainPass.addDraw(draw);
+                }
+            } else {
+                for (const item of opaqueItems) {
+                    const draw = isMeshDrawInstanceBatch(item)
+                        ? meshProcessor.prepareInstancedBatch(item, item.meshes, meshTarget)
+                        : meshProcessor.prepare(item, meshTarget);
+                    if (meshFrameStarted) mainPass.addDrawSnapshot(draw);
+                    else mainPass.addDraw(draw);
+                }
             }
         } else {
             for (const draw of opaqueDraws) mainPass.addDraw(draw);
@@ -457,20 +463,20 @@ export class ForwardRenderer {
             }
             if (meshProcessor && meshTarget) {
                 meshProcessor.beginPass(context.camera, context.viewport);
-                for (const mesh of transparentMeshes) {
-                    const draw = meshProcessor.prepare(mesh, meshTarget);
-                    if (meshFrameStarted) transparentPass.addDrawSnapshot(draw);
-                    else transparentPass.addDraw(draw);
-                }
-                for (const batch of instancedBatches) {
-                    if (!batch.transparent) continue;
-                    const draw = meshProcessor.prepareInstancedBatch(
-                        batch,
-                        batch.meshes,
-                        meshTarget
-                    );
-                    if (meshFrameStarted) transparentPass.addDrawSnapshot(draw);
-                    else transparentPass.addDraw(draw);
+                if (options.classifiedMeshes === undefined) {
+                    for (const mesh of transparentMeshes) {
+                        const draw = meshProcessor.prepare(mesh, meshTarget);
+                        if (meshFrameStarted) transparentPass.addDrawSnapshot(draw);
+                        else transparentPass.addDraw(draw);
+                    }
+                } else {
+                    for (const item of transparentItems) {
+                        const draw = isMeshDrawInstanceBatch(item)
+                            ? meshProcessor.prepareInstancedBatch(item, item.meshes, meshTarget)
+                            : meshProcessor.prepare(item, meshTarget);
+                        if (meshFrameStarted) transparentPass.addDrawSnapshot(draw);
+                        else transparentPass.addDraw(draw);
+                    }
                 }
             } else {
                 for (const draw of transparentDraws) transparentPass.addDraw(draw);

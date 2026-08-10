@@ -502,6 +502,65 @@ describe.each([
         backend.destroy();
     });
 
+    it('executes direct and instanced transparent items in one global renderOrder sequence', async () => {
+        const backend = createBackend();
+        const device = backend.createDevice();
+        const surface = configuredSurface(device);
+        const renderer = new ForwardRenderer(1);
+        const sharedGeometry = new Geometry();
+        const sharedMaterial = new Material({
+            compositing: { mode: 'alpha-blend', premultiplied: true }
+        });
+        const earlyA = new Mesh({
+            geometry: sharedGeometry,
+            material: sharedMaterial,
+            renderOrder: 0,
+            useInstanced: true
+        });
+        const earlyB = new Mesh({
+            geometry: sharedGeometry,
+            material: sharedMaterial,
+            renderOrder: 0,
+            useInstanced: true
+        });
+        const direct = classifiedMesh('direct-middle', 1, true);
+        const late = new Mesh({
+            geometry: sharedGeometry,
+            material: sharedMaterial,
+            renderOrder: 2,
+            useInstanced: true
+        });
+        const earlyDraw = preparedDraw(device, 'rgba8unorm', 1, undefined, 3);
+        const directDraw = preparedDraw(device, 'rgba8unorm', 1, undefined, 6);
+        const lateDraw = preparedDraw(device, 'rgba8unorm', 1, undefined, 9);
+        const meshProcessor = meshProcessorStub({
+            beginFrame: vi.fn(),
+            prepare: vi.fn(() => directDraw),
+            prepareInstancedBatch: vi.fn((_owner: object, meshes: readonly Mesh[]) =>
+                meshes[0]?.renderOrder === 0 ? earlyDraw : lateDraw
+            ),
+            trackSubmission: vi.fn(
+                (_frameIndex: number, submission: RHISubmission) => submission.done
+            )
+        });
+
+        const result = renderer.render(frameContext(device, 4), surface, {
+            meshProcessor,
+            classifiedMeshes: [late, direct, earlyB, earlyA]
+        });
+        await complete(backend);
+        await result.submission.done;
+
+        const earlyIndex = backend.executionLog.indexOf('draw:3');
+        const directIndex = backend.executionLog.indexOf('draw:6');
+        const lateIndex = backend.executionLog.indexOf('draw:9');
+        expect(earlyIndex).toBeGreaterThan(-1);
+        expect(earlyIndex).toBeLessThan(directIndex);
+        expect(directIndex).toBeLessThan(lateIndex);
+        renderer.destroy();
+        backend.destroy();
+    });
+
     it('rolls back instanced preparation failures before surface acquire or RHI beginFrame', () => {
         const backend = createBackend();
         const device = backend.createDevice();

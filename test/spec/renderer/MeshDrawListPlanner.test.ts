@@ -56,6 +56,8 @@ function expectEmpty(plan: Readonly<MeshDrawListPlan>): void {
     expect(plan.opaqueMeshes).toEqual([]);
     expect(plan.transparentMeshes).toEqual([]);
     expect(plan.instancedBatches).toEqual([]);
+    expect(plan.opaqueItems).toEqual([]);
+    expect(plan.transparentItems).toEqual([]);
 }
 
 describe('MeshDrawListPlanner', () => {
@@ -105,6 +107,8 @@ describe('MeshDrawListPlanner', () => {
             transparent: true,
             meshes: [transparentInstanced]
         });
+        expect(plan.opaqueItems).toEqual([opaqueEarly, plan.instancedBatches[0], opaqueLate]);
+        expect(plan.transparentItems).toEqual([plan.instancedBatches[1], transparentDirect]);
         for (const owner of [
             opaqueEarly,
             opaqueLate,
@@ -183,6 +187,8 @@ describe('MeshDrawListPlanner', () => {
         const opaqueArray = first.opaqueMeshes;
         const transparentArray = first.transparentMeshes;
         const batchArray = first.instancedBatches;
+        const opaqueItems = first.opaqueItems;
+        const transparentItems = first.transparentItems;
         const batch = first.instancedBatches[0];
         const batchMeshes = batch?.meshes;
         const diagnostics = planner.diagnostics();
@@ -194,6 +200,8 @@ describe('MeshDrawListPlanner', () => {
             expect(next.opaqueMeshes).toBe(opaqueArray);
             expect(next.transparentMeshes).toBe(transparentArray);
             expect(next.instancedBatches).toBe(batchArray);
+            expect(next.opaqueItems).toBe(opaqueItems);
+            expect(next.transparentItems).toBe(transparentItems);
             expect(next.instancedBatches[0]).toBe(batch);
             expect(next.instancedBatches[0]?.meshes).toBe(batchMeshes);
             expect(planner.diagnostics()).toBe(diagnostics);
@@ -239,6 +247,55 @@ describe('MeshDrawListPlanner', () => {
         expect(rebuilt.instancedBatches[0]).toBe(batch);
         expect(rebuilt.instancedBatches[0]?.meshes).toBe(batchMeshes);
         expect(diagnostics.storageAllocationCount).toBe(allocationCount);
+    });
+
+    it('preserves global transparent depth order across direct and adjacent instanced items', () => {
+        const planner = new MeshDrawListPlanner();
+        const shared = material('shared-transparent', 0, true);
+        const sharedGeometry = geometry('shared-transparent');
+        const farBatchA = mesh('far-batch-a', shared, sharedGeometry, true);
+        const farBatchB = mesh('far-batch-b', shared, sharedGeometry, true);
+        const middle = mesh(
+            'middle-direct',
+            material('middle-transparent', 0, true),
+            geometry('middle-transparent')
+        );
+        const nearBatch = mesh('near-batch', shared, sharedGeometry, true);
+        farBatchA.setPosition(0, 0, -12).updateMatrixWorld(true);
+        farBatchB.setPosition(0, 0, -11).updateMatrixWorld(true);
+        middle.setPosition(0, 0, -7).updateMatrixWorld(true);
+        nearBatch.setPosition(0, 0, -3).updateMatrixWorld(true);
+        const camera = new PerspectiveCamera({ near: 0.1, far: 100, aspect: 1 });
+        camera.setPosition(0, 0, 0).lookAt(new Vector3(0, 0, -1));
+        camera.updateViewProjectionMatrix();
+
+        const plan = planner.build([nearBatch, middle, farBatchB, farBatchA], null, true, camera);
+
+        expect(plan.instancedBatches).toHaveLength(2);
+        expect(plan.instancedBatches[0]?.meshes).toEqual([farBatchA, farBatchB]);
+        expect(plan.instancedBatches[1]?.meshes).toEqual([nearBatch]);
+        expect(plan.transparentItems).toEqual([
+            plan.instancedBatches[0],
+            middle,
+            plan.instancedBatches[1]
+        ]);
+    });
+
+    it('splits an opaque batch when one owner changes renderOrder', () => {
+        const planner = new MeshDrawListPlanner();
+        const shared = material('mutable-order');
+        const sharedGeometry = geometry('mutable-order');
+        const first = mesh('first', shared, sharedGeometry, true);
+        const second = mesh('second', shared, sharedGeometry, true);
+        const plan = planner.build([first, second]);
+        expect(plan.instancedBatches).toHaveLength(1);
+
+        second.renderOrder = 3;
+        planner.build([first, second]);
+
+        expect(plan.instancedBatches).toHaveLength(2);
+        expect(plan.instancedBatches.map(batch => batch.renderOrder)).toEqual([0, 3]);
+        expect(plan.opaqueItems).toEqual([plan.instancedBatches[0], plan.instancedBatches[1]]);
     });
 
     it('splits exact geometry/material groups into stable batches of at most 128 instances', () => {

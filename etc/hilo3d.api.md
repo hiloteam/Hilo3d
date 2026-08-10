@@ -6172,6 +6172,7 @@ export interface RenderPipelineContext {
     readonly frameIndex: number;
     readonly graph: ScriptableRenderGraph;
     readonly output: RenderPipelineOutput;
+    prepareScene(): void;
     recordShadows(cullingResults: CullingResultsHandle): void;
     readonly scene: RendererScene;
     readonly viewport: RendererViewport;

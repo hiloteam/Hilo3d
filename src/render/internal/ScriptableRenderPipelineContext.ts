@@ -117,7 +117,11 @@ import type {
     ScriptableRenderPassContext,
     ScriptableRenderPrepareContext
 } from '../pipeline/ScriptableRenderGraph';
-import { MeshDrawListPlanner, type MeshDrawListPlan } from '../renderer/MeshDrawListPlanner';
+import {
+    isMeshDrawInstanceBatch,
+    MeshDrawListPlanner,
+    type MeshDrawListPlan
+} from '../renderer/MeshDrawListPlanner';
 import type { FullscreenDrawProcessor } from '../renderer/FullscreenDrawProcessor';
 import type {
     MeshDrawProcessor,
@@ -3860,6 +3864,11 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
         return this;
     }
 
+    prepareScene(): void {
+        this.#owner.assertLeaseActive(this.#lease);
+        this.#owner.prepareScene();
+    }
+
     cull(options?: Readonly<CullingOptions>): CullingResultsHandle {
         this.#owner.assertLeaseActive(this.#lease);
         return this.#owner.cull(options);
@@ -4347,6 +4356,11 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         );
         this.#cullingByHandle.set(handle, slot);
         return handle;
+    }
+
+    prepareScene(): void {
+        this.assertActive();
+        this.services.prepareScriptableCullingScene(this.scene, this.camera);
     }
 
     createRendererList(descriptor: Readonly<RendererListDescriptor>): RendererListHandle {
@@ -5109,33 +5123,33 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 `Storage scene draws do not support material pass ${list.materialPass}`
             );
         }
-        for (const mesh of plan.opaqueMeshes) {
-            drawPass.addDrawSnapshot(
-                storageVariant === null
-                    ? processor.prepare(
-                          mesh,
-                          target,
-                          list.overrideMaterial,
-                          sceneTexturePreparation,
-                          list.materialPass
-                      )
-                    : processor.prepareStorageScene(
-                          mesh,
-                          target,
-                          storageVariant.shader,
-                          storagePipelines,
-                          storagePreparation,
-                          list.overrideMaterial
-                      )
-            );
-        }
-        for (const batch of plan.instancedBatches) {
-            if (batch.transparent) continue;
+        for (const item of plan.opaqueItems) {
+            if (item instanceof Mesh) {
+                drawPass.addDrawSnapshot(
+                    storageVariant === null
+                        ? processor.prepare(
+                              item,
+                              target,
+                              list.overrideMaterial,
+                              sceneTexturePreparation,
+                              list.materialPass
+                          )
+                        : processor.prepareStorageScene(
+                              item,
+                              target,
+                              storageVariant.shader,
+                              storagePipelines,
+                              storagePreparation,
+                              list.overrideMaterial
+                          )
+                );
+                continue;
+            }
             if (storageVariant === null) {
                 drawPass.addDrawSnapshot(
                     processor.prepareInstancedBatch(
-                        batch,
-                        batch.meshes,
+                        item,
+                        item.meshes,
                         target,
                         list.overrideMaterial,
                         sceneTexturePreparation,
@@ -5144,7 +5158,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 );
                 continue;
             }
-            for (const mesh of batch.meshes) {
+            for (const mesh of item.meshes) {
                 drawPass.addDrawSnapshot(
                     processor.prepareStorageScene(
                         mesh,
@@ -5158,33 +5172,33 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 );
             }
         }
-        for (const mesh of plan.transparentMeshes) {
-            drawPass.addDrawSnapshot(
-                storageVariant === null
-                    ? processor.prepare(
-                          mesh,
-                          target,
-                          list.overrideMaterial,
-                          sceneTexturePreparation,
-                          list.materialPass
-                      )
-                    : processor.prepareStorageScene(
-                          mesh,
-                          target,
-                          storageVariant.shader,
-                          storagePipelines,
-                          storagePreparation,
-                          list.overrideMaterial
-                      )
-            );
-        }
-        for (const batch of plan.instancedBatches) {
-            if (!batch.transparent) continue;
+        for (const item of plan.transparentItems) {
+            if (!isMeshDrawInstanceBatch(item)) {
+                drawPass.addDrawSnapshot(
+                    storageVariant === null
+                        ? processor.prepare(
+                              item,
+                              target,
+                              list.overrideMaterial,
+                              sceneTexturePreparation,
+                              list.materialPass
+                          )
+                        : processor.prepareStorageScene(
+                              item,
+                              target,
+                              storageVariant.shader,
+                              storagePipelines,
+                              storagePreparation,
+                              list.overrideMaterial
+                          )
+                );
+                continue;
+            }
             if (storageVariant === null) {
                 drawPass.addDrawSnapshot(
                     processor.prepareInstancedBatch(
-                        batch,
-                        batch.meshes,
+                        item,
+                        item.meshes,
                         target,
                         list.overrideMaterial,
                         sceneTexturePreparation,
@@ -5193,7 +5207,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 );
                 continue;
             }
-            for (const mesh of batch.meshes) {
+            for (const mesh of item.meshes) {
                 drawPass.addDrawSnapshot(
                     processor.prepareStorageScene(
                         mesh,

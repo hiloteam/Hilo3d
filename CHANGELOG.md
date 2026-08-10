@@ -45,6 +45,13 @@
   only after valid submission, retry discarded frames, and retain recovery through the
   renderer-owned CPU shadow. Migrate Clustered Forward+ from its private per-bucket PBR table so GPU
   Scene objects keep independent geometry-bucket and shared-material indices.
+- Complete the Forward+/Clustered/Hi-Z/batching remediation audit. Preserve one global direct/batch
+  draw order, pack per-slot PBR texture metadata, use a single compact visible table with indirect
+  `firstInstance`, make overflow membership deterministic, keep directional lights global, route
+  AreaLight and shadow-enabled lights through exact Forward fallback, restrict previous-frame Hi-Z
+  to stable conservative LOD bounds, compose fallback in linear HDR before separable Bloom/display,
+  elide Bloom resources and passes at zero strength, cache static batch normal matrices, and
+  separate CPU record timing from GPU completion in the 110k-object scale fixture.
 - Add a repository-bundled Khronos Sponza Clustered Forward+ lighting lab with 202 animated local
   lights, including 10 slow chromatic runners that curve through a wall-height central volume, GPU
   Scene diagnostics, HDR bloom, a multi-region OrbitControls camera tour, responsive controls, and
@@ -58,8 +65,9 @@
 - Make previous-frame Hi-Z occlusion conservative for moving and stationary cameras. Disable it for
   the first frame after a view-projection or depth change, project bounds from the sphere's nearest
   depth and all eight corners of its view-space bounding cube, select a mip covering the full
-  projected extent, and skip objects larger than the coarsest pyramid footprint. The current pyramid
-  is still retained so culling resumes immediately on the next stable frame without temporal
+  projected extent, and cover the full configured viewport with a specialized pyramid of up to
+  thirteen levels. Only transform- and bounds-stable objects consume previous history. The current
+  pyramid is still retained so culling resumes immediately on the next stable frame without temporal
   disocclusion holes, off-axis under-bounds, or large-geometry false positives. GPU Scene frustum
   culling now tests the exact view-space side-plane radius instead of underestimating large spheres
   near a screen edge, and honors each mesh's `frustumTest` opt-out.
@@ -91,7 +99,7 @@
   plus submission-transactional current/previous camera, mesh, instance, skinning, and morph state.
   `Node.invalidateTransformHistory()` resets discontinuous motion deterministically.
 - Add the WebGPU-only `ClusteredForwardPlusPipelineFactory` high-end opaque-scene slice. Registered
-  ordinary Mesh buckets now use stable dirty GPU Scene records, six-level previous-frame Hi-Z
+  ordinary Mesh buckets now use stable dirty GPU Scene records, full-viewport previous-frame Hi-Z
   occlusion, projected-size LOD compaction, fixed indexed-indirect draws, depth-driven logarithmic
   3D clusters, a bounded count/prefix/write light allocator, storage GGX PBR, HDR Bloom, ACES
   display, and on-demand visibility/overflow diagnostics. Add real WebGPU renderer coverage for the

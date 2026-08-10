@@ -1,6 +1,6 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
-> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-09，F0、F1、D0、G0/L0 的 WebGPU
+> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-10，F0、F1、D0、G0/L0 的 WebGPU
 > high-end 不透明场景切片，以及 MAT0 的 Definition/Instance、语义 Pass 基础与共享 PBR GPU Material
 > Database 已落地。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
@@ -106,7 +106,7 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 | Forward+                             | high-end 切片 | 3D cluster count/prefix/write、有界预算和 storage GGX PBR 已闭环；阴影/完整 layered PBR/透明待补                                  |
 | Temporal rendering                   | 原生 TAA 切片 | jitter/non-jitter matrix、opaque/masked velocity、depth rejection、双缓冲 history 与 invalidation 已完成；TAAU/reactive mask 待补 |
 | Exposure / display transform         | 部分可用      | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制                        |
-| Screen-space lighting                | 缺失          | 无 depth pyramid、normal/roughness attribute buffer、GTAO、SSR、SSGI                                                              |
+| Screen-space lighting                | 部分基础      | GPU Scene 已有 previous/current Hi-Z；仍无 normal/roughness attribute buffer、GTAO、SSR、SSGI                                     |
 | Volumetrics / atmosphere             | 缺失          | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                                         |
 | Geometry / texture streaming         | 缺失          | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                                           |
 | GPU profiling / graph debugging      | 生产基线      | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query                           |
@@ -344,13 +344,15 @@ handle，扩展更多 surface family，并增加 variant manifest/warmup。完�
 已落地的 `ClusteredForwardPlusPipelineFactory` 以注册的 geometry/material
 identity 建立稳定对象槽和 LOD bucket；对象 current/previous transform、world bounds、layer 与 active
 flag 以及 inverse-transpose normal basis 使用 208-byte storage record。CPU 只合并 dirty
-slot/geometry/material range，GPU 执行 frustum、六级 previous-frame Hi-Z、projected-radius
-LOD、按 bucket compact，并写固定 indexed-indirect
-arguments。每个 bucket 的可见表使用满足 storage-offset 对齐的独立 range，不依赖
-`firstInstance`；生产帧不读取 visible count。camera cut、失败帧和提交后的时域推进分别通过 history
-invalidation、`frameDiscarded()` 与 `frameSubmitted()` 处理。previous-frame
-culling 使用同一已提交帧的 VP、view、projection 与 depth convention；Hi-Z 对 standard/reversed
-depth 分别保留区块 `max`/`min`
+slot/geometry/material
+range，GPU 执行 frustum、按声明 viewport 专门化（最多 13 级）的 previous-frame
+Hi-Z、projected-radius LOD、bucket prefix/compact，并写固定 indexed-indirect
+arguments。全部 bucket 共享一份与 `maxObjects` 同阶的 compact visible table，indirect
+`firstInstance` 指向各自连续 range；生产帧不读取 visible count。对象只有在 transform 与所有 LOD
+bounds revision 都稳定时才使用 previous-frame occlusion。camera
+cut、失败帧和提交后的时域推进分别通过 history invalidation、`frameDiscarded()` 与 `frameSubmitted()`
+处理。previous-frame culling 使用同一已提交帧的 VP、view、projection 与 depth
+convention；Hi-Z 对 standard/reversed depth 分别保留区块 `max`/`min`
 最远值。当前公开切片限定为单相机、single-sample、opaque、unskinned、indexed triangle PBR bucket GPU
 fast path；未注册 mesh、容量 overflow、skinning/morph、alpha/transparent/layered
 material 以及运行时 material/geometry replacement 会进入共享 Forward compatibility path，并通过 mesh
@@ -398,11 +400,14 @@ draw/instance 数显著下降；构建过程无逐 mip CPU 资源创建。
 | depth/Hi-Z、GPU light database | 3D cluster、count/prefix/write、有界 overflow、PBR light loop | cluster light list、Forward+ HDR | 数百局部光无越界、无 light-count variant 爆炸 |
 
 已落地切片把当前 depth 汇总为 tile depth bounds，再按 logarithmic Z slice 建立 3D
-cluster。光源分配使用 count → 256-entry workgroup scan → block prefix → bounded finalize → index
-write；全局 index budget 与 per-cluster ceiling 都有 deterministic truncation 和 overflow
-counter。点光、聚光、方向光与 area-light 近似共享固定 64-byte light record，fragment
-shader 只按 cluster grid/list 迭代，不产生 light-count variant。普通 Forward 与 clustered
-variant 现在共用 `pbr_surface.glsl`/`pbr_brdf.glsl`；Forward+ 只替换 light-list provider 与 light
+cluster。光源分配使用 count → 256-entry workgroup scan → block prefix → bounded finalize →
+sentinel/`atomicMin` stable index write；全局 index budget 与 per-cluster ceiling 都有 deterministic
+truncation 和 overflow counter。点光与聚光进入 cluster；方向光使用独立全局列表，空 depth
+tile 不分配 index，near-plane crossing local light 使用保守 tile bounds。精确 LTC
+AreaLight 当前明确让整帧 mesh 进入 ordinary Forward fallback，不做点光近似。fragment
+shader 只按 global directional + cluster grid/list 迭代，不产生 light-count
+variant。普通 Forward 与 clustered variant 现在共用
+`pbr_surface.glsl`/`pbr_brdf.glsl`；Forward+ 只替换 light-list provider 与 light
 iteration，不再维护第二套材质模型。结果进入 `rgba16float` HDR、Bloom 和 ACES display
 transform；`readDiagnostics()` 仅用于显式、按需的验收读回，不参与生产帧调度。当前 storage
 PBR 原生覆盖 base color、metallic、roughness、combined
@@ -412,9 +417,9 @@ scale 通过每对象 inverse-transpose normal
 basis 正确着色。贴图身份或同能力 variant 的运行时变化保留 GPU path；custom compile、layered
 PBR、alpha-test、transparent、transmission、parallax/environment 和变形输入由共享 Forward
 fallback 保持功能正确；fallback 的 opaque/transparent split、shadow 录制和 transmission opaque scene
-copy 已有真实 WebGPU 覆盖。它们尚未获得 clustered-native light
-list 或同一 HDR/Bloom/ACES 链；shadow/cookie/IES、LTC area light、完整 layered
-PBR 与透明的 clustered-native 像素/性能证据仍是 L0 最终画质门禁。
+copy 已有真实 WebGPU 覆盖，并与 GPU Scene 一起写 linear HDR 后统一经过 separable
+Bloom/ACES。它们尚未获得 clustered-native light list；shadow/cookie/IES、LTC area
+light、完整 layered PBR 与透明的 clustered-native 像素/性能证据仍是 L0 最终画质门禁。
 
 第一版不应继续扩充固定 LightBlock，而应：
 

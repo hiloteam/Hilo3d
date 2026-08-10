@@ -6,6 +6,8 @@ import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
 import MorphGeometry from '../../../src/geometry/MorphGeometry';
+import AreaLight from '../../../src/light/AreaLight';
+import DirectionalLight from '../../../src/light/DirectionalLight';
 import PointLight from '../../../src/light/PointLight';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import PBRMaterial from '../../../src/material/PBRMaterial';
@@ -55,10 +57,10 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             'indirect-draw'
         ]);
         expect(factory.requirements.requiredLimits).toMatchObject({
-            maxBindingsPerBindGroup: 14,
+            maxBindingsPerBindGroup: 18,
             maxStorageBuffersPerShaderStage: 7,
             maxStorageTexturesPerShaderStage: 1,
-            maxSampledTexturesPerShaderStage: 7,
+            maxSampledTexturesPerShaderStage: 12,
             maxSamplersPerShaderStage: 7,
             maxComputeInvocationsPerWorkgroup: 256
         });
@@ -68,6 +70,34 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         expect(factory.requirements.requiredTextureFormats).toContainEqual({
             format: 'r32float',
             use: 'storage'
+        });
+
+        const withoutHiZ = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            hiZ: false,
+            tileSize: 128,
+            zSlices: 1,
+            maxViewportWidth: 9_000,
+            maxViewportHeight: 1
+        });
+        expect(withoutHiZ.requirements.requiredCapabilities).not.toContain('storage-texture');
+        expect(withoutHiZ.requirements.requiredTextureFormats).not.toContainEqual({
+            format: 'r32float',
+            use: 'storage'
+        });
+        expect(withoutHiZ.requirements.requiredLimits).toMatchObject({
+            maxBindingsPerBindGroup: 14,
+            maxSampledTexturesPerShaderStage: 7
+        });
+
+        const maximumHiZ = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            maxViewportWidth: 8_192,
+            maxViewportHeight: 8_192
+        });
+        expect(maximumHiZ.requirements.requiredLimits).toMatchObject({
+            maxBindingsPerBindGroup: 19,
+            maxSampledTexturesPerShaderStage: 13
         });
     });
 
@@ -443,6 +473,81 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             }
         },
         30_000
+    );
+
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'keeps directional lights global and routes AreaLight through exact Forward fallback',
+        async () => {
+            const geometry = new BoxGeometry();
+            const material = new PBRMaterial();
+            const factory = new ClusteredForwardPlusPipelineFactory({
+                buckets: [{ geometry, material }],
+                maxObjects: 1,
+                maxLights: 8,
+                maxLightIndices: 1,
+                maxLightsPerCluster: 1,
+                maxViewportWidth: 32,
+                maxViewportHeight: 32,
+                hiZ: false,
+                bloomStrength: 0
+            });
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: document.createElement('canvas'),
+                width: 32,
+                height: 32,
+                antialias: false,
+                renderingProfile: 'high-end',
+                renderPipeline: factory
+            });
+            try {
+                const scene = new Node();
+                new Mesh({ geometry, material }).addTo(scene);
+                let firstDirectional: DirectionalLight | null = null;
+                for (let index = 0; index < 8; index += 1) {
+                    const light = new DirectionalLight({ amount: 0.25 }).addTo(scene);
+                    firstDirectional ??= light;
+                }
+                const camera = new PerspectiveCamera({ aspect: 1, near: 0.1, far: 20 });
+                camera.setPosition(0, 0, 6).lookAt(new Vector3(0, 0, 0));
+
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    objectCount: 1,
+                    fallbackObjectCount: 0,
+                    lightCount: 8,
+                    clusterLightIndexCount: 0,
+                    clusterOverflowCount: 0
+                });
+
+                if (firstDirectional === null) throw new Error('Expected a directional light');
+                firstDirectional.shadow = {};
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    objectCount: 0,
+                    fallbackObjectCount: 1,
+                    clusterLightIndexCount: 0
+                });
+                firstDirectional.shadow = null;
+
+                new AreaLight({ amount: 1, z: 2 }).addTo(scene);
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    objectCount: 0,
+                    fallbackObjectCount: 1,
+                    lightCount: 8,
+                    clusterLightIndexCount: 0,
+                    clusterOverflowCount: 0
+                });
+                expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
+            } finally {
+                renderer.destroy();
+            }
+        },
+        20_000
     );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(

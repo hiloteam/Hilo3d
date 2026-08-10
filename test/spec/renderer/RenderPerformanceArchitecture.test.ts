@@ -229,19 +229,78 @@ describe('render hot-path architecture', () => {
     it('keeps previous-frame Hi-Z bounds conservative for large projected objects', () => {
         const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
 
-        expect(clustered).toContain('const MAX_HIZ_OCCLUSION_DIAMETER = 1 << HIZ_LEVEL_COUNT');
+        expect(clustered).toContain('const MAX_HIZ_OCCLUSION_DIAMETER = 1 << MAX_HIZ_LEVEL_COUNT');
         expect(clustered).toContain(
             'frame.previousProjection * vec4<f32>(viewCenter.xyz + signs * radius, 1.0)'
         );
         expect(clustered).toContain('for (var cornerIndex = 0u; cornerIndex < 8u;');
         expect(clustered).toContain('(maximumUv - minimumUv) * frame.viewport.zw');
-        expect(clustered).toContain('diameter > ${String(MAX_HIZ_OCCLUSION_DIAMETER)}.0');
+        expect(clustered).toContain('const maxHiZOcclusionDiameter = 2 ** hiZLevelCount');
+        expect(clustered).toContain('diameter > ${String(maxHiZOcclusionDiameter)}.0');
         expect(clustered).toContain('ceil(log2(diameter)) - 1.0');
         expect(clustered).not.toContain('floor(log2(diameter)) - 1.0');
         expect(clustered).toContain(
             'sqrt(projectionScale * projectionScale + vec2<f32>(1.0)) * radius'
         );
         expect(clustered).toContain('mesh.frustumTest ? OBJECT_FRUSTUM_CULLING_FLAG : 0');
+        expect(clustered).toContain('const MAX_HIZ_LEVEL_COUNT = 13');
+        expect(clustered).toContain('length: options.hiZLevelCount');
+        expect(clustered).toContain('OBJECT_HIZ_STABLE_FLAG');
+        expect(clustered).toContain('const occlusionStable = transformStable && boundsStable');
+    });
+
+    it('keeps clustered allocation empty-tile aware, deterministic, and directional-global', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+
+        expect(clustered).toContain('vec2<u32>(frameData.cluster.z, 0u)');
+        expect(clustered).toContain('let previous = atomicMin(');
+        expect(clustered).not.toContain('clusterCursors');
+        expect(clustered).toContain('if (id.x >= frameData.directional.y) { return; }');
+        expect(clustered).toContain(
+            'for (uint lightIndex = 0u; lightIndex < directional.x; lightIndex += 1u)'
+        );
+    });
+
+    it('uses one compact visible table and preserves indirect firstInstance bucket ranges', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+
+        expect(clustered).toContain("label: 'GPU Scene visible compact table'");
+        expect(clustered).toContain('byteLength: this.#visibleBucketCapacity * 4');
+        expect(clustered).not.toContain('this.#visibleBucketCapacity * physicalCount * 4');
+        expect(clustered).toContain('atomicStore(&indirectArguments[bucket * 5u + 4u], offset)');
+        expect(clustered).toContain(
+            'uint objectIndex = visibleIndices.values[uint(gl_InstanceIndex)]'
+        );
+    });
+
+    it('records fallback into HDR before symmetric bloom and the single display transform', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+        const record = methodBody(clustered, 'record');
+        const display = methodBody(clustered, 'recordDisplay');
+
+        expect(record.indexOf('this.recordFallback(')).toBeLessThan(
+            record.indexOf('this.recordDisplay(')
+        );
+        expect(record).toContain("format: 'rgba16float'");
+        expect(display).toContain('BLOOM_HORIZONTAL_PASS');
+        expect(display).toContain('BLOOM_VERTICAL_PASS');
+        expect(record).toContain('const bloomEnabled = this.#options.bloomStrength > 0');
+        expect(display).toContain('this.#options.bloomStrength > 0');
+        expect(clustered).toContain('const withBloom = bloomStrength > 0');
+        expect(clustered).not.toContain('BLOOM_BLUR_PASS');
+        expect(clustered).not.toContain('fallbackPresentPass');
+    });
+
+    it('updates scene transforms without building a throwaway CPU cull for GPU-only frames', () => {
+        const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
+        const record = methodBody(clustered, 'record');
+
+        expect(record).toContain('context.prepareScene();');
+        expect(record).not.toContain('context.cull({ frustumCulling: false })');
+        expect(record.match(/context\.cull\s*\(/gu)).toHaveLength(1);
+        expect(record.indexOf('if (this.#fallbackObjectCount !== 0)')).toBeLessThan(
+            record.indexOf('fallbackCulling = context.cull()')
+        );
     });
 
     it('shares one invariant GPU Scene clip transform across depth and color passes', () => {
