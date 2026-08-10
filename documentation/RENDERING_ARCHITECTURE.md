@@ -101,14 +101,17 @@ texture/UV/transform/encoding/channel、stable material
 ID 和数据 revision。参数变化不改变 Definition 或 Shader resource
 layout，需要改变 topology 时构造另一个材质实例。
 
-Render Pipeline 请求 `forward`、`depth-only`、`shadow-caster`、`motion-vector` 或 `picking`
-role，材质不拥有 graph pass 顺序。Shadow Atlas 直接编译 `shadow-caster`，不创建 proxy
-material；role 缺失或 target output 不匹配会在 RHI frame 前失败。内置 Basic/PBR/Geometry 的
-`motion-vector` pass 只接受 single-sample `rgba16float` target：XY 是 current-to-previous UV
-velocity，Z 是 expected previous `log2(1 + viewDepth)`，W 是 current
-`log2(1 + viewDepth)`。它复用 current/previous camera、model、instance、skin、morph 与 coverage
-ABI；首次出现、显隐/提交间断或任一 transform history 失效时写 invalid history
-marker，不能消费陈旧 pose。`material-attributes` 仍保留给后续属性缓冲路线。
+Render Pipeline 请求 `forward`、`depth-only`、`shadow-caster`、`motion-vector`、
+`material-attributes` 或 `picking` role，材质不拥有 graph pass 顺序。Shadow Atlas 直接编译
+`shadow-caster`，不创建 proxy material；role 缺失或 target output 不匹配会在 RHI
+frame 前失败。内置 Basic/PBR/Geometry 的 `motion-vector` pass 只接受 single-sample `rgba16float`
+target：XY 是 current-to-previous UV velocity，Z 是 expected previous
+`log2(1 + viewDepth)`，W 是 current `log2(1 + viewDepth)`。它复用 current/previous
+camera、model、instance、skin、morph 与 coverage ABI；首次出现、显隐/提交间断或任一 transform
+history 失效时写 invalid history marker，不能消费陈旧 pose。内置 `material-attributes`
+pass 固定接受 single-sample `rgba16float`，输出 octahedral view normal、perceptual
+roughness、metallic 与 reflection receiver flag；Clustered Hi-Z
+SSR 按需消费它，未启用 SSR 时不创建 attribute target 或对应 fallback pass。
 
 portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
 `MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
@@ -218,16 +221,21 @@ record；帧内 dirty 数据必须通过 `RenderPipelineContext.writeStorageBuff
 import 前提交。注册的不透明普通 `Mesh` 仍使用共享 Scene 遍历和矩阵更新，但不创建 CPU renderer
 list 或 `PreparedDraw`：compute 完成 frustum/previous-Hi-Z cull、projected-radius LOD、bucket
 compact 和 indirect arguments，随后同一 Render Graph 记录 depth、current Hi-Z、3D cluster
-allocator、storage-aware GGX PBR、HDR Bloom 与 ACES
-display。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD bucket 发一个 indirect
-draw，GPU 为不可见 bucket 写零 instance count；这些 bucket draw 在共享层分别合并到一个 depth render
-pass 和一个 color render pass，仍可逐 draw 切换 pipeline、bind group、vertex/index
+allocator、storage-aware GGX PBR、HDR Bloom 与 ACES display。可选 `screenSpaceReflections`
+在 opaque 后构建 HDR radiance cone、使用 current RG32F min/max Hi-Z hierarchical
+trace，经过 motion/depth temporal
+rejection 后在线性 HDR 合成，并在 TAA/TAAU 与 transparent 之前完成；完整合同见
+[`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md)。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD
+bucket 发一个 indirect draw，GPU 为不可见 bucket 写零 instance count；这些 bucket
+draw 在共享层分别合并到一个 depth render pass 和一个 color render
+pass，仍可逐 draw 切换 pipeline、bind group、vertex/index
 buffer，但不再为每个 bucket 重开 attachment。可见对象先写 selected-bucket table，再通过 bucket
 prefix 产生连续 range offset，最终压缩到一份与 `maxObjects` 同阶的 visible table，不再按 object ×
 physical-bucket 放大。所有 indexed-indirect command 的 `firstInstance` 保持为零；每个 bucket
 draw 通过 256-byte 对齐的只读 storage range 取得自己的 compact base，再与本地 `gl_InstanceIndex`
 相加，因此 baseline 不依赖 WebGPU 可选的 `indirect-first-instance` feature。Hi-Z 对 standard
-depth 取区块最远值 `max`、对 reversed depth 取区块最远值 `min`；previous-frame
+depth 的 RG32F Hi-Z 同时保存区块 `min/max`；previous-frame occlusion 对 standard 读取最远值
+`max`、对 reversed 读取最远值 `min`，SSR 读取完整区间。previous-frame
 occlusion 同时读取已提交的 previous
 view/projection/depth 参数，不把上一帧 VP 与当前帧投影约定混用。颜色阶段 load 深度预通过结果，物体 record 携带 model
 basis 的 inverse-transpose normal matrix，因此 non-uniform scale 不改变法线方向。depth

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0"
+        />
+        <title>Hilo3D Nocturne Pavilion — Screen-space Reflections</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./screen_space_reflections_palace.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+
+        <main class="ssrPanel" aria-label="Screen-space reflections showcase">
+            <p class="ssrEyebrow">Hilo3D · reflection study 01</p>
+            <h1>Nocturne<br /><em>Pavilion</em></h1>
+            <p class="ssrIntro">
+                A metallic-flake concept car staged inside a rain-dark mirror hall, shaped by
+                luminous sculpture, brushed metal and temporal Hi-Z reflections.
+            </p>
+
+            <div class="ssrRule" aria-hidden="true"><span></span></div>
+
+            <dl class="ssrMetrics">
+                <div>
+                    <dt>trace</dt>
+                    <dd>Hi-Z</dd>
+                </div>
+                <div>
+                    <dt>resolve</dt>
+                    <dd>temporal</dd>
+                </div>
+                <div>
+                    <dt>surface</dt>
+                    <dd>3 tiers</dd>
+                </div>
+            </dl>
+
+            <div class="ssrActions">
+                <button id="ssrToggle" type="button" aria-pressed="true">
+                    <span class="ssrSwitch" aria-hidden="true"></span>
+                    <span id="ssrToggleLabel">SSR active</span>
+                </button>
+                <button id="motionToggle" type="button" aria-pressed="true">pause sculpture</button>
+            </div>
+        </main>
+
+        <aside class="ssrLegend" aria-label="Reflection material legend">
+            <p><span>01</span> mirror</p>
+            <p><span>02</span> brushed</p>
+            <p><span>03</span> satin</p>
+        </aside>
+
+        <div class="ssrStatus">
+            <span class="ssrPulse" aria-hidden="true"></span>
+            <span id="statusLabel">warming reflection history</span>
+        </div>
+
+        <p class="ssrHint">Drag to orbit · wheel to inspect · toggle SSR to compare</p>
+        <a
+            class="ssrCredit"
+            href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept"
+            target="_blank"
+            rel="noreferrer"
+            >Car Concept · DGG / Khronos · CC BY 4.0</a
+        >
+        <div class="ssrVignette" aria-hidden="true"></div>
+        <div class="ssrGrain" aria-hidden="true"></div>
+
+        <script type="module" src="./screen_space_reflections_palace.ts"></script>
+    </body>
+</html>

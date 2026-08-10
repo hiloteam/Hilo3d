@@ -197,6 +197,16 @@ export class MaterialCompiler {
                 'Material motion-vector role requires one single-sample rgba16float color target'
             );
         }
+        if (
+            pass.fragmentOutput === 'material-attributes' &&
+            (request.target.colorFormats.length !== 1 ||
+                request.target.colorFormats[0] !== 'rgba16float' ||
+                request.target.sampleCount !== 1)
+        ) {
+            throw new TypeError(
+                'Material attributes role requires one single-sample rgba16float color target'
+            );
+        }
         const state = role === 'forward' ? resolveForwardState(instance, pass) : pass.state;
         const sourceRevision =
             pass.shader.kind === 'glsl'

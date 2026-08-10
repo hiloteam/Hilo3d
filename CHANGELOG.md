@@ -25,6 +25,16 @@
 
 ### Changes
 
+- Add production WebGPU high-end screen-space reflections to `ClusteredForwardPlusPipelineFactory`.
+  The opt-in path adds a strict built-in `material-attributes` `rgba16float` ABI, GPU Scene MRT and
+  ordinary Forward fallback coverage, RG32F min/max Hi-Z, hierarchical coarse-to-fine tracing,
+  roughness radiance cones, edge/distance/roughness confidence, motion/log-depth temporal rejection
+  and HDR composition before TAA/TAAU. Keep the disabled path allocation- and pass-free, fail closed
+  without Hi-Z or TemporalAA, and reset history across camera cuts/identity changes, resize,
+  discarded frames and device recovery. Add `rg32float` to the public compute storage-texture
+  formats, add the repository-bundled Khronos Car Concept to the dedicated Nocturne Pavilion SSR
+  showcase, and cover real WebGPU on/off pixels plus GPU validation. The existing Temporal
+  Observatory remains focused on TAA/TAAU.
 - Add the `TemporalAA` Forward feature with native-resolution TAA and fixed-scale TAAU. Built-in
   opaque/masked materials now expose a strict single-sample `rgba16float` motion pass containing
   current-to-previous UV velocity, expected previous logarithmic view depth, and current logarithmic

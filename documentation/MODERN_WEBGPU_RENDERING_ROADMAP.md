@@ -103,12 +103,12 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 | Raster PBR / HDR                     | 生产可用      | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径                                                       |
 | Shadow                               | 可用基线      | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页                                                            |
 | Compute / Storage / Indirect         | 底座生产可用  | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环                                                  |
-| Material architecture                | 生产基础      | Definition/Instance、基础语义 Pass 与共享 PBR GPU record 已落地；motion/attributes、更多 family/warmup 待补                                                |
+| Material architecture                | 生产基础      | Definition/Instance、motion/attribute 语义 Pass 与共享 PBR GPU record 已落地；更多 family/warmup 待补                                                      |
 | GPU-driven ordinary scene            | high-end 切片 | 注册的不透明 indexed `Mesh` 走 dirty GPU database、Hi-Z/LOD/compact 与固定 bucket indirect；透明/变形待补                                                  |
 | Forward+                             | high-end 切片 | 3D cluster count/prefix/write、有界预算和 storage GGX PBR 已闭环；阴影/完整 layered PBR/透明待补                                                           |
 | Temporal rendering                   | TAA/TAAU 切片 | jitter/non-jitter matrix、opaque/masked velocity、depth rejection、output-resolution history 与固定比例 TAAU 已完成；dynamic resolution/reactive mask 待补 |
 | Exposure / display transform         | 部分可用      | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制                                                 |
-| Screen-space lighting                | 部分基础      | GPU Scene 已有 previous/current Hi-Z；仍无 normal/roughness attribute buffer、GTAO、SSR、SSGI                                                              |
+| Screen-space lighting                | SSR 切片      | RG32F min/max Hi-Z、normal/roughness attribute、hierarchical confidence SSR 与 temporal resolve 已完成；GTAO、SSGI 与 off-screen fallback 待补             |
 | Volumetrics / atmosphere             | 缺失          | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                                                                  |
 | Geometry / texture streaming         | 缺失          | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                                                                    |
 | GPU profiling / graph debugging      | 生产基线      | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query                                                    |
@@ -355,10 +355,11 @@ draw 通过静态对齐 binding range 取得 base 后再索引 compact table。�
 `indirect-first-instance` feature，生产帧也不读取 visible count。对象只有在 transform 与所有 LOD
 bounds revision 都稳定时才使用 previous-frame occlusion。camera
 cut、失败帧和提交后的时域推进分别通过 history invalidation、`frameDiscarded()` 与 `frameSubmitted()`
-处理。previous-frame culling 使用同一已提交帧的 VP、view、projection 与 depth
-convention；Hi-Z 对 standard/reversed depth 分别保留区块 `max`/`min`
-最远值。当前公开切片限定为单相机、single-sample、opaque、unskinned、indexed triangle PBR bucket GPU
-fast path；未注册 mesh、容量 overflow、skinning/morph、alpha/transparent/layered
+处理。previous-frame culling 使用同一已提交帧的 VP、view、projection 与 depth convention；RG32F
+Hi-Z 同时保留区块 min/max，culling 对 standard/reversed depth 分别读取 `max`/`min`
+最远值，SSR 读取完整区间。当前公开切片限定为单相机、single-sample、opaque、unskinned、indexed
+triangle PBR bucket GPU fast
+path；未注册 mesh、容量 overflow、skinning/morph、alpha/transparent/layered
 material 以及运行时 material/geometry replacement 会进入共享 Forward compatibility path，并通过 mesh
 identity exclusion 避免重复绘制。真实 WebGPU scale fixture 已覆盖 100k static + 10k dynamic、256
 lights、dirty dynamic upload 与 device recovery；物理 GPU 上可比较的长期性能基线仍是 G0 发布门禁。
@@ -388,8 +389,8 @@ removal 均有恢复覆盖。尚需把该规模 fixture 纳入登记的物理 GP
 
 - previous-frame Hi-Z 服务早期 occlusion culling；
 - current depth 构建 current-frame pyramid，供 clustered light、SSR、SSGI 和下一帧 culling；
-- 每 mip 独立 graph view，standard-Z 使用 conservative max reduction，reversed-Z 使用 conservative
-  min reduction；
+- 当前每级独立 graph texture 保存 RG32F min/max；standard-Z culling 使用 conservative
+  max，reversed-Z culling 使用 conservative min，SSR 使用完整 bounds；
 - conservative bounds、mip selection、temporal hysteresis 和 camera-cut bypass 明确测试。
 
 完成标准：无遮挡场景不产生 false negative；遮挡 fixture 的普通 Mesh
@@ -513,7 +514,7 @@ shift；真实 WebGPU 浏览器证据同时覆盖 Bloom、TAA history、resize �
 
 ### 6.4 Milestone 2：现代高画质系统
 
-#### Q0：Material Attribute Buffer + GTAO / SSR / SSGI
+#### Q0：Material Attribute Buffer + GTAO / SSR / SSGI（SSR 切片已完成）
 
 ![Q0：按需属性缓冲驱动 GTAO、SSR 与 SSGI](./images/modern-webgpu-roadmap/screen-space-effects.jpg)
 
@@ -521,14 +522,19 @@ shift；真实 WebGPU 浏览器证据同时覆盖 Bloom、TAA history、resize �
 | ---------------------------------------- | ---------------------------------------------------- | ----------------------------- | --------------------------------------- |
 | depth pyramid、normal、roughness、motion | horizon AO、hierarchical ray march、temporal denoise | GTAO、带置信度 SSR、时域 SSGI | 屏幕边缘/反遮挡降级确定，默认路径不付费 |
 
-不建议先做完整传统 G-buffer deferred。Forward+ 可以增加一组按需 attribute pass/MRT：
+不建议先做完整传统 G-buffer deferred。Forward+ 的按需 attribute pass/MRT 已由 SSR 首次落地：
 
-- compact normal + perceptual roughness + material flags；
+- compact octahedral view normal + perceptual roughness + receiver/metallic flags（已完成）；
 - motion vector 与 linear/reversed depth；
 - GTAO 使用 horizon search、bent normal、half-resolution temporal denoise；
-- SSR 使用 Hi-Z hierarchical ray march、roughness cone、hit confidence、temporal resolve；
+- SSR 使用 RG32F min/max Hi-Z hierarchical ray march、roughness cone、hit confidence、temporal
+  resolve，并在 TAA/TAAU 前合成（已完成）；
 - SSGI 复用 Hi-Z/normal/history，明确 screen-edge、off-screen 和 disocclusion fallback；
-- effect 只在声明需要时创建 attribute/history resource，默认 forward 快路径不付费。
+- effect 只在声明需要时创建 attribute/history resource，默认 forward 快路径不付费（SSR 已验证）。
+
+当前 SSR 的 screen-edge/off-screen fallback 是确定性零贡献；GTAO、SSGI 和 probe/BVH/SDF
+off-screen 补偿仍属于后续工作。实现与上线证据见
+[`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md)。
 
 这里推荐 GTAO/temporal AO，而不是补传统 SSAO；推荐 hierarchical SSR/temporal
 SSGI，而不是单帧固定步长 ray march。

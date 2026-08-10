@@ -127,6 +127,21 @@ describe('ComputeShader', () => {
             ]
         });
         expect(r32Storage.bindings[0]?.kind).toBe('storage-texture');
+        const rg32Storage = new ComputeShader({
+            source: minimalSource,
+            workgroupSize: [8],
+            bindings: [
+                {
+                    name: 'hiZBounds',
+                    group: 0,
+                    binding: 0,
+                    kind: 'storage-texture',
+                    access: 'write-only',
+                    format: 'rg32float'
+                }
+            ]
+        });
+        expect(rg32Storage.bindings[0]).toMatchObject({ format: 'rg32float' });
         expect(
             () =>
                 new ComputeShader({
