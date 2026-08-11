@@ -2619,6 +2619,17 @@ class MutableFallbackSceneParameters implements SceneRenderPassParameters {
     }
 }
 
+class MutableFallbackDepthParameters implements SceneRenderPassParameters {
+    rendererList = INVALID_RENDERER_LIST;
+    readonly colorAttachments = Object.freeze([]);
+    depthStencilAttachment?: RenderPipelineDepthStencilAttachment;
+
+    reset(): void {
+        this.rendererList = INVALID_RENDERER_LIST;
+        delete this.depthStencilAttachment;
+    }
+}
+
 class MutableFallbackTextureCopyParameters implements TextureCopyPassParameters {
     source = INVALID_TEXTURE;
     destination = INVALID_TEXTURE;
@@ -2954,6 +2965,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.reset();
         }
     );
+    readonly #fallbackDepthPool = new RenderPassParameterPool(
+        () => new MutableFallbackDepthParameters(),
+        parameters => {
+            parameters.reset();
+        }
+    );
     readonly #fallbackCopyPool = new RenderPassParameterPool(
         () => new MutableFallbackTextureCopyParameters(),
         parameters => {
@@ -2964,6 +2981,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #depthBatchPass = new GPUDrivenRenderBatchPass('GPU Scene depth buckets');
     readonly #colorBatchPass = new GPUDrivenRenderBatchPass('Clustered PBR buckets');
     readonly #fallbackPass = new SceneRenderPass('Clustered Forward+ compatibility fallback');
+    readonly #fallbackDepthPass = new SceneRenderPass('Clustered Forward+ fallback depth prepass');
     readonly #fallbackMotionPass = new SceneRenderPass(
         'Clustered Forward+ fallback temporal motion'
     );
@@ -2977,6 +2995,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         cullingResults: INVALID_CULLING_RESULTS,
         queue: 'opaque',
         sorting: 'material-front-to-back',
+        excludeMeshes: this.#gpuManagedMeshes
+    };
+    readonly #fallbackDepthListDescriptor: MutableFallbackRendererListDescriptor = {
+        cullingResults: INVALID_CULLING_RESULTS,
+        queue: 'opaque',
+        sorting: 'material-front-to-back',
+        materialPass: 'depth-only',
         excludeMeshes: this.#gpuManagedMeshes
     };
     readonly #fallbackTransparentListDescriptor: MutableFallbackRendererListDescriptor = {
@@ -3453,6 +3478,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             previousVisibility,
             temporalMotion
         });
+        if (fallbackCulling !== null && this.#fallbackHasOpaque) {
+            this.recordFallbackDepthPrepass(context, fallbackCulling, sceneDepth);
+        }
         this.recordCurrentHiZ(
             context,
             frameBuffer,
@@ -4920,6 +4948,24 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneDepth,
             null
         );
+    }
+
+    private recordFallbackDepthPrepass(
+        context: RenderPipelineContext,
+        cullingResults: CullingResultsHandle,
+        sceneDepth: RenderGraphTextureHandle
+    ): void {
+        this.#fallbackDepthListDescriptor.cullingResults = cullingResults;
+        const rendererList = context.createRendererList(this.#fallbackDepthListDescriptor);
+        const parameters = context.acquirePassParameters(this.#fallbackDepthPool);
+        parameters.rendererList = rendererList;
+        parameters.depthStencilAttachment = {
+            texture: sceneDepth,
+            depthLoadOp: 'load',
+            depthStoreOp: 'store',
+            depthClearValue: depthClearValue(context.camera.depthMode)
+        };
+        context.graph.addPass(this.#fallbackDepthPass, parameters);
     }
 
     private recordFallbackTransparent(

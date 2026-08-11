@@ -100,7 +100,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'webgl_support.html': 'Graphics Backend Support',
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
-    'screen_space_reflections_palace.html': 'Nocturne Pavilion — Screen-space Reflections',
+    'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
     'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
     'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
     'compute_particles.html': 'Hilo3D Compute Particle Field',
@@ -127,7 +127,7 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'clustered_forward_plus_sponza.html':
         'Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.',
     'screen_space_reflections_palace.html':
-        'Stage the Khronos Car Concept in a cinematic mirror hall with hierarchical ray tracing, temporal reflection resolve, and three visible roughness tiers.',
+        'Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.',
     'temporal_aa_observatory.html':
         'Stress fused motion vectors, visibility-aware history, logarithmic depth rejection, and fixed-scale TAAU in a kinetic WebGPU constellation.',
     'compute_eclipse_shrine.html':
