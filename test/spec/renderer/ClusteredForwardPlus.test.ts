@@ -15,6 +15,10 @@ import Color from '../../../src/math/Color';
 import Matrix3 from '../../../src/math/Matrix3';
 import Vector3 from '../../../src/math/Vector3';
 import Renderer from '../../../src/render/Renderer';
+import {
+    registerRendererDiagnostics,
+    unregisterRendererDiagnostics
+} from '../../../src/render/diagnostics/RendererDiagnosticsRegistry';
 import { ClusteredForwardPlusPipelineFactory } from '../../../src/render/pipeline/ClusteredForwardPlus';
 import type { RHIDevice } from '../../../src/render/rhi/core';
 import Texture from '../../../src/texture/Texture';
@@ -417,9 +421,11 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 temporalAA: { renderScale: 0.75 },
                 screenSpaceReflections: { resolutionScale: 0.5, maxSteps: 8 }
             });
+            const canvas = document.createElement('canvas');
+            const rendererDiagnostics = registerRendererDiagnostics(canvas);
             const renderer = await Renderer.create({
                 backend: 'webgpu',
-                domElement: document.createElement('canvas'),
+                domElement: canvas,
                 width: 128,
                 height: 96,
                 antialias: false,
@@ -473,6 +479,17 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 expect(diagnostics.clusterOverflowCount).toBe(0);
                 expect(diagnostics.hiZValid).toBe(true);
                 expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
+                const passNames = rendererDiagnostics
+                    .snapshot()
+                    .renderGraph?.passes.map(pass => pass.name);
+                expect(passNames).toBeDefined();
+                const fallbackDepthIndex =
+                    passNames?.indexOf('Clustered Forward+ fallback depth prepass') ?? -1;
+                const currentHiZIndex =
+                    passNames?.indexOf('GPU Scene current depth Hi-Z min/max mip zero') ?? -1;
+                expect(fallbackDepthIndex).toBeGreaterThan(-1);
+                expect(currentHiZIndex).toBeGreaterThan(fallbackDepthIndex);
+                expect(passNames).toContain('Screen-space reflections confidence filter step 8');
 
                 camera.setPosition(0.25, 0, 8).lookAt(new Vector3(0, 0, 0));
                 renderer.render(scene, camera);
@@ -630,6 +647,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 });
             } finally {
                 renderer.destroy();
+                unregisterRendererDiagnostics(canvas, rendererDiagnostics);
             }
         },
         30_000

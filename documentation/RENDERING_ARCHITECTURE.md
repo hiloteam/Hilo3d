@@ -111,7 +111,9 @@ camera、model、instance、skin、morph 与 coverage ABI；首次出现、显�
 history 失效时写 invalid history marker，不能消费陈旧 pose。内置 `material-attributes`
 pass 固定接受 single-sample `rgba16float`，输出 octahedral view normal、perceptual
 roughness、metallic 与 reflection receiver flag；Clustered Hi-Z
-SSR 按需消费它，未启用 SSR 时不创建 attribute target 或对应 fallback pass。
+SSR 按需消费它，并用相同 attributes 与 logarithmic motion
+depth 约束 confidence-aware 多尺度空间 filter；未启用 SSR 时不创建 attribute target、filter
+target 或对应 fallback pass。
 
 portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
 `MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
@@ -235,7 +237,9 @@ physical-bucket 放大。所有 indexed-indirect command 的 `firstInstance` 保
 draw 通过 256-byte 对齐的只读 storage range 取得自己的 compact base，再与本地 `gl_InstanceIndex`
 相加，因此 baseline 不依赖 WebGPU 可选的 `indirect-first-instance` feature。Hi-Z 对 standard
 depth 的 RG32F Hi-Z 同时保存区块 `min/max`；previous-frame occlusion 对 standard 读取最远值
-`max`、对 reversed 读取最远值 `min`，SSR 读取完整区间。previous-frame
+`max`、对 reversed 读取最远值 `min`，SSR 读取完整区间。Previous-frame Hi-Z 和 current-frame SSR
+pyramid 都在 ordinary Forward opaque 的 `depth-only` fallback prepass 之后构建，因此未进入 GPU Scene
+bucket 的 layered PBR、alpha-mask 和其他兼容对象也拥有可追踪深度。Previous-frame
 occlusion 同时读取已提交的 previous
 view/projection/depth 参数，不把上一帧 VP 与当前帧投影约定混用。颜色阶段 load 深度预通过结果，物体 record 携带 model
 basis 的 inverse-transpose normal matrix，因此 non-uniform scale 不改变法线方向。depth

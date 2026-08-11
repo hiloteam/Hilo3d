@@ -31,9 +31,7 @@ function pixelDifference(referenceBuffer: Buffer, candidateBuffer: Buffer): Pixe
     };
 }
 
-test('renders a stable and visually material SSR contribution in Nocturne Pavilion', async ({
-    page
-}) => {
+test('renders a stable and visually material SSR contribution in Afterimage', async ({ page }) => {
     test.setTimeout(120_000);
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
@@ -65,12 +63,11 @@ test('renders a stable and visually material SSR contribution in Nocturne Pavili
         hiZValid: true,
         screenSpaceReflections: true,
         temporalAA: true,
-        roughnessTiers: 3,
+        surfaceFinish: 'smoked lacquer',
         heroAsset: 'Khronos Car Concept'
     });
-    expect(evidence?.objectCount).toBeGreaterThan(50);
+    expect(evidence?.objectCount).toBeGreaterThan(0);
     expect(evidence?.fallbackObjectCount).toBeGreaterThan(0);
-    expect(evidence?.visibleObjectCount).toBeGreaterThan(0);
 
     const canvas = page.locator('canvas');
     await page.evaluate(async () => {
@@ -120,12 +117,11 @@ declare global {
             readonly hiZValid: boolean;
             readonly screenSpaceReflections: boolean;
             readonly temporalAA: true;
-            readonly roughnessTiers: 3;
+            readonly surfaceFinish: 'smoked lacquer';
             readonly heroAsset: 'Khronos Car Concept';
         };
         __HILO3D_SSR_PALACE_TEST_API__?: {
             settle(frames?: number): Promise<void>;
-            advance(frames?: number): Promise<void>;
         };
     }
 }

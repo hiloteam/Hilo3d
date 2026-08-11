@@ -27,6 +27,7 @@ const INVALID_TEXTURE = 0 as RenderGraphTextureHandle;
 const TRACE_WORKGROUP_SIZE = 8;
 const MAX_TRACE_HIZ_LEVELS = 8;
 const COLOR_PYRAMID_LEVELS = 4;
+const SPATIAL_FILTER_STEPS = Object.freeze([1, 2, 4, 8] as const);
 
 /** Production controls for the WebGPU high-end hierarchical screen-space reflection path. */
 export interface ScreenSpaceReflectionsOptions {
@@ -618,6 +619,156 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     );
 }
 
+function spatialFilterPass(
+    step: number,
+    settings: Readonly<ScreenSpaceReflectionsSettings>
+): ComputeRenderPass {
+    const taps = [
+        [-1, -1, 1],
+        [0, -1, 2],
+        [1, -1, 1],
+        [-1, 0, 2],
+        [0, 0, 36],
+        [1, 0, 2],
+        [-1, 1, 1],
+        [0, 1, 2],
+        [1, 1, 1]
+    ] as const;
+    const tapSource = taps
+        .map(
+            ([x, y, weight]) => `
+    {
+        let neighborCoordinate = clamp(
+            pixel + vec2<i32>(${String(x * step)}, ${String(y * step)}),
+            vec2<i32>(0),
+            vec2<i32>(outputSize) - vec2<i32>(1)
+        );
+        let neighbor = textureLoad(sourceReflection, neighborCoordinate, 0);
+        if (neighbor.a > 0.0001) {
+            let neighborUv = (vec2<f32>(neighborCoordinate) + vec2<f32>(0.5)) /
+                vec2<f32>(outputSize);
+            let neighborAttributes = textureLoad(
+                materialAttributes,
+                pixelFor(materialAttributes, neighborUv),
+                0
+            );
+            let neighborPacked = u32(max(round(neighborAttributes.w), 0.0));
+            if (
+                (neighborPacked & 1u) != 0u &&
+                neighborAttributes.z < ${String(settings.roughnessCutoff)}
+            ) {
+                let neighborNormal = decodeOctahedralNormal(neighborAttributes.xy);
+                let neighborLogDepth = textureLoad(
+                    motionDepth,
+                    pixelFor(motionDepth, neighborUv),
+                    0
+                ).w;
+                let normalWeight = pow(max(dot(centerNormal, neighborNormal), 0.0), 24.0);
+                let depthWeight = exp2(-abs(centerLogDepth - neighborLogDepth) * 24.0);
+                let roughnessWeight = exp2(
+                    -abs(centerAttributes.z - neighborAttributes.z) * 16.0
+                );
+                let confidenceWeight = clamp(0.25 + neighbor.a, 0.0, 1.0);
+                let weight = ${String(weight)}.0 * normalWeight * depthWeight *
+                    roughnessWeight * confidenceWeight;
+                accumulation += neighbor * weight;
+                totalWeight += weight;
+            }
+        }
+    }`
+        )
+        .join('\n');
+    return computePass(
+        new ComputeShader({
+            label: `Screen-space reflections confidence filter step ${String(step)}`,
+            source: `
+@group(0) @binding(0) var sourceReflection: texture_2d<f32>;
+@group(0) @binding(1) var motionDepth: texture_2d<f32>;
+@group(0) @binding(2) var materialAttributes: texture_2d<f32>;
+@group(0) @binding(3) var destination: texture_storage_2d<rgba16float, write>;
+fn pixelFor(source: texture_2d<f32>, uv: vec2<f32>) -> vec2<i32> {
+    let dimensions = textureDimensions(source);
+    return clamp(
+        vec2<i32>(uv * vec2<f32>(dimensions)),
+        vec2<i32>(0),
+        vec2<i32>(dimensions) - vec2<i32>(1)
+    );
+}
+fn decodeOctahedralNormal(encoded: vec2<f32>) -> vec3<f32> {
+    var normal = vec3<f32>(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
+    if (normal.z < 0.0) {
+        let original = normal.xy;
+        normal.x = (1.0 - abs(original.y)) * select(-1.0, 1.0, original.x >= 0.0);
+        normal.y = (1.0 - abs(original.x)) * select(-1.0, 1.0, original.y >= 0.0);
+    }
+    return normalize(normal);
+}
+@compute @workgroup_size(${String(TRACE_WORKGROUP_SIZE)}, ${String(TRACE_WORKGROUP_SIZE)})
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let outputSize = textureDimensions(destination);
+    if (any(id.xy >= outputSize)) { return; }
+    let pixel = vec2<i32>(id.xy);
+    let uv = (vec2<f32>(id.xy) + vec2<f32>(0.5)) / vec2<f32>(outputSize);
+    let centerAttributes = textureLoad(
+        materialAttributes,
+        pixelFor(materialAttributes, uv),
+        0
+    );
+    let centerPacked = u32(max(round(centerAttributes.w), 0.0));
+    if (
+        (centerPacked & 1u) == 0u ||
+        centerAttributes.z >= ${String(settings.roughnessCutoff)}
+    ) {
+        textureStore(destination, pixel, vec4<f32>(0.0));
+        return;
+    }
+    let centerNormal = decodeOctahedralNormal(centerAttributes.xy);
+    let centerLogDepth = textureLoad(motionDepth, pixelFor(motionDepth, uv), 0).w;
+    var accumulation = vec4<f32>(0.0);
+    var totalWeight = 0.0;
+${tapSource}
+    if (totalWeight > 0.0001) {
+        textureStore(destination, pixel, accumulation / totalWeight);
+    } else {
+        textureStore(destination, pixel, vec4<f32>(0.0));
+    }
+}`,
+            workgroupSize: [TRACE_WORKGROUP_SIZE, TRACE_WORKGROUP_SIZE],
+            bindings: [
+                {
+                    name: 'sourceReflection',
+                    group: 0,
+                    binding: 0,
+                    kind: 'sampled-texture',
+                    sampleType: 'float'
+                },
+                {
+                    name: 'motionDepth',
+                    group: 0,
+                    binding: 1,
+                    kind: 'sampled-texture',
+                    sampleType: 'float'
+                },
+                {
+                    name: 'materialAttributes',
+                    group: 0,
+                    binding: 2,
+                    kind: 'sampled-texture',
+                    sampleType: 'float'
+                },
+                {
+                    name: 'destination',
+                    group: 0,
+                    binding: 3,
+                    kind: 'storage-texture',
+                    access: 'write-only',
+                    format: 'rgba16float'
+                }
+            ]
+        })
+    );
+}
+
 function compositePass(intensity: number): FullscreenRenderPass {
     return new FullscreenRenderPass({
         name: 'Screen-space reflections linear HDR composite',
@@ -715,6 +866,7 @@ export class ScreenSpaceReflectionsController {
     readonly #traceHiZLevelCount: number;
     readonly #tracePass: ComputeRenderPass;
     readonly #temporalResolvePass: ComputeRenderPass;
+    readonly #spatialFilterPasses: readonly ComputeRenderPass[];
     readonly #compositePass: FullscreenRenderPass;
     readonly #colorHistoryKey = Object.freeze({});
     readonly #depthHistoryKey = Object.freeze({});
@@ -732,6 +884,9 @@ export class ScreenSpaceReflectionsController {
     );
     readonly #resolvePool = new RenderPassParameterPool(
         () => new MutableComputeParameters(0, 6, 1)
+    );
+    readonly #spatialFilterPool = new RenderPassParameterPool(
+        () => new MutableComputeParameters(0, 4, 0)
     );
     readonly #compositePool = new RenderPassParameterPool(
         () => new MutableFullscreenParameters(),
@@ -754,6 +909,9 @@ export class ScreenSpaceReflectionsController {
         }
         this.#tracePass = computePass(traceShader(settings, this.#traceHiZLevelCount));
         this.#temporalResolvePass = temporalResolvePass(settings);
+        this.#spatialFilterPasses = Object.freeze(
+            SPATIAL_FILTER_STEPS.map(step => spatialFilterPass(step, settings))
+        );
         this.#compositePass = compositePass(settings.intensity);
         this.#tracePool = new RenderPassParameterPool(
             () =>
@@ -916,6 +1074,29 @@ export class ScreenSpaceReflectionsController {
             context.graph.addPass(TEMPORAL_INITIALIZE_PASS, initialize);
         }
 
+        let reflectionForComposite: RenderGraphTextureHandle = colorHistory.current;
+        for (let index = 0; index < this.#spatialFilterPasses.length; index += 1) {
+            const filterPass = this.#spatialFilterPasses[index];
+            if (filterPass === undefined) {
+                throw new Error('Screen-space reflections spatial filter pass is missing');
+            }
+            const filtered = context.graph.createTexture(
+                `Screen-space reflections confidence filter ${String(index + 1)}`,
+                this.#reflectionDescriptor
+            );
+            const filter = context.acquirePassParameters(this.#spatialFilterPool);
+            filter.setTexture(0, reflectionForComposite);
+            filter.setTexture(1, resources.motionDepth);
+            filter.setTexture(2, resources.materialAttributes);
+            filter.setTexture(3, filtered);
+            filter.setDispatch(
+                Math.max(1, Math.ceil(reflectionWidth / TRACE_WORKGROUP_SIZE)),
+                Math.max(1, Math.ceil(reflectionHeight / TRACE_WORKGROUP_SIZE))
+            );
+            context.graph.addPass(filterPass, filter);
+            reflectionForComposite = filtered;
+        }
+
         const composited = context.graph.createTexture(
             'Screen-space reflections composited HDR scene',
             this.#compositeDescriptor
@@ -923,7 +1104,7 @@ export class ScreenSpaceReflectionsController {
         const composite = context.acquirePassParameters(this.#compositePool);
         composite.inputTextures.length = 2;
         composite.inputTextures[0] = resources.sceneColor;
-        composite.inputTextures[1] = colorHistory.current;
+        composite.inputTextures[1] = reflectionForComposite;
         composite.colorAttachments[0] = {
             texture: composited,
             loadOp: 'clear',

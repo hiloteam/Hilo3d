@@ -31,13 +31,14 @@ SSR 必须和 `hiZ`、`temporalAA`
 
 生产帧的顺序是：
 
-1. shared depth/motion prepass；
+1. GPU Scene 与 ordinary Forward opaque 共用的 depth/motion prepass；
 2. current-frame RG32F Hi-Z min/max pyramid；
 3. Clustered opaque PBR color，同时写 material attributes；
 4. ordinary Forward opaque fallback color、material attributes 和 motion；
 5. HDR radiance cone pyramid；
-6. half-resolution hierarchical Hi-Z reflection trace；
-7. motion/depth rejection、3×3 neighborhood clamp 和 temporal accumulation；
+6. configurable-resolution hierarchical Hi-Z reflection trace；
+7. motion/depth rejection、3×3 neighborhood clamp、temporal accumulation 和 confidence-aware
+   depth/normal à-trous filter；
 8. 在线性 HDR 中把 reflection 合成回 opaque scene；
 9. TAA/TAAU resolve；
 10. transparent fallback、Bloom 和 display transform。
@@ -45,6 +46,10 @@ SSR 必须和 `hiZ`、`temporalAA`
 所有资源和依赖都由同一 Render
 Graph 声明；prepare 只创建可复用的 pipeline/binding，execute 才记录命令。SSR 不直接访问原生 `GPU*`
 对象，也不绕过 portable RHI。
+
+ordinary Forward opaque 必须先通过正式 `depth-only` material role 把 fallback 深度合入 current-frame
+scene depth，再构建 Hi-Z。否则 radiance 中虽能看到 fallback 物体，hierarchical
+trace 却没有对应深度可命中；Car Concept 的 layered PBR 车身就是这条回归的发布夹具。
 
 ## Material attribute ABI
 
@@ -72,6 +77,10 @@ thickness 测试。命中辐射按 roughness 与 ray distance 选择四级 HDR c
 cone。最终 confidence 同时包含 screen-edge、ray-distance 和 roughness
 fade，未命中、离屏、背景、背向或超过 roughness cutoff 的像素返回零贡献。
 
+时序结果在合成前经过多尺度 confidence-aware à-trous filter。filter 只在 receiver、roughness、view
+normal 和 logarithmic
+depth 连续的像素间传播有效命中，因此可以柔化局部 trace 空洞而不把车身、地面和背景跨边界涂抹到一起。
+
 这是纯 screen-space 效果：屏幕外、被前景完全遮挡或当前 color
 buffer 中不存在的信息没有可用命中。当前版本确定性返回零作为 fallback；它不伪装成 probe、BVH、SDF 或硬件 ray
 tracing。
@@ -93,10 +102,10 @@ recipe 重建资源，public pipeline identity 不变。
   Scene、ordinary fallback、camera cut、resize、standard/reversed depth 和 device recovery。
 - `test/ui/screen-space-reflections.spec.ts`：真实浏览器 GPU
   validation、静态 history 收敛，以及同一视角 SSR on/off 的非零像素贡献。
-- `examples/screen_space_reflections_palace.html`：使用仓库内 Khronos Car Concept、GPU
-  Scene 发光装置、ordinary Forward PBR floor、三档 roughness、TAA、Bloom 和 Hi-Z
-  SSR 的独立维护示例； `ssr=false` 可显示确定性无 SSR 对照。Car Concept 资产来源、CC BY
-  4.0 许可和 hash 记录在 `examples/models/CarConcept/README.md`。
+- `examples/screen_space_reflections_palace.html`：使用仓库内 Khronos Car Concept、镜头外 studio
+  light field、ordinary Forward PBR 烟熏漆地面、TAA、Bloom 和高精度 Hi-Z SSR 的独立维护示例；
+  `ssr=false` 可显示确定性无 SSR 对照。Car Concept 资产来源、CC BY 4.0 许可和 hash 记录在
+  `examples/models/CarConcept/README.md`。
 
 现有 `examples/temporal_aa_observatory.html` 保持为独立 TAA/TAAU 案例，不承担 SSR release evidence。
 
