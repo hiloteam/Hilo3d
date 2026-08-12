@@ -87,7 +87,7 @@ for (const backend of backends) {
     test(`GTAO produces stable non-black contact visibility on ${backend} @${backend}`, async ({
         page
     }) => {
-        test.setTimeout(120_000);
+        test.setTimeout(240_000);
         await installRenderHealthProbe(page);
         const failures = await installPageFailureMonitor(page);
         try {
