@@ -2030,14 +2030,15 @@ class ScriptablePassSlot {
     #sceneTextureBindGroup: RHIBindGroup | null = null;
     #activeSceneTexture = false;
     readonly #sceneTexturePreparation: SceneTexturePreparationState = {
-        globalBindGroupLayout: null
+        globalBindGroupLayout: null,
+        bindingName: null
     };
     readonly #sceneTextureEntries: MutableFrameBindGroupEntry[] = [
         { binding: 0, resource: null },
         { binding: 1, resource: null }
     ];
     readonly #sceneTextureDescriptor = {
-        label: 'Opaque scene texture',
+        label: 'Scene pass-global texture',
         lifetime: 'frame' as const,
         layout: null as RHIBindGroupLayout | null,
         entries: this.#sceneTextureEntries
@@ -2129,6 +2130,7 @@ class ScriptablePassSlot {
         this.#sceneStorageBindingCount = 0;
         this.#sceneStoragePreparation.globalBindGroupLayout = null;
         this.#sceneTexturePreparation.globalBindGroupLayout = null;
+        this.#sceneTexturePreparation.bindingName = null;
         this.#copyDeclarationCount = 0;
         this.#bufferCopyDeclarationCount = 0;
         this.#bufferClearDeclarationCount = 0;
@@ -2216,6 +2218,7 @@ class ScriptablePassSlot {
             this.#sceneStorageVariant = null;
             this.#sceneStoragePreparation.globalBindGroupLayout = null;
             this.#sceneTexturePreparation.globalBindGroupLayout = null;
+            this.#sceneTexturePreparation.bindingName = null;
             this.#computeServices.release();
             this.#gpuDrivenServices.release();
             this.#capabilities = null;
@@ -2325,9 +2328,10 @@ class ScriptablePassSlot {
         if (pass instanceof SceneRenderPass) {
             const parameters = this.requireParameters() as SceneRenderPassParameters;
             const variant = parameters.storageShaderVariant;
-            if (variant !== undefined && parameters.opaqueTexture !== undefined) {
+            const sceneTexture = parameters.ambientOcclusionTexture ?? parameters.opaqueTexture;
+            if (variant !== undefined && sceneTexture !== undefined) {
                 throw new Error(
-                    'SceneRenderPass cannot combine a storage shader override with opaque scene-texture sampling'
+                    'SceneRenderPass cannot combine a storage shader override with pass-global scene-texture sampling'
                 );
             }
             if (variant !== undefined) {
@@ -2335,12 +2339,16 @@ class ScriptablePassSlot {
                 this.#activeSceneStorage = true;
                 this.draw.setPrepare(this.#prepareSceneStorage);
             }
-            if (parameters.opaqueTexture !== undefined) {
-                const texture = this.sampledInternals.get(parameters.opaqueTexture);
+            if (sceneTexture !== undefined) {
+                const texture = this.sampledInternals.get(sceneTexture);
                 if (texture === undefined) {
-                    throw new Error('Opaque scene texture was not declared during setup');
+                    throw new Error('Pass-global scene texture was not declared during setup');
                 }
                 this.#sceneTextureHandle = texture;
+                this.#sceneTexturePreparation.bindingName =
+                    parameters.ambientOcclusionTexture === undefined
+                        ? 'u_opaqueTexture'
+                        : 'u_gtaoTexture';
                 this.#activeSceneTexture = true;
                 this.draw.setPrepare(this.#prepareSceneTexture);
             }
@@ -2649,13 +2657,13 @@ class ScriptablePassSlot {
         const layoutHandle = this.#sceneTexturePreparation.globalBindGroupLayout;
         if (layoutHandle === null) return;
         const textureHandle = this.#sceneTextureHandle;
-        if (textureHandle === null) throw new Error('Opaque scene texture is unavailable');
+        if (textureHandle === null) throw new Error('Pass-global scene texture is unavailable');
         this.cleanupSceneTexture(this.requireOwner().resources);
         const fullscreen = this.requireOwner().services.getScriptableFullscreenProcessor();
         const registry = fullscreen.registry;
         const texture = context.getTexture(textureHandle);
         if (texture.sampleCount !== 1) {
-            throw new Error('Opaque scene texture must be single-sample');
+            throw new Error('Pass-global scene texture must be single-sample');
         }
         const textureEntry = this.#sceneTextureEntries[0];
         const samplerEntry = this.#sceneTextureEntries[1];
@@ -2681,6 +2689,7 @@ class ScriptablePassSlot {
         if (textureEntry !== undefined) textureEntry.resource = null;
         if (samplerEntry !== undefined) samplerEntry.resource = null;
         this.#sceneTextureDescriptor.layout = null;
+        this.#sceneTexturePreparation.bindingName = null;
         if (bindGroup !== null) resources.releaseFrameBindGroup(bindGroup);
     }
 

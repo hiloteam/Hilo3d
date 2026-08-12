@@ -538,8 +538,12 @@ test.describe('examples using the generic release gate', () => {
         const { path: examplePath, backend } = exampleCase;
         if (exampleUsesDedicatedReleaseTest(examplePath)) continue;
         test(`${examplePath} renders through ${backend} @${backend}`, async ({ page }) => {
-            if (examplePath === 'pbr2.html') {
-                // The 30-material HDR grid is intentionally expensive under CI SwiftShader.
+            if (
+                examplePath === 'pbr2.html' ||
+                examplePath === 'ground_truth_ambient_occlusion.html'
+            ) {
+                // The HDR material grid and multi-pass GTAO gallery are intentionally expensive
+                // under CI SwiftShader.
                 test.slow();
             }
             await installRenderHealthProbe(page);

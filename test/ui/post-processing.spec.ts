@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { PNG } from 'pngjs';
 import type { ExampleBackend } from './example-paths';
 import { installPageFailureMonitor } from './page-failure-monitor';
 import {
@@ -13,6 +14,43 @@ import {
 } from './render-health';
 
 const backends = ['webgl2', 'webgpu'] as const;
+
+interface PixelDifference {
+    readonly changedPixelCount: number;
+    readonly darkenedPixelCount: number;
+    readonly meanChannelDelta: number;
+    readonly pixelCount: number;
+}
+
+function compareCanvasPixels(enabledPng: Buffer, disabledPng: Buffer): PixelDifference {
+    const enabled = PNG.sync.read(enabledPng);
+    const disabled = PNG.sync.read(disabledPng);
+    expect([enabled.width, enabled.height]).toEqual([disabled.width, disabled.height]);
+    let changedPixelCount = 0;
+    let darkenedPixelCount = 0;
+    let channelDelta = 0;
+    const pixelCount = enabled.width * enabled.height;
+    for (let offset = 0; offset < enabled.data.length; offset += 4) {
+        const enabledLuminance =
+            (enabled.data[offset] ?? 0) * 0.2126 +
+            (enabled.data[offset + 1] ?? 0) * 0.7152 +
+            (enabled.data[offset + 2] ?? 0) * 0.0722;
+        const disabledLuminance =
+            (disabled.data[offset] ?? 0) * 0.2126 +
+            (disabled.data[offset + 1] ?? 0) * 0.7152 +
+            (disabled.data[offset + 2] ?? 0) * 0.0722;
+        const difference = Math.abs(enabledLuminance - disabledLuminance);
+        channelDelta += difference;
+        if (difference >= 2) changedPixelCount++;
+        if (disabledLuminance - enabledLuminance >= 2) darkenedPixelCount++;
+    }
+    return {
+        changedPixelCount,
+        darkenedPixelCount,
+        meanChannelDelta: channelDelta / pixelCount,
+        pixelCount
+    };
+}
 
 async function currentProgress(page: Page, backend: ExampleBackend): Promise<NativeRenderProgress> {
     return nativeRenderProgress(await readRenderHealth(page), backend);
@@ -46,6 +84,81 @@ async function assertFinalGraphicsHealth(
 }
 
 for (const backend of backends) {
+    test(`GTAO produces stable non-black contact visibility on ${backend} @${backend}`, async ({
+        page
+    }) => {
+        test.setTimeout(240_000);
+        await installRenderHealthProbe(page);
+        const failures = await installPageFailureMonitor(page);
+        try {
+            const canvasSelector = `canvas[data-hilo3d-backend="${backend}"]`;
+            await page.goto(
+                `/examples/ground_truth_ambient_occlusion.html?backend=${backend}&test=1&gtao=true`,
+                { waitUntil: 'domcontentloaded' }
+            );
+            await expect(page.locator('body')).toHaveAttribute('data-gtao-phase', 'ready', {
+                timeout: 45_000
+            });
+            const enabledCanvas = page.locator(canvasSelector);
+            await expect(enabledCanvas).toBeVisible();
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            const enabled = await enabledCanvas.screenshot({ type: 'png' });
+            await assertFinalGraphicsHealth(page, backend, `GTAO enabled health on ${backend}`);
+
+            const runtimeCanvas = await page.evaluate(selector => {
+                const canvas = document.querySelector<HTMLCanvasElement>(selector);
+                if (canvas === null) throw new Error('GTAO canvas is unavailable');
+                canvas.dataset['runtimeIdentity'] = 'preserved';
+                return canvas.dataset['runtimeIdentity'];
+            }, canvasSelector);
+            await page.getByRole('button', { name: /indirect visibility GTAO on/u }).click();
+            await expect(page.locator('body')).toHaveAttribute('data-gtao', 'disabled');
+            await expect(
+                page.getByRole('button', { name: /indirect visibility GTAO off/u })
+            ).toHaveAttribute('aria-pressed', 'false');
+            await expect(page).toHaveURL(/gtao=false/u);
+            expect(
+                await page.evaluate(selector => {
+                    const canvas = document.querySelector<HTMLCanvasElement>(selector);
+                    return canvas?.dataset['runtimeIdentity'];
+                }, canvasSelector)
+            ).toBe(runtimeCanvas);
+            const disabledCanvas = page.locator(canvasSelector);
+            await expect(disabledCanvas).toBeVisible();
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            const disabled = await disabledCanvas.screenshot({ type: 'png' });
+            await assertFinalGraphicsHealth(page, backend, `GTAO disabled health on ${backend}`);
+
+            const difference = compareCanvasPixels(enabled, disabled);
+            expect(difference.changedPixelCount).toBeGreaterThan(difference.pixelCount * 0.08);
+            expect(difference.darkenedPixelCount).toBeGreaterThan(difference.pixelCount * 0.05);
+            expect(difference.meanChannelDelta).toBeGreaterThan(1);
+
+            await page.getByRole('button', { name: /indirect visibility GTAO off/u }).click();
+            await expect(page.locator('body')).toHaveAttribute('data-gtao', 'enabled');
+            await expect(
+                page.getByRole('button', { name: /indirect visibility GTAO on/u })
+            ).toHaveAttribute('aria-pressed', 'true');
+            await expect(page).toHaveURL(/gtao=true/u);
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            await assertFinalGraphicsHealth(page, backend, `GTAO re-enabled health on ${backend}`);
+            expect(
+                await page.evaluate(selector => {
+                    const canvas = document.querySelector<HTMLCanvasElement>(selector);
+                    return canvas?.dataset['runtimeIdentity'];
+                }, canvasSelector)
+            ).toBe(runtimeCanvas);
+
+            await page.goto('about:blank');
+            failures.assertEmpty(`GTAO browser failures on ${backend}`);
+        } finally {
+            await failures.dispose();
+        }
+    });
+
     test(`fullscreen render-target copy preserves row orientation on ${backend} @${backend}`, async ({
         page
     }) => {

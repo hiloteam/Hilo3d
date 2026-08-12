@@ -62,6 +62,12 @@ export interface SceneRenderPassParameters {
      * this input distinct from the active color attachment, preventing raster feedback.
      */
     readonly opaqueTexture?: RenderGraphTextureAccessHandle;
+    /**
+     * Screen-space ambient visibility sampled by built-in opaque PBR materials in this pass.
+     * This pass-global input is mutually exclusive with `opaqueTexture`; opaque shading
+     * consumes GTAO while later transmission shading consumes the captured opaque color.
+     */
+    readonly ambientOcclusionTexture?: RenderGraphTextureAccessHandle;
     /** Optional WebGPU-only storage-aware shader variant for the ordinary renderer-list path. */
     readonly storageShaderVariant?: Readonly<SceneStorageShaderVariant>;
 }
@@ -99,6 +105,14 @@ export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassPara
         }
         if (parameters.opaqueTexture !== undefined) {
             builder.readTexture(parameters.opaqueTexture);
+        }
+        if (parameters.ambientOcclusionTexture !== undefined) {
+            if (parameters.opaqueTexture !== undefined) {
+                throw new Error(
+                    'SceneRenderPass cannot bind opaque color and ambient occlusion simultaneously'
+                );
+            }
+            builder.readTexture(parameters.ambientOcclusionTexture);
         }
         const storageVariant = parameters.storageShaderVariant;
         if (storageVariant !== undefined) {

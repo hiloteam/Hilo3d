@@ -22,6 +22,7 @@ import type {
 import {
     Bloom,
     ColorUber,
+    GroundTruthAmbientOcclusion,
     PostProcessRenderPipelineFactory,
     TemporalAA
 } from '../../../src/render/postprocessing';
@@ -164,9 +165,14 @@ describe('built-in post-processing', () => {
     it('declares the linear HDR feature requirements before renderer creation', () => {
         const bloom = new Bloom();
         const colorUber = new ColorUber();
+        const gtao = new GroundTruthAmbientOcclusion();
         const temporalAA = new TemporalAA();
-        const factory = new PostProcessRenderPipelineFactory({ temporalAA: {} });
+        const factory = new PostProcessRenderPipelineFactory({
+            groundTruthAmbientOcclusion: {},
+            temporalAA: {}
+        });
 
+        expect(gtao.injectionPoint).toBe('before-opaque');
         expect(temporalAA.injectionPoint).toBe('after-opaque');
         expect(bloom.injectionPoint).toBe('after-transparent');
         expect(colorUber.injectionPoint).toBe('after-post-process');
@@ -190,8 +196,84 @@ describe('built-in post-processing', () => {
         expect(() => new TemporalAA({ sharpness: 1 })).toThrow(/sharpness/u);
         expect(() => new TemporalAA({ renderScale: 0.49 })).toThrow(/renderScale/u);
         expect(() => new TemporalAA({ renderScale: 1.01 })).toThrow(/renderScale/u);
+        expect(() => new GroundTruthAmbientOcclusion({ resolutionScale: 0.2 })).toThrow(
+            /resolutionScale/u
+        );
+        expect(() => new GroundTruthAmbientOcclusion({ directionCount: 5 as 4 })).toThrow(
+            /directionCount/u
+        );
+        expect(() => new GroundTruthAmbientOcclusion({ radius: 0 })).toThrow(/radius/u);
         expect(() => new ColorUber({ temperature: 2 }).create()).toThrow(/temperature/u);
     });
+
+    it.each(taaIntegrationBackends)(
+        'renders submission-aware GTAO and indirect-only PBR integration on %s',
+        async backend => {
+            const renderer = await Renderer.create({
+                backend,
+                domElement: document.createElement('canvas'),
+                width: 40,
+                height: 32,
+                antialias: false,
+                renderPipeline: new PostProcessRenderPipelineFactory({
+                    groundTruthAmbientOcclusion: {
+                        resolutionScale: 0.5,
+                        directionCount: 4,
+                        stepCount: 3
+                    },
+                    bloom: false
+                })
+            });
+            activeRenderers.push(renderer);
+            const scene = new Node();
+            const material = new PBRMaterial({
+                baseColor: new Color(0.7, 0.62, 0.5),
+                metallic: 0,
+                roughness: 0.7
+            });
+            scene.addChild(
+                new Mesh({
+                    geometry: new BoxGeometry({ width: 3, height: 0.2, depth: 3 }),
+                    material,
+                    y: -0.8,
+                    frustumTest: false
+                })
+            );
+            scene.addChild(
+                new Mesh({
+                    geometry: new BoxGeometry(),
+                    material,
+                    frustumTest: false
+                })
+            );
+            const camera = new PerspectiveCamera({ aspect: 5 / 4, z: 4 });
+            const observed = observePassLabels(rhiDevice(renderer));
+
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toEqual(
+                expect.arrayContaining([
+                    'GTAO rotated horizon search',
+                    'GTAO initialize temporal history',
+                    'GTAO edge-aware filter 1',
+                    'GTAO bilateral full-resolution upsample'
+                ])
+            );
+
+            observed.labels.length = 0;
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('GTAO production temporal resolve');
+
+            observed.labels.length = 0;
+            camera.invalidateTransformHistory();
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('GTAO initialize temporal history');
+            observed.restore();
+            expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
+        }
+    );
 
     it.each(taaIntegrationBackends)(
         'renders fixed-scale TAAU, HDR bloom, and transmissive composition on %s',

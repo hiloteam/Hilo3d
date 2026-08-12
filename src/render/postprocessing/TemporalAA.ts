@@ -966,21 +966,27 @@ class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
             throw new Error('TemporalAA requires opaque scene color and sampled depth');
         }
         const frame = this.#resolve.begin(pipeline);
-        const velocity = pipeline.graph.createTexture(
-            'TemporalAA rgba16float motion and view depth',
-            this.#motionDescriptor
-        );
-        this.#rendererListDescriptor.cullingResults = context.cullingResults;
-        const velocityList = pipeline.createRendererList(this.#rendererListDescriptor);
-        const velocityParameters = pipeline.acquirePassParameters(this.#velocityParameters);
-        velocityParameters.configure(
-            velocityList,
-            velocity,
-            depth,
-            pipeline.output.depthStencilFormat !== null &&
-                renderTargetFormatHasStencil(pipeline.output.depthStencilFormat)
-        );
-        pipeline.graph.addPass(this.#velocityPass, velocityParameters);
+        const sharedVelocity = context.resources.motionDepth;
+        const velocity =
+            sharedVelocity ??
+            pipeline.graph.createTexture(
+                'TemporalAA rgba16float motion and view depth',
+                this.#motionDescriptor
+            );
+        if (sharedVelocity === null) {
+            this.#rendererListDescriptor.cullingResults = context.cullingResults;
+            const velocityList = pipeline.createRendererList(this.#rendererListDescriptor);
+            const velocityParameters = pipeline.acquirePassParameters(this.#velocityParameters);
+            velocityParameters.configure(
+                velocityList,
+                velocity,
+                depth,
+                pipeline.output.depthStencilFormat !== null &&
+                    renderTargetFormatHasStencil(pipeline.output.depthStencilFormat)
+            );
+            pipeline.graph.addPass(this.#velocityPass, velocityParameters);
+            context.resources.setMotionDepth(velocity);
+        }
         const resolved = this.#resolve.resolve(
             pipeline,
             frame,

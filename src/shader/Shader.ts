@@ -465,6 +465,7 @@ class Shader {
      * @param useLogDepth -
      * @param renderer - Renderer precision provider used to build the portable shader preamble.
      * @param linearOutput - Keep lighting in linear HDR space for floating-point scene targets.
+     * @param groundTruthAmbientOcclusion - Sample the pass-global GTAO visibility in PBR shading.
      */
     static getShader(
         mesh: Mesh,
@@ -475,7 +476,8 @@ class Shader {
         useLogDepth: boolean,
         renderer?: ShaderPrecisionProvider,
         linearOutput = false,
-        role: MaterialPassRole = 'forward'
+        role: MaterialPassRole = 'forward',
+        groundTruthAmbientOcclusion = false
     ): Shader | null {
         let header = this.getHeader(mesh, material, lightManager, fog, useLogDepth, role);
         header += `#define HILO_MATERIAL_ROLE_${role.replaceAll('-', '_').replaceAll(':', '_').toUpperCase()} 1\n`;
@@ -486,6 +488,7 @@ class Shader {
             header += '#define HILO_MATERIAL_ATTRIBUTES_PASS 1\n';
         } else if (role === 'picking') header += '#define HILO_PICKING_PASS 1\n';
         if (linearOutput) header += '#define HILO_LINEAR_OUTPUT 1\n';
+        if (groundTruthAmbientOcclusion) header += '#define HILO_GTAO 1\n';
         const pass = resolveMaterialPassDefinition(material, role);
         if (pass === null) return null;
         if (pass.shader.kind === 'glsl') {

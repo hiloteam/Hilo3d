@@ -304,13 +304,13 @@ describe('render hot-path architecture', () => {
         );
     });
 
-    it('shares one invariant GPU Scene clip transform across depth and color passes', () => {
+    it('shares one invariant GPU Scene clip transform across depth, attributes, and color passes', () => {
         const clustered = sourceAt('/render/pipeline/ClusteredForwardPlus.ts');
 
-        expect(clustered.match(/\$\{GPU_SCENE_POSITION_TRANSFORM_SOURCE\}/gu)).toHaveLength(3);
+        expect(clustered.match(/\$\{GPU_SCENE_POSITION_TRANSFORM_SOURCE\}/gu)).toHaveLength(4);
         expect(
             clustered.match(/gl_Position = gpuSceneClipPosition\(objectBase, a_position\);/gu)
-        ).toHaveLength(3);
+        ).toHaveLength(4);
         expect(clustered).not.toContain('gl_Position = readFrameMatrix(0u) * worldPosition;');
     });
 });

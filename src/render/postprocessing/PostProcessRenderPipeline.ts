@@ -10,10 +10,16 @@ import type {
 } from '../pipeline/RenderPipeline';
 import { Bloom, type BloomOptions } from './Bloom';
 import { ColorUber, type ColorUberOptions } from './ColorUber';
+import {
+    GroundTruthAmbientOcclusion,
+    type GroundTruthAmbientOcclusionOptions
+} from './GroundTruthAmbientOcclusion';
 import { TemporalAA, type TemporalAAOptions } from './TemporalAA';
 
 /** Turnkey HDR forward/post-processing pipeline configuration. */
 export interface PostProcessRenderPipelineOptions {
+    /** Ground-truth ambient occlusion settings, or false to omit GTAO. */
+    readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
     /** Temporal anti-aliasing/upscaling settings, or false to omit the temporal pass. */
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     /** Bloom settings, or false to omit bloom. Bloom is enabled by default. */
@@ -27,8 +33,8 @@ export interface PostProcessRenderPipelineOptions {
 }
 
 /**
- * Turnkey linear-HDR forward pipeline with optional TAA, high-quality bloom, Color Uber, and
- * opaque scene color.
+ * Turnkey linear-HDR forward pipeline with optional GTAO/TAA, high-quality bloom, Color Uber,
+ * and opaque scene color.
  */
 export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
     readonly name = 'post-process-forward';
@@ -37,6 +43,12 @@ export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
 
     constructor(options: Readonly<PostProcessRenderPipelineOptions> = {}) {
         const features: ForwardRenderPipelineFeature[] = [];
+        if (
+            options.groundTruthAmbientOcclusion !== false &&
+            options.groundTruthAmbientOcclusion !== undefined
+        ) {
+            features.push(new GroundTruthAmbientOcclusion(options.groundTruthAmbientOcclusion));
+        }
         if (options.temporalAA !== false && options.temporalAA !== undefined) {
             features.push(new TemporalAA(options.temporalAA));
         }

@@ -733,6 +733,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly bloomStrength?: number;
     readonly buckets: readonly GPUSceneBucket[];
     readonly exposure?: number;
+    readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
     readonly hiZ?: boolean;
     readonly maxLightIndices?: number;
     readonly maxLights?: number;
@@ -1950,6 +1951,7 @@ export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirem
     readonly sampledDepth: boolean;
     readonly sampledSceneColor: boolean;
     readonly sceneScale?: number;
+    readonly splitScene?: boolean;
 }
 
 // @public
@@ -1994,8 +1996,13 @@ export interface ForwardRenderPipelineResources {
     readonly color: RenderGraphTextureHandle | null;
     readonly colorEncoding: RenderColorEncoding;
     readonly depth: RenderGraphTextureHandle | null;
+    markDepthPrepassed(): void;
+    readonly motionDepth: RenderGraphTextureHandle | null;
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void;
     replaceDepth(texture: RenderGraphTextureHandle): void;
+    readonly sceneScale: number;
+    setAmbientOcclusionTexture(texture: RenderGraphTextureHandle): void;
+    setMotionDepth(texture: RenderGraphTextureHandle): void;
 }
 
 // @public
@@ -3338,6 +3345,32 @@ export interface GPUSceneLOD {
     readonly maximumProjectedRadius: number;
 }
 
+// @public
+export class GroundTruthAmbientOcclusion implements ForwardRenderPipelineFeature {
+    constructor(options?: Readonly<GroundTruthAmbientOcclusionOptions>);
+    // (undocumented)
+    create(): ForwardRenderPipelineFeatureRuntime;
+    // (undocumented)
+    readonly injectionPoint: "before-opaque";
+    // (undocumented)
+    readonly name = "ground-truth-ambient-occlusion";
+    // (undocumented)
+    readonly requirements: Readonly<ForwardRenderFeatureRequirements>;
+}
+
+// @public
+export interface GroundTruthAmbientOcclusionOptions {
+    readonly depthThreshold?: number;
+    readonly directionCount?: 4 | 6 | 8;
+    readonly falloffStart?: number;
+    readonly historyWeight?: number;
+    readonly power?: number;
+    readonly radius?: number;
+    readonly resolutionScale?: number;
+    readonly stepCount?: 3 | 4 | 5 | 6;
+    readonly thickness?: number;
+}
+
 // @public (undocumented)
 export class HDRLoader {
     // (undocumented)
@@ -4253,6 +4286,7 @@ export const MaterialTextureSemantic: Readonly<{
     readonly BRDF_LUT: "BRDFLUT";
     readonly SPECULAR_ENV_MAP: "SPECULARENVMAP";
     readonly OPAQUE_SCENE_TEXTURE: "OPAQUETEXTURE";
+    readonly GROUND_TRUTH_AMBIENT_OCCLUSION: "GTAOTEXTURE";
 }>;
 
 // @public (undocumented)
@@ -5491,6 +5525,7 @@ export interface PostProcessRenderPipelineOptions {
     readonly bloom?: Readonly<BloomOptions> | false;
     readonly colorUber?: Readonly<ColorUberOptions>;
     readonly features?: readonly ForwardRenderPipelineFeature[];
+    readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
     readonly opaqueTexture?: boolean;
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
 }
@@ -6580,6 +6615,7 @@ export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassPara
 
 // @public
 export interface SceneRenderPassParameters {
+    readonly ambientOcclusionTexture?: RenderGraphTextureAccessHandle;
     readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
     readonly depthStencilAttachment?: Readonly<RenderPipelineDepthStencilAttachment>;
     readonly opaqueTexture?: RenderGraphTextureAccessHandle;
@@ -7068,6 +7104,9 @@ export const semantic: {
     OPAQUETEXTURE: {
         get(): unknown;
     };
+    GTAOTEXTURE: {
+        get(): unknown;
+    };
 };
 
 // @public (undocumented)
@@ -7210,7 +7249,7 @@ export class Shader {
     static getCustomShader(vs: string, fs: string, header?: string, cacheKey?: string, useHeaderCache?: boolean, renderer?: ShaderPrecisionProvider): Shader;
     static getHeader(mesh: Mesh, material: MaterialInstance, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, role?: MaterialPassRole): string;
     static getHeaderKey(mesh: Mesh, material: MaterialInstance, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, role?: MaterialPassRole): string;
-    static getShader(mesh: Mesh, material: MaterialInstance, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, renderer?: ShaderPrecisionProvider, linearOutput?: boolean, role?: MaterialPassRole): Shader | null;
+    static getShader(mesh: Mesh, material: MaterialInstance, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, renderer?: ShaderPrecisionProvider, linearOutput?: boolean, role?: MaterialPassRole, groundTruthAmbientOcclusion?: boolean): Shader | null;
     static get headerCache(): Cache_2<string>;
     // (undocumented)
     readonly id: string;
