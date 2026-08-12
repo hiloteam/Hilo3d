@@ -101,7 +101,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
     'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
-    'ground_truth_ambient_occlusion.html': 'Contact Gallery — Ground-truth Ambient Occlusion',
+    'ground_truth_ambient_occlusion.html': 'The Silent Dragon — Ground-truth Ambient Occlusion',
     'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
     'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
     'compute_particles.html': 'Hilo3D Compute Particle Field',
@@ -130,7 +130,7 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'screen_space_reflections_palace.html':
         'Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.',
     'ground_truth_ambient_occlusion.html':
-        'Reveal contact, corners, recesses, and large-scale proximity in a lightweight procedural gallery using portable temporal GTAO.',
+        'Read scales, claws, coils, layered stone contacts, and a deep architectural niche through portable temporal GTAO.',
     'temporal_aa_observatory.html':
         'Stress fused motion vectors, visibility-aware history, logarithmic depth rejection, and fixed-scale TAAU in a kinetic WebGPU constellation.',
     'compute_eclipse_shrine.html':

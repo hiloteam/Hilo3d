@@ -82,6 +82,17 @@ body {
     transform: translateY(-54%);
 }
 
+.gtaoIntro::before {
+    position: absolute;
+    z-index: -1;
+    top: -92px;
+    right: -90px;
+    bottom: -108px;
+    left: -90px;
+    background: radial-gradient(ellipse at 32% 48%, rgb(31 13 10 / 28%), transparent 69%);
+    content: '';
+}
+
 .gtaoEyebrow {
     margin: 0 0 18px;
     color: #efa285;
@@ -106,7 +117,7 @@ body {
 .gtaoIntro h1 em {
     display: inline-block;
     margin-left: 0.45em;
-    color: rgb(246 219 185 / 74%);
+    color: rgb(246 205 164 / 78%);
     font-weight: 400;
 }
 
@@ -246,20 +257,51 @@ body {
     .gtaoHeader p,
     .gtaoCaption,
     .gtaoRule,
-    .gtaoControl dl {
+    .gtaoControl dl,
+    .gtaoDescription,
+    .gtaoHint {
         display: none;
     }
 
+    .gtaoHeader {
+        top: max(26px, env(safe-area-inset-top));
+        right: 26px;
+        left: 26px;
+    }
+
     .gtaoIntro {
-        top: 40%;
-        width: min(78vw, 330px);
+        top: max(112px, calc(env(safe-area-inset-top) + 82px));
+        left: 27px;
+        width: min(72vw, 290px);
+        transform: none;
+    }
+
+    .gtaoIntro::before {
+        top: -48px;
+        right: -72px;
+        bottom: -58px;
+        left: -52px;
+        background: radial-gradient(ellipse at 26% 48%, rgb(31 13 10 / 32%), transparent 72%);
+    }
+
+    .gtaoEyebrow {
+        margin-bottom: 13px;
+        font-size: 7px;
     }
 
     .gtaoIntro h1 {
-        font-size: clamp(52px, 16vw, 74px);
+        font-size: clamp(48px, 14vw, 64px);
+        line-height: 0.8;
+    }
+
+    .gtaoIntro h1 em {
+        margin-left: 0.33em;
     }
 
     .gtaoControl {
+        bottom: max(24px, env(safe-area-inset-bottom));
+        left: 24px;
         min-height: 58px;
+        padding: 0 20px;
     }
 }

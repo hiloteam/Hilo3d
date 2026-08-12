@@ -106,15 +106,24 @@ for (const backend of backends) {
             const enabled = await enabledCanvas.screenshot({ type: 'png' });
             await assertFinalGraphicsHealth(page, backend, `GTAO enabled health on ${backend}`);
 
-            await page.goto('about:blank');
-            await page.waitForTimeout(500);
-            await page.goto(
-                `/examples/ground_truth_ambient_occlusion.html?backend=${backend}&test=1&gtao=false`,
-                { waitUntil: 'domcontentloaded' }
-            );
-            await expect(page.locator('body')).toHaveAttribute('data-gtao-phase', 'ready', {
-                timeout: 45_000
-            });
+            const runtimeCanvas = await page.evaluate(selector => {
+                const canvas = document.querySelector<HTMLCanvasElement>(selector);
+                if (canvas === null) throw new Error('GTAO canvas is unavailable');
+                canvas.dataset['runtimeIdentity'] = 'preserved';
+                return canvas.dataset['runtimeIdentity'];
+            }, canvasSelector);
+            await page.getByRole('button', { name: /indirect visibility GTAO on/u }).click();
+            await expect(page.locator('body')).toHaveAttribute('data-gtao', 'disabled');
+            await expect(
+                page.getByRole('button', { name: /indirect visibility GTAO off/u })
+            ).toHaveAttribute('aria-pressed', 'false');
+            await expect(page).toHaveURL(/gtao=false/u);
+            expect(
+                await page.evaluate(selector => {
+                    const canvas = document.querySelector<HTMLCanvasElement>(selector);
+                    return canvas?.dataset['runtimeIdentity'];
+                }, canvasSelector)
+            ).toBe(runtimeCanvas);
             const disabledCanvas = page.locator(canvasSelector);
             await expect(disabledCanvas).toBeVisible();
             await waitForStableAnimationFrames(page);
@@ -126,6 +135,22 @@ for (const backend of backends) {
             expect(difference.changedPixelCount).toBeGreaterThan(difference.pixelCount * 0.08);
             expect(difference.darkenedPixelCount).toBeGreaterThan(difference.pixelCount * 0.05);
             expect(difference.meanChannelDelta).toBeGreaterThan(1);
+
+            await page.getByRole('button', { name: /indirect visibility GTAO off/u }).click();
+            await expect(page.locator('body')).toHaveAttribute('data-gtao', 'enabled');
+            await expect(
+                page.getByRole('button', { name: /indirect visibility GTAO on/u })
+            ).toHaveAttribute('aria-pressed', 'true');
+            await expect(page).toHaveURL(/gtao=true/u);
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            await assertFinalGraphicsHealth(page, backend, `GTAO re-enabled health on ${backend}`);
+            expect(
+                await page.evaluate(selector => {
+                    const canvas = document.querySelector<HTMLCanvasElement>(selector);
+                    return canvas?.dataset['runtimeIdentity'];
+                }, canvasSelector)
+            ).toBe(runtimeCanvas);
 
             await page.goto('about:blank');
             failures.assertEmpty(`GTAO browser failures on ${backend}`);

@@ -31,8 +31,9 @@
   rejection, two edge-aware filters, and bounded depth/normal upsampling before applying the result
   only to PBR ambient/IBL. Keep direct lights and emission unoccluded, reset or roll back per-camera
   history across cuts, resize, discarded frames and recovery, and keep the disabled path resource-
-  and pass-free. Add the lightweight procedural Contact Gallery example with no model download, plus
-  real WebGPU/WebGL 2 non-black and on/off pixel coverage.
+  and pass-free. Add The Silent Dragon museum study around the repository-bundled 1.2 MB Stanford
+  Dragon, with same-page GTAO A/B switching, responsive art direction, and real WebGPU/WebGL 2
+  non-black and on/off pixel coverage.
 - Add production WebGPU high-end screen-space reflections to `ClusteredForwardPlusPipelineFactory`.
   The opt-in path adds a strict built-in `material-attributes` `rgba16float` ABI, GPU Scene MRT and
   ordinary Forward fallback coverage, RG32F min/max Hi-Z, hierarchical coarse-to-fine tracing,
