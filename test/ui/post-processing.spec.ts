@@ -123,9 +123,9 @@ for (const backend of backends) {
             await assertFinalGraphicsHealth(page, backend, `GTAO disabled health on ${backend}`);
 
             const difference = compareCanvasPixels(enabled, disabled);
-            expect(difference.changedPixelCount).toBeGreaterThan(difference.pixelCount * 0.01);
-            expect(difference.darkenedPixelCount).toBeGreaterThan(difference.pixelCount * 0.004);
-            expect(difference.meanChannelDelta).toBeGreaterThan(0.2);
+            expect(difference.changedPixelCount).toBeGreaterThan(difference.pixelCount * 0.08);
+            expect(difference.darkenedPixelCount).toBeGreaterThan(difference.pixelCount * 0.05);
+            expect(difference.meanChannelDelta).toBeGreaterThan(1);
 
             await page.goto('about:blank');
             failures.assertEmpty(`GTAO browser failures on ${backend}`);

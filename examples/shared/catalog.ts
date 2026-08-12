@@ -101,7 +101,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
     'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
-    'ground_truth_ambient_occlusion.html': 'Quiet Arches — Ground-truth Ambient Occlusion',
+    'ground_truth_ambient_occlusion.html': 'Contact Gallery — Ground-truth Ambient Occlusion',
     'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
     'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
     'compute_particles.html': 'Hilo3D Compute Particle Field',

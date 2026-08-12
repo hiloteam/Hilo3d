@@ -1,5 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { buildUrl, createExampleContext } from './shared/init';
+import { createStudioEnvironmentMaps } from './shared/studioEnvironment';
 
 const search = new URLSearchParams(location.search);
 const testMode = search.get('test') === '1';
@@ -12,7 +13,7 @@ const BACKEND_LABELS = Object.freeze({
 
 function requireElement(selector: string): HTMLElement {
     const element = document.querySelector<HTMLElement>(selector);
-    if (element === null) throw new Error(`Quiet Arches is missing ${selector}`);
+    if (element === null) throw new Error(`Contact Gallery is missing ${selector}`);
     return element;
 }
 
@@ -95,7 +96,7 @@ function createArchCrownGeometry(segments = 48): Hilo3d.Geometry {
             u1,
             0
         );
-        addQuad(frontOuter0, frontInner0, frontInner1, frontOuter1);
+        addQuad(frontOuter0, frontOuter1, frontInner1, frontInner0);
 
         const backOuter0 = addVertex(
             cosine0 * outerRadius,
@@ -137,7 +138,7 @@ function createArchCrownGeometry(segments = 48): Hilo3d.Geometry {
             u0,
             1
         );
-        addQuad(backOuter0, backOuter1, backInner1, backInner0);
+        addQuad(backOuter0, backInner0, backInner1, backOuter1);
 
         const outer0Front = addVertex(
             cosine0 * outerRadius,
@@ -232,47 +233,79 @@ function createArchCrownGeometry(segments = 48): Hilo3d.Geometry {
     });
 }
 
-const plaster = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.73, 0.56, 0.4),
-    metallic: 0,
-    roughness: 0.88
+function createArchOpeningGeometry(segments = 48): Hilo3d.Geometry {
+    const radius = 1.15;
+    const bottom = -1.55;
+    const positions: number[] = [0, 0, 0];
+    const normals: number[] = [0, 0, 1];
+    const indices: number[] = [];
+    for (let segment = 0; segment <= segments; segment += 1) {
+        const angle = (segment / segments) * Math.PI;
+        positions.push(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+        normals.push(0, 0, 1);
+        if (segment > 0) indices.push(0, segment, segment + 1);
+    }
+    const rectangleStart = positions.length / 3;
+    positions.push(-radius, bottom, 0, radius, bottom, 0, radius, 0, 0, -radius, 0, 0);
+    normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1);
+    indices.push(
+        rectangleStart,
+        rectangleStart + 1,
+        rectangleStart + 2,
+        rectangleStart,
+        rectangleStart + 2,
+        rectangleStart + 3
+    );
+    return new Hilo3d.Geometry({
+        vertices: new Hilo3d.GeometryData(new Float32Array(positions), 3),
+        normals: new Hilo3d.GeometryData(new Float32Array(normals), 3),
+        indices: new Hilo3d.GeometryData(new Uint16Array(indices), 1)
+    });
+}
+
+const { diffuseEnvMap, specularEnvMap } = createStudioEnvironmentMaps();
+const brdfLUT = await new Hilo3d.TextureLoader().load({
+    src: new URL('./image/brdfLUT.png', import.meta.url).href,
+    wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
+    wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE
 });
-const palePlaster = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.9, 0.79, 0.62),
-    metallic: 0,
-    roughness: 0.82
+const environment = Object.freeze({
+    brdfLUT,
+    diffuseEnvMap: Object.freeze({ texture: diffuseEnvMap, encoding: 'srgb' as const }),
+    specularEnvMap: Object.freeze({ texture: specularEnvMap, encoding: 'srgb' as const }),
+    diffuseEnvIntensity: 0.82,
+    specularEnvIntensity: 0.58
 });
-const darkPlaster = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.055, 0.07, 0.08),
-    metallic: 0.08,
-    roughness: 0.74
-});
-const lapis = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.035, 0.16, 0.3),
-    metallic: 0.18,
-    roughness: 0.32
-});
-const brass = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.71, 0.42, 0.12),
-    metallic: 0.86,
-    roughness: 0.24
-});
-const coral = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.72, 0.16, 0.09),
-    metallic: 0.05,
-    roughness: 0.48
-});
+const createGalleryMaterial = (
+    color: Readonly<[number, number, number]>,
+    roughness: number,
+    metallic = 0
+): Hilo3d.PBRMaterial =>
+    new Hilo3d.PBRMaterial({
+        ...environment,
+        baseColor: new Hilo3d.Color(color[0], color[1], color[2]),
+        metallic,
+        roughness
+    });
+
+const limestone = createGalleryMaterial([0.76, 0.62, 0.47], 0.9);
+const chalk = createGalleryMaterial([0.94, 0.85, 0.7], 0.86);
+const roseClay = createGalleryMaterial([0.72, 0.3, 0.2], 0.72);
+const seaGlass = createGalleryMaterial([0.08, 0.32, 0.43], 0.48, 0.08);
+const sage = createGalleryMaterial([0.34, 0.43, 0.35], 0.8);
+const bronze = createGalleryMaterial([0.63, 0.36, 0.13], 0.38, 0.52);
+const graphite = createGalleryMaterial([0.13, 0.15, 0.15], 0.68, 0.06);
 
 const pipeline = new Hilo3d.PostProcessRenderPipelineFactory({
     groundTruthAmbientOcclusion: gtaoEnabled
         ? {
-              resolutionScale: testMode ? 0.5 : 0.62,
-              radius: 2.2,
-              falloffStart: 0.58,
-              thickness: 0.06,
-              directionCount: testMode ? 4 : 6,
+              resolutionScale: testMode ? 0.5 : 0.7,
+              radius: 3.4,
+              falloffStart: 0.28,
+              thickness: 0.14,
+              directionCount: testMode ? 4 : 8,
               stepCount: testMode ? 3 : 5,
-              power: 1.24,
+              power: 3.2,
               historyWeight: 0.9,
               depthThreshold: 0.025
           }
@@ -286,42 +319,42 @@ const pipeline = new Hilo3d.PostProcessRenderPipelineFactory({
     },
     colorUber: {
         toneMapping: 'pbr-neutral',
-        exposure: -0.28,
-        contrast: 0.08,
-        saturation: -0.04,
-        temperature: 0.035,
-        vignetteIntensity: 0.34,
-        vignetteSmoothness: 0.7,
-        vignetteColor: new Hilo3d.Color(0.025, 0.018, 0.012, 0.42)
+        exposure: 0.08,
+        contrast: 0.1,
+        saturation: -0.03,
+        temperature: 0.012,
+        vignetteIntensity: 0.22,
+        vignetteSmoothness: 0.78,
+        vignetteColor: new Hilo3d.Color(0.018, 0.022, 0.024, 0.32)
     }
 });
 
 const { stage, renderer, camera, directionLight, ambientLight, orbitControls } =
     await createExampleContext({
-        camera: { fov: 38, near: 0.05, far: 50, x: 7.4, y: 3.8, z: 9.4 },
+        camera: { fov: 34, near: 0.05, far: 50, x: 7.6, y: 3.65, z: 11.8 },
         stage: {
             pixelRatio: testMode ? 1 : Math.min(devicePixelRatio, 1.5),
-            clearColor: new Hilo3d.Color(0.045, 0.035, 0.026),
+            clearColor: new Hilo3d.Color(0.025, 0.031, 0.032),
             renderPipeline: pipeline
         },
         controls: {
-            target: new Hilo3d.Vector3(0, 0.05, -2.6),
+            target: new Hilo3d.Vector3(0.6, -0.05, -3.1),
             enablePan: false,
-            minDistance: 8.5,
-            maxDistance: 16,
+            minDistance: 9,
+            maxDistance: 18,
             minPolarAngle: Math.PI * 0.25,
-            maxPolarAngle: Math.PI * 0.48,
+            maxPolarAngle: Math.PI * 0.5,
             rotateSpeed: 0.38,
             zoomSpeed: 0.55
         }
     });
 
-renderer.clearColor.set(0.045, 0.035, 0.026, 1);
-directionLight.amount = 2.1;
-directionLight.color.set(1, 0.78, 0.56, 1);
-directionLight.direction.set(-0.42, -0.86, -0.3);
-ambientLight.amount = 0.72;
-ambientLight.color.set(0.48, 0.58, 0.68, 1);
+renderer.clearColor.set(0.025, 0.031, 0.032, 1);
+directionLight.amount = 0.92;
+directionLight.color.set(1, 0.86, 0.72, 1);
+directionLight.direction.set(-0.5, -0.9, -0.28);
+ambientLight.amount = 1.65;
+ambientLight.color.set(0.56, 0.66, 0.74, 1);
 
 const addBox = (
     width: number,
@@ -342,104 +375,132 @@ const addBox = (
         frustumTest: false
     }).addTo(stage);
 
-addBox(15, 0.3, 15, plaster, 0, -1.55, -2.2);
-addBox(12.5, 6.2, 0.4, plaster, 0, 1.35, -6.15);
-addBox(0.42, 6.2, 8.5, plaster, -6.05, 1.35, -2.1);
-addBox(3.5, 3.4, 0.18, darkPlaster, 2.45, 0.12, -5.9);
+addBox(28, 0.28, 25, limestone, 0.5, -1.58, -3.5);
+addBox(24, 10, 0.42, limestone, 0.5, 3, -6.3);
+addBox(0.38, 10, 13, chalk, -6.15, 3, -1.8);
 
-const archCenterX = 2.45;
-const archCenterY = 0.12;
-addBox(0.56, 1.62, 0.4, palePlaster, archCenterX - 1.2, -0.69, -5.66);
-addBox(0.56, 1.62, 0.4, palePlaster, archCenterX + 1.2, -0.69, -5.66);
+const archCenterX = 2.35;
+const archCenterY = 0.18;
 new Hilo3d.Mesh({
+    geometry: createArchOpeningGeometry(),
+    material: graphite,
+    x: archCenterX,
+    y: archCenterY,
+    z: -5.92,
+    pointerEnabled: false,
+    frustumTest: false
+}).addTo(stage);
+addBox(0.72, 1.86, 0.52, chalk, archCenterX - 1.5, -0.75, -5.68);
+addBox(0.72, 1.86, 0.52, chalk, archCenterX + 1.5, -0.75, -5.68);
+const archCrown = new Hilo3d.Mesh({
     geometry: createArchCrownGeometry(),
-    material: palePlaster,
+    material: chalk,
     x: archCenterX,
     y: archCenterY,
     z: -5.66,
     pointerEnabled: false,
     frustumTest: false
 }).addTo(stage);
+archCrown.setScale(1.25);
 
-for (let index = 0; index < 6; index += 1) {
+for (let index = 0; index < 7; index += 1) {
     addBox(
-        0.12,
-        4.6 - index * 0.18,
-        0.34,
-        index % 2 === 0 ? palePlaster : plaster,
-        -5.55 + index * 0.42,
-        0.48,
-        -5.72
+        0.16,
+        4.9 - index * 0.16,
+        0.38,
+        index % 3 === 1 ? sage : chalk,
+        -5.62 + index * 0.38,
+        0.58,
+        -5.82
     );
 }
 
-addBox(4.7, 0.34, 3.4, plaster, -1.15, -1.24, -2.7);
-addBox(3.85, 0.38, 2.65, palePlaster, -1.15, -0.88, -2.86);
-addBox(2.9, 0.42, 1.92, plaster, -1.15, -0.49, -3.02);
-addBox(1.45, 0.52, 1.15, darkPlaster, -1.15, -0.03, -3.12);
+addBox(4.8, 0.32, 3.5, limestone, -1.25, -1.26, -2.85);
+addBox(4.0, 0.36, 2.75, chalk, -1.25, -0.91, -3.02);
+addBox(3.15, 0.4, 2.0, roseClay, -1.25, -0.53, -3.18);
+addBox(1.65, 0.46, 1.22, graphite, -1.25, -0.09, -3.28);
 
-const sculptureRoot = new Hilo3d.Node({ x: -1.15, y: 0.62, z: -3.1 }).addTo(stage);
+const sculptureRoot = new Hilo3d.Node({ x: -1.25, y: 0.66, z: -3.24 }).addTo(stage);
 new Hilo3d.Mesh({
-    geometry: new Hilo3d.SphereGeometry({ radius: 0.72, widthSegments: 40, heightSegments: 24 }),
-    material: lapis,
+    geometry: new Hilo3d.SphereGeometry({ radius: 0.76, widthSegments: 40, heightSegments: 24 }),
+    material: seaGlass,
     y: 0.08,
     pointerEnabled: false,
     frustumTest: false
 }).addTo(sculptureRoot);
 new Hilo3d.Mesh({
-    geometry: new Hilo3d.SphereGeometry({ radius: 0.31, widthSegments: 28, heightSegments: 16 }),
-    material: brass,
-    x: 0.58,
-    y: 0.54,
-    z: 0.08,
+    geometry: new Hilo3d.SphereGeometry({ radius: 0.38, widthSegments: 28, heightSegments: 16 }),
+    material: bronze,
+    x: 0.66,
+    y: 0.52,
+    z: 0.06,
     pointerEnabled: false,
     frustumTest: false
 }).addTo(sculptureRoot);
-addBox(0.2, 2.4, 0.2, brass, -0.38, 0.42, -3.13).rotationZ = -16;
+addBox(0.22, 2.5, 0.22, bronze, -0.42, 0.44, -3.28).rotationZ = -14;
 
-addBox(3.25, 0.18, 1.28, darkPlaster, 3.55, 0.72, -2.15);
-addBox(0.22, 2.25, 0.22, darkPlaster, 2.24, -0.32, -2.15);
-addBox(0.22, 2.25, 0.22, darkPlaster, 4.86, -0.32, -2.15);
+addBox(3.65, 0.3, 1.8, sage, 3.85, -1.26, -2.55);
+addBox(3.0, 0.34, 1.42, chalk, 3.85, -0.93, -2.7);
 const clusterGeometry = new Hilo3d.SphereGeometry({
-    radius: 0.34,
+    radius: 0.4,
     widthSegments: 26,
     heightSegments: 16
 });
 const clusterPlan = [
-    [3.0, -1.03, -2.18, 0.42],
-    [3.62, -1.1, -2.04, 0.35],
-    [4.18, -1.0, -2.25, 0.45],
-    [3.42, -0.62, -2.25, 0.3]
+    [3.12, -0.38, -2.62, 0.54],
+    [3.78, -0.46, -2.48, 0.46],
+    [4.5, -0.35, -2.68, 0.58],
+    [3.55, 0.08, -2.68, 0.39]
 ] as const;
 for (let index = 0; index < clusterPlan.length; index += 1) {
     const [x, y, z, scale] = clusterPlan[index] ?? [0, 0, 0, 1];
     const sphere = new Hilo3d.Mesh({
         geometry: clusterGeometry,
-        material: index === 2 ? coral : index === 1 ? brass : lapis,
+        material: index === 2 ? roseClay : index === 1 ? bronze : seaGlass,
         x,
         y,
         z,
         pointerEnabled: false,
         frustumTest: false
     }).addTo(stage);
-    sphere.setScale(scale / 0.34);
+    sphere.setScale(scale / 0.4);
 }
 
+addBox(2.7, 0.3, 1.1, roseClay, archCenterX, -1.34, -5.15);
+new Hilo3d.Mesh({
+    geometry: new Hilo3d.SphereGeometry({ radius: 0.66, widthSegments: 36, heightSegments: 22 }),
+    material: sage,
+    x: archCenterX - 0.42,
+    y: -0.54,
+    z: -5.08,
+    pointerEnabled: false,
+    frustumTest: false
+}).addTo(stage);
+new Hilo3d.Mesh({
+    geometry: new Hilo3d.SphereGeometry({ radius: 0.43, widthSegments: 30, heightSegments: 18 }),
+    material: chalk,
+    x: archCenterX + 0.52,
+    y: -0.78,
+    z: -5,
+    pointerEnabled: false,
+    frustumTest: false
+}).addTo(stage);
+
 new Hilo3d.PointLight({
-    x: 4.2,
-    y: 3.3,
-    z: 0.8,
-    amount: 10,
-    range: 11,
-    color: new Hilo3d.Color(1, 0.42, 0.2)
+    x: 4.5,
+    y: 3.8,
+    z: 1.4,
+    amount: 5.5,
+    range: 12,
+    color: new Hilo3d.Color(1, 0.52, 0.3)
 }).addTo(stage);
 new Hilo3d.PointLight({
-    x: -3.8,
-    y: 2.4,
-    z: 1.8,
-    amount: 8,
-    range: 12,
-    color: new Hilo3d.Color(0.22, 0.46, 1)
+    x: -3.6,
+    y: 2.8,
+    z: 2.2,
+    amount: 4.5,
+    range: 13,
+    color: new Hilo3d.Color(0.3, 0.58, 1)
 }).addTo(stage);
 
 if (!testMode && !reducedMotion) {
@@ -451,9 +512,11 @@ if (!testMode && !reducedMotion) {
 const toggle = requireElement('#gtaoToggle');
 const toggleLabel = requireElement('#gtaoToggleLabel');
 const backendLabel = requireElement('#backendLabel');
+const searchLabel = requireElement('#gtaoSearchLabel');
 toggle.setAttribute('aria-pressed', String(gtaoEnabled));
 toggleLabel.textContent = gtaoEnabled ? 'GTAO on' : 'GTAO off';
 backendLabel.textContent = BACKEND_LABELS[renderer.backend];
+searchLabel.textContent = testMode ? '4 × 3' : '8 × 5';
 toggle.addEventListener('click', () => {
     location.href = buildUrl(location.href, { gtao: !gtaoEnabled });
 });
@@ -461,4 +524,4 @@ toggle.addEventListener('click', () => {
 document.body.dataset['gtao'] = gtaoEnabled ? 'enabled' : 'disabled';
 document.body.dataset['backend'] = renderer.backend;
 document.body.dataset['gtaoPhase'] = 'ready';
-orbitControls.setView(camera.position, new Hilo3d.Vector3(0, 0.05, -2.6));
+orbitControls.setView(camera.position, new Hilo3d.Vector3(0.6, -0.05, -3.1));

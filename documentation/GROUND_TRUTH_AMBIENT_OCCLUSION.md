@@ -1,6 +1,6 @@
 # Ground-truth ambient occlusion
 
-![Quiet Arches GTAO showcase](./assets/gtao-quiet-arches-showcase.jpg)
+![Contact Gallery GTAO showcase](./assets/gtao-quiet-arches-showcase.jpg)
 
 Hilo3D 的 GTAO 是默认关闭、按需付费的屏幕空间环境可见度 feature。普通 Forward 在 WebGPU 与 WebGL
 2 上走同一份 GLSL ES 3.00、Render Graph 和 RHI 路径；Clustered
@@ -100,8 +100,8 @@ pass-global texture 在 graph prepare 后绑定；WebGPU 使用固定 group 3 bi
 ## 示例与发布门槛
 
 [`ground_truth_ambient_occlusion.html`](../examples/ground_truth_ambient_occlusion.html)
-是零模型下载的 procedural 建筑展厅，使用台阶、凹槽、拱券、细柱和密集球组展示 contact
-visibility。查询参数 `gtao=false` 提供相同相机、灯光和材质的无 AO 对照；`backend=webgl2|webgpu`
+是零模型下载的 Contact Gallery procedural 建筑展厅，使用台阶、凹槽、拱券、细柱和密集球组展示 contact
+visibility。查询参数 `gtao=false` 提供相同相机、灯光和材质的无 AO 对照； `backend=webgl2|webgpu`
 可显式选择后端。
 
 发布覆盖至少包含：option/requirements 单元测试、真实 WebGL 2 与 WebGPU

@@ -12,7 +12,11 @@
 body {
     overflow: hidden;
     color: #f4e8d4;
-    background: #120d09;
+    background: #071315;
+}
+
+.hilo3dStats {
+    display: none !important;
 }
 
 #container,
