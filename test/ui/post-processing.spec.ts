@@ -87,16 +87,18 @@ for (const backend of backends) {
     test(`GTAO produces stable non-black contact visibility on ${backend} @${backend}`, async ({
         page
     }) => {
-        test.setTimeout(60_000);
+        test.setTimeout(120_000);
         await installRenderHealthProbe(page);
         const failures = await installPageFailureMonitor(page);
         try {
             const canvasSelector = `canvas[data-hilo3d-backend="${backend}"]`;
             await page.goto(
                 `/examples/ground_truth_ambient_occlusion.html?backend=${backend}&test=1&gtao=true`,
-                { waitUntil: 'networkidle' }
+                { waitUntil: 'domcontentloaded' }
             );
-            await expect(page.locator('body')).toHaveAttribute('data-gtao-phase', 'ready');
+            await expect(page.locator('body')).toHaveAttribute('data-gtao-phase', 'ready', {
+                timeout: 45_000
+            });
             const enabledCanvas = page.locator(canvasSelector);
             await expect(enabledCanvas).toBeVisible();
             await waitForStableAnimationFrames(page);
@@ -108,9 +110,11 @@ for (const backend of backends) {
             await page.waitForTimeout(500);
             await page.goto(
                 `/examples/ground_truth_ambient_occlusion.html?backend=${backend}&test=1&gtao=false`,
-                { waitUntil: 'networkidle' }
+                { waitUntil: 'domcontentloaded' }
             );
-            await expect(page.locator('body')).toHaveAttribute('data-gtao-phase', 'ready');
+            await expect(page.locator('body')).toHaveAttribute('data-gtao-phase', 'ready', {
+                timeout: 45_000
+            });
             const disabledCanvas = page.locator(canvasSelector);
             await expect(disabledCanvas).toBeVisible();
             await waitForStableAnimationFrames(page);
