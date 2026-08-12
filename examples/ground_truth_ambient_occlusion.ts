@@ -5,6 +5,10 @@ const search = new URLSearchParams(location.search);
 const testMode = search.get('test') === '1';
 const gtaoEnabled = search.get('gtao') !== 'false';
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const BACKEND_LABELS = Object.freeze({
+    webgl2: 'WebGL 2',
+    webgpu: 'WebGPU'
+}) satisfies Readonly<Record<Hilo3d.RendererBackend, string>>;
 
 function requireElement(selector: string): HTMLElement {
     const element = document.querySelector<HTMLElement>(selector);
@@ -449,7 +453,7 @@ const toggleLabel = requireElement('#gtaoToggleLabel');
 const backendLabel = requireElement('#backendLabel');
 toggle.setAttribute('aria-pressed', String(gtaoEnabled));
 toggleLabel.textContent = gtaoEnabled ? 'GTAO on' : 'GTAO off';
-backendLabel.textContent = renderer.backend === 'webgpu' ? 'WebGPU' : 'WebGL 2';
+backendLabel.textContent = BACKEND_LABELS[renderer.backend];
 toggle.addEventListener('click', () => {
     location.href = buildUrl(location.href, { gtao: !gtaoEnabled });
 });
