@@ -1092,7 +1092,8 @@ describe.each([
             false,
             fixture.renderer,
             false,
-            'depth-only'
+            'depth-only',
+            false
         );
         expect(execution.draw.pipeline.descriptor.fragment?.targets).toEqual([]);
         expect(
