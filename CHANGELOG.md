@@ -25,6 +25,21 @@
 
 ### Changes
 
+- Add production WebGPU high-end froxel volumetric lighting to
+  `ClusteredForwardPlusPipelineFactory`. The opt-in path expands the bounded local-light allocator
+  from surface depth ranges to the complete camera cluster volume, tiles logarithmic Z slices into a
+  dimension-validated `rgba16float` atlas, injects directional/point/spot radiance plus exponential
+  height and sphere/box local fog, and performs depth-bounded radiative-transfer integration,
+  previous-view reprojection, depth/reactive temporal rejection, neighborhood clamping, and linear
+  HDR transmittance/scattering composition before TAA/TAAU, transparent fallback, Bloom, and
+  display. Add bounded screen-space light visibility, low/medium/high/ultra budgets,
+  radiance/transmittance debug views, submission-aware diagnostics,
+  camera-cut/resize/failure/device-recovery history, and fail-closed
+  storage/format/texture-dimension requirements. Keep explicit shadow-atlas and transparent-volume
+  participation as documented future ABIs rather than silently approximating either contract. Add
+  Neon Reliquary around the repository-bundled Khronos Sponza with a high-quality 16px/32-slice
+  volume, animated chromatic spotlights, seven local fog fields, camera/debug controls, and a
+  physical-WebGPU stability/on-off/GPU-validation gate.
 - Add production ground-truth ambient occlusion to ordinary Forward on WebGPU/WebGL 2 and to the
   WebGPU Clustered Forward+ profile. The opt-in path records shared depth/material-attribute/motion
   producers, configurable rotated horizon search, bent-normal visibility, submission-aware temporal

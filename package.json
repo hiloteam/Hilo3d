@@ -62,7 +62,7 @@
     "test:ui:webgl2:ci": "playwright test test/ui/examples.spec.ts test/ui/post-processing.spec.ts test/ui/runtime-parity.spec.ts test/ui/visual.spec.ts --project=chromium --grep \"@webgl2|through webgl2\"",
     "test:ui:webgpu": "npm run test:ui:contract && playwright test test/ui/examples.spec.ts test/ui/post-processing.spec.ts test/ui/runtime-parity.spec.ts --project=chromium --grep @webgpu",
     "test:webgpu": "playwright test test/ui/webgpu.spec.ts test/ui/compute-effects.spec.ts test/ui/compute-particles.spec.ts test/ui/compute-eclipse-shrine.spec.ts test/ui/compute-raytracing.spec.ts test/ui/screen-space-reflections.spec.ts test/ui/clustered-forward-plus-scale.spec.ts --project=chromium",
-    "test:webgpu:native": "playwright test test/ui/native-webgpu.spec.ts test/ui/clustered-forward-plus-scale.spec.ts --project=chromium-native-webgpu",
+    "test:webgpu:native": "playwright test test/ui/native-webgpu.spec.ts test/ui/clustered-forward-plus-scale.spec.ts test/ui/volumetric-lighting.spec.ts --project=chromium-native-webgpu",
     "test:gpu-scene-scale": "playwright test test/ui/clustered-forward-plus-scale.spec.ts --project=chromium",
     "test:visual": "playwright test --project=chromium --grep @visual",
     "test:visual:webgl2": "playwright test test/ui/visual.spec.ts --project=chromium --grep \"through webgl2\"",

@@ -717,6 +717,8 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly objectCount: number;
     readonly occludedObjectCount: number;
     readonly visibleObjectCount: number;
+    readonly volumetricFroxelCount: number;
+    readonly volumetricHistoryUsed: boolean;
 }
 
 // @public
@@ -744,6 +746,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly screenSpaceReflections?: Readonly<ScreenSpaceReflectionsOptions> | false;
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     readonly tileSize?: number;
+    readonly volumetricLighting?: Readonly<VolumetricLightingOptions> | false;
     readonly zSlices?: number;
 }
 
@@ -9001,6 +9004,55 @@ export class Vector4 {
 
 // @public (undocumented)
 export const version: string;
+
+// @public
+export interface VolumetricBoxFogVolume {
+    readonly albedo?: Readonly<Color>;
+    readonly center: Readonly<Vector3>;
+    readonly density: number;
+    readonly edgeFalloff?: number;
+    readonly halfExtents: Readonly<Vector3>;
+    readonly shape: 'box';
+}
+
+// @public
+export type VolumetricFogVolume = VolumetricSphereFogVolume | VolumetricBoxFogVolume;
+
+// @public
+export type VolumetricLightingDebugView = 'none' | 'radiance' | 'transmittance';
+
+// @public
+export interface VolumetricLightingOptions {
+    readonly albedo?: Readonly<Color>;
+    readonly ambientStrength?: number;
+    readonly anisotropy?: number;
+    readonly baseHeight?: number;
+    readonly debugView?: VolumetricLightingDebugView;
+    readonly density?: number;
+    readonly depthThreshold?: number;
+    readonly heightFalloff?: number;
+    readonly historyWeight?: number;
+    readonly jitterStrength?: number;
+    readonly localVolumes?: readonly VolumetricFogVolume[];
+    readonly maxDistance?: number;
+    readonly quality?: VolumetricLightingQuality;
+    readonly resolutionScale?: number;
+    readonly shadowSteps?: number;
+    readonly stepCount?: number;
+}
+
+// @public
+export type VolumetricLightingQuality = 'low' | 'medium' | 'high' | 'ultra';
+
+// @public
+export interface VolumetricSphereFogVolume {
+    readonly albedo?: Readonly<Color>;
+    readonly center: Readonly<Vector3>;
+    readonly density: number;
+    readonly edgeFalloff?: number;
+    readonly radius: number;
+    readonly shape: 'sphere';
+}
 
 // @public (undocumented)
 export namespace webgl2Constants {

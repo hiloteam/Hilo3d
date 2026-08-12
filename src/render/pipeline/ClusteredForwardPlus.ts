@@ -128,6 +128,13 @@ import {
     type GroundTruthAmbientOcclusionOptions,
     type GroundTruthAmbientOcclusionSettings
 } from '../postprocessing/GroundTruthAmbientOcclusion';
+import {
+    VOLUMETRIC_LIGHTING_REQUIRED_TEXTURE_FORMATS,
+    VolumetricLightingController,
+    snapshotVolumetricLightingOptions,
+    type VolumetricLightingOptions,
+    type VolumetricLightingSettings
+} from '../postprocessing/VolumetricLighting';
 
 const OBJECT_RECORD_BYTES = 208;
 const LIGHT_RECORD_BYTES = 64;
@@ -228,6 +235,11 @@ export interface ClusteredForwardPlusPipelineOptions {
      * Enabling this production path requires both `hiZ` and `temporalAA`.
      */
     readonly screenSpaceReflections?: Readonly<ScreenSpaceReflectionsOptions> | false;
+    /**
+     * Camera-aligned froxel fog and volumetric local-light scattering. Disabled by default.
+     * This WebGPU path uses the complete 3D cluster light grid and submission-aware history.
+     */
+    readonly volumetricLighting?: Readonly<VolumetricLightingOptions> | false;
 }
 
 /** On-demand GPU counters plus current CPU database occupancy. */
@@ -252,6 +264,10 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly clusterOverflowCount: number;
     /** Whether conservative occlusion used a valid previous-frame Hi-Z pyramid. */
     readonly hiZValid: boolean;
+    /** Number of camera-aligned froxels injected by the latest submitted volumetric frame. */
+    readonly volumetricFroxelCount: number;
+    /** Whether the latest submitted volumetric resolve consumed temporal history. */
+    readonly volumetricHistoryUsed: boolean;
 }
 
 interface NormalizedLOD {
@@ -284,6 +300,7 @@ interface NormalizedOptions {
     readonly temporalAA: TemporalAASettings | null;
     readonly groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionSettings | null;
     readonly screenSpaceReflections: ScreenSpaceReflectionsSettings | null;
+    readonly volumetricLighting: VolumetricLightingSettings | null;
 }
 
 interface ClusterCapacityPlan {
@@ -704,6 +721,9 @@ function bufferRequirementPlan(
     const materialCount = new Set(options.buckets.map(bucket => bucket.material)).size;
     const storageBufferLengths = [
         FRAME_RECORD_BYTES,
+        ...(options.volumetricLighting === null
+            ? []
+            : [128, Math.max(1, options.volumetricLighting.localVolumes.length) * 48]),
         safeProduct('GPU Scene object database size', options.maxObjects, OBJECT_RECORD_BYTES),
         safeProduct('GPU Scene bucket database size', options.buckets.length, BUCKET_RECORD_BYTES),
         safeProduct(
@@ -775,6 +795,21 @@ function bufferRequirementPlan(
 
 function visibleBucketCapacity(maxObjects: number): number {
     return Math.ceil((maxObjects * 4) / 256) * 64;
+}
+
+function volumetricAtlasMaxDimension(options: Readonly<NormalizedOptions>): number {
+    if (options.volumetricLighting === null) return 1;
+    const tilesX = Math.ceil(options.maxViewportWidth / options.tileSize);
+    const tilesY = Math.ceil(options.maxViewportHeight / options.tileSize);
+    const columns = Math.max(
+        1,
+        Math.min(
+            options.zSlices,
+            Math.ceil(Math.sqrt((options.zSlices * tilesY) / Math.max(tilesX, 1)))
+        )
+    );
+    const rows = Math.ceil(options.zSlices / columns);
+    return Math.max(tilesX * columns, tilesY * rows);
 }
 
 function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
@@ -912,6 +947,10 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         input.screenSpaceReflections === undefined || input.screenSpaceReflections === false
             ? null
             : snapshotScreenSpaceReflectionsOptions(input.screenSpaceReflections);
+    const volumetricLighting =
+        input.volumetricLighting === undefined || input.volumetricLighting === false
+            ? null
+            : snapshotVolumetricLightingOptions(input.volumetricLighting);
     if (screenSpaceReflections !== null && !hiZ) {
         throw new TypeError('Clustered Forward+ screen-space reflections require hiZ');
     }
@@ -956,7 +995,8 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         exposure: finitePositive(input.exposure ?? 1, 'Clustered Forward+ exposure'),
         temporalAA,
         groundTruthAmbientOcclusion,
-        screenSpaceReflections
+        screenSpaceReflections,
+        volumetricLighting
     });
 }
 
@@ -1602,8 +1642,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         for (var x = tiles.x; x <= tiles.z; x += 1u) {
             let tile = y * frameData.cluster.x + x;
             let depthBounds = tileDepthBounds[tile];
-            let firstSlice = max(slices.x, depthBounds.x);
-            let lastSlice = min(slices.y, depthBounds.y);
+            let completeVolume = frameData.directional.w != 0u;
+            let firstSlice = select(max(slices.x, depthBounds.x), slices.x, completeVolume);
+            let lastSlice = select(min(slices.y, depthBounds.y), slices.y, completeVolume);
             if (firstSlice <= lastSlice) {
                 for (var z = firstSlice; z <= lastSlice; z += 1u) {
                     _ = atomicAdd(&clusterCounts[z * tileCount + tile], 1u);
@@ -1832,8 +1873,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         for (var x = tiles.x; x <= tiles.z; x += 1u) {
             let tile = y * frameData.cluster.x + x;
             let depthBounds = tileDepthBounds[tile];
-            let firstSlice = max(slices.x, depthBounds.x);
-            let lastSlice = min(slices.y, depthBounds.y);
+            let completeVolume = frameData.directional.w != 0u;
+            let firstSlice = select(max(slices.x, depthBounds.x), slices.x, completeVolume);
+            let lastSlice = select(min(slices.y, depthBounds.y), slices.y, completeVolume);
             if (firstSlice <= lastSlice) {
                 for (var z = firstSlice; z <= lastSlice; z += 1u) {
                     let cluster = z * tileCount + tile;
@@ -3135,6 +3177,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #temporalMotionDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
     readonly #groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionController | null;
     readonly #screenSpaceReflections: ScreenSpaceReflectionsController | null;
+    readonly #volumetricLighting: VolumetricLightingController | null;
     readonly #groundTruthAmbientOcclusionSampler = new ComputeSampler({
         label: 'Clustered GTAO linear clamp sampler',
         magFilter: 'linear',
@@ -3327,6 +3370,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       options.screenSpaceReflections,
                       options.temporalAA?.renderScale ?? 1,
                       options.hiZLevelCount
+                  );
+        this.#volumetricLighting =
+            options.volumetricLighting === null
+                ? null
+                : new VolumetricLightingController(
+                      options.volumetricLighting,
+                      context,
+                      options.temporalAA?.renderScale ?? 1
                   );
         this.#hizKeys = Object.freeze(
             Array.from({ length: options.hiZLevelCount }, () => Object.freeze({}))
@@ -3857,18 +3908,34 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 historyValid: temporalFrame.historyValid && this.#committedCamera === context.camera
             });
         }
-        let resolvedSceneColor = reflectedSceneColor;
+        let volumetricSceneColor = reflectedSceneColor;
+        if (this.#volumetricLighting !== null) {
+            volumetricSceneColor = this.#volumetricLighting.record(context, {
+                frameBuffer,
+                lights,
+                clusterGrid,
+                clusterIndices,
+                sceneColor: reflectedSceneColor,
+                sceneDepth,
+                tilesX: frame.tilesX,
+                tilesY: frame.tilesY,
+                zSlices: this.#options.zSlices,
+                sceneScale,
+                historyValid: frame.historyValid
+            });
+        }
+        let resolvedSceneColor = volumetricSceneColor;
         let resolvedSceneDepth = sceneDepth;
         if (temporalFrame !== null && temporalMotion !== null) {
             const resolved = this.#temporal?.resolve(
                 context,
                 temporalFrame,
-                reflectedSceneColor,
+                volumetricSceneColor,
                 temporalMotion,
                 sceneDepth,
                 'depth32float'
             );
-            resolvedSceneColor = resolved?.color ?? reflectedSceneColor;
+            resolvedSceneColor = resolved?.color ?? volumetricSceneColor;
             resolvedSceneDepth = resolved?.depth ?? sceneDepth;
         }
         if (fallbackCulling !== null && this.#fallbackHasTransparent) {
@@ -3919,6 +3986,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             this.#visibilityHistoryIndex = this.#visibilityHistoryIndex === 0 ? 1 : 0;
         }
         this.#groundTruthAmbientOcclusion?.frameSubmitted(frameIndex);
+        this.#volumetricLighting?.frameSubmitted(frameIndex);
         this.#temporal?.frameSubmitted(frameIndex);
     }
 
@@ -3935,6 +4003,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.#pendingCamera = null;
         this.#groundTruthAmbientOcclusion?.frameDiscarded(frameIndex);
+        this.#volumetricLighting?.frameDiscarded(frameIndex);
         this.#temporal?.frameDiscarded(frameIndex);
     }
 
@@ -3962,7 +4031,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             lodObjectCount: cullValues[2] ?? 0,
             clusterLightIndexCount: clusterValues[1] ?? 0,
             clusterOverflowCount: clusterValues[2] ?? 0,
-            hiZValid: this.#hiZValid
+            hiZValid: this.#hiZValid,
+            volumetricFroxelCount: this.#volumetricLighting?.froxelCount ?? 0,
+            volumetricHistoryUsed: this.#volumetricLighting?.historyUsed ?? false
         });
     }
 
@@ -4008,6 +4079,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         try {
             this.#groundTruthAmbientOcclusion?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.#volumetricLighting?.destroy();
         } catch (error) {
             failures.push(error);
         }
@@ -4813,6 +4889,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         tilesX: number;
         tilesY: number;
         clusterCount: number;
+        historyValid: boolean;
     }> {
         const camera = context.camera;
         const near = camera instanceof PerspectiveCamera ? camera.near : 0.1;
@@ -4876,7 +4953,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameUInts[120] = this.#directionalLightCount;
         this.#frameUInts[121] = this.#localLightCount;
         this.#frameUInts[122] = cameraHistoryValid ? 1 : 0;
-        this.#frameUInts[123] = 0;
+        this.#frameUInts[123] = this.#volumetricLighting === null ? 0 : 1;
         this.#frameFloats[124] = Math.min(this.#frameFloats[124] ?? 0, 4);
         this.#frameFloats[125] = Math.min(this.#frameFloats[125] ?? 0, 4);
         this.#frameFloats[126] = Math.min(this.#frameFloats[126] ?? 0, 4);
@@ -4890,7 +4967,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         if (!cameraHistoryValid) {
             for (const key of this.#hizKeys) context.graph.invalidateHistoryTexture(key);
         }
-        return Object.freeze({ tilesX, tilesY, clusterCount });
+        return Object.freeze({ tilesX, tilesY, clusterCount, historyValid: cameraHistoryValid });
     }
 
     private cameraFar(camera: Camera): number {
@@ -5546,6 +5623,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
         const hiZ = this.#options.hiZ;
         const screenSpaceReflections = this.#options.screenSpaceReflections !== null;
         const groundTruthAmbientOcclusion = this.#options.groundTruthAmbientOcclusion !== null;
+        const volumetricLighting = this.#options.volumetricLighting !== null;
         const reflectionHiZLevels = Math.min(
             this.#options.hiZLevelCount,
             SCREEN_SPACE_REFLECTION_TRACE_HIZ_LEVELS
@@ -5553,7 +5631,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
         this.requirements = snapshotRenderPipelineRequirements({
             requiredCapabilities: Object.freeze([
                 'storage-buffer' as const,
-                ...(hiZ ? (['storage-texture' as const] as const) : []),
+                ...(hiZ || volumetricLighting ? (['storage-texture' as const] as const) : []),
                 'compute-pass' as const,
                 'indirect-draw' as const
             ]),
@@ -5597,7 +5675,8 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                               use: 'storage' as const
                           })
                       ]
-                    : [])
+                    : []),
+                ...(volumetricLighting ? VOLUMETRIC_LIGHTING_REQUIRED_TEXTURE_FORMATS : [])
             ]),
             requiredLimits: Object.freeze({
                 maxBindingsPerBindGroup: Math.max(
@@ -5605,7 +5684,8 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     PBR_TEXTURE_ROLES.length * 2 + (groundTruthAmbientOcclusion ? 2 : 0),
                     screenSpaceReflections
                         ? 1 + SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels + 1 + 1
-                        : 0
+                        : 0,
+                    volumetricLighting ? 9 : 0
                 ),
                 maxStorageBuffersPerShaderStage: 8,
                 maxSampledTexturesPerShaderStage: Math.max(
@@ -5613,15 +5693,22 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0),
                     screenSpaceReflections
                         ? SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels
-                        : 0
+                        : 0,
+                    volumetricLighting ? 4 : 0
                 ),
                 maxSamplersPerShaderStage:
                     PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0),
-                ...(hiZ
-                    ? { maxStorageTexturesPerShaderStage: screenSpaceReflections ? 2 : 1 }
+                ...(hiZ || volumetricLighting
+                    ? {
+                          maxStorageTexturesPerShaderStage:
+                              screenSpaceReflections || volumetricLighting ? 2 : 1
+                      }
                     : {}),
                 maxStorageBufferBindingSize: requirements.maxStorageBufferBindingSize,
                 maxBufferSize: requirements.maxBufferSize,
+                ...(volumetricLighting
+                    ? { maxTextureDimension2D: volumetricAtlasMaxDimension(this.#options) }
+                    : {}),
                 maxComputeInvocationsPerWorkgroup: PREFIX_WORKGROUP_SIZE,
                 maxComputeWorkgroupsPerDimension: requirements.maxComputeWorkgroupsPerDimension,
                 ...(this.#options.temporalAA === null ? {} : { maxColorAttachments: 3 })
