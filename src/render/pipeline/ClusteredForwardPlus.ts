@@ -723,7 +723,7 @@ function bufferRequirementPlan(
         FRAME_RECORD_BYTES,
         ...(options.volumetricLighting === null
             ? []
-            : [128, Math.max(1, options.volumetricLighting.localVolumes.length) * 48]),
+            : [144, Math.max(1, options.volumetricLighting.localVolumes.length) * 48]),
         safeProduct('GPU Scene object database size', options.maxObjects, OBJECT_RECORD_BYTES),
         safeProduct('GPU Scene bucket database size', options.buckets.length, BUCKET_RECORD_BYTES),
         safeProduct(
@@ -799,8 +799,20 @@ function visibleBucketCapacity(maxObjects: number): number {
 
 function volumetricAtlasMaxDimension(options: Readonly<NormalizedOptions>): number {
     if (options.volumetricLighting === null) return 1;
-    const tilesX = Math.ceil(options.maxViewportWidth / options.tileSize);
-    const tilesY = Math.ceil(options.maxViewportHeight / options.tileSize);
+    const tilesX = Math.max(
+        1,
+        Math.ceil(
+            (options.maxViewportWidth / options.tileSize) *
+                options.volumetricLighting.resolutionScale
+        )
+    );
+    const tilesY = Math.max(
+        1,
+        Math.ceil(
+            (options.maxViewportHeight / options.tileSize) *
+                options.volumetricLighting.resolutionScale
+        )
+    );
     const columns = Math.max(
         1,
         Math.min(

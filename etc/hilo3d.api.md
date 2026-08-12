@@ -9038,7 +9038,6 @@ export interface VolumetricLightingOptions {
     readonly quality?: VolumetricLightingQuality;
     readonly resolutionScale?: number;
     readonly shadowSteps?: number;
-    readonly stepCount?: number;
 }
 
 // @public

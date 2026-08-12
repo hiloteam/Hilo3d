@@ -165,8 +165,9 @@ fallback，也没有 SSGI。完整参数、packing 和证据见
 [`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md)。
 
 `ClusteredForwardPlusPipelineFactory.volumetricLighting`
-可在 SSR 之后、TAA/TAAU 之前注入并积分 directional/point/spot light、height fog 和 local fog
-volume。合成严格使用线性 HDR 的
+可在 SSR 之后、TAA/TAAU 之前注入 directional/point/spot light、height fog 和 local fog
+volume。它逐列预积分 froxel，再根据 opaque
+depth 以常数次 atlas 读取重建体积结果。合成严格使用线性 HDR 的
 `scene * transmittance + scattering`；因此后续 Bloom 能读取真实体积高光，Color Uber/display
 transform 不会提前压缩光束。transparent 继续在 opaque temporal
 resolve 之后组合，不写入当前体积 history。完整数据、screen-space visibility 与生命周期边界见

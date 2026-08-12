@@ -286,9 +286,9 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             () =>
                 new ClusteredForwardPlusPipelineFactory({
                     buckets: [{ geometry, material }],
-                    volumetricLighting: { stepCount: 65 }
+                    volumetricLighting: { resolutionScale: 2 }
                 })
-        ).toThrow(/stepCount/u);
+        ).toThrow(/resolutionScale/u);
         expect(
             () =>
                 new ClusteredForwardPlusPipelineFactory({
@@ -655,7 +655,8 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 expect(passNames).toEqual(
                     expect.arrayContaining([
                         'Froxel volumetric light and density injection',
-                        'Froxel volumetric view-ray integration',
+                        'Froxel cumulative line integration',
+                        'Froxel constant-time view reconstruction',
                         'Volumetric lighting depth-aware temporal resolve',
                         'Volumetric lighting linear HDR composite'
                     ])

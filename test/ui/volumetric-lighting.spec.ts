@@ -66,7 +66,8 @@ test('renders stable, visually material froxel lighting in Neon Reliquary', asyn
         localVolumeCount: 7,
         heroAsset: 'Khronos Sponza'
     });
-    expect(evidence?.froxelCount).toBeGreaterThan(1_000);
+    expect(evidence?.froxelCount).toBeGreaterThan(128);
+    expect(evidence?.froxelCount).toBeLessThan(1_000);
 
     const canvas = page.locator('canvas');
     await page.evaluate(async () => {

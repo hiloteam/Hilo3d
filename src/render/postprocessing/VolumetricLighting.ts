@@ -31,14 +31,14 @@ import type {
 
 const INVALID_BUFFER = 0 as RenderGraphBufferHandle;
 const INVALID_TEXTURE = 0 as RenderGraphTextureHandle;
-const VOLUME_FRAME_BYTES = 128;
+const VOLUME_FRAME_BYTES = 144;
 const LOCAL_VOLUME_RECORD_BYTES = 48;
 const MAX_LOCAL_VOLUMES = 32;
 const INJECTION_WORKGROUP_SIZE = 4;
 const INTEGRATION_WORKGROUP_SIZE = 8;
-const MAX_INTEGRATION_STEPS = 64;
+const MAX_FROXEL_SLICES = 64;
 
-/** Named performance/quality presets for froxel injection and view-ray integration. */
+/** Named performance/quality presets for froxel reconstruction and light visibility. */
 export type VolumetricLightingQuality = 'low' | 'medium' | 'high' | 'ultra';
 /** Optional integrated-volume diagnostic shown in place of the composited HDR scene. */
 export type VolumetricLightingDebugView = 'none' | 'radiance' | 'transmittance';
@@ -80,12 +80,10 @@ export type VolumetricFogVolume = VolumetricSphereFogVolume | VolumetricBoxFogVo
 
 /** Production controls for WebGPU Clustered Forward+ froxel volumetric lighting. */
 export interface VolumetricLightingOptions {
-    /** Preset used for unspecified resolution, integration, and shadow budgets. Defaults to high. */
+    /** Preset used for unspecified reconstruction and shadow budgets. Defaults to high. */
     readonly quality?: VolumetricLightingQuality;
-    /** Integration resolution relative to the internal scene. Defaults to the quality preset. */
+    /** Froxel XY and reconstruction resolution relative to the internal scene. Defaults to the preset. */
     readonly resolutionScale?: number;
-    /** View-ray integration steps in [4, 64]. Defaults to the quality preset. */
-    readonly stepCount?: number;
     /** Depth-aware screen-space light visibility samples in [0, 8]. Defaults to the preset. */
     readonly shadowSteps?: number;
     /** Global extinction density in inverse world units. Defaults to 0.025. */
@@ -118,7 +116,6 @@ export interface VolumetricLightingOptions {
 export interface VolumetricLightingSettings {
     readonly quality: VolumetricLightingQuality;
     readonly resolutionScale: number;
-    readonly stepCount: number;
     readonly shadowSteps: number;
     readonly density: number;
     readonly baseHeight: number;
@@ -148,16 +145,15 @@ function validateDebugView(value: string): asserts value is VolumetricLightingDe
 
 interface QualityDefaults {
     readonly resolutionScale: number;
-    readonly stepCount: number;
     readonly shadowSteps: number;
 }
 
 const QUALITY_DEFAULTS: Readonly<Record<VolumetricLightingQuality, QualityDefaults>> =
     Object.freeze({
-        low: Object.freeze({ resolutionScale: 0.25, stepCount: 12, shadowSteps: 2 }),
-        medium: Object.freeze({ resolutionScale: 0.375, stepCount: 18, shadowSteps: 3 }),
-        high: Object.freeze({ resolutionScale: 0.5, stepCount: 28, shadowSteps: 5 }),
-        ultra: Object.freeze({ resolutionScale: 0.75, stepCount: 40, shadowSteps: 8 })
+        low: Object.freeze({ resolutionScale: 0.25, shadowSteps: 1 }),
+        medium: Object.freeze({ resolutionScale: 0.375, shadowSteps: 2 }),
+        high: Object.freeze({ resolutionScale: 0.5, shadowSteps: 3 }),
+        ultra: Object.freeze({ resolutionScale: 0.75, shadowSteps: 5 })
     });
 
 function finiteRange(value: number, minimum: number, maximum: number, label: string): number {
@@ -255,12 +251,6 @@ export function snapshotVolumetricLightingOptions(
             1,
             'Volumetric lighting resolutionScale'
         ),
-        stepCount: positiveInteger(
-            options.stepCount ?? defaults.stepCount,
-            4,
-            MAX_INTEGRATION_STEPS,
-            'Volumetric lighting stepCount'
-        ),
         shadowSteps: positiveInteger(
             options.shadowSteps ?? defaults.shadowSteps,
             0,
@@ -345,6 +335,7 @@ struct VolumetricFrameData {
     scattering: vec4<f32>,
     temporal: vec4<f32>,
     quality: vec4<f32>,
+    grid: vec4<u32>,
 };
 struct LightRecord {
     positionRange: vec4<f32>,
@@ -421,7 +412,7 @@ fn distanceFromDepth(rawDepth: f32) -> f32 {
         max(frameData.depth.y - standard * (frameData.depth.y - frameData.depth.x), 0.0001);
 }
 fn sliceDistance(slice: u32) -> f32 {
-    let normalized = (f32(slice) + 0.5) / f32(frameData.cluster.z);
+    let normalized = (f32(slice) + 0.5) / f32(volumetricFrame.grid.z);
     return frameData.depth.x * exp(frameData.depth.z * normalized);
 }
 fn reconstructViewPosition(uv: vec2<f32>, viewDepth: f32) -> vec3<f32> {
@@ -488,12 +479,22 @@ fn volumeMask(volume: LocalFogVolume, worldPosition: vec3<f32>) -> f32 {
 }
 @compute @workgroup_size(${String(INJECTION_WORKGROUP_SIZE)}, ${String(INJECTION_WORKGROUP_SIZE)}, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= frameData.cluster.x || id.y >= frameData.cluster.y || id.z >= frameData.cluster.z) {
+    if (id.x >= volumetricFrame.grid.x || id.y >= volumetricFrame.grid.y || id.z >= volumetricFrame.grid.z) {
         return;
     }
     let uv = (vec2<f32>(id.xy) + vec2<f32>(0.5)) /
-        vec2<f32>(frameData.cluster.xy);
+        vec2<f32>(volumetricFrame.grid.xy);
     let viewPosition = reconstructViewPosition(uv, sliceDistance(id.z));
+    if (-viewPosition.z > volumetricFrame.fog.w) {
+        let atlasColumns = bitcast<u32>(volumetricFrame.quality.y);
+        let sliceTile = vec2<u32>(id.z % atlasColumns, id.z / atlasColumns);
+        textureStore(
+            froxelOutput,
+            vec2<i32>(id.xy + sliceTile * volumetricFrame.grid.xy),
+            vec4<f32>(0.0)
+        );
+        return;
+    }
     let worldPosition = (volumetricFrame.inverseView * vec4<f32>(viewPosition, 1.0)).xyz;
     let viewDirection = normalize(-viewPosition);
     let globalDensity = volumetricFrame.fog.x * exp(
@@ -513,7 +514,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let sliceTile = vec2<u32>(id.z % atlasColumns, id.z / atlasColumns);
         textureStore(
             froxelOutput,
-            vec2<i32>(id.xy + sliceTile * frameData.cluster.xy),
+            vec2<i32>(id.xy + sliceTile * volumetricFrame.grid.xy),
             vec4<f32>(0.0)
         );
         return;
@@ -524,7 +525,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         lighting += evaluateLight(lights[directionalIndex], viewPosition, viewDirection);
     }
     let tileCount = frameData.cluster.x * frameData.cluster.y;
-    let clusterIndex = id.z * tileCount + id.y * frameData.cluster.x + id.x;
+    let clusterTile = min(
+        vec2<u32>(uv * vec2<f32>(frameData.cluster.xy)),
+        frameData.cluster.xy - vec2<u32>(1u)
+    );
+    let clusterIndex = id.z * tileCount + clusterTile.y * frameData.cluster.x + clusterTile.x;
     let allocation = clusterGrid[clusterIndex];
     for (var localIndex = 0u; localIndex < allocation.y; localIndex += 1u) {
         let lightIndex = clusterIndices[allocation.x + localIndex];
@@ -537,7 +542,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let sliceTile = vec2<u32>(id.z % atlasColumns, id.z / atlasColumns);
     textureStore(
         froxelOutput,
-        vec2<i32>(id.xy + sliceTile * frameData.cluster.xy),
+        vec2<i32>(id.xy + sliceTile * volumetricFrame.grid.xy),
         vec4<f32>(source, min(density, 65000.0))
     );
 }`,
@@ -584,14 +589,90 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     );
 }
 
+const FROXEL_LINE_INTEGRATION_PASS = computePass(
+    new ComputeShader({
+        label: 'Froxel cumulative line integration',
+        source: `${FRAME_WGSL}
+@group(0) @binding(0) var<storage, read> frameData: FrameData;
+@group(0) @binding(1) var<storage, read> volumetricFrame: VolumetricFrameData;
+@group(0) @binding(2) var froxelAtlas: texture_2d<f32>;
+@group(0) @binding(3) var integratedFroxelOutput: texture_storage_2d<rgba16float, write>;
+
+fn atlasPixel(tile: vec2<u32>, slice: u32) -> vec2<i32> {
+    let atlasColumns = bitcast<u32>(volumetricFrame.quality.y);
+    let sliceTile = vec2<u32>(slice % atlasColumns, slice / atlasColumns);
+    return vec2<i32>(tile + sliceTile * volumetricFrame.grid.xy);
+}
+fn sliceBoundary(boundary: u32) -> f32 {
+    let normalized = f32(boundary) / f32(volumetricFrame.grid.z);
+    return frameData.depth.x * exp(frameData.depth.z * normalized);
+}
+@compute @workgroup_size(${String(INTEGRATION_WORKGROUP_SIZE)}, ${String(INTEGRATION_WORKGROUP_SIZE)})
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (any(id.xy >= volumetricFrame.grid.xy)) { return; }
+    var scattering = vec3<f32>(0.0);
+    var transmittance = 1.0;
+    var previousDistance = frameData.depth.x;
+    for (var slice = 0u; slice < ${String(MAX_FROXEL_SLICES)}u; slice += 1u) {
+        if (slice >= volumetricFrame.grid.z) { break; }
+        let nextDistance = min(sliceBoundary(slice + 1u), volumetricFrame.fog.w);
+        let segmentLength = max(nextDistance - previousDistance, 0.0);
+        if (segmentLength > 0.0 && transmittance >= 0.002) {
+            let froxel = textureLoad(froxelAtlas, atlasPixel(id.xy, slice), 0);
+            let extinction = max(froxel.a, 0.0);
+            let segmentTransmittance = exp(-extinction * segmentLength);
+            let integratedSource = select(
+                froxel.rgb * segmentLength,
+                froxel.rgb * (1.0 - segmentTransmittance) / max(extinction, 0.00001),
+                extinction > 0.00001
+            );
+            scattering += transmittance * integratedSource;
+            transmittance *= segmentTransmittance;
+        }
+        textureStore(
+            integratedFroxelOutput,
+            atlasPixel(id.xy, slice),
+            vec4<f32>(min(scattering, vec3<f32>(65000.0)), clamp(transmittance, 0.0, 1.0))
+        );
+        previousDistance = nextDistance;
+    }
+}`,
+        workgroupSize: [INTEGRATION_WORKGROUP_SIZE, INTEGRATION_WORKGROUP_SIZE],
+        bindings: [
+            { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
+            {
+                name: 'volumetricFrame',
+                group: 0,
+                binding: 1,
+                kind: 'read-only-storage-buffer'
+            },
+            {
+                name: 'froxelAtlas',
+                group: 0,
+                binding: 2,
+                kind: 'sampled-texture',
+                sampleType: 'float'
+            },
+            {
+                name: 'integratedFroxelOutput',
+                group: 0,
+                binding: 3,
+                kind: 'storage-texture',
+                access: 'write-only',
+                format: 'rgba16float'
+            }
+        ]
+    })
+);
+
 const INTEGRATION_PASS = computePass(
     new ComputeShader({
-        label: 'Froxel volumetric view-ray integration',
+        label: 'Froxel constant-time view reconstruction',
         source: `${FRAME_WGSL}
 @group(0) @binding(0) var<storage, read> frameData: FrameData;
 @group(0) @binding(1) var<storage, read> volumetricFrame: VolumetricFrameData;
 @group(0) @binding(2) var sceneDepth: texture_depth_2d;
-@group(0) @binding(3) var froxelAtlas: texture_2d<f32>;
+@group(0) @binding(3) var integratedFroxelAtlas: texture_2d<f32>;
 @group(0) @binding(4) var integrationOutput: texture_storage_2d<rgba16float, write>;
 
 fn depthIsEmpty(rawDepth: f32) -> bool {
@@ -607,34 +688,36 @@ fn hash12(value: vec2<f32>) -> f32 {
     let mixed = p3 + dot(p3, p3.yzx + vec3<f32>(33.33));
     return fract((mixed.x + mixed.y) * mixed.z);
 }
-fn loadFroxel(tile: vec2<u32>, slice: u32) -> vec4<f32> {
-    let clampedTile = min(tile, frameData.cluster.xy - vec2<u32>(1u));
+fn loadIntegratedFroxel(tile: vec2<u32>, slice: u32) -> vec4<f32> {
+    let clampedTile = min(tile, volumetricFrame.grid.xy - vec2<u32>(1u));
     let atlasColumns = bitcast<u32>(volumetricFrame.quality.y);
     let sliceTile = vec2<u32>(slice % atlasColumns, slice / atlasColumns);
     return textureLoad(
-        froxelAtlas,
-        vec2<i32>(clampedTile + sliceTile * frameData.cluster.xy),
+        integratedFroxelAtlas,
+        vec2<i32>(clampedTile + sliceTile * volumetricFrame.grid.xy),
         0
     );
 }
-fn sampleFroxel(uv: vec2<f32>, distance: f32) -> vec4<f32> {
-    let gridPosition = uv * vec2<f32>(frameData.cluster.xy) - vec2<f32>(0.5);
+fn sampleIntegratedFroxel(uv: vec2<f32>, slice: u32) -> vec4<f32> {
+    let gridPosition = uv * vec2<f32>(volumetricFrame.grid.xy) - vec2<f32>(0.5);
     let base = vec2<i32>(floor(gridPosition));
     let fraction = fract(gridPosition);
-    let sliceNormalized = log(max(distance, frameData.depth.x) / frameData.depth.x) /
-        frameData.depth.z;
-    let slice = min(
-        u32(clamp(sliceNormalized, 0.0, 0.999999) * f32(frameData.cluster.z)),
-        frameData.cluster.z - 1u
-    );
-    let maximum = vec2<i32>(frameData.cluster.xy) - vec2<i32>(1);
+    let maximum = vec2<i32>(volumetricFrame.grid.xy) - vec2<i32>(1);
     let p00 = vec2<u32>(clamp(base, vec2<i32>(0), maximum));
     let p10 = vec2<u32>(clamp(base + vec2<i32>(1, 0), vec2<i32>(0), maximum));
     let p01 = vec2<u32>(clamp(base + vec2<i32>(0, 1), vec2<i32>(0), maximum));
     let p11 = vec2<u32>(clamp(base + vec2<i32>(1, 1), vec2<i32>(0), maximum));
     return mix(
-        mix(loadFroxel(p00, slice), loadFroxel(p10, slice), fraction.x),
-        mix(loadFroxel(p01, slice), loadFroxel(p11, slice), fraction.x),
+        mix(
+            loadIntegratedFroxel(p00, slice),
+            loadIntegratedFroxel(p10, slice),
+            fraction.x
+        ),
+        mix(
+            loadIntegratedFroxel(p01, slice),
+            loadIntegratedFroxel(p11, slice),
+            fraction.x
+        ),
         fraction.y
     );
 }
@@ -660,41 +743,37 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         textureStore(integrationOutput, vec2<i32>(id.xy), vec4<f32>(0.0, 0.0, 0.0, 1.0));
         return;
     }
-    let stepCount = bitcast<u32>(volumetricFrame.quality.x);
     let frameIndex = bitcast<u32>(volumetricFrame.temporal.z);
-    let jitter = mix(
-        0.5,
-        hash12(vec2<f32>(id.xy) + vec2<f32>(f32(frameIndex) * 0.754877666)),
-        volumetricFrame.quality.w
+    let unjitteredSlicePosition = clamp(
+        log(rayEnd / frameData.depth.x) / frameData.depth.z * f32(volumetricFrame.grid.z),
+        0.0,
+        f32(volumetricFrame.grid.z)
     );
-    let logarithmicRange = log(rayEnd / frameData.depth.x);
-    var scattering = vec3<f32>(0.0);
-    var transmittance = 1.0;
-    var previousDistance = frameData.depth.x;
-    for (var step = 0u; step < ${String(MAX_INTEGRATION_STEPS)}u; step += 1u) {
-        if (step >= stepCount) { break; }
-        let normalized = min((f32(step) + jitter) / f32(stepCount), 0.999999);
-        let sampleDistance = frameData.depth.x * exp(logarithmicRange * normalized);
-        let nextNormalized = min((f32(step + 1u) + jitter) / f32(stepCount), 1.0);
-        let nextDistance = frameData.depth.x * exp(logarithmicRange * nextNormalized);
-        let segmentLength = max(nextDistance - previousDistance, 0.0);
-        let froxel = sampleFroxel(uv, sampleDistance);
-        let extinction = max(froxel.a, 0.0);
-        let segmentTransmittance = exp(-extinction * segmentLength);
-        let integratedSource = select(
-            froxel.rgb * segmentLength,
-            froxel.rgb * (1.0 - segmentTransmittance) / max(extinction, 0.00001),
-            extinction > 0.00001
-        );
-        scattering += transmittance * integratedSource;
-        transmittance *= segmentTransmittance;
-        previousDistance = nextDistance;
-        if (transmittance < 0.002) { break; }
+    let jitter =
+        (hash12(vec2<f32>(id.xy) + vec2<f32>(f32(frameIndex) * 0.754877666)) - 0.5) *
+        volumetricFrame.quality.w;
+    let slicePosition = clamp(
+        unjitteredSlicePosition + jitter,
+        0.0,
+        f32(volumetricFrame.grid.z)
+    );
+    let completeSlices = min(u32(floor(slicePosition)), volumetricFrame.grid.z);
+    var lower = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    if (completeSlices > 0u) {
+        lower = sampleIntegratedFroxel(uv, completeSlices - 1u);
     }
+    let upper = sampleIntegratedFroxel(
+        uv,
+        min(completeSlices, volumetricFrame.grid.z - 1u)
+    );
+    let integrated = mix(lower, upper, fract(slicePosition));
     textureStore(
         integrationOutput,
         vec2<i32>(id.xy),
-        vec4<f32>(min(scattering, vec3<f32>(65000.0)), clamp(transmittance, 0.0, 1.0))
+        vec4<f32>(
+            min(integrated.rgb, vec3<f32>(65000.0)),
+            clamp(integrated.a, 0.0, 1.0)
+        )
     );
 }`,
         workgroupSize: [INTEGRATION_WORKGROUP_SIZE, INTEGRATION_WORKGROUP_SIZE],
@@ -714,7 +793,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                 sampleType: 'depth'
             },
             {
-                name: 'froxelAtlas',
+                name: 'integratedFroxelAtlas',
                 group: 0,
                 binding: 3,
                 kind: 'sampled-texture',
@@ -1072,12 +1151,16 @@ export class VolumetricLightingController {
     readonly #depthHistoryKey = Object.freeze({});
     readonly #froxelExtent = { width: 1, height: 1 };
     readonly #froxelDescriptor: RenderPipelineTextureDescriptor;
+    readonly #integratedFroxelDescriptor: RenderPipelineTextureDescriptor;
     readonly #integrationDescriptor: RenderPipelineTextureDescriptor;
     readonly #colorHistoryDescriptor: RenderPipelineHistoryTextureDescriptor;
     readonly #depthHistoryDescriptor: RenderPipelineHistoryTextureDescriptor;
     readonly #compositeDescriptor: RenderPipelineTextureDescriptor;
     readonly #injectionPool = new RenderPassParameterPool(
         () => new MutableComputeParameters(6, 2, 0)
+    );
+    readonly #lineIntegrationPool = new RenderPassParameterPool(
+        () => new MutableComputeParameters(2, 2, 0)
     );
     readonly #integrationPool = new RenderPassParameterPool(
         () => new MutableComputeParameters(2, 3, 0)
@@ -1133,6 +1216,10 @@ export class VolumetricLightingController {
             format: 'rgba16float',
             extent: this.#froxelExtent
         };
+        this.#integratedFroxelDescriptor = {
+            format: 'rgba16float',
+            extent: this.#froxelExtent
+        };
         const integrationExtent = Object.freeze({
             relativeTo: 'output' as const,
             scale: sceneScale * settings.resolutionScale,
@@ -1178,26 +1265,34 @@ export class VolumetricLightingController {
         if (this.#destroyed) throw new Error('Volumetric lighting controller is destroyed');
         this.packFrame(context.camera, context.frameIndex);
         this.packVolumes();
+        const froxelTilesX = Math.max(
+            1,
+            Math.ceil(resources.tilesX * this.#settings.resolutionScale)
+        );
+        const froxelTilesY = Math.max(
+            1,
+            Math.ceil(resources.tilesY * this.#settings.resolutionScale)
+        );
         const atlasColumns = Math.max(
             1,
             Math.min(
                 resources.zSlices,
-                Math.ceil(
-                    Math.sqrt(
-                        (resources.zSlices * resources.tilesY) / Math.max(resources.tilesX, 1)
-                    )
-                )
+                Math.ceil(Math.sqrt((resources.zSlices * froxelTilesY) / Math.max(froxelTilesX, 1)))
             )
         );
         const atlasRows = Math.ceil(resources.zSlices / atlasColumns);
         this.#frameUInts[29] = atlasColumns;
+        this.#frameUInts[32] = froxelTilesX;
+        this.#frameUInts[33] = froxelTilesY;
+        this.#frameUInts[34] = resources.zSlices;
+        this.#frameUInts[35] = 0;
         context.writeStorageBuffer(this.#frameBuffer, 0, this.#frameByteView);
         context.writeStorageBuffer(this.#localVolumeBuffer, 0, this.#volumeByteView);
         const volumetricFrame = context.graph.importStorageBuffer(this.#frameBuffer);
         const localVolumes = context.graph.importStorageBuffer(this.#localVolumeBuffer);
-        this.#froxelExtent.width = resources.tilesX * atlasColumns;
-        this.#froxelExtent.height = resources.tilesY * atlasRows;
-        this.#pendingFroxelCount = resources.tilesX * resources.tilesY * resources.zSlices;
+        this.#froxelExtent.width = froxelTilesX * atlasColumns;
+        this.#froxelExtent.height = froxelTilesY * atlasRows;
+        this.#pendingFroxelCount = froxelTilesX * froxelTilesY * resources.zSlices;
         const froxel = context.graph.createTexture(
             'Volumetric lighting froxel scattering and extinction atlas',
             this.#froxelDescriptor
@@ -1212,11 +1307,26 @@ export class VolumetricLightingController {
         injection.setTexture(0, resources.sceneDepth);
         injection.setTexture(1, froxel);
         injection.setDispatch(
-            Math.max(1, Math.ceil(resources.tilesX / INJECTION_WORKGROUP_SIZE)),
-            Math.max(1, Math.ceil(resources.tilesY / INJECTION_WORKGROUP_SIZE)),
+            Math.max(1, Math.ceil(froxelTilesX / INJECTION_WORKGROUP_SIZE)),
+            Math.max(1, Math.ceil(froxelTilesY / INJECTION_WORKGROUP_SIZE)),
             resources.zSlices
         );
         context.graph.addPass(this.#injectionPass, injection);
+
+        const integratedFroxel = context.graph.createTexture(
+            'Volumetric lighting cumulative froxel scattering and transmittance atlas',
+            this.#integratedFroxelDescriptor
+        );
+        const lineIntegration = context.acquirePassParameters(this.#lineIntegrationPool);
+        lineIntegration.setBuffer(0, resources.frameBuffer);
+        lineIntegration.setBuffer(1, volumetricFrame);
+        lineIntegration.setTexture(0, froxel);
+        lineIntegration.setTexture(1, integratedFroxel);
+        lineIntegration.setDispatch(
+            Math.max(1, Math.ceil(froxelTilesX / INTEGRATION_WORKGROUP_SIZE)),
+            Math.max(1, Math.ceil(froxelTilesY / INTEGRATION_WORKGROUP_SIZE))
+        );
+        context.graph.addPass(FROXEL_LINE_INTEGRATION_PASS, lineIntegration);
 
         const currentIntegration = context.graph.createTexture(
             'Volumetric lighting current integrated radiance and transmittance',
@@ -1236,7 +1346,7 @@ export class VolumetricLightingController {
         integration.setBuffer(0, resources.frameBuffer);
         integration.setBuffer(1, volumetricFrame);
         integration.setTexture(0, resources.sceneDepth);
-        integration.setTexture(1, froxel);
+        integration.setTexture(1, integratedFroxel);
         integration.setTexture(2, currentIntegration);
         integration.setDispatch(
             Math.max(1, Math.ceil(integrationWidth / INTEGRATION_WORKGROUP_SIZE)),
@@ -1360,7 +1470,7 @@ export class VolumetricLightingController {
         this.#frameFloats[25] = settings.depthThreshold;
         this.#frameUInts[26] = frameIndex >>> 0;
         this.#frameUInts[27] = settings.localVolumes.length;
-        this.#frameUInts[28] = settings.stepCount;
+        this.#frameUInts[28] = 0;
         this.#frameUInts[29] = 1;
         this.#frameFloats[30] = settings.ambientStrength;
         this.#frameFloats[31] = settings.jitterStrength;

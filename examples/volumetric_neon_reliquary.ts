@@ -360,7 +360,7 @@ function formatCount(value: number): string {
 }
 
 function viewportPixelRatio(): number {
-    const deviceRatio = Math.min(window.devicePixelRatio || 1, 1.4);
+    const deviceRatio = Math.min(window.devicePixelRatio || 1, 1);
     return Math.min(
         deviceRatio,
         MAX_VIEWPORT_WIDTH / Math.max(window.innerWidth, 1),
@@ -585,15 +585,15 @@ async function run(): Promise<void> {
         buckets,
         maxObjects: testMode ? 256 : 1024,
         maxLights: testMode ? 32 : 96,
-        maxLightIndices: testMode ? 131_072 : 2_097_152,
+        maxLightIndices: testMode ? 131_072 : 262_144,
         maxLightsPerCluster: testMode ? 32 : 64,
-        tileSize: testMode ? 32 : 16,
-        zSlices: testMode ? 16 : 32,
+        tileSize: testMode ? 32 : 40,
+        zSlices: testMode ? 16 : 20,
         maxViewportWidth: testMode ? 960 : MAX_VIEWPORT_WIDTH,
         maxViewportHeight: testMode ? 600 : MAX_VIEWPORT_HEIGHT,
         hiZ: true,
         temporalAA: {
-            renderScale: testMode ? 0.5 : 0.82,
+            renderScale: testMode ? 0.5 : 0.72,
             historyWeight: 0.92,
             depthThreshold: 0.022,
             varianceGamma: 1.2,
@@ -602,8 +602,8 @@ async function run(): Promise<void> {
         volumetricLighting: volumetricEnabled
             ? {
                   quality: testMode ? 'low' : 'high',
-                  stepCount: testMode ? 12 : 28,
-                  shadowSteps: testMode ? 1 : 3,
+                  resolutionScale: testMode ? 0.25 : 0.375,
+                  shadowSteps: testMode ? 1 : 2,
                   density: 0.006,
                   baseHeight: -0.4,
                   heightFalloff: 0.055,
