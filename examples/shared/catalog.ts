@@ -101,6 +101,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
     'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
+    'ground_truth_ambient_occlusion.html': 'Quiet Arches — Ground-truth Ambient Occlusion',
     'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
     'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
     'compute_particles.html': 'Hilo3D Compute Particle Field',
@@ -128,6 +129,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.',
     'screen_space_reflections_palace.html':
         'Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.',
+    'ground_truth_ambient_occlusion.html':
+        'Reveal contact, corners, recesses, and large-scale proximity in a lightweight procedural gallery using portable temporal GTAO.',
     'temporal_aa_observatory.html':
         'Stress fused motion vectors, visibility-aware history, logarithmic depth rejection, and fixed-scale TAAU in a kinetic WebGPU constellation.',
     'compute_eclipse_shrine.html':
@@ -202,6 +205,7 @@ const FEATURED_PATHS = new Set([
     'compute_gpu_driven.html',
     'clustered_forward_plus_sponza.html',
     'screen_space_reflections_palace.html',
+    'ground_truth_ambient_occlusion.html',
     'temporal_aa_observatory.html',
     'compute_eclipse_shrine.html',
     'compute_particles.html',
@@ -233,7 +237,7 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'textures';
     }
     if (
-        /(?:post_process|bloom|temporal_aa|screen_space_reflections|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
+        /(?:post_process|bloom|temporal_aa|ground_truth_ambient_occlusion|screen_space_reflections|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
             normalized
         )
     ) {

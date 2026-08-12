@@ -121,6 +121,13 @@ import {
     type ScreenSpaceReflectionsOptions,
     type ScreenSpaceReflectionsSettings
 } from '../postprocessing/ScreenSpaceReflections';
+import {
+    GROUND_TRUTH_AMBIENT_OCCLUSION_REQUIREMENTS,
+    GroundTruthAmbientOcclusionController,
+    snapshotGroundTruthAmbientOcclusionOptions,
+    type GroundTruthAmbientOcclusionOptions,
+    type GroundTruthAmbientOcclusionSettings
+} from '../postprocessing/GroundTruthAmbientOcclusion';
 
 const OBJECT_RECORD_BYTES = 208;
 const LIGHT_RECORD_BYTES = 64;
@@ -212,6 +219,11 @@ export interface ClusteredForwardPlusPipelineOptions {
     /** Integrated temporal AA/TAAU. Disabled by default; `false` explicitly disables it. */
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     /**
+     * Integrated ground-truth ambient occlusion. Disabled by default. The GPU Scene path reuses
+     * temporal motion data and therefore requires `temporalAA` when enabled.
+     */
+    readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
+    /**
      * Hierarchical, temporally accumulated screen-space reflections. Disabled by default.
      * Enabling this production path requires both `hiZ` and `temporalAA`.
      */
@@ -270,6 +282,7 @@ interface NormalizedOptions {
     readonly bloomStrength: number;
     readonly exposure: number;
     readonly temporalAA: TemporalAASettings | null;
+    readonly groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionSettings | null;
     readonly screenSpaceReflections: ScreenSpaceReflectionsSettings | null;
 }
 
@@ -316,6 +329,7 @@ interface PhysicalBucket {
     indexRevision: number;
     readonly depthPass: GPUDrivenRenderPass;
     colorPass: GPUDrivenRenderPass;
+    materialAttributesPass: GPUDrivenRenderPass | null;
     materialVariantKey: string;
     materialVariant: Readonly<PBRMaterialVariant>;
 }
@@ -889,6 +903,11 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         input.temporalAA === undefined || input.temporalAA === false
             ? null
             : snapshotTemporalAAOptions(input.temporalAA);
+    const groundTruthAmbientOcclusion =
+        input.groundTruthAmbientOcclusion === undefined ||
+        input.groundTruthAmbientOcclusion === false
+            ? null
+            : snapshotGroundTruthAmbientOcclusionOptions(input.groundTruthAmbientOcclusion);
     const screenSpaceReflections =
         input.screenSpaceReflections === undefined || input.screenSpaceReflections === false
             ? null
@@ -898,6 +917,11 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
     }
     if (screenSpaceReflections !== null && temporalAA === null) {
         throw new TypeError('Clustered Forward+ screen-space reflections require temporalAA');
+    }
+    if (groundTruthAmbientOcclusion !== null && temporalAA === null) {
+        throw new TypeError(
+            'Clustered Forward+ ground-truth ambient occlusion requires temporalAA'
+        );
     }
     return Object.freeze({
         buckets: Object.freeze(buckets),
@@ -931,6 +955,7 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         ),
         exposure: finitePositive(input.exposure ?? 1, 'Clustered Forward+ exposure'),
         temporalAA,
+        groundTruthAmbientOcclusion,
         screenSpaceReflections
     });
 }
@@ -1986,6 +2011,7 @@ void main() {
 });
 
 const GPU_SCENE_PBR_SHADER_CACHE = new Map<string, StorageGraphicsShader>();
+const GPU_SCENE_ATTRIBUTES_SHADER_CACHE = new Map<string, StorageGraphicsShader>();
 
 function variantTexture(
     variant: Readonly<PBRMaterialVariant>,
@@ -2000,9 +2026,10 @@ function variantSampleUV(binding: Readonly<PBRTextureBinding>): string {
 
 function gpuScenePBRShader(
     variant: Readonly<PBRMaterialVariant>,
-    withMaterialAttributes: boolean
+    withMaterialAttributes: boolean,
+    withGroundTruthAmbientOcclusion: boolean
 ): StorageGraphicsShader {
-    const cacheKey = `${variant.key}|attributes=${withMaterialAttributes ? '1' : '0'}`;
+    const cacheKey = `${variant.key}|attributes=${withMaterialAttributes ? '1' : '0'}|gtao=${withGroundTruthAmbientOcclusion ? '1' : '0'}`;
     const cached = GPU_SCENE_PBR_SHADER_CACHE.get(cacheKey);
     if (cached !== undefined) return cached;
     const textureDeclarations = variant.textures
@@ -2076,6 +2103,19 @@ function gpuScenePBRShader(
             kind: 'sampler'
         });
     }
+    if (withGroundTruthAmbientOcclusion) {
+        const binding = variant.textures.length * 2;
+        bindings.push(
+            {
+                name: 'u_gtaoTexture',
+                group: 1,
+                binding,
+                kind: 'sampled-texture',
+                sampleType: 'float'
+            },
+            { name: 'u_gtaoTexture', group: 1, binding: binding + 1, kind: 'sampler' }
+        );
+    }
     const shader = new StorageGraphicsShader({
         label: `Built-in clustered storage PBR (${variant.key})`,
         vertexSource: `#version 310 es
@@ -2128,6 +2168,7 @@ layout(std430) readonly buffer LightDataBlock { vec4 values[]; } lights;
 layout(std430) readonly buffer ClusterGridBlock { uvec2 values[]; } clusterGrid;
 layout(std430) readonly buffer ClusterIndexBlock { uint values[]; } clusterIndices;
 ${textureDeclarations}
+${withGroundTruthAmbientOcclusion ? 'uniform sampler2D u_gtaoTexture;' : ''}
 in vec3 v_viewPosition;
 in vec3 v_viewNormal;
 ${fragmentUVDeclarations}
@@ -2289,8 +2330,14 @@ void main() {
     uint clusterIndex = slice * cluster.x * cluster.y + tileY * cluster.x + tileX;
     uvec2 allocation = clusterGrid.values[clusterIndex];
     uvec4 directional = floatBitsToUint(frameData.values[30u]);
+    float ambientOcclusion = surface.occlusion;
+    ${
+        withGroundTruthAmbientOcclusion
+            ? 'ambientOcclusion *= clamp(texture(u_gtaoTexture, gl_FragCoord.xy / frameData.values[24u].zw).b, 0.0, 1.0);'
+            : ''
+    }
     vec3 lighting = frameData.values[31u].rgb * surface.iblDiffuseColor *
-        surface.occlusion * HILO_INVERSE_PI;
+        ambientOcclusion * HILO_INVERSE_PI;
     for (uint lightIndex = 0u; lightIndex < directional.x; lightIndex += 1u) {
         lighting += hiloEvaluateClusteredLight(
             lightIndex, v_viewPosition, normal, viewDirection, surface
@@ -2307,6 +2354,191 @@ void main() {
         bindings
     });
     GPU_SCENE_PBR_SHADER_CACHE.set(cacheKey, shader);
+    return shader;
+}
+
+function gpuSceneMaterialAttributesShader(
+    variant: Readonly<PBRMaterialVariant>
+): StorageGraphicsShader {
+    const cached = GPU_SCENE_ATTRIBUTES_SHADER_CACHE.get(variant.key);
+    if (cached !== undefined) return cached;
+    const textureDeclarations = variant.textures
+        .map(binding => `uniform sampler2D ${binding.shaderName};`)
+        .join('\n');
+    const vertexUVDeclarations = [
+        variant.usesUV0 ? 'layout(location=2) in vec2 a_uv0;\nout vec2 v_uv0;' : '',
+        variant.usesUV1 ? 'layout(location=3) in vec2 a_uv1;\nout vec2 v_uv1;' : '',
+        variant.normalUV === null ? '' : 'layout(location=4) in vec4 a_tangent;\nout mat3 v_TBN;'
+    ]
+        .filter(Boolean)
+        .join('\n');
+    const fragmentUVDeclarations = [
+        variant.usesUV0 ? 'in vec2 v_uv0;' : '',
+        variant.usesUV1 ? 'in vec2 v_uv1;' : '',
+        variant.normalUV === null ? '' : 'in mat3 v_TBN;'
+    ]
+        .filter(Boolean)
+        .join('\n');
+    const vertexUVWrites = [
+        variant.usesUV0 ? 'v_uv0 = a_uv0;' : '',
+        variant.usesUV1 ? 'v_uv1 = a_uv1;' : '',
+        variant.normalUV === null
+            ? ''
+            : `vec3 tangent = normalize(viewNormalMatrix * a_tangent.xyz);
+    tangent = normalize(tangent - dot(tangent, viewNormal) * viewNormal);
+    vec3 bitangent = cross(viewNormal, tangent) * a_tangent.w;
+    v_TBN = mat3(tangent, bitangent, viewNormal);`
+    ]
+        .filter(Boolean)
+        .join('\n    ');
+    const metallicMap = variantTexture(variant, 'metallicMap');
+    const roughnessMap = variantTexture(variant, 'roughnessMap');
+    const metallicRoughnessMap = variantTexture(variant, 'metallicRoughnessMap');
+    const normalMap = variantTexture(variant, 'normalMap');
+    const materialSample = (binding: Readonly<PBRTextureBinding>): string =>
+        `hiloMaterialSample(${binding.shaderName}, materialBase, ${String(binding.slotIndex)}u, ${variantSampleUV(binding)})`;
+    const bindings: ShaderReadBinding[] = [
+        { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
+        { name: 'objects', group: 0, binding: 1, kind: 'read-only-storage-buffer' },
+        { name: 'visibleIndices', group: 0, binding: 2, kind: 'read-only-storage-buffer' },
+        { name: 'materials', group: 0, binding: 3, kind: 'read-only-storage-buffer' },
+        {
+            name: 'visibleOffset',
+            group: 0,
+            binding: 4,
+            kind: 'read-only-storage-buffer',
+            minBindingSize: 4
+        }
+    ];
+    for (let index = 0; index < variant.textures.length; index += 1) {
+        const texture = variant.textures[index];
+        if (texture === undefined) continue;
+        bindings.push(
+            {
+                name: texture.shaderName,
+                group: 1,
+                binding: index * 2,
+                kind: 'sampled-texture',
+                sampleType: 'float'
+            },
+            {
+                name: texture.shaderName,
+                group: 1,
+                binding: index * 2 + 1,
+                kind: 'sampler'
+            }
+        );
+    }
+    const shader = new StorageGraphicsShader({
+        label: `Built-in clustered material attributes (${variant.key})`,
+        vertexSource: `#version 310 es
+precision highp float;
+precision highp int;
+invariant gl_Position;
+layout(std430) readonly buffer FrameDataBlock { vec4 values[]; } frameData;
+layout(std430) readonly buffer ObjectBlock { vec4 values[]; } objects;
+layout(std430) readonly buffer VisibleBlock { uint values[]; } visibleIndices;
+layout(std430) readonly buffer MaterialDataBlock { vec4 values[]; } materials;
+layout(std430) readonly buffer VisibleOffsetBlock { uint value; } visibleOffset;
+layout(location=0) in vec3 a_position;
+layout(location=1) in vec3 a_normal;
+${vertexUVDeclarations}
+out vec3 v_viewNormal;
+flat out uint v_materialIndex;
+${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
+${GPU_SCENE_VISIBLE_INDEX_SOURCE}
+mat3 readObjectNormalMatrix(uint base) {
+    return mat3(objects.values[base + 8u].xyz, objects.values[base + 9u].xyz, objects.values[base + 10u].xyz);
+}
+void main() {
+    uint objectIndex = gpuSceneVisibleObjectIndex();
+    uint objectBase = objectIndex * 13u;
+    mat3 viewNormalMatrix = mat3(readFrameMatrix(8u)) * readObjectNormalMatrix(objectBase);
+    vec3 viewNormal = normalize(viewNormalMatrix * a_normal);
+    v_viewNormal = viewNormal;
+    v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
+    ${vertexUVWrites}
+    gl_Position = gpuSceneClipPosition(objectBase, a_position);
+}`,
+        fragmentSource: `#version 310 es
+precision highp float;
+precision highp int;
+layout(std430) readonly buffer MaterialDataBlock { vec4 values[]; } materials;
+${textureDeclarations}
+in vec3 v_viewNormal;
+${fragmentUVDeclarations}
+flat in uint v_materialIndex;
+layout(location=0) out vec4 materialAttributes;
+${encodingSource}
+float hiloMaterialChannel(vec4 value, int channel) {
+    if (channel == 0) return value.r;
+    if (channel == 1) return value.g;
+    if (channel == 2) return value.b;
+    if (channel == 3) return value.a;
+    return channel == 5 ? 1.0 : 0.0;
+}
+vec4 hiloMaterialSample(sampler2D source, uint materialBase, uint slotIndex, vec2 uv) {
+    uint slotBase = materialBase + 3u + slotIndex * 5u;
+    mat3 transform = mat3(
+        materials.values[slotBase].xyz,
+        materials.values[slotBase + 1u].xyz,
+        materials.values[slotBase + 2u].xyz
+    );
+    vec4 info = materials.values[slotBase + 3u];
+    vec4 sampled = texture(source, (transform * vec3(uv, 1.0)).xy);
+    if (int(info.y) == 1) sampled = sRGBToLinear(sampled);
+    ivec4 channels = ivec4(materials.values[slotBase + 4u]);
+    return vec4(
+        hiloMaterialChannel(sampled, channels.x),
+        hiloMaterialChannel(sampled, channels.y),
+        hiloMaterialChannel(sampled, channels.z),
+        hiloMaterialChannel(sampled, channels.w)
+    );
+}
+void main() {
+    uint materialBase = v_materialIndex * ${String(PBR_GPU_MATERIAL_RECORD_BYTES / 16)}u;
+    vec4 baseMetallic = materials.values[materialBase];
+    vec4 emissionRoughness = materials.values[materialBase + 1u];
+    vec4 materialParameters = materials.values[materialBase + 2u];
+    float metallic = baseMetallic.a;
+    ${metallicMap === null ? '' : `metallic *= ${materialSample(metallicMap)}.r;`}
+    float roughness = emissionRoughness.a;
+    ${roughnessMap === null ? '' : `roughness *= ${materialSample(roughnessMap)}.r;`}
+    ${
+        metallicRoughnessMap === null
+            ? ''
+            : `vec4 metallicRoughnessSample = ${materialSample(metallicRoughnessMap)};
+    roughness *= metallicRoughnessSample.g;
+    metallic *= metallicRoughnessSample.b;`
+    }
+    vec3 normal = normalize(v_viewNormal);
+    ${
+        normalMap === null
+            ? ''
+            : `vec3 tangentNormal = ${materialSample(normalMap)}.rgb * 2.0 - 1.0;
+    tangentNormal.xy *= materialParameters.z;
+    normal = normalize(v_TBN * tangentNormal);`
+    }
+    vec3 octahedralNormal = normal /
+        max(abs(normal.x) + abs(normal.y) + abs(normal.z), 0.000001);
+    vec2 encodedNormal = octahedralNormal.xy;
+    if (octahedralNormal.z < 0.0) {
+        vec2 octahedralSign = vec2(
+            encodedNormal.x >= 0.0 ? 1.0 : -1.0,
+            encodedNormal.y >= 0.0 ? 1.0 : -1.0
+        );
+        encodedNormal = (1.0 - abs(encodedNormal.yx)) * octahedralSign;
+    }
+    float metallicBits = floor(clamp(metallic, 0.0, 1.0) * 255.0 + 0.5);
+    materialAttributes = vec4(
+        encodedNormal,
+        clamp(roughness, 0.045, 1.0),
+        1.0 + metallicBits * 2.0
+    );
+}`,
+        bindings
+    });
+    GPU_SCENE_ATTRIBUTES_SHADER_CACHE.set(variant.key, shader);
     return shader;
 }
 
@@ -2611,11 +2843,13 @@ class MutableFallbackSceneParameters implements SceneRenderPassParameters {
     ];
     depthStencilAttachment?: RenderPipelineDepthStencilAttachment;
     opaqueTexture?: RenderGraphTextureHandle;
+    ambientOcclusionTexture?: RenderGraphTextureHandle;
 
     reset(): void {
         this.rendererList = INVALID_RENDERER_LIST;
         delete this.depthStencilAttachment;
         delete this.opaqueTexture;
+        delete this.ambientOcclusionTexture;
     }
 }
 
@@ -2899,7 +3133,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #hizCullPass: ComputeRenderPass | null;
     readonly #temporal: TemporalResolveController | null;
     readonly #temporalMotionDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
+    readonly #groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionController | null;
     readonly #screenSpaceReflections: ScreenSpaceReflectionsController | null;
+    readonly #groundTruthAmbientOcclusionSampler = new ComputeSampler({
+        label: 'Clustered GTAO linear clamp sampler',
+        magFilter: 'linear',
+        minFilter: 'linear',
+        mipmapFilter: 'nearest'
+    });
     readonly #clearPass = new ClearBuffersPass();
     readonly #clearPool = new RenderPassParameterPool(
         () => new ClearBuffersParameters(),
@@ -2958,6 +3199,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.reset();
         }
     );
+    readonly #materialAttributesDrawPool = new RenderPassParameterPool(
+        () => new MutableGPUDrivenParameters(5, 2)
+    );
+    readonly #materialAttributesBatchPool = new RenderPassParameterPool(
+        () => new MutableGPUDrivenBatchParameters(),
+        parameters => {
+            parameters.reset();
+        }
+    );
     readonly #fullscreenPool = new RenderPassParameterPool(() => new MutableFullscreenParameters());
     readonly #fallbackPool = new RenderPassParameterPool(
         () => new MutableFallbackSceneParameters(),
@@ -2980,6 +3230,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #displayPass: FullscreenRenderPass;
     readonly #depthBatchPass = new GPUDrivenRenderBatchPass('GPU Scene depth buckets');
     readonly #colorBatchPass = new GPUDrivenRenderBatchPass('Clustered PBR buckets');
+    readonly #materialAttributesBatchPass = new GPUDrivenRenderBatchPass(
+        'GPU Scene GTAO material attributes'
+    );
     readonly #fallbackPass = new SceneRenderPass('Clustered Forward+ compatibility fallback');
     readonly #fallbackDepthPass = new SceneRenderPass('Clustered Forward+ fallback depth prepass');
     readonly #fallbackMotionPass = new SceneRenderPass(
@@ -3063,6 +3316,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             options.temporalAA === null
                 ? null
                 : temporalMotionDescriptor(options.temporalAA.renderScale);
+        this.#groundTruthAmbientOcclusion =
+            options.groundTruthAmbientOcclusion === null
+                ? null
+                : new GroundTruthAmbientOcclusionController(options.groundTruthAmbientOcclusion);
         this.#screenSpaceReflections =
             options.screenSpaceReflections === null
                 ? null
@@ -3347,7 +3604,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       motionDescriptor
                   );
         const materialAttributes =
-            this.#screenSpaceReflections === null
+            this.#screenSpaceReflections === null && this.#groundTruthAmbientOcclusion === null
                 ? null
                 : context.graph.createTexture('Clustered Forward+ material attributes', {
                       format: 'rgba16float',
@@ -3502,6 +3759,52 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             clusterIndices,
             clusterStats
         });
+        const groundTruthAmbientOcclusion = this.#groundTruthAmbientOcclusion;
+        if (groundTruthAmbientOcclusion !== null) {
+            if (materialAttributes === null || temporalMotion === null || temporalFrame === null) {
+                throw new Error('Clustered Forward+ GTAO inputs are missing');
+            }
+            this.recordGPUMaterialAttributes(context, {
+                frameBuffer,
+                objects,
+                visible,
+                visibleBucketOffsets,
+                materials,
+                indirect,
+                sceneDepth,
+                materialAttributes
+            });
+            if (fallbackCulling !== null && this.#fallbackHasOpaque) {
+                this.recordFallbackMaterialAttributes(
+                    context,
+                    fallbackCulling,
+                    materialAttributes,
+                    sceneDepth
+                );
+            }
+        }
+        if (
+            temporalFrame !== null &&
+            temporalMotion !== null &&
+            fallbackCulling !== null &&
+            this.#fallbackHasOpaque
+        ) {
+            this.recordFallbackMotion(context, fallbackCulling, temporalMotion, sceneDepth);
+        }
+        const ambientOcclusion =
+            groundTruthAmbientOcclusion === null ||
+            materialAttributes === null ||
+            temporalMotion === null ||
+            temporalFrame === null
+                ? null
+                : groundTruthAmbientOcclusion.record(context, {
+                      sceneDepth,
+                      materialAttributes,
+                      motionDepth: temporalMotion,
+                      sceneScale,
+                      historyValid:
+                          temporalFrame.historyValid && this.#committedCamera === context.camera
+                  });
         this.recordColorPasses(context, {
             frameBuffer,
             objects,
@@ -3514,26 +3817,30 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             indirect,
             sceneColor,
             sceneDepth,
-            materialAttributes
+            materialAttributes: groundTruthAmbientOcclusion === null ? materialAttributes : null,
+            ambientOcclusion
         });
         if (fallbackCulling !== null && this.#fallbackHasOpaque) {
-            this.recordFallbackOpaque(context, fallbackCulling, sceneColor, sceneDepth);
+            this.recordFallbackOpaque(
+                context,
+                fallbackCulling,
+                sceneColor,
+                sceneDepth,
+                ambientOcclusion
+            );
         }
-        if (materialAttributes !== null && fallbackCulling !== null && this.#fallbackHasOpaque) {
+        if (
+            groundTruthAmbientOcclusion === null &&
+            materialAttributes !== null &&
+            fallbackCulling !== null &&
+            this.#fallbackHasOpaque
+        ) {
             this.recordFallbackMaterialAttributes(
                 context,
                 fallbackCulling,
                 materialAttributes,
                 sceneDepth
             );
-        }
-        if (
-            temporalFrame !== null &&
-            temporalMotion !== null &&
-            fallbackCulling !== null &&
-            this.#fallbackHasOpaque
-        ) {
-            this.recordFallbackMotion(context, fallbackCulling, temporalMotion, sceneDepth);
         }
         let reflectedSceneColor = sceneColor;
         if (this.#screenSpaceReflections !== null) {
@@ -3611,6 +3918,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         if (this.#visibilityHistory !== null) {
             this.#visibilityHistoryIndex = this.#visibilityHistoryIndex === 0 ? 1 : 0;
         }
+        this.#groundTruthAmbientOcclusion?.frameSubmitted(frameIndex);
         this.#temporal?.frameSubmitted(frameIndex);
     }
 
@@ -3626,6 +3934,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             record.pendingMotionHistoryValid = false;
         }
         this.#pendingCamera = null;
+        this.#groundTruthAmbientOcclusion?.frameDiscarded(frameIndex);
         this.#temporal?.frameDiscarded(frameIndex);
     }
 
@@ -3694,6 +4003,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         try {
             this.#screenSpaceReflections?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.#groundTruthAmbientOcclusion?.destroy();
         } catch (error) {
             failures.push(error);
         }
@@ -3853,6 +4167,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                         validated.indexFormat,
                         variant
                     ),
+                    materialAttributesPass: this.createMaterialAttributesPass(
+                        logical,
+                        physicalIndex,
+                        validated.indexFormat,
+                        variant
+                    ),
                     materialVariantKey: variant.key,
                     materialVariant: variant
                 });
@@ -3869,7 +4189,31 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     ): GPUDrivenRenderPass {
         return new GPUDrivenRenderPass({
             name: `Clustered PBR bucket ${String(physicalIndex)}`,
-            shader: gpuScenePBRShader(variant, this.#options.screenSpaceReflections !== null),
+            shader: gpuScenePBRShader(
+                variant,
+                this.#options.screenSpaceReflections !== null &&
+                    this.#options.groundTruthAmbientOcclusion === null,
+                this.#options.groundTruthAmbientOcclusion !== null
+            ),
+            pipelineState: Object.freeze({
+                ...requireBucketPassState(logical.material, 'forward'),
+                depthWrite: false
+            }),
+            vertexLayouts: gpuSceneVertexLayouts(variant),
+            indexFormat
+        });
+    }
+
+    private createMaterialAttributesPass(
+        logical: Readonly<NormalizedBucket>,
+        physicalIndex: number,
+        indexFormat: 'uint16' | 'uint32',
+        variant: Readonly<PBRMaterialVariant>
+    ): GPUDrivenRenderPass | null {
+        if (this.#options.groundTruthAmbientOcclusion === null) return null;
+        return new GPUDrivenRenderPass({
+            name: `GPU Scene GTAO material attributes ${String(physicalIndex)}`,
+            shader: gpuSceneMaterialAttributesShader(variant),
             pipelineState: Object.freeze({
                 ...requireBucketPassState(logical.material, 'forward'),
                 depthWrite: false
@@ -3931,6 +4275,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             if (logical === undefined || variant === undefined) continue;
             if (bucket.materialVariantKey === variant.key) continue;
             bucket.colorPass = this.createColorPass(
+                logical,
+                bucket.physicalIndex,
+                bucket.indexFormat,
+                variant
+            );
+            bucket.materialAttributesPass = this.createMaterialAttributesPass(
                 logical,
                 bucket.physicalIndex,
                 bucket.indexFormat,
@@ -4754,6 +5104,90 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         context.graph.addPass(CLUSTER_LIGHT_WRITE_PASS, write);
     }
 
+    private recordGPUMaterialAttributes(
+        context: RenderPipelineContext,
+        resources: Readonly<{
+            frameBuffer: RenderGraphBufferHandle;
+            objects: RenderGraphBufferHandle;
+            visible: RenderGraphBufferHandle;
+            visibleBucketOffsets: RenderGraphBufferHandle;
+            materials: RenderGraphBufferHandle;
+            indirect: RenderGraphBufferHandle;
+            sceneDepth: RenderGraphTextureHandle;
+            materialAttributes: RenderGraphTextureHandle;
+        }>
+    ): void {
+        const batch = context.acquirePassParameters(this.#materialAttributesBatchPool);
+        const colorAttachment: RenderPipelineColorAttachment = {
+            texture: resources.materialAttributes,
+            loadOp: 'clear',
+            storeOp: 'store',
+            clearValue: { r: 0, g: 0, b: 1, a: 0 }
+        };
+        const depthAttachment: RenderPipelineDepthStencilAttachment = {
+            texture: resources.sceneDepth,
+            depthReadOnly: true
+        };
+        batch.colorAttachments[0] = colorAttachment;
+        batch.depthStencilAttachment = depthAttachment;
+        for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
+            const bucket = this.#physicalBuckets[index];
+            if (bucket === undefined) continue;
+            const attributesPass = bucket.materialAttributesPass;
+            if (attributesPass === null) continue;
+            const variant = bucket.materialVariant;
+            const parameters = context.acquirePassParameters(this.#materialAttributesDrawPool);
+            parameters.configure(attributesPass.vertexLayouts.length, variant.textures.length);
+            parameters.configureStorageBufferCount(5);
+            parameters.setBuffer(0, resources.frameBuffer);
+            parameters.setBuffer(1, resources.objects);
+            parameters.setBuffer(2, resources.visible);
+            parameters.setBuffer(3, resources.materials);
+            parameters.setBufferRange(
+                4,
+                resources.visibleBucketOffsets,
+                index * BUCKET_OFFSET_STRIDE_BYTES,
+                4
+            );
+            parameters.setVertexBuffer(0, context.graph.importStorageBuffer(bucket.position));
+            parameters.setVertexBuffer(1, context.graph.importStorageBuffer(bucket.normal));
+            let vertexSlot = 2;
+            if (variant.usesUV0) {
+                if (bucket.uv0 === null) throw new Error('GPU Scene UV0 buffer is unavailable');
+                parameters.setVertexBuffer(
+                    vertexSlot++,
+                    context.graph.importStorageBuffer(bucket.uv0)
+                );
+            }
+            if (variant.usesUV1) {
+                if (bucket.uv1 === null) throw new Error('GPU Scene UV1 buffer is unavailable');
+                parameters.setVertexBuffer(
+                    vertexSlot++,
+                    context.graph.importStorageBuffer(bucket.uv1)
+                );
+            }
+            if (variant.normalUV !== null) {
+                const tangent = variant.normalUV === 0 ? bucket.tangent0 : bucket.tangent1;
+                if (tangent === null) throw new Error('GPU Scene tangent buffer is unavailable');
+                parameters.setVertexBuffer(vertexSlot, context.graph.importStorageBuffer(tangent));
+            }
+            for (let textureIndex = 0; textureIndex < variant.textures.length; textureIndex += 1) {
+                const texture = variant.textures[textureIndex]?.texture;
+                if (texture === undefined) continue;
+                parameters.setTexture(textureIndex, context.graph.importTexture(texture));
+                parameters.samplers[textureIndex] = this.samplerFor(texture);
+            }
+            parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
+            parameters.draw.buffer = resources.indirect;
+            parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
+            parameters.colorAttachments.length = 1;
+            parameters.colorAttachments[0] = colorAttachment;
+            parameters.depthStencilAttachment = depthAttachment;
+            batch.add(attributesPass, parameters);
+        }
+        context.graph.addPass(this.#materialAttributesBatchPass, batch);
+    }
+
     private recordColorPasses(
         context: RenderPipelineContext,
         resources: Readonly<{
@@ -4769,6 +5203,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneColor: RenderGraphTextureHandle;
             sceneDepth: RenderGraphTextureHandle;
             materialAttributes: RenderGraphTextureHandle | null;
+            ambientOcclusion: RenderGraphTextureHandle | null;
         }>
     ): void {
         const batch = context.acquirePassParameters(this.#colorBatchPool);
@@ -4809,7 +5244,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     ? currentVariant
                     : bucket.materialVariant;
             const parameters = context.acquirePassParameters(this.#colorDrawPool);
-            parameters.configure(bucket.colorPass.vertexLayouts.length, variant.textures.length);
+            const gtaoTextureCount = resources.ambientOcclusion === null ? 0 : 1;
+            parameters.configure(
+                bucket.colorPass.vertexLayouts.length,
+                variant.textures.length + gtaoTextureCount
+            );
             parameters.setBuffer(0, resources.frameBuffer);
             parameters.setBuffer(1, resources.objects);
             parameters.setBuffer(2, resources.visible);
@@ -4850,6 +5289,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 if (texture === undefined) continue;
                 parameters.setTexture(textureIndex, context.graph.importTexture(texture));
                 parameters.samplers[textureIndex] = this.samplerFor(texture);
+            }
+            if (resources.ambientOcclusion !== null) {
+                parameters.setTexture(variant.textures.length, resources.ambientOcclusion);
+                parameters.samplers[variant.textures.length] =
+                    this.#groundTruthAmbientOcclusionSampler;
             }
             parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
             parameters.draw.buffer = resources.indirect;
@@ -4938,7 +5382,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         context: RenderPipelineContext,
         cullingResults: CullingResultsHandle,
         outputColor: RenderGraphTextureHandle,
-        sceneDepth: RenderGraphTextureHandle
+        sceneDepth: RenderGraphTextureHandle,
+        ambientOcclusion: RenderGraphTextureHandle | null
     ): void {
         this.recordFallbackList(
             context,
@@ -4946,7 +5391,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             this.#fallbackOpaqueListDescriptor,
             outputColor,
             sceneDepth,
-            null
+            null,
+            ambientOcclusion
         );
     }
 
@@ -4989,7 +5435,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             this.#fallbackTransparentListDescriptor,
             outputColor,
             sceneDepth,
-            opaqueTexture
+            opaqueTexture,
+            null
         );
     }
 
@@ -5045,7 +5492,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         descriptor: MutableFallbackRendererListDescriptor,
         outputColor: RenderGraphTextureHandle,
         sceneDepth: RenderGraphTextureHandle,
-        opaqueTexture: RenderGraphTextureHandle | null
+        opaqueTexture: RenderGraphTextureHandle | null,
+        ambientOcclusion: RenderGraphTextureHandle | null
     ): void {
         descriptor.cullingResults = cullingResults;
         const rendererList = context.createRendererList(descriptor);
@@ -5062,6 +5510,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             depthClearValue: depthClearValue(context.camera.depthMode)
         };
         if (opaqueTexture !== null) parameters.opaqueTexture = opaqueTexture;
+        if (ambientOcclusion !== null) {
+            parameters.ambientOcclusionTexture = ambientOcclusion;
+        }
         context.graph.addPass(this.#fallbackPass, parameters);
     }
 }
@@ -5094,6 +5545,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
         const requirements = bufferRequirementPlan(this.#options, physicalCount);
         const hiZ = this.#options.hiZ;
         const screenSpaceReflections = this.#options.screenSpaceReflections !== null;
+        const groundTruthAmbientOcclusion = this.#options.groundTruthAmbientOcclusion !== null;
         const reflectionHiZLevels = Math.min(
             this.#options.hiZLevelCount,
             SCREEN_SPACE_REFLECTION_TRACE_HIZ_LEVELS
@@ -5131,6 +5583,9 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                 ...(this.#options.temporalAA === null
                     ? []
                     : TEMPORAL_AA_REQUIREMENTS.requiredTextureFormats),
+                ...(groundTruthAmbientOcclusion
+                    ? GROUND_TRUTH_AMBIENT_OCCLUSION_REQUIREMENTS.requiredTextureFormats
+                    : []),
                 ...(screenSpaceReflections
                     ? [
                           Object.freeze({
@@ -5147,7 +5602,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
             requiredLimits: Object.freeze({
                 maxBindingsPerBindGroup: Math.max(
                     hiZ ? 6 + this.#options.hiZLevelCount : 6,
-                    PBR_TEXTURE_ROLES.length * 2,
+                    PBR_TEXTURE_ROLES.length * 2 + (groundTruthAmbientOcclusion ? 2 : 0),
                     screenSpaceReflections
                         ? 1 + SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels + 1 + 1
                         : 0
@@ -5155,12 +5610,13 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                 maxStorageBuffersPerShaderStage: 8,
                 maxSampledTexturesPerShaderStage: Math.max(
                     hiZ ? this.#options.hiZLevelCount : 0,
-                    PBR_TEXTURE_ROLES.length,
+                    PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0),
                     screenSpaceReflections
                         ? SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels
                         : 0
                 ),
-                maxSamplersPerShaderStage: PBR_TEXTURE_ROLES.length,
+                maxSamplersPerShaderStage:
+                    PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0),
                 ...(hiZ
                     ? { maxStorageTexturesPerShaderStage: screenSpaceReflections ? 2 : 1 }
                     : {}),

@@ -1,0 +1,261 @@
+:root {
+    color-scheme: dark;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        sans-serif;
+}
+
+body {
+    overflow: hidden;
+    color: #f4e8d4;
+    background: #120d09;
+}
+
+#container,
+#container canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.gtaoHeader,
+.gtaoIntro,
+.gtaoControl,
+.gtaoHint,
+.gtaoCaption {
+    position: fixed;
+    z-index: 4;
+}
+
+.gtaoHeader {
+    top: clamp(24px, 3.2vw, 48px);
+    right: clamp(24px, 4vw, 64px);
+    left: clamp(24px, 4vw, 64px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: none;
+}
+
+.gtaoHeader p,
+.gtaoCaption {
+    margin: 0;
+    color: rgb(244 232 212 / 33%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.gtaoBrand {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    color: rgb(249 239 221 / 82%);
+    font-size: 10px;
+    font-weight: 720;
+    letter-spacing: 0.2em;
+    text-decoration: none;
+    text-transform: uppercase;
+    pointer-events: auto;
+}
+
+.gtaoBrand span {
+    width: 20px;
+    height: 1px;
+    background: #e05a3f;
+    box-shadow: 0 0 14px rgb(224 90 63 / 55%);
+}
+
+.gtaoIntro {
+    top: 50%;
+    left: clamp(24px, 4.6vw, 74px);
+    width: min(315px, 28vw);
+    pointer-events: none;
+    transform: translateY(-54%);
+}
+
+.gtaoEyebrow {
+    margin: 0 0 18px;
+    color: #efa285;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8px;
+    font-weight: 650;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.gtaoIntro h1 {
+    margin: 0;
+    color: #f5ead9;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(54px, 6vw, 92px);
+    font-weight: 400;
+    letter-spacing: -0.07em;
+    line-height: 0.77;
+    text-shadow: 0 18px 58px rgb(20 10 4 / 68%);
+}
+
+.gtaoIntro h1 em {
+    display: inline-block;
+    margin-left: 0.45em;
+    color: rgb(246 219 185 / 74%);
+    font-weight: 400;
+}
+
+.gtaoDescription {
+    max-width: 270px;
+    margin: 28px 0 0;
+    color: rgb(246 233 214 / 48%);
+    font-size: 10px;
+    letter-spacing: 0.015em;
+    line-height: 1.75;
+}
+
+.gtaoControl {
+    bottom: clamp(24px, 4vw, 60px);
+    left: clamp(24px, 4vw, 64px);
+    display: flex;
+    min-height: 64px;
+    align-items: center;
+    gap: 20px;
+    padding: 0 22px;
+    border: 1px solid rgb(255 235 208 / 12%);
+    border-radius: 15px;
+    background: rgb(20 13 9 / 62%);
+    box-shadow: 0 22px 70px rgb(13 7 3 / 38%);
+    backdrop-filter: blur(20px) saturate(120%);
+}
+
+.gtaoControl button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.gtaoControl button:focus-visible {
+    outline: 1px solid #ee8b6f;
+    outline-offset: 7px;
+}
+
+.gtaoControl small,
+.gtaoControl dt {
+    display: block;
+    margin-bottom: 3px;
+    color: rgb(246 229 207 / 31%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 7px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.gtaoControl strong,
+.gtaoControl dd {
+    margin: 0;
+    color: rgb(250 237 217 / 79%);
+    font-size: 9px;
+    font-weight: 680;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.gtaoSwitch {
+    position: relative;
+    width: 31px;
+    height: 16px;
+    border: 1px solid rgb(237 123 88 / 65%);
+    border-radius: 999px;
+}
+
+.gtaoSwitch span {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef7c59;
+    box-shadow: 0 0 12px rgb(239 124 89 / 72%);
+    transition: 180ms ease;
+}
+
+#gtaoToggle[aria-pressed='false'] .gtaoSwitch {
+    border-color: rgb(255 255 255 / 20%);
+}
+
+#gtaoToggle[aria-pressed='false'] .gtaoSwitch span {
+    right: 18px;
+    background: #7f7973;
+    box-shadow: none;
+}
+
+.gtaoRule {
+    width: 1px;
+    height: 31px;
+    background: rgb(255 238 217 / 10%);
+}
+
+.gtaoControl dl {
+    display: flex;
+    gap: 22px;
+    margin: 0;
+}
+
+.gtaoHint {
+    right: clamp(24px, 4vw, 64px);
+    top: 50%;
+    margin: 0;
+    color: rgb(244 230 208 / 28%);
+    font-size: 8px;
+    letter-spacing: 0.055em;
+    writing-mode: vertical-rl;
+    transform: translateY(-50%);
+}
+
+.gtaoCaption {
+    right: clamp(24px, 4vw, 64px);
+    bottom: clamp(28px, 4.3vw, 66px);
+}
+
+.gtaoGrain {
+    position: fixed;
+    z-index: 3;
+    inset: 0;
+    opacity: 0.1;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.84' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.34'/%3E%3C/svg%3E");
+    mix-blend-mode: soft-light;
+}
+
+@media (max-width: 760px) {
+    .gtaoHeader p,
+    .gtaoCaption,
+    .gtaoRule,
+    .gtaoControl dl {
+        display: none;
+    }
+
+    .gtaoIntro {
+        top: 40%;
+        width: min(78vw, 330px);
+    }
+
+    .gtaoIntro h1 {
+        font-size: clamp(52px, 16vw, 74px);
+    }
+
+    .gtaoControl {
+        min-height: 58px;
+    }
+}

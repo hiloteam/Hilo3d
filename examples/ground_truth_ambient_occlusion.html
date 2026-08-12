@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0"
+        />
+        <title>Hilo3D Quiet Arches — Ground-truth Ambient Occlusion</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./ground_truth_ambient_occlusion.css" />
+    </head>
+    <body data-gtao-phase="loading">
+        <div id="container"></div>
+
+        <header class="gtaoHeader">
+            <a href="./index.html" class="gtaoBrand" aria-label="Back to Hilo3D examples">
+                <span aria-hidden="true"></span>Hilo3D
+            </a>
+            <p>portable rendering study · 02</p>
+        </header>
+
+        <main class="gtaoIntro" aria-label="Ground-truth ambient occlusion showcase">
+            <p class="gtaoEyebrow">Ground-truth ambient occlusion</p>
+            <h1>Quiet<br /><em>Arches</em></h1>
+            <p class="gtaoDescription">
+                A study in proximity: layered stone, recessed openings and clustered forms reveal
+                horizon-searched visibility without dimming direct light.
+            </p>
+        </main>
+
+        <section class="gtaoControl" aria-label="Ambient occlusion controls">
+            <button id="gtaoToggle" type="button" aria-pressed="true">
+                <span class="gtaoSwitch" aria-hidden="true"><span></span></span>
+                <span
+                    ><small>indirect visibility</small
+                    ><strong id="gtaoToggleLabel">GTAO on</strong></span
+                >
+            </button>
+            <div class="gtaoRule" aria-hidden="true"></div>
+            <dl>
+                <div>
+                    <dt>search</dt>
+                    <dd>6 × 5</dd>
+                </div>
+                <div>
+                    <dt>history</dt>
+                    <dd>90%</dd>
+                </div>
+                <div>
+                    <dt>backend</dt>
+                    <dd id="backendLabel">detecting</dd>
+                </div>
+            </dl>
+        </section>
+
+        <p class="gtaoHint">Drag to orbit · wheel to inspect</p>
+        <p class="gtaoCaption">No model download · procedural geometry</p>
+        <div class="gtaoGrain" aria-hidden="true"></div>
+
+        <script type="module" src="./ground_truth_ambient_occlusion.ts"></script>
+    </body>
+</html>

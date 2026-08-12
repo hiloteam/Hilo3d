@@ -25,6 +25,14 @@
 
 ### Changes
 
+- Add production ground-truth ambient occlusion to ordinary Forward on WebGPU/WebGL 2 and to the
+  WebGPU Clustered Forward+ profile. The opt-in path records shared depth/material-attribute/motion
+  producers, configurable rotated horizon search, bent-normal visibility, submission-aware temporal
+  rejection, two edge-aware filters, and bounded depth/normal upsampling before applying the result
+  only to PBR ambient/IBL. Keep direct lights and emission unoccluded, reset or roll back per-camera
+  history across cuts, resize, discarded frames and recovery, and keep the disabled path resource-
+  and pass-free. Add the lightweight procedural Quiet Arches example with no model download, plus
+  real WebGPU/WebGL 2 non-black and on/off pixel coverage.
 - Add production WebGPU high-end screen-space reflections to `ClusteredForwardPlusPipelineFactory`.
   The opt-in path adds a strict built-in `material-attributes` `rgba16float` ABI, GPU Scene MRT and
   ordinary Forward fallback coverage, RG32F min/max Hi-Z, hierarchical coarse-to-fine tracing,

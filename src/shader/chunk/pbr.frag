@@ -73,6 +73,21 @@ uniform sampler2D u_baseColorMap;
         uniform sampler2D u_thicknessMap;
         #endif
     #endif
+    #ifdef HILO_GTAO
+    uniform sampler2D u_gtaoTexture;
+
+    vec3 hiloDecodeGTAOBentNormal(vec2 encoded) {
+        vec3 normal = vec3(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
+        if (normal.z < 0.0) {
+            vec2 original = normal.xy;
+            normal.xy = (1.0 - abs(original.yx)) * vec2(
+                original.x >= 0.0 ? 1.0 : -1.0,
+                original.y >= 0.0 ? 1.0 : -1.0
+            );
+        }
+        return normalize(normal);
+    }
+    #endif
     #ifdef HILO_HAS_IRIDESCENCE
         #ifdef HILO_IRIDESCENCE_MAP
         uniform sampler2D u_iridescenceMap;

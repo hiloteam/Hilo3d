@@ -63,6 +63,8 @@ export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirem
     readonly sampledSceneColor: boolean;
     /** Route scene depth through a single-sample graph texture that feature passes may sample. */
     readonly sampledDepth: boolean;
+    /** Keep opaque and transparent renderer lists distinct even without a scene-color readback. */
+    readonly splitScene?: boolean;
     /**
      * Fixed built-in scene color/depth resolution relative to the physical output. Omit or use one
      * for native resolution. Conflicting sub-native requests are rejected by the factory.
@@ -109,6 +111,22 @@ export interface ForwardRenderPipelineResources {
     readonly colorEncoding: RenderColorEncoding;
     /** Current scene depth, or null when no depth resource was requested or configured. */
     readonly depth: RenderGraphTextureHandle | null;
+    /** Effective opaque render scale relative to the physical output. */
+    readonly sceneScale: number;
+    /** Reusable opaque motion/log-depth texture produced by an earlier feature, if any. */
+    readonly motionDepth: RenderGraphTextureHandle | null;
+    /**
+     * Declare that a feature has completely initialized the current opaque depth attachment.
+     * The built-in opaque pass will preserve it instead of clearing it.
+     */
+    markDepthPrepassed(): void;
+    /**
+     * Bind a full-resolution GTAO visibility texture to the following built-in opaque PBR pass.
+     * May only be called from a `before-opaque` feature after depth has been initialized.
+     */
+    setAmbientOcclusionTexture(texture: RenderGraphTextureHandle): void;
+    /** Publish opaque motion/log-depth data for later temporal features in this frame. */
+    setMotionDepth(texture: RenderGraphTextureHandle): void;
     /** Replace attachment-zero scene color for subsequent features and final output. */
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void;
     /** Replace scene depth for subsequent scene passes, for example after temporal upscaling. */
@@ -264,11 +282,13 @@ class MutableSceneParameters implements SceneRenderPassParameters {
     readonly #depthStencil = createDepthStencilAttachment();
     depthStencilAttachment?: MutableDepthStencilAttachment;
     opaqueTexture?: RenderGraphTextureHandle;
+    ambientOcclusionTexture?: RenderGraphTextureHandle;
 
     reset(): void {
         this.rendererList = INVALID_RENDERER_LIST_HANDLE;
         delete this.depthStencilAttachment;
         delete this.opaqueTexture;
+        delete this.ambientOcclusionTexture;
     }
 
     setColorAttachmentCount(count: number): void {
@@ -346,13 +366,18 @@ class ForwardFeatureState {
     #colorEncoding: RenderColorEncoding = 'linear';
     #depth: RenderGraphTextureHandle | null = null;
     #replacementAllowed = false;
+    #depthPrepassed = false;
+    #ambientOcclusionTexture: RenderGraphTextureHandle | null = null;
+    #motionDepth: RenderGraphTextureHandle | null = null;
+    #sceneScale = 1;
     #activeCallbackLease: ForwardFeatureCallbackLease | null = null;
 
     beginFrame(
         pipeline: RenderPipelineContext,
         cullingResults: CullingResultsHandle,
         color: RenderGraphTextureHandle | null,
-        depth: RenderGraphTextureHandle | null
+        depth: RenderGraphTextureHandle | null,
+        sceneScale: number
     ): void {
         if (this.#pipeline !== null) throw new Error('Forward feature frame is already active');
         this.#pipeline = pipeline;
@@ -361,6 +386,10 @@ class ForwardFeatureState {
         this.#colorEncoding = 'linear';
         this.#depth = depth;
         this.#replacementAllowed = false;
+        this.#depthPrepassed = false;
+        this.#ambientOcclusionTexture = null;
+        this.#motionDepth = null;
+        this.#sceneScale = sceneScale;
     }
 
     endFrame(): void {
@@ -371,6 +400,10 @@ class ForwardFeatureState {
         this.#colorEncoding = 'linear';
         this.#depth = null;
         this.#replacementAllowed = false;
+        this.#depthPrepassed = false;
+        this.#ambientOcclusionTexture = null;
+        this.#motionDepth = null;
+        this.#sceneScale = 1;
     }
 
     beginCallback(): ForwardRenderFeatureContext {
@@ -405,6 +438,21 @@ class ForwardFeatureState {
     get currentDepth(): RenderGraphTextureHandle | null {
         this.assertFrameActive();
         return this.#depth;
+    }
+
+    get depthPrepassed(): boolean {
+        this.assertFrameActive();
+        return this.#depthPrepassed;
+    }
+
+    get ambientOcclusionTexture(): RenderGraphTextureHandle | null {
+        this.assertFrameActive();
+        return this.#ambientOcclusionTexture;
+    }
+
+    get sceneScale(): number {
+        this.assertFrameActive();
+        return this.#sceneScale;
     }
 
     readPipeline(lease: ForwardFeatureCallbackLease): RenderPipelineContext {
@@ -466,6 +514,42 @@ class ForwardFeatureState {
         this.#depth = texture;
     }
 
+    markDepthPrepassed(lease: ForwardFeatureCallbackLease): void {
+        this.assertCallbackActive(lease);
+        if (this.#replacementAllowed) {
+            throw new Error('Forward depth prepass must be declared before opaque rendering');
+        }
+        if (this.#depth === null) throw new Error('Forward depth prepass requires scene depth');
+        this.#depthPrepassed = true;
+    }
+
+    setAmbientOcclusionTexture(
+        lease: ForwardFeatureCallbackLease,
+        texture: RenderGraphTextureHandle
+    ): void {
+        this.assertCallbackActive(lease);
+        if (!this.#depthPrepassed) {
+            throw new Error('Forward GTAO requires a completed depth prepass');
+        }
+        if (!Number.isSafeInteger(texture) || texture <= 0) {
+            throw new TypeError('Forward GTAO requires a graph texture handle');
+        }
+        this.#ambientOcclusionTexture = texture;
+    }
+
+    readMotionDepth(lease: ForwardFeatureCallbackLease): RenderGraphTextureHandle | null {
+        this.assertCallbackActive(lease);
+        return this.#motionDepth;
+    }
+
+    setMotionDepth(lease: ForwardFeatureCallbackLease, texture: RenderGraphTextureHandle): void {
+        this.assertCallbackActive(lease);
+        if (!Number.isSafeInteger(texture) || texture <= 0) {
+            throw new TypeError('Forward motion data requires a graph texture handle');
+        }
+        this.#motionDepth = texture;
+    }
+
     assertCallbackActive(lease: ForwardFeatureCallbackLease): void {
         if (this.#activeCallbackLease !== lease) {
             throw new Error(
@@ -506,12 +590,33 @@ class ForwardFeatureResourcesLease implements ForwardRenderPipelineResources {
         return this.#state.readColorEncoding(this.#lease);
     }
 
+    get sceneScale(): number {
+        this.#state.assertCallbackActive(this.#lease);
+        return this.#state.sceneScale;
+    }
+
+    get motionDepth(): RenderGraphTextureHandle | null {
+        return this.#state.readMotionDepth(this.#lease);
+    }
+
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void {
         this.#state.replaceColor(this.#lease, texture, encoding);
     }
 
     replaceDepth(texture: RenderGraphTextureHandle): void {
         this.#state.replaceDepth(this.#lease, texture);
+    }
+
+    markDepthPrepassed(): void {
+        this.#state.markDepthPrepassed(this.#lease);
+    }
+
+    setAmbientOcclusionTexture(texture: RenderGraphTextureHandle): void {
+        this.#state.setAmbientOcclusionTexture(this.#lease, texture);
+    }
+
+    setMotionDepth(texture: RenderGraphTextureHandle): void {
+        this.#state.setMotionDepth(this.#lease, texture);
     }
 }
 
@@ -574,6 +679,10 @@ function snapshotFeature(feature: ForwardRenderPipelineFeature): FeatureSnapshot
             `Forward render feature ${feature.name} must declare sampledSceneColor and sampledDepth`
         );
     }
+    const splitScene = feature.requirements.splitScene ?? false;
+    if (typeof splitScene !== 'boolean') {
+        throw new TypeError(`Forward render feature ${feature.name} splitScene must be a boolean`);
+    }
     const sceneScale = feature.requirements.sceneScale ?? 1;
     if (!Number.isFinite(sceneScale) || sceneScale <= 0 || sceneScale > 1) {
         throw new RangeError(
@@ -597,6 +706,7 @@ function snapshotFeature(feature: ForwardRenderPipelineFeature): FeatureSnapshot
         ...snapshotRenderPipelineRequirements(feature.requirements),
         sampledSceneColor,
         sampledDepth,
+        splitScene,
         sceneScale
     });
     const create = feature.create.bind(feature);
@@ -789,6 +899,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         let sampledColor = false;
         let sampledDepth = false;
         let samplesBetweenQueues = false;
+        let splitScene = false;
         for (let index = 0; index < features.length; index += 1) {
             const feature = features[index];
             const runtime = runtimes[index];
@@ -800,6 +911,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             this.#groups[injectionPointIndex(feature.injectionPoint)]?.push(entry);
             sampledColor ||= feature.requirements.sampledSceneColor;
             sampledDepth ||= feature.requirements.sampledDepth;
+            splitScene ||= feature.requirements.splitScene ?? false;
             if (
                 feature.requirements.sampledSceneColor &&
                 (feature.injectionPoint === 'after-opaque' ||
@@ -826,6 +938,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         this.#samplesBetweenQueues = samplesBetweenQueues;
         this.#splitScene =
             options.opaqueTexture ||
+            splitScene ||
             this.#groups[injectionPointIndex('after-opaque')]?.length !== 0 ||
             this.#groups[injectionPointIndex('before-transparent')]?.length !== 0;
     }
@@ -870,7 +983,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         this.#transparentListDescriptor.cullingResults = culling;
         this.#shadowParameters.cullingResults = culling;
         const initialColor = this.#sceneColorResolved[0] ?? null;
-        this.#featureState.beginFrame(context, culling, initialColor, depth);
+        this.#featureState.beginFrame(context, culling, initialColor, depth, this.#sceneScale);
         try {
             this.recordFeatureGroup('before-shadow');
             this.#shadowPass.record(context, this.#shadowParameters);
@@ -879,7 +992,17 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
 
             if (this.#splitScene) {
                 const opaque = context.createRendererList(this.#opaqueListDescriptor);
-                this.recordScenePass(context, output, opaque, depth, true, false, sceneSampleCount);
+                this.recordScenePass(
+                    context,
+                    output,
+                    opaque,
+                    depth,
+                    true,
+                    false,
+                    sceneSampleCount,
+                    null,
+                    this.#featureState.ambientOcclusionTexture
+                );
                 const opaqueTexture = this.#opaqueTextureEnabled
                     ? this.recordOpaqueTexture(context)
                     : null;
@@ -1099,12 +1222,15 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         firstScenePass: boolean,
         lastScenePass: boolean,
         sampleCount: RenderTargetSampleCount,
-        opaqueTexture: RenderGraphTextureHandle | null = null
+        opaqueTexture: RenderGraphTextureHandle | null = null,
+        ambientOcclusionTexture: RenderGraphTextureHandle | null = null
     ): void {
         const parameters = context.acquirePassParameters(this.#sceneParameters);
         parameters.rendererList = rendererList;
         if (opaqueTexture === null) delete parameters.opaqueTexture;
         else parameters.opaqueTexture = opaqueTexture;
+        if (ambientOcclusionTexture === null) delete parameters.ambientOcclusionTexture;
+        else parameters.ambientOcclusionTexture = ambientOcclusionTexture;
         parameters.setColorAttachmentCount(this.#sceneColorSources.length);
         const currentColor = this.#featureState.currentColor;
         for (let index = 0; index < parameters.colorAttachments.length; index += 1) {
@@ -1130,7 +1256,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             context,
             depth,
             output.depthStencil,
-            firstScenePass,
+            firstScenePass && !this.#featureState.depthPrepassed,
             lastScenePass
         );
         parameters.configureDepthStencil(

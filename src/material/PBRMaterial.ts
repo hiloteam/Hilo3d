@@ -566,7 +566,8 @@ class PBRMaterial extends MaterialInstance {
             u_iridescenceIor: MaterialUniformSemantic.IRIDESCENCE_IOR,
             u_iridescenceThicknessMinimum: MaterialUniformSemantic.IRIDESCENCE_THICKNESS_MINIMUM,
             u_iridescenceThicknessMaximum: MaterialUniformSemantic.IRIDESCENCE_THICKNESS_MAXIMUM,
-            u_opaqueTexture: MaterialTextureSemantic.OPAQUE_SCENE_TEXTURE
+            u_opaqueTexture: MaterialTextureSemantic.OPAQUE_SCENE_TEXTURE,
+            u_gtaoTexture: MaterialTextureSemantic.GROUND_TRUTH_AMBIENT_OCCLUSION
         });
         this.addTextureUniforms({
             u_emission: MaterialTextureSemantic.EMISSION,

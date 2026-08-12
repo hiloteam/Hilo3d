@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { PNG } from 'pngjs';
 import type { ExampleBackend } from './example-paths';
 import { installPageFailureMonitor } from './page-failure-monitor';
 import {
@@ -13,6 +14,43 @@ import {
 } from './render-health';
 
 const backends = ['webgl2', 'webgpu'] as const;
+
+interface PixelDifference {
+    readonly changedPixelCount: number;
+    readonly darkenedPixelCount: number;
+    readonly meanChannelDelta: number;
+    readonly pixelCount: number;
+}
+
+function compareCanvasPixels(enabledPng: Buffer, disabledPng: Buffer): PixelDifference {
+    const enabled = PNG.sync.read(enabledPng);
+    const disabled = PNG.sync.read(disabledPng);
+    expect([enabled.width, enabled.height]).toEqual([disabled.width, disabled.height]);
+    let changedPixelCount = 0;
+    let darkenedPixelCount = 0;
+    let channelDelta = 0;
+    const pixelCount = enabled.width * enabled.height;
+    for (let offset = 0; offset < enabled.data.length; offset += 4) {
+        const enabledLuminance =
+            (enabled.data[offset] ?? 0) * 0.2126 +
+            (enabled.data[offset + 1] ?? 0) * 0.7152 +
+            (enabled.data[offset + 2] ?? 0) * 0.0722;
+        const disabledLuminance =
+            (disabled.data[offset] ?? 0) * 0.2126 +
+            (disabled.data[offset + 1] ?? 0) * 0.7152 +
+            (disabled.data[offset + 2] ?? 0) * 0.0722;
+        const difference = Math.abs(enabledLuminance - disabledLuminance);
+        channelDelta += difference;
+        if (difference >= 2) changedPixelCount++;
+        if (disabledLuminance - enabledLuminance >= 2) darkenedPixelCount++;
+    }
+    return {
+        changedPixelCount,
+        darkenedPixelCount,
+        meanChannelDelta: channelDelta / pixelCount,
+        pixelCount
+    };
+}
 
 async function currentProgress(page: Page, backend: ExampleBackend): Promise<NativeRenderProgress> {
     return nativeRenderProgress(await readRenderHealth(page), backend);
@@ -46,6 +84,52 @@ async function assertFinalGraphicsHealth(
 }
 
 for (const backend of backends) {
+    test(`GTAO produces stable non-black contact visibility on ${backend} @${backend}`, async ({
+        page
+    }) => {
+        test.setTimeout(60_000);
+        await installRenderHealthProbe(page);
+        const failures = await installPageFailureMonitor(page);
+        try {
+            const canvasSelector = `canvas[data-hilo3d-backend="${backend}"]`;
+            await page.goto(
+                `/examples/ground_truth_ambient_occlusion.html?backend=${backend}&test=1&gtao=true`,
+                { waitUntil: 'networkidle' }
+            );
+            await expect(page.locator('body')).toHaveAttribute('data-gtao-phase', 'ready');
+            const enabledCanvas = page.locator(canvasSelector);
+            await expect(enabledCanvas).toBeVisible();
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            const enabled = await enabledCanvas.screenshot({ type: 'png' });
+            await assertFinalGraphicsHealth(page, backend, `GTAO enabled health on ${backend}`);
+
+            await page.goto('about:blank');
+            await page.waitForTimeout(500);
+            await page.goto(
+                `/examples/ground_truth_ambient_occlusion.html?backend=${backend}&test=1&gtao=false`,
+                { waitUntil: 'networkidle' }
+            );
+            await expect(page.locator('body')).toHaveAttribute('data-gtao-phase', 'ready');
+            const disabledCanvas = page.locator(canvasSelector);
+            await expect(disabledCanvas).toBeVisible();
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            const disabled = await disabledCanvas.screenshot({ type: 'png' });
+            await assertFinalGraphicsHealth(page, backend, `GTAO disabled health on ${backend}`);
+
+            const difference = compareCanvasPixels(enabled, disabled);
+            expect(difference.changedPixelCount).toBeGreaterThan(difference.pixelCount * 0.01);
+            expect(difference.darkenedPixelCount).toBeGreaterThan(difference.pixelCount * 0.004);
+            expect(difference.meanChannelDelta).toBeGreaterThan(0.2);
+
+            await page.goto('about:blank');
+            failures.assertEmpty(`GTAO browser failures on ${backend}`);
+        } finally {
+            await failures.dispose();
+        }
+    });
+
     test(`fullscreen render-target copy preserves row orientation on ${backend} @${backend}`, async ({
         page
     }) => {

@@ -133,6 +133,16 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 { format: 'rg32float', use: 'storage' }
             ])
         );
+
+        const withGTAO = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            temporalAA: {},
+            groundTruthAmbientOcclusion: {}
+        });
+        expect(withGTAO.requirements.requiredLimits).toMatchObject({
+            maxSampledTexturesPerShaderStage: 12,
+            maxSamplersPerShaderStage: 8
+        });
     });
 
     it('validates bucket identities, opaque materials, and unique LOD thresholds', () => {
@@ -221,6 +231,13 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     screenSpaceReflections: {}
                 })
         ).toThrow(/require temporalAA/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    groundTruthAmbientOcclusion: {}
+                })
+        ).toThrow(/requires temporalAA/u);
         expect(
             () =>
                 new ClusteredForwardPlusPipelineFactory({
@@ -379,6 +396,84 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 });
             } finally {
                 target.destroy();
+                renderer.destroy();
+            }
+        },
+        20_000
+    );
+
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'integrates GTAO before indirect clustered PBR shading',
+        async () => {
+            const geometry = new BoxGeometry();
+            const material = new PBRMaterial({
+                baseColor: new Color(0.65, 0.55, 0.42),
+                metallic: 0,
+                roughness: 0.7
+            });
+            const factory = new ClusteredForwardPlusPipelineFactory({
+                buckets: [{ geometry, material }],
+                maxObjects: 2,
+                maxLights: 1,
+                maxLightIndices: 128,
+                maxLightsPerCluster: 1,
+                maxViewportWidth: 64,
+                maxViewportHeight: 64,
+                hiZ: false,
+                bloomStrength: 0,
+                temporalAA: {},
+                groundTruthAmbientOcclusion: {
+                    directionCount: 4,
+                    stepCount: 3,
+                    resolutionScale: 0.5
+                }
+            });
+            const canvas = document.createElement('canvas');
+            const rendererDiagnostics = registerRendererDiagnostics(canvas);
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: canvas,
+                width: 64,
+                height: 64,
+                antialias: false,
+                renderingProfile: 'high-end',
+                renderPipeline: factory
+            });
+            try {
+                const scene = new Node();
+                new Mesh({ geometry, material, frustumTest: false }).addTo(scene);
+                new PointLight({ amount: 4, range: 8, z: 3 }).addTo(scene);
+                const camera = new PerspectiveCamera({
+                    aspect: 1,
+                    near: 0.1,
+                    far: 20,
+                    depthMode: 'reversed'
+                });
+                camera.setPosition(0, 0, 4).lookAt(new Vector3(0, 0, 0));
+
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    objectCount: 1,
+                    fallbackObjectCount: 0
+                });
+                expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
+                const passNames = rendererDiagnostics
+                    .snapshot()
+                    .renderGraph?.passes.map(pass => pass.name);
+                expect(passNames).toEqual(
+                    expect.arrayContaining([
+                        'GPU Scene GTAO material attributes',
+                        'GTAO rotated horizon search',
+                        'GTAO production temporal resolve',
+                        'Clustered PBR buckets'
+                    ])
+                );
+            } finally {
+                unregisterRendererDiagnostics(canvas);
                 renderer.destroy();
             }
         },

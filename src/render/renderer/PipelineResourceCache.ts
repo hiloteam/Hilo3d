@@ -44,7 +44,7 @@ const DEPTH_ONLY_NUMERIC_DEPTH_COMPILE_OPTIONS = new Map<
     number,
     Readonly<ShaderArtifactCompileOptions>
 >();
-const OPAQUE_SCENE_TEXTURE_NAME = 'u_opaqueTexture';
+const PASS_GLOBAL_SCENE_TEXTURE_NAMES = new Set(['u_opaqueTexture', 'u_gtaoTexture']);
 const PASS_GLOBAL_BIND_GROUP = 3;
 
 function shaderCompileOptions(
@@ -344,7 +344,7 @@ export class PipelineResourceCache {
     #bucketsByShader = new WeakMap<Shader, PipelineShaderBucketSet>();
     readonly #buckets = new Set<PipelineShaderBucket>();
     readonly #recordBuckets = new WeakMap<Readonly<PipelineResourceRecord>, PipelineShaderBucket>();
-    #opaqueSceneTextureLayout: ResourceRegistryHandle<RHIBindGroupLayout> | null = null;
+    #sceneTextureLayout: ResourceRegistryHandle<RHIBindGroupLayout> | null = null;
     readonly #singleVertexLayoutArrays = new WeakMap<
         Readonly<RHIVertexBufferLayout>,
         readonly Readonly<RHIVertexBufferLayout>[]
@@ -562,9 +562,9 @@ export class PipelineResourceCache {
         for (const bucket of this.#buckets) this.releaseBucket(bucket);
         this.#buckets.clear();
         this.#bucketsByShader = new WeakMap();
-        if (this.#opaqueSceneTextureLayout !== null) {
-            this.registry.release(this.#opaqueSceneTextureLayout);
-            this.#opaqueSceneTextureLayout = null;
+        if (this.#sceneTextureLayout !== null) {
+            this.registry.release(this.#sceneTextureLayout);
+            this.#sceneTextureLayout = null;
         }
         this.#destroyed = true;
     }
@@ -585,21 +585,22 @@ export class PipelineResourceCache {
             for (let group = 0; group < bindingPlan.bindGroupLayoutDescriptors.length; group += 1) {
                 const descriptor = bindingPlan.bindGroupLayoutDescriptors[group];
                 if (descriptor === undefined) continue;
-                const isOpaqueSceneTextureLayout =
+                const isSceneTextureLayout =
                     group === PASS_GLOBAL_BIND_GROUP &&
                     descriptor.entries.length === 2 &&
                     descriptor.entries[0]?.binding === 0 &&
                     descriptor.entries[1]?.binding === 1 &&
                     bindingPlan.sampledBindings.some(
                         binding =>
-                            binding.group === group && binding.name === OPAQUE_SCENE_TEXTURE_NAME
+                            binding.group === group &&
+                            PASS_GLOBAL_SCENE_TEXTURE_NAMES.has(binding.name)
                     );
                 bindGroupLayouts.push(
                     this.registerBindGroupLayout(
                         descriptor,
                         bindingLayoutToken,
                         group,
-                        isOpaqueSceneTextureLayout
+                        isSceneTextureLayout
                     )
                 );
             }
@@ -665,11 +666,11 @@ export class PipelineResourceCache {
         descriptor: Readonly<RHIBindGroupLayoutDescriptor>,
         bindingLayoutToken: number,
         group: number,
-        isOpaqueSceneTextureLayout: boolean
+        isSceneTextureLayout: boolean
     ): ResourceRegistryHandle<RHIBindGroupLayout> {
-        if (isOpaqueSceneTextureLayout && this.#opaqueSceneTextureLayout !== null) {
-            this.registry.retain(this.#opaqueSceneTextureLayout);
-            return this.#opaqueSceneTextureLayout;
+        if (isSceneTextureLayout && this.#sceneTextureLayout !== null) {
+            this.registry.retain(this.#sceneTextureLayout);
+            return this.#sceneTextureLayout;
         }
         const label = `Shader binding layout ${String(bindingLayoutToken)} group ${String(group)}`;
         const handle = this.registry.register<RHIBindGroupLayout>({
@@ -681,15 +682,15 @@ export class PipelineResourceCache {
                     entries: descriptor.entries
                 })
         });
-        if (isOpaqueSceneTextureLayout) {
-            this.#opaqueSceneTextureLayout = handle;
+        if (isSceneTextureLayout) {
+            this.#sceneTextureLayout = handle;
             this.registry.retain(handle);
         }
         return handle;
     }
 
     private releaseUnsubmittedLayout(handle: ResourceRegistryHandle<RHIBindGroupLayout>): void {
-        if (handle === this.#opaqueSceneTextureLayout) {
+        if (handle === this.#sceneTextureLayout) {
             this.registry.release(handle);
         } else {
             this.registry.discardUnsubmitted(handle);

@@ -86,8 +86,10 @@ describe('WebGPUBindingLayout', () => {
         expect(getWebGPUSceneTextureBinding('u_opaqueTexture', 0)).toBe(
             WEBGPU_SCENE_TEXTURE_BINDING
         );
+        expect(getWebGPUSceneTextureBinding('u_gtaoTexture', 0)).toBe(WEBGPU_SCENE_TEXTURE_BINDING);
         expect(getWebGPUSceneTextureBinding('u_diffuse', 0)).toBeUndefined();
         expect(() => getWebGPUSceneTextureBinding('u_opaqueTexture', 1)).toThrow(/scalar sampler/);
+        expect(() => getWebGPUSceneTextureBinding('u_gtaoTexture', 1)).toThrow(/scalar sampler/);
     });
 
     it('allocates texture and sampler bindings after both material-owned blocks', () => {

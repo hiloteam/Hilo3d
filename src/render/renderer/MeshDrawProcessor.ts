@@ -84,7 +84,7 @@ import { VertexInputLayoutCompiler } from './VertexInputLayoutCompiler';
 
 const SCENE_STORAGE_BIND_GROUP = 3;
 const DEFERRED_SCENE_STORAGE_GROUPS: readonly number[] = Object.freeze([SCENE_STORAGE_BIND_GROUP]);
-const OPAQUE_SCENE_TEXTURE_NAME = 'u_opaqueTexture';
+const PASS_GLOBAL_SCENE_TEXTURE_NAMES = new Set(['u_opaqueTexture', 'u_gtaoTexture']);
 
 /** @internal Reusable pass-owned output populated while scene storage draws are prepared. */
 export interface StorageScenePreparationState {
@@ -94,6 +94,7 @@ export interface StorageScenePreparationState {
 /** @internal Reusable pass-owned output for the graph-resolved opaque scene texture. */
 export interface SceneTexturePreparationState {
     globalBindGroupLayout: ResourceRegistryHandle<RHIBindGroupLayout> | null;
+    bindingName: 'u_opaqueTexture' | 'u_gtaoTexture' | null;
 }
 
 interface MeshUniformHandleScratch {
@@ -212,6 +213,7 @@ interface MeshShaderSnapshot {
     readonly instanced: boolean;
     readonly linearOutput: boolean;
     readonly role: MaterialPassRole;
+    readonly groundTruthAmbientOcclusion: boolean;
     readonly shader: Shader;
 }
 
@@ -685,7 +687,16 @@ export class MeshDrawProcessor {
         const indexFormat = indices ? mapPortableRHIIndexFormat(indices) : 'uint16';
         const stripIndexFormat = primitiveRestart ? indexFormat : undefined;
 
-        const shader = this.resolveShader(mesh, geometry, material, context, false, target, role);
+        const shader = this.resolveShader(
+            mesh,
+            geometry,
+            material,
+            context,
+            false,
+            target,
+            role,
+            sceneTexturePreparation?.bindingName === 'u_gtaoTexture'
+        );
         const baseCompiled =
             fragmentOutputMode === 'depth-only'
                 ? this.compiler.compile(
@@ -739,7 +750,7 @@ export class MeshDrawProcessor {
             pipeline.bindingPlan.sampledBindings.some(
                 binding =>
                     binding.group === SCENE_STORAGE_BIND_GROUP &&
-                    binding.name === OPAQUE_SCENE_TEXTURE_NAME
+                    PASS_GLOBAL_SCENE_TEXTURE_NAMES.has(binding.name)
             );
         const bindingSet = this.bindGroups.prepare(
             mesh,
@@ -1235,7 +1246,8 @@ export class MeshDrawProcessor {
             context,
             true,
             target,
-            role
+            role,
+            sceneTexturePreparation?.bindingName === 'u_gtaoTexture'
         );
         const baseCompiled =
             fragmentOutputMode === 'depth-only'
@@ -1338,7 +1350,7 @@ export class MeshDrawProcessor {
             pipeline.bindingPlan.sampledBindings.some(
                 binding =>
                     binding.group === SCENE_STORAGE_BIND_GROUP &&
-                    binding.name === OPAQUE_SCENE_TEXTURE_NAME
+                    PASS_GLOBAL_SCENE_TEXTURE_NAMES.has(binding.name)
             );
         const bindingSet = this.bindGroups.prepare(
             owner,
@@ -1612,7 +1624,8 @@ export class MeshDrawProcessor {
         context: RenderGraphFrameContext,
         instanced: boolean,
         target: RHIMeshDrawTargetDescriptor,
-        role: MaterialPassRole
+        role: MaterialPassRole,
+        groundTruthAmbientOcclusion = false
     ): Shader {
         const canUseSnapshot = Reflect.get(material, 'isShaderMaterial') === true;
         const snapshot = canUseSnapshot ? this.#shaderSnapshots.get(mesh) : undefined;
@@ -1637,6 +1650,7 @@ export class MeshDrawProcessor {
             snapshot.instanced === instanced &&
             snapshot.linearOutput === linearOutput &&
             snapshot.role === role &&
+            snapshot.groundTruthAmbientOcclusion === groundTruthAmbientOcclusion &&
             commonShaderOptionsMatch(snapshot.commonOptions)
         ) {
             return snapshot.shader;
@@ -1651,7 +1665,8 @@ export class MeshDrawProcessor {
             context.renderer.useLogDepth,
             context.renderer,
             linearOutput,
-            role
+            role,
+            groundTruthAmbientOcclusion
         );
         if (!shader) throw new Error(`Material ${material.className} has no renderable shader`);
         if (!canUseSnapshot) {
@@ -1673,6 +1688,7 @@ export class MeshDrawProcessor {
             instanced,
             linearOutput,
             role,
+            groundTruthAmbientOcclusion,
             shader
         });
         return shader;

@@ -108,14 +108,14 @@ export function getWebGPUMaterialTextureBinding(textureIndex: number): WebGPUTex
     });
 }
 
-/** Resolve the fixed pass-global binding used by the forward opaque scene-color texture. */
+/** Resolve the fixed pass-global binding used by one forward scene texture. */
 export function getWebGPUSceneTextureBinding(
     name: string,
     arrayIndex: number
 ): typeof WEBGPU_SCENE_TEXTURE_BINDING | undefined {
-    if (name !== 'u_opaqueTexture') return undefined;
+    if (name !== 'u_opaqueTexture' && name !== 'u_gtaoTexture') return undefined;
     if (arrayIndex !== 0) {
-        throw new RangeError('u_opaqueTexture must be a scalar sampler');
+        throw new RangeError(`${name} must be a scalar sampler`);
     }
     return WEBGPU_SCENE_TEXTURE_BINDING;
 }

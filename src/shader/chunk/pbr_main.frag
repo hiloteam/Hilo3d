@@ -137,6 +137,15 @@ vec3 areaSpecularColor = specularColor;
 ao = hiloEvaluatePBROcclusion(ao, u_occlusionStrength);
 #endif
 
+vec3 indirectDiffuseNormal = N;
+#ifdef HILO_GTAO
+vec2 gtaoUV = (gl_FragCoord.xy - u_viewport.xy) / max(u_viewport.zw, vec2(1.0));
+vec4 gtaoSample = texture(u_gtaoTexture, gtaoUV);
+float gtaoVisibility = clamp(gtaoSample.b, 0.0, 1.0);
+ao *= gtaoVisibility;
+indirectDiffuseNormal = hiloDecodeGTAOBentNormal(gtaoSample.xy);
+#endif
+
 vec3 anisotropyT = N;
 vec3 anisotropyB = N;
 float anisotropyStrength = 0.0;
@@ -380,7 +389,7 @@ for (int i = 0; i < HILO_AREA_LIGHTS; i++) {
 }
 #endif
 
-vec3 indirectDiffuse = hiloGetIBLDiffuse(N, iblDiffuseColor, ao);
+vec3 indirectDiffuse = hiloGetIBLDiffuse(indirectDiffuseNormal, iblDiffuseColor, ao);
 vec3 indirectSpecular = hiloGetIBLSpecular(
     N,
     V,

@@ -110,10 +110,11 @@ target：XY 是 current-to-previous UV velocity，Z 是 expected previous
 camera、model、instance、skin、morph 与 coverage ABI；首次出现、显隐/提交间断或任一 transform
 history 失效时写 invalid history marker，不能消费陈旧 pose。内置 `material-attributes`
 pass 固定接受 single-sample `rgba16float`，输出 octahedral view normal、perceptual
-roughness、metallic 与 reflection receiver flag；Clustered Hi-Z
-SSR 按需消费它，并用相同 attributes 与 logarithmic motion
-depth 约束 confidence-aware 多尺度空间 filter；未启用 SSR 时不创建 attribute target、filter
-target 或对应 fallback pass。
+roughness、metallic 与 reflection receiver flag；portable Forward GTAO 与 Clustered Hi-Z
+SSR/GTAO 按需消费它。GTAO 以相同 attributes 和 logarithmic motion depth 执行 horizon
+visibility、temporal rejection、edge-aware filter 与 depth/normal
+upsample；SSR 用它们约束 confidence-aware 多尺度空间 filter。未启用对应 effect 时不创建 attribute、AO/filter
+target、history 或 fallback pass。
 
 portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
 `MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
@@ -188,9 +189,15 @@ transfer。
 内置 HDR 组合由 `PostProcessRenderPipelineFactory` 提供：attachment-zero scene color 使用
 `rgba16float`，opaque queue 完成后由 graph `TextureCopyPass` 捕获 opaque scene
 texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。可选
-`TemporalAA` 在 opaque 后记录 `rgba16float` motion/log-depth，并用 `rgba16float` 双缓冲 color
-history 和 `r32float` 双缓冲 log-view-depth history 完成 reprojection、relative-depth
-disocclusion、YCoCg variance clipping 与 reactive resolve。默认 `renderScale=1`
+`GroundTruthAmbientOcclusion` 在 opaque 前复用共享 culling，记录 depth、material
+attributes 与 motion/log-depth，随后执行 rotated horizon search、submission-aware temporal
+resolve、两级 edge-aware filter 和 bounded bilateral upsample。full-resolution
+bent-normal/visibility 通过 pass-global binding 只进入 opaque
+PBR 的 ambient/IBL；普通 Forward 的同一 portable raster 实现覆盖 WebGPU/WebGL 2，完整合同见
+[`GROUND_TRUTH_AMBIENT_OCCLUSION.md`](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)。可选 `TemporalAA`
+在 opaque 后记录 `rgba16float` motion/log-depth，并用 `rgba16float` 双缓冲 color history 和
+`r32float` 双缓冲 log-view-depth history 完成 reprojection、relative-depth disocclusion、YCoCg
+variance clipping 与 reactive resolve。默认 `renderScale=1`
 是原生分辨率 TAA；固定 0.5–1 的 sub-native scale 会同步缩放 opaque
 color/depth/motion、Hi-Z 与 cluster viewport，用 Catmull-Rom 重建当前帧，并写 output-resolution
 color/depth history、resolved color 和供后续 scene pass 使用的 full-resolution depth。resolved
@@ -223,9 +230,11 @@ record；帧内 dirty 数据必须通过 `RenderPipelineContext.writeStorageBuff
 import 前提交。注册的不透明普通 `Mesh` 仍使用共享 Scene 遍历和矩阵更新，但不创建 CPU renderer
 list 或 `PreparedDraw`：compute 完成 frustum/previous-Hi-Z cull、projected-radius LOD、bucket
 compact 和 indirect arguments，随后同一 Render Graph 记录 depth、current Hi-Z、3D cluster
-allocator、storage-aware GGX PBR、HDR Bloom 与 ACES display。可选 `screenSpaceReflections`
-在 opaque 后构建 HDR radiance cone、使用 current RG32F min/max Hi-Z hierarchical
-trace，经过 motion/depth temporal
+allocator、storage-aware GGX PBR、HDR Bloom 与 ACES display。可选 `groundTruthAmbientOcclusion`
+复用 GPU Scene material attributes 与 fused
+motion/depth，要求同时启用 TemporalAA 以共享 camera-cut/history validity；horizon/temporal/filter
+controller 与普通 Forward 相同。可选 `screenSpaceReflections` 在 opaque 后构建 HDR radiance
+cone、使用 current RG32F min/max Hi-Z hierarchical trace，经过 motion/depth temporal
 rejection 后在线性 HDR 合成，并在 TAA/TAAU 与 transparent 之前完成；完整合同见
 [`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md)。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD
 bucket 发一个 indirect draw，GPU 为不可见 bucket 写零 instance count；这些 bucket

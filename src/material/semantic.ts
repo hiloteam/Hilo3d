@@ -1577,6 +1577,12 @@ const semantic = {
         get(): unknown {
             return semantic.getBlankTexture();
         }
+    },
+
+    GTAOTEXTURE: {
+        get(): unknown {
+            return semantic.getBlankTexture();
+        }
     }
 };
 

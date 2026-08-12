@@ -98,6 +98,25 @@ ray；volume 根据折射方向修正光程，再用 Beer-Lambert attenuation �
 
 这些限制是显式的最低实现边界，不会通过 backend 私有 framebuffer 抓取绕过 Render Graph。
 
+## 内置 GTAO
+
+`GroundTruthAmbientOcclusion` 是 `before-opaque` feature。普通 Forward 在 WebGPU 与 WebGL
+2 上先记录共享 `depth-only`、`material-attributes` 与 `motion-vector` semantic
+pass，再以可配置的 4/6/8 个旋转 slice、每侧 3–6 个 sample 搜索 view-space
+horizon。半分辨率结果包含 signed-octahedral bent normal、ambient visibility 与 logarithmic view
+depth，随后经过 submission-aware temporal reprojection、relative-depth rejection、neighborhood
+clamp、两级 edge-aware filter 和有界 depth/normal bilateral upsample。
+
+full-resolution GTAO 通过 graph-prepare 后的 pass-global texture 进入 opaque
+PBR。它只调制 ambient/diffuse IBL 与现有 specular AO，并以 bent normal 查询 diffuse
+environment；direct
+light、shadow 和 emission 不乘 visibility。默认关闭时不创建 prepass、transient、history 或材质 shader
+variant。Clustered Forward+ 复用同一个 GTAO controller 与 GPU Scene attributes，并要求同时启用
+`temporalAA` 以复用融合的 motion/log-depth 和 camera-cut
+validity。普通 Forward 明确支持双后端；Clustered 本身仍是 WebGPU high-end
+profile。完整 packing、失效条件、参数和边界见
+[`GROUND_TRUTH_AMBIENT_OCCLUSION.md`](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)。
+
 ## 内置 TemporalAA
 
 `TemporalAA` 是可选的 `after-opaque` feature。它先用内置材质的 `motion-vector` semantic
@@ -198,6 +217,12 @@ const stage = await Hilo3d.Stage.create({
     camera,
     container,
     renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
+        groundTruthAmbientOcclusion: {
+            resolutionScale: 0.5,
+            radius: 2,
+            directionCount: 6,
+            stepCount: 4
+        },
         temporalAA: {},
         bloom: {
             threshold: 1,
@@ -216,18 +241,22 @@ const stage = await Hilo3d.Stage.create({
 ```
 
 该 factory 固定 attachment-zero scene color 为 `rgba16float`，默认启用 Bloom、Color Uber 和 opaque
-texture；`temporalAA` 需要显式提供配置启用。需要自行组合时，也可以把
-`TemporalAA`/`Bloom`/`ColorUber` 作为 `ForwardRenderPipelineFactory.features`
-使用；调用方必须保证 TemporalAA 位于 opaque 后和 transparent 前、Bloom 输入仍是线性 HDR 格式，并让 Color
+texture；GTAO 与 `temporalAA` 都需要显式提供配置启用。需要自行组合时，也可以把
+`GroundTruthAmbientOcclusion`/`TemporalAA`/`Bloom`/`ColorUber` 作为
+`ForwardRenderPipelineFactory.features`
+使用；调用方必须保证 GTAO 位于 opaque 前、TemporalAA 位于 opaque 后和 transparent 前、Bloom 输入仍是线性 HDR 格式，并让 Color
 Uber 位于所有 HDR effect 之后。
 
-三个示例覆盖基础参数矩阵、直接 layered material API 和真实 glTF 资产路径：
+维护示例覆盖基础参数矩阵、layered material API、真实 glTF 资产路径与 screen-space lighting：
 
 - [`pbr2.html`](../examples/pbr2.html) 使用单层 30-sample
   matrix 展示 metallic/roughness 响应，并在窄视口缩放、平移 scene grid，避免 UI 遮挡材质样本；
 - [`pbr_layered_materials.html`](../examples/pbr_layered_materials.html)
   可实时开关 anisotropy、clearcoat 与 transmission，画面同时使用 volume attenuation、opaque
   texture、Bloom 和 Color Uber；
+- [`ground_truth_ambient_occlusion.html`](../examples/ground_truth_ambient_occlusion.html)
+  使用零模型下载的 procedural 建筑展厅和相同相机的 on/off 对照，展示拱券、台阶、细柱与密集物体间的 contact
+  visibility，并可显式选择 WebGPU/WebGL 2。
 - [`gltf_material_extensions.html`](../examples/gltf_material_extensions.html) 可切换 Khronos glTF
   Sample Assets 中的 Anisotropy Barn Lamp、Clearcoat Wicker 和 Dragon
   Attenuation，以及带动画、薄膜干涉和体积折射的 Iridescent Dish with

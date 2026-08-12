@@ -149,7 +149,9 @@ export const MaterialTextureSemantic = Object.freeze({
     DIFFUSE_ENV_MAP: 'DIFFUSEENVMAP',
     BRDF_LUT: 'BRDFLUT',
     SPECULAR_ENV_MAP: 'SPECULARENVMAP',
-    OPAQUE_SCENE_TEXTURE: 'OPAQUETEXTURE'
+    OPAQUE_SCENE_TEXTURE: 'OPAQUETEXTURE',
+    /** Pass-global ground-truth ambient visibility texture. */
+    GROUND_TRUTH_AMBIENT_OCCLUSION: 'GTAOTEXTURE'
 } as const);
 
 export type MaterialAttributeSemanticName =
