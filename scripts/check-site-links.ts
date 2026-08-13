@@ -29,6 +29,8 @@ async function collectSiteFiles(directory: string): Promise<SiteFile[]> {
             files.push({ path, type: 'html' });
         } else if (entry.isFile() && entry.name.endsWith('.css')) {
             files.push({ path, type: 'css' });
+        } else if (entry.isFile() && entry.name.endsWith('.gltf')) {
+            files.push({ path, type: 'gltf' });
         }
     }
 
@@ -99,5 +101,5 @@ if (issues.length > 0) {
 }
 
 console.log(
-    `Validated ${String(checkedReferences)} internal references across ${String(siteFiles.length)} HTML/CSS files.`
+    `Validated ${String(checkedReferences)} internal references across ${String(siteFiles.length)} HTML/CSS/glTF files.`
 );
