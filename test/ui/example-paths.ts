@@ -36,6 +36,7 @@ export const EXAMPLE_QUERY_PARAMETERS: Readonly<
 > = {
     'compute_eclipse_shrine.html': { test: '1' },
     'ground_truth_ambient_occlusion.html': { test: '1' },
+    'screen_space_global_illumination_chapel.html': { test: '1' },
     'screen_space_reflections_palace.html': { test: '1' },
     'temporal_aa_observatory.html': { test: '1' },
     'glTFViewer/index.html': { url: '/examples/models/Tmall/Tmall.gltf' }

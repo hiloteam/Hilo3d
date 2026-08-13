@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0"
+        />
+        <title>Hilo3D Prismatic Vespers — Screen-space Global Illumination</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./screen_space_global_illumination_chapel.css" />
+    </head>
+    <body data-ssgi-phase="loading">
+        <div id="container"></div>
+
+        <header class="ssgiHeader">
+            <a href="./index.html" class="ssgiBrand" aria-label="Back to Hilo3D examples">
+                <span aria-hidden="true"></span>Hilo3D
+            </a>
+            <p>light transport study · 03</p>
+        </header>
+
+        <main class="ssgiIntro" aria-label="Screen-space global illumination showcase">
+            <p class="ssgiEyebrow">Screen-space global illumination</p>
+            <h1>Prismatic<br /><em>Vespers</em></h1>
+            <p class="ssgiDescription">
+                A quiet brutalist chapel where cyan and vermilion glass become light. Every pale
+                vault, bronze rib and marble step receives the color it can actually see.
+            </p>
+        </main>
+
+        <section class="ssgiControl" aria-label="Global illumination controls">
+            <button id="ssgiToggle" type="button" aria-pressed="true">
+                <span class="ssgiSwitch" aria-hidden="true"><span></span></span>
+                <span
+                    ><small>diffuse transport</small
+                    ><strong id="ssgiToggleLabel">SSGI on</strong></span
+                >
+            </button>
+            <div class="ssgiRule" aria-hidden="true"></div>
+            <dl>
+                <div>
+                    <dt>trace</dt>
+                    <dd>12 × 10</dd>
+                </div>
+                <div>
+                    <dt>denoise</dt>
+                    <dd>temporal · a-trous</dd>
+                </div>
+                <div>
+                    <dt>backend</dt>
+                    <dd id="backendLabel">detecting</dd>
+                </div>
+            </dl>
+        </section>
+
+        <p class="ssgiHint">Drag to orbit · wheel to enter the nave</p>
+        <p class="ssgiCaption">Procedural architecture · no baked lighting</p>
+        <div class="ssgiVignette" aria-hidden="true"></div>
+        <div class="ssgiGrain" aria-hidden="true"></div>
+
+        <script type="module" src="./screen_space_global_illumination_chapel.ts"></script>
+    </body>
+</html>

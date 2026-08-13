@@ -24,6 +24,7 @@ import {
     ColorUber,
     GroundTruthAmbientOcclusion,
     PostProcessRenderPipelineFactory,
+    ScreenSpaceGlobalIllumination,
     TemporalAA
 } from '../../../src/render/postprocessing';
 import Shader from '../../../src/shader/Shader';
@@ -166,13 +167,18 @@ describe('built-in post-processing', () => {
         const bloom = new Bloom();
         const colorUber = new ColorUber();
         const gtao = new GroundTruthAmbientOcclusion();
+        const ssgi = new ScreenSpaceGlobalIllumination();
         const temporalAA = new TemporalAA();
         const factory = new PostProcessRenderPipelineFactory({
             groundTruthAmbientOcclusion: {},
+            screenSpaceGlobalIllumination: {},
             temporalAA: {}
         });
 
         expect(gtao.injectionPoint).toBe('before-opaque');
+        expect(ssgi.injectionPoint).toBe('after-opaque');
+        expect(ssgi.requirements.sampledSceneColor).toBe(true);
+        expect(ssgi.requirements.sampledDepth).toBe(true);
         expect(temporalAA.injectionPoint).toBe('after-opaque');
         expect(bloom.injectionPoint).toBe('after-transparent');
         expect(colorUber.injectionPoint).toBe('after-post-process');
@@ -203,7 +209,140 @@ describe('built-in post-processing', () => {
             /directionCount/u
         );
         expect(() => new GroundTruthAmbientOcclusion({ radius: 0 })).toThrow(/radius/u);
+        expect(() => new ScreenSpaceGlobalIllumination({ resolutionScale: 0.2 })).toThrow(
+            /resolutionScale/u
+        );
+        expect(() => new ScreenSpaceGlobalIllumination({ rayCount: 5 as 4 })).toThrow(/rayCount/u);
+        expect(() => new ScreenSpaceGlobalIllumination({ maxRayDistance: 0 })).toThrow(
+            /maxRayDistance/u
+        );
+        expect(() => new ScreenSpaceGlobalIllumination({ denoisePasses: 4 as 3 })).toThrow(
+            /denoisePasses/u
+        );
         expect(() => new ColorUber({ temperature: 2 }).create()).toThrow(/temperature/u);
+    });
+
+    it.each(taaIntegrationBackends)(
+        'renders submission-aware SSGI and reuses GTAO attributes on %s',
+        async backend => {
+            const renderer = await Renderer.create({
+                backend,
+                domElement: document.createElement('canvas'),
+                width: 40,
+                height: 32,
+                antialias: false,
+                renderPipeline: new PostProcessRenderPipelineFactory({
+                    groundTruthAmbientOcclusion: {
+                        resolutionScale: 0.5,
+                        directionCount: 4,
+                        stepCount: 3
+                    },
+                    screenSpaceGlobalIllumination: {
+                        resolutionScale: 0.5,
+                        rayCount: 4,
+                        stepCount: 6,
+                        denoisePasses: 2
+                    },
+                    bloom: false
+                })
+            });
+            activeRenderers.push(renderer);
+            const scene = new Node();
+            const material = new PBRMaterial({
+                baseColor: new Color(0.7, 0.2, 0.08),
+                metallic: 0,
+                roughness: 0.8
+            });
+            scene.addChild(
+                new Mesh({
+                    geometry: new BoxGeometry({ width: 3, height: 0.2, depth: 3 }),
+                    material,
+                    y: -0.8,
+                    frustumTest: false
+                })
+            );
+            scene.addChild(
+                new Mesh({
+                    geometry: new BoxGeometry(),
+                    material,
+                    frustumTest: false
+                })
+            );
+            const camera = new PerspectiveCamera({ aspect: 5 / 4, z: 4 });
+            const observed = observePassLabels(rhiDevice(renderer));
+
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toEqual(
+                expect.arrayContaining([
+                    'GTAO material attributes',
+                    'SSGI stochastic diffuse ray trace',
+                    'SSGI initialize radiance history',
+                    'SSGI edge-aware a-trous denoise 1',
+                    'SSGI edge-aware a-trous denoise 2',
+                    'SSGI bilateral full-resolution upsample',
+                    'SSGI linear HDR diffuse composite'
+                ])
+            );
+            expect(observed.labels).not.toContain('SSGI material attributes');
+            expect(observed.labels).not.toContain('SSGI motion and logarithmic depth');
+
+            observed.labels.length = 0;
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('SSGI variance-clipped temporal resolve');
+
+            observed.labels.length = 0;
+            camera.invalidateTransformHistory();
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(observed.labels).toContain('SSGI initialize radiance history');
+            observed.restore();
+            expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
+        },
+        30_000
+    );
+
+    it('produces standalone SSGI attributes and motion when GTAO is disabled', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 20,
+            height: 16,
+            antialias: false,
+            renderPipeline: new PostProcessRenderPipelineFactory({
+                screenSpaceGlobalIllumination: {
+                    resolutionScale: 0.5,
+                    rayCount: 4,
+                    stepCount: 6,
+                    denoisePasses: 1
+                },
+                bloom: false
+            })
+        });
+        activeRenderers.push(renderer);
+        const scene = new Node();
+        scene.addChild(
+            new Mesh({
+                geometry: new BoxGeometry(),
+                material: new PBRMaterial(),
+                frustumTest: false
+            })
+        );
+        const camera = new PerspectiveCamera({ aspect: 5 / 4, z: 4 });
+        const observed = observePassLabels(rhiDevice(renderer));
+
+        renderer.render(scene, camera);
+        await renderer.waitForIdle();
+        expect(observed.labels).toEqual(
+            expect.arrayContaining([
+                'SSGI material attributes',
+                'SSGI motion and logarithmic depth',
+                'SSGI stochastic diffuse ray trace',
+                'SSGI linear HDR diffuse composite'
+            ])
+        );
+        observed.restore();
     });
 
     it.each(taaIntegrationBackends)(

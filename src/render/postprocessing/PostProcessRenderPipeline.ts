@@ -14,12 +14,18 @@ import {
     GroundTruthAmbientOcclusion,
     type GroundTruthAmbientOcclusionOptions
 } from './GroundTruthAmbientOcclusion';
+import {
+    ScreenSpaceGlobalIllumination,
+    type ScreenSpaceGlobalIlluminationOptions
+} from './ScreenSpaceGlobalIllumination';
 import { TemporalAA, type TemporalAAOptions } from './TemporalAA';
 
 /** Turnkey HDR forward/post-processing pipeline configuration. */
 export interface PostProcessRenderPipelineOptions {
     /** Ground-truth ambient occlusion settings, or false to omit GTAO. */
     readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
+    /** Screen-space diffuse global illumination settings, or false to omit SSGI. */
+    readonly screenSpaceGlobalIllumination?: Readonly<ScreenSpaceGlobalIlluminationOptions> | false;
     /** Temporal anti-aliasing/upscaling settings, or false to omit the temporal pass. */
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     /** Bloom settings, or false to omit bloom. Bloom is enabled by default. */
@@ -48,6 +54,12 @@ export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
             options.groundTruthAmbientOcclusion !== undefined
         ) {
             features.push(new GroundTruthAmbientOcclusion(options.groundTruthAmbientOcclusion));
+        }
+        if (
+            options.screenSpaceGlobalIllumination !== false &&
+            options.screenSpaceGlobalIllumination !== undefined
+        ) {
+            features.push(new ScreenSpaceGlobalIllumination(options.screenSpaceGlobalIllumination));
         }
         if (options.temporalAA !== false && options.temporalAA !== undefined) {
             features.push(new TemporalAA(options.temporalAA));

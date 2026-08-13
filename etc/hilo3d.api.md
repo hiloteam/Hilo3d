@@ -743,6 +743,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly maxObjects?: number;
     readonly maxViewportHeight?: number;
     readonly maxViewportWidth?: number;
+    readonly screenSpaceGlobalIllumination?: Readonly<ScreenSpaceGlobalIlluminationOptions> | false;
     readonly screenSpaceReflections?: Readonly<ScreenSpaceReflectionsOptions> | false;
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     readonly tileSize?: number;
@@ -2000,11 +2001,13 @@ export interface ForwardRenderPipelineResources {
     readonly colorEncoding: RenderColorEncoding;
     readonly depth: RenderGraphTextureHandle | null;
     markDepthPrepassed(): void;
+    readonly materialAttributes: RenderGraphTextureHandle | null;
     readonly motionDepth: RenderGraphTextureHandle | null;
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void;
     replaceDepth(texture: RenderGraphTextureHandle): void;
     readonly sceneScale: number;
     setAmbientOcclusionTexture(texture: RenderGraphTextureHandle): void;
+    setMaterialAttributes(texture: RenderGraphTextureHandle): void;
     setMotionDepth(texture: RenderGraphTextureHandle): void;
 }
 
@@ -5530,6 +5533,7 @@ export interface PostProcessRenderPipelineOptions {
     readonly features?: readonly ForwardRenderPipelineFeature[];
     readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
     readonly opaqueTexture?: boolean;
+    readonly screenSpaceGlobalIllumination?: Readonly<ScreenSpaceGlobalIlluminationOptions> | false;
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
 }
 
@@ -6640,6 +6644,36 @@ export interface SceneStorageBufferBinding {
 export interface SceneStorageShaderVariant {
     readonly buffers: readonly Readonly<SceneStorageBufferBinding>[];
     readonly shader: StorageGraphicsShader;
+}
+
+// @public
+export class ScreenSpaceGlobalIllumination implements ForwardRenderPipelineFeature {
+    constructor(options?: Readonly<ScreenSpaceGlobalIlluminationOptions>);
+    // (undocumented)
+    create(): ForwardRenderPipelineFeatureRuntime;
+    // (undocumented)
+    readonly injectionPoint: "after-opaque";
+    // (undocumented)
+    readonly name = "screen-space-global-illumination";
+    // (undocumented)
+    readonly requirements: Readonly<ForwardRenderFeatureRequirements>;
+}
+
+// @public
+export interface ScreenSpaceGlobalIlluminationOptions {
+    readonly denoisePasses?: 1 | 2 | 3;
+    readonly depthThreshold?: number;
+    readonly distanceFadeStart?: number;
+    readonly historyWeight?: number;
+    readonly intensity?: number;
+    readonly maxRadiance?: number;
+    readonly maxRayDistance?: number;
+    readonly normalThreshold?: number;
+    readonly rayCount?: 4 | 6 | 8 | 12;
+    readonly resolutionScale?: number;
+    readonly saturation?: number;
+    readonly stepCount?: 6 | 8 | 10 | 12;
+    readonly thickness?: number;
 }
 
 // @public

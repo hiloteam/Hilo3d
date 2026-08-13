@@ -144,6 +144,22 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             maxSamplersPerShaderStage: 8
         });
 
+        const withSSGI = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            temporalAA: {},
+            screenSpaceGlobalIllumination: {}
+        });
+        expect(withSSGI.requirements.requiredLimits).toMatchObject({
+            maxSampledTexturesPerShaderStage: 12,
+            maxColorAttachments: 3
+        });
+        expect(withSSGI.requirements.requiredTextureFormats).toEqual(
+            expect.arrayContaining([
+                { format: 'rgba16float', use: 'color-attachment' },
+                { format: 'rgba16float', use: 'filterable-sampled' }
+            ])
+        );
+
         const withVolumetrics = new ClusteredForwardPlusPipelineFactory({
             buckets: [{ geometry, material }],
             hiZ: false,
@@ -256,6 +272,21 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     groundTruthAmbientOcclusion: {}
                 })
         ).toThrow(/requires temporalAA/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    screenSpaceGlobalIllumination: {}
+                })
+        ).toThrow(/requires temporalAA/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    temporalAA: {},
+                    screenSpaceGlobalIllumination: { stepCount: 7 as 6 }
+                })
+        ).toThrow(/stepCount/u);
         expect(
             () =>
                 new ClusteredForwardPlusPipelineFactory({

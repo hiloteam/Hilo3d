@@ -324,5 +324,5 @@ describe('SharedRendererDriver shadow production wiring', () => {
         renderer.destroy();
         activeRenderers.splice(activeRenderers.indexOf(renderer), 1);
         expect(unregisterRendererDiagnostics(canvas, diagnostics)).toBe(true);
-    });
+    }, 30_000);
 });

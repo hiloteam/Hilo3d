@@ -111,9 +111,12 @@ camera、model、instance、skin、morph 与 coverage ABI；首次出现、显�
 history 失效时写 invalid history marker，不能消费陈旧 pose。内置 `material-attributes`
 pass 固定接受 single-sample `rgba16float`，输出 octahedral view normal、perceptual
 roughness、metallic 与 reflection receiver flag；portable Forward GTAO 与 Clustered Hi-Z
-SSR/GTAO 按需消费它。GTAO 以相同 attributes 和 logarithmic motion depth 执行 horizon
+SSR/GTAO/SSGI 按需消费它。GTAO 以相同 attributes 和 logarithmic motion depth 执行 horizon
 visibility、temporal rejection、edge-aware filter 与 depth/normal
-upsample；SSR 用它们约束 confidence-aware 多尺度空间 filter。未启用对应 effect 时不创建 attribute、AO/filter
+upsample；SSGI 在 opaque 后复用或生成 attributes/motion，执行随机 view-space diffuse ray
+trace、YCoCg variance-clipped temporal resolve、depth/normal/luminance-aware a-trous
+filter、bilateral
+upsample 与线性 HDR 合成；SSR 用它们约束 confidence-aware 多尺度空间 filter。未启用对应 effect 时不创建 attribute、AO/GI/filter
 target、history 或 fallback pass。
 
 portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
@@ -240,7 +243,7 @@ cluster 覆盖完整相机体积，把 directional/point/spot light、height fog
 fog 注入 tiled froxel atlas；每个 froxel column 只做一次 cumulative radiative
 integration，再以 opaque depth 常数次重建 radiance/transmittance，经 previous-view
 reprojection 与 depth/reactive temporal resolve 后，以 `scene * transmittance + scattering`
-在线性 HDR 合成。SSR 与体积光都在 TAA/TAAU 和 transparent 之前完成；完整合同见
+在线性 HDR 合成。SSGI、SSR 与体积光都在 TAA/TAAU 和 transparent 之前完成；完整合同见
 [`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md) 与
 [`VOLUMETRIC_LIGHTING.md`](./VOLUMETRIC_LIGHTING.md)。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD
 bucket 发一个 indirect draw，GPU 为不可见 bucket 写零 instance count；这些 bucket

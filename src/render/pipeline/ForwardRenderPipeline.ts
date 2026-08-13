@@ -115,6 +115,8 @@ export interface ForwardRenderPipelineResources {
     readonly sceneScale: number;
     /** Reusable opaque motion/log-depth texture produced by an earlier feature, if any. */
     readonly motionDepth: RenderGraphTextureHandle | null;
+    /** Reusable opaque view-normal/material texture produced by an earlier feature, if any. */
+    readonly materialAttributes: RenderGraphTextureHandle | null;
     /**
      * Declare that a feature has completely initialized the current opaque depth attachment.
      * The built-in opaque pass will preserve it instead of clearing it.
@@ -127,6 +129,8 @@ export interface ForwardRenderPipelineResources {
     setAmbientOcclusionTexture(texture: RenderGraphTextureHandle): void;
     /** Publish opaque motion/log-depth data for later temporal features in this frame. */
     setMotionDepth(texture: RenderGraphTextureHandle): void;
+    /** Publish opaque view-normal/material data for later screen-space features in this frame. */
+    setMaterialAttributes(texture: RenderGraphTextureHandle): void;
     /** Replace attachment-zero scene color for subsequent features and final output. */
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void;
     /** Replace scene depth for subsequent scene passes, for example after temporal upscaling. */
@@ -369,6 +373,7 @@ class ForwardFeatureState {
     #depthPrepassed = false;
     #ambientOcclusionTexture: RenderGraphTextureHandle | null = null;
     #motionDepth: RenderGraphTextureHandle | null = null;
+    #materialAttributes: RenderGraphTextureHandle | null = null;
     #sceneScale = 1;
     #activeCallbackLease: ForwardFeatureCallbackLease | null = null;
 
@@ -389,6 +394,7 @@ class ForwardFeatureState {
         this.#depthPrepassed = false;
         this.#ambientOcclusionTexture = null;
         this.#motionDepth = null;
+        this.#materialAttributes = null;
         this.#sceneScale = sceneScale;
     }
 
@@ -403,6 +409,7 @@ class ForwardFeatureState {
         this.#depthPrepassed = false;
         this.#ambientOcclusionTexture = null;
         this.#motionDepth = null;
+        this.#materialAttributes = null;
         this.#sceneScale = 1;
     }
 
@@ -550,6 +557,22 @@ class ForwardFeatureState {
         this.#motionDepth = texture;
     }
 
+    readMaterialAttributes(lease: ForwardFeatureCallbackLease): RenderGraphTextureHandle | null {
+        this.assertCallbackActive(lease);
+        return this.#materialAttributes;
+    }
+
+    setMaterialAttributes(
+        lease: ForwardFeatureCallbackLease,
+        texture: RenderGraphTextureHandle
+    ): void {
+        this.assertCallbackActive(lease);
+        if (!Number.isSafeInteger(texture) || texture <= 0) {
+            throw new TypeError('Forward material attributes require a graph texture handle');
+        }
+        this.#materialAttributes = texture;
+    }
+
     assertCallbackActive(lease: ForwardFeatureCallbackLease): void {
         if (this.#activeCallbackLease !== lease) {
             throw new Error(
@@ -599,6 +622,10 @@ class ForwardFeatureResourcesLease implements ForwardRenderPipelineResources {
         return this.#state.readMotionDepth(this.#lease);
     }
 
+    get materialAttributes(): RenderGraphTextureHandle | null {
+        return this.#state.readMaterialAttributes(this.#lease);
+    }
+
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void {
         this.#state.replaceColor(this.#lease, texture, encoding);
     }
@@ -617,6 +644,10 @@ class ForwardFeatureResourcesLease implements ForwardRenderPipelineResources {
 
     setMotionDepth(texture: RenderGraphTextureHandle): void {
         this.#state.setMotionDepth(this.#lease, texture);
+    }
+
+    setMaterialAttributes(texture: RenderGraphTextureHandle): void {
+        this.#state.setMaterialAttributes(this.#lease, texture);
     }
 }
 

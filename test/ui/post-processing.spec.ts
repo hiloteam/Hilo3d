@@ -17,6 +17,7 @@ const backends = ['webgl2', 'webgpu'] as const;
 
 interface PixelDifference {
     readonly changedPixelCount: number;
+    readonly brightenedPixelCount: number;
     readonly darkenedPixelCount: number;
     readonly meanChannelDelta: number;
     readonly pixelCount: number;
@@ -27,6 +28,7 @@ function compareCanvasPixels(enabledPng: Buffer, disabledPng: Buffer): PixelDiff
     const disabled = PNG.sync.read(disabledPng);
     expect([enabled.width, enabled.height]).toEqual([disabled.width, disabled.height]);
     let changedPixelCount = 0;
+    let brightenedPixelCount = 0;
     let darkenedPixelCount = 0;
     let channelDelta = 0;
     const pixelCount = enabled.width * enabled.height;
@@ -42,10 +44,12 @@ function compareCanvasPixels(enabledPng: Buffer, disabledPng: Buffer): PixelDiff
         const difference = Math.abs(enabledLuminance - disabledLuminance);
         channelDelta += difference;
         if (difference >= 2) changedPixelCount++;
+        if (enabledLuminance - disabledLuminance >= 2) brightenedPixelCount++;
         if (disabledLuminance - enabledLuminance >= 2) darkenedPixelCount++;
     }
     return {
         changedPixelCount,
+        brightenedPixelCount,
         darkenedPixelCount,
         meanChannelDelta: channelDelta / pixelCount,
         pixelCount
@@ -154,6 +158,55 @@ for (const backend of backends) {
 
             await page.goto('about:blank');
             failures.assertEmpty(`GTAO browser failures on ${backend}`);
+        } finally {
+            await failures.dispose();
+        }
+    });
+
+    test(`SSGI transports stable colored diffuse radiance on ${backend} @${backend}`, async ({
+        page
+    }) => {
+        test.setTimeout(240_000);
+        await installRenderHealthProbe(page);
+        const failures = await installPageFailureMonitor(page);
+        try {
+            const canvasSelector = `canvas[data-hilo3d-backend="${backend}"]`;
+            await page.goto(
+                `/examples/screen_space_global_illumination_chapel.html?backend=${backend}&test=1&ssgi=true`,
+                { waitUntil: 'domcontentloaded' }
+            );
+            await expect(page.locator('body')).toHaveAttribute('data-ssgi-phase', 'ready', {
+                timeout: 45_000
+            });
+            const enabledCanvas = page.locator(canvasSelector);
+            await expect(enabledCanvas).toBeVisible();
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            const enabled = await enabledCanvas.screenshot({ type: 'png' });
+            await assertFinalGraphicsHealth(page, backend, `SSGI enabled health on ${backend}`);
+
+            await page.getByRole('button', { name: /diffuse transport SSGI on/u }).click();
+            await expect(page).toHaveURL(/ssgi=false/u);
+            await expect(page.locator('body')).toHaveAttribute('data-ssgi-phase', 'ready', {
+                timeout: 45_000
+            });
+            await expect(
+                page.getByRole('button', { name: /diffuse transport SSGI off/u })
+            ).toHaveAttribute('aria-pressed', 'false');
+            const disabledCanvas = page.locator(canvasSelector);
+            await expect(disabledCanvas).toBeVisible();
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            const disabled = await disabledCanvas.screenshot({ type: 'png' });
+            await assertFinalGraphicsHealth(page, backend, `SSGI disabled health on ${backend}`);
+
+            const difference = compareCanvasPixels(enabled, disabled);
+            expect(difference.changedPixelCount).toBeGreaterThan(difference.pixelCount * 0.03);
+            expect(difference.brightenedPixelCount).toBeGreaterThan(difference.pixelCount * 0.02);
+            expect(difference.meanChannelDelta).toBeGreaterThan(0.5);
+
+            await page.goto('about:blank');
+            failures.assertEmpty(`SSGI browser failures on ${backend}`);
         } finally {
             await failures.dispose();
         }
