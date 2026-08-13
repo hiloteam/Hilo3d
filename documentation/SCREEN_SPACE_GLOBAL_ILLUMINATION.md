@@ -124,3 +124,12 @@ bounce、接触区 history 稳定性与深度边缘 upsample。按钮用相同�
 发布覆盖至少包含：option/requirements 单元测试、Forward 双后端 graph/history 生命周期、Clustered
 option/requirements、Naga/WGSL pipeline validation、案例双后端非黑屏与 GPU error
 gate，以及同机位 SSGI on/off 截图审查。
+
+### 视觉对比基线
+
+两张截图使用同一 WebGL
+2 后端、固定相机、曝光与预热帧数；它们既用于 PR 视觉审查，也作为后续艺术与算法调优的参考证据。
+
+| SSGI enabled                                                             | SSGI disabled                                                     |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| ![Prismatic Vespers chapel with SSGI enabled](./images/ssgi/ssgi-on.jpg) | ![The same chapel with SSGI disabled](./images/ssgi/ssgi-off.jpg) |
