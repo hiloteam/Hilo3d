@@ -63,7 +63,8 @@ import type {
     RenderPipelineContext,
     RenderPipelineOutput,
     RenderPipelineOutputColorAttachment,
-    RenderPipelineOutputDepthStencilAttachment
+    RenderPipelineOutputDepthStencilAttachment,
+    RenderPipelineShadowResources
 } from '../pipeline/RenderPipeline';
 import {
     acquireRenderPassParameters,
@@ -155,6 +156,8 @@ import {
 } from '../renderer/ScriptableGPUDrivenDraw';
 import { importSurfaceColor, importSurfaceDepthStencil } from '../renderer/SurfaceGraphBridge';
 import { SharedDrawPassParameters } from '../renderer/passes/SharedDrawPass';
+import type { ShadowAtlasScenePlan } from '../renderer/ShadowAtlasSceneAdapter';
+import type { ShadowAtlasResourceRecord } from '../renderer/ShadowAtlasResourceCache';
 import { refreshShadowAtlasSceneBinding } from '../renderer/ShadowAtlasTextureBinding';
 import { depthClearValue } from '../renderer/DepthConvention';
 
@@ -486,11 +489,19 @@ export interface ScriptableRenderPipelineServices {
         viewport: Readonly<RHIViewport>,
         width: number,
         height: number
-    ): number;
+    ): Readonly<ScriptableShadowAtlasBuild> | null;
     recordScriptablePass(passCount: number): void;
     recordScriptableFaces(meshes: readonly Mesh[]): void;
     queueScriptableAfterScene(meshes: readonly Mesh[], enabled: boolean): void;
     retainScriptablePresentation(scene: RendererScene, camera: Camera): void;
+}
+
+/** @internal Exact renderer-owned atlas build attached to the current application graph. */
+export interface ScriptableShadowAtlasBuild {
+    readonly passCount: number;
+    readonly texture: RGTextureHandle;
+    readonly atlas: Readonly<ShadowAtlasResourceRecord>;
+    readonly plan: Readonly<ShadowAtlasScenePlan>;
 }
 
 /** @internal Runtime-scoped ownership identities for persistent SRP targets. */
@@ -3889,9 +3900,11 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
         return this.#owner.createRendererList(descriptor);
     }
 
-    recordShadows(cullingResults: CullingResultsHandle): void {
+    recordShadows(
+        cullingResults: CullingResultsHandle
+    ): Readonly<RenderPipelineShadowResources> | null {
         this.#owner.assertLeaseActive(this.#lease);
-        this.#owner.recordShadows(cullingResults);
+        return this.#owner.recordShadows(cullingResults);
     }
 
     acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P {
@@ -4387,7 +4400,9 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         return handle;
     }
 
-    recordShadows(cullingResults: CullingResultsHandle): void {
+    recordShadows(
+        cullingResults: CullingResultsHandle
+    ): Readonly<RenderPipelineShadowResources> | null {
         this.assertActive();
         if (this.#shadowsRecorded) {
             throw new Error('A pipeline invocation can record the shared shadow atlas only once');
@@ -4404,13 +4419,58 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         }
         this.#shadowCulling = culling;
         const camera = culling.activate(this.services);
-        this.#shadowPassCount += this.services.recordScriptableShadows(
+        const shadowBuild = this.services.recordScriptableShadows(
             culling.visibleMeshes,
             camera,
             this.rhiViewport,
             this.#outputState.width,
             this.#outputState.height
         );
+        if (shadowBuild === null) return null;
+        this.#shadowPassCount += shadowBuild.passCount;
+        const atlas = shadowBuild.atlas;
+        const atlasHandle = this.acquireTextureRecord({
+            name: 'Shared shadow atlas',
+            format: atlas.format,
+            width: atlas.width,
+            height: atlas.height,
+            depthOrArrayLayers: atlas.textureDescriptor.size.depthOrArrayLayers,
+            sampleCount: 1,
+            mipLevelCount: atlas.textureDescriptor.mipLevelCount,
+            textureDimension: atlas.textureDescriptor.dimension,
+            viewDimension: atlas.textureDescriptor.viewDimension,
+            viewFormats: atlas.textureDescriptor.viewFormats,
+            attachment: shadowBuild.texture,
+            readable: shadowBuild.texture,
+            writable: null,
+            resolveTarget: null,
+            outputRoot: null,
+            transient: false,
+            historyState: null,
+            historyCurrent: false
+        }).handle;
+        const block = shadowBuild.plan.lightBlock;
+        const manager = this.services.lightManager;
+        return Object.freeze({
+            atlas: atlasHandle,
+            atlasSize: block.atlasSize,
+            atlasRects: block.atlasRects,
+            depthMode: atlas.depthMode,
+            directionalLights: manager.directionalLights,
+            spotLights: manager.spotLights,
+            pointLights: manager.pointLights,
+            directionalShadowCount: block.directionalShadowCount,
+            spotShadowCount: block.spotShadowCount,
+            pointShadowCount: block.pointShadowCount,
+            directionalBiases: block.directionalBiases,
+            directionalCascadeSplits: block.directionalCascadeSplits,
+            directionalCascadeParams: block.directionalCascadeParams,
+            directionalCascadeMatrices: block.directionalCascadeMatrices,
+            spotBiases: block.spotBiases,
+            spotMatrices: block.spotMatrices,
+            pointBiases: block.pointBiases,
+            pointMatrices: block.pointMatrices
+        });
     }
 
     acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P {

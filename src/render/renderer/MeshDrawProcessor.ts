@@ -2116,63 +2116,73 @@ export class MeshDrawProcessor {
         }
         let resolvedName: string | null = null;
         let resolvedValue: unknown;
-        for (let index = 0; index < bindings.length; index += 1) {
-            const binding = bindings[index];
-            if (binding === undefined) continue;
-            if (binding.name !== resolvedName) {
-                resolvedName = binding.name;
-                resolvedValue = material.getUniformData(
-                    binding.name,
-                    mesh,
-                    this.#programBindingInfo
+        try {
+            for (let index = 0; index < bindings.length; index += 1) {
+                const binding = bindings[index];
+                if (binding === undefined) continue;
+                if (binding.name !== resolvedName) {
+                    resolvedName = binding.name;
+                    this.#programBindingInfo.textureIndex = binding.arrayIndex;
+                    this.#programBindingInfo.name = binding.name;
+                    resolvedValue = material.getUniformData(
+                        binding.name,
+                        mesh,
+                        this.#programBindingInfo
+                    );
+                }
+                const source = sampledTextureElement(resolvedValue, binding.arrayIndex);
+                if (!(source instanceof Texture)) {
+                    throw new TypeError(
+                        `Sampled binding ${binding.name}[${String(binding.arrayIndex)}] must resolve to a Texture`
+                    );
+                }
+                const external = externalTextureBindingRegistry.resolve(
+                    source,
+                    binding.samplerKind
                 );
-            }
-            const source = sampledTextureElement(resolvedValue, binding.arrayIndex);
-            if (!(source instanceof Texture)) {
-                throw new TypeError(
-                    `Sampled binding ${binding.name}[${String(binding.arrayIndex)}] must resolve to a Texture`
-                );
-            }
-            const external = externalTextureBindingRegistry.resolve(source, binding.samplerKind);
-            if (external === null) {
-                throw new TypeError(
-                    `External texture for ${binding.name}[${String(binding.arrayIndex)}] rejects ${binding.samplerKind}`
-                );
-            }
-            if (external === undefined && binding.samplerKind === 'comparison-sampler') {
-                throw new TypeError(
-                    `Comparison sampled binding ${binding.name}[${String(binding.arrayIndex)}] requires a registered external depth texture`
-                );
-            }
-            const local = external === undefined ? this.textures.prepare(source) : null;
-            const textureView = external?.textureView ?? local?.view;
-            const sampler = external?.sampler ?? local?.sampler;
-            if (textureView === undefined || sampler === undefined) {
-                throw new Error(
-                    `Sampled binding ${binding.name}[${String(binding.arrayIndex)}] lost its logical handles`
-                );
-            }
-            let resources = scratch.resources[index];
-            if (resources === undefined) {
-                resources = {
-                    textureView,
-                    sampler
-                };
-                scratch.resources[index] = resources;
-            } else {
-                resources.textureView = textureView;
-                resources.sampler = sampler;
-            }
-            scratch.sources[index] = source;
-            if (external !== undefined) {
-                const dependency = externalTextureBindingRegistry.graphDependency(source);
-                if (
-                    dependency !== undefined &&
-                    !this.#sampledGraphDependencies.includes(dependency)
-                ) {
-                    this.#sampledGraphDependencies.push(dependency);
+                if (external === null) {
+                    throw new TypeError(
+                        `External texture for ${binding.name}[${String(binding.arrayIndex)}] rejects ${binding.samplerKind}`
+                    );
+                }
+                if (external === undefined && binding.samplerKind === 'comparison-sampler') {
+                    throw new TypeError(
+                        `Comparison sampled binding ${binding.name}[${String(binding.arrayIndex)}] requires a registered external depth texture`
+                    );
+                }
+                const local = external === undefined ? this.textures.prepare(source) : null;
+                const textureView = external?.textureView ?? local?.view;
+                const sampler = external?.sampler ?? local?.sampler;
+                if (textureView === undefined || sampler === undefined) {
+                    throw new Error(
+                        `Sampled binding ${binding.name}[${String(binding.arrayIndex)}] lost its logical handles`
+                    );
+                }
+                let resources = scratch.resources[index];
+                if (resources === undefined) {
+                    resources = {
+                        textureView,
+                        sampler
+                    };
+                    scratch.resources[index] = resources;
+                } else {
+                    resources.textureView = textureView;
+                    resources.sampler = sampler;
+                }
+                scratch.sources[index] = source;
+                if (external !== undefined) {
+                    const dependency = externalTextureBindingRegistry.graphDependency(source);
+                    if (
+                        dependency !== undefined &&
+                        !this.#sampledGraphDependencies.includes(dependency)
+                    ) {
+                        this.#sampledGraphDependencies.push(dependency);
+                    }
                 }
             }
+        } finally {
+            delete this.#programBindingInfo.textureIndex;
+            delete this.#programBindingInfo.name;
         }
         return scratch.resources;
     }

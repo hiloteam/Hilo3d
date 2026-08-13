@@ -42,6 +42,16 @@
   with luminance reactivity during TAA/TAAU rejection. Expose single-runtime Forward diagnostics and
   Clustered scale/GPU-time diagnostics, with tests for controller stability, ABI validation,
   material revisions, shared GPU packing, fallback and resource requirements.
+- Complete the native GPU Scene/Clustered Forward+ coverage slice for alpha-masked PBR, shared
+  shadows, and area lights. Alpha coverage now uses base-color/opacity slot transforms, channels,
+  encodings, factors, and cutoff consistently in indirect depth, motion, material-attribute, and
+  color passes. Directional, spot, and point lights keep GPU Scene objects on the clustered path
+  while sampling the renderer's exact shared shadow-atlas graph texture with standard/reversed-depth
+  3×3 PCF, cascades, slope bias, shadow strength, and per-mesh `receiveShadows`. Area lights use the
+  ordinary Forward LTC LUTs as global storage-light records with explicit-LOD WebGPU sampling rather
+  than point-light approximation or whole-camera fallback. `RenderPipelineContext.recordShadows()`
+  now returns frame-scoped atlas, light order, bias, cascade, and matrix data for custom pipelines;
+  the atlas remains renderer-owned, recovery-aware, and submission-tracked.
 - Add production screen-space diffuse global illumination to ordinary Forward on WebGPU/WebGL 2 and
   to the WebGPU Clustered Forward+ profile. The opt-in path reuses GTAO/GPU Scene material
   attributes and motion/log-depth when available, traces configurable stochastic view-space

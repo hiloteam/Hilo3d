@@ -2,7 +2,7 @@ import type { RHIUploadBatch } from '../frame/RHIUploadBatch';
 import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
-import type { RGPassHandle } from '../graph/RenderGraphResource';
+import type { RGPassHandle, RGTextureHandle } from '../graph/RenderGraphResource';
 import type { ExternalTextureGraphDependency } from './ExternalTextureBindingRegistry';
 import { FrameResourceUseTracker } from './FrameResourceUseTracker';
 import type { PreparedDraw } from './PreparedDraw';
@@ -33,6 +33,12 @@ export interface ShadowAtlasRenderOptions<Owner extends object = object> {
     readonly preparer?: ShadowAtlasSlicePreparer<Owner>;
     /** Clear value matching the shadow cameras' depth convention. */
     readonly depthClearValue?: number;
+}
+
+/** @internal Exact graph resource produced by one shadow-atlas build. */
+export interface ShadowAtlasBuildResult {
+    readonly passCount: number;
+    readonly texture: RGTextureHandle;
 }
 
 /**
@@ -116,7 +122,7 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
         options: Readonly<ShadowAtlasRenderOptions<Owner>> = {},
         meshFrameStarted = false,
         resourceUses: FrameResourceUseTracker = this.resourceUses
-    ): number {
+    ): Readonly<ShadowAtlasBuildResult> {
         if (!this.#active) throw new Error('Shadow renderer build requires an active composition');
         this.validateInputs(context, atlas, plan, options);
         if (resourceUses === this.resourceUses) {
@@ -173,7 +179,7 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
                 previousPass = scope.graph.addPass(ShadowPassTemplate, pass);
             }
             scope.graph.markOutput(atlasTexture);
-            return plan.sliceCount;
+            return Object.freeze({ passCount: plan.sliceCount, texture: atlasTexture });
         } finally {
             options.preparer?.end?.();
         }

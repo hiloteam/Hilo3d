@@ -6,6 +6,7 @@ import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
 import MorphGeometry from '../../../src/geometry/MorphGeometry';
+import AmbientLight from '../../../src/light/AmbientLight';
 import AreaLight from '../../../src/light/AreaLight';
 import DirectionalLight from '../../../src/light/DirectionalLight';
 import PointLight from '../../../src/light/PointLight';
@@ -61,11 +62,11 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             'indirect-draw'
         ]);
         expect(factory.requirements.requiredLimits).toMatchObject({
-            maxBindingsPerBindGroup: 18,
+            maxBindingsPerBindGroup: 22,
             maxStorageBuffersPerShaderStage: 8,
             maxStorageTexturesPerShaderStage: 1,
             maxSampledTexturesPerShaderStage: 12,
-            maxSamplersPerShaderStage: 7,
+            maxSamplersPerShaderStage: 11,
             maxComputeInvocationsPerWorkgroup: 256
         });
         expect(
@@ -111,8 +112,8 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             use: 'storage'
         });
         expect(withoutHiZ.requirements.requiredLimits).toMatchObject({
-            maxBindingsPerBindGroup: 14,
-            maxSampledTexturesPerShaderStage: 7
+            maxBindingsPerBindGroup: 22,
+            maxSampledTexturesPerShaderStage: 11
         });
 
         const maximumHiZ = new ClusteredForwardPlusPipelineFactory({
@@ -121,7 +122,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             maxViewportHeight: 8_192
         });
         expect(maximumHiZ.requirements.requiredLimits).toMatchObject({
-            maxBindingsPerBindGroup: 19,
+            maxBindingsPerBindGroup: 22,
             maxSampledTexturesPerShaderStage: 13
         });
 
@@ -150,7 +151,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         });
         expect(withGTAO.requirements.requiredLimits).toMatchObject({
             maxSampledTexturesPerShaderStage: 12,
-            maxSamplersPerShaderStage: 8
+            maxSamplersPerShaderStage: 12
         });
 
         const withSSGI = new ClusteredForwardPlusPipelineFactory({
@@ -176,7 +177,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         });
         expect(withVolumetrics.requirements.requiredCapabilities).toContain('storage-texture');
         expect(withVolumetrics.requirements.requiredLimits).toMatchObject({
-            maxBindingsPerBindGroup: 14,
+            maxBindingsPerBindGroup: 22,
             maxStorageTexturesPerShaderStage: 2
         });
         expect(withVolumetrics.requirements.requiredTextureFormats).toEqual(
@@ -234,6 +235,19 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                             geometry,
                             material: new PBRMaterial({
                                 coverage: { mode: 'mask', cutoff: 0.5 }
+                            })
+                        }
+                    ]
+                })
+        ).not.toThrow();
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [
+                        {
+                            geometry,
+                            material: new PBRMaterial({
+                                coverage: { mode: 'alpha-to-coverage', cutoff: 0.5 }
                             })
                         }
                     ]
@@ -582,9 +596,11 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             const uv0Transform = new Matrix3().fromRotationTranslationScale(0, 0.1, 0.05, 0.8, 0.8);
             const uv1Transform = new Matrix3().fromRotationTranslationScale(0, 0, 0, 1, 1);
             const material = new PBRMaterial({
+                coverage: { mode: 'mask', cutoff: 0.5 },
                 metallic: 0.35,
                 roughness: 0.28,
                 baseColorMap: { texture: surfaceTexture, transform: uv0Transform },
+                opacityMap: { texture: surfaceTexture, transform: uv0Transform },
                 metallicMap: surfaceTexture,
                 roughnessMap: surfaceTexture,
                 metallicRoughnessMap: surfaceTexture,
@@ -657,6 +673,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                         z: 3
                     }).addTo(scene);
                 }
+                new AreaLight({ amount: 2, width: 2, height: 2, z: 3 }).addTo(scene);
                 const camera = new PerspectiveCamera({
                     aspect: 4 / 3,
                     near: 0.1,
@@ -673,7 +690,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
 
                 expect(diagnostics.objectCount).toBe(8);
                 expect(diagnostics.fallbackObjectCount).toBe(4);
-                expect(diagnostics.lightCount).toBe(4);
+                expect(diagnostics.lightCount).toBe(5);
                 expect(diagnostics.visibleObjectCount).toBeGreaterThan(0);
                 expect(diagnostics.clusterLightIndexCount).toBeGreaterThan(0);
                 expect(diagnostics.clusterOverflowCount).toBe(0);
@@ -865,14 +882,14 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
     );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
-        'keeps directional lights global and routes AreaLight through exact Forward fallback',
+        'keeps directional, shadowed, and exact LTC area lights on the native path',
         async () => {
             const geometry = new BoxGeometry();
             const material = new PBRMaterial();
             const factory = new ClusteredForwardPlusPipelineFactory({
                 buckets: [{ geometry, material }],
                 maxObjects: 1,
-                maxLights: 8,
+                maxLights: 9,
                 maxLightIndices: 1,
                 maxLightsPerCluster: 1,
                 maxViewportWidth: 32,
@@ -897,7 +914,12 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     const light = new DirectionalLight({ amount: 0.25 }).addTo(scene);
                     firstDirectional ??= light;
                 }
-                const camera = new PerspectiveCamera({ aspect: 1, near: 0.1, far: 20 });
+                const camera = new PerspectiveCamera({
+                    aspect: 1,
+                    near: 0.1,
+                    far: 20,
+                    depthMode: 'reversed'
+                });
                 camera.setPosition(0, 0, 6).lookAt(new Vector3(0, 0, 0));
 
                 renderer.render(scene, camera);
@@ -915,8 +937,19 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 renderer.render(scene, camera);
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
-                    objectCount: 0,
-                    fallbackObjectCount: 1,
+                    objectCount: 1,
+                    fallbackObjectCount: 0,
+                    lightCount: 8,
+                    clusterLightIndexCount: 0
+                });
+                expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
+                camera.depthMode = 'standard';
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    objectCount: 1,
+                    fallbackObjectCount: 0,
+                    lightCount: 8,
                     clusterLightIndexCount: 0
                 });
                 firstDirectional.shadow = null;
@@ -925,9 +958,9 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 renderer.render(scene, camera);
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
-                    objectCount: 0,
-                    fallbackObjectCount: 1,
-                    lightCount: 8,
+                    objectCount: 1,
+                    fallbackObjectCount: 0,
+                    lightCount: 9,
                     clusterLightIndexCount: 0,
                     clusterOverflowCount: 0
                 });
@@ -984,5 +1017,188 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 renderer.destroy();
             }
         }
+    );
+
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'evaluates LTC area lights in clustered storage PBR without compatibility fallback',
+        async () => {
+            const geometry = new BoxGeometry();
+            const material = new PBRMaterial({
+                baseColor: new Color(1, 1, 1),
+                metallic: 0,
+                roughness: 0.8
+            });
+            const factory = new ClusteredForwardPlusPipelineFactory({
+                buckets: [{ geometry, material }],
+                maxObjects: 1,
+                maxLights: 1,
+                maxLightIndices: 1,
+                maxLightsPerCluster: 1,
+                maxViewportWidth: 32,
+                maxViewportHeight: 32,
+                hiZ: false,
+                bloomStrength: 0
+            });
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: document.createElement('canvas'),
+                width: 32,
+                height: 32,
+                antialias: false,
+                renderingProfile: 'high-end',
+                renderPipeline: factory
+            });
+            const target = renderer.createRenderTarget({
+                width: 32,
+                height: 32,
+                colorAttachments: [{ format: 'rgba8unorm' }],
+                depthStencilAttachment: { format: 'depth32float', depthMode: 'reversed' }
+            });
+            try {
+                const scene = new Node();
+                new Mesh({ geometry, material, frustumTest: false }).addTo(scene);
+                const area = new AreaLight({
+                    amount: 6,
+                    width: 4,
+                    height: 4,
+                    z: 2,
+                    rotationY: 180
+                }).addTo(scene);
+                const camera = new PerspectiveCamera({
+                    aspect: 1,
+                    near: 0.1,
+                    far: 20,
+                    depthMode: 'reversed'
+                });
+                camera.setPosition(0, 0, 6).lookAt(new Vector3(0, 0, 0));
+
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const lit = await target.readColorAttachment({
+                    x: 12,
+                    y: 12,
+                    width: 8,
+                    height: 8
+                });
+                area.enabled = false;
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const unlit = await target.readColorAttachment({
+                    x: 12,
+                    y: 12,
+                    width: 8,
+                    height: 8
+                });
+                const energy = (data: Uint8Array): number => {
+                    let result = 0;
+                    for (let offset = 0; offset < data.length; offset += 4) {
+                        result +=
+                            (data[offset] ?? 0) + (data[offset + 1] ?? 0) + (data[offset + 2] ?? 0);
+                    }
+                    return result;
+                };
+
+                expect(energy(lit.data)).toBeGreaterThan(energy(unlit.data) + 1_000);
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    objectCount: 1,
+                    fallbackObjectCount: 0,
+                    lightCount: 0
+                });
+            } finally {
+                target.destroy();
+                renderer.destroy();
+            }
+        },
+        20_000
+    );
+
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'samples the shared shadow atlas in clustered storage PBR pixels',
+        async () => {
+            const geometry = new BoxGeometry();
+            const material = new PBRMaterial({
+                baseColor: new Color(0.9, 0.9, 0.9),
+                metallic: 0,
+                roughness: 0.9
+            });
+            const factory = new ClusteredForwardPlusPipelineFactory({
+                buckets: [{ geometry, material }],
+                maxObjects: 2,
+                maxLights: 1,
+                maxLightIndices: 1,
+                maxLightsPerCluster: 1,
+                maxViewportWidth: 64,
+                maxViewportHeight: 64,
+                hiZ: false,
+                bloomStrength: 0
+            });
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: document.createElement('canvas'),
+                width: 64,
+                height: 64,
+                antialias: false,
+                renderingProfile: 'high-end',
+                renderPipeline: factory
+            });
+            const target = renderer.createRenderTarget({
+                width: 64,
+                height: 64,
+                colorAttachments: [{ format: 'rgba8unorm' }],
+                depthStencilAttachment: { format: 'depth32float', depthMode: 'reversed' }
+            });
+            try {
+                const scene = new Node();
+                new Mesh({
+                    geometry,
+                    material,
+                    y: -1,
+                    scaleX: 5,
+                    scaleY: 0.2,
+                    scaleZ: 5,
+                    frustumTest: false
+                }).addTo(scene);
+                new Mesh({ geometry, material, y: 0, frustumTest: false }).addTo(scene);
+                new AmbientLight({ amount: 0.05 }).addTo(scene);
+                const light = new DirectionalLight({
+                    amount: 4,
+                    direction: new Vector3(1, -2, 1)
+                }).addTo(scene);
+                const camera = new PerspectiveCamera({
+                    aspect: 1,
+                    near: 0.1,
+                    far: 30,
+                    depthMode: 'reversed'
+                });
+                camera.setPosition(4, 3, 6).lookAt(new Vector3(0, -0.5, 0));
+                const energy = (data: Uint8Array): number => {
+                    let result = 0;
+                    for (let offset = 0; offset < data.length; offset += 4) {
+                        result +=
+                            (data[offset] ?? 0) + (data[offset + 1] ?? 0) + (data[offset + 2] ?? 0);
+                    }
+                    return result;
+                };
+
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const unshadowed = await target.readColorAttachment();
+                light.shadow = { width: 128, height: 128 };
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const shadowed = await target.readColorAttachment();
+
+                expect(energy(unshadowed.data)).toBeGreaterThan(energy(shadowed.data) + 2_000);
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    objectCount: 2,
+                    fallbackObjectCount: 0,
+                    lightCount: 1
+                });
+            } finally {
+                target.destroy();
+                renderer.destroy();
+            }
+        },
+        20_000
     );
 });

@@ -133,7 +133,7 @@ identity 去重，保留公共 `materialId` 并分配按 family/layout 分类的
 handle；`MaterialInstance.revision` 驱动 record 重打包，相邻 dirty record 合并上传。staged
 revision 和 texture-slot dirtiness 只在成功 submission 后提交，失败帧重试；renderer-owned
 `cpu-shadow` buffer 在 device recovery 后重建而不替换材质或 handle identity。首个
-`builtin-pbr-storage-v3` record 由 GPU Scene 与 clustered indirect draw 共享；除 surface
+`builtin-pbr-storage-v4` record 由 GPU Scene 与 clustered indirect draw 共享；除 surface
 scalar 外，它为每个内置 PBR texture slot 保存独立 UV matrix、UV set、encoding、presence 与 channel
 mapping，并在 surface record 的保留分量保存 authored reactive factor。logical geometry
 bucket 与 material handle 在对象 record 中保持为两个独立字段。
@@ -286,10 +286,12 @@ engine `Texture` 通过 graph import 复用 renderer 的上传、恢复与 submi
 pipeline runtime 的 `frameSubmitted()` / `frameDiscarded()` 是 CPU-side temporal
 state 的事务边界；current/previous object/camera transform 只在 RHI
 submission 已存在后提交，录制或提交前失败则丢弃 staged revision。当前 factory 限定 single-sample
-perspective camera 与 opaque、unskinned、indexed triangle PBR bucket；GPU fast path 接受 scalar
-factor 以及 base-color/metallic/roughness/combined-MR/occlusion/emission/normal 2D
+perspective camera 与 opaque/alpha-mask、unskinned、indexed triangle PBR bucket；GPU fast
+path 接受 scalar factor 以及 base-color/metallic/roughness/combined-MR/occlusion/emission/normal 2D
 map，支持每纹理槽独立的 UV0/UV1、UV transform、encoding、channel 与 sampler
-mutation，仍要求默认 depth/alpha 状态。未注册 mesh、对象容量 overflow、skinning/morph，以及注册 bucket 在运行时发生的不兼容 material/geometry/raster-state
+mutation；alpha-mask 的 depth、motion、material-attributes 与 color pass 共用 base-color/opacity
+coverage 语义。未注册 mesh、对象容量 overflow、skinning/morph、transparent/layered
+material，以及注册 bucket 在运行时发生的不兼容 material/geometry/raster-state
 replacement 会在同一帧迁移到共享 Forward compatibility path；恢复兼容后可重新进入 GPU
 Scene。fallback 使用显式 mesh identity
 exclusion 避免重复绘制，按 opaque/transparent 分开排序并复用共享 shadow 录制。compatibility
@@ -298,12 +300,15 @@ color/depth；transmission 读取 HDR opaque copy，最后统一经过 separable
 Bloom 与一次 ACES display；`bloomStrength: 0` 不创建 Bloom transient
 texture，也不记录其 pass。方向光走独立全局列表，不复制到每个 cluster；局部光与 near
 plane 相交时使用保守 full-screen tile bounds，空 depth tile 使用 invalid slice range；index
-budget 通过 sentinel + `atomicMin` 插入链确定性保留最低 light id。当前 clustered
-BRDF 没有精确 LTC 或 shadow-atlas 采样，因此检测到 AreaLight 或启用 shadow 的 light 时，整相机明确转入 ordinary
-Forward fallback，而不是近似 area
-light 或静默丢阴影。初始 bucket 声明不合法、非 perspective/multisample
-output 或不支持的 WebGPU 设备仍 fail-closed；native clustered
-LTC、shadow、cookie/IES 继续走后续 high-end 扩展，不会静默退化到 WebGL 2。factory 的 required
+budget 通过 sentinel + `atomicMin` 插入链确定性保留最低 light id。AreaLight 作为 global
+light 使用与 ordinary Forward 相同的 RGBA32F LTC
+LUT 和显式 LOD 查询，不按点光近似；directional、spot 与 point shadow
+light 继续由共享 renderer 录制唯一 shadow atlas，再把同一 graph texture、shadow-first light
+order、bias/cascade/matrix 数据返回 pipeline。clustered PBR 按物体 `receiveShadows`
+标志使用 standard/reversed-depth comparison sampler 做 3×3 PCF，不复制 atlas、不绕过 Render
+Graph，也不因启用阴影而整相机回退。初始 bucket 声明不合法、非 perspective/multisample
+output 或不支持的 WebGPU 设备仍 fail-closed；cookie/IES 继续走后续 high-end 扩展，不会静默退化到 WebGL
+2。factory 的 required
 limits 覆盖 object/geometry/visible/cluster/light-index 全部 buffer 与最坏 dispatch
 dimension，在 runtime 分配前完成设备准入。
 
