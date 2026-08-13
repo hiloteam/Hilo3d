@@ -101,7 +101,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
     'volumetric_neon_reliquary.html': 'Neon Reliquary — Froxel Volumetric Lighting',
-    'stormfront_observatory.html': 'Stormfront Observatory — Physical Atmosphere',
+    'stormfront_observatory.html': 'Tempest Reliquary — Physical Atmosphere',
     'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
     'screen_space_global_illumination_chapel.html':
         'Prismatic Vespers — Screen-space Global Illumination',
@@ -134,7 +134,7 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'volumetric_neon_reliquary.html':
         'Enter Khronos Sponza as a neon reliquary where temporal froxels, local fog volumes, clustered spotlights, and depth-aware visibility turn light into architecture.',
     'stormfront_observatory.html':
-        'Command a remote North Atlantic station beneath a Rayleigh–Mie–ozone sky with GPU histogram exposure, temporal half-resolution storm clouds, cloud shadows, aerial perspective, and froxel light shafts.',
+        'Unseal a gilded Khronos dragon beneath a Rayleigh–Mie–ozone storm sky with GPU histogram exposure, temporal half-resolution clouds, cloud shadows, aerial perspective, and froxel light shafts.',
     'screen_space_reflections_palace.html':
         'Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.',
     'screen_space_global_illumination_chapel.html':

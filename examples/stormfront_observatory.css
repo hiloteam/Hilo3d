@@ -8,238 +8,352 @@
         BlinkMacSystemFont,
         'Segoe UI',
         sans-serif;
-    --ice: #bfe8f0;
-    --signal: #f2a45f;
-    --glass: rgb(7 14 19 / 72%);
+    --amber: #f2a45f;
+    --amber-bright: #ffd6a0;
+    --mist: #b9d4d8;
+    --ink: #06090b;
+    --glass: rgb(7 12 15 / 72%);
+    --hairline: rgb(209 231 232 / 15%);
 }
 
+* {
+    box-sizing: border-box;
+}
 body {
     overflow: hidden;
     margin: 0;
-    background: #05090b;
-    color: #eef4f3;
+    background: var(--ink);
+    color: #eef3f1;
 }
 #container,
 #container canvas {
     width: 100%;
     height: 100%;
 }
+button,
+input,
+select {
+    font: inherit;
+}
+
+.vignette,
 .grain {
     position: fixed;
     z-index: 2;
     inset: 0;
     pointer-events: none;
-    opacity: 0.07;
+}
+.vignette {
+    background:
+        linear-gradient(
+            90deg,
+            rgb(0 1 2 / 24%),
+            transparent 14%,
+            transparent 84%,
+            rgb(0 1 2 / 48%)
+        ),
+        radial-gradient(
+            circle at 50% 44%,
+            transparent 32%,
+            rgb(0 4 6 / 12%) 65%,
+            rgb(0 2 4 / 58%) 115%
+        ),
+        linear-gradient(180deg, rgb(2 6 9 / 10%), transparent 35%, rgb(2 4 6 / 30%));
+}
+.grain {
+    opacity: 0.045;
     mix-blend-mode: soft-light;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.76' numOctaves='4' stitchTiles='stitchTiles'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitchTiles'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-.masthead {
+.identity {
     position: fixed;
     z-index: 4;
-    top: clamp(26px, 5vw, 72px);
-    left: clamp(24px, 5vw, 76px);
-    width: min(510px, calc(100vw - 48px));
-    text-shadow: 0 3px 35px rgb(0 0 0 / 70%);
+    top: clamp(24px, 4vw, 58px);
+    left: clamp(24px, 4.4vw, 70px);
+    pointer-events: none;
+    text-shadow: 0 4px 28px rgb(0 0 0 / 70%);
 }
-.kicker,
-.telemetryTop,
-.consoleHeading span,
-.footerLine,
-.weatherConsole b,
-.weatherConsole output {
+.identity p,
+.identity span,
+.telemetry,
+.actionDock,
+.weatherConsole,
+.footerLine {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     text-transform: uppercase;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.15em;
 }
-.kicker {
+.identity p {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin: 0;
-    color: var(--ice);
-    font-size: 9px;
+    margin: 0 0 11px;
+    color: rgb(214 233 233 / 64%);
+    font-size: 8px;
     font-weight: 700;
 }
-.kicker span {
-    width: 28px;
+.identity p i {
+    width: 24px;
     height: 1px;
-    background: var(--signal);
-    box-shadow: 0 0 14px var(--signal);
+    background: var(--amber);
+    box-shadow: 0 0 12px var(--amber);
 }
-.masthead h1 {
-    margin: 18px 0 16px;
+.identity h1 {
+    margin: 0;
     font-family: Georgia, 'Times New Roman', serif;
-    font-size: clamp(52px, 6.6vw, 102px);
+    font-size: clamp(27px, 2.8vw, 43px);
     font-weight: 400;
-    letter-spacing: -0.064em;
-    line-height: 0.79;
+    letter-spacing: -0.045em;
+    line-height: 1;
 }
-.masthead h1 em {
-    color: #c8d9d8;
+.identity h1 em {
+    color: #d0dcda;
     font-weight: 400;
 }
-.lede {
-    width: min(400px, 88vw);
-    margin: 28px 0 0;
-    color: rgb(223 235 234 / 63%);
-    font-size: 11px;
-    line-height: 1.8;
-    letter-spacing: 0.025em;
+.identity > span {
+    display: block;
+    margin-top: 10px;
+    color: rgb(206 222 222 / 42%);
+    font-size: 6px;
 }
 
 .telemetry {
     position: fixed;
     z-index: 4;
-    top: clamp(30px, 5vw, 72px);
-    right: clamp(24px, 4vw, 62px);
-    width: min(330px, calc(100vw - 48px));
-    border-top: 1px solid rgb(204 235 239 / 38%);
-    background: linear-gradient(160deg, rgb(5 11 14 / 70%), rgb(5 10 12 / 35%));
-    backdrop-filter: blur(15px);
+    top: clamp(24px, 4vw, 58px);
+    right: clamp(24px, 4.4vw, 70px);
+    width: min(420px, calc(100vw - 48px));
+    padding-top: 10px;
+    border-top: 1px solid rgb(223 239 239 / 26%);
+    text-shadow: 0 2px 16px rgb(0 0 0 / 78%);
 }
-.telemetryTop {
+.liveMark {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 2px 10px;
-    color: rgb(207 233 235 / 68%);
-    font-size: 8px;
+    gap: 7px;
+    margin-bottom: 10px;
+    color: rgb(211 228 228 / 48%);
+    font-size: 6px;
 }
-.telemetryTop i {
-    flex: 1;
-    height: 1px;
-    background: rgb(207 233 235 / 15%);
-}
-.telemetryTop b {
-    color: var(--signal);
-    font-weight: 600;
+.liveMark i {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 10px var(--amber);
 }
 .telemetry dl {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1px;
+    grid-template-columns: repeat(4, 1fr);
     margin: 0;
-    background: rgb(180 218 221 / 10%);
 }
 .telemetry dl div {
-    padding: 13px 15px;
-    background: rgb(4 10 13 / 72%);
+    min-width: 0;
+    padding-right: 12px;
+    border-right: 1px solid var(--hairline);
+}
+.telemetry dl div + div {
+    padding-left: 12px;
+}
+.telemetry dl div:last-child {
+    border-right: 0;
+    padding-right: 0;
 }
 .telemetry dt {
-    color: rgb(199 220 222 / 42%);
-    font-size: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
+    color: rgb(210 226 226 / 34%);
+    font-size: 6px;
 }
 .telemetry dd {
-    margin: 7px 0 0;
-    color: #edf5f4;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 12px;
+    margin: 5px 0 0;
+    color: #edf3f1;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+}
+.telemetry > p {
+    margin: 9px 0 0;
+    color: rgb(210 226 226 / 31%);
+    font-size: 5px;
+    text-align: right;
+}
+.telemetry > p b {
+    color: rgb(241 207 165 / 75%);
+    font-weight: 500;
+}
+
+.actionDock {
+    position: fixed;
+    z-index: 5;
+    right: clamp(24px, 4.4vw, 70px);
+    bottom: clamp(36px, 5vw, 66px);
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+.actionDock button,
+.weatherConsole button,
+.weatherConsole select {
+    border: 1px solid var(--hairline);
+    color: rgb(236 244 242 / 84%);
+    background: rgb(7 13 16 / 58%);
+    text-transform: uppercase;
+    letter-spacing: 0.13em;
+    cursor: pointer;
+    backdrop-filter: blur(15px) saturate(120%);
+}
+.viewButton {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 13px;
+    font-size: 6px;
+}
+.viewButton b {
+    color: var(--amber);
+    font-size: 7px;
+}
+.controlsToggle {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-height: 44px;
+    padding: 0 17px;
+    font-size: 7px;
+}
+.controlsToggle i {
+    width: 5px;
+    height: 5px;
+    border: 1px solid var(--amber);
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgb(242 164 95 / 65%);
+}
+.actionDock button:hover {
+    border-color: rgb(242 164 95 / 52%);
+    background: rgb(14 20 22 / 82%);
 }
 
 .weatherConsole {
     position: fixed;
-    z-index: 4;
-    right: clamp(24px, 4vw, 62px);
-    bottom: clamp(48px, 7vw, 88px);
-    width: min(330px, calc(100vw - 48px));
-    padding: 18px 20px 16px;
-    border: 1px solid rgb(194 230 233 / 14%);
-    background: var(--glass);
+    z-index: 6;
+    right: clamp(24px, 4.4vw, 70px);
+    bottom: clamp(88px, 9vw, 120px);
+    width: min(334px, calc(100vw - 48px));
+    padding: 19px;
+    border: 1px solid var(--hairline);
+    background: linear-gradient(145deg, rgb(8 15 18 / 86%), rgb(5 9 12 / 72%));
     box-shadow:
-        0 24px 80px rgb(0 0 0 / 28%),
+        0 24px 80px rgb(0 0 0 / 38%),
         inset 0 1px rgb(255 255 255 / 4%);
-    backdrop-filter: blur(18px) saturate(125%);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(12px) scale(0.985);
+    transform-origin: 100% 100%;
+    transition:
+        opacity 180ms ease,
+        transform 180ms ease,
+        visibility 180ms ease;
+    backdrop-filter: blur(22px) saturate(125%);
+}
+body[data-console-open='true'] .weatherConsole {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
 }
 .consoleHeading {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    margin-bottom: 15px;
+    align-items: center;
+    margin-bottom: 17px;
 }
 .consoleHeading span {
     display: block;
-    color: rgb(199 227 229 / 45%);
-    font-size: 7px;
+    color: rgb(211 230 230 / 38%);
+    font-size: 6px;
 }
 .consoleHeading strong {
     display: block;
     margin-top: 5px;
-    color: var(--ice);
-    font-size: 10px;
-    letter-spacing: 0.05em;
-}
-button,
-select {
-    border: 1px solid rgb(197 230 231 / 19%);
-    border-radius: 2px;
-    color: #dce9e8;
-    background: rgb(141 186 187 / 8%);
-    font: inherit;
+    color: var(--amber-bright);
     font-size: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    cursor: pointer;
+    letter-spacing: 0.07em;
 }
 .consoleHeading button {
-    padding: 8px 10px;
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    font-size: 15px;
+    line-height: 1;
 }
 .weatherConsole > label {
     display: block;
-    margin: 10px 0;
+    margin: 12px 0;
 }
 .weatherConsole label > span {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 6px;
+    justify-content: space-between;
+    margin-bottom: 7px;
 }
 .weatherConsole b {
-    color: rgb(209 228 229 / 55%);
-    font-size: 7px;
+    color: rgb(209 228 228 / 48%);
+    font-size: 6px;
     font-weight: 500;
 }
 .weatherConsole output {
-    color: #f1f6f5;
-    font-size: 8px;
+    color: #eef4f1;
+    font-size: 7px;
+    letter-spacing: 0.08em;
 }
 input[type='range'] {
     width: 100%;
     height: 2px;
     margin: 0;
-    accent-color: var(--signal);
+    accent-color: var(--amber);
+    cursor: pointer;
 }
 .selectRow {
     display: grid;
-    grid-template-columns: 0.72fr 1.28fr;
+    grid-template-columns: 0.75fr 1.25fr;
     gap: 9px;
-    margin-top: 15px;
-    padding-top: 13px;
-    border-top: 1px solid rgb(199 228 230 / 10%);
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgb(210 229 230 / 9%);
 }
 .selectRow label {
     min-width: 0;
 }
 .selectRow select {
     width: 100%;
-    padding: 7px 6px;
+    padding: 8px 7px;
+    font-size: 6px;
 }
 
 .footerLine {
     position: fixed;
     z-index: 4;
-    right: clamp(24px, 4vw, 62px);
-    bottom: 22px;
-    left: clamp(24px, 5vw, 76px);
+    right: clamp(24px, 4.4vw, 70px);
+    bottom: 16px;
+    left: clamp(24px, 4.4vw, 70px);
     display: flex;
     justify-content: space-between;
-    color: rgb(205 224 224 / 35%);
-    font-size: 7px;
+    pointer-events: none;
+    color: rgb(207 224 224 / 25%);
+    font-size: 5px;
+}
+.footerLine p {
+    margin: 0;
 }
 .footerLine span {
-    color: var(--signal);
+    color: rgb(242 164 95 / 74%);
+}
+.footerLine i {
+    display: inline-block;
+    width: 2px;
+    height: 2px;
+    margin: 0 7px 1px;
+    border-radius: 50%;
+    background: currentColor;
 }
 
 .loadingPanel,
@@ -250,10 +364,10 @@ input[type='range'] {
     display: grid;
     place-content: center;
     text-align: center;
-    background: radial-gradient(circle at 50% 42%, #14232a, #040708 65%);
+    background: radial-gradient(circle at 50% 42%, #182326, #050809 62%, #020304);
     transition:
-        opacity 700ms ease,
-        visibility 700ms ease;
+        opacity 800ms ease,
+        visibility 800ms ease;
 }
 body[data-stormfront-ready='true'] .loadingPanel {
     opacity: 0;
@@ -261,10 +375,10 @@ body[data-stormfront-ready='true'] .loadingPanel {
 }
 .loadingPanel p,
 .errorPanel span {
-    margin: 24px 0 8px;
-    color: var(--signal);
+    margin: 25px 0 9px;
+    color: var(--amber);
     font:
-        700 8px ui-monospace,
+        700 7px ui-monospace,
         monospace;
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -279,69 +393,73 @@ body[data-stormfront-ready='true'] .loadingPanel {
 .loadingPanel small,
 .errorPanel p {
     margin-top: 14px;
-    color: rgb(211 228 229 / 48%);
-    font-size: 9px;
+    color: rgb(211 228 229 / 45%);
+    font-size: 8px;
 }
 .loadingTrack {
-    width: 280px;
+    width: 270px;
     height: 1px;
-    margin: 26px auto 0;
-    background: rgb(202 231 233 / 12%);
+    margin: 25px auto 0;
+    background: rgb(202 231 233 / 11%);
 }
 .loadingTrack span {
     display: block;
-    width: 18%;
+    width: 12%;
     height: 100%;
-    background: var(--signal);
-    box-shadow: 0 0 16px var(--signal);
+    background: var(--amber);
+    box-shadow: 0 0 18px var(--amber);
     transition: width 400ms ease;
 }
-.radar {
+.sigil {
     position: relative;
-    width: 78px;
-    height: 78px;
+    width: 74px;
+    height: 74px;
     margin: auto;
-    border: 1px solid rgb(191 229 232 / 24%);
+    border: 1px solid rgb(220 235 234 / 16%);
     border-radius: 50%;
 }
-.radar::before,
-.radar::after {
+.sigil::before,
+.sigil::after {
     position: absolute;
+    inset: 12px;
     content: '';
-    background: rgb(191 229 232 / 15%);
+    border: 1px solid rgb(220 235 234 / 9%);
+    transform: rotate(45deg);
 }
-.radar::before {
-    top: 50%;
-    left: 7px;
-    width: 64px;
+.sigil::after {
+    inset: 25px;
+    border-color: var(--amber);
+    box-shadow: 0 0 12px rgb(242 164 95 / 32%);
+    animation: breathe 1.8s ease-in-out infinite;
+}
+.sigil i,
+.sigil b {
+    position: absolute;
+    top: 36px;
+    left: 8px;
+    width: 58px;
     height: 1px;
+    background: rgb(220 235 234 / 13%);
 }
-.radar::after {
-    top: 7px;
-    left: 50%;
-    width: 1px;
-    height: 64px;
+.sigil b {
+    transform: rotate(90deg);
 }
-.radar i {
+.sigil span {
     position: absolute;
-    inset: 9px;
-    border-top: 1px solid var(--signal);
+    inset: 4px;
+    border-top: 1px solid var(--amber);
     border-radius: 50%;
-    animation: scan 1.8s linear infinite;
-}
-.radar b {
-    position: absolute;
-    top: 22px;
-    right: 18px;
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background: var(--signal);
-    box-shadow: 0 0 9px var(--signal);
+    animation: scan 2.2s linear infinite;
 }
 @keyframes scan {
     to {
         transform: rotate(360deg);
+    }
+}
+@keyframes breathe {
+    50% {
+        opacity: 0.4;
+        transform: rotate(45deg) scale(0.72);
     }
 }
 .errorPanel[hidden] {
@@ -349,37 +467,48 @@ body[data-stormfront-ready='true'] .loadingPanel {
 }
 .errorPanel a {
     margin-top: 20px;
-    color: var(--ice);
-    font-size: 10px;
+    color: var(--mist);
+    font-size: 9px;
 }
 
 @media (max-width: 760px) {
-    .masthead {
-        top: 22px;
+    .identity {
+        top: 20px;
         left: 20px;
     }
-    .masthead h1 {
-        font-size: 48px;
-    }
-    .lede {
+    .identity > span {
         display: none;
     }
     .telemetry {
         top: auto;
         right: 20px;
-        bottom: 296px;
-        width: 260px;
+        bottom: 102px;
+        width: calc(100vw - 40px);
     }
-    .telemetry dl div {
-        padding: 9px 12px;
+    .telemetry > p,
+    .liveMark {
+        display: none;
+    }
+    .actionDock {
+        right: 20px;
+        bottom: 38px;
     }
     .weatherConsole {
         right: 20px;
-        bottom: 38px;
-        width: 260px;
-        padding: 14px;
+        bottom: 90px;
     }
     .footerLine {
         display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sigil span,
+    .sigil::after {
+        animation: none;
+    }
+    .weatherConsole,
+    .loadingPanel {
+        transition: none;
     }
 }

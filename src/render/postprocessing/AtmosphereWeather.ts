@@ -179,15 +179,15 @@ const QUALITY_SETTINGS: Readonly<Record<AtmosphereWeatherQuality, QualitySetting
             shadowSteps: 8
         }),
         high: Object.freeze({
-            resolutionScale: 0.5,
-            cloudSteps: 56,
-            lightSteps: 6,
+            resolutionScale: 0.625,
+            cloudSteps: 160,
+            lightSteps: 4,
             shadowSteps: 10
         }),
         ultra: Object.freeze({
-            resolutionScale: 0.625,
-            cloudSteps: 72,
-            lightSteps: 8,
+            resolutionScale: 0.75,
+            cloudSteps: 224,
+            lightSteps: 6,
             shadowSteps: 14
         })
     }
@@ -730,12 +730,50 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (any(id.xy >= size)) { return; }
     let uv = (vec2<f32>(id.xy) + vec2<f32>(0.5)) / vec2<f32>(size);
     let wind = atmosphere.cloudWind.xy * atmosphere.cloudWeather.w * atmosphere.cloudWind.z / atmosphere.cloudLayer.z;
-    let continental = fbm(uv * 3.1 + wind * 0.16);
-    let fronts = fbm(uv * vec2<f32>(7.0, 2.7) - wind * 0.28 + vec2<f32>(11.0, 3.0));
-    let cells = fbm(uv * 13.0 + wind * 0.5 + vec2<f32>(2.0, 19.0));
-    let coverage = clamp(continental * 0.7 + fronts * 0.3, 0.0, 1.0);
-    let cloudType = clamp(fronts * 0.65 + cells * 0.35, 0.0, 1.0);
-    let storm = smoothstep(0.52, 0.88, continental * 0.75 + cells * 0.25) * atmosphere.cloudWeather.z;
+    let warp = vec2<f32>(
+        fbm(uv * 2.1 + wind * 0.07 + vec2<f32>(3.7, 17.1)),
+        fbm(uv * 2.3 - wind * 0.05 + vec2<f32>(21.4, 5.8))
+    ) - vec2<f32>(0.5);
+    let warped = uv + warp * 0.14;
+    let frontCoordinates = vec2<f32>(
+        dot(warped, vec2<f32>(0.82, 0.57)),
+        dot(warped, vec2<f32>(-0.57, 0.82))
+    );
+    let continental = fbm(warped * 2.45 + wind * 0.12);
+    let fronts = fbm(frontCoordinates * vec2<f32>(5.4, 3.6) - wind * 0.24 + vec2<f32>(11.0, 3.0));
+    let cells = fbm((warped + warp * 0.08) * 10.5 + wind * 0.44 + vec2<f32>(2.0, 19.0));
+    let frontRidge = 1.0 - abs(fronts * 2.0 - 1.0);
+    let stormCenter = vec2<f32>(0.53, 0.34) + wind * 0.035;
+    let stormDelta = warped - stormCenter;
+    let supercell = 1.0 - smoothstep(0.42, 1.0, length(stormDelta / vec2<f32>(0.16, 0.11)));
+    let inflowDelta = warped - vec2<f32>(0.34, 0.43) - wind * 0.02;
+    let inflowBand = (1.0 - smoothstep(0.58, 1.0, length(inflowDelta / vec2<f32>(0.3, 0.075)))) *
+        smoothstep(0.22, 0.72, frontRidge);
+    let proceduralCoverage = smoothstep(
+        0.34,
+        0.82,
+        continental * 0.52 + fronts * 0.29 + cells * 0.19
+    );
+    let cellularEnvelope = supercell * (
+        0.34 + smoothstep(0.26, 0.78, cells * 0.58 + frontRidge * 0.42) * 0.62
+    );
+    let coverage = clamp(
+        max(proceduralCoverage * 0.22, max(cellularEnvelope * 0.88, inflowBand * 0.52)),
+        0.0,
+        1.0
+    );
+    let cloudType = clamp(
+        max(frontRidge * 0.42 + cells * 0.3 + continental * 0.18, supercell * 0.96),
+        0.0,
+        1.0
+    );
+    let proceduralStorm = smoothstep(
+        0.54,
+        0.84,
+        continental * 0.45 + frontRidge * 0.34 + cells * 0.21
+    );
+    let storm = max(proceduralStorm, cellularEnvelope * smoothstep(0.3, 0.78, cells)) *
+        atmosphere.cloudWeather.z;
     let precipitation = smoothstep(0.45, 0.95, storm * coverage);
     textureStore(weatherOutput, vec2<i32>(id.xy), vec4<f32>(coverage, cloudType, storm, precipitation));
 }`,
@@ -773,10 +811,23 @@ fn viewDistance(rawDepth: f32) -> f32 {
 }
 fn sampleWeather(position: vec3<f32>) -> vec4<f32> {
     let wind = atmosphere.cloudWind.xy * atmosphere.cloudWeather.w * atmosphere.cloudWind.z;
-    let uv = fract((position.xz + wind) / atmosphere.cloudLayer.z);
+    let uv = fract((position.xz + wind) / atmosphere.cloudLayer.z + vec2<f32>(0.5));
     let size = vec2<i32>(textureDimensions(weatherMap));
-    let pixel = clamp(vec2<i32>(uv * vec2<f32>(size)), vec2<i32>(0), size - vec2<i32>(1));
-    return textureLoad(weatherMap, pixel, 0);
+    let coordinate = uv * vec2<f32>(size - vec2<i32>(1));
+    let base = vec2<i32>(floor(coordinate));
+    let next = min(base + vec2<i32>(1), size - vec2<i32>(1));
+    let blend = fract(coordinate);
+    let lower = mix(
+        textureLoad(weatherMap, base, 0),
+        textureLoad(weatherMap, vec2<i32>(next.x, base.y), 0),
+        blend.x
+    );
+    let upper = mix(
+        textureLoad(weatherMap, vec2<i32>(base.x, next.y), 0),
+        textureLoad(weatherMap, next, 0),
+        blend.x
+    );
+    return mix(lower, upper, blend.y);
 }
 fn densityAt(position: vec3<f32>) -> f32 {
     let height = altitude(position);
@@ -1023,10 +1074,23 @@ fn perlinWorley(point: vec3<f32>) -> f32 {
 }
 fn sampleWeather(position: vec3<f32>) -> vec4<f32> {
     let wind = atmosphere.cloudWind.xy * atmosphere.cloudWeather.w * atmosphere.cloudWind.z;
-    let uv = fract((position.xz + wind) / atmosphere.cloudLayer.z);
+    let uv = fract((position.xz + wind) / atmosphere.cloudLayer.z + vec2<f32>(0.5));
     let size = vec2<i32>(textureDimensions(weatherMap));
-    let pixel = clamp(vec2<i32>(uv * vec2<f32>(size)), vec2<i32>(0), size - vec2<i32>(1));
-    return textureLoad(weatherMap, pixel, 0);
+    let coordinate = uv * vec2<f32>(size - vec2<i32>(1));
+    let base = vec2<i32>(floor(coordinate));
+    let next = min(base + vec2<i32>(1), size - vec2<i32>(1));
+    let blend = fract(coordinate);
+    let lower = mix(
+        textureLoad(weatherMap, base, 0),
+        textureLoad(weatherMap, vec2<i32>(next.x, base.y), 0),
+        blend.x
+    );
+    let upper = mix(
+        textureLoad(weatherMap, vec2<i32>(base.x, next.y), 0),
+        textureLoad(weatherMap, next, 0),
+        blend.x
+    );
+    return mix(lower, upper, blend.y);
 }
 fn sampleCloudLut(source: texture_2d<f32>, uv: vec2<f32>) -> vec3<f32> {
     let size = vec2<i32>(textureDimensions(source));
@@ -1076,29 +1140,78 @@ fn cloudSkyAmbient(direction: vec3<f32>) -> vec3<f32> {
 fn cloudDensity(position: vec3<f32>) -> f32 {
     let height = altitude(position);
     let weather = sampleWeather(position);
-    let heightWarp = (valueNoise(position / (atmosphere.cloudLayer.w * 5.5)) - 0.5) * 0.18;
-    let normalizedHeight = (height - atmosphere.cloudLayer.x) / atmosphere.cloudLayer.y -
-        (weather.x - 0.5) * 0.2 + heightWarp;
-    if (normalizedHeight <= 0.0 || normalizedHeight >= 1.0) { return 0.0; }
-    let coverage = clamp(atmosphere.cloudWeather.x + weather.z * 0.12, 0.0, 0.98);
-    let baseShape = smoothstep(0.38, 0.78, weather.x * 0.72 + coverage * 0.58);
-    let vertical = smoothstep(0.0, mix(0.08, 0.22, weather.y), normalizedHeight) *
-        (1.0 - smoothstep(mix(0.55, 0.78, weather.y), 1.0, normalizedHeight));
-    let wind = vec3<f32>(atmosphere.cloudWind.x, 0.08, atmosphere.cloudWind.y) *
+    let wind = vec3<f32>(atmosphere.cloudWind.x, 0.055, atmosphere.cloudWind.y) *
         atmosphere.cloudWeather.w * atmosphere.cloudWind.z;
-    let noisePoint = (position + wind) / atmosphere.cloudLayer.w;
-    let macroNoise = perlinWorley(noisePoint);
-    let detail = valueNoise(noisePoint * 4.1 + vec3<f32>(0.0, atmosphere.cloudWeather.w * 0.03, 0.0));
-    let erosion = mix(0.32, 0.48, detail);
-    return clamp((baseShape * vertical * 1.25 + macroNoise * 0.5 - erosion) * 2.45, 0.0, 1.0) *
-        atmosphere.cloudWeather.y * mix(0.75, 1.8, weather.z);
+    let macroPoint = (position + wind) / (atmosphere.cloudLayer.w * 2.6);
+    let domainWarp = vec3<f32>(
+        valueNoise(macroPoint * 0.73 + vec3<f32>(3.2, 17.1, 8.4)),
+        valueNoise(macroPoint * 0.61 + vec3<f32>(11.7, 2.5, 23.8)),
+        valueNoise(macroPoint * 0.79 + vec3<f32>(19.4, 13.6, 4.1))
+    ) - vec3<f32>(0.5);
+    let noisePoint = (position + wind) / atmosphere.cloudLayer.w + domainWarp * 0.68;
+    let heightWarp = (valueNoise(macroPoint + domainWarp * 0.35) - 0.5) * 0.12;
+    let normalizedHeight = (height - atmosphere.cloudLayer.x) / atmosphere.cloudLayer.y -
+        (weather.x - 0.5) * 0.13 + heightWarp;
+    if (normalizedHeight <= 0.0 || normalizedHeight >= 1.0) { return 0.0; }
+    let verticalShear = vec3<f32>(1.55, 0.18, -1.08) * normalizedHeight;
+    let macroNoise = perlinWorley((noisePoint + verticalShear) * 0.82);
+    let coverage = clamp(
+        weather.x * (0.36 + atmosphere.cloudWeather.x * 0.62) + weather.z * 0.08,
+        0.03,
+        0.94
+    );
+    let coverageThreshold = 1.0 - coverage;
+    let coverageNoise = macroNoise * 0.82 + weather.x * 0.18;
+    let baseShape = smoothstep(
+        coverageThreshold,
+        min(coverageThreshold + 0.24, 1.0),
+        coverageNoise
+    );
+    let towerField =
+        valueNoise(vec3<f32>(macroPoint.x * 0.58, 19.7, macroPoint.z * 0.58)) * 0.62 +
+        valueNoise(vec3<f32>(macroPoint.x * 1.17 + 8.3, 7.1, macroPoint.z * 1.17 + 14.9)) * 0.38;
+    let towerPotential = smoothstep(
+        0.28,
+        0.78,
+        towerField * 0.58 + weather.y * 0.25 + weather.z * 0.28
+    );
+    let towerDrive = clamp(
+        towerPotential * 0.86 + weather.z * 0.22 + (macroNoise - 0.5) * 0.16,
+        0.0,
+        1.0
+    );
+    let cloudTop = clamp(
+        mix(0.16, 0.92, towerDrive),
+        0.14,
+        0.96
+    );
+    let lowerProfile = smoothstep(0.055, mix(0.16, 0.24, weather.y), normalizedHeight);
+    let upperProfile = 1.0 - smoothstep(max(cloudTop - 0.2, 0.14), cloudTop, normalizedHeight);
+    let anvilProfile = weather.z * smoothstep(0.68, 0.9, towerPotential) *
+        smoothstep(0.48, 0.66, normalizedHeight) *
+        (1.0 - smoothstep(0.82, 0.98, normalizedHeight));
+    let verticalProfile = clamp(max(lowerProfile * upperProfile, anvilProfile * 0.58), 0.0, 1.0);
+    let detail =
+        valueNoise(noisePoint * 3.8 + vec3<f32>(0.0, atmosphere.cloudWeather.w * 0.035, 0.0)) * 0.68 +
+        valueNoise(noisePoint * 7.7 + vec3<f32>(13.1, atmosphere.cloudWeather.w * 0.061, 5.7)) * 0.32;
+    let cloudCore = baseShape * verticalProfile;
+    let edgeErosion = (1.0 - detail) * mix(0.38, 0.12, cloudCore) *
+        mix(1.25, 0.68, verticalProfile);
+    let carvedShape = smoothstep(0.055, 0.58, cloudCore - edgeErosion);
+    return clamp(carvedShape, 0.0, 1.0) *
+        atmosphere.cloudWeather.y * mix(0.72, 1.55, weather.z);
 }
 fn blueNoise(pixel: vec2<u32>, frameIndex: u32) -> f32 {
-    let rank = (pixel.x * 37u + pixel.y * 17u + (pixel.x ^ pixel.y) * 13u + frameIndex * 29u) & 63u;
-    return fract((f32(rank) + 0.5) * 0.61803398875 + f32(frameIndex) * 0.754877666);
+    let coordinate = vec2<f32>(pixel);
+    let spatial = fract(52.9829189 * fract(dot(coordinate, vec2<f32>(0.06711056, 0.00583715))));
+    return fract(spatial + f32(frameIndex & 63u) * 0.754877666);
 }
 fn cloudLightTransmittance(position: vec3<f32>) -> f32 {
-    let distance = atmosphere.cloudLayer.y / max(atmosphere.sun.y, 0.08);
+    let height = altitude(position);
+    let distance = max(
+        atmosphere.cloudLayer.x + atmosphere.cloudLayer.y - height,
+        0.0
+    ) / max(atmosphere.sun.y, 0.08);
     let stepLength = distance / ${String(lightSteps)}.0;
     var opticalDepth = 0.0;
     for (var step = 0u; step < ${String(lightSteps)}u; step += 1u) {
@@ -1132,58 +1245,106 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         textureStore(cloudDepthOutput, vec2<i32>(id.xy), vec4<f32>(-1.0));
         return;
     }
-    end = min(end, start + 140000.0);
+    end = min(end, start + 52000.0);
     let marchDistance = end - start;
-    let jitter = blueNoise(id.xy, atmosphere.output.z);
+    let jitter = (blueNoise(id.xy, atmosphere.output.z) - 0.5) * 0.08;
     var transmittance = 1.0;
     var radiance = vec3<f32>(0.0);
     var representativeDepth = -1.0;
+    var depthMoment = 0.0;
+    var depthWeight = 0.0;
     let viewToSun = dot(direction, atmosphere.sun.xyz);
     let forwardPhase = hg(viewToSun, atmosphere.cloudLighting.x);
     let backwardPhase = hg(viewToSun, -0.25);
     for (var step = 0u; step < ${String(cloudSteps)}u; step += 1u) {
-        let normalizedStart = (f32(step) + jitter) / ${String(cloudSteps)}.0;
-        let normalizedEnd = min((f32(step) + jitter + 1.0) / ${String(cloudSteps)}.0, 1.0);
-        let distance = start + normalizedStart * normalizedStart * marchDistance;
-        let sampleLength = max(
-            (normalizedEnd * normalizedEnd - normalizedStart * normalizedStart) * marchDistance,
-            marchDistance / ${String(cloudSteps * 12)}.0
+        let normalizedDistance = clamp(
+            (f32(step) + 0.5 + jitter) / ${String(cloudSteps)}.0,
+            0.0,
+            1.0
         );
+        let distance = start + normalizedDistance * marchDistance;
+        let sampleLength = marchDistance / ${String(cloudSteps)}.0;
         let position = origin + direction * distance;
-        let density = cloudDensity(position);
+        let filterOffset = direction * sampleLength * 0.22;
+        let density = (
+            cloudDensity(position - filterOffset) + cloudDensity(position + filterOffset)
+        ) * 0.5;
         if (density <= 0.001) { continue; }
-        if (representativeDepth < 0.0) { representativeDepth = distance; }
-        let extinction = density * 0.00058;
+        let extinction = density * 0.00018;
         let segmentTransmittance = exp(-extinction * sampleLength);
-        let sunVisibility = cloudLightTransmittance(position);
+        let segmentOpacity = transmittance * (1.0 - segmentTransmittance);
+        depthMoment += distance * segmentOpacity;
+        depthWeight += segmentOpacity;
+        let sunVisibility = mix(
+            exp(-density * 3.1),
+            cloudLightTransmittance(position),
+            0.18
+        );
         let weather = sampleWeather(position);
-        let silver = mix(1.0, 1.0 + atmosphere.aerial.w * 4.0, pow(max(viewToSun, 0.0), 12.0));
-        let phase = mix(backwardPhase, forwardPhase, 0.82) * silver;
+        let edgeLight = pow(max(viewToSun, 0.0), 8.0) * (1.0 - sunVisibility);
+        let silver = 1.0 + atmosphere.aerial.w * edgeLight * 0.68;
+        let phase = min(0.08 + mix(backwardPhase, forwardPhase, 0.8) * 1.55, 0.9);
         let sunLight = atmosphere.sunColor.rgb * atmosphere.sun.w *
             cloudSunTransmittance(position) * sunVisibility * phase;
         let up = normalize(position - atmosphere.planet.xyz);
+        let normalizedHeight = clamp(
+            (altitude(position) - atmosphere.cloudLayer.x) / atmosphere.cloudLayer.y,
+            0.0,
+            1.0
+        );
         let skyAmbient = (
-            cloudSkyAmbient(normalize(up + atmosphere.sun.xyz * 0.18)) * 0.022 +
-            cloudMultipleScattering(position) * 0.09 +
-            vec3<f32>(0.035, 0.075, 0.14)
+            cloudSkyAmbient(normalize(up + atmosphere.sun.xyz * 0.18)) * 0.038 +
+            cloudMultipleScattering(position) * 0.13 +
+            vec3<f32>(0.025, 0.052, 0.105)
         ) * atmosphere.cloudLighting.y * mix(1.0, 0.35, weather.z);
         let lightningPulse = pow(max(sin(atmosphere.cloudWeather.w * 3.7 + weather.x * 31.0), 0.0), 48.0) *
             weather.z * atmosphere.cloudWeather.z * 22.0;
-        let stormDarkening = mix(1.0, 0.12, density * weather.z);
-        let source = (sunLight + skyAmbient * mix(1.0, 0.3, density)) * stormDarkening +
+        let powder = 1.0 - exp(-density * 4.2);
+        let heightLighting = mix(0.12, 1.0, smoothstep(0.03, 0.78, normalizedHeight));
+        let stormDarkening = mix(0.88, 0.12, clamp(density * weather.z * 1.4, 0.0, 1.0));
+        let bouncedLight = vec3<f32>(0.065, 0.12, 0.24) * (1.0 - sunVisibility) *
+            mix(0.42, 1.0, normalizedHeight);
+        let source = (
+            sunLight * silver * mix(0.54, 1.12, powder) * heightLighting * 0.42 +
+            skyAmbient * mix(0.72, 0.24, density) +
+            bouncedLight
+        ) * stormDarkening +
             vec3<f32>(0.42, 0.55, 0.9) * lightningPulse;
         let integral = (1.0 - segmentTransmittance) / max(extinction, 0.000001);
-        radiance += transmittance * source * density * integral * 0.00058;
+        radiance += transmittance * source * density * integral * 0.00018;
         transmittance *= segmentTransmittance;
         if (transmittance < 0.012) { break; }
     }
+    if (depthWeight > 0.001) { representativeDepth = depthMoment / depthWeight; }
     if (representativeDepth > 0.0) {
         let representativePosition = origin + direction * representativeDepth;
-        let unresolvedShape = perlinWorley(
-            representativePosition / (atmosphere.cloudLayer.w * 1.65) +
-                vec3<f32>(0.0, atmosphere.cloudWeather.w * 0.012, 0.0)
+        let representativeHeight = clamp(
+            (altitude(representativePosition) - atmosphere.cloudLayer.x) / atmosphere.cloudLayer.y,
+            0.0,
+            1.0
         );
-        radiance *= mix(0.52, 1.42, smoothstep(0.18, 0.82, unresolvedShape));
+        let cloudOpacity = 1.0 - transmittance;
+        let heightTone = pow(smoothstep(0.04, 0.78, representativeHeight), 1.35);
+        let bodyColor = mix(
+            vec3<f32>(0.006, 0.018, 0.052),
+            vec3<f32>(0.82, 0.9, 1.0),
+            heightTone
+        );
+        let billowStructure = perlinWorley(
+            representativePosition / (atmosphere.cloudLayer.w * 1.9) +
+                vec3<f32>(0.0, atmosphere.cloudWeather.w * 0.009, 0.0)
+        );
+        let structuralLight = mix(0.42, 1.3, smoothstep(0.18, 0.82, billowStructure));
+        let opticalShading = mix(1.2, 0.34, smoothstep(0.1, 0.94, cloudOpacity));
+        let edgeOpacity = cloudOpacity * pow(max(1.0 - cloudOpacity, 0.0), 1.6) * 3.4;
+        let sunFacing = pow(max(viewToSun * 0.5 + 0.5, 0.0), 5.0);
+        let rimColor = vec3<f32>(1.0, 0.52, 0.2) * edgeOpacity * mix(0.2, 1.0, sunFacing) *
+            atmosphere.aerial.w * 0.55;
+        radiance = radiance * 0.03 +
+            bodyColor * cloudOpacity * structuralLight * opticalShading * 0.97 + rimColor;
+        let distanceFade = 1.0 - smoothstep(43000.0, 51500.0, representativeDepth);
+        radiance *= distanceFade;
+        transmittance = mix(1.0, transmittance, distanceFade);
     }
     let depthSize = textureDimensions(sceneDepth);
     let depthPixel = clamp(
@@ -1334,6 +1495,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (any(id.xy >= size)) { return; }
     let pixel = vec2<i32>(id.xy);
     let uv = (vec2<f32>(id.xy) + vec2<f32>(0.5)) / vec2<f32>(size);
+    let currentSize = vec2<i32>(textureDimensions(currentCloud));
     let current = textureLoad(currentCloud, pixel, 0);
     let depth = textureLoad(currentDepth, pixel, 0).r;
     var previousUv = uv;
@@ -1352,13 +1514,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let radianceDelta = abs(luminance(current.rgb) - luminance(history.rgb)) /
             max(max(luminance(current.rgb), luminance(history.rgb)), 0.05);
         let transmittanceDelta = abs(current.a - history.a);
-        let reactive = clamp(max(radianceDelta, transmittanceDelta * 2.0), 0.0, 1.0);
-        let valid = sameBackground || (depth > 0.0 && oldDepth > 0.0 && depthError < 0.08);
-        weight = select(0.0, atmosphere.aerial.z * (1.0 - reactive * 0.85), valid);
+        let reactive = clamp(max(radianceDelta * 0.08, transmittanceDelta * 0.32), 0.0, 1.0);
+        let valid = sameBackground || (depth > 0.0 && oldDepth > 0.0 && depthError < 0.72);
+        weight = select(0.0, atmosphere.aerial.z * (1.0 - reactive * 0.28), valid);
     }
     var minimumValue = current;
     var maximumValue = current;
-    let currentSize = vec2<i32>(textureDimensions(currentCloud));
     for (var y = -1; y <= 1; y += 1) {
         for (var x = -1; x <= 1; x += 1) {
             let neighbor = textureLoad(currentCloud, clamp(pixel + vec2<i32>(x, y), vec2<i32>(0), currentSize - vec2<i32>(1)), 0);
@@ -1366,7 +1527,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             maximumValue = max(maximumValue, neighbor);
         }
     }
-    let resolved = mix(current, clamp(history, minimumValue, maximumValue), weight);
+    let neighborhoodRange = maximumValue - minimumValue;
+    let clampedHistory = clamp(
+        history,
+        minimumValue - neighborhoodRange * 0.35,
+        maximumValue + neighborhoodRange * 0.35
+    );
+    let resolved = mix(current, clampedHistory, weight);
     textureStore(colorOutput, pixel, resolved);
     textureStore(depthOutput, pixel, vec4<f32>(depth));
 }`,

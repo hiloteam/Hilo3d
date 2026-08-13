@@ -5,78 +5,86 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
         <meta
             name="description"
-            content="A cinematic physical-atmosphere and volumetric-cloud observatory powered by WebGPU."
+            content="A cinematic storm reliquary shaped by physical atmosphere, temporal clouds, and volumetric light."
         />
-        <title>Stormfront Observatory — Physical Atmosphere</title>
+        <title>Tempest Reliquary — Stormfront Observatory</title>
         <link rel="stylesheet" href="./example.css" />
         <link rel="stylesheet" href="./stormfront_observatory.css" />
     </head>
-    <body data-stormfront-ready="false">
-        <div id="container" aria-label="Interactive stormfront observatory"></div>
+    <body data-stormfront-ready="false" data-console-open="false">
+        <div id="container" aria-label="Interactive Tempest Reliquary"></div>
+        <div class="vignette" aria-hidden="true"></div>
         <div class="grain" aria-hidden="true"></div>
 
-        <header class="masthead">
-            <p class="kicker"><span></span> North Atlantic Weather Array · Station 07</p>
-            <h1>Stormfront<br /><em>Observatory</em></h1>
-            <p class="lede">
-                A living Rayleigh–Mie sky, kilometer-scale storm cells, and cloud-broken sunlight
-                over a remote listening station.
-            </p>
+        <header class="identity">
+            <p><i></i> Stormfront Observatory · Archive 07</p>
+            <h1>Tempest <em>Reliquary</em></h1>
+            <span>A weather engine study in amber and thunder</span>
         </header>
 
         <section class="telemetry" aria-label="Live weather telemetry">
-            <div class="telemetryTop">
-                <span>Live synoptic feed</span><i></i><b id="utcReadout">—</b>
-            </div>
+            <div class="liveMark"><i></i><span>Atmosphere live</span></div>
             <dl>
                 <div>
-                    <dt>Cloud deck</dt>
-                    <dd id="cloudReadout">68%</dd>
+                    <dt>UTC</dt>
+                    <dd id="utcReadout">—</dd>
                 </div>
                 <div>
-                    <dt>Surface wind</dt>
-                    <dd id="windReadout">22 m/s</dd>
+                    <dt>Cloud</dt>
+                    <dd id="cloudReadout">72%</dd>
                 </div>
                 <div>
-                    <dt>Storm index</dt>
-                    <dd id="stormReadout">0.62</dd>
+                    <dt>Wind</dt>
+                    <dd id="windReadout">24 m/s</dd>
                 </div>
                 <div>
-                    <dt>Exposure</dt>
-                    <dd id="exposureReadout">adapting</dd>
+                    <dt>Storm</dt>
+                    <dd id="stormReadout">0.72</dd>
                 </div>
             </dl>
+            <p>Eye adaptation <b id="exposureReadout">adapting</b></p>
         </section>
 
-        <aside class="weatherConsole" aria-label="Weather controls">
+        <div class="actionDock">
+            <button id="viewButton" class="viewButton" type="button">
+                <span>Next composition</span><b>V</b>
+            </button>
+            <button id="controlsToggle" class="controlsToggle" type="button" aria-expanded="false">
+                <i></i><span>Tune the storm</span>
+            </button>
+        </div>
+
+        <aside id="weatherConsole" class="weatherConsole" aria-label="Weather controls">
             <div class="consoleHeading">
                 <div>
-                    <span>Atmosphere control</span><strong id="qualityLabel">HIGH / WEBGPU</strong>
+                    <span>Weather instrument</span><strong id="qualityLabel">HIGH / WEBGPU</strong>
                 </div>
-                <button id="viewButton" type="button">Change view</button>
+                <button id="consoleClose" type="button" aria-label="Close weather controls">
+                    ×
+                </button>
             </div>
             <label>
-                <span><b>Solar time</b><output id="timeOutput">17:42</output></span>
-                <input id="timeControl" type="range" min="5" max="20" step="0.02" value="17.7" />
+                <span><b>Solar time</b><output id="timeOutput">18:08</output></span>
+                <input id="timeControl" type="range" min="5" max="20" step="0.02" value="17.42" />
             </label>
             <label>
-                <span><b>Cloud amount</b><output id="cloudOutput">68%</output></span>
+                <span><b>Cloud amount</b><output id="cloudOutput">72%</output></span>
                 <input
                     id="cloudControl"
                     type="range"
                     min="0.1"
                     max="0.95"
                     step="0.01"
-                    value="0.68"
+                    value="0.66"
                 />
             </label>
             <label>
-                <span><b>Wind speed</b><output id="windOutput">22 m/s</output></span>
-                <input id="windControl" type="range" min="0" max="45" step="1" value="22" />
+                <span><b>Wind speed</b><output id="windOutput">24 m/s</output></span>
+                <input id="windControl" type="range" min="0" max="45" step="1" value="24" />
             </label>
             <label>
-                <span><b>Storm intensity</b><output id="stormOutput">0.62</output></span>
-                <input id="stormControl" type="range" min="0" max="1" step="0.01" value="0.62" />
+                <span><b>Storm intensity</b><output id="stormOutput">0.72</output></span>
+                <input id="stormControl" type="range" min="0" max="1" step="0.01" value="0.66" />
             </label>
             <div class="selectRow">
                 <label
@@ -104,21 +112,23 @@
         </aside>
 
         <footer class="footerLine">
-            <p><span>Drag</span> orbit · <span>Wheel</span> dolly · <span>V</span> viewpoint</p>
-            <p>GPU histogram · LUT atmosphere · temporal half-res clouds</p>
+            <p><span>Drag</span> orbit <i></i> <span>Wheel</span> dolly</p>
+            <p>Rayleigh / Mie / Ozone <i></i> temporal half-res clouds</p>
         </footer>
 
         <section id="loadingPanel" class="loadingPanel" aria-live="polite">
-            <div class="radar"><i></i><b></b></div>
-            <p>Station 07 / Initialization</p>
-            <h2 id="loadingTitle">Building atmospheric lookup fields</h2>
+            <div class="sigil"><i></i><b></b><span></span></div>
+            <p>Stormfront Observatory / Archive 07</p>
+            <h2 id="loadingTitle">Unsealing the reliquary</h2>
             <div class="loadingTrack"><span id="loadingProgress"></span></div>
-            <small id="loadingDetail">Calibrating the storm cell simulation.</small>
+            <small id="loadingDetail"
+                >Reading pressure, light, and memory from the approaching storm.</small
+            >
         </section>
 
         <section id="errorPanel" class="errorPanel" hidden role="alert">
-            <span>Station offline</span>
-            <h2>WebGPU weather simulation unavailable</h2>
+            <span>Archive unavailable</span>
+            <h2>The reliquary requires WebGPU</h2>
             <p id="errorMessage"></p>
             <a href="./list.html?backend=webgl2">Browse portable examples</a>
         </section>

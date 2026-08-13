@@ -3,16 +3,16 @@ import * as Hilo3d from '../src/Hilo3d';
 const TAU = Math.PI * 2;
 const search = new URLSearchParams(location.search);
 const testMode = search.get('test') === '1';
+const subjectVisible = search.get('subject') !== 'none';
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function requireElement<T extends HTMLElement>(selector: string, type: new () => T): T {
     const element = document.querySelector(selector);
-    if (!(element instanceof type))
-        throw new Error(`Stormfront Observatory is missing ${selector}`);
+    if (!(element instanceof type)) throw new Error(`Tempest Reliquary is missing ${selector}`);
     return element;
 }
 
-function createCylinderGeometry(segments = 64): Hilo3d.Geometry {
+function createCylinderGeometry(segments = 72): Hilo3d.Geometry {
     const positions: number[] = [];
     const normals: number[] = [];
     const indices: number[] = [];
@@ -49,7 +49,7 @@ function createCylinderGeometry(segments = 64): Hilo3d.Geometry {
     });
 }
 
-function createTorusGeometry(majorSegments = 80, minorSegments = 12): Hilo3d.Geometry {
+function createTorusGeometry(majorSegments = 96, minorSegments = 14): Hilo3d.Geometry {
     const row = minorSegments + 1;
     const positions = new Float32Array((majorSegments + 1) * row * 3);
     const normals = new Float32Array(positions.length);
@@ -59,10 +59,10 @@ function createTorusGeometry(majorSegments = 80, minorSegments = 12): Hilo3d.Geo
         const majorAngle = (major / majorSegments) * TAU;
         for (let minor = 0; minor <= minorSegments; minor += 1) {
             const minorAngle = (minor / minorSegments) * TAU;
-            const radial = 1 + Math.cos(minorAngle) * 0.08;
+            const radial = 1 + Math.cos(minorAngle) * 0.045;
             positions[vertex] = Math.cos(majorAngle) * radial;
             positions[vertex + 1] = Math.sin(majorAngle) * radial;
-            positions[vertex + 2] = Math.sin(minorAngle) * 0.08;
+            positions[vertex + 2] = Math.sin(minorAngle) * 0.045;
             normals[vertex] = Math.cos(majorAngle) * Math.cos(minorAngle);
             normals[vertex + 1] = Math.sin(majorAngle) * Math.cos(minorAngle);
             normals[vertex + 2] = Math.sin(minorAngle);
@@ -106,6 +106,17 @@ function debugFromQuery(): Hilo3d.AtmosphereWeatherDebugView {
         : 'none';
 }
 
+function directionToTarget(
+    position: readonly [number, number, number],
+    target: readonly [number, number, number]
+): Hilo3d.Vector3 {
+    return new Hilo3d.Vector3(
+        target[0] - position[0],
+        target[1] - position[1],
+        target[2] - position[2]
+    ).normalize();
+}
+
 async function main(): Promise<void> {
     const container = requireElement('#container', HTMLElement);
     const loadingTitle = requireElement('#loadingTitle', HTMLElement);
@@ -120,6 +131,8 @@ async function main(): Promise<void> {
     const qualityControl = requireElement('#qualityControl', HTMLSelectElement);
     const debugControl = requireElement('#debugControl', HTMLSelectElement);
     const viewButton = requireElement('#viewButton', HTMLButtonElement);
+    const controlsToggle = requireElement('#controlsToggle', HTMLButtonElement);
+    const consoleClose = requireElement('#consoleClose', HTMLButtonElement);
     const timeOutput = requireElement('#timeOutput', HTMLOutputElement);
     const cloudOutput = requireElement('#cloudOutput', HTMLOutputElement);
     const windOutput = requireElement('#windOutput', HTMLOutputElement);
@@ -139,10 +152,10 @@ async function main(): Promise<void> {
 
     const weather = new Hilo3d.AtmosphereWeatherState();
     weather.cloudCoverage = Number(cloudControl.value);
-    weather.cloudDensity = 1.18;
+    weather.cloudDensity = 1.1;
     weather.storminess = Number(stormControl.value);
     weather.windSpeed = Number(windControl.value);
-    weather.windDirection.set(0.92, 0, 0.38).normalize();
+    weather.windDirection.set(0.82, 0, 0.57).normalize();
 
     const boxGeometry = new Hilo3d.BoxGeometry();
     const cylinderGeometry = createCylinderGeometry();
@@ -153,160 +166,213 @@ async function main(): Promise<void> {
         heightSegments: 24
     });
     const planeGeometry = new Hilo3d.PlaneGeometry({ width: 1, height: 1 });
-    const rock = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.025, 0.035, 0.04),
-        metallic: 0.12,
-        roughness: 0.78
-    });
-    const wetRock = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.035, 0.048, 0.052),
-        metallic: 0.28,
-        roughness: 0.31
-    });
-    const steel = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.075, 0.095, 0.1),
-        metallic: 0.88,
-        roughness: 0.27
-    });
-    const paleSteel = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.25, 0.31, 0.31),
-        metallic: 0.72,
-        roughness: 0.36
-    });
-    const copper = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.42, 0.16, 0.055),
-        metallic: 0.9,
-        roughness: 0.24
-    });
-    const glass = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.035, 0.12, 0.14),
+
+    const obsidian = new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.008, 0.012, 0.014),
         metallic: 0.52,
-        roughness: 0.09
+        roughness: 0.23
     });
-    const signal = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.23, 0.055, 0.012),
-        metallic: 0.1,
-        roughness: 0.3,
-        emission: new Hilo3d.Color(6.4, 1.05, 0.12)
+    const basalt = new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.014, 0.02, 0.022),
+        metallic: 0.08,
+        roughness: 0.74
     });
-    const coldSignal = new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.01, 0.12, 0.16),
-        metallic: 0.15,
-        roughness: 0.25,
-        emission: new Hilo3d.Color(0.08, 1.7, 2.6)
+    const blackGold = new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.16, 0.052, 0.01),
+        metallic: 0.78,
+        roughness: 0.3
+    });
+    const stormHeart = new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.32, 0.055, 0.004),
+        metallic: 0.08,
+        roughness: 0.17,
+        emission: new Hilo3d.Color(8.5, 0.72, 0.035)
+    });
+    const lightningGlass = new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.006, 0.12, 0.16),
+        metallic: 0.2,
+        roughness: 0.19,
+        emission: new Hilo3d.Color(0.06, 1.15, 2.4)
+    });
+    const stormMoon = new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.006, 0.042, 0.064),
+        metallic: 0.14,
+        roughness: 0.62,
+        emission: new Hilo3d.Color(0.035, 0.62, 1.18)
     });
 
-    const buckets: readonly Hilo3d.GPUSceneBucket[] = [
-        { geometry: boxGeometry, material: rock },
-        { geometry: boxGeometry, material: wetRock },
-        { geometry: boxGeometry, material: steel },
-        { geometry: boxGeometry, material: paleSteel },
-        { geometry: boxGeometry, material: signal },
-        { geometry: cylinderGeometry, material: wetRock },
-        { geometry: cylinderGeometry, material: steel },
-        { geometry: cylinderGeometry, material: paleSteel },
-        { geometry: cylinderGeometry, material: copper },
-        { geometry: cylinderGeometry, material: signal },
-        { geometry: torusGeometry, material: copper },
-        { geometry: torusGeometry, material: signal },
-        { geometry: sphereGeometry, material: glass },
-        { geometry: sphereGeometry, material: signal },
-        { geometry: sphereGeometry, material: coldSignal },
-        { geometry: planeGeometry, material: wetRock }
-    ];
+    loadingProgress.style.width = '24%';
+    loadingTitle.textContent = 'Recovering the amber guardian';
+    loadingDetail.textContent =
+        'Streaming the Stanford dragon from the Khronos glTF sample archive.';
+    const dragonBuckets: Hilo3d.GPUSceneBucket[] = [];
+    const loader = new Hilo3d.GLTFLoader();
+    const model = await loader.load({
+        src: new URL('./models/KhronosPBR/DragonAttenuation.glb', import.meta.url).href,
+        ignoreTextureError: false
+    });
+    await model.ready;
+    if (model.resourceErrors.length > 0) {
+        throw new AggregateError(
+            model.resourceErrors,
+            'The dragon reliquary has resource failures.'
+        );
+    }
+    const namedDragon = model.node.getChildByName('Dragon');
+    const dragonMesh =
+        namedDragon instanceof Hilo3d.Mesh ? namedDragon : model.meshes[model.meshes.length - 1];
+    if (dragonMesh === undefined) {
+        throw new Error('DragonAttenuation does not expose the expected Dragon mesh.');
+    }
+    if (dragonMesh.geometry === null) {
+        throw new Error('DragonAttenuation does not expose the expected Dragon mesh.');
+    }
+    for (const mesh of model.meshes) mesh.visible = mesh === dragonMesh;
+    dragonMesh.frustumTest = true;
+    const dragonBounds = dragonMesh.getBounds();
+    if (dragonBounds === undefined || dragonBounds.height <= 0) {
+        throw new RangeError('DragonAttenuation does not expose usable bounds.');
+    }
+    const dragonGlaze = new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.43, 0.13, 0.009),
+        metallic: 0.54,
+        roughness: 0.41,
+        emission: new Hilo3d.Color(0.018, 0.0025, 0.0001)
+    });
+    dragonMesh.material = dragonGlaze;
+    const dragonScale = 10.6 / dragonBounds.height;
+    model.node.setScale(dragonScale);
+    model.node.setPosition(
+        -dragonBounds.x * dragonScale,
+        2.55 - dragonBounds.yMin * dragonScale,
+        -dragonBounds.z * dragonScale
+    );
+    model.node.rotationY = -10;
+    dragonBuckets.push({ geometry: dragonMesh.geometry, material: dragonGlaze });
+
+    const buckets: readonly Hilo3d.GPUSceneBucket[] = Object.freeze([
+        ...dragonBuckets,
+        { geometry: boxGeometry, material: obsidian },
+        { geometry: boxGeometry, material: basalt },
+        { geometry: boxGeometry, material: blackGold },
+        { geometry: cylinderGeometry, material: obsidian },
+        { geometry: cylinderGeometry, material: basalt },
+        { geometry: cylinderGeometry, material: blackGold },
+        { geometry: torusGeometry, material: blackGold },
+        { geometry: torusGeometry, material: stormHeart },
+        { geometry: sphereGeometry, material: stormHeart },
+        { geometry: sphereGeometry, material: lightningGlass },
+        { geometry: sphereGeometry, material: stormMoon },
+        { geometry: planeGeometry, material: obsidian }
+    ]);
     const width = testMode ? 960 : innerWidth;
     const height = testMode ? 600 : innerHeight;
     const factory = new Hilo3d.ClusteredForwardPlusPipelineFactory({
         buckets,
-        maxObjects: 384,
-        maxLights: 32,
-        maxLightIndices: 131_072,
-        maxLightsPerCluster: 48,
-        tileSize: testMode ? 40 : 32,
+        maxObjects: testMode ? 384 : 256,
+        maxLights: testMode ? 32 : 48,
+        maxLightIndices: testMode ? 131_072 : 196_608,
+        maxLightsPerCluster: testMode ? 48 : 64,
+        tileSize: testMode ? 40 : 28,
         zSlices: testMode ? 16 : 24,
         maxViewportWidth: testMode ? 960 : 2560,
         maxViewportHeight: testMode ? 600 : 1440,
         hiZ: true,
         toneMapping: 'filmic',
-        bloomStrength: 0.2,
-        exposure: 0.5,
+        bloomStrength: 0.3,
+        exposure: 0.48,
         autoExposure: {
-            minimumEV: -3,
-            maximumEV: 0.15,
-            compensation: -0.8,
-            keyValue: 0.12,
-            speedUp: 1.25,
-            speedDown: 2.8
+            minimumEV: -3.4,
+            maximumEV: 0.3,
+            compensation: -0.95,
+            keyValue: 0.125,
+            speedUp: 1.1,
+            speedDown: 2.5
         },
         temporalAA: {
-            renderScale: testMode ? 0.5 : 0.82,
-            historyWeight: 0.93,
-            depthThreshold: 0.025,
-            varianceGamma: 1.15,
-            sharpness: 0.1
+            renderScale: testMode ? 0.5 : 0.86,
+            historyWeight: 0.92,
+            depthThreshold: 0.024,
+            varianceGamma: 1.1,
+            sharpness: 0.14
         },
         groundTruthAmbientOcclusion: {
             resolutionScale: testMode ? 0.25 : 0.5,
-            radius: 2.8,
+            radius: 2.4,
             directionCount: testMode ? 4 : 6,
             stepCount: testMode ? 3 : 5,
-            power: 1.18
+            power: 1.24
         },
         atmosphere: {
             quality,
             state: weather,
             debugView,
             atmosphere: {
-                sunIlluminance: 5,
-                sunColor: new Hilo3d.Color(1, 0.72, 0.44),
-                mieScaleHeight: 780,
-                mieAnisotropy: 0.84,
-                aerialPerspectiveDistance: 180_000,
-                groundAlbedo: new Hilo3d.Color(0.055, 0.07, 0.065)
+                sunIlluminance: 4.6,
+                sunColor: new Hilo3d.Color(1, 0.93, 0.82),
+                rayleighScaleHeight: 7_600,
+                mieScaleHeight: 720,
+                mieAnisotropy: 0.87,
+                aerialPerspectiveDistance: 135_000,
+                groundAlbedo: new Hilo3d.Color(0.028, 0.038, 0.04)
             },
             clouds: {
-                baseHeight: 900,
-                thickness: 7_400,
-                weatherScale: 105_000,
-                detailScale: 5_600,
-                anisotropy: 0.76,
-                silverLining: 2.2,
-                ambientStrength: 0.48,
-                historyWeight: 0.93,
-                shadowDistance: 90_000
+                baseHeight: 1_050,
+                thickness: 10_600,
+                weatherScale: 148_000,
+                detailScale: 2_200,
+                anisotropy: 0.8,
+                silverLining: 1.7,
+                ambientStrength: 0.52,
+                historyWeight: 0.98,
+                shadowDistance: 82_000
             }
         },
         volumetricLighting: {
             quality: testMode ? 'low' : 'high',
-            resolutionScale: testMode ? 0.25 : 0.4,
+            resolutionScale: testMode ? 0.25 : 0.44,
             shadowSteps: testMode ? 1 : 3,
-            density: 0.0022,
-            baseHeight: 0,
-            heightFalloff: 0.055,
-            maxDistance: 105,
-            albedo: new Hilo3d.Color(0.72, 0.84, 0.88),
-            anisotropy: 0.48,
-            ambientStrength: 0.08,
+            density: 0.0036,
+            baseHeight: -1,
+            heightFalloff: 0.08,
+            maxDistance: 92,
+            albedo: new Hilo3d.Color(0.58, 0.7, 0.73),
+            anisotropy: 0.58,
+            ambientStrength: 0.045,
             historyWeight: 0.92,
-            depthThreshold: 0.035,
+            depthThreshold: 0.032,
             localVolumes: [
                 {
                     shape: 'box',
-                    center: new Hilo3d.Vector3(0, 7, 0),
-                    halfExtents: new Hilo3d.Vector3(32, 9, 24),
-                    density: 0.0014,
-                    edgeFalloff: 0.28,
-                    albedo: new Hilo3d.Color(0.55, 0.72, 0.78)
-                }
+                    center: new Hilo3d.Vector3(0, 6.5, 0),
+                    halfExtents: new Hilo3d.Vector3(24, 10, 20),
+                    density: 0.0021,
+                    edgeFalloff: 0.32,
+                    albedo: new Hilo3d.Color(0.46, 0.62, 0.66)
+                },
+                ...(testMode
+                    ? []
+                    : [
+                          {
+                              shape: 'sphere' as const,
+                              center: new Hilo3d.Vector3(0, 6.6, 0),
+                              radius: 7,
+                              density: 0.0048,
+                              edgeFalloff: 0.5,
+                              albedo: new Hilo3d.Color(0.94, 0.39, 0.08)
+                          }
+                      ])
             ]
         }
     });
 
-    loadingProgress.style.width = '42%';
-    loadingTitle.textContent = 'Allocating temporal cloud history';
+    loadingProgress.style.width = '58%';
+    loadingTitle.textContent = 'Teaching the storm to remember';
+    loadingDetail.textContent =
+        'Allocating atmosphere LUTs, cloud history, and froxel light volumes.';
     const camera = new Hilo3d.PerspectiveCamera({
         aspect: width / Math.max(height, 1),
-        fov: 47,
+        fov: 36,
         near: 0.08,
         far: 220_000,
         depthMode: 'reversed'
@@ -317,14 +383,15 @@ async function main(): Promise<void> {
         camera,
         width,
         height,
-        pixelRatio: testMode ? 1 : Math.min(devicePixelRatio, 1.35),
+        pixelRatio: testMode ? 1 : Math.min(devicePixelRatio, 1.4),
         antialias: false,
         alpha: false,
-        clearColor: new Hilo3d.Color(0.005, 0.008, 0.009),
+        clearColor: new Hilo3d.Color(0.002, 0.004, 0.005),
         renderingProfile: 'high-end',
         renderPipeline: factory
     });
 
+    const sceneMeshes: Hilo3d.Mesh[] = [];
     const addMesh = (
         geometry: Hilo3d.Geometry,
         material: Hilo3d.PBRMaterial,
@@ -345,148 +412,117 @@ async function main(): Promise<void> {
             pointerEnabled: false
         }).addTo(stage);
         mesh.setScale(scale[0], scale[1], scale[2]);
+        sceneMeshes.push(mesh);
         return mesh;
     };
 
-    for (let index = 0; index < 18; index += 1) {
-        const angle = (index / 18) * TAU;
-        const radius = 15 + (index % 4) * 2.2;
-        addMesh(
-            boxGeometry,
-            index % 3 === 0 ? wetRock : rock,
-            [Math.cos(angle) * radius, -1.2 + (index % 5) * 0.35, Math.sin(angle) * radius - 1],
-            [8 + (index % 3) * 2.4, 3.5 + (index % 4), 6 + ((index + 1) % 4) * 1.6],
-            [index * 7, (-angle * 180) / Math.PI + index * 9, index % 2 === 0 ? 5 : -7]
-        );
-    }
-    addMesh(cylinderGeometry, wetRock, [0, 2.1, 0], [13.8, 3.1, 13.8]);
-    addMesh(cylinderGeometry, steel, [0, 4.35, 0], [12.8, 1.45, 12.8]);
-    addMesh(cylinderGeometry, paleSteel, [0, 6.45, -1.1], [6.9, 3.1, 6.9]);
-    addMesh(cylinderGeometry, steel, [0, 9.2, -1.1], [5.2, 2.5, 5.2]);
-    addMesh(sphereGeometry, glass, [0, 11.15, -1.1], [4.45, 2.3, 4.45]);
-    addMesh(torusGeometry, copper, [0, 10.45, -1.1], [5.05, 5.05, 1], [90, 0, 0]);
-    addMesh(torusGeometry, signal, [0, 11.35, -1.1], [4.6, 4.6, 1], [90, 0, 0]);
-    addMesh(cylinderGeometry, steel, [0, 15.4, -1.1], [0.32, 6.4, 0.32]);
-    addMesh(sphereGeometry, signal, [0, 18.7, -1.1], [0.48, 0.48, 0.48]);
-    addMesh(cylinderGeometry, copper, [0.15, 16.15, -1.1], [0.1, 5.6, 0.1], [0, 0, -24]);
+    model.node.addTo(stage);
+    addMesh(planeGeometry, obsidian, [0, -0.72, 0], [80, 80, 1], [-90, 0, 0]);
+    addMesh(cylinderGeometry, basalt, [0, -0.1, 0], [12.8, 1.1, 12.8]);
+    addMesh(cylinderGeometry, obsidian, [0, 0.68, 0], [10.6, 0.68, 10.6]);
+    addMesh(cylinderGeometry, blackGold, [0, 1.12, 0], [9.5, 0.16, 9.5]);
+    addMesh(cylinderGeometry, obsidian, [0, 1.62, 0], [8.2, 0.86, 8.2]);
+    addMesh(cylinderGeometry, obsidian, [0, 2.18, 0], [7.1, 0.3, 7.1]);
+    addMesh(torusGeometry, blackGold, [0, 2.38, 0], [7.15, 7.15, 1], [90, 0, 0]);
+    addMesh(torusGeometry, stormHeart, [0, 2.58, 0], [6.58, 6.58, 1], [90, 0, 0]);
+    addMesh(sphereGeometry, stormMoon, [0, 7.35, -5.4], [6.35, 6.35, 0.72]);
+    addMesh(torusGeometry, blackGold, [0, 7.35, -4.54], [6.78, 6.78, 0.82]);
 
-    for (const side of [-1, 1] as const) {
-        addMesh(
-            boxGeometry,
-            steel,
-            [side * 8.8, 6.2, -1.2],
-            [6.2, 0.4, 4.8],
-            [0, side * -9, side * 18]
+    const motes: Hilo3d.Mesh[] = [];
+    for (let index = 0; index < 12; index += 1) {
+        const angle = (index / 12) * TAU + 0.18;
+        const radius = 6.45 + (index % 3) * 0.34;
+        const mote = addMesh(
+            sphereGeometry,
+            index % 4 === 0 ? lightningGlass : stormHeart,
+            [Math.cos(angle) * radius, 2.62 + (index % 2) * 0.06, Math.sin(angle) * radius],
+            [
+                index % 4 === 0 ? 0.07 : 0.055,
+                index % 4 === 0 ? 0.07 : 0.055,
+                index % 4 === 0 ? 0.07 : 0.055
+            ]
         );
-        addMesh(
-            boxGeometry,
-            glass,
-            [side * 8.8, 6.63, -1.2],
-            [5.5, 0.12, 4.1],
-            [0, side * -9, side * 18]
-        );
-        addMesh(
-            cylinderGeometry,
-            paleSteel,
-            [side * 9.2, 4.2, -1.1],
-            [0.28, 4.2, 0.28],
-            [0, 0, side * 8]
-        );
+        motes.push(mote);
     }
-    for (let index = 0; index < 16; index += 1) {
-        const angle = (index / 16) * TAU;
-        addMesh(
-            cylinderGeometry,
-            paleSteel,
-            [Math.cos(angle) * 11.3, 6.25, Math.sin(angle) * 11.3],
-            [0.08, 1.5, 0.08]
-        );
-    }
-    for (let index = 0; index < 9; index += 1) {
-        const x = -11.5 + index * 2.9;
-        addMesh(
-            boxGeometry,
-            steel,
-            [x, 3.6, 10.8],
-            [2.1, 0.35, 2.5],
-            [0, index % 2 === 0 ? -5 : 5, 0]
-        );
-        addMesh(sphereGeometry, signal, [x, 4.15, 11.5], [0.13, 0.13, 0.13]);
-    }
-    addMesh(planeGeometry, wetRock, [0, 3.2, 12], [29, 17, 1], [-90, 0, 0]);
-    addMesh(cylinderGeometry, paleSteel, [-8.1, 12.2, -3.5], [4.1, 0.28, 4.1], [0, 0, 52]);
-    addMesh(cylinderGeometry, steel, [-8.1, 8.1, -3.5], [0.42, 6.2, 0.42], [0, 0, 8]);
-    addMesh(sphereGeometry, coldSignal, [-10.9, 15.6, -3.5], [0.22, 0.22, 0.22]);
-    addMesh(boxGeometry, wetRock, [-19, 1.6, -4], [8, 4.5, 18], [0, 18, -5]);
-    addMesh(boxGeometry, rock, [20, 0.4, -7], [10, 6, 14], [4, -22, 8]);
 
-    new Hilo3d.AmbientLight({ color: new Hilo3d.Color(0.12, 0.22, 0.3), amount: 1.65 }).addTo(
+    if (!subjectVisible) {
+        model.node.visible = false;
+        for (const mesh of sceneMeshes) mesh.visible = false;
+    }
+    new Hilo3d.AmbientLight({ color: new Hilo3d.Color(0.1, 0.17, 0.23), amount: 0.46 }).addTo(
         stage
     );
     const sunLight = new Hilo3d.DirectionalLight({
-        color: new Hilo3d.Color(1, 0.68, 0.39),
-        amount: 4.2,
-        direction: new Hilo3d.Vector3(-0.4, -0.3, 0.86)
+        color: new Hilo3d.Color(1, 0.52, 0.23),
+        amount: 4.8,
+        direction: new Hilo3d.Vector3(-0.6, -0.15, 0.78)
     }).addTo(stage);
-    for (let index = 0; index < 9; index += 1) {
-        const x = -11.5 + index * 2.9;
+    if (subjectVisible) {
         new Hilo3d.PointLight({
-            color: new Hilo3d.Color(1, 0.25, 0.035),
-            amount: 4.8,
-            range: 7,
-            x,
-            y: 4.2,
-            z: 11.5
+            color: new Hilo3d.Color(1, 0.18, 0.018),
+            amount: 11,
+            range: 14,
+            x: 0,
+            y: 6.5,
+            z: 0
         }).addTo(stage);
+        new Hilo3d.SpotLight({
+            x: -10,
+            y: 14,
+            z: 12,
+            color: new Hilo3d.Color(1, 0.27, 0.045),
+            direction: directionToTarget([-10, 14, 12], [0, 6.8, 0]),
+            amount: 23,
+            range: 38,
+            cutoff: 0.88,
+            outerCutoff: 0.74
+        }).addTo(stage);
+        for (let index = 0; index < 6; index += 1) {
+            const angle = (index / 6) * TAU;
+            new Hilo3d.PointLight({
+                color: new Hilo3d.Color(1, 0.21, 0.025),
+                amount: 1.7,
+                range: 7,
+                x: Math.cos(angle) * 6.55,
+                y: 2.72,
+                z: Math.sin(angle) * 6.55
+            }).addTo(stage);
+        }
     }
-    new Hilo3d.PointLight({
-        color: new Hilo3d.Color(0.08, 0.72, 1),
-        amount: 6,
-        range: 18,
-        x: 0,
-        y: 11.5,
-        z: -1
-    }).addTo(stage);
-    new Hilo3d.PointLight({
-        color: new Hilo3d.Color(0.08, 0.36, 0.55),
-        amount: 5.2,
-        range: 34,
-        x: -12,
-        y: 9,
-        z: 13
-    }).addTo(stage);
-    new Hilo3d.PointLight({
-        color: new Hilo3d.Color(0.12, 0.28, 0.42),
-        amount: 4.2,
-        range: 30,
-        x: 13,
-        y: 7,
-        z: 8
-    }).addTo(stage);
 
+    const target = subjectVisible
+        ? new Hilo3d.Vector3(0, 7.55, 0)
+        : new Hilo3d.Vector3(15, 18, -30);
     const controls = new Hilo3d.OrbitControls(stage, {
         camera,
-        target: new Hilo3d.Vector3(0, 7.4, 0),
+        target,
         enablePan: false,
-        minDistance: 18,
-        maxDistance: 68,
-        minPolarAngle: Math.PI * 0.2,
-        maxPolarAngle: Math.PI * 0.69,
-        rotateSpeed: 0.5,
-        zoomSpeed: 0.75
+        minDistance: 14,
+        maxDistance: subjectVisible ? 42 : 120,
+        minPolarAngle: subjectVisible ? Math.PI * 0.24 : Math.PI * 0.08,
+        maxPolarAngle: subjectVisible ? Math.PI * 0.67 : Math.PI * 0.76,
+        rotateSpeed: 0.45,
+        zoomSpeed: 0.72
     });
-    const views = [
-        new Hilo3d.Vector3(10, 6.8, 30),
-        new Hilo3d.Vector3(-34, 10.5, 24),
-        new Hilo3d.Vector3(29, 12.5, 37)
-    ] as const;
-    const target = new Hilo3d.Vector3(0, 8.1, -1);
+    const views: readonly Hilo3d.Vector3[] = subjectVisible
+        ? [
+              new Hilo3d.Vector3(6.2, 7, 24.5),
+              new Hilo3d.Vector3(-17.5, 8.4, 18.8),
+              new Hilo3d.Vector3(4.2, 13.8, 23.5)
+          ]
+        : [
+              new Hilo3d.Vector3(0, 3, 18),
+              new Hilo3d.Vector3(-26, 7, 8),
+              new Hilo3d.Vector3(22, 10, 16)
+          ];
     let viewIndex = 0;
-    controls.setView(views[0], target);
+    const initialView = views[0];
+    if (initialView === undefined) throw new Error('Tempest Reliquary requires an initial view');
+    controls.setView(initialView, target);
 
     const setSolarTime = (hour: number): void => {
         const daylight = Math.max(0, Math.sin(((hour - 5.4) / 15.2) * Math.PI));
-        const elevation = 0.025 + daylight * 0.48;
+        const elevation = 0.018 + daylight * 0.35;
         const azimuth = ((hour - 12.1) / 15.2) * Math.PI;
         weather.sunDirection
             .set(
@@ -496,12 +532,12 @@ async function main(): Promise<void> {
             )
             .normalize();
         sunLight.direction.copy(weather.sunDirection).negate();
-        sunLight.amount = 1.2 + daylight * 4.2;
+        sunLight.amount = 1.1 + daylight * 4.4;
         const hours = Math.floor(hour);
         const minutes = Math.floor((hour - hours) * 60);
         const formatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
         timeOutput.value = formatted;
-        utcReadout.textContent = `${formatted} UTC`;
+        utcReadout.textContent = formatted;
     };
     const syncWeather = (): void => {
         const coverage = Number(cloudControl.value);
@@ -510,12 +546,12 @@ async function main(): Promise<void> {
         weather.cloudCoverage = coverage;
         weather.windSpeed = wind;
         weather.storminess = storm;
-        weather.cloudDensity = 0.82 + storm * 0.78;
+        weather.cloudDensity = 0.48 + storm * 0.42;
         cloudOutput.value = `${String(Math.round(coverage * 100))}%`;
         windOutput.value = `${String(Math.round(wind))} m/s`;
         stormOutput.value = storm.toFixed(2);
         cloudReadout.textContent = cloudOutput.value;
-        windReadout.textContent = windOutput.value;
+        windReadout.textContent = `${String(Math.round(wind))} m/s`;
         stormReadout.textContent = stormOutput.value;
     };
     setSolarTime(Number(timeControl.value));
@@ -544,8 +580,19 @@ async function main(): Promise<void> {
         camera.invalidateTransformHistory();
     };
     viewButton.addEventListener('click', nextView);
+    const setConsoleOpen = (open: boolean): void => {
+        document.body.dataset['consoleOpen'] = String(open);
+        controlsToggle.setAttribute('aria-expanded', String(open));
+    };
+    controlsToggle.addEventListener('click', () => {
+        setConsoleOpen(document.body.dataset['consoleOpen'] !== 'true');
+    });
+    consoleClose.addEventListener('click', () => {
+        setConsoleOpen(false);
+    });
     window.addEventListener('keydown', event => {
         if (event.key.toLowerCase() === 'v') nextView();
+        if (event.key === 'Escape') setConsoleOpen(false);
     });
 
     let elapsed = 0;
@@ -553,6 +600,11 @@ async function main(): Promise<void> {
         tick(deltaMilliseconds: number): void {
             if (!reducedMotion) elapsed += Math.min(deltaMilliseconds, 50) * 0.001;
             weather.timeSeconds = elapsed;
+            model.node.rotationY = -10 + Math.sin(elapsed * 0.16) * 1.1;
+            for (let index = 0; index < motes.length; index += 1) {
+                const mote = motes[index];
+                if (mote !== undefined) mote.y = 2.62 + Math.sin(elapsed * 0.8 + index) * 0.05;
+            }
         }
     };
     const ticker = new Hilo3d.Ticker(60);
@@ -566,10 +618,11 @@ async function main(): Promise<void> {
             await stage.renderer.waitForIdle();
         }
     };
-    loadingProgress.style.width = '82%';
+    loadingProgress.style.width = '84%';
     loadingTitle.textContent = 'Waiting for the eye to adapt';
-    loadingDetail.textContent = 'Resolving blue-noise clouds and cloud-broken directional light.';
-    await stepFrames(testMode ? 4 : 10);
+    loadingDetail.textContent =
+        'Resolving blue-noise clouds, cloud shadows, and the amber key light.';
+    await stepFrames(testMode ? 5 : 12);
     const diagnostics = await factory.readDiagnostics();
     exposureReadout.textContent = `${diagnostics.autoExposureEV >= 0 ? '+' : ''}${diagnostics.autoExposureEV.toFixed(2)} EV`;
     loadingProgress.style.width = '100%';
@@ -593,7 +646,7 @@ async function main(): Promise<void> {
     const resize = (): void => {
         if (testMode) return;
         camera.aspect = innerWidth / Math.max(innerHeight, 1);
-        stage.resize(innerWidth, innerHeight, Math.min(devicePixelRatio, 1.35));
+        stage.resize(innerWidth, innerHeight, Math.min(devicePixelRatio, 1.4));
     };
     window.addEventListener('resize', resize);
     window.addEventListener(
