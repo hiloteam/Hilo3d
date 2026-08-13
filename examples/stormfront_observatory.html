@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+        <meta
+            name="description"
+            content="A cinematic physical-atmosphere and volumetric-cloud observatory powered by WebGPU."
+        />
+        <title>Stormfront Observatory — Physical Atmosphere</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./stormfront_observatory.css" />
+    </head>
+    <body data-stormfront-ready="false">
+        <div id="container" aria-label="Interactive stormfront observatory"></div>
+        <div class="grain" aria-hidden="true"></div>
+
+        <header class="masthead">
+            <p class="kicker"><span></span> North Atlantic Weather Array · Station 07</p>
+            <h1>Stormfront<br /><em>Observatory</em></h1>
+            <p class="lede">
+                A living Rayleigh–Mie sky, kilometer-scale storm cells, and cloud-broken sunlight
+                over a remote listening station.
+            </p>
+        </header>
+
+        <section class="telemetry" aria-label="Live weather telemetry">
+            <div class="telemetryTop">
+                <span>Live synoptic feed</span><i></i><b id="utcReadout">—</b>
+            </div>
+            <dl>
+                <div>
+                    <dt>Cloud deck</dt>
+                    <dd id="cloudReadout">68%</dd>
+                </div>
+                <div>
+                    <dt>Surface wind</dt>
+                    <dd id="windReadout">22 m/s</dd>
+                </div>
+                <div>
+                    <dt>Storm index</dt>
+                    <dd id="stormReadout">0.62</dd>
+                </div>
+                <div>
+                    <dt>Exposure</dt>
+                    <dd id="exposureReadout">adapting</dd>
+                </div>
+            </dl>
+        </section>
+
+        <aside class="weatherConsole" aria-label="Weather controls">
+            <div class="consoleHeading">
+                <div>
+                    <span>Atmosphere control</span><strong id="qualityLabel">HIGH / WEBGPU</strong>
+                </div>
+                <button id="viewButton" type="button">Change view</button>
+            </div>
+            <label>
+                <span><b>Solar time</b><output id="timeOutput">17:42</output></span>
+                <input id="timeControl" type="range" min="5" max="20" step="0.02" value="17.7" />
+            </label>
+            <label>
+                <span><b>Cloud amount</b><output id="cloudOutput">68%</output></span>
+                <input
+                    id="cloudControl"
+                    type="range"
+                    min="0.1"
+                    max="0.95"
+                    step="0.01"
+                    value="0.68"
+                />
+            </label>
+            <label>
+                <span><b>Wind speed</b><output id="windOutput">22 m/s</output></span>
+                <input id="windControl" type="range" min="0" max="45" step="1" value="22" />
+            </label>
+            <label>
+                <span><b>Storm intensity</b><output id="stormOutput">0.62</output></span>
+                <input id="stormControl" type="range" min="0" max="1" step="0.01" value="0.62" />
+            </label>
+            <div class="selectRow">
+                <label
+                    ><span><b>Quality</b></span
+                    ><select id="qualityControl">
+                        <option>low</option>
+                        <option>medium</option>
+                        <option selected>high</option>
+                        <option>ultra</option>
+                    </select></label
+                >
+                <label
+                    ><span><b>Debug view</b></span
+                    ><select id="debugControl">
+                        <option value="none">composite</option>
+                        <option value="transmittance">transmittance</option>
+                        <option value="multi-scattering">multi-scattering</option>
+                        <option value="sky-view">sky view</option>
+                        <option value="weather-map">weather map</option>
+                        <option value="cloud-radiance">cloud radiance</option>
+                        <option value="cloud-shadow">cloud shadow</option>
+                    </select></label
+                >
+            </div>
+        </aside>
+
+        <footer class="footerLine">
+            <p><span>Drag</span> orbit · <span>Wheel</span> dolly · <span>V</span> viewpoint</p>
+            <p>GPU histogram · LUT atmosphere · temporal half-res clouds</p>
+        </footer>
+
+        <section id="loadingPanel" class="loadingPanel" aria-live="polite">
+            <div class="radar"><i></i><b></b></div>
+            <p>Station 07 / Initialization</p>
+            <h2 id="loadingTitle">Building atmospheric lookup fields</h2>
+            <div class="loadingTrack"><span id="loadingProgress"></span></div>
+            <small id="loadingDetail">Calibrating the storm cell simulation.</small>
+        </section>
+
+        <section id="errorPanel" class="errorPanel" hidden role="alert">
+            <span>Station offline</span>
+            <h2>WebGPU weather simulation unavailable</h2>
+            <p id="errorMessage"></p>
+            <a href="./list.html?backend=webgl2">Browse portable examples</a>
+        </section>
+
+        <script type="module" src="./stormfront_observatory.ts"></script>
+    </body>
+</html>

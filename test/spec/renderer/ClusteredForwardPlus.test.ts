@@ -177,6 +177,27 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 { format: 'r32float', use: 'sampled' }
             ])
         );
+
+        const withWeather = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            hiZ: false,
+            autoExposure: {},
+            atmosphere: { quality: 'ultra' },
+            volumetricLighting: {}
+        });
+        expect(withWeather.requirements.requiredCapabilities).toContain('storage-texture');
+        expect(withWeather.requirements.requiredLimits).toMatchObject({
+            maxBindingsPerBindGroup: 16,
+            maxStorageTexturesPerShaderStage: 2,
+            maxSamplersPerShaderStage: 8
+        });
+        expect(withWeather.requirements.requiredTextureFormats).toEqual(
+            expect.arrayContaining([
+                { format: 'rgba16float', use: 'storage' },
+                { format: 'rgba16float', use: 'filterable-sampled' },
+                { format: 'r32float', use: 'storage' }
+            ])
+        );
     });
 
     it('validates bucket identities, opaque materials, and unique LOD thresholds', () => {
@@ -336,6 +357,24 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     }
                 })
         ).toThrow(/radius/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    toneMapping: 'linear'
+                } as unknown as ConstructorParameters<
+                    typeof ClusteredForwardPlusPipelineFactory
+                >[0])
+        ).toThrow(/toneMapping/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    atmosphere: { quality: 'cinematic' }
+                } as unknown as ConstructorParameters<
+                    typeof ClusteredForwardPlusPipelineFactory
+                >[0])
+        ).toThrow(/quality/u);
     });
 
     it('requests limits for every configured cluster, geometry, and dispatch allocation', () => {

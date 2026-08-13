@@ -1,0 +1,385 @@
+:root {
+    color-scheme: dark;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+    --ice: #bfe8f0;
+    --signal: #f2a45f;
+    --glass: rgb(7 14 19 / 72%);
+}
+
+body {
+    overflow: hidden;
+    margin: 0;
+    background: #05090b;
+    color: #eef4f3;
+}
+#container,
+#container canvas {
+    width: 100%;
+    height: 100%;
+}
+.grain {
+    position: fixed;
+    z-index: 2;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.07;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.76' numOctaves='4' stitchTiles='stitchTiles'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.masthead {
+    position: fixed;
+    z-index: 4;
+    top: clamp(26px, 5vw, 72px);
+    left: clamp(24px, 5vw, 76px);
+    width: min(510px, calc(100vw - 48px));
+    text-shadow: 0 3px 35px rgb(0 0 0 / 70%);
+}
+.kicker,
+.telemetryTop,
+.consoleHeading span,
+.footerLine,
+.weatherConsole b,
+.weatherConsole output {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+}
+.kicker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    color: var(--ice);
+    font-size: 9px;
+    font-weight: 700;
+}
+.kicker span {
+    width: 28px;
+    height: 1px;
+    background: var(--signal);
+    box-shadow: 0 0 14px var(--signal);
+}
+.masthead h1 {
+    margin: 18px 0 16px;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(52px, 6.6vw, 102px);
+    font-weight: 400;
+    letter-spacing: -0.064em;
+    line-height: 0.79;
+}
+.masthead h1 em {
+    color: #c8d9d8;
+    font-weight: 400;
+}
+.lede {
+    width: min(400px, 88vw);
+    margin: 28px 0 0;
+    color: rgb(223 235 234 / 63%);
+    font-size: 11px;
+    line-height: 1.8;
+    letter-spacing: 0.025em;
+}
+
+.telemetry {
+    position: fixed;
+    z-index: 4;
+    top: clamp(30px, 5vw, 72px);
+    right: clamp(24px, 4vw, 62px);
+    width: min(330px, calc(100vw - 48px));
+    border-top: 1px solid rgb(204 235 239 / 38%);
+    background: linear-gradient(160deg, rgb(5 11 14 / 70%), rgb(5 10 12 / 35%));
+    backdrop-filter: blur(15px);
+}
+.telemetryTop {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 2px 10px;
+    color: rgb(207 233 235 / 68%);
+    font-size: 8px;
+}
+.telemetryTop i {
+    flex: 1;
+    height: 1px;
+    background: rgb(207 233 235 / 15%);
+}
+.telemetryTop b {
+    color: var(--signal);
+    font-weight: 600;
+}
+.telemetry dl {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    margin: 0;
+    background: rgb(180 218 221 / 10%);
+}
+.telemetry dl div {
+    padding: 13px 15px;
+    background: rgb(4 10 13 / 72%);
+}
+.telemetry dt {
+    color: rgb(199 220 222 / 42%);
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+.telemetry dd {
+    margin: 7px 0 0;
+    color: #edf5f4;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+}
+
+.weatherConsole {
+    position: fixed;
+    z-index: 4;
+    right: clamp(24px, 4vw, 62px);
+    bottom: clamp(48px, 7vw, 88px);
+    width: min(330px, calc(100vw - 48px));
+    padding: 18px 20px 16px;
+    border: 1px solid rgb(194 230 233 / 14%);
+    background: var(--glass);
+    box-shadow:
+        0 24px 80px rgb(0 0 0 / 28%),
+        inset 0 1px rgb(255 255 255 / 4%);
+    backdrop-filter: blur(18px) saturate(125%);
+}
+.consoleHeading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+}
+.consoleHeading span {
+    display: block;
+    color: rgb(199 227 229 / 45%);
+    font-size: 7px;
+}
+.consoleHeading strong {
+    display: block;
+    margin-top: 5px;
+    color: var(--ice);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+}
+button,
+select {
+    border: 1px solid rgb(197 230 231 / 19%);
+    border-radius: 2px;
+    color: #dce9e8;
+    background: rgb(141 186 187 / 8%);
+    font: inherit;
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+}
+.consoleHeading button {
+    padding: 8px 10px;
+}
+.weatherConsole > label {
+    display: block;
+    margin: 10px 0;
+}
+.weatherConsole label > span {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.weatherConsole b {
+    color: rgb(209 228 229 / 55%);
+    font-size: 7px;
+    font-weight: 500;
+}
+.weatherConsole output {
+    color: #f1f6f5;
+    font-size: 8px;
+}
+input[type='range'] {
+    width: 100%;
+    height: 2px;
+    margin: 0;
+    accent-color: var(--signal);
+}
+.selectRow {
+    display: grid;
+    grid-template-columns: 0.72fr 1.28fr;
+    gap: 9px;
+    margin-top: 15px;
+    padding-top: 13px;
+    border-top: 1px solid rgb(199 228 230 / 10%);
+}
+.selectRow label {
+    min-width: 0;
+}
+.selectRow select {
+    width: 100%;
+    padding: 7px 6px;
+}
+
+.footerLine {
+    position: fixed;
+    z-index: 4;
+    right: clamp(24px, 4vw, 62px);
+    bottom: 22px;
+    left: clamp(24px, 5vw, 76px);
+    display: flex;
+    justify-content: space-between;
+    color: rgb(205 224 224 / 35%);
+    font-size: 7px;
+}
+.footerLine span {
+    color: var(--signal);
+}
+
+.loadingPanel,
+.errorPanel {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    background: radial-gradient(circle at 50% 42%, #14232a, #040708 65%);
+    transition:
+        opacity 700ms ease,
+        visibility 700ms ease;
+}
+body[data-stormfront-ready='true'] .loadingPanel {
+    opacity: 0;
+    visibility: hidden;
+}
+.loadingPanel p,
+.errorPanel span {
+    margin: 24px 0 8px;
+    color: var(--signal);
+    font:
+        700 8px ui-monospace,
+        monospace;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+.loadingPanel h2,
+.errorPanel h2 {
+    margin: 0;
+    font-family: Georgia, serif;
+    font-size: 28px;
+    font-weight: 400;
+}
+.loadingPanel small,
+.errorPanel p {
+    margin-top: 14px;
+    color: rgb(211 228 229 / 48%);
+    font-size: 9px;
+}
+.loadingTrack {
+    width: 280px;
+    height: 1px;
+    margin: 26px auto 0;
+    background: rgb(202 231 233 / 12%);
+}
+.loadingTrack span {
+    display: block;
+    width: 18%;
+    height: 100%;
+    background: var(--signal);
+    box-shadow: 0 0 16px var(--signal);
+    transition: width 400ms ease;
+}
+.radar {
+    position: relative;
+    width: 78px;
+    height: 78px;
+    margin: auto;
+    border: 1px solid rgb(191 229 232 / 24%);
+    border-radius: 50%;
+}
+.radar::before,
+.radar::after {
+    position: absolute;
+    content: '';
+    background: rgb(191 229 232 / 15%);
+}
+.radar::before {
+    top: 50%;
+    left: 7px;
+    width: 64px;
+    height: 1px;
+}
+.radar::after {
+    top: 7px;
+    left: 50%;
+    width: 1px;
+    height: 64px;
+}
+.radar i {
+    position: absolute;
+    inset: 9px;
+    border-top: 1px solid var(--signal);
+    border-radius: 50%;
+    animation: scan 1.8s linear infinite;
+}
+.radar b {
+    position: absolute;
+    top: 22px;
+    right: 18px;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--signal);
+    box-shadow: 0 0 9px var(--signal);
+}
+@keyframes scan {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.errorPanel[hidden] {
+    display: none;
+}
+.errorPanel a {
+    margin-top: 20px;
+    color: var(--ice);
+    font-size: 10px;
+}
+
+@media (max-width: 760px) {
+    .masthead {
+        top: 22px;
+        left: 20px;
+    }
+    .masthead h1 {
+        font-size: 48px;
+    }
+    .lede {
+        display: none;
+    }
+    .telemetry {
+        top: auto;
+        right: 20px;
+        bottom: 296px;
+        width: 260px;
+    }
+    .telemetry dl div {
+        padding: 9px 12px;
+    }
+    .weatherConsole {
+        right: 20px;
+        bottom: 38px;
+        width: 260px;
+        padding: 14px;
+    }
+    .footerLine {
+        display: none;
+    }
+}

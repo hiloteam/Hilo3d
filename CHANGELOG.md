@@ -25,6 +25,16 @@
 
 ### Changes
 
+- Add an integrated WebGPU physical atmosphere and weather chain to Clustered Forward+: cached
+  Rayleigh/Mie/ozone transmittance and multiple-scattering LUTs, a per-frame sky-view LUT, aerial
+  perspective, physical sun disc, procedural weather map, half-resolution Perlin/Worley volumetric
+  cloud ray marching, blue-noise sampling, representative-depth temporal reprojection, cloud shadows
+  for registered PBR directional light and froxel scattering, and storm lightning/sun-shaft
+  lighting. Add GPU histogram percentile exposure with asymmetric eye adaptation, on-demand
+  diagnostics, and submission-aware `rgba16float` exposure history; add configurable filmic Color
+  Uber and Clustered display transforms. Add the interactive Stormfront Observatory WebGPU example
+  with solar time, cloud, wind, storm, quality, debug, and camera controls.
+
 - Add production screen-space diffuse global illumination to ordinary Forward on WebGPU/WebGL 2 and
   to the WebGPU Clustered Forward+ profile. The opt-in path reuses GTAO/GPU Scene material
   attributes and motion/log-depth when available, traces configurable stochastic view-space

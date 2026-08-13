@@ -21,6 +21,7 @@ import type {
 } from '../../../src/render/pipeline/ScriptableRenderGraph';
 import {
     Bloom,
+    AutoExposure,
     ColorUber,
     GroundTruthAmbientOcclusion,
     PostProcessRenderPipelineFactory,
@@ -165,6 +166,7 @@ describe('built-in post-processing', () => {
 
     it('declares the linear HDR feature requirements before renderer creation', () => {
         const bloom = new Bloom();
+        const autoExposure = new AutoExposure();
         const colorUber = new ColorUber();
         const gtao = new GroundTruthAmbientOcclusion();
         const ssgi = new ScreenSpaceGlobalIllumination();
@@ -181,6 +183,12 @@ describe('built-in post-processing', () => {
         expect(ssgi.requirements.sampledDepth).toBe(true);
         expect(temporalAA.injectionPoint).toBe('after-opaque');
         expect(bloom.injectionPoint).toBe('after-transparent');
+        expect(autoExposure.injectionPoint).toBe('after-post-process');
+        expect(autoExposure.requirements.requiredCapabilities).toEqual([
+            'storage-buffer',
+            'storage-texture',
+            'compute-pass'
+        ]);
         expect(colorUber.injectionPoint).toBe('after-post-process');
         expect(factory.requirements.requiredTextureFormats).toEqual(
             expect.arrayContaining([
@@ -220,6 +228,13 @@ describe('built-in post-processing', () => {
             /denoisePasses/u
         );
         expect(() => new ColorUber({ temperature: 2 }).create()).toThrow(/temperature/u);
+        expect(() => new ColorUber({ toneMapping: 'filmic', filmicSlope: 0 }).create()).toThrow(
+            /filmic slope/u
+        );
+        expect(() => new AutoExposure({ minimumEV: -16 })).toThrow(/minimumEV/u);
+        expect(() => new AutoExposure({ lowPercentile: 0.4, highPercentile: 0.3 })).toThrow(
+            /highPercentile/u
+        );
     });
 
     it.each(taaIntegrationBackends)(

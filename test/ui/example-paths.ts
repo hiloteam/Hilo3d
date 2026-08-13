@@ -18,6 +18,7 @@ export const WEBGPU_ONLY_EXAMPLE_PATHS = [
     'bloom.html',
     'clustered_forward_plus_sponza.html',
     'volumetric_neon_reliquary.html',
+    'stormfront_observatory.html',
     'screen_space_reflections_palace.html',
     'temporal_aa_observatory.html',
     'compute_gpu_driven.html',
@@ -29,6 +30,7 @@ export const NON_RENDERING_EXAMPLE_PATHS = [] as const;
 export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
     'clustered_forward_plus_sponza.html',
     'volumetric_neon_reliquary.html',
+    'stormfront_observatory.html',
     'shaderToy.html'
 ] as const;
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<
@@ -38,6 +40,7 @@ export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     'ground_truth_ambient_occlusion.html': { test: '1' },
     'screen_space_global_illumination_chapel.html': { test: '1' },
     'screen_space_reflections_palace.html': { test: '1' },
+    'stormfront_observatory.html': { test: '1' },
     'temporal_aa_observatory.html': { test: '1' },
     'glTFViewer/index.html': { url: '/examples/models/Tmall/Tmall.gltf' }
 };
