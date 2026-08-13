@@ -117,6 +117,23 @@ validity。普通 Forward 明确支持双后端；Clustered 本身仍是 WebGPU 
 profile。完整 packing、失效条件、参数和边界见
 [`GROUND_TRUTH_AMBIENT_OCCLUSION.md`](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)。
 
+## 内置 Screen-space global illumination
+
+`ScreenSpaceGlobalIllumination` 是 `after-opaque` feature。它复用 GTAO 已发布的
+`material-attributes` 与 motion/log-depth；未启用 GTAO 时按需记录同一 material semantic
+pass。可配置的 4/6/8/12 条 view-space hemisphere ray 各执行 6/8/10/12 次显式 LOD
+depth/radiance 采样，再以 hit thickness、距离/屏幕边缘、receiver/emitter cosine 与 firefly
+clamp 得到线性 HDR diffuse radiance。半分辨率默认结果经过 submission-aware motion/depth/normal
+rejection、3×3 YCoCg variance clip、1–3 级 depth/normal/luminance-aware a-trous filter 和 bilateral
+upsample。
+
+SSGI 在线性 HDR opaque color 上加法合成，随后才执行 transparent、Bloom 和 Color
+Uber。普通 Forward 明确支持 WebGPU 与 WebGL 2；Clustered Forward+ 复用同一 controller 和 GPU Scene
+attributes，并要求同时启用
+`temporalAA`。默认关闭时不创建 attribute、motion、trace、history、filter 或 composite。当前不追踪透明/屏幕外/被遮挡 geometry，也不提供 probe/BVH
+fallback；完整 quality budget、packing、生命周期和边界见
+[`SCREEN_SPACE_GLOBAL_ILLUMINATION.md`](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)。
+
 ## 内置 TemporalAA
 
 `TemporalAA` 是可选的 `after-opaque` feature。它先用内置材质的 `motion-vector` semantic
@@ -161,7 +178,7 @@ SSR 使用 motion/log-depth 做 history reprojection、relative-depth reject 和
 clamp，在线性 HDR opaque color 中合成后再进入 TAA/TAAU。camera cut、camera
 identity、projection/depth convention、resize、失败 submission 与 device
 recovery 都遵守 history 初始化/回滚合同。默认关闭时没有 attribute、trace、cone 或 history 成本。屏幕外和完全遮挡内容返回零贡献；当前没有 probe/BVH/SDF
-fallback，也没有 SSGI。完整参数、packing 和证据见
+fallback。完整参数、packing 和证据见
 [`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md)。
 
 `ClusteredForwardPlusPipelineFactory.volumetricLighting`
@@ -232,6 +249,12 @@ const stage = await Hilo3d.Stage.create({
             directionCount: 6,
             stepCount: 4
         },
+        screenSpaceGlobalIllumination: {
+            resolutionScale: 0.5,
+            rayCount: 8,
+            stepCount: 8,
+            denoisePasses: 3
+        },
         temporalAA: {},
         bloom: {
             threshold: 1,
@@ -250,10 +273,10 @@ const stage = await Hilo3d.Stage.create({
 ```
 
 该 factory 固定 attachment-zero scene color 为 `rgba16float`，默认启用 Bloom、Color Uber 和 opaque
-texture；GTAO 与 `temporalAA` 都需要显式提供配置启用。需要自行组合时，也可以把
-`GroundTruthAmbientOcclusion`/`TemporalAA`/`Bloom`/`ColorUber` 作为
+texture；GTAO、SSGI 与 `temporalAA` 都需要显式提供配置启用。需要自行组合时，也可以把
+`GroundTruthAmbientOcclusion`/`ScreenSpaceGlobalIllumination`/`TemporalAA`/`Bloom`/`ColorUber` 作为
 `ForwardRenderPipelineFactory.features`
-使用；调用方必须保证 GTAO 位于 opaque 前、TemporalAA 位于 opaque 后和 transparent 前、Bloom 输入仍是线性 HDR 格式，并让 Color
+使用；调用方必须保证 GTAO 位于 opaque 前、SSGI/TemporalAA 位于 opaque 后和 transparent 前、Bloom 输入仍是线性 HDR 格式，并让 Color
 Uber 位于所有 HDR effect 之后。
 
 维护示例覆盖基础参数矩阵、layered material API、真实 glTF 资产路径与 screen-space lighting：
@@ -266,6 +289,9 @@ Uber 位于所有 HDR effect 之后。
 - [`ground_truth_ambient_occlusion.html`](../examples/ground_truth_ambient_occlusion.html)
   使用零模型下载的 procedural 建筑展厅和相同相机的 on/off 对照，展示拱券、台阶、细柱与密集物体间的 contact
   visibility，并可显式选择 WebGPU/WebGL 2。
+- [`screen_space_global_illumination_chapel.html`](../examples/screen_space_global_illumination_chapel.html)
+  使用程序化粗野主义礼拜堂和同机位 on/off 对照，展示 cyan/vermilion/violet 发光窗在石材、长椅、柱列与祭坛球体上的 diffuse
+  color transport，并可显式选择 WebGPU/WebGL 2。
 - [`gltf_material_extensions.html`](../examples/gltf_material_extensions.html) 可切换 Khronos glTF
   Sample Assets 中的 Anisotropy Barn Lamp、Clearcoat Wicker 和 Dragon
   Attenuation，以及带动画、薄膜干涉和体积折射的 Iridescent Dish with

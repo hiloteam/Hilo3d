@@ -25,6 +25,18 @@
 
 ### Changes
 
+- Add production screen-space diffuse global illumination to ordinary Forward on WebGPU/WebGL 2 and
+  to the WebGPU Clustered Forward+ profile. The opt-in path reuses GTAO/GPU Scene material
+  attributes and motion/log-depth when available, traces configurable stochastic view-space
+  hemisphere rays against opaque depth, transports bounded linear HDR scene radiance, applies
+  motion/depth/normal history rejection with YCoCg variance clipping, runs one to three
+  depth/normal/luminance-aware a-trous filters, performs bilateral full-resolution upsampling, and
+  composites before transparent, Bloom, and display. Keep per-camera history submission-aware across
+  cuts, resize, discarded frames and recovery; use explicit-LOD sampling so translated WGSL remains
+  valid in non-uniform ray/filter control flow; and keep the disabled path resource- and pass-free.
+  Add the dual-backend Prismatic Vespers procedural chapel with cyan, vermilion, violet, and warm
+  emissive architecture, same-view on/off controls, responsive editorial UI, and WebGL 2/WebGPU
+  render-health and GPU-validation coverage.
 - Add production WebGPU high-end froxel volumetric lighting to
   `ClusteredForwardPlusPipelineFactory`. The opt-in path expands the bounded local-light allocator
   from surface depth ranges to the complete camera cluster volume, tiles logarithmic Z slices into a

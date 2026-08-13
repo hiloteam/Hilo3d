@@ -906,6 +906,7 @@ class GroundTruthAmbientOcclusionRuntime implements ForwardRenderPipelineFeature
         });
         attributeParameters.depthStencilAttachment = this.depthAttachment(pipeline, depth, false);
         pipeline.graph.addPass(this.#attributesPass, attributeParameters);
+        context.resources.setMaterialAttributes(attributes);
 
         const sharedMotion = context.resources.motionDepth;
         const motion =

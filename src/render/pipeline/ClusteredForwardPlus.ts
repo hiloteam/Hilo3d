@@ -129,6 +129,13 @@ import {
     type GroundTruthAmbientOcclusionSettings
 } from '../postprocessing/GroundTruthAmbientOcclusion';
 import {
+    SCREEN_SPACE_GLOBAL_ILLUMINATION_REQUIREMENTS,
+    ScreenSpaceGlobalIlluminationController,
+    snapshotScreenSpaceGlobalIlluminationOptions,
+    type ScreenSpaceGlobalIlluminationOptions,
+    type ScreenSpaceGlobalIlluminationSettings
+} from '../postprocessing/ScreenSpaceGlobalIllumination';
+import {
     VOLUMETRIC_LIGHTING_REQUIRED_TEXTURE_FORMATS,
     VolumetricLightingController,
     snapshotVolumetricLightingOptions,
@@ -231,6 +238,11 @@ export interface ClusteredForwardPlusPipelineOptions {
      */
     readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
     /**
+     * Temporally accumulated screen-space diffuse global illumination. Disabled by default.
+     * The GPU Scene path reuses motion and material attributes and therefore requires `temporalAA`.
+     */
+    readonly screenSpaceGlobalIllumination?: Readonly<ScreenSpaceGlobalIlluminationOptions> | false;
+    /**
      * Hierarchical, temporally accumulated screen-space reflections. Disabled by default.
      * Enabling this production path requires both `hiZ` and `temporalAA`.
      */
@@ -299,6 +311,7 @@ interface NormalizedOptions {
     readonly exposure: number;
     readonly temporalAA: TemporalAASettings | null;
     readonly groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionSettings | null;
+    readonly screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationSettings | null;
     readonly screenSpaceReflections: ScreenSpaceReflectionsSettings | null;
     readonly volumetricLighting: VolumetricLightingSettings | null;
 }
@@ -955,6 +968,11 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         input.groundTruthAmbientOcclusion === false
             ? null
             : snapshotGroundTruthAmbientOcclusionOptions(input.groundTruthAmbientOcclusion);
+    const screenSpaceGlobalIllumination =
+        input.screenSpaceGlobalIllumination === undefined ||
+        input.screenSpaceGlobalIllumination === false
+            ? null
+            : snapshotScreenSpaceGlobalIlluminationOptions(input.screenSpaceGlobalIllumination);
     const screenSpaceReflections =
         input.screenSpaceReflections === undefined || input.screenSpaceReflections === false
             ? null
@@ -972,6 +990,11 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
     if (groundTruthAmbientOcclusion !== null && temporalAA === null) {
         throw new TypeError(
             'Clustered Forward+ ground-truth ambient occlusion requires temporalAA'
+        );
+    }
+    if (screenSpaceGlobalIllumination !== null && temporalAA === null) {
+        throw new TypeError(
+            'Clustered Forward+ screen-space global illumination requires temporalAA'
         );
     }
     return Object.freeze({
@@ -1007,6 +1030,7 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         exposure: finitePositive(input.exposure ?? 1, 'Clustered Forward+ exposure'),
         temporalAA,
         groundTruthAmbientOcclusion,
+        screenSpaceGlobalIllumination,
         screenSpaceReflections,
         volumetricLighting
     });
@@ -3188,6 +3212,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #temporal: TemporalResolveController | null;
     readonly #temporalMotionDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
     readonly #groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionController | null;
+    readonly #screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationController | null;
     readonly #screenSpaceReflections: ScreenSpaceReflectionsController | null;
     readonly #volumetricLighting: VolumetricLightingController | null;
     readonly #groundTruthAmbientOcclusionSampler = new ComputeSampler({
@@ -3375,6 +3400,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             options.groundTruthAmbientOcclusion === null
                 ? null
                 : new GroundTruthAmbientOcclusionController(options.groundTruthAmbientOcclusion);
+        this.#screenSpaceGlobalIllumination =
+            options.screenSpaceGlobalIllumination === null
+                ? null
+                : new ScreenSpaceGlobalIlluminationController(
+                      options.screenSpaceGlobalIllumination
+                  );
         this.#screenSpaceReflections =
             options.screenSpaceReflections === null
                 ? null
@@ -3667,7 +3698,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       motionDescriptor
                   );
         const materialAttributes =
-            this.#screenSpaceReflections === null && this.#groundTruthAmbientOcclusion === null
+            this.#screenSpaceReflections === null &&
+            this.#screenSpaceGlobalIllumination === null &&
+            this.#groundTruthAmbientOcclusion === null
                 ? null
                 : context.graph.createTexture('Clustered Forward+ material attributes', {
                       format: 'rgba16float',
@@ -3905,14 +3938,30 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 sceneDepth
             );
         }
-        let reflectedSceneColor = sceneColor;
+        let globallyIlluminatedSceneColor = sceneColor;
+        if (this.#screenSpaceGlobalIllumination !== null) {
+            if (temporalFrame === null || temporalMotion === null || materialAttributes === null) {
+                throw new Error(
+                    'Clustered Forward+ screen-space global illumination inputs are missing'
+                );
+            }
+            globallyIlluminatedSceneColor = this.#screenSpaceGlobalIllumination.record(context, {
+                sceneColor,
+                sceneDepth,
+                materialAttributes,
+                motionDepth: temporalMotion,
+                sceneScale,
+                historyValid: temporalFrame.historyValid && this.#committedCamera === context.camera
+            });
+        }
+        let reflectedSceneColor = globallyIlluminatedSceneColor;
         if (this.#screenSpaceReflections !== null) {
             if (temporalFrame === null || temporalMotion === null || materialAttributes === null) {
                 throw new Error('Clustered Forward+ screen-space reflection inputs are missing');
             }
             reflectedSceneColor = this.#screenSpaceReflections.record(context, {
                 frameBuffer,
-                sceneColor,
+                sceneColor: globallyIlluminatedSceneColor,
                 sceneDepth,
                 materialAttributes,
                 motionDepth: temporalMotion,
@@ -3998,6 +4047,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             this.#visibilityHistoryIndex = this.#visibilityHistoryIndex === 0 ? 1 : 0;
         }
         this.#groundTruthAmbientOcclusion?.frameSubmitted(frameIndex);
+        this.#screenSpaceGlobalIllumination?.frameSubmitted(frameIndex);
         this.#volumetricLighting?.frameSubmitted(frameIndex);
         this.#temporal?.frameSubmitted(frameIndex);
     }
@@ -4015,6 +4065,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.#pendingCamera = null;
         this.#groundTruthAmbientOcclusion?.frameDiscarded(frameIndex);
+        this.#screenSpaceGlobalIllumination?.frameDiscarded(frameIndex);
         this.#volumetricLighting?.frameDiscarded(frameIndex);
         this.#temporal?.frameDiscarded(frameIndex);
     }
@@ -4091,6 +4142,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         try {
             this.#groundTruthAmbientOcclusion?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.#screenSpaceGlobalIllumination?.destroy();
         } catch (error) {
             failures.push(error);
         }
@@ -4279,7 +4335,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             name: `Clustered PBR bucket ${String(physicalIndex)}`,
             shader: gpuScenePBRShader(
                 variant,
-                this.#options.screenSpaceReflections !== null &&
+                (this.#options.screenSpaceReflections !== null ||
+                    this.#options.screenSpaceGlobalIllumination !== null) &&
                     this.#options.groundTruthAmbientOcclusion === null,
                 this.#options.groundTruthAmbientOcclusion !== null
             ),
@@ -5634,6 +5691,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
         const requirements = bufferRequirementPlan(this.#options, physicalCount);
         const hiZ = this.#options.hiZ;
         const screenSpaceReflections = this.#options.screenSpaceReflections !== null;
+        const screenSpaceGlobalIllumination = this.#options.screenSpaceGlobalIllumination !== null;
         const groundTruthAmbientOcclusion = this.#options.groundTruthAmbientOcclusion !== null;
         const volumetricLighting = this.#options.volumetricLighting !== null;
         const reflectionHiZLevels = Math.min(
@@ -5675,6 +5733,9 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     : TEMPORAL_AA_REQUIREMENTS.requiredTextureFormats),
                 ...(groundTruthAmbientOcclusion
                     ? GROUND_TRUTH_AMBIENT_OCCLUSION_REQUIREMENTS.requiredTextureFormats
+                    : []),
+                ...(screenSpaceGlobalIllumination
+                    ? SCREEN_SPACE_GLOBAL_ILLUMINATION_REQUIREMENTS.requiredTextureFormats
                     : []),
                 ...(screenSpaceReflections
                     ? [

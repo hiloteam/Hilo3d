@@ -102,6 +102,8 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
     'volumetric_neon_reliquary.html': 'Neon Reliquary — Froxel Volumetric Lighting',
     'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
+    'screen_space_global_illumination_chapel.html':
+        'Prismatic Vespers — Screen-space Global Illumination',
     'ground_truth_ambient_occlusion.html': 'The Silent Dragon — Ground-truth Ambient Occlusion',
     'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
     'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
@@ -132,6 +134,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Enter Khronos Sponza as a neon reliquary where temporal froxels, local fog volumes, clustered spotlights, and depth-aware visibility turn light into architecture.',
     'screen_space_reflections_palace.html':
         'Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.',
+    'screen_space_global_illumination_chapel.html':
+        'Enter a procedural brutalist chapel where portable stochastic SSGI transports cyan, vermilion, violet, and warm emissive radiance across pale stone.',
     'ground_truth_ambient_occlusion.html':
         'Read scales, claws, coils, layered stone contacts, and a deep architectural niche through portable temporal GTAO.',
     'temporal_aa_observatory.html':
@@ -209,6 +213,7 @@ const FEATURED_PATHS = new Set([
     'clustered_forward_plus_sponza.html',
     'volumetric_neon_reliquary.html',
     'screen_space_reflections_palace.html',
+    'screen_space_global_illumination_chapel.html',
     'ground_truth_ambient_occlusion.html',
     'temporal_aa_observatory.html',
     'compute_eclipse_shrine.html',
@@ -241,7 +246,7 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'textures';
     }
     if (
-        /(?:post_process|bloom|temporal_aa|ground_truth_ambient_occlusion|screen_space_reflections|volumetric|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
+        /(?:post_process|bloom|temporal_aa|ground_truth_ambient_occlusion|screen_space_|volumetric|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
             normalized
         )
     ) {

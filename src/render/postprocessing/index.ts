@@ -5,6 +5,10 @@ export {
     GroundTruthAmbientOcclusion,
     type GroundTruthAmbientOcclusionOptions
 } from './GroundTruthAmbientOcclusion';
+export {
+    ScreenSpaceGlobalIllumination,
+    type ScreenSpaceGlobalIlluminationOptions
+} from './ScreenSpaceGlobalIllumination';
 export type { ScreenSpaceReflectionsOptions } from './ScreenSpaceReflections';
 export type {
     VolumetricBoxFogVolume,

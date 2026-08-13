@@ -1,0 +1,294 @@
+:root {
+    color-scheme: dark;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        sans-serif;
+}
+
+body {
+    overflow: hidden;
+    color: #f5eee5;
+    background: #05070b;
+}
+
+.hilo3dStats {
+    display: none !important;
+}
+
+#container,
+#container canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.ssgiHeader,
+.ssgiIntro,
+.ssgiControl,
+.ssgiHint,
+.ssgiCaption {
+    position: fixed;
+    z-index: 5;
+}
+
+.ssgiHeader {
+    top: clamp(24px, 3.2vw, 48px);
+    right: clamp(24px, 4vw, 64px);
+    left: clamp(24px, 4vw, 64px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: none;
+}
+
+.ssgiHeader p,
+.ssgiCaption {
+    margin: 0;
+    color: rgb(239 232 222 / 34%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8px;
+    letter-spacing: 0.19em;
+    text-transform: uppercase;
+}
+
+.ssgiBrand {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    color: rgb(249 242 234 / 84%);
+    font-size: 10px;
+    font-weight: 730;
+    letter-spacing: 0.2em;
+    text-decoration: none;
+    text-transform: uppercase;
+    pointer-events: auto;
+}
+
+.ssgiBrand span {
+    width: 22px;
+    height: 1px;
+    background: linear-gradient(90deg, #ff5d55, #72e8ff);
+    box-shadow: 0 0 16px rgb(104 226 255 / 45%);
+}
+
+.ssgiIntro {
+    top: 46%;
+    left: clamp(24px, 4.7vw, 76px);
+    width: min(350px, 29vw);
+    pointer-events: none;
+    transform: translateY(-50%);
+}
+
+.ssgiIntro::before {
+    position: absolute;
+    z-index: -1;
+    inset: -110px -120px -130px -95px;
+    background: radial-gradient(ellipse at 28% 48%, rgb(8 12 18 / 62%), transparent 67%);
+    content: '';
+}
+
+.ssgiEyebrow {
+    margin: 0 0 20px;
+    color: #8fe5ee;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8px;
+    font-weight: 680;
+    letter-spacing: 0.21em;
+    text-transform: uppercase;
+}
+
+.ssgiIntro h1 {
+    margin: 0;
+    color: #f2eee8;
+    font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+    font-size: clamp(53px, 6vw, 94px);
+    font-weight: 400;
+    letter-spacing: -0.075em;
+    line-height: 0.79;
+    text-shadow: 0 25px 75px rgb(0 0 0 / 74%);
+}
+
+.ssgiIntro h1 em {
+    display: inline-block;
+    margin-left: 0.35em;
+    color: rgb(255 166 151 / 82%);
+    font-weight: 400;
+}
+
+.ssgiDescription {
+    max-width: 292px;
+    margin: 29px 0 0;
+    color: rgb(240 234 226 / 49%);
+    font-size: 10px;
+    letter-spacing: 0.018em;
+    line-height: 1.78;
+}
+
+.ssgiControl {
+    bottom: clamp(24px, 4vw, 58px);
+    left: clamp(24px, 4vw, 64px);
+    display: flex;
+    min-height: 66px;
+    align-items: center;
+    gap: 21px;
+    padding: 0 23px;
+    border: 1px solid rgb(235 243 246 / 12%);
+    border-radius: 16px;
+    background: rgb(6 9 13 / 67%);
+    box-shadow: 0 24px 85px rgb(0 0 0 / 52%);
+    backdrop-filter: blur(22px) saturate(128%);
+}
+
+.ssgiControl button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ssgiControl button:focus-visible {
+    outline: 1px solid #71dceb;
+    outline-offset: 7px;
+}
+
+.ssgiControl small,
+.ssgiControl dt {
+    display: block;
+    margin-bottom: 3px;
+    color: rgb(231 239 242 / 32%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 7px;
+    font-weight: 530;
+    letter-spacing: 0.145em;
+    text-transform: uppercase;
+}
+
+.ssgiControl strong,
+.ssgiControl dd {
+    margin: 0;
+    color: rgb(242 241 237 / 82%);
+    font-size: 9px;
+    font-weight: 690;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.ssgiSwitch {
+    position: relative;
+    width: 32px;
+    height: 16px;
+    border: 1px solid rgb(105 224 239 / 68%);
+    border-radius: 999px;
+}
+
+.ssgiSwitch span {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #79e6f1;
+    box-shadow: 0 0 13px rgb(102 229 242 / 78%);
+}
+
+#ssgiToggle[aria-pressed='false'] .ssgiSwitch {
+    border-color: rgb(255 255 255 / 20%);
+}
+
+#ssgiToggle[aria-pressed='false'] .ssgiSwitch span {
+    right: 19px;
+    background: #777a7e;
+    box-shadow: none;
+}
+
+.ssgiRule {
+    width: 1px;
+    height: 32px;
+    background: rgb(238 244 246 / 10%);
+}
+
+.ssgiControl dl {
+    display: flex;
+    gap: 22px;
+    margin: 0;
+}
+
+.ssgiHint {
+    top: 50%;
+    right: clamp(24px, 4vw, 64px);
+    margin: 0;
+    color: rgb(237 236 233 / 29%);
+    font-size: 8px;
+    letter-spacing: 0.06em;
+    writing-mode: vertical-rl;
+    transform: translateY(-50%);
+}
+
+.ssgiCaption {
+    right: clamp(24px, 4vw, 64px);
+    bottom: clamp(28px, 4.3vw, 66px);
+}
+
+.ssgiVignette,
+.ssgiGrain {
+    position: fixed;
+    z-index: 3;
+    inset: 0;
+    pointer-events: none;
+}
+
+.ssgiVignette {
+    background:
+        linear-gradient(
+            90deg,
+            rgb(2 4 8 / 36%),
+            transparent 35%,
+            transparent 80%,
+            rgb(2 3 5 / 28%)
+        ),
+        radial-gradient(
+            circle at 68% 47%,
+            transparent 20%,
+            rgb(2 3 5 / 9%) 62%,
+            rgb(1 2 4 / 55%) 125%
+        );
+}
+
+.ssgiGrain {
+    opacity: 0.08;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.38'/%3E%3C/svg%3E");
+    mix-blend-mode: soft-light;
+}
+
+@media (max-width: 800px) {
+    .ssgiHeader p,
+    .ssgiCaption,
+    .ssgiRule,
+    .ssgiControl dl,
+    .ssgiHint {
+        display: none;
+    }
+
+    .ssgiIntro {
+        top: 39%;
+        width: min(330px, 78vw);
+    }
+
+    .ssgiIntro h1 {
+        font-size: clamp(48px, 16vw, 76px);
+    }
+
+    .ssgiDescription {
+        max-width: 235px;
+    }
+}
