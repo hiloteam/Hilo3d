@@ -479,29 +479,19 @@ class Shader {
         role: MaterialPassRole = 'forward',
         groundTruthAmbientOcclusion = false
     ): Shader | null {
-        let header = this.getHeader(mesh, material, lightManager, fog, useLogDepth, role);
-        header += `#define HILO_MATERIAL_ROLE_${role.replaceAll('-', '_').replaceAll(':', '_').toUpperCase()} 1\n`;
-        if (role === 'depth-only') header += '#define HILO_DEPTH_ONLY_PASS 1\n';
-        else if (role === 'shadow-caster') header += '#define HILO_SHADOW_CASTER_PASS 1\n';
-        else if (role === 'motion-vector') header += '#define HILO_MOTION_VECTOR_PASS 1\n';
-        else if (role === 'material-attributes') {
-            header += '#define HILO_MATERIAL_ATTRIBUTES_PASS 1\n';
-        } else if (role === 'picking') header += '#define HILO_PICKING_PASS 1\n';
-        if (linearOutput) header += '#define HILO_LINEAR_OUTPUT 1\n';
-        if (groundTruthAmbientOcclusion) header += '#define HILO_GTAO 1\n';
-        const pass = resolveMaterialPassDefinition(material, role);
-        if (pass === null) return null;
-        if (pass.shader.kind === 'glsl') {
-            return this.getCustomShader(
-                pass.shader.vertexSource,
-                pass.shader.fragmentSource,
-                header,
-                `${material.definition.id}:${role}:${pass.shader.sourceRevision}`,
-                true,
-                renderer
-            );
-        }
-        return this.getBasicShader(material, isUseInstance, header, renderer, role);
+        return getShaderVariant(
+            mesh,
+            material,
+            isUseInstance,
+            lightManager,
+            fog,
+            useLogDepth,
+            renderer,
+            linearOutput,
+            role,
+            groundTruthAmbientOcclusion,
+            false
+        );
     }
     /**
      * 获取基础 shader
@@ -681,4 +671,74 @@ class Shader {
         return this;
     }
 }
+
+function getShaderVariant(
+    mesh: Mesh,
+    material: Material,
+    isUseInstance: boolean,
+    lightManager: LightManager,
+    fog: Fog | null,
+    useLogDepth: boolean,
+    renderer: ShaderPrecisionProvider | undefined,
+    linearOutput: boolean,
+    role: MaterialPassRole,
+    groundTruthAmbientOcclusion: boolean,
+    temporalReactiveMask: boolean
+): Shader | null {
+    let header = Shader.getHeader(mesh, material, lightManager, fog, useLogDepth, role);
+    header += `#define HILO_MATERIAL_ROLE_${role.replaceAll('-', '_').replaceAll(':', '_').toUpperCase()} 1\n`;
+    if (role === 'depth-only') header += '#define HILO_DEPTH_ONLY_PASS 1\n';
+    else if (role === 'shadow-caster') header += '#define HILO_SHADOW_CASTER_PASS 1\n';
+    else if (role === 'motion-vector') header += '#define HILO_MOTION_VECTOR_PASS 1\n';
+    else if (role === 'material-attributes') {
+        header += '#define HILO_MATERIAL_ATTRIBUTES_PASS 1\n';
+    } else if (role === 'picking') header += '#define HILO_PICKING_PASS 1\n';
+    if (linearOutput) header += '#define HILO_LINEAR_OUTPUT 1\n';
+    if (groundTruthAmbientOcclusion) header += '#define HILO_GTAO 1\n';
+    if (role === 'motion-vector' && temporalReactiveMask) {
+        header += '#define HILO_TEMPORAL_REACTIVE_MASK 1\n';
+    }
+    const pass = resolveMaterialPassDefinition(material, role);
+    if (pass === null) return null;
+    if (pass.shader.kind === 'glsl') {
+        return Shader.getCustomShader(
+            pass.shader.vertexSource,
+            pass.shader.fragmentSource,
+            header,
+            `${material.definition.id}:${role}:${pass.shader.sourceRevision}`,
+            true,
+            renderer
+        );
+    }
+    return Shader.getBasicShader(material, isUseInstance, header, renderer, role);
+}
+
+/** @internal Resolve the built-in two-target motion/reactive shader variant. */
+export function getTemporalReactiveShader(
+    mesh: Mesh,
+    material: Material,
+    isUseInstance: boolean,
+    lightManager: LightManager,
+    fog: Fog | null,
+    useLogDepth: boolean,
+    renderer?: ShaderPrecisionProvider,
+    linearOutput = false,
+    role: MaterialPassRole = 'forward',
+    groundTruthAmbientOcclusion = false
+): Shader | null {
+    return getShaderVariant(
+        mesh,
+        material,
+        isUseInstance,
+        lightManager,
+        fog,
+        useLogDepth,
+        renderer,
+        linearOutput,
+        role,
+        groundTruthAmbientOcclusion,
+        true
+    );
+}
+
 export default Shader;

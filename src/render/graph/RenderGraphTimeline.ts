@@ -1,34 +1,55 @@
 import type { CompiledRenderGraph } from './RenderGraphCompiler';
 
+/** Native command-pass categories that can receive GPU timestamps. */
 export type RGPassTimestampKind = 'render' | 'compute';
 
+/** Availability state for one frame's asynchronous GPU timestamp result. */
 export type RenderGraphGPUTimelineStatus =
     'unavailable' | 'pending' | 'ready' | 'failed' | 'saturated';
 
+/** Immutable CPU/GPU timing values for one compiled Render Graph pass. */
 export interface RenderGraphPassTimelineSnapshot {
+    /** Stable graph pass label. */
     readonly name: string;
+    /** Native timestamp category, or null when this pass cannot be profiled. */
     readonly kind: RGPassTimestampKind | null;
+    /** Synchronous CPU execution duration in milliseconds. */
     readonly cpuDurationMs: number;
+    /** Asynchronously resolved GPU duration in milliseconds, or null when unavailable. */
     readonly gpuDurationMs: number | null;
 }
 
+/** Immutable lifetime metadata for one compiled Render Graph resource. */
 export interface RenderGraphResourceLifetimeSnapshot {
+    /** Stable graph resource label. */
     readonly name: string;
+    /** Logical graph resource category. */
     readonly kind: 'texture' | 'texture-view' | 'buffer';
+    /** Whether the resource was imported, transiently allocated, or derived as a view. */
     readonly origin: 'imported' | 'transient' | 'view';
+    /** First compiled pass index using this resource, or null when unused. */
     readonly firstUse: number | null;
+    /** Last compiled pass index using this resource, or null when unused. */
     readonly lastUse: number | null;
 }
 
 /** One immutable CPU/GPU view of a compiled and submitted Render Graph frame. */
 export interface RenderGraphTimelineSnapshot {
+    /** Application frame index. */
     readonly frameIndex: number;
+    /** Pipeline graph-recording CPU duration in milliseconds. */
     readonly recordDurationMs: number;
+    /** Graph compilation CPU duration in milliseconds. */
     readonly compileDurationMs: number;
+    /** Resource and pipeline preparation CPU duration in milliseconds. */
     readonly prepareDurationMs: number;
+    /** Command-emission CPU duration in milliseconds. */
     readonly executeDurationMs: number;
+    /** Lifecycle state of the asynchronous GPU timestamp result. */
     readonly gpuStatus: RenderGraphGPUTimelineStatus;
+    /** Compiled pass timing snapshots in execution order. */
     readonly passes: readonly RenderGraphPassTimelineSnapshot[];
+    /** Compiled logical-resource lifetime snapshots. */
     readonly resources: readonly RenderGraphResourceLifetimeSnapshot[];
 }
 

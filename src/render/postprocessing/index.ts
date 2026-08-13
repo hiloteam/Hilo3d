@@ -14,7 +14,12 @@ export {
     type VolumetricCloudOptions
 } from './AtmosphereWeather';
 export { ColorUber, type ColorUberOptions, type ToneMappingMode } from './ColorUber';
-export { TemporalAA, type TemporalAAOptions } from './TemporalAA';
+export {
+    TemporalAA,
+    type DynamicResolutionDiagnostics,
+    type DynamicResolutionOptions,
+    type TemporalAAOptions
+} from './TemporalAA';
 export {
     GroundTruthAmbientOcclusion,
     type GroundTruthAmbientOcclusionOptions

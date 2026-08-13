@@ -32,6 +32,7 @@ import type {
 } from '../pipeline/ScriptableRenderGraph';
 import { createStd140Layout } from '../ubo/Std140Layout';
 import { registerUniformBlockBinding } from '../ubo/UniformBlockBindings';
+import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 
 const TEMPORAL_AA_BLOCK = `layout(std140) uniform TemporalAABlock {
     float u_historyWeight;
@@ -63,6 +64,7 @@ uniform sampler2D u_scene;
 uniform sampler2D u_history;
 uniform sampler2D u_velocity;
 uniform sampler2D u_historyDepth;
+uniform sampler2D u_reactiveMask;
 ${TEMPORAL_AA_BLOCK}
 layout(location = 0) out vec4 historyColor;
 layout(location = 1) out vec4 resolvedColor;
@@ -101,6 +103,17 @@ float minimumHistoryDepthError(vec2 historyUV, float expectedLogDepth) {
         }
     }
     return error;
+}
+
+float dilatedReactiveMask(ivec2 pixel, ivec2 dimensions) {
+    float reactive = 0.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            ivec2 coordinate = clamp(pixel + ivec2(x, y), ivec2(0), dimensions - ivec2(1));
+            reactive = max(reactive, texelFetch(u_reactiveMask, coordinate, 0).r);
+        }
+    }
+    return reactive;
 }
 
 void main() {
@@ -152,7 +165,8 @@ void main() {
     float luminanceDelta = abs(previousWorking.x - currentWorking.x) /
         max(max(abs(previousWorking.x), abs(currentWorking.x)), 0.1);
     float reactive = clamp(luminanceDelta * 1.5, 0.0, 1.0);
-    temporalWeight *= 1.0 - reactive * 0.8;
+    float authoredReactive = dilatedReactiveMask(pixel, dimensions);
+    temporalWeight *= 1.0 - max(reactive * 0.8, authoredReactive);
 
     vec3 resolvedWorking = mix(currentWorking, previousWorking, temporalWeight * accepted);
     vec3 resolved = max(yCoCgToRgb(resolvedWorking), vec3(0.0));
@@ -230,6 +244,7 @@ uniform sampler2D u_history;
 uniform sampler2D u_velocity;
 uniform sampler2D u_historyDepth;
 uniform sampler2D u_sceneDepth;
+uniform sampler2D u_reactiveMask;
 ${TEMPORAL_AA_BLOCK}
 layout(location = 0) out vec4 historyColor;
 layout(location = 1) out vec4 resolvedColor;
@@ -269,6 +284,17 @@ float minimumHistoryDepthError(vec2 historyUV, float expectedLogDepth) {
         }
     }
     return error;
+}
+
+float dilatedReactiveMask(ivec2 pixel, ivec2 dimensions) {
+    float reactive = 0.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            ivec2 coordinate = clamp(pixel + ivec2(x, y), ivec2(0), dimensions - ivec2(1));
+            reactive = max(reactive, texelFetch(u_reactiveMask, coordinate, 0).r);
+        }
+    }
+    return reactive;
 }
 
 void main() {
@@ -329,7 +355,8 @@ void main() {
     float luminanceDelta = abs(previousWorking.x - currentWorking.x) /
         max(max(abs(previousWorking.x), abs(currentWorking.x)), 0.1);
     float reactive = clamp(luminanceDelta * 1.5, 0.0, 1.0);
-    temporalWeight *= 1.0 - reactive * 0.8;
+    float authoredReactive = dilatedReactiveMask(pixel, currentDimensions);
+    temporalWeight *= 1.0 - max(reactive * 0.8, authoredReactive);
 
     vec3 resolvedWorking = mix(currentWorking, previousWorking, temporalWeight * accepted);
     vec3 resolved = max(yCoCgToRgb(resolvedWorking), vec3(0.0));
@@ -367,6 +394,16 @@ export function temporalMotionDescriptor(
 ): Readonly<RenderPipelineTextureDescriptor> {
     return Object.freeze({
         format: 'rgba16float' as const,
+        extent: temporalInputExtent(renderScale)
+    });
+}
+
+/** @internal Return the authored reactive-mask descriptor matching one temporal input scale. */
+export function temporalReactiveMaskDescriptor(
+    renderScale: number
+): Readonly<RenderPipelineTextureDescriptor> {
+    return Object.freeze({
+        format: 'r8unorm' as const,
         extent: temporalInputExtent(renderScale)
     });
 }
@@ -417,9 +454,11 @@ interface CameraTemporalState {
     committedTransformRevision: number;
     committedJitterIndex: number;
     committedSubmission: number;
+    committedRenderScale: number;
     pendingTransformRevision: number;
     pendingJitterIndex: number;
     pendingFrame: number;
+    pendingRenderScale: number;
     lastTouchedFrame: number;
 }
 
@@ -429,6 +468,7 @@ export interface TemporalResolveFrame {
     readonly historyValid: boolean;
     readonly colorHistory: RenderPipelineHistoryTextureResources;
     readonly depthHistory: RenderPipelineHistoryTextureResources;
+    readonly renderScale: number;
 }
 
 interface MutableVelocityColorAttachment extends RenderPipelineColorAttachment {
@@ -448,6 +488,12 @@ class VelocityPassParameters implements SceneRenderPassParameters {
             loadOp: 'clear',
             storeOp: 'store',
             clearValue: TEMPORAL_MOTION_CLEAR
+        },
+        {
+            texture: 0 as RenderGraphTextureHandle,
+            loadOp: 'clear',
+            storeOp: 'store',
+            clearValue: CLEAR_ZERO
         }
     ];
     readonly depthStencilAttachment: MutableVelocityDepthAttachment = {
@@ -458,6 +504,7 @@ class VelocityPassParameters implements SceneRenderPassParameters {
     configure(
         rendererList: SceneRenderPassParameters['rendererList'],
         velocity: RenderGraphTextureHandle,
+        reactiveMask: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle,
         stencilReadOnly: boolean
     ): void {
@@ -465,6 +512,11 @@ class VelocityPassParameters implements SceneRenderPassParameters {
         const color = this.colorAttachments[0];
         if (color === undefined) throw new Error('TemporalAA velocity attachment is unavailable');
         color.texture = velocity;
+        const reactive = this.colorAttachments[1];
+        if (reactive === undefined) {
+            throw new Error('TemporalAA reactive-mask attachment is unavailable');
+        }
+        reactive.texture = reactiveMask;
         this.depthStencilAttachment.texture = depth;
         if (stencilReadOnly) this.depthStencilAttachment.stencilReadOnly = true;
         else delete this.depthStencilAttachment.stencilReadOnly;
@@ -569,13 +621,50 @@ class TemporalResolveParameters implements FullscreenRenderPassParameters {
     }
 }
 
-/** Temporal anti-aliasing and fixed-resolution temporal-upscaling controls. */
+/** GPU-time-driven dynamic-resolution controls. */
+export interface DynamicResolutionOptions {
+    /** Lowest internal resolution scale. Defaults to 0.5. */
+    readonly minScale?: number;
+    /** Highest internal resolution scale. Defaults to 1. */
+    readonly maxScale?: number;
+    /** Initial scale before enough GPU samples are available. Defaults to `maxScale`. */
+    readonly initialScale?: number;
+    /** Target summed profiled Render Graph render/compute duration in milliseconds. Defaults to 16.667. */
+    readonly targetFrameTimeMs?: number;
+    /** Symmetric no-change band around the target, as a ratio. Defaults to 0.1. */
+    readonly hysteresis?: number;
+    /** EWMA contribution of the newest GPU sample. Defaults to 0.2. */
+    readonly response?: number;
+    /** Quantized scale adjustment applied at each decision. Defaults to 0.05. */
+    readonly scaleStep?: number;
+    /** Successful GPU samples required before the first decision. Defaults to 6. */
+    readonly warmupFrames?: number;
+    /** Minimum GPU samples between scale changes. Defaults to 8. */
+    readonly settlingFrames?: number;
+}
+
+interface DynamicResolutionSettings {
+    readonly minScale: number;
+    readonly maxScale: number;
+    readonly initialScale: number;
+    readonly targetFrameTimeMs: number;
+    readonly hysteresis: number;
+    readonly response: number;
+    readonly scaleStep: number;
+    readonly warmupFrames: number;
+    readonly settlingFrames: number;
+}
+
+/** Temporal anti-aliasing, temporal upscaling, and optional dynamic-resolution controls. */
 export interface TemporalAAOptions {
     /**
-     * Fixed internal scene resolution relative to the output. Values below one enable TAAU.
-     * Defaults to 1 and is currently constrained to the inclusive range 0.5–1.
+     * Internal scene resolution relative to the output. Values below one enable TAAU. When
+     * `dynamicResolution` is present this overrides that object's initial scale.
+     * Defaults to 1 and is constrained to the inclusive range 0.5–1.
      */
     readonly renderScale?: number;
+    /** GPU timestamp driven dynamic resolution. Omit or use false for a fixed render scale. */
+    readonly dynamicResolution?: Readonly<DynamicResolutionOptions> | false;
     /** Maximum accepted history contribution after rejection. Defaults to 0.92. */
     readonly historyWeight?: number;
     /** Maximum relative previous-view-depth error. Defaults to 0.02. */
@@ -589,6 +678,8 @@ export interface TemporalAAOptions {
 /** @internal Immutable temporal settings shared by Forward and GPU Scene pipelines. */
 export interface TemporalAASettings {
     readonly renderScale: number;
+    readonly minimumRenderScale: number;
+    readonly dynamicResolution: Readonly<DynamicResolutionSettings> | null;
     readonly historyWeight: number;
     readonly depthThreshold: number;
     readonly varianceGamma: number;
@@ -604,12 +695,72 @@ function finiteRange(value: number, minimum: number, maximum: number, label: str
     return value;
 }
 
+function positiveInteger(value: number, label: string): number {
+    if (!Number.isSafeInteger(value) || value < 1) {
+        throw new RangeError(`${label} must be a positive safe integer`);
+    }
+    return value;
+}
+
+function snapshotDynamicResolutionOptions(
+    options: Readonly<DynamicResolutionOptions>,
+    renderScale: number | undefined
+): Readonly<DynamicResolutionSettings> {
+    const minScale = finiteRange(options.minScale ?? 0.5, 0.5, 1, 'Dynamic resolution minScale');
+    const maxScale = finiteRange(options.maxScale ?? 1, 0.5, 1, 'Dynamic resolution maxScale');
+    if (minScale > maxScale) {
+        throw new RangeError('Dynamic resolution minScale must not exceed maxScale');
+    }
+    const initialScale = finiteRange(
+        renderScale ?? options.initialScale ?? maxScale,
+        minScale,
+        maxScale,
+        'Dynamic resolution initialScale'
+    );
+    return Object.freeze({
+        minScale,
+        maxScale,
+        initialScale,
+        targetFrameTimeMs: finiteRange(
+            options.targetFrameTimeMs ?? 16.667,
+            1,
+            1000,
+            'Dynamic resolution targetFrameTimeMs'
+        ),
+        hysteresis: finiteRange(options.hysteresis ?? 0.1, 0, 0.5, 'Dynamic resolution hysteresis'),
+        response: finiteRange(options.response ?? 0.2, 0.01, 1, 'Dynamic resolution response'),
+        scaleStep: finiteRange(
+            options.scaleStep ?? 0.05,
+            0.01,
+            0.25,
+            'Dynamic resolution scaleStep'
+        ),
+        warmupFrames: positiveInteger(options.warmupFrames ?? 6, 'Dynamic resolution warmupFrames'),
+        settlingFrames: positiveInteger(
+            options.settlingFrames ?? 8,
+            'Dynamic resolution settlingFrames'
+        )
+    });
+}
+
 /** @internal Validate and freeze public temporal options. */
 export function snapshotTemporalAAOptions(
     options: Readonly<TemporalAAOptions>
 ): TemporalAASettings {
+    const fixedRenderScale = finiteRange(
+        options.renderScale ?? 1,
+        0.5,
+        1,
+        'TemporalAA renderScale'
+    );
+    const dynamicResolution =
+        options.dynamicResolution === undefined || options.dynamicResolution === false
+            ? null
+            : snapshotDynamicResolutionOptions(options.dynamicResolution, options.renderScale);
     return Object.freeze({
-        renderScale: finiteRange(options.renderScale ?? 1, 0.5, 1, 'TemporalAA renderScale'),
+        renderScale: dynamicResolution?.initialScale ?? fixedRenderScale,
+        minimumRenderScale: dynamicResolution?.minScale ?? fixedRenderScale,
+        dynamicResolution,
         historyWeight: finiteRange(options.historyWeight ?? 0.92, 0, 1, 'TemporalAA historyWeight'),
         depthThreshold: finiteRange(
             options.depthThreshold ?? 0.02,
@@ -627,6 +778,89 @@ export function snapshotTemporalAAOptions(
     });
 }
 
+/** Stable adaptive-resolution telemetry for renderer diagnostics. */
+export interface DynamicResolutionDiagnostics {
+    /** Current internal scene resolution relative to the output. */
+    readonly renderScale: number;
+    /** EWMA of accepted profiled Render Graph GPU work, or null before the first sample. */
+    readonly smoothedGPUFrameTimeMs: number | null;
+    /** Number of distinct ready GPU timeline samples accepted by this controller. */
+    readonly sampledFrameCount: number;
+}
+
+class DynamicResolutionController {
+    readonly #settings: Readonly<DynamicResolutionSettings>;
+    #renderScale: number;
+    #smoothedGPUFrameTimeMs: number | null = null;
+    #sampledFrameCount = 0;
+    #lastSampledFrame = -1;
+    #samplesSinceChange = Number.POSITIVE_INFINITY;
+    #destroyed = false;
+
+    constructor(settings: Readonly<DynamicResolutionSettings>) {
+        this.#settings = settings;
+        this.#renderScale = settings.initialScale;
+    }
+
+    get renderScale(): number {
+        return this.#renderScale;
+    }
+
+    get diagnostics(): Readonly<DynamicResolutionDiagnostics> {
+        return Object.freeze({
+            renderScale: this.#renderScale,
+            smoothedGPUFrameTimeMs: this.#smoothedGPUFrameTimeMs,
+            sampledFrameCount: this.#sampledFrameCount
+        });
+    }
+
+    record(snapshot: Readonly<RenderGraphTimelineSnapshot>): void {
+        if (
+            this.#destroyed ||
+            snapshot.gpuStatus !== 'ready' ||
+            snapshot.frameIndex <= this.#lastSampledFrame
+        ) {
+            return;
+        }
+        let durationMs = 0;
+        let timestampCount = 0;
+        for (const pass of snapshot.passes) {
+            if (pass.gpuDurationMs === null) continue;
+            durationMs += pass.gpuDurationMs;
+            timestampCount++;
+        }
+        if (timestampCount === 0 || !Number.isFinite(durationMs) || durationMs <= 0) return;
+        this.#lastSampledFrame = snapshot.frameIndex;
+        this.#sampledFrameCount++;
+        this.#samplesSinceChange++;
+        this.#smoothedGPUFrameTimeMs =
+            this.#smoothedGPUFrameTimeMs === null
+                ? durationMs
+                : this.#smoothedGPUFrameTimeMs +
+                  (durationMs - this.#smoothedGPUFrameTimeMs) * this.#settings.response;
+        if (this.#sampledFrameCount < this.#settings.warmupFrames) return;
+        if (this.#samplesSinceChange < this.#settings.settlingFrames) {
+            return;
+        }
+        const lower = this.#settings.targetFrameTimeMs * (1 - this.#settings.hysteresis);
+        const upper = this.#settings.targetFrameTimeMs * (1 + this.#settings.hysteresis);
+        let next = this.#renderScale;
+        if (this.#smoothedGPUFrameTimeMs > upper) {
+            next = Math.max(this.#settings.minScale, next - this.#settings.scaleStep);
+        } else if (this.#smoothedGPUFrameTimeMs < lower) {
+            next = Math.min(this.#settings.maxScale, next + this.#settings.scaleStep);
+        }
+        next = Math.round(next * 10000) / 10000;
+        if (Math.abs(next - this.#renderScale) <= 1e-6) return;
+        this.#renderScale = next;
+        this.#samplesSinceChange = 0;
+    }
+
+    destroy(): void {
+        this.#destroyed = true;
+    }
+}
+
 /** Static requirements shared by every pipeline that uses the built-in temporal resolve. */
 export const TEMPORAL_AA_REQUIREMENTS = Object.freeze({
     requiredLimits: Object.freeze({ maxColorAttachments: 3 }),
@@ -634,7 +868,9 @@ export const TEMPORAL_AA_REQUIREMENTS = Object.freeze({
         Object.freeze({ format: 'rgba16float' as const, use: 'color-attachment' as const }),
         Object.freeze({ format: 'rgba16float' as const, use: 'filterable-sampled' as const }),
         Object.freeze({ format: 'r32float' as const, use: 'color-attachment' as const }),
-        Object.freeze({ format: 'r32float' as const, use: 'sampled' as const })
+        Object.freeze({ format: 'r32float' as const, use: 'sampled' as const }),
+        Object.freeze({ format: 'r8unorm' as const, use: 'color-attachment' as const }),
+        Object.freeze({ format: 'r8unorm' as const, use: 'sampled' as const })
     ])
 }) satisfies Readonly<RenderPipelineRequirements>;
 
@@ -662,7 +898,8 @@ export class TemporalResolveController {
     readonly #resolvePass: FullscreenRenderPass;
     readonly #upscaleInitializePass: FullscreenRenderPass;
     readonly #upscaleResolvePass: FullscreenRenderPass;
-    readonly #renderScale: number;
+    readonly #dynamicResolution: DynamicResolutionController | null;
+    readonly #fixedRenderScale: number;
     readonly #resolvedDepthDescriptor: {
         format: RenderTargetDepthStencilFormat;
         readonly extent: RenderPipelineExtent;
@@ -686,7 +923,11 @@ export class TemporalResolveController {
     #submissionIndex = 0;
 
     constructor(settings: TemporalAASettings) {
-        this.#renderScale = settings.renderScale;
+        this.#fixedRenderScale = settings.renderScale;
+        this.#dynamicResolution =
+            settings.dynamicResolution === null
+                ? null
+                : new DynamicResolutionController(settings.dynamicResolution);
         this.#block = UniformBuffer.fromSchema(temporalAALayout, {
             u_historyWeight: settings.historyWeight,
             u_depthThreshold: settings.depthThreshold,
@@ -726,6 +967,21 @@ export class TemporalResolveController {
         );
     }
 
+    /** Current internal scene scale, including the last accepted GPU timing decision. */
+    get renderScale(): number {
+        return this.#dynamicResolution?.renderScale ?? this.#fixedRenderScale;
+    }
+
+    /** Current dynamic-resolution telemetry, or null for a fixed-scale controller. */
+    get dynamicResolutionDiagnostics(): Readonly<DynamicResolutionDiagnostics> | null {
+        return this.#dynamicResolution?.diagnostics ?? null;
+    }
+
+    /** Consume an asynchronous Render Graph timeline snapshot. */
+    recordRenderGraphTimeline(snapshot: Readonly<RenderGraphTimelineSnapshot>): void {
+        this.#dynamicResolution?.record(snapshot);
+    }
+
     begin(context: RenderPipelineContext): TemporalResolveFrame {
         if (this.#destroyed) throw new Error('TemporalAA resolve controller is destroyed');
         const [x, y, width, height] = context.viewport;
@@ -738,14 +994,22 @@ export class TemporalResolveController {
             throw new Error('TemporalAA currently requires a full-output viewport');
         }
         this.sweepInactiveStates(context, context.camera);
-        const inputWidth = Math.max(1, Math.floor(width * this.#renderScale));
-        const inputHeight = Math.max(1, Math.floor(height * this.#renderScale));
-        const state = this.stageCamera(context.camera, context.frameIndex, inputWidth, inputHeight);
+        const renderScale = this.renderScale;
+        const inputWidth = Math.max(1, Math.floor(width * renderScale));
+        const inputHeight = Math.max(1, Math.floor(height * renderScale));
+        const state = this.stageCamera(
+            context.camera,
+            context.frameIndex,
+            inputWidth,
+            inputHeight,
+            renderScale
+        );
         const transformRevision = getTransformHistoryRevision(context.camera);
         const discontinuous =
             state.committedSubmission >= 0 &&
             (state.committedSubmission !== this.#submissionIndex ||
                 state.committedTransformRevision !== transformRevision ||
+                Math.abs(state.committedRenderScale - renderScale) > 1e-6 ||
                 projectionCut(state.committedProjection, context.camera.projectionMatrix.elements));
         if (discontinuous) {
             context.graph.invalidateHistoryTexture(state.colorHistoryKey);
@@ -764,7 +1028,8 @@ export class TemporalResolveController {
             state,
             historyValid: !discontinuous && colorHistory.valid && depthHistory.valid,
             colorHistory,
-            depthHistory
+            depthHistory,
+            renderScale
         });
     }
 
@@ -773,6 +1038,7 @@ export class TemporalResolveController {
         frame: TemporalResolveFrame,
         scene: RenderGraphTextureHandle,
         velocity: RenderGraphTextureHandle,
+        reactiveMask: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle,
         depthFormat: RenderTargetDepthStencilFormat
     ): TemporalResolveResult {
@@ -783,7 +1049,7 @@ export class TemporalResolveController {
             'TemporalAA resolved color',
             RESOLVED_DESCRIPTOR
         );
-        const upscales = this.#renderScale < 1;
+        const upscales = frame.renderScale < 1;
         this.#resolvedDepthDescriptor.format = depthFormat;
         const resolvedDepth = upscales
             ? context.graph.createTexture(
@@ -794,13 +1060,22 @@ export class TemporalResolveController {
         const parameters = context.acquirePassParameters(this.#resolveParameters);
         parameters.configure(
             frame.historyValid
-                ? [
-                      scene,
-                      frame.colorHistory.history(),
-                      velocity,
-                      frame.depthHistory.history(),
-                      ...(upscales ? [depth] : [])
-                  ]
+                ? upscales
+                    ? [
+                          scene,
+                          frame.colorHistory.history(),
+                          velocity,
+                          frame.depthHistory.history(),
+                          depth,
+                          reactiveMask
+                      ]
+                    : [
+                          scene,
+                          frame.colorHistory.history(),
+                          velocity,
+                          frame.depthHistory.history(),
+                          reactiveMask
+                      ]
                 : [scene, velocity, ...(upscales ? [depth] : [])],
             frame.colorHistory.current,
             resolved,
@@ -829,6 +1104,7 @@ export class TemporalResolveController {
             state.committedTransformRevision = state.pendingTransformRevision;
             state.committedJitterIndex = (state.pendingJitterIndex + 1) % JITTER_SEQUENCE.length;
             state.committedProjection.set(state.pendingProjection);
+            state.committedRenderScale = state.pendingRenderScale;
             state.committedSubmission = committedSubmission;
             state.pendingFrame = -1;
             state.camera.clearProjectionJitter();
@@ -859,6 +1135,7 @@ export class TemporalResolveController {
         this.#ownedStates.clear();
         this.#stagedStates.length = 0;
         this.#pendingEvictions.length = 0;
+        this.#dynamicResolution?.destroy();
         this.#destroyed = true;
     }
 
@@ -866,7 +1143,8 @@ export class TemporalResolveController {
         camera: Camera,
         frameIndex: number,
         width: number,
-        height: number
+        height: number,
+        renderScale: number
     ): CameraTemporalState {
         let state = this.#states.get(camera);
         if (state === undefined) {
@@ -879,9 +1157,11 @@ export class TemporalResolveController {
                 committedTransformRevision: -1,
                 committedJitterIndex: 0,
                 committedSubmission: -1,
+                committedRenderScale: renderScale,
                 pendingTransformRevision: -1,
                 pendingJitterIndex: 0,
                 pendingFrame: -1,
+                pendingRenderScale: renderScale,
                 lastTouchedFrame: frameIndex
             };
             this.#states.set(camera, state);
@@ -893,6 +1173,7 @@ export class TemporalResolveController {
             );
         }
         state.pendingFrame = frameIndex;
+        state.pendingRenderScale = renderScale;
         state.lastTouchedFrame = frameIndex;
         state.pendingTransformRevision = getTransformHistoryRevision(camera);
         state.pendingJitterIndex = state.committedJitterIndex;
@@ -937,10 +1218,20 @@ export interface TemporalResolveResult {
 }
 
 class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
+    readonly usesRenderGraphTimeline: boolean;
     readonly #resolve: TemporalResolveController;
+    readonly #onDestroy: (runtime: TemporalAARuntime) => void;
     readonly #velocityPass = new SceneRenderPass('TemporalAA motion vectors');
     readonly #velocityParameters = new RenderPassParameterPool(() => new VelocityPassParameters());
-    readonly #motionDescriptor: Readonly<RenderPipelineTextureDescriptor>;
+    readonly #inputExtent = { relativeTo: 'output' as const, scale: 1 };
+    readonly #motionDescriptor: Readonly<RenderPipelineTextureDescriptor> = {
+        format: 'rgba16float',
+        extent: this.#inputExtent
+    };
+    readonly #reactiveMaskDescriptor: Readonly<RenderPipelineTextureDescriptor> = {
+        format: 'r8unorm',
+        extent: this.#inputExtent
+    };
     readonly #rendererListDescriptor: {
         cullingResults: CullingResultsHandle;
         readonly queue: 'opaque';
@@ -953,9 +1244,31 @@ class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
         materialPass: 'motion-vector'
     };
 
-    constructor(settings: TemporalAASettings) {
+    #destroyed = false;
+
+    constructor(settings: TemporalAASettings, onDestroy: (runtime: TemporalAARuntime) => void) {
         this.#resolve = new TemporalResolveController(settings);
-        this.#motionDescriptor = temporalMotionDescriptor(settings.renderScale);
+        this.usesRenderGraphTimeline = settings.dynamicResolution !== null;
+        this.#onDestroy = onDestroy;
+    }
+
+    getSceneScale(): number {
+        return this.#resolve.renderScale;
+    }
+
+    recordRenderGraphTimeline(snapshot: Readonly<RenderGraphTimelineSnapshot>): void {
+        this.#resolve.recordRenderGraphTimeline(snapshot);
+    }
+
+    get diagnostics(): Readonly<DynamicResolutionDiagnostics> {
+        return (
+            this.#resolve.dynamicResolutionDiagnostics ??
+            Object.freeze({
+                renderScale: this.#resolve.renderScale,
+                smoothedGPUFrameTimeMs: null,
+                sampledFrameCount: 0
+            })
+        );
     }
 
     record(context: ForwardRenderFeatureContext): void {
@@ -965,33 +1278,35 @@ class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
         if (scene === null || depth === null) {
             throw new Error('TemporalAA requires opaque scene color and sampled depth');
         }
+        this.#inputExtent.scale = context.resources.sceneScale;
         const frame = this.#resolve.begin(pipeline);
-        const sharedVelocity = context.resources.motionDepth;
-        const velocity =
-            sharedVelocity ??
-            pipeline.graph.createTexture(
-                'TemporalAA rgba16float motion and view depth',
-                this.#motionDescriptor
-            );
-        if (sharedVelocity === null) {
-            this.#rendererListDescriptor.cullingResults = context.cullingResults;
-            const velocityList = pipeline.createRendererList(this.#rendererListDescriptor);
-            const velocityParameters = pipeline.acquirePassParameters(this.#velocityParameters);
-            velocityParameters.configure(
-                velocityList,
-                velocity,
-                depth,
-                pipeline.output.depthStencilFormat !== null &&
-                    renderTargetFormatHasStencil(pipeline.output.depthStencilFormat)
-            );
-            pipeline.graph.addPass(this.#velocityPass, velocityParameters);
-            context.resources.setMotionDepth(velocity);
-        }
+        const velocity = pipeline.graph.createTexture(
+            'TemporalAA rgba16float motion and view depth',
+            this.#motionDescriptor
+        );
+        const reactiveMask = pipeline.graph.createTexture(
+            'TemporalAA authored reactive mask',
+            this.#reactiveMaskDescriptor
+        );
+        this.#rendererListDescriptor.cullingResults = context.cullingResults;
+        const velocityList = pipeline.createRendererList(this.#rendererListDescriptor);
+        const velocityParameters = pipeline.acquirePassParameters(this.#velocityParameters);
+        velocityParameters.configure(
+            velocityList,
+            velocity,
+            reactiveMask,
+            depth,
+            pipeline.output.depthStencilFormat !== null &&
+                renderTargetFormatHasStencil(pipeline.output.depthStencilFormat)
+        );
+        pipeline.graph.addPass(this.#velocityPass, velocityParameters);
+        context.resources.setMotionDepth(velocity);
         const resolved = this.#resolve.resolve(
             pipeline,
             frame,
             scene,
             velocity,
+            reactiveMask,
             depth,
             pipeline.output.depthStencilFormat ?? 'depth24plus'
         );
@@ -1008,12 +1323,15 @@ class TemporalAARuntime implements ForwardRenderPipelineFeatureRuntime {
     }
 
     destroy(): void {
+        if (this.#destroyed) return;
+        this.#destroyed = true;
         this.#resolve.destroy();
+        this.#onDestroy(this);
     }
 }
 
 /**
- * Temporal anti-aliasing and fixed-resolution temporal-upscaling feature.
+ * Temporal anti-aliasing, temporal upscaling, and GPU-time dynamic-resolution feature.
  *
  * The feature records built-in opaque/masked motion and logarithmic view-depth data after opaque
  * shading, resolves only opaque scene color, then lets transparent rendering and Bloom compose
@@ -1025,18 +1343,40 @@ export class TemporalAA implements ForwardRenderPipelineFeature {
     readonly injectionPoint = 'after-opaque' as const;
     readonly requirements: Readonly<ForwardRenderFeatureRequirements>;
     readonly #settings: TemporalAASettings;
+    readonly #runtimes = new Set<TemporalAARuntime>();
 
     constructor(options: Readonly<TemporalAAOptions> = {}) {
         this.#settings = snapshotTemporalAAOptions(options);
         this.requirements = Object.freeze({
             sampledSceneColor: true,
             sampledDepth: true,
-            sceneScale: this.#settings.renderScale,
-            ...TEMPORAL_AA_REQUIREMENTS
+            sceneScale: this.#settings.minimumRenderScale,
+            ...TEMPORAL_AA_REQUIREMENTS,
+            ...(this.#settings.dynamicResolution === null
+                ? {}
+                : { requiredFeatures: Object.freeze(['timestamp-query' as const]) })
         });
     }
 
     create(): ForwardRenderPipelineFeatureRuntime {
-        return new TemporalAARuntime(this.#settings);
+        const runtime = new TemporalAARuntime(this.#settings, destroyed => {
+            this.#runtimes.delete(destroyed);
+        });
+        this.#runtimes.add(runtime);
+        return runtime;
+    }
+
+    /** Read adaptive-resolution state when this feature is attached to exactly one live Renderer. */
+    readDynamicResolutionDiagnostics(): Readonly<DynamicResolutionDiagnostics> {
+        if (this.#runtimes.size !== 1) {
+            throw new Error(
+                'TemporalAA.readDynamicResolutionDiagnostics() requires exactly one live runtime'
+            );
+        }
+        const runtime = this.#runtimes.values().next().value;
+        if (!(runtime instanceof TemporalAARuntime)) {
+            throw new Error('TemporalAA runtime is unavailable');
+        }
+        return runtime.diagnostics;
     }
 }

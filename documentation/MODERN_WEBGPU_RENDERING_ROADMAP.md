@@ -1,6 +1,6 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
-> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-10，F0、F1、D0、G0/L0 的 WebGPU
+> 审计基线：`902b9a7`（2026-08-01）；实施状态更新：2026-08-13，F0、F1、D0、G0/L0 的 WebGPU
 > high-end 不透明场景切片，以及 MAT0 的 Definition/Instance、语义 Pass 基础与共享 PBR GPU Material
 > Database 已落地。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
@@ -22,17 +22,14 @@ Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前
    count/prefix/write allocator、有界 overflow 与 storage-aware GGX
    PBR；完整材质层、阴影、cookie/IES、精确 area-light 和透明路径仍需接入。
 4. **时域渲染框架**：recovery-aware history owner、current/previous transform、projection
-   jitter、opaque/masked motion
-   vector、原生分辨率 TAA 与固定 0.5–1 比例 TAAU 已落地；动态分辨率、authored reactive
-   mask 和透明时域策略仍未完成。
+   jitter、opaque/masked motion vector、原生分辨率 TAA、固定/动态 0.5–1 比例 TAAU 与 authored
+   reactive mask 已落地；透明 history/resurrection 策略仍未完成。
 5. **自动曝光与可控显示变换**：已有手动 EV exposure、PBR Neutral、ACES fitted、Reinhard 和 Color
    Uber，但没有 GPU 亮度统计、eye adaptation、exposure history 或参数化 filmic toe/shoulder。
 6. **现代资源与几何虚拟化**：已有 mip/array/aspect subresource graph view，但仍没有 GPU
    meshlet/LOD、纹理流送、KTX 2/Basis、虚拟纹理或虚拟阴影页系统。
 
-最值得先做的不是直接复刻 Nanite 或 Lumen，而是在已经完成的 MAT0 与 T0 固定比例 TAAU 切片上推进 dynamic
-resolution/authored reactive
-mask，同时继续完成 G0/L0 的剩余门禁。E0 是可独立交付的显示质量切片，可以复用已经完成的 F0/F1，但不能抢占或阻塞这些主线：
+最值得先做的不是直接复刻 Nanite 或 Lumen，而是在已经完成的 MAT0 与 T0 动态 TAAU/reactive 切片上继续完成 G0/L0 的剩余门禁与透明时域策略。E0 是可独立交付的显示质量切片，可以复用已经完成的 F0/F1，但不能抢占或阻塞这些主线：
 
 ```mermaid
 flowchart LR
@@ -97,21 +94,21 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 
 ## 2. 当前渲染能力基线
 
-| 领域                                 | 当前状态          | 证据与边界                                                                                                                                                 |
-| ------------------------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shared Renderer / Render Graph / RHI | 生产可用          | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                                                                  |
-| Raster PBR / HDR                     | 生产可用          | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径                                                       |
-| Shadow                               | 可用基线          | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页                                                            |
-| Compute / Storage / Indirect         | 底座生产可用      | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环                                                  |
-| Material architecture                | 生产基础          | Definition/Instance、motion/attribute 语义 Pass 与共享 PBR GPU record 已落地；更多 family/warmup 待补                                                      |
-| GPU-driven ordinary scene            | high-end 切片     | 注册的不透明 indexed `Mesh` 走 dirty GPU database、Hi-Z/LOD/compact 与固定 bucket indirect；透明/变形待补                                                  |
-| Forward+                             | high-end 切片     | 3D cluster count/prefix/write、有界预算和 storage GGX PBR 已闭环；阴影/完整 layered PBR/透明待补                                                           |
-| Temporal rendering                   | TAA/TAAU 切片     | jitter/non-jitter matrix、opaque/masked velocity、depth rejection、output-resolution history 与固定比例 TAAU 已完成；dynamic resolution/reactive mask 待补 |
-| Exposure / display transform         | 部分可用          | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制                                                 |
-| Screen-space lighting                | GTAO + SSR + SSGI | portable horizon GTAO、bent normal、temporal/filter、WebGPU Hi-Z confidence SSR 与 temporal SSGI 已完成；off-screen GI fallback 待补                       |
-| Volumetrics / atmosphere             | high-end weather  | WebGPU Clustered froxel、height/local fog、physical atmosphere LUT、aerial perspective、half-res temporal cloud、PBR/froxel cloud shadow 已落地            |
-| Geometry / texture streaming         | 缺失              | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                                                                    |
-| GPU profiling / graph debugging      | 生产基线          | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query                                                    |
+| 领域                                 | 当前状态          | 证据与边界                                                                                                                                                                    |
+| ------------------------------------ | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shared Renderer / Render Graph / RHI | 生产可用          | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                                                                                     |
+| Raster PBR / HDR                     | 生产可用          | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径                                                                          |
+| Shadow                               | 可用基线          | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow 和 PCF；缺少缓存、receiver-driven 分配和虚拟页                                                                               |
+| Compute / Storage / Indirect         | 底座生产可用      | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环                                                                     |
+| Material architecture                | 生产基础          | Definition/Instance、motion/attribute 语义 Pass、authored temporal reactivity 与共享 PBR GPU record 已落地；更多 family/warmup 待补                                           |
+| GPU-driven ordinary scene            | high-end 切片     | 注册的不透明 indexed `Mesh` 走 dirty GPU database、Hi-Z/LOD/compact 与固定 bucket indirect；透明/变形待补                                                                     |
+| Forward+                             | high-end 切片     | 3D cluster count/prefix/write、有界预算和 storage GGX PBR 已闭环；阴影/完整 layered PBR/透明待补                                                                              |
+| Temporal rendering                   | 生产 TAAU 切片    | jitter/non-jitter matrix、opaque/masked velocity、depth rejection、output-resolution history、GPU-time dynamic resolution 与 authored reactive mask 已完成；透明 history 待补 |
+| Exposure / display transform         | WebGPU 生产切片   | GPU 直方图百分位测光、asymmetric eye adaptation、submission-aware exposure history、ACES/filmic Color Uber 已接入 Clustered Forward+                                          |
+| Screen-space lighting                | GTAO + SSR + SSGI | portable horizon GTAO、bent normal、temporal/filter、WebGPU Hi-Z confidence SSR 与 temporal SSGI 已完成；off-screen GI fallback 待补                                          |
+| Volumetrics / atmosphere             | high-end weather  | WebGPU Clustered froxel、height/local fog、physical atmosphere LUT、aerial perspective、half-res temporal cloud、PBR/froxel cloud shadow 已落地                               |
+| Geometry / texture streaming         | 缺失              | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                                                                                       |
+| GPU profiling / graph debugging      | 生产基线          | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query                                                                       |
 
 ### 2.1 现有实现中最关键的限制
 
@@ -132,8 +129,8 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 - Render Graph 每帧 Build/Compile，已有 pass culling 和跨帧 transient pool，但没有 compiled graph
   reuse 或同帧物理 alias。
 - Camera/mesh/instance/skin/morph current/previous transform、history-valid ABI、projection
-  jitter、motion-vector material
-  pass、原生分辨率 TAA 与固定比例 TAAU 已完成；仍缺动态分辨率和 authored reactive mask policy。
+  jitter、motion-vector material pass、原生分辨率 TAA、固定/动态比例 TAAU 与 authored reactive
+  mask 已完成；仍缺透明 history/resurrection policy。
 - 当前 turnkey post-processing 提供可选 GTAO、TemporalAA、Bloom 与 Color Uber；exposure 是手动 EV
   compensation，固定 tone mapper 没有参数化 filmic toe/shoulder，也没有 histogram、eye
   adaptation 或 GPU exposure history。Opaque scene texture 只能支持最低边界的屏幕空间 transmission。
@@ -453,18 +450,21 @@ light、transmission 和 device recovery 有真实 WebGPU 像素证据；overflo
 | ---------------------------------------- | --------------------------------------------------------- | ------------------------------ | ----------------------------------------- |
 | 低分辨率当前帧、velocity、depth、history | reprojection、disocclusion、clamp、reactive mask、upscale | 稳定高分辨率画面与分辨率控制器 | camera cut 无旧帧闪回，运动物体不持续拖影 |
 
-当前已交付 T0 的原生分辨率 TAA 与固定比例 TAAU 切片：内置 opaque/masked
-Basic/PBR/Geometry 输出 single-sample `rgba16float` velocity/previous-current
-log-view-depth；Camera 同时保留 jittered raster 与 non-jittered CPU projection；`TemporalAA`
-在 opaque 后、transparent/Bloom 前使用 output-resolution `rgba16float` color history、`r32float`
-log-view-depth history、relative-depth rejection、YCoCg variance clipping、motion/luminance-reactive
-weighting 和 resolve-only sharpen。 `renderScale` 可固定为 0.5–1；sub-native 模式同步缩放 opaque
+当前已交付 T0 的原生分辨率 TAA、固定/动态比例 TAAU 与 authored reactive
+mask 切片：内置 opaque/masked Basic/PBR/Geometry 输出 single-sample `rgba16float`
+velocity/previous-current log-view-depth；Camera 同时保留 jittered raster 与 non-jittered CPU
+projection；`TemporalAA` 在 opaque 后、transparent/Bloom 前使用 output-resolution `rgba16float`
+color history、`r32float` log-view-depth history、relative-depth rejection、YCoCg variance
+clipping、motion/luminance-reactive weighting 和 resolve-only sharpen。`renderScale`
+可固定为 0.5–1；WebGPU `timestamp-query` 驱动的 `dynamicResolution`
+使用 EWMA、迟滞、量化步进、warmup/settling 与 min/max budget。sub-native 模式同步缩放 opaque
 color/depth/motion、Hi-Z 和 cluster viewport，以 16-tap
 Catmull-Rom 重建当前颜色，并输出 full-resolution
 depth 供透明阶段继续组合。普通 Forward 使用独立 motion semantic pass，Clustered Forward+ 则把 GPU
 Scene motion 融入 depth prepass 并记录前一已提交帧 visibility。首次出现、显隐间断、camera/projection
-cut、resize、失败帧和 device recovery 均进入提交事务与 history invalidation 验收。transparent
-history、动态分辨率和 authored reactive mask 保留到后续切片。
+cut、resize、resolution-scale change、失败帧和 device recovery 均进入提交事务与 history
+invalidation 验收。材质 `temporalReactiveFactor` 写 `r8unorm` MRT，resolve 以 3×3
+dilation 与 luminance heuristic 共同抑制 history。transparent history/resurrection 保留到后续切片。
 
 - opaque/alpha-tested geometry 输出 motion vector；skinning/morph 必须有 previous pose；
 - camera jitter 不污染 CPU picking/frustum；提供 jittered 与 non-jittered matrix；
@@ -479,8 +479,10 @@ history、动态分辨率和 authored reactive mask 保留到后续切片。
 
 1. ~~原生分辨率 TAA，先验证 motion/history/invalidation 正确性；~~ 已完成；
 2. ~~内部低分辨率到输出分辨率的 TAAU，加入 reconstruction filter 和 sharpness；~~ 已完成；
-3. 基于 GPU timestamp 的动态分辨率控制器，带迟滞、上下限、history invalidation 和 camera/UI policy；
-4. authored reactive mask、transparency composition 和 history resurrection 作为质量迭代。
+3. ~~基于 GPU timestamp 的动态分辨率控制器，带迟滞、上下限、history invalidation 和 camera/UI
+   policy；~~ 已完成；
+4. authored reactive mask 已完成；transparency history composition 和 history
+   resurrection 继续作为质量迭代。
 
 完成标准：静态画面收敛、运动物体不拖影、camera
 cut 不闪旧 history、动态分辨率不改变 UI 分辨率；测试同时覆盖高亮 emissive、细栅栏、alpha-test、透明、粒子和快速旋转。
@@ -761,7 +763,7 @@ time、确定的资源预算和失败时的可观察行为。
 5. MAT0：把 G0/L0 的 material
    record/variant/surface 原型抽取为共享 Definition/Instance、语义 Pass 和 material
    ABI（基础已完成）；
-6. 原生分辨率 TAA 与固定比例 TAAU（已完成），下一步接 dynamic resolution/reactive mask；
+6. 原生分辨率 TAA、固定/动态比例 TAAU 与 authored reactive mask（已完成）；
 7. 完成 G0/L0 的透明、变形、阴影、完整 layered PBR 与物理性能门禁；
 8. Auto exposure + exposure history + 参数化 filmic display
    transform；该 M 级切片可在 F0/F1 之后并行，但不能阻塞 D0/G0/L0/T0；

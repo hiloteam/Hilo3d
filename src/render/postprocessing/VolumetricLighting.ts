@@ -1187,6 +1187,13 @@ export class VolumetricLightingController {
     readonly #froxelExtent = { width: 1, height: 1 };
     readonly #froxelDescriptor: RenderPipelineTextureDescriptor;
     readonly #integratedFroxelDescriptor: RenderPipelineTextureDescriptor;
+    readonly #integrationExtent: {
+        readonly relativeTo: 'output';
+        scale: number;
+        readonly minWidth: 1;
+        readonly minHeight: 1;
+    };
+    readonly #compositeExtent: { readonly relativeTo: 'output'; scale: number };
     readonly #integrationDescriptor: RenderPipelineTextureDescriptor;
     readonly #colorHistoryDescriptor: RenderPipelineHistoryTextureDescriptor;
     readonly #depthHistoryDescriptor: RenderPipelineHistoryTextureDescriptor;
@@ -1258,33 +1265,34 @@ export class VolumetricLightingController {
             format: 'rgba16float',
             extent: this.#froxelExtent
         };
-        const integrationExtent = Object.freeze({
+        this.#integrationExtent = {
             relativeTo: 'output' as const,
             scale: sceneScale * settings.resolutionScale,
-            minWidth: 1,
-            minHeight: 1
-        });
+            minWidth: 1 as const,
+            minHeight: 1 as const
+        };
         this.#integrationDescriptor = Object.freeze({
             format: 'rgba16float' as const,
-            extent: integrationExtent
+            extent: this.#integrationExtent
         });
         this.#colorHistoryDescriptor = Object.freeze({
             label: 'Volumetric lighting integrated radiance history',
             format: 'rgba16float' as const,
-            extent: integrationExtent,
+            extent: this.#integrationExtent,
             usage: Object.freeze(['sampled' as const, 'storage' as const]),
             bufferCount: 2 as const
         });
         this.#depthHistoryDescriptor = Object.freeze({
             label: 'Volumetric lighting scene-depth history',
             format: 'r32float' as const,
-            extent: integrationExtent,
+            extent: this.#integrationExtent,
             usage: Object.freeze(['sampled' as const, 'storage' as const]),
             bufferCount: 2 as const
         });
+        this.#compositeExtent = { relativeTo: 'output' as const, scale: sceneScale };
         this.#compositeDescriptor = Object.freeze({
             format: 'rgba16float' as const,
-            extent: Object.freeze({ relativeTo: 'output' as const, scale: sceneScale })
+            extent: this.#compositeExtent
         });
     }
 
@@ -1301,6 +1309,8 @@ export class VolumetricLightingController {
         resources: Readonly<VolumetricLightingResources>
     ): RenderGraphTextureHandle {
         if (this.#destroyed) throw new Error('Volumetric lighting controller is destroyed');
+        this.#integrationExtent.scale = resources.sceneScale * this.#settings.resolutionScale;
+        this.#compositeExtent.scale = resources.sceneScale;
         this.packFrame(context.camera, context.frameIndex);
         this.packVolumes();
         const froxelTilesX = Math.max(

@@ -16,10 +16,13 @@ interface TemporalObservatoryEvidence {
     readonly hiZValid: boolean;
     readonly temporalAA: true;
     readonly renderScale: 0.75;
+    readonly dynamicResolution: boolean;
+    readonly smoothedGPUFrameTimeMs: number | null;
 }
 
 const search = new URLSearchParams(location.search);
 const testMode = search.get('test') === '1';
+const dynamicResolution = search.get('dynamic') === '1';
 const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function requireElement(selector: string): HTMLElement {
     const element = document.querySelector<HTMLElement>(selector);
@@ -68,7 +71,8 @@ const signalMaterial = new Hilo3d.PBRMaterial({
     metallic: 0.88,
     roughness: 0.14,
     emission: new Hilo3d.Color(0.01, 0.08, 0.13),
-    emissionFactor: new Hilo3d.Color(0.05, 0.35, 0.75)
+    emissionFactor: new Hilo3d.Color(0.05, 0.35, 0.75),
+    temporalReactiveFactor: 0.85
 });
 const orbMaterials = [cyan, violet, gold] as const;
 const factory = new Hilo3d.ClusteredForwardPlusPipelineFactory({
@@ -93,6 +97,15 @@ const factory = new Hilo3d.ClusteredForwardPlusPipelineFactory({
     exposure: 1,
     temporalAA: {
         renderScale: 0.75,
+        ...(dynamicResolution
+            ? {
+                  dynamicResolution: {
+                      minScale: 0.75,
+                      maxScale: 0.75,
+                      targetFrameTimeMs: 16.667
+                  }
+              }
+            : {}),
         historyWeight: 0.92,
         depthThreshold: 0.02,
         varianceGamma: 1.25,
@@ -330,7 +343,18 @@ setMotion(motionEnabled);
 updateScene(0);
 document.body.dataset['temporalPhase'] = 'warming-history';
 await stepFrames(3, false);
-const diagnostics = await factory.readDiagnostics();
+let diagnostics = await factory.readDiagnostics();
+for (
+    let attempt = 0;
+    dynamicResolution && diagnostics.smoothedGPUFrameTimeMs === null && attempt < 12;
+    attempt += 1
+) {
+    await stepFrames(1, false);
+    diagnostics = await factory.readDiagnostics();
+}
+if (dynamicResolution && diagnostics.smoothedGPUFrameTimeMs === null) {
+    throw new Error('Temporal Observatory did not receive a ready GPU timestamp sample');
+}
 window.__HILO3D_TEMPORAL_OBSERVATORY_RESULT__ = {
     backend: 'webgpu',
     objectCount: diagnostics.objectCount,
@@ -338,7 +362,9 @@ window.__HILO3D_TEMPORAL_OBSERVATORY_RESULT__ = {
     visibleObjectCount: diagnostics.visibleObjectCount,
     hiZValid: diagnostics.hiZValid,
     temporalAA: true,
-    renderScale: 0.75
+    renderScale: 0.75,
+    dynamicResolution,
+    smoothedGPUFrameTimeMs: diagnostics.smoothedGPUFrameTimeMs
 };
 window.__HILO3D_TEMPORAL_OBSERVATORY_TEST_API__ = {
     async settle(frames = 8): Promise<void> {

@@ -44,6 +44,7 @@ import type {
     RenderPipelineTargetResources
 } from './ScriptableRenderGraph';
 import { depthClearValue } from '../renderer/DepthConvention';
+import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 
 /** Stable stages at which a forward feature may synchronously record graph work. */
 export type ForwardRenderInjectionPoint =
@@ -66,8 +67,8 @@ export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirem
     /** Keep opaque and transparent renderer lists distinct even without a scene-color readback. */
     readonly splitScene?: boolean;
     /**
-     * Fixed built-in scene color/depth resolution relative to the physical output. Omit or use one
-     * for native resolution. Conflicting sub-native requests are rejected by the factory.
+     * Minimum built-in scene color/depth resolution relative to the physical output. A runtime may
+     * return a higher scale through `getSceneScale()`; conflicting static floors are rejected.
      */
     readonly sceneScale?: number;
 }
@@ -84,6 +85,15 @@ export interface ForwardRenderPipelineFeatureRuntime {
     frameSubmitted?(frameIndex: number): void;
     /** Roll back feature-owned temporal CPU state when recording or submission is discarded. */
     frameDiscarded?(frameIndex: number): void;
+    /**
+     * Return this frame's scene scale. The value must stay between the feature's declared
+     * `sceneScale` floor and one. Omit for fixed-resolution features.
+     */
+    getSceneScale?(): number;
+    /** Consume asynchronous Render Graph CPU/GPU timing snapshots when adaptive work is enabled. */
+    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void;
+    /** Enable internal Render Graph timing when this feature actively consumes it. */
+    readonly usesRenderGraphTimeline?: boolean;
     /** Release renderer-local feature state exactly once. */
     destroy(): void;
 }
@@ -169,7 +179,13 @@ interface FeatureSnapshot extends ForwardRenderPipelineFeature {
 
 interface CompiledFeature {
     readonly name: string;
+    readonly minimumSceneScale: number;
     readonly runtime: ForwardRenderPipelineFeatureRuntime;
+}
+
+interface MutableRelativeExtent {
+    readonly relativeTo: 'output';
+    scale: number;
 }
 
 interface MutableRendererListDescriptor extends RendererListDescriptor {
@@ -802,11 +818,26 @@ function validateFeatureRuntime(
             `Forward render feature ${feature.name} runtime must implement record() and destroy()`
         );
     }
+    const usesTimeline: unknown = Reflect.get(candidate, 'usesRenderGraphTimeline');
+    if (usesTimeline !== undefined && typeof usesTimeline !== 'boolean') {
+        throw new TypeError(
+            `Forward render feature ${feature.name} usesRenderGraphTimeline must be a boolean`
+        );
+    }
+    if (
+        usesTimeline === true &&
+        typeof Reflect.get(candidate, 'recordRenderGraphTimeline') !== 'function'
+    ) {
+        throw new TypeError(
+            `Forward render feature ${feature.name} using the Render Graph timeline must implement recordRenderGraphTimeline()`
+        );
+    }
     return candidate as ForwardRenderPipelineFeatureRuntime;
 }
 
 class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly name = 'forward';
+    readonly usesRenderGraphTimeline: boolean;
     readonly #groups: CompiledFeature[][] = INJECTION_POINTS.map(() => []);
     readonly #featureState = new ForwardFeatureState();
     readonly #scenePass = new SceneRenderPass('Forward scene');
@@ -913,8 +944,9 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly #splitScene: boolean;
     readonly #sceneColorFormat: RenderTargetColorFormat | null;
     readonly #opaqueTextureEnabled: boolean;
-    readonly #sceneScale: number;
-    readonly #sceneExtent: RenderPipelineExtent;
+    readonly #minimumSceneScale: number;
+    #sceneScale: number;
+    readonly #sceneExtent: MutableRelativeExtent;
     #destroyed = false;
 
     constructor(
@@ -937,7 +969,11 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             if (feature === undefined || runtime === undefined) {
                 throw new Error('Forward feature compilation lost a runtime');
             }
-            const entry = Object.freeze({ name: feature.name, runtime });
+            const entry = Object.freeze({
+                name: feature.name,
+                minimumSceneScale: feature.requirements.sceneScale ?? 1,
+                runtime
+            });
             compiled.push(entry);
             this.#groups[injectionPointIndex(feature.injectionPoint)]?.push(entry);
             sampledColor ||= feature.requirements.sampledSceneColor;
@@ -953,17 +989,21 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         }
         this.#sceneColorFormat = options.sceneColorFormat;
         this.#opaqueTextureEnabled = options.opaqueTexture;
+        this.#minimumSceneScale = options.sceneScale;
         this.#sceneScale = options.sceneScale;
-        this.#sceneExtent = Object.freeze({
+        this.#sceneExtent = {
             relativeTo: 'output' as const,
             scale: this.#sceneScale
-        });
+        };
         this.#depthDescriptor.extent = this.#sceneExtent;
         this.#opaqueTextureDescriptor.extent = this.#sceneExtent;
         this.#surfaceCompositionDescriptor.extent = this.#sceneExtent;
         sampledColor ||= options.opaqueTexture || options.sceneColorFormat !== null;
         samplesBetweenQueues ||= options.opaqueTexture;
         this.#compiledFeatures = Object.freeze(compiled);
+        this.usesRenderGraphTimeline = compiled.some(
+            feature => feature.runtime.usesRenderGraphTimeline === true
+        );
         this.#requiresSampledColor = sampledColor;
         this.#requiresSampledDepth = sampledDepth;
         this.#samplesBetweenQueues = samplesBetweenQueues;
@@ -976,6 +1016,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
 
     record(context: RenderPipelineContext): void {
         if (this.#destroyed) throw new Error('Forward render pipeline is destroyed');
+        this.resolveSceneScale();
         const output = context.graph.importOutput();
         const colorCount = output.colorAttachmentCount;
         if (this.#requiresSampledColor && colorCount === 0) {
@@ -1079,6 +1120,12 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     frameDiscarded(frameIndex: number): void {
         for (const feature of this.#compiledFeatures) {
             feature.runtime.frameDiscarded?.(frameIndex);
+        }
+    }
+
+    recordRenderGraphTimeline(snapshot: Readonly<RenderGraphTimelineSnapshot>): void {
+        for (const feature of this.#compiledFeatures) {
+            feature.runtime.recordRenderGraphTimeline?.(snapshot);
         }
     }
 
@@ -1425,6 +1472,32 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         descriptor.format = format;
         descriptor.sampleCount = sampleCount;
         return descriptor;
+    }
+
+    private resolveSceneScale(): void {
+        let resolved: number | null = null;
+        for (const feature of this.#compiledFeatures) {
+            const candidate = feature.runtime.getSceneScale?.();
+            if (candidate === undefined) continue;
+            if (
+                !Number.isFinite(candidate) ||
+                candidate < feature.minimumSceneScale ||
+                candidate > 1
+            ) {
+                throw new RangeError(
+                    `Forward render feature ${feature.name} scene scale must stay between ${String(feature.minimumSceneScale)} and one`
+                );
+            }
+            if (resolved !== null && Math.abs(resolved - candidate) > 1e-6) {
+                throw new Error(
+                    'Forward render feature runtimes produced conflicting scene scales'
+                );
+            }
+            resolved = candidate;
+        }
+        const scale = resolved ?? this.#minimumSceneScale;
+        this.#sceneScale = scale;
+        this.#sceneExtent.scale = scale;
     }
 }
 

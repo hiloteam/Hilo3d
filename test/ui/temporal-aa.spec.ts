@@ -53,7 +53,7 @@ test('keeps the fused Clustered motion/TAAU example stable across convergence an
     await page.setViewportSize({ width: 800, height: 500 });
     const examplesOrigin = process.env['HILO3D_EXAMPLES_ORIGIN'] ?? '';
     await page.goto(
-        `${examplesOrigin}/examples/temporal_aa_observatory.html?backend=webgpu&test=1`,
+        `${examplesOrigin}/examples/temporal_aa_observatory.html?backend=webgpu&test=1&dynamic=1`,
         {
             waitUntil: 'load'
         }
@@ -68,9 +68,11 @@ test('keeps the fused Clustered motion/TAAU example stable across convergence an
         fallbackObjectCount: 2,
         hiZValid: true,
         temporalAA: true,
-        renderScale: 0.75
+        renderScale: 0.75,
+        dynamicResolution: true
     });
     expect(evidence?.visibleObjectCount).toBeGreaterThan(0);
+    expect(evidence?.smoothedGPUFrameTimeMs).toBeGreaterThan(0);
 
     const canvas = page.locator('canvas');
     await page.evaluate(async () => {
@@ -114,6 +116,8 @@ declare global {
             readonly hiZValid: boolean;
             readonly temporalAA: true;
             readonly renderScale: 0.75;
+            readonly dynamicResolution: boolean;
+            readonly smoothedGPUFrameTimeMs: number | null;
         };
         __HILO3D_TEMPORAL_OBSERVATORY_TEST_API__?: {
             settle(frames?: number): Promise<void>;

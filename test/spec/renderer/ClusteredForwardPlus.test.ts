@@ -87,6 +87,15 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             format: 'r32float',
             use: 'color-attachment'
         });
+        expect(withTemporalAA.requirements.requiredTextureFormats).toContainEqual({
+            format: 'r8unorm',
+            use: 'color-attachment'
+        });
+        const withDynamicResolution = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            temporalAA: { dynamicResolution: { minScale: 0.6 } }
+        });
+        expect(withDynamicResolution.requirements.requiredFeatures).toContain('timestamp-query');
 
         const withoutHiZ = new ClusteredForwardPlusPipelineFactory({
             buckets: [{ geometry, material }],

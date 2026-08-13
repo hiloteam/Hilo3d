@@ -177,7 +177,7 @@ lowering 即使只启用一个 UV 集，也必须保留 managed material sampler
 
 WebGL2/WebGPU portable uniform ABI 分成两个 material-frequency block：
 
-- `MaterialBlock`：432 bytes，保存 scalar/color/environment 数据；
+- `MaterialBlock`：448 bytes，保存 scalar/color/environment 与 authored temporal reactive 数据；
 - `MaterialTextureBlock`：1920 bytes，保存 24 个槽的 transform、UV/encoding info 和 channel
   mapping。
 
@@ -187,10 +187,11 @@ material bind group 的 binding 0/1 分别保留给两个 UBO，sampled texture/
 
 WebGPU high-end 路径的 `SharedMaterialRecordDatabase` 不复制一套材质对象模型。它直接消费
 `MaterialInstance.materialId` 与 `revision`，按 material identity 去重为 renderer-local dense
-handle，并把 family/layout 写入稳定 record。首个 `builtin-pbr-storage-v1`
+handle，并把 family/layout 写入稳定 record。当前 `builtin-pbr-storage-v3`
 布局保存 metallic/roughness PBR 标量与 base-color/normal UV matrix；GPU
 Scene 对象 record 分别持有 logical bucket 与 material handle，同一材质跨多个 geometry
-bucket 不再复制 storage record。
+bucket 不再复制 storage record。v3 使用既有第三个 surface vec4 的保留 W 分量保存
+`temporalReactiveFactor`，record byte length 不变。
 
 数据库只重打包 revision 变化的 record，相邻 dirty record 合并为一个 upload。staged
 revision 与 texture-slot dirtiness 只在有效 submission 后提交；失败帧保留旧 committed
@@ -250,18 +251,18 @@ default 对象而发生串改。
 
 ## 10. 当前完成度与长期路线
 
-| 工作包                       | 状态          | 当前结果 / 下一步                                                                 |
-| ---------------------------- | ------------- | --------------------------------------------------------------------------------- |
-| Definition / Instance        | 已完成        | 内置与自定义材质都使用不可变结构和实例数据                                        |
-| Semantic pass                | 已完成基础    | forward/depth/shadow/picking/motion 已接生产路径；attributes 待对应渲染功能实现   |
-| Texture slot                 | 已完成        | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                  |
-| Typed semantics              | 已完成        | attribute/uniform/texture/slot 常量与联合类型公开                                 |
-| UBO lowering                 | 已完成        | scalar 与 slot block 分离，双后端固定 ABI                                         |
-| Shared GPU Material Database | 已完成（PBR） | 私有 PBR table 已抽取、共享、去重，并具备 dirty upload、提交回滚与 recovery       |
-| Variant manifest / warmup    | 未完成        | 增加资产收集、异步 warmup、预算与诊断                                             |
-| Motion vectors               | 已完成首版    | opaque/masked、skin/morph/instance history 与 TAA/固定比例 TAAU；透明时域策略后续 |
-| Material attributes          | 已完成首版    | oct view normal/roughness/receiver/metallic ABI，SSR opt-in 时按需创建附件        |
-| Advanced surface families    | 后续          | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进                |
+| 工作包                       | 状态           | 当前结果 / 下一步                                                                                  |
+| ---------------------------- | -------------- | -------------------------------------------------------------------------------------------------- |
+| Definition / Instance        | 已完成         | 内置与自定义材质都使用不可变结构和实例数据                                                         |
+| Semantic pass                | 已完成基础     | forward/depth/shadow/picking/motion 已接生产路径；attributes 待对应渲染功能实现                    |
+| Texture slot                 | 已完成         | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                                   |
+| Typed semantics              | 已完成         | attribute/uniform/texture/slot 常量与联合类型公开                                                  |
+| UBO lowering                 | 已完成         | scalar 与 slot block 分离，双后端固定 ABI                                                          |
+| Shared GPU Material Database | 已完成（PBR）  | 私有 PBR table 已抽取、共享、去重，并具备 dirty upload、提交回滚与 recovery                        |
+| Variant manifest / warmup    | 未完成         | 增加资产收集、异步 warmup、预算与诊断                                                              |
+| Motion vectors               | 已完成生产切片 | opaque/masked、skin/morph/instance history、固定/动态 TAAU 与 authored reactive；透明 history 后续 |
+| Material attributes          | 已完成首版     | oct view normal/roughness/receiver/metallic ABI，SSR opt-in 时按需创建附件                         |
+| Advanced surface families    | 后续           | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进                                 |
 
 首个共享 GPU Material Database 已满足：
 

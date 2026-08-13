@@ -19,6 +19,7 @@ import type {
 } from './RendererList';
 import type { ScriptableRenderGraph } from './ScriptableRenderGraph';
 import type { RenderPipelineTextureFormat } from './RenderPipelineTexture';
+import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 
 /** Optional renderer capabilities exposed only after their complete SRP/RHI path is available. */
 export type RenderPipelineCapabilityName =
@@ -223,6 +224,8 @@ export interface RenderPipelineContext {
 export interface RenderPipeline {
     /** Human-readable runtime name used in diagnostics. */
     readonly name: string;
+    /** Whether this runtime needs Render Graph timing without external diagnostics. */
+    readonly usesRenderGraphTimeline?: boolean;
     /**
      * Record one invocation synchronously into the active application Render Graph.
      *
@@ -233,6 +236,11 @@ export interface RenderPipeline {
     frameSubmitted?(frameIndex: number): void;
     /** Roll back staged CPU-side temporal state after recording or submission failure. */
     frameDiscarded?(frameIndex: number): void;
+    /**
+     * Consume opt-in Render Graph timing snapshots. GPU-ready snapshots arrive asynchronously
+     * after submission completion and may be used by renderer-local adaptive quality controllers.
+     */
+    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void;
     /** Release runtime-owned state exactly once during Renderer destruction. */
     destroy(): void;
 }

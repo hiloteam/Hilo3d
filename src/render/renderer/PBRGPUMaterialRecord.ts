@@ -6,7 +6,7 @@ import type {
 import type Matrix3 from '../../math/Matrix3';
 
 /** @internal Stable compact layout consumed by the first shared GPU PBR material database. */
-export const PBR_GPU_MATERIAL_RECORD_LAYOUT = 'builtin-pbr-storage-v2';
+export const PBR_GPU_MATERIAL_RECORD_LAYOUT = 'builtin-pbr-storage-v3';
 
 /** @internal Common opaque PBR slots supported by the clustered storage profile. */
 export const PBR_GPU_MATERIAL_TEXTURE_SLOTS = Object.freeze([
@@ -78,6 +78,7 @@ export function packPBRGPUMaterialRecord(material: PBRMaterial, target: Uint8Arr
     values[8] = material.ior;
     values[9] = material.occlusionStrength;
     values[10] = material.normalScale;
+    values[11] = material.temporalReactiveFactor;
     for (let slotIndex = 0; slotIndex < PBR_GPU_MATERIAL_TEXTURE_SLOTS.length; slotIndex += 1) {
         const name = PBR_GPU_MATERIAL_TEXTURE_SLOTS[slotIndex];
         if (name === undefined) throw new Error('PBR GPU texture slot table is incomplete');

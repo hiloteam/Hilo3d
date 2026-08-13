@@ -31,6 +31,7 @@ vec4 transformDataToColor(vec3 data){
 void main(void) {
     #ifdef HILO_MOTION_VECTOR_PASS
         hilo_FragColor = hiloMotionData();
+        hiloWriteTemporalReactiveMask();
         #include "./chunk/logDepth_main.frag"
     #elif defined(HILO_MATERIAL_ATTRIBUTES_PASS)
         #if defined(HILO_VERTEX_TYPE_NORMAL)

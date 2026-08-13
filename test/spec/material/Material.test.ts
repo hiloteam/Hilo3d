@@ -33,6 +33,18 @@ describe('modern material model', () => {
         expect(material.getRenderOption()['ALPHA_CUTOFF']).toBe(1);
     });
 
+    it('validates authored temporal reactivity as mutable material data', () => {
+        const material = new Hilo3d.PBRMaterial({ temporalReactiveFactor: 0.75 });
+
+        expect(material.temporalReactiveFactor).toBe(0.75);
+        const revision = material.revision;
+        material.temporalReactiveFactor = 0.25;
+        expect(material.revision).toBe(revision + 1);
+        expect(() => {
+            material.temporalReactiveFactor = 1.01;
+        }).toThrow(/temporal reactive factor/u);
+    });
+
     it('makes straight and premultiplied additive compositing explicit', () => {
         const straight = new Hilo3d.BasicMaterial({
             compositing: { mode: 'additive', premultiplied: false }
@@ -149,5 +161,38 @@ describe('modern material model', () => {
                 }
             })
         ).toThrow(/Material attributes role requires one single-sample rgba16float/u);
+    });
+
+    it('accepts the optional authored reactive target for motion vectors', () => {
+        const material = new Hilo3d.PBRMaterial();
+        const compiler = new Hilo3d.MaterialCompiler();
+        const request = {
+            instance: material,
+            role: 'motion-vector' as const,
+            vertexLayoutClass: 'static-mesh',
+            renderingProfile: 'portable' as const,
+            backend: 'webgpu' as const
+        };
+
+        expect(
+            compiler.compile({
+                ...request,
+                target: {
+                    colorFormats: ['rgba16float', 'r8unorm'],
+                    depthStencilFormat: 'depth32float',
+                    sampleCount: 1
+                }
+            })
+        ).not.toBeNull();
+        expect(() =>
+            compiler.compile({
+                ...request,
+                target: {
+                    colorFormats: ['rgba16float', 'rgba8unorm'],
+                    depthStencilFormat: 'depth32float',
+                    sampleCount: 1
+                }
+            })
+        ).toThrow(/optional r8unorm reactive/u);
     });
 });

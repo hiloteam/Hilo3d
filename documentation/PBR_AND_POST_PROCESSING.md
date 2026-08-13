@@ -138,14 +138,18 @@ fallback；完整 quality budget、packing、生命周期和边界见
 
 `TemporalAA` 是可选的 `after-opaque` feature。它先用内置材质的 `motion-vector` semantic
 pass 把 opaque/masked 的 current-to-previous UV velocity、expected previous
-log-view-depth 与 current log-view-depth 写入 single-sample `rgba16float`。默认 `renderScale=1`
-使用原生分辨率；0.5–1 的固定 sub-native scale 会让 opaque scene
+log-view-depth 与 current log-view-depth 写入 single-sample `rgba16float`，并在第二个single-sample
+`r8unorm` MRT 写 `MaterialInstance.temporalReactiveFactor`。默认 `renderScale=1`
+使用原生分辨率；0.5–1 的固定或动态 sub-native scale 会让 opaque scene
 color/depth/motion 在内部尺寸渲染，再用 16-tap
 Catmull-Rom 重建当前颜色。resolve 使用上一帧 output-resolution `rgba16float` color history 与
 `r32float` log-view-depth history 做 reprojection、保守 2×2 relative-depth disocclusion、YCoCg 3×3
 variance clipping、motion/luminance-reactive history
 weight 和只作用于输出的轻量 sharpen；未经 sharpen 的 resolved
-color 才回写 history，避免逐帧反馈过锐。history 双缓冲只在有效 submission 后轮换；camera
+color 才回写 history，避免逐帧反馈过锐。authored mask 在 resolve 前做 3×3 max
+dilation，并与 luminance
+heuristic 取最大值，因此高亮 emissive、程序化 shading 或频繁变化的表面可显式降低 history，而不需要改变 motion
+ABI。history 双缓冲只在有效 submission 后轮换；camera
 cut、显著 projection 变化、resize、显隐间断、显式 transform invalidation 和 device
 recovery 会让下一帧重新初始化，失败帧保留上一份已提交 history 和 jitter index。
 
@@ -154,9 +158,37 @@ projection；frustum、picking、project/unproject 不读取 jitter。TAA/TAAU
 resolve 只处理 opaque 结果；TAAU 同时重建 full-resolution
 depth，供 transparent/transmission 在输出尺寸继续合成，Bloom 再消费完整线性 HDR 颜色。重建深度使用对应 internal
 texel；带 stencil 的目标会在 TAAU 输出深度上把 stencil 清零，因此依赖 opaque
-stencil 值的透明自定义 pass 应保持 `renderScale=1`。动态分辨率和 authored reactive
-mask 不属于当前切片；当前 luminance reactive
-response 是 resolve 内部启发式，不等同于材质提供的 authored reactive mask。
+stencil 值的透明自定义 pass 应保持 `renderScale=1`。
+
+`dynamicResolution` 是 WebGPU `timestamp-query` gated 的显式配置。它异步汇总 Render Graph
+render/compute pass GPU duration，以 EWMA、迟滞、量化 `scaleStep`、warmup 和 settling window 在
+`minScale`/`maxScale` 内调节；无可用、失败或饱和 sample 时保持当前比例，不回退到 CPU frame
+time。比例变化在下一帧同步更新 scene color/depth/motion/reactive、Hi-Z、cluster
+viewport、SSR 与 volumetric extent，并 fail closed 地重建尺寸相关 history。TAA color/depth
+history、transparent/particle/UI composition 和 presentation 始终保持 output
+resolution。使用 dynamic resolution 的 Forward feature 可通过
+`TemporalAA.readDynamicResolutionDiagnostics()`
+读取单 renderer 的当前比例与平滑 GPU 时间；Clustered 路径在 `readDiagnostics()` 返回相同字段。
+
+```ts
+const temporalAA = new TemporalAA({
+    dynamicResolution: {
+        minScale: 0.6,
+        maxScale: 1,
+        targetFrameTimeMs: 16.667,
+        hysteresis: 0.1,
+        scaleStep: 0.05
+    }
+});
+const emissiveMaterial = new PBRMaterial({ temporalReactiveFactor: 0.85 });
+// After a Renderer using temporalAA has been created and rendered:
+const diagnostics = temporalAA.readDynamicResolutionDiagnostics();
+```
+
+同一个 `TemporalAA` feature 同时挂到零个或多个 live
+Renderer 时 diagnostics 读取会 fail-fast，避免把多个 device 的比例混为一个值。自定义 motion
+shader 若需要 authored mask，应在 `HILO_TEMPORAL_REACTIVE_MASK` 变体显式声明并写 location
+1；未写的像素保留 clear-zero policy。
 
 `ClusteredForwardPlusPipelineFactory` 通过 `temporalAA` 显式 opt-in 同一 resolve。GPU
 Scene 把 motion/depth 输出融合到已有 depth prepass，并用双缓冲 object
