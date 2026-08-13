@@ -27,6 +27,11 @@ import {
     ScreenSpaceGlobalIllumination,
     TemporalAA
 } from '../../../src/render/postprocessing';
+import {
+    TemporalResolveController,
+    snapshotTemporalAAOptions
+} from '../../../src/render/postprocessing/TemporalAA';
+import type { RenderGraphTimelineSnapshot } from '../../../src/render/graph/RenderGraphTimeline';
 import Shader from '../../../src/shader/Shader';
 import type { RHIDevice } from '../../../src/render/rhi/core';
 
@@ -202,6 +207,15 @@ describe('built-in post-processing', () => {
         expect(() => new TemporalAA({ sharpness: 1 })).toThrow(/sharpness/u);
         expect(() => new TemporalAA({ renderScale: 0.49 })).toThrow(/renderScale/u);
         expect(() => new TemporalAA({ renderScale: 1.01 })).toThrow(/renderScale/u);
+        expect(
+            () => new TemporalAA({ dynamicResolution: { minScale: 0.8, maxScale: 0.7 } })
+        ).toThrow(/minScale/u);
+        expect(() => new TemporalAA({ dynamicResolution: { initialScale: 0.4 } })).toThrow(
+            /initialScale/u
+        );
+        expect(() => new TemporalAA({ dynamicResolution: { warmupFrames: 0 } })).toThrow(
+            /warmupFrames/u
+        );
         expect(() => new GroundTruthAmbientOcclusion({ resolutionScale: 0.2 })).toThrow(
             /resolutionScale/u
         );
@@ -220,6 +234,89 @@ describe('built-in post-processing', () => {
             /denoisePasses/u
         );
         expect(() => new ColorUber({ temperature: 2 }).create()).toThrow(/temperature/u);
+    });
+
+    it('drives quantized dynamic resolution only from ready complete GPU timelines', () => {
+        const controller = new TemporalResolveController(
+            snapshotTemporalAAOptions({
+                dynamicResolution: {
+                    minScale: 0.5,
+                    maxScale: 1,
+                    initialScale: 1,
+                    targetFrameTimeMs: 10,
+                    hysteresis: 0.1,
+                    response: 1,
+                    scaleStep: 0.1,
+                    warmupFrames: 2,
+                    settlingFrames: 2
+                }
+            })
+        );
+        const timeline = (
+            frameIndex: number,
+            gpuStatus: RenderGraphTimelineSnapshot['gpuStatus'],
+            durationMs: number | null
+        ): RenderGraphTimelineSnapshot => ({
+            frameIndex,
+            recordDurationMs: 0,
+            compileDurationMs: 0,
+            prepareDurationMs: 0,
+            executeDurationMs: 0,
+            gpuStatus,
+            passes: [
+                {
+                    name: 'measured',
+                    kind: 'render',
+                    cpuDurationMs: 0,
+                    gpuDurationMs: durationMs
+                }
+            ],
+            resources: []
+        });
+
+        controller.recordRenderGraphTimeline(timeline(0, 'pending', null));
+        controller.recordRenderGraphTimeline(timeline(0, 'ready', 20));
+        expect(controller.renderScale).toBe(1);
+        controller.recordRenderGraphTimeline(timeline(1, 'ready', 20));
+        expect(controller.renderScale).toBe(0.9);
+        controller.recordRenderGraphTimeline(timeline(1, 'ready', 20));
+        controller.recordRenderGraphTimeline(timeline(2, 'failed', null));
+        controller.recordRenderGraphTimeline(timeline(3, 'ready', 20));
+        expect(controller.renderScale).toBe(0.9);
+        controller.recordRenderGraphTimeline(timeline(4, 'ready', 20));
+        expect(controller.renderScale).toBe(0.8);
+        expect(controller.dynamicResolutionDiagnostics).toMatchObject({
+            renderScale: 0.8,
+            smoothedGPUFrameTimeMs: 20,
+            sampledFrameCount: 4
+        });
+        controller.destroy();
+        controller.recordRenderGraphTimeline(timeline(5, 'ready', 1));
+        expect(controller.renderScale).toBe(0.8);
+    });
+
+    it('declares dynamic-resolution timestamp and reactive-mask requirements', () => {
+        const feature = new TemporalAA({
+            dynamicResolution: { minScale: 0.6, initialScale: 0.8 }
+        });
+        const fixed = new TemporalAA();
+        const dynamicRuntime = feature.create();
+        const fixedRuntime = fixed.create();
+
+        expect(feature.requirements.sceneScale).toBe(0.6);
+        expect(feature.requirements.requiredFeatures).toContain('timestamp-query');
+        expect(dynamicRuntime.usesRenderGraphTimeline).toBe(true);
+        expect(fixedRuntime.usesRenderGraphTimeline).toBe(false);
+        expect(feature.readDynamicResolutionDiagnostics()).toMatchObject({ renderScale: 0.8 });
+        expect(feature.requirements.requiredTextureFormats).toEqual(
+            expect.arrayContaining([
+                { format: 'r8unorm', use: 'color-attachment' },
+                { format: 'r8unorm', use: 'sampled' }
+            ])
+        );
+        dynamicRuntime.destroy();
+        fixedRuntime.destroy();
+        expect(() => feature.readDynamicResolutionDiagnostics()).toThrow(/exactly one live/u);
     });
 
     it.each(taaIntegrationBackends)(

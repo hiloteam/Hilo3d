@@ -12,7 +12,7 @@ import type {
 } from '../../material/MaterialInstance';
 import type { MaterialPassRole, MaterialPipelineState } from '../../material/MaterialDefinition';
 import { resolveMaterialPassState } from '../../material/MaterialCompiler';
-import Shader from '../../shader/Shader';
+import Shader, { getTemporalReactiveShader } from '../../shader/Shader';
 import Texture from '../../texture/Texture';
 import BuiltInUniformBlockManager from '../BuiltInUniformBlockManager';
 import type RendererCore from '../RendererCore';
@@ -176,13 +176,22 @@ function validateMaterialPassTarget(
     target: RHIMeshDrawTargetDescriptor
 ): void {
     if (role !== 'motion-vector' && role !== 'material-attributes') return;
+    const motionTargetValid =
+        role === 'motion-vector' &&
+        (target.colorFormats.length === 1 || target.colorFormats.length === 2) &&
+        target.colorFormats[0] === 'rgba16float' &&
+        (target.colorFormats.length === 1 || target.colorFormats[1] === 'r8unorm') &&
+        target.sampleCount === 1;
+    if (motionTargetValid) return;
     if (
         target.colorFormats.length !== 1 ||
         target.colorFormats[0] !== 'rgba16float' ||
         target.sampleCount !== 1
     ) {
         throw new TypeError(
-            `${role === 'motion-vector' ? 'Motion-vector' : 'Material-attributes'} mesh draws require one single-sample rgba16float color target`
+            role === 'motion-vector'
+                ? 'Motion-vector mesh draws require single-sample rgba16float motion and optional r8unorm reactive targets'
+                : 'Material-attributes mesh draws require one single-sample rgba16float color target'
         );
     }
 }
@@ -214,6 +223,7 @@ interface MeshShaderSnapshot {
     readonly linearOutput: boolean;
     readonly role: MaterialPassRole;
     readonly groundTruthAmbientOcclusion: boolean;
+    readonly temporalReactiveMask: boolean;
     readonly shader: Shader;
 }
 
@@ -1631,6 +1641,8 @@ export class MeshDrawProcessor {
         const snapshot = canUseSnapshot ? this.#shaderSnapshots.get(mesh) : undefined;
         const linearOutput =
             target.colorFormats[0] === 'rgba16float' || target.colorFormats[0] === 'rgba32float';
+        const temporalReactiveMask =
+            role === 'motion-vector' && target.colorFormats[1] === 'r8unorm';
         const colors = Reflect.get(geometry, 'colors');
         if (
             snapshot?.geometry === geometry &&
@@ -1651,23 +1663,37 @@ export class MeshDrawProcessor {
             snapshot.linearOutput === linearOutput &&
             snapshot.role === role &&
             snapshot.groundTruthAmbientOcclusion === groundTruthAmbientOcclusion &&
+            snapshot.temporalReactiveMask === temporalReactiveMask &&
             commonShaderOptionsMatch(snapshot.commonOptions)
         ) {
             return snapshot.shader;
         }
 
-        const shader = Shader.getShader(
-            mesh,
-            material,
-            instanced,
-            context.lightManager,
-            context.fog,
-            context.renderer.useLogDepth,
-            context.renderer,
-            linearOutput,
-            role,
-            groundTruthAmbientOcclusion
-        );
+        const shader = temporalReactiveMask
+            ? getTemporalReactiveShader(
+                  mesh,
+                  material,
+                  instanced,
+                  context.lightManager,
+                  context.fog,
+                  context.renderer.useLogDepth,
+                  context.renderer,
+                  linearOutput,
+                  role,
+                  groundTruthAmbientOcclusion
+              )
+            : Shader.getShader(
+                  mesh,
+                  material,
+                  instanced,
+                  context.lightManager,
+                  context.fog,
+                  context.renderer.useLogDepth,
+                  context.renderer,
+                  linearOutput,
+                  role,
+                  groundTruthAmbientOcclusion
+              );
         if (!shader) throw new Error(`Material ${material.className} has no renderable shader`);
         if (!canUseSnapshot) {
             this.#shaderSnapshots.delete(mesh);
@@ -1689,6 +1715,7 @@ export class MeshDrawProcessor {
             linearOutput,
             role,
             groundTruthAmbientOcclusion,
+            temporalReactiveMask,
             shader
         });
         return shader;
@@ -1743,9 +1770,18 @@ export class MeshDrawProcessor {
         if (outputs.length === 0) {
             throw new TypeError('A color mesh draw requires at least one fragment output');
         }
-        if (!customMaterial && (outputs.length !== 1 || outputs[0]?.location !== 0)) {
+        const builtInReactiveOutputs =
+            target.colorFormats[1] === 'r8unorm' &&
+            outputs.length === 2 &&
+            outputs[0]?.location === 0 &&
+            outputs[1]?.location === 1;
+        if (
+            !customMaterial &&
+            !builtInReactiveOutputs &&
+            (outputs.length !== 1 || outputs[0]?.location !== 0)
+        ) {
             throw new TypeError(
-                'Built-in mesh shaders require one fragment color output at location zero'
+                'Built-in mesh shaders require location zero and may write reactive data at location one'
             );
         }
         for (let index = 0; index < outputs.length; index += 1) {

@@ -26,3 +26,10 @@ export type * from './RenderPipelineTexture';
 export type * from './ScriptableRenderGraph';
 export * from './passes';
 export * from '../postprocessing';
+export type {
+    RenderGraphGPUTimelineStatus,
+    RenderGraphPassTimelineSnapshot,
+    RenderGraphResourceLifetimeSnapshot,
+    RenderGraphTimelineSnapshot,
+    RGPassTimestampKind
+} from '../graph/RenderGraphTimeline';

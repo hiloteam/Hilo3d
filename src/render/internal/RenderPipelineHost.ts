@@ -2,7 +2,10 @@ import type Camera from '../../camera/Camera';
 import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
-import type { RenderGraphTimelineSink } from '../graph/RenderGraphTimeline';
+import type {
+    RenderGraphTimelineSink,
+    RenderGraphTimelineSnapshot
+} from '../graph/RenderGraphTimeline';
 import type { RHICapabilities } from '../rhi/core';
 import type { RenderTarget } from '../RenderTarget';
 import type { RendererScene } from '../RendererCore';
@@ -140,6 +143,18 @@ export class RenderPipelineHost {
             ) {
                 throw new TypeError(
                     'Render pipeline runtime must implement record() and destroy()'
+                );
+            }
+            const usesTimeline: unknown = Reflect.get(candidate, 'usesRenderGraphTimeline');
+            if (usesTimeline !== undefined && typeof usesTimeline !== 'boolean') {
+                throw new TypeError('Render pipeline usesRenderGraphTimeline must be a boolean');
+            }
+            if (
+                usesTimeline === true &&
+                typeof Reflect.get(candidate, 'recordRenderGraphTimeline') !== 'function'
+            ) {
+                throw new TypeError(
+                    'Render pipeline using the Render Graph timeline must implement recordRenderGraphTimeline()'
                 );
             }
             runtime = candidate as RenderPipeline;
@@ -287,11 +302,25 @@ export class RenderPipelineHost {
             lifecycleStarted = true;
             this.lifecycle.beginFrame(frameIndex);
             const context = this.lifecycle.createFrameContext(frameIndex);
+            const diagnosticTimelineSink = this.lifecycle.getRenderGraphTimelineSink?.() ?? null;
+            const runtime = this.#runtime;
+            const adaptiveTimelineEnabled = runtime?.usesRenderGraphTimeline === true;
+            const timelineSink: RenderGraphTimelineSink | null =
+                diagnosticTimelineSink === null && !adaptiveTimelineEnabled
+                    ? null
+                    : Object.freeze({
+                          recordRenderGraphTimeline: (
+                              snapshot: Readonly<RenderGraphTimelineSnapshot>
+                          ) => {
+                              diagnosticTimelineSink?.recordRenderGraphTimeline(snapshot);
+                              runtime?.recordRenderGraphTimeline?.(snapshot);
+                          }
+                      });
             const execution = this.#frame.execute(
                 context,
                 this.#buildFrame,
                 this.#abortSignal,
-                this.lifecycle.getRenderGraphTimelineSink?.() ?? null
+                timelineSink
             );
             submitted = true;
             let submissionCallbackFailed = false;

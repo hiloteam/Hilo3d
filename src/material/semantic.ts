@@ -1441,6 +1441,15 @@ const semantic = {
             return material.coverage.mode === 'opaque' ? 0 : material.coverage.cutoff;
         }
     },
+    TEMPORALREACTIVEFACTOR: {
+        get(
+            _mesh: SemanticMesh,
+            material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
+        ): unknown {
+            return material.temporalReactiveFactor;
+        }
+    },
     EXPOSURE: {
         get(
             _mesh: SemanticMesh,

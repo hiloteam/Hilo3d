@@ -51,6 +51,8 @@ export interface MaterialInstanceParameters {
     readonly coverage?: MaterialCoverage;
     readonly compositing?: MaterialCompositing;
     readonly opacity?: number;
+    /** Authored TAA history suppression for unstable shading, from zero to one. */
+    readonly temporalReactiveFactor?: number;
     readonly opacityMap?: Texture<unknown> | MaterialTextureSlotInput | null;
     readonly normalMap?: Texture<unknown> | MaterialTextureSlotInput | null;
     readonly normalScale?: number;
@@ -164,6 +166,7 @@ export class MaterialInstance {
     readonly #dirtyTextureSlots = new Set<number>();
     #revision = 0;
     #opacity = 1;
+    #temporalReactiveFactor = 0;
     #normalScale = 1;
     #instancedUniforms: InstancedUniform[] | null = null;
     #bindingsInitialized = false;
@@ -206,6 +209,9 @@ export class MaterialInstance {
             definition.textureSlots.reduce((maximum, slot) => Math.max(maximum, slot.index + 1), 0)
         ).fill(null);
         if (parameters.opacity !== undefined) this.opacity = parameters.opacity;
+        if (parameters.temporalReactiveFactor !== undefined) {
+            this.temporalReactiveFactor = parameters.temporalReactiveFactor;
+        }
         if (parameters.normalScale !== undefined) this.normalScale = parameters.normalScale;
         if (parameters.opacityMap) this.setTextureSlot('opacity', parameters.opacityMap);
         if (parameters.normalMap) this.setTextureSlot('normal', parameters.normalMap);
@@ -231,6 +237,20 @@ export class MaterialInstance {
         }
         if (this.#opacity === value) return;
         this.#opacity = value;
+        this.markDataChanged();
+    }
+
+    /** Authored TAA history suppression written by the material's motion-vector pass. */
+    get temporalReactiveFactor(): number {
+        return this.#temporalReactiveFactor;
+    }
+
+    set temporalReactiveFactor(value: number) {
+        if (!Number.isFinite(value) || value < 0 || value > 1) {
+            throw new RangeError('Material temporal reactive factor must be between zero and one');
+        }
+        if (this.#temporalReactiveFactor === value) return;
+        this.#temporalReactiveFactor = value;
         this.markDataChanged();
     }
 
@@ -464,6 +484,7 @@ export class MaterialInstance {
             u_fogColor: MaterialUniformSemantic.FOG_COLOR,
             u_fogInfo: MaterialUniformSemantic.FOG_INFO,
             u_alphaCutoff: MaterialUniformSemantic.ALPHA_CUTOFF,
+            u_temporalReactiveFactor: MaterialUniformSemantic.TEMPORAL_REACTIVE_FACTOR,
             u_materialTextureTransforms: MaterialUniformSemantic.MATERIAL_TEXTURE_TRANSFORMS,
             u_materialTextureInfo: MaterialUniformSemantic.MATERIAL_TEXTURE_INFO,
             u_materialTextureChannels: MaterialUniformSemantic.MATERIAL_TEXTURE_CHANNELS

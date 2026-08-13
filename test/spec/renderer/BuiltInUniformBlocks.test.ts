@@ -33,7 +33,7 @@ describe('built-in std140 ABI', () => {
             CameraBlock: 848,
             SceneBlock: 32,
             LightBlock: 16288,
-            MaterialBlock: 432,
+            MaterialBlock: 448,
             MaterialTextureBlock: 1920,
             ModelBlock: 208,
             GeometryBlock: 224,
@@ -74,6 +74,7 @@ describe('built-in std140 ABI', () => {
         expect(materialBlockLayout.fields.u_iridescenceFactor.offset).toBe(396);
         expect(materialBlockLayout.fields.u_iridescenceThicknessMaximum.offset).toBe(408);
         expect(materialBlockLayout.fields.u_attenuationColor.offset).toBe(416);
+        expect(materialBlockLayout.fields.u_temporalReactiveFactor.offset).toBe(432);
 
         expect(materialTextureBlockLayout.fields.u_materialTextureTransforms.offset).toBe(0);
         expect(materialTextureBlockLayout.fields.u_materialTextureTransforms.arrayStride).toBe(48);

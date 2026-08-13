@@ -7,6 +7,10 @@
     in float v_previousViewDepth;
     flat in float v_motionHistoryValid;
 
+    #ifdef HILO_TEMPORAL_REACTIVE_MASK
+        layout(location = 1) out highp float hilo_ReactiveMask;
+    #endif
+
     vec4 hiloMotionData() {
         float currentLogDepth = log2(1.0 + max(v_currentViewDepth, 0.0));
         if (
@@ -27,5 +31,11 @@
             log2(1.0 + max(v_previousViewDepth, 0.0)),
             currentLogDepth
         );
+    }
+
+    void hiloWriteTemporalReactiveMask() {
+        #ifdef HILO_TEMPORAL_REACTIVE_MASK
+            hilo_ReactiveMask = clamp(u_temporalReactiveFactor, 0.0, 1.0);
+        #endif
     }
 #endif
