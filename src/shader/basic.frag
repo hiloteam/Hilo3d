@@ -29,6 +29,7 @@ void main(void) {
             #include "./chunk/diffuse_main.frag"
             #include "./chunk/transparency_main.frag"
             hilo_FragColor = hiloMotionData();
+            hiloWriteTemporalReactiveMask();
             #include "./chunk/logDepth_main.frag"
         }
     #elif defined(HILO_MATERIAL_ATTRIBUTES_PASS)

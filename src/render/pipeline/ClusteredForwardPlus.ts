@@ -104,12 +104,12 @@ import type {
     ScriptableRenderPassBuilder,
     ScriptableRenderPassContext
 } from './ScriptableRenderGraph';
+import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 import {
     TEMPORAL_AA_REQUIREMENTS,
     TEMPORAL_MOTION_CLEAR,
     TemporalResolveController,
     snapshotTemporalAAOptions,
-    temporalMotionDescriptor,
     type TemporalAAOptions,
     type TemporalAASettings
 } from '../postprocessing/TemporalAA';
@@ -276,6 +276,10 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly clusterOverflowCount: number;
     /** Whether conservative occlusion used a valid previous-frame Hi-Z pyramid. */
     readonly hiZValid: boolean;
+    /** Current internal scene scale selected by fixed or dynamic temporal rendering. */
+    readonly renderScale: number;
+    /** Smoothed profiled Render Graph render/compute GPU time, or null before samples are ready. */
+    readonly smoothedGPUFrameTimeMs: number | null;
     /** Number of camera-aligned froxels injected by the latest submitted volumetric frame. */
     readonly volumetricFroxelCount: number;
     /** Whether the latest submitted volumetric resolve consumed temporal history. */
@@ -2011,6 +2015,7 @@ layout(std430) readonly buffer FrameDataBlock { vec4 values[]; } frameData;
 layout(std430) readonly buffer ObjectBlock { vec4 values[]; } objects;
 layout(std430) readonly buffer VisibleBlock { uint values[]; } visibleIndices;
 layout(std430) readonly buffer VisibleOffsetBlock { uint value; } visibleOffset;
+layout(std430) readonly buffer MaterialDataBlock { vec4 values[]; } materials;
 layout(std430) readonly buffer PreviousVisibilityBlock { uint values[]; } previousVisibility;
 layout(location=0) in vec3 a_position;
 out vec4 v_currentClipPosition;
@@ -2018,12 +2023,14 @@ out vec4 v_previousClipPosition;
 out float v_currentViewDepth;
 out float v_previousViewDepth;
 flat out float v_motionHistoryValid;
+flat out float v_temporalReactiveFactor;
 ${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
 ${GPU_SCENE_VISIBLE_INDEX_SOURCE}
 void main() {
     uint objectIndex = gpuSceneVisibleObjectIndex();
     uint objectBase = objectIndex * 13u;
     uint flags = floatBitsToUint(objects.values[objectBase + 12u].z);
+    uint materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
     mat4 currentModel = readObjectMatrix(objectBase);
     mat4 previousModel = (flags & ${String(OBJECT_MOTION_CHANGED_FLAG)}u) != 0u
         ? readObjectMatrix(objectBase + 4u)
@@ -2041,6 +2048,7 @@ void main() {
         previousVisibility.values[objectIndex] != 0u
             ? 1.0
             : 0.0;
+    v_temporalReactiveFactor = materials.values[materialIndex * ${String(PBR_GPU_MATERIAL_RECORD_BYTES / 16)}u + 2u].w;
 }`,
     fragmentSource: `#version 310 es
 precision highp float;
@@ -2050,8 +2058,11 @@ in vec4 v_previousClipPosition;
 in float v_currentViewDepth;
 in float v_previousViewDepth;
 flat in float v_motionHistoryValid;
+flat in float v_temporalReactiveFactor;
 layout(location=0) out vec4 motionData;
+layout(location=1) out float reactiveMask;
 void main() {
+    reactiveMask = clamp(v_temporalReactiveFactor, 0.0, 1.0);
     float currentLogDepth = log2(1.0 + max(v_currentViewDepth, 0.0));
     if (
         v_motionHistoryValid < 0.5 ||
@@ -2084,7 +2095,8 @@ void main() {
             kind: 'read-only-storage-buffer',
             minBindingSize: 4
         },
-        { name: 'previousVisibility', group: 0, binding: 4, kind: 'read-only-storage-buffer' }
+        { name: 'materials', group: 0, binding: 4, kind: 'read-only-storage-buffer' },
+        { name: 'previousVisibility', group: 0, binding: 5, kind: 'read-only-storage-buffer' }
     ]
 });
 
@@ -2925,6 +2937,7 @@ class MutableFallbackSceneParameters implements SceneRenderPassParameters {
 
     reset(): void {
         this.rendererList = INVALID_RENDERER_LIST;
+        this.colorAttachments.length = 1;
         delete this.depthStencilAttachment;
         delete this.opaqueTexture;
         delete this.ambientOcclusionTexture;
@@ -3151,6 +3164,7 @@ function arrayRangeDiffers(
  */
 class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly name = 'GPU Scene + Clustered Forward+';
+    readonly usesRenderGraphTimeline: boolean;
     readonly #options: Readonly<NormalizedOptions>;
     readonly #frameData: StorageBuffer;
     readonly #objects: StorageBuffer;
@@ -3207,10 +3221,18 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #stagedDepth = new Float32Array(4);
     readonly #committedDepth = new Float32Array(4);
     readonly #hizKeys: readonly object[];
+    readonly #hizExtents: readonly {
+        readonly relativeTo: 'output';
+        scale: number;
+        readonly minWidth: 1;
+        readonly minHeight: 1;
+    }[];
     readonly #hizDescriptors: readonly Readonly<RenderPipelineHistoryTextureDescriptor>[];
     readonly #hizCullPass: ComputeRenderPass | null;
     readonly #temporal: TemporalResolveController | null;
+    readonly #temporalInputExtent = { relativeTo: 'output' as const, scale: 1 };
     readonly #temporalMotionDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
+    readonly #temporalReactiveMaskDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
     readonly #groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionController | null;
     readonly #screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationController | null;
     readonly #screenSpaceReflections: ScreenSpaceReflectionsController | null;
@@ -3390,12 +3412,18 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     ) {
         this.#options = options;
         this.#onDestroy = onDestroy;
+        this.usesRenderGraphTimeline =
+            options.temporalAA !== null && options.temporalAA.dynamicResolution !== null;
         this.#temporal =
             options.temporalAA === null ? null : new TemporalResolveController(options.temporalAA);
         this.#temporalMotionDescriptor =
             options.temporalAA === null
                 ? null
-                : temporalMotionDescriptor(options.temporalAA.renderScale);
+                : { format: 'rgba16float', extent: this.#temporalInputExtent };
+        this.#temporalReactiveMaskDescriptor =
+            options.temporalAA === null
+                ? null
+                : { format: 'r8unorm', extent: this.#temporalInputExtent };
         this.#groundTruthAmbientOcclusion =
             options.groundTruthAmbientOcclusion === null
                 ? null
@@ -3594,21 +3622,28 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             usage: ['storage', 'copy-source'],
             recovery: 'reinitialize'
         });
+        this.#hizExtents = Object.freeze(
+            Array.from({ length: options.hiZLevelCount }, (_unused, index) => ({
+                relativeTo: 'output' as const,
+                scale: (options.temporalAA?.renderScale ?? 1) / 2 ** (index + 1),
+                minWidth: 1 as const,
+                minHeight: 1 as const
+            }))
+        );
         this.#hizDescriptors = Object.freeze(
-            Array.from({ length: options.hiZLevelCount }, (_unused, index) =>
-                Object.freeze({
+            Array.from({ length: options.hiZLevelCount }, (_unused, index) => {
+                const extent = this.#hizExtents[index];
+                if (extent === undefined) {
+                    throw new Error('GPU Scene Hi-Z extent configuration is incomplete');
+                }
+                return Object.freeze({
                     label: `GPU Scene Hi-Z level ${String(index)}`,
                     format: 'rg32float' as const,
-                    extent: Object.freeze({
-                        relativeTo: 'output' as const,
-                        scale: (options.temporalAA?.renderScale ?? 1) / 2 ** (index + 1),
-                        minWidth: 1,
-                        minHeight: 1
-                    }),
+                    extent,
                     usage: Object.freeze(['sampled' as const, 'storage' as const]),
                     bufferCount: 2 as const
-                })
-            )
+                });
+            })
         );
         this.#displayPass = displayPass(options.exposure, options.bloomStrength);
         for (let slot = options.maxObjects - 1; slot >= 0; slot -= 1) {
@@ -3658,8 +3693,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         // Update canonical transforms without constructing a CPU render list. GPU Scene retains
         // visibility ownership; a CPU cull is built only when fallback meshes actually exist.
         context.prepareScene();
+        const sceneScale = this.#temporal?.renderScale ?? 1;
+        this.#temporalInputExtent.scale = sceneScale;
+        for (let index = 0; index < this.#hizExtents.length; index += 1) {
+            const extent = this.#hizExtents[index];
+            if (extent !== undefined) extent.scale = sceneScale / 2 ** (index + 1);
+        }
         const temporalFrame = this.#temporal?.begin(context) ?? null;
-        const sceneScale = this.#options.temporalAA?.renderScale ?? 1;
         const renderWidth = Math.max(1, Math.floor(context.output.width * sceneScale));
         const renderHeight = Math.max(1, Math.floor(context.output.height * sceneScale));
         this.refreshGPUCompatibility();
@@ -3687,8 +3727,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sampleCount: 1
         });
         const motionDescriptor = this.#temporalMotionDescriptor;
-        if (temporalFrame !== null && motionDescriptor === null) {
-            throw new Error('Clustered Forward+ temporal motion descriptor is missing');
+        const reactiveMaskDescriptor = this.#temporalReactiveMaskDescriptor;
+        if (
+            temporalFrame !== null &&
+            (motionDescriptor === null || reactiveMaskDescriptor === null)
+        ) {
+            throw new Error('Clustered Forward+ temporal descriptors are missing');
         }
         const temporalMotion =
             temporalFrame === null || motionDescriptor === null
@@ -3696,6 +3740,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 : context.graph.createTexture(
                       'Clustered Forward+ temporal motion and view depth',
                       motionDescriptor
+                  );
+        const temporalReactiveMask =
+            temporalFrame === null || reactiveMaskDescriptor === null
+                ? null
+                : context.graph.createTexture(
+                      'Clustered Forward+ authored reactive mask',
+                      reactiveMaskDescriptor
                   );
         const materialAttributes =
             this.#screenSpaceReflections === null &&
@@ -3828,8 +3879,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             visibleBucketOffsets,
             indirect,
             sceneDepth,
+            materials,
             previousVisibility,
-            temporalMotion
+            temporalMotion,
+            temporalReactiveMask
         });
         if (fallbackCulling !== null && this.#fallbackHasOpaque) {
             this.recordFallbackDepthPrepass(context, fallbackCulling, sceneDepth);
@@ -3882,10 +3935,17 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         if (
             temporalFrame !== null &&
             temporalMotion !== null &&
+            temporalReactiveMask !== null &&
             fallbackCulling !== null &&
             this.#fallbackHasOpaque
         ) {
-            this.recordFallbackMotion(context, fallbackCulling, temporalMotion, sceneDepth);
+            this.recordFallbackMotion(
+                context,
+                fallbackCulling,
+                temporalMotion,
+                temporalReactiveMask,
+                sceneDepth
+            );
         }
         const ambientOcclusion =
             groundTruthAmbientOcclusion === null ||
@@ -3965,6 +4025,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 sceneDepth,
                 materialAttributes,
                 motionDepth: temporalMotion,
+                sceneScale,
                 hiZ: histories.current,
                 historyValid: temporalFrame.historyValid && this.#committedCamera === context.camera
             });
@@ -3982,17 +4043,18 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 tilesY: frame.tilesY,
                 zSlices: this.#options.zSlices,
                 sceneScale,
-                historyValid: frame.historyValid
+                historyValid: frame.historyValid && (temporalFrame?.historyValid ?? true)
             });
         }
         let resolvedSceneColor = volumetricSceneColor;
         let resolvedSceneDepth = sceneDepth;
-        if (temporalFrame !== null && temporalMotion !== null) {
+        if (temporalFrame !== null && temporalMotion !== null && temporalReactiveMask !== null) {
             const resolved = this.#temporal?.resolve(
                 context,
                 temporalFrame,
                 volumetricSceneColor,
                 temporalMotion,
+                temporalReactiveMask,
                 sceneDepth,
                 'depth32float'
             );
@@ -4008,6 +4070,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             );
         }
         this.recordDisplay(context, resolvedSceneColor, bloomA, bloomB, bloomC, outputColor);
+    }
+
+    recordRenderGraphTimeline(snapshot: Readonly<RenderGraphTimelineSnapshot>): void {
+        this.#temporal?.recordRenderGraphTimeline(snapshot);
     }
 
     frameSubmitted(frameIndex: number): void {
@@ -4095,6 +4161,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             clusterLightIndexCount: clusterValues[1] ?? 0,
             clusterOverflowCount: clusterValues[2] ?? 0,
             hiZValid: this.#hiZValid,
+            renderScale: this.#temporal?.renderScale ?? 1,
+            smoothedGPUFrameTimeMs:
+                this.#temporal?.dynamicResolutionDiagnostics?.smoothedGPUFrameTimeMs ?? null,
             volumetricFroxelCount: this.#volumetricLighting?.froxelCount ?? 0,
             volumetricHistoryUsed: this.#volumetricLighting?.historyUsed ?? false
         });
@@ -5091,8 +5160,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             visibleBucketOffsets: RenderGraphBufferHandle;
             indirect: RenderGraphBufferHandle;
             sceneDepth: RenderGraphTextureHandle;
+            materials: RenderGraphBufferHandle;
             previousVisibility: RenderGraphBufferHandle | null;
             temporalMotion: RenderGraphTextureHandle | null;
+            temporalReactiveMask: RenderGraphTextureHandle | null;
         }>
     ): void {
         const batch = context.acquirePassParameters(this.#depthBatchPool);
@@ -5112,12 +5183,24 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       storeOp: 'store',
                       clearValue: TEMPORAL_MOTION_CLEAR
                   };
+        const reactiveMaskAttachment: RenderPipelineColorAttachment | null =
+            resources.temporalReactiveMask === null
+                ? null
+                : {
+                      texture: resources.temporalReactiveMask,
+                      loadOp: 'clear',
+                      storeOp: 'store',
+                      clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                  };
         if (motionAttachment !== null) batch.colorAttachments[0] = motionAttachment;
+        if (reactiveMaskAttachment !== null) {
+            batch.colorAttachments[1] = reactiveMaskAttachment;
+        }
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
             if (bucket === undefined) continue;
             const parameters = context.acquirePassParameters(this.#depthDrawPool);
-            parameters.configureStorageBufferCount(resources.temporalMotion === null ? 4 : 5);
+            parameters.configureStorageBufferCount(resources.temporalMotion === null ? 4 : 6);
             parameters.setBuffer(0, resources.frameBuffer);
             parameters.setBuffer(1, resources.objects);
             parameters.setBuffer(2, resources.visible);
@@ -5131,14 +5214,18 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 if (resources.previousVisibility === null) {
                     throw new Error('GPU Scene temporal visibility history is unavailable');
                 }
-                parameters.setBuffer(4, resources.previousVisibility);
+                parameters.setBuffer(4, resources.materials);
+                parameters.setBuffer(5, resources.previousVisibility);
             }
             parameters.setVertexBuffer(0, context.graph.importStorageBuffer(bucket.position));
             parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
-            parameters.colorAttachments.length = motionAttachment === null ? 0 : 1;
+            parameters.colorAttachments.length = motionAttachment === null ? 0 : 2;
             if (motionAttachment !== null) parameters.colorAttachments[0] = motionAttachment;
+            if (reactiveMaskAttachment !== null) {
+                parameters.colorAttachments[1] = reactiveMaskAttachment;
+            }
             parameters.depthStencilAttachment = depthAttachment;
             batch.add(bucket.depthPass, parameters);
         }
@@ -5590,6 +5677,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         context: RenderPipelineContext,
         cullingResults: CullingResultsHandle,
         temporalMotion: RenderGraphTextureHandle,
+        temporalReactiveMask: RenderGraphTextureHandle,
         sceneDepth: RenderGraphTextureHandle
     ): void {
         this.#fallbackMotionListDescriptor.cullingResults = cullingResults;
@@ -5601,6 +5689,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             throw new Error('Forward fallback motion attachment is unavailable');
         }
         color.texture = temporalMotion;
+        parameters.colorAttachments[1] = {
+            texture: temporalReactiveMask,
+            loadOp: 'load',
+            storeOp: 'store'
+        };
         parameters.depthStencilAttachment = {
             texture: sceneDepth,
             depthReadOnly: true
@@ -5705,6 +5798,10 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                 'compute-pass' as const,
                 'indirect-draw' as const
             ]),
+            ...(this.#options.temporalAA === null ||
+            this.#options.temporalAA.dynamicResolution === null
+                ? {}
+                : { requiredFeatures: Object.freeze(['timestamp-query' as const]) }),
             requiredTextureFormats: Object.freeze([
                 Object.freeze({
                     format: 'depth32float' as const,

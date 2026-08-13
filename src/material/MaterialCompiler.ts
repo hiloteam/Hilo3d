@@ -189,12 +189,15 @@ export class MaterialCompiler {
         }
         if (
             pass.fragmentOutput === 'motion-vector' &&
-            (request.target.colorFormats.length !== 1 ||
+            ((request.target.colorFormats.length !== 1 &&
+                request.target.colorFormats.length !== 2) ||
                 request.target.colorFormats[0] !== 'rgba16float' ||
+                (request.target.colorFormats.length === 2 &&
+                    request.target.colorFormats[1] !== 'r8unorm') ||
                 request.target.sampleCount !== 1)
         ) {
             throw new TypeError(
-                'Material motion-vector role requires one single-sample rgba16float color target'
+                'Material motion-vector role requires single-sample rgba16float motion and optional r8unorm reactive targets'
             );
         }
         if (

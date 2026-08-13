@@ -231,6 +231,7 @@ describe('packPBRGPUMaterialRecord', () => {
     it('packs transform, UV set, encoding, presence, and channel mapping per texture slot', () => {
         const transform = new Matrix3().fromRotationTranslationScale(0.25, 0.2, 0.3, 0.5, 0.75);
         const material = new PBRMaterial({
+            temporalReactiveFactor: 0.65,
             baseColorMap: {
                 texture: new Texture({ uv: 1 }),
                 uvSet: 1,
@@ -244,6 +245,7 @@ describe('packPBRGPUMaterialRecord', () => {
         packPBRGPUMaterialRecord(material, target);
 
         const values = new Float32Array(target.buffer);
+        expect(values[11]).toBeCloseTo(0.65);
         const matrix = transform.elements;
         expect(Array.from(values.slice(12, 24))).toEqual([
             matrix[0],

@@ -94,6 +94,7 @@ layout(std140) uniform MaterialBlock {
     float u_iridescenceThicknessMinimum;
     float u_iridescenceThicknessMaximum;
     vec4 u_attenuationColor;
+    float u_temporalReactiveFactor;
 };
 
 layout(std140) uniform MaterialTextureBlock {

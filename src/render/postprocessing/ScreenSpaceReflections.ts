@@ -852,6 +852,8 @@ export interface ScreenSpaceReflectionsResources {
     readonly sceneDepth: RenderGraphTextureHandle;
     readonly materialAttributes: RenderGraphTextureHandle;
     readonly motionDepth: RenderGraphTextureHandle;
+    /** Current internal scene resolution relative to the output. */
+    readonly sceneScale: number;
     readonly hiZ: readonly RenderGraphTextureHandle[];
     /** False after camera cuts or other temporal discontinuities. */
     readonly historyValid: boolean;
@@ -862,7 +864,6 @@ export interface ScreenSpaceReflectionsResources {
  */
 export class ScreenSpaceReflectionsController {
     readonly #settings: Readonly<ScreenSpaceReflectionsSettings>;
-    readonly #sceneScale: number;
     readonly #traceHiZLevelCount: number;
     readonly #tracePass: ComputeRenderPass;
     readonly #temporalResolvePass: ComputeRenderPass;
@@ -871,6 +872,19 @@ export class ScreenSpaceReflectionsController {
     readonly #colorHistoryKey = Object.freeze({});
     readonly #depthHistoryKey = Object.freeze({});
     readonly #colorPyramidDescriptors: readonly Readonly<RenderPipelineTextureDescriptor>[];
+    readonly #colorPyramidExtents: readonly {
+        readonly relativeTo: 'output';
+        scale: number;
+        readonly minWidth: 1;
+        readonly minHeight: 1;
+    }[];
+    readonly #reflectionExtent: {
+        readonly relativeTo: 'output';
+        scale: number;
+        readonly minWidth: 1;
+        readonly minHeight: 1;
+    };
+    readonly #compositeExtent: { readonly relativeTo: 'output'; scale: number };
     readonly #reflectionDescriptor: Readonly<RenderPipelineTextureDescriptor>;
     readonly #colorHistoryDescriptor: Readonly<RenderPipelineHistoryTextureDescriptor>;
     readonly #depthHistoryDescriptor: Readonly<RenderPipelineHistoryTextureDescriptor>;
@@ -902,7 +916,6 @@ export class ScreenSpaceReflectionsController {
         hiZLevelCount: number
     ) {
         this.#settings = settings;
-        this.#sceneScale = sceneScale;
         this.#traceHiZLevelCount = Math.min(hiZLevelCount, MAX_TRACE_HIZ_LEVELS);
         if (this.#traceHiZLevelCount < 1) {
             throw new RangeError('Screen-space reflections require at least one Hi-Z level');
@@ -921,25 +934,29 @@ export class ScreenSpaceReflectionsController {
                     1
                 )
         );
+        this.#colorPyramidExtents = Object.freeze(
+            Array.from({ length: COLOR_PYRAMID_LEVELS - 1 }, (_unused, index) => ({
+                relativeTo: 'output' as const,
+                scale: sceneScale / 2 ** (index + 1),
+                minWidth: 1 as const,
+                minHeight: 1 as const
+            }))
+        );
         this.#colorPyramidDescriptors = Object.freeze(
-            Array.from({ length: COLOR_PYRAMID_LEVELS - 1 }, (_unused, index) =>
+            this.#colorPyramidExtents.map(extent =>
                 Object.freeze({
                     format: 'rgba16float' as const,
-                    extent: Object.freeze({
-                        relativeTo: 'output' as const,
-                        scale: sceneScale / 2 ** (index + 1),
-                        minWidth: 1,
-                        minHeight: 1
-                    })
+                    extent
                 })
             )
         );
-        const reflectionExtent: RenderPipelineExtent = Object.freeze({
+        this.#reflectionExtent = {
             relativeTo: 'output',
             scale: sceneScale * settings.resolutionScale,
-            minWidth: 1,
-            minHeight: 1
-        });
+            minWidth: 1 as const,
+            minHeight: 1 as const
+        };
+        const reflectionExtent: RenderPipelineExtent = this.#reflectionExtent;
         this.#reflectionDescriptor = Object.freeze({
             format: 'rgba16float',
             extent: reflectionExtent,
@@ -959,9 +976,10 @@ export class ScreenSpaceReflectionsController {
             usage: Object.freeze(['sampled' as const, 'storage' as const]),
             bufferCount: 2
         });
+        this.#compositeExtent = { relativeTo: 'output' as const, scale: sceneScale };
         this.#compositeDescriptor = Object.freeze({
             format: 'rgba16float',
-            extent: Object.freeze({ relativeTo: 'output' as const, scale: sceneScale })
+            extent: this.#compositeExtent
         });
     }
 
@@ -973,6 +991,12 @@ export class ScreenSpaceReflectionsController {
         if (resources.hiZ.length < this.#traceHiZLevelCount) {
             throw new Error('Screen-space reflections Hi-Z pyramid is incomplete');
         }
+        for (let index = 0; index < this.#colorPyramidExtents.length; index += 1) {
+            const extent = this.#colorPyramidExtents[index];
+            if (extent !== undefined) extent.scale = resources.sceneScale / 2 ** (index + 1);
+        }
+        this.#reflectionExtent.scale = resources.sceneScale * this.#settings.resolutionScale;
+        this.#compositeExtent.scale = resources.sceneScale;
         const colorLevels: RenderGraphTextureHandle[] = [resources.sceneColor];
         let source = resources.sceneColor;
         for (let index = 0; index < COLOR_PYRAMID_LEVELS - 1; index += 1) {
@@ -987,7 +1011,7 @@ export class ScreenSpaceReflectionsController {
             const parameters = context.acquirePassParameters(this.#downsamplePool);
             parameters.setTexture(0, source);
             parameters.setTexture(1, destination);
-            const scale = this.#sceneScale / 2 ** (index + 1);
+            const scale = resources.sceneScale / 2 ** (index + 1);
             parameters.setDispatch(
                 Math.max(
                     1,
@@ -1025,7 +1049,7 @@ export class ScreenSpaceReflectionsController {
             trace.setTexture(textureIndex++, hiZ);
         }
         trace.setTexture(textureIndex, currentReflection);
-        const reflectionScale = this.#sceneScale * this.#settings.resolutionScale;
+        const reflectionScale = resources.sceneScale * this.#settings.resolutionScale;
         const reflectionWidth = Math.max(1, Math.floor(context.output.width * reflectionScale));
         const reflectionHeight = Math.max(1, Math.floor(context.output.height * reflectionScale));
         trace.setDispatch(

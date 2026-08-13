@@ -10,9 +10,13 @@
   `MaterialAttributeSemantic`/`MaterialUniformSemantic`/`MaterialTextureSemantic` bindings, and
   explicit pass pipeline state. This is a direct migration with no compatibility adapter.
 - Split per-texture-slot std140 metadata out of `MaterialBlock` into the fixed
-  `MaterialTextureBlock`. The material scalar block is now 432 bytes, the texture-slot block is
-  1,920 bytes, WebGPU material textures begin at binding 2, and custom uniform block registrations
-  begin after ten built-in WebGL2 binding points.
+  `MaterialTextureBlock`. The material scalar block is now 448 bytes and includes
+  `u_temporalReactiveFactor`; the texture-slot block is 1,920 bytes, WebGPU material textures begin
+  at binding 2, and custom uniform block registrations begin after ten built-in WebGL2 binding
+  points.
+- Advance the shared GPU PBR material record to `builtin-pbr-storage-v3`. The byte length is
+  unchanged, but the third surface vector's formerly reserved W component now stores authored
+  temporal reactivity for the fused GPU Scene depth/motion pass.
 - Expand the fixed Camera/Model/Skinning/Morph/Instance std140 ABI with current/previous transforms,
   stable and jittered camera projections, render origins, and per-domain history/depth flags. Custom
   shaders that redeclare built-in blocks must use the updated field order and capacities.
@@ -25,6 +29,19 @@
 
 ### Changes
 
+- Add production dynamic resolution and authored reactive masks to `TemporalAA` and the integrated
+  Clustered Forward+ temporal path. Dynamic resolution is explicitly gated by WebGPU
+  `timestamp-query`, consumes asynchronous Render Graph GPU pass durations without stalling the
+  frame, and applies EWMA smoothing, hysteresis, quantized steps, warmup, settling, min/max bounds,
+  duplicate-sample rejection, and fail-closed handling for unavailable, failed, or saturated
+  timings. Resolution changes synchronously resize scene color/depth/motion/reactive, Hi-Z,
+  clusters, SSR and volumetric resources while invalidating size-dependent history; color/depth
+  history, transparent/UI composition and presentation remain output resolution. Add
+  `MaterialInstance.temporalReactiveFactor`, write it through a second `r8unorm` motion MRT in
+  ordinary Forward and the fused GPU Scene prepass, conservatively dilate it 3×3, and combine it
+  with luminance reactivity during TAA/TAAU rejection. Expose single-runtime Forward diagnostics and
+  Clustered scale/GPU-time diagnostics, with tests for controller stability, ABI validation,
+  material revisions, shared GPU packing, fallback and resource requirements.
 - Add production screen-space diffuse global illumination to ordinary Forward on WebGPU/WebGL 2 and
   to the WebGPU Clustered Forward+ profile. The opt-in path reuses GTAO/GPU Scene material
   attributes and motion/log-depth when available, traces configurable stochastic view-space

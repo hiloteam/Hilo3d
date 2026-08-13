@@ -716,6 +716,8 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly lodObjectCount: number;
     readonly objectCount: number;
     readonly occludedObjectCount: number;
+    readonly renderScale: number;
+    readonly smoothedGPUFrameTimeMs: number | null;
     readonly visibleObjectCount: number;
     readonly volumetricFroxelCount: number;
     readonly volumetricHistoryUsed: boolean;
@@ -1799,6 +1801,26 @@ const DISTANCE = "DISTANCE";
 // @public (undocumented)
 type DOMViewport = ReturnType<typeof getElementRect>;
 
+// @public
+export interface DynamicResolutionDiagnostics {
+    readonly renderScale: number;
+    readonly sampledFrameCount: number;
+    readonly smoothedGPUFrameTimeMs: number | null;
+}
+
+// @public
+export interface DynamicResolutionOptions {
+    readonly hysteresis?: number;
+    readonly initialScale?: number;
+    readonly maxScale?: number;
+    readonly minScale?: number;
+    readonly response?: number;
+    readonly scaleStep?: number;
+    readonly settlingFrames?: number;
+    readonly targetFrameTimeMs?: number;
+    readonly warmupFrames?: number;
+}
+
 // @public (undocumented)
 export interface ElasticEaseObject extends TweenEaseObject {
     // (undocumented)
@@ -1992,7 +2014,10 @@ export interface ForwardRenderPipelineFeatureRuntime {
     destroy(): void;
     frameDiscarded?(frameIndex: number): void;
     frameSubmitted?(frameIndex: number): void;
+    getSceneScale?(): number;
     record(context: ForwardRenderFeatureContext): unknown;
+    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void;
+    readonly usesRenderGraphTimeline?: boolean;
 }
 
 // @public
@@ -4116,6 +4141,8 @@ export class MaterialInstance {
     get requiresOpaqueSceneTexture(): boolean;
     get revision(): number;
     setTextureSlot(name: string, value: Texture<unknown> | MaterialTextureSlotInput | null): void;
+    get temporalReactiveFactor(): number;
+    set temporalReactiveFactor(value: number);
     // (undocumented)
     readonly uniformBlocks: Record<string, UniformBuffer>;
     // (undocumented)
@@ -4142,6 +4169,7 @@ export interface MaterialInstanceParameters {
     readonly opacityMap?: Texture<unknown> | MaterialTextureSlotInput | null;
     // (undocumented)
     readonly parallaxMap?: Texture<unknown> | MaterialTextureSlotInput | null;
+    readonly temporalReactiveFactor?: number;
     readonly uniformBlocks?: Readonly<Record<string, UniformBuffer>>;
     // (undocumented)
     readonly userData?: unknown;
@@ -4467,6 +4495,7 @@ export const MaterialUniformSemantic: Readonly<{
     readonly DIFFUSE_ENV_SPHERICAL_HARMONICS: "DIFFUSEENVSPHEREHARMONICS3";
     readonly GLOSSINESS: "GLOSSINESS";
     readonly ALPHA_CUTOFF: "ALPHACUTOFF";
+    readonly TEMPORAL_REACTIVE_FACTOR: "TEMPORALREACTIVEFACTOR";
     readonly MORPH_WEIGHTS: "MORPHWEIGHTS";
     readonly CLEARCOAT_FACTOR: "CLEARCOATFACTOR";
     readonly CLEARCOAT_ROUGHNESS_FACTOR: "CLEARCOATROUGHNESSFACTOR";
@@ -6116,12 +6145,32 @@ export interface RenderGraphFramePlan {
 }
 
 // @public
+export type RenderGraphGPUTimelineStatus = 'unavailable' | 'pending' | 'ready' | 'failed' | 'saturated';
+
+// @public
 export type RenderGraphPassHandle = number & {
     readonly [renderGraphPassHandleBrand]: true;
 };
 
 // @public (undocumented)
 const renderGraphPassHandleBrand: unique symbol;
+
+// @public
+export interface RenderGraphPassTimelineSnapshot {
+    readonly cpuDurationMs: number;
+    readonly gpuDurationMs: number | null;
+    readonly kind: RGPassTimestampKind | null;
+    readonly name: string;
+}
+
+// @public
+export interface RenderGraphResourceLifetimeSnapshot {
+    readonly firstUse: number | null;
+    readonly kind: 'texture' | 'texture-view' | 'buffer';
+    readonly lastUse: number | null;
+    readonly name: string;
+    readonly origin: 'imported' | 'transient' | 'view';
+}
 
 // @public
 export type RenderGraphTextureAccessHandle = RenderGraphTextureHandle | RenderGraphTextureViewHandle;
@@ -6141,6 +6190,18 @@ export type RenderGraphTextureViewHandle = number & {
 
 // @public (undocumented)
 const renderGraphTextureViewHandleBrand: unique symbol;
+
+// @public
+export interface RenderGraphTimelineSnapshot {
+    readonly compileDurationMs: number;
+    readonly executeDurationMs: number;
+    readonly frameIndex: number;
+    readonly gpuStatus: RenderGraphGPUTimelineStatus;
+    readonly passes: readonly RenderGraphPassTimelineSnapshot[];
+    readonly prepareDurationMs: number;
+    readonly recordDurationMs: number;
+    readonly resources: readonly RenderGraphResourceLifetimeSnapshot[];
+}
 
 // @public
 export class RenderInfo {
@@ -6179,6 +6240,8 @@ export interface RenderPipeline {
     frameSubmitted?(frameIndex: number): void;
     readonly name: string;
     record(context: RenderPipelineContext): unknown;
+    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void;
+    readonly usesRenderGraphTimeline?: boolean;
 }
 
 // @public
@@ -6608,6 +6671,9 @@ export interface ResourceRequestOptions {
     // (undocumented)
     url: string;
 }
+
+// @public
+export type RGPassTimestampKind = 'render' | 'compute';
 
 // @public
 export const SCENE_STORAGE_BIND_GROUP = 3;
@@ -7080,6 +7146,9 @@ export const semantic: {
     };
     ALPHACUTOFF: {
         get(mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
+    };
+    TEMPORALREACTIVEFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
     };
     EXPOSURE: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): unknown;
@@ -8221,6 +8290,7 @@ export class TemporalAA implements ForwardRenderPipelineFeature {
     readonly injectionPoint: "after-opaque";
     // (undocumented)
     readonly name = "temporal-aa";
+    readDynamicResolutionDiagnostics(): Readonly<DynamicResolutionDiagnostics>;
     // (undocumented)
     readonly requirements: Readonly<ForwardRenderFeatureRequirements>;
 }
@@ -8228,6 +8298,7 @@ export class TemporalAA implements ForwardRenderPipelineFeature {
 // @public
 export interface TemporalAAOptions {
     readonly depthThreshold?: number;
+    readonly dynamicResolution?: Readonly<DynamicResolutionOptions> | false;
     readonly historyWeight?: number;
     readonly renderScale?: number;
     readonly sharpness?: number;

@@ -104,22 +104,23 @@ layout，需要改变 topology 时构造另一个材质实例。
 Render Pipeline 请求 `forward`、`depth-only`、`shadow-caster`、`motion-vector`、
 `material-attributes` 或 `picking` role，材质不拥有 graph pass 顺序。Shadow Atlas 直接编译
 `shadow-caster`，不创建 proxy material；role 缺失或 target output 不匹配会在 RHI
-frame 前失败。内置 Basic/PBR/Geometry 的 `motion-vector` pass 只接受 single-sample `rgba16float`
-target：XY 是 current-to-previous UV velocity，Z 是 expected previous
-`log2(1 + viewDepth)`，W 是 current `log2(1 + viewDepth)`。它复用 current/previous
-camera、model、instance、skin、morph 与 coverage ABI；首次出现、显隐/提交间断或任一 transform
-history 失效时写 invalid history marker，不能消费陈旧 pose。内置 `material-attributes`
-pass 固定接受 single-sample `rgba16float`，输出 octahedral view normal、perceptual
-roughness、metallic 与 reflection receiver flag；portable Forward GTAO 与 Clustered Hi-Z
-SSR/GTAO/SSGI 按需消费它。GTAO 以相同 attributes 和 logarithmic motion depth 执行 horizon
-visibility、temporal rejection、edge-aware filter 与 depth/normal
+frame 前失败。内置 Basic/PBR/Geometry 的 `motion-vector` pass 接受 single-sample `rgba16float`
+target，并可在 location 1 同时写 single-sample `r8unorm` authored reactive mask：motion
+XY 是 current-to-previous UV velocity，Z 是 expected previous `log2(1 + viewDepth)`，W 是 current
+`log2(1 + viewDepth)`。它复用 current/previous camera、model、instance、skin、morph 与 coverage
+ABI；首次出现、显隐/提交间断或任一 transform history 失效时写 invalid history
+marker，不能消费陈旧 pose；reactive 值来自材质的 `temporalReactiveFactor`（0–1）。内置
+`material-attributes` pass 固定接受 single-sample `rgba16float`，输出 octahedral view
+normal、perceptual roughness、metallic 与 reflection receiver flag；portable Forward
+GTAO 与 Clustered Hi-Z SSR/GTAO/SSGI 按需消费它。GTAO 以相同 attributes 和 logarithmic motion
+depth 执行 horizon visibility、temporal rejection、edge-aware filter 与 depth/normal
 upsample；SSGI 在 opaque 后复用或生成 attributes/motion，执行随机 view-space diffuse ray
 trace、YCoCg variance-clipped temporal resolve、depth/normal/luminance-aware a-trous
 filter、bilateral
 upsample 与线性 HDR 合成；SSR 用它们约束 confidence-aware 多尺度空间 filter。未启用对应 effect 时不创建 attribute、AO/GI/filter
 target、history 或 fallback pass。
 
-portable material UBO 分为 432-byte `MaterialBlock` 与 1,920-byte
+portable material UBO 分为 448-byte `MaterialBlock` 与 1,920-byte
 `MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
 0/1 对应这两个 block，sampled texture/sampler 从 binding 2 开始；WebGL2 使用同一固定 block
 registry。attribute、uniform、texture 和 built-in
@@ -132,9 +133,10 @@ identity 去重，保留公共 `materialId` 并分配按 family/layout 分类的
 handle；`MaterialInstance.revision` 驱动 record 重打包，相邻 dirty record 合并上传。staged
 revision 和 texture-slot dirtiness 只在成功 submission 后提交，失败帧重试；renderer-owned
 `cpu-shadow` buffer 在 device recovery 后重建而不替换材质或 handle identity。首个
-`builtin-pbr-storage-v2` record 由 GPU Scene 与 clustered indirect draw 共享；除 surface
+`builtin-pbr-storage-v3` record 由 GPU Scene 与 clustered indirect draw 共享；除 surface
 scalar 外，它为每个内置 PBR texture slot 保存独立 UV matrix、UV set、encoding、presence 与 channel
-mapping。logical geometry bucket 与 material handle 在对象 record 中保持为两个独立字段。
+mapping，并在 surface record 的保留分量保存 authored reactive factor。logical geometry
+bucket 与 material handle 在对象 record 中保持为两个独立字段。
 
 ### 1.3 RenderPipelineHost：统一的可脚本化编排
 
@@ -200,17 +202,23 @@ PBR 的 ambient/IBL；普通 Forward 的同一 portable raster 实现覆盖 WebG
 [`GROUND_TRUTH_AMBIENT_OCCLUSION.md`](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)。可选 `TemporalAA`
 在 opaque 后记录 `rgba16float` motion/log-depth，并用 `rgba16float` 双缓冲 color history 和
 `r32float` 双缓冲 log-view-depth history 完成 reprojection、relative-depth disocclusion、YCoCg
-variance clipping 与 reactive resolve。默认 `renderScale=1`
-是原生分辨率 TAA；固定 0.5–1 的 sub-native scale 会同步缩放 opaque
+variance clipping 与 reactive resolve。motion pass 的第二个 `r8unorm` MRT 保存
+`MaterialInstance.temporalReactiveFactor`，resolve 对它执行 3×3 conservative
+dilation，并与亮度 heuristic 取最大值抑制不稳定 shading 的 history。默认 `renderScale=1`
+是原生分辨率 TAA；固定或动态 0.5–1 的 sub-native scale 会同步缩放 opaque
 color/depth/motion、Hi-Z 与 cluster viewport，用 Catmull-Rom 重建当前帧，并写 output-resolution
 color/depth history、resolved color 和供后续 scene pass 使用的 full-resolution depth。resolved
 opaque color 随后才接受 transparent composition，因此透明不写入 TAA/TAAU history。Clustered Forward+
 opt-in TAA 时把 GPU Scene motion 融入 depth prepass，以前一已提交帧的 visibility
 buffer 拒绝重现物体的陈旧 history；fallback opaque/masked 在 resolve 前补写同一 motion
-target，fallback transparent 在 resolve 后合成。之后 `Bloom` 在 tone mapping 前记录 soft-knee/Karis
-prefilter、13-tap downsample pyramid、tent upsample 与线性 composite；`ColorUber`
-最后统一完成 grading、tone mapping、linear-to-sRGB 与 dithering，并把输出编码标记为
-`srgb`，避免 surface output pass 重复转换。float scene target 会选择 linear-output material
+target，fallback transparent 在 resolve 后合成。`dynamicResolution` 仅在 WebGPU `timestamp-query`
+可用时创建：控制器异步消费逐 Graph pass GPU 时间，使用 EWMA、迟滞、量化步进、warmup 与 settling
+window，在声明的 min/max 内调整 scene
+scale；比例变化会失效 TAA、Hi-Z、SSR、SSGI/GTAO 与 volumetric 的尺寸相关 history，但 UI/透明合成和最终 output 保持原生分辨率。之后
+`Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent
+upsample 与线性 composite；`ColorUber` 最后统一完成 grading、tone
+mapping、linear-to-sRGB 与 dithering，并把输出编码标记为 `srgb`，避免 surface output
+pass 重复转换。float scene target 会选择 linear-output material
 variant，禁止材质 shader 提前执行 gamma encode 或旧的局部 tone mapping。完整颜色与材质合同见
 [`PBR_AND_POST_PROCESSING.md`](./PBR_AND_POST_PROCESSING.md)。
 
@@ -469,12 +477,14 @@ Executor 的顺序是：
 
 ### 2.4 可选 CPU/GPU 时间线
 
-只有 Canvas 注册 `RendererDiagnostics` 时，`RenderGraphFrame` 才创建帧级 timeline
+Canvas 注册 `RendererDiagnostics`，或活动 RenderPipeline 声明内部 timing consumer（例如
+`TemporalAA.dynamicResolution`）时，`RenderGraphFrame` 才创建帧级 timeline
 recorder。它记录 record、compile、prepare、execute 四个 CPU 区间、逐 Pass CPU 时间以及编译后的资源
 `firstUse / lastUse`。启用 `timestamp-query`
 的 WebGPU 设备还会为每个声明了原生 render/compute 类别的 Graph Pass 自动写入起止 timestamp，经
 `QUERY_RESOLVE -> COPY_DST|MAP_READ` 三槽 ring 异步回读；生产帧从不等待 map，槽位占满只把该帧标记为
-`saturated`。没有注册 diagnostics 时不创建 QuerySet/resolve/readback 资源，也不在逐 draw 路径增加分支。
+`saturated`。没有 diagnostics 且 pipeline 不消费 timing 时，不创建 QuerySet/resolve/readback 资源，也不在逐 draw 路径增加分支；dynamic-resolution
+runtime 被替换或销毁后，旧 submission 的异步 snapshot 仍只投递给捕获它的旧 runtime，不能污染恢复后的 controller。
 
 RHI 同时提供 submission-aware `RHIQuerySet`、pass timestamp
 writes、显式 resolve，以及 command、render pass、compute pass 的 debug

@@ -63,6 +63,7 @@ import {
     type RenderGraphBufferHandle,
     type RenderGraphTextureAccessHandle,
     type RenderGraphTextureHandle,
+    type RenderGraphTimelineSnapshot,
     type RenderGraphTextureViewHandle,
     type RenderPipelineHistoryTextureResources,
     type RenderPipelineTextureFormat,
@@ -70,6 +71,7 @@ import {
     type StorageBuffer,
     type StorageBufferReadback,
     type TemporalAAOptions,
+    type DynamicResolutionOptions,
     type ShaderTextureSampleType,
     type ShaderTextureViewDimension,
     type ScriptableRenderGraph,
@@ -275,12 +277,20 @@ const featureCullingResults: CullingResultsHandle = forwardFeatureContext.cullin
 forwardFeatureContext.resources.replaceDepth(graphMipChain);
 const temporalAAOptions = { renderScale: 0.75, sharpness: 0.1 } satisfies TemporalAAOptions;
 const temporalAA = new TemporalAA(temporalAAOptions);
+const dynamicResolutionOptions = {
+    minScale: 0.6,
+    targetFrameTimeMs: 16.667
+} satisfies DynamicResolutionOptions;
+const dynamicTemporalAA = new TemporalAA({ dynamicResolution: dynamicResolutionOptions });
+const timelineSnapshot: RenderGraphTimelineSnapshot | null = null;
 const outputColorPolicy: Readonly<RenderPipelineOutputColorAttachment> =
     pipelineOutput.colorAttachment(0);
 const outputDepthStencilPolicy: Readonly<RenderPipelineOutputDepthStencilAttachment> | null =
     pipelineOutput.depthStencilAttachment;
 void graphTextureAccess;
 void typedPreviousHistory;
+void dynamicTemporalAA;
+void timelineSnapshot;
 
 const textureParameters = {
     uv: 0,
@@ -334,9 +344,11 @@ const integerArrayTextureParameters = {
 const materialParameters = {
     lightType: 'NONE',
     diffuse: texture,
+    temporalReactiveFactor: 0.5,
     compositing: { mode: 'opaque' }
 } satisfies BasicMaterialParameters;
 const material = new BasicMaterial(materialParameters);
+material.temporalReactiveFactor = 0.25;
 const meshParameters = {
     geometry: new BoxGeometry(),
     material,
