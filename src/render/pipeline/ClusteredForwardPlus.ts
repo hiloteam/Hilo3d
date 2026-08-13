@@ -20,11 +20,13 @@ import {
 import { resolveMaterialPassState } from '../../material/MaterialCompiler';
 import Matrix3 from '../../math/Matrix3';
 import Matrix4 from '../../math/Matrix4';
+import Quaternion from '../../math/Quaternion';
 import Vector3 from '../../math/Vector3';
 import Shader from '../../shader/Shader';
 import pbrBrdfSource from '../../shader/chunk/pbr_brdf.glsl';
 import pbrSurfaceSource from '../../shader/chunk/pbr_surface.glsl';
 import encodingSource from '../../shader/method/encoding.glsl';
+import getAreaLightSource from '../../shader/method/getAreaLight.glsl';
 import portableCoordinatesSource from '../../shader/method/portableCoordinates.glsl';
 import type Texture from '../../texture/Texture';
 import {
@@ -55,7 +57,7 @@ import {
     GPUDrivenRenderBatchPass,
     type GPUDrivenRenderBatchPassParameters
 } from './passes/internal/GPUDrivenRenderBatchPass';
-import { depthClearValue } from '../renderer/DepthConvention';
+import { depthClearValue, depthComparison } from '../renderer/DepthConvention';
 import SharedMaterialRecordDatabase from '../renderer/SharedMaterialRecordDatabase';
 import {
     packPBRGPUMaterialRecord,
@@ -69,8 +71,16 @@ import type {
     RenderPipelineContext,
     RenderPipelineCreateContext,
     RenderPipelineFactory,
-    RenderPipelineRequirements
+    RenderPipelineRequirements,
+    RenderPipelineShadowResources
 } from './RenderPipeline';
+import {
+    MAX_DIRECTIONAL_LIGHTS,
+    MAX_DIRECTIONAL_SHADOW_CASCADES,
+    MAX_POINT_LIGHTS,
+    MAX_SHADOW_ATLAS_SLICES,
+    MAX_SPOT_LIGHTS
+} from '../ubo/BuiltInUniformBlocks';
 import type {
     CullingResultsHandle,
     RendererListDescriptor,
@@ -144,9 +154,24 @@ import {
 } from '../postprocessing/VolumetricLighting';
 
 const OBJECT_RECORD_BYTES = 208;
-const LIGHT_RECORD_BYTES = 64;
+const LIGHT_RECORD_FLOATS = 28;
+const LIGHT_RECORD_BYTES = LIGHT_RECORD_FLOATS * 4;
 const BUCKET_RECORD_BYTES = 48;
-const FRAME_RECORD_BYTES = 512;
+const FRAME_BASE_VEC4_COUNT = 32;
+const SHADOW_ATLAS_SIZE_VEC4 = FRAME_BASE_VEC4_COUNT;
+const SHADOW_METADATA_VEC4 = SHADOW_ATLAS_SIZE_VEC4 + 1;
+const SHADOW_ATLAS_RECTS_VEC4 = SHADOW_METADATA_VEC4 + 1;
+const SHADOW_DIRECTIONAL_BIASES_VEC4 = SHADOW_ATLAS_RECTS_VEC4 + MAX_SHADOW_ATLAS_SLICES;
+const SHADOW_DIRECTIONAL_SPLITS_VEC4 = SHADOW_DIRECTIONAL_BIASES_VEC4 + MAX_DIRECTIONAL_LIGHTS;
+const SHADOW_DIRECTIONAL_PARAMS_VEC4 = SHADOW_DIRECTIONAL_SPLITS_VEC4 + MAX_DIRECTIONAL_LIGHTS;
+const SHADOW_DIRECTIONAL_MATRICES_VEC4 = SHADOW_DIRECTIONAL_PARAMS_VEC4 + MAX_DIRECTIONAL_LIGHTS;
+const SHADOW_SPOT_BIASES_VEC4 =
+    SHADOW_DIRECTIONAL_MATRICES_VEC4 + MAX_DIRECTIONAL_LIGHTS * MAX_DIRECTIONAL_SHADOW_CASCADES * 4;
+const SHADOW_SPOT_MATRICES_VEC4 = SHADOW_SPOT_BIASES_VEC4 + MAX_SPOT_LIGHTS;
+const SHADOW_POINT_BIASES_VEC4 = SHADOW_SPOT_MATRICES_VEC4 + MAX_SPOT_LIGHTS * 4;
+const SHADOW_POINT_MATRICES_VEC4 = SHADOW_POINT_BIASES_VEC4 + MAX_POINT_LIGHTS;
+const FRAME_VEC4_COUNT = SHADOW_POINT_MATRICES_VEC4 + MAX_POINT_LIGHTS * 6 * 4;
+const FRAME_RECORD_BYTES = FRAME_VEC4_COUNT * 16;
 const INDIRECT_ARGUMENT_BYTES = 20;
 // The draw-local visible-range base is exposed through a statically aligned storage binding.
 // WebGPU's default/minimum storage offset alignment is at most 256 bytes, so one record per
@@ -163,6 +188,7 @@ const OBJECT_FRUSTUM_CULLING_FLAG = 2;
 const OBJECT_HIZ_STABLE_FLAG = 4;
 const OBJECT_MOTION_HISTORY_FLAG = 8;
 const OBJECT_MOTION_CHANGED_FLAG = 16;
+const OBJECT_RECEIVE_SHADOW_FLAG = 32;
 const CULL_WORKGROUP_SIZE = 64;
 const PREFIX_WORKGROUP_SIZE = 256;
 const DEFAULT_MAX_OBJECTS = 16_384;
@@ -177,6 +203,15 @@ const INVALID_BUFFER = 0 as RenderGraphBufferHandle;
 const INVALID_TEXTURE = 0 as RenderGraphTextureHandle;
 const INVALID_CULLING_RESULTS = 0 as CullingResultsHandle;
 const INVALID_RENDERER_LIST = 0 as RendererListHandle;
+const CLUSTERED_AREA_LIGHT_SOURCE = getAreaLightSource
+    .replace(
+        'texture(areaLightsLtcTexture1, hiloTextureUV(uv))',
+        'textureLod(areaLightsLtcTexture1, hiloTextureUV(uv), 0.0)'
+    )
+    .replace(
+        'texture(areaLightsLtcTexture2, hiloTextureUV(uv))',
+        'textureLod(areaLightsLtcTexture2, hiloTextureUV(uv), 0.0)'
+    );
 
 /** One lower-detail geometry selected when its projected bounding radius is small enough. */
 export interface GPUSceneLOD {
@@ -191,10 +226,11 @@ export interface GPUSceneBucket {
     /** Highest-detail indexed triangle geometry. */
     readonly geometry: Geometry;
     /**
-     * Opaque built-in metallic/roughness PBR material evaluated by the shared surface/BRDF
-     * contract. Base-color, metallic, roughness, combined metallic-roughness, occlusion, emission,
-     * and normal maps support UV0/UV1 and material UV matrices. Layered extensions, custom
-     * compilation, parallax/environment inputs, and non-default depth/alpha modes fail closed.
+     * Opaque or alpha-masked built-in metallic/roughness PBR material evaluated by the shared
+     * surface/BRDF contract. Base-color, opacity, metallic, roughness, combined
+     * metallic-roughness, occlusion, emission, and normal maps support UV0/UV1 and material UV
+     * matrices. Layered extensions, custom compilation, parallax/environment inputs, blending,
+     * alpha-to-coverage, and non-default depth modes fail closed.
      */
     readonly material: PBRMaterial;
     /** Optional coarse levels ordered from smallest to largest projected-radius threshold. */
@@ -204,8 +240,8 @@ export interface GPUSceneBucket {
 /** Construction options for the WebGPU high-end GPU Scene and Clustered Forward+ pipeline. */
 export interface ClusteredForwardPlusPipelineOptions {
     /**
-     * GPU Scene bucket families. Compatible opaque meshes match by identity; other scene meshes
-     * remain renderable through the shared Forward compatibility path.
+     * GPU Scene bucket families. Compatible opaque and alpha-masked meshes match by identity;
+     * other scene meshes remain renderable through the shared Forward compatibility path.
      */
     readonly buckets: readonly GPUSceneBucket[];
     /** Stable GPU Scene object capacity. Excess meshes use the Forward fallback. Defaults to 16,384. */
@@ -361,8 +397,9 @@ interface PhysicalBucket {
     tangent0Revision: number;
     tangent1Revision: number;
     indexRevision: number;
-    readonly depthPass: GPUDrivenRenderPass;
+    depthPass: GPUDrivenRenderPass;
     colorPass: GPUDrivenRenderPass;
+    colorShadowed: boolean;
     materialAttributesPass: GPUDrivenRenderPass | null;
     materialVariantKey: string;
     materialVariant: Readonly<PBRMaterialVariant>;
@@ -375,7 +412,8 @@ type PBRTextureRole =
     | 'metallicRoughnessMap'
     | 'occlusionMap'
     | 'emission'
-    | 'normalMap';
+    | 'normalMap'
+    | 'opacityMap';
 
 interface PBRTextureBinding {
     readonly role: PBRTextureRole;
@@ -392,6 +430,8 @@ interface PBRMaterialVariant {
     readonly usesUV1: boolean;
     readonly normalUV: 0 | 1 | null;
     readonly occlusionInMetallicRoughness: boolean;
+    readonly coverageMode: 'opaque' | 'mask';
+    readonly alphaCutoff: number;
 }
 
 interface GPUSceneObjectRecord {
@@ -403,6 +443,8 @@ interface GPUSceneObjectRecord {
     committedWorldVersion: number;
     pendingFrustumTest: boolean;
     committedFrustumTest: boolean;
+    pendingReceiveShadows: boolean;
+    committedReceiveShadows: boolean;
     pendingBoundsRevision: number;
     committedBoundsRevision: number;
     pendingOcclusionStable: boolean;
@@ -472,8 +514,7 @@ function bucketMaterialIssue(material: PBRMaterial): string | null {
         state.depthRange[1] !== 1 ||
         state.stencil !== undefined ||
         state.alphaToCoverage ||
-        material.coverage.mode !== 'opaque' ||
-        material.opacity !== 1
+        material.coverage.mode === 'alpha-to-coverage'
     ) {
         return 'uses an unsupported raster or alpha mode';
     }
@@ -596,6 +637,12 @@ const PBR_TEXTURE_ROLES: readonly Readonly<{
         shaderName: 'u_normalMap',
         slotName: 'normal',
         slotIndex: 6
+    }),
+    Object.freeze({
+        role: 'opacityMap',
+        shaderName: 'u_opacityMap',
+        slotName: 'opacity',
+        slotIndex: 7
     })
 ]);
 
@@ -628,16 +675,21 @@ function pbrMaterialVariant(material: PBRMaterial): Readonly<PBRMaterialVariant>
         );
     }
     const occlusionInMetallicRoughness = material.isOcclusionInMetallicRoughnessMap;
+    const coverageMode = material.coverage.mode === 'mask' ? 'mask' : 'opaque';
+    const alphaCutoff = material.coverage.mode === 'opaque' ? 0 : material.coverage.cutoff;
     return Object.freeze({
         key: [
             occlusionInMetallicRoughness ? 'mrao' : 'separate-ao',
+            coverageMode === 'mask' ? `mask:${alphaCutoff.toString()}` : 'opaque',
             ...textures.map(binding => `${binding.role}:${String(binding.uv)}`)
         ].join('|'),
         textures: Object.freeze(textures),
         usesUV0,
         usesUV1,
         normalUV,
-        occlusionInMetallicRoughness
+        occlusionInMetallicRoughness,
+        coverageMode,
+        alphaCutoff
     });
 }
 
@@ -1609,6 +1661,9 @@ struct LightRecord {
     colorType: vec4<f32>,
     directionOuter: vec4<f32>,
     attenuationInner: vec4<f32>,
+    shadow: vec4<f32>,
+    areaWidth: vec4<f32>,
+    areaHeight: vec4<f32>,
 };
 fn depthSlice(frame: FrameData, distance: f32) -> u32 {
     let normalized = log(max(distance, frame.depth.x) / frame.depth.x) / frame.depth.z;
@@ -2102,6 +2157,7 @@ void main() {
 
 const GPU_SCENE_PBR_SHADER_CACHE = new Map<string, StorageGraphicsShader>();
 const GPU_SCENE_ATTRIBUTES_SHADER_CACHE = new Map<string, StorageGraphicsShader>();
+const GPU_SCENE_MASKED_DEPTH_SHADER_CACHE = new Map<string, StorageGraphicsShader>();
 
 function variantTexture(
     variant: Readonly<PBRMaterialVariant>,
@@ -2114,12 +2170,384 @@ function variantSampleUV(binding: Readonly<PBRTextureBinding>): string {
     return binding.uv === 0 ? 'v_uv0' : 'v_uv1';
 }
 
+function coverageTextures(
+    variant: Readonly<PBRMaterialVariant>
+): readonly Readonly<PBRTextureBinding>[] {
+    return variant.textures.filter(
+        binding => binding.role === 'baseColorMap' || binding.role === 'opacityMap'
+    );
+}
+
+function gpuSceneMaskedDepthShader(
+    variant: Readonly<PBRMaterialVariant>,
+    temporal: boolean
+): StorageGraphicsShader {
+    if (variant.coverageMode !== 'mask') {
+        return temporal ? GPU_SCENE_TEMPORAL_DEPTH_SHADER : GPU_SCENE_DEPTH_SHADER;
+    }
+    const cacheKey = `${variant.key}|temporal=${temporal ? '1' : '0'}`;
+    const cached = GPU_SCENE_MASKED_DEPTH_SHADER_CACHE.get(cacheKey);
+    if (cached !== undefined) return cached;
+    const textures = coverageTextures(variant);
+    const baseColorMap = textures.find(binding => binding.role === 'baseColorMap') ?? null;
+    const opacityMap = textures.find(binding => binding.role === 'opacityMap') ?? null;
+    const usesUV0 = textures.some(binding => binding.uv === 0);
+    const usesUV1 = textures.some(binding => binding.uv === 1);
+    const textureDeclarations = textures
+        .map(binding => `uniform sampler2D ${binding.shaderName};`)
+        .join('\n');
+    const vertexUVDeclarations = [
+        usesUV0 ? 'layout(location=2) in vec2 a_uv0;\nout vec2 v_uv0;' : '',
+        usesUV1 ? 'layout(location=3) in vec2 a_uv1;\nout vec2 v_uv1;' : ''
+    ]
+        .filter(Boolean)
+        .join('\n');
+    const fragmentUVDeclarations = [
+        usesUV0 ? 'in vec2 v_uv0;' : '',
+        usesUV1 ? 'in vec2 v_uv1;' : ''
+    ]
+        .filter(Boolean)
+        .join('\n');
+    const vertexUVWrites = [usesUV0 ? 'v_uv0 = a_uv0;' : '', usesUV1 ? 'v_uv1 = a_uv1;' : '']
+        .filter(Boolean)
+        .join('\n    ');
+    const materialSample = (binding: Readonly<PBRTextureBinding>): string =>
+        `hiloMaterialSample(${binding.shaderName}, materialBase, ${String(binding.slotIndex)}u, ${variantSampleUV(binding)})`;
+    const temporalVertexDeclarations = temporal
+        ? `out vec4 v_currentClipPosition;
+out vec4 v_previousClipPosition;
+out float v_currentViewDepth;
+out float v_previousViewDepth;
+flat out float v_motionHistoryValid;
+flat out float v_temporalReactiveFactor;`
+        : '';
+    const temporalVertexWrites = temporal
+        ? `mat4 currentModel = readObjectMatrix(objectBase);
+    mat4 previousModel = (flags & ${String(OBJECT_MOTION_CHANGED_FLAG)}u) != 0u
+        ? readObjectMatrix(objectBase + 4u)
+        : currentModel;
+    vec4 localPosition = vec4(a_position, 1.0);
+    v_currentClipPosition = gl_Position;
+    v_previousClipPosition = readFrameMatrix(4u) * previousModel * localPosition;
+    v_currentViewDepth = abs((readFrameMatrix(8u) * currentModel * localPosition).z);
+    v_previousViewDepth = abs((readFrameMatrix(16u) * previousModel * localPosition).z);
+    bool cameraHistoryValid = floatBitsToUint(frameData.values[30u].z) != 0u;
+    v_motionHistoryValid =
+        cameraHistoryValid &&
+        (flags & ${String(OBJECT_MOTION_HISTORY_FLAG)}u) != 0u &&
+        previousVisibility.values[objectIndex] != 0u
+            ? 1.0
+            : 0.0;
+    v_temporalReactiveFactor = materials.values[
+        v_materialIndex * ${String(PBR_GPU_MATERIAL_RECORD_BYTES / 16)}u + 2u
+    ].w;`
+        : '';
+    const temporalFragmentDeclarations = temporal
+        ? `${portableCoordinatesSource}
+in vec4 v_currentClipPosition;
+in vec4 v_previousClipPosition;
+in float v_currentViewDepth;
+in float v_previousViewDepth;
+flat in float v_motionHistoryValid;
+flat in float v_temporalReactiveFactor;
+layout(location=0) out vec4 motionData;
+layout(location=1) out float reactiveMask;`
+        : '';
+    const temporalFragmentWrite = temporal
+        ? `reactiveMask = clamp(v_temporalReactiveFactor, 0.0, 1.0);
+    float currentLogDepth = log2(1.0 + max(v_currentViewDepth, 0.0));
+    if (
+        v_motionHistoryValid < 0.5 ||
+        v_currentClipPosition.w <= 1e-6 ||
+        v_previousClipPosition.w <= 1e-6
+    ) {
+        motionData = vec4(0.0, 0.0, -1.0, currentLogDepth);
+        return;
+    }
+    vec2 currentUV = hiloRenderTargetUV(
+        v_currentClipPosition.xy / v_currentClipPosition.w * 0.5 + 0.5
+    );
+    vec2 previousUV = hiloRenderTargetUV(
+        v_previousClipPosition.xy / v_previousClipPosition.w * 0.5 + 0.5
+    );
+    motionData = vec4(
+        currentUV - previousUV,
+        log2(1.0 + max(v_previousViewDepth, 0.0)),
+        currentLogDepth
+    );`
+        : '';
+    const bindings: ShaderReadBinding[] = [
+        { name: 'frameData', group: 0, binding: 0, kind: 'read-only-storage-buffer' },
+        { name: 'objects', group: 0, binding: 1, kind: 'read-only-storage-buffer' },
+        { name: 'visibleIndices', group: 0, binding: 2, kind: 'read-only-storage-buffer' },
+        {
+            name: 'visibleOffset',
+            group: 0,
+            binding: 3,
+            kind: 'read-only-storage-buffer',
+            minBindingSize: 4
+        },
+        { name: 'materials', group: 0, binding: 4, kind: 'read-only-storage-buffer' }
+    ];
+    if (temporal) {
+        bindings.push({
+            name: 'previousVisibility',
+            group: 0,
+            binding: 5,
+            kind: 'read-only-storage-buffer'
+        });
+    }
+    for (let index = 0; index < textures.length; index += 1) {
+        const texture = textures[index];
+        if (texture === undefined) continue;
+        bindings.push(
+            {
+                name: texture.shaderName,
+                group: 1,
+                binding: index * 2,
+                kind: 'sampled-texture',
+                sampleType: 'float'
+            },
+            {
+                name: texture.shaderName,
+                group: 1,
+                binding: index * 2 + 1,
+                kind: 'sampler'
+            }
+        );
+    }
+    const shader = new StorageGraphicsShader({
+        label: `GPU Scene masked ${temporal ? 'temporal ' : ''}depth (${variant.key})`,
+        vertexSource: `#version 310 es
+precision highp float;
+precision highp int;
+invariant gl_Position;
+layout(std430) readonly buffer FrameDataBlock { vec4 values[]; } frameData;
+layout(std430) readonly buffer ObjectBlock { vec4 values[]; } objects;
+layout(std430) readonly buffer VisibleBlock { uint values[]; } visibleIndices;
+layout(std430) readonly buffer VisibleOffsetBlock { uint value; } visibleOffset;
+layout(std430) readonly buffer MaterialDataBlock { vec4 values[]; } materials;
+${temporal ? 'layout(std430) readonly buffer PreviousVisibilityBlock { uint values[]; } previousVisibility;' : ''}
+layout(location=0) in vec3 a_position;
+${vertexUVDeclarations}
+flat out uint v_materialIndex;
+${temporalVertexDeclarations}
+${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
+${GPU_SCENE_VISIBLE_INDEX_SOURCE}
+void main() {
+    uint objectIndex = gpuSceneVisibleObjectIndex();
+    uint objectBase = objectIndex * 13u;
+    uint flags = floatBitsToUint(objects.values[objectBase + 12u].z);
+    gl_Position = gpuSceneClipPosition(objectBase, a_position);
+    v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
+    ${vertexUVWrites}
+    ${temporalVertexWrites}
+}`,
+        fragmentSource: `#version 310 es
+precision highp float;
+precision highp int;
+layout(std430) readonly buffer MaterialDataBlock { vec4 values[]; } materials;
+${textureDeclarations}
+${fragmentUVDeclarations}
+flat in uint v_materialIndex;
+${temporalFragmentDeclarations}
+${encodingSource}
+float hiloMaterialChannel(vec4 value, int channel) {
+    if (channel == 0) return value.r;
+    if (channel == 1) return value.g;
+    if (channel == 2) return value.b;
+    if (channel == 3) return value.a;
+    return channel == 5 ? 1.0 : 0.0;
+}
+vec4 hiloMaterialSample(sampler2D source, uint materialBase, uint slotIndex, vec2 uv) {
+    uint slotBase = materialBase + 4u + slotIndex * 5u;
+    mat3 transform = mat3(
+        materials.values[slotBase].xyz,
+        materials.values[slotBase + 1u].xyz,
+        materials.values[slotBase + 2u].xyz
+    );
+    vec4 info = materials.values[slotBase + 3u];
+    vec4 sampled = texture(source, (transform * vec3(uv, 1.0)).xy);
+    if (int(info.y) == 1) sampled = sRGBToLinear(sampled);
+    ivec4 channels = ivec4(materials.values[slotBase + 4u]);
+    return vec4(
+        hiloMaterialChannel(sampled, channels.x),
+        hiloMaterialChannel(sampled, channels.y),
+        hiloMaterialChannel(sampled, channels.z),
+        hiloMaterialChannel(sampled, channels.w)
+    );
+}
+void main() {
+    uint materialBase = v_materialIndex * ${String(PBR_GPU_MATERIAL_RECORD_BYTES / 16)}u;
+    float opacity = materials.values[materialBase + 3u].x;
+    vec4 baseColorSample = vec4(1.0);
+    ${baseColorMap === null ? '' : `baseColorSample = ${materialSample(baseColorMap)};`}
+    float coverageAlpha = baseColorSample.a * opacity;
+    ${opacityMap === null ? '' : `coverageAlpha *= ${materialSample(opacityMap)}.r;`}
+    if (coverageAlpha < ${String(variant.alphaCutoff)}) discard;
+    ${temporalFragmentWrite}
+}`,
+        bindings
+    });
+    GPU_SCENE_MASKED_DEPTH_SHADER_CACHE.set(cacheKey, shader);
+    return shader;
+}
+
+function gpuSceneShadowSource(): string {
+    return `
+mat4 hiloShadowMatrix(uint base) {
+    return mat4(
+        frameData.values[base],
+        frameData.values[base + 1u],
+        frameData.values[base + 2u],
+        frameData.values[base + 3u]
+    );
+}
+float hiloShadowAtlasVisibility(int sliceIndex, float bias, vec3 viewPosition, mat4 lightMatrix) {
+    vec4 clipPosition = lightMatrix * vec4(viewPosition, 1.0);
+    if (clipPosition.w <= 0.0) return 1.0;
+    vec3 projection = clipPosition.xyz / clipPosition.w;
+    projection = projection * 0.5 + 0.5;
+    if (
+        any(lessThan(projection, vec3(0.0))) ||
+        any(greaterThan(projection, vec3(1.0)))
+    ) return 1.0;
+    vec4 atlasRect = frameData.values[${String(SHADOW_ATLAS_RECTS_VEC4)}u + uint(sliceIndex)];
+    vec2 atlasUV = atlasRect.zw + hiloRenderTargetUV(projection.xy) * atlasRect.xy;
+    vec2 texel = frameData.values[${String(SHADOW_ATLAS_SIZE_VEC4)}u].zw;
+    vec2 rectEnd = atlasRect.zw + atlasRect.xy;
+    vec2 rectMin = min(atlasRect.zw, rectEnd) + texel * 0.5;
+    vec2 rectMax = max(atlasRect.zw, rectEnd) - texel * 0.5;
+    float depthBias = frameData.values[${String(SHADOW_METADATA_VEC4)}u].w > 0.5
+        ? bias
+        : -bias;
+    float visibility = 0.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 sampleUV = clamp(
+                atlasUV + vec2(float(x), float(y)) * texel,
+                rectMin,
+                rectMax
+            );
+            visibility += textureLod(
+                u_shadowAtlas,
+                vec3(sampleUV, projection.z + depthBias),
+                0.0
+            );
+        }
+    }
+    return visibility / 9.0;
+}
+float hiloDirectionalShadow(int index, float bias, vec3 viewPosition) {
+    vec4 splits = frameData.values[${String(SHADOW_DIRECTIONAL_SPLITS_VEC4)}u + uint(index)];
+    vec4 params = frameData.values[${String(SHADOW_DIRECTIONAL_PARAMS_VEC4)}u + uint(index)];
+    int cascadeCount = clamp(int(params.x + 0.5), 1, ${String(MAX_DIRECTIONAL_SHADOW_CASCADES)});
+    float viewDepth = max(-viewPosition.z, 0.0);
+    int cascade = 0;
+    if (cascadeCount > 1 && viewDepth > splits.x) cascade = 1;
+    if (cascadeCount > 2 && viewDepth > splits.y) cascade = 2;
+    if (cascadeCount > 3 && viewDepth > splits.z) cascade = 3;
+    if (viewDepth > splits[cascadeCount - 1]) return 1.0;
+    int matrixIndex = index * ${String(MAX_DIRECTIONAL_SHADOW_CASCADES)} + cascade;
+    uint matrixBase = ${String(SHADOW_DIRECTIONAL_MATRICES_VEC4)}u + uint(matrixIndex) * 4u;
+    float visibility = hiloShadowAtlasVisibility(
+        matrixIndex,
+        bias,
+        viewPosition,
+        hiloShadowMatrix(matrixBase)
+    );
+    float blend = params.y;
+    if (cascade < cascadeCount - 1 && blend > 0.0) {
+        float previousSplit = cascade == 0
+            ? frameData.values[25u].x
+            : splits[cascade - 1];
+        float interval = max(splits[cascade] - previousSplit, 0.00001);
+        float blendStart = splits[cascade] - interval * blend;
+        if (viewDepth > blendStart) {
+            int nextMatrixIndex = matrixIndex + 1;
+            float nextVisibility = hiloShadowAtlasVisibility(
+                nextMatrixIndex,
+                bias,
+                viewPosition,
+                hiloShadowMatrix(
+                    ${String(SHADOW_DIRECTIONAL_MATRICES_VEC4)}u +
+                        uint(nextMatrixIndex) * 4u
+                )
+            );
+            visibility = mix(
+                visibility,
+                nextVisibility,
+                smoothstep(blendStart, splits[cascade], viewDepth)
+            );
+        }
+    }
+    float strength = clamp(params.z, 0.0, 4.0);
+    return clamp(1.0 - (1.0 - visibility) * strength, 0.0, 1.0);
+}
+float hiloSpotShadow(int index, float bias, vec3 viewPosition) {
+    int sliceIndex = ${String(MAX_DIRECTIONAL_LIGHTS * MAX_DIRECTIONAL_SHADOW_CASCADES)} + index;
+    uint matrixBase = ${String(SHADOW_SPOT_MATRICES_VEC4)}u + uint(index) * 4u;
+    return hiloShadowAtlasVisibility(
+        sliceIndex,
+        bias,
+        viewPosition,
+        hiloShadowMatrix(matrixBase)
+    );
+}
+float hiloPointShadow(int index, float bias, vec3 viewPosition) {
+    int matrixOffset = index * 6;
+    for (int face = 0; face < 6; face++) {
+        int matrixIndex = matrixOffset + face;
+        uint matrixBase = ${String(SHADOW_POINT_MATRICES_VEC4)}u + uint(matrixIndex) * 4u;
+        mat4 lightMatrix = hiloShadowMatrix(matrixBase);
+        vec4 clipPosition = lightMatrix * vec4(viewPosition, 1.0);
+        if (clipPosition.w <= 0.0) continue;
+        vec3 projection = clipPosition.xyz / clipPosition.w;
+        if (abs(projection.x) <= 1.0001 && abs(projection.y) <= 1.0001) {
+            int sliceIndex = ${String(MAX_DIRECTIONAL_LIGHTS * MAX_DIRECTIONAL_SHADOW_CASCADES + MAX_SPOT_LIGHTS)} +
+                matrixIndex;
+            return hiloShadowAtlasVisibility(
+                sliceIndex,
+                bias,
+                viewPosition,
+                lightMatrix
+            );
+        }
+    }
+    return 1.0;
+}
+float hiloClusteredShadow(
+    vec4 metadata,
+    vec3 viewPosition,
+    vec3 normal,
+    vec3 lightDirection
+) {
+    int kind = int(metadata.x + 0.5);
+    int index = int(metadata.y + 0.5);
+    if (kind == 0) return 1.0;
+    uint biasBase = kind == 1
+        ? ${String(SHADOW_DIRECTIONAL_BIASES_VEC4)}u
+        : (kind == 2
+            ? ${String(SHADOW_SPOT_BIASES_VEC4)}u
+            : ${String(SHADOW_POINT_BIASES_VEC4)}u);
+    vec2 biasParameters = frameData.values[biasBase + uint(index)].xy;
+    float bias = max(
+        biasParameters.y * (1.0 - dot(normal, lightDirection)),
+        biasParameters.x
+    );
+    if (kind == 1) return hiloDirectionalShadow(index, bias, viewPosition);
+    if (kind == 2) return hiloSpotShadow(index, bias, viewPosition);
+    return hiloPointShadow(index, bias, viewPosition);
+}`;
+}
+
 function gpuScenePBRShader(
     variant: Readonly<PBRMaterialVariant>,
     withMaterialAttributes: boolean,
-    withGroundTruthAmbientOcclusion: boolean
+    withGroundTruthAmbientOcclusion: boolean,
+    withShadows: boolean
 ): StorageGraphicsShader {
-    const cacheKey = `${variant.key}|attributes=${withMaterialAttributes ? '1' : '0'}|gtao=${withGroundTruthAmbientOcclusion ? '1' : '0'}`;
+    const cacheKey = `${variant.key}|attributes=${withMaterialAttributes ? '1' : '0'}|gtao=${withGroundTruthAmbientOcclusion ? '1' : '0'}|shadows=${withShadows ? '1' : '0'}`;
     const cached = GPU_SCENE_PBR_SHADER_CACHE.get(cacheKey);
     if (cached !== undefined) return cached;
     const textureDeclarations = variant.textures
@@ -2158,6 +2586,7 @@ function gpuScenePBRShader(
     const occlusionMap = variantTexture(variant, 'occlusionMap');
     const emissionMap = variantTexture(variant, 'emission');
     const normalMap = variantTexture(variant, 'normalMap');
+    const opacityMap = variantTexture(variant, 'opacityMap');
     const materialSample = (binding: Readonly<PBRTextureBinding>): string =>
         `hiloMaterialSample(${binding.shaderName}, materialBase, ${String(binding.slotIndex)}u, ${variantSampleUV(binding)})`;
     const bindings: ShaderReadBinding[] = [
@@ -2206,6 +2635,40 @@ function gpuScenePBRShader(
             { name: 'u_gtaoTexture', group: 1, binding: binding + 1, kind: 'sampler' }
         );
     }
+    const areaTextureIndex = variant.textures.length + (withGroundTruthAmbientOcclusion ? 1 : 0);
+    for (let index = 0; index < 2; index += 1) {
+        const name = index === 0 ? 'u_areaLightsLtcTexture1' : 'u_areaLightsLtcTexture2';
+        const binding = (areaTextureIndex + index) * 2;
+        bindings.push(
+            {
+                name,
+                group: 1,
+                binding,
+                kind: 'sampled-texture',
+                sampleType: 'unfilterable-float'
+            },
+            { name, group: 1, binding: binding + 1, kind: 'sampler' }
+        );
+    }
+    if (withShadows) {
+        const textureIndex = areaTextureIndex + 2;
+        const binding = textureIndex * 2;
+        bindings.push(
+            {
+                name: 'u_shadowAtlas',
+                group: 1,
+                binding,
+                kind: 'sampled-texture',
+                sampleType: 'depth'
+            },
+            {
+                name: 'u_shadowAtlas',
+                group: 1,
+                binding: binding + 1,
+                kind: 'comparison-sampler'
+            }
+        );
+    }
     const shader = new StorageGraphicsShader({
         label: `Built-in clustered storage PBR (${variant.key})`,
         vertexSource: `#version 310 es
@@ -2226,6 +2689,7 @@ ${vertexUVDeclarations}
 out vec3 v_viewPosition;
 out vec3 v_viewNormal;
 flat out uint v_materialIndex;
+flat out uint v_objectFlags;
 ${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
 ${GPU_SCENE_VISIBLE_INDEX_SOURCE}
 mat3 readObjectNormalMatrix(uint base) {
@@ -2242,6 +2706,7 @@ void main() {
     v_viewPosition = (view * worldPosition).xyz;
     v_viewNormal = viewNormal;
     v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
+    v_objectFlags = floatBitsToUint(objects.values[objectBase + 12u].z);
     ${vertexUVWrites}
     gl_Position = gpuSceneClipPosition(objectBase, a_position);
 }`,
@@ -2259,13 +2724,18 @@ layout(std430) readonly buffer ClusterGridBlock { uvec2 values[]; } clusterGrid;
 layout(std430) readonly buffer ClusterIndexBlock { uint values[]; } clusterIndices;
 ${textureDeclarations}
 ${withGroundTruthAmbientOcclusion ? 'uniform sampler2D u_gtaoTexture;' : ''}
+uniform sampler2D u_areaLightsLtcTexture1;
+uniform sampler2D u_areaLightsLtcTexture2;
+${withShadows ? 'uniform highp sampler2DShadow u_shadowAtlas;' : ''}
 in vec3 v_viewPosition;
 in vec3 v_viewNormal;
 ${fragmentUVDeclarations}
 flat in uint v_materialIndex;
+flat in uint v_objectFlags;
 layout(location=0) out vec4 color;
 ${withMaterialAttributes ? 'layout(location=1) out vec4 materialAttributes;' : ''}
 ${encodingSource}
+${portableCoordinatesSource}
 float hiloMaterialChannel(vec4 value, int channel) {
     if (channel == 0) return value.r;
     if (channel == 1) return value.g;
@@ -2274,7 +2744,7 @@ float hiloMaterialChannel(vec4 value, int channel) {
     return channel == 5 ? 1.0 : 0.0;
 }
 vec4 hiloMaterialSample(sampler2D source, uint materialBase, uint slotIndex, vec2 uv) {
-    uint slotBase = materialBase + 3u + slotIndex * 5u;
+    uint slotBase = materialBase + 4u + slotIndex * 5u;
     mat3 transform = mat3(
         materials.values[slotBase].xyz,
         materials.values[slotBase + 1u].xyz,
@@ -2293,6 +2763,8 @@ vec4 hiloMaterialSample(sampler2D source, uint materialBase, uint slotIndex, vec
 }
 ${pbrSurfaceSource}
 ${pbrBrdfSource}
+${CLUSTERED_AREA_LIGHT_SOURCE}
+${withShadows ? gpuSceneShadowSource() : ''}
 vec3 hiloEvaluateClusteredLight(
     uint lightIndex,
     vec3 viewPosition,
@@ -2300,12 +2772,36 @@ vec3 hiloEvaluateClusteredLight(
     vec3 viewDirection,
     HiloMetallicRoughnessSurface surface
 ) {
-    uint lightBase = lightIndex * 4u;
+    uint lightBase = lightIndex * ${String(LIGHT_RECORD_FLOATS / 4)}u;
     vec4 positionRange = lights.values[lightBase];
     vec4 colorType = lights.values[lightBase + 1u];
     vec4 directionOuter = lights.values[lightBase + 2u];
     vec4 attenuationInner = lights.values[lightBase + 3u];
+    vec4 shadowMetadata = lights.values[lightBase + 4u];
+    vec3 areaWidth = lights.values[lightBase + 5u].xyz;
+    vec3 areaHeight = lights.values[lightBase + 6u].xyz;
     uint lightType = uint(colorType.w + 0.5);
+    if (lightType == 3u) {
+        vec3 areaDiffuse;
+        vec3 areaSpecular;
+        getAreaLightComponents(
+            surface.diffuseColor,
+            surface.specularColor,
+            surface.roughness,
+            normal,
+            viewDirection,
+            viewPosition,
+            positionRange.xyz,
+            colorType.rgb,
+            areaWidth,
+            areaHeight,
+            u_areaLightsLtcTexture1,
+            u_areaLightsLtcTexture2,
+            areaDiffuse,
+            areaSpecular
+        );
+        return areaDiffuse + areaSpecular;
+    }
     vec3 lightDirection;
     vec3 radiance = colorType.rgb;
     if (lightType == 2u) {
@@ -2348,15 +2844,26 @@ vec3 hiloEvaluateClusteredLight(
         lightDiffuse,
         lightSpecular
     );
-    return radiance * (lightDiffuse + lightSpecular);
+    ${
+        withShadows
+            ? `float shadow = ((v_objectFlags & ${String(OBJECT_RECEIVE_SHADOW_FLAG)}u) != 0u)
+        ? hiloClusteredShadow(shadowMetadata, viewPosition, normal, lightDirection)
+        : 1.0;
+    return shadow * radiance * (lightDiffuse + lightSpecular);`
+            : 'return radiance * (lightDiffuse + lightSpecular);'
+    }
 }
 void main() {
     uint materialBase = v_materialIndex * ${String(PBR_GPU_MATERIAL_RECORD_BYTES / 16)}u;
     vec4 baseMetallic = materials.values[materialBase];
     vec4 emissionRoughness = materials.values[materialBase + 1u];
     vec4 materialParameters = materials.values[materialBase + 2u];
+    float opacity = materials.values[materialBase + 3u].x;
     vec4 baseColorSample = vec4(1.0);
     ${baseColorMap === null ? '' : `baseColorSample = ${materialSample(baseColorMap)};`}
+    float coverageAlpha = baseColorSample.a * opacity;
+    ${opacityMap === null ? '' : `coverageAlpha *= ${materialSample(opacityMap)}.r;`}
+    ${variant.coverageMode === 'mask' ? `if (coverageAlpha < ${String(variant.alphaCutoff)}) discard;` : ''}
     vec3 emissionSample = vec3(1.0);
     ${emissionMap === null ? '' : `emissionSample = ${materialSample(emissionMap)}.rgb;`}
     float metallic = baseMetallic.a;
@@ -2439,7 +2946,10 @@ void main() {
             lightIndex, v_viewPosition, normal, viewDirection, surface
         );
     }
-    color = vec4(lighting + surface.emissionColor, 1.0);
+    color = vec4(
+        lighting + surface.emissionColor,
+        ${variant.coverageMode === 'mask' ? '1.0' : 'coverageAlpha'}
+    );
 }`,
         bindings
     });
@@ -2485,6 +2995,8 @@ function gpuSceneMaterialAttributesShader(
     const roughnessMap = variantTexture(variant, 'roughnessMap');
     const metallicRoughnessMap = variantTexture(variant, 'metallicRoughnessMap');
     const normalMap = variantTexture(variant, 'normalMap');
+    const baseColorMap = variantTexture(variant, 'baseColorMap');
+    const opacityMap = variantTexture(variant, 'opacityMap');
     const materialSample = (binding: Readonly<PBRTextureBinding>): string =>
         `hiloMaterialSample(${binding.shaderName}, materialBase, ${String(binding.slotIndex)}u, ${variantSampleUV(binding)})`;
     const bindings: ShaderReadBinding[] = [
@@ -2568,7 +3080,7 @@ float hiloMaterialChannel(vec4 value, int channel) {
     return channel == 5 ? 1.0 : 0.0;
 }
 vec4 hiloMaterialSample(sampler2D source, uint materialBase, uint slotIndex, vec2 uv) {
-    uint slotBase = materialBase + 3u + slotIndex * 5u;
+    uint slotBase = materialBase + 4u + slotIndex * 5u;
     mat3 transform = mat3(
         materials.values[slotBase].xyz,
         materials.values[slotBase + 1u].xyz,
@@ -2590,6 +3102,12 @@ void main() {
     vec4 baseMetallic = materials.values[materialBase];
     vec4 emissionRoughness = materials.values[materialBase + 1u];
     vec4 materialParameters = materials.values[materialBase + 2u];
+    float opacity = materials.values[materialBase + 3u].x;
+    vec4 baseColorSample = vec4(1.0);
+    ${baseColorMap === null ? '' : `baseColorSample = ${materialSample(baseColorMap)};`}
+    float coverageAlpha = baseColorSample.a * opacity;
+    ${opacityMap === null ? '' : `coverageAlpha *= ${materialSample(opacityMap)}.r;`}
+    ${variant.coverageMode === 'mask' ? `if (coverageAlpha < ${String(variant.alphaCutoff)}) discard;` : ''}
     float metallic = baseMetallic.a;
     ${metallicMap === null ? '' : `metallic *= ${materialSample(metallicMap)}.r;`}
     float roughness = emissionRoughness.a;
@@ -3003,14 +3521,36 @@ function gpuSceneVertexLayouts(
     }
     return layouts;
 }
+const GPU_SCENE_POSITION_VERTEX_LAYOUT: GPUDrivenVertexBufferLayout = Object.freeze({
+    arrayStride: 12,
+    attributes: Object.freeze([
+        Object.freeze({ shaderLocation: 0, format: 'float32x3' as const, byteOffset: 0 })
+    ])
+});
 const GPU_SCENE_DEPTH_VERTEX_LAYOUTS: readonly GPUDrivenVertexBufferLayout[] = Object.freeze([
-    Object.freeze({
-        arrayStride: 12,
-        attributes: Object.freeze([
-            Object.freeze({ shaderLocation: 0, format: 'float32x3' as const, byteOffset: 0 })
-        ])
-    })
+    GPU_SCENE_POSITION_VERTEX_LAYOUT
 ]);
+
+function gpuSceneDepthVertexLayouts(
+    variant: Readonly<PBRMaterialVariant>
+): readonly GPUDrivenVertexBufferLayout[] {
+    if (variant.coverageMode === 'opaque') return GPU_SCENE_DEPTH_VERTEX_LAYOUTS;
+    const textures = coverageTextures(variant);
+    const layouts: GPUDrivenVertexBufferLayout[] = [GPU_SCENE_POSITION_VERTEX_LAYOUT];
+    if (textures.some(binding => binding.uv === 0)) {
+        layouts.push({
+            arrayStride: 8,
+            attributes: [{ shaderLocation: 2, format: 'float32x2', byteOffset: 0 }]
+        });
+    }
+    if (textures.some(binding => binding.uv === 1)) {
+        layouts.push({
+            arrayStride: 8,
+            attributes: [{ shaderLocation: 3, format: 'float32x2', byteOffset: 0 }]
+        });
+    }
+    return layouts;
+}
 
 function alignedByteLength(value: number): number {
     return Math.ceil(value / 4) * 4;
@@ -3191,6 +3731,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #logicalBucketByGeometry = new Map<Geometry, Map<PBRMaterial, number>>();
     readonly #logicalGPUCompatible: Uint8Array;
     readonly #gpuManagedMeshes: Mesh[] = [];
+    readonly #collectedLights: (PointLight | SpotLight | DirectionalLight | AreaLight)[] = [];
     readonly #fallbackWithoutMaterialAttributes: Mesh[] = [];
     readonly #materialAttributeExcludedMeshes: Mesh[] = [];
     readonly #fallbackTemporalParticipation = new WeakMap<Mesh, number>();
@@ -3242,6 +3783,22 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         magFilter: 'linear',
         minFilter: 'linear',
         mipmapFilter: 'nearest'
+    });
+    readonly #standardShadowSampler = new ComputeSampler({
+        label: 'Clustered Forward+ standard-depth shadow sampler',
+        magFilter: 'linear',
+        minFilter: 'linear',
+        mipmapFilter: 'nearest',
+        lodMaxClamp: 0,
+        compare: depthComparison('standard')
+    });
+    readonly #reversedShadowSampler = new ComputeSampler({
+        label: 'Clustered Forward+ reversed-depth shadow sampler',
+        magFilter: 'linear',
+        minFilter: 'linear',
+        mipmapFilter: 'nearest',
+        lodMaxClamp: 0,
+        compare: depthComparison('reversed')
     });
     readonly #clearPass = new ClearBuffersPass();
     readonly #clearPool = new RenderPassParameterPool(
@@ -3381,6 +3938,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     };
     readonly #normalMatrix = new Matrix3();
     readonly #tempMatrix = new Matrix4();
+    readonly #tempQuaternion = new Quaternion();
     readonly #tempVector = new Vector3();
     readonly #onDestroy: (runtime: ClusteredForwardPlusPipeline) => void;
     #frameSerial = 0;
@@ -3393,7 +3951,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     #localLightCount = 0;
     #directionalLightCount = 0;
     #droppedLightCount = 0;
-    #forceFullFallback = false;
+    #hasShadowLights = false;
     #lastRecordedFrame = -1;
     #pendingCamera: Camera | null = null;
     #committedCamera: Camera | null = null;
@@ -3414,6 +3972,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#onDestroy = onDestroy;
         this.usesRenderGraphTimeline =
             options.temporalAA !== null && options.temporalAA.dynamicResolution !== null;
+        AreaLight.initializeLtcTexture();
         this.#temporal =
             options.temporalAA === null ? null : new TemporalResolveController(options.temporalAA);
         this.#temporalMotionDescriptor =
@@ -3509,9 +4068,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             materials: options.buckets.map(bucket => bucket.material),
             packRecord: packPBRGPUMaterialRecord
         });
-        this.#lightFloats = new Float32Array(options.maxLights * 16);
-        this.#localLightFloats = new Float32Array(options.maxLights * 16);
-        this.#directionalLightFloats = new Float32Array(options.maxLights * 16);
+        this.#lightFloats = new Float32Array(options.maxLights * LIGHT_RECORD_FLOATS);
+        this.#localLightFloats = new Float32Array(options.maxLights * LIGHT_RECORD_FLOATS);
+        this.#directionalLightFloats = new Float32Array(options.maxLights * LIGHT_RECORD_FLOATS);
         this.#lights = create({
             label: 'Clustered Forward+ light database',
             byteLength: this.#lightFloats.byteLength,
@@ -3705,10 +4264,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.refreshGPUCompatibility();
         this.collectScene(context);
         let fallbackCulling: CullingResultsHandle | null = null;
-        if (this.#fallbackObjectCount !== 0) {
+        let shadowResources: Readonly<RenderPipelineShadowResources> | null = null;
+        if (this.#fallbackObjectCount !== 0 || this.#hasShadowLights) {
             fallbackCulling = context.cull();
-            context.recordShadows(fallbackCulling);
+            shadowResources = context.recordShadows(fallbackCulling);
         }
+        this.packLights(context, shadowResources);
+        this.packShadowFrame(shadowResources);
+        this.refreshShadowCompatibility(shadowResources !== null);
         this.#materialDatabase.stage(context);
         this.syncGeometryDatabases(context);
         const frame = this.packFrame(context, renderWidth, renderHeight);
@@ -3877,9 +4440,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             objects,
             visible,
             visibleBucketOffsets,
+            materials,
             indirect,
             sceneDepth,
-            materials,
             previousVisibility,
             temporalMotion,
             temporalReactiveMask
@@ -3974,7 +4537,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneColor,
             sceneDepth,
             materialAttributes: groundTruthAmbientOcclusion === null ? materialAttributes : null,
-            ambientOcclusion
+            ambientOcclusion,
+            shadowResources
         });
         if (fallbackCulling !== null && this.#fallbackHasOpaque) {
             this.recordFallbackOpaque(
@@ -4085,11 +4649,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.#pendingFallbackTemporalMeshes.clear();
         for (const record of this.#objectByMesh.values()) {
-            if (record.seenFrame !== this.#frameSerial || this.#forceFullFallback) continue;
+            if (record.seenFrame !== this.#frameSerial) continue;
             if (record.pendingWorldVersion >= 0) {
                 record.committedMatrix.set(record.pendingMatrix);
                 record.committedWorldVersion = record.pendingWorldVersion;
                 record.committedFrustumTest = record.pendingFrustumTest;
+                record.committedReceiveShadows = record.pendingReceiveShadows;
                 record.committedBoundsRevision = record.pendingBoundsRevision;
                 record.committedOcclusionStable = record.pendingOcclusionStable;
                 record.committedMotionChanged = record.pendingMotionChanged;
@@ -4364,22 +4929,20 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     tangent0Revision: validated.tangent0?.revision ?? -1,
                     tangent1Revision: validated.tangent1?.revision ?? -1,
                     indexRevision: validated.index.revision,
-                    depthPass: new GPUDrivenRenderPass({
-                        name: `GPU Scene depth bucket ${String(physicalIndex)}`,
-                        shader:
-                            this.#options.temporalAA === null
-                                ? GPU_SCENE_DEPTH_SHADER
-                                : GPU_SCENE_TEMPORAL_DEPTH_SHADER,
-                        pipelineState: requireBucketPassState(logical.material, 'depth-only'),
-                        vertexLayouts: GPU_SCENE_DEPTH_VERTEX_LAYOUTS,
-                        indexFormat: validated.indexFormat
-                    }),
-                    colorPass: this.createColorPass(
+                    depthPass: this.createDepthPass(
                         logical,
                         physicalIndex,
                         validated.indexFormat,
                         variant
                     ),
+                    colorPass: this.createColorPass(
+                        logical,
+                        physicalIndex,
+                        validated.indexFormat,
+                        variant,
+                        false
+                    ),
+                    colorShadowed: false,
                     materialAttributesPass: this.createMaterialAttributesPass(
                         logical,
                         physicalIndex,
@@ -4394,11 +4957,27 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         return result;
     }
 
-    private createColorPass(
+    private createDepthPass(
         logical: Readonly<NormalizedBucket>,
         physicalIndex: number,
         indexFormat: 'uint16' | 'uint32',
         variant: Readonly<PBRMaterialVariant>
+    ): GPUDrivenRenderPass {
+        return new GPUDrivenRenderPass({
+            name: `GPU Scene depth bucket ${String(physicalIndex)}`,
+            shader: gpuSceneMaskedDepthShader(variant, this.#options.temporalAA !== null),
+            pipelineState: requireBucketPassState(logical.material, 'depth-only'),
+            vertexLayouts: gpuSceneDepthVertexLayouts(variant),
+            indexFormat
+        });
+    }
+
+    private createColorPass(
+        logical: Readonly<NormalizedBucket>,
+        physicalIndex: number,
+        indexFormat: 'uint16' | 'uint32',
+        variant: Readonly<PBRMaterialVariant>,
+        withShadows: boolean
     ): GPUDrivenRenderPass {
         return new GPUDrivenRenderPass({
             name: `Clustered PBR bucket ${String(physicalIndex)}`,
@@ -4407,7 +4986,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 (this.#options.screenSpaceReflections !== null ||
                     this.#options.screenSpaceGlobalIllumination !== null) &&
                     this.#options.groundTruthAmbientOcclusion === null,
-                this.#options.groundTruthAmbientOcclusion !== null
+                this.#options.groundTruthAmbientOcclusion !== null,
+                withShadows
             ),
             pipelineState: Object.freeze({
                 ...requireBucketPassState(logical.material, 'forward'),
@@ -4488,11 +5068,18 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             const variant = variants[bucket.logicalIndex];
             if (logical === undefined || variant === undefined) continue;
             if (bucket.materialVariantKey === variant.key) continue;
-            bucket.colorPass = this.createColorPass(
+            bucket.depthPass = this.createDepthPass(
                 logical,
                 bucket.physicalIndex,
                 bucket.indexFormat,
                 variant
+            );
+            bucket.colorPass = this.createColorPass(
+                logical,
+                bucket.physicalIndex,
+                bucket.indexFormat,
+                variant,
+                bucket.colorShadowed
             );
             bucket.materialAttributesPass = this.createMaterialAttributesPass(
                 logical,
@@ -4502,6 +5089,27 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             );
             bucket.materialVariantKey = variant.key;
             bucket.materialVariant = variant;
+        }
+    }
+
+    private refreshShadowCompatibility(withShadows: boolean): void {
+        for (const bucket of this.#physicalBuckets) {
+            if (
+                bucket.colorShadowed === withShadows ||
+                this.#logicalGPUCompatible[bucket.logicalIndex] !== 1
+            ) {
+                continue;
+            }
+            const logical = this.#options.buckets[bucket.logicalIndex];
+            if (logical === undefined) continue;
+            bucket.colorPass = this.createColorPass(
+                logical,
+                bucket.physicalIndex,
+                bucket.indexFormat,
+                bucket.materialVariant,
+                withShadows
+            );
+            bucket.colorShadowed = withShadows;
         }
     }
 
@@ -4515,6 +5123,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const cameraVisibility = context.camera.visibility >>> 0;
         const ambient = this.#frameFloats;
         this.#gpuManagedMeshes.length = 0;
+        this.#collectedLights.length = 0;
         this.#fallbackWithoutMaterialAttributes.length = 0;
         this.#materialAttributeExcludedMeshes.length = 0;
         this.#fallbackObjectCount = 0;
@@ -4527,7 +5136,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#localLightCount = 0;
         this.#directionalLightCount = 0;
         this.#droppedLightCount = 0;
-        this.#forceFullFallback = false;
+        this.#hasShadowLights = false;
         const temporalEnabled = this.#temporal !== null;
 
         context.scene.traverse(node => {
@@ -4555,6 +5164,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                                 committedWorldVersion: -1,
                                 pendingFrustumTest: node.frustumTest,
                                 committedFrustumTest: node.frustumTest,
+                                pendingReceiveShadows: node.receiveShadows,
+                                committedReceiveShadows: node.receiveShadows,
                                 pendingBoundsRevision: -1,
                                 committedBoundsRevision: -1,
                                 pendingOcclusionStable: false,
@@ -4602,6 +5213,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                             record.logicalBucket !== logicalIndex ||
                             record.committedWorldVersion !== node.worldMatrixVersion ||
                             record.committedFrustumTest !== node.frustumTest ||
+                            record.committedReceiveShadows !== node.receiveShadows ||
                             !boundsStable ||
                             record.committedOcclusionStable !== occlusionStable ||
                             record.committedMotionChanged !== motionChanged ||
@@ -4642,29 +5254,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     node instanceof DirectionalLight ||
                     node instanceof AreaLight
                 ) {
-                    if (node.enabled) this.packLight(node, context.camera);
+                    if (node.enabled) {
+                        this.#collectedLights.push(node);
+                        this.#hasShadowLights ||= node.shadow !== null;
+                    }
                 }
             }
             return Node.TRAVERSE_STOP_NONE;
         });
-
-        const forceFullFallback = this.readForceFullFallback();
-        if (forceFullFallback) {
-            for (const mesh of this.#gpuManagedMeshes) {
-                this.trackFallbackMesh(mesh);
-                const record = this.#objectByMesh.get(mesh);
-                if (record === undefined) continue;
-                const metaOffset = record.slot * (OBJECT_RECORD_BYTES / 4) + 48;
-                this.#objectUInts[metaOffset + 2] = 0;
-                record.committedWorldVersion = -1;
-                record.pendingWorldVersion = -1;
-                dirtyStart = Math.min(dirtyStart, record.slot);
-                dirtyEnd = Math.max(dirtyEnd, record.slot + 1);
-            }
-            this.#gpuManagedMeshes.length = 0;
-            activeCount = 0;
-            highWater = 0;
-        }
 
         for (const [mesh, record] of this.#objectByMesh) {
             if (record.seenFrame === this.#frameSerial) continue;
@@ -4680,7 +5277,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             highWater = Math.max(highWater, record.slot + 1);
         }
         this.#objectCount = activeCount;
-        this.#activeObjectHighWater = forceFullFallback ? 0 : highWater;
+        this.#activeObjectHighWater = highWater;
         this.#materialAttributeExcludedMeshes.push(
             ...this.#gpuManagedMeshes,
             ...this.#fallbackWithoutMaterialAttributes
@@ -4694,24 +5291,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 new Uint8Array(this.#objectData, byteOffset, byteLength)
             );
         }
-        this.#lightFloats.set(
-            this.#directionalLightFloats.subarray(0, this.#directionalLightCount * 16),
-            0
-        );
-        this.#lightFloats.set(
-            this.#localLightFloats.subarray(0, this.#localLightCount * 16),
-            this.#directionalLightCount * 16
-        );
-        const lightBytes = Math.max(1, this.#lightCount) * LIGHT_RECORD_BYTES;
-        context.writeStorageBuffer(
-            this.#lights,
-            0,
-            new Uint8Array(this.#lightFloats.buffer, 0, lightBytes)
-        );
-    }
-
-    private readForceFullFallback(): boolean {
-        return this.#forceFullFallback;
     }
 
     private trackFallbackMesh(mesh: Mesh): void {
@@ -4862,38 +5441,106 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             (mesh.frustumTest ? OBJECT_FRUSTUM_CULLING_FLAG : 0) |
             (occlusionStable ? OBJECT_HIZ_STABLE_FLAG : 0) |
             (motionHistoryValid ? OBJECT_MOTION_HISTORY_FLAG : 0) |
-            (motionChanged ? OBJECT_MOTION_CHANGED_FLAG : 0);
+            (motionChanged ? OBJECT_MOTION_CHANGED_FLAG : 0) |
+            (mesh.receiveShadows ? OBJECT_RECEIVE_SHADOW_FLAG : 0);
         this.#objectUInts[floatOffset + 51] = this.#materialDatabase.getHandle(
             bucket.material
         ).recordIndex;
         matrixElements(mesh.worldMatrix, record.pendingMatrix, 0);
         record.pendingWorldVersion = mesh.worldMatrixVersion;
         record.pendingFrustumTest = mesh.frustumTest;
+        record.pendingReceiveShadows = mesh.receiveShadows;
         record.pendingBoundsRevision = sphere.revision;
         record.pendingOcclusionStable = occlusionStable;
         record.pendingMotionHistoryValid = motionHistoryValid;
         record.pendingMotionChanged = motionChanged;
     }
 
+    private packLights(
+        context: RenderPipelineContext,
+        shadowResources: Readonly<RenderPipelineShadowResources> | null
+    ): void {
+        this.#lightCount = 0;
+        this.#localLightCount = 0;
+        this.#directionalLightCount = 0;
+        this.#droppedLightCount = 0;
+        for (const light of this.#collectedLights) {
+            this.packLight(light, context.camera, shadowResources);
+        }
+        const directionalFloatCount = this.#directionalLightCount * LIGHT_RECORD_FLOATS;
+        const localFloatCount = this.#localLightCount * LIGHT_RECORD_FLOATS;
+        this.#lightFloats.set(this.#directionalLightFloats.subarray(0, directionalFloatCount), 0);
+        this.#lightFloats.set(
+            this.#localLightFloats.subarray(0, localFloatCount),
+            directionalFloatCount
+        );
+        const lightBytes = Math.max(1, this.#lightCount) * LIGHT_RECORD_BYTES;
+        context.writeStorageBuffer(
+            this.#lights,
+            0,
+            new Uint8Array(this.#lightFloats.buffer, 0, lightBytes)
+        );
+    }
+
+    private packShadowFrame(shadowResources: Readonly<RenderPipelineShadowResources> | null): void {
+        this.#frameFloats.fill(0, FRAME_BASE_VEC4_COUNT * 4);
+        if (shadowResources === null) return;
+        this.#frameFloats.set(shadowResources.atlasSize, SHADOW_ATLAS_SIZE_VEC4 * 4);
+        const metadata = SHADOW_METADATA_VEC4 * 4;
+        this.#frameFloats[metadata] = shadowResources.directionalShadowCount;
+        this.#frameFloats[metadata + 1] = shadowResources.spotShadowCount;
+        this.#frameFloats[metadata + 2] = shadowResources.pointShadowCount;
+        this.#frameFloats[metadata + 3] = shadowResources.depthMode === 'reversed' ? 1 : 0;
+        this.#frameFloats.set(shadowResources.atlasRects, SHADOW_ATLAS_RECTS_VEC4 * 4);
+        this.packShadowBiases(
+            shadowResources.directionalBiases,
+            MAX_DIRECTIONAL_LIGHTS,
+            SHADOW_DIRECTIONAL_BIASES_VEC4
+        );
+        this.#frameFloats.set(
+            shadowResources.directionalCascadeSplits,
+            SHADOW_DIRECTIONAL_SPLITS_VEC4 * 4
+        );
+        this.#frameFloats.set(
+            shadowResources.directionalCascadeParams,
+            SHADOW_DIRECTIONAL_PARAMS_VEC4 * 4
+        );
+        this.#frameFloats.set(
+            shadowResources.directionalCascadeMatrices,
+            SHADOW_DIRECTIONAL_MATRICES_VEC4 * 4
+        );
+        this.packShadowBiases(shadowResources.spotBiases, MAX_SPOT_LIGHTS, SHADOW_SPOT_BIASES_VEC4);
+        this.#frameFloats.set(shadowResources.spotMatrices, SHADOW_SPOT_MATRICES_VEC4 * 4);
+        this.packShadowBiases(
+            shadowResources.pointBiases,
+            MAX_POINT_LIGHTS,
+            SHADOW_POINT_BIASES_VEC4
+        );
+        this.#frameFloats.set(shadowResources.pointMatrices, SHADOW_POINT_MATRICES_VEC4 * 4);
+    }
+
+    private packShadowBiases(source: Float32Array, count: number, targetVec4: number): void {
+        for (let index = 0; index < count; index += 1) {
+            const sourceOffset = index * 2;
+            const targetOffset = (targetVec4 + index) * 4;
+            this.#frameFloats[targetOffset] = source[sourceOffset] ?? 0;
+            this.#frameFloats[targetOffset + 1] = source[sourceOffset + 1] ?? 0;
+        }
+    }
+
     private packLight(
         light: PointLight | SpotLight | DirectionalLight | AreaLight,
-        camera: Camera
+        camera: Camera,
+        shadowResources: Readonly<RenderPipelineShadowResources> | null
     ): void {
-        if (light instanceof AreaLight || light.shadow !== null) {
-            // The clustered BRDF has neither LTC area-light evaluation nor shadow-atlas sampling.
-            // Preserve exact ordinary Forward semantics for the whole camera instead of silently
-            // approximating the light or dropping its shadow.
-            this.#forceFullFallback = true;
-            return;
-        }
         if (this.#lightCount >= this.#options.maxLights) {
             this.#droppedLightCount++;
             return;
         }
-        const directional = light instanceof DirectionalLight;
-        const target = directional ? this.#directionalLightFloats : this.#localLightFloats;
-        const lightIndex = directional ? this.#directionalLightCount : this.#localLightCount;
-        const base = lightIndex * 16;
+        const global = light instanceof DirectionalLight || light instanceof AreaLight;
+        const target = global ? this.#directionalLightFloats : this.#localLightFloats;
+        const lightIndex = global ? this.#directionalLightCount : this.#localLightCount;
+        const base = lightIndex * LIGHT_RECORD_FLOATS;
         let type = 0;
         let range = light.range;
         let inner = 1;
@@ -4902,10 +5549,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const positionX = this.#tempVector.x;
         const positionY = this.#tempVector.y;
         const positionZ = this.#tempVector.z;
-        if (directional) {
+        if (light instanceof DirectionalLight) {
             type = 2;
             range = this.cameraFar(camera);
             this.#tempVector.copy(light.getViewDirection(camera));
+        } else if (light instanceof AreaLight) {
+            type = 3;
+            range = this.cameraFar(camera);
+            this.#tempVector.set(0, 0, 0);
         } else if (light instanceof SpotLight) {
             type = 1;
             inner = light.cutoffCos;
@@ -4932,7 +5583,47 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         target[base + 13] = light.linearAttenuation;
         target[base + 14] = light.quadraticAttenuation;
         target[base + 15] = inner;
-        if (directional) this.#directionalLightCount++;
+        let shadowKind = 0;
+        let shadowIndex = 0;
+        if (shadowResources !== null && !(light instanceof AreaLight) && light.shadow !== null) {
+            if (light instanceof DirectionalLight) {
+                shadowIndex = shadowResources.directionalLights.indexOf(light);
+                if (shadowIndex >= 0 && shadowIndex < shadowResources.directionalShadowCount) {
+                    shadowKind = 1;
+                }
+            } else if (light instanceof SpotLight) {
+                shadowIndex = shadowResources.spotLights.indexOf(light);
+                if (shadowIndex >= 0 && shadowIndex < shadowResources.spotShadowCount) {
+                    shadowKind = 2;
+                }
+            } else {
+                shadowIndex = shadowResources.pointLights.indexOf(light);
+                if (shadowIndex >= 0 && shadowIndex < shadowResources.pointShadowCount) {
+                    shadowKind = 3;
+                }
+            }
+        }
+        target[base + 16] = shadowKind;
+        target[base + 17] = shadowKind === 0 ? 0 : shadowIndex;
+        target[base + 18] = 0;
+        target[base + 19] = 0;
+        if (light instanceof AreaLight) {
+            this.#tempMatrix.getRotation(this.#tempQuaternion);
+            this.#tempMatrix.fromQuat(this.#tempQuaternion);
+            this.#tempVector.set(light.width * 0.5, 0, 0).transformMat4(this.#tempMatrix);
+            target[base + 20] = this.#tempVector.x;
+            target[base + 21] = this.#tempVector.y;
+            target[base + 22] = this.#tempVector.z;
+            target[base + 23] = 0;
+            this.#tempVector.set(0, light.height * 0.5, 0).transformMat4(this.#tempMatrix);
+            target[base + 24] = this.#tempVector.x;
+            target[base + 25] = this.#tempVector.y;
+            target[base + 26] = this.#tempVector.z;
+            target[base + 27] = 0;
+        } else {
+            target.fill(0, base + 20, base + LIGHT_RECORD_FLOATS);
+        }
+        if (global) this.#directionalLightCount++;
         else this.#localLightCount++;
         this.#lightCount++;
     }
@@ -5158,9 +5849,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             objects: RenderGraphBufferHandle;
             visible: RenderGraphBufferHandle;
             visibleBucketOffsets: RenderGraphBufferHandle;
+            materials: RenderGraphBufferHandle;
             indirect: RenderGraphBufferHandle;
             sceneDepth: RenderGraphTextureHandle;
-            materials: RenderGraphBufferHandle;
             previousVisibility: RenderGraphBufferHandle | null;
             temporalMotion: RenderGraphTextureHandle | null;
             temporalReactiveMask: RenderGraphTextureHandle | null;
@@ -5199,8 +5890,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
             if (bucket === undefined) continue;
+            const variant = bucket.materialVariant;
+            const masked = variant.coverageMode === 'mask';
+            const maskedTextures = masked ? coverageTextures(variant) : [];
             const parameters = context.acquirePassParameters(this.#depthDrawPool);
-            parameters.configureStorageBufferCount(resources.temporalMotion === null ? 4 : 6);
+            parameters.configure(bucket.depthPass.vertexLayouts.length, maskedTextures.length);
+            parameters.configureStorageBufferCount(
+                resources.temporalMotion !== null ? 6 : masked ? 5 : 4
+            );
             parameters.setBuffer(0, resources.frameBuffer);
             parameters.setBuffer(1, resources.objects);
             parameters.setBuffer(2, resources.visible);
@@ -5216,8 +5913,37 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 }
                 parameters.setBuffer(4, resources.materials);
                 parameters.setBuffer(5, resources.previousVisibility);
+            } else if (masked) {
+                parameters.setBuffer(4, resources.materials);
             }
             parameters.setVertexBuffer(0, context.graph.importStorageBuffer(bucket.position));
+            if (masked) {
+                let vertexSlot = 1;
+                if (maskedTextures.some(binding => binding.uv === 0)) {
+                    if (bucket.uv0 === null) throw new Error('GPU Scene mask UV0 is unavailable');
+                    parameters.setVertexBuffer(
+                        vertexSlot++,
+                        context.graph.importStorageBuffer(bucket.uv0)
+                    );
+                }
+                if (maskedTextures.some(binding => binding.uv === 1)) {
+                    if (bucket.uv1 === null) throw new Error('GPU Scene mask UV1 is unavailable');
+                    parameters.setVertexBuffer(
+                        vertexSlot,
+                        context.graph.importStorageBuffer(bucket.uv1)
+                    );
+                }
+                for (
+                    let textureIndex = 0;
+                    textureIndex < maskedTextures.length;
+                    textureIndex += 1
+                ) {
+                    const texture = maskedTextures[textureIndex]?.texture;
+                    if (texture === undefined) continue;
+                    parameters.setTexture(textureIndex, context.graph.importTexture(texture));
+                    parameters.samplers[textureIndex] = this.samplerFor(texture);
+                }
+            }
             parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
@@ -5437,6 +6163,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneDepth: RenderGraphTextureHandle;
             materialAttributes: RenderGraphTextureHandle | null;
             ambientOcclusion: RenderGraphTextureHandle | null;
+            shadowResources: Readonly<RenderPipelineShadowResources> | null;
         }>
     ): void {
         const batch = context.acquirePassParameters(this.#colorBatchPool);
@@ -5478,9 +6205,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     : bucket.materialVariant;
             const parameters = context.acquirePassParameters(this.#colorDrawPool);
             const gtaoTextureCount = resources.ambientOcclusion === null ? 0 : 1;
+            const shadowTextureCount = resources.shadowResources === null ? 0 : 1;
             parameters.configure(
                 bucket.colorPass.vertexLayouts.length,
-                variant.textures.length + gtaoTextureCount
+                variant.textures.length + gtaoTextureCount + 2 + shadowTextureCount
             );
             parameters.setBuffer(0, resources.frameBuffer);
             parameters.setBuffer(1, resources.objects);
@@ -5527,6 +6255,24 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 parameters.setTexture(variant.textures.length, resources.ambientOcclusion);
                 parameters.samplers[variant.textures.length] =
                     this.#groundTruthAmbientOcclusionSampler;
+            }
+            const areaTextureIndex = variant.textures.length + gtaoTextureCount;
+            const areaTexture1 = AreaLight.ltcTexture1;
+            const areaTexture2 = AreaLight.ltcTexture2;
+            if (areaTexture1 === null || areaTexture2 === null) {
+                throw new Error('Clustered Forward+ LTC textures are unavailable');
+            }
+            parameters.setTexture(areaTextureIndex, context.graph.importTexture(areaTexture1));
+            parameters.samplers[areaTextureIndex] = this.samplerFor(areaTexture1);
+            parameters.setTexture(areaTextureIndex + 1, context.graph.importTexture(areaTexture2));
+            parameters.samplers[areaTextureIndex + 1] = this.samplerFor(areaTexture2);
+            if (resources.shadowResources !== null) {
+                const textureIndex = areaTextureIndex + 2;
+                parameters.setTexture(textureIndex, resources.shadowResources.atlas);
+                parameters.samplers[textureIndex] =
+                    resources.shadowResources.depthMode === 'reversed'
+                        ? this.#reversedShadowSampler
+                        : this.#standardShadowSampler;
             }
             parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
             parameters.draw.buffer = resources.indirect;
@@ -5851,7 +6597,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
             requiredLimits: Object.freeze({
                 maxBindingsPerBindGroup: Math.max(
                     hiZ ? 6 + this.#options.hiZLevelCount : 6,
-                    PBR_TEXTURE_ROLES.length * 2 + (groundTruthAmbientOcclusion ? 2 : 0),
+                    PBR_TEXTURE_ROLES.length * 2 + (groundTruthAmbientOcclusion ? 2 : 0) + 6,
                     screenSpaceReflections
                         ? 1 + SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels + 1 + 1
                         : 0,
@@ -5860,14 +6606,14 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                 maxStorageBuffersPerShaderStage: 8,
                 maxSampledTexturesPerShaderStage: Math.max(
                     hiZ ? this.#options.hiZLevelCount : 0,
-                    PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0),
+                    PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0) + 3,
                     screenSpaceReflections
                         ? SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels
                         : 0,
                     volumetricLighting ? 4 : 0
                 ),
                 maxSamplersPerShaderStage:
-                    PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0),
+                    PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0) + 3,
                 ...(hiZ || volumetricLighting
                     ? {
                           maxStorageTexturesPerShaderStage:

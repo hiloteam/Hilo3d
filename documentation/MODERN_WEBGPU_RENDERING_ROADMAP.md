@@ -17,10 +17,12 @@ Draw、HDR/PBR、设备丢失恢复和严格的帧事务都已经存在。当前
    [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 2. **GPU Scene 与 GPU 可见性**：high-end profile 已让注册的普通不透明 `Mesh` 进入常驻 GPU
    database、previous-frame Hi-Z、GPU cull/LOD/compact 和固定 bucket indirect
-   draw；透明、蒙皮、morph、alpha-test 和 100k/10k 性能基线仍是后续完成门禁。
+   draw；alpha-mask 已覆盖 opacity/base-color
+   coverage、depth/motion/attributes/color 一致性；透明、蒙皮、morph 和 100k/10k 性能基线仍是后续完成门禁。
 3. **生产级 Clustered Forward+**：high-end profile 已提供 depth-driven 3D cluster、GPU
-   count/prefix/write allocator、有界 overflow 与 storage-aware GGX
-   PBR；完整材质层、阴影、cookie/IES、精确 area-light 和透明路径仍需接入。
+   count/prefix/write allocator、有界 overflow 与 storage-aware GGX PBR、共享 shadow-atlas
+   sampling 与精确 LTC area light；完整 layered
+   material、cookie/IES 和透明 clustered-native 路径仍需接入。
 4. **时域渲染框架**：recovery-aware history owner、current/previous transform、projection
    jitter、opaque/masked motion vector、原生分辨率 TAA、固定/动态 0.5–1 比例 TAAU 与 authored
    reactive mask 已落地；透明 history/resurrection 策略仍未完成。
@@ -354,9 +356,10 @@ bounds revision 都稳定时才使用 previous-frame occlusion。camera
 cut、失败帧和提交后的时域推进分别通过 history invalidation、`frameDiscarded()` 与 `frameSubmitted()`
 处理。previous-frame culling 使用同一已提交帧的 VP、view、projection 与 depth convention；RG32F
 Hi-Z 同时保留区块 min/max，culling 对 standard/reversed depth 分别读取 `max`/`min`
-最远值，SSR 读取完整区间。当前公开切片限定为单相机、single-sample、opaque、unskinned、indexed
+最远值，SSR 读取完整区间。当前公开切片限定为单相机、single-sample、opaque/alpha-mask、unskinned、indexed
 triangle PBR bucket GPU fast
-path；未注册 mesh、容量 overflow、skinning/morph、alpha/transparent/layered
+path；alpha-mask 在 depth/motion/attributes/color 共用 base-color/opacity
+coverage；未注册 mesh、容量 overflow、skinning/morph、transparent/layered
 material 以及运行时 material/geometry replacement 会进入共享 Forward compatibility path，并通过 mesh
 identity exclusion 避免重复绘制。真实 WebGPU scale fixture 已覆盖 100k static + 10k dynamic、256
 lights、dirty dynamic upload 与 device recovery；物理 GPU 上可比较的长期性能基线仍是 G0 发布门禁。
@@ -406,22 +409,25 @@ cluster。光源分配使用 count → 256-entry workgroup scan → block prefix
 sentinel/`atomicMin` stable index write；全局 index budget 与 per-cluster ceiling 都有 deterministic
 truncation 和 overflow counter。点光与聚光进入 cluster；方向光使用独立全局列表，空 depth
 tile 不分配 index，near-plane crossing local light 使用保守 tile bounds。精确 LTC
-AreaLight 当前明确让整帧 mesh 进入 ordinary Forward fallback，不做点光近似。fragment
-shader 只按 global directional + cluster grid/list 迭代，不产生 light-count
-variant。普通 Forward 与 clustered variant 现在共用
+AreaLight 使用 ordinary Forward 同源 LUT 和显式 LOD 采样并进入 global light
+prefix，不做点光近似。fragment shader 只按 global directional + cluster
+grid/list 迭代，不产生 light-count variant。普通 Forward 与 clustered variant 现在共用
 `pbr_surface.glsl`/`pbr_brdf.glsl`；Forward+ 只替换 light-list provider 与 light
 iteration，不再维护第二套材质模型。结果进入 `rgba16float` HDR、Bloom 和 ACES display
 transform；`readDiagnostics()` 仅用于显式、按需的验收读回，不参与生产帧调度。当前 storage
 PBR 原生覆盖 base color、metallic、roughness、combined
 metallic-roughness、occlusion、emission、normal map，支持 UV0/UV1、UV
 matrix、sampler 状态与 tangent-space normal；颜色阶段复用 depth prepass，non-uniform
-scale 通过每对象 inverse-transpose normal
-basis 正确着色。贴图身份或同能力 variant 的运行时变化保留 GPU path；custom compile、layered
-PBR、alpha-test、transparent、transmission、parallax/environment 和变形输入由共享 Forward
+scale 通过每对象 inverse-transpose normal basis 正确着色。alpha-mask 已让 opacity/base-color
+coverage 在 depth、motion、material-attributes 和 color pass 中一致 discard。directional/spot/point
+shadow light 复用 renderer 唯一 shadow atlas、shadow-first light
+order 与 cascade/bias/matrix 数据；storage PBR 支持 standard/reversed depth 3×3 PCF 和逐物体
+`receiveShadows`。贴图身份或同能力 variant 的运行时变化保留 GPU path；custom compile、layered
+PBR、transparent、transmission、parallax/environment 和变形输入由共享 Forward
 fallback 保持功能正确；fallback 的 opaque/transparent split、shadow 录制和 transmission opaque scene
 copy 已有真实 WebGPU 覆盖，并与 GPU Scene 一起写 linear HDR 后统一经过 separable
-Bloom/ACES。它们尚未获得 clustered-native light list；shadow/cookie/IES、LTC area
-light、完整 layered PBR 与透明的 clustered-native 像素/性能证据仍是 L0 最终画质门禁。
+Bloom/ACES。它们尚未获得 clustered-native light list；cookie/IES、完整 layered
+PBR 与透明的 clustered-native 像素/性能证据仍是 L0 最终画质门禁。
 
 第一版不应继续扩充固定 LightBlock，而应：
 

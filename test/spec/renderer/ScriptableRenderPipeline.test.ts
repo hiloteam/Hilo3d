@@ -676,10 +676,18 @@ class ConditionalShadowPipeline implements RenderPipeline {
     readonly name = 'conditional-shadow';
     readonly pass = new SceneRenderPass('Conditional shadow scene');
     recordSharedShadows = true;
+    recordedAtlas = 0;
+    recordedDirectionalShadowCount = 0;
+    recordedDepthMode: 'standard' | 'reversed' | null = null;
 
     record(context: RenderPipelineContext): void {
         const culling = context.cull();
-        if (this.recordSharedShadows) context.recordShadows(culling);
+        if (this.recordSharedShadows) {
+            const shadows = context.recordShadows(culling);
+            this.recordedAtlas = shadows?.atlas ?? 0;
+            this.recordedDirectionalShadowCount = shadows?.directionalShadowCount ?? 0;
+            this.recordedDepthMode = shadows?.depthMode ?? null;
+        }
         const rendererList = context.createRendererList({
             cullingResults: culling,
             queue: 'all',
@@ -2737,6 +2745,9 @@ describe('Scriptable render pipeline', () => {
 
         renderer.render(scene, camera);
         expect(renderer.lightManager.shadowAtlas).not.toBeNull();
+        expect(runtime.recordedAtlas).toBeGreaterThan(0);
+        expect(runtime.recordedDirectionalShadowCount).toBe(1);
+        expect(runtime.recordedDepthMode).toBe('standard');
 
         runtime.recordSharedShadows = false;
         renderer.render(scene, camera);

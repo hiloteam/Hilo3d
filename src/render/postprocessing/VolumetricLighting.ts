@@ -342,6 +342,9 @@ struct LightRecord {
     colorType: vec4<f32>,
     directionOuter: vec4<f32>,
     attenuationInner: vec4<f32>,
+    shadowMetadata: vec4<f32>,
+    areaHalfWidth: vec4<f32>,
+    areaHalfHeight: vec4<f32>,
 };
 struct LocalFogVolume {
     centerShape: vec4<f32>,
@@ -431,6 +434,9 @@ fn phaseHenyeyGreenstein(cosine: f32) -> f32 {
 ${screenSpaceVisibility}
 fn evaluateLight(light: LightRecord, viewPosition: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
     let lightType = u32(light.colorType.w + 0.5);
+    // Surface LTC integration is exact, but the froxel model does not yet define an area-light
+    // scattering approximation. Keep the shared light-buffer stride intact and skip that type.
+    if (lightType == 3u) { return vec3<f32>(0.0); }
     var lightDirection: vec3<f32>;
     var radiance = light.colorType.rgb;
     var shadowVector: vec3<f32>;

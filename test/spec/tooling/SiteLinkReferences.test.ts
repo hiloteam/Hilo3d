@@ -33,4 +33,22 @@ describe('extractSiteReferences', () => {
             )
         ).toEqual(['./guide.html?lang=en&mode=full', './cover.png']);
     });
+
+    it('extracts external glTF buffers, images, and extension URIs', () => {
+        expect(
+            extractSiteReferences(
+                'gltf',
+                JSON.stringify({
+                    buffers: [{ uri: 'dragon.bin' }],
+                    images: [{ uri: 'textures/albedo.png' }, { uri: 'data:image/png;base64,AA==' }],
+                    extensions: { EXT_example: { uri: 'metadata/payload.bin' } }
+                })
+            )
+        ).toEqual([
+            'dragon.bin',
+            'textures/albedo.png',
+            'data:image/png;base64,AA==',
+            'metadata/payload.bin'
+        ]);
+    });
 });

@@ -6,9 +6,9 @@ import type {
 import type Matrix3 from '../../math/Matrix3';
 
 /** @internal Stable compact layout consumed by the first shared GPU PBR material database. */
-export const PBR_GPU_MATERIAL_RECORD_LAYOUT = 'builtin-pbr-storage-v3';
+export const PBR_GPU_MATERIAL_RECORD_LAYOUT = 'builtin-pbr-storage-v4';
 
-/** @internal Common opaque PBR slots supported by the clustered storage profile. */
+/** @internal Common PBR slots supported by the clustered storage profile. */
 export const PBR_GPU_MATERIAL_TEXTURE_SLOTS = Object.freeze([
     'baseColor',
     'metallic',
@@ -16,11 +16,12 @@ export const PBR_GPU_MATERIAL_TEXTURE_SLOTS = Object.freeze([
     'metallicRoughness',
     'occlusion',
     'emission',
-    'normal'
+    'normal',
+    'opacity'
 ] as const);
 
-/** @internal Three surface vec4s plus five vec4s for every supported texture slot. */
-export const PBR_GPU_MATERIAL_RECORD_BYTES = (3 + PBR_GPU_MATERIAL_TEXTURE_SLOTS.length * 5) * 16;
+/** @internal Four surface vec4s plus five vec4s for every supported texture slot. */
+export const PBR_GPU_MATERIAL_RECORD_BYTES = (4 + PBR_GPU_MATERIAL_TEXTURE_SLOTS.length * 5) * 16;
 const DEFAULT_CHANNELS = Object.freeze(['r', 'g', 'b', 'a'] as const);
 
 function packUVMatrix(matrix: Matrix3 | null, target: Float32Array, offset: number): void {
@@ -79,6 +80,10 @@ export function packPBRGPUMaterialRecord(material: PBRMaterial, target: Uint8Arr
     values[9] = material.occlusionStrength;
     values[10] = material.normalScale;
     values[11] = material.temporalReactiveFactor;
+    values[12] = material.opacity;
+    values[13] = 0;
+    values[14] = 0;
+    values[15] = 0;
     for (let slotIndex = 0; slotIndex < PBR_GPU_MATERIAL_TEXTURE_SLOTS.length; slotIndex += 1) {
         const name = PBR_GPU_MATERIAL_TEXTURE_SLOTS[slotIndex];
         if (name === undefined) throw new Error('PBR GPU texture slot table is incomplete');
@@ -87,7 +92,7 @@ export function packPBRGPUMaterialRecord(material: PBRMaterial, target: Uint8Arr
         if (binding !== null && definition === undefined) {
             throw new Error(`PBR material definition is missing active texture slot ${name}`);
         }
-        const slotFloatOffset = 12 + slotIndex * 20;
+        const slotFloatOffset = 16 + slotIndex * 20;
         packUVMatrix(binding?.transform ?? null, values, slotFloatOffset);
         const infoOffset = slotFloatOffset + 12;
         values[infoOffset] = binding?.uvSet ?? definition?.uvSets[0] ?? 0;

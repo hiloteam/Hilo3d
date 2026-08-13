@@ -95,11 +95,16 @@ point/spot attenuation 与 surface Clustered PBR 使用相同的 range、constan
 attenuation 和 spot cone 参数。phase function 使用有界 Henyey–Greenstein anisotropy；ambient
 injection 只读取同一帧已打包的 ambient light，不创建隐藏的环境常量。
 
+`AreaLight` 的 surface
+lighting 使用精确 LTC，但当前 froxel 模型没有定义矩形面积光散射近似，因此体积注入会按显式 light
+type 跳过它，同时保持共享 light-record
+stride 和后续 local-light 索引不变；它不会退化成点光源制造错误光束。
+
 `shadowSteps` 对 froxel-to-light segment 执行 bounded screen-space depth
 visibility。它能让当前 Camera 可见的动态遮挡物切断方向光和局部光束，并随质量档控制成本；离屏或被当前 Camera 完全遮住的 caster 不在这个 screen-space 合同内，确定性按可见处理。当前 Clustered
-surface path 对显式 `Light.shadow` 仍保留 exact Forward fallback，体积路径不会谎称已消费 shared
-shadow atlas。后续 atlas/virtual-shadow 接入必须增加明确的 atlas resource、matrix/index
-ABI 和独立像素证据，不能暗中替换这里的 screen-space visibility。
+surface path 已消费 shared shadow atlas；体积路径仍只使用上述 bounded screen-space
+visibility，不会谎称已消费 atlas。后续 volumetric atlas/virtual-shadow 接入必须增加明确的 atlas
+resource、matrix/index ABI 和独立像素证据，不能暗中替换这里的 screen-space visibility。
 
 ## 时域与生命周期
 

@@ -528,7 +528,9 @@ addPlinth(2.28, 0.38, bronzeLine, -0.72, -4.96);
 addPlinth(2.14, 0.24, warmIvory, -0.43, -4.98);
 
 const dragonModel = await new Hilo3d.GLTFLoader().load({
-    src: new URL('./models/dragon/dragon.gltf', import.meta.url).href,
+    // Keep the external dragon.bin URI adjacent to its glTF in production builds. Resolving
+    // against import.meta.url would make Vite emit only the JSON into the hashed assets directory.
+    src: new URL('./models/dragon/dragon.gltf', location.href).href,
     pbrMaterialDefaults: environment
 });
 await dragonModel.ready;

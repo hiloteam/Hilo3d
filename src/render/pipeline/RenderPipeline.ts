@@ -1,4 +1,8 @@
 import type Camera from '../../camera/Camera';
+import type { CameraDepthMode } from '../../camera/Camera';
+import type DirectionalLight from '../../light/DirectionalLight';
+import type PointLight from '../../light/PointLight';
+import type SpotLight from '../../light/SpotLight';
 import type { RendererFeatureName } from '../RendererOptions';
 import type { RendererScene, RendererViewport } from '../RendererCore';
 import type {
@@ -17,7 +21,7 @@ import type {
     RendererListDescriptor,
     RendererListHandle
 } from './RendererList';
-import type { ScriptableRenderGraph } from './ScriptableRenderGraph';
+import type { RenderGraphTextureHandle, ScriptableRenderGraph } from './ScriptableRenderGraph';
 import type { RenderPipelineTextureFormat } from './RenderPipelineTexture';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 
@@ -184,6 +188,46 @@ export interface RenderPipelineOutput {
     colorAttachment(index: number): Readonly<RenderPipelineOutputColorAttachment>;
 }
 
+/** Frame-scoped shared shadow-atlas data available to custom and built-in pipelines. */
+export interface RenderPipelineShadowResources {
+    /** Exact graph texture written by the recorded shadow passes. */
+    readonly atlas: RenderGraphTextureHandle;
+    /** Atlas dimensions and reciprocal dimensions as `[width, height, 1/width, 1/height]`. */
+    readonly atlasSize: Float32Array;
+    /** Top-left atlas rectangles as packed `[scaleX, scaleY, offsetX, offsetY]` values. */
+    readonly atlasRects: Float32Array;
+    /** Depth convention used by the atlas texture and comparison sampler. */
+    readonly depthMode: CameraDepthMode;
+    /** Shadow-first directional-light order used by the packed directional arrays. */
+    readonly directionalLights: readonly DirectionalLight[];
+    /** Shadow-first spot-light order used by the packed spot arrays. */
+    readonly spotLights: readonly SpotLight[];
+    /** Shadow-first point-light order used by the packed point arrays. */
+    readonly pointLights: readonly PointLight[];
+    /** Number of leading directional lights with valid packed shadow data. */
+    readonly directionalShadowCount: number;
+    /** Number of leading spot lights with valid packed shadow data. */
+    readonly spotShadowCount: number;
+    /** Number of leading point lights with valid packed shadow data. */
+    readonly pointShadowCount: number;
+    /** Directional minimum/slope bias pairs in shadow-first light order. */
+    readonly directionalBiases: Float32Array;
+    /** Four cascade far distances per directional light. */
+    readonly directionalCascadeSplits: Float32Array;
+    /** Cascade count, blend fraction, and shadow strength per directional light. */
+    readonly directionalCascadeParams: Float32Array;
+    /** View-space-to-shadow-clip matrices for every directional cascade. */
+    readonly directionalCascadeMatrices: Float32Array;
+    /** Spot minimum/slope bias pairs in shadow-first light order. */
+    readonly spotBiases: Float32Array;
+    /** View-space-to-shadow-clip matrices for shadowed spot lights. */
+    readonly spotMatrices: Float32Array;
+    /** Point minimum/slope bias pairs in shadow-first light order. */
+    readonly pointBiases: Float32Array;
+    /** Six view-space-to-shadow-clip face matrices per shadowed point light. */
+    readonly pointMatrices: Float32Array;
+}
+
 /** Frame-scoped recording context; retaining it after record() returns is an error. */
 export interface RenderPipelineContext {
     /** Monotonic application frame index. */
@@ -209,8 +253,14 @@ export interface RenderPipelineContext {
     cull(options?: Readonly<CullingOptions>): CullingResultsHandle;
     /** Select and sort a reusable draw list from current-frame culling results. */
     createRendererList(descriptor: Readonly<RendererListDescriptor>): RendererListHandle;
-    /** Record the shared directional, spot, and point-light shadow atlas for these results. */
-    recordShadows(cullingResults: CullingResultsHandle): void;
+    /**
+     * Record the shared directional, spot, and point-light shadow atlas for these results.
+     * Returns the exact graph texture and packed sampling data, or `null` when no shadow slice is
+     * active. The returned arrays are frame-scoped and must not be retained after `record()`.
+     */
+    recordShadows(
+        cullingResults: CullingResultsHandle
+    ): Readonly<RenderPipelineShadowResources> | null;
     /** Acquire one runtime-owned, high-water reusable parameter slot. */
     acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P;
     /**
