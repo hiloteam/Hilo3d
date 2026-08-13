@@ -109,7 +109,7 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 | Temporal rendering                   | TAA/TAAU 切片   | jitter/non-jitter matrix、opaque/masked velocity、depth rejection、output-resolution history 与固定比例 TAAU 已完成；dynamic resolution/reactive mask 待补 |
 | Exposure / display transform         | 部分可用        | 有手动 EV、固定 tone mapper 与 Color Uber；无亮度统计、eye adaptation、exposure history 或 filmic 曲线控制                                                 |
 | Screen-space lighting                | GTAO + SSR 切片 | portable horizon GTAO、bent normal、temporal/filter 与双后端 Forward 已完成；WebGPU Hi-Z confidence SSR 已完成；SSGI 与 off-screen GI fallback 待补        |
-| Volumetrics / atmosphere             | 缺失            | 无 froxel volume、temporal reprojection、physical sky 或 volumetric cloud                                                                                  |
+| Volumetrics / atmosphere             | high-end 切片   | WebGPU Clustered tiled-froxel、height/local fog、depth visibility、column integration 与 temporal 已落地；atlas shadow、physical sky/cloud 待补            |
 | Geometry / texture streaming         | 缺失            | 无 GPU LOD/meshlet/cluster streaming；KTX loader 仅支持 KTX 1.1 2D 容器                                                                                    |
 | GPU profiling / graph debugging      | 生产基线        | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 时不创建 query                                                    |
 
@@ -573,9 +573,18 @@ overflow可观测且有确定降级；不能把缺页当成“无阴影”而产
 
 ![V0：Froxel 光照注入、视线积分与时域稳定](./images/modern-webgpu-roadmap/froxel-volumetrics.jpg)
 
-| 输入                               | 核心处理                                                 | 输出                   | 首要验收                                  |
-| ---------------------------------- | -------------------------------------------------------- | ---------------------- | ----------------------------------------- |
-| cluster lights、shadow、fog volume | froxel injection、ray integration、temporal reprojection | 雾、局部光束与大气层次 | camera/light 移动无明显 trail，预算可分档 |
+| 输入                               | 核心处理                                                    | 输出                   | 首要验收                                  |
+| ---------------------------------- | ----------------------------------------------------------- | ---------------------- | ----------------------------------------- |
+| cluster lights、shadow、fog volume | froxel injection、column integration、temporal reprojection | 雾、局部光束与大气层次 | camera/light 移动无明显 trail，预算可分档 |
+
+当前已交付 V0 的首个生产 WebGPU high-end 切片：local-light allocator 在启用时覆盖完整相机 cluster
+volume，directional/point/spot light 与 exponential height fog、sphere/box local fog 注入 tiled
+`rgba16float` froxel atlas，随后按 column 累积 radiance/transmittance，以 opaque
+depth 常数次重建并执行 previous-view reprojection、depth/reactive temporal resolve 与 linear HDR
+composition。bounded screen-space visibility 让当前 Camera 可见的动态 caster 切断光束；shared
+shadow-atlas sampling、physical
+atmosphere/cloud 与透明体积 history 仍是明确后续边界。完整合同与证据见
+[`VOLUMETRIC_LIGHTING.md`](./VOLUMETRIC_LIGHTING.md)。
 
 - camera-aligned froxel grid、cluster light injection、shadowed scattering；
 - height fog/local volume/anisotropy，之后再扩展 physical atmosphere/cloud；

@@ -143,6 +143,24 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             maxSampledTexturesPerShaderStage: 12,
             maxSamplersPerShaderStage: 8
         });
+
+        const withVolumetrics = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            hiZ: false,
+            volumetricLighting: { quality: 'ultra' }
+        });
+        expect(withVolumetrics.requirements.requiredCapabilities).toContain('storage-texture');
+        expect(withVolumetrics.requirements.requiredLimits).toMatchObject({
+            maxBindingsPerBindGroup: 14,
+            maxStorageTexturesPerShaderStage: 2
+        });
+        expect(withVolumetrics.requirements.requiredTextureFormats).toEqual(
+            expect.arrayContaining([
+                { format: 'rgba16float', use: 'storage' },
+                { format: 'r32float', use: 'storage' },
+                { format: 'r32float', use: 'sampled' }
+            ])
+        );
     });
 
     it('validates bucket identities, opaque materials, and unique LOD thresholds', () => {
@@ -255,6 +273,38 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     screenSpaceReflections: { maxSteps: 7 }
                 })
         ).toThrow(/maxSteps/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    volumetricLighting: { quality: 'cinematic' }
+                } as unknown as ConstructorParameters<
+                    typeof ClusteredForwardPlusPipelineFactory
+                >[0])
+        ).toThrow(/quality/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    volumetricLighting: { resolutionScale: 2 }
+                })
+        ).toThrow(/resolutionScale/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    volumetricLighting: {
+                        localVolumes: [
+                            {
+                                shape: 'sphere',
+                                center: new Vector3(),
+                                radius: 0,
+                                density: 1
+                            }
+                        ]
+                    }
+                })
+        ).toThrow(/radius/u);
     });
 
     it('requests limits for every configured cluster, geometry, and dispatch allocation', () => {
@@ -514,7 +564,22 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 maxViewportWidth: 128,
                 maxViewportHeight: 128,
                 temporalAA: { renderScale: 0.75 },
-                screenSpaceReflections: { resolutionScale: 0.5, maxSteps: 8 }
+                screenSpaceReflections: { resolutionScale: 0.5, maxSteps: 8 },
+                volumetricLighting: {
+                    quality: 'low',
+                    density: 0.018,
+                    maxDistance: 20,
+                    shadowSteps: 2,
+                    localVolumes: [
+                        {
+                            shape: 'sphere',
+                            center: new Vector3(0, 0, 1),
+                            radius: 3,
+                            density: 0.01,
+                            albedo: new Color(0.7, 0.82, 1)
+                        }
+                    ]
+                }
             });
             const canvas = document.createElement('canvas');
             const rendererDiagnostics = registerRendererDiagnostics(canvas);
@@ -573,6 +638,8 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 expect(diagnostics.clusterLightIndexCount).toBeGreaterThan(0);
                 expect(diagnostics.clusterOverflowCount).toBe(0);
                 expect(diagnostics.hiZValid).toBe(true);
+                expect(diagnostics.volumetricFroxelCount).toBeGreaterThan(0);
+                expect(diagnostics.volumetricHistoryUsed).toBe(true);
                 expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
                 const passNames = rendererDiagnostics
                     .snapshot()
@@ -585,6 +652,15 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 expect(fallbackDepthIndex).toBeGreaterThan(-1);
                 expect(currentHiZIndex).toBeGreaterThan(fallbackDepthIndex);
                 expect(passNames).toContain('Screen-space reflections confidence filter step 8');
+                expect(passNames).toEqual(
+                    expect.arrayContaining([
+                        'Froxel volumetric light and density injection',
+                        'Froxel cumulative line integration',
+                        'Froxel constant-time view reconstruction',
+                        'Volumetric lighting depth-aware temporal resolve',
+                        'Volumetric lighting linear HDR composite'
+                    ])
+                );
 
                 camera.setPosition(0.25, 0, 8).lookAt(new Vector3(0, 0, 0));
                 renderer.render(scene, camera);

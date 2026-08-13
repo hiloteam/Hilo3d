@@ -16,6 +16,7 @@ committed.
 | [Temporal rendering remediation](./TEMPORAL_RENDERING_REMEDIATION.md)      | Production Motion Vector/TAA ABI, history validity, Clustered integration, performance contract, and release evidence      |
 | [Screen-space reflections](./SCREEN_SPACE_REFLECTIONS.md)                  | Production WebGPU Hi-Z SSR, material attribute ABI, temporal rejection, lifecycle rules, limitations, and release evidence |
 | [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)      | Portable Forward GTAO, Clustered integration, bent-normal/visibility packing, temporal lifecycle, and release boundaries   |
+| [Froxel volumetric lighting](./VOLUMETRIC_LIGHTING.md)                     | WebGPU Clustered froxels, height/local fog, light injection, radiative integration, temporal lifecycle, and quality tiers  |
 | [2D rendering and multi-camera composition](./2D_RENDERING.md)             | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks               |
 | [Compute/storage implementation](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md) | Implemented Direct WGSL compute, storage resources, GPU-driven raster contract, first-release boundaries, and evidence     |
 | [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)  | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration            |

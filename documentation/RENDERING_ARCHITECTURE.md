@@ -235,8 +235,14 @@ allocator、storage-aware GGX PBR、HDR Bloom 与 ACES display。可选 `groundT
 motion/depth，要求同时启用 TemporalAA 以共享 camera-cut/history validity；horizon/temporal/filter
 controller 与普通 Forward 相同。可选 `screenSpaceReflections` 在 opaque 后构建 HDR radiance
 cone、使用 current RG32F min/max Hi-Z hierarchical trace，经过 motion/depth temporal
-rejection 后在线性 HDR 合成，并在 TAA/TAAU 与 transparent 之前完成；完整合同见
-[`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md)。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD
+rejection 后在线性 HDR 合成。可选 `volumetricLighting` 随后让 local-light
+cluster 覆盖完整相机体积，把 directional/point/spot light、height fog 与 sphere/box local
+fog 注入 tiled froxel atlas；每个 froxel column 只做一次 cumulative radiative
+integration，再以 opaque depth 常数次重建 radiance/transmittance，经 previous-view
+reprojection 与 depth/reactive temporal resolve 后，以 `scene * transmittance + scattering`
+在线性 HDR 合成。SSR 与体积光都在 TAA/TAAU 和 transparent 之前完成；完整合同见
+[`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md) 与
+[`VOLUMETRIC_LIGHTING.md`](./VOLUMETRIC_LIGHTING.md)。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD
 bucket 发一个 indirect draw，GPU 为不可见 bucket 写零 instance count；这些 bucket
 draw 在共享层分别合并到一个 depth render pass 和一个 color render
 pass，仍可逐 draw 切换 pipeline、bind group、vertex/index

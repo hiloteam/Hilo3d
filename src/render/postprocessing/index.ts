@@ -6,6 +6,14 @@ export {
     type GroundTruthAmbientOcclusionOptions
 } from './GroundTruthAmbientOcclusion';
 export type { ScreenSpaceReflectionsOptions } from './ScreenSpaceReflections';
+export type {
+    VolumetricBoxFogVolume,
+    VolumetricFogVolume,
+    VolumetricLightingDebugView,
+    VolumetricLightingOptions,
+    VolumetricLightingQuality,
+    VolumetricSphereFogVolume
+} from './VolumetricLighting';
 export {
     PostProcessRenderPipelineFactory,
     type PostProcessRenderPipelineOptions

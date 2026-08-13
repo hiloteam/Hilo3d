@@ -17,6 +17,7 @@ export const WEBGL2_ONLY_EXAMPLE_PATHS = ['webxr.html'] as const;
 export const WEBGPU_ONLY_EXAMPLE_PATHS = [
     'bloom.html',
     'clustered_forward_plus_sponza.html',
+    'volumetric_neon_reliquary.html',
     'screen_space_reflections_palace.html',
     'temporal_aa_observatory.html',
     'compute_gpu_driven.html',
@@ -27,6 +28,7 @@ export const WEBGPU_ONLY_EXAMPLE_PATHS = [
 export const NON_RENDERING_EXAMPLE_PATHS = [] as const;
 export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
     'clustered_forward_plus_sponza.html',
+    'volumetric_neon_reliquary.html',
     'shaderToy.html'
 ] as const;
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<

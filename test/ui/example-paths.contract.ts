@@ -44,6 +44,10 @@ const nativeReleaseTestSource = readFileSync(
     fileURLToPath(new URL('./native-webgpu.spec.ts', import.meta.url)),
     'utf8'
 );
+const volumetricReleaseTestSource = readFileSync(
+    fileURLToPath(new URL('./volumetric-lighting.spec.ts', import.meta.url)),
+    'utf8'
+);
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -63,11 +67,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(79);
+        expect(examplePaths).toHaveLength(80);
     });
 
-    it('expands 79 pages into the complete 149-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(149);
+    it('expands 80 pages into the complete 150-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(150);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -77,6 +81,7 @@ describe('example release matrix contract', () => {
                     ? ['webgl2']
                     : path === 'bloom.html' ||
                         path === 'clustered_forward_plus_sponza.html' ||
+                        path === 'volumetric_neon_reliquary.html' ||
                         path === 'screen_space_reflections_palace.html' ||
                         path === 'temporal_aa_observatory.html' ||
                         path === 'compute_gpu_driven.html' ||
@@ -95,7 +100,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(77);
+        expect(catalog).toHaveLength(78);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -105,7 +110,7 @@ describe('example release matrix contract', () => {
         );
         expect(catalog[0]?.id).toBe('quickStart');
         expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(69);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(76);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(77);
         expect(catalog.filter(entry => entry.featured).length).toBeGreaterThan(12);
         expect(catalog.filter(entry => entry.featured).length).toBeLessThan(catalog.length);
         expect(
@@ -134,6 +139,11 @@ describe('example release matrix contract', () => {
         expect(
             examplesForBackend(catalog, 'webgl2').some(
                 entry => entry.path === 'compute_raytracing.html'
+            )
+        ).toBe(false);
+        expect(
+            examplesForBackend(catalog, 'webgl2').some(
+                entry => entry.path === 'volumetric_neon_reliquary.html'
             )
         ).toBe(false);
 
@@ -212,6 +222,7 @@ describe('example release matrix contract', () => {
         expect(WEBGPU_ONLY_EXAMPLE_PATHS).toEqual([
             'bloom.html',
             'clustered_forward_plus_sponza.html',
+            'volumetric_neon_reliquary.html',
             'screen_space_reflections_palace.html',
             'temporal_aa_observatory.html',
             'compute_gpu_driven.html',
@@ -222,9 +233,11 @@ describe('example release matrix contract', () => {
         expect(NON_RENDERING_EXAMPLE_PATHS).toEqual([]);
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
             'clustered_forward_plus_sponza.html',
+            'volumetric_neon_reliquary.html',
             'shaderToy.html'
         ]);
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_sponza.html')).toBe(true);
+        expect(exampleUsesDedicatedReleaseTest('volumetric_neon_reliquary.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('shaderToy.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('quickStart.html')).toBe(false);
         const genericCases = exampleCases.filter(
@@ -242,6 +255,9 @@ describe('example release matrix contract', () => {
         );
         expect(nativeReleaseTestSource).toContain(
             'Sponza Forward+ exposes stable camera and lighting controls @webgpu'
+        );
+        expect(volumetricReleaseTestSource).toContain(
+            'renders stable, visually material froxel lighting in Neon Reliquary'
         );
         expect(dedicatedReleaseTestSource).toContain(
             "for (const backend of ['webgl2', 'webgpu'] as const)"

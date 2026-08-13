@@ -100,6 +100,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'webgl_support.html': 'Graphics Backend Support',
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
+    'volumetric_neon_reliquary.html': 'Neon Reliquary — Froxel Volumetric Lighting',
     'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
     'ground_truth_ambient_occlusion.html': 'The Silent Dragon — Ground-truth Ambient Occlusion',
     'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
@@ -127,6 +128,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'See Forward+, Gaussian splats, and a curl-noise Hilo3D GPU particle wordmark stay on the public Render Graph.',
     'clustered_forward_plus_sponza.html':
         'Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.',
+    'volumetric_neon_reliquary.html':
+        'Enter Khronos Sponza as a neon reliquary where temporal froxels, local fog volumes, clustered spotlights, and depth-aware visibility turn light into architecture.',
     'screen_space_reflections_palace.html':
         'Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.',
     'ground_truth_ambient_occlusion.html':
@@ -204,6 +207,7 @@ const FEATURED_PATHS = new Set([
     'video.html',
     'compute_gpu_driven.html',
     'clustered_forward_plus_sponza.html',
+    'volumetric_neon_reliquary.html',
     'screen_space_reflections_palace.html',
     'ground_truth_ambient_occlusion.html',
     'temporal_aa_observatory.html',
@@ -237,7 +241,7 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'textures';
     }
     if (
-        /(?:post_process|bloom|temporal_aa|ground_truth_ambient_occlusion|screen_space_reflections|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
+        /(?:post_process|bloom|temporal_aa|ground_truth_ambient_occlusion|screen_space_reflections|volumetric|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
             normalized
         )
     ) {
@@ -322,6 +326,7 @@ function createEntry(path: string): ExampleCatalogEntry {
             ? WEBGL2_ONLY
             : path === 'bloom.html' ||
                 path === 'clustered_forward_plus_sponza.html' ||
+                path === 'volumetric_neon_reliquary.html' ||
                 path === 'screen_space_reflections_palace.html' ||
                 path === 'temporal_aa_observatory.html' ||
                 path === 'compute_gpu_driven.html' ||
