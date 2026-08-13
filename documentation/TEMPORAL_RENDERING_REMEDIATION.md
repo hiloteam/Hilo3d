@@ -47,7 +47,7 @@ revision 不连续或上一提交未参与 motion pass 时，Z 必须写 `-1`，
 
 authored reactivity 使用同一 render pass 的 single-sample `r8unorm` location 1：`0` 保留正常history
 policy，`1` 完全拒绝 history，中间值线性抑制。ordinary built-in motion shader 从
-`MaterialBlock.u_temporalReactiveFactor` 读取；Clustered fused prepass 从 `builtin-pbr-storage-v3`
+`MaterialBlock.u_temporalReactiveFactor` 读取；Clustered fused prepass 从 `builtin-pbr-storage-v4`
 surface record 的第三个 vec4 W 分量读取。目标先清零，因此不声明第二输出的 custom motion
 shader 保持非 reactive；custom shader 可在 `HILO_TEMPORAL_REACTIVE_MASK` 变体中显式写location 1。
 

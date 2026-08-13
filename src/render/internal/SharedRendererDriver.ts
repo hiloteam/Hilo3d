@@ -106,6 +106,7 @@ import {
     ScriptableRenderPipelineContextImpl,
     ScriptableRenderPipelineResources,
     type ScriptableRenderPipelineServices,
+    type ScriptableShadowAtlasBuild,
     type ScriptableSurfaceFramePolicy
 } from './ScriptableRenderPipelineContext';
 
@@ -865,7 +866,7 @@ class SharedRendererDriver
         viewport: Readonly<RHIViewport>,
         width: number,
         height: number
-    ): number {
+    ): Readonly<ScriptableShadowAtlasBuild> | null {
         const resources = this.requireResources();
         const context = this.createContext(camera, viewport);
         this.ensureMeshFrame(context);
@@ -1713,13 +1714,14 @@ class SharedRendererDriver
             maxDepth: 1
         });
         this.ensureMeshFrame(context);
-        const shadowPassCount = this.renderSceneShadows(
+        const shadowBuild = this.renderSceneShadows(
             resources,
             context,
             visible,
             target.width,
             target.height
         );
+        const shadowPassCount = shadowBuild?.passCount ?? 0;
         const normalized = target.normalizedParameters;
         const depth = normalized.depthStencilAttachment;
         if (depth !== null && depth.depthMode !== camera.depthMode) {
@@ -1768,7 +1770,7 @@ class SharedRendererDriver
         meshes: readonly Mesh[],
         defaultWidth: number,
         defaultHeight: number
-    ): number {
+    ): Readonly<ScriptableShadowAtlasBuild> | null {
         const prepareOptions = resources.shadowPrepareOptions;
         prepareOptions.width = positiveSurfaceDimension(defaultWidth, this.width);
         prepareOptions.height = positiveSurfaceDimension(defaultHeight, this.height);
@@ -1787,7 +1789,7 @@ class SharedRendererDriver
         if (plan.atlas.sliceCount === 0) {
             resources.shadowPreparer.retireAll(this.#pipelineHost.requireActiveScope().uploads);
             resources.shadowResources.detach(resources.shadowOwner);
-            return 0;
+            return null;
         }
 
         const atlas = resources.shadowResources.prepare(
@@ -1800,7 +1802,7 @@ class SharedRendererDriver
         const viewport = resources.shadowViewport;
         viewport.width = atlas.width;
         viewport.height = atlas.height;
-        const passCount = resources.shadowRenderer.build(
+        const build = resources.shadowRenderer.build(
             this.#pipelineHost.requireActiveScope(),
             context,
             atlas,
@@ -1812,7 +1814,12 @@ class SharedRendererDriver
         resources.shadowBinding.update(atlas);
         resources.shadowBinding.attach(this.lightManager, plan);
         this.#shadowBindingAttachedThisFrame = true;
-        return passCount;
+        return Object.freeze({
+            passCount: build.passCount,
+            texture: build.texture,
+            atlas,
+            plan
+        });
     }
 
     private prepareScene(stage: RendererScene, camera: Camera): readonly Mesh[] {

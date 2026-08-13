@@ -187,7 +187,7 @@ material bind group 的 binding 0/1 分别保留给两个 UBO，sampled texture/
 
 WebGPU high-end 路径的 `SharedMaterialRecordDatabase` 不复制一套材质对象模型。它直接消费
 `MaterialInstance.materialId` 与 `revision`，按 material identity 去重为 renderer-local dense
-handle，并把 family/layout 写入稳定 record。当前 `builtin-pbr-storage-v3`
+handle，并把 family/layout 写入稳定 record。当前 `builtin-pbr-storage-v4`
 布局保存 metallic/roughness PBR 标量与 base-color/normal UV matrix；GPU
 Scene 对象 record 分别持有 logical bucket 与 material handle，同一材质跨多个 geometry
 bucket 不再复制 storage record。v3 使用既有第三个 surface vec4 的保留 W 分量保存

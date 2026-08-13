@@ -6400,7 +6400,7 @@ export interface RenderPipelineContext {
     readonly graph: ScriptableRenderGraph;
     readonly output: RenderPipelineOutput;
     prepareScene(): void;
-    recordShadows(cullingResults: CullingResultsHandle): void;
+    recordShadows(cullingResults: CullingResultsHandle): Readonly<RenderPipelineShadowResources> | null;
     readonly scene: RendererScene;
     readonly viewport: RendererViewport;
     writeStorageBuffer(buffer: StorageBuffer, byteOffset: number, data: ArrayBufferView): void;
@@ -6535,6 +6535,28 @@ export interface RenderPipelineRequirements {
     readonly requiredFeatures?: readonly RendererFeatureName[];
     readonly requiredLimits?: Readonly<Record<string, number>>;
     readonly requiredTextureFormats?: readonly Readonly<RenderPipelineTextureRequirement>[];
+}
+
+// @public
+export interface RenderPipelineShadowResources {
+    readonly atlas: RenderGraphTextureHandle;
+    readonly atlasRects: Float32Array;
+    readonly atlasSize: Float32Array;
+    readonly depthMode: CameraDepthMode;
+    readonly directionalBiases: Float32Array;
+    readonly directionalCascadeMatrices: Float32Array;
+    readonly directionalCascadeParams: Float32Array;
+    readonly directionalCascadeSplits: Float32Array;
+    readonly directionalLights: readonly DirectionalLight[];
+    readonly directionalShadowCount: number;
+    readonly pointBiases: Float32Array;
+    readonly pointLights: readonly PointLight[];
+    readonly pointMatrices: Float32Array;
+    readonly pointShadowCount: number;
+    readonly spotBiases: Float32Array;
+    readonly spotLights: readonly SpotLight[];
+    readonly spotMatrices: Float32Array;
+    readonly spotShadowCount: number;
 }
 
 // @public
