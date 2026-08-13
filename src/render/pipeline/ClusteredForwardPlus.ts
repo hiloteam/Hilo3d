@@ -152,6 +152,20 @@ import {
     type VolumetricLightingOptions,
     type VolumetricLightingSettings
 } from '../postprocessing/VolumetricLighting';
+import {
+    AutoExposureController,
+    snapshotAutoExposureOptions,
+    type AutoExposureOptions,
+    type AutoExposureSettings
+} from '../postprocessing/AutoExposure';
+import {
+    ATMOSPHERE_WEATHER_REQUIRED_TEXTURE_FORMATS,
+    AtmosphereWeatherController,
+    snapshotAtmosphereWeatherOptions,
+    type AtmosphereWeatherOptions,
+    type AtmosphereWeatherPrerequisites,
+    type AtmosphereWeatherSettings
+} from '../postprocessing/AtmosphereWeather';
 
 const OBJECT_RECORD_BYTES = 208;
 const LIGHT_RECORD_FLOATS = 28;
@@ -266,6 +280,15 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly bloomStrength?: number;
     /** Exposure multiplier applied before the ACES display transform. Defaults to 1. */
     readonly exposure?: number;
+    /** HDR display curve. Defaults to ACES; filmic preserves a softer storm-sky shoulder. */
+    readonly toneMapping?: 'aces' | 'filmic';
+    /** GPU luminance histogram and temporal eye adaptation. Disabled by default. */
+    readonly autoExposure?: Readonly<AutoExposureOptions> | false;
+    /**
+     * Physical Rayleigh/Mie/ozone atmosphere, aerial perspective, procedural volumetric clouds,
+     * and cloud shadows. Disabled by default.
+     */
+    readonly atmosphere?: Readonly<AtmosphereWeatherOptions> | false;
     /** Integrated temporal AA/TAAU. Disabled by default; `false` explicitly disables it. */
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     /**
@@ -320,6 +343,10 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly volumetricFroxelCount: number;
     /** Whether the latest submitted volumetric resolve consumed temporal history. */
     readonly volumetricHistoryUsed: boolean;
+    /** Latest adapted exposure in EV stops, or zero when auto exposure is disabled. */
+    readonly autoExposureEV: number;
+    /** Latest histogram-derived target exposure in EV stops, or zero when disabled. */
+    readonly autoExposureTargetEV: number;
 }
 
 interface NormalizedLOD {
@@ -349,6 +376,9 @@ interface NormalizedOptions {
     readonly hiZLevelCount: number;
     readonly bloomStrength: number;
     readonly exposure: number;
+    readonly toneMapping: 'aces' | 'filmic';
+    readonly autoExposure: AutoExposureSettings | null;
+    readonly atmosphere: AtmosphereWeatherSettings | null;
     readonly temporalAA: TemporalAASettings | null;
     readonly groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionSettings | null;
     readonly screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationSettings | null;
@@ -1037,6 +1067,18 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         input.volumetricLighting === undefined || input.volumetricLighting === false
             ? null
             : snapshotVolumetricLightingOptions(input.volumetricLighting);
+    const autoExposure =
+        input.autoExposure === undefined || input.autoExposure === false
+            ? null
+            : snapshotAutoExposureOptions(input.autoExposure);
+    const toneMapping = input.toneMapping ?? 'aces';
+    if (!new Set<string>(['aces', 'filmic']).has(toneMapping)) {
+        throw new TypeError('Clustered Forward+ toneMapping must be aces or filmic');
+    }
+    const atmosphere =
+        input.atmosphere === undefined || input.atmosphere === false
+            ? null
+            : snapshotAtmosphereWeatherOptions(input.atmosphere);
     if (screenSpaceReflections !== null && !hiZ) {
         throw new TypeError('Clustered Forward+ screen-space reflections require hiZ');
     }
@@ -1084,6 +1126,9 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
             'Clustered Forward+ bloomStrength'
         ),
         exposure: finitePositive(input.exposure ?? 1, 'Clustered Forward+ exposure'),
+        toneMapping,
+        autoExposure,
+        atmosphere,
         temporalAA,
         groundTruthAmbientOcclusion,
         screenSpaceGlobalIllumination,
@@ -2545,9 +2590,10 @@ function gpuScenePBRShader(
     variant: Readonly<PBRMaterialVariant>,
     withMaterialAttributes: boolean,
     withGroundTruthAmbientOcclusion: boolean,
+    withCloudShadow: boolean,
     withShadows: boolean
 ): StorageGraphicsShader {
-    const cacheKey = `${variant.key}|attributes=${withMaterialAttributes ? '1' : '0'}|gtao=${withGroundTruthAmbientOcclusion ? '1' : '0'}|shadows=${withShadows ? '1' : '0'}`;
+    const cacheKey = `${variant.key}|attributes=${withMaterialAttributes ? '1' : '0'}|gtao=${withGroundTruthAmbientOcclusion ? '1' : '0'}|cloud-shadow=${withCloudShadow ? '1' : '0'}|shadows=${withShadows ? '1' : '0'}`;
     const cached = GPU_SCENE_PBR_SHADER_CACHE.get(cacheKey);
     if (cached !== undefined) return cached;
     const textureDeclarations = variant.textures
@@ -2669,6 +2715,26 @@ function gpuScenePBRShader(
             }
         );
     }
+    const shadowTextureCount = withShadows ? 1 : 0;
+    if (withCloudShadow) {
+        const cloudTextureIndex = areaTextureIndex + 2 + shadowTextureCount;
+        const binding = cloudTextureIndex * 2;
+        bindings.push(
+            {
+                name: 'u_cloudShadowTexture',
+                group: 1,
+                binding,
+                kind: 'sampled-texture',
+                sampleType: 'float'
+            },
+            {
+                name: 'u_cloudShadowTexture',
+                group: 1,
+                binding: binding + 1,
+                kind: 'sampler'
+            }
+        );
+    }
     const shader = new StorageGraphicsShader({
         label: `Built-in clustered storage PBR (${variant.key})`,
         vertexSource: `#version 310 es
@@ -2724,6 +2790,7 @@ layout(std430) readonly buffer ClusterGridBlock { uvec2 values[]; } clusterGrid;
 layout(std430) readonly buffer ClusterIndexBlock { uint values[]; } clusterIndices;
 ${textureDeclarations}
 ${withGroundTruthAmbientOcclusion ? 'uniform sampler2D u_gtaoTexture;' : ''}
+${withCloudShadow ? 'uniform sampler2D u_cloudShadowTexture;' : ''}
 uniform sampler2D u_areaLightsLtcTexture1;
 uniform sampler2D u_areaLightsLtcTexture2;
 ${withShadows ? 'uniform highp sampler2DShadow u_shadowAtlas;' : ''}
@@ -2770,7 +2837,8 @@ vec3 hiloEvaluateClusteredLight(
     vec3 viewPosition,
     vec3 normal,
     vec3 viewDirection,
-    HiloMetallicRoughnessSurface surface
+    HiloMetallicRoughnessSurface surface,
+    float visibility
 ) {
     uint lightBase = lightIndex * ${String(LIGHT_RECORD_FLOATS / 4)}u;
     vec4 positionRange = lights.values[lightBase];
@@ -2849,8 +2917,8 @@ vec3 hiloEvaluateClusteredLight(
             ? `float shadow = ((v_objectFlags & ${String(OBJECT_RECEIVE_SHADOW_FLAG)}u) != 0u)
         ? hiloClusteredShadow(shadowMetadata, viewPosition, normal, lightDirection)
         : 1.0;
-    return shadow * radiance * (lightDiffuse + lightSpecular);`
-            : 'return radiance * (lightDiffuse + lightSpecular);'
+    return shadow * visibility * radiance * (lightDiffuse + lightSpecular);`
+            : 'return visibility * radiance * (lightDiffuse + lightSpecular);'
     }
 }
 void main() {
@@ -2935,15 +3003,21 @@ void main() {
     }
     vec3 lighting = frameData.values[31u].rgb * surface.iblDiffuseColor *
         ambientOcclusion * HILO_INVERSE_PI;
+    float cloudShadow = 1.0;
+    ${
+        withCloudShadow
+            ? 'cloudShadow = clamp(texture(u_cloudShadowTexture, gl_FragCoord.xy / frameData.values[24u].zw).r, 0.12, 1.0);'
+            : ''
+    }
     for (uint lightIndex = 0u; lightIndex < directional.x; lightIndex += 1u) {
         lighting += hiloEvaluateClusteredLight(
-            lightIndex, v_viewPosition, normal, viewDirection, surface
+            lightIndex, v_viewPosition, normal, viewDirection, surface, cloudShadow
         );
     }
     for (uint localIndex = 0u; localIndex < allocation.y; localIndex += 1u) {
         uint lightIndex = clusterIndices.values[allocation.x + localIndex];
         lighting += hiloEvaluateClusteredLight(
-            lightIndex, v_viewPosition, normal, viewDirection, surface
+            lightIndex, v_viewPosition, normal, viewDirection, surface, 1.0
         );
     }
     color = vec4(
@@ -3214,10 +3288,15 @@ void main() {
 const BLOOM_HORIZONTAL_PASS = bloomBlurPass('Clustered Forward+ bloom horizontal blur', 'x');
 const BLOOM_VERTICAL_PASS = bloomBlurPass('Clustered Forward+ bloom vertical blur', 'y');
 
-function displayPass(exposure: number, bloomStrength: number): FullscreenRenderPass {
+function displayPass(
+    exposure: number,
+    bloomStrength: number,
+    autoExposure: boolean,
+    toneMapping: 'aces' | 'filmic'
+): FullscreenRenderPass {
     const withBloom = bloomStrength > 0;
     return new FullscreenRenderPass({
-        name: 'Clustered Forward+ ACES display transform',
+        name: `Clustered Forward+ ${toneMapping === 'aces' ? 'ACES' : 'filmic'} display transform`,
         shader: new Shader({
             vs: PORTABLE_FULLSCREEN_VERTEX_SOURCE,
             fs: `#version 300 es
@@ -3225,6 +3304,7 @@ precision highp float;
 in vec2 v_uv;
 uniform sampler2D u_scene;
 ${withBloom ? 'uniform sampler2D u_bloom;' : ''}
+${autoExposure ? 'uniform sampler2D u_autoExposure;' : ''}
 layout(location=0) out vec4 color;
 vec3 aces(vec3 value) {
     const float a = 2.51;
@@ -3234,10 +3314,16 @@ vec3 aces(vec3 value) {
     const float e = 0.14;
     return clamp((value * (a * value + b)) / (value * (c * value + d) + e), 0.0, 1.0);
 }
+vec3 filmic(vec3 value) {
+    value = max(value - vec3(0.004), vec3(0.0));
+    return clamp((value * (6.2 * value + 0.5)) / (value * (6.2 * value + 1.7) + 0.06), 0.0, 1.0);
+}
 void main() {
-    vec3 hdr = texture(u_scene, v_uv).rgb * ${String(exposure)}${withBloom ? ` + texture(u_bloom, v_uv).rgb * ${String(bloomStrength)}` : ''};
+    vec3 hdr = texture(u_scene, v_uv).rgb${withBloom ? ` + texture(u_bloom, v_uv).rgb * ${String(bloomStrength)}` : ''};
+    float adaptedExposure = ${autoExposure ? 'texelFetch(u_autoExposure, ivec2(0), 0).r' : '1.0'};
+    hdr *= ${String(exposure)} * max(adaptedExposure, 0.0);
     float vignette = smoothstep(0.9, 0.22, length(v_uv - vec2(0.5)));
-    vec3 mapped = aces(hdr) * mix(0.78, 1.0, vignette);
+    vec3 mapped = ${toneMapping === 'aces' ? 'aces(hdr)' : 'filmic(hdr)'} * mix(0.78, 1.0, vignette);
     color = vec4(pow(mapped, vec3(1.0 / 2.2)), 1.0);
 }`
         }),
@@ -3778,8 +3864,16 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationController | null;
     readonly #screenSpaceReflections: ScreenSpaceReflectionsController | null;
     readonly #volumetricLighting: VolumetricLightingController | null;
+    readonly #autoExposure: AutoExposureController | null;
+    readonly #atmosphere: AtmosphereWeatherController | null;
     readonly #groundTruthAmbientOcclusionSampler = new ComputeSampler({
         label: 'Clustered GTAO linear clamp sampler',
+        magFilter: 'linear',
+        minFilter: 'linear',
+        mipmapFilter: 'nearest'
+    });
+    readonly #cloudShadowSampler = new ComputeSampler({
+        label: 'Clustered PBR cloud-shadow linear clamp sampler',
         magFilter: 'linear',
         minFilter: 'linear',
         mipmapFilter: 'nearest'
@@ -4007,6 +4101,19 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 : new VolumetricLightingController(
                       options.volumetricLighting,
                       context,
+                      options.temporalAA?.renderScale ?? 1,
+                      options.atmosphere !== null && options.atmosphere.clouds !== null
+                  );
+        this.#autoExposure =
+            options.autoExposure === null
+                ? null
+                : new AutoExposureController(options.autoExposure, context);
+        this.#atmosphere =
+            options.atmosphere === null
+                ? null
+                : new AtmosphereWeatherController(
+                      options.atmosphere,
+                      context,
                       options.temporalAA?.renderScale ?? 1
                   );
         this.#hizKeys = Object.freeze(
@@ -4204,7 +4311,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 });
             })
         );
-        this.#displayPass = displayPass(options.exposure, options.bloomStrength);
+        this.#displayPass = displayPass(
+            options.exposure,
+            options.bloomStrength,
+            options.autoExposure !== null,
+            options.toneMapping
+        );
         for (let slot = options.maxObjects - 1; slot >= 0; slot -= 1) {
             this.#freeObjectSlots.push(slot);
         }
@@ -4524,6 +4636,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       historyValid:
                           temporalFrame.historyValid && this.#committedCamera === context.camera
                   });
+        const atmospherePrerequisites: Readonly<AtmosphereWeatherPrerequisites> | null =
+            this.#atmosphere?.recordPrerequisites(
+                context,
+                sceneDepth,
+                sceneScale,
+                frame.historyValid
+            ) ?? null;
         this.recordColorPasses(context, {
             frameBuffer,
             objects,
@@ -4538,6 +4657,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneDepth,
             materialAttributes: groundTruthAmbientOcclusion === null ? materialAttributes : null,
             ambientOcclusion,
+            cloudShadow: atmospherePrerequisites?.cloudShadow ?? null,
             shadowResources
         });
         if (fallbackCulling !== null && this.#fallbackHasOpaque) {
@@ -4594,15 +4714,25 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 historyValid: temporalFrame.historyValid && this.#committedCamera === context.camera
             });
         }
-        let volumetricSceneColor = reflectedSceneColor;
+        const atmosphereSceneColor =
+            this.#atmosphere === null || atmospherePrerequisites === null
+                ? reflectedSceneColor
+                : this.#atmosphere.recordComposite(context, {
+                      sceneColor: reflectedSceneColor,
+                      sceneDepth,
+                      sceneScale,
+                      prerequisites: atmospherePrerequisites
+                  });
+        let volumetricSceneColor = atmosphereSceneColor;
         if (this.#volumetricLighting !== null) {
             volumetricSceneColor = this.#volumetricLighting.record(context, {
                 frameBuffer,
                 lights,
                 clusterGrid,
                 clusterIndices,
-                sceneColor: reflectedSceneColor,
+                sceneColor: atmosphereSceneColor,
                 sceneDepth,
+                cloudShadow: atmospherePrerequisites?.cloudShadow ?? null,
                 tilesX: frame.tilesX,
                 tilesY: frame.tilesY,
                 zSlices: this.#options.zSlices,
@@ -4633,7 +4763,17 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 resolvedSceneDepth
             );
         }
-        this.recordDisplay(context, resolvedSceneColor, bloomA, bloomB, bloomC, outputColor);
+        const exposureTexture =
+            this.#autoExposure?.record(context, resolvedSceneColor, frame.historyValid) ?? null;
+        this.recordDisplay(
+            context,
+            resolvedSceneColor,
+            bloomA,
+            bloomB,
+            bloomC,
+            exposureTexture,
+            outputColor
+        );
     }
 
     recordRenderGraphTimeline(snapshot: Readonly<RenderGraphTimelineSnapshot>): void {
@@ -4679,7 +4819,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.#groundTruthAmbientOcclusion?.frameSubmitted(frameIndex);
         this.#screenSpaceGlobalIllumination?.frameSubmitted(frameIndex);
+        this.#atmosphere?.frameSubmitted(frameIndex);
         this.#volumetricLighting?.frameSubmitted(frameIndex);
+        this.#autoExposure?.frameSubmitted(frameIndex);
         this.#temporal?.frameSubmitted(frameIndex);
     }
 
@@ -4697,7 +4839,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#pendingCamera = null;
         this.#groundTruthAmbientOcclusion?.frameDiscarded(frameIndex);
         this.#screenSpaceGlobalIllumination?.frameDiscarded(frameIndex);
+        this.#atmosphere?.frameDiscarded(frameIndex);
         this.#volumetricLighting?.frameDiscarded(frameIndex);
+        this.#autoExposure?.frameDiscarded(frameIndex);
         this.#temporal?.frameDiscarded(frameIndex);
     }
 
@@ -4705,6 +4849,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         if (this.#destroyed) throw new Error('Clustered Forward+ pipeline is destroyed');
         const cull = await this.#cullStats.read();
         const cluster = await this.#clusterStats.read();
+        const exposure =
+            this.#autoExposure === null
+                ? Object.freeze({
+                      actualEV: 0,
+                      targetEV: 0,
+                      averageLuminance: 0,
+                      sampleCount: 0
+                  })
+                : await this.#autoExposure.readDiagnostics();
         const cullValues = new Uint32Array(
             cull.data.buffer,
             cull.data.byteOffset,
@@ -4730,7 +4883,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             smoothedGPUFrameTimeMs:
                 this.#temporal?.dynamicResolutionDiagnostics?.smoothedGPUFrameTimeMs ?? null,
             volumetricFroxelCount: this.#volumetricLighting?.froxelCount ?? 0,
-            volumetricHistoryUsed: this.#volumetricLighting?.historyUsed ?? false
+            volumetricHistoryUsed: this.#volumetricLighting?.historyUsed ?? false,
+            autoExposureEV: exposure.actualEV,
+            autoExposureTargetEV: exposure.targetEV
         });
     }
 
@@ -4786,6 +4941,16 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         try {
             this.#volumetricLighting?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.#atmosphere?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.#autoExposure?.destroy();
         } catch (error) {
             failures.push(error);
         }
@@ -4987,6 +5152,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     this.#options.screenSpaceGlobalIllumination !== null) &&
                     this.#options.groundTruthAmbientOcclusion === null,
                 this.#options.groundTruthAmbientOcclusion !== null,
+                this.#options.atmosphere !== null && this.#options.atmosphere.clouds !== null,
                 withShadows
             ),
             pipelineState: Object.freeze({
@@ -6163,6 +6329,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneDepth: RenderGraphTextureHandle;
             materialAttributes: RenderGraphTextureHandle | null;
             ambientOcclusion: RenderGraphTextureHandle | null;
+            cloudShadow: RenderGraphTextureHandle | null;
             shadowResources: Readonly<RenderPipelineShadowResources> | null;
         }>
     ): void {
@@ -6205,10 +6372,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     : bucket.materialVariant;
             const parameters = context.acquirePassParameters(this.#colorDrawPool);
             const gtaoTextureCount = resources.ambientOcclusion === null ? 0 : 1;
+            const cloudShadowTextureCount = resources.cloudShadow === null ? 0 : 1;
             const shadowTextureCount = resources.shadowResources === null ? 0 : 1;
             parameters.configure(
                 bucket.colorPass.vertexLayouts.length,
-                variant.textures.length + gtaoTextureCount + 2 + shadowTextureCount
+                variant.textures.length +
+                    gtaoTextureCount +
+                    2 +
+                    shadowTextureCount +
+                    cloudShadowTextureCount
             );
             parameters.setBuffer(0, resources.frameBuffer);
             parameters.setBuffer(1, resources.objects);
@@ -6274,6 +6446,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                         ? this.#reversedShadowSampler
                         : this.#standardShadowSampler;
             }
+            if (resources.cloudShadow !== null) {
+                const cloudShadowIndex = areaTextureIndex + 2 + shadowTextureCount;
+                parameters.setTexture(cloudShadowIndex, resources.cloudShadow);
+                parameters.samplers[cloudShadowIndex] = this.#cloudShadowSampler;
+            }
             parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
@@ -6303,6 +6480,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         bloomA: RenderGraphTextureHandle | null,
         bloomB: RenderGraphTextureHandle | null,
         bloomC: RenderGraphTextureHandle | null,
+        exposureTexture: RenderGraphTextureHandle | null,
         outputColor: RenderGraphTextureHandle
     ): void {
         if (this.#options.bloomStrength > 0) {
@@ -6344,9 +6522,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
 
         const display = context.acquirePassParameters(this.#fullscreenPool);
-        display.inputTextures.length = this.#options.bloomStrength > 0 ? 2 : 1;
+        display.inputTextures.length =
+            1 + (this.#options.bloomStrength > 0 ? 1 : 0) + (exposureTexture === null ? 0 : 1);
         display.inputTextures[0] = sceneColor;
-        if (bloomC !== null) display.inputTextures[1] = bloomC;
+        let textureIndex = 1;
+        if (this.#options.bloomStrength > 0) {
+            if (bloomC === null) throw new Error('Clustered Forward+ Bloom output is unavailable');
+            display.inputTextures[textureIndex++] = bloomC;
+        }
+        if (exposureTexture !== null) display.inputTextures[textureIndex] = exposureTexture;
         const outputPolicy = context.output.colorAttachment(0);
         display.colorAttachments[0] = {
             texture: outputColor,
@@ -6533,6 +6717,9 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
         const screenSpaceGlobalIllumination = this.#options.screenSpaceGlobalIllumination !== null;
         const groundTruthAmbientOcclusion = this.#options.groundTruthAmbientOcclusion !== null;
         const volumetricLighting = this.#options.volumetricLighting !== null;
+        const autoExposure = this.#options.autoExposure !== null;
+        const atmosphere = this.#options.atmosphere !== null;
+        const cloudShadows = this.#options.atmosphere?.clouds !== null && atmosphere;
         const reflectionHiZLevels = Math.min(
             this.#options.hiZLevelCount,
             SCREEN_SPACE_REFLECTION_TRACE_HIZ_LEVELS
@@ -6540,7 +6727,9 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
         this.requirements = snapshotRenderPipelineRequirements({
             requiredCapabilities: Object.freeze([
                 'storage-buffer' as const,
-                ...(hiZ || volumetricLighting ? (['storage-texture' as const] as const) : []),
+                ...(hiZ || volumetricLighting || autoExposure || atmosphere
+                    ? (['storage-texture' as const] as const)
+                    : []),
                 'compute-pass' as const,
                 'indirect-draw' as const
             ]),
@@ -6592,32 +6781,54 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                           })
                       ]
                     : []),
-                ...(volumetricLighting ? VOLUMETRIC_LIGHTING_REQUIRED_TEXTURE_FORMATS : [])
+                ...(volumetricLighting ? VOLUMETRIC_LIGHTING_REQUIRED_TEXTURE_FORMATS : []),
+                ...(atmosphere ? ATMOSPHERE_WEATHER_REQUIRED_TEXTURE_FORMATS : []),
+                ...(autoExposure
+                    ? [
+                          Object.freeze({
+                              format: 'rgba16float' as const,
+                              use: 'storage' as const
+                          })
+                      ]
+                    : [])
             ]),
             requiredLimits: Object.freeze({
                 maxBindingsPerBindGroup: Math.max(
                     hiZ ? 6 + this.#options.hiZLevelCount : 6,
-                    PBR_TEXTURE_ROLES.length * 2 + (groundTruthAmbientOcclusion ? 2 : 0) + 6,
+                    PBR_TEXTURE_ROLES.length * 2 +
+                        (groundTruthAmbientOcclusion ? 2 : 0) +
+                        6 +
+                        (cloudShadows ? 2 : 0),
                     screenSpaceReflections
                         ? 1 + SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels + 1 + 1
                         : 0,
-                    volumetricLighting ? 9 : 0
+                    volumetricLighting ? 9 : 0,
+                    autoExposure ? 5 : 0,
+                    atmosphere ? 8 : 0
                 ),
                 maxStorageBuffersPerShaderStage: 8,
                 maxSampledTexturesPerShaderStage: Math.max(
                     hiZ ? this.#options.hiZLevelCount : 0,
-                    PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0) + 3,
+                    PBR_TEXTURE_ROLES.length +
+                        (groundTruthAmbientOcclusion ? 1 : 0) +
+                        3 +
+                        (cloudShadows ? 1 : 0),
                     screenSpaceReflections
                         ? SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels
                         : 0,
-                    volumetricLighting ? 4 : 0
+                    volumetricLighting ? 4 : 0,
+                    autoExposure ? 3 : 0,
+                    atmosphere ? 5 : 0
                 ),
                 maxSamplersPerShaderStage:
-                    PBR_TEXTURE_ROLES.length + (groundTruthAmbientOcclusion ? 1 : 0) + 3,
-                ...(hiZ || volumetricLighting
+                    PBR_TEXTURE_ROLES.length +
+                    (groundTruthAmbientOcclusion ? 1 : 0) +
+                    3 +
+                    (cloudShadows ? 1 : 0),
+                ...(hiZ || volumetricLighting || autoExposure || atmosphere
                     ? {
                           maxStorageTexturesPerShaderStage:
-                              screenSpaceReflections || volumetricLighting ? 2 : 1
+                              screenSpaceReflections || volumetricLighting || atmosphere ? 2 : 1
                       }
                     : {}),
                 maxStorageBufferBindingSize: requirements.maxStorageBufferBindingSize,

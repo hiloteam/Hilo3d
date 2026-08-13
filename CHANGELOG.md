@@ -29,6 +29,15 @@
 
 ### Changes
 
+- Add an integrated WebGPU physical atmosphere and weather chain to Clustered Forward+: cached
+  Rayleigh/Mie/ozone transmittance and multiple-scattering LUTs, a per-frame sky-view LUT, aerial
+  perspective, physical sun disc, procedural weather map, half-resolution Perlin/Worley volumetric
+  cloud ray marching, blue-noise sampling, representative-depth temporal reprojection, cloud shadows
+  for registered PBR directional light and froxel scattering, and storm lightning/sun-shaft
+  lighting. Add GPU histogram percentile exposure with asymmetric eye adaptation, on-demand
+  diagnostics, and submission-aware `rgba16float` exposure history; add configurable filmic Color
+  Uber and Clustered display transforms. Add the interactive Stormfront Observatory WebGPU example
+  with solar time, cloud, wind, storm, quality, debug, and camera controls.
 - Add production dynamic resolution and authored reactive masks to `TemporalAA` and the integrated
   Clustered Forward+ temporal path. Dynamic resolution is explicitly gated by WebGPU
   `timestamp-query`, consumes asynchronous Render Graph GPU pass durations without stalling the

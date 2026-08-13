@@ -34,6 +34,8 @@ layout(std140) uniform ColorUberBlock {
     vec4 u_channelBlue;
     vec4 u_vignetteColor;
     vec4 u_whiteBalance;
+    vec4 u_filmicCurve;
+    vec4 u_filmicClip;
     float u_exposure;
     float u_contrast;
     float u_saturation;
@@ -105,6 +107,20 @@ vec3 acesFitted(vec3 value) {
     );
 }
 
+vec3 parametricFilmic(vec3 value) {
+    float slope = max(u_filmicCurve.x, 0.01);
+    float toe = clamp(u_filmicCurve.y, 0.0, 1.0);
+    float shoulder = clamp(u_filmicCurve.z, 0.0, 1.0);
+    float blackClip = clamp(u_filmicCurve.w, 0.0, 0.25);
+    float whiteClip = clamp(u_filmicClip.x, 0.0, 0.25);
+    vec3 lifted = max(value - vec3(blackClip), vec3(0.0));
+    float toePower = max(0.05, slope * mix(1.0, 3.5, toe));
+    vec3 shaped = pow(lifted, vec3(toePower));
+    float shoulderScale = mix(1.0, 16.0, shoulder);
+    vec3 mapped = shaped / (shaped + vec3(1.0 / shoulderScale));
+    return clamp(mapped * (1.0 - whiteClip), 0.0, 1.0);
+}
+
 float interleavedGradientNoise(vec2 pixel) {
     return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
 }
@@ -132,6 +148,8 @@ void main() {
         result = acesFitted(result);
     } else if (u_toneMapping < 2.5) {
         result = result / (vec3(1.0) + result);
+    } else if (u_toneMapping < 3.5) {
+        result = parametricFilmic(result);
     }
 
     vec2 dimensions = vec2(textureSize(u_source, 0));
@@ -162,6 +180,8 @@ const colorUberLayout = createStd140Layout({
     u_channelBlue: 'vec4',
     u_vignetteColor: 'vec4',
     u_whiteBalance: 'vec4',
+    u_filmicCurve: 'vec4',
+    u_filmicClip: 'vec4',
     u_exposure: 'float',
     u_contrast: 'float',
     u_saturation: 'float',
@@ -173,7 +193,7 @@ const colorUberLayout = createStd140Layout({
 });
 
 /** Display tone-mapping operator used by {@link ColorUber}. */
-export type ToneMappingMode = 'pbr-neutral' | 'aces' | 'reinhard' | 'none';
+export type ToneMappingMode = 'pbr-neutral' | 'aces' | 'reinhard' | 'filmic' | 'none';
 
 /** Linear-HDR color grading and display transform settings. */
 export interface ColorUberOptions {
@@ -200,6 +220,16 @@ export interface ColorUberOptions {
     readonly vignetteIntensity?: number;
     readonly vignetteSmoothness?: number;
     readonly toneMapping?: ToneMappingMode;
+    /** Filmic mid-tone slope multiplier in [0.01, 4]. */
+    readonly filmicSlope?: number;
+    /** Filmic toe strength in [0, 1]. */
+    readonly filmicToe?: number;
+    /** Filmic shoulder strength in [0, 1]. */
+    readonly filmicShoulder?: number;
+    /** Filmic black clipping offset in [0, 0.25]. */
+    readonly filmicBlackClip?: number;
+    /** Filmic white clipping amount in [0, 0.25]. */
+    readonly filmicWhiteClip?: number;
     readonly dithering?: boolean;
 }
 
@@ -289,8 +319,10 @@ function toneMappingValue(mode: ToneMappingMode): number {
             return 1;
         case 'reinhard':
             return 2;
-        case 'none':
+        case 'filmic':
             return 3;
+        case 'none':
+            return 4;
     }
 }
 
@@ -318,6 +350,18 @@ class ColorUberRuntime implements ForwardRenderPipelineFeatureRuntime {
             u_channelBlue: colorValue(options.channelBlue ?? new Color(0, 0, 1, 0)),
             u_vignetteColor: colorValue(options.vignetteColor ?? new Color(0, 0, 0, 1)),
             u_whiteBalance: whiteBalance(options.temperature ?? 0, options.tint ?? 0),
+            u_filmicCurve: Object.freeze([
+                finiteRange(options.filmicSlope ?? 1, 'Color Uber filmic slope', 0.01, 4),
+                finiteRange(options.filmicToe ?? 0.28, 'Color Uber filmic toe', 0, 1),
+                finiteRange(options.filmicShoulder ?? 0.55, 'Color Uber filmic shoulder', 0, 1),
+                finiteRange(options.filmicBlackClip ?? 0, 'Color Uber filmic black clip', 0, 0.25)
+            ]),
+            u_filmicClip: Object.freeze([
+                finiteRange(options.filmicWhiteClip ?? 0, 'Color Uber filmic white clip', 0, 0.25),
+                0,
+                0,
+                0
+            ]),
             u_exposure: finite(options.exposure ?? 0, 'Color Uber exposure'),
             u_contrast: 1 + finite(options.contrast ?? 0, 'Color Uber contrast'),
             u_saturation: 1 + finite(options.saturation ?? 0, 'Color Uber saturation'),

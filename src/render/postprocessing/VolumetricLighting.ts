@@ -356,7 +356,10 @@ function computePass(shader: ComputeShader): ComputeRenderPass {
     return new ComputeRenderPass(new ComputeKernel({ label: shader.label, shader }), shader.label);
 }
 
-function injectionPass(settings: Readonly<VolumetricLightingSettings>): ComputeRenderPass {
+function injectionPass(
+    settings: Readonly<VolumetricLightingSettings>,
+    withCloudShadow: boolean
+): ComputeRenderPass {
     const shadowSteps = settings.shadowSteps;
     const screenSpaceVisibility =
         shadowSteps === 0
@@ -403,6 +406,7 @@ function injectionPass(settings: Readonly<VolumetricLightingSettings>): ComputeR
 @group(0) @binding(5) var<storage, read> localVolumes: array<LocalFogVolume>;
 @group(0) @binding(6) var sceneDepth: texture_depth_2d;
 @group(0) @binding(7) var froxelOutput: texture_storage_2d<rgba16float, write>;
+${withCloudShadow ? '@group(0) @binding(8) var cloudShadowTexture: texture_2d<f32>;' : ''}
 
 const HILO_PI: f32 = 3.141592653589793;
 
@@ -431,6 +435,22 @@ fn phaseHenyeyGreenstein(cosine: f32) -> f32 {
     return (1.0 - g2) /
         max(4.0 * HILO_PI * pow(max(1.0 + g2 - 2.0 * g * cosine, 0.0001), 1.5), 0.0001);
 }
+fn cloudShadowVisibility(viewPosition: vec3<f32>) -> f32 {
+    ${
+        withCloudShadow
+            ? `let clip = frameData.projection * vec4<f32>(viewPosition, 1.0);
+    if (clip.w <= 0.0001) { return 1.0; }
+    let uv = clip.xy / clip.w * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+    let dimensions = textureDimensions(cloudShadowTexture);
+    let pixel = clamp(
+        vec2<i32>(uv * vec2<f32>(dimensions)),
+        vec2<i32>(0),
+        vec2<i32>(dimensions) - vec2<i32>(1)
+    );
+    return clamp(textureLoad(cloudShadowTexture, pixel, 0).r, 0.12, 1.0);`
+            : 'return 1.0;'
+    }
+}
 ${screenSpaceVisibility}
 fn evaluateLight(light: LightRecord, viewPosition: vec3<f32>, viewDirection: vec3<f32>) -> vec3<f32> {
     let lightType = u32(light.colorType.w + 0.5);
@@ -443,6 +463,7 @@ fn evaluateLight(light: LightRecord, viewPosition: vec3<f32>, viewDirection: vec
     if (lightType == 2u) {
         lightDirection = normalize(-light.directionOuter.xyz);
         shadowVector = lightDirection * min(volumetricFrame.fog.w, 40.0);
+        radiance *= cloudShadowVisibility(viewPosition);
     } else {
         let delta = light.positionRange.xyz - viewPosition;
         let distanceToLight = max(length(delta), 0.0001);
@@ -589,7 +610,18 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                     kind: 'storage-texture',
                     access: 'write-only',
                     format: 'rgba16float'
-                }
+                },
+                ...(withCloudShadow
+                    ? ([
+                          {
+                              name: 'cloudShadowTexture',
+                              group: 0,
+                              binding: 8,
+                              kind: 'sampled-texture' as const,
+                              sampleType: 'float' as const
+                          }
+                      ] as const)
+                    : [])
             ]
         })
     );
@@ -1132,6 +1164,8 @@ export interface VolumetricLightingResources {
     readonly clusterIndices: RenderGraphBufferHandle;
     readonly sceneColor: RenderGraphTextureHandle;
     readonly sceneDepth: RenderGraphTextureHandle;
+    /** Optional screen-space cloud visibility coupled into directional-light scattering. */
+    readonly cloudShadow?: RenderGraphTextureHandle | null;
     readonly tilesX: number;
     readonly tilesY: number;
     readonly zSlices: number;
@@ -1152,6 +1186,7 @@ export class VolumetricLightingController {
     readonly #volumeByteView: Uint8Array;
     readonly #inverseView = new Matrix4();
     readonly #injectionPass: ComputeRenderPass;
+    readonly #withCloudShadow: boolean;
     readonly #compositePass: FullscreenRenderPass;
     readonly #colorHistoryKey = Object.freeze({});
     readonly #depthHistoryKey = Object.freeze({});
@@ -1169,9 +1204,7 @@ export class VolumetricLightingController {
     readonly #colorHistoryDescriptor: RenderPipelineHistoryTextureDescriptor;
     readonly #depthHistoryDescriptor: RenderPipelineHistoryTextureDescriptor;
     readonly #compositeDescriptor: RenderPipelineTextureDescriptor;
-    readonly #injectionPool = new RenderPassParameterPool(
-        () => new MutableComputeParameters(6, 2, 0)
-    );
+    readonly #injectionPool: RenderPassParameterPool<MutableComputeParameters>;
     readonly #lineIntegrationPool = new RenderPassParameterPool(
         () => new MutableComputeParameters(2, 2, 0)
     );
@@ -1200,10 +1233,15 @@ export class VolumetricLightingController {
     constructor(
         settings: Readonly<VolumetricLightingSettings>,
         context: RenderPipelineCreateContext,
-        sceneScale: number
+        sceneScale: number,
+        withCloudShadow = false
     ) {
         this.#settings = settings;
-        this.#injectionPass = injectionPass(settings);
+        this.#withCloudShadow = withCloudShadow;
+        this.#injectionPass = injectionPass(settings, withCloudShadow);
+        this.#injectionPool = new RenderPassParameterPool(
+            () => new MutableComputeParameters(6, withCloudShadow ? 3 : 2, 0)
+        );
         this.#compositePass = compositePass(settings.debugView);
         this.#frameBuffer = context.createStorageBuffer({
             label: 'Volumetric lighting frame parameters',
@@ -1322,6 +1360,12 @@ export class VolumetricLightingController {
         injection.setBuffer(5, localVolumes);
         injection.setTexture(0, resources.sceneDepth);
         injection.setTexture(1, froxel);
+        if (this.#withCloudShadow) {
+            if (resources.cloudShadow === null || resources.cloudShadow === undefined) {
+                throw new Error('Volumetric lighting cloud-shadow input is missing');
+            }
+            injection.setTexture(2, resources.cloudShadow);
+        }
         injection.setDispatch(
             Math.max(1, Math.ceil(froxelTilesX / INJECTION_WORKGROUP_SIZE)),
             Math.max(1, Math.ceil(froxelTilesY / INJECTION_WORKGROUP_SIZE)),

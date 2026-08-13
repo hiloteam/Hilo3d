@@ -1,4 +1,18 @@
 export { Bloom, type BloomOptions } from './Bloom';
+export {
+    AutoExposure,
+    type AutoExposureDiagnostics,
+    type AutoExposureMeteringMode,
+    type AutoExposureOptions
+} from './AutoExposure';
+export {
+    AtmosphereWeatherState,
+    type AtmosphereWeatherDebugView,
+    type AtmosphereWeatherOptions,
+    type AtmosphereWeatherQuality,
+    type PhysicalAtmosphereOptions,
+    type VolumetricCloudOptions
+} from './AtmosphereWeather';
 export { ColorUber, type ColorUberOptions, type ToneMappingMode } from './ColorUber';
 export {
     TemporalAA,

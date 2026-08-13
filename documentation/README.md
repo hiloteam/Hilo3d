@@ -18,6 +18,7 @@ committed.
 | [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)      | Portable Forward GTAO, Clustered integration, bent-normal/visibility packing, temporal lifecycle, and release boundaries   |
 | [Screen-space global illumination](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)  | Portable Forward/Clustered SSGI, radiance tracing, temporal denoise, lifecycle, quality budgets, and release boundaries    |
 | [Froxel volumetric lighting](./VOLUMETRIC_LIGHTING.md)                     | WebGPU Clustered froxels, height/local fog, light injection, radiative integration, temporal lifecycle, and quality tiers  |
+| [Physical atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md)    | GPU histogram exposure, filmic display, atmosphere LUTs, temporal volumetric clouds, cloud shadows, and integration order  |
 | [2D rendering and multi-camera composition](./2D_RENDERING.md)             | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks               |
 | [Compute/storage implementation](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md) | Implemented Direct WGSL compute, storage resources, GPU-driven raster contract, first-release boundaries, and evidence     |
 | [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)  | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration            |

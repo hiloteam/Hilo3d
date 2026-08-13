@@ -1,0 +1,514 @@
+:root {
+    color-scheme: dark;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+    --amber: #f2a45f;
+    --amber-bright: #ffd6a0;
+    --mist: #b9d4d8;
+    --ink: #06090b;
+    --glass: rgb(7 12 15 / 72%);
+    --hairline: rgb(209 231 232 / 15%);
+}
+
+* {
+    box-sizing: border-box;
+}
+body {
+    overflow: hidden;
+    margin: 0;
+    background: var(--ink);
+    color: #eef3f1;
+}
+#container,
+#container canvas {
+    width: 100%;
+    height: 100%;
+}
+button,
+input,
+select {
+    font: inherit;
+}
+
+.vignette,
+.grain {
+    position: fixed;
+    z-index: 2;
+    inset: 0;
+    pointer-events: none;
+}
+.vignette {
+    background:
+        linear-gradient(
+            90deg,
+            rgb(0 1 2 / 24%),
+            transparent 14%,
+            transparent 84%,
+            rgb(0 1 2 / 48%)
+        ),
+        radial-gradient(
+            circle at 50% 44%,
+            transparent 32%,
+            rgb(0 4 6 / 12%) 65%,
+            rgb(0 2 4 / 58%) 115%
+        ),
+        linear-gradient(180deg, rgb(2 6 9 / 10%), transparent 35%, rgb(2 4 6 / 30%));
+}
+.grain {
+    opacity: 0.045;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='4' stitchTiles='stitchTiles'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.identity {
+    position: fixed;
+    z-index: 4;
+    top: clamp(24px, 4vw, 58px);
+    left: clamp(24px, 4.4vw, 70px);
+    pointer-events: none;
+    text-shadow: 0 4px 28px rgb(0 0 0 / 70%);
+}
+.identity p,
+.identity span,
+.telemetry,
+.actionDock,
+.weatherConsole,
+.footerLine {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+}
+.identity p {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 11px;
+    color: rgb(214 233 233 / 64%);
+    font-size: 8px;
+    font-weight: 700;
+}
+.identity p i {
+    width: 24px;
+    height: 1px;
+    background: var(--amber);
+    box-shadow: 0 0 12px var(--amber);
+}
+.identity h1 {
+    margin: 0;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(27px, 2.8vw, 43px);
+    font-weight: 400;
+    letter-spacing: -0.045em;
+    line-height: 1;
+}
+.identity h1 em {
+    color: #d0dcda;
+    font-weight: 400;
+}
+.identity > span {
+    display: block;
+    margin-top: 10px;
+    color: rgb(206 222 222 / 42%);
+    font-size: 6px;
+}
+
+.telemetry {
+    position: fixed;
+    z-index: 4;
+    top: clamp(24px, 4vw, 58px);
+    right: clamp(24px, 4.4vw, 70px);
+    width: min(420px, calc(100vw - 48px));
+    padding-top: 10px;
+    border-top: 1px solid rgb(223 239 239 / 26%);
+    text-shadow: 0 2px 16px rgb(0 0 0 / 78%);
+}
+.liveMark {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 10px;
+    color: rgb(211 228 228 / 48%);
+    font-size: 6px;
+}
+.liveMark i {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 10px var(--amber);
+}
+.telemetry dl {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin: 0;
+}
+.telemetry dl div {
+    min-width: 0;
+    padding-right: 12px;
+    border-right: 1px solid var(--hairline);
+}
+.telemetry dl div + div {
+    padding-left: 12px;
+}
+.telemetry dl div:last-child {
+    border-right: 0;
+    padding-right: 0;
+}
+.telemetry dt {
+    color: rgb(210 226 226 / 34%);
+    font-size: 6px;
+}
+.telemetry dd {
+    margin: 5px 0 0;
+    color: #edf3f1;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+}
+.telemetry > p {
+    margin: 9px 0 0;
+    color: rgb(210 226 226 / 31%);
+    font-size: 5px;
+    text-align: right;
+}
+.telemetry > p b {
+    color: rgb(241 207 165 / 75%);
+    font-weight: 500;
+}
+
+.actionDock {
+    position: fixed;
+    z-index: 5;
+    right: clamp(24px, 4.4vw, 70px);
+    bottom: clamp(36px, 5vw, 66px);
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+.actionDock button,
+.weatherConsole button,
+.weatherConsole select {
+    border: 1px solid var(--hairline);
+    color: rgb(236 244 242 / 84%);
+    background: rgb(7 13 16 / 58%);
+    text-transform: uppercase;
+    letter-spacing: 0.13em;
+    cursor: pointer;
+    backdrop-filter: blur(15px) saturate(120%);
+}
+.viewButton {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 13px;
+    font-size: 6px;
+}
+.viewButton b {
+    color: var(--amber);
+    font-size: 7px;
+}
+.controlsToggle {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-height: 44px;
+    padding: 0 17px;
+    font-size: 7px;
+}
+.controlsToggle i {
+    width: 5px;
+    height: 5px;
+    border: 1px solid var(--amber);
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgb(242 164 95 / 65%);
+}
+.actionDock button:hover {
+    border-color: rgb(242 164 95 / 52%);
+    background: rgb(14 20 22 / 82%);
+}
+
+.weatherConsole {
+    position: fixed;
+    z-index: 6;
+    right: clamp(24px, 4.4vw, 70px);
+    bottom: clamp(88px, 9vw, 120px);
+    width: min(334px, calc(100vw - 48px));
+    padding: 19px;
+    border: 1px solid var(--hairline);
+    background: linear-gradient(145deg, rgb(8 15 18 / 86%), rgb(5 9 12 / 72%));
+    box-shadow:
+        0 24px 80px rgb(0 0 0 / 38%),
+        inset 0 1px rgb(255 255 255 / 4%);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(12px) scale(0.985);
+    transform-origin: 100% 100%;
+    transition:
+        opacity 180ms ease,
+        transform 180ms ease,
+        visibility 180ms ease;
+    backdrop-filter: blur(22px) saturate(125%);
+}
+body[data-console-open='true'] .weatherConsole {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+}
+.consoleHeading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 17px;
+}
+.consoleHeading span {
+    display: block;
+    color: rgb(211 230 230 / 38%);
+    font-size: 6px;
+}
+.consoleHeading strong {
+    display: block;
+    margin-top: 5px;
+    color: var(--amber-bright);
+    font-size: 8px;
+    letter-spacing: 0.07em;
+}
+.consoleHeading button {
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    font-size: 15px;
+    line-height: 1;
+}
+.weatherConsole > label {
+    display: block;
+    margin: 12px 0;
+}
+.weatherConsole label > span {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
+}
+.weatherConsole b {
+    color: rgb(209 228 228 / 48%);
+    font-size: 6px;
+    font-weight: 500;
+}
+.weatherConsole output {
+    color: #eef4f1;
+    font-size: 7px;
+    letter-spacing: 0.08em;
+}
+input[type='range'] {
+    width: 100%;
+    height: 2px;
+    margin: 0;
+    accent-color: var(--amber);
+    cursor: pointer;
+}
+.selectRow {
+    display: grid;
+    grid-template-columns: 0.75fr 1.25fr;
+    gap: 9px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgb(210 229 230 / 9%);
+}
+.selectRow label {
+    min-width: 0;
+}
+.selectRow select {
+    width: 100%;
+    padding: 8px 7px;
+    font-size: 6px;
+}
+
+.footerLine {
+    position: fixed;
+    z-index: 4;
+    right: clamp(24px, 4.4vw, 70px);
+    bottom: 16px;
+    left: clamp(24px, 4.4vw, 70px);
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+    color: rgb(207 224 224 / 25%);
+    font-size: 5px;
+}
+.footerLine p {
+    margin: 0;
+}
+.footerLine span {
+    color: rgb(242 164 95 / 74%);
+}
+.footerLine i {
+    display: inline-block;
+    width: 2px;
+    height: 2px;
+    margin: 0 7px 1px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.loadingPanel,
+.errorPanel {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    background: radial-gradient(circle at 50% 42%, #182326, #050809 62%, #020304);
+    transition:
+        opacity 800ms ease,
+        visibility 800ms ease;
+}
+body[data-stormfront-ready='true'] .loadingPanel {
+    opacity: 0;
+    visibility: hidden;
+}
+.loadingPanel p,
+.errorPanel span {
+    margin: 25px 0 9px;
+    color: var(--amber);
+    font:
+        700 7px ui-monospace,
+        monospace;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+.loadingPanel h2,
+.errorPanel h2 {
+    margin: 0;
+    font-family: Georgia, serif;
+    font-size: 28px;
+    font-weight: 400;
+}
+.loadingPanel small,
+.errorPanel p {
+    margin-top: 14px;
+    color: rgb(211 228 229 / 45%);
+    font-size: 8px;
+}
+.loadingTrack {
+    width: 270px;
+    height: 1px;
+    margin: 25px auto 0;
+    background: rgb(202 231 233 / 11%);
+}
+.loadingTrack span {
+    display: block;
+    width: 12%;
+    height: 100%;
+    background: var(--amber);
+    box-shadow: 0 0 18px var(--amber);
+    transition: width 400ms ease;
+}
+.sigil {
+    position: relative;
+    width: 74px;
+    height: 74px;
+    margin: auto;
+    border: 1px solid rgb(220 235 234 / 16%);
+    border-radius: 50%;
+}
+.sigil::before,
+.sigil::after {
+    position: absolute;
+    inset: 12px;
+    content: '';
+    border: 1px solid rgb(220 235 234 / 9%);
+    transform: rotate(45deg);
+}
+.sigil::after {
+    inset: 25px;
+    border-color: var(--amber);
+    box-shadow: 0 0 12px rgb(242 164 95 / 32%);
+    animation: breathe 1.8s ease-in-out infinite;
+}
+.sigil i,
+.sigil b {
+    position: absolute;
+    top: 36px;
+    left: 8px;
+    width: 58px;
+    height: 1px;
+    background: rgb(220 235 234 / 13%);
+}
+.sigil b {
+    transform: rotate(90deg);
+}
+.sigil span {
+    position: absolute;
+    inset: 4px;
+    border-top: 1px solid var(--amber);
+    border-radius: 50%;
+    animation: scan 2.2s linear infinite;
+}
+@keyframes scan {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@keyframes breathe {
+    50% {
+        opacity: 0.4;
+        transform: rotate(45deg) scale(0.72);
+    }
+}
+.errorPanel[hidden] {
+    display: none;
+}
+.errorPanel a {
+    margin-top: 20px;
+    color: var(--mist);
+    font-size: 9px;
+}
+
+@media (max-width: 760px) {
+    .identity {
+        top: 20px;
+        left: 20px;
+    }
+    .identity > span {
+        display: none;
+    }
+    .telemetry {
+        top: auto;
+        right: 20px;
+        bottom: 102px;
+        width: calc(100vw - 40px);
+    }
+    .telemetry > p,
+    .liveMark {
+        display: none;
+    }
+    .actionDock {
+        right: 20px;
+        bottom: 38px;
+    }
+    .weatherConsole {
+        right: 20px;
+        bottom: 90px;
+    }
+    .footerLine {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sigil span,
+    .sigil::after {
+        animation: none;
+    }
+    .weatherConsole,
+    .loadingPanel {
+        transition: none;
+    }
+}

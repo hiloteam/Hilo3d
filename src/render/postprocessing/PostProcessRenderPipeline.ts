@@ -9,6 +9,7 @@ import type {
     RenderPipelineRequirements
 } from '../pipeline/RenderPipeline';
 import { Bloom, type BloomOptions } from './Bloom';
+import { AutoExposure, type AutoExposureOptions } from './AutoExposure';
 import { ColorUber, type ColorUberOptions } from './ColorUber';
 import {
     GroundTruthAmbientOcclusion,
@@ -30,6 +31,8 @@ export interface PostProcessRenderPipelineOptions {
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     /** Bloom settings, or false to omit bloom. Bloom is enabled by default. */
     readonly bloom?: Readonly<BloomOptions> | false;
+    /** GPU histogram eye adaptation, or false to keep manual exposure. */
+    readonly autoExposure?: Readonly<AutoExposureOptions> | false;
     /** Final color grading/tone mapping settings. */
     readonly colorUber?: Readonly<ColorUberOptions>;
     /** Capture opaque scene color for transmission and volume. Defaults to true. */
@@ -65,6 +68,9 @@ export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
             features.push(new TemporalAA(options.temporalAA));
         }
         if (options.bloom !== false) features.push(new Bloom(options.bloom ?? {}));
+        if (options.autoExposure !== false && options.autoExposure !== undefined) {
+            features.push(new AutoExposure(options.autoExposure));
+        }
         features.push(new ColorUber(options.colorUber ?? {}));
         features.push(...(options.features ?? []));
         this.#forward = new ForwardRenderPipelineFactory({

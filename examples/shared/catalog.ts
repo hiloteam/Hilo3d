@@ -101,6 +101,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
     'volumetric_neon_reliquary.html': 'Neon Reliquary — Froxel Volumetric Lighting',
+    'stormfront_observatory.html': 'Tempest Reliquary — Physical Atmosphere',
     'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
     'screen_space_global_illumination_chapel.html':
         'Prismatic Vespers — Screen-space Global Illumination',
@@ -132,6 +133,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.',
     'volumetric_neon_reliquary.html':
         'Enter Khronos Sponza as a neon reliquary where temporal froxels, local fog volumes, clustered spotlights, and depth-aware visibility turn light into architecture.',
+    'stormfront_observatory.html':
+        'Unseal a gilded Khronos dragon beneath a Rayleigh–Mie–ozone storm sky with GPU histogram exposure, temporal half-resolution clouds, cloud shadows, aerial perspective, and froxel light shafts.',
     'screen_space_reflections_palace.html':
         'Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.',
     'screen_space_global_illumination_chapel.html':
@@ -212,6 +215,7 @@ const FEATURED_PATHS = new Set([
     'compute_gpu_driven.html',
     'clustered_forward_plus_sponza.html',
     'volumetric_neon_reliquary.html',
+    'stormfront_observatory.html',
     'screen_space_reflections_palace.html',
     'screen_space_global_illumination_chapel.html',
     'ground_truth_ambient_occlusion.html',
@@ -332,6 +336,7 @@ function createEntry(path: string): ExampleCatalogEntry {
             : path === 'bloom.html' ||
                 path === 'clustered_forward_plus_sponza.html' ||
                 path === 'volumetric_neon_reliquary.html' ||
+                path === 'stormfront_observatory.html' ||
                 path === 'screen_space_reflections_palace.html' ||
                 path === 'temporal_aa_observatory.html' ||
                 path === 'compute_gpu_driven.html' ||

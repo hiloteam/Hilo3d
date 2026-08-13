@@ -67,11 +67,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(81);
+        expect(examplePaths).toHaveLength(82);
     });
 
-    it('expands 81 pages into the complete 152-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(152);
+    it('expands 82 pages into the complete 153-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(153);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -82,6 +82,7 @@ describe('example release matrix contract', () => {
                     : path === 'bloom.html' ||
                         path === 'clustered_forward_plus_sponza.html' ||
                         path === 'volumetric_neon_reliquary.html' ||
+                        path === 'stormfront_observatory.html' ||
                         path === 'screen_space_reflections_palace.html' ||
                         path === 'temporal_aa_observatory.html' ||
                         path === 'compute_gpu_driven.html' ||
@@ -100,7 +101,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(79);
+        expect(catalog).toHaveLength(80);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -110,7 +111,7 @@ describe('example release matrix contract', () => {
         );
         expect(catalog[0]?.id).toBe('quickStart');
         expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(70);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(78);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(79);
         expect(catalog.filter(entry => entry.featured).length).toBeGreaterThan(12);
         expect(catalog.filter(entry => entry.featured).length).toBeLessThan(catalog.length);
         expect(
@@ -223,6 +224,7 @@ describe('example release matrix contract', () => {
             'bloom.html',
             'clustered_forward_plus_sponza.html',
             'volumetric_neon_reliquary.html',
+            'stormfront_observatory.html',
             'screen_space_reflections_palace.html',
             'temporal_aa_observatory.html',
             'compute_gpu_driven.html',
@@ -234,10 +236,12 @@ describe('example release matrix contract', () => {
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
             'clustered_forward_plus_sponza.html',
             'volumetric_neon_reliquary.html',
+            'stormfront_observatory.html',
             'shaderToy.html'
         ]);
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_sponza.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('volumetric_neon_reliquary.html')).toBe(true);
+        expect(exampleUsesDedicatedReleaseTest('stormfront_observatory.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('shaderToy.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('quickStart.html')).toBe(false);
         const genericCases = exampleCases.filter(
@@ -276,6 +280,7 @@ describe('example release matrix contract', () => {
             'ground_truth_ambient_occlusion.html': { test: '1' },
             'screen_space_global_illumination_chapel.html': { test: '1' },
             'screen_space_reflections_palace.html': { test: '1' },
+            'stormfront_observatory.html': { test: '1' },
             'temporal_aa_observatory.html': { test: '1' }
         });
         expect(exampleRequestUrl('glTFViewer/index.html', 'webgpu')).toBe(

@@ -247,6 +247,96 @@ export interface AreaLightParameters extends LightParameters {
     width?: number;
 }
 
+// @public
+export type AtmosphereWeatherDebugView = 'none' | 'transmittance' | 'multi-scattering' | 'sky-view' | 'weather-map' | 'cloud-radiance' | 'cloud-transmittance' | 'cloud-shadow';
+
+// @public
+export interface AtmosphereWeatherOptions {
+    readonly atmosphere?: Readonly<PhysicalAtmosphereOptions>;
+    readonly clouds?: Readonly<VolumetricCloudOptions> | false;
+    readonly debugView?: AtmosphereWeatherDebugView;
+    readonly quality?: AtmosphereWeatherQuality;
+    readonly state?: AtmosphereWeatherState;
+}
+
+// @public
+export type AtmosphereWeatherQuality = 'low' | 'medium' | 'high' | 'ultra';
+
+// @public
+export class AtmosphereWeatherState {
+    cloudCoverage: number;
+    cloudDensity: number;
+    get historyRevision(): number;
+    invalidateHistory(): this;
+    storminess: number;
+    readonly sunDirection: Vector3;
+    timeSeconds: number;
+    readonly windDirection: Vector3;
+    windSpeed: number;
+}
+
+// @public
+export class AutoExposure implements ForwardRenderPipelineFeature {
+    constructor(options?: Readonly<AutoExposureOptions>);
+    // (undocumented)
+    create(context: RenderPipelineCreateContext): ForwardRenderPipelineFeatureRuntime;
+    // (undocumented)
+    readonly injectionPoint: "after-post-process";
+    // (undocumented)
+    readonly name = "auto-exposure";
+    readDiagnostics(): Promise<Readonly<AutoExposureDiagnostics>>;
+    // (undocumented)
+    readonly requirements: Readonly<{
+        sampledSceneColor: true;
+        sampledDepth: false;
+        requiredCapabilities: readonly ("compute-pass" | "storage-buffer" | "storage-texture")[];
+        requiredTextureFormats: readonly (Readonly<{
+            format: "rgba16float";
+            use: "filterable-sampled";
+        }> | Readonly<{
+            format: "rgba16float";
+            use: "storage";
+        }> | Readonly<{
+            format: "rgba16float";
+            use: "color-attachment";
+        }>)[];
+        requiredLimits: Readonly<{
+            maxBindingsPerBindGroup: 5;
+            maxStorageBuffersPerShaderStage: 3;
+            maxStorageTexturesPerShaderStage: 1;
+            maxSampledTexturesPerShaderStage: 1;
+            maxComputeInvocationsPerWorkgroup: number;
+        }>;
+    }>;
+}
+
+// @public
+export interface AutoExposureDiagnostics {
+    readonly actualEV: number;
+    readonly averageLuminance: number;
+    readonly sampleCount: number;
+    readonly targetEV: number;
+}
+
+// @public
+export type AutoExposureMeteringMode = 'average' | 'center-weighted';
+
+// @public
+export interface AutoExposureOptions {
+    readonly compensation?: number;
+    readonly highPercentile?: number;
+    readonly keyValue?: number;
+    readonly lowPercentile?: number;
+    readonly maximumEV?: number;
+    readonly maximumLogLuminance?: number;
+    readonly metering?: AutoExposureMeteringMode;
+    readonly minimumEV?: number;
+    readonly minimumLogLuminance?: number;
+    readonly sampleStride?: number;
+    readonly speedDown?: number;
+    readonly speedUp?: number;
+}
+
 // @public (undocumented)
 export type AxisAlignedBox = readonly [ArrayLike<number>, ArrayLike<number>];
 
@@ -707,6 +797,8 @@ export interface CameraParameters extends NodeParameters {
 
 // @public
 export interface ClusteredForwardPlusDiagnostics {
+    readonly autoExposureEV: number;
+    readonly autoExposureTargetEV: number;
     readonly clusterLightIndexCount: number;
     readonly clusterOverflowCount: number;
     readonly droppedLightCount: number;
@@ -734,6 +826,8 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
 
 // @public
 export interface ClusteredForwardPlusPipelineOptions {
+    readonly atmosphere?: Readonly<AtmosphereWeatherOptions> | false;
+    readonly autoExposure?: Readonly<AutoExposureOptions> | false;
     readonly bloomStrength?: number;
     readonly buckets: readonly GPUSceneBucket[];
     readonly exposure?: number;
@@ -749,6 +843,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly screenSpaceReflections?: Readonly<ScreenSpaceReflectionsOptions> | false;
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     readonly tileSize?: number;
+    readonly toneMapping?: 'aces' | 'filmic';
     readonly volumetricLighting?: Readonly<VolumetricLightingOptions> | false;
     readonly zSlices?: number;
 }
@@ -817,6 +912,11 @@ export interface ColorUberOptions {
     // (undocumented)
     readonly dithering?: boolean;
     readonly exposure?: number;
+    readonly filmicBlackClip?: number;
+    readonly filmicShoulder?: number;
+    readonly filmicSlope?: number;
+    readonly filmicToe?: number;
+    readonly filmicWhiteClip?: number;
     // (undocumented)
     readonly gain?: Color;
     // (undocumented)
@@ -5453,6 +5553,23 @@ export interface PerspectiveCameraParameters extends CameraParameters {
 }
 
 // @public
+export interface PhysicalAtmosphereOptions {
+    readonly aerialPerspectiveDistance?: number;
+    readonly atmosphereHeight?: number;
+    readonly groundAlbedo?: Readonly<Color>;
+    readonly mieAnisotropy?: number;
+    readonly mieScaleHeight?: number;
+    readonly ozoneCenterHeight?: number;
+    readonly ozoneWidth?: number;
+    readonly planetCenter?: Readonly<Vector3>;
+    readonly planetRadius?: number;
+    readonly rayleighScaleHeight?: number;
+    readonly sunAngularRadius?: number;
+    readonly sunColor?: Readonly<Color>;
+    readonly sunIlluminance?: number;
+}
+
+// @public
 export class Plane {
     constructor(normal?: Vector3, distance?: number);
     className: string;
@@ -5557,6 +5674,7 @@ export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
 
 // @public
 export interface PostProcessRenderPipelineOptions {
+    readonly autoExposure?: Readonly<AutoExposureOptions> | false;
     readonly bloom?: Readonly<BloomOptions> | false;
     readonly colorUber?: Readonly<ColorUberOptions>;
     readonly features?: readonly ForwardRenderPipelineFeature[];
@@ -8598,7 +8716,7 @@ export class Ticker {
 }
 
 // @public
-export type ToneMappingMode = 'pbr-neutral' | 'aces' | 'reinhard' | 'none';
+export type ToneMappingMode = 'pbr-neutral' | 'aces' | 'reinhard' | 'filmic' | 'none';
 
 // @public (undocumented)
 export type Triangle = readonly [ArrayLike<number>, ArrayLike<number>, ArrayLike<number>];
@@ -9140,6 +9258,19 @@ export interface VolumetricBoxFogVolume {
     readonly edgeFalloff?: number;
     readonly halfExtents: Readonly<Vector3>;
     readonly shape: 'box';
+}
+
+// @public
+export interface VolumetricCloudOptions {
+    readonly ambientStrength?: number;
+    readonly anisotropy?: number;
+    readonly baseHeight?: number;
+    readonly detailScale?: number;
+    readonly historyWeight?: number;
+    readonly shadowDistance?: number;
+    readonly silverLining?: number;
+    readonly thickness?: number;
+    readonly weatherScale?: number;
 }
 
 // @public
