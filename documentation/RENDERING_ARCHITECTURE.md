@@ -394,10 +394,13 @@ feedback、fragment compute 或 CPU fallback。完整公共合同、目标场景
 公共粒子系统复用同一条生产路径。CPU plan 把 liveness 编译后的 dense SoA 写入一个显式 per-instance
 vertex stream，并由普通 `MeshDrawProcessor` 发出单次 direct instanced draw；WebGPU stateful
 plan 由默认 Forward 的内建 feature 在透明场景之后记录 persistent state、alive/dead compact、spawn
-initialize、per-view sort、renderer-data build 和 indirect storage
-raster。全部 buffer/attachment 访问进入 Render Graph，simulation 每 application
-frame 最多推进一次，提交成功才提交 double-buffer generation 与时钟；WebGL
-2 上该 feature 保持惰性。公共合同与 P0-P2 边界见 [`PARTICLE_SYSTEM.md`](./PARTICLE_SYSTEM.md)。
+initialize、per-view sort、renderer-data build 和 indirect storage raster。P3 stateless
+plan 在兼容模块集上按 absolute emitter time 重建当帧 renderer input，compiled plan 的 persistent
+state byte length 为零；WebGPU generator 只声明 parameter、renderer-data 与 indirect buffer，device
+recovery 采用 `regenerate` 而不恢复 state/alive/dead list。全部 buffer/attachment 访问进入 Render
+Graph，stateful simulation 每 application frame 最多推进一次，提交成功才提交 double-buffer
+generation 与时钟；WebGL 2 上该 feature 保持惰性。公共合同与 P0-P3 边界见
+[`PARTICLE_SYSTEM.md`](./PARTICLE_SYSTEM.md)。
 
 相关代码：[`compute/`](../src/render/compute)、[`StorageBuffer.ts`](../src/render/StorageBuffer.ts)、[`storage/`](../src/render/storage)、[`ComputeRenderPass.ts`](../src/render/pipeline/passes/ComputeRenderPass.ts)、[`GPUDrivenRenderPass.ts`](../src/render/pipeline/passes/GPUDrivenRenderPass.ts)、[`ScriptableComputeDispatch.ts`](../src/render/renderer/ScriptableComputeDispatch.ts)、[`ScriptableGPUDrivenDraw.ts`](../src/render/renderer/ScriptableGPUDrivenDraw.ts)、[`compute_gpu_driven.ts`](../examples/compute_gpu_driven.ts)、[`compute_particles.ts`](../examples/compute_particles.ts)、[`compute_raytracing.ts`](../examples/compute_raytracing.ts)。
 

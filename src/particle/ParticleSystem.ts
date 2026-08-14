@@ -21,6 +21,7 @@ import {
 } from './cpu/ParticleCPUSimulator';
 import { ParticleGPUEmitterRuntime } from './gpu/ParticleGPURuntime';
 import { ParticleGPUSpawnController } from './gpu/ParticleGPUSpawnController';
+import { ParticleStatelessRuntime } from './stateless/ParticleStatelessRuntime';
 
 interface ParticleStage extends Node {
     readonly isStage: true;
@@ -29,7 +30,7 @@ interface ParticleStage extends Node {
 
 interface ParticleEmitterRuntime {
     readonly plan: Readonly<ParticleCompiledEmitterPlan>;
-    readonly simulator: ParticleCPUSimulator | null;
+    readonly simulator: ParticleCPUSimulator | ParticleStatelessRuntime | null;
     readonly gpuController: ParticleGPUSpawnController | null;
     gpuRuntime: ParticleGPUEmitterRuntime | null;
     readonly writers: readonly ParticleCPUInstanceWriter[];
@@ -375,7 +376,10 @@ class ParticleSystem extends Node {
                 stoppedByCulling: false
             };
         }
-        const simulator = new ParticleCPUSimulator(plan, this.seed);
+        const simulator =
+            plan.kind === 'stateless'
+                ? new ParticleStatelessRuntime(plan, this.seed)
+                : new ParticleCPUSimulator(plan, this.seed);
         const writers = plan.definition.renderers.map(
             (renderer, index) =>
                 new ParticleCPUInstanceWriter(plan, simulator.state, renderer, index)

@@ -751,9 +751,52 @@ function sortShader(
 ): ComputeShader | null {
     if (strategy === 'none') return null;
     const position = attributeOffset(plan, 'position');
-    const main =
-        strategy === 'bitonic'
-            ? `
+    const shared = `${wgslShared(plan)}
+@group(0) @binding(0) var<uniform> params: ParticleParams;
+@group(0) @binding(1) var<storage, read> state: array<u32>;
+@group(0) @binding(2) var<storage, read_write> aliveIndices: array<u32>;
+@group(0) @binding(3) var<storage, read_write> counters: ParticleCounters;
+fn distanceKey(particleIndex: u32) -> f32 {
+    let position = vec3<f32>(bitcast<f32>(state[${String(position)}u + particleIndex * 3u]), bitcast<f32>(state[${String(position)}u + particleIndex * 3u + 1u]), bitcast<f32>(state[${String(position)}u + particleIndex * 3u + 2u]));
+    return distance(position, params.cameraPosition.xyz);
+}`;
+    const bindings = [
+        {
+            name: 'params',
+            group: 0,
+            binding: 0,
+            kind: 'uniform-buffer' as const,
+            minBindingSize: buffers.parameterByteLength
+        },
+        {
+            name: 'state',
+            group: 0,
+            binding: 1,
+            kind: 'read-only-storage-buffer' as const,
+            minBindingSize: buffers.stateByteLength
+        },
+        {
+            name: 'aliveIndices',
+            group: 0,
+            binding: 2,
+            kind: 'storage-buffer' as const,
+            access: 'read-write' as const,
+            minBindingSize: buffers.aliveIndexByteLength
+        },
+        {
+            name: 'counters',
+            group: 0,
+            binding: 3,
+            kind: 'storage-buffer' as const,
+            access: 'read-write' as const,
+            minBindingSize: buffers.counterByteLength
+        }
+    ];
+    if (strategy === 'bitonic') {
+        return new ComputeShader({
+            label: `${plan.definition.name}:particle-distance-sort`,
+            workgroupSize: [WORKGROUP_SIZE],
+            source: `${shared}
 @compute @workgroup_size(${String(WORKGROUP_SIZE)})
 fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     let index = invocation.x;
@@ -764,8 +807,14 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     let left = aliveIndices[index]; let right = aliveIndices[partner];
     let swap = (distanceKey(left) < distanceKey(right)) == ascending;
     if (swap) { aliveIndices[index] = right; aliveIndices[partner] = left; }
-}`
-            : `
+}`,
+            bindings
+        });
+    }
+    return new ComputeShader({
+        label: `${plan.definition.name}:particle-distance-sort`,
+        workgroupSize: [1],
+        source: `${shared}
 // Large and non-power-of-two capacities use an in-place, high-byte distance bucket pass.
 // A single invocation owns the compaction order, avoiding cross-workgroup write hazards.
 @compute @workgroup_size(1)
@@ -787,52 +836,8 @@ fn main() {
             searchIndex += 1u;
         }
     }
-}`;
-    return new ComputeShader({
-        label: `${plan.definition.name}:particle-distance-sort`,
-        workgroupSize: [strategy === 'bitonic' ? WORKGROUP_SIZE : 1],
-        source: `${wgslShared(plan)}
-@group(0) @binding(0) var<uniform> params: ParticleParams;
-@group(0) @binding(1) var<storage, read> state: array<u32>;
-@group(0) @binding(2) var<storage, read_write> aliveIndices: array<u32>;
-@group(0) @binding(3) var<storage, read_write> counters: ParticleCounters;
-fn distanceKey(particleIndex: u32) -> f32 {
-    let position = vec3<f32>(bitcast<f32>(state[${String(position)}u + particleIndex * 3u]), bitcast<f32>(state[${String(position)}u + particleIndex * 3u + 1u]), bitcast<f32>(state[${String(position)}u + particleIndex * 3u + 2u]));
-    return distance(position, params.cameraPosition.xyz);
-}
-${main}`,
-        bindings: [
-            {
-                name: 'params',
-                group: 0,
-                binding: 0,
-                kind: 'uniform-buffer',
-                minBindingSize: buffers.parameterByteLength
-            },
-            {
-                name: 'state',
-                group: 0,
-                binding: 1,
-                kind: 'read-only-storage-buffer',
-                minBindingSize: buffers.stateByteLength
-            },
-            {
-                name: 'aliveIndices',
-                group: 0,
-                binding: 2,
-                kind: 'storage-buffer',
-                access: 'read-write',
-                minBindingSize: buffers.aliveIndexByteLength
-            },
-            {
-                name: 'counters',
-                group: 0,
-                binding: 3,
-                kind: 'storage-buffer',
-                access: 'read-write',
-                minBindingSize: buffers.counterByteLength
-            }
-        ]
+}`,
+        bindings
     });
 }
 

@@ -1,6 +1,6 @@
 # Hilo3D 粒子系统实现计划
 
-状态：P0、P1、P2 运行时已实现；示例迁移延后；P3-P6 规划中
+状态：P0、P1、P2、P3 运行时已实现；示例迁移延后；P4-P6 规划中
 
 调研基线：2026-08-14
 
@@ -8,8 +8,9 @@
 
 实现记录：P0-P2 的当前公共用法、执行策略、模块范围、恢复语义和明确边界见
 [`PARTICLE_SYSTEM.md`](./PARTICLE_SYSTEM.md)。现有 `compute_particles`
-fixture 保持原实现，待粒子功能全部完成后再统一改造；P3
-stateless 模式当前在编译期明确拒绝，不会伪装成 CPU stateful plan。
+fixture 保持原实现，待粒子功能全部完成后再统一改造。P3 已加入 stateless eligibility/元数据、CPU
+absolute-time reconstruction、无持久 state 的 WebGPU generator artifact、确定性 budget
+manager 与短促 effect pool；实现边界见 [`PARTICLE_SYSTEM.md`](./PARTICLE_SYSTEM.md)。
 
 ## 结论先行
 
@@ -885,18 +886,18 @@ pass。默认关闭 diagnostics 时不能引入逐粒子计数、GPU query 或 r
   和真实浏览器 pipeline 通过；
 - device loss、reload、deterministic seed 和 failure rollback 有覆盖。
 
-### P3：Stateless 与规模化
+### P3：Stateless 与规模化（已完成）
 
 交付：
 
-- stateless eligibility checker；
-- CPU/WebGPU stateless
-  generator，覆盖 P1 可解析子集以及 gravity/drag/orbit/noise-offset 等有明确解析式或 LUT
-  approximation 的 P2 模块；
-- 每个 module 的 `exact`、`approximated`、`stateful-only` metadata 和资产级诊断；
-- renderer-local shared buffer/cache；
-- distance/visibility/instance/budget culling；
-- `ParticleBudgetProfile`、pooling 和大量短促 effect 的 service/data-channel 基线。
+- [x] stateless eligibility checker；
+- [x] CPU/WebGPU stateless
+      generator，覆盖 P1 可解析子集以及 gravity/drag/orbit/noise-offset 等有明确解析式或 LUT
+      approximation 的 P2 模块；
+- [x] 每个 module 的 `exact`、`approximated`、`stateful-only` metadata 和资产级诊断；
+- [x] renderer-local renderer-data/cache recovery contract；
+- [x] distance/visibility/instance/budget culling；
+- [x] `ParticleBudgetProfile`、pooling 和大量短促 effect 的 service/data-channel 基线。
 
 门禁：
 

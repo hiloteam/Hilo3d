@@ -11,6 +11,10 @@ import ParticleCurve from './ParticleCurve';
 import { hashParticleDefinition } from './ParticleDefinitionHash';
 import type ParticleEmitterDefinition from './ParticleEmitterDefinition';
 import ParticleGradient from './ParticleGradient';
+import {
+    analyzeParticleStatelessEligibility,
+    particleStatelessBlockingDiagnostics
+} from './ParticleStateless';
 import type ParticleSystemDefinition from './ParticleSystemDefinition';
 import type {
     ParticleColorValue,
@@ -419,35 +423,18 @@ function collectLUTs(emitter: ParticleEmitterDefinition): {
     return { curves: Object.freeze(curves), gradients: Object.freeze(gradients) };
 }
 
-function statelessDiagnostics(emitter: ParticleEmitterDefinition): string[] {
-    const diagnostics: string[] = [];
-    if (emitter.emission.rateOverDistance !== undefined) diagnostics.push('rate-over-distance');
-    for (const module of emitter.modules) {
-        if (
-            (module.type === 'noise' && module.mode === 'force') ||
-            module.type === 'vector-field' ||
-            module.type.startsWith('kill-')
-        ) {
-            diagnostics.push(module.type);
-        }
-    }
-    return diagnostics;
-}
-
 function selectPlanKind(
     emitter: ParticleEmitterDefinition,
-    environment: Readonly<ParticleCompilationEnvironment>
+    environment: Readonly<ParticleCompilationEnvironment>,
+    statelessDiagnostics: readonly string[]
 ): ParticleCompiledEmitterPlan['kind'] {
-    const stateless = statelessDiagnostics(emitter);
     if (emitter.execution === 'stateless') {
-        if (stateless.length > 0) {
+        if (statelessDiagnostics.length > 0) {
             throw new TypeError(
-                `Particle emitter ${emitter.name} is not stateless-compatible: ${stateless.join(', ')}`
+                `Particle emitter ${emitter.name} is not stateless-compatible: ${statelessDiagnostics.join(', ')}`
             );
         }
-        throw new TypeError(
-            `Particle emitter ${emitter.name} requests the reserved P3 stateless execution mode`
-        );
+        return 'stateless';
     }
     if (emitter.execution === 'gpu') {
         if (environment.backend === 'webgl2') {
@@ -458,6 +445,7 @@ function selectPlanKind(
         return 'gpu-stateful';
     }
     if (emitter.execution === 'cpu') return 'cpu-stateful';
+    if (statelessDiagnostics.length === 0) return 'stateless';
     if (
         environment.backend === 'webgpu' &&
         emitter.capacity >= (environment.preferGPUAboveCapacity ?? Number.POSITIVE_INFINITY)
@@ -516,7 +504,9 @@ export function compileParticleSystemDefinition(
         validateEmitter(emitter);
         const layout = buildAttributeLayout(emitter);
         const luts = collectLUTs(emitter);
-        const diagnostics = Object.freeze(statelessDiagnostics(emitter));
+        const statelessModules = analyzeParticleStatelessEligibility(emitter);
+        const diagnostics = particleStatelessBlockingDiagnostics(statelessModules);
+        const kind = selectPlanKind(emitter, environment, diagnostics);
         const layoutHash = hashParticleDefinition({
             capacity: emitter.capacity,
             attributes: layout.attributes
@@ -524,7 +514,7 @@ export function compileParticleSystemDefinition(
         return Object.freeze({
             definition: emitter,
             emitterId: (Number.parseInt(emitter.hash, 16) ^ index) >>> 0,
-            kind: selectPlanKind(emitter, environment),
+            kind,
             attributes: layout.attributes,
             attributeByteLength: layout.byteLength,
             layoutHash,
@@ -532,7 +522,10 @@ export function compileParticleSystemDefinition(
             gradientLUTs: luts.gradients,
             bounds: Object.freeze(deriveParticleEmitterBounds(emitter)),
             statelessEligible: diagnostics.length === 0,
-            statelessDiagnostics: diagnostics
+            statelessDiagnostics: diagnostics,
+            statelessModules,
+            persistentStateByteLength:
+                kind === 'stateless' ? 0 : layout.byteLength * (kind === 'gpu-stateful' ? 2 : 1)
         });
     });
     return Object.freeze({

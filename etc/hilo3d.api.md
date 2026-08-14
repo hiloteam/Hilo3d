@@ -31,6 +31,9 @@ export class AmbientLight extends Light {
 export type AmbientLightParameters = LightParameters;
 
 // @public
+export function analyzeParticleStatelessEligibility(emitter: ParticleEmitterDefinition): readonly Readonly<ParticleStatelessModuleMetadata>[];
+
+// @public
 class Animation_2 extends EventDispatcher {
     constructor(params?: AnimationParameters);
     addClip(name: string, start: number, end: number, animStatesList: AnimationStates[]): void;
@@ -5341,6 +5344,80 @@ export interface ParticleBoxShape extends ParticleShapeBase {
 }
 
 // @public
+export interface ParticleBudgetDecision {
+    // (undocumented)
+    readonly collision: boolean;
+    // (undocumented)
+    readonly emitterId: number;
+    // (undocumented)
+    readonly enabled: boolean;
+    // (undocumented)
+    readonly particleLimit: number;
+    // (undocumented)
+    readonly reasons: readonly string[];
+    // (undocumented)
+    readonly ribbons: boolean;
+    // (undocumented)
+    readonly softParticles: boolean;
+    // (undocumented)
+    readonly sorting: boolean;
+    // (undocumented)
+    readonly spawnRateScale: number;
+    // (undocumented)
+    readonly systemId: string;
+}
+
+// @public
+export class ParticleBudgetManager {
+    constructor(profile?: Readonly<ParticleBudgetProfile>);
+    // (undocumented)
+    readonly profile: Readonly<Required<ParticleBudgetProfile>>;
+    resolve(requests: readonly Readonly<ParticleBudgetRequest>[]): readonly Readonly<ParticleBudgetDecision>[];
+}
+
+// @public
+export interface ParticleBudgetProfile {
+    // (undocumented)
+    readonly capacityScale?: number;
+    // (undocumented)
+    readonly collision?: boolean;
+    // (undocumented)
+    readonly maxDistance?: number;
+    // (undocumented)
+    readonly maxEmitters?: number;
+    // (undocumented)
+    readonly maxParticles?: number;
+    // (undocumented)
+    readonly maxSystems?: number;
+    // (undocumented)
+    readonly ribbons?: boolean;
+    // (undocumented)
+    readonly softParticles?: boolean;
+    // (undocumented)
+    readonly sorting?: boolean;
+    // (undocumented)
+    readonly spawnRateScale?: number;
+}
+
+// @public
+export interface ParticleBudgetRequest {
+    // (undocumented)
+    readonly capacity: number;
+    // (undocumented)
+    readonly distance?: number;
+    // (undocumented)
+    readonly emitterId: number;
+    // (undocumented)
+    readonly estimatedAlive: number;
+    // (undocumented)
+    readonly priority?: number;
+    // (undocumented)
+    readonly systemId: string;
+    // (undocumented)
+    readonly visible?: boolean;
+}
+
+// @public
 export interface ParticleBurstDefinition {
     // (undocumented)
     readonly count: number;
@@ -5425,10 +5502,12 @@ export interface ParticleCompiledEmitterPlan {
     readonly kind: 'cpu-stateful' | 'gpu-stateful' | 'stateless';
     // (undocumented)
     readonly layoutHash: string;
+    readonly persistentStateByteLength: number;
     // (undocumented)
     readonly statelessDiagnostics: readonly string[];
     // (undocumented)
     readonly statelessEligible: boolean;
+    readonly statelessModules: readonly Readonly<ParticleStatelessModuleMetadata>[];
 }
 
 // @public
@@ -5940,6 +6019,24 @@ export interface ParticleSpriteRendererDefinition {
 }
 
 // @public
+export function particleStatelessBlockingDiagnostics(metadata: readonly Readonly<ParticleStatelessModuleMetadata>[]): readonly string[];
+
+// @public
+export interface ParticleStatelessModuleMetadata {
+    // (undocumented)
+    readonly moduleIndex: number;
+    // (undocumented)
+    readonly moduleType: ParticleModule['type'] | 'rate-over-distance';
+    // (undocumented)
+    readonly reason: string;
+    // (undocumented)
+    readonly support: ParticleStatelessSupport;
+}
+
+// @public
+export type ParticleStatelessSupport = 'exact' | 'approximated' | 'stateful-only';
+
+// @public
 export class ParticleSystem extends Node_2 {
     constructor(parameters: Readonly<ParticleSystemParameters>);
     get aliveCount(): number;
@@ -6034,6 +6131,21 @@ export interface ParticleSystemParameters extends NodeParameters {
     readonly seed?: number;
     // (undocumented)
     readonly timeScale?: number;
+}
+
+// @public
+export class ParticleSystemPool {
+    constructor(capacity?: number);
+    // (undocumented)
+    acquire(parameters: Readonly<ParticleSystemParameters>): ParticleSystem;
+    // (undocumented)
+    get activeCount(): number;
+    // (undocumented)
+    destroy(renderer: Renderer): void;
+    // (undocumented)
+    get pooledCount(): number;
+    // (undocumented)
+    release(system: ParticleSystem, renderer?: Renderer): void;
 }
 
 // @public

@@ -18,10 +18,12 @@ import {
     MeshPicker,
     Node,
     OrbitControls,
+    ParticleBudgetManager,
     ParticleCurve,
     ParticleGradient,
     ParticleSystem,
     ParticleSystemDefinition,
+    ParticleSystemPool,
     PerspectiveCamera,
     Renderer,
     SCENE_STORAGE_BIND_GROUP,
@@ -34,6 +36,7 @@ import {
     Vector3,
     GPUDrivenRenderPass,
     version,
+    analyzeParticleStatelessEligibility,
     type BasicLoadRequest,
     type CameraDepthMode,
     type BasicMaterialParameters,
@@ -48,6 +51,8 @@ import {
     type NodeParameters,
     type OrbitControlsOptions,
     type ParticleModule,
+    type ParticleBudgetProfile,
+    type ParticleStatelessSupport,
     type ParticleSystemDefinitionInput,
     type ParticleSystemParameters,
     type CullingResultsHandle,
@@ -176,6 +181,32 @@ particleSystem
     .play()
     .pause()
     .restart();
+const particleBudgetProfile = {
+    maxSystems: 32,
+    maxParticles: 10_000,
+    sorting: false
+} satisfies ParticleBudgetProfile;
+const particleBudgetManager = new ParticleBudgetManager(particleBudgetProfile);
+particleBudgetManager.resolve([
+    {
+        systemId: particleDefinition.hash,
+        emitterId: 0,
+        capacity: 64,
+        estimatedAlive: particleSystem.aliveCount
+    }
+]);
+const particleEmitter = particleDefinition.emitters[0];
+if (!particleEmitter) throw new Error('Particle type fixture requires an emitter');
+const statelessSupport: ParticleStatelessSupport =
+    analyzeParticleStatelessEligibility(particleEmitter)[0]?.support ?? 'exact';
+const particleSystemPool = new ParticleSystemPool(4);
+const pooledParticles = particleSystemPool.acquire({
+    definition: particleDefinition,
+    seed: 42,
+    autoPlay: false
+});
+particleSystemPool.release(pooledParticles);
+void statelessSupport;
 const webgpuRendererParameters = {
     backend: 'webgpu',
     domElement: document.createElement('canvas'),

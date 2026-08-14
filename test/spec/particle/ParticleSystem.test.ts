@@ -101,9 +101,12 @@ describe('ParticleSystem P0/P1 contracts', () => {
                 }
             ]
         });
-        expect(() => compileParticleSystemDefinition(stateless)).toThrow(
-            /reserved P3 stateless execution mode/u
-        );
+        const compiledStateless = compileParticleSystemDefinition(stateless);
+        expect(compiledStateless.emitters[0]).toMatchObject({
+            kind: 'stateless',
+            statelessEligible: true,
+            persistentStateByteLength: 0
+        });
     });
 
     it('reproduces fixed-step state and renders a dense range with one instanced Mesh', () => {

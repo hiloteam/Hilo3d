@@ -1,9 +1,11 @@
 # Particle system
 
-Hilo3D exposes one versioned particle asset model for portable CPU simulation and stateful WebGPU
-simulation. P0-P2 are implemented: immutable definitions compile to a liveness-based SoA plan, CPU
-emitters render through one instanced `Mesh`, and WebGPU emitters record persistent simulation,
-compaction, sorting, indirect arguments, and storage-aware sprite raster through the Render Graph.
+Hilo3D exposes one versioned particle asset model for portable CPU simulation, stateful WebGPU
+simulation, and lightweight stateless reconstruction. P0-P3 are implemented: immutable definitions
+compile to a liveness-based SoA plan, CPU emitters render through one instanced `Mesh`, WebGPU
+stateful emitters record persistent simulation and storage raster through the Render Graph, and
+stateless emitters rebuild renderer attributes from absolute time without cross-frame particle
+state.
 
 ## Public workflow
 
@@ -72,12 +74,12 @@ a new definition when topology changes. `ParticleCurve`, `ParticleGradient`, and
 
 ## Execution policy
 
-| `execution` | Implemented behavior                                                                                                              |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `auto`      | Portable CPU stateful plan by default. A WebGPU compilation environment may opt into GPU execution with `preferGPUAboveCapacity`. |
-| `cpu`       | Dense CPU SoA simulation and a shared portable GLSL ES 3.00 instanced sprite path on WebGL 2 and WebGPU.                          |
-| `gpu`       | Stateful WebGPU compute/storage/indirect path. Explicit WebGL 2 compilation fails before a frame begins.                          |
-| `stateless` | Reserved for P3 and currently fails clearly during compilation; it never silently runs as another plan.                           |
+| `execution` | Implemented behavior                                                                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auto`      | Selects stateless when every fixed module is reconstructible; otherwise a WebGPU environment may select GPU stateful above `preferGPUAboveCapacity`, with CPU stateful as the portable fallback. |
+| `cpu`       | Dense CPU SoA simulation and a shared portable GLSL ES 3.00 instanced sprite path on WebGL 2 and WebGPU.                                                                                         |
+| `gpu`       | Stateful WebGPU compute/storage/indirect path. Explicit WebGL 2 compilation fails before a frame begins.                                                                                         |
+| `stateless` | Requires every module to be stateless-compatible and reports the exact blocking module/reason before a frame; the portable generator works on WebGL 2 and WebGPU.                                |
 
 Pass `{ compilationEnvironment: { backend: 'webgpu' } }` to `ParticleSystem` when an emitter
 explicitly requests `gpu`. GPU definitions cannot use dynamic bounds. Vector fields require manual
@@ -108,6 +110,27 @@ order; and `none`, distance, youngest, or oldest CPU sorting. GPU distance sorti
 power-of-two capacities up to 4096 and a distance-bucket profile for larger or non-power-of-two
 capacities.
 
+## Stateless reconstruction and scalability
+
+Every compiled emitter retains per-module stateless metadata with one of three outcomes: `exact`,
+`approximated`, or `stateful-only`. Lifetime/color/size/rotation/SubUV LUTs, constant
+velocity/force/gravity/wind/drag, and position-offset noise use absolute age directly. Bounded
+fixed-sample reconstruction covers limit velocity, orbital/vortex/attraction/conform families.
+Feedback noise, vector fields, conditional kill modules, inherited emitter velocity, and
+rate-over-distance remain stateful-only and identify their reason in the compilation diagnostic.
+
+The CPU stateless runtime retains only emitter time, seed, parameters, and bounded manual-spawn
+metadata. It rebuilds the dense renderer input for the active lifetime interval and reports zero
+`persistentStateByteLength`; it does not retain position/velocity arrays as simulation history. The
+WebGPU stateless compiler produces a Naga-validated renderer-data/indirect generator with a
+`regenerate` recovery policy and no state/alive/dead recovery buffers.
+
+`ParticleBudgetManager` resolves a complete request set in stable priority/distance/identity order,
+so visibility, distance, system, emitter, particle, spawn-rate, sorting, soft-particle, collision,
+and ribbon quality decisions are deterministic and carry explicit degradation reasons.
+`ParticleSystemPool` reuses stopped instances by immutable definition and seed for short-lived
+effects without changing public identity while an instance is active.
+
 ## Runtime and renderer contract
 
 `ParticleSystem` is a scene `Node`, not a collection of per-particle objects. Its public controls
@@ -132,11 +155,11 @@ indirect raster all declare their storage, indirect, and attachment access throu
 
 ## Current boundary
 
-P3-P6 remain outside this implementation. In particular, there is no stateless runtime, global
-particle budget manager, collision/event channel, soft-particle depth sampling, mesh/ribbon/trail
-renderer, serialization upgrade pipeline, capture cache, or graph editor yet. The public fixed
-module union rejects arbitrary callbacks and arbitrary shader source by design.
+P4-P6 remain outside this implementation. In particular, there is no collision/event channel,
+soft-particle depth sampling, mesh/ribbon/trail renderer, serialization upgrade pipeline, capture
+cache, or graph editor yet. The public fixed module union rejects arbitrary callbacks and arbitrary
+shader source by design.
 
 The existing [`compute_particles.ts`](../examples/compute_particles.ts) showcase intentionally keeps
 its specialized implementation for now. It will be migrated only after the remaining particle
-feature phases are complete, so P0-P2 do not reduce or reshape that fixture prematurely.
+feature phases are complete, so P0-P3 do not reduce or reshape that fixture prematurely.

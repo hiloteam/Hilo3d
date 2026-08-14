@@ -85,6 +85,12 @@ export {
     type ParticleCurveWrapMode
 } from './particle/ParticleCurve';
 export { default as ParticleEmitterDefinition } from './particle/ParticleEmitterDefinition';
+export {
+    ParticleBudgetManager,
+    type ParticleBudgetDecision,
+    type ParticleBudgetProfile,
+    type ParticleBudgetRequest
+} from './particle/ParticleBudget';
 export { default as ParticleGradient, type ParticleGradientKey } from './particle/ParticleGradient';
 export {
     ParticleParameter,
@@ -99,6 +105,13 @@ export {
     type ParticleSystemSimulateOptions
 } from './particle/ParticleSystem';
 export { default as ParticleSystemDefinition } from './particle/ParticleSystemDefinition';
+export { ParticleSystemPool } from './particle/ParticleSystemPool';
+export {
+    analyzeParticleStatelessEligibility,
+    particleStatelessBlockingDiagnostics,
+    type ParticleStatelessModuleMetadata,
+    type ParticleStatelessSupport
+} from './particle/ParticleStateless';
 export { PARTICLE_DEFINITION_VERSION } from './particle/ParticleTypes';
 export type * from './particle/ParticleTypes';
 

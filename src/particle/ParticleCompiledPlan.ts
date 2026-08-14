@@ -2,6 +2,7 @@ import type { Bounds } from '../geometry/Geometry';
 import type ParticleCurve from './ParticleCurve';
 import type ParticleEmitterDefinition from './ParticleEmitterDefinition';
 import type ParticleGradient from './ParticleGradient';
+import type { ParticleStatelessModuleMetadata } from './ParticleStateless';
 import type ParticleSystemDefinition from './ParticleSystemDefinition';
 
 /** Typed particle attributes allocated only when a module or renderer consumes them. */
@@ -61,6 +62,10 @@ export interface ParticleCompiledEmitterPlan {
     readonly bounds: Readonly<Bounds>;
     readonly statelessEligible: boolean;
     readonly statelessDiagnostics: readonly string[];
+    /** Per-module reconstruction contract consumed by diagnostics and stateless generators. */
+    readonly statelessModules: readonly Readonly<ParticleStatelessModuleMetadata>[];
+    /** Cross-frame particle-state bytes. Stateless renderer input is intentionally excluded. */
+    readonly persistentStateByteLength: number;
 }
 
 /** Immutable compilation result cached by definition hash and execution environment. */
