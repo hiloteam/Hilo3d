@@ -109,5 +109,7 @@ recipe 重建资源，public pipeline identity 不变。
 
 现有 `examples/temporal_aa_observatory.html` 保持为独立 TAA/TAAU 案例，不承担 SSR release evidence。
 
-SSGI 尚未由此功能实现。后续 SSGI 可以复用 RG32F Hi-Z、material attribute ABI、motion/depth
-history 和 rejection 规则，但必须拥有独立的采样、能量与验证合同。
+SSGI 已作为独立的 portable Forward/Clustered 功能交付，并复用 material attribute ABI 与 motion/depth
+history。它直接 trace 当前 scene depth，不依赖 SSR 的 RG32F
+Hi-Z；两者保持独立的采样、能量、history 和验证合同。完整边界见
+[`SCREEN_SPACE_GLOBAL_ILLUMINATION.md`](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)。

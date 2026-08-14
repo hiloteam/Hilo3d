@@ -34,12 +34,14 @@ WebGPU path or a production WebGL 2 compatibility path.
 
 - **One renderer, two backends** — `auto` prefers compatible WebGPU and uses WebGL 2 when WebGPU is
   unavailable. Explicit backend requests never change silently.
-- **Modern materials and output** — glTF 2.0, layered PBR, HDR lighting, Bloom, tone mapping,
-  transmission, volume, iridescence, clearcoat, and anisotropy.
+- **Modern materials and output** — glTF 2.0, layered PBR, HDR lighting, Bloom, automatic exposure,
+  filmic tone mapping, transmission, volume, iridescence, clearcoat, and anisotropy.
 - **2D and 3D together** — scene graph, meshes, animation, cameras, lights, shadows, sprites, text,
   batching, picking, and layered multi-camera composition.
-- **GPU-driven rendering** — instancing and multi-pass rendering across both backends, plus compute,
-  storage resources, and indirect workflows where WebGPU is available.
+- **GPU-driven rendering** — instancing and multi-pass rendering across both backends, plus a WebGPU
+  high-end profile with GPU Scene culling/LOD, Hi-Z, indirect buckets, and Clustered Forward+.
+- **Stable high-end lighting** — TAA/TAAU, dynamic resolution, GTAO, SSR, SSGI, froxel volumetrics,
+  physical atmosphere, temporal clouds, cloud shadows, and eye adaptation.
 - **A frame you can shape** — a validated Render Graph and scriptable render pipeline coordinate
   shadows, scene passes, post-processing, render targets, readback, and presentation.
 - **Production lifecycle** — bounded GPU caches, incremental uploads, explicit resource ownership,
@@ -114,16 +116,46 @@ Use `backend: 'webgpu'` or `backend: 'webgl2'` when an application requires a sp
 
 [Browse the complete example gallery →](https://hilo3d.js.org/examples/list.html)
 
+## Modern rendering stack
+
+The opt-in WebGPU high-end profile is built on the same Scene, Material, Render Graph, and RHI
+contracts as the portable renderer. Unsupported devices fail capability checks before the runtime is
+created; compatible meshes that are outside the native GPU Scene slice remain on the shared Forward
+path and compose into the same linear HDR frame.
+
+| System                  | Current production slice                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| GPU Scene               | Dirty object/material databases, previous-frame Hi-Z occlusion, projected-radius LOD, compact visible ranges, and fixed indirect buckets  |
+| Clustered Forward+      | Depth-driven 3D clusters, bounded deterministic light allocation, storage PBR, shared directional/spot/point shadows, and LTC area lights |
+| Temporal rendering      | Motion vectors, authored reactive masks, native TAA, 0.5–1.0 TAAU, and timestamp-driven dynamic resolution                                |
+| Screen-space lighting   | Portable GTAO and SSGI on WebGPU/WebGL 2, plus WebGPU Clustered hierarchical SSR                                                          |
+| Volumetrics and weather | Froxel height/local fog, directional/point/spot injection, physical atmosphere LUTs, temporal clouds, and cloud shadows                   |
+| HDR display             | GPU histogram exposure, asymmetric eye adaptation, Bloom, and configurable filmic display transforms                                      |
+
+Explore the
+[Clustered Sponza lab](https://hilo3d.js.org/examples/clustered_forward_plus_sponza.html),
+[Temporal Observatory](https://hilo3d.js.org/examples/temporal_aa_observatory.html),
+[Silent Dragon GTAO](https://hilo3d.js.org/examples/ground_truth_ambient_occlusion.html),
+[Afterimage SSR](https://hilo3d.js.org/examples/screen_space_reflections_palace.html),
+[Prismatic Vespers SSGI](https://hilo3d.js.org/examples/screen_space_global_illumination_chapel.html),
+[Neon Reliquary volumetrics](https://hilo3d.js.org/examples/volumetric_neon_reliquary.html), and
+[Stormfront Observatory](https://hilo3d.js.org/examples/stormfront_observatory.html).
+
+See the [modern WebGPU rendering roadmap](./documentation/MODERN_WEBGPU_RENDERING_ROADMAP.md) for
+the exact completed boundaries, remaining compatibility paths, and future streaming/virtualization
+work.
+
 ## Rendering profiles
 
-|                     | Portable profile                                          | WebGPU profile                                            |
-| ------------------- | --------------------------------------------------------- | --------------------------------------------------------- |
-| Backend             | WebGPU and WebGL 2                                        | WebGPU                                                    |
-| Scene and materials | Shared scene graph, PBR materials, glTF, sprites, text    | The same public engine model                              |
-| Frame composition   | Render Graph, render targets, MRT, MSAA, post-processing  | The same graph with native command encoding               |
-| GPU workloads       | Instancing, uniform buffers, incremental resource uploads | Compute, storage buffers/textures, indirect GPU workflows |
-| Shader path         | Authored GLSL ES 3.00                                     | Preprocessed GLSL → Naga → WGSL                           |
-| Recovery            | WebGL context restoration                                 | WebGPU device reacquisition and resource rebuild          |
+|                      | Portable profile                                              | WebGPU high-end profile                                                      |
+| -------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Backend              | WebGPU and WebGL 2                                            | WebGPU                                                                       |
+| Scene and materials  | Shared scene graph, PBR materials, glTF, sprites, text        | The same public model with registered PBR buckets and Forward fallback       |
+| Frame composition    | Render Graph, render targets, MRT, MSAA, post-processing      | The same graph with GPU Scene, clustered lighting, and native compute        |
+| Lighting and quality | Forward PBR, shadows, GTAO, SSGI, TAA/TAAU, Bloom, Color Uber | Adds Hi-Z SSR, dynamic resolution, froxels, atmosphere/clouds, auto exposure |
+| GPU workloads        | Instancing, uniform buffers, incremental resource uploads     | Compute, storage buffers/textures, indirect GPU workflows                    |
+| Shader path          | Authored GLSL ES 3.00                                         | Raster GLSL → Naga → WGSL; validated direct WGSL compute                     |
+| Recovery             | WebGL context restoration or WebGPU resource rebuild          | WebGPU device reacquisition with submission-aware history rebuild            |
 
 Unsupported WebGPU-only features fail capability checks on WebGL 2 instead of being partially
 emulated.
@@ -161,6 +193,12 @@ resource, shader, and recovery contracts.
 - [Engineering documentation index](./documentation/README.md)
 - [Rendering architecture](./documentation/RENDERING_ARCHITECTURE.md)
 - [PBR, HDR, and post-processing](./documentation/PBR_AND_POST_PROCESSING.md)
+- [Modern WebGPU rendering roadmap](./documentation/MODERN_WEBGPU_RENDERING_ROADMAP.md)
+- [Material system modernization](./documentation/MATERIAL_SYSTEM_MODERNIZATION.md)
+- [Temporal rendering](./documentation/TEMPORAL_RENDERING_REMEDIATION.md)
+- [Screen-space global illumination](./documentation/SCREEN_SPACE_GLOBAL_ILLUMINATION.md)
+- [Froxel volumetric lighting](./documentation/VOLUMETRIC_LIGHTING.md)
+- [Physical atmosphere and weather](./documentation/PHYSICAL_ATMOSPHERE_AND_WEATHER.md)
 - [2D rendering and multi-camera composition](./documentation/2D_RENDERING.md)
 - [Scriptable render pipeline](./documentation/SCRIPTABLE_RENDER_PIPELINE_PLAN.md)
 - [Breaking changes](./CHANGELOG.md#breaking-changes)

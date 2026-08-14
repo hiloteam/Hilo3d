@@ -214,7 +214,7 @@ buffer 拒绝重现物体的陈旧 history；fallback opaque/masked 在 resolve 
 target，fallback transparent 在 resolve 后合成。`dynamicResolution` 仅在 WebGPU `timestamp-query`
 可用时创建：控制器异步消费逐 Graph pass GPU 时间，使用 EWMA、迟滞、量化步进、warmup 与 settling
 window，在声明的 min/max 内调整 scene
-scale；比例变化会失效 TAA、Hi-Z、SSR、SSGI/GTAO 与 volumetric 的尺寸相关 history，但 UI/透明合成和最终 output 保持原生分辨率。之后
+scale；比例变化会失效 TAA、Hi-Z、SSR、SSGI/GTAO、volumetric 与 atmosphere/cloud 的尺寸相关 history，但 UI/透明合成和最终 output 保持原生分辨率。之后
 `Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent
 upsample 与线性 composite；`ColorUber` 最后统一完成 grading、tone
 mapping、linear-to-sRGB 与 dithering，并把输出编码标记为 `srgb`，避免 surface output
